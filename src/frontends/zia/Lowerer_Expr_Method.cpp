@@ -249,6 +249,21 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
                                                        const std::string &methodName,
                                                        CallExpr *expr) {
     TypeRef valType = baseType->typeArgs.size() > 1 ? baseType->typeArgs[1] : nullptr;
+    const bool integerKeyed = usesIntegerMapRuntime(baseType);
+    const char *setHelper = integerKeyed ? kIntMapSet : kMapSet;
+    const char *getHelper = integerKeyed ? kIntMapGet : kMapGet;
+    const char *getOrHelper = integerKeyed ? kIntMapGetOr : kMapGetOr;
+    const char *hasHelper = integerKeyed ? kIntMapContainsKey : kMapContainsKey;
+    const char *countHelper = integerKeyed ? kIntMapCount : kMapCount;
+    const char *removeHelper = integerKeyed ? kIntMapRemove : kMapRemove;
+    const char *clearHelper = integerKeyed ? kIntMapClear : kMapClear;
+    const char *keysHelper = integerKeyed ? kIntMapKeys : kMapKeys;
+    const char *valuesHelper = integerKeyed ? kIntMapValues : kMapValues;
+
+    auto lowerRuntimeKey = [&](Expr *keyExpr) {
+        auto keyResult = lowerExpr(keyExpr);
+        return coerceMapKeyForRuntime(keyResult.value, keyResult.type, baseType);
+    };
 
     // Use O(1) dispatch table lookup instead of sequential string comparisons
     const CollectionMethod method = il::frontends::common::lookupCollectionMethod(methodName);
@@ -257,34 +272,62 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
         case CollectionMethod::Set:
         case CollectionMethod::Put:
             if (expr->args.size() >= 2) {
-                auto keyResult = lowerExpr(expr->args[0].value.get());
+                Value runtimeKey = lowerRuntimeKey(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
-                emitCall(kMapSet, {baseValue, keyResult.value, boxedValue});
+                emitCall(setHelper, {baseValue, runtimeKey, boxedValue});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
             }
             break;
 
         case CollectionMethod::Get:
             if (expr->args.size() >= 1) {
-                auto keyResult = lowerExpr(expr->args[0].value.get());
+                Value runtimeKey = lowerRuntimeKey(expr->args[0].value.get());
                 TypeRef resultType = sema_.typeOf(expr);
                 Type resultIlType = resultType ? mapType(resultType) : Type(Type::Kind::Ptr);
                 if (resultType && resultType->kind == TypeKindSem::Optional) {
                     if (valType && valType->kind == TypeKindSem::String) {
-                        Value str = emitCallRet(
-                            Type(Type::Kind::Str), kMapGetOptStr, {baseValue, keyResult.value});
-                        return LowerResult{str, Type(Type::Kind::Str)};
+                        if (!integerKeyed) {
+                            Value str = emitCallRet(
+                                Type(Type::Kind::Str), kMapGetOptStr, {baseValue, runtimeKey});
+                            return LowerResult{str, Type(Type::Kind::Str)};
+                        }
+
+                        std::string slotName =
+                            "__intmap_get_opt_str_" + std::to_string(nextTempId());
+                        createSlot(slotName, Type(Type::Kind::Str));
+                        Value boxed =
+                            emitCallRet(Type(Type::Kind::Ptr), getHelper, {baseValue, runtimeKey});
+                        Value hasValue = emitPointerIsNonNull(boxed, Type(Type::Kind::Ptr));
+
+                        size_t hasValueIdx = createBlock("intmap_get_str_has");
+                        size_t missingIdx = createBlock("intmap_get_str_missing");
+                        size_t mergeIdx = createBlock("intmap_get_str_merge");
+                        emitCBr(hasValue, hasValueIdx, missingIdx);
+
+                        setBlock(hasValueIdx);
+                        Value str = emitCallRet(Type(Type::Kind::Str), kUnboxStr, {boxed});
+                        storeToSlot(slotName, str, Type(Type::Kind::Str));
+                        emitBr(mergeIdx);
+
+                        setBlock(missingIdx);
+                        storeToSlot(slotName, Value::null(), Type(Type::Kind::Ptr));
+                        emitBr(mergeIdx);
+
+                        setBlock(mergeIdx);
+                        Value result = loadFromSlot(slotName, Type(Type::Kind::Str));
+                        removeSlot(slotName);
+                        return LowerResult{result, Type(Type::Kind::Str)};
                     }
 
                     Value boxed =
-                        emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, keyResult.value});
+                        emitCallRet(Type(Type::Kind::Ptr), getHelper, {baseValue, runtimeKey});
                     return LowerResult{boxed, resultIlType};
                 }
 
                 Value boxed =
-                    emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, keyResult.value});
+                    emitCallRet(Type(Type::Kind::Ptr), getHelper, {baseValue, runtimeKey});
                 if (valType)
                     return emitUnboxValue(boxed, mapType(valType), valType);
                 return LowerResult{boxed, Type(Type::Kind::Ptr)};
@@ -293,12 +336,12 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
 
         case CollectionMethod::GetOr:
             if (expr->args.size() >= 2) {
-                auto keyResult = lowerExpr(expr->args[0].value.get());
+                Value runtimeKey = lowerRuntimeKey(expr->args[0].value.get());
                 auto defaultResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
                 Value boxedDefault = emitBoxValue(defaultResult.value, defaultResult.type, argType);
                 Value boxed = emitCallRet(
-                    Type(Type::Kind::Ptr), kMapGetOr, {baseValue, keyResult.value, boxedDefault});
+                    Type(Type::Kind::Ptr), getOrHelper, {baseValue, runtimeKey, boxedDefault});
                 if (valType) {
                     Type ilValueType = mapType(valType);
                     return emitUnboxValue(boxed, ilValueType, valType);
@@ -311,9 +354,9 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
         case CollectionMethod::HasKey:
         case CollectionMethod::Has:
             if (expr->args.size() >= 1) {
-                auto keyResult = lowerExpr(expr->args[0].value.get());
-                Value result = emitCallRet(
-                    Type(Type::Kind::I1), kMapContainsKey, {baseValue, keyResult.value});
+                Value runtimeKey = lowerRuntimeKey(expr->args[0].value.get());
+                Value result =
+                    emitCallRet(Type(Type::Kind::I1), hasHelper, {baseValue, runtimeKey});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
@@ -322,43 +365,68 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
         case CollectionMethod::Count:
         case CollectionMethod::Length:
         case CollectionMethod::Len: {
-            Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {baseValue});
+            Value result = emitCallRet(Type(Type::Kind::I64), countHelper, {baseValue});
             return LowerResult{result, Type(Type::Kind::I64)};
         }
 
         case CollectionMethod::Remove:
             if (expr->args.size() >= 1) {
-                auto keyResult = lowerExpr(expr->args[0].value.get());
+                Value runtimeKey = lowerRuntimeKey(expr->args[0].value.get());
                 Value result =
-                    emitCallRet(Type(Type::Kind::I1), kMapRemove, {baseValue, keyResult.value});
+                    emitCallRet(Type(Type::Kind::I1), removeHelper, {baseValue, runtimeKey});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
 
         case CollectionMethod::SetIfMissing:
             if (expr->args.size() >= 2) {
-                auto keyResult = lowerExpr(expr->args[0].value.get());
+                Value runtimeKey = lowerRuntimeKey(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
-                Value result = emitCallRet(Type(Type::Kind::I1),
-                                           kMapSetIfMissing,
-                                           {baseValue, keyResult.value, boxedValue});
+                if (integerKeyed) {
+                    std::string slotName =
+                        "__intmap_set_if_missing_" + std::to_string(nextTempId());
+                    createSlot(slotName, Type(Type::Kind::I1));
+                    Value exists =
+                        emitCallRet(Type(Type::Kind::I1), hasHelper, {baseValue, runtimeKey});
+
+                    size_t existsIdx = createBlock("intmap_set_missing_exists");
+                    size_t insertIdx = createBlock("intmap_set_missing_insert");
+                    size_t mergeIdx = createBlock("intmap_set_missing_merge");
+                    emitCBr(exists, existsIdx, insertIdx);
+
+                    setBlock(existsIdx);
+                    storeToSlot(slotName, Value::constBool(false), Type(Type::Kind::I1));
+                    emitBr(mergeIdx);
+
+                    setBlock(insertIdx);
+                    emitCall(setHelper, {baseValue, runtimeKey, boxedValue});
+                    storeToSlot(slotName, Value::constBool(true), Type(Type::Kind::I1));
+                    emitBr(mergeIdx);
+
+                    setBlock(mergeIdx);
+                    Value result = loadFromSlot(slotName, Type(Type::Kind::I1));
+                    removeSlot(slotName);
+                    return LowerResult{result, Type(Type::Kind::I1)};
+                }
+                Value result = emitCallRet(
+                    Type(Type::Kind::I1), kMapSetIfMissing, {baseValue, runtimeKey, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
 
         case CollectionMethod::Clear:
-            emitCall(kMapClear, {baseValue});
+            emitCall(clearHelper, {baseValue});
             return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
 
         case CollectionMethod::Keys: {
-            Value seq = emitCallRet(Type(Type::Kind::Ptr), kMapKeys, {baseValue});
+            Value seq = emitCallRet(Type(Type::Kind::Ptr), keysHelper, {baseValue});
             return LowerResult{seq, Type(Type::Kind::Ptr)};
         }
 
         case CollectionMethod::Values: {
-            Value seq = emitCallRet(Type(Type::Kind::Ptr), kMapValues, {baseValue});
+            Value seq = emitCallRet(Type(Type::Kind::Ptr), valuesHelper, {baseValue});
             return LowerResult{seq, Type(Type::Kind::Ptr)};
         }
 

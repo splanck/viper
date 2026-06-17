@@ -343,8 +343,8 @@ LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr,
 /// @param rightType Static type of the right-hand side (unused; type taken from sema).
 /// @return The assigned value.
 /// @details Fixed-size arrays store inline via a bounds-checked GEP + element store (no
-///          boxing). List/Map targets box the value and call the runtime set helper
-///          (kListSet / kMapSet).
+///          boxing). List/Map targets box the value and call the appropriate runtime set
+///          helper; `Map[Integer, T]` uses IntMap with widened i64 keys.
 LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr,
                                           IndexExpr *indexExpr,
                                           LowerResult right,
@@ -397,9 +397,11 @@ LowerResult Lowerer::lowerIndexAssignment(BinaryExpr *expr,
 
         Value boxedValue = emitBoxValue(right.value, right.type, indexRightType);
         Value indexValue = widenIntegralToI64(index.value, index.type);
-        if (baseType && baseType->kind == TypeKindSem::Map)
-            emitCall(kMapSet, {base.value, index.value, boxedValue});
-        else if (baseType && baseType->kind == TypeKindSem::List)
+        if (baseType && baseType->kind == TypeKindSem::Map) {
+            const bool integerKeyed = usesIntegerMapRuntime(baseType);
+            Value runtimeKey = coerceMapKeyForRuntime(index.value, index.type, baseType);
+            emitCall(integerKeyed ? kIntMapSet : kMapSet, {base.value, runtimeKey, boxedValue});
+        } else if (baseType && baseType->kind == TypeKindSem::List)
             emitCall(kListSet, {base.value, indexValue, boxedValue});
         return right;
     }

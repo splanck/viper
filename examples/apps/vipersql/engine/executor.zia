@@ -5696,7 +5696,8 @@ class Executor {
 
         if isTo {
             // COPY TO: export data
-            var qr: QueryResult;
+            var qr = new QueryResult();
+            qr.init();
             if isQuery {
                 qr = executeSql(querySql);
             } else {

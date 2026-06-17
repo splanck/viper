@@ -194,7 +194,7 @@ class Lexer {
     /// @return The character at the current position before advancing.
     ///
     /// @details Advances pos_ by one. Updates line_ and column_ tracking:
-    /// - On newline: increments line_, resets column_ to 1
+    /// - On LF, CR, or CRLF newline: increments line_, resets column_ to 1
     /// - Otherwise: increments column_
     char getChar();
 
@@ -221,6 +221,18 @@ class Lexer {
     /// @details Sends the error to the diagnostic engine with severity Error
     /// and error code "V1000" (Zia lexer errors).
     void reportError(il::support::SourceLoc loc, const std::string &message);
+
+    /// @brief Report a lexical error covering an explicit source range.
+    /// @param start Inclusive start location of the malformed token or region.
+    /// @param end Exclusive end location of the malformed token or region.
+    /// @param message Error message describing the problem.
+    ///
+    /// @details Used for lexemes whose diagnostic should span more than one
+    /// character, such as overlong identifiers, unterminated strings, and
+    /// malformed literals consumed for recovery.
+    void reportErrorRange(il::support::SourceLoc start,
+                          il::support::SourceLoc end,
+                          const std::string &message);
 
     /// @}
     //=========================================================================

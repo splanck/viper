@@ -334,8 +334,9 @@ StmtPtr Parser::parseForStmt() {
     bool hasParen = match(TokenKind::LParen);
 
     auto isCStyleFor = [&]() -> bool {
+        constexpr int kMaxForLookahead = 512;
         int depth = 0;
-        for (int i = 0;; ++i) {
+        for (int i = 0; i < kMaxForLookahead; ++i) {
             TokenKind kind = peek(i).kind;
             if (kind == TokenKind::Eof)
                 break;
@@ -612,11 +613,39 @@ StmtPtr Parser::parseMatchStmt() {
             }
         };
 
+        auto tryParseExpressionArm = [&]() -> ExprPtr {
+            Speculation speculation(*this);
+            ExprPtr expr = parseExpressionAllowingStructLiterals();
+            if (!expr)
+                return nullptr;
+            if (check(TokenKind::Semicolon) || check(TokenKind::Comma) ||
+                check(TokenKind::RBrace)) {
+                speculation.commit();
+                if (!match(TokenKind::Semicolon))
+                    match(TokenKind::Comma);
+                return expr;
+            }
+            return nullptr;
+        };
+
         // Parse arm body (statement, expression, or block)
         if (check(TokenKind::LBrace)) {
             arm.body = parseBlockExpression();
             if (!arm.body)
                 return nullptr;
+        } else if (check(TokenKind::KwIf) || check(TokenKind::KwMatch)) {
+            arm.body = tryParseExpressionArm();
+            if (!arm.body) {
+                StmtPtr stmt = parseStatement();
+                if (!stmt)
+                    return nullptr;
+                std::vector<StmtPtr> statements;
+                statements.push_back(std::move(stmt));
+                arm.body = std::make_unique<BlockExpr>(
+                    arm.pattern.literal ? arm.pattern.literal->loc : loc,
+                    std::move(statements),
+                    nullptr);
+            }
         } else if (startsStatementArm()) {
             StmtPtr stmt = parseStatement();
             if (!stmt)
@@ -678,11 +707,9 @@ StmtPtr Parser::parseTryStmt() {
 
                 // Optional typed catch: catch(e: ErrorType)
                 if (match(TokenKind::Colon)) {
-                    if (!check(TokenKind::Identifier)) {
-                        error("expected error type name after ':' in catch clause");
+                    clause.typeName = parseQualifiedIdentifierString("error type name");
+                    if (clause.typeName.empty())
                         return nullptr;
-                    }
-                    clause.typeName = advance().text;
                 }
             }
             if (!expect(TokenKind::RParen, "')'"))

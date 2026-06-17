@@ -224,9 +224,9 @@ func start() {    //============================================================
     assertEqInt(p0.x, 1, "list_point_x");
     assertEqInt(p0.y, 2, "list_point_y");
 
-    var p1: Point = points.Get(1);
-    assertEqInt(p1.x, 3, "list_point_1_x");
-    assertEqInt(p1.y, 4, "list_point_1_y");
+    var listP1: Point = points.Get(1);
+    assertEqInt(listP1.x, 3, "list_point_1_x");
+    assertEqInt(listP1.y, 4, "list_point_1_y");
 
     //=========================================================================
     // Test 15: Value types in Lists - copy semantics

@@ -319,8 +319,8 @@ class SettingsManager {
         Ini.Set(ini, "settings", "diagnosticsDelayMs", "" + diagnosticsDelayMs);
         Ini.Set(ini, "settings", "completionDelayMs", "" + completionDelayMs);
         Ini.Set(ini, "settings", "uiZoomPercent", "" + uiZoomPercent);
-        var content = Ini.Format(ini);
-        IO.File.WriteAllText(settingsPath, content);
+        var formattedContent = Ini.Format(ini);
+        IO.File.WriteAllText(settingsPath, formattedContent);
     }
 
     /// @brief Apply the loaded theme via Viper.GUI.Theme.SetDark/SetLight.

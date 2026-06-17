@@ -118,6 +118,50 @@ Lowerer::Value Lowerer::widenIntegralToI64(Value value, Type valueType) {
     }
 }
 
+/// @brief Return whether a semantic map should lower to the IntMap runtime ABI.
+/// @param mapType Semantic type of the map receiver.
+/// @return True for `Map[Integer, T]`; false for all other receiver types.
+bool Lowerer::usesIntegerMapRuntime(TypeRef mapType) const {
+    if (!mapType || mapType->kind != TypeKindSem::Map)
+        return false;
+    TypeRef keyType = mapType->keyType();
+    return keyType && keyType->kind == TypeKindSem::Integer;
+}
+
+/// @brief Convert a map key value to the runtime representation used by its backing store.
+/// @param keyValue Lowered key value.
+/// @param keyIlType IL type of @p keyValue.
+/// @param mapType Semantic map type used to choose between Map and IntMap.
+/// @return Widened i64 key for IntMap, or the original value for string-keyed Map.
+Lowerer::Value Lowerer::coerceMapKeyForRuntime(Value keyValue, Type keyIlType, TypeRef mapType) {
+    if (usesIntegerMapRuntime(mapType))
+        return widenIntegralToI64(keyValue, keyIlType);
+    return keyValue;
+}
+
+/// @brief Emit a null check for pointer-like values.
+/// @param ptr Pointer or string value.
+/// @param ptrType IL type of @p ptr.
+/// @return An i1 value that is true when @p ptr is non-null.
+/// @details IL integer comparisons cannot directly compare pointer operands. This helper
+///          stores the pointer-sized value into a temporary stack slot, reloads the bits as
+///          i64, and compares that integer representation with zero.
+Lowerer::Value Lowerer::emitPointerIsNonNull(Value ptr, Type ptrType) {
+    unsigned ptrSlotId = nextTempId();
+    il::core::Instr ptrSlotInstr;
+    ptrSlotInstr.result = ptrSlotId;
+    ptrSlotInstr.op = Opcode::Alloca;
+    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+    Value ptrSlot = Value::temp(ptrSlotId);
+
+    emitStore(ptrSlot, ptr, ptrType);
+    Value ptrAsI64 = emitLoad(ptrSlot, Type(Type::Kind::I64));
+    return emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+}
+
 Lowerer::Value Lowerer::emitIndexCheck(Value index, Value lowerInclusive, Value upperExclusive) {
     if (!options_.boundsChecks)
         return index;

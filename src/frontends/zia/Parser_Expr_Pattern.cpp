@@ -126,15 +126,15 @@ bool Parser::parsePatternCore(MatchArm::Pattern &out) {
 
         // Dotted identifier (e.g. Color.Red) -> enum variant literal pattern
         if (check(TokenKind::Dot)) {
-            advance(); // consume '.'
-            Token variantTok;
-            if (!expect(TokenKind::Identifier, "enum variant name", &variantTok))
-                return false;
-            auto base = std::make_unique<IdentExpr>(nameTok.loc, name);
-            auto fieldExpr =
-                std::make_unique<FieldExpr>(nameTok.loc, std::move(base), variantTok.text);
+            ExprPtr dotted = std::make_unique<IdentExpr>(nameTok.loc, name);
+            while (match(TokenKind::Dot)) {
+                Token partTok;
+                if (!expect(TokenKind::Identifier, "enum variant name", &partTok))
+                    return false;
+                dotted = std::make_unique<FieldExpr>(nameTok.loc, std::move(dotted), partTok.text);
+            }
             out.kind = MatchArm::Pattern::Kind::Literal;
-            out.literal = std::move(fieldExpr);
+            out.literal = std::move(dotted);
             return true;
         }
 
@@ -176,9 +176,12 @@ bool Parser::parsePatternCore(MatchArm::Pattern &out) {
         if (!expect(TokenKind::RParen, ")"))
             return false;
 
-        // Single-element parenthesized pattern is not a tuple pattern.
-        if (elements.size() <= 1)
+        if (elements.empty())
             return false;
+        if (elements.size() == 1) {
+            out = std::move(elements.front());
+            return true;
+        }
 
         out.kind = MatchArm::Pattern::Kind::Tuple;
         out.subpatterns = std::move(elements);

@@ -216,10 +216,20 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
 }
 
 TypeRef Sema::checkArithmeticBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
-    if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
+    if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add) {
+        if (rightType->kind == TypeKindSem::Any) {
+            error(expr->right->loc,
+                  "Cannot concatenate String with Any; convert the value to String explicitly");
+        }
         return types::string();
-    if (rightType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
+    }
+    if (rightType->kind == TypeKindSem::String && expr->op == BinaryOp::Add) {
+        if (leftType->kind == TypeKindSem::Any) {
+            error(expr->left->loc,
+                  "Cannot concatenate Any with String; convert the value to String explicitly");
+        }
         return types::string();
+    }
 
     // W010: Division by zero — check for literal zero divisor.
     if ((expr->op == BinaryOp::Div || expr->op == BinaryOp::Mod) && leftType->isNumeric() &&
@@ -280,12 +290,10 @@ TypeRef Sema::checkComparisonBinary(BinaryExpr *expr, TypeRef leftType, TypeRef 
             if (!compatible) {
                 const TypeRef leftInner = compareLeft->innerType();
                 const TypeRef rightInner = compareRight->innerType();
-                const bool leftIsNull =
-                    compareLeft->kind == TypeKindSem::Optional && leftInner &&
-                    leftInner->kind == TypeKindSem::Unknown;
-                const bool rightIsNull =
-                    compareRight->kind == TypeKindSem::Optional && rightInner &&
-                    rightInner->kind == TypeKindSem::Unknown;
+                const bool leftIsNull = compareLeft->kind == TypeKindSem::Optional && leftInner &&
+                                        leftInner->kind == TypeKindSem::Unknown;
+                const bool rightIsNull = compareRight->kind == TypeKindSem::Optional &&
+                                         rightInner && rightInner->kind == TypeKindSem::Unknown;
                 if (leftIsNull != rightIsNull) {
                     TypeRef nonNullType = leftIsNull ? compareRight : compareLeft;
                     error(expr->loc,
@@ -357,10 +365,15 @@ TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef
             if (baseType &&
                 (baseType->kind == TypeKindSem::Class || baseType->kind == TypeKindSem::Struct ||
                  baseType->kind == TypeKindSem::Module)) {
-                std::string memberKey = baseType->name + "." + fieldExpr->field;
+                std::string ownerName = baseType->name;
+                if (baseType->kind != TypeKindSem::Module) {
+                    if (auto fieldOwner = findFieldOwner(baseType->name, fieldExpr->field))
+                        ownerName = *fieldOwner;
+                }
+                std::string memberKey = ownerName + "." + fieldExpr->field;
                 bool assigningDuringInit = currentSelfType_ &&
-                                           currentSelfType_->name == baseType->name &&
-                                           currentMethod_ && currentMethod_->name == "init";
+                                           currentSelfType_->name == ownerName && currentMethod_ &&
+                                           currentMethod_->name == "init";
                 if (finalFields_.contains(memberKey) && !assigningDuringInit) {
                     error(expr->loc, "Cannot assign to final field '" + fieldExpr->field + "'");
                 }

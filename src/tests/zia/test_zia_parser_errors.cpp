@@ -93,6 +93,18 @@ func start()
     EXPECT_TRUE(hasDiagCode(result.diagnostics, "V-ZIA-PARSE-DECL"));
 }
 
+TEST(ZiaParserErrors, BodylessClassMethodRejected) {
+    auto result = compileSource(R"(
+module Test;
+class C {
+    func f();
+}
+func start() {}
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "method declarations in class or struct"));
+}
+
 //===----------------------------------------------------------------------===//
 // Invalid expressions
 //===----------------------------------------------------------------------===//
@@ -155,11 +167,13 @@ func start() {    5 = 10
 // Module declaration errors
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, MissingModuleDecl) {
+TEST(ZiaParserErrors, ModuleDeclAfterDeclaration) {
     auto result = compileSource(R"(
 func start() {}
+module Test;
 )");
     EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "expected declaration"));
 }
 
 TEST(ZiaParserErrors, DuplicateModuleDecl) {
@@ -428,19 +442,19 @@ func start() {})");
 // Empty / minimal input
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, EmptyInput) {
+TEST(ZiaParserErrors, EmptyInputCompilesAsImplicitModule) {
     auto result = compileSource("");
-    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, WhitespaceOnly) {
+TEST(ZiaParserErrors, WhitespaceOnlyCompilesAsImplicitModule) {
     auto result = compileSource("   \n\n\t\t\n   ");
-    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, CommentOnly) {
+TEST(ZiaParserErrors, CommentOnlyCompilesAsImplicitModule) {
     auto result = compileSource("// just a comment\n");
-    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(result.succeeded());
 }
 
 } // namespace

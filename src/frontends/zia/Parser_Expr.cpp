@@ -32,10 +32,20 @@ ExprPtr Parser::parseExpression() {
 }
 
 ExprPtr Parser::parseExpressionAllowingStructLiterals() {
-    bool savedAllowStructLiterals = allowStructLiterals_;
-    allowStructLiterals_ = true;
+    struct StructLiteralAllowance {
+        Parser &parser;
+        bool saved;
+
+        StructLiteralAllowance(Parser &p) : parser(p), saved(p.allowStructLiterals_) {
+            parser.allowStructLiterals_ = true;
+        }
+
+        ~StructLiteralAllowance() {
+            parser.allowStructLiterals_ = saved;
+        }
+    } allowance(*this);
+
     ExprPtr expr = parseExpression();
-    allowStructLiterals_ = savedAllowStructLiterals;
     return expr;
 }
 
@@ -641,6 +651,23 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
             break;
         }
     }
+    // Parse shift ops
+    while (true) {
+        BinaryOp op;
+        Token opTok;
+        if (match(TokenKind::ShiftLeft, &opTok))
+            op = BinaryOp::Shl;
+        else if (match(TokenKind::ShiftRight, &opTok))
+            op = BinaryOp::Shr;
+        else
+            break;
+
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseAdditive();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
     // Parse comparison ops
     while (true) {
         BinaryOp op;
@@ -657,7 +684,7 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
             break;
 
         SourceLoc loc = opTok.loc;
-        ExprPtr right = parseAdditive();
+        ExprPtr right = parseShift();
         if (!right)
             return nullptr;
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
@@ -679,11 +706,36 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
             return nullptr;
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
-    // Parse logical and
     Token opTok;
-    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok)) {
+    // Parse bitwise operators
+    while (match(TokenKind::Ampersand, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseEquality();
+        if (!right)
+            return nullptr;
+        expr =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::BitAnd, std::move(expr), std::move(right));
+    }
+    while (match(TokenKind::Caret, &opTok)) {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseBitwiseAnd();
+        if (!right)
+            return nullptr;
+        expr =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::BitXor, std::move(expr), std::move(right));
+    }
+    while (match(TokenKind::Pipe, &opTok)) {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseBitwiseXor();
+        if (!right)
+            return nullptr;
+        expr =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::BitOr, std::move(expr), std::move(right));
+    }
+    // Parse logical and
+    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok)) {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseBitwiseOr();
         if (!right)
             return nullptr;
         expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
@@ -695,6 +747,43 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
         if (!right)
             return nullptr;
         expr = std::make_unique<BinaryExpr>(loc, BinaryOp::Or, std::move(expr), std::move(right));
+    }
+    while (match(TokenKind::QuestionQuestion, &opTok)) {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseLogicalOr();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<CoalesceExpr>(loc, std::move(expr), std::move(right));
+    }
+    while (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
+        Token rangeTok = advance();
+        SourceLoc loc = rangeTok.loc;
+        ExprPtr right = parseCoalesce();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<RangeExpr>(
+            loc, std::move(expr), std::move(right), rangeTok.kind == TokenKind::DotDotEqual);
+    }
+    if (match(TokenKind::Question, &opTok)) {
+        SourceLoc loc = opTok.loc;
+        ExprPtr thenExpr = parseExpressionAllowingStructLiterals();
+        if (!thenExpr)
+            return nullptr;
+        if (!expect(TokenKind::Colon, ":"))
+            return nullptr;
+        ExprPtr elseExpr = parseExpressionAllowingStructLiterals();
+        if (!elseExpr)
+            return nullptr;
+        expr = std::make_unique<TernaryExpr>(
+            loc, std::move(expr), std::move(thenExpr), std::move(elseExpr));
+    }
+    if (match(TokenKind::Equal, &opTok)) {
+        SourceLoc loc = opTok.loc;
+        ExprPtr value = parseExpressionAllowingStructLiterals();
+        if (!value)
+            return nullptr;
+        expr =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::Assign, std::move(expr), std::move(value));
     }
     return expr;
 }
@@ -749,6 +838,10 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr) {
             // Check for tuple index access: tuple.0, tuple.1, etc.
             if (check(TokenKind::IntegerLiteral)) {
                 int64_t index = peek().intValue;
+                if (index < 0) {
+                    errorAt(peek().loc, "tuple index must be non-negative");
+                    return nullptr;
+                }
                 advance(); // consume integer literal
                 expr = std::make_unique<TupleIndexExpr>(
                     loc, std::move(expr), static_cast<size_t>(index));

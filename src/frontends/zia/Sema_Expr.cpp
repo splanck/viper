@@ -314,8 +314,30 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr) {
                       "overload");
             return types::unknown();
         }
-        if (moduleExports_.find(expr->name) != moduleExports_.end())
+        if (hasModuleExports(expr->name, expr->loc))
             return types::module(expr->name);
+
+        if (currentSelfType_ && expr->name.find('.') == std::string::npos) {
+            if (auto fieldOwner = findFieldOwner(currentSelfType_->name, expr->name)) {
+                const std::string fieldKey = *fieldOwner + "." + expr->name;
+                auto fieldVisIt = memberVisibility_.find(fieldKey);
+                const bool isInsideDeclaringType =
+                    currentSelfType_->name == *fieldOwner ||
+                    types::isSubclassOf(currentSelfType_->name, *fieldOwner);
+                if (fieldVisIt != memberVisibility_.end() &&
+                    fieldVisIt->second == Visibility::Private && !isInsideDeclaringType) {
+                    error(expr->loc,
+                          "Cannot access private member '" + expr->name + "' of type '" +
+                              *fieldOwner + "'");
+                    return types::unknown();
+                }
+
+                TypeRef fieldType = getFieldType(currentSelfType_->name, expr->name);
+                if (fieldType)
+                    return fieldType;
+            }
+        }
+
         // Check if this is an imported symbol from a bound namespace
         auto importIt = importedSymbols_.find(expr->name);
         if (importIt != importedSymbols_.end()) {

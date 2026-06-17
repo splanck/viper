@@ -75,8 +75,12 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
     }
 
     if (baseType->kind == TypeKindSem::Map) {
-        if (indexType->kind != TypeKindSem::String) {
-            error(expr->index->loc, "Map keys must be String");
+        TypeRef keyType = baseType->keyType() ? baseType->keyType() : types::unknown();
+        if (keyType && keyType->kind != TypeKindSem::Unknown && indexType &&
+            indexType->kind != TypeKindSem::Unknown && !keyType->isAssignableFrom(*indexType)) {
+            error(expr->index->loc,
+                  "Map key must be " + keyType->toDisplayString() + ", got " +
+                      indexType->toDisplayString());
         }
         return baseType->valueType() ? baseType->valueType() : types::unknown();
     }
@@ -325,9 +329,9 @@ TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
     if (TypeRef staticFieldType = resolveStaticField(expr, baseType->name))
         return staticFieldType;
 
-    if (auto moduleIt = moduleExports_.find(baseType->name); moduleIt != moduleExports_.end()) {
-        auto exportIt = moduleIt->second.find(expr->field);
-        if (exportIt != moduleIt->second.end()) {
+    if (auto moduleExports = findModuleExports(baseType->name, expr->loc)) {
+        auto exportIt = moduleExports->find(expr->field);
+        if (exportIt != moduleExports->end()) {
             const Symbol &sym = exportIt->second;
             if (sym.kind == Symbol::Kind::Function && hasOverloadedFunctionName(sym.name)) {
                 error(expr->loc,
@@ -438,9 +442,24 @@ TypeRef Sema::resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType) {
     }
 
     // Field?
-    auto fieldIt = fieldTypes_.find(memberKey);
-    if (fieldIt != fieldTypes_.end()) {
-        return fieldIt->second;
+    if (auto fieldOwner = findFieldOwner(baseType->name, expr->field)) {
+        const std::string fieldKey = *fieldOwner + "." + expr->field;
+        auto fieldVisIt = memberVisibility_.find(fieldKey);
+        const bool isInsideDeclaringType =
+            currentSelfType_ &&
+            (currentSelfType_->name == *fieldOwner ||
+             types::isSubclassOf(currentSelfType_->name, *fieldOwner));
+        if (fieldVisIt != memberVisibility_.end() && fieldVisIt->second == Visibility::Private &&
+            !isInsideDeclaringType) {
+            error(expr->loc,
+                  "Cannot access private member '" + expr->field + "' of type '" + *fieldOwner +
+                      "'");
+            return types::unknown();
+        }
+
+        TypeRef fieldType = getFieldType(baseType->name, expr->field);
+        if (fieldType)
+            return fieldType;
     }
 
     // Property?
@@ -521,38 +540,45 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr) {
     TypeRef fieldType = types::unknown();
 
     if (innerType->kind == TypeKindSem::Struct || innerType->kind == TypeKindSem::Class) {
-        std::string memberKey = innerType->name + "." + expr->field;
-        bool isInsideType = currentSelfType_ && currentSelfType_->name == innerType->name;
-        auto visIt = memberVisibility_.find(memberKey);
-        if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
-            !isInsideType) {
-            error(expr->loc,
-                  "Cannot access private member '" + expr->field + "' of type '" + innerType->name +
-                      "'");
-            return types::optional(types::unknown());
-        }
+        if (auto fieldOwner = findFieldOwner(innerType->name, expr->field)) {
+            const std::string memberKey = *fieldOwner + "." + expr->field;
+            const bool isInsideDeclaringType =
+                currentSelfType_ &&
+                (currentSelfType_->name == *fieldOwner ||
+                 types::isSubclassOf(currentSelfType_->name, *fieldOwner));
+            auto visIt = memberVisibility_.find(memberKey);
+            if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
+                !isInsideDeclaringType) {
+                error(expr->loc,
+                      "Cannot access private member '" + expr->field + "' of type '" + *fieldOwner +
+                          "'");
+                return types::optional(types::unknown());
+            }
 
-        auto fieldIt = fieldTypes_.find(memberKey);
-        if (fieldIt != fieldTypes_.end()) {
-            fieldType = fieldIt->second;
-        } else if (const PropertyDecl *prop =
-                       propertyDeclForLowering(innerType->name, expr->field, nullptr)) {
-            if (prop->visibility == Visibility::Private && !isInsideType) {
+            fieldType = getFieldType(innerType->name, expr->field);
+        } else {
+            std::string declaringOwner;
+            const PropertyDecl *prop =
+                propertyDeclForLowering(innerType->name, expr->field, &declaringOwner);
+            if (!prop) {
+                error(expr->loc,
+                      "Unknown field '" + expr->field + "' on type '" + innerType->name + "'");
+            } else if (prop->visibility == Visibility::Private &&
+                       !(currentSelfType_ &&
+                         (currentSelfType_->name == declaringOwner ||
+                          types::isSubclassOf(currentSelfType_->name, declaringOwner)))) {
                 error(expr->loc,
                       "Cannot access private member '" + expr->field + "' of type '" +
-                          innerType->name + "'");
+                          declaringOwner + "'");
                 return types::optional(types::unknown());
-            }
-            if (!prop->getterBody) {
+            } else if (!prop->getterBody) {
                 error(expr->loc,
-                      "Property '" + expr->field + "' of type '" + innerType->name +
+                      "Property '" + expr->field + "' of type '" + declaringOwner +
                           "' is write-only");
                 return types::optional(types::unknown());
+            } else {
+                fieldType = prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
             }
-            fieldType = prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
-        } else {
-            error(expr->loc,
-                  "Unknown field '" + expr->field + "' on type '" + innerType->name + "'");
         }
     } else if (innerType->kind == TypeKindSem::List) {
         if (isCountLikeProperty(expr->field)) {
@@ -1023,7 +1049,7 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
 
     for (auto &arm : expr->arms) {
         std::unordered_map<std::string, TypeRef> bindings;
-        std::unordered_map<std::string, bool> bindingWasInitialized;
+        auto preArmState = saveInitState();
         pushScope(expr->loc);
 
         analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
@@ -1035,7 +1061,6 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
             sym.type = binding.second;
             sym.isFinal = true;
             defineSymbol(binding.first, sym, expr->loc);
-            bindingWasInitialized.emplace(binding.first, isInitialized(binding.first));
             markInitialized(binding.first);
         }
 
@@ -1070,10 +1095,7 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
         }
 
         popScope(arm.body ? arm.body->loc : expr->loc);
-        for (const auto &[name, wasInitialized] : bindingWasInitialized) {
-            if (!wasInitialized)
-                initializedVars_.erase(name);
-        }
+        initializedVars_ = std::move(preArmState);
     }
 
     if (!coverage.hasIrrefutable) {
@@ -1353,7 +1375,7 @@ TypeRef Sema::analyzeListLiteral(ListLiteralExpr *expr) {
 }
 
 TypeRef Sema::analyzeMapLiteral(MapLiteralExpr *expr) {
-    TypeRef keyType = types::string();
+    TypeRef keyType = types::unknown();
     TypeRef valueType = types::unknown();
     bool incompatible = false;
 
@@ -1371,9 +1393,15 @@ TypeRef Sema::analyzeMapLiteral(MapLiteralExpr *expr) {
             vType = types::unknown();
         }
 
-        if (kType->kind != TypeKindSem::String) {
-            error(entry.key->loc, "Map keys must be String");
+        TypeRef combinedKey = commonType(keyType, kType);
+        if (keyType && kType && keyType->kind != TypeKindSem::Unknown &&
+            kType->kind != TypeKindSem::Unknown && combinedKey->kind == TypeKindSem::Unknown) {
+            error(entry.key->loc,
+                  "Map literal contains incompatible key type " + kType->toDisplayString() +
+                      " with prior key type " + keyType->toDisplayString());
+            incompatible = true;
         }
+        keyType = combinedKey;
 
         TypeRef combined = commonType(valueType, vType);
         if (valueType && vType && valueType->kind != TypeKindSem::Unknown &&

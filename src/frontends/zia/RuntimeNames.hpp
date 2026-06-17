@@ -216,6 +216,37 @@ inline constexpr const char *kMapValues = kCollectionsMapValues;
 /// @}
 
 //=============================================================================
+/// @name IntMap Aliases
+/// @brief Short names for Viper.Collections.IntMap functions.
+/// @details IntMap is the integer-keyed runtime backing store used when Zia lowers
+///          `Map[Integer, T]`. Values are stored as boxed objects just like string-keyed
+///          Map values, while keys are passed as widened i64 integers.
+/// @{
+//=============================================================================
+
+/// @brief Create a new empty integer-keyed map.
+inline constexpr const char *kIntMapNew = kCollectionsIntMapNew;
+/// @brief Set an integer key-value pair, overwriting any existing value for the key.
+inline constexpr const char *kIntMapSet = kCollectionsIntMapSet;
+/// @brief Get the boxed value for an integer key, or null when absent.
+inline constexpr const char *kIntMapGet = kCollectionsIntMapGet;
+/// @brief Get the boxed value for an integer key, or a boxed default when absent.
+inline constexpr const char *kIntMapGetOr = kCollectionsIntMapGetOr;
+/// @brief Check whether an integer key is present.
+inline constexpr const char *kIntMapContainsKey = kCollectionsIntMapHas;
+/// @brief Get the number of integer key-value pairs.
+inline constexpr const char *kIntMapCount = kCollectionsIntMapGetLength;
+/// @brief Remove an integer key-value pair.
+inline constexpr const char *kIntMapRemove = kCollectionsIntMapRemove;
+/// @brief Remove all integer key-value pairs.
+inline constexpr const char *kIntMapClear = kCollectionsIntMapClear;
+/// @brief Get a Seq of boxed integer keys.
+inline constexpr const char *kIntMapKeys = kCollectionsIntMapKeys;
+/// @brief Get a Seq of boxed values.
+inline constexpr const char *kIntMapValues = kCollectionsIntMapValues;
+/// @}
+
+//=============================================================================
 /// @name Seq Aliases
 /// @brief Short names for Viper.Collections.Seq (immutable sequence) functions.
 /// @{

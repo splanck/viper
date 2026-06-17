@@ -204,7 +204,8 @@ bool Parser::looksLikeBlockExpression() {
     int nestedParen = 0;
     int nestedBracket = 0;
     int nestedBrace = 0;
-    for (size_t offset = 1;; ++offset) {
+    constexpr size_t kMaxBlockExpressionLookahead = 512;
+    for (size_t offset = 1; offset <= kMaxBlockExpressionLookahead; ++offset) {
         TokenKind kind = peek(offset).kind;
         if (kind == TokenKind::Eof)
             return false;
@@ -244,6 +245,7 @@ bool Parser::looksLikeBlockExpression() {
                 break;
         }
     }
+    return false;
 }
 
 bool Parser::match(TokenKind kind, Token *out) {
@@ -299,6 +301,8 @@ void Parser::resyncAfterError() {
         advance();
         ++consumed;
     }
+    if (consumed == kMaxResyncTokens && !check(TokenKind::Eof))
+        errorAt(peek().loc, "stopped error recovery after 10000 tokens");
 }
 
 //===----------------------------------------------------------------------===//

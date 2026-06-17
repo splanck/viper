@@ -507,8 +507,28 @@ ExprPtr Parser::parseBlockExpression() {
     std::vector<StmtPtr> statements;
     ExprPtr value;
 
+    auto startsBlockStatement = [](TokenKind kind) {
+        switch (kind) {
+            case TokenKind::KwVar:
+            case TokenKind::KwFinal:
+            case TokenKind::KwLet:
+            case TokenKind::KwReturn:
+            case TokenKind::KwBreak:
+            case TokenKind::KwContinue:
+            case TokenKind::KwDefer:
+            case TokenKind::KwThrow:
+            case TokenKind::KwGuard:
+            case TokenKind::KwWhile:
+            case TokenKind::KwFor:
+            case TokenKind::KwTry:
+                return true;
+            default:
+                return false;
+        }
+    };
+
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
-        {
+        if (isExpressionStart(peek().kind) && !startsBlockStatement(peek().kind)) {
             Speculation speculation(*this);
             ExprPtr candidate = parseExpressionAllowingStructLiterals();
             if (candidate && check(TokenKind::RBrace)) {
@@ -543,9 +563,8 @@ ExprPtr Parser::parseInterpolatedString() {
     std::string firstPart = peek().stringValue;
     advance(); // consume StringStart
 
-    // Build up a chain of string concatenations
-    // Start with the first string part (could be empty)
-    ExprPtr result = std::make_unique<StringLiteralExpr>(loc, std::move(firstPart));
+    std::vector<ExprPtr> parts;
+    parts.push_back(std::make_unique<StringLiteralExpr>(loc, std::move(firstPart)));
 
     // Parse the first interpolated expression
     ExprPtr expr = parseExpressionAllowingStructLiterals();
@@ -554,9 +573,7 @@ ExprPtr Parser::parseInterpolatedString() {
         return nullptr;
     }
 
-    // Convert the expression to string if needed (we'll handle this in lowering)
-    // For now, just concatenate with Add operator (string concat)
-    result = std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(result), std::move(expr));
+    parts.push_back(std::move(expr));
 
     // Now we should see either StringMid or StringEnd
     while (check(TokenKind::StringMid)) {
@@ -564,14 +581,10 @@ ExprPtr Parser::parseInterpolatedString() {
         std::string midPart = peek().stringValue;
         advance(); // consume StringMid
 
-        // Concatenate the middle string part
-        if (!midPart.empty()) {
-            result = std::make_unique<BinaryExpr>(
-                loc,
-                BinaryOp::Add,
-                std::move(result),
-                std::make_unique<StringLiteralExpr>(loc, std::move(midPart)));
-        }
+        // Keep even empty middle segments: `${a}${b}` needs the empty
+        // string between expressions so balanced concatenation cannot fold
+        // adjacent numeric expressions as arithmetic.
+        parts.push_back(std::make_unique<StringLiteralExpr>(loc, std::move(midPart)));
 
         // Parse the next interpolated expression
         expr = parseExpressionAllowingStructLiterals();
@@ -580,9 +593,7 @@ ExprPtr Parser::parseInterpolatedString() {
             return nullptr;
         }
 
-        // Concatenate the expression
-        result =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(result), std::move(expr));
+        parts.push_back(std::move(expr));
     }
 
     // Must end with StringEnd
@@ -597,14 +608,23 @@ ExprPtr Parser::parseInterpolatedString() {
 
     // Concatenate the final string part (if not empty)
     if (!endPart.empty()) {
-        result = std::make_unique<BinaryExpr>(
-            loc,
-            BinaryOp::Add,
-            std::move(result),
-            std::make_unique<StringLiteralExpr>(loc, std::move(endPart)));
+        parts.push_back(std::make_unique<StringLiteralExpr>(loc, std::move(endPart)));
     }
 
-    return result;
+    while (parts.size() > 1) {
+        std::vector<ExprPtr> next;
+        next.reserve((parts.size() + 1) / 2);
+        for (size_t i = 0; i < parts.size(); i += 2) {
+            if (i + 1 == parts.size()) {
+                next.push_back(std::move(parts[i]));
+                continue;
+            }
+            next.push_back(std::make_unique<BinaryExpr>(
+                loc, BinaryOp::Add, std::move(parts[i]), std::move(parts[i + 1])));
+        }
+        parts = std::move(next);
+    }
+    return std::move(parts.front());
 }
 
 /// @brief Parse a map literal ({key: value, ...}) or set literal ({elem, ...}).

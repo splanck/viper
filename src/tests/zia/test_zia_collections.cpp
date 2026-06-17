@@ -252,28 +252,87 @@ func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
     EXPECT_TRUE(foundHas);
 }
 
-/// @brief Test that Map key types are enforced as String.
-TEST(ZiaCollections, MapKeyTypeEnforced) {
+/// @brief Test that Integer-keyed maps lower through the IntMap runtime helpers.
+TEST(ZiaCollections, IntegerMapKeyTypeUsesIntMapRuntime) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
 func start() {    var names: Map[Integer, String] = new Map[Integer, String]();
     names[1] = "One";
+    names.set(2, "Two");
+    var maybeTwo: String? = names.get(2);
+    var three: String = names.getOr(3, "Three");
+    var inserted: Boolean = names.setIfMissing(4, "Four");
+    var hasOne: Boolean = names.has(1);
+    var removed: Boolean = names.remove(1);
+    var count: Integer = names.count();
+    for key in names.keys() {
+        var id: Integer = key;
+        Viper.Terminal.SayInt(id);
+    }
+    for value in names.values() {
+        var label: String = value;
+        Viper.Terminal.Say(label);
+    }
+    Viper.Terminal.Say(maybeTwo ?? three);
+    Viper.Terminal.SayInt((inserted && hasOne && removed) ? count : 0);
 }
 )";
-    CompilerInput input{.source = source, .path = "map_key_type.zia"};
+    CompilerInput input{.source = source, .path = "integer_map_key_type.zia"};
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
 
-    EXPECT_FALSE(result.succeeded());
-    bool foundKeyError = false;
-    for (const auto &d : result.diagnostics.diagnostics()) {
-        if (d.message.find("Map keys must be String") != std::string::npos)
-            foundKeyError = true;
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for IntegerMapKeyTypeUsesIntMapRuntime:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
     }
-    EXPECT_TRUE(foundKeyError);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.New"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Set"), static_cast<size_t>(2));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Get"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.GetOr"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Has"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Remove"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Keys"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.IntMap.Values"), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Collections.Map.New"), static_cast<size_t>(0));
+}
+
+/// @brief Test that map key expressions must match the declared key type.
+TEST(ZiaCollections, MapWrongKeyExpressionTypeRejected) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var names: Map[Integer, String] = new Map[Integer, String]();
+    names["one"] = "One";
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Map key must be Integer"));
+}
+
+/// @brief Test that unsupported map key type declarations remain rejected.
+TEST(ZiaCollections, UnsupportedMapKeyDeclarationTypeRejected) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var names: Map[Number, String] = new Map[Number, String]();
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Map keys must be String or Integer"));
 }
 
 /// @brief Test that empty list type inference works.

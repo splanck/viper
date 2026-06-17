@@ -119,13 +119,13 @@ func main() {
     if assertTrue(search_commands.LineMatches("Alpha", "alpha", true, false) == false,
                   "case-sensitive search") == false { return; }
 
-    var registry = new command_registry.CommandRegistry();
-    if assertTrue(registry.ShortcutConflictCount() == 0,
+    var shortcutRegistry = new command_registry.CommandRegistry();
+    if assertTrue(shortcutRegistry.ShortcutConflictCount() == 0,
                   "default keybindings have no conflicts") == false { return; }
-    registry.Add("probe.conflict", "Probe Conflict", "Intentional conflict", "Ctrl+S", "", true);
-    if assertTrue(registry.ShortcutConflictCount() == 1
-                  and registry.ShortcutHasConflict("Ctrl+S")
-                  and Str.IndexOf(registry.ShortcutConflictSummary(), "save") != 0,
+    shortcutRegistry.Add("probe.conflict", "Probe Conflict", "Intentional conflict", "Ctrl+S", "", true);
+    if assertTrue(shortcutRegistry.ShortcutConflictCount() == 1
+                  and shortcutRegistry.ShortcutHasConflict("Ctrl+S")
+                  and Str.IndexOf(shortcutRegistry.ShortcutConflictSummary(), "save") != 0,
                   "keybinding conflict detection reports duplicates") == false { return; }
 
     var workScheduler = new scheduler.EditorScheduler();

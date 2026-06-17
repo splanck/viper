@@ -91,6 +91,14 @@ TEST(ZiaLexer, HexLiteralMissingDigits) {
     EXPECT_TRUE(hasErrors(diag));
 }
 
+TEST(ZiaLexer, HexLiteralInvalidTailProducesSingleErrorToken) {
+    DiagnosticEngine diag;
+    auto tokens = tokenizeWithDiags("0x1G", diag);
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::Error);
+    EXPECT_TRUE(hasErrors(diag));
+}
+
 TEST(ZiaLexer, BinaryLiteralBasic) {
     auto tokens = tokenize("0b1010");
     ASSERT_EQ(tokens.size(), 1u);
@@ -114,10 +122,18 @@ TEST(ZiaLexer, BinaryLiteralMissingDigits) {
 }
 
 TEST(ZiaLexer, BinaryLiteralInvalidDigit) {
-    // 0b2 — '2' is not a binary digit, so lexer reads "0b" then stops
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("0b2", diag);
-    // Should error on missing binary digits
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::Error);
+    EXPECT_TRUE(hasErrors(diag));
+}
+
+TEST(ZiaLexer, BinaryLiteralInvalidTailProducesSingleErrorToken) {
+    DiagnosticEngine diag;
+    auto tokens = tokenizeWithDiags("0b102", diag);
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::Error);
     EXPECT_TRUE(hasErrors(diag));
 }
 
@@ -244,9 +260,8 @@ TEST(ZiaLexer, StringEscapeDollar) {
 TEST(ZiaLexer, StringInvalidEscape) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\\q\"", diag);
-    ASSERT_EQ(tokens.size(), 1u);
-    // Token is still produced (string continues after invalid escape)
-    EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].kind, TokenKind::Error);
     EXPECT_TRUE(hasErrors(diag));
 }
 
@@ -260,7 +275,8 @@ TEST(ZiaLexer, StringHexEscape) {
 TEST(ZiaLexer, StringHexEscapeInvalid) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\\xGG\"", diag);
-    ASSERT_EQ(tokens.size(), 1u);
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].kind, TokenKind::Error);
     EXPECT_TRUE(hasErrors(diag));
 }
 
@@ -296,6 +312,8 @@ TEST(ZiaLexer, StringUnicodeEscapeTooFewDigits) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\\u00\"", diag);
     // Only 2 hex digits instead of 4
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].kind, TokenKind::Error);
     EXPECT_TRUE(hasErrors(diag));
 }
 

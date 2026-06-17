@@ -211,6 +211,52 @@ func start() {
     EXPECT_TRUE(hasCall(result.module, "Viper.Collections.Stack.ToSeq"));
 }
 
+TEST(ZiaLanguageHardening, ModuleHeaderIsOptional) {
+    auto result = compileSource(R"(
+func start() {
+    Viper.Terminal.SayInt(1);
+}
+)",
+                                "implicit_module.zia");
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaLanguageHardening, DuplicateLocalVariableRejected) {
+    auto result = compileSource(R"(
+module Test;
+
+func start() {
+    var x = 1;
+    var x = 2;
+    Viper.Terminal.SayInt(x);
+}
+)",
+                                "duplicate_local.zia");
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Duplicate definition of 'x'"));
+}
+
+TEST(ZiaLanguageHardening, AnyStringConcatenationRequiresExplicitConversion) {
+    auto result = compileSource(R"(
+module Test;
+
+func anyValue() -> Any {
+    return 1;
+}
+
+func start() {
+    var text = "value: " + anyValue();
+    Viper.Terminal.Say(text);
+}
+)",
+                                "any_string_concat.zia");
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Cannot concatenate String with Any"));
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

@@ -611,10 +611,10 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-/// @brief Completely empty input (no module declaration) should fail.
-TEST(ZiaParser, ErrorEmptyInput) {
+/// @brief Completely empty input is accepted as an implicit empty module.
+TEST(ZiaParser, EmptyInputCompilesAsImplicitModule) {
     auto result = compileSource("");
-    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(result.succeeded());
 }
 
 /// @brief Gibberish input should fail gracefully.

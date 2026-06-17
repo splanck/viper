@@ -66,6 +66,10 @@ void Sema::popScope(SourceLoc endLoc) {
     // W001: Check for unused variables/parameters in the scope being popped
     checkUnusedVariables(*currentScope_);
 
+    const uint32_t poppedScopeId = currentScope_->id();
+    for (const auto &[name, _] : currentScope_->getSymbols())
+        initializedVars_.erase(std::to_string(poppedScopeId) + ":" + name);
+
     auto snapIt = scopeSnapshots_.find(currentScope_->id());
     if (snapIt != scopeSnapshots_.end() && endLoc.isValid())
         snapIt->second.endLoc = endLoc;
@@ -87,12 +91,6 @@ bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOve
     if (Symbol *existing = currentScope_->lookupLocal(name)) {
         if (existing->decl == nullptr && symbol.decl == nullptr && existing->isExtern &&
             symbol.isExtern) {
-            symbol.loc = defLoc;
-            currentScope_->define(name, std::move(symbol));
-            return true;
-        }
-        if (existing->decl == nullptr && symbol.decl == nullptr &&
-            existing->kind == Symbol::Kind::Variable && symbol.kind == Symbol::Kind::Variable) {
             symbol.loc = defLoc;
             currentScope_->define(name, std::move(symbol));
             return true;
@@ -143,7 +141,7 @@ const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
             if (scope.startLoc.isValid() && compareLoc(scope.startLoc, cursor) > 0)
                 continue;
             if (scope.endLoc.isValid() && cursor.file_id == scope.endLoc.file_id &&
-                cursor.line > scope.endLoc.line)
+                compareLoc(cursor, scope.endLoc) > 0)
                 continue;
         }
 
@@ -308,12 +306,25 @@ void Sema::narrowType(const std::string &name, TypeRef narrowedType) {
 
 /// @brief Mark a variable as definitely initialized.
 void Sema::markInitialized(const std::string &name) {
-    initializedVars_.insert(name);
+    initializedVars_.insert(initializedSymbolKey(name));
 }
 
 /// @brief Check if a variable has been definitely initialized.
 bool Sema::isInitialized(const std::string &name) const {
-    return initializedVars_.count(name) > 0;
+    return initializedVars_.count(initializedSymbolKey(name)) > 0;
+}
+
+/// @brief Build the scope-qualified initialization-state key for @p name.
+/// @details Walks from the current lexical scope outward and uses the first
+///          scope that owns @p name, matching normal shadowing lookup. If no
+///          symbol is available because recovery is continuing after an
+///          earlier error, the raw name remains as a fallback key.
+std::string Sema::initializedSymbolKey(const std::string &name) const {
+    for (Scope *scope = currentScope_; scope != nullptr; scope = scope->parent()) {
+        if (scope->lookupLocal(name))
+            return std::to_string(scope->id()) + ":" + name;
+    }
+    return name;
 }
 
 /// @brief Save the current initialization state for branching analysis.

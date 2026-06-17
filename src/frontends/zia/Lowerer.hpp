@@ -1020,6 +1020,28 @@ class Lowerer {
     /// @brief Widen any supported integral IL value to i64.
     Value widenIntegralToI64(Value value, Type valueType);
 
+    /// @brief Return whether a semantic Map uses the integer-keyed runtime backing store.
+    /// @param mapType Semantic receiver type, expected to be a Map.
+    /// @return True when @p mapType is `Map[Integer, T]`; false for string-keyed maps and
+    ///         non-map types.
+    bool usesIntegerMapRuntime(TypeRef mapType) const;
+
+    /// @brief Coerce a lowered map key to the runtime ABI expected by its map backing store.
+    /// @param keyValue Lowered key value.
+    /// @param keyIlType IL type of @p keyValue.
+    /// @param mapType Semantic map type used to select the runtime backing store.
+    /// @return @p keyValue unchanged for string-keyed maps, or widened to i64 for IntMap.
+    Value coerceMapKeyForRuntime(Value keyValue, Type keyIlType, TypeRef mapType);
+
+    /// @brief Compare a pointer-like value against null.
+    /// @param ptr Pointer or string value to check.
+    /// @param ptrType IL type of @p ptr; Str and Ptr are supported.
+    /// @return An i1 value that is true when @p ptr is non-null.
+    /// @details The current IL comparison opcodes operate on integer operands, so this helper
+    ///          stores the pointer-sized value in a temporary slot, reloads it as i64, and
+    ///          compares the bits with zero.
+    Value emitPointerIsNonNull(Value ptr, Type ptrType);
+
     /// @brief Emit an index bounds check when runtime bounds checks are enabled.
     Value emitIndexCheck(Value index, Value lowerInclusive, Value upperExclusive);
 

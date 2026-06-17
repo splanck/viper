@@ -21,19 +21,22 @@ namespace il::frontends::zia {
 /// @brief Parse a top-level module declaration (module Name; binds; declarations).
 /// @return The parsed ModuleDecl, or nullptr on error.
 std::unique_ptr<ModuleDecl> Parser::parseModule() {
-    // module Name;
-    Token moduleTok;
-    if (!expect(TokenKind::KwModule, "module", &moduleTok))
-        return nullptr;
-    SourceLoc loc = moduleTok.loc;
+    SourceLoc loc = peek().loc;
+    std::string name = "Main";
+    if (check(TokenKind::KwModule)) {
+        Token moduleTok;
+        if (!expect(TokenKind::KwModule, "module", &moduleTok))
+            return nullptr;
+        loc = moduleTok.loc;
 
-    Token nameTok;
-    if (!expect(TokenKind::Identifier, "module name", &nameTok))
-        return nullptr;
-    std::string name = nameTok.text;
+        Token nameTok;
+        if (!expect(TokenKind::Identifier, "module name", &nameTok))
+            return nullptr;
+        name = nameTok.text;
 
-    if (!expect(TokenKind::Semicolon, ";"))
-        return nullptr;
+        if (!expect(TokenKind::Semicolon, ";"))
+            return nullptr;
+    }
 
     auto module = std::make_unique<ModuleDecl>(loc, std::move(name));
 
@@ -382,7 +385,7 @@ bool Parser::parseParameters(std::vector<Param> &params) {
 
         if (!match(TokenKind::Colon)) {
             error("expected ':' after parameter name");
-            return {};
+            return false;
         }
         param.name = first;
         param.loc = firstLoc;
@@ -406,10 +409,23 @@ bool Parser::parseParameters(std::vector<Param> &params) {
     }
 
     // Validate: only the last parameter can be variadic
+    bool sawDefault = false;
     for (size_t i = 0; i + 1 < params.size(); ++i) {
         if (params[i].isVariadic) {
             error("Only the last parameter can be variadic");
         }
+        if (params[i].defaultValue)
+            sawDefault = true;
+        else if (sawDefault) {
+            errorAt(params[i].loc, "Required parameters cannot follow default parameters");
+        }
+    }
+    if (!params.empty()) {
+        const Param &last = params.back();
+        if (last.isVariadic && last.defaultValue)
+            errorAt(last.loc, "Variadic parameters cannot have default values");
+        if (!last.defaultValue && !last.isVariadic && sawDefault)
+            errorAt(last.loc, "Required parameters cannot follow default parameters");
     }
 
     return true;
@@ -556,9 +572,11 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
         if (check(TokenKind::KwFunc)) {
             if (isWeak)
                 error("'weak' can only be used on fields");
-            if (isStatic && isOverride)
+            if (isStatic && isOverride) {
                 error("'static' methods cannot be marked 'override'");
-            auto method = parseMethodDecl();
+                isOverride = false;
+            }
+            auto method = parseMethodDecl(/*allowBodylessSignature=*/false);
             if (method) {
                 auto *m = static_cast<MethodDecl *>(method.get());
                 m->visibility = visibility;
@@ -569,8 +587,10 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
         } else if (check(TokenKind::KwProperty)) {
             if (isWeak)
                 error("'weak' can only be used on fields");
-            if (isOverride)
+            if (isOverride) {
                 error("'override' can only be used on methods");
+                isOverride = false;
+            }
             auto prop = parsePropertyDecl();
             if (prop) {
                 auto *p = static_cast<PropertyDecl *>(prop.get());
@@ -595,19 +615,18 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                   "Move the constant to module scope, or use a field initialized in init()");
             // Skip past the final declaration to recover
             advance(); // consume 'final' or 'let'
-            if (check(TokenKind::Identifier))
+            if (checkIdentifierLike())
                 advance(); // consume name
-            if (match(TokenKind::Equal)) {
-                // Skip the initializer expression (simple skip to semicolon)
-                while (!check(TokenKind::Semicolon) && !check(TokenKind::RBrace) &&
-                       !check(TokenKind::Eof))
-                    advance();
-                if (check(TokenKind::Semicolon))
-                    advance();
-            }
+            while (!check(TokenKind::Semicolon) && !check(TokenKind::RBrace) &&
+                   !check(TokenKind::Eof))
+                advance();
+            if (check(TokenKind::Semicolon))
+                advance();
         } else if (check(TokenKind::Identifier) || check(TokenKind::KwVar)) {
-            if (isOverride)
+            if (isOverride) {
                 error("'override' can only be used on methods");
+                isOverride = false;
+            }
             auto field = parseFieldDecl();
             if (field) {
                 auto *f = static_cast<FieldDecl *>(field.get());
@@ -727,7 +746,7 @@ DeclPtr Parser::parseInterfaceDecl() {
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
         if (check(TokenKind::KwFunc)) {
             // Parse method signature (method without body)
-            auto method = parseMethodDecl();
+            auto method = parseMethodDecl(/*allowBodylessSignature=*/true);
             if (method) {
                 static_cast<MethodDecl *>(method.get())->visibility = Visibility::Public;
                 iface->members.push_back(std::move(method));
@@ -917,7 +936,7 @@ DeclPtr Parser::parseFieldDecl() {
 /// @brief Parse a method declaration inside a struct, class, or interface body.
 /// @details For interfaces, the method has no body and ends with a semicolon.
 /// @return The parsed MethodDecl, or nullptr on error.
-DeclPtr Parser::parseMethodDecl() {
+DeclPtr Parser::parseMethodDecl(bool allowBodylessSignature) {
     Token funcTok = advance(); // consume 'func'
     SourceLoc loc = funcTok.loc;
 
@@ -944,6 +963,8 @@ DeclPtr Parser::parseMethodDecl() {
     // Return type
     if (match(TokenKind::Arrow)) {
         method->returnType = parseType();
+        if (!method->returnType)
+            return nullptr;
     }
 
     // Body
@@ -964,6 +985,12 @@ DeclPtr Parser::parseMethodDecl() {
         method->body = std::make_unique<BlockStmt>(exprLoc, std::move(stmts));
     } else {
         // No body - interface method signature
+        if (!allowBodylessSignature) {
+            errorAt(method->loc, "method declarations in class or struct bodies require a body");
+            if (check(TokenKind::Semicolon))
+                advance();
+            return nullptr;
+        }
         if (!expect(TokenKind::Semicolon, ";"))
             return nullptr;
     }
@@ -1000,21 +1027,38 @@ DeclPtr Parser::parsePropertyDecl() {
         return nullptr;
 
     // Parse get/set accessors (contextual keywords — parsed as identifiers)
+    bool seenGetter = false;
+    bool seenSetter = false;
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
         if (check(TokenKind::Identifier) && peek().text == "get") {
+            const bool duplicate = seenGetter;
+            if (duplicate)
+                errorAt(peek().loc, "duplicate get accessor in property declaration");
+            seenGetter = true;
             advance(); // consume 'get'
-            prop->getterBody = parseBlock();
+            StmtPtr body = parseBlock();
+            if (!duplicate)
+                prop->getterBody = std::move(body);
         } else if (check(TokenKind::Identifier) && peek().text == "set") {
+            const bool duplicate = seenSetter;
+            if (duplicate)
+                errorAt(peek().loc, "duplicate set accessor in property declaration");
+            seenSetter = true;
             advance(); // consume 'set'
             // Optional parameter name: set(value)
             if (match(TokenKind::LParen)) {
                 if (check(TokenKind::Identifier)) {
                     prop->setterParam = advance().text;
+                } else {
+                    error("expected setter parameter name");
+                    return nullptr;
                 }
                 if (!expect(TokenKind::RParen, ")"))
                     return nullptr;
             }
-            prop->setterBody = parseBlock();
+            StmtPtr body = parseBlock();
+            if (!duplicate)
+                prop->setterBody = std::move(body);
         } else {
             error("expected 'get' or 'set' in property declaration");
             advance();

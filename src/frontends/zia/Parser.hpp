@@ -51,7 +51,7 @@
 /// ## Grammar Overview
 ///
 /// ```
-/// module     = "module" IDENT ";" import* declaration* EOF
+/// module     = ("module" IDENT ";")? import* declaration* EOF
 /// import     = "import" dotted-name ("as" IDENT)? ";"
 ///
 /// declaration = struct-decl | class-decl | interface-decl
@@ -104,6 +104,7 @@
 #include "frontends/zia/AST.hpp"
 #include "frontends/zia/Lexer.hpp"
 #include "support/diagnostics.hpp"
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -682,8 +683,9 @@ class Parser {
     DeclPtr parseFieldDecl();
 
     /// @brief Parse a method declaration within a type.
+    /// @param allowBodylessSignature Whether a trailing-semicolon signature is valid.
     /// @return The parsed MethodDecl.
-    DeclPtr parseMethodDecl();
+    DeclPtr parseMethodDecl(bool allowBodylessSignature = false);
 
     /// @brief Parse a property declaration with get/set accessors.
     /// @return The parsed PropertyDecl.
@@ -718,7 +720,7 @@ class Parser {
     il::support::DiagnosticEngine &diag_;
 
     /// @brief Buffered token stream for multi-token lookahead.
-    std::vector<Token> tokens_;
+    std::deque<Token> tokens_;
 
     /// @brief Current position within the token buffer.
     size_t tokenPos_{0};

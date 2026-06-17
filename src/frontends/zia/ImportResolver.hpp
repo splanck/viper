@@ -71,8 +71,8 @@ class ImportResolver {
   public:
     /// @brief Construct an ImportResolver with shared compiler infrastructure.
     /// @param diag Reference to the diagnostic engine for error/warning reporting.
-    ///             Used to emit errors for missing files, circular imports, and
-    ///             depth/count limit violations.
+    ///             Used to emit errors for missing files and depth/count limit
+    ///             violations.
     /// @param sm   Reference to the source manager that tracks loaded source files.
     ///             Used to register newly-loaded import files so their content is
     ///             available for error reporting and source location mapping.

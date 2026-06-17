@@ -521,15 +521,22 @@ class Sema {
     /// @return The narrowed type, or nullptr when no active narrowing exists.
     TypeRef lookupNarrowedType(const std::string &key) const;
 
+    /// @brief Find the declaring owner of a field visible from a type.
+    /// @param typeName The fully qualified type name (may be mangled for generics).
+    /// @param fieldName The field name to resolve.
+    /// @return The declaring type name, or std::nullopt if no visible field exists.
+    /// @details Class lookups walk base classes without copying inherited field metadata into
+    ///          the child owner. Struct lookups only check the struct itself.
+    std::optional<std::string> findFieldOwner(const std::string &typeName,
+                                              const std::string &fieldName) const;
+
     /// @brief Get the type of a field for a given type.
     /// @param typeName The fully qualified type name (may be mangled for generics).
     /// @param fieldName The field name.
     /// @return The field's type, or nullptr if not found.
-    TypeRef getFieldType(const std::string &typeName, const std::string &fieldName) const {
-        std::string key = typeName + "." + fieldName;
-        auto it = fieldTypes_.find(key);
-        return it != fieldTypes_.end() ? it->second : nullptr;
-    }
+    /// @details Inherited class fields are resolved through @ref findFieldOwner so metadata stays
+    ///          associated with the declaring class.
+    TypeRef getFieldType(const std::string &typeName, const std::string &fieldName) const;
 
     /// @brief Look up method type from the cached method types.
     /// @param typeName The fully qualified type name (may be mangled for generics).
@@ -644,6 +651,23 @@ class Sema {
                                        const std::vector<DeclPtr> &decls,
                                        std::unordered_map<std::string, Symbol> &out) const;
 
+    /// @brief Find exports for a file module visible at a source location.
+    /// @param moduleName The visible module root, such as an alias or file stem.
+    /// @param useLoc Location of the use whose file-local imports should be consulted.
+    /// @return Export map for the module, or nullptr when no matching file module is visible.
+    ///
+    /// @details File binds are scoped to the importing file even though imported
+    /// declarations are flattened into the compilation unit. This helper uses
+    /// @p useLoc to prefer the imports declared by that file, then falls back to
+    /// globally unique module exports for older call sites without source context.
+    const std::unordered_map<std::string, Symbol> *
+    findModuleExports(const std::string &moduleName, SourceLoc useLoc = {}) const;
+
+    /// @brief Return true if a file-module root is visible at a source location.
+    /// @param moduleName The visible module root to test.
+    /// @param useLoc Location whose file-local imports should be consulted.
+    bool hasModuleExports(const std::string &moduleName, SourceLoc useLoc = {}) const;
+
     /// @brief Derive the visible module name for a file bind.
     std::string fileBindModuleName(const BindDecl &decl) const;
 
@@ -694,6 +718,7 @@ class Sema {
 
     /// @brief Check if a namespace path refers to a valid runtime namespace.
     /// @param ns The namespace path (e.g., "Viper.Terminal").
+    /// @param loc Source location of the bind used for conflict diagnostics.
     /// @return True if the namespace exists in the runtime registry.
     bool isValidRuntimeNamespace(const std::string &ns);
 
@@ -703,7 +728,7 @@ class Sema {
     /// @details Walks through all registered extern symbols and imports
     /// those that match the namespace prefix. Nested namespaces are not
     /// imported (e.g., binding Viper.Graphics doesn't import Viper.Graphics.Color.Red).
-    void importNamespaceSymbols(const std::string &ns);
+    void importNamespaceSymbols(const std::string &ns, SourceLoc loc = {});
 
     /// @brief Analyze a global variable declaration.
     /// @param decl The global variable declaration.
@@ -1293,8 +1318,7 @@ class Sema {
         CaptureContext(std::set<std::string> alreadyCaptured,
                        std::vector<std::set<std::string>> scopes,
                        std::vector<CapturedVar> &outCaptures)
-            : captured(std::move(alreadyCaptured)),
-              localScopes(std::move(scopes)),
+            : captured(std::move(alreadyCaptured)), localScopes(std::move(scopes)),
               captures(outCaptures) {}
 
         std::set<std::string> captured;
@@ -1337,6 +1361,17 @@ class Sema {
     /// @param name The variable name.
     /// @return True if the variable has been initialized.
     bool isInitialized(const std::string &name) const;
+
+    /// @brief Build the definite-initialization key for the visible symbol.
+    /// @details Initialization is flow-sensitive and lexical-scope-sensitive:
+    ///          a block-local `x` must not make an outer or later `x` appear
+    ///          initialized. The key therefore combines the owning scope id
+    ///          with @p name for the nearest visible symbol. When recovery is
+    ///          analyzing an unresolved name, the plain name is used as a
+    ///          fallback so diagnostics can continue without crashing.
+    /// @param name The surface symbol name being queried or marked.
+    /// @return A stable key for the currently visible symbol.
+    std::string initializedSymbolKey(const std::string &name) const;
 
     /// @brief Save the current initialization state (for branching analysis).
     /// @return A snapshot of the currently initialized variables.
@@ -1937,10 +1972,19 @@ class Sema {
     /// and constructor resolution.
     std::unordered_map<std::string, std::string> importedSymbols_;
 
-    /// @brief Map from imported module names to their exported symbols.
-    /// @details When `import "./colors"` is processed, "colors" maps to
-    /// the symbols defined in colors.zia. Used for qualified access.
+    /// @brief Fallback map from globally unique imported module names to exports.
+    /// @details File-local import maps are authoritative for normal source
+    /// lookups. This map preserves compatibility for context-free completion and
+    /// analysis paths where no source location is available.
     std::unordered_map<std::string, std::unordered_map<std::string, Symbol>> moduleExports_;
+
+    /// @brief File-local file-module exports keyed by importer file id and module name.
+    /// @details Allows two different files to bind different modules under the same
+    /// local alias without corrupting qualified lookup for either file.
+    std::unordered_map<uint32_t,
+                       std::unordered_map<std::string,
+                                          std::unordered_map<std::string, Symbol>>>
+        fileModuleExports_;
 
     /// @brief Bound file-module aliases/names mapped to their defining file id.
     std::unordered_map<std::string, uint32_t> boundFileModuleIds_;
@@ -1964,9 +2008,11 @@ class Sema {
     std::vector<std::unordered_map<std::string, TypeRef>> narrowedTypes_;
 
     /// @brief Set of variables that have been definitely initialized.
-    /// @details Tracks which variables have been assigned a value (either via
-    /// declaration initializer or explicit assignment). Used to warn about
-    /// use of potentially uninitialized variables.
+    /// @details Stores scope-qualified keys produced by initializedSymbolKey()
+    ///          for variables assigned a value (either via declaration
+    ///          initializer or explicit assignment). Used to warn about use of
+    ///          potentially uninitialized variables without leaking state
+    ///          between shadowing declarations.
     std::unordered_set<std::string> initializedVars_;
 
     /// @brief Cache of instantiated generic types.

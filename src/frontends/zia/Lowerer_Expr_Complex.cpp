@@ -298,7 +298,9 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     if (baseType->kind == TypeKindSem::Map) {
         if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
             expr->field == "Count" || expr->field == "count" || expr->field == "size") {
-            Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
+            Value result = emitCallRet(Type(Type::Kind::I64),
+                                       usesIntegerMapRuntime(baseType) ? kIntMapCount : kMapCount,
+                                       {base.value});
             return {result, Type(Type::Kind::I64)};
         }
     }
@@ -369,7 +371,8 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
         return {set, Type(Type::Kind::Ptr)};
     }
     if (type->kind == TypeKindSem::Map) {
-        Value map = emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
+        Value map = emitCallRet(
+            Type(Type::Kind::Ptr), usesIntegerMapRuntime(type) ? kIntMapNew : kMapNew, {});
         return {map, Type(Type::Kind::Ptr)};
     }
 

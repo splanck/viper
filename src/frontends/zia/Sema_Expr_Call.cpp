@@ -511,7 +511,7 @@ bool Sema::shouldDeferDottedCalleeToQualifiedLookup(const CallExpr *expr) const 
     std::string root = dottedName.substr(0, dotPos);
     if (root == "Viper" || aliasToNamespace_.find(root) != aliasToNamespace_.end() ||
         importedSymbols_.find(root) != importedSymbols_.end() ||
-        moduleExports_.find(root) != moduleExports_.end()) {
+        hasModuleExports(root, expr->callee ? expr->callee->loc : expr->loc)) {
         return true;
     }
 
@@ -1188,13 +1188,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 rootSym && rootSym->kind != Symbol::Kind::Module &&
                 rootSym->kind != Symbol::Kind::Type) {
                 dottedName.clear();
-            } else if (auto moduleIt = moduleExports_.find(firstPart);
-                       moduleIt != moduleExports_.end()) {
+            } else if (auto moduleExports = findModuleExports(firstPart, expr->callee->loc)) {
                 auto exportDot = rest.find('.');
                 std::string exportName =
                     exportDot == std::string::npos ? rest : rest.substr(0, exportDot);
-                auto exportIt = moduleIt->second.find(exportName);
-                if (exportIt != moduleIt->second.end()) {
+                auto exportIt = moduleExports->find(exportName);
+                if (exportIt != moduleExports->end()) {
                     const Symbol &exportSym = exportIt->second;
                     std::string suffix =
                         exportDot == std::string::npos ? "" : rest.substr(exportDot + 1);
@@ -1481,26 +1480,27 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         if (baseType && baseType->kind == TypeKindSem::Map) {
             if (auto method =
                     common::findCollectionMethod(common::CollectionKind::Map, fieldExpr->field)) {
+                TypeRef keyType = baseType->keyType() ? baseType->keyType() : types::unknown();
                 TypeRef valueType =
                     baseType->valueType() ? baseType->valueType() : types::unknown();
                 if (fieldExpr->field == "get") {
                     if (checkArgCount(1, fieldExpr->field))
-                        checkArgType(0, types::string(), "Map key");
+                        checkArgType(0, keyType, "Map key");
                 } else if (fieldExpr->field == "getOr") {
                     if (checkArgCount(2, fieldExpr->field)) {
-                        checkArgType(0, types::string(), "Map key");
+                        checkArgType(0, keyType, "Map key");
                         checkArgType(1, valueType, "getOr() fallback");
                     }
                 } else if (fieldExpr->field == "set" || fieldExpr->field == "put" ||
                            fieldExpr->field == "setIfMissing") {
                     if (checkArgCount(2, fieldExpr->field)) {
-                        checkArgType(0, types::string(), "Map key");
+                        checkArgType(0, keyType, "Map key");
                         checkArgType(1, valueType, fieldExpr->field + "() value");
                     }
                 } else if (fieldExpr->field == "containsKey" || fieldExpr->field == "hasKey" ||
                            fieldExpr->field == "has" || fieldExpr->field == "remove") {
                     if (checkArgCount(1, fieldExpr->field))
-                        checkArgType(0, types::string(), "Map key");
+                        checkArgType(0, keyType, "Map key");
                 } else if (fieldExpr->field == "len" || fieldExpr->field == "size" ||
                            fieldExpr->field == "count" || fieldExpr->field == "length" ||
                            fieldExpr->field == "clear" || fieldExpr->field == "keys" ||

@@ -39,10 +39,21 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <limits>
 #include <string_view>
 #include <utility>
 
 namespace il::frontends::zia {
+
+namespace {
+
+/// @brief Maximum number of source bytes retained for a single string token.
+constexpr size_t kMaxStringLength = 16 * 1024 * 1024;
+
+/// @brief Maximum nested block comment depth accepted by the lexer.
+constexpr size_t kMaxBlockCommentDepth = 1024;
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // TokenKind to string conversion
@@ -472,6 +483,13 @@ char Lexer::getChar() {
     if (pos_ >= source_.size())
         return '\0';
     char c = source_[pos_++];
+    if (c == '\r') {
+        if (pos_ < source_.size() && source_[pos_] == '\n')
+            ++pos_;
+        ++line_;
+        column_ = 1;
+        return '\n';
+    }
     if (c == '\n') {
         ++line_;
         column_ = 1;
@@ -490,17 +508,24 @@ il::support::SourceLoc Lexer::currentLoc() const {
 }
 
 void Lexer::reportError(il::support::SourceLoc loc, const std::string &message) {
+    reportErrorRange(loc, il::support::SourceLoc{loc.file_id, loc.line, loc.column + 1}, message);
+}
+
+void Lexer::reportErrorRange(il::support::SourceLoc start,
+                             il::support::SourceLoc end,
+                             const std::string &message) {
     il::support::Diagnostic diag{
         il::support::Severity::Error,
         message,
-        loc,
+        start,
         classifyLexError(message),
     };
-    if (loc.isValid()) {
-        diag.range = il::support::SourceRange{
-            loc,
-            il::support::SourceLoc{loc.file_id, loc.line, loc.column + 1},
-        };
+    if (start.isValid()) {
+        if (!end.isValid() || end.file_id != start.file_id ||
+            (end.line == start.line && end.column <= start.column) || end.line < start.line) {
+            end = il::support::SourceLoc{start.file_id, start.line, start.column + 1};
+        }
+        diag.range = il::support::SourceRange{start, end};
     }
     diag.stage = "lex";
     diag_.report(std::move(diag));
@@ -511,7 +536,7 @@ void Lexer::skipLineComment() {
     getChar();
     getChar();
     // Skip until end of line or EOF
-    while (!eof() && peekChar() != '\n') {
+    while (!eof() && peekChar() != '\n' && peekChar() != '\r') {
         getChar();
     }
 }
@@ -523,11 +548,15 @@ bool Lexer::skipBlockComment() {
     getChar();
     getChar();
 
-    int depth = 1; // Support nested comments
+    size_t depth = 1; // Support nested comments
     while (!eof() && depth > 0) {
         char c = getChar();
         if (c == '/' && peekChar() == '*') {
             getChar();
+            if (depth == kMaxBlockCommentDepth) {
+                reportError(startLoc, "block comment nesting too deep (limit: 1024)");
+                return false;
+            }
             ++depth;
         } else if (c == '*' && peekChar() == '/') {
             getChar();
@@ -536,7 +565,7 @@ bool Lexer::skipBlockComment() {
     }
 
     if (depth > 0) {
-        reportError(startLoc, "unterminated block comment");
+        reportErrorRange(startLoc, currentLoc(), "unterminated block comment");
         return false;
     }
     return true;
@@ -577,7 +606,9 @@ Token Lexer::lexIdentifierOrKeyword() {
     // Consume identifier characters (capped at 1024 to prevent OOM from malicious input)
     while (!eof() && isIdentifierContinue(peekChar())) {
         if (tok.text.size() >= 1024) {
-            reportError(tok.loc, "identifier too long (limit: 1024 characters)");
+            auto endLoc = tok.loc;
+            endLoc.column += static_cast<uint32_t>(tok.text.size());
+            reportErrorRange(tok.loc, endLoc, "identifier too long (limit: 1024 characters)");
             // Skip remaining identifier characters
             while (!eof() && isIdentifierContinue(peekChar()))
                 getChar();
@@ -627,6 +658,13 @@ Token Lexer::lexNumber() {
                 tok.text.push_back(getChar());
             }
 
+            if (!eof() && isIdentifierContinue(peekChar())) {
+                consumeMalformedBasedLiteralTail(tok);
+                reportErrorRange(tok.loc, currentLoc(), "invalid hex literal");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+
             if (!validateBasedIntegerSeparators(
                     tok.text, 2, [](char ch) { return isHexDigit(ch); })) {
                 reportError(tok.loc, "invalid hex literal: '_' must separate digits");
@@ -665,6 +703,13 @@ Token Lexer::lexNumber() {
                 tok.text.push_back(getChar());
             }
 
+            if (!eof() && isIdentifierContinue(peekChar())) {
+                consumeMalformedBasedLiteralTail(tok);
+                reportErrorRange(tok.loc, currentLoc(), "invalid binary literal");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+
             if (!validateBasedIntegerSeparators(
                     tok.text, 2, [](char ch) { return ch == '0' || ch == '1'; })) {
                 reportError(tok.loc, "invalid binary literal: '_' must separate digits");
@@ -675,13 +720,17 @@ Token Lexer::lexNumber() {
             // Parse binary value
             uint64_t value = 0;
             std::string binaryDigits = removeNumericSeparators(tok.text, 2);
+            constexpr uint64_t kMaxSignedInteger =
+                static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
             for (char digit : binaryDigits) {
-                if (value > (UINT64_MAX >> 1)) {
+                uint64_t bit = static_cast<uint64_t>(digit - '0');
+                if (value > (kMaxSignedInteger >> 1) || (value == (kMaxSignedInteger >> 1) &&
+                                                         bit > (kMaxSignedInteger & uint64_t{1}))) {
                     reportError(tok.loc, "binary literal out of range");
                     tok.kind = TokenKind::Error;
                     return tok;
                 }
-                value = (value << 1) | static_cast<uint64_t>(digit - '0');
+                value = (value << 1) | bit;
             }
             tok.intValue = static_cast<int64_t>(value);
             return tok;
@@ -726,6 +775,14 @@ Token Lexer::lexNumber() {
         while (!eof() && (isDigit(peekChar()) || isNumericSeparator(peekChar()))) {
             tok.text.push_back(getChar());
         }
+    }
+
+    if (!eof() && isIdentifierContinue(peekChar())) {
+        while (!eof() && isIdentifierContinue(peekChar()))
+            tok.text.push_back(getChar());
+        reportErrorRange(tok.loc, currentLoc(), "invalid numeric literal");
+        tok.kind = TokenKind::Error;
+        return tok;
     }
 
     if (!validateNumericSeparators(tok.text)) {
@@ -790,9 +847,13 @@ bool Lexer::lexStringEscape(Token &tok) {
                     tok.stringValue.push_back(ch);
             } else {
                 reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
+                tok.kind = TokenKind::Error;
+                return false;
             }
         } else {
             reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
+            tok.kind = TokenKind::Error;
+            return false;
         }
         return true;
     }
@@ -809,12 +870,18 @@ bool Lexer::lexStringEscape(Token &tok) {
                     tok.stringValue.push_back(*hexChar);
                 } else {
                     reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
+                    tok.kind = TokenKind::Error;
+                    return false;
                 }
             } else {
                 reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
+                tok.kind = TokenKind::Error;
+                return false;
             }
         } else {
             reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
+            tok.kind = TokenKind::Error;
+            return false;
         }
         return true;
     }
@@ -823,6 +890,8 @@ bool Lexer::lexStringEscape(Token &tok) {
         tok.stringValue.push_back(*escaped_ch);
     } else {
         reportError(tok.loc, std::string("invalid escape sequence: \\") + escaped);
+        tok.kind = TokenKind::Error;
+        return false;
     }
     return true;
 }
@@ -839,9 +908,6 @@ Token Lexer::lexString() {
 
     tok.text.push_back(getChar()); // consume opening "
 
-    // 16MB cap prevents OOM from malicious input
-    static constexpr size_t kMaxStringLength = 16 * 1024 * 1024;
-
     while (!eof()) {
         char c = peekChar();
 
@@ -852,7 +918,7 @@ Token Lexer::lexString() {
         }
 
         if (tok.text.size() >= kMaxStringLength) {
-            reportError(tok.loc, "string literal too long (limit: 16MB)");
+            reportErrorRange(tok.loc, currentLoc(), "string literal too long (limit: 16MB)");
             // Skip to closing quote or EOF
             while (!eof() && peekChar() != '"')
                 getChar();
@@ -897,7 +963,7 @@ Token Lexer::lexString() {
         tok.stringValue.push_back(c);
     }
 
-    reportError(tok.loc, "unterminated string literal");
+    reportErrorRange(tok.loc, currentLoc(), "unterminated string literal");
     tok.kind = TokenKind::Error;
     return tok;
 }
@@ -909,6 +975,14 @@ Token Lexer::lexInterpolatedStringContinuation() {
     // We just consumed '}' - now continue reading the string
     while (!eof()) {
         char c = peekChar();
+
+        if (tok.text.size() >= kMaxStringLength) {
+            reportErrorRange(tok.loc, currentLoc(), "string literal too long (limit: 16MB)");
+            interpolationDepth_ = 0;
+            braceDepth_.clear();
+            tok.kind = TokenKind::Error;
+            return tok;
+        }
 
         // Check for closing quote
         if (c == '"') {
@@ -958,7 +1032,7 @@ Token Lexer::lexInterpolatedStringContinuation() {
         tok.stringValue.push_back(c);
     }
 
-    reportError(tok.loc, "unterminated interpolated string");
+    reportErrorRange(tok.loc, currentLoc(), "unterminated interpolated string");
     interpolationDepth_ = 0;
     braceDepth_.clear();
     tok.kind = TokenKind::Error;
@@ -977,6 +1051,12 @@ Token Lexer::lexTripleQuotedString() {
 
     while (!eof()) {
         char c = peekChar();
+
+        if (tok.text.size() >= kMaxStringLength) {
+            reportErrorRange(tok.loc, currentLoc(), "string literal too long (limit: 16MB)");
+            tok.kind = TokenKind::Error;
+            return tok;
+        }
 
         // Check for closing """
         if (c == '"' && peekChar(1) == '"' && peekChar(2) == '"') {
@@ -997,7 +1077,7 @@ Token Lexer::lexTripleQuotedString() {
         tok.stringValue.push_back(c);
     }
 
-    reportError(tok.loc, "unterminated triple-quoted string");
+    reportErrorRange(tok.loc, currentLoc(), "unterminated triple-quoted string");
     tok.kind = TokenKind::Error;
     return tok;
 }

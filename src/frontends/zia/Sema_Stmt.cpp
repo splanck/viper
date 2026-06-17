@@ -591,8 +591,6 @@ void Sema::analyzeForStmt(ForStmt *stmt) {
             error(stmt->condition->loc, "Condition must be Boolean");
         }
     }
-    if (stmt->update)
-        analyzeExpr(stmt->update.get());
 
     // W006: Empty loop body
     if (stmt->body && stmt->body->kind == StmtKind::Block) {
@@ -604,6 +602,8 @@ void Sema::analyzeForStmt(ForStmt *stmt) {
 
     loopDepth_++;
     analyzeStmt(stmt->body.get());
+    if (stmt->update)
+        analyzeExpr(stmt->update.get());
     loopDepth_--;
     popScope(stmt->body ? scopeEndForStmt(stmt->body.get()) : stmt->loc);
 }
@@ -753,7 +753,7 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
     MatchCoverage coverage;
     for (auto &arm : stmt->arms) {
         std::unordered_map<std::string, TypeRef> bindings;
-        std::unordered_map<std::string, bool> bindingWasInitialized;
+        auto preArmState = saveInitState();
         pushScope(stmt->loc);
 
         analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
@@ -765,7 +765,6 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
             sym.type = binding.second;
             sym.isFinal = true;
             defineSymbol(binding.first, sym, stmt->loc);
-            bindingWasInitialized.emplace(binding.first, isInitialized(binding.first));
             markInitialized(binding.first);
         }
 
@@ -778,10 +777,7 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
 
         analyzeExpr(arm.body.get());
         popScope(arm.body ? arm.body->loc : stmt->loc);
-        for (const auto &[name, wasInitialized] : bindingWasInitialized) {
-            if (!wasInitialized)
-                initializedVars_.erase(name);
-        }
+        initializedVars_ = std::move(preArmState);
     }
 
     if (!coverage.hasIrrefutable) {

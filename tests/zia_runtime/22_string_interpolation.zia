@@ -198,8 +198,8 @@ func start() {    //============================================================
     assertEqStr(s30, "true and false", "bool_interp_both");
 
     // Boolean expression in interpolation
-    var x = 5;
-    var s31 = "positive: ${x > 0}";
+    var positiveX = 5;
+    var s31 = "positive: ${positiveX > 0}";
     assertEqStr(s31, "positive: true", "bool_expr_interp");
 
     report();

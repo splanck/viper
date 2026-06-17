@@ -248,6 +248,9 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
         return;
     }
 
+    if (!decl.isForeign && !decl.body)
+        return;
+
     // Track this function as defined in this module
     definedFunctions_.insert(mangledName);
 
@@ -876,6 +879,9 @@ void Lowerer::lowerInterfaceDefaultMethodDecl(MethodDecl &decl, const std::strin
 ///          on fall-through. The class/struct context is cleared on exit.
 void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isClass) {
     ZiaLocationScope locScope(*this, decl.loc);
+
+    if (!decl.body)
+        return;
 
     // Find the type info
     if (isClass) {

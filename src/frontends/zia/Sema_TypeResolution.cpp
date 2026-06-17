@@ -163,8 +163,8 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         std::string prefix = name.substr(0, dotPos);
         std::string suffix = name.substr(dotPos + 1);
 
-        auto moduleIt = moduleExports_.find(prefix);
-        if (moduleIt != moduleExports_.end()) {
+        auto moduleExports = findModuleExports(prefix, useLoc);
+        if (moduleExports) {
             std::string firstItem = suffix;
             std::string remaining;
             auto itemDot = suffix.find('.');
@@ -173,8 +173,8 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
                 remaining = suffix.substr(itemDot + 1);
             }
 
-            auto exportIt = moduleIt->second.find(firstItem);
-            if (exportIt != moduleIt->second.end()) {
+            auto exportIt = moduleExports->find(firstItem);
+            if (exportIt != moduleExports->end()) {
                 const Symbol &exportSym = exportIt->second;
                 if (!remaining.empty() && exportSym.kind == Symbol::Kind::Module && exportSym.type)
                     return resolveNamedType(exportSym.type->name + "." + remaining, useLoc);
@@ -271,8 +271,8 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
                 TypeRef keyType = args.size() > 0 ? args[0] : types::unknown();
                 TypeRef valueType = args.size() > 1 ? args[1] : types::unknown();
                 if (keyType && keyType->kind != TypeKindSem::Unknown &&
-                    keyType->kind != TypeKindSem::String) {
-                    error(node->loc, "Map keys must be String");
+                    keyType->kind != TypeKindSem::String && keyType->kind != TypeKindSem::Integer) {
+                    error(node->loc, "Map keys must be String or Integer");
                 }
                 return types::map(keyType, valueType);
             }

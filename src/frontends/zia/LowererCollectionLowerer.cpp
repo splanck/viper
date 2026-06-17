@@ -55,8 +55,9 @@ LowerResult CollectionLowerer::lowerSetLiteral(SetLiteralExpr *expr) {
 /// @brief Lower a map (or empty-set) literal to a populated runtime collection.
 /// @param expr Map literal expression.
 /// @return A pointer to the constructed map (or set for an empty `{}` typed as a set).
-/// @details Each value is boxed before insertion; keys are stored as lowered. An empty literal
-///          whose sema type is `Set` builds a set instead of a map.
+/// @details Each value is boxed before insertion. String-keyed maps use the Map runtime and
+///          integer-keyed maps use IntMap after widening keys to i64. An empty literal whose
+///          sema type is `Set` builds a set instead of a map.
 LowerResult CollectionLowerer::lowerMapLiteral(MapLiteralExpr *expr) {
     TypeRef literalType = lowerer_.sema_.typeOf(expr);
     if (literalType && literalType->kind == TypeKindSem::Set && expr->entries.empty()) {
@@ -64,14 +65,19 @@ LowerResult CollectionLowerer::lowerMapLiteral(MapLiteralExpr *expr) {
         return {set, Type(Type::Kind::Ptr)};
     }
 
-    Value map = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
+    const bool integerKeyed = lowerer_.usesIntegerMapRuntime(literalType);
+    Value map =
+        lowerer_.emitCallRet(Type(Type::Kind::Ptr), integerKeyed ? kIntMapNew : kMapNew, {});
+    const char *setHelper = integerKeyed ? kIntMapSet : kMapSet;
 
     for (auto &entry : expr->entries) {
         auto keyResult = lowerer_.lowerExpr(entry.key.get());
+        Value runtimeKey =
+            lowerer_.coerceMapKeyForRuntime(keyResult.value, keyResult.type, literalType);
         auto valueResult = lowerer_.lowerExpr(entry.value.get());
         TypeRef valueType = lowerer_.sema_.typeOf(entry.value.get());
         Value boxedValue = lowerer_.emitBoxValue(valueResult.value, valueResult.type, valueType);
-        lowerer_.emitCall(kMapSet, {map, keyResult.value, boxedValue});
+        lowerer_.emitCall(setHelper, {map, runtimeKey, boxedValue});
     }
 
     return {map, Type(Type::Kind::Ptr)};
@@ -241,8 +247,9 @@ LowerResult CollectionLowerer::lowerStringIndex(Value baseValue, Value indexValu
 /// @param indexType IL type of the index.
 /// @param expr The index expression (supplies base and element sema types).
 /// @return The unboxed element value.
-/// @details Maps trap on a missing key (guarded by kMapContainsKey) before kMapGet; lists use
-///          kListGet with a widened I64 index. The boxed result is unboxed to the element type.
+/// @details Maps trap on a missing key (guarded by Has before Get) before loading the value;
+///          integer-keyed maps route through IntMap with a widened i64 key. Lists use kListGet
+///          with a widened I64 index. The boxed result is unboxed to the element type.
 LowerResult CollectionLowerer::lowerBoxedCollectionIndex(Value baseValue,
                                                          Value indexValue,
                                                          Type indexType,
@@ -250,8 +257,12 @@ LowerResult CollectionLowerer::lowerBoxedCollectionIndex(Value baseValue,
     TypeRef baseType = lowerer_.sema_.typeOf(expr->base.get());
     Value boxed;
     if (baseType && baseType->kind == TypeKindSem::Map) {
+        const bool integerKeyed = lowerer_.usesIntegerMapRuntime(baseType);
+        const char *hasHelper = integerKeyed ? kIntMapContainsKey : kMapContainsKey;
+        const char *getHelper = integerKeyed ? kIntMapGet : kMapGet;
+        Value runtimeKey = lowerer_.coerceMapKeyForRuntime(indexValue, indexType, baseType);
         Value hasKey =
-            lowerer_.emitCallRet(Type(Type::Kind::I1), kMapContainsKey, {baseValue, indexValue});
+            lowerer_.emitCallRet(Type(Type::Kind::I1), hasHelper, {baseValue, runtimeKey});
         size_t okIdx = lowerer_.createBlock("map_index_ok");
         size_t failIdx = lowerer_.createBlock("map_index_missing");
         lowerer_.emitCBr(hasKey, okIdx, failIdx);
@@ -265,7 +276,7 @@ LowerResult CollectionLowerer::lowerBoxedCollectionIndex(Value baseValue,
         lowerer_.blockMgr_.currentBlock()->terminated = true;
 
         lowerer_.setBlock(okIdx);
-        boxed = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, indexValue});
+        boxed = lowerer_.emitCallRet(Type(Type::Kind::Ptr), getHelper, {baseValue, runtimeKey});
     } else {
         Value i64Index = lowerer_.widenIntegralToI64(indexValue, indexType);
         boxed = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, i64Index});

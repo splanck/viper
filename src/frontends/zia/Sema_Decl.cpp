@@ -102,6 +102,10 @@ void Sema::analyzeBind(BindDecl &decl) {
 void Sema::buildBoundFileExports(const std::vector<BindDecl> &binds,
                                  const std::vector<DeclPtr> &decls) {
     moduleExports_.clear();
+    fileModuleExports_.clear();
+    boundFileModuleIds_.clear();
+    std::unordered_map<uint32_t, std::unordered_map<std::string, uint32_t>>
+        moduleIdsByImporterFile;
 
     for (const auto &bind : binds) {
         if (bind.isNamespaceBind || bind.resolvedFileId == 0)
@@ -109,8 +113,51 @@ void Sema::buildBoundFileExports(const std::vector<BindDecl> &binds,
 
         std::unordered_map<std::string, Symbol> exports;
         collectExportedSymbolsForFile(bind.resolvedFileId, decls, exports);
-        moduleExports_[fileBindModuleName(bind)] = std::move(exports);
+        std::string moduleName = fileBindModuleName(bind);
+        auto &idsForImporter = moduleIdsByImporterFile[bind.loc.file_id];
+        auto existingId = idsForImporter.find(moduleName);
+        if (existingId != idsForImporter.end()) {
+            if (existingId->second == bind.resolvedFileId)
+                continue;
+            error(bind.loc, "Duplicate bound module name or alias '" + moduleName + "'");
+            continue;
+        }
+        idsForImporter[moduleName] = bind.resolvedFileId;
+        boundFileModuleIds_.emplace(moduleName, bind.resolvedFileId);
+
+        if (moduleExports_.find(moduleName) == moduleExports_.end())
+            moduleExports_[moduleName] = exports;
+
+        fileModuleExports_[bind.loc.file_id][moduleName] = std::move(exports);
     }
+}
+
+/// @brief Find exports for a file module visible at a source location.
+/// @param moduleName The visible module root, such as an alias or file stem.
+/// @param useLoc Location of the use whose file-local imports should be consulted.
+/// @return Export map for the module, or nullptr when no matching file module is visible.
+const std::unordered_map<std::string, Symbol> *
+Sema::findModuleExports(const std::string &moduleName, SourceLoc useLoc) const {
+    if (useLoc.file_id != 0) {
+        auto fileIt = fileModuleExports_.find(useLoc.file_id);
+        if (fileIt != fileModuleExports_.end()) {
+            auto moduleIt = fileIt->second.find(moduleName);
+            if (moduleIt != fileIt->second.end())
+                return &moduleIt->second;
+        }
+    }
+
+    auto moduleIt = moduleExports_.find(moduleName);
+    if (moduleIt == moduleExports_.end())
+        return nullptr;
+    return &moduleIt->second;
+}
+
+/// @brief Return true if a file-module root is visible at a source location.
+/// @param moduleName The visible module root to test.
+/// @param useLoc Location whose file-local imports should be consulted.
+bool Sema::hasModuleExports(const std::string &moduleName, SourceLoc useLoc) const {
+    return findModuleExports(moduleName, useLoc) != nullptr;
 }
 
 void Sema::collectExportedSymbolsForFile(uint32_t fileId,
@@ -123,68 +170,73 @@ void Sema::collectExportedSymbolsForFile(uint32_t fileId,
         out[exportName] = *sym;
     };
 
-    for (const auto &decl : decls) {
-        if (!decl || decl->loc.file_id != fileId || !decl->isExported)
-            continue;
+    auto collectFromDecls = [&](const std::vector<DeclPtr> &items,
+                                const std::string &exportPrefix,
+                                const auto &self) -> void {
+        for (const auto &decl : items) {
+            if (!decl || decl->loc.file_id != fileId || !decl->isExported)
+                continue;
 
-        switch (decl->kind) {
-            case DeclKind::Function:
-                addLookupSymbol(
-                    static_cast<FunctionDecl *>(decl.get())->name,
-                    semanticNameForDecl(*decl, static_cast<FunctionDecl *>(decl.get())->name));
-                break;
-            case DeclKind::Struct:
-                addLookupSymbol(
-                    static_cast<StructDecl *>(decl.get())->name,
-                    semanticNameForDecl(*decl, static_cast<StructDecl *>(decl.get())->name));
-                break;
-            case DeclKind::Class:
-                addLookupSymbol(
-                    static_cast<ClassDecl *>(decl.get())->name,
-                    semanticNameForDecl(*decl, static_cast<ClassDecl *>(decl.get())->name));
-                break;
-            case DeclKind::Interface:
-                addLookupSymbol(
-                    static_cast<InterfaceDecl *>(decl.get())->name,
-                    semanticNameForDecl(*decl, static_cast<InterfaceDecl *>(decl.get())->name));
-                break;
-            case DeclKind::Enum:
-                addLookupSymbol(
-                    static_cast<EnumDecl *>(decl.get())->name,
-                    semanticNameForDecl(*decl, static_cast<EnumDecl *>(decl.get())->name));
-                break;
-            case DeclKind::GlobalVar:
-                addLookupSymbol(
-                    static_cast<GlobalVarDecl *>(decl.get())->name,
-                    semanticNameForDecl(*decl, static_cast<GlobalVarDecl *>(decl.get())->name));
-                break;
-            case DeclKind::TypeAlias:
-                addLookupSymbol(
-                    static_cast<TypeAliasDecl *>(decl.get())->name,
-                    semanticNameForDecl(*decl, static_cast<TypeAliasDecl *>(decl.get())->name));
-                break;
-            case DeclKind::Namespace: {
-                const auto *ns = static_cast<NamespaceDecl *>(decl.get());
-                std::string exportName = ns->name;
-                auto dot = exportName.find('.');
-                if (dot != std::string::npos)
-                    exportName = exportName.substr(0, dot);
+            auto lookupNameFor = [&](const std::string &baseName) {
+                if (!exportPrefix.empty())
+                    return exportPrefix + baseName;
+                return semanticNameForDecl(*decl, baseName);
+            };
 
-                Symbol sym;
-                sym.kind = Symbol::Kind::Module;
-                sym.name = exportName;
-                sym.type = types::module(ns->name);
-                sym.isFinal = true;
-                sym.isExported = true;
-                sym.decl = decl.get();
-                sym.loc = decl->loc;
-                out[exportName] = sym;
-                break;
+            switch (decl->kind) {
+                case DeclKind::Function:
+                    addLookupSymbol(exportPrefix + static_cast<FunctionDecl *>(decl.get())->name,
+                                    lookupNameFor(static_cast<FunctionDecl *>(decl.get())->name));
+                    break;
+                case DeclKind::Struct:
+                    addLookupSymbol(exportPrefix + static_cast<StructDecl *>(decl.get())->name,
+                                    lookupNameFor(static_cast<StructDecl *>(decl.get())->name));
+                    break;
+                case DeclKind::Class:
+                    addLookupSymbol(exportPrefix + static_cast<ClassDecl *>(decl.get())->name,
+                                    lookupNameFor(static_cast<ClassDecl *>(decl.get())->name));
+                    break;
+                case DeclKind::Interface:
+                    addLookupSymbol(exportPrefix + static_cast<InterfaceDecl *>(decl.get())->name,
+                                    lookupNameFor(static_cast<InterfaceDecl *>(decl.get())->name));
+                    break;
+                case DeclKind::Enum:
+                    addLookupSymbol(exportPrefix + static_cast<EnumDecl *>(decl.get())->name,
+                                    lookupNameFor(static_cast<EnumDecl *>(decl.get())->name));
+                    break;
+                case DeclKind::GlobalVar:
+                    addLookupSymbol(exportPrefix + static_cast<GlobalVarDecl *>(decl.get())->name,
+                                    lookupNameFor(static_cast<GlobalVarDecl *>(decl.get())->name));
+                    break;
+                case DeclKind::TypeAlias:
+                    addLookupSymbol(exportPrefix + static_cast<TypeAliasDecl *>(decl.get())->name,
+                                    lookupNameFor(static_cast<TypeAliasDecl *>(decl.get())->name));
+                    break;
+                case DeclKind::Namespace: {
+                    const auto *ns = static_cast<NamespaceDecl *>(decl.get());
+                    std::string exportName = ns->name;
+                    auto dot = exportName.find('.');
+                    if (dot != std::string::npos)
+                        exportName = exportName.substr(0, dot);
+
+                    Symbol sym;
+                    sym.kind = Symbol::Kind::Module;
+                    sym.name = exportName;
+                    sym.type = types::module(ns->name);
+                    sym.isFinal = true;
+                    sym.isExported = true;
+                    sym.decl = decl.get();
+                    sym.loc = decl->loc;
+                    out[exportName] = sym;
+                    self(ns->declarations, ns->name + ".", self);
+                    break;
+                }
+                default:
+                    break;
             }
-            default:
-                break;
         }
-    }
+    };
+    collectFromDecls(decls, "", collectFromDecls);
 }
 
 std::string Sema::fileBindModuleName(const BindDecl &decl) const {
@@ -225,6 +277,14 @@ void Sema::analyzeNamespaceBind(BindDecl &decl) {
     }
 
     // Store the bound namespace
+    if (!decl.alias.empty()) {
+        auto aliasIt = aliasToNamespace_.find(decl.alias);
+        if (aliasIt != aliasToNamespace_.end() && aliasIt->second != ns) {
+            error(decl.loc,
+                  "Namespace alias '" + decl.alias + "' is already bound to " + aliasIt->second);
+            return;
+        }
+    }
     boundNamespaces_[ns] = decl.alias;
     if (!decl.alias.empty())
         aliasToNamespace_[decl.alias] = ns;
@@ -263,7 +323,7 @@ void Sema::analyzeNamespaceBind(BindDecl &decl) {
     } else {
         // Full namespace import: bind Viper.Terminal;
         // Import all symbols from this namespace into scope
-        importNamespaceSymbols(ns);
+        importNamespaceSymbols(ns, decl.loc);
     }
 }
 
@@ -313,7 +373,7 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns) {
 /// @details Imports types from typeRegistry_, classes and methods from RuntimeRegistry,
 ///          properties by display name, and sub-namespace prefixes from kRuntimeNameAliases.
 /// @param ns The namespace whose symbols should be imported.
-void Sema::importNamespaceSymbols(const std::string &ns) {
+void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
     // Import all symbols from this namespace
     const std::string prefix = ns + ".";
 
@@ -329,7 +389,10 @@ void Sema::importNamespaceSymbols(const std::string &ns) {
             // Check for conflicts
             auto existingIt = importedSymbols_.find(shortName);
             if (existingIt != importedSymbols_.end() && existingIt->second != name) {
-                // Conflict - first import wins, but we could warn here
+                if (loc.isValid())
+                    warning(loc,
+                            "Imported symbol '" + shortName + "' from " + name +
+                                " conflicts with existing import from " + existingIt->second);
                 continue;
             }
             importedSymbols_[shortName] = name;
@@ -375,7 +438,10 @@ void Sema::importNamespaceSymbols(const std::string &ns) {
             // Check for conflicts
             auto existingIt = importedSymbols_.find(shortName);
             if (existingIt != importedSymbols_.end() && existingIt->second != target) {
-                // Conflict - first import wins
+                if (loc.isValid())
+                    warning(loc,
+                            "Imported symbol '" + shortName + "' from " + target +
+                                " conflicts with existing import from " + existingIt->second);
                 continue;
             }
             importedSymbols_[shortName] = target;
@@ -654,9 +720,16 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
     }
 
     // Register method types (signatures only, not bodies)
+    std::unordered_set<std::string> seenMethods;
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
+            if (seenFields.contains(method->name) || seenProperties.contains(method->name)) {
+                error(method->loc,
+                      "Duplicate definition of '" + method->name + "' in type '" + decl.name + "'");
+                continue;
+            }
+            seenMethods.insert(method->name);
             TypeRef methodType = methodTypeForDecl(*method);
             if (!registerMethodOverload(ownerName, method, methodType, method->loc))
                 continue;
@@ -774,13 +847,6 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
                 sym.name = fieldName;
                 sym.type = fieldType;
                 defineSymbol(fieldName, sym);
-                std::string childKey = ownerName + "." + fieldName;
-                fieldTypes_[childKey] = fieldType;
-                if (finalFields_.contains(decl.baseClass + "." + fieldName))
-                    finalFields_.insert(childKey);
-                auto visIt = memberVisibility_.find(decl.baseClass + "." + fieldName);
-                if (visIt != memberVisibility_.end())
-                    memberVisibility_[childKey] = visIt->second;
             }
         }
     }
@@ -918,6 +984,7 @@ void Sema::analyzeEnumDecl(EnumDecl &decl) {
         if (!seenNames.insert(variant.name).second) {
             error(variant.loc,
                   "Duplicate enum variant '" + variant.name + "' in '" + decl.name + "'");
+            nextValue = INT64_MAX;
             continue;
         }
 
@@ -952,6 +1019,11 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
     const bool analyzingGenericInstantiation = !decl.genericParams.empty() && inGenericContext();
     if (!decl.genericParams.empty() && !analyzingGenericInstantiation)
         return;
+
+    if (!decl.isForeign && !decl.body) {
+        error(decl.loc, "Function '" + decl.name + "' requires a body");
+        return;
+    }
 
     currentFunction_ = &decl;
     TypeRef funcType = analyzingGenericInstantiation
@@ -1212,6 +1284,11 @@ void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType) {
 /// @param decl The method declaration to analyze.
 /// @param ownerType The type that owns this method, used as the type of 'self'.
 void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
+    if (!decl.body && (!ownerType || ownerType->kind != TypeKindSem::Interface)) {
+        error(decl.loc, "Method '" + decl.name + "' requires a body");
+        return;
+    }
+
     MethodDecl *savedMethod = currentMethod_;
     currentMethod_ = &decl;
     currentSelfType_ = ownerType;

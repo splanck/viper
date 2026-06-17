@@ -103,6 +103,7 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
 
     static std::unordered_map<std::string, CachedSource> sourceCache;
     static std::mutex sourceCacheMutex;
+    static constexpr size_t kMaxCachedSources = 256;
 
     const std::string normalized = normalizePath(path);
     std::error_code stampEc;
@@ -160,6 +161,8 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
         }
         if (canCache) {
             std::lock_guard<std::mutex> lock(sourceCacheMutex);
+            if (sourceCache.size() >= kMaxCachedSources)
+                sourceCache.clear();
             sourceCache[normalized] = CachedSource{stamp, fileSize, source};
         }
     }
@@ -247,9 +250,8 @@ bool ImportResolver::processModule(ModuleDecl &module,
     if (processedFiles_.count(normalizedPath) != 0)
         return true;
 
-    if (inProgressFiles_.count(normalizedPath) != 0) {
+    if (inProgressFiles_.count(normalizedPath) != 0)
         return true;
-    }
 
     inProgressFiles_.insert(normalizedPath);
     importStack_.push_back(normalizedPath);
@@ -323,8 +325,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
         }
 
         if (inProgressFiles_.count(normalizedBindPath) != 0) {
-            if (auto idIt = fileIdsByPath_.find(normalizedBindPath);
-                idIt != fileIdsByPath_.end()) {
+            if (auto idIt = fileIdsByPath_.find(normalizedBindPath); idIt != fileIdsByPath_.end()) {
                 bind.resolvedFileId = idIt->second;
             }
             if (auto nameIt = moduleNamesByPath_.find(normalizedBindPath);

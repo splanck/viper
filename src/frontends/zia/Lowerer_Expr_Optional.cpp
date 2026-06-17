@@ -297,7 +297,10 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
         } else if (innerType->kind == TypeKindSem::Map) {
             if (isCountLikeProperty(expr->field)) {
                 fieldType = types::integer();
-                fieldValue = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
+                fieldValue =
+                    emitCallRet(Type(Type::Kind::I64),
+                                usesIntegerMapRuntime(innerType) ? kIntMapCount : kMapCount,
+                                {base.value});
             }
         } else if (innerType->kind == TypeKindSem::Set) {
             if (isCountLikeProperty(expr->field)) {

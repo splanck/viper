@@ -233,14 +233,14 @@ func main() {
         return;
     }
 
-    var large = "";
-    var largeLine = "let value = 42;\n";
+    var idleLarge = "";
+    var idleLargeLine = "let value = 42;\n";
     var largeIdx = 0;
     while largeIdx < 5000 {
-        large = large + largeLine;
+        idleLarge = idleLarge + idleLargeLine;
         largeIdx = largeIdx + 1;
     }
-    engine.SetText(large);
+    engine.SetText(idleLarge);
     engine.editor.SetWordWrap(0);
     engine.editor.ResetPerfStats();
     var moveStart = Viper.Time.GetTickCount();

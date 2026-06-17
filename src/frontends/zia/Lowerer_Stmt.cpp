@@ -708,6 +708,7 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
 }
 
 void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
+    const bool integerKeyed = usesIntegerMapRuntime(iterableType);
     TypeRef keyType = iterableType->keyType() ? iterableType->keyType() : types::string();
     TypeRef valueType = iterableType->valueType() ? iterableType->valueType() : types::unknown();
     if (stmt->variableType)
@@ -727,7 +728,8 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     }
 
     auto mapValue = lowerExpr(stmt->iterable.get());
-    Value keysSeq = emitCallRet(Type(Type::Kind::Ptr), kMapKeys, {mapValue.value});
+    Value keysSeq =
+        emitCallRet(Type(Type::Kind::Ptr), integerKeyed ? kIntMapKeys : kMapKeys, {mapValue.value});
 
     std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
     std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
@@ -761,14 +763,22 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     setBlock(bodyIdx);
     Value keysLoaded = loadFromSlot(keysVar, Type(Type::Kind::Ptr));
     Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
-    // Map keys are stored as raw rt_string pointers in the seq, so use kSeqGetStr.
-    Value keyStrVal = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {keysLoaded, idxInBody});
-    LowerResult keyVal = {keyStrVal, Type(Type::Kind::Str)};
+    LowerResult keyVal;
+    if (integerKeyed) {
+        Value boxedKey = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {keysLoaded, idxInBody});
+        keyVal = emitUnboxValue(boxedKey, keyIlType, keyType);
+    } else {
+        // String Map keys are stored as raw rt_string pointers in the seq, so use kSeqGetStr.
+        Value keyStrVal = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {keysLoaded, idxInBody});
+        keyVal = {keyStrVal, Type(Type::Kind::Str)};
+    }
     storeToSlot(stmt->variable, keyVal.value, keyIlType);
 
     if (stmt->isTuple) {
         Value mapLoaded = loadFromSlot(mapVar, Type(Type::Kind::Ptr));
-        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapLoaded, keyVal.value});
+        Value runtimeKey = coerceMapKeyForRuntime(keyVal.value, keyVal.type, iterableType);
+        Value boxed = emitCallRet(
+            Type(Type::Kind::Ptr), integerKeyed ? kIntMapGet : kMapGet, {mapLoaded, runtimeKey});
         auto unboxed = emitUnboxValue(boxed, valueIlType, valueType);
         storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
     }

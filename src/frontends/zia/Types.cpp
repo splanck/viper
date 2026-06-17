@@ -36,6 +36,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Types.hpp"
+#include <mutex>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -47,6 +48,7 @@ using InterfaceSet = std::unordered_set<std::string>;
 std::unordered_map<std::string, InterfaceSet> g_interface_impls;
 // BUG-VL-007 fix: Track class inheritance (child -> parent)
 std::unordered_map<std::string, std::string> g_class_parents;
+std::mutex g_relationship_mutex;
 
 /// @brief Recursively append a human-readable spelling of @p type to @p ss.
 /// @param developerFacing When true, emit internal/developer detail; when
@@ -312,15 +314,23 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
     if ((kind == TypeKindSem::List && source.kind == TypeKindSem::List) ||
         (kind == TypeKindSem::Set && source.kind == TypeKindSem::Set) ||
         (kind == TypeKindSem::Map && source.kind == TypeKindSem::Map)) {
-        // If source has Unknown type arguments, it can be assigned to any matching container
-        if (!source.typeArgs.empty() && source.typeArgs[0]->kind == TypeKindSem::Unknown) {
+        if (typeArgs.empty() || source.typeArgs.empty())
+            return false;
+
+        // Empty literals and unresolved container arguments can flow into a
+        // concrete container annotation.
+        if (source.typeArgs[0]->kind == TypeKindSem::Unknown)
             return true;
-        }
-        // For maps, also check the struct type
-        if (kind == TypeKindSem::Map && source.typeArgs.size() >= 2 &&
-            source.typeArgs[1]->kind == TypeKindSem::Unknown) {
+
+        if (kind != TypeKindSem::Map)
+            return typeArgs[0]->isAssignableFrom(*source.typeArgs[0]);
+
+        if (typeArgs.size() < 2 || source.typeArgs.size() < 2)
+            return false;
+        if (source.typeArgs[1]->kind == TypeKindSem::Unknown)
             return true;
-        }
+        return typeArgs[0]->isAssignableFrom(*source.typeArgs[0]) &&
+               typeArgs[1]->isAssignableFrom(*source.typeArgs[1]);
     }
 
     return false;
@@ -379,15 +389,18 @@ std::string ViperType::toDisplayString() const {
 namespace types {
 
 void clearInterfaceImplementations() {
+    std::lock_guard<std::mutex> lock(g_relationship_mutex);
     g_interface_impls.clear();
 }
 
 void registerInterfaceImplementation(const std::string &typeName,
                                      const std::string &interfaceName) {
+    std::lock_guard<std::mutex> lock(g_relationship_mutex);
     g_interface_impls[typeName].insert(interfaceName);
 }
 
 bool implementsInterface(const std::string &typeName, const std::string &interfaceName) {
+    std::lock_guard<std::mutex> lock(g_relationship_mutex);
     std::string current = typeName;
     while (!current.empty()) {
         auto it = g_interface_impls.find(current);
@@ -404,14 +417,17 @@ bool implementsInterface(const std::string &typeName, const std::string &interfa
 
 // BUG-VL-007 fix: Class inheritance tracking
 void clearClassInheritance() {
+    std::lock_guard<std::mutex> lock(g_relationship_mutex);
     g_class_parents.clear();
 }
 
 void registerClassInheritance(const std::string &childName, const std::string &parentName) {
+    std::lock_guard<std::mutex> lock(g_relationship_mutex);
     g_class_parents[childName] = parentName;
 }
 
 bool isSubclassOf(const std::string &childName, const std::string &parentName) {
+    std::lock_guard<std::mutex> lock(g_relationship_mutex);
     // Walk up the inheritance chain
     std::string current = childName;
     while (!current.empty()) {

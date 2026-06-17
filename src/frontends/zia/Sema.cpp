@@ -241,6 +241,46 @@ int conversionCost(TypeRef paramType, TypeRef argType, bool allowRuntimeObjectCo
 // Sema Implementation
 //=============================================================================
 
+/// @brief Resolve the declaring owner for a field visible from a type.
+/// @param typeName The type whose member access is being analyzed.
+/// @param fieldName The field name to find.
+/// @return The owner that declares @p fieldName, or std::nullopt when absent.
+/// @details Structs only check their own field table entry. Classes walk the base-class chain
+///          and keep inherited field metadata attached to the declaring owner instead of
+///          duplicating it under each derived type.
+std::optional<std::string> Sema::findFieldOwner(const std::string &typeName,
+                                                const std::string &fieldName) const {
+    std::unordered_set<std::string> visited;
+    std::string current = typeName;
+    while (!current.empty() && visited.insert(current).second) {
+        const std::string key = current + "." + fieldName;
+        if (fieldTypes_.find(key) != fieldTypes_.end())
+            return current;
+
+        auto classIt = classDecls_.find(current);
+        if (classIt == classDecls_.end() || !classIt->second || classIt->second->baseClass.empty())
+            break;
+        current = classIt->second->baseClass;
+    }
+
+    return std::nullopt;
+}
+
+/// @brief Resolve a field type visible from a type.
+/// @param typeName The type whose member access is being analyzed.
+/// @param fieldName The field name to find.
+/// @return The field's semantic type, or nullptr when absent.
+/// @details Delegates owner resolution to @ref findFieldOwner so inherited class fields are
+///          found without rewriting their declaring-owner metadata.
+TypeRef Sema::getFieldType(const std::string &typeName, const std::string &fieldName) const {
+    auto owner = findFieldOwner(typeName, fieldName);
+    if (!owner)
+        return nullptr;
+    const std::string key = *owner + "." + fieldName;
+    auto it = fieldTypes_.find(key);
+    return it != fieldTypes_.end() ? it->second : nullptr;
+}
+
 Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag) {
     scopes_.push_back(std::make_unique<Scope>(nullptr, nextScopeId_, 0));
     currentScope_ = scopes_.back().get();
@@ -330,6 +370,24 @@ bool Sema::registerFunctionOverload(const std::string &name,
     family.push_back(decl);
     functionDeclTypes_[decl] = funcType;
 
+    auto overloadLoweredName = [&](FunctionDecl *fn) {
+        TypeRef type = functionDeclTypes_[fn];
+        return name + "__ov__" + std::to_string(type->paramTypes().size()) + "__" +
+               joinTypeKeys(type->paramTypes());
+    };
+    if (family.size() == 2) {
+        FunctionDecl *first = family.front();
+        const std::string oldName = loweredFunctionNames_[first];
+        const std::string remangled = overloadLoweredName(first);
+        loweredFunctionNames_[first] = remangled;
+        if (auto it = functionDecls_.find(oldName);
+            it != functionDecls_.end() && it->second == first)
+            functionDecls_.erase(it);
+        functionDecls_[remangled] = first;
+        if (auto it = functionDecls_.find(name); it != functionDecls_.end() && it->second == first)
+            functionDecls_.erase(it);
+    }
+
     const bool overloaded = family.size() > 1;
     const bool isEntryStart =
         decl && decl->name == "start" && currentModule_ &&
@@ -337,9 +395,7 @@ bool Sema::registerFunctionOverload(const std::string &name,
     if (isEntryStart) {
         loweredFunctionNames_[decl] = "main";
     } else if (overloaded) {
-        loweredFunctionNames_[decl] = name + "__ov__" +
-                                      std::to_string(funcType->paramTypes().size()) + "__" +
-                                      joinTypeKeys(funcType->paramTypes());
+        loweredFunctionNames_[decl] = overloadLoweredName(decl);
     } else {
         loweredFunctionNames_[decl] = name;
     }
@@ -375,6 +431,20 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
     methodSignatureKeys_.try_emplace(decl, sigKey);
     methodDispatchKeys_.try_emplace(decl, methodDispatchKey(*decl, methodType));
 
+    auto overloadLoweredMethodName = [&](MethodDecl *method) {
+        MethodInstanceKey key{ownerType, method};
+        TypeRef type = ownerMethodTypes_[key];
+        return ownerType + "." + method->name + "__ov__" +
+               std::to_string(type->paramTypes().size()) + "__" + joinTypeKeys(type->paramTypes());
+    };
+
+    if (family.size() == 2) {
+        MethodDecl *first = family.front();
+        MethodInstanceKey firstKey{ownerType, first};
+        ownerLoweredMethodNames_[firstKey] = overloadLoweredMethodName(first);
+        loweredMethodNames_[first] = ownerLoweredMethodNames_[firstKey];
+    }
+
     if (family.size() > 1) {
         ownerLoweredMethodNames_[instanceKey] = ownerType + "." + decl->name + "__ov__" +
                                                 std::to_string(methodType->paramTypes().size()) +
@@ -382,7 +452,7 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
     } else {
         ownerLoweredMethodNames_[instanceKey] = ownerType + "." + decl->name;
     }
-    loweredMethodNames_.try_emplace(decl, ownerLoweredMethodNames_[instanceKey]);
+    loweredMethodNames_[decl] = ownerLoweredMethodNames_[instanceKey];
     return true;
 }
 
@@ -938,12 +1008,15 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
                     break;
                 }
             }
-        }
-        if (pairedWithFunctionBridge && isSafeFunctionBridgePayload(argType)) {
-            continue;
-        }
-        if (bridgeRole == RuntimePointerBridgeRole::Payload && !rawParam) {
-            continue;
+            if (!pairedWithFunctionBridge) {
+                const_cast<Sema *>(this)->error(
+                    errLoc,
+                    "Runtime API '" + calleeName + "' payload " + paramName +
+                        " requires a preceding callback function argument");
+                return false;
+            }
+            if (isSafeFunctionBridgePayload(argType))
+                continue;
         }
 
         const_cast<Sema *>(this)->error(errLoc,
@@ -1201,6 +1274,15 @@ void Sema::addWarningSuppressions(uint32_t fileId, std::string_view source) {
 }
 
 bool Sema::registerTypeDeclarationSymbol(Decl &decl, const std::string &semanticName) {
+    if (Symbol *existing = currentScope_->lookupLocal(semanticName)) {
+        auto typeIt = typeRegistry_.find(semanticName);
+        if (existing->kind == Symbol::Kind::Type && existing->decl == &decl &&
+            typeIt != typeRegistry_.end()) {
+            existing->type = typeIt->second;
+            return true;
+        }
+    }
+
     TypeRef type;
     Symbol sym;
     sym.kind = Symbol::Kind::Type;
