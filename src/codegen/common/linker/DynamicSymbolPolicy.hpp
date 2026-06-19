@@ -137,9 +137,9 @@ inline bool isKnownCompilerRuntimeDynamicSymbol(const std::string &name, LinkPla
 
     static const char *const kCompilerRuntimeExact[] = {
         "addtf3",  "divtf3",     "eqtf2",      "extenddftf2", "fixtfdi",
-        "fixtfsi", "fixunstfdi", "floatditf",  "floatunditf", "floatunsitf",
-        "getf2",   "gttf2",      "letf2",      "lttf2",       "multf3",
-        "netf2",   "subtf3",     "trunctfdf2", nullptr,
+        "fixtfsi", "fixunstfdi", "floatditf",  "floatsitf",   "floatunditf",
+        "floatunsitf", "getf2",   "gttf2",      "letf2",       "lttf2",
+        "multf3",  "netf2",      "subtf3",     "trunctfdf2",  nullptr,
     };
     for (const char *const *p = kCompilerRuntimeExact; p && *p; ++p) {
         if (stripped == *p)
