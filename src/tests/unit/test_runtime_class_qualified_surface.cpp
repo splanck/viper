@@ -13,6 +13,7 @@
 //     expansion, not by text scraping.
 //   - Class-qualified aliases must resolve to a callable class member with the
 //     same public member name.
+//   - Direct runtime class leaf names under Viper.* must not collide.
 //   - Instance method signatures omit the leading obj receiver from RT_FUNC.
 // Ownership/Lifetime:
 //   - Test tables own copied runtime.def string literals for process lifetime.
@@ -507,6 +508,47 @@ bool check_method_signatures(const RuntimeSurface &surface, const RuntimeIndex &
     return false;
 }
 
+std::string direct_leaf_name(std::string_view class_name) {
+    constexpr std::string_view kViperPrefix = "Viper.";
+    if (!starts_with(class_name, kViperPrefix))
+        return {};
+
+    std::string_view tail = class_name.substr(kViperPrefix.size());
+    size_t dot = tail.rfind('.');
+    if (dot == std::string_view::npos)
+        return {};
+    return std::string(tail.substr(dot + 1));
+}
+
+bool check_runtime_class_leaf_names(const RuntimeSurface &surface) {
+    std::map<std::string, std::set<std::string>> owners_by_leaf;
+
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        std::string leaf = direct_leaf_name(runtime_class.name);
+        if (!leaf.empty())
+            owners_by_leaf[leaf].insert(runtime_class.name);
+    }
+
+    std::vector<std::string> failures;
+    for (const auto &entry : owners_by_leaf) {
+        if (entry.second.size() > 1) {
+            std::ostringstream line;
+            line << entry.first << " is exported by";
+            for (const std::string &owner : entry.second)
+                line << " " << owner;
+            failures.push_back(line.str());
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Runtime class leaf-name collisions:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -517,6 +559,7 @@ int main() {
     ok = check_coverage(surface, index) && ok;
     ok = check_naming_symmetry(surface, index) && ok;
     ok = check_method_signatures(surface, index) && ok;
+    ok = check_runtime_class_leaf_names(surface) && ok;
 
     if (!ok)
         return 1;

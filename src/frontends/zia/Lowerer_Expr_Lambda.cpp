@@ -136,7 +136,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     // Save current function context (use index instead of pointer to handle vector reallocation)
     TypeRef savedReturnType = currentReturnType_;
     unsigned savedNextTemp = builder_->saveTempId();
-    size_t savedFuncIdx = static_cast<size_t>(-1);
+    size_t savedFuncIdx = kInvalidIndex;
     if (currentFunc_) {
         for (size_t i = 0; i < module_->functions.size(); ++i) {
             if (&module_->functions[i] == currentFunc_) {
@@ -240,7 +240,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     }
 
     // Restore context (use saved index to get fresh pointer after potential vector reallocation)
-    if (savedFuncIdx != static_cast<size_t>(-1)) {
+    if (savedFuncIdx != kInvalidIndex) {
         currentFunc_ = &module_->functions[savedFuncIdx];
         blockMgr_.reset(currentFunc_);
         blockMgr_.setNextBlockId(savedNextBlockId);

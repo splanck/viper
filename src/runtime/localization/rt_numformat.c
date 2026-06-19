@@ -9,7 +9,7 @@
 // Purpose: Implementation of Viper.Localization.NumberFormat. Formats and
 //          parses locale-aware numeric strings using the bound Locale's
 //          rt_locale_data_t. Shares digit-grouping machinery with
-//          Viper.Text.NumberFormat via rt_numfmt_internal.h to avoid
+//          Viper.Text.InvariantNumberFormat via rt_numfmt_internal.h to avoid
 //          duplicating the group-every-N-digits logic.
 //
 // Key invariants:
@@ -882,7 +882,7 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
 
 rt_string rt_numformat_ordinal(void *self, int64_t value) {
     (void)self;
-    // v1: delegate to the existing Viper.Text.NumberFormat.Ordinal which
+    // v1: delegate to the existing Viper.Text.InvariantNumberFormat.Ordinal which
     // implements English suffixes (st/nd/rd/th). Locale-specific ordinal
     // rendering uses plural category lookup and is deferred to a later
     // phase alongside JSON-loaded ordinal suffix tables.

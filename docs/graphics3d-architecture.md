@@ -444,7 +444,7 @@ src/runtime/graphics/
 │   ├── rt_gltf.c/h                glTF 2.0 format loader
 │   └── rt_model3d.c/h             Model3D unified prefab/import wrapper
 └── Audio
-    ├── rt_sound3d.c/h             Sound3D spatial helpers and compatibility wrappers
+    ├── rt_sound3d.c/h             SpatialAudio3D helpers and compatibility wrappers
     ├── rt_soundlistener3d.h       SoundListener3D public surface
     ├── rt_soundsource3d.h         SoundSource3D public surface
     └── rt_sound3d_objects.c       Object-backed listener/source bindings and voice updates

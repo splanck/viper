@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Graphics.Scene ==="
+PRINT "=== API Audit: Viper.Graphics.SceneGraph ==="
 PRINT "NOTE: Graphics classes require a canvas/window. API surface test only."
 PRINT "Constructor: New()"
 PRINT "Properties: get_Root, get_NodeCount"

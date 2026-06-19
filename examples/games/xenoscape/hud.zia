@@ -10,7 +10,7 @@
 // without being glanced *at*.  In code, that means:
 //
 //   * Don't hand-roll graphics for HP bars.  Use the runtime's
-//     widget classes (`Viper.Game.UI.Bar`, `.Label`, `.Panel`).
+//     widget classes (`Viper.Game.UI.Bar`, `.HudLabel`, `.Panel`).
 //     They know about colour thresholds, alignment, and
 //     re-rendering efficiently.
 //
@@ -36,8 +36,8 @@
 //   Bar(x, y, w, h, fillColor, emptyColor)
 //     Horizontal fill bar with `Bar.Value` in 0..1 range.  Used
 //     for HP and boss health.
-//   Label(x, y, text, color)
-//     Positioned text.  `Label.Text` can be mutated each
+//   HudLabel(x, y, text, color)
+//     Positioned text.  `HudLabel.Text` can be mutated each
 //     frame (for score).
 //   SmoothValue(initial, smoothing)
 //     Scalar that tweens toward its current target.
@@ -55,7 +55,7 @@
 //
 // HOW TO READ THIS FILE
 // ---------------------
-//   1. Widget handles (Panel/Bar/Label fields).
+//   1. Widget handles (Panel/Bar/HudLabel fields).
 //   2. `init` — construct each widget with layout constants
 //      from `config.zia`.
 //   3. `update(...)` — copy game state into widget state;
@@ -88,10 +88,10 @@ class HUD {
     hide Panel hudPanel;
     hide Bar healthBar;
     hide Bar bossBarWidget;
-    hide Label scoreLabel;
-    hide Label coinLabel;
-    hide Label livesLabel;
-    hide Label levelLabel;
+    hide HudLabel scoreLabel;
+    hide HudLabel coinLabel;
+    hide HudLabel livesLabel;
+    hide HudLabel levelLabel;
 
     // --- Animation state ---
     hide SmoothValue displayScore;
@@ -152,19 +152,19 @@ class HUD {
         bossBarTarget = 0;
 
         // Score label
-        scoreLabel = Label.New(170, 6, "SCORE 0", pal.uiText);
+        scoreLabel = HudLabel.New(170, 6, "SCORE 0", pal.uiText);
         scoreLabel.set_Scale(2);
 
         // Coin label
-        coinLabel = Label.New(440, 6, "x0", pal.coinGold);
+        coinLabel = HudLabel.New(440, 6, "x0", pal.coinGold);
         coinLabel.set_Scale(2);
 
         // Lives label
-        livesLabel = Label.New(SCREEN_W - 200, 6, "LIVES 3", pal.uiText);
+        livesLabel = HudLabel.New(SCREEN_W - 200, 6, "LIVES 3", pal.uiText);
         livesLabel.set_Scale(2);
 
         // Level name label
-        levelLabel = Label.New(SCREEN_W - 400, 30, "GRASSLANDS", pal.hudBlue);
+        levelLabel = HudLabel.New(SCREEN_W - 400, 30, "GRASSLANDS", pal.hudBlue);
         levelLabel.set_Scale(2);
     }
 

@@ -817,7 +817,7 @@ final LEVEL_INTRO_FADE_MS = 500;
 
 // =============================================================================
 // UI Widget Colors
-// Used by: hud.zia (UI.Bar, UI.Panel, UI.Label)
+// Used by: hud.zia (UI.Bar, UI.Panel, UI.HudLabel)
 // =============================================================================
 final COL_HP_BAR_FULL = 0x33EE33;
 final COL_HP_BAR_WARN = 0xEECC33;

@@ -96,6 +96,7 @@
 #include "support/diagnostics.hpp"
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace il::frontends::zia {
 
@@ -167,7 +168,7 @@ class Lexer {
     /// (53 keywords). Case-sensitive matching. Used by the GUI syntax highlighter
     /// (via rt_zia_highlight.cpp) so the highlighter never drifts from the
     /// language's keyword set.
-    static std::optional<TokenKind> lookupKeyword(const std::string &name);
+    static std::optional<TokenKind> lookupKeyword(std::string_view name);
 
   private:
     //=========================================================================

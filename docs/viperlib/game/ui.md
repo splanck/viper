@@ -12,29 +12,29 @@ last-verified: 2026-05-15
 
 ## Contents
 
-- [Viper.Game.UI.Label](#vipergameuilabel)
+- [Viper.Game.UI.HudLabel](#vipergameuihudlabel)
 - [Viper.Game.UI.Bar](#vipergameuibar)
 - [Viper.Game.UI.Panel](#vipergameuipanel)
 - [Viper.Game.UI.NineSlice](#vipergameuinineslice)
 - [Viper.Game.UI.MenuList](#vipergameuimenulist)
-- [Viper.Game.UI.TextInput](#vipergameuitextinput)
+- [Viper.Game.UI.HudTextInput](#vipergameuihudtextinput)
 - [Viper.Game.UI.Table](#vipergameuitable)
 - [Viper.Game.UI.Modal](#vipergameuimodal)
-- [Viper.Game.UI.Slider](#vipergameuislider)
-- [Viper.Game.UI.Dropdown](#vipergameuidropdown)
-- [Viper.Game.UI.Tooltip](#vipergameuitooltip)
+- [Viper.Game.UI.HudSlider](#vipergameuihudslider)
+- [Viper.Game.UI.HudDropdown](#vipergameuihuddropdown)
+- [Viper.Game.UI.HudTooltip](#vipergameuihudtooltip)
 - [Viper.Game.UI.GameButton](#vipergameuigamebutton)
 - [Viper.Game.UI.Dialogue](#vipergameuidialogue)
 - [Usage Example](#usage-example)
 
 ---
 
-## Viper.Game.UI.Label
+## Viper.Game.UI.HudLabel
 
 Positioned text widget with optional BitmapFont support and integer scaling.
 
 **Type:** Instance (obj)
-**Constructor:** `Label.New(x, y, text, color)`
+**Constructor:** `HudLabel.New(x, y, text, color)`
 
 ### Properties
 
@@ -183,12 +183,12 @@ Vertical menu with selection highlight and keyboard-friendly wrap-around navigat
 
 ---
 
-## Viper.Game.UI.TextInput
+## Viper.Game.UI.HudTextInput
 
 Editable single-line text field with UTF-8-safe cursoring, selection, placeholder text, and optional password display.
 
 **Type:** Instance (obj)
-**Constructor:** `TextInput.New(x, y, width, height)`
+**Constructor:** `HudTextInput.New(x, y, width, height)`
 
 ### Properties
 
@@ -284,12 +284,12 @@ Modal dialog with title, content text, buttons, and optional child widgets.
 
 ---
 
-## Viper.Game.UI.Slider
+## Viper.Game.UI.HudSlider
 
 Integer slider with keyboard and mouse-drag handling.
 
 **Type:** Instance (obj)
-**Constructor:** `Slider.New(x, y, width, height, min, max)`
+**Constructor:** `HudSlider.New(x, y, width, height, min, max)`
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
@@ -305,12 +305,12 @@ Integer slider with keyboard and mouse-drag handling.
 
 ---
 
-## Viper.Game.UI.Dropdown
+## Viper.Game.UI.HudDropdown
 
 Selectable option list with keyboard and pointer handling.
 
 **Type:** Instance (obj)
-**Constructor:** `Dropdown.New(x, y, width, height)`
+**Constructor:** `HudDropdown.New(x, y, width, height)`
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
@@ -328,12 +328,12 @@ Selectable option list with keyboard and pointer handling.
 
 ---
 
-## Viper.Game.UI.Tooltip
+## Viper.Game.UI.HudTooltip
 
 Hover-delayed tooltip bubble.
 
 **Type:** Instance (obj)
-**Constructor:** `Tooltip.New()`
+**Constructor:** `HudTooltip.New()`
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -447,7 +447,7 @@ var healthBar = Bar.New(12, 12, 150, 20, 0xFF0000, 0x333333);
 healthBar.Border = 0xFFFFFF;
 healthBar.SetValue(75, 100);
 
-var scoreLabel = Label.New(180, 16, "SCORE: 0", 0xFFFFFF);
+var scoreLabel = HudLabel.New(180, 16, "SCORE: 0", 0xFFFFFF);
 scoreLabel.Scale = 2;
 
 // Create a pause menu

@@ -595,7 +595,7 @@ Tooltip.Hide();
 
 ## Utilities
 
-### Clipboard
+### ClipboardText
 
 System clipboard access (static methods).
 
@@ -603,21 +603,23 @@ Desktop backends now provide text clipboard support on Linux as well as macOS an
 
 | Method                              | Signature      | Description                    |
 |-------------------------------------|----------------|--------------------------------|
-| `Viper.GUI.Clipboard.Clear()`       | `Void()`       | Clear clipboard                |
-| `Viper.GUI.Clipboard.GetText()`     | `String()`     | Get text from clipboard        |
-| `Viper.GUI.Clipboard.HasText()`     | `Integer()`    | 1 if clipboard has text        |
-| `Viper.GUI.Clipboard.SetText(text)` | `Void(String)` | Copy text to clipboard         |
+| `Viper.GUI.ClipboardText.Clear()`       | `Void()`       | Clear clipboard                |
+| `Viper.GUI.ClipboardText.GetText()`     | `String()`     | Get text from clipboard        |
+| `Viper.GUI.ClipboardText.HasText()`     | `Integer()`    | 1 if clipboard has text        |
+| `Viper.GUI.ClipboardText.SetText(text)` | `Void(String)` | Copy text to clipboard         |
 
 ### Example
 
 ```rust
 // Zia
-Clipboard.SetText("Hello, World!");
-if Clipboard.HasText() == 1 {
-    var text = Clipboard.GetText();
+bind Viper.GUI;
+
+ClipboardText.SetText("Hello, World!");
+if ClipboardText.HasText() == 1 {
+    var text = ClipboardText.GetText();
     Say(text);
 }
-Clipboard.Clear();
+ClipboardText.Clear();
 ```
 
 ---

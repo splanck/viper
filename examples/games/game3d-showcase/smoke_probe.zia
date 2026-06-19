@@ -56,6 +56,32 @@ func isHudTextPixel(px: Integer) -> Boolean {
     return false;
 }
 
+func hasLitUpperRightRegion(img: Pixels, width: Integer, height: Integer) -> Boolean {
+    var minX = width - 260;
+    if (minX < width / 2) { minX = width / 2; }
+    if (minX < 0) { minX = 0; }
+
+    var maxY = height / 4;
+    if (maxY > 140) { maxY = 140; }
+    if (maxY < 48) { maxY = 48; }
+
+    var lit = 0;
+    var maxLum = 0;
+    var y = 16;
+    while (y < maxY) {
+        var x = minX;
+        while (x < width - 8) {
+            var lum = luminance(Pixels.Get(img, x, y));
+            if (lum > maxLum) { maxLum = lum; }
+            if (lum >= 48) { lit = lit + 1; }
+            x = x + 8;
+        }
+        y = y + 8;
+    }
+
+    return maxLum >= 72 && lit >= 4;
+}
+
 func assertShowcaseFrame(img: Pixels) -> Boolean {
     if (img == null) {
         Terminal.Say("FAIL: showcase capture returned null");
@@ -142,8 +168,7 @@ func assertShowcaseFrame(img: Pixels) -> Boolean {
         return false;
     }
 
-    var upperRightLum = luminance(Pixels.Get(img, width - 28, 32));
-    if (upperRightLum < 48) {
+    if (hasLitUpperRightRegion(img, width, height) == false) {
         Terminal.Say("FAIL: showcase postfx has excessive edge darkening");
         return false;
     }
@@ -170,7 +195,7 @@ func assertShowcaseFrame(img: Pixels) -> Boolean {
 }
 
 func main() {
-    Diagnostics.Reset();
+    Diagnostics3D.Reset();
 
     var game = new Game3DShowcase();
     game.setup("Game3D Showcase Smoke", 960, 540);
@@ -189,7 +214,7 @@ func main() {
         game.destroy();
         return;
     }
-    var diagSummary = Diagnostics.Summary();
+    var diagSummary = Diagnostics3D.Summary();
     Terminal.Say("Game3D.Diagnostics.Summary=" + diagSummary);
     if (diagSummary != "") {
         Terminal.Say("FAIL: showcase diagnostics recorded degradation");

@@ -230,6 +230,18 @@ static int vegetation3d_lod_keeps_blade(int32_t index, float bx, float bz, int s
     return (h % (uint32_t)skip) == 0u;
 }
 
+/// @brief Smooth, layered wind wave for one blade.
+/// @details A single full-strength sine makes thin billboard grass read like it has two hard
+///   endpoints. Blending slower spatially-offset waves keeps the public strength value intact
+///   while making nearby blades drift through the sway instead of moving in lockstep.
+static double vegetation3d_wind_wave(double phase, double bx, double bz) {
+    double primary = sin(phase);
+    double broad = sin(phase * 0.37 + bx * 0.021 - bz * 0.017);
+    double ripple = sin(phase * 1.19 + bx * 0.009 + bz * 0.013);
+    double wave = primary * 0.62 + broad * 0.28 + ripple * 0.10;
+    return isfinite(wave) ? wave : 0.0;
+}
+
 /// @brief Clear corrupted retained resource slots without releasing unrelated objects.
 static void vegetation3d_repair_resource_handles(rt_vegetation3d *v) {
     if (!v)
@@ -820,8 +832,11 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
         phase = fmod(phase, VEGETATION3D_TWO_PI);
         if (!isfinite(phase))
             phase = 0.0;
-        float wind_x = (float)(sin(phase) * wind_strength);
-        float wind_z = (float)(cos(phase * 0.7) * wind_strength * 0.5);
+        double wave_x = vegetation3d_wind_wave(phase, (double)bx, (double)bz);
+        double wave_z =
+            vegetation3d_wind_wave(phase * 0.71 + 1.0471975511965976, (double)bz, (double)bx);
+        float wind_x = (float)(wave_x * wind_strength);
+        float wind_z = (float)(wave_z * wind_strength * 0.42);
         if (!isfinite(wind_x))
             wind_x = 0.0f;
         if (!isfinite(wind_z))

@@ -261,10 +261,10 @@ class Game3DShowcase {
     }
 
     hide func clampPlayerToTerrain() {
-        var minX = config.TERRAIN_MARGIN;
-        var minZ = config.TERRAIN_MARGIN;
-        var maxX = terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN;
-        var maxZ = terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN;
+        var minX = config.PLAYER_BOUNDS_MARGIN;
+        var minZ = config.PLAYER_BOUNDS_MARGIN;
+        var maxX = terrain.terrainWorldMaxX() - config.PLAYER_BOUNDS_MARGIN;
+        var maxZ = terrain.terrainWorldMaxZ() - config.PLAYER_BOUNDS_MARGIN;
         if (playerX < minX) { playerX = minX; }
         if (playerX > maxX) { playerX = maxX; }
         if (playerZ < minZ) { playerZ = minZ; }
@@ -280,18 +280,28 @@ class Game3DShowcase {
         var horizDist = cameraDistance * Cos(cameraPitch);
         var eyeX = pivotX - flatX * horizDist;
         var eyeZ = pivotZ - flatZ * horizDist;
-        if (eyeX < config.TERRAIN_MARGIN) { eyeX = config.TERRAIN_MARGIN; }
-        if (eyeX > terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN) { eyeX = terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN; }
-        if (eyeZ < config.TERRAIN_MARGIN) { eyeZ = config.TERRAIN_MARGIN; }
-        if (eyeZ > terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN) { eyeZ = terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN; }
+        var minX = config.PLAYER_BOUNDS_MARGIN;
+        var minZ = config.PLAYER_BOUNDS_MARGIN;
+        var maxX = terrain.terrainWorldMaxX() - config.PLAYER_BOUNDS_MARGIN;
+        var maxZ = terrain.terrainWorldMaxZ() - config.PLAYER_BOUNDS_MARGIN;
+        if (eyeX < minX) { eyeX = minX; }
+        if (eyeX > maxX) { eyeX = maxX; }
+        if (eyeZ < minZ) { eyeZ = minZ; }
+        if (eyeZ > maxZ) { eyeZ = maxZ; }
         var eyeGround = terrain.sampleGround(land, eyeX, eyeZ);
         var eyeY = pivotY + Sin(cameraPitch) * cameraDistance;
         if (eyeY < eyeGround + config.CAMERA_MIN_CLEARANCE) { eyeY = eyeGround + config.CAMERA_MIN_CLEARANCE; }
         cameraEye.Set(eyeX, eyeY, eyeZ);
+        var targetX = pivotX + flatX * config.CAMERA_LOOK_AHEAD;
+        var targetZ = pivotZ + flatZ * config.CAMERA_LOOK_AHEAD;
+        if (targetX < minX) { targetX = minX; }
+        if (targetX > maxX) { targetX = maxX; }
+        if (targetZ < minZ) { targetZ = minZ; }
+        if (targetZ > maxZ) { targetZ = maxZ; }
         cameraTarget.Set(
-            pivotX + flatX * config.CAMERA_LOOK_AHEAD,
+            targetX,
             pivotY + Sin(cameraPitch) * config.CAMERA_LOOK_AHEAD,
-            pivotZ + flatZ * config.CAMERA_LOOK_AHEAD);
+            targetZ);
         Camera3D.LookAt(camera, cameraEye, cameraTarget, cameraUp);
     }
 

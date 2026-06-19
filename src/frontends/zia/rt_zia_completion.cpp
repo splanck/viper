@@ -901,7 +901,7 @@ bool isIdentifierText(std::string_view text) {
         if (!isContinue(ch))
             return false;
     }
-    return !Lexer::lookupKeyword(std::string(text)).has_value();
+    return !Lexer::lookupKeyword(text).has_value();
 }
 
 bool renameWouldCollide(ProjectIndex &index,
@@ -1786,16 +1786,22 @@ void *rt_zia_project_index_rename_edits(void *handle,
 ///        @p source. Returns the serialized completion item list as an
 ///        rt_string (the editor/LSP bridge consumes this).
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
-    std::string sourceStr = toStdString(source);
+    // Never let a frontend exception unwind across the extern "C" boundary into
+    // the editor/LSP host (that is undefined behavior); degrade to no results.
+    try {
+        std::string sourceStr = toStdString(source);
 
-    std::vector<CompletionItem> items;
-    {
-        std::lock_guard<std::mutex> lock(s_engineMutex);
-        items = s_engine.complete(sourceStr, (int)line, (int)col);
+        std::vector<CompletionItem> items;
+        {
+            std::lock_guard<std::mutex> lock(s_engineMutex);
+            items = s_engine.complete(sourceStr, (int)line, (int)col);
+        }
+        std::string result = serialize(items);
+
+        return rt_string_from_bytes(result.c_str(), result.size());
+    } catch (...) {
+        return rt_string_from_bytes("", 0);
     }
-    std::string result = serialize(items);
-
-    return rt_string_from_bytes(result.c_str(), result.size());
 }
 
 /// @brief As @ref rt_zia_complete but with an explicit @p file_path so
@@ -1804,29 +1810,37 @@ rt_string rt_zia_complete_for_file(rt_string source,
                                    rt_string file_path,
                                    int64_t line,
                                    int64_t col) {
-    std::string sourceStr = toStdString(source);
-    std::string pathStr = editorPathOrDefault(file_path);
+    try {
+        std::string sourceStr = toStdString(source);
+        std::string pathStr = editorPathOrDefault(file_path);
 
-    std::vector<CompletionItem> items;
-    {
-        std::lock_guard<std::mutex> lock(s_engineMutex);
-        items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+        std::vector<CompletionItem> items;
+        {
+            std::lock_guard<std::mutex> lock(s_engineMutex);
+            items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+        }
+        std::string result = serialize(items);
+
+        return rt_string_from_bytes(result.c_str(), result.size());
+    } catch (...) {
+        return rt_string_from_bytes("", 0);
     }
-    std::string result = serialize(items);
-
-    return rt_string_from_bytes(result.c_str(), result.size());
 }
 
 /// @brief Runtime entry point: structured completion items at (@p line, @p col)
 ///        in @p source. Returns a Seq<Map> with stable item fields.
 void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col) {
-    std::string sourceStr = toStdString(source);
-    std::vector<CompletionItem> items;
-    {
-        std::lock_guard<std::mutex> lock(s_engineMutex);
-        items = s_engine.complete(sourceStr, (int)line, (int)col);
+    try {
+        std::string sourceStr = toStdString(source);
+        std::vector<CompletionItem> items;
+        {
+            std::lock_guard<std::mutex> lock(s_engineMutex);
+            items = s_engine.complete(sourceStr, (int)line, (int)col);
+        }
+        return completionItemsToSeq(items);
+    } catch (...) {
+        return nullptr;
     }
-    return completionItemsToSeq(items);
 }
 
 /// @brief As @ref rt_zia_completion_items but with an explicit @p file_path so
@@ -1835,15 +1849,19 @@ void *rt_zia_completion_items_for_file(rt_string source,
                                        rt_string file_path,
                                        int64_t line,
                                        int64_t col) {
-    std::string sourceStr = toStdString(source);
-    std::string pathStr = editorPathOrDefault(file_path);
+    try {
+        std::string sourceStr = toStdString(source);
+        std::string pathStr = editorPathOrDefault(file_path);
 
-    std::vector<CompletionItem> items;
-    {
-        std::lock_guard<std::mutex> lock(s_engineMutex);
-        items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+        std::vector<CompletionItem> items;
+        {
+            std::lock_guard<std::mutex> lock(s_engineMutex);
+            items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+        }
+        return completionItemsToSeq(items);
+    } catch (...) {
+        return nullptr;
     }
-    return completionItemsToSeq(items);
 }
 
 /// @brief Runtime entry point: signature help at (@p line, @p col) with no

@@ -44,6 +44,12 @@
 namespace il::frontends::zia {
 
 namespace {
+// Threading model: a Sema/Lowerer instance is single-threaded — its member
+// state is mutated without locking and must not be shared across threads. These
+// FILE-SCOPE relationship registries are the sole exception: they are
+// process-global (shared by every analyzer/lowerer in the process), so every
+// read or write MUST hold g_relationship_mutex. Do not access g_interface_impls
+// or g_class_parents without it.
 using InterfaceSet = std::unordered_set<std::string>;
 std::unordered_map<std::string, InterfaceSet> g_interface_impls;
 // BUG-VL-007 fix: Track class inheritance (child -> parent)
@@ -55,6 +61,20 @@ std::mutex g_relationship_mutex;
 ///        false, the user-facing form. Type arguments render as `[A, B]`,
 ///        with `?` for an unresolved argument.
 void appendTypeString(std::ostringstream &ss, const ViperType &type, bool developerFacing) {
+    // Guard against a pathologically deep type tree overflowing the stack during
+    // formatting (mirrors the parser/sema nesting limits). thread_local keeps it
+    // correct under concurrent formatting.
+    static thread_local int recursionDepth = 0;
+    if (recursionDepth > 256) {
+        ss << "...";
+        return;
+    }
+    ++recursionDepth;
+    struct DepthGuard {
+        int &d;
+        ~DepthGuard() { --d; }
+    } depthGuard{recursionDepth};
+
     auto appendArgs = [&](const std::vector<TypeRef> &args) {
         ss << "[";
         for (size_t i = 0; i < args.size(); ++i) {

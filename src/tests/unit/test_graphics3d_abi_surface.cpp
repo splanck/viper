@@ -1379,31 +1379,31 @@ bool check_runtime_surface_names() {
                  "SceneNode3D.SetImpostor method missing") &&
          ok;
 
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_BroadphaseFallbackCount\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_BroadphaseFallbackCount\""),
                  "Diagnostics.BroadphaseFallbackCount getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_CcdClampedFrames\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_CcdClampedFrames\""),
                  "Diagnostics.CcdClampedFrames getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_CcdClampedBodies\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_CcdClampedBodies\""),
                  "Diagnostics.CcdClampedBodies getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_AnimEventsDropped\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_AnimEventsDropped\""),
                  "Diagnostics.AnimEventsDropped getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_AudioVoicesEvicted\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_AudioVoicesEvicted\""),
                  "Diagnostics.AudioVoicesEvicted getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_NavGridFallbacks\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_NavGridFallbacks\""),
                  "Diagnostics.NavGridFallbacks getter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.Reset\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.Reset\""),
                  "Diagnostics.Reset method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.Summary\""),
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.Summary\""),
                  "Diagnostics.Summary method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.Diagnostics\""),
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.Diagnostics3D\""),
                  "Diagnostics class missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"BroadphaseFallbackCount\""),

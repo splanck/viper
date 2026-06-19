@@ -814,7 +814,7 @@ Workspace file inventory helper for IDEs and editor tools.
 
 ---
 
-## Viper.Workspace.Watcher
+## Viper.Workspace.WorkspaceWatcher
 
 Batch wrapper over `Viper.IO.Watcher` for per-frame IDE polling.
 

@@ -238,11 +238,8 @@ extern "C" void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                       has_prev_instance_matrices);
 }
 
-extern "C" void vgfx3d_compute_mesh_aabb(const void *,
-                                         uint32_t,
-                                         uint32_t,
-                                         float out_min[3],
-                                         float out_max[3]) {
+extern "C" void vgfx3d_compute_mesh_aabb(
+    const void *, uint32_t, uint32_t, float out_min[3], float out_max[3]) {
     out_min[0] = out_min[1] = out_min[2] = 0.0f;
     out_max[0] = out_max[1] = out_max[2] = 1.0f;
 }
@@ -380,6 +377,42 @@ static void test_update_advances_time_and_keeps_near_visible() {
     g_terrain = nullptr;
 }
 
+static void test_wind_sway_is_desynchronized_and_smooth() {
+    void *veg = rt_vegetation3d_new(nullptr);
+    VegetationView *v = static_cast<VegetationView *>(veg);
+    FakeTerrain terrain = make_terrain(64, 64);
+    g_terrain = &terrain;
+
+    rt_vegetation3d_populate(veg, &terrain, 64);
+    rt_vegetation3d_set_lod_distances(veg, 1000.0, 2000.0);
+    rt_vegetation3d_set_wind_params(veg, 0.85, 0.11, 1.15);
+    rt_vegetation3d_update(veg, 0.016, 32.0, 0.0, 32.0);
+
+    assert(v->visible_count == v->total_count);
+    float first_x = v->visible_transforms[1];
+    bool saw_different_x = false;
+    float max_x = 0.0f;
+    float max_z = 0.0f;
+    for (int32_t i = 0; i < v->visible_count; i++) {
+        float wind_x = v->visible_transforms[i * 16 + 1];
+        float wind_z = v->visible_transforms[i * 16 + 9];
+        if (std::fabs(wind_x - first_x) > 0.001f)
+            saw_different_x = true;
+        if (std::fabs(wind_x) > max_x)
+            max_x = std::fabs(wind_x);
+        if (std::fabs(wind_z) > max_z)
+            max_z = std::fabs(wind_z);
+    }
+
+    assert(saw_different_x);
+    assert(max_x <= 0.111f);
+    assert(max_z <= 0.047f);
+
+    rt_vegetation3d_update(veg, 0.016, 32.0, 0.0, 32.0);
+    assert(std::fabs(v->visible_transforms[1] - first_x) < 0.01f);
+    g_terrain = nullptr;
+}
+
 static void test_update_far_camera_culls_all() {
     void *veg = rt_vegetation3d_new(nullptr);
     VegetationView *v = static_cast<VegetationView *>(veg);
@@ -451,8 +484,8 @@ static void test_setters_sanitize_nonfinite_inputs() {
     VegetationView *v = static_cast<VegetationView *>(veg);
 
     rt_vegetation3d_set_wind_params(veg, NAN, -3.0, INFINITY);
-    assert(v->wind_speed == 0.0);     // NaN -> fallback 0
-    assert(v->wind_strength == 0.0);  // negative -> 0
+    assert(v->wind_speed == 0.0);      // NaN -> fallback 0
+    assert(v->wind_strength == 0.0);   // negative -> 0
     assert(v->wind_turbulence == 0.0); // Inf -> 0
 
     rt_vegetation3d_set_lod_distances(veg, NAN, NAN);
@@ -460,8 +493,8 @@ static void test_setters_sanitize_nonfinite_inputs() {
     assert(v->lod_far == 100.0f);
 
     rt_vegetation3d_set_blade_size(veg, NAN, -1.0, 5.0);
-    assert(v->blade_width == 0.4);   // NaN -> default
-    assert(v->blade_height == 1.2);  // non-positive -> default
+    assert(v->blade_width == 0.4);    // NaN -> default
+    assert(v->blade_height == 1.2);   // non-positive -> default
     assert(v->size_variation == 1.0); // clamped to [0,1]
 }
 
@@ -472,6 +505,7 @@ int main() {
     test_populate_overflow_count_traps();
     test_density_map_gates_population();
     test_update_advances_time_and_keeps_near_visible();
+    test_wind_sway_is_desynchronized_and_smooth();
     test_update_far_camera_culls_all();
     test_draw_submits_one_instanced_batch_without_mutating_cull();
     test_draw_is_noop_outside_frame();

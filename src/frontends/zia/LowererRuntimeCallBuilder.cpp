@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/LowererRuntimeCallBuilder.hpp"
+#include "frontends/zia/ZiaSupport.hpp"
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
@@ -88,7 +89,7 @@ std::vector<Lowerer::Value> RuntimeCallBuilder::lowerExplicitArgs(
     loweredArgs.reserve(orderedSources.size());
 
     for (size_t i = 0; i < orderedSources.size(); ++i) {
-        const size_t sourceIndex = static_cast<size_t>(orderedSources[i]);
+        const size_t sourceIndex = toIndex(orderedSources[i]);
         auto result = lowerer_.lowerExpr(args[sourceIndex].value.get());
         TypeRef semanticType = lowerer_.sema_.typeOf(args[sourceIndex].value.get());
 

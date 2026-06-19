@@ -27,16 +27,16 @@ implemented in C and exposed through the IL runtime system.
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
 | [Game Utilities](game/README.md)       | `AchievementTracker`, `AnimStateMachine`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween`, `Typewriter`, `WorldToScreenProjection` |
-| [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Renderer2D`, `RenderTarget2D`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `Texture2D`, `TextureAtlas`, `TileLayer2D`, `Tilemap`, production 2D classes |
+| [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Renderer2D`, `RenderTarget2D`, `SceneGraph`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `Texture2D`, `TextureAtlas`, `TileLayer2D`, `Tilemap`, production 2D classes |
 | [Game3D](graphics/game3d.md) | `World3D`, `Entity3D`, `LayerMask`, `Input3D` — code-first 3D game workflow helpers |
 | [Graphics 3D & Physics](graphics/physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
-| [GUI](gui/README.md)                   | `App`, `Breadcrumb`, `Button`, `Clipboard`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
+| [GUI](gui/README.md)                   | `App`, `Breadcrumb`, `Button`, `ClipboardText`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
 | [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
 | [Input/Output](io/README.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
 | [Mathematics](math.md)          | `BigInt`, `Bits`, `Easing`, `Mat3`, `Mat4`, `Math`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Clipboard`, `Exec`, `Machine`, `Terminal`; `Viper.Memory`, `Viper.Memory.GC` |
-| [Text & Data](text/README.md)          | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `NumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version`; `Viper.Data`: `Serialize`, `Xml`, `Yaml` |
+| [Text & Data](text/README.md)          | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `InvariantNumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version`; `Viper.Data`: `Serialize`, `Xml`, `Yaml` |
 | [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `Channel`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
 | [Localization](localization/README.md) | `Locale`, `LocaleInfo`, `LocaleManager`, `NumberFormat`, `DateFormat`, `RelativeTimeFormat`, `MessageBundle`, `PluralRules`, `Collator`, `ListFormat`, `TextDirection` |
@@ -191,7 +191,7 @@ implemented in C and exposed through the IL runtime system.
 | [`PostProcess2D`](graphics/rendering2d.md#classes)         | Instance | CPU image post-processing pass   |
 | [`RenderTarget2D`](graphics/rendering2d.md#render-targets-textures-and-renderer) | Instance | Offscreen alpha-aware render surface |
 | [`Renderer2D`](graphics/rendering2d.md#render-targets-textures-and-renderer) | Instance | Retained 2D draw command stream |
-| [`Scene`](graphics/README.md#vipergraphicsscene)           | Instance | Scene graph container            |
+| [`SceneGraph`](graphics/scene.md#vipergraphicsscenegraph)  | Instance | Scene graph container            |
 | [`SceneNode`](graphics/README.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
 | [`Shader2D`](graphics/rendering2d.md#classes)              | Instance | CPU 2D image effect wrapper      |
 | [`ShapeRenderer2D`](graphics/shapes2d.md#classes)          | Instance | Lines, rectangles, circles, paths |
@@ -233,7 +233,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Button`](gui/README.md#vipergui-button)                  | Instance | Clickable button widget                          |
 | [`Container`](gui/README.md#vipergui-container)            | Instance | Generic layout container widget                  |
 | [`Checkbox`](gui/README.md#vipergui-checkbox)              | Instance | Boolean toggle widget                            |
-| [`Clipboard`](gui/README.md#clipboard)                     | Static   | System clipboard access                          |
+| [`ClipboardText`](gui/application.md#clipboardtext)         | Static   | System clipboard access                          |
 | [`CodeEditor`](gui/README.md#vipergui-codeeditor)          | Instance | Code editing with syntax coloring                |
 | [`CommandPalette`](gui/README.md#commandpalette)           | Instance | Searchable command palette overlay               |
 | [`Cursor`](gui/README.md#cursor)                           | Static   | System cursor type and visibility                |
@@ -318,7 +318,7 @@ implemented in C and exposed through the IL runtime system.
 | [`JsonPath`](text/README.md#vipertextjsonpath)                   | Static   | JSONPath query evaluation          |
 | [`JsonStream`](text/README.md#vipertextjsonstream)               | Instance | Streaming JSON reader/writer       |
 | [`Markdown`](text/README.md#vipertextmarkdown)                   | Static   | Markdown to HTML/text conversion   |
-| [`NumberFormat`](text/README.md#vipertextnumberformat)           | Static   | Locale-aware number formatting     |
+| [`InvariantNumberFormat`](text/formatting.md#vipertextinvariantnumberformat) | Static   | C-locale number formatting       |
 | [`Pattern`](text/README.md#vipertextpattern)                     | Static   | Regex pattern matching             |
 | [`Pluralize`](text/README.md#vipertextpluralize)                 | Static   | English pluralization utilities    |
 | [`Scanner`](text/README.md#vipertextscanner)                     | Instance | Token-based string scanner         |

@@ -753,14 +753,14 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
         }
     }
 
-    // Store the struct type info
-    structTypes_[typeName] = std::move(info);
+    // Store the struct type info, capturing the slot to avoid re-hashing the key.
+    StructTypeInfo &slot = (structTypes_[typeName] = std::move(info));
 
     // Defer method lowering until after all declarations are processed
     // (we may be in the middle of lowering another function body)
     pendingStructInstantiations_.push_back(typeName);
 
-    return &structTypes_[typeName];
+    return &slot;
 }
 
 /// @brief Look up a class's type info, instantiating a generic class on demand.
@@ -873,14 +873,14 @@ const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeNa
         }
     }
 
-    // Store the class type info
-    classTypes_[typeName] = std::move(info);
+    // Store the class type info, capturing the slot to avoid re-hashing the key.
+    ClassTypeInfo &slot = (classTypes_[typeName] = std::move(info));
 
     // Defer method lowering until after all declarations are processed
     // (we may be in the middle of lowering another function body)
     pendingClassInstantiations_.push_back(typeName);
 
-    return &classTypes_[typeName];
+    return &slot;
 }
 
 } // namespace il::frontends::zia

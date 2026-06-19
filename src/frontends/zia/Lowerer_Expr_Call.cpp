@@ -860,7 +860,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
         if ((isHttpServerRouteRuntime(runtimeCallee) || isHttpsServerRouteRuntime(runtimeCallee)) &&
             orderedSources.size() == 2 && args.size() >= 3) {
-            size_t tagSourceIndex = static_cast<size_t>(orderedSources[1]);
+            size_t tagSourceIndex = toIndex(orderedSources[1]);
             if (auto *tagExpr = exprAs<StringLiteralExpr>(expr->args[tagSourceIndex].value.get(),
                                                           ExprKind::StringLiteral)) {
                 std::string handlerTarget = httpHandlerTargetName(sema_, tagExpr->value);

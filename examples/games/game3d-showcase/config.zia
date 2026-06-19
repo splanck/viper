@@ -35,12 +35,13 @@ var PLAYER_GROUND_OFFSET: Float = 0.54;
 
 var TERRAIN_SIZE: Integer = 144;
 var TERRAIN_SCALE_X: Float = 1.75;
-var TERRAIN_SCALE_Y: Float = 25.0;
+var TERRAIN_SCALE_Y: Float = 36.0;
 var TERRAIN_SCALE_Z: Float = 1.75;
 var TERRAIN_NOISE_SCALE: Float = 3.9;
 var TERRAIN_NOISE_OCTAVES: Integer = 6;
 var TERRAIN_NOISE_PERSIST: Float = 0.48;
 var TERRAIN_MARGIN: Float = 4.5;
+var PLAYER_BOUNDS_MARGIN: Float = 34.0;
 var TERRAIN_LOD_NEAR: Float = 110.0;
 var TERRAIN_LOD_FAR: Float = 260.0;
 var TERRAIN_SKIRT_DEPTH: Float = 3.5;
@@ -49,12 +50,20 @@ var SKYBOX_FACE_SIZE: Integer = 64;
 var TERRAIN_TEXTURE_SIZE: Integer = 64;
 var SPLAT_SIZE: Integer = 128;
 
-var WATER_HEIGHT: Float = 2.2;
-var WATER_R: Float = 0.12;
-var WATER_G: Float = 0.32;
-var WATER_B: Float = 0.46;
-var WATER_A: Float = 0.34;
-var WATER_REFLECTIVITY: Float = 0.36;
+var MOUNTAIN_RING_FADE: Float = 0.31;
+var MOUNTAIN_CREST_FADE: Float = 0.13;
+var LAKE_CENTER_X: Float = 0.50;
+var LAKE_CENTER_Z: Float = 0.43;
+var LAKE_RADIUS_X: Float = 0.26;
+var LAKE_RADIUS_Z: Float = 0.19;
+
+var WATER_HEIGHT: Float = 5.4;
+var WATER_R: Float = 0.03;
+var WATER_G: Float = 0.42;
+var WATER_B: Float = 0.68;
+var WATER_A: Float = 0.92;
+var WATER_REFLECTIVITY: Float = 0.42;
+var WATER_TEXTURE_SIZE: Integer = 64;
 var BEACON_TRIGGER_RADIUS: Float = 2.8;
 
 var AMBIENT_R: Float = 0.34;
@@ -110,14 +119,16 @@ var GROVE_RADIUS_MAX: Float = 30.0;
 
 // --- Ground vegetation (recommendation #8: instanced grass + wind) ----------
 var GRASS_BLADE_COUNT: Integer = 6000;
-var GRASS_WIND_STRENGTH: Float = 2.2;
-var GRASS_WIND_FREQ: Float = 0.25;
-var GRASS_WIND_DIR: Float = 0.6;
+var GRASS_WIND_SPEED: Float = 0.85;
+var GRASS_WIND_STRENGTH: Float = 0.11;
+var GRASS_WIND_TURBULENCE: Float = 1.15;
 var GRASS_LOD_NEAR: Float = 35.0;
 var GRASS_LOD_FAR: Float = 95.0;
-var GRASS_BLADE_W: Float = 0.45;
-var GRASS_BLADE_H: Float = 1.30;
-var GRASS_BLADE_VAR: Float = 0.40;
+var GRASS_BLADE_W: Float = 0.34;
+var GRASS_BLADE_H: Float = 0.86;
+var GRASS_BLADE_VAR: Float = 0.35;
+var FOLIAGE_WIND_DIR: Float = 0.6;
+var REED_WIND_FREQ: Float = 0.25;
 
 // --- PBR material textures (recommendation #2) ------------------------------
 var PBR_TEXTURE_SIZE: Integer = 64;
@@ -188,7 +199,9 @@ var CAMERA_FOV_SPRINT: Float = 80.0;
 
 // --- Wind-swayed reeds (recommendation #9, uses Canvas3D.DrawMeshWind) ---------
 var REED_COUNT: Integer = 28;
-var REED_WIND_STRENGTH: Float = 0.55;
+var REED_RADIUS: Float = 0.032;
+var REED_HEIGHT: Float = 1.35;
+var REED_WIND_STRENGTH: Float = 0.16;
 
 // --- Render-to-image minimap (recommendation #6, uses Canvas3D.DrawImage2D) -----
 var MINIMAP_SIZE: Integer = 128;

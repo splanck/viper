@@ -38,6 +38,33 @@ func maxf(a: Float, b: Float) -> Float {
     return b;
 }
 
+func minf(a: Float, b: Float) -> Float {
+    if (a < b) { return a; }
+    return b;
+}
+
+func smoothStep(edge0: Float, edge1: Float, value: Float) -> Float {
+    if (edge1 <= edge0) {
+        if (value >= edge1) { return 1.0; }
+        return 0.0;
+    }
+
+    var t = clampFloat((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+func noise01(noise: PerlinNoise, x: Float, z: Float, octaves: Integer, persistence: Float) -> Float {
+    return clampFloat((PerlinNoise.Octave2D(noise, x, z, octaves, persistence) + 1.0) * 0.5, 0.0, 1.0);
+}
+
+func heightPixel(value: Float) -> Integer {
+    var h = clampFloat(value, 0.0, 1.0);
+    var h16 = Convert.NumToInt(h * 65535.0);
+    if (h16 < 0) { h16 = 0; }
+    if (h16 > 65535) { h16 = 65535; }
+    return packPixel(h16 / 256, h16 % 256, 0, 255);
+}
+
 func terrainWorldMaxX() -> Float {
     return (config.TERRAIN_SIZE - 1 + 0.0) * config.TERRAIN_SCALE_X;
 }
@@ -141,14 +168,7 @@ class ShowcaseTerrain {
 
     expose func build(terrainMat: Material3D) -> Terrain3D {
         land = Terrain3D.New(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
-        var noise = PerlinNoise.New(42);
-
-        Terrain3D.GeneratePerlin(
-            land,
-            noise,
-            config.TERRAIN_NOISE_SCALE,
-            config.TERRAIN_NOISE_OCTAVES,
-            config.TERRAIN_NOISE_PERSIST);
+        Terrain3D.SetHeightmap(land, createShowcaseHeightmap(config.TERRAIN_SIZE, config.TERRAIN_SIZE));
         Terrain3D.SetScale(
             land, config.TERRAIN_SCALE_X, config.TERRAIN_SCALE_Y, config.TERRAIN_SCALE_Z);
         Terrain3D.SetMaterial(land, terrainMat);
@@ -170,7 +190,7 @@ class ShowcaseTerrain {
     expose func buildVegetation() {
         grass = Vegetation3D.New(createGrassBladeTexture());
         Vegetation3D.SetBladeSize(grass, config.GRASS_BLADE_W, config.GRASS_BLADE_H, config.GRASS_BLADE_VAR);
-        Vegetation3D.SetWindParams(grass, config.GRASS_WIND_STRENGTH, config.GRASS_WIND_FREQ, config.GRASS_WIND_DIR);
+        Vegetation3D.SetWindParams(grass, config.GRASS_WIND_SPEED, config.GRASS_WIND_STRENGTH, config.GRASS_WIND_TURBULENCE);
         Vegetation3D.SetLODDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
         Vegetation3D.SetDensityMap(grass, createVegetationDensity(config.SPLAT_SIZE, config.SPLAT_SIZE));
         Vegetation3D.Populate(grass, land, config.GRASS_BLADE_COUNT);
@@ -239,6 +259,74 @@ class ShowcaseTerrain {
         return tex;
     }
 
+    hide func createShowcaseHeightmap(width: Integer, depth: Integer) -> Pixels {
+        var heights = Pixels.New(width, depth);
+        var noise = PerlinNoise.New(42);
+        var lastX = width - 1;
+        var lastZ = depth - 1;
+
+        for (var pz: Integer = 0; pz < depth; pz = pz + 1) {
+            for (var px: Integer = 0; px < width; px = px + 1) {
+                var nx = (px + 0.0) / (lastX + 0.0);
+                var nz = (pz + 0.0) / (lastZ + 0.0);
+                heights.Set(px, pz, heightPixel(sampleShowcaseHeight(noise, nx, nz)));
+            }
+        }
+
+        return heights;
+    }
+
+    hide func sampleShowcaseHeight(noise: PerlinNoise, nx: Float, nz: Float) -> Float {
+        var rolling = noise01(
+            noise,
+            nx * config.TERRAIN_NOISE_SCALE,
+            nz * config.TERRAIN_NOISE_SCALE,
+            config.TERRAIN_NOISE_OCTAVES,
+            config.TERRAIN_NOISE_PERSIST);
+        var broad = noise01(noise, nx * 1.65 + 13.0, nz * 1.65 - 4.0, 3, 0.56);
+        var detail = noise01(noise, nx * 15.0 + 2.0, nz * 15.0 + 9.0, 3, 0.48);
+        var h = 0.135 + rolling * 0.18 + broad * 0.055 + detail * 0.025;
+
+        var lakeDx = (nx - config.LAKE_CENTER_X) / config.LAKE_RADIUS_X;
+        var lakeDz = (nz - config.LAKE_CENTER_Z) / config.LAKE_RADIUS_Z;
+        var lakeDist = Sqrt(lakeDx * lakeDx + lakeDz * lakeDz);
+        var basin = 1.0 - smoothStep(0.62, 1.10, lakeDist);
+        var lakeFloor = 0.035 + detail * 0.018;
+        h = lerpFloat(h, lakeFloor, basin);
+
+        var shore = 1.0 - smoothStep(0.94, 1.17, lakeDist);
+        if (lakeDist > 0.96) {
+            h = lerpFloat(h, 0.135 + rolling * 0.035, shore * 0.48);
+        }
+
+        var homeDx = (nx - 0.50) / 0.085;
+        var homeDz = (nz - 0.50) / 0.075;
+        var homeDist = Sqrt(homeDx * homeDx + homeDz * homeDz);
+        var homeIsland = 1.0 - smoothStep(0.62, 1.05, homeDist);
+        var homeHeight = 0.185 + rolling * 0.040 + broad * 0.015;
+        h = lerpFloat(h, maxf(h, homeHeight), homeIsland);
+
+        var edge = minf(minf(nx, 1.0 - nx), minf(nz, 1.0 - nz));
+        var mountainBand = 1.0 - smoothStep(0.055, config.MOUNTAIN_RING_FADE, edge);
+        var crestBand = 1.0 - smoothStep(0.0, config.MOUNTAIN_CREST_FADE, edge);
+        var ridgeNoise = noise01(noise, nx * 7.7 + 5.0, nz * 7.7 - 3.0, 5, 0.54);
+        var cragNoise = noise01(noise, nx * 27.0 - 11.0, nz * 27.0 + 4.0, 4, 0.50);
+        var striation = absFloat(Sin((nx * 39.0 + nz * 27.0) * 3.14159));
+        var mountain = 0.24
+            + mountainBand * (0.22 + ridgeNoise * 0.26)
+            + crestBand * (0.16 + cragNoise * 0.20 + striation * 0.065);
+        if (mountain > h) { h = mountain; }
+
+        var guardEdge = minf(
+            config.PLAYER_BOUNDS_MARGIN / terrainWorldMaxX(),
+            config.PLAYER_BOUNDS_MARGIN / terrainWorldMaxZ());
+        var blocker = 1.0 - smoothStep(0.0, guardEdge, edge);
+        var blockerHeight = 0.76 + blocker * (0.20 + cragNoise * 0.04);
+        if (blocker > 0.0 && blockerHeight > h) { h = blockerHeight; }
+
+        return clampFloat(h, 0.0, 1.0);
+    }
+
     hide func createTerrainSplatMap(srcTerrain: Terrain3D, width: Integer, depth: Integer) -> Pixels {
         var splat = Pixels.New(width, depth);
         var maxX = terrainWorldMaxX();
@@ -252,21 +340,30 @@ class ShowcaseTerrain {
                 var wz = (py + 0.0) * maxZ / (lastZ + 0.0);
                 var normal = Terrain3D.GetNormalAt(srcTerrain, wx, wz);
                 var ny = Vec3.get_Y(normal);
+                var h = Terrain3D.GetHeightAt(srcTerrain, wx, wz);
                 var grassLayer = 0;
                 var rockLayer = 0;
                 var dirtLayer = 0;
 
-                if (ny > 0.88) {
-                    grassLayer = 255;
+                if (h < config.WATER_HEIGHT + 0.9) {
+                    dirtLayer = 255;
                 } else {
-                    if (ny > 0.70) {
-                        if (((px / 7) + (py / 5)) % 4 <= 1) {
-                            dirtLayer = 255;
-                        } else {
-                            grassLayer = 255;
-                        }
-                    } else {
+                    if (h > config.WATER_HEIGHT + 13.5) {
                         rockLayer = 255;
+                    } else {
+                        if (ny > 0.88) {
+                            grassLayer = 255;
+                        } else {
+                            if (ny > 0.70) {
+                                if (((px / 7) + (py / 5)) % 4 <= 1) {
+                                    dirtLayer = 255;
+                                } else {
+                                    grassLayer = 255;
+                                }
+                            } else {
+                                rockLayer = 255;
+                            }
+                        }
                     }
                 }
 
@@ -308,17 +405,17 @@ class ShowcaseTerrain {
 
         for (var py: Integer = 0; py < h; py = py + 1) {
             for (var px: Integer = 0; px < w; px = px + 1) {
-                var halfW = 8 - py / 4;
+                var halfW = 1 + py / 6;
                 if (halfW < 1) { halfW = 1; }
                 var dx = px - 8;
                 if (dx < 0) { dx = 0 - dx; }
                 if (dx <= halfW) {
                     var noise = ((px * 7 + py * 13) % 20) - 10;
-                    var r = clampByte(46 + noise);
-                    var g = clampByte(150 + noise - py);
-                    var b = clampByte(34 + noise);
+                    var r = clampByte(40 + noise / 2);
+                    var g = clampByte(118 + noise + (h - py) / 3);
+                    var b = clampByte(30 + noise / 3);
                     var alpha = 255;
-                    if (py > 26) { alpha = clampByte(255 - (py - 26) * 40); }
+                    if (py < 4) { alpha = clampByte(110 + py * 36); }
                     tex.Set(px, py, packPixel(r, g, b, alpha));
                 } else {
                     tex.Set(px, py, packPixel(0, 0, 0, 0));

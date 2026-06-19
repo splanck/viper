@@ -615,7 +615,7 @@ source.MaxDistance = 18.0
 source.Volume = 70
 source.Looping = 0
 Viper.Graphics3D.Scene3D.SyncBindings(scene, 0.016)
-Viper.Graphics3D.Sound3D.SyncBindings(0.016)
+Viper.Sound.SpatialAudio3D.SyncBindings(0.016)
 pos = listener.Position
 pos = source.Position
 vel = listener.Velocity

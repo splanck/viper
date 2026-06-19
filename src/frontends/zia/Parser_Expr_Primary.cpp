@@ -357,6 +357,9 @@ ExprPtr Parser::parseParenthesizedExpr(SourceLoc loc) {
 
         if (matchedUntypedLambda) {
             error("lambda parameters require explicit type annotations");
+            // Recover by consuming the lambda body so the trailing tokens aren't
+            // re-parsed as stray expressions (prevents cascading diagnostics).
+            parseLambdaBody(loc, {});
             return nullptr;
         }
 

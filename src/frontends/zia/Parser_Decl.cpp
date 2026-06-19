@@ -1140,8 +1140,15 @@ DeclPtr Parser::parseEnumDecl() {
         decl->variants.push_back(std::move(variant));
 
         // Allow trailing comma; stop at '}'
-        if (!match(TokenKind::Comma))
+        if (!match(TokenKind::Comma)) {
+            // A following identifier means the user omitted the separating comma.
+            // Report it specifically and keep parsing the remaining variants.
+            if (check(TokenKind::Identifier)) {
+                error("expected ',' between enum variants");
+                continue;
+            }
             break;
+        }
     }
 
     if (!expect(TokenKind::RBrace, "'}'"))

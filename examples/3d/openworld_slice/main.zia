@@ -52,7 +52,7 @@ class OpenWorldSlice {
         Quality.Apply(world, QualityLevel.get_Balanced());
         Lighting.Outdoor(world, Vec3.New(-0.35, -1.0, -0.25));
         PostFX.Crisp(world);
-        var env = Environment.Outdoor(world);
+        var env = Environment3D.Outdoor(world);
         EnvHandle.withFog(env, 28.0, 420.0);
         EnvHandle.withWater(env, -0.08);
         World3D.setAmbient(world, 0.22, 0.25, 0.29);

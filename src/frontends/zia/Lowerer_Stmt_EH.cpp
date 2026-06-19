@@ -118,7 +118,10 @@ void Lowerer::emitCleanupsFrom(size_t startIndex) {
     auto savedFrames = cleanupStack_;
 
     for (size_t i = savedFrames.size(); i-- > startIndex;) {
-        cleanupStack_.assign(savedFrames.begin(), savedFrames.begin() + static_cast<ptrdiff_t>(i));
+        // Truncate the live stack to [0, i) by popping (O(1) per step) instead of
+        // re-copying the prefix each iteration, which made deep try/finally O(n^2).
+        while (cleanupStack_.size() > i)
+            cleanupStack_.pop_back();
 
         const CleanupFrame &frame = savedFrames[i];
         if (frame.popEhBeforeFinally && !isTerminated())
@@ -143,7 +146,10 @@ void Lowerer::emitCatchBodyCleanupsBeforeThrow() {
         if (frame.popEhBeforeFinally)
             break;
 
-        cleanupStack_.assign(savedFrames.begin(), savedFrames.begin() + static_cast<ptrdiff_t>(i));
+        // Truncate the live stack to [0, i) by popping (O(1) per step) instead of
+        // re-copying the prefix each iteration, which made deep try/finally O(n^2).
+        while (cleanupStack_.size() > i)
+            cleanupStack_.pop_back();
         if (frame.finallyBody && !isTerminated())
             lowerStmt(frame.finallyBody);
         if (isTerminated())
@@ -168,7 +174,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         params.push_back({"tok", Type(Type::Kind::ResumeTok)});
         unsigned blockId = blockMgr_.nextBlockId();
         blockMgr_.setNextBlockId(blockId + 1);
-        builder_->createBlock(*currentFunc_, base + "_" + std::to_string(blockId), params);
+        builder_->createBlock(*currentFunc_, makeSuffixedName(base, blockId), params);
         return currentFunc_->blocks.size() - 1;
     };
 

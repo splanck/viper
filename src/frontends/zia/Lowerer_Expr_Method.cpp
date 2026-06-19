@@ -612,7 +612,7 @@ std::optional<LowerResult> Lowerer::lowerStructTypeConstruction(const std::strin
                                   : (i < loweredSources.size() ? static_cast<int>(i) : -1);
 
             if (sourceIndex >= 0) {
-                size_t idx = static_cast<size_t>(sourceIndex);
+                size_t idx = toIndex(sourceIndex);
                 TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
                 auto coerced = coerceValueToType(
                     loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
@@ -729,7 +729,7 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
                                   ? binding->fixedParamSources[i]
                                   : (i < loweredSources.size() ? static_cast<int>(i) : -1);
             if (sourceIndex >= 0) {
-                size_t idx = static_cast<size_t>(sourceIndex);
+                size_t idx = toIndex(sourceIndex);
                 TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
                 auto coerced = coerceValueToType(
                     loweredSources[idx].value, loweredSources[idx].type, argType, field.type);

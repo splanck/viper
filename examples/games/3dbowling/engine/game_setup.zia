@@ -149,13 +149,13 @@ class BowlingGameSetup extends BowlingGameState {
     /// @brief Play a 3D positional SFX with distance falloff.
     hide func playSpatialSound(name: String, pos: Vec3, maxDistance: Float, volume: Integer) {
         if (soundReady == false) { return; }
-        Sound3D.PlayAt(soundBank.Get(name), pos, maxDistance, volume);
+        SpatialAudio3D.PlayAt(soundBank.Get(name), pos, maxDistance, volume);
     }
 
     /// @brief Sync the 3D audio listener to the camera each frame.
     hide func updateAudioListener() {
         if (soundReady == false) { return; }
-        Sound3D.SetListener(Camera3D.get_Position(render.getCamera()),
+        SpatialAudio3D.SetListener(Camera3D.get_Position(render.getCamera()),
             Camera3D.get_Forward(render.getCamera()));
     }
 

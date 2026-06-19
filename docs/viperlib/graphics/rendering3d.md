@@ -23,13 +23,13 @@ here.
 Script-facing content loaders do not trap for bad or missing content. Missing
 files, unreadable files, wrong magic bytes, truncated payloads, corrupt
 structure, unsupported formats, and excessive content sizes return `null` and
-record diagnostics on `Viper.Graphics3D.Assets3D`. Traps remain reserved for
+record diagnostics on `Viper.Graphics3D.AssetDiagnostics3D`. Traps remain reserved for
 programmer errors such as `null` or invalid argument handles. Successful partial
 degradation, such as an OBJ material whose albedo texture is missing, returns
 the loaded asset and records warnings.
 
-`Assets3D.LastLoadError` is empty after a fully successful load. When a loader
-returns `null`, `Assets3D.LastLoadErrorCode` is one of:
+`AssetDiagnostics3D.LastLoadError` is empty after a fully successful load. When a loader
+returns `null`, `AssetDiagnostics3D.LastLoadErrorCode` is one of:
 
 | Code | Meaning |
 |------|---------|
@@ -42,12 +42,12 @@ returns `null`, `Assets3D.LastLoadErrorCode` is one of:
 | `6` | TooLarge |
 
 Warnings are per outer load, append-only, and capped. Use
-`Assets3D.LoadWarningCount`, `Assets3D.GetLoadWarning(index)`, or
-`Assets3D.GetLoadWarnings()` to inspect partial degradation.
+`AssetDiagnostics3D.LoadWarningCount`, `AssetDiagnostics3D.GetLoadWarning(index)`, or
+`AssetDiagnostics3D.GetLoadWarnings()` to inspect partial degradation.
 
 | Loader | Content failure behavior | Partial degradation |
 |--------|--------------------------|---------------------|
-| `Model3D.Load(path)` / `Model3D.LoadAsset(path)` | Returns `null` and sets `Assets3D.LastLoadError` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
+| `Model3D.Load(path)` / `Model3D.LoadAsset(path)` | Returns `null` and sets `AssetDiagnostics3D.LastLoadError` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
 | `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
@@ -356,7 +356,7 @@ drain. The open-world native-compressed hitch CTest records the selected
 backend's raw RGBA bytes, compressed resident/upload bytes, RAM/VRAM reduction
 percentages, and final-frame tolerance after the budgeted native mip upload
 drains. Use these members with
-`Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
+`Game3D.Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
 followed by GPU texture upload pressure.
 
 `FrameGpuTimeUs` is backend-owned timing telemetry. The D3D11 backend records it
@@ -1167,7 +1167,7 @@ Time-limited projected decal placed in a 3D scene (bullet holes, blood splats, s
 
 ## Spatial Audio
 
-### Viper.Graphics3D.Sound3D
+### Viper.Sound.SpatialAudio3D
 
 Static utilities for positioning audio in 3D space via listeners and voice IDs.
 
@@ -1209,7 +1209,7 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 | `SetForward(dir)` | `Void(Object)` | Set facing direction from a `Vec3` |
 | `SetUp(up)` | `Void(Object)` | Set up direction from a `Vec3` |
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
-| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `Sound3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `SpatialAudio3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove the node binding |
 | `BindCamera(camera)` | `Void(Object)` | Automatically track a `Camera3D` position and forward |
 | `ClearCameraBinding()` | `Void()` | Remove the camera binding |
@@ -1249,13 +1249,13 @@ calculation path for playback-rate-capable backends.
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
 | `Play()` | `Integer()` | Start playback; returns voice ID |
 | `Stop()` | `Void()` | Stop playback |
-| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode3D` each `Sound3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode3D` each `SpatialAudio3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove node binding |
 
 ```rust
 bind Viper.Graphics3D.SoundSource3D as SoundSource3D;
 bind Viper.Graphics3D.SoundListener3D as SoundListener3D;
-bind Viper.Graphics3D.Sound3D as Sound3D;
+bind Viper.Sound.SpatialAudio3D as SpatialAudio3D;
 bind Viper.Sound.Sound as Sound;
 
 var listener = SoundListener3D.New()
@@ -1269,7 +1269,7 @@ src.SetPosition(Vec3.New(10.0, 0.0, 0.0))
 src.Play()
 
 // per frame
-Sound3D.SyncBindings(deltaSeconds)
+SpatialAudio3D.SyncBindings(deltaSeconds)
 ```
 
 ---
@@ -1483,7 +1483,7 @@ GPU-instanced foliage (grass, bushes) with density map, wind animation, and LOD.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetDensityMap(pixels)` | `Void(Object)` | Control placement density from a grayscale map |
-| `SetWindParams(strength, frequency, turbulence)` | `Void(Double, Double, Double)` | Set foliage wind sway |
+| `SetWindParams(speed, strength, turbulence)` | `Void(Double, Double, Double)` | Set foliage wind sway |
 | `SetLODDistances(near, far)` | `Void(Double, Double)` | Set LOD fade distances |
 | `SetBladeSize(width, height, variance)` | `Void(Double, Double, Double)` | Set blade/frond dimensions |
 | `Populate(terrain, count)` | `Void(Object, Integer)` | Scatter `count` instances over a `Terrain3D` using the density map |
@@ -1657,4 +1657,4 @@ Texture atlas for 3D rendering with named-region management.
   manifold at shared edges.
 - `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
 - Deferred heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; public `DrawMesh` rejects raw stack mesh payloads, while internal skinned and morphed paths retain or snapshot the animation payloads needed for backend submission.
-- `Sound3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.
+- `SpatialAudio3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

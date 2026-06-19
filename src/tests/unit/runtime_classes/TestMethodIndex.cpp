@@ -312,7 +312,7 @@ TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
     EXPECT_TRUE(
         runtimeMethodIndex().find("Viper.Graphics.ParticleSystem2D", "Destroy", 0).has_value());
     EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Emitter2D", "Destroy", 0).has_value());
-    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Lighting2D", "Destroy", 0).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Game.Lighting2D", "Destroy", 0).has_value());
 
     EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Canvas", "GetWindowX", 0).has_value());
     EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Canvas", "GetWindowY", 0).has_value());

@@ -5,7 +5,7 @@ last-verified: 2026-05-30
 ---
 
 # Formatting & Generation
-> Template, StringBuilder, TextWrapper, NumberFormat, Pluralize, Version, Html, Markdown
+> Template, StringBuilder, TextWrapper, InvariantNumberFormat, Pluralize, Version, Html, Markdown
 
 **Part of [Viper Runtime Library](../README.md) › [Text Processing](README.md)**
 
@@ -405,7 +405,7 @@ PRINT Viper.Text.TextWrapper.MaxLineLen(block)   ' Output: 10
 
 ---
 
-## Viper.Text.NumberFormat
+## Viper.Text.InvariantNumberFormat
 
 Number formatting utilities for human-readable display of integers and floating-point values.
 
@@ -442,7 +442,7 @@ Number formatting utilities for human-readable display of integers and floating-
 module NumFmtDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.NumberFormat as NF;
+bind Viper.Text.InvariantNumberFormat as NF;
 
 func start() {
     Say(NF.Bytes(1048576));            // 1.00 MB
@@ -460,37 +460,37 @@ func start() {
 
 ```basic
 ' Format bytes as human-readable sizes
-PRINT Viper.Text.NumberFormat.Bytes(1048576)     ' Output: "1.00 MB"
-PRINT Viper.Text.NumberFormat.Bytes(1073741824)  ' Output: "1.00 GB"
+PRINT Viper.Text.InvariantNumberFormat.Bytes(1048576)     ' Output: "1.00 MB"
+PRINT Viper.Text.InvariantNumberFormat.Bytes(1073741824)  ' Output: "1.00 GB"
 
 ' Currency formatting
-PRINT Viper.Text.NumberFormat.Currency(29.99, "$")   ' Output: "$29.99"
-PRINT Viper.Text.NumberFormat.Currency(1234.5, "€")  ' Output: "€1,234.50"
+PRINT Viper.Text.InvariantNumberFormat.Currency(29.99, "$")   ' Output: "$29.99"
+PRINT Viper.Text.InvariantNumberFormat.Currency(1234.5, "€")  ' Output: "€1,234.50"
 
 ' Control decimal places
-PRINT Viper.Text.NumberFormat.Decimals(3.14159, 2)  ' Output: "3.14"
-PRINT Viper.Text.NumberFormat.Decimals(3.14159, 4)  ' Output: "3.1416"
+PRINT Viper.Text.InvariantNumberFormat.Decimals(3.14159, 2)  ' Output: "3.14"
+PRINT Viper.Text.InvariantNumberFormat.Decimals(3.14159, 4)  ' Output: "3.1416"
 
 ' Ordinal numbers
-PRINT Viper.Text.NumberFormat.Ordinal(1)   ' Output: "1st"
-PRINT Viper.Text.NumberFormat.Ordinal(2)   ' Output: "2nd"
-PRINT Viper.Text.NumberFormat.Ordinal(3)   ' Output: "3rd"
-PRINT Viper.Text.NumberFormat.Ordinal(11)  ' Output: "11th"
+PRINT Viper.Text.InvariantNumberFormat.Ordinal(1)   ' Output: "1st"
+PRINT Viper.Text.InvariantNumberFormat.Ordinal(2)   ' Output: "2nd"
+PRINT Viper.Text.InvariantNumberFormat.Ordinal(3)   ' Output: "3rd"
+PRINT Viper.Text.InvariantNumberFormat.Ordinal(11)  ' Output: "11th"
 
 ' Zero-padding
-PRINT Viper.Text.NumberFormat.Pad(7, 3)    ' Output: "007"
-PRINT Viper.Text.NumberFormat.Pad(42, 5)   ' Output: "00042"
+PRINT Viper.Text.InvariantNumberFormat.Pad(7, 3)    ' Output: "007"
+PRINT Viper.Text.InvariantNumberFormat.Pad(42, 5)   ' Output: "00042"
 
 ' Percentage
-PRINT Viper.Text.NumberFormat.Percent(0.756)  ' Output: "75.6%"
+PRINT Viper.Text.InvariantNumberFormat.Percent(0.756)  ' Output: "75.6%"
 
 ' Thousands separator
-PRINT Viper.Text.NumberFormat.Thousands(1234567, ",")  ' Output: "1,234,567"
-PRINT Viper.Text.NumberFormat.Thousands(1234567, ".")  ' Output: "1.234.567"
+PRINT Viper.Text.InvariantNumberFormat.Thousands(1234567, ",")  ' Output: "1,234,567"
+PRINT Viper.Text.InvariantNumberFormat.Thousands(1234567, ".")  ' Output: "1.234.567"
 
 ' Number to English words
-PRINT Viper.Text.NumberFormat.ToWords(42)   ' Output: "forty-two"
-PRINT Viper.Text.NumberFormat.ToWords(100)  ' Output: "one hundred"
+PRINT Viper.Text.InvariantNumberFormat.ToWords(42)   ' Output: "forty-two"
+PRINT Viper.Text.InvariantNumberFormat.ToWords(100)  ' Output: "one hundred"
 ```
 
 ### Use Cases

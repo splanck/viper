@@ -6,17 +6,18 @@
 //===----------------------------------------------------------------------===//
 ///
 /// @file TestConvertBinding.cpp
-/// @brief Unit tests for Viper.Convert runtime class bindings.
+/// @brief Unit tests for conversion and parse runtime class bindings.
 ///
-/// @details This test file verifies that the Viper.Convert runtime class
-/// is correctly registered in the catalog and that its type conversion
-/// methods can be looked up through the RuntimeMethodIndex.
+/// @details This test file verifies that the canonical Viper.Core.Convert and
+/// Viper.Core.Parse runtime classes are registered in the catalog and that the
+/// public Viper.Convert / Viper.Parse compatibility names remain function
+/// aliases rather than duplicate runtime classes.
 ///
 /// ## Test Coverage
 ///
 /// ### Catalog Registration Tests
 ///
-/// Verifies that Viper.Convert exists in the runtime class catalog with
+/// Verifies that Viper.Core.Convert exists in the runtime class catalog with
 /// the expected conversion methods:
 /// - ToInt(str) - Parse string to 64-bit integer
 /// - ToInt64(str) - Parse string to 64-bit integer
@@ -40,7 +41,7 @@
 ///
 /// ## Conversion Architecture
 ///
-/// The Viper.Convert class provides bidirectional type conversion:
+/// The Viper.Core.Convert class provides bidirectional type conversion:
 ///
 /// **String → Numeric:**
 /// - ToInt: Parses string to i64
@@ -57,7 +58,7 @@
 ///
 /// @see RuntimeMethodIndex - Method lookup interface
 /// @see runtimeClassCatalog - Raw class metadata
-/// @see runtime.def - Source definition for Viper.Convert
+/// @see runtime.def - Source definition for Viper.Core.Convert
 ///
 //===----------------------------------------------------------------------===//
 
@@ -69,9 +70,9 @@
 #include <algorithm>
 #include <string>
 
-/// @brief Test that Viper.Convert exists in the catalog with expected methods.
+/// @brief Test that Viper.Core.Convert exists in the catalog with expected methods.
 ///
-/// @details Searches the runtime class catalog for Viper.Convert and verifies
+/// @details Searches the runtime class catalog for Viper.Core.Convert and verifies
 /// it contains all the expected conversion methods.
 ///
 TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
@@ -107,7 +108,6 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
     };
 
     requireConvertClass("Viper.Core.Convert");
-    requireConvertClass("Viper.Convert");
 }
 
 /// @brief Test that Convert methods resolve to correct extern targets.
@@ -149,14 +149,6 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     auto tsd = midx.find("Viper.Core.Convert", "ToString_Double", 1);
     ASSERT_TRUE(tsd.has_value());
     EXPECT_EQ(tsd->target, std::string("Viper.Core.Convert.ToString_Double"));
-
-    auto public_ti = midx.find("Viper.Convert", "ToInt", 1);
-    ASSERT_TRUE(public_ti.has_value());
-    EXPECT_EQ(public_ti->target, std::string("Viper.Core.Convert.ToInt"));
-
-    auto public_nti = midx.find("Viper.Convert", "NumToInt", 1);
-    ASSERT_TRUE(public_nti.has_value());
-    EXPECT_EQ(public_nti->target, std::string("Viper.Core.Convert.NumToInt"));
 }
 
 TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
@@ -212,18 +204,17 @@ TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
     };
 
     requireParseClass("Viper.Core.Parse");
-    requireParseClass("Viper.Parse");
 }
 
 TEST(RuntimeClassParseBinding, MethodIndexTargets) {
     il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
-    auto intOr = midx.find("Viper.Parse", "IntOr", 2);
+    auto intOr = midx.find("Viper.Core.Parse", "IntOr", 2);
     ASSERT_TRUE(intOr.has_value());
     EXPECT_EQ(intOr->target, std::string("Viper.Core.Parse.IntOr"));
 
-    auto radix = midx.find("Viper.Parse", "IntRadix", 3);
+    auto radix = midx.find("Viper.Core.Parse", "IntRadix", 3);
     ASSERT_TRUE(radix.has_value());
     EXPECT_EQ(radix->target, std::string("Viper.Core.Parse.IntRadix"));
 

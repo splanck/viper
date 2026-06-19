@@ -99,8 +99,10 @@ static bool extractDottedName(Expr *expr, std::string &out) {
 /// @brief Walk a `range.step(n).rev()`-style modifier chain back to its base
 ///        Range, tallying `.step` calls in @p stepCount.
 /// @return true if @p expr is a (possibly modified) range expression.
-static bool inspectRangeModifierChain(const Expr *expr, unsigned &stepCount) {
-    if (!expr)
+static bool inspectRangeModifierChain(const Expr *expr, unsigned &stepCount, unsigned depth = 0) {
+    // The parser already bounds expression nesting, but guard the recursion
+    // explicitly so a pathological chain can never overflow the stack.
+    if (!expr || depth > 1024)
         return false;
     if (expr->kind == ExprKind::Range)
         return true;
@@ -113,10 +115,10 @@ static bool inspectRangeModifierChain(const Expr *expr, unsigned &stepCount) {
 
     const auto *field = static_cast<const FieldExpr *>(call->callee.get());
     if (field->field == "rev" && call->args.empty())
-        return inspectRangeModifierChain(field->base.get(), stepCount);
+        return inspectRangeModifierChain(field->base.get(), stepCount, depth + 1);
     if (field->field == "step" && call->args.size() == 1) {
         ++stepCount;
-        return inspectRangeModifierChain(field->base.get(), stepCount);
+        return inspectRangeModifierChain(field->base.get(), stepCount, depth + 1);
     }
     return false;
 }

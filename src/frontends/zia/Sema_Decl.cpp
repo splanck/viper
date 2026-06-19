@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <map>
+#include <string_view>
 #include <unordered_set>
 
 namespace il::frontends::zia {
@@ -51,6 +52,40 @@ bool isForbiddenValueType(TypeRef type) {
 
 std::string forbiddenValueTypeName(TypeRef type) {
     return type ? type->toString() : "unknown";
+}
+
+/// @brief True for compatibility alias namespaces that should not be imported
+///        as child symbols during a broad namespace bind.
+/// @details Explicit binds to these aliases remain valid. Suppressing the broad
+///          child keeps legacy paths such as `Viper.Graphics.Scene.*` from
+///          competing with the canonical `Viper.Game.Scene` class.
+bool suppressBroadRuntimeAliasNamespaceImport(std::string_view ns, std::string_view child) {
+    const std::string qualified = std::string(ns) + "." + std::string(child);
+    static constexpr std::string_view suppressed[] = {
+        "Viper.Graphics.Scene",
+        "Viper.Graphics.Lighting2D",
+        "Viper.Graphics3D.Sound3D",
+        "Viper.Graphics3D.Assets3D",
+        "Viper.Text.NumberFormat",
+        "Viper.GUI.Clipboard",
+        "Viper.Workspace.Watcher",
+        "Viper.System.Process.Handle",
+        "Viper.Zia.SemanticJob.Handle",
+        "Viper.Zia.ProjectIndex.Handle",
+        "Viper.Game.UI.Label",
+        "Viper.Game.UI.TextInput",
+        "Viper.Game.UI.Slider",
+        "Viper.Game.UI.Dropdown",
+        "Viper.Game.UI.Tooltip",
+        "Viper.Game3D.Environment",
+        "Viper.Game3D.Diagnostics",
+    };
+
+    for (std::string_view name : suppressed) {
+        if (name == qualified)
+            return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -375,6 +410,7 @@ void Sema::analyzeNamespaceBind(BindDecl &decl) {
 bool Sema::isValidRuntimeNamespace(const std::string &ns) {
     // A namespace is valid if any runtime class or method starts with "ns."
     const std::string prefix = ns + ".";
+    const std::string_view prefixView(prefix);
 
     // Check typeRegistry_ for runtime class types
     for (const auto &[name, type] : typeRegistry_) {
@@ -399,6 +435,15 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns) {
         }
     }
 
+    // Alias-only namespaces such as Viper.Parse are valid even when they no
+    // longer publish a duplicate runtime class in the catalog.
+    for (const auto &alias : il::runtime::kRuntimeNameAliases) {
+        std::string_view canonical = alias.canonical;
+        if (canonical.size() >= prefixView.size() &&
+            canonical.substr(0, prefixView.size()) == prefixView)
+            return true;
+    }
+
     // Check scope symbols for extern functions registered via defineExternFunction
     // (e.g., Viper.Box.* functions that aren't part of a runtime class)
     for (Scope *s = currentScope_; s != nullptr; s = s->parent()) {
@@ -411,7 +456,7 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns) {
 
 /// @brief Import all symbols from a runtime namespace into the current scope.
 /// @details Imports types from typeRegistry_, classes and methods from RuntimeRegistry,
-///          properties by display name, and sub-namespace prefixes from kRuntimeNameAliases.
+///          properties by display name, and direct functions from kRuntimeNameAliases.
 /// @param ns The namespace whose symbols should be imported.
 void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
     // Import all symbols from this namespace
@@ -512,29 +557,33 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
         }
     }
 
-    // Import standalone runtime functions and discover sub-namespace prefixes
-    // from runtime.def entries not in the RuntimeClasses catalog.
+    // Import standalone runtime functions and non-conflicting alias-only
+    // namespace groups from runtime.def entries not in the RuntimeClasses
+    // catalog.
     // Direct children (e.g., Viper.String.Capitalize for bind Viper.String)
     // are imported as short name → qualified name mappings.
-    // Sub-namespace prefixes (e.g., Viper.GUI.Shortcuts.Register → "Shortcuts")
-    // are imported as module-like symbols.
+    // Nested compatibility aliases that were renamed to remove collisions are
+    // intentionally skipped during broad imports. Explicit binds to those alias
+    // namespaces still validate through isValidRuntimeNamespace().
     for (const auto &alias : il::runtime::kRuntimeNameAliases) {
         std::string canonical(alias.canonical);
         if (canonical.rfind(prefix, 0) != 0)
             continue;
         std::string shortName = canonical.substr(prefix.size());
         auto dotPos = shortName.find('.');
-        if (dotPos == std::string::npos) {
-            // Direct child — standalone function (e.g., "Capitalize" from bind Viper.String)
-            auto existingIt = importedSymbols_.find(shortName);
-            if (existingIt == importedSymbols_.end())
-                importedSymbols_[shortName] = canonical;
-        } else {
-            // Sub-namespace prefix
+        if (dotPos != std::string::npos) {
             std::string subNs = shortName.substr(0, dotPos);
+            if (suppressBroadRuntimeAliasNamespaceImport(ns, subNs))
+                continue;
             if (importedSymbols_.find(subNs) == importedSymbols_.end())
                 importedSymbols_[subNs] = ns + "." + subNs;
+            continue;
         }
+
+        // Direct child — standalone function (e.g., "Capitalize" from bind Viper.String)
+        auto existingIt = importedSymbols_.find(shortName);
+        if (existingIt == importedSymbols_.end())
+            importedSymbols_[shortName] = canonical;
     }
 }
 
@@ -1077,10 +1126,14 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
     }
 
     currentFunction_ = &decl;
-    TypeRef funcType = analyzingGenericInstantiation
-                           ? functionTypeForDecl(decl)
-                           : (functionDeclTypes_.count(&decl) ? functionDeclTypes_[&decl]
-                                                              : functionTypeForDecl(decl));
+    TypeRef funcType;
+    if (analyzingGenericInstantiation) {
+        funcType = functionTypeForDecl(decl);
+    } else {
+        auto declTypeIt = functionDeclTypes_.find(&decl);
+        funcType =
+            declTypeIt != functionDeclTypes_.end() ? declTypeIt->second : functionTypeForDecl(decl);
+    }
     if (decl.isAsync)
         expectedReturnType_ =
             decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
@@ -1346,8 +1399,9 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
     TypeRef savedSelfType = currentSelfType_;
     currentMethod_ = &decl;
     currentSelfType_ = ownerType;
+    auto methodTypeIt = methodDeclTypes_.find(&decl);
     TypeRef methodType =
-        methodDeclTypes_.count(&decl) ? methodDeclTypes_[&decl] : methodTypeForDecl(decl);
+        methodTypeIt != methodDeclTypes_.end() ? methodTypeIt->second : methodTypeForDecl(decl);
     TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
                              ? methodType->returnType()
                              : types::voidType();

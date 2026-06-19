@@ -457,6 +457,41 @@ TEST(ZiaParserErrors, CommentOnlyCompilesAsImplicitModule) {
     EXPECT_TRUE(result.succeeded());
 }
 
+//===----------------------------------------------------------------------===//
+// Diagnostics added by the frontend review: enum separators, fixed-array
+// bounds, and numeric-exponent range.
+//===----------------------------------------------------------------------===//
+
+TEST(ZiaParserErrors, EnumVariantsRequireCommaSeparators) {
+    auto result = compileSource(R"(
+module Test;
+enum Color { Red Green Blue }
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "expected ',' between enum variants"));
+}
+
+TEST(ZiaParserErrors, FixedArrayCountRejectsAbsurdSize) {
+    auto result = compileSource(R"(
+module Test;
+func f(a: Integer[999999999]) {
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "fixed-size array count exceeds the maximum"));
+}
+
+TEST(ZiaParserErrors, NumericExponentOutOfRangeIsRejected) {
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var x = 1e1234567;
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "exponent is out of range"));
+}
+
 } // namespace
 
 int main() {

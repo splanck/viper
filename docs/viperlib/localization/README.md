@@ -68,5 +68,5 @@ VPA assets are loaded explicitly with `LocaleManager.LoadFromAsset(name)`.
 ## See Also
 
 - [Time](../time.md) — `DateTime`, `Duration`, `DateOnly` are the inputs consumed by `DateFormat` and `RelativeTimeFormat`.
-- [Text](../text/formats.md) — `Viper.Text.NumberFormat` is the C-locale sibling of `Viper.Localization.NumberFormat`.
+- [Text](../text/formats.md) — `Viper.Text.InvariantNumberFormat` is the C-locale sibling of `Viper.Localization.NumberFormat`.
 - [Collections](../collections/README.md) — `Map` and `List` are the value-carrier types for `MessageBundle.Format` / `ListFormat`.

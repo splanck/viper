@@ -63,7 +63,7 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 - Currency parsing accepts the locale's positive and negative patterns, including accounting parentheses such as `"($1,234.56)"`.
 - **Strict mode parses**: strict rejects inputs where a group separator appears at a non-group-size position (e.g. `"1,00"` under en-US where `group_size=3`). Lenient accepts the same input by treating the separator as informational.
 - Rounding: `halfEven` (banker's) is the default; matches IEEE 754 round-to-nearest-even semantics.
-- Ordinal in v1 delegates to `Viper.Text.NumberFormat.Ordinal` (English suffixes); locale-specific ordinal suffix tables are a future phase.
+- Ordinal in v1 delegates to `Viper.Text.InvariantNumberFormat.Ordinal` (English suffixes); locale-specific ordinal suffix tables are a future phase.
 
 ### Zia Example
 

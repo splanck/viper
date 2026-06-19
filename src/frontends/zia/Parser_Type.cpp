@@ -95,6 +95,13 @@ TypePtr Parser::parseBaseType() {
                     error("fixed-size array count must be a non-negative Integer literal");
                     return nullptr;
                 }
+                // Cap the count so later `offset + count * elementSize` layout math
+                // cannot overflow. The limit is far above any realistic inline array.
+                constexpr long long kMaxFixedArrayElements = 1LL << 28; // 268,435,456
+                if (countTok.intValue > kMaxFixedArrayElements) {
+                    error("fixed-size array count exceeds the maximum of 268435456 elements");
+                    return nullptr;
+                }
                 if (!expect(TokenKind::RBracket, "]"))
                     return nullptr;
                 auto elemType = std::make_unique<NamedType>(loc, std::move(name));

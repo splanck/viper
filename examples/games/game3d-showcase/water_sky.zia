@@ -12,6 +12,8 @@ bind "./terrain";
 class ShowcaseWaterSky {
     hide Water3D water;
     hide CubeMap3D skybox;
+    hide Mesh3D lakeMesh;
+    hide Material3D lakeMat;
     hide Mesh3D saplingMesh;
     hide Material3D saplingMat;
     hide List[Float] reedXs;
@@ -21,14 +23,33 @@ class ShowcaseWaterSky {
     expose func setup(land: Terrain3D) {
         skybox = createOutdoorSkybox();
 
-        water = Water3D.New(terrain.terrainWorldMaxX(), terrain.terrainWorldMaxZ());
+        var waterTex = createWaterSurfaceTexture(config.WATER_TEXTURE_SIZE);
+        var waterNormal = createWaterNormalTexture(config.WATER_TEXTURE_SIZE);
+
+        water = Water3D.New(terrain.terrainWorldMaxX() * 2.10, terrain.terrainWorldMaxZ() * 2.10);
         Water3D.SetHeight(water, config.WATER_HEIGHT);
         Water3D.SetColor(water, config.WATER_R, config.WATER_G, config.WATER_B, config.WATER_A);
-        Water3D.SetResolution(water, 96);
+        Water3D.SetResolution(water, 128);
+        Water3D.SetTexture(water, waterTex);
+        Water3D.SetNormalMap(water, waterNormal);
         Water3D.SetEnvMap(water, skybox);
         Water3D.SetReflectivity(water, config.WATER_REFLECTIVITY);
-        Water3D.AddWave(water, 1.0, 0.30, 2.1, 0.22, 18.0);
-        Water3D.AddWave(water, -0.35, 0.82, 1.7, 0.12, 11.0);
+        Water3D.AddWave(water, 1.0, 0.30, 1.9, 0.18, 18.0);
+        Water3D.AddWave(water, -0.35, 0.82, 1.5, 0.10, 11.0);
+        Water3D.AddWave(water, 0.55, -0.25, 2.4, 0.055, 6.5);
+
+        lakeMesh = createLakeSurfaceMesh(56);
+        lakeMat = Material3D.NewPBR(0.02, 0.52, 0.86);
+        Material3D.SetAlbedoMap(lakeMat, waterTex);
+        Material3D.SetNormalMap(lakeMat, waterNormal);
+        Material3D.SetRoughness(lakeMat, 0.18);
+        Material3D.SetMetallic(lakeMat, 0.0);
+        Material3D.SetReflectivity(lakeMat, config.WATER_REFLECTIVITY);
+        Material3D.SetEnvMap(lakeMat, skybox);
+        Material3D.set_Alpha(lakeMat, config.WATER_A);
+        Material3D.set_AlphaMode(lakeMat, 2);
+        Material3D.SetEmissiveColor(lakeMat, 0.015, 0.20, 0.32);
+        Material3D.set_DoubleSided(lakeMat, true);
 
         setupReeds(land);
     }
@@ -47,18 +68,28 @@ class ShowcaseWaterSky {
 
     expose func drawWater(canvas: Canvas3D, camera: Camera3D) {
         Canvas3D.DrawWater(canvas, water, camera);
+        if (lakeMesh != null && lakeMat != null) {
+            var x = terrain.terrainWorldMaxX() * config.LAKE_CENTER_X;
+            var z = terrain.terrainWorldMaxZ() * config.LAKE_CENTER_Z;
+            var sx = terrain.terrainWorldMaxX() * config.LAKE_RADIUS_X * 1.08;
+            var sz = terrain.terrainWorldMaxZ() * config.LAKE_RADIUS_Z * 1.08;
+            var xform = Mat4.Mul(
+                Mat4.Translate(x, config.WATER_HEIGHT + 0.04, z),
+                Mat4.Scale(sx, 1.0, sz));
+            Canvas3D.DrawMesh(canvas, lakeMesh, xform, lakeMat);
+        }
     }
 
     expose func drawReeds(canvas: Canvas3D, land: Terrain3D, worldTime: Float) {
         if (saplingMesh == null) { return; }
-        var windDirX = Sin(config.GRASS_WIND_DIR);
-        var windDirZ = Cos(config.GRASS_WIND_DIR);
+        var windDirX = Sin(config.FOLIAGE_WIND_DIR);
+        var windDirZ = Cos(config.FOLIAGE_WIND_DIR);
         for i in 0..reedXs.count() {
             var x = reedXs.get(i);
             var z = reedZs.get(i);
-            var gy = terrain.sampleGround(land, x, z) + 1.3;
+            var gy = terrain.sampleGround(land, x, z) + config.REED_HEIGHT * 0.5;
             var xform = Mat4.Translate(x, gy, z);
-            var phase = worldTime * config.GRASS_WIND_FREQ * 6.0 + reedPhase.get(i);
+            var phase = worldTime * config.REED_WIND_FREQ * 6.0 + reedPhase.get(i);
             Canvas3D.DrawMeshWind(
                 canvas, saplingMesh, xform, saplingMat, windDirX, windDirZ,
                 config.REED_WIND_STRENGTH, phase);
@@ -159,24 +190,96 @@ class ShowcaseWaterSky {
             255);
     }
 
+    hide func createWaterSurfaceTexture(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var ripple = ((px * 5 + py * 11 + px * py * 3) % 30) - 15;
+                var longLine = absInt(((px * 3 + py * 2) % 37) - 18);
+                var shortLine = absInt(((px - py * 4 + size * 4) % 29) - 14);
+                var foam = 0;
+                if (longLine <= 1) { foam = foam + 24; }
+                if (shortLine == 0) { foam = foam + 12; }
+                tex.Set(px, py, terrain.packPixel(
+                    terrain.clampByte(10 + ripple / 3 + foam / 5),
+                    terrain.clampByte(92 + ripple / 2 + foam),
+                    terrain.clampByte(154 + ripple + foam),
+                    255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createWaterNormalTexture(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var sx = ((px * 3 + py * 5) % 17) - 8;
+                var sz = ((px * 7 - py * 2 + size * 2) % 19) - 9;
+                var crest = absInt(((px * 2 + py * 3) % 23) - 11);
+                var ny = 238;
+                if (crest <= 1) { ny = 248; }
+                tex.Set(px, py, terrain.packPixel(
+                    terrain.clampByte(128 + sx * 5),
+                    terrain.clampByte(128 + sz * 4),
+                    ny,
+                    255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createLakeSurfaceMesh(segments: Integer) -> Mesh3D {
+        var mesh = Mesh3D.New();
+        Mesh3D.Reserve(mesh, segments + 1, segments);
+        Mesh3D.AddVertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.5);
+
+        var i = 0;
+        while (i < segments) {
+            var ang = (i + 0.0) / (segments + 0.0) * 6.2831853;
+            var x = Sin(ang);
+            var z = Cos(ang);
+            Mesh3D.AddVertex(mesh, x, 0.0, z, 0.0, 1.0, 0.0, 0.5 + x * 0.5, 0.5 + z * 0.5);
+            i = i + 1;
+        }
+
+        i = 0;
+        while (i < segments) {
+            var next = i + 1;
+            if (next >= segments) { next = 0; }
+            Mesh3D.AddTriangle(mesh, 0, i + 1, next + 1);
+            i = i + 1;
+        }
+
+        Mesh3D.CalcTangents(mesh);
+        return mesh;
+    }
+
     hide func setupReeds(land: Terrain3D) {
-        saplingMesh = Mesh3D.NewCylinder(0.07, 2.6, 6);
-        saplingMat = Materials.Rubber(0.30, 0.60, 0.26);
-        Material3D.SetEmissiveColor(saplingMat, 0.010, 0.030, 0.008);
+        saplingMesh = Mesh3D.NewCylinder(config.REED_RADIUS, config.REED_HEIGHT, 6);
+        saplingMat = Materials.Rubber(0.21, 0.38, 0.16);
+        Material3D.SetEmissiveColor(saplingMat, 0.004, 0.010, 0.003);
         reedXs = [];
         reedZs = [];
         reedPhase = [];
-        var cx = terrain.terrainWorldMaxX() * 0.5;
-        var cz = terrain.terrainWorldMaxZ() * 0.5;
+        var cx = terrain.terrainWorldMaxX() * config.LAKE_CENTER_X;
+        var cz = terrain.terrainWorldMaxZ() * config.LAKE_CENTER_Z;
+        var rx = terrain.terrainWorldMaxX() * config.LAKE_RADIUS_X;
+        var rz = terrain.terrainWorldMaxZ() * config.LAKE_RADIUS_Z;
         var i = 0;
         while (i < config.REED_COUNT) {
             var ang = (i + 0.0) / (config.REED_COUNT + 0.0) * 6.2831853 + terrain.hash01(i, 41);
-            var radius = 6.0 + terrain.hash01(i, 43) * 18.0;
-            var wx = cx + Sin(ang) * radius;
-            var wz = cz + Cos(ang) * radius;
+            var radius = 0.88 + terrain.hash01(i, 43) * 0.28;
+            var wx = cx + Sin(ang) * rx * radius;
+            var wz = cz + Cos(ang) * rz * radius;
             if (wx > config.TERRAIN_MARGIN && wx < terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN
                     && wz > config.TERRAIN_MARGIN && wz < terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN) {
-                if (terrain.sampleGround(land, wx, wz) > config.WATER_HEIGHT + 0.3) {
+                var ground = terrain.sampleGround(land, wx, wz);
+                if (ground > config.WATER_HEIGHT - 0.7 && ground < config.WATER_HEIGHT + 2.0) {
                     reedXs.add(wx);
                     reedZs.add(wz);
                     reedPhase.add(terrain.hash01(i, 47) * 6.2831853);
@@ -184,5 +287,10 @@ class ShowcaseWaterSky {
             }
             i = i + 1;
         }
+    }
+
+    hide func absInt(value: Integer) -> Integer {
+        if (value < 0) { return 0 - value; }
+        return value;
     }
 }

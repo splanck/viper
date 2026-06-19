@@ -5,7 +5,7 @@ last-verified: 2026-05-17
 ---
 
 # Scene Graph
-> SceneNode, Scene, SpriteBatch, Camera, SpriteAnimation
+> SceneNode, SceneGraph, SpriteBatch, Camera, SpriteAnimation
 
 **Part of [Viper Runtime Library](../README.md) › [Graphics](README.md)**
 
@@ -318,14 +318,14 @@ arm.Detach()
 
 ---
 
-## Viper.Graphics.Scene
+## Viper.Graphics.SceneGraph
 
 Root container for a scene graph. Manages rendering order and provides scene-level operations.
 Scene draws are depth-sorted, and nodes with equal depth preserve traversal order.
-Scene APIs validate `Scene`, `SceneNode`, and `Camera` handles before traversal or drawing. Scene-level collection for depth-sorted rendering also uses iterative traversal and preserves depth-first order for equal-depth nodes.
+Scene APIs validate `SceneGraph`, `SceneNode`, and `Camera` handles before traversal or drawing. Scene-level collection for depth-sorted rendering also uses iterative traversal and preserves depth-first order for equal-depth nodes.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.Scene()`
+**Constructor:** `NEW Viper.Graphics.SceneGraph()`
 
 ### Properties
 
@@ -355,7 +355,7 @@ bind Viper.Graphics;
 bind Viper.Terminal;
 
 func start() {
-    var scene = Scene.New();
+    var scene = SceneGraph.New();
 
     // Add nodes
     var player = SceneNode.New();
@@ -389,8 +389,8 @@ func start() {
 
 ```basic
 ' Create a scene
-DIM scene AS Viper.Graphics.Scene
-scene = NEW Viper.Graphics.Scene()
+DIM scene AS Viper.Graphics.SceneGraph
+scene = NEW Viper.Graphics.SceneGraph()
 
 ' Create game objects as scene nodes
 DIM background AS Viper.Graphics.SceneNode

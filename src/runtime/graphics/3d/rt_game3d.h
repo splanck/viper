@@ -750,7 +750,7 @@ void *rt_game3d_model_template_instantiate(void *model_template);
 void *rt_game3d_model_template_instantiate_scene_at(void *model_template, int64_t index);
 
 //=========================================================================
-// Environment / EnvHandle — environment presets and builder (Viper.Game3D.Environment / EnvHandle)
+// Environment / EnvHandle — environment presets and builder (Viper.Game3D.Environment3D / EnvHandle)
 //=========================================================================
 
 /// @brief Apply a bright outdoor environment (sky, sun, fog) and return its handle.

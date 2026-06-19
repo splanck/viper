@@ -2,8 +2,9 @@
 module forest;
 
 bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
-bind Viper.Graphics3D.Assets3D as Assets3D;
+bind Viper.Graphics3D.AssetDiagnostics3D as AssetDiagnostics3D;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
@@ -79,7 +80,7 @@ class ShowcaseForest {
     }
 
     hide func reportTreeLoadFailure(path: String) {
-        var msg = Assets3D.get_LastLoadError();
+        var msg = AssetDiagnostics3D.get_LastLoadError();
         if (msg == "") {
             Terminal.Say("Forest: tree model path unavailable: " + path);
         } else {
@@ -244,47 +245,183 @@ class ShowcaseForest {
 
     hide func buildFoliageMaterials() {
         treeMats = [];
-        treeMats.add(makeFoliage(0.20, 0.44, 0.18));
-        treeMats.add(makeFoliage(0.74, 0.52, 0.16));
-        treeMats.add(makeFoliage(0.66, 0.26, 0.12));
-        barkMat = Materials.Rubber(0.30, 0.21, 0.13);
-        Material3D.SetEmissiveColor(barkMat, 0.010, 0.007, 0.004);
+        treeMats.add(makeFoliage(0.28, 0.58, 0.20));
+        treeMats.add(makeFoliage(0.74, 0.56, 0.18));
+        treeMats.add(makeFoliage(0.68, 0.32, 0.14));
+        barkMat = Material3D.NewPBR(0.38, 0.23, 0.12);
+        Material3D.SetAlbedoMap(barkMat, createBarkAlbedo(64));
+        Material3D.SetNormalMap(barkMat, createBarkNormal(64));
+        Material3D.SetRoughness(barkMat, 0.88);
+        Material3D.SetMetallic(barkMat, 0.0);
+        Material3D.SetNormalScale(barkMat, 0.48);
+        Material3D.SetEmissiveColor(barkMat, 0.026, 0.014, 0.006);
     }
 
     hide func applyTreeMaterials(ent: Entity3D, canopyMat: Material3D) {
         var node = Entity3D.get_node(ent);
-        var assigned = applyTreeMaterialsRecursive(node, canopyMat);
+        var meshCount = countMeshNodes(node);
+        var assigned = applyTreeMaterialsRecursive(node, canopyMat, meshCount);
         if (assigned == 0) {
             Entity3D.setMaterialRecursive(ent, canopyMat);
         }
     }
 
-    hide func applyTreeMaterialsRecursive(node: SceneNode3D, canopyMat: Material3D) -> Integer {
+    hide func applyTreeMaterialsRecursive(node: SceneNode3D, canopyMat: Material3D, meshCount: Integer) -> Integer {
         if (node == null) { return 0; }
         var assigned = 0;
         if (SceneNode3D.get_Mesh(node) != null) {
-            var amin = SceneNode3D.get_AABBMin(node);
-            var amax = SceneNode3D.get_AABBMax(node);
-            var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
-            var dxz = terrain.maxf(Vec3.get_X(amax) - Vec3.get_X(amin),
-                                   Vec3.get_Z(amax) - Vec3.get_Z(amin));
-            if (dy > dxz * 1.4) {
+            if (isBarkNode(node, meshCount)) {
                 SceneNode3D.set_Material(node, barkMat);
+                assigned = assigned + 1;
             } else {
                 SceneNode3D.set_Material(node, canopyMat);
+                assigned = assigned + 1;
             }
-            assigned = assigned + 1;
         }
         var count = SceneNode3D.get_ChildCount(node);
         for i in 0..count {
-            assigned = assigned + applyTreeMaterialsRecursive(SceneNode3D.GetChild(node, i), canopyMat);
+            assigned = assigned + applyTreeMaterialsRecursive(SceneNode3D.GetChild(node, i), canopyMat, meshCount);
         }
         return assigned;
     }
 
+    hide func countMeshNodes(node: SceneNode3D) -> Integer {
+        if (node == null) { return 0; }
+        var total = 0;
+        if (SceneNode3D.get_Mesh(node) != null) {
+            total = 1;
+        }
+        var count = SceneNode3D.get_ChildCount(node);
+        for i in 0..count {
+            total = total + countMeshNodes(SceneNode3D.GetChild(node, i));
+        }
+        return total;
+    }
+
+    hide func isBarkNode(node: SceneNode3D, meshCount: Integer) -> Boolean {
+        var name = SceneNode3D.get_Name(node);
+        if (name == "mesh_0_material_0") { return true; }
+        if (name == "mesh_1_material_1") { return false; }
+        if (meshCount <= 1) { return false; }
+        return isBarkMesh(node);
+    }
+
+    hide func isBarkMesh(node: SceneNode3D) -> Boolean {
+        var amin = SceneNode3D.get_AABBMin(node);
+        var amax = SceneNode3D.get_AABBMax(node);
+        var dx = Vec3.get_X(amax) - Vec3.get_X(amin);
+        var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
+        var dz = Vec3.get_Z(amax) - Vec3.get_Z(amin);
+        var minXZ = minf(dx, dz);
+        var maxXZ = terrain.maxf(dx, dz);
+
+        if (maxXZ <= 0.0001) { return false; }
+        if (dy > maxXZ * 1.40) { return true; }
+        if (minXZ > 0.0001 && dy > minXZ * 1.18 && dy < maxXZ * 1.75) { return true; }
+        return false;
+    }
+
+    hide func minf(a: Float, b: Float) -> Float {
+        if (a < b) { return a; }
+        return b;
+    }
+
+    hide func absInt(value: Integer) -> Integer {
+        if (value < 0) { return 0 - value; }
+        return value;
+    }
+
     hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {
-        var m = Materials.Rubber(r, g, b);
+        var m = Material3D.NewPBR(r, g, b);
+        Material3D.SetAlbedoMap(m, createLeafAlbedo(64, r, g, b));
+        Material3D.SetNormalMap(m, createLeafNormal(64));
+        Material3D.SetRoughness(m, 0.94);
+        Material3D.SetMetallic(m, 0.0);
+        Material3D.SetNormalScale(m, 0.36);
+        Material3D.SetEmissiveColor(m, r * 0.075, g * 0.105, b * 0.045);
+        Material3D.set_DoubleSided(m, true);
         return m;
+    }
+
+    hide func createLeafAlbedo(size: Integer, r: Float, g: Float, b: Float) -> Pixels {
+        var tex = Pixels.New(size, size);
+        var baseR = Convert.NumToInt(r * 255.0);
+        var baseG = Convert.NumToInt(g * 255.0);
+        var baseB = Convert.NumToInt(b * 255.0);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var noise = ((px * 17 + py * 29 + px * py * 3) % 44) - 22;
+                var vein = 0;
+                var major = absInt(((px + py * 2) % 19) - 9);
+                var minor = absInt(((px * 2 - py + size * 2) % 23) - 11);
+                if (major <= 1) { vein = 26; }
+                if (minor == 0) { vein = vein + 14; }
+                var shadow = ((px / 8 + py / 8) % 2) * 5;
+                tex.Set(px, py, terrain.packPixel(
+                    terrain.clampByte(baseR + 18 + noise / 4 + vein / 4 - shadow),
+                    terrain.clampByte(baseG + 20 + noise / 2 + vein - shadow),
+                    terrain.clampByte(baseB + 10 + noise / 5 + vein / 5 - shadow / 2),
+                    255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createLeafNormal(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var major = ((px + py * 2) % 19) - 9;
+                var minor = ((px * 2 - py + size * 2) % 23) - 11;
+                var nx = terrain.clampByte(128 + major * 3);
+                var nz = terrain.clampByte(128 + minor * 2);
+                var ny = 244;
+                if (absInt(major) <= 1 || absInt(minor) == 0) { ny = 252; }
+                tex.Set(px, py, terrain.packPixel(nx, nz, ny, 255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createBarkAlbedo(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var groove = absInt(((px + py / 3) % 14) - 7);
+                var noise = ((px * 11 + py * 23 + px * py) % 34) - 17;
+                var dark = 0;
+                if (groove <= 1) { dark = 26; }
+                tex.Set(px, py, terrain.packPixel(
+                    terrain.clampByte(116 + noise - dark),
+                    terrain.clampByte(72 + noise / 2 - dark / 2),
+                    terrain.clampByte(38 + noise / 4 - dark / 3),
+                    255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createBarkNormal(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var groove = ((px + py / 3) % 14) - 7;
+                var nx = terrain.clampByte(128 + groove * 8);
+                var nz = terrain.clampByte(128 + (((px * 3 + py) % 9) - 4) * 2);
+                var ny = 232;
+                if (absInt(groove) <= 1) { ny = 214; }
+                tex.Set(px, py, terrain.packPixel(nx, nz, ny, 255));
+            }
+        }
+
+        return tex;
     }
 
     hide func pickFoliage(x: Float, z: Float) -> Integer {

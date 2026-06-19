@@ -211,6 +211,50 @@ func start() {
     EXPECT_TRUE(hasGreet);
 }
 
+TEST(ZiaBinds, RuntimeCompatibilityAliasesDoNotPolluteBroadImports) {
+    const std::string source = R"(
+module Main;
+
+bind Viper.Graphics;
+bind Viper.Game;
+bind Viper.Text;
+bind Viper.Localization;
+bind Viper.GUI;
+bind Viper.System;
+bind Viper.IO;
+bind Viper.Workspace;
+bind Viper.Game.UI;
+bind Viper.Game3D;
+bind Viper.System.Process;
+bind Viper.Zia.SemanticJob;
+bind Viper.Zia.ProjectIndex;
+
+func start() {
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = source, .path = "runtime_alias_import_conflicts.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    bool hasImportConflict = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.message.find("conflicts with existing import") != std::string::npos)
+            hasImportConflict = true;
+    }
+    if (!result.succeeded() || hasImportConflict) {
+        std::cerr << "Diagnostics for RuntimeCompatibilityAliasesDoNotPolluteBroadImports:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_FALSE(hasImportConflict);
+}
+
 TEST(ZiaBinds, DuplicateClassNamesAreModuleScoped) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));

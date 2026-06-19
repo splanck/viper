@@ -441,7 +441,7 @@ LowerResult Lowerer::lowerNewRuntimeClass(NewExpr *expr, TypeRef type) {
         std::vector<Value> argValues;
         argValues.reserve(orderedSources.size());
         for (size_t i = 0; i < orderedSources.size(); ++i) {
-            size_t sourceIndex = static_cast<size_t>(orderedSources[i]);
+            size_t sourceIndex = toIndex(orderedSources[i]);
             auto result = lowerExpr(expr->args[sourceIndex].value.get());
             Value argValue = result.value;
 
@@ -542,7 +542,7 @@ std::optional<LowerResult> Lowerer::lowerNewStruct(NewExpr *expr, TypeRef type) 
                                       : (i < loweredSources.size() ? static_cast<int>(i) : -1);
 
                 if (sourceIndex >= 0) {
-                    size_t idx = static_cast<size_t>(sourceIndex);
+                    size_t idx = toIndex(sourceIndex);
                     TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
                     auto coerced = coerceValueToType(
                         loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
@@ -672,7 +672,7 @@ LowerResult Lowerer::lowerNewClass(NewExpr *expr, TypeRef type) {
                                   ? binding->fixedParamSources[i]
                                   : (i < loweredSources.size() ? static_cast<int>(i) : -1);
             if (sourceIndex >= 0) {
-                size_t idx = static_cast<size_t>(sourceIndex);
+                size_t idx = toIndex(sourceIndex);
                 TypeRef argType = sema_.typeOf(expr->args[idx].value.get());
                 auto coerced = coerceValueToType(
                     loweredSources[idx].value, loweredSources[idx].type, argType, field.type);

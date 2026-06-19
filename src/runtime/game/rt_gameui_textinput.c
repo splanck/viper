@@ -273,7 +273,7 @@ void *rt_uitextinput_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 
 void rt_uitextinput_set_text(void *ptr, rt_string text) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetText: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetText: expected Viper.Game.UI.HudTextInput");
     if (!ti)
         return;
     const char *s = text ? rt_string_cstr(text) : "";
@@ -283,32 +283,32 @@ void rt_uitextinput_set_text(void *ptr, rt_string text) {
 
 rt_string rt_uitextinput_get_text(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetText: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetText: expected Viper.Game.UI.HudTextInput");
     return ti ? rt_const_cstr(ti->text) : rt_str_empty();
 }
 
 int64_t rt_uitextinput_text_length(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.TextLength: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.TextLength: expected Viper.Game.UI.HudTextInput");
     return ti ? ui_codepoint_count_bytes(ti->text, ti->text_bytes) : 0;
 }
 
 int64_t rt_uitextinput_get_cursor(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetCursor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetCursor: expected Viper.Game.UI.HudTextInput");
     return ti ? ui_codepoint_for_byte(ti->text, ti->text_bytes, ti->cursor_byte) : 0;
 }
 
 void rt_uitextinput_set_cursor(void *ptr, int64_t pos) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetCursor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetCursor: expected Viper.Game.UI.HudTextInput");
     if (ti)
         textinput_move_cursor(ti, ui_byte_for_codepoint(ti->text, ti->text_bytes, pos), 0);
 }
 
 void rt_uitextinput_select_all(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SelectAll: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SelectAll: expected Viper.Game.UI.HudTextInput");
     if (!ti)
         return;
     ti->selection_anchor = 0;
@@ -317,20 +317,20 @@ void rt_uitextinput_select_all(void *ptr) {
 
 void rt_uitextinput_clear_selection(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.ClearSelection: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.ClearSelection: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->selection_anchor = -1;
 }
 
 int8_t rt_uitextinput_has_selection(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.HasSelection: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.HasSelection: expected Viper.Game.UI.HudTextInput");
     return textinput_selection_range(ti, NULL, NULL);
 }
 
 rt_string rt_uitextinput_get_selected_text(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetSelectedText: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetSelectedText: expected Viper.Game.UI.HudTextInput");
     int64_t start = 0;
     int64_t end = 0;
     if (!textinput_selection_range(ti, &start, &end))
@@ -340,13 +340,13 @@ rt_string rt_uitextinput_get_selected_text(void *ptr) {
 
 void rt_uitextinput_delete_selection(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.DeleteSelection: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.DeleteSelection: expected Viper.Game.UI.HudTextInput");
     textinput_delete_selection(ti);
 }
 
 int64_t rt_uitextinput_handle_key(void *ptr, int64_t key_code, int8_t shift_held) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.HandleKey: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.HandleKey: expected Viper.Game.UI.HudTextInput");
     if (!ti || !ti->enabled || !ti->focused)
         return 0;
     if (key_code == UI_KEY_BACKSPACE) {
@@ -408,7 +408,7 @@ int64_t rt_uitextinput_handle_key(void *ptr, int64_t key_code, int8_t shift_held
 
 int64_t rt_uitextinput_handle_text(void *ptr, rt_string typed_text) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.HandleText: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.HandleText: expected Viper.Game.UI.HudTextInput");
     if (!ti || !typed_text || !ti->enabled || !ti->focused)
         return 0;
     const char *s = rt_string_cstr(typed_text);
@@ -417,7 +417,7 @@ int64_t rt_uitextinput_handle_text(void *ptr, rt_string typed_text) {
 
 void rt_uitextinput_handle_mouse_click(void *ptr, int64_t mx, int64_t my, int8_t shift_held) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.HandleMouseClick: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.HandleMouseClick: expected Viper.Game.UI.HudTextInput");
     if (!ti || !ti->enabled || !ti->visible)
         return;
     ti->focused = ui_point_inside(ti->x, ti->y, ti->w, ti->h, mx, my);
@@ -428,7 +428,7 @@ void rt_uitextinput_handle_mouse_click(void *ptr, int64_t mx, int64_t my, int8_t
 void rt_uitextinput_handle_mouse_drag(void *ptr, int64_t mx, int64_t my) {
     (void)my;
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.HandleMouseDrag: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.HandleMouseDrag: expected Viper.Game.UI.HudTextInput");
     if (!ti || !ti->enabled || !ti->focused)
         return;
     if (ti->selection_anchor < 0)
@@ -438,7 +438,7 @@ void rt_uitextinput_handle_mouse_drag(void *ptr, int64_t mx, int64_t my) {
 
 void rt_uitextinput_update(void *ptr, int64_t delta_ms) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.Update: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.Update: expected Viper.Game.UI.HudTextInput");
     if (!ti || delta_ms <= 0)
         return;
     if (delta_ms > INT64_MAX - ti->cursor_blink_elapsed)
@@ -449,7 +449,7 @@ void rt_uitextinput_update(void *ptr, int64_t delta_ms) {
 
 void rt_uitextinput_draw(void *ptr, void *canvas) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.Draw: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.Draw: expected Viper.Game.UI.HudTextInput");
     if (!ti || !canvas || !ui_validate_canvas(canvas, "UITextInput.Draw: expected Canvas"))
         return;
     if (!ti->visible)
@@ -498,61 +498,61 @@ void rt_uitextinput_draw(void *ptr, void *canvas) {
 
 void rt_uitextinput_set_text_color(void *ptr, int64_t color) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetTextColor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetTextColor: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->text_color = color;
 }
 
 int64_t rt_uitextinput_get_text_color(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetTextColor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetTextColor: expected Viper.Game.UI.HudTextInput");
     return ti ? ti->text_color : 0;
 }
 
 void rt_uitextinput_set_bg_color(void *ptr, int64_t color) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetBgColor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetBgColor: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->bg_color = color;
 }
 
 int64_t rt_uitextinput_get_bg_color(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetBgColor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetBgColor: expected Viper.Game.UI.HudTextInput");
     return ti ? ti->bg_color : 0;
 }
 
 void rt_uitextinput_set_cursor_color(void *ptr, int64_t color) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetCursorColor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetCursorColor: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->cursor_color = color;
 }
 
 void rt_uitextinput_set_selection_color(void *ptr, int64_t color) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetSelectionColor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetSelectionColor: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->selection_color = color;
 }
 
 void rt_uitextinput_set_border_color(void *ptr, int64_t color) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetBorderColor: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetBorderColor: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->border_color = color;
 }
 
 void rt_uitextinput_set_border_color_focused(void *ptr, int64_t color) {
     rt_uitextinput_impl *ti = checked_textinput(
-        ptr, "UITextInput.SetBorderColorFocused: expected Viper.Game.UI.TextInput");
+        ptr, "UITextInput.SetBorderColorFocused: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->border_color_focused = color;
 }
 
 void rt_uitextinput_set_font(void *ptr, void *font) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetFont: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetFont: expected Viper.Game.UI.HudTextInput");
     if (!ti || !ui_validate_bitmapfont(font, "UITextInput.SetFont: expected BitmapFont"))
         return;
     ui_replace_ref(&ti->font, font);
@@ -560,33 +560,33 @@ void rt_uitextinput_set_font(void *ptr, void *font) {
 
 void rt_uitextinput_set_visible(void *ptr, int8_t visible) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetVisible: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetVisible: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->visible = visible ? 1 : 0;
 }
 
 int8_t rt_uitextinput_get_visible(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetVisible: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetVisible: expected Viper.Game.UI.HudTextInput");
     return ti ? ti->visible : 0;
 }
 
 void rt_uitextinput_set_enabled(void *ptr, int8_t enabled) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetEnabled: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetEnabled: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->enabled = enabled ? 1 : 0;
 }
 
 int8_t rt_uitextinput_get_enabled(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetEnabled: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetEnabled: expected Viper.Game.UI.HudTextInput");
     return ti ? ti->enabled : 0;
 }
 
 void rt_uitextinput_set_focused(void *ptr, int8_t focused) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetFocused: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetFocused: expected Viper.Game.UI.HudTextInput");
     if (!ti)
         return;
     ti->focused = focused ? 1 : 0;
@@ -597,27 +597,27 @@ void rt_uitextinput_set_focused(void *ptr, int8_t focused) {
 
 int8_t rt_uitextinput_get_focused(void *ptr) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.GetFocused: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.GetFocused: expected Viper.Game.UI.HudTextInput");
     return ti ? ti->focused : 0;
 }
 
 void rt_uitextinput_set_password_mode(void *ptr, int8_t password) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetPasswordMode: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetPasswordMode: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->password_mode = password ? 1 : 0;
 }
 
 void rt_uitextinput_set_placeholder(void *ptr, rt_string placeholder) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetPlaceholder: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetPlaceholder: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ui_copy_text(ti->placeholder, sizeof(ti->placeholder), placeholder);
 }
 
 void rt_uitextinput_set_max_codepoints(void *ptr, int64_t max_cps) {
     rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetMaxCodepoints: expected Viper.Game.UI.TextInput");
+        checked_textinput(ptr, "UITextInput.SetMaxCodepoints: expected Viper.Game.UI.HudTextInput");
     if (!ti)
         return;
     ti->max_codepoints = max_cps > 0 ? max_cps : 0;

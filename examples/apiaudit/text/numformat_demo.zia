@@ -1,8 +1,8 @@
 module NumFormatDemo;
 bind Viper.Terminal;
-bind Viper.Text.NumberFormat as NF;
+bind Viper.Text.InvariantNumberFormat as NF;
 func start() {
-    Say("=== Viper.Text.NumberFormat API Audit ===");
+    Say("=== Viper.Text.InvariantNumberFormat API Audit ===");
 
     // --- Decimals ---
     Say("--- Decimals ---");

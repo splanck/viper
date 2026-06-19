@@ -11,7 +11,7 @@
 //          instance options (fraction digit range, grouping on/off, strict
 //          mode, rounding policy). Delegates to the shared digit-grouping
 //          helper in rt_numfmt_internal.h so the existing
-//          Viper.Text.NumberFormat surface continues to work unchanged.
+//          Viper.Text.InvariantNumberFormat surface continues to work unchanged.
 //
 // Key invariants:
 //   - Every instance captures the Locale's rt_locale_data_t at construction;

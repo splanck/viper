@@ -384,7 +384,7 @@ void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color) {
 
 /// @brief Replace the label's displayed text, truncating to 511 bytes if needed.
 void rt_uilabel_set_text(void *ptr, rt_string text) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetText: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetText: expected Viper.Game.UI.HudLabel");
     if (!label)
         return;
     ui_copy_text(label->text, sizeof(label->text), text);
@@ -392,7 +392,7 @@ void rt_uilabel_set_text(void *ptr, rt_string text) {
 
 /// @brief Reposition the label to screen coordinates (x, y).
 void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetPos: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetPos: expected Viper.Game.UI.HudLabel");
     if (!label)
         return;
     label->x = x;
@@ -401,14 +401,14 @@ void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
 
 /// @brief Set the label's text color (RGBA packed integer).
 void rt_uilabel_set_color(void *ptr, int64_t color) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetColor: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetColor: expected Viper.Game.UI.HudLabel");
     if (label)
         label->color = color;
 }
 
 /// @brief Assign a BitmapFont for rendering; NULL uses the built-in 8x8 font.
 void rt_uilabel_set_font(void *ptr, void *font) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetFont: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetFont: expected Viper.Game.UI.HudLabel");
     if (!label)
         return;
     if (!ui_validate_bitmapfont(font, "UILabel.SetFont: expected BitmapFont"))
@@ -418,27 +418,27 @@ void rt_uilabel_set_font(void *ptr, void *font) {
 
 /// @brief Set the integer pixel scale for text rendering (minimum 1).
 void rt_uilabel_set_scale(void *ptr, int64_t scale) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetScale: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetScale: expected Viper.Game.UI.HudLabel");
     if (label)
         label->scale = ui_clamp_scale(scale);
 }
 
 /// @brief Show or hide the label; hidden labels are skipped during draw.
 void rt_uilabel_set_visible(void *ptr, int8_t visible) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.HudLabel");
     if (label)
         label->visible = visible ? 1 : 0;
 }
 
 /// @brief Return the label's current X position in screen coordinates.
 int64_t rt_uilabel_get_x(void *ptr) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.X: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.X: expected Viper.Game.UI.HudLabel");
     return label ? label->x : 0;
 }
 
 /// @brief Return the label's current Y position in screen coordinates.
 int64_t rt_uilabel_get_y(void *ptr) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Y: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Y: expected Viper.Game.UI.HudLabel");
     return label ? label->y : 0;
 }
 
@@ -449,7 +449,7 @@ int64_t rt_uilabel_get_y(void *ptr) {
 void rt_uilabel_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Draw: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Draw: expected Viper.Game.UI.HudLabel");
     if (!label || !ui_validate_canvas(canvas, "UILabel.Draw: expected Canvas"))
         return;
     if (!label->visible || label->text[0] == '\0')

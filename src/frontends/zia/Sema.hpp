@@ -414,8 +414,12 @@ class Sema {
         return methodSlotKey(decl);
     }
 
-    /// @brief Get the exact signature key for a method declaration in a specific owner type.
-    std::string methodSignatureKey(const std::string &ownerType, const MethodDecl *decl) const {
+    /// @brief Look up the cached signature key for a method in a specific owner type.
+    /// @details Returns "" on a cache miss (key not yet computed). Callers that
+    ///          need a guaranteed key should fall back to the computing overload
+    ///          @ref methodSignatureKey(const MethodDecl&). Named distinctly from
+    ///          the computing overloads so the lookup-vs-compute intent is clear.
+    std::string cachedMethodSignatureKey(const std::string &ownerType, const MethodDecl *decl) const {
         auto it = ownerMethodSignatureKeys_.find(MethodInstanceKey{ownerType, decl});
         if (it != ownerMethodSignatureKeys_.end())
             return it->second;
@@ -537,6 +541,20 @@ class Sema {
     /// @details Inherited class fields are resolved through @ref findFieldOwner so metadata stays
     ///          associated with the declaring class.
     TypeRef getFieldType(const std::string &typeName, const std::string &fieldName) const;
+
+    /// @brief A resolved field: its declaring owner and its type.
+    struct FieldResolution {
+        std::string owner; ///< Declaring type name.
+        TypeRef type;      ///< Field type.
+    };
+
+    /// @brief Resolve a field to its declaring owner and type in a single walk.
+    /// @details Fast-paths the common non-inherited case with no allocation and a
+    ///          single map probe; only allocates the cycle-detection set when it
+    ///          must walk base classes. @ref findFieldOwner and @ref getFieldType
+    ///          are thin wrappers so neither rebuilds the key or re-probes the map.
+    std::optional<FieldResolution> resolveFieldEntry(const std::string &typeName,
+                                                     const std::string &fieldName) const;
 
     /// @brief Look up method type from the cached method types.
     /// @param typeName The fully qualified type name (may be mangled for generics).
@@ -1811,7 +1829,10 @@ class Sema {
 
     /// @brief Map from expression pointers to their resolved types.
     /// @details Populated during expression analysis.
-    std::unordered_map<const Expr *, TypeRef> exprTypes_;
+    // Memoized inferred expression types. `mutable` because this is a cache, not
+    // part of the analyzer's logical state: const inference helpers may populate
+    // it without a const_cast.
+    mutable std::unordered_map<const Expr *, TypeRef> exprTypes_;
 
     /// @brief Map from type names to semantic types.
     /// @details Includes both built-in types and user-defined types.

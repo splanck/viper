@@ -33,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lexer.hpp"
+#include "frontends/zia/ZiaSupport.hpp"
 #include "frontends/common/CharUtils.hpp"
 #include "frontends/common/EscapeSequences.hpp"
 #include "frontends/common/NumberParsing.hpp"
@@ -471,12 +472,12 @@ std::string classifyLexError(const std::string &message) {
 
 } // anonymous namespace
 
-std::optional<TokenKind> Lexer::lookupKeyword(const std::string &name) {
+std::optional<TokenKind> Lexer::lookupKeyword(std::string_view name) {
     auto it = std::lower_bound(
         kKeywordTable.begin(),
         kKeywordTable.end(),
         name,
-        [](const KeywordEntry &entry, const std::string &key) { return entry.key < key; });
+        [](const KeywordEntry &entry, std::string_view key) { return entry.key < key; });
     if (it != kKeywordTable.end() && it->key == name)
         return it->kind;
     return std::nullopt;
@@ -856,8 +857,18 @@ Token Lexer::lexNumber() {
             return tok;
         }
 
+        size_t exponentDigits = 0;
         while (!eof() && (isDigit(peekChar()) || isNumericSeparator(peekChar()))) {
+            if (isDigit(peekChar()))
+                ++exponentDigits;
             tok.text.push_back(getChar());
+        }
+        // A binary64 exponent never exceeds 3 digits; cap well above that so the
+        // value parser is never handed an absurd magnitude.
+        if (exponentDigits > 6) {
+            reportErrorRange(tok.loc, currentLoc(), "numeric literal exponent is out of range");
+            tok.kind = TokenKind::Error;
+            return tok;
         }
     }
 
@@ -1032,6 +1043,8 @@ Token Lexer::lexString() {
             // Enter interpolation mode
             interpolationDepth_++;
             braceDepth_.push_back(0);
+            VIPER_ZIA_ASSERT(braceDepth_.size() == static_cast<size_t>(interpolationDepth_),
+                             "interpolation brace-depth stack out of sync with depth counter");
             return tok;
         }
 

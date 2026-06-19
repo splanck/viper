@@ -567,18 +567,18 @@ void *rt_uislider_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t min_v,
 }
 
 void rt_uislider_set_value(void *ptr, int64_t v) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetValue: expected Viper.Game.UI.Slider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetValue: expected Viper.Game.UI.HudSlider");
     if (s)
         s->current_value = slider_clamp_value(s, v);
 }
 
 int64_t rt_uislider_get_value(void *ptr) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Value: expected Viper.Game.UI.Slider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Value: expected Viper.Game.UI.HudSlider");
     return s ? s->current_value : 0;
 }
 
 void rt_uislider_set_step(void *ptr, int64_t step) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetStep: expected Viper.Game.UI.Slider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetStep: expected Viper.Game.UI.HudSlider");
     if (!s)
         return;
     s->step = step > 0 ? step : 1;
@@ -586,7 +586,7 @@ void rt_uislider_set_step(void *ptr, int64_t step) {
 }
 
 void rt_uislider_set_label(void *ptr, rt_string label) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetLabel: expected Viper.Game.UI.Slider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetLabel: expected Viper.Game.UI.HudSlider");
     if (!s)
         return;
     ui_copy_text(s->label, sizeof(s->label), label);
@@ -594,7 +594,7 @@ void rt_uislider_set_label(void *ptr, rt_string label) {
 }
 
 int8_t rt_uislider_handle_key(void *ptr, int64_t key_code) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.HandleKey: expected Viper.Game.UI.Slider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.HandleKey: expected Viper.Game.UI.HudSlider");
     if (!s || !s->visible || !s->enabled)
         return 0;
     int64_t before = s->current_value;
@@ -611,7 +611,7 @@ int8_t rt_uislider_handle_key(void *ptr, int64_t key_code) {
 
 int8_t rt_uislider_handle_mouse_down(void *ptr, int64_t mx, int64_t my) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.HandleMouseDown: expected Viper.Game.UI.Slider");
+        checked_slider(ptr, "UISlider.HandleMouseDown: expected Viper.Game.UI.HudSlider");
     if (!s || !s->visible || !s->enabled || !ui_point_inside(s->x, s->y, s->w, s->h, mx, my))
         return 0;
     s->dragging = 1;
@@ -620,7 +620,7 @@ int8_t rt_uislider_handle_mouse_down(void *ptr, int64_t mx, int64_t my) {
 
 int8_t rt_uislider_handle_mouse_drag(void *ptr, int64_t mx) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.HandleMouseDrag: expected Viper.Game.UI.Slider");
+        checked_slider(ptr, "UISlider.HandleMouseDrag: expected Viper.Game.UI.HudSlider");
     if (!s || !s->dragging || !s->enabled)
         return 0;
     return slider_set_from_mouse(s, mx);
@@ -628,7 +628,7 @@ int8_t rt_uislider_handle_mouse_drag(void *ptr, int64_t mx) {
 
 int8_t rt_uislider_handle_mouse_up(void *ptr) {
     rt_uislider_impl *s =
-        checked_slider(ptr, "UISlider.HandleMouseUp: expected Viper.Game.UI.Slider");
+        checked_slider(ptr, "UISlider.HandleMouseUp: expected Viper.Game.UI.HudSlider");
     if (!s)
         return 0;
     int8_t was = s->dragging;
@@ -637,7 +637,7 @@ int8_t rt_uislider_handle_mouse_up(void *ptr) {
 }
 
 void rt_uislider_draw(void *ptr, void *canvas) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Draw: expected Viper.Game.UI.Slider");
+    rt_uislider_impl *s = checked_slider(ptr, "UISlider.Draw: expected Viper.Game.UI.HudSlider");
     if (!s || !canvas || !ui_validate_canvas(canvas, "UISlider.Draw: expected Canvas"))
         return;
     if (!s->visible)
@@ -718,7 +718,7 @@ void *rt_uidropdown_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 
 void rt_uidropdown_add_option(void *ptr, rt_string text) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.AddOption: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.AddOption: expected Viper.Game.UI.HudDropdown");
     if (!dd)
         return;
     if (dd->option_count >= RT_UIDROPDOWN_MAX_OPTIONS) {
@@ -733,7 +733,7 @@ void rt_uidropdown_add_option(void *ptr, rt_string text) {
 
 void rt_uidropdown_clear_options(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.ClearOptions: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.ClearOptions: expected Viper.Game.UI.HudDropdown");
     if (!dd)
         return;
     memset(dd->options, 0, sizeof(dd->options));
@@ -744,13 +744,13 @@ void rt_uidropdown_clear_options(void *ptr) {
 
 int64_t rt_uidropdown_get_selected(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Selected: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.Selected: expected Viper.Game.UI.HudDropdown");
     return dd ? dd->selected : -1;
 }
 
 void rt_uidropdown_set_selected(void *ptr, int64_t index) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.SetSelected: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.SetSelected: expected Viper.Game.UI.HudDropdown");
     if (!dd)
         return;
     dd->selected = index < 0 || index >= dd->option_count ? -1 : index;
@@ -758,7 +758,7 @@ void rt_uidropdown_set_selected(void *ptr, int64_t index) {
 
 rt_string rt_uidropdown_get_selected_text(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.SelectedText: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.SelectedText: expected Viper.Game.UI.HudDropdown");
     if (!dd || dd->selected < 0 || dd->selected >= dd->option_count)
         return rt_str_empty();
     return rt_const_cstr(dd->options[dd->selected]);
@@ -766,27 +766,27 @@ rt_string rt_uidropdown_get_selected_text(void *ptr) {
 
 int8_t rt_uidropdown_is_open(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.IsOpen: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.IsOpen: expected Viper.Game.UI.HudDropdown");
     return dd ? dd->open : 0;
 }
 
 void rt_uidropdown_open(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Open: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.Open: expected Viper.Game.UI.HudDropdown");
     if (dd && dd->enabled && dd->visible)
         dd->open = 1;
 }
 
 void rt_uidropdown_close(void *ptr) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Close: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.Close: expected Viper.Game.UI.HudDropdown");
     if (dd)
         dd->open = 0;
 }
 
 int8_t rt_uidropdown_handle_click(void *ptr, int64_t mx, int64_t my) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.HandleClick: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.HandleClick: expected Viper.Game.UI.HudDropdown");
     if (!dd || !dd->enabled || !dd->visible)
         return 0;
     if (ui_point_inside(dd->x, dd->y, dd->w, dd->h, mx, my)) {
@@ -808,7 +808,7 @@ int8_t rt_uidropdown_handle_click(void *ptr, int64_t mx, int64_t my) {
 
 int8_t rt_uidropdown_handle_key(void *ptr, int64_t key_code) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.HandleKey: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.HandleKey: expected Viper.Game.UI.HudDropdown");
     if (!dd || !dd->enabled || !dd->visible || dd->option_count <= 0)
         return 0;
     if (key_code == UI_KEY_ESCAPE) {
@@ -832,7 +832,7 @@ int8_t rt_uidropdown_handle_key(void *ptr, int64_t key_code) {
 
 void rt_uidropdown_draw(void *ptr, void *canvas) {
     rt_uidropdown_impl *dd =
-        checked_dropdown(ptr, "UIDropdown.Draw: expected Viper.Game.UI.Dropdown");
+        checked_dropdown(ptr, "UIDropdown.Draw: expected Viper.Game.UI.HudDropdown");
     if (!dd || !canvas || !ui_validate_canvas(canvas, "UIDropdown.Draw: expected Canvas"))
         return;
     if (!dd->visible)
@@ -925,21 +925,21 @@ void *rt_uitooltip_new(void) {
 
 void rt_uitooltip_set_text(void *ptr, rt_string text) {
     rt_uitooltip_impl *t =
-        checked_tooltip(ptr, "UITooltip.SetText: expected Viper.Game.UI.Tooltip");
+        checked_tooltip(ptr, "UITooltip.SetText: expected Viper.Game.UI.HudTooltip");
     if (t)
         ui_copy_text(t->text, sizeof(t->text), text);
 }
 
 void rt_uitooltip_set_hover_delay_ms(void *ptr, int64_t ms) {
     rt_uitooltip_impl *t =
-        checked_tooltip(ptr, "UITooltip.SetHoverDelayMs: expected Viper.Game.UI.Tooltip");
+        checked_tooltip(ptr, "UITooltip.SetHoverDelayMs: expected Viper.Game.UI.HudTooltip");
     if (t)
         t->hover_delay_ms = ms < 0 ? 0 : ms;
 }
 
 void rt_uitooltip_update(
     void *ptr, int64_t mx, int64_t my, int8_t hovered_target, int64_t delta_ms) {
-    rt_uitooltip_impl *t = checked_tooltip(ptr, "UITooltip.Update: expected Viper.Game.UI.Tooltip");
+    rt_uitooltip_impl *t = checked_tooltip(ptr, "UITooltip.Update: expected Viper.Game.UI.HudTooltip");
     if (!t)
         return;
     t->target_x = mx;
@@ -959,7 +959,7 @@ void rt_uitooltip_update(
 }
 
 void rt_uitooltip_draw(void *ptr, void *canvas) {
-    rt_uitooltip_impl *t = checked_tooltip(ptr, "UITooltip.Draw: expected Viper.Game.UI.Tooltip");
+    rt_uitooltip_impl *t = checked_tooltip(ptr, "UITooltip.Draw: expected Viper.Game.UI.HudTooltip");
     if (!t || !canvas || !ui_validate_canvas(canvas, "UITooltip.Draw: expected Canvas"))
         return;
     if (!t->visible || t->text[0] == '\0')

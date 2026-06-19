@@ -223,10 +223,23 @@ std::string stripPreprocessor(std::string input) {
 
 std::unordered_map<std::string, std::string> runtimeDefCanonicalsToSymbols() {
     const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
-    const std::regex re(R"RTFUNC(RT_FUNC\([^,]+,\s*(rt_[A-Za-z0-9_]+)\s*,\s*"([^"]+)")RTFUNC");
+    const std::regex funcRe(
+        R"RTFUNC(RT_FUNC\(\s*([A-Za-z0-9_]+)\s*,\s*(rt_[A-Za-z0-9_]+)\s*,\s*"([^"]+)")RTFUNC");
+    const std::regex aliasRe(R"RTALIAS(RT_ALIAS\(\s*"([^"]+)"\s*,\s*([A-Za-z0-9_]+)\s*\))RTALIAS");
     std::unordered_map<std::string, std::string> out;
-    for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it) {
-        out.emplace((*it)[2].str(), (*it)[1].str());
+    std::unordered_map<std::string, std::string> idsToSymbols;
+
+    for (std::sregex_iterator it(text.begin(), text.end(), funcRe), end; it != end; ++it) {
+        const std::string id = (*it)[1].str();
+        const std::string symbol = (*it)[2].str();
+        idsToSymbols.emplace(id, symbol);
+        out.emplace((*it)[3].str(), symbol);
+    }
+
+    for (std::sregex_iterator it(text.begin(), text.end(), aliasRe), end; it != end; ++it) {
+        const auto target = idsToSymbols.find((*it)[2].str());
+        if (target != idsToSymbols.end())
+            out.emplace((*it)[1].str(), target->second);
     }
     return out;
 }

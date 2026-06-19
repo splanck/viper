@@ -1113,7 +1113,7 @@ Current scope:
 
 - `SceneNode3D` bindings currently cover `Physics3DBody` and `AnimController3D`.
 - `NavAgent3D` now provides its own `BindNode` / `BindCharacter` workflow for navigation-driven motion.
-- `SoundListener3D` and `SoundSource3D` now use `Sound3D.SyncBindings(dt)`, and `Scene3D.SyncBindings(dt)` forwards into that audio-binding pass after node/body/anim synchronization.
+- `SoundListener3D` and `SoundSource3D` now use `SpatialAudio3D.SyncBindings(dt)`, and `Scene3D.SyncBindings(dt)` forwards into that audio-binding pass after node/body/anim synchronization.
 
 ## Model3D
 
@@ -1862,12 +1862,12 @@ func start() {
 - `Yaw`/`Pitch` properties allow reading/writing the current angles and rebuild the view immediately
 - Use `Mouse.Capture()` to hide cursor and enable warp-to-center mouse tracking
 
-## Sound3D
+## Spatial Audio
 
 Spatial audio now has two layers:
 
 - `SoundListener3D` and `SoundSource3D` are the preferred gameplay-facing APIs.
-- `Sound3D` remains as the low-level compatibility layer for direct listener/voice control.
+- `SpatialAudio3D` remains as the low-level compatibility layer for direct listener/voice control.
 
 ### SoundListener3D
 
@@ -1879,7 +1879,7 @@ An `SoundListener3D` owns the active listener transform used for attenuation and
 | `Forward` | `Vec3` | read/write | Listener facing direction |
 | `Up` | `Vec3` | read/write | Listener up direction used to derive the right vector |
 | `Velocity` | `Vec3` | read/write | Listener velocity |
-| `IsActive` | `Boolean` | read/write | Whether this listener is driving `Sound3D` |
+| `IsActive` | `Boolean` | read/write | Whether this listener is driving `SpatialAudio3D` |
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -1923,8 +1923,8 @@ An `SoundSource3D` owns one spatial sound instance. It caches world-space positi
 
 Bound audio objects are explicit, just like physics/animation bindings:
 
-- `Sound3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
-- `Scene3D.SyncBindings(dt)` calls `Sound3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
+- `SpatialAudio3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
+- `Scene3D.SyncBindings(dt)` calls `SpatialAudio3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
 - Property setters such as `source.Position = ...` update the cached spatial state immediately even when no scene binding is involved.
 - `BindNode` accepts only `SceneNode3D`, `BindCamera` accepts only `Camera3D`, and non-Vec3 position/velocity/forward values are ignored. Null vectors still collapse to origin for compatibility.
 - `SoundSource3D.MaxDistance` is finite and non-negative; invalid values become `0.0`.
@@ -1934,18 +1934,18 @@ Recommended frame order for scene-driven audio:
 
 1. Move cameras and scene nodes.
 2. Call `Scene3D.SyncBindings(dt)`.
-3. Trigger `SoundSource3D.Play()` or `Sound3D.PlayAt(...)` calls for the frame.
+3. Trigger `SoundSource3D.Play()` or `SpatialAudio3D.PlayAt(...)` calls for the frame.
 
-### Sound3D Compatibility Layer
+### SpatialAudio3D Compatibility Layer
 
-`Sound3D` is still available when you want direct listener/voice control without allocating objects.
+`SpatialAudio3D` is available when you want direct listener/voice control without allocating objects.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Sound3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
-| `Sound3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
-| `Sound3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
-| `Sound3D.SyncBindings(dt)` | `void(f64)` | Update all bound `SoundListener3D` / `SoundSource3D` objects |
+| `SpatialAudio3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
+| `SpatialAudio3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
+| `SpatialAudio3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
+| `SpatialAudio3D.SyncBindings(dt)` | `void(f64)` | Update all bound `SoundListener3D` / `SoundSource3D` objects |
 
 ### Zia Example
 
@@ -1974,7 +1974,7 @@ func start() {
     source.MaxDistance = 20.0;
     source.Volume = 75;
 
-    Sound3D.SyncBindings(0.016);
+    SpatialAudio3D.SyncBindings(0.016);
 
     if (Audio.IsAvailable() && Audio.Init() != 0) {
         var voice = source.Play();
@@ -1985,7 +1985,7 @@ func start() {
 
 - Linear distance attenuation stays at full volume through `refDist`, then falls to zero at `maxDist`
 - Pan is derived from the listener's right vector and the source direction in world space
-- `Sound3D.PlayAt` still records per-voice `max_distance`, and `UpdateVoice(..., 0.0)` reuses that stored value
+- `SpatialAudio3D.PlayAt` still records per-voice `max_distance`, and `UpdateVoice(..., 0.0)` reuses that stored value
 - `SoundSource3D.DopplerFactor` exposes the latest factor computed from listener/source velocity; the current mixer applies volume and pan, with playback-rate application reserved for rate-capable backends
 
 ## Mouse Capture
@@ -3363,7 +3363,7 @@ Procedural grass/foliage rendering with wind animation and LOD.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetDensityMap(pixels)` | `void(obj)` | Set density map (Pixels grayscale, white = full density) |
-| `SetWindParams(strength, frequency, turbulence)` | `void(f64, f64, f64)` | Set wind animation parameters |
+| `SetWindParams(speed, strength, turbulence)` | `void(f64, f64, f64)` | Set wind animation parameters |
 | `SetLODDistances(near, far)` | `void(f64, f64)` | Set LOD transition distances |
 | `SetBladeSize(width, height, variance)` | `void(f64, f64, f64)` | Set grass blade dimensions |
 | `Populate(camera, maxBlades)` | `void(obj, i64)` | Generate blade instances around camera |
@@ -3392,7 +3392,7 @@ func start() {
     var veg = Vegetation3D.New(terrain);
     Vegetation3D.SetDensityMap(veg, Pixels.Load("grass_density.png"));
     Vegetation3D.SetBladeSize(veg, 0.1, 0.4, 0.15);
-    Vegetation3D.SetWindParams(veg, 0.5, 1.2, 0.3);
+    Vegetation3D.SetWindParams(veg, 1.2, 0.5, 0.3);
     Vegetation3D.SetLODDistances(veg, 30.0, 60.0);
     Vegetation3D.Populate(veg, cam, 50000);
 

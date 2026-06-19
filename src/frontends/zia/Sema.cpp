@@ -31,6 +31,7 @@
 
 #include "frontends/zia/Sema.hpp"
 #include "frontends/zia/Types.hpp"
+#include "frontends/zia/ZiaSupport.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include <algorithm>
 #include <cassert>
@@ -300,22 +301,42 @@ int conversionCost(TypeRef paramType, TypeRef argType, bool allowRuntimeObjectCo
 /// @details Structs only check their own field table entry. Classes walk the base-class chain
 ///          and keep inherited field metadata attached to the declaring owner instead of
 ///          duplicating it under each derived type.
-std::optional<std::string> Sema::findFieldOwner(const std::string &typeName,
-                                                const std::string &fieldName) const {
-    std::unordered_set<std::string> visited;
-    std::string current = typeName;
-    while (!current.empty() && visited.insert(current).second) {
-        const std::string key = current + "." + fieldName;
-        if (fieldTypes_.find(key) != fieldTypes_.end())
-            return current;
+std::optional<Sema::FieldResolution> Sema::resolveFieldEntry(const std::string &typeName,
+                                                             const std::string &fieldName) const {
+    // Fast path: a directly-declared field needs no base-class walk and no
+    // cycle-detection allocation (the common case for structs and own fields).
+    auto it = fieldTypes_.find(typeName + "." + fieldName);
+    if (it != fieldTypes_.end())
+        return FieldResolution{typeName, it->second};
 
-        auto classIt = classDecls_.find(current);
+    auto classIt = classDecls_.find(typeName);
+    if (classIt == classDecls_.end() || !classIt->second || classIt->second->baseClass.empty())
+        return std::nullopt;
+
+    // Slow path: walk base classes, guarding against inheritance cycles.
+    std::unordered_set<std::string> visited;
+    visited.insert(typeName);
+    std::string current = classIt->second->baseClass;
+    while (!current.empty() && visited.insert(current).second) {
+        it = fieldTypes_.find(current + "." + fieldName);
+        if (it != fieldTypes_.end())
+            return FieldResolution{current, it->second};
+
+        classIt = classDecls_.find(current);
         if (classIt == classDecls_.end() || !classIt->second || classIt->second->baseClass.empty())
             break;
         current = classIt->second->baseClass;
     }
 
     return std::nullopt;
+}
+
+std::optional<std::string> Sema::findFieldOwner(const std::string &typeName,
+                                                const std::string &fieldName) const {
+    auto resolved = resolveFieldEntry(typeName, fieldName);
+    if (!resolved)
+        return std::nullopt;
+    return resolved->owner;
 }
 
 /// @brief Resolve a field type visible from a type.
@@ -325,12 +346,8 @@ std::optional<std::string> Sema::findFieldOwner(const std::string &typeName,
 /// @details Delegates owner resolution to @ref findFieldOwner so inherited class fields are
 ///          found without rewriting their declaring-owner metadata.
 TypeRef Sema::getFieldType(const std::string &typeName, const std::string &fieldName) const {
-    auto owner = findFieldOwner(typeName, fieldName);
-    if (!owner)
-        return nullptr;
-    const std::string key = *owner + "." + fieldName;
-    auto it = fieldTypes_.find(key);
-    return it != fieldTypes_.end() ? it->second : nullptr;
+    auto resolved = resolveFieldEntry(typeName, fieldName);
+    return resolved ? resolved->type : nullptr;
 }
 
 Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag) {
@@ -433,7 +450,10 @@ bool Sema::registerFunctionOverload(const std::string &name,
     functionDeclTypes_[decl] = funcType;
 
     auto overloadLoweredName = [&](FunctionDecl *fn) {
-        TypeRef type = functionDeclTypes_[fn];
+        auto typeIt = functionDeclTypes_.find(fn);
+        VIPER_ZIA_ASSERT(typeIt != functionDeclTypes_.end(),
+                         "function type must be registered before building its lowered name");
+        TypeRef type = typeIt->second;
         return name + "__ov__" + std::to_string(type->paramTypes().size()) + "__" +
                joinTypeKeys(type->paramTypes());
     };
@@ -473,7 +493,13 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
     const MethodInstanceKey instanceKey{ownerType, decl};
     const std::string sigKey = methodSignatureKey(*decl, methodType);
     for (auto *existing : family) {
-        if (methodSignatureKey(ownerType, existing) == sigKey) {
+        // On a cache miss the lookup returns ""; recompute from the decl so a
+        // genuine duplicate is still detected (mirrors the lookup+recompute
+        // pattern used elsewhere) and an empty key is never a false match.
+        std::string existingKey = cachedMethodSignatureKey(ownerType, existing);
+        if (existingKey.empty())
+            existingKey = methodSignatureKey(*existing);
+        if (existingKey == sigKey) {
             error(loc,
                   "Duplicate definition of '" + decl->name + "' in type '" + ownerType +
                       "' with the same signature");
@@ -485,14 +511,16 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
     ownerMethodTypes_[instanceKey] = methodType;
     ownerMethodSignatureKeys_[instanceKey] = sigKey;
     ownerMethodDispatchKeys_[instanceKey] = methodDispatchKey(*decl, methodType);
-    if (!methodDeclTypes_.count(decl))
-        methodDeclTypes_[decl] = methodType;
+    methodDeclTypes_.try_emplace(decl, methodType);
     methodSignatureKeys_.try_emplace(decl, sigKey);
     methodDispatchKeys_.try_emplace(decl, methodDispatchKey(*decl, methodType));
 
     auto overloadLoweredMethodName = [&](MethodDecl *method) {
         MethodInstanceKey key{ownerType, method};
-        TypeRef type = ownerMethodTypes_[key];
+        auto typeIt = ownerMethodTypes_.find(key);
+        VIPER_ZIA_ASSERT(typeIt != ownerMethodTypes_.end(),
+                         "method type must be registered before building its lowered name");
+        TypeRef type = typeIt->second;
         return ownerType + "." + method->name + "__ov__" +
                std::to_string(type->paramTypes().size()) + "__" + joinTypeKeys(type->paramTypes());
     };
@@ -526,7 +554,7 @@ std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeNa
         if (it == methodOverloads_.end())
             return;
         for (auto *method : it->second) {
-            std::string sigKey = methodSignatureKey(owner, method);
+            std::string sigKey = cachedMethodSignatureKey(owner, method);
             if (sigKey.empty())
                 sigKey = methodSignatureKey(*method);
             if (seenSignatures.insert(sigKey).second)
@@ -561,13 +589,18 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
     FunctionDecl *firstInaccessible = nullptr;
     int bestScore = std::numeric_limits<int>::max();
     bool ambiguous = false;
-    std::vector<std::string> candidateSigs;
+    std::vector<const FunctionDecl *> viableDecls;
 
     for (auto *decl : it->second) {
+        // Fetch the declared type once via find(); operator[] would insert a
+        // null entry for an unregistered decl and silently mask the omission.
+        auto declTypeIt = functionDeclTypes_.find(decl);
+        TypeRef funcType = declTypeIt != functionDeclTypes_.end() ? declTypeIt->second : nullptr;
+
         Symbol accessSym;
         accessSym.kind = Symbol::Kind::Function;
         accessSym.name = name;
-        accessSym.type = functionDeclTypes_[decl];
+        accessSym.type = funcType;
         accessSym.decl = decl;
         accessSym.loc = decl->loc;
         accessSym.isExported = decl->isExported;
@@ -577,7 +610,6 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
             continue;
         }
 
-        TypeRef funcType = functionDeclTypes_[decl];
         const auto &params = decl->params;
         if (!callArityMatches(params, argTypes.size()))
             continue;
@@ -605,7 +637,7 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
             score += static_cast<int>(fixedCount - argTypes.size()) * 3;
         if (hasVariadic && argTypes.size() > fixedCount)
             score += static_cast<int>(argTypes.size() - fixedCount);
-        candidateSigs.push_back(loweredFunctionNames_[decl]);
+        viableDecls.push_back(decl);
 
         if (score < bestScore) {
             best = decl;
@@ -618,10 +650,12 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
 
     if (!best) {
         if (firstInaccessible) {
+            auto inaccTypeIt = functionDeclTypes_.find(firstInaccessible);
             Symbol accessSym;
             accessSym.kind = Symbol::Kind::Function;
             accessSym.name = name;
-            accessSym.type = functionDeclTypes_[firstInaccessible];
+            accessSym.type =
+                inaccTypeIt != functionDeclTypes_.end() ? inaccTypeIt->second : nullptr;
             accessSym.decl = firstInaccessible;
             accessSym.loc = firstInaccessible->loc;
             accessSym.isExported = firstInaccessible->isExported;
@@ -630,11 +664,16 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
         return nullptr;
     }
     if (ambiguous) {
+        // Build candidate signature strings only on the (rare) ambiguous path.
+        std::vector<std::string> candidateSigs;
+        candidateSigs.reserve(viableDecls.size());
+        for (auto *cand : viableDecls)
+            candidateSigs.push_back(loweredFunctionName(cand));
         error(loc, "Ambiguous call to '" + name + "': " + formatOverloadCandidates(candidateSigs));
         return nullptr;
     }
     if (loweredName)
-        *loweredName = loweredFunctionNames_[best];
+        *loweredName = loweredFunctionName(best);
     return best;
 }
 
@@ -656,7 +695,7 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
         if (it == methodOverloads_.end())
             return;
         for (auto *decl : it->second) {
-            std::string sigKey = methodSignatureKey(candidateOwner, decl);
+            std::string sigKey = cachedMethodSignatureKey(candidateOwner, decl);
             if (sigKey.empty())
                 sigKey = methodSignatureKey(*decl);
             if (!seenSignatures.insert(sigKey).second)
@@ -932,10 +971,11 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
 
         TypeRef paramType = params[i].type;
         Expr *argExpr = args[static_cast<size_t>(sourceIndex)].value.get();
-        TypeRef rawArgType = exprTypes_.count(argExpr) ? exprTypes_.at(argExpr) : nullptr;
+        auto rawArgTypeIt = exprTypes_.find(argExpr);
+        TypeRef rawArgType = rawArgTypeIt != exprTypes_.end() ? rawArgTypeIt->second : nullptr;
         TypeRef argType = contextualizeEmptyCollectionArg(argExpr, rawArgType, paramType);
         if (argType != rawArgType)
-            const_cast<Sema *>(this)->exprTypes_[argExpr] = argType;
+            exprTypes_[argExpr] = argType;
         int cost = conversionCost(paramType, argType, allowRuntimeObjectCoercion);
         if (allowRuntimeObjectCoercion && paramType && paramType->kind == TypeKindSem::Ptr &&
             argType && argType->kind == TypeKindSem::Function &&
@@ -957,10 +997,11 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
         TypeRef elemType = listType ? listType->elementType() : nullptr;
         for (int sourceIndex : binding.variadicSources) {
             Expr *argExpr = args[static_cast<size_t>(sourceIndex)].value.get();
-            TypeRef rawArgType = exprTypes_.count(argExpr) ? exprTypes_.at(argExpr) : nullptr;
+            auto rawArgTypeIt = exprTypes_.find(argExpr);
+            TypeRef rawArgType = rawArgTypeIt != exprTypes_.end() ? rawArgTypeIt->second : nullptr;
             TypeRef argType = contextualizeEmptyCollectionArg(argExpr, rawArgType, elemType);
             if (argType != rawArgType)
-                const_cast<Sema *>(this)->exprTypes_[argExpr] = argType;
+                exprTypes_[argExpr] = argType;
             int cost = conversionCost(elemType, argType, allowRuntimeObjectCoercion);
             if (allowRuntimeObjectCoercion && elemType && elemType->kind == TypeKindSem::Ptr &&
                 argType && argType->kind == TypeKindSem::Function &&
@@ -1126,7 +1167,8 @@ FunctionDecl *Sema::resolveFunctionArgOverload(const std::string &name,
         Symbol accessSym;
         accessSym.kind = Symbol::Kind::Function;
         accessSym.name = name;
-        accessSym.type = functionDeclTypes_[decl];
+        auto declTypeIt = functionDeclTypes_.find(decl);
+        accessSym.type = declTypeIt != functionDeclTypes_.end() ? declTypeIt->second : nullptr;
         accessSym.decl = decl;
         accessSym.loc = decl->loc;
         accessSym.isExported = decl->isExported;
@@ -1146,11 +1188,11 @@ FunctionDecl *Sema::resolveFunctionArgOverload(const std::string &name,
         if (!bindCallArgs(args, specs, loc, name, binding, &score, false))
             continue;
 
-        std::string lowered = loweredFunctionNames_[decl];
+        std::string lowered = loweredFunctionName(decl);
         candidateSigs.push_back(lowered);
         if (score < bestScore) {
             best = decl;
-            bestBinding = binding;
+            bestBinding = std::move(binding);
             bestScore = score;
             ambiguous = false;
         } else if (score == bestScore) {
@@ -1163,7 +1205,9 @@ FunctionDecl *Sema::resolveFunctionArgOverload(const std::string &name,
             Symbol accessSym;
             accessSym.kind = Symbol::Kind::Function;
             accessSym.name = name;
-            accessSym.type = functionDeclTypes_[firstInaccessible];
+            auto inaccTypeIt = functionDeclTypes_.find(firstInaccessible);
+            accessSym.type =
+                inaccTypeIt != functionDeclTypes_.end() ? inaccTypeIt->second : nullptr;
             accessSym.decl = firstInaccessible;
             accessSym.loc = firstInaccessible->loc;
             accessSym.isExported = firstInaccessible->isExported;
@@ -1176,7 +1220,7 @@ FunctionDecl *Sema::resolveFunctionArgOverload(const std::string &name,
         return nullptr;
     }
     if (loweredName)
-        *loweredName = loweredFunctionNames_[best];
+        *loweredName = loweredFunctionName(best);
     if (bindingOut)
         *bindingOut = bestBinding;
     return best;
@@ -1203,7 +1247,7 @@ MethodDecl *Sema::resolveMethodArgOverload(const std::string &ownerType,
             return;
 
         for (auto *decl : it->second) {
-            std::string sigKey = methodSignatureKey(candidateOwner, decl);
+            std::string sigKey = cachedMethodSignatureKey(candidateOwner, decl);
             if (sigKey.empty())
                 sigKey = methodSignatureKey(*decl);
             if (!seenSignatures.insert(sigKey).second)
@@ -1224,7 +1268,7 @@ MethodDecl *Sema::resolveMethodArgOverload(const std::string &ownerType,
             candidates.push_back(lowered.empty() ? (candidateOwner + "." + decl->name) : lowered);
             if (score < bestScore) {
                 best = decl;
-                bestBinding = binding;
+                bestBinding = std::move(binding);
                 bestOwner = candidateOwner;
                 bestScore = score;
                 ambiguous = false;
@@ -1284,13 +1328,13 @@ MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,
     auto classIt = lookupClassDeclForType(ownerType);
     if (!classIt)
         return nullptr;
-    const std::string wanted = methodSignatureKey(ownerType, &decl);
+    const std::string wanted = cachedMethodSignatureKey(ownerType, &decl);
     std::string parentName = classIt->baseClass;
     while (!parentName.empty()) {
         auto famIt = methodOverloads_.find(parentName + "." + decl.name);
         if (famIt != methodOverloads_.end()) {
             for (auto *candidate : famIt->second) {
-                std::string candidateKey = methodSignatureKey(parentName, candidate);
+                std::string candidateKey = cachedMethodSignatureKey(parentName, candidate);
                 if (candidateKey.empty())
                     candidateKey = methodSignatureKey(*candidate);
                 if (candidateKey == wanted)

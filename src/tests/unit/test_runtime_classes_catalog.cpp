@@ -154,7 +154,7 @@ int main() {
     assert(guiToolbarCls != nullptr && "Viper.GUI.Toolbar not found in catalog");
     assert(hasMethod(*guiToolbarCls, "NewVertical", "obj(obj)"));
 
-    constexpr std::array<std::string_view, 44> graphics2DClasses = {
+    constexpr std::array<std::string_view, 43> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D",
         "Viper.Graphics.Surface2D",
         "Viper.Graphics.Texture2D",
@@ -198,7 +198,6 @@ int main() {
         "Viper.Graphics.TexturePackerAtlas",
         "Viper.Graphics.AsepriteImporter",
         "Viper.Graphics.TiledMapLoader",
-        "Viper.Graphics.Lighting2D",
     };
 
     for (std::string_view qname : graphics2DClasses) {

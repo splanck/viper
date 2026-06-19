@@ -124,7 +124,7 @@ void *rt_zia_toolchain_compile(rt_string source);
 void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
 
 /// @brief Create a project language index rooted at @p root.
-/// @return Opaque Viper.Zia.ProjectIndex.Handle object, or null when editor services are
+/// @return Opaque Viper.Zia.ProjectIndex.ProjectIndexHandle object, or null when editor services are
 ///         unavailable.
 void *rt_zia_project_index_new(rt_string root);
 

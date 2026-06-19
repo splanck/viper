@@ -30,9 +30,9 @@
 
 #include "rt_graphics_stubs_internal.h"
 
-/* Sound3D stubs */
+/* SpatialAudio3D and object-backed spatial-audio stubs */
 
-/// @brief Stub for `Sound3D.SetListener` — set the active listener and
+/// @brief Stub for `SpatialAudio3D.SetListener` — set the active listener and
 ///        its forward orientation. Convenience wrapper around the
 ///        SoundListener3D class for callers that don't need full per-
 ///        listener state.
@@ -157,7 +157,7 @@ void rt_sound3d_register_voice(int64_t v, double md, int64_t bv) {
     rt_sound3d_register_voice_ex(v, 0.0, md, bv);
 }
 
-/// @brief Stub for `Sound3D.PlayAt` — would normally play sound `s` at
+/// @brief Stub for `SpatialAudio3D.PlayAt` — would normally play sound `s` at
 ///        world-space position `p` with maximum-distance attenuation
 ///        cutoff `d` and base volume `v`. Returns the assigned voice id,
 ///        or `0` on failure.
@@ -178,7 +178,7 @@ int64_t rt_sound3d_play_at(void *s, void *p, double d, int64_t v) {
     return 0;
 }
 
-/// @brief Stub for `Sound3D.UpdateVoice` — update the world-space
+/// @brief Stub for `SpatialAudio3D.UpdateVoice` — update the world-space
 ///        position and max-distance of an already-playing voice (use to
 ///        track moving emitters that aren't bound to a SceneNode3D).
 ///
@@ -201,7 +201,7 @@ void rt_sound3d_update_voice_ex(int64_t v, void *p, const double *sv, double rd,
     (void)md;
 }
 
-/// @brief Stub for `Sound3D.SyncBindings` — batch-update spatial
+/// @brief Stub for `SpatialAudio3D.SyncBindings` — batch-update spatial
 ///        positions for every SoundListener3D and SoundSource3D bound to
 ///        a SceneNode3D or Camera3D. Should be called once per frame
 ///        before any draw calls so audio reflects the same world state.
@@ -621,7 +621,7 @@ void rt_soundsource3d_stop(void *s) {
 
 /// @brief Stub for `SoundSource3D.BindNode` — attach a SceneNode3D so
 ///        the source's position follows the node each frame
-///        (`Sound3D.SyncBindings(dt)`).
+///        (`SpatialAudio3D.SyncBindings(dt)`).
 ///
 /// Silent no-op stub.
 ///

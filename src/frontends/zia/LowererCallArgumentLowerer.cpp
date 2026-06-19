@@ -13,6 +13,7 @@
 #include "frontends/zia/LowererCallArgumentLowerer.hpp"
 
 #include "frontends/zia/RuntimeNames.hpp"
+#include "frontends/zia/ZiaSupport.hpp"
 
 namespace il::frontends::zia {
 
@@ -94,7 +95,7 @@ std::vector<Lowerer::Value> CallArgumentLowerer::lowerResolvedArgs(
         int sourceIndex =
             i < binding->fixedParamSources.size() ? binding->fixedParamSources[i] : -1;
         if (sourceIndex >= 0) {
-            size_t idx = static_cast<size_t>(sourceIndex);
+            size_t idx = toIndex(sourceIndex);
             TypeRef argType = lowerer_.sema_.typeOf(args[idx].value.get());
             auto coerced = lowerer_.coerceValueToType(
                 lowered[idx].value, lowered[idx].type, argType, paramTypes[i]);
@@ -128,7 +129,7 @@ std::vector<Lowerer::Value> CallArgumentLowerer::lowerResolvedArgs(
         Type elemIlType = elemType ? lowerer_.mapType(elemType) : Type(Type::Kind::I64);
 
         for (int sourceIndex : binding->variadicSources) {
-            size_t idx = static_cast<size_t>(sourceIndex);
+            size_t idx = toIndex(sourceIndex);
             TypeRef argType = lowerer_.sema_.typeOf(args[idx].value.get());
             auto coerced = lowerer_.coerceValueToType(
                 lowered[idx].value, lowered[idx].type, argType, elemType);

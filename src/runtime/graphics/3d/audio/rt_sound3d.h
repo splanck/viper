@@ -67,7 +67,7 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
                                         int64_t *out_volume,
                                         int64_t *out_pan,
                                         double *out_doppler);
-/// @brief Register an existing voice for later Sound3D.UpdateVoice fallback lookups.
+/// @brief Register an existing voice for later SpatialAudio3D.UpdateVoice fallback lookups.
 void rt_sound3d_register_voice(int64_t voice, double max_distance, int64_t base_volume);
 /// @brief Register an existing voice with explicit reference/max falloff distances.
 void rt_sound3d_register_voice_ex(int64_t voice,
