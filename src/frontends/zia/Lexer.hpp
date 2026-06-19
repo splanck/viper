@@ -15,14 +15,14 @@
 ///
 /// **Identifiers and Keywords:**
 /// - Identifiers: `foo`, `myVariable`, `_private`
-/// - 33 reserved keywords: `var`, `func`, `class`, `if`, `while`, etc.
+/// - 53 reserved keywords: `var`, `func`, `class`, `if`, `while`, etc.
 /// - Keywords are case-sensitive
 ///
 /// **Literals:**
 /// - Integers: `42`, `0xFF` (hex), `0b1010` (binary)
 /// - Floating-point: `3.14`, `1e-5`, `2.5E+10`
 /// - Strings: `"hello"`, with escape sequences and interpolation
-/// - Triple-quoted strings: `"""multi-line"""` for verbatim text
+/// - Triple-quoted strings: `"""multi-line"""` for multi-line text with escapes
 ///
 /// **Operators:**
 /// - Arithmetic: `+`, `-`, `*`, `/`, `%`
@@ -164,7 +164,7 @@ class Lexer {
     /// @return TokenKind if the name is a keyword, nullopt for identifiers.
     ///
     /// @details Performs binary search on the sorted keyword table
-    /// (52 keywords). Case-sensitive matching. Used by the GUI syntax highlighter
+    /// (53 keywords). Case-sensitive matching. Used by the GUI syntax highlighter
     /// (via rt_zia_highlight.cpp) so the highlighter never drifts from the
     /// language's keyword set.
     static std::optional<TokenKind> lookupKeyword(const std::string &name);
@@ -287,6 +287,18 @@ class Lexer {
     /// @pre Current character is a valid identifier start (letter or `_`).
     Token lexIdentifierOrKeyword();
 
+    /// @brief Return whether the current `.` can start a leading-dot float literal.
+    ///
+    /// @details Zia supports floating literals such as `.5`, but the same source
+    /// shape appears in tuple-index syntax (`tuple.0`) and member access. This
+    /// helper checks the previous significant token so a leading-dot number is
+    /// accepted only where a new expression can begin. After expression-ending
+    /// tokens like identifiers, literals, and closing delimiters, the lexer keeps
+    /// `.` as a separate Dot token so the parser can handle member and tuple access.
+    ///
+    /// @return True if the current source position begins a leading-dot number.
+    bool canStartLeadingDotNumber() const;
+
     /// @brief Lex a numeric literal (integer or floating-point).
     /// @return Token with kind IntegerLiteral or NumberLiteral.
     ///
@@ -407,6 +419,12 @@ class Lexer {
     /// @brief Cached peeked token.
     /// @details If set, next() returns this instead of lexing a new token.
     std::optional<Token> peeked_;
+
+    /// @brief Last non-EOF/non-error token that was consumed by next().
+    /// @details Used to disambiguate leading-dot numeric literals from member
+    ///          and tuple-index access. peek() temporarily lexes ahead but
+    ///          restores this value until the cached token is actually consumed.
+    std::optional<TokenKind> lastSignificantTokenKind_;
 
     //-------------------------------------------------------------------------
     /// @name String Interpolation State

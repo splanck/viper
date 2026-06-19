@@ -313,15 +313,20 @@ inline constexpr size_t kMaxImportDepth = 50;
 /// @brief Maximum number of imported files to prevent runaway compilation.
 inline constexpr size_t kMaxImportedFiles = 100;
 
+/// @brief Native machine word size used by Zia IL pointer/i64 stack slots.
+/// @details Zia currently lowers references, i64 values, and f64 values into 8-byte IL slots.
+///          Use this constant instead of spelling raw `8` at allocation sites.
+inline constexpr size_t kMachineWordSize = 8;
+
 /// @brief Object header size for class types in bytes.
 /// All class instances begin with an 8-byte header containing runtime info.
-inline constexpr size_t kObjectHeaderSize = 8;
+inline constexpr size_t kObjectHeaderSize = kMachineWordSize;
 
 /// @brief Offset of the vtable pointer within class objects.
-inline constexpr size_t kVtablePtrOffset = 8;
+inline constexpr size_t kVtablePtrOffset = kMachineWordSize;
 
 /// @brief Size of the vtable pointer in bytes.
-inline constexpr size_t kVtablePtrSize = 8;
+inline constexpr size_t kVtablePtrSize = kMachineWordSize;
 
 /// @brief Offset where class fields begin (after header and vtable ptr).
 inline constexpr size_t kClassFieldsOffset = kObjectHeaderSize + kVtablePtrSize;

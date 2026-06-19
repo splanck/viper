@@ -70,7 +70,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
     allocaInstr.result = allocaId;
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
-    allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for ptr/i64
+    allocaInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(allocaId);
@@ -90,7 +90,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
     ptrSlotInstr.result = ptrSlotId;
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
@@ -194,7 +194,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     resultAlloca.result = resultSlotId;
     resultAlloca.op = Opcode::Alloca;
     resultAlloca.type = Type(Type::Kind::Ptr);
-    resultAlloca.operands = {Value::constInt(8)};
+    resultAlloca.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     resultAlloca.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(resultAlloca);
     Value resultSlot = Value::temp(resultSlotId);
@@ -205,7 +205,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     ptrSlotInstr.result = ptrSlotId;
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
@@ -400,7 +400,7 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
         resultAlloca.result = resultSlotId;
         resultAlloca.op = Opcode::Alloca;
         resultAlloca.type = Type(Type::Kind::Ptr);
-        resultAlloca.operands = {Value::constInt(8)};
+        resultAlloca.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
         resultAlloca.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(resultAlloca);
         resultSlot = Value::temp(resultSlotId);
@@ -411,7 +411,7 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
     ptrSlotInstr.result = ptrSlotId;
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
@@ -540,7 +540,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
     ptrSlotInstr.result = ptrSlotId;
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
@@ -618,7 +618,7 @@ LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr) {
     ptrSlotInstr.result = ptrSlotId;
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);

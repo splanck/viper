@@ -47,6 +47,7 @@ class WarningSuppressions {
             return;
 
         auto &fileSuppressions = suppressions_[fileId];
+        fileSuppressions.clear();
         uint32_t lineNum = 1;
         size_t pos = 0;
 
@@ -92,12 +93,26 @@ class WarningSuppressions {
     void parseLine(std::unordered_map<uint32_t, std::unordered_set<WarningCode>> &fileSuppressions,
                    std::string_view line,
                    uint32_t lineNum) {
-        // Look for "// @suppress(" anywhere on the line
-        auto commentPos = line.find("// @suppress(");
+        auto commentStart = findLineCommentStart(line);
+        if (commentStart == std::string_view::npos)
+            return;
+
+        // Look for "@suppress(" in the actual comment text.
+        std::string_view comment = line.substr(commentStart);
+        auto directivePos = comment.find("// @suppress(");
+        if (directivePos == std::string_view::npos)
+            directivePos = comment.find("//@suppress(");
+        if (directivePos == std::string_view::npos)
+            return;
+
+        auto commentPos = commentStart + directivePos;
         if (commentPos == std::string_view::npos)
             return;
 
-        size_t start = commentPos + 13; // length of "// @suppress("
+        size_t start = line.find('(', commentPos);
+        if (start == std::string_view::npos)
+            return;
+        ++start;
         auto closePos = line.find(')', start);
         if (closePos == std::string_view::npos)
             return;
@@ -133,6 +148,41 @@ class WarningSuppressions {
 
             p = tokenEnd + 1;
         }
+    }
+
+    /// @brief Find the first line-comment marker outside a string literal.
+    /// @param line One physical source line.
+    /// @return Offset of `//`, or npos when the line contains no real line comment.
+    ///
+    /// @details This lightweight scanner is intentionally local to warning suppression
+    ///          parsing. It recognizes ordinary quoted strings and backslash escapes so
+    ///          text like `"// @suppress(W001)"` is not treated as a directive.
+    static size_t findLineCommentStart(std::string_view line) {
+        bool inString = false;
+        bool escaped = false;
+        for (size_t i = 0; i + 1 < line.size(); ++i) {
+            char ch = line[i];
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (ch == '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (ch == '"')
+                    inString = false;
+                continue;
+            }
+            if (ch == '"') {
+                inString = true;
+                continue;
+            }
+            if (ch == '/' && line[i + 1] == '/')
+                return i;
+        }
+        return std::string_view::npos;
     }
 
     /// @brief Map from file id to line-local suppressed warning codes.

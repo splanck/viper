@@ -14,6 +14,7 @@
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <algorithm>
 #include <map>
 #include <unordered_set>
 
@@ -91,6 +92,13 @@ void Sema::analyzeBind(BindDecl &decl) {
     if (decl.resolvedFileId != 0) {
         fileModuleNames_[decl.resolvedFileId] =
             !decl.resolvedModuleName.empty() ? decl.resolvedModuleName : moduleName;
+        auto &fileModuleIds = fileBoundModuleIds_[decl.loc.file_id];
+        for (const auto &visibleName : fileBindVisibleModuleNames(decl)) {
+            auto existing = fileModuleIds.find(visibleName);
+            if (existing == fileModuleIds.end() || existing->second == decl.resolvedFileId)
+                fileModuleIds[visibleName] = decl.resolvedFileId;
+            boundFileModuleIds_.emplace(visibleName, decl.resolvedFileId);
+        }
     }
 
     // File binds are resolved through moduleExports_ during semantic analysis
@@ -103,9 +111,9 @@ void Sema::buildBoundFileExports(const std::vector<BindDecl> &binds,
                                  const std::vector<DeclPtr> &decls) {
     moduleExports_.clear();
     fileModuleExports_.clear();
+    fileBoundModuleIds_.clear();
     boundFileModuleIds_.clear();
-    std::unordered_map<uint32_t, std::unordered_map<std::string, uint32_t>>
-        moduleIdsByImporterFile;
+    std::unordered_map<uint32_t, std::unordered_map<std::string, uint32_t>> moduleIdsByImporterFile;
 
     for (const auto &bind : binds) {
         if (bind.isNamespaceBind || bind.resolvedFileId == 0)
@@ -113,22 +121,28 @@ void Sema::buildBoundFileExports(const std::vector<BindDecl> &binds,
 
         std::unordered_map<std::string, Symbol> exports;
         collectExportedSymbolsForFile(bind.resolvedFileId, decls, exports);
-        std::string moduleName = fileBindModuleName(bind);
+
         auto &idsForImporter = moduleIdsByImporterFile[bind.loc.file_id];
-        auto existingId = idsForImporter.find(moduleName);
-        if (existingId != idsForImporter.end()) {
-            if (existingId->second == bind.resolvedFileId)
+        const auto visibleModuleNames = fileBindVisibleModuleNames(bind);
+        for (size_t moduleNameIndex = 0; moduleNameIndex < visibleModuleNames.size();
+             ++moduleNameIndex) {
+            const auto &moduleName = visibleModuleNames[moduleNameIndex];
+            auto existingId = idsForImporter.find(moduleName);
+            if (existingId != idsForImporter.end() && existingId->second != bind.resolvedFileId) {
+                if (moduleNameIndex != 0 && bind.alias.empty())
+                    continue;
+                error(bind.loc, "Duplicate bound module name or alias '" + moduleName + "'");
                 continue;
-            error(bind.loc, "Duplicate bound module name or alias '" + moduleName + "'");
-            continue;
+            }
+            idsForImporter[moduleName] = bind.resolvedFileId;
+            boundFileModuleIds_.emplace(moduleName, bind.resolvedFileId);
+            fileBoundModuleIds_[bind.loc.file_id][moduleName] = bind.resolvedFileId;
+
+            if (moduleExports_.find(moduleName) == moduleExports_.end())
+                moduleExports_[moduleName] = exports;
+
+            fileModuleExports_[bind.loc.file_id][moduleName] = exports;
         }
-        idsForImporter[moduleName] = bind.resolvedFileId;
-        boundFileModuleIds_.emplace(moduleName, bind.resolvedFileId);
-
-        if (moduleExports_.find(moduleName) == moduleExports_.end())
-            moduleExports_[moduleName] = exports;
-
-        fileModuleExports_[bind.loc.file_id][moduleName] = std::move(exports);
     }
 }
 
@@ -136,8 +150,8 @@ void Sema::buildBoundFileExports(const std::vector<BindDecl> &binds,
 /// @param moduleName The visible module root, such as an alias or file stem.
 /// @param useLoc Location of the use whose file-local imports should be consulted.
 /// @return Export map for the module, or nullptr when no matching file module is visible.
-const std::unordered_map<std::string, Symbol> *
-Sema::findModuleExports(const std::string &moduleName, SourceLoc useLoc) const {
+const std::unordered_map<std::string, Symbol> *Sema::findModuleExports(
+    const std::string &moduleName, SourceLoc useLoc) const {
     if (useLoc.file_id != 0) {
         auto fileIt = fileModuleExports_.find(useLoc.file_id);
         if (fileIt != fileModuleExports_.end()) {
@@ -245,6 +259,13 @@ std::string Sema::fileBindModuleName(const BindDecl &decl) const {
     if (!decl.resolvedModuleName.empty())
         return decl.resolvedModuleName;
 
+    return fileBindPathStem(decl);
+}
+
+/// @brief Derive the unaliased module qualifier from a bind path.
+/// @param decl The bind declaration whose path should be reduced.
+/// @return The basename of the bind path without a trailing `.zia` extension.
+std::string Sema::fileBindPathStem(const BindDecl &decl) const {
     std::string path = decl.path;
     auto lastSlash = path.find_last_of("/\\");
     if (lastSlash != std::string::npos)
@@ -255,6 +276,25 @@ std::string Sema::fileBindModuleName(const BindDecl &decl) const {
         path = path.substr(0, extPos);
 
     return path;
+}
+
+/// @brief Return every visible module qualifier introduced by a file bind.
+/// @param decl The file bind declaration to inspect.
+/// @return Ordered list containing the primary qualifier and, for unaliased
+///         binds, the path-stem compatibility qualifier when distinct.
+std::vector<std::string> Sema::fileBindVisibleModuleNames(const BindDecl &decl) const {
+    std::vector<std::string> names;
+    auto addName = [&](std::string name) {
+        if (name.empty())
+            return;
+        if (std::find(names.begin(), names.end(), name) == names.end())
+            names.push_back(std::move(name));
+    };
+
+    addName(fileBindModuleName(decl));
+    if (decl.alias.empty())
+        addName(fileBindPathStem(decl));
+    return names;
 }
 
 /// @brief Analyze a bind declaration that imports a runtime namespace.
@@ -544,7 +584,8 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl) {
         } else if (sym) {
             initType = contextualizeIntegerLiteralForDeclaredType(
                 sym->type, initType, decl.initializer.get());
-            if (!sym->type->isAssignableFrom(*initType))
+            if (initType && initType->kind != TypeKindSem::Unknown &&
+                !sym->type->isAssignableFrom(*initType))
                 errorTypeMismatch(decl.initializer->loc, sym->type, initType);
         }
     } else {
@@ -669,6 +710,7 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
     // Register field types (if applicable)
     std::unordered_set<std::string> seenFields;
     std::unordered_set<std::string> seenProperties;
+    std::unordered_set<std::string> generatedAccessors;
     if (includeFields) {
         for (auto &member : decl.members) {
             if (member->kind == DeclKind::Field) {
@@ -703,6 +745,7 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                 memberVisibility_[ownerName + "." + prop->name] = prop->visibility;
 
                 if (prop->getterBody) {
+                    generatedAccessors.insert("get_" + prop->name);
                     std::string getterKey = ownerName + ".get_" + prop->name;
                     TypeRef getterType = types::function({}, propType);
                     methodTypes_[getterKey] = getterType;
@@ -710,6 +753,7 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                 }
 
                 if (prop->setterBody) {
+                    generatedAccessors.insert("set_" + prop->name);
                     std::string setterKey = ownerName + ".set_" + prop->name;
                     TypeRef setterType = types::function({propType}, types::voidType());
                     methodTypes_[setterKey] = setterType;
@@ -727,6 +771,13 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
             if (seenFields.contains(method->name) || seenProperties.contains(method->name)) {
                 error(method->loc,
                       "Duplicate definition of '" + method->name + "' in type '" + decl.name + "'");
+                continue;
+            }
+            if (generatedAccessors.contains(method->name)) {
+                error(method->loc,
+                      "Method '" + method->name +
+                          "' conflicts with a generated property accessor in type '" + decl.name +
+                          "'");
                 continue;
             }
             seenMethods.insert(method->name);
@@ -1125,7 +1176,8 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
         }
         initType =
             contextualizeIntegerLiteralForDeclaredType(fieldType, initType, decl.initializer.get());
-        if (!fieldType->isAssignableFrom(*initType)) {
+        if (fieldType && initType && initType->kind != TypeKindSem::Unknown &&
+            !fieldType->isAssignableFrom(*initType)) {
             errorTypeMismatch(decl.initializer->loc, fieldType, initType);
         }
     }
@@ -1290,6 +1342,8 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
     }
 
     MethodDecl *savedMethod = currentMethod_;
+    TypeRef savedReturnType = expectedReturnType_;
+    TypeRef savedSelfType = currentSelfType_;
     currentMethod_ = &decl;
     currentSelfType_ = ownerType;
     TypeRef methodType =
@@ -1360,7 +1414,8 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
 
     popScope(decl.body ? scopeEndForStmt(decl.body.get()) : decl.loc);
 
-    expectedReturnType_ = nullptr;
+    expectedReturnType_ = savedReturnType;
+    currentSelfType_ = savedSelfType;
     currentMethod_ = savedMethod;
 }
 

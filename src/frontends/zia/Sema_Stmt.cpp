@@ -12,6 +12,8 @@
 
 #include "frontends/zia/Sema.hpp"
 
+#include <string_view>
+
 namespace il::frontends::zia {
 
 namespace {
@@ -36,6 +38,32 @@ bool isTypedRuntimeSequence(TypeRef type) {
             type->name == "Viper.Collections.Stack" || type->name == "Viper.Collections.Deque" ||
             type->name == "Viper.Collections.List" || type->name == "Viper.Collections.Ring" ||
             type->name == "Viper.Collections.Heap");
+}
+
+/// @brief Return true when @p typeName is a runtime trap/catch type name accepted by Zia.
+/// @details The names mirror the user-facing runtime error names exposed by `rt_error.h`;
+///          `Error` is the language-level catch-all alias.
+bool isKnownCatchTypeName(const std::string &typeName) {
+    static constexpr std::string_view kKnownCatchTypes[] = {
+        "DivideByZero",
+        "Overflow",
+        "InvalidCast",
+        "DomainError",
+        "Bounds",
+        "FileNotFound",
+        "EOF",
+        "IOError",
+        "InvalidOperation",
+        "RuntimeError",
+        "Interrupt",
+        "NetworkError",
+        "Error",
+    };
+    for (std::string_view name : kKnownCatchTypes) {
+        if (typeName == name)
+            return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -110,29 +138,7 @@ void Sema::analyzeStmt(Stmt *stmt) {
             auto validateCatchType = [&](const std::string &typeName) {
                 if (typeName.empty())
                     return;
-                static const char *const validErrorTypes[] = {
-                    "DivideByZero",
-                    "Overflow",
-                    "InvalidCast",
-                    "DomainError",
-                    "Bounds",
-                    "FileNotFound",
-                    "EOF",
-                    "IOError",
-                    "InvalidOperation",
-                    "RuntimeError",
-                    "Interrupt",
-                    "NetworkError",
-                    "Error", // catch-all alias
-                };
-                bool found = false;
-                for (const auto *name : validErrorTypes) {
-                    if (typeName == name) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
+                if (!isKnownCatchTypeName(typeName)) {
                     error(tryStmt->loc, "unknown error type '" + typeName + "' in catch clause");
                 }
             };
@@ -470,7 +476,8 @@ void Sema::analyzeIfStmt(IfStmt *stmt) {
     }
 
     TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean) {
+    if (condType && condType->kind != TypeKindSem::Unknown &&
+        condType->kind != TypeKindSem::Boolean) {
         error(stmt->condition->loc, "Condition must be Boolean");
     }
 
@@ -564,7 +571,8 @@ void Sema::analyzeWhileStmt(WhileStmt *stmt) {
     }
 
     TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean) {
+    if (condType && condType->kind != TypeKindSem::Unknown &&
+        condType->kind != TypeKindSem::Boolean) {
         error(stmt->condition->loc, "Condition must be Boolean");
     }
 
@@ -587,7 +595,8 @@ void Sema::analyzeForStmt(ForStmt *stmt) {
         analyzeStmt(stmt->init.get());
     if (stmt->condition) {
         TypeRef condType = analyzeExpr(stmt->condition.get());
-        if (condType->kind != TypeKindSem::Boolean) {
+        if (condType && condType->kind != TypeKindSem::Unknown &&
+            condType->kind != TypeKindSem::Boolean) {
             error(stmt->condition->loc, "Condition must be Boolean");
         }
     }
@@ -617,7 +626,9 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
     TypeRef elementType = types::unknown();
     TypeRef secondType = types::unknown();
 
-    if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set) {
+    if (!iterableType || iterableType->kind == TypeKindSem::Unknown) {
+        elementType = types::unknown();
+    } else if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set) {
         elementType = iterableType->elementType();
     } else if (iterableType->kind == TypeKindSem::Map) {
         elementType = iterableType->keyType() ? iterableType->keyType() : types::string();
@@ -635,14 +646,15 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
     }
 
     if (stmt->isTuple) {
-        if (iterableType->kind == TypeKindSem::Map) {
+        if (iterableType && iterableType->kind == TypeKindSem::Map) {
             // Map iteration binds (key, value)
-        } else if (iterableType->kind == TypeKindSem::List ||
-                   iterableType->kind == TypeKindSem::Set || isTypedRuntimeSequence(iterableType)) {
+        } else if (iterableType && (iterableType->kind == TypeKindSem::List ||
+                                    iterableType->kind == TypeKindSem::Set ||
+                                    isTypedRuntimeSequence(iterableType))) {
             // List/Set iteration with tuple binding: (index, element)
             secondType = elementType;       // Element goes to second variable
             elementType = types::integer(); // Index goes to first variable
-        } else if (iterableType->kind == TypeKindSem::Tuple) {
+        } else if (iterableType && iterableType->kind == TypeKindSem::Tuple) {
             const auto &elements = iterableType->tupleElementTypes();
             if (elements.size() == 2) {
                 elementType = elements[0];
@@ -659,18 +671,20 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
 
     if (stmt->variableType) {
         TypeRef explicitType = resolveTypeNode(stmt->variableType.get());
-        if (elementType && !explicitType->isAssignableFrom(*elementType)) {
+        if (explicitType && elementType && elementType->kind != TypeKindSem::Unknown &&
+            !explicitType->isAssignableFrom(*elementType)) {
             error(stmt->loc, "Loop variable type does not match iterable element type");
         }
-        elementType = explicitType;
+        elementType = explicitType ? explicitType : types::unknown();
     }
 
     if (stmt->isTuple && stmt->secondVariableType) {
         TypeRef explicitType = resolveTypeNode(stmt->secondVariableType.get());
-        if (secondType && !explicitType->isAssignableFrom(*secondType)) {
+        if (explicitType && secondType && secondType->kind != TypeKindSem::Unknown &&
+            !explicitType->isAssignableFrom(*secondType)) {
             error(stmt->loc, "Loop variable type does not match iterable element type");
         }
-        secondType = explicitType;
+        secondType = explicitType ? explicitType : types::unknown();
     }
 
     Symbol sym;
@@ -707,6 +721,14 @@ void Sema::analyzeReturnStmt(ReturnStmt *stmt) {
 
     if (stmt->value) {
         TypeRef valueType = analyzeExpr(stmt->value.get());
+        if (expectedReturnType_ && stmt->value->kind == ExprKind::MapLiteral) {
+            auto *mapLiteral = static_cast<MapLiteralExpr *>(stmt->value.get());
+            if (mapLiteral->entries.empty() && (expectedReturnType_->kind == TypeKindSem::Set ||
+                                                expectedReturnType_->kind == TypeKindSem::Map)) {
+                exprTypes_[stmt->value.get()] = expectedReturnType_;
+                valueType = expectedReturnType_;
+            }
+        }
         if (valueType && valueType->kind == TypeKindSem::Unit) {
             if (expectedReturnType_ && (expectedReturnType_->kind == TypeKindSem::Void ||
                                         expectedReturnType_->kind == TypeKindSem::Unit))
@@ -716,7 +738,8 @@ void Sema::analyzeReturnStmt(ReturnStmt *stmt) {
                   "optional values");
             valueType = types::unknown();
         }
-        if (expectedReturnType_ && !expectedReturnType_->isAssignableFrom(*valueType)) {
+        if (expectedReturnType_ && valueType && valueType->kind != TypeKindSem::Unknown &&
+            !expectedReturnType_->isAssignableFrom(*valueType)) {
             // Allow implicit Number -> Integer conversion in return statements
             // This enables returning Floor/Ceil/Round/Trunc results from Integer functions
             bool allowedNarrowing = (expectedReturnType_->kind == TypeKindSem::Integer &&
@@ -770,7 +793,8 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
 
         if (arm.pattern.guard) {
             TypeRef guardType = analyzeExpr(arm.pattern.guard.get());
-            if (guardType->kind != TypeKindSem::Boolean) {
+            if (guardType && guardType->kind != TypeKindSem::Unknown &&
+                guardType->kind != TypeKindSem::Boolean) {
                 error(arm.pattern.guard->loc, "Match guard must be Boolean");
             }
         }

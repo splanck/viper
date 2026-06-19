@@ -94,6 +94,9 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
     asyncOwnedValues_.clear();
     deferredTemps_.clear();
     cleanupStack_.clear();
+    catchErrorBindings_.clear();
+    activeCatchErrors_.clear();
+    namespacePrefix_.clear();
     currentFunc_ = nullptr;
     currentReturnType_ = nullptr;
     currentStructType_ = nullptr;
@@ -209,7 +212,7 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
         auto dotPos = externName.rfind('.');
         if (dotPos != std::string::npos) {
             std::string typeName = externName.substr(0, dotPos);
-            if (getOrCreateStructTypeInfo(typeName) ||
+            if (structTypes_.find(typeName) != structTypes_.end() ||
                 classTypes_.find(typeName) != classTypes_.end()) {
                 isLocalMethod = true;
             }

@@ -435,7 +435,9 @@ void Lowerer::emitItableInit() {
         if (structInfo.implementedInterfaces.empty())
             continue;
 
-        Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(8)});
+        Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr),
+                                      "rt_alloc",
+                                      {Value::constInt(static_cast<long long>(kMachineWordSize))});
         Value qnameStr = emitConstStr(stringTable_.intern(structName));
         emitCall("rt_register_class_with_base_rs",
                  {Value::constInt(static_cast<int64_t>(structInfo.classId)),

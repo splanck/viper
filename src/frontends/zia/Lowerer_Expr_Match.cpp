@@ -80,7 +80,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     ptrSlotInstr.result = ptrSlotId;
                     ptrSlotInstr.op = Opcode::Alloca;
                     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-                    ptrSlotInstr.operands = {Value::constInt(8)};
+                    ptrSlotInstr.operands = {
+                        Value::constInt(static_cast<long long>(kMachineWordSize))};
                     ptrSlotInstr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
                     Value ptrSlot = Value::temp(ptrSlotId);
@@ -191,7 +192,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     ptrSlotInstr.result = ptrSlotId;
                     ptrSlotInstr.op = Opcode::Alloca;
                     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-                    ptrSlotInstr.operands = {Value::constInt(8)};
+                    ptrSlotInstr.operands = {
+                        Value::constInt(static_cast<long long>(kMachineWordSize))};
                     ptrSlotInstr.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
                     Value ptrSlot = Value::temp(ptrSlotId);

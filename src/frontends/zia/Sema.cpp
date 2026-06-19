@@ -92,6 +92,58 @@ size_t requiredParamCount(const std::vector<Param> &params) {
     return required;
 }
 
+/// @brief Return true when @p argCount can satisfy @p params by arity alone.
+/// @details Defaulted fixed parameters can be omitted, and a final variadic parameter
+///          accepts any number of additional source arguments.
+bool callArityMatches(const std::vector<Param> &params, size_t argCount) {
+    const size_t required = requiredParamCount(params);
+    const bool hasVariadic = !params.empty() && params.back().isVariadic;
+    const size_t total = params.size();
+    if (argCount < required)
+        return false;
+    if (!hasVariadic && argCount > total)
+        return false;
+    return true;
+}
+
+/// @brief Select the semantic parameter type that should receive one source argument.
+/// @param functionType Function or method type whose parameter list mirrors @p params.
+/// @param params Source declaration parameters, used to detect the variadic tail.
+/// @param argIndex Source argument index being scored.
+/// @return Fixed parameter type, variadic element type, or null when no target exists.
+TypeRef parameterTypeForSourceArg(TypeRef functionType,
+                                  const std::vector<Param> &params,
+                                  size_t argIndex) {
+    if (!functionType || functionType->kind != TypeKindSem::Function)
+        return nullptr;
+    const auto &paramTypes = functionType->paramTypes();
+    const bool hasVariadic = !params.empty() && params.back().isVariadic;
+    const size_t fixedCount = hasVariadic ? params.size() - 1 : params.size();
+    if (argIndex < fixedCount && argIndex < paramTypes.size())
+        return paramTypes[argIndex];
+    if (hasVariadic && !paramTypes.empty()) {
+        TypeRef listType = paramTypes.back();
+        return listType ? listType->elementType() : nullptr;
+    }
+    return nullptr;
+}
+
+/// @brief Apply contextual typing for empty `{}` collection literals.
+/// @param arg Expression being passed to a contextual target.
+/// @param argType The type inferred without context.
+/// @param paramType The expected target type, if any.
+/// @return @p paramType for empty-brace Map/Set contexts; otherwise @p argType.
+TypeRef contextualizeEmptyCollectionArg(const Expr *arg, TypeRef argType, TypeRef paramType) {
+    if (!arg || !paramType || arg->kind != ExprKind::MapLiteral)
+        return argType;
+    const auto *map = static_cast<const MapLiteralExpr *>(arg);
+    if (!map->entries.empty())
+        return argType;
+    if (paramType->kind == TypeKindSem::Set || paramType->kind == TypeKindSem::Map)
+        return paramType;
+    return argType;
+}
+
 /// @brief True if @p argType may be implicitly coerced to a runtime object
 ///        pointer at a call boundary (excludes void/optional/function/tuple/
 ///        fixed-array/unknown/never/type-param/module, which never coerce).
@@ -359,6 +411,16 @@ bool Sema::registerFunctionOverload(const std::string &name,
                                     TypeRef funcType,
                                     SourceLoc loc) {
     auto &family = functionOverloads_[name];
+    const bool isEntryStart =
+        decl && decl->name == "start" && currentModule_ &&
+        (currentModule_->loc.file_id == 0 || decl->loc.file_id == currentModule_->loc.file_id);
+    if (isEntryStart) {
+        if (!family.empty()) {
+            error(loc, "Entry function 'start' cannot be overloaded");
+            return false;
+        }
+    }
+
     const std::string sigKey = functionSignatureKey(*decl);
     for (auto *existing : family) {
         if (functionSignatureKey(*existing) == sigKey) {
@@ -389,9 +451,6 @@ bool Sema::registerFunctionOverload(const std::string &name,
     }
 
     const bool overloaded = family.size() > 1;
-    const bool isEntryStart =
-        decl && decl->name == "start" && currentModule_ &&
-        (currentModule_->loc.file_id == 0 || decl->loc.file_id == currentModule_->loc.file_id);
     if (isEntryStart) {
         loweredFunctionNames_[decl] = "main";
     } else if (overloaded) {
@@ -520,15 +579,20 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
 
         TypeRef funcType = functionDeclTypes_[decl];
         const auto &params = decl->params;
-        const size_t required = requiredParamCount(params);
-        const size_t total = params.size();
-        if (argTypes.size() < required || argTypes.size() > total)
+        if (!callArityMatches(params, argTypes.size()))
             continue;
+        const bool hasVariadic = !params.empty() && params.back().isVariadic;
+        const size_t fixedCount = hasVariadic ? params.size() - 1 : params.size();
 
         int score = 0;
         bool viable = true;
         for (size_t i = 0; i < argTypes.size(); ++i) {
-            int cost = conversionCost(funcType->paramTypes()[i], argTypes[i], false);
+            TypeRef targetType = parameterTypeForSourceArg(funcType, params, i);
+            if (!targetType) {
+                viable = false;
+                break;
+            }
+            int cost = conversionCost(targetType, argTypes[i], false);
             if (cost >= 1000) {
                 viable = false;
                 break;
@@ -537,7 +601,10 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
         }
         if (!viable)
             continue;
-        score += static_cast<int>(total - argTypes.size()) * 3;
+        if (fixedCount > argTypes.size())
+            score += static_cast<int>(fixedCount - argTypes.size()) * 3;
+        if (hasVariadic && argTypes.size() > fixedCount)
+            score += static_cast<int>(argTypes.size() - fixedCount);
         candidateSigs.push_back(loweredFunctionNames_[decl]);
 
         if (score < bestScore) {
@@ -598,14 +665,19 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
             if (!methodType)
                 continue;
             const auto &params = decl->params;
-            const size_t required = requiredParamCount(params);
-            const size_t total = params.size();
-            if (argTypes.size() < required || argTypes.size() > total)
+            if (!callArityMatches(params, argTypes.size()))
                 continue;
+            const bool hasVariadic = !params.empty() && params.back().isVariadic;
+            const size_t fixedCount = hasVariadic ? params.size() - 1 : params.size();
             int score = 0;
             bool viable = true;
             for (size_t i = 0; i < argTypes.size(); ++i) {
-                int cost = conversionCost(methodType->paramTypes()[i], argTypes[i], false);
+                TypeRef targetType = parameterTypeForSourceArg(methodType, params, i);
+                if (!targetType) {
+                    viable = false;
+                    break;
+                }
+                int cost = conversionCost(targetType, argTypes[i], false);
                 if (cost >= 1000) {
                     viable = false;
                     break;
@@ -614,7 +686,10 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
             }
             if (!viable)
                 continue;
-            score += static_cast<int>(total - argTypes.size()) * 3;
+            if (fixedCount > argTypes.size())
+                score += static_cast<int>(fixedCount - argTypes.size()) * 3;
+            if (hasVariadic && argTypes.size() > fixedCount)
+                score += static_cast<int>(argTypes.size() - fixedCount);
             std::string lowered = loweredMethodName(candidateOwner, decl);
             candidates.push_back(lowered.empty() ? (candidateOwner + "." + decl->name) : lowered);
             if (score < bestScore) {
@@ -856,9 +931,11 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
         }
 
         TypeRef paramType = params[i].type;
-        TypeRef argType = exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
-                              ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
-                              : nullptr;
+        Expr *argExpr = args[static_cast<size_t>(sourceIndex)].value.get();
+        TypeRef rawArgType = exprTypes_.count(argExpr) ? exprTypes_.at(argExpr) : nullptr;
+        TypeRef argType = contextualizeEmptyCollectionArg(argExpr, rawArgType, paramType);
+        if (argType != rawArgType)
+            const_cast<Sema *>(this)->exprTypes_[argExpr] = argType;
         int cost = conversionCost(paramType, argType, allowRuntimeObjectCoercion);
         if (allowRuntimeObjectCoercion && paramType && paramType->kind == TypeKindSem::Ptr &&
             argType && argType->kind == TypeKindSem::Function &&
@@ -879,10 +956,11 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
         TypeRef listType = params.back().type;
         TypeRef elemType = listType ? listType->elementType() : nullptr;
         for (int sourceIndex : binding.variadicSources) {
-            TypeRef argType =
-                exprTypes_.count(args[static_cast<size_t>(sourceIndex)].value.get())
-                    ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
-                    : nullptr;
+            Expr *argExpr = args[static_cast<size_t>(sourceIndex)].value.get();
+            TypeRef rawArgType = exprTypes_.count(argExpr) ? exprTypes_.at(argExpr) : nullptr;
+            TypeRef argType = contextualizeEmptyCollectionArg(argExpr, rawArgType, elemType);
+            if (argType != rawArgType)
+                const_cast<Sema *>(this)->exprTypes_[argExpr] = argType;
             int cost = conversionCost(elemType, argType, allowRuntimeObjectCoercion);
             if (allowRuntimeObjectCoercion && elemType && elemType->kind == TypeKindSem::Ptr &&
                 argType && argType->kind == TypeKindSem::Function &&
@@ -1467,6 +1545,10 @@ void Sema::registerNominalTypeRelationships(std::vector<DeclPtr> &declarations) 
 bool Sema::analyze(ModuleDecl &module) {
     currentModule_ = &module;
     fileModuleNames_.clear();
+    moduleExports_.clear();
+    fileModuleExports_.clear();
+    fileBoundModuleIds_.clear();
+    boundFileModuleIds_.clear();
 
     for (auto &bind : module.binds) {
         analyzeBind(bind);

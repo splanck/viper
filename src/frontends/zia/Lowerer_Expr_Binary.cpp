@@ -74,7 +74,7 @@ Value Lowerer::extendOperandForComparison(Value val, Type type) {
         slotInstr.result = slotId;
         slotInstr.op = Opcode::Alloca;
         slotInstr.type = Type(Type::Kind::Ptr);
-        slotInstr.operands = {Value::constInt(8)};
+        slotInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
         slotInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(slotInstr);
         Value slot = Value::temp(slotId);
@@ -689,7 +689,7 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr) {
     allocInstr.result = slotId;
     allocInstr.op = Opcode::Alloca;
     allocInstr.type = Type(Type::Kind::Ptr);
-    allocInstr.operands = {Value::constInt(8)};
+    allocInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     allocInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocInstr);
     Value resultSlot = Value::temp(slotId);

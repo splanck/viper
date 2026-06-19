@@ -25,6 +25,14 @@
 
 namespace il::frontends::zia {
 
+namespace {
+
+/// @brief Maximum imported source bytes accepted from disk before parsing.
+/// @details Keeps accidental or malicious huge imports from forcing a large allocation.
+constexpr std::uintmax_t kMaxImportedSourceBytes = 64ull * 1024ull * 1024ull;
+
+} // namespace
+
 /// @brief Construct an import resolver.
 /// @param diag Diagnostic engine for reporting import errors.
 /// @param sm Source manager that owns file ids and source text.
@@ -60,7 +68,14 @@ bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath) 
 /// @return The canonical path string used as the dedup/cache key for files.
 std::string ImportResolver::normalizePath(const std::string &path) const {
     namespace fs = std::filesystem;
-    return fs::absolute(fs::path(path)).lexically_normal().string();
+    std::error_code ec;
+    fs::path absolute = fs::absolute(fs::path(path), ec);
+    if (ec)
+        absolute = fs::path(path);
+    fs::path canonical = fs::weakly_canonical(absolute, ec);
+    if (!ec)
+        return canonical.lexically_normal().string();
+    return absolute.lexically_normal().string();
 }
 
 /// @brief Resolve an import path relative to the importing file.
@@ -149,9 +164,17 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
                           "V1000"});
             return nullptr;
         }
-        source.resize(static_cast<std::size_t>(size));
-        if (size > 0)
-            file.read(source.data(), size);
+        const auto sourceSize = static_cast<std::uintmax_t>(static_cast<std::streamoff>(size));
+        if (sourceSize > kMaxImportedSourceBytes) {
+            diag_.report({il::support::Severity::Error,
+                          "Imported file is too large: " + path,
+                          importLoc,
+                          "V1000"});
+            return nullptr;
+        }
+        source.resize(static_cast<std::size_t>(sourceSize));
+        if (sourceSize > 0)
+            file.read(source.data(), static_cast<std::streamsize>(sourceSize));
         if (!file) {
             diag_.report({il::support::Severity::Error,
                           "Failed to read imported file: " + path,
@@ -250,8 +273,9 @@ bool ImportResolver::processModule(ModuleDecl &module,
     if (processedFiles_.count(normalizedPath) != 0)
         return true;
 
-    if (inProgressFiles_.count(normalizedPath) != 0)
+    if (inProgressFiles_.count(normalizedPath) != 0) {
         return true;
+    }
 
     inProgressFiles_.insert(normalizedPath);
     importStack_.push_back(normalizedPath);

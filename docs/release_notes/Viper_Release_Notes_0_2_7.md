@@ -8,7 +8,7 @@
 
 ### What this release is about
 
-A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability. The new work ends per-frame Graphics3D flicker, adds spot-light shadow maps and a deterministic multi-threaded software rasterizer, plays node animation over a rebuilt glTF/FBX importer, gives ViperIDE a VM-backed debugger, and opens a machine-readable agent-facing CLI. The hardening backbone makes recoverable traps and asset loaders fail closed, promotes IL and codegen invariants to release-mode validation, unifies scalar semantics across the tree-walking VM and both bytecode engines, re-skins the GUI through a shared anti-aliased core, and lands a codegen performance round — while Linux and Windows/MSVC both return to green.
+A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability. The new work ends per-frame Graphics3D flicker, adds spot-light shadow maps and a deterministic multi-threaded software rasterizer, plays node animation over a rebuilt glTF/FBX importer, gives ViperIDE a VM-backed debugger, opens a machine-readable agent-facing CLI, and grows the 2D drawing surface and the Zia frontend (integer-keyed maps, header-optional modules). The hardening backbone makes recoverable traps and asset loaders fail closed, promotes IL and codegen invariants to release-mode validation, unifies scalar semantics across the tree-walking VM and both bytecode engines, re-skins the GUI through a shared anti-aliased core, and lands a codegen performance round — while Linux and Windows/MSVC both return to green.
 
 - **Graphics3D flicker stabilized.** Occlusion history with covered-streak gating, depth-fitted shadow cascades, LOD/impostor hysteresis, and terrain-horizon culling end per-frame triangle flicker; every backend validates draw-command index ranges.
 - **Spot-light shadow maps (new).** Shadow-casting spot lights share the directional shadow budget across all four backends, sampling with a perspective divide and cone-angle suppression.
@@ -25,19 +25,21 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 - **GUI refined-depth visual pass.** A shared anti-aliased `vg_draw` core and new theme tokens route the whole widget set through one rounded, elevated style; ViperIDE gains vector toolbar icons and a `GUI.GroupBox` settings card.
 - **ViperIDE debugging & build feedback (new).** A VM-backed debug adapter (`viper run --debug-adapter`) replaces v0.2.6's non-executing placeholder with pause/continue/step, breakpoints, call stacks, and locals; the editor adds persistent UI zoom and build-duration/error status.
 - **Agent-facing CLI (new).** `viper check`, `viper eval`, and `viper explain`/`--print-error-codes` over a central diagnostic-code catalog, plus `--dump-runtime-api`/`--dump-opcodes` registry dumps; the LSP/MCP servers now carry the same structured diagnostics.
+- **2D drawing surface (new).** `Pixels` gains bitmap-font text drawing and measurement (plain, scaled, centered/right-aligned) and `Gradient2D` adds normalized `Sample`/`SampleRGBA` with legacy-percent aliases — the runtime backing for a Viper Paint rebuilt around a registry-driven tool set with layers, blend modes, and an HSL picker.
+- **Zia integer maps & header-optional modules (new).** `Map[Integer, T]` lowers to the `IntMap` runtime (string-keyed `Map` unchanged) with declared key-type enforcement; source files may omit the module header (defaulting to `Main`); and the parser, lexer, and semantic checks tighten across precedence, diagnostics, and inheritance-aware visibility.
 - **Windows and Linux builds back to green.** Windows restores the BASIC-VM, installer, ViperIDE, and x86-64 suites and closes its D3D11 sign-off gaps; Linux returns to a full green suite — 1,670 passing.
 
 ### By the Numbers
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 143 | +143 |
-| Source files | 3,096 | 3,361 | +265 |
-| Production SLOC | 669K | 734K | +65K |
+| Commits | — | 146 | +146 |
+| Source files | 3,096 | 3,362 | +266 |
+| Production SLOC | 669K | 736K | +67K |
 | Test SLOC | 278K | 300K | +22K |
-| Demo SLOC | 192K | 194K | +2K |
+| Demo SLOC | 192K | 196K | +4K |
 
-Counts via `scripts/count_sloc.sh` (production 733,549 / test 299,899 / demo 194,156 / source files 3,361); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 735,768 / test 300,294 / demo 195,625 / source files 3,362); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -56,7 +58,7 @@ Counts via `scripts/count_sloc.sh` (production 733,549 / test 299,899 / demo 194
 - New authoring helpers: `DrawMeshWind` foliage sway, `DrawImage2D` HUD blits, `DrawMeshSkinned` from an `AnimController3D` pose, native `SetFullscreen`/`ToggleFullscreen` (`Game3D.Keys.F11`), and `Material3D` depth-bias/`ShadowMode`.
 - `Canvas3D` adds `BackendName` and `BackendFallback` (true when init fell back to software), and a recoverable texture-fallback diagnostic records when a failed upload substitutes a placeholder, so a degraded frame is observable rather than silent.
 - Content loaders stop trapping on bad content: every 2D image and 3D model/scene loader returns `null` and records a thread-local last-error code/message (`Assets3D.LastLoadError`), reserving traps for null or invalid handles.
-- A shared `rt_untrusted_count` guard validates every element count read from a 3D asset against its backing bytes across the glTF, FBX, OBJ/STL, Scene3D, and Game3D loaders, and new libFuzzer harnesses keep these parsers crash-free.
+- A shared `rt_untrusted_count` guard validates every element count read from a 3D asset against its backing bytes across the glTF, FBX, OBJ/STL, Scene3D, and Game3D loaders, and new libFuzzer harnesses keep these parsers crash-free; the FBX importer parses ASCII doubles locale-independently, the glTF loader rejects unsafe accessor strides, and compound-collider and mesh-vertex growth became transactional so a failed resize leaves no half-built geometry.
 
 ### Open-world streaming, navigation, and 3D safety
 
@@ -66,6 +68,11 @@ Counts via `scripts/count_sloc.sh` (production 733,549 / test 299,899 / demo 194
 - A retained `Entity3D` whose entity was despawned degrades predictably — neutral reads, no-op writes, a counted `StaleEntityCalls` touch — instead of trapping; genuinely invalid handles still trap.
 - Fallbacks that stay correct but shed fidelity are now observable: a process-wide `Viper.Game3D.Diagnostics` static exposes saturating counters (brute-force broadphase, clamped CCD, dropped animation events, evicted audio voices, navmesh-grid fallback, stale-entity touches) with a zero-omitting `Summary()`, and `Physics3DWorld` surfaces the same physics counts per world.
 - `Physics3DWorld` adds fixed-step controls (explicit timestep and substep budget) so the simulation advances deterministically and independently of render frame rate.
+
+### 2D graphics and drawing (new)
+
+- `Pixels` gains a bitmap-font text surface — `DrawText`/`DrawTextBg`, scaled and centered/right-aligned variants, and `TextWidth`/`TextHeight`/`TextScaledWidth` measurement — so raster canvases can label themselves without a separate font path.
+- `Gradient2D` exposes normalized `Sample`/`SampleRGBA` over `[0.0, 1.0]` alongside `SamplePct`/`SampleRGBAPct` percent aliases, so existing integer-percent callers keep sampling the same stops as the public binding moves to `Number`.
 
 ### Runtime hardening (fails closed)
 
@@ -102,6 +109,8 @@ Counts via `scripts/count_sloc.sh` (production 733,549 / test 299,899 / demo 194
 ### Frontends, language servers, and CLI
 
 - BASIC adopts overflow-aware numeric, line-label, and `SELECT CASE` parsing and accepts numbered `DIM` fields inside `CLASS` bodies; Zia restores circular and self binds by treating an in-progress bind as a known dependency rather than a fatal `V1000`.
+- Zia gains `Map[Integer, T]` over the integer-keyed `IntMap` runtime (string-keyed `Map` unchanged), enforcing declared key types and routing map literals, indexing, methods, optionals, and `for`-in iteration through the right helpers; source files may now omit the module header, defaulting to `Main`.
+- The Zia parser and lexer tighten: CR/CRLF normalization, ranged diagnostics for malformed literals and unterminated strings/comments, bounded lookahead, and corrected precedence for shifts, bitwise operators, coalescing, ranges, and ternaries; semantic checks add namespace-alias and imported-symbol conflict detection, inheritance-aware private/field access, scope-qualified definite initialization, underscore-prefixed unused parameters, and duplicate-local/bodyless-function rejection.
 - The Text/Time/IO surface closes documented edge cases (`TextWrap` at width ≤ 0, locale-independent `Json.Format`, embedded-NUL rejection in `DateOnly`/`DateTime`).
 - A new agent-facing CLI: `viper check` is a fast type-check/verify gate (exit 0/1/2), `viper eval` runs a snippet in one shot with JSON results, `viper explain`/`--print-error-codes` read a central `diag_catalog`, and `--dump-runtime-api`/`--dump-opcodes` emit registry inventories from the live binary.
 - The BASIC/Zia LSP/MCP servers compute UTF-16 ranges, enforce a strict initialize-before-use lifecycle, and route structured diagnostics (code, stage, range, help, fix-its) so did-you-mean corrections reach editor clients; the CLI rejects mismatched run/build/ABI combinations behind atomic, descriptor-safe outputs.
@@ -119,15 +128,15 @@ Counts via `scripts/count_sloc.sh` (production 733,549 / test 299,899 / demo 194
 
 ### Tests
 
-~21K new test SLOC. CTest resource locks now serialize tests that share generated codegen or VM-trace artifacts, keeping the suite parallel-safe.
+~22K new test SLOC. CTest resource locks now serialize tests that share generated codegen or VM-trace artifacts, keeping the suite parallel-safe.
 
 - **3D rendering, assets, and animation** — spot-shadow coordinate and budget-ordering coverage, vegetation sway, versioned navmesh round-trip, FBX/node-animation import, D3D11 upload/readback-helper validation, fail-closed content-loader diagnostics, untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics` fallback coverage.
 - **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, duplicate-spill-store elimination, and Game3D script-callback parity across interpreted and native runs.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
-- **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, GUI overlay/font-propagation regressions, and Linux AppImage / Windows installer-wizard packaging coverage.
+- **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, Zia integer-map and lexer/parser-diagnostic coverage, `Pixels` text-drawing and normalized-gradient suites, GUI overlay/font-propagation regressions, and Linux AppImage / Windows installer-wizard packaging coverage.
 
 ---
 
-Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, wind-swayed foliage, a render-to-image minimap, spot shadows, a renderer/audio counter HUD, and a procedural fallback forest for its missing optional tree asset, while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, and the agent-facing CLI. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
+Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, wind-swayed foliage, a render-to-image minimap, spot shadows, a renderer/audio counter HUD, and a procedural fallback forest for its missing optional tree asset, and the `paint` app was rebuilt around a registry-driven tool interface — an HSL color picker, menu bar, and select/gradient/curve/polygon/spray/text tools over layers with blend modes and opacity — while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, and the agent-facing CLI. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
 
 <!-- END DRAFT -->

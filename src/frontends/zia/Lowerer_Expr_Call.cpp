@@ -1169,32 +1169,37 @@ void Lowerer::padDefaultArgs(const std::string &calleeName,
 //=============================================================================
 
 LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, CallExpr *expr) {
+    const size_t dollarPos = mangledName.find('$');
+    if (dollarPos == std::string::npos) {
+        reportLoweringInvariant(expr ? expr->loc : SourceLoc{},
+                                "V-ZIA-LOWER-BAD-GENERIC-CALLEE",
+                                "generic callee '" + mangledName +
+                                    "' is missing type-argument delimiter");
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+    const std::string baseName = mangledName.substr(0, dollarPos);
+
     // Get the function type from Sema
     TypeRef funcType = sema_.typeOf(expr->callee.get());
     if (!funcType || funcType->kind != TypeKindSem::Function) {
         // Fallback - compute return type from generic function declaration
-        std::string baseName = mangledName.substr(0, mangledName.find('$'));
-        std::string concreteTypeName = mangledName.substr(mangledName.find('$') + 1);
         FunctionDecl *genericDecl = sema_.getGenericFunction(baseName);
 
         Type ilReturnType = Type(Type::Kind::I64); // Default fallback
+        bool pushedContext = sema_.pushSubstitutionContext(mangledName);
         if (genericDecl) {
             // Resolve return type from declaration and substitute type parameters
             if (genericDecl->returnType) {
                 TypeRef declReturnType = sema_.resolveType(genericDecl->returnType.get());
-                if (declReturnType && declReturnType->kind == TypeKindSem::TypeParam) {
-                    // Return type is a type parameter - substitute with concrete type
-                    TypeRef concreteType = sema_.resolveNamedType(concreteTypeName);
-                    if (concreteType) {
-                        ilReturnType = mapType(concreteType);
-                    }
-                } else if (declReturnType) {
+                if (declReturnType) {
                     ilReturnType = mapType(declReturnType);
                 }
             } else {
                 ilReturnType = Type(Type::Kind::Void);
             }
         }
+        if (pushedContext)
+            sema_.popTypeParams();
 
         // Lower arguments
         std::vector<Value> args;
@@ -1230,7 +1235,6 @@ LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, Ca
 
     // Lower arguments
     const auto &paramTypes = funcType->paramTypes();
-    std::string baseName = mangledName.substr(0, mangledName.find('$'));
     FunctionDecl *genericDecl = sema_.getGenericFunction(baseName);
     std::vector<Value> args =
         lowerResolvedCallArgs(expr, paramTypes, genericDecl ? &genericDecl->params : nullptr);

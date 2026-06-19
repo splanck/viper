@@ -492,9 +492,18 @@ bool Sema::tryBindTerminalTextCall(CallExpr *expr,
     if (!canAutoStringifyForTerminal(argType))
         return false;
 
+    auto specs = makeExternParamSpecs(*sym);
+    if (specs.empty())
+        return false;
+    specs.resize(1);
+    specs[0].type = types::any();
+    CallArgBinding binding;
+    if (!bindCallArgs(expr->args, specs, expr->loc, calleeName, binding, nullptr, true, true))
+        return false;
+
     runtimeCallees_[expr] = calleeName;
     exprTypes_[expr->callee.get()] = sym->type;
-    callArgBindings_.erase(expr);
+    callArgBindings_[expr] = binding;
     outType = normalizeRuntimeSurfaceType(sym->type->returnType());
     return true;
 }
@@ -1021,21 +1030,68 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     argTypes.push_back(argType);
                 }
 
+                std::vector<CallParamSpec> inferenceSpecs;
+                inferenceSpecs.reserve(genericDecl->params.size());
+                for (const auto &param : genericDecl->params) {
+                    CallParamSpec spec;
+                    spec.name = param.name;
+                    spec.type = types::any();
+                    spec.hasDefault = param.defaultValue != nullptr;
+                    spec.isVariadic = param.isVariadic;
+                    inferenceSpecs.push_back(std::move(spec));
+                }
+
+                CallArgBinding provisionalBinding;
+                if (!bindCallArgs(expr->args,
+                                  inferenceSpecs,
+                                  expr->loc,
+                                  genericName,
+                                  provisionalBinding,
+                                  nullptr,
+                                  true)) {
+                    return types::unknown();
+                }
+
                 // Build set of type parameter names for quick lookup
                 std::set<std::string> typeParamNames(genericDecl->genericParams.begin(),
                                                      genericDecl->genericParams.end());
 
-                // Infer type parameters from argument types
+                // Infer type parameters from arguments after applying named/default/variadic
+                // binding. Omitted default parameters cannot contribute inference.
                 std::map<std::string, TypeRef> inferredTypes;
-                for (size_t i = 0; i < genericDecl->params.size() && i < argTypes.size(); ++i) {
+                const bool hasVariadic =
+                    !genericDecl->params.empty() && genericDecl->params.back().isVariadic;
+                const size_t fixedCount =
+                    hasVariadic ? genericDecl->params.size() - 1 : genericDecl->params.size();
+                for (size_t i = 0; i < fixedCount; ++i) {
+                    int sourceIndex = i < provisionalBinding.fixedParamSources.size()
+                                          ? provisionalBinding.fixedParamSources[i]
+                                          : -1;
+                    if (sourceIndex < 0)
+                        continue;
                     TypeNode *paramTypeNode = genericDecl->params[i].type.get();
+                    size_t argIndex = static_cast<size_t>(sourceIndex);
                     if (!inferTypeParamsFromPattern(
-                            paramTypeNode, argTypes[i], typeParamNames, inferredTypes)) {
-                        error(expr->args[i].value->loc,
+                            paramTypeNode, argTypes[argIndex], typeParamNames, inferredTypes)) {
+                        error(expr->args[argIndex].value->loc,
                               "Type mismatch in generic function call: cannot infer type "
                               "arguments from parameter '" +
                                   genericDecl->params[i].name + "'");
                         return types::unknown();
+                    }
+                }
+                if (hasVariadic) {
+                    TypeNode *paramTypeNode = genericDecl->params.back().type.get();
+                    for (int sourceIndex : provisionalBinding.variadicSources) {
+                        size_t argIndex = static_cast<size_t>(sourceIndex);
+                        if (!inferTypeParamsFromPattern(
+                                paramTypeNode, argTypes[argIndex], typeParamNames, inferredTypes)) {
+                            error(expr->args[argIndex].value->loc,
+                                  "Type mismatch in generic function call: cannot infer type "
+                                  "arguments from variadic parameter '" +
+                                      genericDecl->params.back().name + "'");
+                            return types::unknown();
+                        }
                     }
                 }
 
@@ -1726,6 +1782,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     for (auto &arg : expr->args) {
         analyzeExpr(arg.value.get());
     }
+
+    if (!calleeType)
+        return types::unknown();
 
     // If callee is a function type, validate args and return its return type
     if (calleeType->kind == TypeKindSem::Function) {

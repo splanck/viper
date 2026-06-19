@@ -40,6 +40,7 @@
 #include <array>
 #include <charconv>
 #include <limits>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -432,6 +433,27 @@ bool validateBasedIntegerSeparators(std::string_view text,
     return previousWasDigit;
 }
 
+/// @brief Parse a prefix-free, non-decimal integer with signed integer bounds.
+/// @param digits Digits after separators and base prefix have been removed.
+/// @param base Numeric base represented by @p digits.
+/// @return The parsed value, or `std::nullopt` when the literal overflows `int64_t`.
+///
+/// @details Binary and octal literals are value literals, not arbitrary-width bit
+///          patterns. This helper keeps their bounds consistent and avoids duplicating
+///          overflow checks in each base-specific lexer branch.
+std::optional<int64_t> parseSignedBasedInteger(std::string_view digits, uint32_t base) {
+    constexpr uint64_t kMaxSignedInteger =
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+    uint64_t value = 0;
+    for (char digit : digits) {
+        uint32_t digitValue = static_cast<uint32_t>(digit - '0');
+        if (value > (kMaxSignedInteger - digitValue) / base)
+            return std::nullopt;
+        value = value * base + digitValue;
+    }
+    return static_cast<int64_t>(value);
+}
+
 std::string classifyLexError(const std::string &message) {
     if (message.find("unterminated block comment") != std::string::npos)
         return "V-ZIA-LEX-UNTERMINATED-COMMENT";
@@ -628,6 +650,37 @@ Token Lexer::lexIdentifierOrKeyword() {
     return tok;
 }
 
+/// @brief Check whether the current source position can lex `.digits` as a number.
+/// @details The lexer has no parser context, so it relies on the previous consumed
+/// token. Tokens that can end an expression keep `.` available for field access and
+/// tuple indexes; all other contexts allow the leading-dot float extension.
+/// @return True when the current dot should be lexed as part of a NumberLiteral.
+bool Lexer::canStartLeadingDotNumber() const {
+    if (peekChar() != '.' || !isDigit(peekChar(1)))
+        return false;
+    if (!lastSignificantTokenKind_)
+        return true;
+
+    switch (*lastSignificantTokenKind_) {
+        case TokenKind::Identifier:
+        case TokenKind::IntegerLiteral:
+        case TokenKind::NumberLiteral:
+        case TokenKind::StringLiteral:
+        case TokenKind::StringEnd:
+        case TokenKind::KwTrue:
+        case TokenKind::KwFalse:
+        case TokenKind::KwNull:
+        case TokenKind::KwSelf:
+        case TokenKind::KwSuper:
+        case TokenKind::RParen:
+        case TokenKind::RBracket:
+        case TokenKind::RBrace:
+            return false;
+        default:
+            return true;
+    }
+}
+
 void Lexer::consumeMalformedBasedLiteralTail(Token &tok) {
     while (!eof() && isIdentifierContinue(peekChar())) {
         tok.text.push_back(getChar());
@@ -639,7 +692,7 @@ Token Lexer::lexNumber() {
     tok.loc = currentLoc();
     tok.kind = TokenKind::IntegerLiteral;
 
-    // Check for hex (0x) or binary (0b)
+    // Check for hex (0x), binary (0b), or octal (0o)
     if (peekChar() == '0') {
         char next = peekChar(1);
         if (next == 'x' || next == 'X') {
@@ -717,22 +770,53 @@ Token Lexer::lexNumber() {
                 return tok;
             }
 
-            // Parse binary value
-            uint64_t value = 0;
             std::string binaryDigits = removeNumericSeparators(tok.text, 2);
-            constexpr uint64_t kMaxSignedInteger =
-                static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
-            for (char digit : binaryDigits) {
-                uint64_t bit = static_cast<uint64_t>(digit - '0');
-                if (value > (kMaxSignedInteger >> 1) || (value == (kMaxSignedInteger >> 1) &&
-                                                         bit > (kMaxSignedInteger & uint64_t{1}))) {
-                    reportError(tok.loc, "binary literal out of range");
-                    tok.kind = TokenKind::Error;
-                    return tok;
-                }
-                value = (value << 1) | bit;
+            auto parsed = parseSignedBasedInteger(binaryDigits, 2);
+            if (!parsed) {
+                reportError(tok.loc, "binary literal out of range");
+                tok.kind = TokenKind::Error;
+                return tok;
             }
-            tok.intValue = static_cast<int64_t>(value);
+            tok.intValue = *parsed;
+            return tok;
+        } else if (next == 'o' || next == 'O') {
+            // Octal literal
+            tok.text.push_back(getChar()); // '0'
+            tok.text.push_back(getChar()); // 'o'
+
+            auto isOctalDigit = [](char ch) { return ch >= '0' && ch <= '7'; };
+            if (!isOctalDigit(peekChar())) {
+                consumeMalformedBasedLiteralTail(tok);
+                reportError(tok.loc, "invalid octal literal: expected octal digits after 0o");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+
+            while (!eof() && (isOctalDigit(peekChar()) || isNumericSeparator(peekChar()))) {
+                tok.text.push_back(getChar());
+            }
+
+            if (!eof() && isIdentifierContinue(peekChar())) {
+                consumeMalformedBasedLiteralTail(tok);
+                reportErrorRange(tok.loc, currentLoc(), "invalid octal literal");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+
+            if (!validateBasedIntegerSeparators(tok.text, 2, isOctalDigit)) {
+                reportError(tok.loc, "invalid octal literal: '_' must separate digits");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+
+            std::string octalDigits = removeNumericSeparators(tok.text, 2);
+            auto parsed = parseSignedBasedInteger(octalDigits, 8);
+            if (!parsed) {
+                reportError(tok.loc, "octal literal out of range");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+            tok.intValue = *parsed;
             return tok;
         }
     }
@@ -932,6 +1016,12 @@ Token Lexer::lexString() {
         if (c == '$' && peekChar(1) == '{') {
             if (interpolationDepth_ >= 32) {
                 reportError(tok.loc, "string interpolation nesting too deep (limit: 32)");
+                interpolationDepth_ = 0;
+                braceDepth_.clear();
+                while (!eof() && peekChar() != '"')
+                    getChar();
+                if (!eof())
+                    getChar();
                 tok.kind = TokenKind::Error;
                 return tok;
             }
@@ -1087,8 +1177,16 @@ Token Lexer::next() {
     if (peeked_.has_value()) {
         Token tok = std::move(*peeked_);
         peeked_.reset();
+        if (tok.kind != TokenKind::Eof && tok.kind != TokenKind::Error)
+            lastSignificantTokenKind_ = tok.kind;
         return tok;
     }
+
+    auto remember = [this](Token tok) {
+        if (tok.kind != TokenKind::Eof && tok.kind != TokenKind::Error)
+            lastSignificantTokenKind_ = tok.kind;
+        return tok;
+    };
 
     if (!skipWhitespaceAndComments()) {
         Token tok;
@@ -1108,21 +1206,21 @@ Token Lexer::next() {
 
     // Identifier or keyword
     if (isIdentifierStart(c)) {
-        return lexIdentifierOrKeyword();
+        return remember(lexIdentifierOrKeyword());
     }
 
     // Number
-    if (isDigit(c)) {
-        return lexNumber();
+    if (isDigit(c) || canStartLeadingDotNumber()) {
+        return remember(lexNumber());
     }
 
     // String literal
     if (c == '"') {
-        return lexString();
+        return remember(lexString());
     }
 
     // Operators and punctuation
-    return lexOperatorOrPunctuation(c);
+    return remember(lexOperatorOrPunctuation(c));
 }
 
 Token Lexer::lexOperatorOrPunctuation(char c) {
@@ -1443,7 +1541,9 @@ Token Lexer::lexOperatorOrPunctuation(char c) {
 
 const Token &Lexer::peek() {
     if (!peeked_.has_value()) {
+        auto savedLastTokenKind = lastSignificantTokenKind_;
         peeked_ = next();
+        lastSignificantTokenKind_ = savedLastTokenKind;
     }
     return *peeked_;
 }

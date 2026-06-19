@@ -255,7 +255,7 @@ ExprPtr Parser::parseRange() {
     if (!expr)
         return nullptr;
 
-    while (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
+    if (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
         Token opTok = advance();
         bool inclusive = opTok.kind == TokenKind::DotDotEqual;
         SourceLoc loc = opTok.loc;
@@ -265,6 +265,10 @@ ExprPtr Parser::parseRange() {
             return nullptr;
 
         expr = std::make_unique<RangeExpr>(loc, std::move(expr), std::move(right), inclusive);
+        if (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
+            error("chained range expressions require parentheses");
+            return nullptr;
+        }
     }
 
     return expr;
@@ -278,9 +282,9 @@ ExprPtr Parser::parseCoalesce() {
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::QuestionQuestion, &opTok)) {
+    if (match(TokenKind::QuestionQuestion, &opTok)) {
         SourceLoc loc = opTok.loc;
-        ExprPtr right = parseLogicalOr();
+        ExprPtr right = parseCoalesce();
         if (!right)
             return nullptr;
 
@@ -428,8 +432,14 @@ ExprPtr Parser::parseComparison() {
     if (!expr)
         return nullptr;
 
+    bool sawRelational = false;
     while (check(TokenKind::Less) || check(TokenKind::LessEqual) || check(TokenKind::Greater) ||
            check(TokenKind::GreaterEqual)) {
+        if (sawRelational) {
+            error("chained relational comparisons require explicit boolean operators");
+            return nullptr;
+        }
+        sawRelational = true;
         Token opTok = advance();
         BinaryOp op;
         switch (opTok.kind) {
@@ -598,7 +608,9 @@ ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr) {
 
 /// @brief Parse binary operators from a pre-parsed left-hand expression.
 /// @details Used by parsePostfixAndBinaryFrom to handle match arm patterns that
-///          begin with an already-parsed primary expression.
+///          begin with an already-parsed primary expression. Mirrors normal
+///          expression parsing for non-assignment operators so this helper does
+///          not accept grammar forms rejected by parseAssignment().
 /// @param expr The left-hand expression to extend with binary operators.
 /// @return The extended expression.
 ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
@@ -669,6 +681,7 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
     // Parse comparison ops
+    bool sawRelational = false;
     while (true) {
         BinaryOp op;
         Token opTok;
@@ -682,6 +695,12 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
             op = BinaryOp::Ge;
         else
             break;
+
+        if (sawRelational) {
+            errorAt(opTok.loc, "chained relational comparisons require explicit boolean operators");
+            return nullptr;
+        }
+        sawRelational = true;
 
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseShift();
@@ -750,12 +769,12 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
     }
     while (match(TokenKind::QuestionQuestion, &opTok)) {
         SourceLoc loc = opTok.loc;
-        ExprPtr right = parseLogicalOr();
+        ExprPtr right = parseCoalesce();
         if (!right)
             return nullptr;
         expr = std::make_unique<CoalesceExpr>(loc, std::move(expr), std::move(right));
     }
-    while (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
+    if (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
         Token rangeTok = advance();
         SourceLoc loc = rangeTok.loc;
         ExprPtr right = parseCoalesce();
@@ -763,6 +782,10 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
             return nullptr;
         expr = std::make_unique<RangeExpr>(
             loc, std::move(expr), std::move(right), rangeTok.kind == TokenKind::DotDotEqual);
+        if (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
+            error("chained range expressions require parentheses");
+            return nullptr;
+        }
     }
     if (match(TokenKind::Question, &opTok)) {
         SourceLoc loc = opTok.loc;
@@ -777,13 +800,13 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
         expr = std::make_unique<TernaryExpr>(
             loc, std::move(expr), std::move(thenExpr), std::move(elseExpr));
     }
-    if (match(TokenKind::Equal, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr value = parseExpressionAllowingStructLiterals();
-        if (!value)
-            return nullptr;
-        expr =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::Assign, std::move(expr), std::move(value));
+    if (check(TokenKind::Equal) || check(TokenKind::PlusEqual) || check(TokenKind::MinusEqual) ||
+        check(TokenKind::StarEqual) || check(TokenKind::SlashEqual) ||
+        check(TokenKind::PercentEqual) || check(TokenKind::ShiftLeftEqual) ||
+        check(TokenKind::ShiftRightEqual) || check(TokenKind::AmpersandEqual) ||
+        check(TokenKind::PipeEqual) || check(TokenKind::CaretEqual)) {
+        errorAt(peek().loc, "assignment is not valid in this expression context");
+        return nullptr;
     }
     return expr;
 }

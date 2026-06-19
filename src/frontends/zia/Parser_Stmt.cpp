@@ -231,7 +231,7 @@ StmtPtr Parser::parseVarDecl() {
             return nullptr;
         }
 
-        if (!expect(TokenKind::RParen, "')'"))
+        if (!expect(TokenKind::RParen, ")"))
             return nullptr;
 
         if (!expect(TokenKind::Equal, "'='"))
@@ -335,7 +335,9 @@ StmtPtr Parser::parseForStmt() {
 
     auto isCStyleFor = [&]() -> bool {
         constexpr int kMaxForLookahead = 512;
-        int depth = 0;
+        int parenDepth = 0;
+        int bracketDepth = 0;
+        int braceDepth = 0;
         for (int i = 0; i < kMaxForLookahead; ++i) {
             TokenKind kind = peek(i).kind;
             if (kind == TokenKind::Eof)
@@ -343,16 +345,34 @@ StmtPtr Parser::parseForStmt() {
             if (!hasParen && kind == TokenKind::LBrace)
                 break;
             if (kind == TokenKind::LParen) {
-                depth++;
+                parenDepth++;
                 continue;
             }
             if (kind == TokenKind::RParen) {
-                if (depth == 0)
+                if (parenDepth == 0)
                     break;
-                depth--;
+                parenDepth--;
                 continue;
             }
-            if (depth == 0) {
+            if (kind == TokenKind::LBracket) {
+                bracketDepth++;
+                continue;
+            }
+            if (kind == TokenKind::RBracket) {
+                if (bracketDepth > 0)
+                    bracketDepth--;
+                continue;
+            }
+            if (kind == TokenKind::LBrace) {
+                braceDepth++;
+                continue;
+            }
+            if (kind == TokenKind::RBrace) {
+                if (braceDepth > 0)
+                    braceDepth--;
+                continue;
+            }
+            if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
                 if (kind == TokenKind::Semicolon)
                     return true;
                 if (kind == TokenKind::KwIn)
@@ -662,10 +682,8 @@ StmtPtr Parser::parseMatchStmt() {
             if (!arm.body)
                 return nullptr;
 
-            // Accept semicolon, comma, or nothing after expression body
-            // (matches the flexibility of match-expression syntax)
-            if (!match(TokenKind::Semicolon))
-                match(TokenKind::Comma);
+            while (match(TokenKind::Semicolon) || match(TokenKind::Comma)) {
+            }
         }
 
         arms.push_back(std::move(arm));
@@ -712,7 +730,7 @@ StmtPtr Parser::parseTryStmt() {
                         return nullptr;
                 }
             }
-            if (!expect(TokenKind::RParen, "')'"))
+            if (!expect(TokenKind::RParen, ")"))
                 return nullptr;
         }
 

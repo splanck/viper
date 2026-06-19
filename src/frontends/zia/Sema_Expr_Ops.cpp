@@ -99,7 +99,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                       "Cannot assign member '" + fieldExpr->field + "' on Optional type '" +
                           baseType->toDisplayString() +
                           "' without null check; use force unwrap before assignment");
-                baseType = baseType->innerType();
+                return types::unknown();
             }
 
             if (isReadOnlyBuiltinProperty(baseType, fieldExpr->field)) {
@@ -216,6 +216,10 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
 }
 
 TypeRef Sema::checkArithmeticBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    if (!leftType || !rightType || leftType->kind == TypeKindSem::Unknown ||
+        rightType->kind == TypeKindSem::Unknown)
+        return types::unknown();
+
     if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add) {
         if (rightType->kind == TypeKindSem::Any) {
             error(expr->right->loc,
@@ -237,11 +241,11 @@ TypeRef Sema::checkArithmeticBinary(BinaryExpr *expr, TypeRef leftType, TypeRef 
         if (expr->right->kind == ExprKind::IntLiteral) {
             auto *lit = static_cast<IntLiteralExpr *>(expr->right.get());
             if (lit->value == 0)
-                warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
+                warn(WarningCode::W010_DivisionByZero, expr->right->loc, "Division by zero");
         } else if (expr->right->kind == ExprKind::NumberLiteral) {
             auto *lit = static_cast<NumberLiteralExpr *>(expr->right.get());
             if (lit->value == 0.0)
-                warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
+                warn(WarningCode::W010_DivisionByZero, expr->right->loc, "Division by zero");
         }
     }
 
@@ -255,6 +259,9 @@ TypeRef Sema::checkArithmeticBinary(BinaryExpr *expr, TypeRef leftType, TypeRef 
 }
 
 TypeRef Sema::checkComparisonBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    if (!leftType || !rightType)
+        return types::boolean();
+
     // W005: Float equality — comparing floats with == or != is unreliable.
     if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
         leftType->kind == TypeKindSem::Number && rightType->kind == TypeKindSem::Number) {
@@ -318,12 +325,21 @@ TypeRef Sema::checkComparisonBinary(BinaryExpr *expr, TypeRef leftType, TypeRef 
 }
 
 TypeRef Sema::checkLogicalBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    if (!leftType || !rightType)
+        return types::boolean();
+    if (leftType->kind == TypeKindSem::Unknown || rightType->kind == TypeKindSem::Unknown)
+        return types::boolean();
     if (leftType->kind != TypeKindSem::Boolean || rightType->kind != TypeKindSem::Boolean)
         error(expr->loc, "Logical operators require Boolean operands");
     return types::boolean();
 }
 
 TypeRef Sema::checkBitwiseBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rightType) {
+    if (!leftType || !rightType)
+        return types::unknown();
+    if (leftType->kind == TypeKindSem::Unknown || rightType->kind == TypeKindSem::Unknown)
+        return types::unknown();
+
     if (expr->op == BinaryOp::BitXor) {
         warn(WarningCode::W017_XorConfusion,
              expr->loc,
@@ -336,6 +352,9 @@ TypeRef Sema::checkBitwiseBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rig
     }
     if (!leftType->isIntegral() || !rightType->isIntegral())
         error(expr->loc, "Bitwise operators require integral operands");
+    if (leftType->kind == TypeKindSem::Byte && rightType->kind == TypeKindSem::Byte &&
+        expr->op != BinaryOp::Shl && expr->op != BinaryOp::Shr)
+        return types::byte();
     return types::integer();
 }
 
@@ -447,6 +466,14 @@ TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef
                 error(expr->loc, "Indexed assignment requires a List, Map, or fixed-size array");
             }
         }
+        if (assignTarget && expr->right->kind == ExprKind::MapLiteral) {
+            auto *mapLiteral = static_cast<MapLiteralExpr *>(expr->right.get());
+            if (mapLiteral->entries.empty() && (assignTarget->kind == TypeKindSem::Set ||
+                                                assignTarget->kind == TypeKindSem::Map)) {
+                exprTypes_[expr->right.get()] = assignTarget;
+                rightType = assignTarget;
+            }
+        }
         if (assignTarget && rightType && assignTarget->kind != TypeKindSem::Unknown &&
             rightType->kind != TypeKindSem::Unknown && assignTarget->kind != TypeKindSem::Error &&
             rightType->kind != TypeKindSem::Error && !assignTarget->isAssignableFrom(*rightType)) {
@@ -539,7 +566,8 @@ TypeRef Sema::analyzeUnary(UnaryExpr *expr) {
 /// @details Validates condition is Boolean and finds common type of branches.
 TypeRef Sema::analyzeTernary(TernaryExpr *expr) {
     TypeRef condType = analyzeExpr(expr->condition.get());
-    if (condType->kind != TypeKindSem::Boolean) {
+    if (condType && condType->kind != TypeKindSem::Unknown &&
+        condType->kind != TypeKindSem::Boolean) {
         error(expr->condition->loc, "Condition must be Boolean");
     }
 

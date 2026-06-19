@@ -270,7 +270,7 @@ ExprPtr Parser::parseIdentifierOrStructLiteral(SourceLoc loc) {
                             break; // trailing comma
                     }
                     SourceLoc fieldLoc = peek().loc;
-                    if (!check(TokenKind::Identifier)) {
+                    if (!checkIdentifierLike()) {
                         error("Expected field name in struct literal");
                         break;
                     }
@@ -446,10 +446,7 @@ ExprPtr Parser::parseMatchExpression(SourceLoc loc) {
 
         arms.push_back(std::move(arm));
 
-        // Optional semicolon/comma or closing brace
-        if (!check(TokenKind::RBrace)) {
-            if (!match(TokenKind::Semicolon))
-                match(TokenKind::Comma);
+        while (match(TokenKind::Semicolon) || match(TokenKind::Comma)) {
         }
     }
 

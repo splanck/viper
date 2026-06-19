@@ -660,16 +660,32 @@ class Sema {
     /// declarations are flattened into the compilation unit. This helper uses
     /// @p useLoc to prefer the imports declared by that file, then falls back to
     /// globally unique module exports for older call sites without source context.
-    const std::unordered_map<std::string, Symbol> *
-    findModuleExports(const std::string &moduleName, SourceLoc useLoc = {}) const;
+    const std::unordered_map<std::string, Symbol> *findModuleExports(const std::string &moduleName,
+                                                                     SourceLoc useLoc = {}) const;
 
     /// @brief Return true if a file-module root is visible at a source location.
     /// @param moduleName The visible module root to test.
     /// @param useLoc Location whose file-local imports should be consulted.
     bool hasModuleExports(const std::string &moduleName, SourceLoc useLoc = {}) const;
 
-    /// @brief Derive the visible module name for a file bind.
+    /// @brief Derive the primary visible module name for a file bind.
+    /// @details Explicit aliases take precedence, then the bound file's
+    /// declared module name, then the bind path stem.
     std::string fileBindModuleName(const BindDecl &decl) const;
+
+    /// @brief Derive the module qualifier implied by a file bind path.
+    /// @details Strips directory components and the `.zia` extension from
+    /// @p decl.path. Used as a compatibility alias for unaliased file binds,
+    /// so `bind "../model/player";` can still qualify symbols as `player.X`
+    /// even when the target file declares `module player;` or a different
+    /// canonical module name.
+    std::string fileBindPathStem(const BindDecl &decl) const;
+
+    /// @brief Return every module qualifier made visible by a file bind.
+    /// @details Explicit aliases produce only the alias. Unaliased binds
+    /// produce the primary module name plus the path stem when they differ,
+    /// preserving both declared-module and legacy path-stem qualification.
+    std::vector<std::string> fileBindVisibleModuleNames(const BindDecl &decl) const;
 
     /// @brief Prepare module-qualified semantic names for colliding top-level declarations.
     void prepareModuleScopedTypeNames(const ModuleDecl &module);
@@ -1982,9 +1998,14 @@ class Sema {
     /// @details Allows two different files to bind different modules under the same
     /// local alias without corrupting qualified lookup for either file.
     std::unordered_map<uint32_t,
-                       std::unordered_map<std::string,
-                                          std::unordered_map<std::string, Symbol>>>
+                       std::unordered_map<std::string, std::unordered_map<std::string, Symbol>>>
         fileModuleExports_;
+
+    /// @brief File-local file-module ids keyed by importer file id and visible module name.
+    /// @details Used for qualified type references such as `player.Player` even when the target
+    ///          type is not exported from the bound file. File-local lookup prevents two source
+    ///          files that bind different modules under the same alias from sharing a stale id.
+    std::unordered_map<uint32_t, std::unordered_map<std::string, uint32_t>> fileBoundModuleIds_;
 
     /// @brief Bound file-module aliases/names mapped to their defining file id.
     std::unordered_map<std::string, uint32_t> boundFileModuleIds_;

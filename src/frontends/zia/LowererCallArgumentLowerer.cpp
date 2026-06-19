@@ -108,7 +108,17 @@ std::vector<Lowerer::Value> CallArgumentLowerer::lowerResolvedArgs(
             auto coerced = lowerer_.coerceValueToType(
                 defaultResult.value, defaultResult.type, defaultType, paramTypes[i]);
             finalArgs.push_back(coerced.value);
+            continue;
         }
+
+        lowerer_.reportLoweringInvariant(params && i < params->size() ? (*params)[i].loc
+                                                                      : il::support::SourceLoc{},
+                                         "V-ZIA-LOWER-MISSING-CALL-ARG",
+                                         "resolved call binding omitted a required argument");
+        Type fallbackType =
+            i < paramTypes.size() ? lowerer_.mapType(paramTypes[i]) : Type(Type::Kind::I64);
+        finalArgs.push_back(fallbackType.kind == Type::Kind::Ptr ? Value::null()
+                                                                 : Value::constInt(0));
     }
 
     if (hasVariadic && !paramTypes.empty()) {

@@ -326,7 +326,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
     allocaInstr.result = allocaId;
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
-    allocaInstr.operands = {Value::constInt(8)};
+    allocaInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(allocaId);
@@ -425,7 +425,7 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
     allocaInstr.result = allocaId;
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
-    allocaInstr.operands = {Value::constInt(8)};
+    allocaInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(allocaId);

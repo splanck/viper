@@ -19,10 +19,52 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
+#include "il/runtime/RuntimeNameMap.hpp"
 #include <functional>
 #include <set>
+#include <string_view>
 
 namespace il::frontends::zia {
+
+namespace {
+
+/// @brief Return true when @p name is a concrete runtime object namespace.
+/// @details Runtime classes from the catalog are registered in Sema::typeRegistry_. Some
+///          legacy runtime objects are still represented only by runtime.def functions such as
+///          `Viper.Game.Entity.New` and `Viper.Game.Behavior.Update`. This helper recognizes
+///          those object namespaces without treating broad modules like `Viper.Game` or arbitrary
+///          unknown `Viper.*` names as types.
+/// @param name Fully-qualified runtime namespace candidate.
+/// @return True if the generated runtime name map has at least one direct member under @p name.
+bool isKnownRuntimeObjectNamespace(std::string_view name) {
+    if (name.rfind("Viper.", 0) != 0)
+        return false;
+
+    std::string prefix(name);
+    prefix.push_back('.');
+    for (const auto &alias : il::runtime::kRuntimeNameAliases) {
+        std::string_view canonical = alias.canonical;
+        if (canonical.size() <= prefix.size() || canonical.compare(0, prefix.size(), prefix) != 0)
+            continue;
+        std::string_view remainder = canonical.substr(prefix.size());
+        if (!remainder.empty() && remainder.find('.') == std::string_view::npos)
+            return true;
+    }
+    return false;
+}
+
+/// @brief Return a canonical runtime type spelling for source-level compatibility aliases.
+/// @details A few Zia examples use older concise names for runtime objects whose catalog name is
+///          now nested. Keep those aliases explicit so unknown `Viper.*` names are still rejected.
+/// @param name Fully-qualified candidate type name.
+/// @return Canonical runtime type name, or @p name when no alias applies.
+std::string canonicalRuntimeTypeName(std::string_view name) {
+    if (name == "Viper.GUI.TreeNode")
+        return "Viper.GUI.TreeView.Node";
+    return std::string(name);
+}
+
+} // namespace
 
 //=============================================================================
 // Type Resolution
@@ -131,6 +173,53 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
     if (aliasIt != typeAliases_.end())
         return aliasIt->second;
 
+    auto lookupRegisteredType = [&](const std::string &candidate) -> TypeRef {
+        auto typeIt = typeRegistry_.find(candidate);
+        if (typeIt != typeRegistry_.end())
+            return typeIt->second;
+        auto alias = typeAliases_.find(candidate);
+        if (alias != typeAliases_.end())
+            return alias->second;
+        return nullptr;
+    };
+
+    auto resolveBoundFileModuleType = [&](const std::string &moduleName,
+                                          const std::string &suffix) -> TypeRef {
+        uint32_t boundFileId = 0;
+        if (useLoc.file_id != 0) {
+            auto fileIt = fileBoundModuleIds_.find(useLoc.file_id);
+            if (fileIt != fileBoundModuleIds_.end()) {
+                auto moduleIt = fileIt->second.find(moduleName);
+                if (moduleIt != fileIt->second.end())
+                    boundFileId = moduleIt->second;
+            }
+        }
+        if (boundFileId == 0) {
+            auto moduleIt = boundFileModuleIds_.find(moduleName);
+            if (moduleIt != boundFileModuleIds_.end())
+                boundFileId = moduleIt->second;
+        }
+        if (boundFileId == 0)
+            return nullptr;
+
+        const std::string scopedSuffix = fileScopedTypeName(boundFileId, suffix);
+        if (TypeRef resolved = lookupRegisteredType(scopedSuffix))
+            return resolved;
+        if (TypeRef resolved = lookupRegisteredType(suffix))
+            return resolved;
+
+        auto itemDot = suffix.find('.');
+        if (itemDot != std::string::npos) {
+            const std::string firstItem = suffix.substr(0, itemDot);
+            const std::string remaining = suffix.substr(itemDot + 1);
+            const std::string scopedFirst = fileScopedTypeName(boundFileId, firstItem);
+            if (TypeRef resolved = lookupRegisteredType(scopedFirst + "." + remaining))
+                return resolved;
+        }
+
+        return nullptr;
+    };
+
     // Check if this is an imported type from a bound namespace
     // e.g., "Canvas" imported from "Viper.Graphics"
     auto importIt = importedSymbols_.find(name);
@@ -146,14 +235,18 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
             return types::map(types::string(), types::unknown());
 
         // Look up the full qualified name in the registry
-        it = typeRegistry_.find(fullName);
+        std::string canonicalFullName = canonicalRuntimeTypeName(fullName);
+        it = typeRegistry_.find(canonicalFullName);
         if (it != typeRegistry_.end())
             return it->second;
 
-        // For runtime classes (e.g., Viper.Graphics.Canvas), return a runtime class type
-        // with the full qualified name so the lowerer can generate correct calls
-        if (fullName.rfind("Viper.", 0) == 0) {
-            return types::runtimeClass(fullName);
+        // Runtime classes must be registered in typeRegistry_. Legacy runtime object
+        // namespaces backed by runtime.def direct members remain valid object types, but
+        // broad namespaces and functions are not valid type names.
+        if (canonicalFullName.rfind("Viper.", 0) == 0) {
+            if (isKnownRuntimeObjectNamespace(canonicalFullName))
+                return types::runtimeClass(canonicalFullName);
+            return nullptr;
         }
     }
 
@@ -184,29 +277,52 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
                     return exportSym.type;
                 return nullptr;
             }
-            return nullptr;
+        }
+
+        if (TypeRef resolved = resolveBoundFileModuleType(prefix, suffix))
+            return resolved;
+
+        auto fileModuleIdIt = useLoc.file_id != 0 ? fileBoundModuleIds_.find(useLoc.file_id)
+                                                  : fileBoundModuleIds_.end();
+        const bool visibleFileModule =
+            moduleExports != nullptr ||
+            boundFileModuleIds_.find(prefix) != boundFileModuleIds_.end() ||
+            (fileModuleIdIt != fileBoundModuleIds_.end() &&
+             fileModuleIdIt->second.find(prefix) != fileModuleIdIt->second.end());
+        if (visibleFileModule && prefix != "Viper") {
+            if (TypeRef resolved = lookupRegisteredType(suffix))
+                return resolved;
         }
 
         // Check if prefix is a namespace alias (e.g., GUI -> Viper.GUI)
         auto prefixIt = importedSymbols_.find(prefix);
         if (prefixIt != importedSymbols_.end()) {
             std::string fullName = prefixIt->second + "." + suffix;
-            it = typeRegistry_.find(fullName);
+            std::string canonicalFullName = canonicalRuntimeTypeName(fullName);
+            it = typeRegistry_.find(canonicalFullName);
             if (it != typeRegistry_.end())
                 return it->second;
-            if (fullName.rfind("Viper.", 0) == 0)
-                return types::runtimeClass(fullName);
+            if (canonicalFullName.rfind("Viper.", 0) == 0) {
+                if (isKnownRuntimeObjectNamespace(canonicalFullName))
+                    return types::runtimeClass(canonicalFullName);
+                return nullptr;
+            }
         }
 
         // Look up the fully-qualified type name directly (used for namespaces).
-        it = typeRegistry_.find(name);
+        std::string canonicalName = canonicalRuntimeTypeName(name);
+        it = typeRegistry_.find(canonicalName);
         if (it != typeRegistry_.end())
             return it->second;
+        if (canonicalName.rfind("Viper.", 0) == 0 && isKnownRuntimeObjectNamespace(canonicalName))
+            return types::runtimeClass(canonicalName);
 
-        // Backwards-compatible fallback: strip the module prefix and look up the base name.
-        it = typeRegistry_.find(suffix);
-        if (it != typeRegistry_.end())
-            return it->second;
+        // Backwards-compatible fallback only for spelling the current module prefix explicitly.
+        if (currentModule_ && prefix == currentModule_->name) {
+            it = typeRegistry_.find(suffix);
+            if (it != typeRegistry_.end())
+                return it->second;
+        }
     }
 
     return nullptr;
@@ -260,14 +376,30 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
                 args.push_back(resolveTypeNode(arg.get()));
             }
 
+            auto requireArity = [&](size_t expected) {
+                if (args.size() == expected)
+                    return true;
+                error(node->loc,
+                      "Type '" + generic->name + "' expects " + std::to_string(expected) +
+                          " type argument" + (expected == 1 ? "" : "s") + ", got " +
+                          std::to_string(args.size()));
+                return false;
+            };
+
             // Built-in generic types
             if (generic->name == "List") {
+                if (!requireArity(1))
+                    return types::unknown();
                 return types::list(args.empty() ? types::unknown() : args[0]);
             }
             if (generic->name == "Set") {
+                if (!requireArity(1))
+                    return types::unknown();
                 return types::set(args.empty() ? types::unknown() : args[0]);
             }
             if (generic->name == "Map") {
+                if (!requireArity(2))
+                    return types::unknown();
                 TypeRef keyType = args.size() > 0 ? args[0] : types::unknown();
                 TypeRef valueType = args.size() > 1 ? args[1] : types::unknown();
                 if (keyType && keyType->kind != TypeKindSem::Unknown &&
@@ -277,20 +409,30 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
                 return types::map(keyType, valueType);
             }
             if (generic->name == "Result") {
+                if (!requireArity(1))
+                    return types::unknown();
                 return types::result(args.empty() ? types::unit() : args[0]);
             }
             if (generic->name == "Seq") {
+                if (!requireArity(1))
+                    return types::unknown();
                 return types::seqOf(args.empty() ? types::unknown() : args[0]);
             }
             if (generic->name == "Queue") {
+                if (!requireArity(1))
+                    return types::unknown();
                 return types::runtimeClass("Viper.Collections.Queue",
                                            {args.empty() ? types::unknown() : args[0]});
             }
             if (generic->name == "Stack") {
+                if (!requireArity(1))
+                    return types::unknown();
                 return types::runtimeClass("Viper.Collections.Stack",
                                            {args.empty() ? types::unknown() : args[0]});
             }
             if (generic->name == "Deque") {
+                if (!requireArity(1))
+                    return types::unknown();
                 return types::runtimeClass("Viper.Collections.Deque",
                                            {args.empty() ? types::unknown() : args[0]});
             }
@@ -368,10 +510,19 @@ void Sema::defineExternFunction(const std::string &name,
                                 const std::vector<std::string> &paramNames,
                                 std::optional<RuntimePointerSafety> pointerSafety,
                                 const std::string &documentation) {
+    TypeRef externType = types::function(paramTypes, returnType);
+    if (Symbol *existing = currentScope_->lookupLocal(name);
+        existing && existing->decl && existing->isExtern &&
+        existing->kind == Symbol::Kind::Function && existing->type &&
+        !existing->type->equals(*externType)) {
+        error(SourceLoc{}, "Conflicting runtime extern signature for '" + name + "'");
+        return;
+    }
+
     Symbol sym;
     sym.kind = Symbol::Kind::Function;
     sym.name = name;
-    sym.type = types::function(paramTypes, returnType);
+    sym.type = externType;
     sym.isExtern = true;
     sym.decl = nullptr; // No AST declaration for extern functions
     if (!documentation.empty())

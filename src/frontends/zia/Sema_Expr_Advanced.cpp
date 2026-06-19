@@ -65,8 +65,13 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
     TypeRef baseType = analyzeExpr(expr->base.get());
     TypeRef indexType = analyzeExpr(expr->index.get());
 
+    if (!baseType || baseType->kind == TypeKindSem::Unknown)
+        return types::unknown();
+    if (!indexType)
+        indexType = types::unknown();
+
     if (baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::String) {
-        if (!indexType->isIntegral()) {
+        if (indexType->kind != TypeKindSem::Unknown && !indexType->isIntegral()) {
             error(expr->index->loc, "Index must be an integer");
         }
         if (baseType->kind == TypeKindSem::String)
@@ -87,7 +92,7 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
 
     // Fixed-size array: T[N] — element access returns the element type
     if (baseType->kind == TypeKindSem::FixedArray) {
-        if (!indexType->isIntegral()) {
+        if (indexType->kind != TypeKindSem::Unknown && !indexType->isIntegral()) {
             error(expr->index->loc, "Index must be an integer");
         } else if (auto *literal = dynamic_cast<IntLiteralExpr *>(expr->index.get())) {
             if (literal->value < 0 ||
@@ -366,9 +371,12 @@ TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
         return types::module(importIt->second);
     }
 
-    // For local modules, also try unqualified name (for backwards compatibility).
+    // For local modules, keep the legacy unqualified fallback only for nested modules/types.
+    // Values and functions must be exported through moduleExports_ or resolved by their
+    // fully-qualified name; otherwise `Module.missing` can accidentally resolve an unrelated
+    // unqualified symbol in the current scope.
     sym = lookupAccessibleSymbol(expr->field, expr->loc, true);
-    if (sym) {
+    if (sym && (sym->kind == Symbol::Kind::Module || sym->kind == Symbol::Kind::Type)) {
         return sym->type;
     }
 
@@ -446,9 +454,8 @@ TypeRef Sema::resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType) {
         const std::string fieldKey = *fieldOwner + "." + expr->field;
         auto fieldVisIt = memberVisibility_.find(fieldKey);
         const bool isInsideDeclaringType =
-            currentSelfType_ &&
-            (currentSelfType_->name == *fieldOwner ||
-             types::isSubclassOf(currentSelfType_->name, *fieldOwner));
+            currentSelfType_ && (currentSelfType_->name == *fieldOwner ||
+                                 types::isSubclassOf(currentSelfType_->name, *fieldOwner));
         if (fieldVisIt != memberVisibility_.end() && fieldVisIt->second == Visibility::Private &&
             !isInsideDeclaringType) {
             error(expr->loc,
@@ -543,9 +550,8 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr) {
         if (auto fieldOwner = findFieldOwner(innerType->name, expr->field)) {
             const std::string memberKey = *fieldOwner + "." + expr->field;
             const bool isInsideDeclaringType =
-                currentSelfType_ &&
-                (currentSelfType_->name == *fieldOwner ||
-                 types::isSubclassOf(currentSelfType_->name, *fieldOwner));
+                currentSelfType_ && (currentSelfType_->name == *fieldOwner ||
+                                     types::isSubclassOf(currentSelfType_->name, *fieldOwner));
             auto visIt = memberVisibility_.find(memberKey);
             if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
                 !isInsideDeclaringType) {
@@ -664,8 +670,11 @@ TypeRef Sema::analyzeCoalesce(CoalesceExpr *expr) {
     if (!innerType)
         return rightType ? rightType : types::unknown();
 
-    if (rightType && rightType->kind != TypeKindSem::Unknown &&
-        !innerType->isAssignableFrom(*rightType)) {
+    if (rightType && rightType->kind == TypeKindSem::Optional && rightType->innerType() &&
+        rightType->innerType()->kind == TypeKindSem::Unknown) {
+        errorTypeMismatch(expr->right->loc, innerType, rightType);
+    } else if (rightType && rightType->kind != TypeKindSem::Unknown &&
+               !innerType->isAssignableFrom(*rightType)) {
         errorTypeMismatch(expr->right->loc, innerType, rightType);
     }
 
@@ -848,7 +857,8 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
         case MatchArm::Pattern::Kind::Literal: {
             if (pattern.literal) {
                 TypeRef litType = analyzeExpr(pattern.literal.get());
-                if (scrutineeType && !scrutineeType->isAssignableFrom(*litType)) {
+                if (scrutineeType && litType && litType->kind != TypeKindSem::Unknown &&
+                    !scrutineeType->isAssignableFrom(*litType)) {
                     error(pattern.literal->loc,
                           "Pattern literal type '" + litType->toDisplayString() +
                               "' is not compatible with scrutinee type '" +
@@ -883,7 +893,8 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
         case MatchArm::Pattern::Kind::Expression:
             if (pattern.literal) {
                 TypeRef exprType = analyzeExpr(pattern.literal.get());
-                if (exprType->kind != TypeKindSem::Boolean) {
+                if (exprType && exprType->kind != TypeKindSem::Unknown &&
+                    exprType->kind != TypeKindSem::Boolean) {
                     error(pattern.literal->loc, "Match expression patterns must be Boolean");
                 }
             }

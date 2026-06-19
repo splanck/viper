@@ -148,6 +148,15 @@ TypePtr Parser::parseBaseType() {
             return std::make_unique<FunctionType>(loc, std::move(elements), std::move(returnType));
         }
 
+        if (elements.empty()) {
+            error("bare '()' is only valid as a function parameter list or the Unit literal");
+            return nullptr;
+        }
+        if (elements.size() == 1) {
+            error("single-element tuple types require at least two elements");
+            return nullptr;
+        }
+
         // Tuple type
         return std::make_unique<TupleType>(loc, std::move(elements));
     }

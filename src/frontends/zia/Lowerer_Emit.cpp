@@ -91,7 +91,7 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value) {
     allocaInstr.result = slotId;
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
-    allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for i64
+    allocaInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value slot = Value::temp(slotId);
@@ -152,7 +152,7 @@ Lowerer::Value Lowerer::emitPointerIsNonNull(Value ptr, Type ptrType) {
     ptrSlotInstr.result = ptrSlotId;
     ptrSlotInstr.op = Opcode::Alloca;
     ptrSlotInstr.type = Type(Type::Kind::Ptr);
-    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     ptrSlotInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
     Value ptrSlot = Value::temp(ptrSlotId);
@@ -1203,7 +1203,7 @@ Lowerer::Value Lowerer::createSlot(const std::string &name, Type type) {
     allocaInstr.result = allocaId;
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
-    allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for i64/f64/ptr
+    allocaInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
 
@@ -1350,7 +1350,7 @@ Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString) {
     allocaInstr.result = slotId;
     allocaInstr.op = Opcode::Alloca;
     allocaInstr.type = Type(Type::Kind::Ptr);
-    allocaInstr.operands = {Value::constInt(8)};
+    allocaInstr.operands = {Value::constInt(static_cast<long long>(kMachineWordSize))};
     allocaInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(slotId);

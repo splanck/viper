@@ -11,12 +11,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
+#include "frontends/zia/RuntimeNames.hpp"
 
 namespace il::frontends::zia {
 
 using il::core::Opcode;
 using il::core::Type;
 using il::core::Value;
+using namespace runtime;
 
 /// Dispatch table entry: (classId, qualifiedMethodName)
 using DispatchEntry = std::pair<int, std::string>;
@@ -117,7 +119,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
         instr.result = id;
         instr.op = Opcode::Alloca;
         instr.type = Type(Type::Kind::Ptr);
-        instr.operands.push_back(Value::constInt(8));
+        instr.operands.push_back(Value::constInt(static_cast<long long>(kMachineWordSize)));
         instr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(instr);
         resultSlot = Value::temp(id);

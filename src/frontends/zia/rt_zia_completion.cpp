@@ -105,6 +105,28 @@ void mapSetStr(void *map, const char *keyName, std::string_view value) {
     rt_string_unref(key);
 }
 
+/// @brief Convert all diagnostic fixits into a runtime sequence of maps.
+/// @param diagnostic Diagnostic whose fixits should be exposed.
+/// @return Owned runtime sequence; callers should store/release it like other runtime objects.
+///
+/// @details Legacy single-fixit fields remain populated from `front()` for API compatibility.
+///          This sequence provides the complete machine-applicable fix list without truncation.
+void *fixitsToSeq(const il::support::Diagnostic &diagnostic) {
+    void *seq = rt_seq_new_owned();
+    for (const auto &fixit : diagnostic.fixits) {
+        void *map = rt_map_new();
+        mapSetStr(map, "message", fixit.message);
+        mapSetStr(map, "replacement", fixit.replacement);
+        mapSetInt(map, "startLine", fixit.range.begin.line);
+        mapSetInt(map, "startColumn", fixit.range.begin.column);
+        mapSetInt(map, "endLine", fixit.range.end.line);
+        mapSetInt(map, "endColumn", fixit.range.end.column);
+        rt_seq_push(seq, map);
+        releaseRuntimeObject(map);
+    }
+    return seq;
+}
+
 int diagnosticSeverityCode(il::support::Severity severity) {
     switch (severity) {
         case il::support::Severity::Warning:
@@ -200,6 +222,9 @@ void *diagnosticToMap(const il::support::Diagnostic &diagnostic,
     mapSetStr(map, "help", diagnostic.help);
     const bool hasFixit = !diagnostic.fixits.empty();
     mapSetBool(map, "hasFixit", hasFixit);
+    void *fixits = fixitsToSeq(diagnostic);
+    mapSetObject(map, "fixits", fixits);
+    releaseRuntimeObject(fixits);
     if (hasFixit) {
         const auto &fixit = diagnostic.fixits.front();
         mapSetStr(map, "fixitMessage", fixit.message);
@@ -435,6 +460,17 @@ std::string normalizeProjectPath(const ProjectIndex &index, std::string path) {
 }
 
 std::string projectPathLookupKey(std::string path) {
+    if (path.empty() || path == "<editor>")
+        return path;
+    std::error_code ec;
+    std::filesystem::path fsPath = std::filesystem::absolute(std::filesystem::path(path), ec);
+    if (ec)
+        fsPath = std::filesystem::path(path);
+    std::filesystem::path canonical = std::filesystem::weakly_canonical(fsPath, ec);
+    if (!ec)
+        path = canonical.lexically_normal().string();
+    else
+        path = fsPath.lexically_normal().string();
     std::replace(path.begin(), path.end(), '\\', '/');
     if (viper::platform::kHostWindows) {
         std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {
@@ -620,7 +656,8 @@ std::unique_ptr<AnalysisResult> analyzeIndexedSource(ProjectIndex &index,
                                                      il::support::SourceManager &sm) {
     CompilerInput input{.source = source, .path = path};
     input.sourceProvider = [&index](std::string_view normalizedPath) -> std::optional<std::string> {
-        auto it = index.sources.find(std::string(normalizedPath));
+        std::string indexedPath = canonicalProjectPath(index, std::string(normalizedPath));
+        auto it = index.sources.find(indexedPath);
         if (it == index.sources.end())
             return std::nullopt;
         return it->second.source;

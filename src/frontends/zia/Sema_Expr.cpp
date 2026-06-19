@@ -144,11 +144,16 @@ TypeRef Sema::analyzeExpr(Expr *expr) {
                 error(expr->loc, "`await` expects Viper.Threads.Future");
             }
 
-            result = types::any();
+            result = types::unknown();
             if (awaitedType && awaitedType->kind == TypeKindSem::Ptr &&
                 awaitedType->name == "Viper.Threads.Future" && !awaitedType->typeArgs.empty() &&
                 awaitedType->typeArgs[0]) {
                 result = awaitedType->typeArgs[0];
+                break;
+            }
+            if (awaitedType && awaitedType->kind == TypeKindSem::Ptr &&
+                awaitedType->name == "Viper.Threads.Future") {
+                error(expr->loc, "`await` requires a typed Viper.Threads.Future[T]");
                 break;
             }
             if (auto *call = dynamic_cast<CallExpr *>(awaitExpr->operand.get())) {
@@ -230,6 +235,8 @@ TypeRef Sema::analyzeExpr(Expr *expr) {
             break;
     }
 
+    if (!result)
+        result = types::unknown();
     exprTypes_[expr] = result;
     return result;
 }

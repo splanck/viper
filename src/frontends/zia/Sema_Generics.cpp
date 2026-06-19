@@ -15,7 +15,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
-#include <cassert>
 #include <cctype>
 
 namespace il::frontends::zia {
@@ -32,23 +31,32 @@ std::string sanitizeMangledPart(std::string text) {
     return text;
 }
 
-/// @brief Build a mangled-name fragment for one type argument (recursing into nested args).
-/// @return A sanitized string from the type's name/kind, its type arguments, and any fixed-array
-///         count; "unknown" for a null type.
+/// @brief Build a structurally delimited mangled-name fragment for one type argument.
+/// @return A sanitized fragment from the type's name/kind plus delimited child fragments.
+///
+/// @details Bare type parameters intentionally remain just their parameter name so generic-context
+///          substitution in Sema::genericFunctionCallee() can still recognize `T`. Compound
+///          arguments include explicit child/count delimiters, avoiding the old ambiguity where
+///          nested generic arguments were flattened with ordinary underscores.
 std::string mangleTypeArg(TypeRef type) {
     if (!type)
         return "unknown";
 
     std::string result = !type->name.empty() ? type->name : kindToString(type->kind);
     result = sanitizeMangledPart(result);
+    if (type->kind == TypeKindSem::TypeParam && type->typeArgs.empty())
+        return result.empty() ? "unknown" : result;
 
     for (const auto &arg : type->typeArgs) {
+        std::string child = mangleTypeArg(arg);
+        result += "_g";
+        result += std::to_string(child.size());
         result += "_";
-        result += mangleTypeArg(arg);
+        result += child;
     }
 
     if (type->kind == TypeKindSem::FixedArray) {
-        result += "_";
+        result += "_n";
         result += std::to_string(type->elementCount);
     }
 
@@ -68,7 +76,10 @@ void Sema::pushTypeParams(const std::map<std::string, TypeRef> &substitutions) {
 
 /// @brief Pop the innermost substitution scope (must balance a prior pushTypeParams()).
 void Sema::popTypeParams() {
-    assert(!typeParamStack_.empty() && "Unbalanced type param stack");
+    if (typeParamStack_.empty()) {
+        error(SourceLoc{}, "Internal error: unbalanced generic type parameter stack");
+        return;
+    }
     typeParamStack_.pop_back();
 }
 
@@ -275,6 +286,21 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     if (methodTypes_.find(key) == methodTypes_.end())
                         methodTypes_[key] = methodType;
                     memberVisibility_[key] = method->visibility;
+                } else if (member->kind == DeclKind::Property) {
+                    auto *prop = static_cast<PropertyDecl *>(member.get());
+                    TypeRef propType =
+                        prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
+                    memberVisibility_[mangledName + "." + prop->name] = prop->visibility;
+                    if (prop->getterBody) {
+                        std::string getterKey = mangledName + ".get_" + prop->name;
+                        methodTypes_[getterKey] = types::function({}, propType);
+                        memberVisibility_[getterKey] = prop->visibility;
+                    }
+                    if (prop->setterBody) {
+                        std::string setterKey = mangledName + ".set_" + prop->name;
+                        methodTypes_[setterKey] = types::function({propType}, types::voidType());
+                        memberVisibility_[setterKey] = prop->visibility;
+                    }
                 }
             }
 
@@ -318,6 +344,21 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     if (methodTypes_.find(key) == methodTypes_.end())
                         methodTypes_[key] = methodType;
                     memberVisibility_[key] = method->visibility;
+                } else if (member->kind == DeclKind::Property) {
+                    auto *prop = static_cast<PropertyDecl *>(member.get());
+                    TypeRef propType =
+                        prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
+                    memberVisibility_[mangledName + "." + prop->name] = prop->visibility;
+                    if (prop->getterBody) {
+                        std::string getterKey = mangledName + ".get_" + prop->name;
+                        methodTypes_[getterKey] = types::function({}, propType);
+                        memberVisibility_[getterKey] = prop->visibility;
+                    }
+                    if (prop->setterBody) {
+                        std::string setterKey = mangledName + ".set_" + prop->name;
+                        methodTypes_[setterKey] = types::function({propType}, types::voidType());
+                        memberVisibility_[setterKey] = prop->visibility;
+                    }
                 }
             }
 
@@ -566,7 +607,6 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     sym.type = instantiatedType;
     sym.decl = funcDecl;
     defineSymbol(mangledName, sym);
-    functionDeclTypes_[funcDecl] = instantiatedType;
 
     return instantiatedType;
 }
