@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <queue>
 #include <vector>
@@ -191,6 +192,10 @@ static constexpr std::size_t kIdxSP = kNumPhysRegs + 1; // 65
 
 /// Total tracked register slots: 64 physical + NZCV + SP.
 static constexpr std::size_t kNumTracked = kNumPhysRegs + 2;
+
+/// Upper bound for the quadratic dependency graph built per schedulable span.
+/// Very large straight-line regions are left in source order to avoid compile-time cliffs.
+static constexpr std::size_t kMaxScheduledSegmentInstructions = 256;
 
 /// Map a physical register ID (or sentinel) to a flat-array index.
 static std::size_t regIdx(uint32_t reg) noexcept {
@@ -438,7 +443,25 @@ struct DepNode {
     std::vector<std::size_t> preds; ///< Predecessor indices (must complete first).
     std::vector<unsigned> predLat;  ///< Latency for each predecessor edge.
     unsigned critPath{0};           ///< Critical-path length from this node to end.
-    unsigned predsDone{0};          ///< Count of predecessors already scheduled.
+    std::size_t predsDone{0};       ///< Count of predecessors already scheduled.
+};
+
+/// @brief Priority queue entry for ready-to-schedule instructions.
+/// @details Higher critical-path values are selected first; ties keep source
+///          order, which avoids integer narrowing from the old negative-priority
+///          encoding and keeps scheduling deterministic.
+struct ReadyNode {
+    unsigned critPath{0};
+    std::size_t instrIdx{0};
+};
+
+/// @brief std::priority_queue comparator for @ref ReadyNode.
+struct ReadyNodeLess {
+    bool operator()(const ReadyNode &lhs, const ReadyNode &rhs) const noexcept {
+        if (lhs.critPath != rhs.critPath)
+            return lhs.critPath < rhs.critPath;
+        return lhs.instrIdx > rhs.instrIdx;
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -684,6 +707,8 @@ static std::vector<MInstr> scheduleBlock(const std::vector<MInstr> &body,
     const std::size_t N = body.size();
     if (N <= 1)
         return body;
+    if (N > kMaxScheduledSegmentInstructions)
+        return body;
 
     // -----------------------------------------------------------------------
     // Phase 1: Build dependency graph.
@@ -713,7 +738,10 @@ static std::vector<MInstr> scheduleBlock(const std::vector<MInstr> &body,
             if (nodes[s].critPath > maxSuccCrit)
                 maxSuccCrit = nodes[s].critPath;
         }
-        nodes[i].critPath = instrLatency(body[i].opc) + maxSuccCrit;
+        const unsigned latency = instrLatency(body[i].opc);
+        nodes[i].critPath = latency > std::numeric_limits<unsigned>::max() - maxSuccCrit
+                                ? std::numeric_limits<unsigned>::max()
+                                : latency + maxSuccCrit;
     }
 
     // -----------------------------------------------------------------------
@@ -726,8 +754,7 @@ static std::vector<MInstr> scheduleBlock(const std::vector<MInstr> &body,
 
     // Build initial ready list: nodes with no predecessors.
     // Priority: (critPath DESC, instrIdx ASC) — higher critPath first.
-    using PriNode = std::pair<int, std::size_t>; // (-critPath, instrIdx)
-    std::priority_queue<PriNode, std::vector<PriNode>, std::greater<PriNode>> ready;
+    std::priority_queue<ReadyNode, std::vector<ReadyNode>, ReadyNodeLess> ready;
 
     std::vector<std::size_t> predCount(N, 0);
     for (std::size_t i = 0; i < N; ++i)
@@ -735,15 +762,16 @@ static std::vector<MInstr> scheduleBlock(const std::vector<MInstr> &body,
 
     for (std::size_t i = 0; i < N; ++i)
         if (predCount[i] == 0)
-            ready.emplace(-static_cast<int>(nodes[i].critPath), i);
+            ready.push(ReadyNode{nodes[i].critPath, i});
 
     std::vector<MInstr> scheduled;
     scheduled.reserve(N);
     std::vector<bool> done(N, false);
 
     while (!ready.empty()) {
-        auto [neg_crit, idx] = ready.top();
+        const ReadyNode readyNode = ready.top();
         ready.pop();
+        const std::size_t idx = readyNode.instrIdx;
 
         if (done[idx])
             continue;
@@ -756,7 +784,7 @@ static std::vector<MInstr> scheduleBlock(const std::vector<MInstr> &body,
                 continue;
             ++nodes[s].predsDone;
             if (nodes[s].predsDone >= predCount[s])
-                ready.emplace(-static_cast<int>(nodes[s].critPath), s);
+                ready.push(ReadyNode{nodes[s].critPath, s});
         }
     }
 

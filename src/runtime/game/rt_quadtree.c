@@ -100,6 +100,7 @@ struct rt_quadtree_impl {
     int8_t query_truncated; ///< 1 if last query hit RT_QUADTREE_MAX_RESULTS cap.
     struct qt_pair pairs[MAX_PAIRS];
     int64_t pair_count;
+    int8_t pairs_truncated; ///< 1 if last get_pairs() hit MAX_PAIRS and dropped pairs.
 };
 
 /// @brief Safe-cast a handle to the QuadTree impl, trapping @p api on a
@@ -211,10 +212,17 @@ static void clear_node(struct qt_node *node) {
 static int8_t ensure_node_capacity(struct qt_node *node, int64_t needed) {
     if (!node || needed <= node->item_capacity)
         return 1;
+    if (needed < 0)
+        return 0;
 
     int64_t new_capacity = node->item_capacity > 0 ? node->item_capacity : RT_QUADTREE_MAX_ITEMS;
-    while (new_capacity < needed)
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2) // avoid signed-overflow UB in the doubling
+            return 0;
         new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / sizeof(int64_t)) // realloc size must fit size_t
+        return 0;
 
     int64_t *resized = realloc(node->items, (size_t)new_capacity * sizeof(int64_t));
     if (!resized)
@@ -483,9 +491,14 @@ static int8_t remove_from_node(struct rt_quadtree_impl *tree, struct qt_node *no
 static void collect_pairs_node(struct rt_quadtree_impl *tree,
                                struct qt_node *node,
                                int64_t *ancestors,
-                               int64_t ancestor_count) {
-    if (!node || tree->pair_count >= MAX_PAIRS)
+                               int64_t ancestor_count,
+                               int64_t ancestor_cap) {
+    if (!node)
         return;
+    if (tree->pair_count >= MAX_PAIRS) {
+        tree->pairs_truncated = 1;
+        return;
+    }
 
     // Check items in this node against each other
     for (int64_t i = 0; i < node->item_count && tree->pair_count < MAX_PAIRS; i++) {
@@ -516,23 +529,23 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
         }
     }
 
-    // Recurse into children with updated ancestor list
+    if (tree->pair_count >= MAX_PAIRS)
+        tree->pairs_truncated = 1; // hit the pair cap — some pairs were dropped
+
+    // Recurse into children with the ancestor list extended by this node's
+    // items. `ancestors` is a single shared scratch buffer for the whole
+    // traversal, sized to MAX_TOTAL_ITEMS (the absolute item ceiling), so the
+    // ancestor list can never overflow: appending in place and passing the new
+    // length down replaces the old per-level 256-entry cap, which previously
+    // dropped collision pairs silently in dense scenes.
     if (node->is_split) {
-        // Expand ancestors to include this node's items
-        // NOTE: 2KB stack allocation per recursion level (256 × 8 bytes).
-        // Bounded by quadtree max depth which is typically < 20 levels.
-        int64_t new_ancestors[256];
-        int64_t new_count = 0;
-        // Copy old ancestors first
-        for (int64_t i = 0; i < ancestor_count && new_count < 256; i++)
-            new_ancestors[new_count++] = ancestors[i];
-        // Then append this node's items
-        for (int64_t i = 0; i < node->item_count && new_count < 256; i++)
-            new_ancestors[new_count++] = node->items[i];
+        int64_t count = ancestor_count;
+        for (int64_t i = 0; i < node->item_count && count < ancestor_cap; i++)
+            ancestors[count++] = node->items[i];
 
         for (int i = 0; i < 4; i++) {
             if (node->children[i]) {
-                collect_pairs_node(tree, node->children[i], new_ancestors, new_count);
+                collect_pairs_node(tree, node->children[i], ancestors, count, ancestor_cap);
             }
         }
     }
@@ -587,6 +600,7 @@ void rt_quadtree_clear(rt_quadtree tree) {
     tree->result_count = 0;
     tree->query_truncated = 0;
     tree->pair_count = 0;
+    tree->pairs_truncated = 0;
 
     // Clear tree structure
     if (tree->root)
@@ -807,8 +821,16 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
         return 0;
 
     tree->pair_count = 0;
-    int64_t ancestors[1] = {0};
-    collect_pairs_node(tree, tree->root, ancestors, 0);
+    tree->pairs_truncated = 0;
+    // Shared ancestor scratch for the whole DFS, sized to the absolute item
+    // ceiling so the ancestor list can never overflow (no dropped pairs).
+    int64_t *ancestors = (int64_t *)malloc((size_t)MAX_TOTAL_ITEMS * sizeof(int64_t));
+    if (!ancestors) {
+        tree->pairs_truncated = 1; // no scratch -> cannot guarantee completeness
+        return 0;
+    }
+    collect_pairs_node(tree, tree->root, ancestors, 0, MAX_TOTAL_ITEMS);
+    free(ancestors);
     return tree->pair_count;
 }
 
@@ -826,4 +848,14 @@ int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].second;
+}
+
+/// @brief Check whether the last rt_quadtree_get_pairs() hit the MAX_PAIRS cap.
+/// @details Mirrors rt_quadtree_query_was_truncated() for the broad-phase pair
+///          list: returns 1 if collision pairs were dropped and the result is
+///          therefore incomplete. Callers relying on "all colliding pairs" MUST
+///          check this and re-run on a subset or raise MAX_PAIRS.
+int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.PairsWasTruncated: expected Viper.Game.Quadtree");
+    return tree ? tree->pairs_truncated : 0;
 }

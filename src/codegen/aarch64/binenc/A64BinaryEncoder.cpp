@@ -572,7 +572,7 @@ static uint32_t unscaledGprLdStTemplate(bool isLoad, unsigned accessBytes) {
 }
 
 /// @brief Select a scratch GPR that is not @p base and not @p avoid.
-/// @details Tries kScratchGPR (x9), kScratchGPR2 (x10), kScratchGPR3 (x11) in priority order.
+/// @details Tries kScratchGPR (x9), kScratchGPR2 (x16), kScratchGPR3 (x17) in priority order.
 /// Throws if all three scratch registers conflict (indicates a register-allocation bug).
 static uint32_t chooseGprScratch(uint32_t base, std::optional<uint32_t> avoid = std::nullopt) {
     const uint32_t candidates[] = {hwGPR(kScratchGPR), hwGPR(kScratchGPR2), hwGPR(kScratchGPR3)};
@@ -1503,9 +1503,8 @@ void A64BinaryEncoder::encodeLargeOffsetLdSt(uint32_t rt,
         throw std::runtime_error("AArch64 binary encoder: large-offset load/store cannot "
                                  "materialize SP base with ADD (register)");
     }
-    const uint32_t scratch =
-        chooseGprScratch(
-            base, (!isLoad && !fprOperand) ? std::optional<uint32_t>(rt) : std::nullopt);
+    const uint32_t scratch = chooseGprScratch(
+        base, (!isLoad && !fprOperand) ? std::optional<uint32_t>(rt) : std::nullopt);
     encodeMovImm64(scratch, static_cast<uint64_t>(offset), cs);
     // add scratch, base, scratch
     emit32(encode3Reg(kAddRRR, scratch, base, scratch), cs);

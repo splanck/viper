@@ -42,6 +42,7 @@
 #include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/common/linker/NativeLinker.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 #include "il/transform/PassManager.hpp"
 #include "tools/common/module_loader.hpp"
@@ -107,11 +108,10 @@ static linker::LinkPlatform targetLinkPlatform(TargetPlatform platform) {
 static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
-#if defined(__APPLE__)
-            return {"cc", "-arch", "arm64"};
-#else
+            if constexpr (viper::platform::kHostMacOS) {
+                return {"cc", "-arch", "arm64"};
+            }
             return {"clang", "--target=arm64-apple-macos11"};
-#endif
         case TargetPlatform::Linux:
             return {"clang", "--target=aarch64-unknown-linux-gnu"};
         case TargetPlatform::Windows:
@@ -129,7 +129,11 @@ static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
 
 /// @brief Return true if @p path has a .o or .obj extension (object file output).
 static bool isObjectOutputPath(const std::string &path) {
-    const std::string ext = std::filesystem::path(path).extension().string();
+    std::string ext = std::filesystem::path(path).extension().string();
+    for (char &ch : ext) {
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    }
     return ext == ".o" || ext == ".obj";
 }
 
@@ -320,17 +324,16 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
 }
 
 /// @brief Return the AArch64 TargetInfo for the host OS detected at compile time.
-/// @details Compile-time dispatch: _WIN32 → Windows AAPCS64/COFF, __APPLE__ → Darwin
-///          AAPCS64/Mach-O with BTI+PAC, otherwise Linux AAPCS64/ELF.
+/// @details Dispatches through PlatformCapabilities so ordinary C++ code does
+///          not need to duplicate raw host preprocessor probes.
 /// @return Reference to the appropriate singleton target; lifetime is static.
 static const TargetInfo &hostAArch64Target() {
-#if defined(_WIN32)
-    return windowsTarget();
-#elif defined(__APPLE__)
-    return darwinTarget();
-#else
+    if constexpr (viper::platform::kHostWindows) {
+        return windowsTarget();
+    } else if constexpr (viper::platform::kHostMacOS) {
+        return darwinTarget();
+    }
     return linuxTarget();
-#endif
 }
 
 /// @brief Map a TargetPlatform enum value to the corresponding AArch64 TargetInfo singleton.

@@ -26,6 +26,7 @@
 
 #include "codegen/aarch64/LowerILToMIR.hpp"
 #include "codegen/common/LabelUtil.hpp"
+#include "codegen/common/Parallelism.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -157,9 +158,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
     };
 
     const std::size_t functionCount = ilMod.functions.size();
-    const std::size_t workerCount = std::min(
-        functionCount,
-        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    const std::size_t workerCount = common::codegenWorkerCount(functionCount);
     if (workerCount <= 1) {
         for (std::size_t i = 0; i < functionCount; ++i)
             lowerOne(i);

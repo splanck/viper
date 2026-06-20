@@ -6233,6 +6233,8 @@ RT_FUNC(QuadtreeItemCount, rt_quadtree_item_count, "Viper.Game.Quadtree.get_Item
 RT_FUNC(QuadtreeGetPairs, rt_quadtree_get_pairs, "Viper.Game.Quadtree.GetPairs", "i64(obj)")
 RT_FUNC(QuadtreePairFirst, rt_quadtree_pair_first, "Viper.Game.Quadtree.PairFirst", "i64(obj,i64)")
 RT_FUNC(QuadtreePairSecond, rt_quadtree_pair_second, "Viper.Game.Quadtree.PairSecond", "i64(obj,i64)")
+RT_FUNC(QuadtreeQueryWasTruncated, rt_quadtree_query_was_truncated, "Viper.Game.Quadtree.QueryWasTruncated", "i1(obj)")
+RT_FUNC(QuadtreePairsWasTruncated, rt_quadtree_pairs_was_truncated, "Viper.Game.Quadtree.PairsWasTruncated", "i1(obj)")
 
 // Viper.DebugOverlay - Development debug overlay
 RT_FUNC(DebugOverlayNew, rt_debugoverlay_new, "Viper.Game.DebugOverlay.New", "obj()")
@@ -12542,6 +12544,8 @@ RT_CLASS_BEGIN("Viper.Game.Quadtree", Quadtree, "obj", QuadtreeNew)
     RT_METHOD("GetPairs", "i64()", QuadtreeGetPairs)
     RT_METHOD("PairFirst", "i64(i64)", QuadtreePairFirst)
     RT_METHOD("PairSecond", "i64(i64)", QuadtreePairSecond)
+    RT_METHOD("QueryWasTruncated", "i1()", QuadtreeQueryWasTruncated)
+    RT_METHOD("PairsWasTruncated", "i1()", QuadtreePairsWasTruncated)
 RT_CLASS_END()
 
 // Viper.DebugOverlay - Development debug overlay

@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/objfile/MachOWriter.hpp"
+#include "codegen/common/MachOBuildVersion.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
 #include "codegen/common/objfile/RelocationValidation.hpp"
 #include "codegen/common/objfile/StringTable.hpp"
@@ -240,10 +241,10 @@ static void writeSectionHdr(std::vector<uint8_t> &out,
 static void writeBuildVersionCmd(std::vector<uint8_t> &out) {
     appendLE32(out, kLcBuildVersion);
     appendLE32(out, kBuildVerCmdSize);
-    appendLE32(out, 1);          // platform = PLATFORM_MACOS
-    appendLE32(out, 0x000E0000); // minos = 14.0.0
-    appendLE32(out, 0x000F0000); // sdk = 15.0.0
-    appendLE32(out, 0);          // ntools
+    appendLE32(out, viper::codegen::macho::kPlatformMacOS);
+    appendLE32(out, viper::codegen::macho::minimumMacOSVersion());
+    appendLE32(out, viper::codegen::macho::macOSSDKVersion());
+    appendLE32(out, 0); // ntools
 }
 
 /// Write LC_SYMTAB (24 bytes).

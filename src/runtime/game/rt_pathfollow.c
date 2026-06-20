@@ -68,6 +68,7 @@ struct rt_pathfollow_impl {
     int64_t segment_progress;  ///< Progress within segment (0-1000).
     int64_t total_length;      ///< Total path length (cached).
     int64_t *segment_lengths;  ///< Cached segment lengths.
+    int8_t lengths_dirty;      ///< 1 if the length cache must be rebuilt before use.
 };
 
 /// @brief Safe-cast a handle to the PathFollow impl, trapping @p api on a
@@ -225,6 +226,18 @@ static void recalculate_lengths(rt_pathfollow path) {
     }
 }
 
+/// @brief Rebuild the length cache only if a point was added since the last build.
+/// @details Lazy recomputation turns N incremental add_point calls from O(n^2) (a
+///          full rebuild on every add) into O(n) (one rebuild on the first query
+///          after the adds). Must be called by every reader of segment_lengths /
+///          total_length before it touches the cache.
+static void ensure_lengths(rt_pathfollow path) {
+    if (path && path->lengths_dirty) {
+        recalculate_lengths(path);
+        path->lengths_dirty = 0;
+    }
+}
+
 /// @brief GC finalizer: frees the malloc'd segment-length cache. The waypoint array is inline.
 static void pathfollow_finalize(void *obj) {
     struct rt_pathfollow_impl *path = (struct rt_pathfollow_impl *)obj;
@@ -302,7 +315,9 @@ int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
         path->current_y = y;
     }
 
-    recalculate_lengths(path);
+    // Defer the O(n) length rebuild to the next query (see ensure_lengths) so a
+    // path built with N add_point calls costs O(n) total instead of O(n^2).
+    path->lengths_dirty = 1;
     return 1;
 }
 
@@ -399,6 +414,7 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
     if (!path || !path->active || path->finished || path->point_count < 2)
         return;
 
+    ensure_lengths(path);
     if (!path->segment_lengths || path->total_length == 0)
         return;
     if (dt <= 0)
@@ -494,7 +510,10 @@ int64_t rt_pathfollow_get_y(rt_pathfollow path) {
 /// Returns 0 for empty/unbuilt paths.
 int64_t rt_pathfollow_get_progress(rt_pathfollow path) {
     path = checked_pathfollow(path, "PathFollower.Progress: expected Viper.Game.PathFollower");
-    if (!path || path->point_count < 2 || path->total_length == 0)
+    if (!path || path->point_count < 2)
+        return 0;
+    ensure_lengths(path);
+    if (path->total_length == 0)
         return 0;
 
     // Calculate total distance traveled
@@ -514,7 +533,10 @@ int64_t rt_pathfollow_get_progress(rt_pathfollow path) {
 /// progress and updates `current_x/y`. Useful for cinematic seeks or save-state restoration.
 void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
     path = checked_pathfollow(path, "PathFollower.SetProgress: expected Viper.Game.PathFollower");
-    if (!path || path->point_count < 2 || path->total_length == 0)
+    if (!path || path->point_count < 2)
+        return;
+    ensure_lengths(path);
+    if (path->total_length == 0)
         return;
 
     if (progress < 0)

@@ -1502,123 +1502,156 @@ void applyPreservedTilemapSections(const SceneState &s, void *tilemap) {
 
 extern "C" {
 
+// --- Exception barrier -------------------------------------------------------
+// Every entry point below runs C++ STL that can throw (heap allocation,
+// std::filesystem, vector/string growth). An exception unwinding across this
+// extern "C" boundary into C / VM frames is undefined behavior, so each function
+// is wrapped to return a safe default instead. rt_trap() terminates the process
+// (or returns via the test hook) and never throws a C++ exception, so these
+// guards never mask an intentional runtime trap.
+#define SCENE_TRY try
+#define SCENE_CATCH(default_ret)                                                                   \
+    catch (...) {                                                                                  \
+        return default_ret;                                                                        \
+    }
+#define SCENE_CATCH_VOID                                                                           \
+    catch (...) {                                                                                  \
+    }
+
 void *rt_game_scene_new(int64_t width, int64_t height, int64_t tile_width, int64_t tile_height) {
-    return newSceneHandle(width, height, tile_width, tile_height);
+    SCENE_TRY {
+        return newSceneHandle(width, height, tile_width, tile_height);
+    }
+    SCENE_CATCH(nullptr)
 }
 
 void *rt_game_scene_load_json(rt_string text) {
-    return handleFromState(loadStateFromJson(text, ""));
-}
-
-void *rt_game_scene_load_file(rt_string path_s) {
-    std::string path = toStd(path_s);
-    SceneState missing;
-    missing.sourcePath = path;
-    std::ifstream in(path, std::ios::binary | std::ios::ate);
-    if (!in) {
-        addDiagnostic(missing, "scene.load.file_missing", "error", "cannot open scene file");
-        missing.layers.push_back(makeLayer(missing, "base"));
-        return handleFromState(std::move(missing));
+    SCENE_TRY {
+        return handleFromState(loadStateFromJson(text, ""));
     }
-    std::streamoff size = in.tellg();
-    if (size > kMaxJsonBytes) {
-        addDiagnostic(missing, "scene.schema.limit_exceeded", "error", "scene JSON exceeds 16 MiB");
-        missing.layers.push_back(makeLayer(missing, "base"));
-        return handleFromState(std::move(missing));
-    }
-    in.seekg(0, std::ios::beg);
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    rt_string text = makeString(buffer.str());
-    SceneState state = loadStateFromJson(text, path);
-    rt_string_unref(text);
-    return handleFromState(std::move(state));
+    SCENE_CATCH(nullptr)
 }
 
-rt_string rt_game_scene_to_json(void *scene) {
-    SceneState &s = *requireScene(scene)->state;
-    std::ostringstream out;
-    writeCanonicalJson(out, s);
-    return makeString(out.str());
+void *rt_game_scene_load_file(rt_string path_s){SCENE_TRY{std::string path = toStd(path_s);
+SceneState missing;
+missing.sourcePath = path;
+std::ifstream in(path, std::ios::binary | std::ios::ate);
+if (!in) {
+    addDiagnostic(missing, "scene.load.file_missing", "error", "cannot open scene file");
+    missing.layers.push_back(makeLayer(missing, "base"));
+    return handleFromState(std::move(missing));
+}
+std::streamoff size = in.tellg();
+if (size > kMaxJsonBytes) {
+    addDiagnostic(missing, "scene.schema.limit_exceeded", "error", "scene JSON exceeds 16 MiB");
+    missing.layers.push_back(makeLayer(missing, "base"));
+    return handleFromState(std::move(missing));
+}
+in.seekg(0, std::ios::beg);
+std::ostringstream buffer;
+buffer << in.rdbuf();
+rt_string text = makeString(buffer.str());
+SceneState state = loadStateFromJson(text, path);
+rt_string_unref(text);
+return handleFromState(std::move(state));
+}
+SCENE_CATCH(nullptr)
 }
 
-int8_t rt_game_scene_save_file(void *scene, rt_string path_s) {
-    SceneState &s = *requireScene(scene)->state;
-    std::string pathText = toStd(path_s);
-    if (pathText.empty()) {
-        addDiagnostic(s, "scene.save.write_failed", "error", "scene save path is empty");
+rt_string rt_game_scene_to_json(void *scene){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+std::ostringstream out;
+writeCanonicalJson(out, s);
+return makeString(out.str());
+}
+SCENE_CATCH(makeString(""))
+}
+
+int8_t rt_game_scene_save_file(void *scene, rt_string path_s){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+std::string pathText = toStd(path_s);
+if (pathText.empty()) {
+    addDiagnostic(s, "scene.save.write_failed", "error", "scene save path is empty");
+    return 0;
+}
+
+std::filesystem::path target(pathText);
+std::filesystem::path dir = target.parent_path();
+if (dir.empty())
+    dir = ".";
+std::filesystem::path temp = makeSceneTempPath(dir, target);
+
+rt_string json = rt_game_scene_to_json(scene);
+{
+    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        rt_string_unref(json);
+        addDiagnostic(s, "scene.save.write_failed", "error", "cannot create temporary scene file");
         return 0;
     }
-
-    std::filesystem::path target(pathText);
-    std::filesystem::path dir = target.parent_path();
-    if (dir.empty())
-        dir = ".";
-    std::filesystem::path temp = makeSceneTempPath(dir, target);
-
-    rt_string json = rt_game_scene_to_json(scene);
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            rt_string_unref(json);
-            addDiagnostic(
-                s, "scene.save.write_failed", "error", "cannot create temporary scene file");
-            return 0;
-        }
-        out.write(rt_string_cstr(json), rt_str_len(json));
-        out.flush();
-        if (!out.good()) {
-            rt_string_unref(json);
-            std::error_code removeEc;
-            std::filesystem::remove(temp, removeEc);
-            addDiagnostic(
-                s, "scene.save.write_failed", "error", "cannot write temporary scene file");
-            return 0;
-        }
-    }
-    rt_string_unref(json);
-
-    std::error_code ec;
-    if (!replaceFileWithTemp(temp, target, ec)) {
+    out.write(rt_string_cstr(json), rt_str_len(json));
+    out.flush();
+    if (!out.good()) {
+        rt_string_unref(json);
         std::error_code removeEc;
         std::filesystem::remove(temp, removeEc);
-        addDiagnostic(s, "scene.save.write_failed", "error", "cannot replace scene file");
+        addDiagnostic(s, "scene.save.write_failed", "error", "cannot write temporary scene file");
         return 0;
     }
-    return 1;
+}
+rt_string_unref(json);
+
+std::error_code ec;
+if (!replaceFileWithTemp(temp, target, ec)) {
+    std::error_code removeEc;
+    std::filesystem::remove(temp, removeEc);
+    addDiagnostic(s, "scene.save.write_failed", "error", "cannot replace scene file");
+    return 0;
+}
+return 1;
+}
+SCENE_CATCH(0)
 }
 
 rt_string rt_game_scene_last_error(void *scene) {
-    return makeString(requireScene(scene)->state->lastError);
+    SCENE_TRY {
+        return makeString(requireScene(scene)->state->lastError);
+    }
+    SCENE_CATCH(makeString(""))
 }
 
 void *rt_game_scene_diagnostics(void *scene) {
-    SceneState &s = *requireScene(scene)->state;
-    void *seq = rt_seq_new_owned();
-    for (const auto &diag : s.diagnostics) {
-        rt_string item = makeString(diag.message);
-        rt_seq_push(seq, item);
-        rt_string_unref(item);
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        void *seq = rt_seq_new_owned();
+        for (const auto &diag : s.diagnostics) {
+            rt_string item = makeString(diag.message);
+            rt_seq_push(seq, item);
+            rt_string_unref(item);
+        }
+        return seq;
     }
-    return seq;
+    SCENE_CATCH(rt_seq_new_owned())
 }
 
-void *rt_game_scene_diagnostic_records(void *scene) {
-    SceneState &s = *requireScene(scene)->state;
-    void *seq = rt_seq_new_owned();
-    for (const auto &diag : s.diagnostics) {
-        void *map = rt_map_new();
-        mapSetStrField(map, "code", diag.code);
-        mapSetStrField(map, "severity", diag.severity);
-        mapSetStrField(map, "message", diag.message);
-        mapSetStrField(map, "path", diag.path);
-        mapSetIntField(map, "line", diag.line);
-        mapSetIntField(map, "column", diag.column);
-        mapSetStrField(map, "source", diag.source);
-        rt_seq_push(seq, map);
-        releaseObject(map);
-    }
-    return seq;
+void *rt_game_scene_diagnostic_records(void *scene){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+void *seq = rt_seq_new_owned();
+for (const auto &diag : s.diagnostics) {
+    void *map = rt_map_new();
+    mapSetStrField(map, "code", diag.code);
+    mapSetStrField(map, "severity", diag.severity);
+    mapSetStrField(map, "message", diag.message);
+    mapSetStrField(map, "path", diag.path);
+    mapSetIntField(map, "line", diag.line);
+    mapSetIntField(map, "column", diag.column);
+    mapSetStrField(map, "source", diag.source);
+    rt_seq_push(seq, map);
+    releaseObject(map);
+}
+return seq;
+}
+SCENE_CATCH(rt_seq_new_owned())
 }
 
 int8_t rt_game_scene_has_errors(void *scene) {
@@ -1648,27 +1681,28 @@ int64_t rt_game_scene_get_tile_height(void *scene) {
     return requireScene(scene)->state->tileHeight;
 }
 
-int64_t rt_game_scene_add_layer(void *scene, rt_string name) {
-    SceneState &s = *requireScene(scene)->state;
-    if (static_cast<int64_t>(s.layers.size()) >= kMaxLayers) {
-        addDiagnostic(s, "scene.edit.rejected", "warning", "too many scene layers");
-        return -1;
-    }
-    size_t cells = 0;
-    if (!checkedCellCount(s.width, s.height, cells) ||
-        (static_cast<int64_t>(s.layers.size()) + 1) * static_cast<int64_t>(cells) >
-            kMaxTotalCells) {
-        addDiagnostic(s, "scene.edit.rejected", "warning", "total tile cell budget exceeded");
-        return -1;
-    }
-    std::string layerName = toStd(name);
-    if (layerName.size() > kMaxTilemapLayerNameBytes) {
-        addDiagnostic(
-            s, "scene.edit.rejected", "warning", "layer name exceeds Tilemap's 31-byte limit");
-        return -1;
-    }
-    s.layers.push_back(makeLayer(s, layerName));
-    return static_cast<int64_t>(s.layers.size()) - 1;
+int64_t rt_game_scene_add_layer(void *scene, rt_string name){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (static_cast<int64_t>(s.layers.size()) >= kMaxLayers) {
+    addDiagnostic(s, "scene.edit.rejected", "warning", "too many scene layers");
+    return -1;
+}
+size_t cells = 0;
+if (!checkedCellCount(s.width, s.height, cells) ||
+    (static_cast<int64_t>(s.layers.size()) + 1) * static_cast<int64_t>(cells) > kMaxTotalCells) {
+    addDiagnostic(s, "scene.edit.rejected", "warning", "total tile cell budget exceeded");
+    return -1;
+}
+std::string layerName = toStd(name);
+if (layerName.size() > kMaxTilemapLayerNameBytes) {
+    addDiagnostic(
+        s, "scene.edit.rejected", "warning", "layer name exceeds Tilemap's 31-byte limit");
+    return -1;
+}
+s.layers.push_back(makeLayer(s, layerName));
+return static_cast<int64_t>(s.layers.size()) - 1;
+}
+SCENE_CATCH(-1)
 }
 
 int64_t rt_game_scene_layer_count(void *scene) {
@@ -1676,21 +1710,26 @@ int64_t rt_game_scene_layer_count(void *scene) {
 }
 
 rt_string rt_game_scene_layer_name(void *scene, int64_t layer) {
-    SceneState &s = *requireScene(scene)->state;
-    return makeString(validLayer(s, layer) ? s.layers[static_cast<size_t>(layer)].name : "");
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        return makeString(validLayer(s, layer) ? s.layers[static_cast<size_t>(layer)].name : "");
+    }
+    SCENE_CATCH(makeString(""))
 }
 
-void rt_game_scene_set_layer_name(void *scene, int64_t layer, rt_string name) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validLayer(s, layer))
-        return;
-    std::string layerName = toStd(name);
-    if (layerName.size() > kMaxTilemapLayerNameBytes) {
-        addDiagnostic(
-            s, "scene.edit.rejected", "warning", "layer name exceeds Tilemap's 31-byte limit");
-        return;
-    }
-    s.layers[static_cast<size_t>(layer)].name = std::move(layerName);
+void rt_game_scene_set_layer_name(void *scene, int64_t layer, rt_string name){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (!validLayer(s, layer))
+    return;
+std::string layerName = toStd(name);
+if (layerName.size() > kMaxTilemapLayerNameBytes) {
+    addDiagnostic(
+        s, "scene.edit.rejected", "warning", "layer name exceeds Tilemap's 31-byte limit");
+    return;
+}
+s.layers[static_cast<size_t>(layer)].name = std::move(layerName);
+}
+SCENE_CATCH_VOID
 }
 
 int8_t rt_game_scene_layer_visible(void *scene, int64_t layer) {
@@ -1705,12 +1744,15 @@ void rt_game_scene_set_layer_visible(void *scene, int64_t layer, int8_t visible)
 }
 
 void rt_game_scene_move_layer(void *scene, int64_t from, int64_t to) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validLayer(s, from) || !validLayer(s, to) || from == to)
-        return;
-    Layer layer = std::move(s.layers[static_cast<size_t>(from)]);
-    s.layers.erase(s.layers.begin() + from);
-    s.layers.insert(s.layers.begin() + to, std::move(layer));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (!validLayer(s, from) || !validLayer(s, to) || from == to)
+            return;
+        Layer layer = std::move(s.layers[static_cast<size_t>(from)]);
+        s.layers.erase(s.layers.begin() + from);
+        s.layers.insert(s.layers.begin() + to, std::move(layer));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_remove_layer(void *scene, int64_t layer) {
@@ -1751,25 +1793,31 @@ void rt_game_scene_fill_tiles(
                 tile;
 }
 
-void rt_game_scene_set_layer_asset(void *scene, int64_t layer, rt_string asset_path) {
-    SceneState &s = *requireScene(scene)->state;
-    if (validLayer(s, layer))
-        s.layers[static_cast<size_t>(layer)].asset = toStd(asset_path);
+void rt_game_scene_set_layer_asset(void *scene, int64_t layer, rt_string asset_path){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (validLayer(s, layer))
+    s.layers[static_cast<size_t>(layer)].asset = toStd(asset_path);
+}
+SCENE_CATCH_VOID
 }
 
-rt_string rt_game_scene_layer_asset(void *scene, int64_t layer) {
-    SceneState &s = *requireScene(scene)->state;
-    return makeString(validLayer(s, layer) ? s.layers[static_cast<size_t>(layer)].asset : "");
+rt_string rt_game_scene_layer_asset(void *scene, int64_t layer){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+return makeString(validLayer(s, layer) ? s.layers[static_cast<size_t>(layer)].asset : "");
+}
+SCENE_CATCH(makeString(""))
 }
 
-int64_t rt_game_scene_add_object(void *scene, rt_string type, rt_string id, int64_t x, int64_t y) {
-    SceneState &s = *requireScene(scene)->state;
-    if (static_cast<int64_t>(s.objects.size()) >= kMaxObjects) {
-        addDiagnostic(s, "scene.edit.rejected", "warning", "too many scene objects");
-        return -1;
-    }
-    s.objects.push_back(Object{toStd(type), toStd(id), x, y, {}});
-    return static_cast<int64_t>(s.objects.size()) - 1;
+int64_t rt_game_scene_add_object(void *scene, rt_string type, rt_string id, int64_t x, int64_t y){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (static_cast<int64_t>(s.objects.size()) >= kMaxObjects) {
+    addDiagnostic(s, "scene.edit.rejected", "warning", "too many scene objects");
+    return -1;
+}
+s.objects.push_back(Object{toStd(type), toStd(id), x, y, {}});
+return static_cast<int64_t>(s.objects.size()) - 1;
+}
+SCENE_CATCH(-1)
 }
 
 int64_t rt_game_scene_object_count(void *scene) {
@@ -1782,14 +1830,18 @@ void rt_game_scene_remove_object(void *scene, int64_t index) {
         s.objects.erase(s.objects.begin() + index);
 }
 
-rt_string rt_game_scene_object_type(void *scene, int64_t index) {
-    SceneState &s = *requireScene(scene)->state;
-    return makeString(validObjectIndex(s, index) ? s.objects[static_cast<size_t>(index)].type : "");
+rt_string rt_game_scene_object_type(void *scene, int64_t index){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+return makeString(validObjectIndex(s, index) ? s.objects[static_cast<size_t>(index)].type : "");
+}
+SCENE_CATCH(makeString(""))
 }
 
-rt_string rt_game_scene_object_id(void *scene, int64_t index) {
-    SceneState &s = *requireScene(scene)->state;
-    return makeString(validObjectIndex(s, index) ? s.objects[static_cast<size_t>(index)].id : "");
+rt_string rt_game_scene_object_id(void *scene, int64_t index){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+return makeString(validObjectIndex(s, index) ? s.objects[static_cast<size_t>(index)].id : "");
+}
+SCENE_CATCH(makeString(""))
 }
 
 int64_t rt_game_scene_object_x(void *scene, int64_t index) {
@@ -1815,153 +1867,201 @@ void rt_game_scene_set_object_property(void *scene, int64_t index, rt_string key
 }
 
 rt_string rt_game_scene_get_object_property(void *scene, int64_t index, rt_string key) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validObjectIndex(s, index))
-        return makeString("");
-    const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
-    return makeString(scalar ? scalarToString(*scalar) : "");
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (!validObjectIndex(s, index))
+            return makeString("");
+        const SceneScalar *scalar =
+            findScalar(s.objects[static_cast<size_t>(index)].properties, key);
+        return makeString(scalar ? scalarToString(*scalar) : "");
+    }
+    SCENE_CATCH(makeString(""))
 }
 
 void rt_game_scene_delete_object_property(void *scene, int64_t index, rt_string key) {
     rt_game_scene_object_remove(scene, index, key);
 }
 
-int64_t rt_game_scene_object_get_int(void *scene, int64_t index, rt_string key, int64_t def) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validObjectIndex(s, index))
-        return def;
-    const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
-    return scalar && scalar->kind == ScalarKind::Int ? scalar->intValue : def;
+int64_t rt_game_scene_object_get_int(void *scene, int64_t index, rt_string key, int64_t def){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (!validObjectIndex(s, index))
+    return def;
+const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
+return scalar && scalar->kind == ScalarKind::Int ? scalar->intValue : def;
+}
+SCENE_CATCH(def)
 }
 
 rt_string rt_game_scene_object_get_str(void *scene, int64_t index, rt_string key, rt_string def) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validObjectIndex(s, index))
-        return makeString(toStd(def));
-    const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
-    return makeString(scalar && scalar->kind == ScalarKind::String ? scalar->stringValue
-                                                                   : toStd(def));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (!validObjectIndex(s, index))
+            return makeString(toStd(def));
+        const SceneScalar *scalar =
+            findScalar(s.objects[static_cast<size_t>(index)].properties, key);
+        return makeString(scalar && scalar->kind == ScalarKind::String ? scalar->stringValue
+                                                                       : toStd(def));
+    }
+    SCENE_CATCH(makeString(""))
 }
 
-double rt_game_scene_object_get_float(void *scene, int64_t index, rt_string key, double def) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validObjectIndex(s, index))
-        return def;
-    const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
-    if (!scalar)
-        return def;
-    if (scalar->kind == ScalarKind::Float)
-        return scalar->floatValue;
-    if (scalar->kind == ScalarKind::Int)
-        return static_cast<double>(scalar->intValue);
+double rt_game_scene_object_get_float(void *scene, int64_t index, rt_string key, double def){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (!validObjectIndex(s, index))
     return def;
+const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
+if (!scalar)
+    return def;
+if (scalar->kind == ScalarKind::Float)
+    return scalar->floatValue;
+if (scalar->kind == ScalarKind::Int)
+    return static_cast<double>(scalar->intValue);
+return def;
+}
+SCENE_CATCH(def)
 }
 
-int8_t rt_game_scene_object_get_bool(void *scene, int64_t index, rt_string key, int8_t def) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validObjectIndex(s, index))
-        return def;
-    const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
-    return scalar && scalar->kind == ScalarKind::Bool ? (scalar->boolValue ? 1 : 0) : def;
+int8_t rt_game_scene_object_get_bool(void *scene, int64_t index, rt_string key, int8_t def){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (!validObjectIndex(s, index))
+    return def;
+const SceneScalar *scalar = findScalar(s.objects[static_cast<size_t>(index)].properties, key);
+return scalar && scalar->kind == ScalarKind::Bool ? (scalar->boolValue ? 1 : 0) : def;
+}
+SCENE_CATCH(def)
 }
 
 int8_t rt_game_scene_object_has(void *scene, int64_t index, rt_string key) {
-    SceneState &s = *requireScene(scene)->state;
-    return validObjectIndex(s, index) &&
-                   findScalar(s.objects[static_cast<size_t>(index)].properties, key)
-               ? 1
-               : 0;
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        return validObjectIndex(s, index) &&
+                       findScalar(s.objects[static_cast<size_t>(index)].properties, key)
+                   ? 1
+                   : 0;
+    }
+    SCENE_CATCH(0)
 }
 
 void *rt_game_scene_object_keys(void *scene, int64_t index) {
-    SceneState &s = *requireScene(scene)->state;
-    void *seq = rt_seq_new_owned();
-    if (!validObjectIndex(s, index))
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        void *seq = rt_seq_new_owned();
+        if (!validObjectIndex(s, index))
+            return seq;
+        for (const auto &[key, _] : s.objects[static_cast<size_t>(index)].properties) {
+            rt_string item = makeString(key);
+            rt_seq_push(seq, item);
+            rt_string_unref(item);
+        }
         return seq;
-    for (const auto &[key, _] : s.objects[static_cast<size_t>(index)].properties) {
-        rt_string item = makeString(key);
-        rt_seq_push(seq, item);
-        rt_string_unref(item);
     }
-    return seq;
+    SCENE_CATCH(rt_seq_new_owned())
 }
 
 void rt_game_scene_object_set_int(void *scene, int64_t index, rt_string key, int64_t value) {
-    SceneState &s = *requireScene(scene)->state;
-    if (validObjectIndex(s, index))
-        setScalar(s.objects[static_cast<size_t>(index)].properties, s, key, makeIntScalar(value));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (validObjectIndex(s, index))
+            setScalar(
+                s.objects[static_cast<size_t>(index)].properties, s, key, makeIntScalar(value));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_object_set_str(void *scene, int64_t index, rt_string key, rt_string value) {
-    SceneState &s = *requireScene(scene)->state;
-    if (validObjectIndex(s, index))
-        setScalar(s.objects[static_cast<size_t>(index)].properties,
-                  s,
-                  key,
-                  makeStringScalar(toStd(value)));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (validObjectIndex(s, index))
+            setScalar(s.objects[static_cast<size_t>(index)].properties,
+                      s,
+                      key,
+                      makeStringScalar(toStd(value)));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_object_set_float(void *scene, int64_t index, rt_string key, double value) {
-    SceneState &s = *requireScene(scene)->state;
-    if (validObjectIndex(s, index) && std::isfinite(value))
-        setScalar(s.objects[static_cast<size_t>(index)].properties, s, key, makeFloatScalar(value));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (validObjectIndex(s, index) && std::isfinite(value))
+            setScalar(
+                s.objects[static_cast<size_t>(index)].properties, s, key, makeFloatScalar(value));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_object_set_bool(void *scene, int64_t index, rt_string key, int8_t value) {
-    SceneState &s = *requireScene(scene)->state;
-    if (validObjectIndex(s, index))
-        setScalar(
-            s.objects[static_cast<size_t>(index)].properties, s, key, makeBoolScalar(value != 0));
-}
-
-void rt_game_scene_object_remove(void *scene, int64_t index, rt_string key) {
-    SceneState &s = *requireScene(scene)->state;
-    if (validObjectIndex(s, index))
-        s.objects[static_cast<size_t>(index)].properties.erase(toStd(key));
-}
-
-int64_t rt_game_scene_count_of_type(void *scene, rt_string type) {
-    SceneState &s = *requireScene(scene)->state;
-    std::string target = toStd(type);
-    int64_t count = 0;
-    for (const auto &obj : s.objects) {
-        if (obj.type == target)
-            ++count;
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (validObjectIndex(s, index))
+            setScalar(s.objects[static_cast<size_t>(index)].properties,
+                      s,
+                      key,
+                      makeBoolScalar(value != 0));
     }
-    return count;
+    SCENE_CATCH_VOID
 }
 
-int64_t rt_game_scene_object_of_type(void *scene, rt_string type, int64_t n) {
-    SceneState &s = *requireScene(scene)->state;
-    std::string target = toStd(type);
-    int64_t seen = 0;
-    for (size_t i = 0; i < s.objects.size(); ++i) {
-        if (s.objects[i].type != target)
-            continue;
-        if (seen == n)
-            return static_cast<int64_t>(i);
-        ++seen;
-    }
-    return -1;
+void rt_game_scene_object_remove(void *scene, int64_t index, rt_string key){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+if (validObjectIndex(s, index))
+    s.objects[static_cast<size_t>(index)].properties.erase(toStd(key));
+}
+SCENE_CATCH_VOID
+}
+
+int64_t rt_game_scene_count_of_type(void *scene, rt_string type){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+std::string target = toStd(type);
+int64_t count = 0;
+for (const auto &obj : s.objects) {
+    if (obj.type == target)
+        ++count;
+}
+return count;
+}
+SCENE_CATCH(0)
+}
+
+int64_t rt_game_scene_object_of_type(void *scene, rt_string type, int64_t n){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+std::string target = toStd(type);
+int64_t seen = 0;
+for (size_t i = 0; i < s.objects.size(); ++i) {
+    if (s.objects[i].type != target)
+        continue;
+    if (seen == n)
+        return static_cast<int64_t>(i);
+    ++seen;
+}
+return -1;
+}
+SCENE_CATCH(-1)
 }
 
 int64_t rt_game_scene_find_object(void *scene, rt_string id) {
-    SceneState &s = *requireScene(scene)->state;
-    std::string target = toStd(id);
-    for (size_t i = 0; i < s.objects.size(); ++i) {
-        if (s.objects[i].id == target)
-            return static_cast<int64_t>(i);
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        std::string target = toStd(id);
+        for (size_t i = 0; i < s.objects.size(); ++i) {
+            if (s.objects[i].id == target)
+                return static_cast<int64_t>(i);
+        }
+        return -1;
     }
-    return -1;
+    SCENE_CATCH(-1)
 }
 
 void rt_game_scene_move_object(void *scene, int64_t from, int64_t to) {
-    SceneState &s = *requireScene(scene)->state;
-    if (!validObjectIndex(s, from) || !validObjectIndex(s, to) || from == to)
-        return;
-    Object obj = std::move(s.objects[static_cast<size_t>(from)]);
-    s.objects.erase(s.objects.begin() + from);
-    s.objects.insert(s.objects.begin() + to, std::move(obj));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (!validObjectIndex(s, from) || !validObjectIndex(s, to) || from == to)
+            return;
+        Object obj = std::move(s.objects[static_cast<size_t>(from)]);
+        s.objects.erase(s.objects.begin() + from);
+        s.objects.insert(s.objects.begin() + to, std::move(obj));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_set_property(void *scene, rt_string key, rt_string value) {
@@ -1969,119 +2069,159 @@ void rt_game_scene_set_property(void *scene, rt_string key, rt_string value) {
 }
 
 rt_string rt_game_scene_get_property(void *scene, rt_string key) {
-    SceneState &s = *requireScene(scene)->state;
-    const SceneScalar *scalar = findScalar(s.properties, key);
-    return makeString(scalar ? scalarToString(*scalar) : "");
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        const SceneScalar *scalar = findScalar(s.properties, key);
+        return makeString(scalar ? scalarToString(*scalar) : "");
+    }
+    SCENE_CATCH(makeString(""))
 }
 
 void rt_game_scene_delete_property(void *scene, rt_string key) {
     rt_game_scene_remove(scene, key);
 }
 
-int64_t rt_game_scene_get_int(void *scene, rt_string key, int64_t def) {
-    const SceneScalar *scalar = findScalar(requireScene(scene)->state->properties, key);
-    return scalar && scalar->kind == ScalarKind::Int ? scalar->intValue : def;
+int64_t rt_game_scene_get_int(void *scene, rt_string key, int64_t def){
+    SCENE_TRY{const SceneScalar *scalar = findScalar(requireScene(scene) -> state->properties, key);
+return scalar && scalar->kind == ScalarKind::Int ? scalar->intValue : def;
+}
+SCENE_CATCH(def)
 }
 
 rt_string rt_game_scene_get_str(void *scene, rt_string key, rt_string def) {
-    const SceneScalar *scalar = findScalar(requireScene(scene)->state->properties, key);
-    return makeString(scalar && scalar->kind == ScalarKind::String ? scalar->stringValue
-                                                                   : toStd(def));
+    SCENE_TRY {
+        const SceneScalar *scalar = findScalar(requireScene(scene)->state->properties, key);
+        return makeString(scalar && scalar->kind == ScalarKind::String ? scalar->stringValue
+                                                                       : toStd(def));
+    }
+    SCENE_CATCH(makeString(""))
 }
 
-double rt_game_scene_get_float(void *scene, rt_string key, double def) {
-    const SceneScalar *scalar = findScalar(requireScene(scene)->state->properties, key);
-    if (!scalar)
-        return def;
-    if (scalar->kind == ScalarKind::Float)
-        return scalar->floatValue;
-    if (scalar->kind == ScalarKind::Int)
-        return static_cast<double>(scalar->intValue);
+double rt_game_scene_get_float(void *scene, rt_string key, double def){
+    SCENE_TRY{const SceneScalar *scalar = findScalar(requireScene(scene) -> state->properties, key);
+if (!scalar)
     return def;
+if (scalar->kind == ScalarKind::Float)
+    return scalar->floatValue;
+if (scalar->kind == ScalarKind::Int)
+    return static_cast<double>(scalar->intValue);
+return def;
+}
+SCENE_CATCH(def)
 }
 
-int8_t rt_game_scene_get_bool(void *scene, rt_string key, int8_t def) {
-    const SceneScalar *scalar = findScalar(requireScene(scene)->state->properties, key);
-    return scalar && scalar->kind == ScalarKind::Bool ? (scalar->boolValue ? 1 : 0) : def;
+int8_t rt_game_scene_get_bool(void *scene, rt_string key, int8_t def){
+    SCENE_TRY{const SceneScalar *scalar = findScalar(requireScene(scene) -> state->properties, key);
+return scalar && scalar->kind == ScalarKind::Bool ? (scalar->boolValue ? 1 : 0) : def;
+}
+SCENE_CATCH(def)
 }
 
 int8_t rt_game_scene_has(void *scene, rt_string key) {
-    return findScalar(requireScene(scene)->state->properties, key) ? 1 : 0;
+    SCENE_TRY {
+        return findScalar(requireScene(scene)->state->properties, key) ? 1 : 0;
+    }
+    SCENE_CATCH(0)
 }
 
 void rt_game_scene_set_int(void *scene, rt_string key, int64_t value) {
-    SceneState &s = *requireScene(scene)->state;
-    setScalar(s.properties, s, key, makeIntScalar(value));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        setScalar(s.properties, s, key, makeIntScalar(value));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_set_str(void *scene, rt_string key, rt_string value) {
-    SceneState &s = *requireScene(scene)->state;
-    setScalar(s.properties, s, key, makeStringScalar(toStd(value)));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        setScalar(s.properties, s, key, makeStringScalar(toStd(value)));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_set_float(void *scene, rt_string key, double value) {
-    SceneState &s = *requireScene(scene)->state;
-    if (std::isfinite(value))
-        setScalar(s.properties, s, key, makeFloatScalar(value));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (std::isfinite(value))
+            setScalar(s.properties, s, key, makeFloatScalar(value));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_set_bool(void *scene, rt_string key, int8_t value) {
-    SceneState &s = *requireScene(scene)->state;
-    setScalar(s.properties, s, key, makeBoolScalar(value != 0));
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        setScalar(s.properties, s, key, makeBoolScalar(value != 0));
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_remove(void *scene, rt_string key) {
-    requireScene(scene)->state->properties.erase(toStd(key));
+    SCENE_TRY {
+        requireScene(scene)->state->properties.erase(toStd(key));
+    }
+    SCENE_CATCH_VOID
 }
 
 void *rt_game_scene_asset_descriptors(void *scene) {
-    SceneState &s = *requireScene(scene)->state;
-    void *seq = rt_seq_new_owned();
-    for (const auto &desc : collectAssetDescriptors(s)) {
-        void *map = descriptorMap(desc);
-        rt_seq_push(seq, map);
-        releaseObject(map);
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        void *seq = rt_seq_new_owned();
+        for (const auto &desc : collectAssetDescriptors(s)) {
+            void *map = descriptorMap(desc);
+            rt_seq_push(seq, map);
+            releaseObject(map);
+        }
+        return seq;
     }
-    return seq;
+    SCENE_CATCH(rt_seq_new_owned())
 }
 
 void *rt_game_scene_asset_paths(void *scene) {
-    SceneState &s = *requireScene(scene)->state;
-    std::set<std::string> unique;
-    for (const auto &desc : collectAssetDescriptors(s))
-        unique.insert(desc.path);
-    void *seq = rt_seq_new_owned();
-    for (const auto &path : unique) {
-        rt_string item = makeString(path);
-        rt_seq_push(seq, item);
-        rt_string_unref(item);
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        std::set<std::string> unique;
+        for (const auto &desc : collectAssetDescriptors(s))
+            unique.insert(desc.path);
+        void *seq = rt_seq_new_owned();
+        for (const auto &path : unique) {
+            rt_string item = makeString(path);
+            rt_seq_push(seq, item);
+            rt_string_unref(item);
+        }
+        return seq;
     }
-    return seq;
+    SCENE_CATCH(rt_seq_new_owned())
 }
 
 void *rt_game_scene_build_tilemap(void *scene) {
-    SceneState &s = *requireScene(scene)->state;
-    void *tilemap = rt_tilemap_new(s.width, s.height, s.tileWidth, s.tileHeight);
-    for (size_t li = 0; li < s.layers.size(); ++li) {
-        int64_t targetLayer = static_cast<int64_t>(li);
-        if (li > 0) {
-            rt_string name = makeString(s.layers[li].name);
-            targetLayer = rt_tilemap_add_layer(tilemap, name);
-            rt_string_unref(name);
-            if (targetLayer < 0)
-                continue;
-        }
-        rt_tilemap_set_layer_visible(tilemap, targetLayer, s.layers[li].visible ? 1 : 0);
-        for (int64_t y = 0; y < s.height; ++y) {
-            for (int64_t x = 0; x < s.width; ++x) {
-                size_t idx = static_cast<size_t>(y * s.width + x);
-                if (idx < s.layers[li].tiles.size())
-                    rt_tilemap_set_tile_layer(tilemap, targetLayer, x, y, s.layers[li].tiles[idx]);
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        void *tilemap = rt_tilemap_new(s.width, s.height, s.tileWidth, s.tileHeight);
+        for (size_t li = 0; li < s.layers.size(); ++li) {
+            int64_t targetLayer = static_cast<int64_t>(li);
+            if (li > 0) {
+                rt_string name = makeString(s.layers[li].name);
+                targetLayer = rt_tilemap_add_layer(tilemap, name);
+                rt_string_unref(name);
+                if (targetLayer < 0)
+                    continue;
+            }
+            rt_tilemap_set_layer_visible(tilemap, targetLayer, s.layers[li].visible ? 1 : 0);
+            for (int64_t y = 0; y < s.height; ++y) {
+                for (int64_t x = 0; x < s.width; ++x) {
+                    size_t idx = static_cast<size_t>(y * s.width + x);
+                    if (idx < s.layers[li].tiles.size())
+                        rt_tilemap_set_tile_layer(
+                            tilemap, targetLayer, x, y, s.layers[li].tiles[idx]);
+                }
             }
         }
+        applyPreservedTilemapSections(s, tilemap);
+        return tilemap;
     }
-    applyPreservedTilemapSections(s, tilemap);
-    return tilemap;
+    SCENE_CATCH(nullptr)
 }
 
 } // extern "C"

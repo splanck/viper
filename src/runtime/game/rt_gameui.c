@@ -32,8 +32,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gameui.h"
-#include "rt_gameui_internal.h"
 #include "rt_bitmapfont.h"
+#include "rt_gameui_internal.h"
 #include "rt_graphics.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -54,6 +54,7 @@ int64_t ui_clamp_dim(int64_t value) {
         return 1;
     return value > UI_MAX_DIM ? UI_MAX_DIM : value;
 }
+
 /// @brief Clamp an integer UI scale factor to [1, 16].
 static int64_t ui_clamp_scale(int64_t scale) {
     if (scale < 1)
@@ -70,6 +71,26 @@ int64_t ui_add_sat_i64(int64_t a, int64_t b) {
     if (b < 0 && a < INT64_MIN - b)
         return INT64_MIN;
     return a + b;
+}
+
+int64_t ui_mul_sat_i64(int64_t a, int64_t b) {
+    if (a == 0 || b == 0)
+        return 0;
+#if defined(__SIZEOF_INT128__)
+    __int128 r = (__int128)a * (__int128)b;
+    if (r > INT64_MAX)
+        return INT64_MAX;
+    if (r < INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)r;
+#else
+    long double r = (long double)a * (long double)b;
+    if (r > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (r < (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)r;
+#endif
 }
 
 /// @brief Convert a long double to int64, saturating to the int64 range
@@ -401,7 +422,8 @@ void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
 
 /// @brief Set the label's text color (RGBA packed integer).
 void rt_uilabel_set_color(void *ptr, int64_t color) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetColor: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label =
+        checked_label(ptr, "UILabel.SetColor: expected Viper.Game.UI.HudLabel");
     if (label)
         label->color = color;
 }
@@ -418,14 +440,16 @@ void rt_uilabel_set_font(void *ptr, void *font) {
 
 /// @brief Set the integer pixel scale for text rendering (minimum 1).
 void rt_uilabel_set_scale(void *ptr, int64_t scale) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetScale: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label =
+        checked_label(ptr, "UILabel.SetScale: expected Viper.Game.UI.HudLabel");
     if (label)
         label->scale = ui_clamp_scale(scale);
 }
 
 /// @brief Show or hide the label; hidden labels are skipped during draw.
 void rt_uilabel_set_visible(void *ptr, int8_t visible) {
-    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.HudLabel");
+    rt_uilabel_impl *label =
+        checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.HudLabel");
     if (label)
         label->visible = visible ? 1 : 0;
 }
@@ -1639,12 +1663,12 @@ int64_t ui_text_prefix_width(const char *text, int64_t bytes, void *font, int64_
 /// @brief Draw a text run at (x, y) using an optional bitmap font and scale,
 ///        falling back to the canvas default font when none is set.
 void ui_draw_text_basic(void *canvas,
-                               int64_t x,
-                               int64_t y,
-                               const char *text,
-                               void *font,
-                               int64_t scale,
-                               int64_t color) {
+                        int64_t x,
+                        int64_t y,
+                        const char *text,
+                        void *font,
+                        int64_t scale,
+                        int64_t color) {
     if (!canvas || !text || text[0] == '\0')
         return;
     rt_string s = rt_const_cstr(text);

@@ -1005,7 +1005,7 @@ void LinearScanAllocator::reserveForCall(PhysReg reg) {
 ///          register to its original class pool (GPR or XMM).
 void LinearScanAllocator::releaseCallReserved() {
     for (const auto &r : reservedForCall_) {
-        poolFor(r.cls).push_back(r.phys);
+        releaseRegister(r.phys, r.cls);
     }
     reservedForCall_.clear();
 }

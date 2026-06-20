@@ -153,6 +153,15 @@ int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index);
 /// @return Second item ID of the pair, or -1 if invalid index.
 int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index);
 
+/// @brief Check whether the last rt_quadtree_get_pairs() was silently truncated.
+///
+/// Returns 1 if the most recent rt_quadtree_get_pairs() hit the MAX_PAIRS cap
+/// and dropped collision pairs. Callers that rely on "all colliding pairs" MUST
+/// check this flag and subdivide the work or raise the cap.
+/// @param tree The quadtree.
+/// @return 1 if the last pair collection was truncated, 0 otherwise.
+int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree);
+
 #ifdef __cplusplus
 }
 #endif

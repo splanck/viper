@@ -44,6 +44,13 @@ static int64_t json_val_to_i64(void *val) {
     return 0;
 }
 
+/// @brief True if @p o is a JSON array (rt_seq). Used to guard rt_seq_len /
+///        rt_seq_get, which trap on a non-seq object — so a malformed level
+///        file (e.g. "layers": 5) degrades to "skip" instead of crashing.
+static int level_is_array(void *o) {
+    return o && rt_obj_class_id(o) == RT_SEQ_CLASS_ID;
+}
+
 #define LEVEL_MAX_OBJECTS 512
 
 typedef struct {
@@ -148,18 +155,19 @@ void *rt_leveldata_load(void *path) {
         ld->player_start_y = rt_jsonpath_get_int(props, rt_const_cstr("playerStartY"));
     }
 
+    // Validate w*h before allocating the tilemap (validate-then-allocate).
+    if (w > INT64_MAX / h)
+        goto fail;
+    int64_t tile_limit = w * h;
+
     // Create tilemap
     ld->tilemap = rt_tilemap_new(w, h, tw, th);
     if (!ld->tilemap)
         goto fail;
 
-    if (w > INT64_MAX / h)
-        goto fail;
-    int64_t tile_limit = w * h;
-
     // Read tile layers
     void *layers = rt_jsonpath_get(root, rt_const_cstr("layers"));
-    if (layers) {
+    if (level_is_array(layers)) {
         int64_t layerCount = rt_seq_len(layers);
         for (int64_t li = 0; li < layerCount; li++) {
             void *layer = rt_seq_get(layers, li);
@@ -173,7 +181,7 @@ void *rt_leveldata_load(void *path) {
                 continue;
 
             void *data = rt_jsonpath_get(layer, rt_const_cstr("data"));
-            if (!data)
+            if (!level_is_array(data))
                 continue;
             int64_t dataLen = rt_seq_len(data);
             for (int64_t i = 0; i < dataLen && i < tile_limit; i++) {
@@ -188,7 +196,7 @@ void *rt_leveldata_load(void *path) {
 
     // Read objects
     void *objects = rt_jsonpath_get(root, rt_const_cstr("objects"));
-    if (objects) {
+    if (level_is_array(objects)) {
         int64_t objCount = rt_seq_len(objects);
         for (int64_t i = 0; i < objCount && ld->object_count < LEVEL_MAX_OBJECTS; i++) {
             void *obj = rt_seq_get(objects, i);

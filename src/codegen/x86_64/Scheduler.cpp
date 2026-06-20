@@ -24,11 +24,17 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <unordered_set>
 
 namespace viper::codegen::x64 {
 namespace {
+
+/// Upper bound for the quadratic dependency graph built by the list scheduler.
+/// Larger straight-line spans are already uncommon after boundary splitting, so
+/// leaving them in source order avoids pathological compile-time spikes.
+inline constexpr std::size_t kMaxScheduledSegmentInstructions = 256;
 
 struct InstrDeps {
     std::unordered_set<uint16_t> uses{};
@@ -399,7 +405,9 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
         unsigned succHeight = 0;
         for (std::size_t succ : succs[i])
             succHeight = std::max(succHeight, heights[succ]);
-        heights[i] = deps[i].latency + succHeight;
+        heights[i] = deps[i].latency > std::numeric_limits<unsigned>::max() - succHeight
+                         ? std::numeric_limits<unsigned>::max()
+                         : deps[i].latency + succHeight;
     }
     return heights;
 }
@@ -419,6 +427,8 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     const std::size_t n = segment.size();
     if (n < 2)
         return segment;
+    if (n > kMaxScheduledSegmentInstructions)
+        return segment;
 
     std::vector<InstrDeps> deps;
     deps.reserve(n);
@@ -426,7 +436,7 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
         deps.push_back(analyseInstr(instr));
 
     std::vector<std::vector<std::size_t>> succs(n);
-    std::vector<unsigned> predCount(n, 0);
+    std::vector<std::size_t> predCount(n, 0);
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = i + 1; j < n; ++j) {
             if (!dependsOn(deps[i], deps[j]))
@@ -550,9 +560,8 @@ std::size_t scheduleFunction(MFunction &fn) {
                                                            : Win64PrologueScan::Inactive;
                     break;
                 case Win64PrologueScan::ExpectFramePointer:
-                    prologueScan = isFramePointerSetup(instr)
-                                       ? Win64PrologueScan::ExpectSetupOrSave
-                                       : Win64PrologueScan::Inactive;
+                    prologueScan = isFramePointerSetup(instr) ? Win64PrologueScan::ExpectSetupOrSave
+                                                              : Win64PrologueScan::Inactive;
                     break;
                 case Win64PrologueScan::ExpectSetupOrSave:
                     if (isWin64PrologueFrameSave(instr)) {

@@ -22,6 +22,7 @@
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
+#include "codegen/common/Parallelism.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 
 #include <algorithm>
@@ -150,8 +151,8 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         return true;
     };
 
-    const unsigned workerLimit = std::thread::hardware_concurrency();
-    if (module.emitDebugLines || module.mir.size() < 2 || workerLimit < 2) {
+    const std::size_t workerCount = common::codegenWorkerCount(module.mir.size());
+    if (module.emitDebugLines || module.mir.size() < 2 || workerCount < 2) {
         if (!encodeSequentially())
             return false;
     } else {
@@ -163,8 +164,6 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         std::vector<EncodedFunction> encoded(module.mir.size());
         std::atomic_size_t next{0};
         std::atomic_bool failed{false};
-        const size_t workerCount =
-            std::min<size_t>(module.mir.size(), static_cast<size_t>(workerLimit));
         std::vector<std::thread> workers;
         workers.reserve(workerCount);
 

@@ -258,6 +258,28 @@ TEST(get_pairs) {
     rt_quadtree_destroy(tree);
 }
 
+// GAME #5/#6: pair collection uses a single shared ancestor buffer (no silent
+// per-level 256-entry cap that dropped pairs) and exposes saturation via
+// rt_quadtree_pairs_was_truncated().
+TEST(pairs_truncation_accessor) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
+
+    rt_quadtree_insert(tree, 1, 100000, 100000, 50000, 50000);
+    rt_quadtree_insert(tree, 2, 120000, 120000, 50000, 50000); // overlaps 1
+    ASSERT(rt_quadtree_get_pairs(tree) >= 1);
+    // A tiny overlapping set is far below MAX_PAIRS: no truncation reported.
+    ASSERT(rt_quadtree_pairs_was_truncated(tree) == 0);
+
+    // A dense cluster (deep ancestor accumulation) must still collect pairs
+    // without dropping any and without falsely reporting truncation.
+    for (int i = 3; i < 40; i++)
+        rt_quadtree_insert(tree, i, 100000 + i * 200, 100000 + i * 200, 40000, 40000);
+    ASSERT(rt_quadtree_get_pairs(tree) > 0);
+    ASSERT(rt_quadtree_pairs_was_truncated(tree) == 0);
+
+    rt_quadtree_destroy(tree);
+}
+
 TEST(many_items) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
@@ -387,6 +409,7 @@ int main() {
     RUN_TEST(update_out_of_bounds_is_transactional);
     RUN_TEST(clear);
     RUN_TEST(get_pairs);
+    RUN_TEST(pairs_truncation_accessor);
     RUN_TEST(many_items);
     RUN_TEST(invalid_result_index);
     RUN_TEST(duplicate_id_rejected);

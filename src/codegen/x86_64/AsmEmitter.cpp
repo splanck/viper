@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <cassert>
 #include <cstdint>
 #include <cstdlib>
 #include <iomanip>
@@ -392,8 +391,9 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
     if (stringLiterals.empty() && f64Literals.empty()) {
         return;
     }
-    assert(stringLiterals.size() == stringLengths.size());
-    static_cast<void>(stringLengths);
+    if (stringLiterals.size() != stringLengths.size()) {
+        throw std::runtime_error("x86-64 asm emitter: rodata string length table mismatch");
+    }
     switch (format) {
         case objfile::ObjFormat::MachO:
             os << ".section __TEXT,__const\n";
@@ -406,6 +406,11 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
             break;
     }
     for (std::size_t i = 0; i < stringLiterals.size(); ++i) {
+        if (stringLiterals[i].size() != stringLengths[i]) {
+            throw std::runtime_error(
+                "x86-64 asm emitter: rodata string byte length mismatch at index " +
+                std::to_string(i));
+        }
         std::string label;
         label.reserve(16U);
         label.append(".LC_str_");
@@ -626,7 +631,7 @@ void AsmEmitter::emitBlock(std::ostream &os,
                            const TargetInfo &target,
                            objfile::ObjFormat format) {
     if (!block.label.empty()) {
-        os << asmfmt::format_label(block.label) << ":\n";
+        os << formatSymbolReference(block.label, format) << ":\n";
     }
     for (const auto &instr : block.instructions) {
         /// @brief Emits instruction.
@@ -655,7 +660,7 @@ void AsmEmitter::emitInstruction(std::ostream &os,
             os << "# <invalid label>\n";
             return;
         }
-        os << asmfmt::format_label(label->name) << ":\n";
+        os << formatSymbolReference(label->name, format) << ":\n";
         return;
     }
 
@@ -703,8 +708,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                                objfile::ObjFormat format) {
     const auto *fmt = getFmt(row.opcode);
     const auto mnemonic = fmt ? std::string_view{fmt->mnemonic} : row.mnemonic;
-    if (fmt) {
-        assert(mnemonic == row.mnemonic);
+    if (fmt && mnemonic != row.mnemonic) {
+        throw std::runtime_error("x86-64 asm emitter: generated encoding table mnemonic mismatch");
     }
     os << "  " << mnemonic;
 
@@ -809,7 +814,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                 throw std::runtime_error("x86-64 asm emitter: JCC requires a label target");
             }
             const auto &label = std::get<OpLabel>(*branchTarget);
-            os << asmfmt::format_label(label.name) << '\n';
+            os << formatSymbolReference(label.name, format) << '\n';
         } else {
             if (operands.empty()) {
                 os << " #<missing>\n";
@@ -819,7 +824,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             const auto &targetOp = operands.front();
             if (std::holds_alternative<OpLabel>(targetOp)) {
                 const auto &label = std::get<OpLabel>(targetOp);
-                os << asmfmt::format_label(label.name) << '\n';
+                os << formatSymbolReference(label.name, format) << '\n';
             } else if (std::holds_alternative<OpImm>(targetOp)) {
                 throw std::runtime_error(
                     "x86-64 asm emitter: JMP requires a label, register, or memory target");

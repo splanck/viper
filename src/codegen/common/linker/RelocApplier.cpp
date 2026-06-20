@@ -238,6 +238,14 @@ static bool checkedRelocDelta(uint64_t target,
     return false;
 }
 
+/// @brief Compute a 64-bit absolute relocation value with object-format wrap semantics.
+/// @details ELF, Mach-O, and COFF 64-bit absolute relocations write the low
+///          64 bits of S + A. Converting the signed addend to uint64_t makes
+///          high-bit addends deterministic and avoids undefined signed overflow.
+static uint64_t wrappingAbs64Target(uint64_t S, int64_t A) noexcept {
+    return S + static_cast<uint64_t>(A);
+}
+
 static bool checkedU32Value(int64_t value,
                             const ObjFile &obj,
                             const std::string &symName,
@@ -1080,7 +1088,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     case RelocAction::Abs64: {
                         if (!requirePatchBytes(8, "64-bit absolute"))
                             return false;
-                        uint64_t val = S + static_cast<uint64_t>(A);
+                        uint64_t val = wrappingAbs64Target(S, A);
 
                         const bool isDynamicSym =
                             !symName.empty() &&

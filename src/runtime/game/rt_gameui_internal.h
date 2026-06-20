@@ -46,6 +46,7 @@
 // Shared geometry / text / lifetime helpers (defined in rt_gameui.c).
 int64_t ui_clamp_dim(int64_t value);
 int64_t ui_add_sat_i64(int64_t a, int64_t b);
+int64_t ui_mul_sat_i64(int64_t a, int64_t b);
 int64_t ui_ld_to_i64_sat(long double value);
 int8_t ui_coord_inside(int64_t start, int64_t extent, int64_t point);
 int64_t ui_coord_offset_clamped(int64_t start, int64_t extent, int64_t point);

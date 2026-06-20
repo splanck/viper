@@ -31,6 +31,8 @@
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
+#include <algorithm>
+#include <initializer_list>
 #include <limits>
 #include <stdexcept>
 
@@ -41,13 +43,22 @@
 
 namespace {
 
+using viper::codegen::aarch64::isFPR;
 using viper::codegen::aarch64::PhysReg;
 using viper::codegen::aarch64::regName;
 
-/// Print a floating-point register as dN (64-bit scalar).
+/// @brief Print a floating-point register as dN (64-bit scalar).
+/// @details This helper is used by scalar F64 emission paths. Passing a GPR is
+///          always a codegen bug, so release builds throw before printing an
+///          invalid register spelling.
+/// @param os Output stream receiving the register name.
+/// @param r Physical register that must be in the FPR register file.
 inline void printDReg(std::ostream &os, PhysReg r) {
+    if (!isFPR(r)) {
+        throw std::runtime_error("AArch64 asm emitter: expected FPR for d-register print");
+    }
     const char *name = regName(r);
-    os << (name[0] == 'v' ? 'd' : name[0]) << (name + 1);
+    os << 'd' << (name + 1);
 }
 
 /// Print a GPR through its 32-bit W-register view.
@@ -487,12 +498,10 @@ void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const {
 void AsmEmitter::emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const {
     // ARM64 cmp immediate range: 0-4095 (12-bit unsigned)
     // ARM64 cmn immediate range: 0-4095 (equivalent to cmp with negated value)
-    // The assembler accepts "cmp xn, #-imm" and translates to "cmn xn, #imm"
     if (imm >= 0 && imm <= 4095) {
         os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
     } else if (imm >= -4095 && imm < 0) {
-        // Negative immediates in cmn range - emit directly, assembler handles it
-        os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
+        os << "  cmn " << rn(lhs) << ", #" << -imm << "\n";
     } else {
         emitMovImm64(os, kScratchGPR2, imm);
         os << "  cmp " << rn(lhs) << ", " << rn(kScratchGPR2) << "\n";
@@ -509,48 +518,77 @@ void AsmEmitter::emitCset(std::ostream &os, PhysReg dst, const char *cond) const
 
 void AsmEmitter::emitSubSp(std::ostream &os, long long bytes) const {
     // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
-    // For larger frames, we need to break it into multiple instructions.
-    // Use 4080 (not 4095) to maintain 16-byte SP alignment between steps —
-    // AArch64 requires SP to be 16-byte aligned when accessed via SP-relative
-    // addressing, and a signal/interrupt between steps would see misaligned SP.
+    // Prefer the shifted-12 form when possible to avoid thousands of small
+    // adjustments for large frames while preserving SP alignment.
+    if (bytes < 0) {
+        throw std::out_of_range("AArch64 stack subtraction must be non-negative");
+    }
+    const unsigned long long value = static_cast<unsigned long long>(bytes);
+    const unsigned long long hi = value >> 12U;
+    const unsigned long long lo = value & 0xFFFULL;
+    if (hi > 0 && hi <= 4095ULL) {
+        emit2RIShift12(os, "sub", PhysReg::SP, PhysReg::SP, static_cast<uint32_t>(hi));
+        if (lo > 0)
+            emit2RI(os, "sub", PhysReg::SP, PhysReg::SP, static_cast<long long>(lo));
+        return;
+    }
     constexpr long long kMaxImm = 4080;
     while (bytes > kMaxImm) {
-        os << "  sub sp, sp, #" << kMaxImm << "\n";
+        emit2RI(os, "sub", PhysReg::SP, PhysReg::SP, kMaxImm);
         bytes -= kMaxImm;
     }
-    if (bytes > 0) {
-        os << "  sub sp, sp, #" << bytes << "\n";
-    }
+    if (bytes > 0)
+        emit2RI(os, "sub", PhysReg::SP, PhysReg::SP, bytes);
 }
 
 void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const {
     // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
-    // For larger frames, we need to break it into multiple instructions.
-    // Use 4080 (not 4095) to maintain 16-byte SP alignment — see emitSubSp.
+    // Prefer the shifted-12 form when possible to avoid excessive epilogue size.
+    if (bytes < 0) {
+        throw std::out_of_range("AArch64 stack addition must be non-negative");
+    }
+    const unsigned long long value = static_cast<unsigned long long>(bytes);
+    const unsigned long long hi = value >> 12U;
+    const unsigned long long lo = value & 0xFFFULL;
+    if (hi > 0 && hi <= 4095ULL) {
+        emit2RIShift12(os, "add", PhysReg::SP, PhysReg::SP, static_cast<uint32_t>(hi));
+        if (lo > 0)
+            emit2RI(os, "add", PhysReg::SP, PhysReg::SP, static_cast<long long>(lo));
+        return;
+    }
     constexpr long long kMaxImm = 4080;
     while (bytes > kMaxImm) {
-        os << "  add sp, sp, #" << kMaxImm << "\n";
+        emit2RI(os, "add", PhysReg::SP, PhysReg::SP, kMaxImm);
         bytes -= kMaxImm;
     }
-    if (bytes > 0) {
-        os << "  add sp, sp, #" << bytes << "\n";
-    }
+    if (bytes > 0)
+        emit2RI(os, "add", PhysReg::SP, PhysReg::SP, bytes);
 }
 
-/// @brief Pick a scratch GPR that is neither @p base nor (optionally) @p avoid.
-/// Prefers kScratchGPR then kScratchGPR2 then kScratchGPR3 to minimise interference.
-/// Throws if all three reserved scratches are excluded (should never happen in practice).
-static PhysReg chooseGprScratch(PhysReg base, std::optional<PhysReg> avoid = std::nullopt) {
+/// @brief Pick a reserved scratch GPR outside the supplied blocked set.
+/// @details Prefers kScratchGPR, then kScratchGPR2, then kScratchGPR3. Callers
+///          pass every physical register that the helper sequence must not
+///          clobber, which keeps large-offset expansions independent of the
+///          particular operand shape being emitted.
+/// @param blocked Physical GPRs that cannot be used as scratch registers.
+/// @return Reserved scratch register not present in @p blocked.
+static PhysReg chooseGprScratch(std::initializer_list<PhysReg> blocked) {
     const PhysReg candidates[] = {kScratchGPR, kScratchGPR2, kScratchGPR3};
     for (PhysReg candidate : candidates) {
-        if (candidate == base)
-            continue;
-        if (avoid.has_value() && candidate == *avoid)
+        if (std::find(blocked.begin(), blocked.end(), candidate) != blocked.end())
             continue;
         return candidate;
     }
     throw std::runtime_error(
         "AArch64 asm emitter: no scratch register for large offset load/store");
+}
+
+/// @brief Pick a scratch GPR that is neither @p base nor optionally @p avoid.
+/// @param base Base register used by the addressing sequence.
+/// @param avoid Optional transfer register that must not be clobbered.
+/// @return Reserved scratch register suitable for the helper sequence.
+static PhysReg chooseGprScratch(PhysReg base, std::optional<PhysReg> avoid = std::nullopt) {
+    return avoid ? chooseGprScratch({base, *avoid}) : chooseGprScratch({base});
 }
 
 void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const {

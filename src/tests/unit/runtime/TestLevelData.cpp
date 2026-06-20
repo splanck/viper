@@ -89,6 +89,25 @@ TEST(LevelData, ValidFileLoadsTilemapAndObjects) {
     std::remove(path.c_str());
 }
 
+// GAME #7: layer/object nodes with the wrong JSON type (here a number and a
+// string) must be skipped, not crash the loader. Before the type guard,
+// rt_seq_len() on a non-seq trapped the process.
+TEST(LevelData, MalformedLayersAndObjectsAreSkipped) {
+    auto path = temp_path("malformed.json");
+    write_file(path,
+               "{\"width\":2,\"height\":2,\"tileWidth\":8,\"tileHeight\":8,"
+               "\"layers\":5,\"objects\":\"nope\"}");
+
+    void *level = rt_leveldata_load(rt_const_cstr(path.c_str()));
+    // Dimensions are valid so the level still loads; the malformed layers/objects
+    // nodes are ignored instead of trapping.
+    ASSERT_TRUE(level != nullptr);
+    EXPECT_EQ(rt_leveldata_object_count(level), 0);
+
+    release_obj(level);
+    std::remove(path.c_str());
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

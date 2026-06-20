@@ -42,6 +42,7 @@
 #include "codegen/x86_64/passes/PreRegAllocOptPass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 #include "codegen/x86_64/passes/SchedulerPass.hpp"
+#include "common/PlatformCapabilities.hpp"
 #include "il/transform/PassManager.hpp"
 #include "tools/common/module_loader.hpp"
 
@@ -49,7 +50,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
@@ -118,11 +121,10 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
 [[nodiscard]] std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
-#if defined(__APPLE__)
-            return {"cc", "-arch", "x86_64"};
-#else
+            if constexpr (viper::platform::kHostMacOS) {
+                return {"cc", "-arch", "x86_64"};
+            }
             return {"clang", "--target=x86_64-apple-macos11"};
-#endif
         case TargetPlatform::Linux:
             return {"clang", "--target=x86_64-unknown-linux-gnu"};
         case TargetPlatform::Windows:
@@ -138,6 +140,83 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
             }
     }
     return {"clang", "--target=x86_64-unknown-linux-gnu"};
+}
+
+/// @brief Return an ASCII-lowercase copy of a path extension.
+/// @details Object-file extension checks must be case-insensitive for Windows
+///          paths but should not depend on locale. This helper only folds
+///          ASCII A-Z, which is sufficient for ".o" and ".obj".
+/// @param ext Extension string including the leading dot.
+/// @return Lowercase ASCII copy of @p ext.
+[[nodiscard]] std::string lowercaseAsciiExtension(std::string_view ext) {
+    std::string out;
+    out.reserve(ext.size());
+    for (char ch : ext) {
+        if (ch >= 'A' && ch <= 'Z') {
+            out.push_back(static_cast<char>(ch - 'A' + 'a'));
+        } else {
+            out.push_back(ch);
+        }
+    }
+    return out;
+}
+
+/// @brief Test whether a user-provided output path denotes an object file.
+/// @details Recognizes .o and .obj with ASCII case-insensitive matching so
+///          Windows-style uppercase extensions are handled consistently in both
+///          native and system assembler paths.
+/// @param path Output path supplied through pipeline options.
+/// @return True when the path extension is an object-file extension.
+[[nodiscard]] bool looksLikeObjectFilePath(const std::string &path) {
+    const std::size_t dotPos = path.rfind('.');
+    if (dotPos == std::string::npos)
+        return false;
+    const std::string ext = lowercaseAsciiExtension(std::string_view{path}.substr(dotPos));
+    return ext == ".o" || ext == ".obj";
+}
+
+/// @brief Read an entire binary file with checked sizing and stream-state validation.
+/// @details Used for optional codegen asset blobs. The helper reports missing
+///          files, invalid sizes, seek failures, and short reads explicitly so
+///          user-specified asset inputs are never ignored silently.
+/// @param path Source file path to read.
+/// @param outBytes Destination byte buffer, replaced on success.
+/// @param err Stream receiving a human-readable diagnostic on failure.
+/// @return True when the file was read successfully.
+[[nodiscard]] bool readBinaryFileChecked(const std::filesystem::path &path,
+                                         std::vector<uint8_t> &outBytes,
+                                         std::ostream &err) {
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in) {
+        err << "error: cannot open asset blob '" << path.string() << "'\n";
+        return false;
+    }
+    const std::streampos endPos = in.tellg();
+    if (endPos < 0) {
+        err << "error: cannot determine size of asset blob '" << path.string() << "'\n";
+        return false;
+    }
+    const auto fileSize = static_cast<std::uintmax_t>(endPos);
+    if (fileSize > static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()) ||
+        fileSize > static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
+        err << "error: asset blob '" << path.string() << "' is too large\n";
+        return false;
+    }
+    outBytes.assign(static_cast<std::size_t>(fileSize), 0);
+    in.seekg(0);
+    if (!in) {
+        err << "error: cannot seek asset blob '" << path.string() << "'\n";
+        return false;
+    }
+    if (!outBytes.empty()) {
+        in.read(reinterpret_cast<char *>(outBytes.data()),
+                static_cast<std::streamsize>(outBytes.size()));
+        if (!in) {
+            err << "error: failed to read asset blob '" << path.string() << "'\n";
+            return false;
+        }
+    }
+    return true;
 }
 
 /// @brief Return the first path in @p candidates that exists on disk, else empty.
@@ -280,16 +359,16 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
     // used by viper_rt_base. Pull in the concrete component archives that
     // satisfy those cross-component references without regressing to
     // "link every runtime archive".
-#if defined(_WIN32)
-    if (common::hasComponent(ctx, RtComponent::Base)) {
-        appendComponent(RtComponent::Oop);
-        appendComponent(RtComponent::Arrays);
-        appendComponent(RtComponent::Collections);
-        appendComponent(RtComponent::Threads);
-        appendComponent(RtComponent::Text);
-        appendComponent(RtComponent::IoFs);
+    if constexpr (viper::platform::kHostWindows) {
+        if (common::hasComponent(ctx, RtComponent::Base)) {
+            appendComponent(RtComponent::Oop);
+            appendComponent(RtComponent::Arrays);
+            appendComponent(RtComponent::Collections);
+            appendComponent(RtComponent::Threads);
+            appendComponent(RtComponent::Text);
+            appendComponent(RtComponent::IoFs);
+        }
     }
-#endif
 
     if (common::hasComponent(ctx, RtComponent::Graphics)) {
         const auto guiLib = common::supportLibraryPath(ctx.buildDir, "vipergui");
@@ -495,27 +574,25 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
     // --- Inject asset blob into .rodata (if present) ---
     if (useNativeAsm && pipelineModule.binaryRodata && !opts_.asset_blob_path.empty()) {
-        std::ifstream af(opts_.asset_blob_path, std::ios::binary | std::ios::ate);
-        if (af.is_open()) {
-            auto blobSize = af.tellg();
-            if (blobSize > 0) {
-                af.seekg(0);
-                std::vector<uint8_t> assetBlob(static_cast<size_t>(blobSize));
-                af.read(reinterpret_cast<char *>(assetBlob.data()), blobSize);
-
-                const char *blobLabel = "viper_asset_blob";
-                const char *sizeLabel = "viper_asset_blob_size";
-                auto &rodata = *pipelineModule.binaryRodata;
-                rodata.alignTo(16);
-                rodata.defineSymbol(
-                    blobLabel, objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
-                rodata.emitBytes(assetBlob.data(), assetBlob.size());
-                rodata.alignTo(8);
-                rodata.defineSymbol(
-                    sizeLabel, objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
-                rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
-            }
+        std::vector<uint8_t> assetBlob;
+        if (!readBinaryFileChecked(opts_.asset_blob_path, assetBlob, err)) {
+            result.exit_code = 1;
+            return finish();
         }
+
+        const char *blobLabel = "viper_asset_blob";
+        const char *sizeLabel = "viper_asset_blob_size";
+        auto &rodata = *pipelineModule.binaryRodata;
+        rodata.alignTo(16);
+        rodata.defineSymbol(
+            blobLabel, objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
+        if (!assetBlob.empty()) {
+            rodata.emitBytes(assetBlob.data(), assetBlob.size());
+        }
+        rodata.alignTo(8);
+        rodata.defineSymbol(
+            sizeLabel, objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
+        rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
     }
 
     // --- Native assembler path: write .o directly via ObjectFileWriter ---
@@ -534,17 +611,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
             err << "warning: -S is not supported with --native-asm; ignoring -S\n";
         }
 
-        // Determine object file path.
-        auto looksLikeObjectFile = [](const std::string &path) -> bool {
-            const std::size_t dotPos = path.rfind('.');
-            if (dotPos == std::string::npos)
-                return false;
-            const std::string ext = path.substr(dotPos);
-            return ext == ".o" || ext == ".obj";
-        };
-
         const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native &&
-                                     looksLikeObjectFile(opts_.output_obj_path);
+                                     looksLikeObjectFilePath(opts_.output_obj_path);
 
         // Derive .o path from IL path.
         std::filesystem::path objPath;
@@ -689,17 +757,9 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     }
 
     // Check if -o path looks like an executable (ends with .exe or has no extension)
-    // vs an object file (ends with .o or .obj)
-    auto looksLikeObjectFile = [](const std::string &path) -> bool {
-        const std::size_t dotPos = path.rfind('.');
-        if (dotPos == std::string::npos)
-            return false; // No extension - treat as executable
-        const std::string ext = path.substr(dotPos);
-        return ext == ".o" || ext == ".obj";
-    };
-
+    // vs an object file (ends with .o or .obj).
     const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native &&
-                                 looksLikeObjectFile(opts_.output_obj_path);
+                                 looksLikeObjectFilePath(opts_.output_obj_path);
     if (wantsObjectOnly) {
         const std::filesystem::path objPath(opts_.output_obj_path);
         const int assembleExit = invokeAssembler(asmPath, objPath, targetPlatform, out, err);
@@ -718,7 +778,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
     // Link to executable if: running native, no output path specified, or output looks like .exe
     const bool needsExecutable = opts_.run_native || opts_.output_obj_path.empty() ||
-                                 !looksLikeObjectFile(opts_.output_obj_path);
+                                 !looksLikeObjectFilePath(opts_.output_obj_path);
     if (!needsExecutable) {
         result.exit_code = 0;
         return finish();

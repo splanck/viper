@@ -92,14 +92,29 @@ inline uint64_t readLE64(const uint8_t *p) {
     return v;
 }
 
+/// @brief Validate a fixed-width patch range before mutating an object buffer.
+/// @details The putLE helpers are used after section/file offsets have been
+///          computed. A stale offset should therefore fail as a writer bug with
+///          a deterministic exception instead of corrupting adjacent bytes.
+/// @param buf Destination object-file byte buffer.
+/// @param offset First byte to patch.
+/// @param width Number of bytes written.
+/// @throws std::out_of_range if the patch range does not fit in @p buf.
+inline void requirePatchRange(const std::vector<uint8_t> &buf, size_t offset, size_t width) {
+    if (offset > buf.size() || width > buf.size() - offset)
+        throw std::out_of_range("object writer patch range is out of bounds");
+}
+
 /// @brief Patch a 16-bit little-endian value at @p offset within @p buf.
 inline void putLE16(std::vector<uint8_t> &buf, size_t offset, uint16_t val) {
+    requirePatchRange(buf, offset, 2);
     buf[offset] = static_cast<uint8_t>(val);
     buf[offset + 1] = static_cast<uint8_t>(val >> 8);
 }
 
 /// @brief Patch a 32-bit little-endian value at @p offset within @p buf.
 inline void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
+    requirePatchRange(buf, offset, 4);
     buf[offset] = static_cast<uint8_t>(val);
     buf[offset + 1] = static_cast<uint8_t>(val >> 8);
     buf[offset + 2] = static_cast<uint8_t>(val >> 16);
@@ -108,8 +123,9 @@ inline void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
 
 /// @brief Patch a 64-bit little-endian value at @p offset within @p buf.
 inline void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val) {
-    putLE32(buf, offset, static_cast<uint32_t>(val & 0xFFFFFFFFULL));
-    putLE32(buf, offset + 4, static_cast<uint32_t>(val >> 32));
+    requirePatchRange(buf, offset, 8);
+    for (int i = 0; i < 8; ++i)
+        buf[offset + static_cast<size_t>(i)] = static_cast<uint8_t>(val >> (i * 8));
 }
 
 /// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.

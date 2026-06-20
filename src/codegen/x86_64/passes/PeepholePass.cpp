@@ -18,6 +18,7 @@
 
 #include "codegen/x86_64/passes/PeepholePass.hpp"
 
+#include "codegen/common/Parallelism.hpp"
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/Peephole.hpp"
 
@@ -118,9 +119,7 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
     std::atomic_size_t total{0};
     MirStats stats{};
     std::mutex statsMutex;
-    const std::size_t workerCount = std::min(
-        module.mir.size(),
-        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    const std::size_t workerCount = common::codegenWorkerCount(module.mir.size());
     if (workerCount <= 1) {
         for (auto &fn : module.mir) {
             const std::size_t transformed = runPeepholes(fn, *module.target);

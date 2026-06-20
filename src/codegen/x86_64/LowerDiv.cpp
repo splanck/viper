@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -272,6 +273,14 @@ struct DivOpcodeKind {
             std::vector<Operand>{cloneOperand(destClone), cloneOperand(dividendClone)});
     }
 
+    if (*constVal == 1) {
+        if (!kind.isDiv) {
+            block.instructions[instrIdx] = MInstr::make(
+                MOpcode::MOVri, std::vector<Operand>{cloneOperand(destClone), makeImmOperand(0)});
+        }
+        return true;
+    }
+
     if (kind.isDiv) {
         // udiv x, 2^k → shr x, k
         block.instructions.insert(
@@ -414,18 +423,20 @@ void lowerSignedDivRem(MFunction &fn) {
             if (!kind.matched)
                 continue;
             if (candidate.operands.size() < 3U)
-                continue;
+                throw std::runtime_error("x86-64 div lowering: pseudo requires dest/lhs/rhs");
             if (!std::holds_alternative<OpReg>(candidate.operands[0]))
-                continue;
+                throw std::runtime_error(
+                    "x86-64 div lowering: pseudo destination must be a register");
 
             const Operand &dividendOp = candidate.operands[1];
             const Operand &divisorOp = candidate.operands[2];
             const bool dividendSupported = std::holds_alternative<OpReg>(dividendOp) ||
                                            std::holds_alternative<OpImm>(dividendOp);
             if (!dividendSupported)
-                continue;
+                throw std::runtime_error(
+                    "x86-64 div lowering: pseudo dividend must be a register or immediate");
             if (!std::holds_alternative<OpReg>(divisorOp))
-                continue;
+                throw std::runtime_error("x86-64 div lowering: pseudo divisor must be a register");
 
             if (tryLowerDivByPowerOfTwo(
                     fn.blocks[blockIdx], instrIdx, kind, candidate, dividendOp, divisorOp))

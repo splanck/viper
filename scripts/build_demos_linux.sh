@@ -230,7 +230,7 @@ build_demo() {
     local demo_opt="-O1"
     if [[ "$TARGET_ARCH" == "arm64" ]]; then
         case "$name" in
-            chess-zia|crackman) demo_opt="-O0" ;;
+            centipede|chess-zia|crackman) demo_opt="-O0" ;;
         esac
     fi
 

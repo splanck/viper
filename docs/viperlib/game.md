@@ -232,6 +232,9 @@ query a rectangle to find all overlapping IDs.
 | `GetResult(i)` | `Integer(Integer)` | Get the i-th result ID from last query |
 | `GetResultCount()` | `Integer()` | Number of results from last query |
 | `QueryWasTruncated()` | `Integer()` | 1 if last query exceeded the result cap |
+| `GetPairs()` | `Integer()` | Collect broad-phase collision pairs; returns count |
+| `PairFirst(i)` / `PairSecond(i)` | `Integer(Integer)` | IDs of the i-th collision pair |
+| `PairsWasTruncated()` | `Integer()` | 1 if the last `GetPairs()` hit the pair cap |
 | `ItemCount()` | `Integer()` | Total items in the tree |
 | `Destroy()` | `none()` | Free the quadtree |
 
@@ -247,6 +250,11 @@ if tree.QueryWasTruncated() {
     // Handle dense region — results incomplete
 }
 ```
+
+`GetPairs()` similarly caps collected collision pairs at **1024** (`MAX_PAIRS`). Broad-phase
+collection walks clustered items through a single shared ancestor buffer (sized to the 4096-item
+ceiling), so no pairs are dropped from a per-node limit — the only loss is reaching the 1024 total.
+Check `PairsWasTruncated()` after `GetPairs()` to detect it.
 
 ### Duplicate ID Guard
 
@@ -906,7 +914,7 @@ cam.Follow(camX, camY);
 | Physics2D | 32 bodies/cell | `BPG_CELL_MAX = 32` | Dense-cell overflow falls back to an exhaustive pair pass |
 | Quadtree | 256 query results | `RT_QUADTREE_MAX_RESULTS` | Detect with `QueryWasTruncated()` |
 | Quadtree | 4096 total items | Internal | |
-| Quadtree | 1024 overlap pairs | Internal | |
+| Quadtree | 1024 overlap pairs | `MAX_PAIRS` | Detect with `PairsWasTruncated()` |
 | StateMachine | 256 states | `RT_STATE_MAX` | Traps on overflow |
 | ButtonGroup | 256 buttons | `RT_BUTTONGROUP_MAX` | Traps on overflow |
 | SpriteAnim | No limit | — | Start/end frame are plain integers |

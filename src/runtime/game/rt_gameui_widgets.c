@@ -367,7 +367,9 @@ int64_t rt_uitable_handle_click(void *ptr, int64_t mx, int64_t my) {
         return -1;
     }
     int64_t row_y = local_y - (table->show_header ? table->header_height : 0);
-    int64_t row = table->scroll_offset + row_y / table->row_height;
+    if (table->row_height <= 0)
+        return -1;
+    int64_t row = ui_add_sat_i64(table->scroll_offset, row_y / table->row_height);
     if (row < 0 || row >= table->row_count)
         return -1;
     table->selected_row = row;
@@ -567,7 +569,8 @@ void *rt_uislider_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t min_v,
 }
 
 void rt_uislider_set_value(void *ptr, int64_t v) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetValue: expected Viper.Game.UI.HudSlider");
+    rt_uislider_impl *s =
+        checked_slider(ptr, "UISlider.SetValue: expected Viper.Game.UI.HudSlider");
     if (s)
         s->current_value = slider_clamp_value(s, v);
 }
@@ -586,7 +589,8 @@ void rt_uislider_set_step(void *ptr, int64_t step) {
 }
 
 void rt_uislider_set_label(void *ptr, rt_string label) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.SetLabel: expected Viper.Game.UI.HudSlider");
+    rt_uislider_impl *s =
+        checked_slider(ptr, "UISlider.SetLabel: expected Viper.Game.UI.HudSlider");
     if (!s)
         return;
     ui_copy_text(s->label, sizeof(s->label), label);
@@ -594,7 +598,8 @@ void rt_uislider_set_label(void *ptr, rt_string label) {
 }
 
 int8_t rt_uislider_handle_key(void *ptr, int64_t key_code) {
-    rt_uislider_impl *s = checked_slider(ptr, "UISlider.HandleKey: expected Viper.Game.UI.HudSlider");
+    rt_uislider_impl *s =
+        checked_slider(ptr, "UISlider.HandleKey: expected Viper.Game.UI.HudSlider");
     if (!s || !s->visible || !s->enabled)
         return 0;
     int64_t before = s->current_value;
@@ -794,7 +799,7 @@ int8_t rt_uidropdown_handle_click(void *ptr, int64_t mx, int64_t my) {
         return 1;
     }
     int64_t list_y = ui_add_sat_i64(dd->y, dd->h);
-    int64_t list_h = dd->h * dd->option_count;
+    int64_t list_h = ui_mul_sat_i64(dd->h, dd->option_count);
     if (dd->open && ui_point_inside(dd->x, list_y, dd->w, list_h, mx, my)) {
         int64_t idx = (my - list_y) / dd->h;
         if (idx >= 0 && idx < dd->option_count)
@@ -856,7 +861,7 @@ void rt_uidropdown_draw(void *ptr, void *canvas) {
                    dd->caret_color);
     if (dd->open) {
         for (int64_t i = 0; i < dd->option_count; i++) {
-            int64_t y = ui_add_sat_i64(dd->y, dd->h * (i + 1));
+            int64_t y = ui_add_sat_i64(dd->y, ui_mul_sat_i64(dd->h, i + 1));
             rt_canvas_box(canvas,
                           dd->x,
                           y,
@@ -939,7 +944,8 @@ void rt_uitooltip_set_hover_delay_ms(void *ptr, int64_t ms) {
 
 void rt_uitooltip_update(
     void *ptr, int64_t mx, int64_t my, int8_t hovered_target, int64_t delta_ms) {
-    rt_uitooltip_impl *t = checked_tooltip(ptr, "UITooltip.Update: expected Viper.Game.UI.HudTooltip");
+    rt_uitooltip_impl *t =
+        checked_tooltip(ptr, "UITooltip.Update: expected Viper.Game.UI.HudTooltip");
     if (!t)
         return;
     t->target_x = mx;
@@ -959,7 +965,8 @@ void rt_uitooltip_update(
 }
 
 void rt_uitooltip_draw(void *ptr, void *canvas) {
-    rt_uitooltip_impl *t = checked_tooltip(ptr, "UITooltip.Draw: expected Viper.Game.UI.HudTooltip");
+    rt_uitooltip_impl *t =
+        checked_tooltip(ptr, "UITooltip.Draw: expected Viper.Game.UI.HudTooltip");
     if (!t || !canvas || !ui_validate_canvas(canvas, "UITooltip.Draw: expected Canvas"))
         return;
     if (!t->visible || t->text[0] == '\0')
@@ -1223,7 +1230,8 @@ int64_t rt_uimodal_handle_click(void *ptr, int64_t mx, int64_t my) {
     int64_t button_h = 24;
     int64_t gap = 8;
     int64_t total_w =
-        m->button_count * button_w + (m->button_count > 0 ? (m->button_count - 1) * gap : 0);
+        ui_add_sat_i64(ui_mul_sat_i64(m->button_count, button_w),
+                       m->button_count > 0 ? ui_mul_sat_i64(m->button_count - 1, gap) : 0);
     int64_t bx = m->x + m->w - total_w - 12;
     int64_t by = m->y + m->h - button_h - 12;
     for (int64_t i = 0; i < m->button_count; i++) {
@@ -1277,7 +1285,8 @@ void rt_uimodal_draw(void *ptr, void *canvas) {
     int64_t button_h = 24;
     int64_t gap = 8;
     int64_t total_w =
-        m->button_count * button_w + (m->button_count > 0 ? (m->button_count - 1) * gap : 0);
+        ui_add_sat_i64(ui_mul_sat_i64(m->button_count, button_w),
+                       m->button_count > 0 ? ui_mul_sat_i64(m->button_count - 1, gap) : 0);
     int64_t bx = m->x + m->w - total_w - 12;
     int64_t by = m->y + m->h - button_h - 12;
     for (int64_t i = 0; i < m->button_count; i++) {

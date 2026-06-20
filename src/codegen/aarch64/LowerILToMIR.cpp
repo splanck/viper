@@ -73,6 +73,15 @@ static int integerTypeBits(il::core::Type::Kind kind) {
     }
 }
 
+/// @brief Return true when an IL instruction needs the sub-64-bit overflow path.
+/// @details Full-width checked overflow opcodes use dedicated MIR lowering. The
+///          compare-after-narrowing expansion below is only needed for signed
+///          integer widths below 64 bits.
+static bool isSubWidthCheckedOverflowOp(const il::core::Instr &ins) {
+    return integerTypeBits(ins.type.kind) < 64 &&
+           (ins.op == Opcode::IAddOvf || ins.op == Opcode::ISubOvf || ins.op == Opcode::IMulOvf);
+}
+
 /// @brief Emit LSL/ASR to sign-extend @p src from @p bits to 64 bits; return the result vreg.
 /// @details No-op (returns @p src) when @p bits >= 64.
 static uint16_t signExtendVRegToWidth(MBasicBlock &out,
@@ -96,16 +105,18 @@ static uint16_t signExtendVRegToWidth(MBasicBlock &out,
 
 /// @brief Emit a sub-64-bit checked overflow binary operation (IAddOvf/ISubOvf/IMulOvf).
 /// @details Sign-extends both operands to the target width, performs the op, then sign-extends
-///          the result and compares it to the full-width result. If they differ the value
-///          overflowed — a trap block calling rt_trap_ovf is appended to @p mf.
+///          the result and compares it to the full-width result. If they differ, control branches
+///          to the shared overflow trap block identified by @p trapLabel. The function never
+///          appends to @c MFunction::blocks, so callers can safely pass references into the
+///          current block without risking vector reallocation invalidation.
 /// @return true if the instruction was handled as a sub-width checked op; false if bits >= 64
 ///         or the opcode is not a checked overflow op (caller should use the generic path).
-static bool emitSubWidthCheckedBinary(MFunction &mf,
-                                      MBasicBlock &out,
+static bool emitSubWidthCheckedBinary(MBasicBlock &out,
                                       const il::core::Instr &ins,
                                       uint16_t dst,
                                       uint16_t lhs,
                                       uint16_t rhs,
+                                      const std::string &trapLabel,
                                       uint16_t &nextVRegId) {
     const int bits = integerTypeBits(ins.type.kind);
     if (bits >= 64)
@@ -134,44 +145,25 @@ static bool emitSubWidthCheckedBinary(MFunction &mf,
                                  MOperand::vregOp(RegClass::GPR, rhs)}});
 
     const uint16_t narrowed = signExtendVRegToWidth(out, dst, bits, nextVRegId);
-    const std::string trapLabel = ".Ltrap_subwidth_ovf_" + mf.name + "_" +
-                                  std::to_string(mf.blocks.size()) + "_" +
-                                  std::to_string(out.instrs.size());
     out.instrs.push_back(
         MInstr{MOpcode::CmpRR,
                {MOperand::vregOp(RegClass::GPR, narrowed), MOperand::vregOp(RegClass::GPR, dst)}});
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
-
-    mf.blocks.emplace_back();
-    mf.blocks.back().name = trapLabel;
-    mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
     return true;
 }
 
-/// @brief Build a use-count table indexed by temp ID for the entire function.
-/// @details Scans all operands and branch-arg lists. Returns a vector of length
-///          (max_temp_id + 1) where each entry is the total use count for that temp.
-///          Used to detect single-use temps that can be inlined without a MOV.
-static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
+/// @brief Build sparse use counts for all referenced IL temps in a function.
+/// @details Scans operands and branch-argument lists and stores only IDs that are
+///          actually used. This avoids allocating a dense vector up to the largest
+///          temp ID, which can be prohibitively large for sparse or malformed IL.
+/// @param fn Function whose temp operands should be counted.
+/// @return Map from IL temp ID to total use count.
+static std::unordered_map<unsigned, std::size_t> countTempUses(const il::core::Function &fn) {
     using il::core::Value;
 
-    unsigned maxId = 0;
-    for (const auto &param : fn.params)
-        maxId = std::max(maxId, param.id);
-    for (const auto &block : fn.blocks) {
-        for (const auto &param : block.params)
-            maxId = std::max(maxId, param.id);
-        for (const auto &instr : block.instructions)
-            if (instr.result)
-                maxId = std::max(maxId, static_cast<unsigned>(*instr.result));
-    }
-
-    std::vector<std::size_t> uses(static_cast<std::size_t>(maxId) + 1, 0);
-    auto touch = [&](unsigned id) {
-        if (id < uses.size())
-            uses[id]++;
-    };
+    std::unordered_map<unsigned, std::size_t> uses;
+    auto touch = [&](unsigned id) { ++uses[id]; };
 
     for (const auto &block : fn.blocks) {
         for (const auto &instr : block.instructions) {
@@ -191,12 +183,40 @@ static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
     return uses;
 }
 
+/// @brief Return the number of recorded uses for an IL temp ID.
+/// @param uses Sparse use-count map produced by @ref countTempUses.
+/// @param tempId IL temp ID to query.
+/// @return Number of times the temp is used, or zero when absent.
+static std::size_t tempUseCount(const std::unordered_map<unsigned, std::size_t> &uses,
+                                unsigned tempId) {
+    const auto it = uses.find(tempId);
+    return it == uses.end() ? 0U : it->second;
+}
+
+/// @brief Compute a caller stack-argument address relative to AArch64 frame pointer.
+/// @details After the standard prologue saves FP/LR and sets @c x29 to the new
+///          frame, stack-passed arguments start at @c [x29 + 16]. The shared
+///          call-layout planner supplies @p stackSlotIndex, so this helper only
+///          performs the target-specific frame-pointer conversion and overflow
+///          checks.
+/// @param stackSlotIndex Zero-based stack argument slot from call layout planning.
+/// @return Positive FP-relative byte offset to the caller-provided argument.
+static int callerStackParamOffset(std::size_t stackSlotIndex) {
+    constexpr std::size_t kSavedFpLrBytes = 16;
+    constexpr std::size_t kSlotBytes = 8;
+    if (stackSlotIndex >
+        (static_cast<std::size_t>(std::numeric_limits<int>::max()) - kSavedFpLrBytes) /
+            kSlotBytes) {
+        throw std::overflow_error("AArch64 codegen: stack parameter offset out of range");
+    }
+    return static_cast<int>(kSavedFpLrBytes + stackSlotIndex * kSlotBytes);
+}
+
 /// @brief Build a function-wide temp register-class map from IL types.
 /// @details Cross-block reloads can see a temp before its defining block has
 ///          been lowered when IL block order differs from CFG dominance order.
 ///          Seeding classes up front keeps f64 temps from defaulting to GPR.
-static std::unordered_map<unsigned, RegClass> buildTempRegClassMap(
-    const il::core::Function &fn) {
+static std::unordered_map<unsigned, RegClass> buildTempRegClassMap(const il::core::Function &fn) {
     auto classForType = [](const il::core::Type &type) {
         return type.kind == il::core::Type::Kind::F64 ? RegClass::FPR : RegClass::GPR;
     };
@@ -229,23 +249,23 @@ static bool cbrConsumesTemp(const il::core::BasicBlock &bb, unsigned tempId) {
            term.operands[0].kind == Value::Kind::Temp && term.operands[0].id == tempId;
 }
 
-/// @brief Spill the entry-block parameters (function arguments) into stack slots
-///        and create vregs reloaded from those slots.
-/// @details Why spill immediately: ABI registers (x0-x7 / v0-v7) are caller-saved
-///          and will be clobbered by the first call in the function body. Loading
-///          each param into a vreg backed by its own spill slot means the value
-///          survives across calls without the allocator needing to know.
+/// @brief Materialize entry-block parameters (function arguments) into virtual registers.
+/// @details Register arguments are copied from their ABI registers, and stack
+///          arguments are loaded from the caller frame. Parameters that liveness
+///          marks as cross-block values are also stored once into their shared
+///          cross-block spill slot; parameters used only within the entry block
+///          avoid the previous store/reload round trip entirely.
 ///
 ///          Uses `planParamClasses` (shared with x86_64) so register-vs-stack
 ///          assignment matches the platform ABI exactly.
 static void spillEntryBlockParams(const il::core::Function &fn,
                                   const il::core::BasicBlock &bbIn,
                                   const TargetInfo &ti,
-                                  FrameBuilder &fb,
                                   MBasicBlock &out,
                                   std::unordered_map<unsigned, uint16_t> &tempVReg,
                                   std::unordered_map<unsigned, RegClass> &tempRegClass,
                                   std::unordered_map<unsigned, int> &funcParamSpillOffset,
+                                  const std::unordered_map<unsigned, int> &crossBlockSpillOffset,
                                   uint16_t &nextVRegId) {
     std::vector<viper::codegen::common::CallArgClass> paramClasses;
     paramClasses.reserve(bbIn.params.size());
@@ -269,42 +289,36 @@ static void spillEntryBlockParams(const il::core::Function &fn,
         const RegClass cls =
             (loc.cls == viper::codegen::common::CallArgClass::FPR) ? RegClass::FPR : RegClass::GPR;
 
-        // Entry parameters share the cross-block temp spill namespace so reloads
-        // and entry saves use one slot per IL temp.
-        const int spillOffset = ensureCrossBlockSpill(fb, param.id);
-        funcParamSpillOffset[param.id] = spillOffset;
+        const auto spillIt = crossBlockSpillOffset.find(param.id);
+        const bool needsCrossBlockSpill = spillIt != crossBlockSpillOffset.end();
+        if (needsCrossBlockSpill)
+            funcParamSpillOffset[param.id] = spillIt->second;
+
+        const uint16_t vid = allocateNextVReg(nextVRegId);
+        tempVReg[param.id] = vid;
+        tempRegClass[param.id] = cls;
 
         if (loc.inRegister) {
             const PhysReg src = (cls == RegClass::FPR) ? ti.f64ArgOrder[loc.regIndex]
                                                        : ti.intArgOrder[loc.regIndex];
-            const MOpcode storeOpc =
-                (cls == RegClass::FPR) ? MOpcode::StrFprFpImm : MOpcode::StrRegFpImm;
+            const MOpcode moveOpc = (cls == RegClass::FPR) ? MOpcode::FMovRR : MOpcode::MovRR;
             out.instrs.push_back(
-                MInstr{storeOpc, {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
+                MInstr{moveOpc, {MOperand::vregOp(cls, vid), MOperand::regOp(src)}});
         } else {
-            // Stack parameter: caller placed it at [FP + 16 + slotIdx * 8] after
-            // our prologue (stp x29, x30, [sp, #-16]!; mov x29, sp). Round-trip
-            // through a vreg so the allocator chooses a non-conflicting scratch.
-            const int callerArgOffset = 16 + static_cast<int>(loc.stackSlotIndex) * 8;
-            const uint16_t tmpVid = allocateNextVReg(nextVRegId);
+            // Stack parameter: load directly into the canonical parameter vreg.
+            const int callerArgOffset = callerStackParamOffset(loc.stackSlotIndex);
             const MOpcode loadOpc =
                 (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm : MOpcode::LdrRegFpImm;
+            out.instrs.push_back(
+                MInstr{loadOpc, {MOperand::vregOp(cls, vid), MOperand::immOp(callerArgOffset)}});
+        }
+
+        if (needsCrossBlockSpill) {
             const MOpcode storeOpc =
                 (cls == RegClass::FPR) ? MOpcode::StrFprFpImm : MOpcode::StrRegFpImm;
             out.instrs.push_back(
-                MInstr{loadOpc, {MOperand::vregOp(cls, tmpVid), MOperand::immOp(callerArgOffset)}});
-            out.instrs.push_back(
-                MInstr{storeOpc, {MOperand::vregOp(cls, tmpVid), MOperand::immOp(spillOffset)}});
+                MInstr{storeOpc, {MOperand::vregOp(cls, vid), MOperand::immOp(spillIt->second)}});
         }
-
-        // Reload from the spill slot into a fresh vreg for first use.
-        const uint16_t vid = allocateNextVReg(nextVRegId);
-        tempVReg[param.id] = vid;
-        tempRegClass[param.id] = cls;
-        const MOpcode reloadOpc =
-            (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm : MOpcode::LdrRegFpImm;
-        out.instrs.push_back(
-            MInstr{reloadOpc, {MOperand::vregOp(cls, vid), MOperand::immOp(spillOffset)}});
     }
 }
 
@@ -318,10 +332,13 @@ static std::unordered_set<unsigned> setupFrameLocals(const il::core::Function &f
     std::unordered_set<unsigned> allocaTemps;
     for (const auto &bb : fn.blocks) {
         for (const auto &instr : bb.instructions) {
-            if (instr.op != il::core::Opcode::Alloca || !instr.result || instr.operands.empty())
+            if (instr.op != il::core::Opcode::Alloca)
                 continue;
-            if (instr.operands[0].kind != il::core::Value::Kind::ConstInt)
-                continue;
+            if (!instr.result || instr.operands.empty() ||
+                instr.operands[0].kind != il::core::Value::Kind::ConstInt) {
+                throw std::runtime_error(
+                    "AArch64 codegen: dynamic or malformed alloca is not supported");
+            }
             const long long rawSize = instr.operands[0].i64;
             if (rawSize <= 0 || rawSize > std::numeric_limits<int>::max()) {
                 throw std::out_of_range("AArch64 codegen: alloca size must be in range "
@@ -514,11 +531,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
             spillEntryBlockParams(fn,
                                   bbIn,
                                   *ti_,
-                                  fb,
                                   bbOutFn(),
                                   tempVReg,
                                   tempRegClass,
                                   funcParamSpillOffset,
+                                  liveness.crossBlockSpillOffset,
                                   nextVRegId);
 
         // Load block parameters from spill slots into fresh vregs at block entry.
@@ -618,8 +635,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
 
             // When a compare result is consumed only by this block's cbr, defer the
             // lowering to TerminatorLowering so it can emit cmp+b.cond directly.
-            if (ins.result && isCompareOp(ins.op) && *ins.result < tempUseCounts.size() &&
-                tempUseCounts[*ins.result] == 1 && cbrConsumesTemp(bbIn, *ins.result)) {
+            if (ins.result && isCompareOp(ins.op) &&
+                tempUseCount(tempUseCounts, *ins.result) == 1 &&
+                cbrConsumesTemp(bbIn, *ins.result)) {
                 continue;
             }
 
@@ -695,10 +713,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                 const bool fpBinary = binOp && isFloatingPointOp(ins.op);
                                 const bool fpCompare = !binOp && isFloatingPointCompareOp(ins.op);
                                 if (fpBinary || fpCompare) {
-                                    lhs = coerceScalarOperandToFpr(
-                                        lhs, lcls, nextVRegId, bbOutFn());
-                                    rhs = coerceScalarOperandToFpr(
-                                        rhs, rcls, nextVRegId, bbOutFn());
+                                    lhs =
+                                        coerceScalarOperandToFpr(lhs, lcls, nextVRegId, bbOutFn());
+                                    rhs =
+                                        coerceScalarOperandToFpr(rhs, rcls, nextVRegId, bbOutFn());
                                 } else if (lcls != RegClass::GPR || rcls != RegClass::GPR) {
                                     throw std::runtime_error("AArch64 codegen: register class "
                                                              "mismatch in binary lowering");
@@ -709,8 +727,16 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                 tempVReg[*ins.result] = dst;
                                 tempRegClass[*ins.result] = rc;
                                 if (binOp) {
-                                    if (emitSubWidthCheckedBinary(
-                                            mf, bbOutFn(), ins, dst, lhs, rhs, nextVRegId)) {
+                                    if (isSubWidthCheckedOverflowOp(ins) &&
+                                        emitSubWidthCheckedBinary(
+                                            bbOutFn(),
+                                            ins,
+                                            dst,
+                                            lhs,
+                                            rhs,
+                                            requestSharedTrapBlock(
+                                                ctx, "subwidth_ovf_", "rt_trap_ovf"),
+                                            nextVRegId)) {
                                         // Width-aware checked arithmetic emitted above.
                                     } else {
                                         // Check if we can use immediate form for this operation

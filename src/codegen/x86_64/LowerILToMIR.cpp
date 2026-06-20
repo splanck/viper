@@ -28,8 +28,8 @@
 #include "OperandUtils.hpp"
 #include "Unsupported.hpp"
 #include "codegen/common/FrameLayoutUtils.hpp"
+#include "codegen/common/ICE.hpp"
 
-#include <cassert>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -74,6 +74,20 @@ namespace {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
 }
 
+/// @brief Abort lowering with an ICE when an internal builder pointer is missing.
+/// @details MIRBuilder methods are declared @c noexcept because they are thin
+///          accessors used by many lowering rules. Missing adapter/block state
+///          indicates a compiler bug rather than user IL, so the check remains
+///          active in release builds and terminates via @ref VIPER_ICE instead
+///          of throwing through a noexcept boundary.
+/// @param condition True when the required invariant holds.
+/// @param message Human-readable invariant failure.
+inline void requireBuilderInvariant(bool condition, const char *message) noexcept {
+    if (!condition) {
+        VIPER_ICE(message);
+    }
+}
+
 } // namespace
 
 // -----------------------------------------------------------------------------
@@ -89,28 +103,28 @@ MIRBuilder::MIRBuilder(LowerILToMIR &lower, MBasicBlock &block) noexcept
 /// @brief Access the mutable machine block being populated.
 /// @return Reference to the target machine block.
 MBasicBlock &MIRBuilder::block() noexcept {
-    assert(block_ && "MIRBuilder missing block");
+    requireBuilderInvariant(block_ != nullptr, "MIRBuilder missing block");
     return *block_;
 }
 
 /// @brief Access the machine block being populated (const view).
 /// @return Const reference to the target machine block.
 const MBasicBlock &MIRBuilder::block() const noexcept {
-    assert(block_ && "MIRBuilder missing block");
+    requireBuilderInvariant(block_ != nullptr, "MIRBuilder missing block");
     return *block_;
 }
 
 /// @brief Access the owning adapter for helper services.
 /// @return Reference to the lowering adapter.
 LowerILToMIR &MIRBuilder::lower() noexcept {
-    assert(lower_ && "MIRBuilder missing adapter");
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return *lower_;
 }
 
 /// @brief Access the owning adapter (const view).
 /// @return Const reference to the lowering adapter.
 const LowerILToMIR &MIRBuilder::lower() const noexcept {
-    assert(lower_ && "MIRBuilder missing adapter");
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return *lower_;
 }
 
@@ -118,14 +132,16 @@ const LowerILToMIR &MIRBuilder::lower() const noexcept {
 ///        conventions.
 /// @return Const reference to the target description.
 const TargetInfo &MIRBuilder::target() const noexcept {
-    assert(lower_ && lower_->target_ && "Target info unavailable");
+    requireBuilderInvariant(lower_ != nullptr && lower_->target_ != nullptr,
+                            "Target info unavailable");
     return *lower_->target_;
 }
 
 /// @brief Access the read-only data pool used to materialise literals.
 /// @return Reference to the shared rodata pool.
 AsmEmitter::RoDataPool &MIRBuilder::roData() const noexcept {
-    assert(lower_ && lower_->roDataPool_ && "RoData pool unavailable");
+    requireBuilderInvariant(lower_ != nullptr && lower_->roDataPool_ != nullptr,
+                            "RoData pool unavailable");
     return *lower_->roDataPool_;
 }
 
@@ -133,7 +149,7 @@ AsmEmitter::RoDataPool &MIRBuilder::roData() const noexcept {
 /// @param kind IL value classification (integer, float, pointer, etc.).
 /// @return Register class that should represent the value.
 RegClass MIRBuilder::regClassFor(ILValue::Kind kind) const noexcept {
-    assert(lower_);
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return LowerILToMIR::regClassFor(kind);
 }
 
@@ -143,7 +159,7 @@ RegClass MIRBuilder::regClassFor(ILValue::Kind kind) const noexcept {
 /// @param kind IL value kind associated with the identifier.
 /// @return Virtual register assigned to the identifier.
 VReg MIRBuilder::ensureVReg(int id, ILValue::Kind kind) {
-    assert(lower_);
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return lower_->ensureVReg(id, kind);
 }
 
@@ -151,7 +167,7 @@ VReg MIRBuilder::ensureVReg(int id, ILValue::Kind kind) {
 /// @param cls Register class to assign to the new temporary.
 /// @return Newly allocated virtual register.
 VReg MIRBuilder::makeTempVReg(RegClass cls) {
-    assert(lower_);
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return lower_->makeTempVReg(cls);
 }
 
@@ -160,7 +176,8 @@ VReg MIRBuilder::makeTempVReg(RegClass cls) {
 /// @param cls Preferred register class when a temporary must be created.
 /// @return Machine operand referencing the value.
 Operand MIRBuilder::makeOperandForValue(const ILValue &value, RegClass cls) {
-    assert(lower_ && block_);
+    requireBuilderInvariant(lower_ != nullptr && block_ != nullptr,
+                            "MIRBuilder missing adapter or block");
     return lower_->makeOperandForValue(*block_, value, cls);
 }
 
@@ -168,9 +185,8 @@ Operand MIRBuilder::makeOperandForValue(const ILValue &value, RegClass cls) {
 /// @param value IL value to inspect.
 /// @param cls Required register class for a register result.
 /// @return Existing operand representation, or nullopt if conversion would mutate lowering state.
-std::optional<Operand> MIRBuilder::tryGetOperandForValue(const ILValue &value,
-                                                         RegClass cls) const {
-    assert(lower_);
+std::optional<Operand> MIRBuilder::tryGetOperandForValue(const ILValue &value, RegClass cls) const {
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return lower_->tryGetOperandForValue(value, cls);
 }
 
@@ -178,7 +194,7 @@ std::optional<Operand> MIRBuilder::tryGetOperandForValue(const ILValue &value,
 /// @param value IL label value.
 /// @return Machine operand referencing the label.
 Operand MIRBuilder::makeLabelOperand(const ILValue &value) const {
-    assert(lower_);
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return lower_->makeLabelOperand(value);
 }
 
@@ -186,7 +202,7 @@ Operand MIRBuilder::makeLabelOperand(const ILValue &value) const {
 /// @param value IL value to inspect.
 /// @return True when the value should be emitted as an immediate operand.
 bool MIRBuilder::isImmediate(const ILValue &value) const noexcept {
-    assert(lower_);
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return lower_->isImmediate(value);
 }
 
@@ -198,7 +214,7 @@ void MIRBuilder::setCurrentLoc(il::support::SourceLoc loc) noexcept {
 /// @brief Append a machine instruction to the current block.
 /// @param instr Machine instruction to insert.
 void MIRBuilder::append(MInstr instr) {
-    assert(block_);
+    requireBuilderInvariant(block_ != nullptr, "MIRBuilder missing block");
     instr.loc = currentLoc_;
     block_->append(std::move(instr));
 }
@@ -206,7 +222,7 @@ void MIRBuilder::append(MInstr instr) {
 /// @brief Record a call-lowering plan produced by a rule.
 /// @param plan Plan describing register shuffles and call conventions.
 uint32_t MIRBuilder::recordCallPlan(CallLoweringPlan plan) {
-    assert(lower_);
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return lower_->recordCallPlan(std::move(plan));
 }
 
@@ -217,7 +233,7 @@ uint32_t MIRBuilder::recordCallPlan(CallLoweringPlan plan) {
 /// @param alignBytes Required alignment in bytes (defaulted by the header).
 /// @return Negative @c %rbp-relative placeholder displacement.
 int32_t MIRBuilder::reserveStackLocalPlaceholder(int sizeBytes, int alignBytes) {
-    assert(lower_);
+    requireBuilderInvariant(lower_ != nullptr, "MIRBuilder missing adapter");
     return lower_->reserveStackLocalPlaceholder(sizeBytes, alignBytes);
 }
 
@@ -373,7 +389,12 @@ bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept {
 /// @param value Label-valued IL operand.
 /// @return Machine operand referencing the label target.
 Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const {
-    assert(value.kind == ILValue::Kind::LABEL && "label operand expected");
+    if (value.kind != ILValue::Kind::LABEL) {
+        phaseAUnsupported("label operand expected");
+    }
+    if (value.label.empty()) {
+        phaseAUnsupported("label operand is empty");
+    }
     return x64::makeLabelOperand(value.label);
 }
 
@@ -409,7 +430,9 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             if (cls != RegClass::XMM) {
                 phaseAUnsupported("f64 operand requested in a GPR context");
             }
-            assert(roDataPool_ && "RoData pool unavailable for f64 literals");
+            if (!roDataPool_) {
+                phaseAUnsupported("rodata pool unavailable for f64 literals");
+            }
             const int poolIndex = roDataPool_->addF64Literal(value.f64);
             const std::string label = roDataPool_->f64Label(poolIndex);
             const VReg temp = makeTempVReg(RegClass::XMM);
@@ -423,24 +446,33 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             if (cls != RegClass::GPR) {
                 phaseAUnsupported("string literal requested in an XMM context");
             }
-            assert(roDataPool_ && "RoData pool unavailable for string literals");
-            assert(target_ && "Target info unavailable for string literal lowering");
+            if (!roDataPool_) {
+                phaseAUnsupported("rodata pool unavailable for string literals");
+            }
+            if (!target_) {
+                phaseAUnsupported("target info unavailable for string literal lowering");
+            }
             if (value.strLen >
                 static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
                 phaseAUnsupported("string literal byte length is out of range");
+            }
+            if (value.strLen >
+                static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+                phaseAUnsupported("string literal byte length exceeds host size_t");
             }
 
             std::string literalBytes = value.str;
             const auto requestedLen = static_cast<std::size_t>(value.strLen);
             if (literalBytes.size() != requestedLen) {
-                literalBytes.resize(requestedLen);
+                phaseAUnsupported("string literal metadata length mismatch");
             }
 
             const int poolIndex = roDataPool_->addStringLiteral(std::move(literalBytes));
             const std::string label = roDataPool_->stringLabel(poolIndex);
             const auto literalLen = roDataPool_->stringByteLength(poolIndex);
-            assert(literalLen <=
-                   static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()));
+            if (literalLen > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+                phaseAUnsupported("string literal byte length is out of range");
+            }
 
             // LEA string address into temp vreg
             const Operand ripOperand = makeRipLabelOperand(label);
@@ -595,7 +627,9 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
                 if (val.kind != ILValue::Kind::F64) {
                     phaseAUnsupported("non-f64 immediate passed to XMM block parameter");
                 }
-                assert(roDataPool_ && "RoData pool unavailable for f64 block arg");
+                if (!roDataPool_) {
+                    phaseAUnsupported("rodata pool unavailable for f64 block arg");
+                }
                 const int poolIdx = roDataPool_->addF64Literal(val.f64);
                 const std::string label = roDataPool_->f64Label(poolIdx);
                 const VReg tmp = makeTempVReg(RegClass::XMM);

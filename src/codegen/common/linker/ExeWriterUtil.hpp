@@ -24,6 +24,7 @@
 #pragma once
 
 #include "codegen/common/linker/LinkTypes.hpp"
+#include "common/PlatformCapabilities.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -296,24 +297,55 @@ inline bool writeBinaryFileAtomically(const std::string &path,
         const uint64_t seed =
             static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
             nonce.fetch_add(1, std::memory_order_relaxed);
-        const fs::path tempPath =
-            dir / (finalPath.filename().string() + ".tmp." + std::to_string(seed + attempt));
+        const fs::path tempDir =
+            dir / (finalPath.filename().string() + ".tmpdir." + std::to_string(seed + attempt));
+        const fs::path tempPath = tempDir / finalPath.filename();
 
-        std::error_code existsEc;
-        if (fs::exists(tempPath, existsEc))
-            continue;
-
-        if (!writeDirect(tempPath)) {
-            std::error_code cleanupEc;
-            fs::remove(tempPath, cleanupEc);
+        std::error_code mkdirEc;
+        if (!fs::create_directory(tempDir, mkdirEc)) {
+            if (!mkdirEc)
+                continue;
+            err << "error: cannot create temporary output directory '" << tempDir.string()
+                << "': " << mkdirEc.message() << "\n";
             return false;
         }
 
-        if (replaceWithTemp(tempPath, finalPath))
-            return true;
+        auto cleanupTempDir = [&]() {
+            std::error_code cleanupEc;
+            fs::remove_all(tempDir, cleanupEc);
+        };
 
-        std::error_code cleanupEc;
-        fs::remove(tempPath, cleanupEc);
+        if constexpr (!viper::platform::kHostWindows) {
+            std::error_code permEc;
+            fs::permissions(tempDir,
+                            fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec,
+                            fs::perm_options::replace,
+                            permEc);
+            if (permEc) {
+                err << "error: cannot protect temporary output directory '" << tempDir.string()
+                    << "': " << permEc.message() << "\n";
+                cleanupTempDir();
+                return false;
+            }
+        }
+
+        std::error_code existsEc;
+        if (fs::exists(tempPath, existsEc)) {
+            cleanupTempDir();
+            continue;
+        }
+
+        if (!writeDirect(tempPath)) {
+            cleanupTempDir();
+            return false;
+        }
+
+        if (replaceWithTemp(tempPath, finalPath)) {
+            cleanupTempDir();
+            return true;
+        }
+
+        cleanupTempDir();
         return false;
     }
 

@@ -262,7 +262,7 @@ void rt_animtimeline_advance(void *ptr, int64_t delta_frames) {
     int8_t wrapped = 0;
     int8_t spanned_full_cycle = delta_frames >= tl->total_duration_frames;
     if (after_unwrapped >= tl->total_duration_frames) {
-        if (tl->looping) {
+        if (tl->looping && tl->total_duration_frames > 0) {
             after = after_unwrapped % tl->total_duration_frames;
             wrapped = 1;
             for (int64_t i = 0; i < tl->event_count; i++)

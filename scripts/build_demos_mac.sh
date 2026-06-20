@@ -170,11 +170,11 @@ build_demo() {
         return 1
     fi
 
-    # chess-zia pins -O0 around an arm64 O1 aggregate-codegen bug in the GUI Move
-    # path; drop the pin once that backend issue lands.
+    # Large arm64 demos with deep control flow currently avoid backend O1 while
+    # the aggregate/phi-heavy native-codegen issues are being fixed.
     local codegen_opt="-O1"
     case "$name" in
-        chess-zia) codegen_opt="-O0" ;;
+        centipede|chess-zia|crackman) codegen_opt="-O0" ;;
     esac
 
     # Projects that bake assets into the build (embed -> .rodata, pack -> a .vpa

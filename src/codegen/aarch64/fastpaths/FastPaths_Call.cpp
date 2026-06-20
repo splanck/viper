@@ -43,8 +43,10 @@ struct Move {
 };
 
 /// @brief Scratch register pool for temporary computations.
+/// @details Uses only globally reserved scratch registers so fast-path call
+///          marshalling cannot clobber values assigned by register allocation.
 constexpr std::size_t kScratchPoolSize = 2;
-const PhysReg scratchPool[kScratchPoolSize] = {kScratchGPR, PhysReg::X10};
+const PhysReg scratchPool[kScratchPoolSize] = {kScratchGPR, kScratchGPR2};
 
 /// @brief Check if a value is an entry parameter and get its index.
 bool isParamTemp(const il::core::BasicBlock &bb,

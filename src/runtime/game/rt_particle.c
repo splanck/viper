@@ -78,6 +78,7 @@ struct rt_particle_emitter_impl {
     struct particle *particles; ///< Particle array.
     int64_t max_particles;      ///< Maximum particles.
     int64_t active_count;       ///< Number of active particles.
+    int64_t emit_cursor;        ///< Round-robin hint for the next free-slot search.
 
     // Emitter position
     double x, y;
@@ -229,13 +230,15 @@ static double rand_range(struct rt_particle_emitter_impl *e, double min, double 
 static int64_t rand_range_i64(struct rt_particle_emitter_impl *e, int64_t min, int64_t max) {
     if (min >= max)
         return min;
-    uint64_t span = (uint64_t)((uint64_t)max - (uint64_t)min) + 1ULL;
-    uint64_t offset = (uint64_t)(rand_double(e) * (long double)span);
-    if (offset >= span)
-        offset = span - 1;
-    if (offset > (uint64_t)(INT64_MAX - min))
-        return INT64_MAX;
-    return min + (int64_t)offset;
+    // Work in unsigned offset space so the full int64 range is representable
+    // without signed overflow (negative `min`, or min/max spanning the entire
+    // range). `range` = max-min is well-defined for min < max, and the result
+    // min+offset is mathematically within [min, max], so it always fits int64.
+    uint64_t range = (uint64_t)max - (uint64_t)min;
+    uint64_t offset = (uint64_t)(rand_double(e) * ((long double)range + 1.0L));
+    if (offset > range)
+        offset = range;
+    return (int64_t)((uint64_t)min + offset);
 }
 
 /// @brief Resolve a particle's draw color, applying legacy-opaque handling for
@@ -386,6 +389,7 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
 
     e->max_particles = max_particles;
     e->active_count = 0;
+    e->emit_cursor = 0;
 
     e->x = 0.0;
     e->y = 0.0;
@@ -607,9 +611,13 @@ int64_t rt_particle_emitter_color(rt_particle_emitter emitter) {
 
 /// Emit a single particle.
 static void emit_one(struct rt_particle_emitter_impl *e) {
-    // Find an inactive slot (O(n) linear scan; could be optimized with a free-list
-    // for high-emission-rate systems near capacity)
-    for (int64_t i = 0; i < e->max_particles; i++) {
+    // Resume the free-slot search from the last emit position (round-robin) so
+    // bursts and high emission rates don't rescan the filled prefix from index 0
+    // each call — amortized O(1) when free slots exist instead of O(n).
+    for (int64_t n = 0; n < e->max_particles; n++) {
+        int64_t i = e->emit_cursor + n;
+        if (i >= e->max_particles)
+            i -= e->max_particles;
         if (!e->particles[i].active) {
             struct particle *p = &e->particles[i];
 
@@ -629,6 +637,7 @@ static void emit_one(struct rt_particle_emitter_impl *e) {
             p->active = 1;
 
             e->active_count++;
+            e->emit_cursor = (i + 1 >= e->max_particles) ? 0 : i + 1;
             return;
         }
     }

@@ -32,6 +32,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/MachOExeWriter.hpp"
+#include "codegen/common/MachOBuildVersion.hpp"
 #include "codegen/common/linker/MachOBindRebase.hpp"
 #include "codegen/common/linker/MachOCodeSign.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
@@ -97,7 +98,7 @@ static constexpr uint32_t VM_PROT_READ = 1;
 static constexpr uint32_t VM_PROT_WRITE = 2;
 static constexpr uint32_t VM_PROT_EXECUTE = 4;
 
-static constexpr uint32_t PLATFORM_MACOS = 1;
+static constexpr uint32_t PLATFORM_MACOS = viper::codegen::macho::kPlatformMacOS;
 
 /// @brief Convert a power-of-two alignment value to its log2 (Mach-O encoding).
 /// @details Mach-O `section_64::align` stores alignment as the exponent (e.g.,
@@ -974,8 +975,8 @@ bool writeMachOExe(const std::string &path,
     writeLE32(file, LC_BUILD_VERSION);
     writeLE32(file, 24);
     writeLE32(file, PLATFORM_MACOS);
-    writeLE32(file, 0x000E0000); // minos: 14.0.0
-    writeLE32(file, 0x000F0000); // sdk: 15.0.0
+    writeLE32(file, viper::codegen::macho::minimumMacOSVersion());
+    writeLE32(file, viper::codegen::macho::macOSSDKVersion());
     writeLE32(file, 0);
 
     // --- LC_CODE_SIGNATURE ---

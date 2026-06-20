@@ -34,6 +34,7 @@
 #include "Scheduler.hpp"
 #include "TargetX64.hpp"
 #include "binenc/X64BinaryEncoder.hpp"
+#include "codegen/common/Parallelism.hpp"
 #include "codegen/common/ScalarBits.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 #include "peephole/PeepholeCommon.hpp"
@@ -465,9 +466,7 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
         }
     };
 
-    const std::size_t workerCount = std::min(
-        mir.size(),
-        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    const std::size_t workerCount = common::codegenWorkerCount(mir.size());
     if (workerCount <= 1) {
         for (std::size_t i = 0; i < mir.size(); ++i)
             allocateOne(i);
@@ -550,9 +549,7 @@ bool optimizeModuleMIR(std::vector<MFunction> &mir,
         }
     };
 
-    const std::size_t workerCount = std::min(
-        mir.size(),
-        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    const std::size_t workerCount = common::codegenWorkerCount(mir.size());
     if (workerCount <= 1) {
         for (std::size_t index = 0; index < mir.size(); ++index)
             optimizeOne(index);
