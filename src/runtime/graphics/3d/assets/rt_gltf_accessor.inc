@@ -139,6 +139,8 @@ static int gltf_accessor_bind_buffer_view(void *root,
         return 0;
     if (!rt_untrusted_count_ok((int64_t)out->count, elem_size, byte_length_bv - byte_offset_acc))
         return 0;
+    if (out->count <= 0) /* re-assert locally: count-1 below underflows size_t when count==0 */
+        return 0;
     if (!gltf_checked_mul_size((size_t)(out->count - 1), (size_t)out->stride, &last_offset) ||
         !gltf_checked_add_size(byte_offset_acc, last_offset, &last_span) ||
         !gltf_checked_add_size(last_span, elem_size, &required_view_len))

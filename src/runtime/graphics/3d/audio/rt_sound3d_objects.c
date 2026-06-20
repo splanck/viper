@@ -381,7 +381,10 @@ static void sound3d_get_node_world_position(void *node, double *out_position) {
 ///          Result is normalised; degenerate transforms fall back to the
 ///          supplied fallback. Two `rt_vec3_new` allocations
 ///          per call are accepted overhead since this is per-tick, not
-///          per-frame-per-pixel.
+///          per-frame-per-pixel. If many node-bound 3D sources ever make this show up in a
+///          profile, the allocation-free path is an rt_mat4_transform_point/dir variant that
+///          writes into a caller double[3] (no Vec3 wrapper objects), or caching two reusable
+///          scratch Vec3 on the listener/source.
 static void sound3d_get_node_world_direction(void *node,
                                              const double *local_direction,
                                              const double *fallback,

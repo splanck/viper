@@ -438,6 +438,9 @@ static int huff_parse_node(theora_huff_table_t *tab, bitreader_t *br, int depth)
     memset(&tab->nodes[idx], 0, sizeof(tab->nodes[idx]));
     if (br_read1(br)) {
         tab->nodes[idx].leaf = 1;
+        /* br_read(br, 5) yields a 5-bit DCT token in [0, 31], which fits int8_t (max 127) with
+         * room to spare. If the token alphabet is ever widened past 5 bits, widen this field to
+         * int16_t too — the narrowing cast would otherwise silently wrap values >= 128. */
         tab->nodes[idx].token = (int8_t)br_read(br, 5);
     } else {
         int left = huff_parse_node(tab, br, depth + 1);
@@ -1007,26 +1010,6 @@ static int decode_rle_bits(bitreader_t *br, uint8_t *out, int count, int long_ru
     return filled == count ? 0 : -1;
 }
 
-/// @brief Count the number of DCT blocks that belong to superblock @p sbi.
-/// @details Determines superblock membership by computing each block's superblock
-///   index from its plane, bx/4, and by/4 coordinates plus the plane's superblock
-///   offset. Used to size the temporary `bits` allocation in `decode_block_flags`
-///   for the partially-coded superblock pass. O(total_blocks) — acceptable since
-///   superblock decoding is per-frame, not per-block.
-/// @return Number of blocks in superblock @p sbi.
-static int sb_block_count(const theora_priv_t *priv, int sbi) {
-    int count = 0;
-    for (int bi = 0; bi < priv->total_blocks; bi++) {
-        int plane = priv->blocks[bi].plane;
-        int sbx = priv->blocks[bi].bx / 4;
-        int sby = priv->blocks[bi].by / 4;
-        int sb = priv->plane_sb_offsets[plane] + sby * priv->plane_sb_cols[plane] + sbx;
-        if (sb == sbi)
-            count++;
-    }
-    return count;
-}
-
 /// @brief Decode the coded/uncoded flags for all blocks in the frame.
 /// @details For intra frames all blocks are marked coded. For inter frames the
 ///   Theora spec encodes block flags in a three-pass RLE scheme:
@@ -1084,9 +1067,18 @@ int decode_block_flags(theora_decoder_t *dec,
         int nbits = 0;
         uint8_t *bits;
         int cursor = 0;
-        for (int sbi = 0; sbi < priv->total_superblocks; sbi++) {
+        /* Count blocks belonging to partially-coded superblocks in a single O(total_blocks)
+         * pass. (Previously this summed a per-superblock helper that itself scanned all blocks,
+         * giving O(superblocks * blocks).) The superblock index expression and the
+         * `sb_partcoded[sbi]` test mirror the distribution loop below exactly, so nbits stays in
+         * lockstep with the number of bits that loop consumes. */
+        for (int bi = 0; bi < priv->total_blocks; bi++) {
+            int plane = priv->blocks[bi].plane;
+            int sbx = priv->blocks[bi].bx / 4;
+            int sby = priv->blocks[bi].by / 4;
+            int sbi = priv->plane_sb_offsets[plane] + sby * priv->plane_sb_cols[plane] + sbx;
             if (priv->sb_partcoded[sbi])
-                nbits += sb_block_count(priv, sbi);
+                nbits++;
         }
         bits = nbits > 0 ? (uint8_t *)malloc((size_t)nbits) : NULL;
         if (nbits > 0) {
@@ -1524,6 +1516,14 @@ static int decode_eob_token(
         case 6:
             run = (int)br_read(br, 12);
             if (run == 0) {
+                /* EOB token with a zero run code means "all remaining coded blocks finish here".
+                 * Recompute that remaining count by scanning blocks not yet at ti==64. This is
+                 * O(total_blocks) each time the token appears — bounded by the bitstream so never
+                 * a hang, but an adversarial stream emitting it repeatedly makes coefficient
+                 * decode quadratic. A running "blocks not yet complete" counter (decremented as
+                 * each block's ti reaches 64) would make this O(1); it is left out because that
+                 * decrement would have to be threaded through every ti update in the hot
+                 * coefficient-decode path, a correctness risk disproportionate to the gain. */
                 run = 0;
                 for (int bj = 0; bj < priv->total_blocks; bj++) {
                     if (priv->bcoded[bj] && priv->tis[bj] < 64)

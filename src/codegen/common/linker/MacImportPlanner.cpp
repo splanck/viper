@@ -308,6 +308,9 @@ uint32_t ensureMacDylibOrdinal(const char *path,
 bool planMacImports(const std::unordered_set<std::string> &dynamicSyms,
                     MacImportPlan &plan,
                     std::ostream &err) {
+    plan.dylibs.clear();
+    plan.symOrdinals.clear();
+
     static constexpr const char *kCocoaPath =
         "/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa";
     static constexpr const char *kLibcxxPath = "/usr/lib/libc++.1.dylib";

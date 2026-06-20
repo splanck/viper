@@ -30,6 +30,8 @@
 
 namespace viper::codegen::linker {
 
+using viper::codegen::objfile::checkedAdd;
+using viper::codegen::objfile::checkedMul;
 using viper::codegen::objfile::checkedRange;
 using viper::codegen::objfile::readLE32;
 using viper::codegen::objfile::readLE64;
@@ -129,7 +131,6 @@ static std::optional<T> readAt(const uint8_t *data, size_t size, size_t offset) 
     return value;
 }
 
-/// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
 /// @brief Copy @p s up to the first NUL or @p maxLen bytes (Mach-O fixed-name fields).
 /// @details Mach-O segment/section names occupy fixed 16-byte slots that are
 ///          NUL-padded; this helper trims to the actual logical length.
@@ -303,97 +304,118 @@ static int64_t signExtend(uint64_t value, unsigned bits) {
     return static_cast<int64_t>((value ^ signBit) - signBit);
 }
 
-/// Extract relocation addend from instruction bytes (Mach-O has no explicit addend).
-static int64_t extractMachOAddend(const uint8_t *sectionData,
-                                  size_t sectionSize,
-                                  size_t offset,
-                                  uint32_t relocType,
-                                  uint32_t relocLength,
-                                  bool isArm64) {
+/// @brief Extract a relocation addend from inline Mach-O fixup bytes.
+/// @details Mach-O relocatable objects do not carry explicit addends for most
+///          relocation kinds. The assembler leaves the addend encoded in the
+///          data slot or instruction operand that the linker will patch. This
+///          helper validates the encoded field width before reading it and
+///          decodes the AArch64 instruction forms that store scaled immediates.
+///          Unknown relocation types return a zero addend so later relocation
+///          classification can produce the normal unsupported-type diagnostic.
+/// @param sectionData  Start of the section payload containing the fixup.
+/// @param sectionSize  Number of bytes available at @p sectionData.
+/// @param offset       Byte offset of the fixup inside the section payload.
+/// @param relocType    Mach-O relocation type code.
+/// @param relocLength  Mach-O relocation length exponent (`2` = 4 bytes,
+///                     `3` = 8 bytes).
+/// @param isArm64      Whether to decode ARM64 instruction immediates.
+/// @param out          Receives the decoded addend on success.
+/// @return false when a known relocation field is truncated or malformed.
+static bool extractMachOAddend(const uint8_t *sectionData,
+                               size_t sectionSize,
+                               size_t offset,
+                               uint32_t relocType,
+                               uint32_t relocLength,
+                               bool isArm64,
+                               int64_t &out) {
+    out = 0;
     if (isArm64) {
         if (relocType == macho_a64::kUnsigned) {
             const size_t fieldSize = size_t{1} << relocLength;
             if (!checkedRange(offset, fieldSize, sectionSize))
-                return 0;
+                return false;
             if (fieldSize == 8)
-                return static_cast<int64_t>(readLE64(sectionData + offset));
-            if (fieldSize == 4) {
+                out = static_cast<int64_t>(readLE64(sectionData + offset));
+            else if (fieldSize == 4) {
                 int32_t val = 0;
                 std::memcpy(&val, sectionData + offset, 4);
-                return val;
-            }
-            if (fieldSize == 2) {
+                out = val;
+            } else if (fieldSize == 2) {
                 int16_t val = 0;
                 std::memcpy(&val, sectionData + offset, 2);
-                return val;
+                out = val;
+            } else {
+                int8_t val = 0;
+                std::memcpy(&val, sectionData + offset, 1);
+                out = val;
             }
-            int8_t val = 0;
-            std::memcpy(&val, sectionData + offset, 1);
-            return val;
+            return true;
         }
         if (!checkedRange(offset, 4, sectionSize))
-            return 0;
+            return false;
         const uint32_t insn = readLE32(sectionData + offset);
         switch (relocType) {
             case macho_a64::kBranch26:
-                return signExtend(insn & 0x03FFFFFFu, 26) << 2;
+                out = signExtend(insn & 0x03FFFFFFu, 26) << 2;
+                return true;
             case macho_a64::kPage21:
             case macho_a64::kGotLoadPage21:
             case macho_a64::kTlvpLoadPage21: {
                 const uint32_t immlo = (insn >> 29) & 0x3u;
                 const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
-                return signExtend((immhi << 2) | immlo, 21) << 12;
+                out = signExtend((immhi << 2) | immlo, 21) << 12;
+                return true;
             }
             case macho_a64::kPageOff12:
             case macho_a64::kGotLoadPageOff12:
             case macho_a64::kTlvpLoadPageOff12: {
                 uint32_t pageOff = (insn >> 10) & 0xFFFu;
                 uint32_t shift = 0;
-                if (viper::codegen::a64UnsignedLdStOffsetShift(insn, shift)) {
+                if (viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
                     pageOff <<= shift;
-                }
-                return static_cast<int64_t>(pageOff);
+                out = static_cast<int64_t>(pageOff);
+                return true;
             }
+            case macho_a64::kPointerToGot:
+                return true;
             default:
-                break;
+                return true;
         }
-        return 0;
-    } else {
-        const size_t fieldSize = size_t{1} << relocLength;
-        if (checkedRange(offset, fieldSize, sectionSize)) {
-            auto normalizeX64Addend = [&](int64_t val) {
-                switch (relocType) {
-                    case macho_x64::kSigned:
-                    case macho_x64::kSigned1:
-                    case macho_x64::kSigned2:
-                    case macho_x64::kSigned4:
-                    case macho_x64::kBranch:
-                        return val - 4;
-                    default:
-                        return val;
-                }
-            };
-            if (fieldSize == 1) {
-                int8_t val = 0;
-                std::memcpy(&val, sectionData + offset, 1);
-                return normalizeX64Addend(val);
-            }
-            if (fieldSize == 2) {
-                int16_t val = 0;
-                std::memcpy(&val, sectionData + offset, 2);
-                return normalizeX64Addend(val);
-            }
-            if (fieldSize == 4) {
-                int32_t val = 0;
-                std::memcpy(&val, sectionData + offset, 4);
-                return normalizeX64Addend(val);
-            }
-            int64_t val = 0;
-            std::memcpy(&val, sectionData + offset, 8);
-            return normalizeX64Addend(val);
-        }
-        return 0;
     }
+
+    const size_t fieldSize = size_t{1} << relocLength;
+    if (!checkedRange(offset, fieldSize, sectionSize))
+        return false;
+    auto normalizeX64Addend = [&](int64_t val) {
+        switch (relocType) {
+            case macho_x64::kSigned:
+            case macho_x64::kSigned1:
+            case macho_x64::kSigned2:
+            case macho_x64::kSigned4:
+            case macho_x64::kBranch:
+                return val - 4;
+            default:
+                return val;
+        }
+    };
+    if (fieldSize == 1) {
+        int8_t val = 0;
+        std::memcpy(&val, sectionData + offset, 1);
+        out = normalizeX64Addend(val);
+    } else if (fieldSize == 2) {
+        int16_t val = 0;
+        std::memcpy(&val, sectionData + offset, 2);
+        out = normalizeX64Addend(val);
+    } else if (fieldSize == 4) {
+        int32_t val = 0;
+        std::memcpy(&val, sectionData + offset, 4);
+        out = normalizeX64Addend(val);
+    } else {
+        int64_t val = 0;
+        std::memcpy(&val, sectionData + offset, 8);
+        out = normalizeX64Addend(val);
+    }
+    return true;
 }
 
 bool readMachOObj(
@@ -423,7 +445,12 @@ bool readMachOObj(
         err << "error: " << name << ": Mach-O load commands are out of bounds\n";
         return false;
     }
-    const size_t loadCommandsEnd = sizeof(macho::mach_header_64) + hdr->sizeofcmds;
+    size_t loadCommandsEnd = 0;
+    if (!checkedAdd(
+            sizeof(macho::mach_header_64), static_cast<size_t>(hdr->sizeofcmds), loadCommandsEnd)) {
+        err << "error: " << name << ": Mach-O load command span overflows address space\n";
+        return false;
+    }
 
     // Parse load commands.
     size_t lcOff = sizeof(macho::mach_header_64);
@@ -452,8 +479,10 @@ bool readMachOObj(
             return false;
         }
         const auto *lc = &*lcValue;
+        size_t commandEnd = 0;
         if (lc->cmdsize < sizeof(macho::load_command) || !checkedRange(tmpOff, lc->cmdsize, size) ||
-            tmpOff + lc->cmdsize > loadCommandsEnd) {
+            !checkedAdd(tmpOff, static_cast<size_t>(lc->cmdsize), commandEnd) ||
+            commandEnd > loadCommandsEnd) {
             err << "error: " << name << ": malformed Mach-O load command\n";
             return false;
         }
@@ -469,11 +498,14 @@ bool readMachOObj(
                 return false;
             }
             const auto *seg = &*segValue;
-            const size_t secTableOff = tmpOff + sizeof(macho::segment_command_64);
-            const size_t secTableSize =
-                static_cast<size_t>(seg->nsects) * sizeof(macho::section_64);
-            if (!checkedRange(secTableOff, secTableSize, size) ||
-                secTableOff + secTableSize > tmpOff + lc->cmdsize) {
+            size_t secTableOff = 0;
+            size_t secTableSize = 0;
+            size_t secTableEnd = 0;
+            if (!checkedAdd(tmpOff, sizeof(macho::segment_command_64), secTableOff) ||
+                !checkedMul(
+                    static_cast<size_t>(seg->nsects), sizeof(macho::section_64), secTableSize) ||
+                !checkedAdd(secTableOff, secTableSize, secTableEnd) ||
+                !checkedRange(secTableOff, secTableSize, size) || secTableEnd > commandEnd) {
                 err << "error: " << name << ": Mach-O section table is out of bounds\n";
                 return false;
             }
@@ -565,16 +597,30 @@ bool readMachOObj(
                 // its r_symbolnum carries the addend for the NEXT relocation.
                 int64_t pendingAddend = 0;
                 bool hasPendingAddend = false;
-                if (sec->nreloc > 0 &&
-                    !checkedRange(sec->reloff,
-                                  static_cast<size_t>(sec->nreloc) * sizeof(macho::relocation_info),
-                                  size)) {
+                size_t relocTableBytes = 0;
+                if (!checkedMul(static_cast<size_t>(sec->nreloc),
+                                sizeof(macho::relocation_info),
+                                relocTableBytes)) {
+                    err << "error: " << name
+                        << ": Mach-O relocation table size overflows address space\n";
+                    return false;
+                }
+                if (sec->nreloc > 0 && !checkedRange(sec->reloff, relocTableBytes, size)) {
                     err << "error: " << name << ": Mach-O relocation table is out of bounds\n";
                     return false;
                 }
                 for (uint32_t r = 0; r < sec->nreloc; ++r) {
-                    const auto riValue = readAt<macho::relocation_info>(
-                        data, size, sec->reloff + r * sizeof(macho::relocation_info));
+                    size_t relocScaled = 0;
+                    size_t relocRecordOff = 0;
+                    if (!checkedMul(
+                            static_cast<size_t>(r), sizeof(macho::relocation_info), relocScaled) ||
+                        !checkedAdd(
+                            static_cast<size_t>(sec->reloff), relocScaled, relocRecordOff)) {
+                        err << "error: " << name
+                            << ": Mach-O relocation entry offset overflows address space\n";
+                        return false;
+                    }
+                    const auto riValue = readAt<macho::relocation_info>(data, size, relocRecordOff);
                     if (!riValue) {
                         err << "error: " << name << ": truncated Mach-O relocation entry\n";
                         return false;
@@ -609,6 +655,13 @@ bool readMachOObj(
                         continue;
                     }
 
+                    if ((relType == macho_a64::kUnsigned || relType == macho_x64::kUnsigned) &&
+                        relLength != 2 && relLength != 3) {
+                        err << "error: " << name
+                            << ": unsupported Mach-O unsigned relocation length " << relLength
+                            << " in section " << os.name << "\n";
+                        return false;
+                    }
                     const size_t fixupSize =
                         isArm64 && relType != macho_a64::kUnsigned ? 4u : (size_t{1} << relLength);
                     if (!checkedRange(
@@ -631,12 +684,18 @@ bool readMachOObj(
                         hasPendingAddend = false;
                     } else {
                         // Extract addend from instruction bytes.
-                        rel.addend = extractMachOAddend(os.data.data(),
-                                                        os.data.size(),
-                                                        rel.offset,
-                                                        rel.type,
-                                                        relLength,
-                                                        isArm64);
+                        if (!extractMachOAddend(os.data.data(),
+                                                os.data.size(),
+                                                rel.offset,
+                                                rel.type,
+                                                relLength,
+                                                isArm64,
+                                                rel.addend)) {
+                            err << "error: " << name
+                                << ": Mach-O relocation addend is malformed or out of bounds in "
+                                << "section " << os.name << "\n";
+                            return false;
+                        }
                     }
 
                     os.relocs.push_back(rel);
@@ -651,7 +710,11 @@ bool readMachOObj(
                 secAddrs.push_back(sec->addr);
                 obj.sections.push_back(std::move(os));
                 ++machoSecIdx;
-                secOff += sizeof(macho::section_64);
+                if (!checkedAdd(secOff, sizeof(macho::section_64), secOff)) {
+                    err << "error: " << name
+                        << ": Mach-O section header offset overflows address space\n";
+                    return false;
+                }
             }
         } else if (lc->cmd == macho::LC_SYMTAB) {
             if (lc->cmdsize < 24) {
@@ -662,7 +725,7 @@ bool readMachOObj(
             haveSymtab = true;
         }
 
-        tmpOff += lc->cmdsize;
+        tmpOff = commandEnd;
     }
 
     // Validate section count.
@@ -688,7 +751,11 @@ bool readMachOObj(
             err << "error: " << name << ": symbol count " << nsyms << " exceeds limit\n";
             return false;
         }
-        const size_t symtabBytes = static_cast<size_t>(nsyms) * sizeof(macho::nlist_64);
+        size_t symtabBytes = 0;
+        if (!checkedMul(static_cast<size_t>(nsyms), sizeof(macho::nlist_64), symtabBytes)) {
+            err << "error: " << name << ": Mach-O symbol table size overflows address space\n";
+            return false;
+        }
         if (!checkedRange(symoff, symtabBytes, size) || !checkedRange(stroff, strsize, size)) {
             err << "error: " << name << ": Mach-O symbol table is out of bounds\n";
             return false;
@@ -699,8 +766,15 @@ bool readMachOObj(
         std::vector<uint32_t> symMap(nsyms, 0);
 
         for (uint32_t i = 0; i < nsyms; ++i) {
-            const auto nlValue =
-                readAt<macho::nlist_64>(data, size, symoff + i * sizeof(macho::nlist_64));
+            size_t symScaled = 0;
+            size_t symRecordOff = 0;
+            if (!checkedMul(static_cast<size_t>(i), sizeof(macho::nlist_64), symScaled) ||
+                !checkedAdd(static_cast<size_t>(symoff), symScaled, symRecordOff)) {
+                err << "error: " << name
+                    << ": Mach-O symbol table entry offset overflows address space\n";
+                return false;
+            }
+            const auto nlValue = readAt<macho::nlist_64>(data, size, symRecordOff);
             if (!nlValue)
                 break;
             const auto *nl = &*nlValue;

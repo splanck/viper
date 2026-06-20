@@ -288,71 +288,138 @@ static size_t coffCommonAlignment(uint32_t size) {
 /// @details COFF, unlike ELF RELA, does not carry an explicit addend; the
 ///          assembler stores the addend inline in the operand field of the
 ///          instruction it patches. This helper decodes the addend per
-///          relocation type — REL32 reads a literal 32-bit slot, ARM64 BR/B.cond
+///          relocation type: REL32 reads a literal 32-bit slot, ARM64 BR/B.cond
 ///          extract their immediate fields and rescale by 4, ADRP recovers the
-///          21-bit page delta, etc.
+///          21-bit page delta, and section-index relocations contribute no
+///          addend. Unknown relocation types deliberately return a zero addend
+///          so the relocation applier can issue its normal unsupported-type
+///          diagnostic later; known relocation types must have enough bytes for
+///          the encoded operand.
 /// @param machine     COFF Machine field (AMD64 or ARM64).
 /// @param relocType   Format-native relocation type number.
 /// @param sectionData Section bytes the relocation applies to.
 /// @param offset      Byte offset of the reloc site within @p sectionData.
-/// @return Decoded addend, or 0 when the type is unrecognised or out of range.
-static int64_t extractCoffAddend(uint16_t machine,
-                                 uint16_t relocType,
-                                 const std::vector<uint8_t> &sectionData,
-                                 size_t offset) {
+/// @param out         Receives the decoded addend on success.
+/// @return false when a known addend-bearing relocation has an out-of-bounds or
+///         malformed patch site.
+static bool extractCoffAddend(uint16_t machine,
+                              uint16_t relocType,
+                              const std::vector<uint8_t> &sectionData,
+                              size_t offset,
+                              int64_t &out) {
+    out = 0;
     if (machine == coff::IMAGE_FILE_MACHINE_AMD64) {
-        if (relocType == coff_x64::kAddr64 && checkedRange(offset, 8, sectionData.size()))
-            return static_cast<int64_t>(readLE64(sectionData.data() + offset));
-        if (relocType != coff_x64::kSection && checkedRange(offset, 4, sectionData.size())) {
-            int32_t val = 0;
-            std::memcpy(&val, sectionData.data() + offset, 4);
-            return val;
+        if (relocType == coff_x64::kSection)
+            return true;
+        if (relocType == coff_x64::kAddr64) {
+            if (!checkedRange(offset, 8, sectionData.size()))
+                return false;
+            out = static_cast<int64_t>(readLE64(sectionData.data() + offset));
+            return true;
         }
-        return 0;
+        switch (relocType) {
+            case coff_x64::kAddr32:
+            case coff_x64::kAddr32Nb:
+            case coff_x64::kRel32:
+            case coff_x64::kRel32_1:
+            case coff_x64::kRel32_2:
+            case coff_x64::kRel32_3:
+            case coff_x64::kRel32_4:
+            case coff_x64::kRel32_5:
+            case coff_x64::kSecRel: {
+                if (!checkedRange(offset, 4, sectionData.size()))
+                    return false;
+                int32_t val = 0;
+                std::memcpy(&val, sectionData.data() + offset, 4);
+                out = val;
+                return true;
+            }
+            default:
+                return true;
+        }
     }
 
-    if (machine != coff::IMAGE_FILE_MACHINE_ARM64 || !checkedRange(offset, 4, sectionData.size()))
-        return 0;
+    if (machine != coff::IMAGE_FILE_MACHINE_ARM64)
+        return true;
+
+    if (relocType == coff_a64::kSection)
+        return true;
 
     if (relocType == coff_a64::kAddr64) {
-        if (checkedRange(offset, 8, sectionData.size()))
-            return static_cast<int64_t>(readLE64(sectionData.data() + offset));
-        return 0;
+        if (!checkedRange(offset, 8, sectionData.size()))
+            return false;
+        out = static_cast<int64_t>(readLE64(sectionData.data() + offset));
+        return true;
+    }
+
+    switch (relocType) {
+        case coff_a64::kAddr32:
+        case coff_a64::kAddr32Nb:
+        case coff_a64::kBranch26:
+        case coff_a64::kPageRel21:
+        case coff_a64::kPageOff12A:
+        case coff_a64::kPageOff12L:
+        case coff_a64::kSecRel:
+        case coff_a64::kSecRelLow12A:
+        case coff_a64::kSecRelHigh12A:
+        case coff_a64::kSecRelLow12L:
+        case coff_a64::kBranch19:
+            if (!checkedRange(offset, 4, sectionData.size()))
+                return false;
+            break;
+        default:
+            return true;
     }
 
     const uint32_t insn = readLE32(sectionData.data() + offset);
     switch (relocType) {
+        case coff_a64::kAddr32:
+        case coff_a64::kAddr32Nb:
+        case coff_a64::kSecRel: {
+            int32_t val = 0;
+            std::memcpy(&val, sectionData.data() + offset, 4);
+            out = val;
+            return true;
+        }
         case coff_a64::kBranch26:
-            return signExtend(insn & 0x03FFFFFFu, 26) << 2;
+            out = signExtend(insn & 0x03FFFFFFu, 26) << 2;
+            return true;
         case coff_a64::kBranch19:
-            return signExtend((insn >> 5) & 0x7FFFFu, 19) << 2;
+            out = signExtend((insn >> 5) & 0x7FFFFu, 19) << 2;
+            return true;
         case coff_a64::kPageRel21: {
             const uint32_t immlo = (insn >> 29) & 0x3u;
             const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
             // COFF stores the byte addend in ADRP's immediate field. The linker
             // later applies page rounding when it computes PAGE(S + A) - PAGE(P).
-            return signExtend((immhi << 2) | immlo, 21) << 12;
+            out = signExtend((immhi << 2) | immlo, 21) << 12;
+            return true;
         }
         case coff_a64::kPageOff12A:
-            return static_cast<int64_t>((insn >> 10) & 0xFFFu);
+            out = static_cast<int64_t>((insn >> 10) & 0xFFFu);
+            return true;
         case coff_a64::kPageOff12L: {
             uint32_t shift = 0;
             if (!viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
-                return 0;
-            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
+                return false;
+            out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
+            return true;
         }
         case coff_a64::kSecRelLow12A:
-            return static_cast<int64_t>((insn >> 10) & 0xFFFu);
+            out = static_cast<int64_t>((insn >> 10) & 0xFFFu);
+            return true;
         case coff_a64::kSecRelHigh12A:
-            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 12);
+            out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 12);
+            return true;
         case coff_a64::kSecRelLow12L: {
             uint32_t shift = 0;
             if (!viper::codegen::a64UnsignedLdStOffsetShift(insn, shift))
-                return 0;
-            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
+                return false;
+            out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
+            return true;
         }
         default:
-            return 0;
+            return true;
     }
 }
 
@@ -508,8 +575,14 @@ bool readCoffObj(
     size_t materializedBytes = 0;
 
     for (uint32_t i = 0; i < numberOfSections; ++i) {
-        const auto *sh =
-            coffAt<coff::SectionHeader>(data, size, secOff + i * sizeof(coff::SectionHeader));
+        size_t sectionRecordOffset = 0;
+        size_t scaledSectionIndex = 0;
+        if (!checkedMul(static_cast<size_t>(i), sizeof(coff::SectionHeader), scaledSectionIndex) ||
+            !checkedAdd(secOff, scaledSectionIndex, sectionRecordOffset)) {
+            err << "error: " << name << ": COFF section header offset overflows address space\n";
+            return false;
+        }
+        const auto *sh = coffAt<coff::SectionHeader>(data, size, sectionRecordOffset);
         if (!sh) {
             err << "error: " << name << ": COFF section header is out of bounds\n";
             return false;
@@ -622,8 +695,16 @@ bool readCoffObj(
 
         // Read relocations.
         for (uint32_t r = firstReloc; r < totalRelocRecords; ++r) {
-            const auto *cr = coffAt<coff::CoffReloc>(
-                data, size, sh->PointerToRelocations + r * sizeof(coff::CoffReloc));
+            size_t relocScaled = 0;
+            size_t relocRecordOffset = 0;
+            if (!checkedMul(static_cast<size_t>(r), sizeof(coff::CoffReloc), relocScaled) ||
+                !checkedAdd(static_cast<size_t>(sh->PointerToRelocations),
+                            relocScaled,
+                            relocRecordOffset)) {
+                err << "error: " << name << ": COFF relocation entry offset overflows\n";
+                return false;
+            }
+            const auto *cr = coffAt<coff::CoffReloc>(data, size, relocRecordOffset);
             if (!cr) {
                 err << "error: " << name << ": COFF relocation entry is out of bounds\n";
                 return false;
@@ -643,8 +724,12 @@ bool readCoffObj(
                 return false;
             }
             rel.symIndex = cr->SymbolTableIndex + 1; // +1 because ObjFile has null sym at 0.
-            rel.addend =
-                extractCoffAddend(machine, static_cast<uint16_t>(rel.type), sec.data, rel.offset);
+            if (!extractCoffAddend(
+                    machine, static_cast<uint16_t>(rel.type), sec.data, rel.offset, rel.addend)) {
+                err << "error: " << name << ": COFF relocation addend at offset " << rel.offset
+                    << " is malformed or out of bounds in section '" << sec.name << "'\n";
+                return false;
+            }
 
             sec.relocs.push_back(rel);
         }
@@ -688,30 +773,32 @@ bool readCoffObj(
                     return false;
                 }
                 const auto *aux = coffAt<coff::CoffAuxSectionDefinition>(data, size, auxOffset);
-                if (aux) {
-                    comdatSelectionBySection[sectionNumber] = aux->Selection;
-                    if (coffComdatSelection(aux->Selection) == ComdatSelection::None) {
-                        err << "error: " << name << ": unsupported COFF COMDAT selection "
-                            << static_cast<unsigned>(aux->Selection) << "\n";
-                        return false;
-                    }
-                    if (!readSymName(sym, comdatKeyBySection[sectionNumber]))
-                        return false;
-                    if (sectionNumber < obj.sections.size() &&
-                        comdatKeyBySection[sectionNumber].empty())
-                        comdatKeyBySection[sectionNumber] = obj.sections[sectionNumber].name;
-                    const uint32_t assocSection =
-                        static_cast<uint32_t>(static_cast<uint16_t>(aux->Number)) |
-                        (static_cast<uint32_t>(static_cast<uint16_t>(aux->HighNumber)) << 16);
-                    if (aux->Selection == coff::IMAGE_COMDAT_SELECT_ASSOCIATIVE &&
-                        assocSection > 0 && assocSection <= numberOfSections)
-                        associativeSectionBySection[sectionNumber] = assocSection;
-                    else if (aux->Selection == coff::IMAGE_COMDAT_SELECT_ASSOCIATIVE) {
-                        err << "error: " << name
-                            << ": COFF associative COMDAT references invalid section "
-                            << assocSection << "\n";
-                        return false;
-                    }
+                if (!aux) {
+                    err << "error: " << name << ": COFF COMDAT auxiliary record is truncated\n";
+                    return false;
+                }
+                comdatSelectionBySection[sectionNumber] = aux->Selection;
+                if (coffComdatSelection(aux->Selection) == ComdatSelection::None) {
+                    err << "error: " << name << ": unsupported COFF COMDAT selection "
+                        << static_cast<unsigned>(aux->Selection) << "\n";
+                    return false;
+                }
+                if (!readSymName(sym, comdatKeyBySection[sectionNumber]))
+                    return false;
+                if (sectionNumber < obj.sections.size() &&
+                    comdatKeyBySection[sectionNumber].empty())
+                    comdatKeyBySection[sectionNumber] = obj.sections[sectionNumber].name;
+                const uint32_t assocSection =
+                    static_cast<uint32_t>(static_cast<uint16_t>(aux->Number)) |
+                    (static_cast<uint32_t>(static_cast<uint16_t>(aux->HighNumber)) << 16);
+                if (aux->Selection == coff::IMAGE_COMDAT_SELECT_ASSOCIATIVE && assocSection > 0 &&
+                    assocSection <= numberOfSections)
+                    associativeSectionBySection[sectionNumber] = assocSection;
+                else if (aux->Selection == coff::IMAGE_COMDAT_SELECT_ASSOCIATIVE) {
+                    err << "error: " << name
+                        << ": COFF associative COMDAT references invalid section " << assocSection
+                        << "\n";
+                    return false;
                 }
             }
         }

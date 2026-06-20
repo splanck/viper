@@ -147,6 +147,12 @@ static bool rt_keyboard_codepoint_is_text(int32_t ch) {
 
 // Current key state (true = pressed)
 static bool g_key_state[VIPER_KEY_MAX];
+/// Per-frame edge bitsets mirroring g_pressed_keys / g_released_keys, indexed by key code, so
+/// rt_keyboard_was_pressed / _was_released are O(1) instead of a linear scan of the event lists
+/// (which matters when a game polls many keys per frame). Cleared whenever the per-frame event
+/// counts reset (rt_keyboard_init / rt_keyboard_begin_frame).
+static bool g_pressed_this_frame[VIPER_KEY_MAX];
+static bool g_released_this_frame[VIPER_KEY_MAX];
 
 // Keys pressed this frame
 static int64_t *g_pressed_keys;
@@ -396,8 +402,11 @@ void rt_keyboard_init(void) {
     if (g_initialized)
         return;
 
-    for (int key = 0; key < VIPER_KEY_MAX; ++key)
+    for (int key = 0; key < VIPER_KEY_MAX; ++key) {
         g_key_state[key] = false;
+        g_pressed_this_frame[key] = false;
+        g_released_this_frame[key] = false;
+    }
     g_pressed_count = 0;
     g_released_count = 0;
     g_text_length = 0;
@@ -410,7 +419,9 @@ void rt_keyboard_init(void) {
 /// @brief Clear per-frame pressed/released lists and text buffer. Call once at frame start.
 void rt_keyboard_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
-    // Clear per-frame event lists
+    // Clear per-frame event lists (and the O(1) edge bitsets that mirror them)
+    memset(g_pressed_this_frame, 0, sizeof(g_pressed_this_frame));
+    memset(g_released_this_frame, 0, sizeof(g_released_this_frame));
     g_pressed_count = 0;
     g_released_count = 0;
     g_text_length = 0;
@@ -430,6 +441,7 @@ static void rt_keyboard_record_key_down(int64_t key) {
             return;
         }
         g_key_state[key] = true;
+        g_pressed_this_frame[key] = true;
         rt_keyboard_append_reserved_key_event(g_pressed_keys, &g_pressed_count, key);
     }
 
@@ -449,6 +461,7 @@ static void rt_keyboard_record_key_up(int64_t key) {
             return;
         }
         g_key_state[key] = false;
+        g_released_this_frame[key] = true;
         rt_keyboard_append_reserved_key_event(g_released_keys, &g_released_count, key);
     }
 }
@@ -593,21 +606,17 @@ int64_t rt_keyboard_get_down(void) {
 /// @brief Check whether a key was pressed this frame (edge-triggered — true once on key-down).
 int8_t rt_keyboard_was_pressed(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_pressed_count; i++) {
-        if (g_pressed_keys[i] == key)
-            return 1;
-    }
-    return 0;
+    if (key <= 0 || key >= VIPER_KEY_MAX)
+        return 0; /* out-of-range keys are never recorded, so they were not pressed */
+    return g_pressed_this_frame[key] ? 1 : 0;
 }
 
 /// @brief Check whether a key was released this frame (edge-triggered — true once on key-up).
 int8_t rt_keyboard_was_released(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_released_count; i++) {
-        if (g_released_keys[i] == key)
-            return 1;
-    }
-    return 0;
+    if (key <= 0 || key >= VIPER_KEY_MAX)
+        return 0; /* out-of-range keys are never recorded, so they were not released */
+    return g_released_this_frame[key] ? 1 : 0;
 }
 
 /// @brief Get a list of all keys pressed this frame as a sequence of key codes.

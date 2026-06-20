@@ -438,6 +438,11 @@ typedef struct {
     int *load_failed_io;
 } gltf_mesh_load_context_t;
 
+/// @brief First of two passes over the glTF mesh array: sum every mesh's primitive count so the
+/// output tables (mesh_prim_start/_count, primitive_materials) can be allocated once at the exact
+/// total size. This deliberate pre-count trades a cheap O(meshes) walk of jarr_len() for avoiding
+/// per-primitive reallocs and fragmentation during the far more expensive decode pass — the count
+/// cost is negligible relative to vertex/index decoding, so the two-pass structure is intentional.
 static int gltf_mesh_count_total_primitives(void *meshes_arr,
                                             int mesh_json_count,
                                             int *out_total_prims,

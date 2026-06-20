@@ -86,6 +86,12 @@ typedef struct {
     int32_t event_queue_head;
     int32_t event_queue_count;
     int64_t events_dropped;
+    /// Reusable scratch for controller_compute_final_palette's per-call local-matrix buffer,
+    /// sized like the palettes (VGFX3D_MAX_BONES*16 floats). Owned per-controller (one updater
+    /// at a time) so it replaces a ~16 KB stack array on the parallel-animator worker threads.
+    /// Appended at the struct's end so white-box test layout mirrors of the earlier fields keep
+    /// their offsets.
+    float *blend_locals_scratch;
 } rt_anim_controller3d;
 
 /// @brief Validate that @p obj is a live AnimController3D handle, returning NULL otherwise.

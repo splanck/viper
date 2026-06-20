@@ -295,10 +295,19 @@ static int test_box_box_obb(void *a_collider,
         }
     }
 
+    if (best_depth == DBL_MAX) {
+        /* Defensive: no axis recorded a penetration. The six face-axis tests above
+         * always record (they have no skip path) and return early on separation, so
+         * this is unreachable today — but if a future edit adds a skip to the face
+         * loops, report no-contact rather than fabricating a 0-depth +Y contact that
+         * the solver would treat as a real (mis-normalled) collision. */
+        *depth = 0.0;
+        return 0;
+    }
     vec3_copy(normal, best_axis);
     if (vec3_normalize_in_place(normal) <= 1e-12)
         vec3_set(normal, 0.0, 1.0, 0.0);
-    *depth = best_depth == DBL_MAX ? 0.0 : best_depth;
+    *depth = best_depth;
     return *depth >= 0.0;
 }
 
@@ -634,8 +643,18 @@ static void closest_point_on_triangle(
     }
 
     {
-        double denom =
-            1.0 / ((vec3_dot(ab, ab) * vec3_dot(ac, ac)) - vec3_dot(ab, ac) * vec3_dot(ab, ac));
+        double denom_raw =
+            (vec3_dot(ab, ab) * vec3_dot(ac, ac)) - vec3_dot(ab, ac) * vec3_dot(ab, ac);
+        if (!isfinite(denom_raw) || fabs(denom_raw) < 1e-18) {
+            /* Degenerate (zero-area / collinear) triangle: the Gram determinant is
+             * singular, so the barycentric solve would divide by ~0 and inject NaN
+             * into the contact normal/depth. Fall back to vertex a. */
+            closest[0] = a[0];
+            closest[1] = a[1];
+            closest[2] = a[2];
+            return;
+        }
+        double denom = 1.0 / denom_raw;
         double dot_ap_ab = vec3_dot(ap, ab);
         double dot_ap_ac = vec3_dot(ap, ac);
         double dot_ab_ab = vec3_dot(ab, ab);

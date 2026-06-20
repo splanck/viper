@@ -348,6 +348,12 @@ static int walk_chunks(const uint8_t *data,
         if (ctx)
             ctx->chunk_walk_depth = depth;
         handler(ctx, fourcc, data + pos + 8, size, extra);
+        if (ctx)
+            ctx->chunk_walk_depth = depth; /* a nested walk_chunks inside the handler leaves the
+                                            * shared field deeper; restore this level's depth so
+                                            * later siblings (and any post-return reads) observe
+                                            * the correct value. The authoritative recursion bound
+                                            * remains the local `depth` parameter checked above. */
         if (ctx && ctx->parse_error)
             break;
         pos += 8 + size;

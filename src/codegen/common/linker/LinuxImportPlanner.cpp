@@ -65,14 +65,14 @@ const char *linuxNeededLibName(LinuxNeededLib lib) {
 
 bool isLinuxMathSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kMath = {
-        "acos",   "acosf", "asin",  "asinf",    "atan",      "atan2",  "atan2f", "atanf", "cbrt",
-        "cbrtf",  "ceil",  "ceilf", "copysign", "copysignf", "cos",    "cosf",   "cosh",  "exp",
-        "exp10",  "expf",  "fabs",  "fabsf",    "floor",     "floorf", "fmax",   "fmaxf", "fmin",
-        "fminf",  "fmod",  "fmodf", "hypot",    "ldexp",     "log",    "log10",  "log2",  "logf",
-        "nan",    "pow",   "powf",  "rint",     "round",     "roundf", "lrint",  "lrintf",
-        "llrint", "sin",   "sinf",  "sinh",     "sqrt",      "sqrtf",  "tan",    "tanf",  "tanh",
-        "trunc",  "truncf", "atan2l", "ceill",   "cosl",      "floorl", "fmaxl",  "fminl",
-        "fmodl",  "sinl",  "sqrtl",
+        "acos",  "acosf",  "asin",   "asinf",  "atan",     "atan2",     "atan2f", "atanf",
+        "cbrt",  "cbrtf",  "ceil",   "ceilf",  "copysign", "copysignf", "cos",    "cosf",
+        "cosh",  "exp",    "exp10",  "expf",   "fabs",     "fabsf",     "floor",  "floorf",
+        "fmax",  "fmaxf",  "fmin",   "fminf",  "fmod",     "fmodf",     "hypot",  "ldexp",
+        "log",   "log10",  "log2",   "logf",   "nan",      "pow",       "powf",   "rint",
+        "round", "roundf", "lrint",  "lrintf", "llrint",   "sin",       "sinf",   "sinh",
+        "sqrt",  "sqrtf",  "tan",    "tanf",   "tanh",     "trunc",     "truncf", "atan2l",
+        "ceill", "cosl",   "floorl", "fmaxl",  "fminl",    "fmodl",     "sinl",   "sqrtl",
     };
     return kMath.count(name) != 0;
 }
@@ -118,11 +118,10 @@ bool isLinuxCppRuntimeSymbol(const std::string &name) {
 
 bool isLinuxCompilerRuntimeSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kExact = {
-        "__addtf3",       "__divtf3",      "__eqtf2",       "__extenddftf2",
-        "__fixtfdi",      "__fixtfsi",     "__fixunstfdi",  "__floatditf",
-        "__floatsitf",    "__floatunditf", "__floatunsitf", "__getf2",
-        "__gttf2",        "__letf2",       "__lttf2",       "__multf3",
-        "__netf2",        "__subtf3",      "__trunctfdf2",
+        "__addtf3",      "__divtf3",     "__eqtf2",     "__extenddftf2", "__fixtfdi",
+        "__fixtfsi",     "__fixunstfdi", "__floatditf", "__floatsitf",   "__floatunditf",
+        "__floatunsitf", "__getf2",      "__gttf2",     "__letf2",       "__lttf2",
+        "__multf3",      "__netf2",      "__subtf3",    "__trunctfdf2",
     };
     return kExact.count(name) != 0;
 }
@@ -152,6 +151,8 @@ LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
 bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
                       LinuxImportPlan &plan,
                       std::ostream & /*err*/) {
+    plan.neededLibs.clear();
+
     std::unordered_set<LinuxNeededLib> libs = {LinuxNeededLib::LibC};
     for (const auto &sym : dynamicSyms)
         libs.insert(classifyLinuxImportLibrary(sym));

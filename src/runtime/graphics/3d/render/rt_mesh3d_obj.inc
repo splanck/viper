@@ -483,6 +483,20 @@ static int obj_triangulate_face(void *mesh_obj, const uint32_t *mesh_indices, in
             rt_mesh3d_add_triangle(mesh_obj, mesh_indices[0], mesh_indices[1], mesh_indices[2]);
         return !mesh->build_failed;
     }
+    if (face_count > MESH3D_OBJ_MAX_EARCLIP_VERTS) {
+        /* Very large face: ear-clipping below is O(n^2..n^3), so emit a triangle fan instead
+         * (exact for convex faces; see MESH3D_OBJ_MAX_EARCLIP_VERTS). This bounds the cost of
+         * a pathological mega-face without stalling the loader. */
+        for (int i = 1; i + 1 < face_count; ++i) {
+            if (mesh_indices_form_triangle(
+                    mesh, mesh_indices[0], mesh_indices[i], mesh_indices[i + 1]))
+                rt_mesh3d_add_triangle(
+                    mesh_obj, mesh_indices[0], mesh_indices[i], mesh_indices[i + 1]);
+            if (mesh->build_failed)
+                return 0;
+        }
+        return !mesh->build_failed;
+    }
     obj_choose_projection_axes(mesh, mesh_indices, face_count, &ax0, &ax1);
     area = obj_projected_area2(mesh, mesh_indices, face_count, ax0, ax1);
     if (!isfinite(area) || fabs(area) <= 1e-12)

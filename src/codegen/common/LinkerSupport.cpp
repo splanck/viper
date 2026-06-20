@@ -32,6 +32,7 @@
 #include "codegen/common/linker/ArchiveReader.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 
 #include <cctype>
@@ -44,9 +45,9 @@
 #include <unordered_map>
 #include <vector>
 
-#if defined(_WIN32)
+#if VIPER_HOST_WINDOWS
 #include <windows.h>
-#elif defined(__APPLE__)
+#elif VIPER_HOST_MACOS
 #include <limits.h>
 #include <mach-o/dyld.h>
 #include <stdlib.h>
@@ -62,15 +63,11 @@ namespace {
 /// @brief Build the platform-correct archive filename for a given library base.
 /// @details Produces `<base>.lib` on Windows and `lib<base>.a` elsewhere; the
 ///          base name should not include any prefix or extension.
-#ifdef _WIN32
 std::string archiveFileName(std::string_view libBaseName) {
-    return std::string(libBaseName) + ".lib";
-}
-#else
-std::string archiveFileName(std::string_view libBaseName) {
+    if constexpr (viper::platform::kHostWindows)
+        return std::string(libBaseName) + ".lib";
     return "lib" + std::string(libBaseName) + ".a";
 }
-#endif
 
 /// @brief Probe whether @p dir looks like an installed Viper lib directory.
 /// @details Tests for the presence of libviper_rt_base, the always-required
@@ -79,10 +76,18 @@ bool dirHasArchiveProbe(const std::filesystem::path &dir) {
     return fileExists(dir / archiveFileName("viper_rt_base"));
 }
 
+/// @brief Resolve an installed library directory supplied through VIPER_LIB_PATH.
+/// @details VIPER_LIB_PATH may point either at an archive file or at the directory
+///          containing the installed runtime/support archives. The probe normalizes
+///          file inputs to their parent directory and only accepts directories that
+///          contain the always-required viper_rt_base archive.
+/// @return The normalized installed library directory, or std::nullopt when the
+///         environment variable is absent or does not identify a Viper install.
 std::optional<std::filesystem::path> configuredInstalledLibDir() {
     if (const char *env = std::getenv("VIPER_LIB_PATH")) {
         std::filesystem::path candidate(env);
-        if (fileExists(candidate) && !std::filesystem::is_directory(candidate))
+        std::error_code dirEc;
+        if (fileExists(candidate) && !std::filesystem::is_directory(candidate, dirEc))
             candidate = candidate.parent_path();
         if (!candidate.empty() && dirHasArchiveProbe(candidate))
             return candidate;
@@ -90,6 +95,14 @@ std::optional<std::filesystem::path> configuredInstalledLibDir() {
     return std::nullopt;
 }
 
+/// @brief Build an installed archive path from an optional installed directory.
+/// @details Keeps call sites compact when installed-layout discovery is optional.
+///          The returned path is not revalidated; callers still use fileExists()
+///          before adding it to a link line.
+/// @param dir Installed library directory returned by a discovery probe.
+/// @param libBaseName Runtime/support library base name without prefix or suffix.
+/// @return std::nullopt when @p dir is empty; otherwise the platform-correct
+///         archive path within that directory.
 std::optional<std::filesystem::path> installedLibraryPathInDir(
     const std::optional<std::filesystem::path> &dir, std::string_view libBaseName) {
     if (!dir)
@@ -154,17 +167,31 @@ std::vector<std::string> preferredBuildConfigs() {
     if (const char *env = std::getenv("VIPER_BUILD_TYPE"))
         append(env);
 
+    if constexpr (viper::platform::kCompilerMSVC) {
 #if defined(NDEBUG)
-    append("Release");
-    append("RelWithDebInfo");
-    append("MinSizeRel");
-    append("Debug");
+        append("Release");
+        append("RelWithDebInfo");
+        append("MinSizeRel");
+        append("Debug");
 #else
-    append("Debug");
-    append("RelWithDebInfo");
-    append("Release");
-    append("MinSizeRel");
+        append("Debug");
+        append("RelWithDebInfo");
+        append("Release");
+        append("MinSizeRel");
 #endif
+    } else {
+#if defined(NDEBUG)
+        append("Release");
+        append("RelWithDebInfo");
+        append("MinSizeRel");
+        append("Debug");
+#else
+        append("Debug");
+        append("RelWithDebInfo");
+        append("Release");
+        append("MinSizeRel");
+#endif
+    }
     return configs;
 }
 
@@ -177,19 +204,18 @@ std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &b
                                                   std::string_view libBaseName) {
     const std::filesystem::path subdir = supportLibBuildSubdir(libBaseName);
     const std::string archive = archiveFileName(libBaseName);
-#ifdef _WIN32
-    std::vector<std::filesystem::path> candidates;
-    for (const auto &config : preferredBuildConfigs())
-        candidates.push_back(buildDir / subdir / config / archive);
-    candidates.push_back(buildDir / subdir / archive);
-    for (const auto &candidate : candidates) {
-        if (fileExists(candidate))
-            return candidate;
+    if constexpr (viper::platform::kHostWindows) {
+        std::vector<std::filesystem::path> candidates;
+        for (const auto &config : preferredBuildConfigs())
+            candidates.push_back(buildDir / subdir / config / archive);
+        candidates.push_back(buildDir / subdir / archive);
+        for (const auto &candidate : candidates) {
+            if (fileExists(candidate))
+                return candidate;
+        }
+        return std::filesystem::path{};
     }
-    return std::filesystem::path{};
-#else
     return buildDir / subdir / archive;
-#endif
 }
 
 /// @brief Return the platform's standard library search dirs for installed Viper.
@@ -197,14 +223,14 @@ std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &b
 ///          tree; Windows returns an empty list (everything is co-located).
 std::vector<std::filesystem::path> standardInstalledLibDirs() {
     std::vector<std::filesystem::path> dirs;
-#if defined(__APPLE__)
-    dirs.emplace_back("/usr/local/viper/lib");
-#elif !defined(_WIN32)
-    dirs.emplace_back("/usr/lib");
-    dirs.emplace_back("/usr/local/lib");
-    dirs.emplace_back("/usr/lib64");
-    dirs.emplace_back("/usr/local/lib64");
-#endif
+    if constexpr (viper::platform::kHostMacOS) {
+        dirs.emplace_back("/usr/local/viper/lib");
+    } else if constexpr (!viper::platform::kHostWindows) {
+        dirs.emplace_back("/usr/lib");
+        dirs.emplace_back("/usr/local/lib");
+        dirs.emplace_back("/usr/lib64");
+        dirs.emplace_back("/usr/local/lib64");
+    }
     return dirs;
 }
 
@@ -302,10 +328,8 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
     const RunResult build = run_process(cmd);
     if (!build.out.empty())
         out << build.out;
-#if defined(_WIN32)
     if (!build.err.empty())
         err << build.err;
-#endif
     if (build.exit_code != 0) {
         err << "error: failed to build required runtime libraries in '" << ctx.buildDir.string()
             << "'\n";
@@ -410,14 +434,38 @@ bool addArchiveClosureSymbols(const LinkContext &ctx,
     return true;
 }
 
-/// @brief Stable, deterministic cache key for a (build dir, symbol set) pair.
+/// @brief Return an environment signature for process-wide link-context caching.
+/// @details Runtime archive discovery depends on a small set of environment
+///          variables. Including their current values in the cache key prevents
+///          a long-lived process from reusing archive paths after the caller
+///          switches install/build configuration between links.
+std::string linkEnvironmentCacheKey() {
+    std::string key;
+    auto appendEnv = [&](const char *name) {
+        key += name;
+        key.push_back('=');
+        if (const char *value = std::getenv(name))
+            key += value;
+        key.push_back('\n');
+    };
+    appendEnv("VIPER_LIB_PATH");
+    appendEnv("VIPER_BUILD_TYPE");
+    appendEnv("VIPER_BUILD_DIR");
+    return key;
+}
+
+/// @brief Stable, deterministic cache key for link-context reuse.
 /// @details Sorts the symbol set so identical inputs produce identical keys
-///          regardless of hash-table iteration order.
+///          regardless of hash-table iteration order, and includes the current
+///          archive-discovery environment so process-wide cache hits cannot
+///          cross install/build configuration changes.
 std::string linkContextCacheKey(const std::filesystem::path &buildDir,
                                 const std::unordered_set<std::string> &symbols) {
     std::vector<std::string> ordered(symbols.begin(), symbols.end());
     std::sort(ordered.begin(), ordered.end());
     std::string key = buildDir.lexically_normal().string();
+    key.push_back('\n');
+    key += linkEnvironmentCacheKey();
     for (const auto &symbol : ordered) {
         key.push_back('\n');
         key += symbol;
@@ -433,7 +481,7 @@ std::string linkContextCacheKey(const std::filesystem::path &buildDir,
 
 bool fileExists(const std::filesystem::path &path) {
     std::error_code ec;
-    return std::filesystem::exists(path, ec);
+    return std::filesystem::is_regular_file(path, ec);
 }
 
 bool readFileToString(const std::filesystem::path &path, std::string &dst) {
@@ -470,6 +518,16 @@ std::optional<std::filesystem::path> findBuildDir() {
     std::error_code ec;
     std::filesystem::path cur = std::filesystem::current_path(ec);
     if (!ec) {
+        const std::filesystem::path nestedBuild = cur / "build";
+        if (fileExists(nestedBuild / "CMakeCache.txt"))
+            return nestedBuild;
+    }
+
+    const std::filesystem::path defaultBuild = std::filesystem::path("build");
+    if (fileExists(defaultBuild / "CMakeCache.txt"))
+        return defaultBuild;
+
+    if (!ec) {
         for (int depth = 0; depth < 8; ++depth) {
             if (fileExists(cur / "CMakeCache.txt"))
                 return cur;
@@ -479,15 +537,11 @@ std::optional<std::filesystem::path> findBuildDir() {
         }
     }
 
-    const std::filesystem::path defaultBuild = std::filesystem::path("build");
-    if (fileExists(defaultBuild / "CMakeCache.txt"))
-        return defaultBuild;
-
     return std::nullopt;
 }
 
 std::optional<std::filesystem::path> currentExecutablePath() {
-#if defined(_WIN32)
+#if VIPER_HOST_WINDOWS
     std::wstring buf(MAX_PATH, L'\0');
     DWORD len = 0;
     while (true) {
@@ -500,7 +554,7 @@ std::optional<std::filesystem::path> currentExecutablePath() {
     }
     buf.resize(len);
     return std::filesystem::path(buf);
-#elif defined(__APPLE__)
+#elif VIPER_HOST_MACOS
     uint32_t size = 0;
     if (_NSGetExecutablePath(nullptr, &size) != -1 || size == 0)
         return std::nullopt;
@@ -585,7 +639,7 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text) {
 
         if (j > start)
             symbols.emplace(text.substr(start, j - start));
-        i = j;
+        i = j == 0 ? i : j - 1;
     }
 
     // Pass 2: Scan for Viper.* namespace-qualified symbols (OOP-style IL).
@@ -614,7 +668,7 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text) {
 
         if (j > start)
             symbols.emplace(text.substr(start, j - start));
-        i = j;
+        i = j == 0 ? i : j - 1;
     }
 
     return symbols;
@@ -630,47 +684,34 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
         return *configuredPath;
     if (adjacentPath && fileExists(*adjacentPath))
         return *adjacentPath;
-#ifdef _WIN32
-    const std::string objLibName = std::string(libBaseName) + "_obj.lib";
+    if constexpr (viper::platform::kHostWindows) {
+        const std::string objLibName = std::string(libBaseName) + "_obj.lib";
+        auto pickFirstExisting =
+            [](const std::vector<std::filesystem::path> &candidates) -> std::filesystem::path {
+            for (const auto &candidate : candidates) {
+                if (fileExists(candidate))
+                    return candidate;
+            }
+            return candidates.empty() ? std::filesystem::path{} : candidates.front();
+        };
 
-    auto pickFirstExisting =
-        [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
-        for (const auto &candidate : candidates) {
-            if (fileExists(candidate))
-                return candidate;
+        if (!buildDir.empty()) {
+            std::vector<std::filesystem::path> candidates;
+            for (const auto &config : preferredBuildConfigs()) {
+                candidates.push_back(buildDir / "src/runtime" /
+                                     (std::string(libBaseName) + "_obj.dir") / config / objLibName);
+                candidates.push_back(buildDir / "src/runtime" / config / libName);
+            }
+            candidates.push_back(buildDir / "src/runtime" / libName);
+            return pickFirstExisting(candidates);
         }
-        return candidates.size() ? *candidates.begin() : std::filesystem::path{};
-    };
-#endif
-#ifdef _WIN32
-    if (!buildDir.empty()) {
-#if defined(NDEBUG)
-        return pickFirstExisting(
-            {buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Release" /
-                 objLibName,
-             buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Debug" /
-                 objLibName,
-             buildDir / "src/runtime/Release" / libName,
-             buildDir / "src/runtime/Debug" / libName,
-             buildDir / "src/runtime" / libName});
-#else
-        return pickFirstExisting(
-            {buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Debug" /
-                 objLibName,
-             buildDir / "src/runtime" / (std::string(libBaseName) + "_obj.dir") / "Release" /
-                 objLibName,
-             buildDir / "src/runtime/Debug" / libName,
-             buildDir / "src/runtime/Release" / libName,
-             buildDir / "src/runtime" / libName});
-#endif
+    } else {
+        if (!buildDir.empty()) {
+            const auto buildTreePath = buildDir / "src/runtime" / libName;
+            if (fileExists(buildTreePath))
+                return buildTreePath;
+        }
     }
-#else
-    if (!buildDir.empty()) {
-        const auto buildTreePath = buildDir / "src/runtime" / libName;
-        if (fileExists(buildTreePath))
-            return buildTreePath;
-    }
-#endif
     if (systemPath && fileExists(*systemPath))
         return *systemPath;
     if (configuredPath)
@@ -852,9 +893,8 @@ void appendGraphicsLibs(const LinkContext &ctx,
         cmd.push_back(fw);
     }
 
-#if !defined(__APPLE__) && !defined(_WIN32)
-    cmd.push_back("-lX11");
-#endif
+    if constexpr (!viper::platform::kHostMacOS && !viper::platform::kHostWindows)
+        cmd.push_back("-lX11");
 }
 
 void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
@@ -865,29 +905,28 @@ void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
     if (haveAudLib)
         cmd.push_back(audLib.string());
 
-#if defined(__APPLE__)
-    cmd.push_back("-framework");
-    cmd.push_back("AudioToolbox");
-#elif !defined(_WIN32)
-    // Linux: ALSA backs viperaud; without the backend library the runtime's
-    // audio stubs are linked instead and no system dependency is needed.
-    if (haveAudLib)
-        cmd.push_back("-lasound");
-#endif
+    if constexpr (viper::platform::kHostMacOS) {
+        cmd.push_back("-framework");
+        cmd.push_back("AudioToolbox");
+    } else if constexpr (!viper::platform::kHostWindows) {
+        // Linux: ALSA backs viperaud; without the backend library the runtime's
+        // audio stubs are linked instead and no system dependency is needed.
+        if (haveAudLib)
+            cmd.push_back("-lasound");
+    }
 }
 
 std::vector<std::string> defaultGraphicsFrameworks() {
-#if defined(__APPLE__)
-    return {"Cocoa",
-            "IOKit",
-            "CoreFoundation",
-            "UniformTypeIdentifiers",
-            "ImageIO",
-            "Metal",
-            "QuartzCore"};
-#else
+    if constexpr (viper::platform::kHostMacOS) {
+        return {"Cocoa",
+                "IOKit",
+                "CoreFoundation",
+                "UniformTypeIdentifiers",
+                "ImageIO",
+                "Metal",
+                "QuartzCore"};
+    }
     return {};
-#endif
 }
 
 [[maybe_unused]] void appendSystemLinkInputs(const LinkContext &ctx,
@@ -896,8 +935,15 @@ std::vector<std::string> defaultGraphicsFrameworks() {
     appendGraphicsLibs(ctx, cmd, defaultGraphicsFrameworks());
     appendAudioLibs(ctx, cmd);
 
-    if (hasComponent(ctx, RtComponent::Threads))
-        cmd.push_back("-lc++");
+    if constexpr (viper::platform::kHostMacOS) {
+        if (hasComponent(ctx, RtComponent::Threads))
+            cmd.push_back("-lc++");
+    } else if constexpr (viper::platform::kHostWindows) {
+        (void)ctx;
+    } else {
+        // Linux links libstdc++ through the compiler driver; pthread is added
+        // in appendSystemLinkFlags when threads are required.
+    }
 }
 
 [[maybe_unused]] void appendSystemLinkFlags(const LinkContext &ctx,
@@ -905,30 +951,33 @@ std::vector<std::string> defaultGraphicsFrameworks() {
                                             std::size_t stackSize,
                                             bool useElfPie,
                                             bool useElfMath) {
-#if defined(__APPLE__)
-    cmd.push_back("-Wl,-dead_strip");
-    if (stackSize > 0) {
-        std::ostringstream stackArg;
-        stackArg << "-Wl,-stack_size,0x" << std::hex << stackSize;
-        cmd.push_back(stackArg.str());
+    if constexpr (viper::platform::kHostMacOS) {
+        cmd.push_back("-Wl,-dead_strip");
+        if (stackSize > 0) {
+            std::ostringstream stackArg;
+            stackArg << "-Wl,-stack_size,0x" << std::hex << stackSize;
+            cmd.push_back(stackArg.str());
+        }
+        (void)ctx;
+        (void)useElfPie;
+        (void)useElfMath;
+    } else if constexpr (!viper::platform::kHostWindows) {
+        cmd.push_back("-Wl,--gc-sections");
+        if (useElfPie)
+            cmd.push_back("-pie");
+        if (hasComponent(ctx, RtComponent::Threads))
+            cmd.push_back("-pthread");
+        if (useElfMath)
+            cmd.push_back("-lm");
+        if (stackSize > 0)
+            cmd.push_back("-Wl,-z,stack-size=" + std::to_string(stackSize));
+    } else {
+        (void)ctx;
+        (void)cmd;
+        (void)stackSize;
+        (void)useElfPie;
+        (void)useElfMath;
     }
-#elif !defined(_WIN32)
-    cmd.push_back("-Wl,--gc-sections");
-    if (useElfPie)
-        cmd.push_back("-pie");
-    if (hasComponent(ctx, RtComponent::Threads))
-        cmd.push_back("-pthread");
-    if (useElfMath)
-        cmd.push_back("-lm");
-    if (stackSize > 0)
-        cmd.push_back("-Wl,-z,stack-size=" + std::to_string(stackSize));
-#else
-    (void)ctx;
-    (void)cmd;
-    (void)stackSize;
-    (void)useElfPie;
-    (void)useElfMath;
-#endif
 }
 
 // =========================================================================
@@ -953,25 +1002,35 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
     }
     if (!rr.out.empty())
         out << rr.out;
-#if defined(_WIN32)
     if (!rr.err.empty())
         err << rr.err;
-#endif
     return rr.exit_code;
 }
 
 int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &err) {
-    const RunResult rr = run_process({exePath});
+    /// @brief Normalize an executable path before passing it to the process runner.
+    /// @details POSIX does not search the current directory for bare command
+    ///          names. When a caller gives `foo` instead of `./foo`, prefix the
+    ///          current-directory component so freshly linked binaries run
+    ///          consistently across host platforms.
+    auto commandPath = [](const std::string &path) -> std::string {
+        if constexpr (viper::platform::kHostWindows)
+            return path;
+        const std::filesystem::path fsPath(path);
+        if (fsPath.is_absolute() || fsPath.has_parent_path())
+            return path;
+        return (std::filesystem::path(".") / fsPath).string();
+    };
+
+    const RunResult rr = run_process({commandPath(exePath)});
     if (rr.exit_code == -1) {
         err << "error: failed to execute '" << exePath << "'\n";
         return -1;
     }
     if (!rr.out.empty())
         out << rr.out;
-#if defined(_WIN32)
     if (!rr.err.empty())
         err << rr.err;
-#endif
     return rr.exit_code;
 }
 

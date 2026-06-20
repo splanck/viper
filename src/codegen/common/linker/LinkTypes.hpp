@@ -22,6 +22,7 @@
 
 #include "common/PlatformCapabilities.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -53,13 +54,16 @@ constexpr LinkPlatform detectLinkPlatform() {
     return LinkPlatform::Linux;
 }
 
-/// Detect host link architecture.
+/// Detect the default native link architecture for this build.
+/// @details The generated platform capability header records which native
+///          linker backends were compiled. When exactly one backend is present,
+///          that backend is the only valid default. Multi-backend builds keep
+///          x86_64 as the historical conservative default; callers that need a
+///          specific target architecture should set NativeLinkerOptions::arch.
 constexpr LinkArch detectLinkArch() {
-#if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
-    return LinkArch::AArch64;
-#else
+    if constexpr (viper::platform::kNativeLinkAArch64 && !viper::platform::kNativeLinkX86_64)
+        return LinkArch::AArch64;
     return LinkArch::X86_64;
-#endif
 }
 
 /// Conventional image base address used by the native linker for each platform.
@@ -126,7 +130,7 @@ struct OutputSection {
 };
 
 inline size_t outputSectionMemSize(const OutputSection &sec) {
-    return sec.zeroFill ? (sec.memSize != 0 ? sec.memSize : sec.data.size()) : sec.data.size();
+    return std::max(sec.data.size(), sec.memSize);
 }
 
 /// Section classification for merging.
@@ -145,7 +149,8 @@ enum class SectionClass : uint8_t {
 /// Check whether a Mach-O section name is ObjC metadata that must be preserved.
 /// The ObjC runtime locates classes, selectors, protocols, etc. by section name.
 inline bool isObjCSection(const std::string &name) {
-    return name.find("__objc_") != std::string::npos;
+    return name.rfind("__DATA,__objc_", 0) == 0 || name.rfind("__DATA_CONST,__objc_", 0) == 0 ||
+           name.rfind("__TEXT,__objc_", 0) == 0 || name.rfind("__OBJC,", 0) == 0;
 }
 
 /// Check whether a Windows PE/COFF metadata section name must be preserved.

@@ -1523,6 +1523,12 @@ void rt_canvas_gradient_v(
     int64_t draw_w = px1 - px0;
     int64_t h_minus1 = orig_h > 1 ? orig_h - 1 : 1;
 
+    /* Each logical row is a single solid colour (the gradient runs down the rows), so build one
+     * row of `draw_w` pixels and memcpy it across that row's scale-expanded scanlines instead of
+     * a per-pixel inner loop — mirrors rt_canvas_gradient_h. draw_w is framebuffer-bounded. */
+    uint8_t *row_buf = (uint8_t *)malloc((size_t)draw_w * 4u);
+    if (!row_buf)
+        return;
     for (int64_t row = 0; row < h; row++) {
         int64_t logical_y = rtg_add_sat64(y, row);
         int64_t row_py0 = rtg_scale_up_i64(logical_y, scale);
@@ -1543,16 +1549,18 @@ void rt_canvas_gradient_v(
         uint8_t cg = (uint8_t)((rgba >> 16) & 0xFF);
         uint8_t cb = (uint8_t)((rgba >> 8) & 0xFF);
         uint8_t ca = (uint8_t)(rgba & 0xFF);
-        for (int64_t py = row_py0; py < row_py1; py++) {
-            uint8_t *dst = &fb.pixels[(size_t)py * (size_t)fb.stride + (size_t)px0 * 4u];
-            for (int64_t i = 0; i < draw_w; i++) {
-                dst[i * 4 + 0] = cr;
-                dst[i * 4 + 1] = cg;
-                dst[i * 4 + 2] = cb;
-                dst[i * 4 + 3] = ca;
-            }
+        for (int64_t i = 0; i < draw_w; i++) {
+            row_buf[i * 4 + 0] = cr;
+            row_buf[i * 4 + 1] = cg;
+            row_buf[i * 4 + 2] = cb;
+            row_buf[i * 4 + 3] = ca;
         }
+        for (int64_t py = row_py0; py < row_py1; py++)
+            memcpy(&fb.pixels[(size_t)py * (size_t)fb.stride + (size_t)px0 * 4u],
+                   row_buf,
+                   (size_t)draw_w * 4u);
     }
+    free(row_buf);
 }
 
 #else

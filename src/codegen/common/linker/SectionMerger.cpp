@@ -212,6 +212,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                    LinkArch arch,
                    LinkLayout &layout,
                    std::ostream &err) {
+    layout.sections.clear();
+
     // Determine page size.
     if (platform == LinkPlatform::macOS && arch == LinkArch::AArch64)
         layout.pageSize = 0x4000; // 16KB
@@ -306,11 +308,15 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 if (aTls && bTls) {
                     if (a.name != b.name)
                         return a.name < b.name;
-                    return a.alignment > b.alignment;
+                    if (a.alignment != b.alignment)
+                        return a.alignment > b.alignment;
+                    return a.inputOrder < b.inputOrder;
                 }
             }
 
-            return a.alignment > b.alignment;
+            if (a.alignment != b.alignment)
+                return a.alignment > b.alignment;
+            return a.inputOrder < b.inputOrder;
         });
 
     // Create output sections in order.
@@ -381,8 +387,15 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         if (out.zeroFill) {
             out.memSize = currentSize + chunkSize;
         } else {
-            out.data.insert(out.data.end(), sec.data.begin(), sec.data.end());
-            out.memSize = out.data.size();
+            const size_t newSize = currentSize + chunkSize;
+            if (sec.data.size() > chunkSize) {
+                err << "error: input section '" << sec.name
+                    << "' has more file bytes than logical memory size\n";
+                return false;
+            }
+            out.data.resize(newSize, 0);
+            std::copy(sec.data.begin(), sec.data.end(), out.data.begin() + currentSize);
+            out.memSize = newSize;
         }
         return true;
     };
@@ -527,13 +540,17 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Windows unwind tables (.pdata/.xdata) for the PE writer.
     {
         std::map<std::string, std::vector<size_t>> preservedGroups;
+        std::vector<std::string> preservedOrder;
         for (size_t pi = 0; pi < pending.size(); ++pi) {
             if (pending[pi].cls != SectionClass::ObjC && pending[pi].cls != SectionClass::Preserved)
                 continue;
             const auto &sec = objects[pending[pi].objIdx].sections[pending[pi].secIdx];
+            if (preservedGroups.find(sec.name) == preservedGroups.end())
+                preservedOrder.push_back(sec.name);
             preservedGroups[sec.name].push_back(pi);
         }
-        for (auto &[name, indices] : preservedGroups) {
+        for (const auto &name : preservedOrder) {
+            auto &indices = preservedGroups[name];
             const auto &firstPc = pending[indices[0]];
             const auto &firstSec = objects[firstPc.objIdx].sections[firstPc.secIdx];
 
@@ -578,6 +595,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Debuggers read them directly from the file.
     {
         std::map<std::string, std::vector<std::pair<size_t, size_t>>> debugGroups;
+        std::vector<std::string> debugOrder;
         for (size_t oi = 0; oi < objects.size(); ++oi) {
             const auto &obj = objects[oi];
             for (size_t si = 1; si < obj.sections.size(); ++si) {
@@ -588,10 +606,13 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                     continue;
                 if (sec.data.empty() && sec.relocs.empty() && !sectionHasLiveSymbol(obj, si))
                     continue;
+                if (debugGroups.find(sec.name) == debugGroups.end())
+                    debugOrder.push_back(sec.name);
                 debugGroups[sec.name].push_back({oi, si});
             }
         }
-        for (auto &[name, pairs] : debugGroups) {
+        for (const auto &name : debugOrder) {
+            auto &pairs = debugGroups[name];
             layout.sections.push_back({});
             auto &out = layout.sections.back();
             out.name = name;

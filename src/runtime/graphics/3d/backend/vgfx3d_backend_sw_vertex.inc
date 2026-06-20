@@ -45,6 +45,12 @@ static pipe_vert_t *sw_acquire_pipe_vertices(sw_context_t *ctx, uint32_t count) 
 /// output (vertex counts, shader paths, etc.). Cached on first call
 /// to avoid repeated `getenv` overhead in the hot path.
 static int sw_debug_enabled(void) {
+    /* Lazy one-time cache of the VIPER_3D_DEBUG env flag. The software rasterizer dispatches
+     * tiles across a worker pool, so two threads may run this initialization concurrently. The
+     * race is benign: every thread derives the identical 0/1 value and an aligned int store is
+     * atomic on all supported platforms (no torn read), so the worst case is a few redundant
+     * getenv() calls during warm-up. Caching then avoids a getenv() per triangle on the hot
+     * path. */
     static int cached = -1;
     if (cached == -1) {
         const char *env = getenv("VIPER_3D_DEBUG");

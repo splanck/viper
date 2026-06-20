@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -246,6 +247,10 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
                 fullyCovered = false;
                 break;
             }
+            if (loc.strLen > std::numeric_limits<size_t>::max() - cursor) {
+                fullyCovered = false;
+                break;
+            }
             cursor += loc.strLen;
         }
         if (!fullyCovered || cursor != sec.data.size())
@@ -274,6 +279,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             }
         }
         sec.data = std::move(newData);
+        sec.memSize = sec.data.size();
     }
 
     return eliminated;

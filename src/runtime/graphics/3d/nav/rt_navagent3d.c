@@ -89,6 +89,12 @@ typedef struct rt_navagent3d {
 } rt_navagent3d;
 
 static rt_navagent3d *g_navagent3d_registry = NULL;
+/// @brief Live count of agents in g_navagent3d_registry, maintained alongside the linked
+/// list. Lets the RVO neighbour search compare a grid scan's cost (~(2*ring+1)^2 cells)
+/// against a full registry walk (this many agents) and pick the cheaper one, rather than
+/// falling back to the registry at a fixed ring cap (which made one large-reach agent force
+/// every agent onto the O(N) walk). Main-thread only, like the registry itself.
+static int64_t g_navagent3d_registry_count = 0;
 
 /* Spatial hash over agent XZ positions: each registered agent lives in exactly one bucket so
  * avoidance can scan a small cell neighborhood instead of the whole registry (O(N^2) -> ~O(N)). */
@@ -127,6 +133,7 @@ static void navagent_register(rt_navagent3d *agent) {
         return;
     agent->registry_next = g_navagent3d_registry;
     g_navagent3d_registry = agent;
+    g_navagent3d_registry_count++;
     navagent_grid_refresh(agent); /* insert into the spatial grid at its current cell */
 }
 
@@ -141,6 +148,8 @@ static void navagent_unregister(rt_navagent3d *agent) {
         if (*link == agent) {
             *link = agent->registry_next;
             agent->registry_next = NULL;
+            if (g_navagent3d_registry_count > 0)
+                g_navagent3d_registry_count--;
             navagent_recompute_max_reach();
             return;
         }
@@ -696,7 +705,15 @@ static int navagent_collect_avoidance_neighbors(rt_navagent3d *agent,
     if (use_grid && agent->in_grid) {
         double dmax = navagent_reach(agent) + g_navagent3d_max_reach;
         int ring = (int)ceil(dmax / NAVAGENT_GRID_CELL) + 1;
-        if (ring >= 1 && ring <= NAVAGENT_GRID_MAX_RING) {
+        /* Use the spatial grid while its cell-scan cost (~(2*ring+1)^2) is no worse than a
+         * full registry walk. A single large-reach agent inflates g_navagent3d_max_reach
+         * (and thus `ring`) for everyone; comparing costs keeps the grid for the common
+         * moderately-inflated case instead of dropping every agent onto the O(N) registry
+         * scan at a fixed ring cap. Both paths are exhaustive, so the neighbour set is
+         * identical regardless of which is chosen. */
+        int64_t grid_cells = (int64_t)(2 * ring + 1) * (int64_t)(2 * ring + 1);
+        if (ring >= 1 &&
+            (ring <= NAVAGENT_GRID_MAX_RING || grid_cells <= g_navagent3d_registry_count)) {
             int32_t cx = agent->grid_cx;
             int32_t cz = agent->grid_cz;
             for (int32_t dz = -ring; dz <= ring; dz++) {
@@ -756,7 +773,12 @@ static double navagent_rvo_candidate_penalty(rt_navagent3d *agent,
     if (use_grid && agent->in_grid) {
         double dmax = navagent_reach(agent) + g_navagent3d_max_reach;
         int ring = (int)ceil(dmax / NAVAGENT_GRID_CELL) + 1;
-        if (ring >= 1 && ring <= NAVAGENT_GRID_MAX_RING) {
+        /* See navagent_collect_avoidance_neighbors: prefer the grid while its scan cost
+         * (~(2*ring+1)^2 cells) is no worse than walking all g_navagent3d_registry_count
+         * agents, rather than falling back at a fixed ring cap. Both paths are exhaustive. */
+        int64_t grid_cells = (int64_t)(2 * ring + 1) * (int64_t)(2 * ring + 1);
+        if (ring >= 1 &&
+            (ring <= NAVAGENT_GRID_MAX_RING || grid_cells <= g_navagent3d_registry_count)) {
             int32_t cx = agent->grid_cx;
             int32_t cz = agent->grid_cz;
             int32_t dz;

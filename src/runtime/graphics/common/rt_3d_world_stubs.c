@@ -31,6 +31,14 @@
 
 #include "rt_graphics_stubs_internal.h"
 
+/* Graphics-disabled stub contract (intentional, and consistent across the 3D stub files):
+ * constructors (*_new) return NULL silently rather than trapping, and every paired setter/getter
+ * stub is NULL-tolerant (it ignores its handle), so disabled-build code such as
+ *   t = Transform3D.New(); t.SetPosition(...)
+ * no-ops safely instead of crashing. This differs deliberately from Canvas3D.New / Camera3D.New
+ * (rt_canvas3d_stubs.c), which TRAP on a disabled build to surface an unsupported top-level
+ * graphics entry point. Keep new stubs consistent with whichever contract their class follows. */
+
 /* Transform3D stubs */
 
 /// @brief Stub for `Transform3D.New` — would normally allocate an identity

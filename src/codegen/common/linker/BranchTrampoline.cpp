@@ -89,6 +89,15 @@ bool checkedAddressDelta(uint64_t lhs, uint64_t rhs, int64_t &out) {
     return true;
 }
 
+/// @brief Add a signed relocation addend to an unsigned virtual address.
+/// @details Branch targets may be represented as a section VA plus a signed
+///          relocation addend. This helper rejects underflow for negative addends
+///          and overflow for positive addends before the trampoline range checks
+///          consume the computed address.
+/// @param base   Unsigned base virtual address.
+/// @param addend Signed relocation addend.
+/// @param out    Receives the checked sum on success.
+/// @return true when the sum is representable as uint64_t.
 bool checkedAddI64(uint64_t base, int64_t addend, uint64_t &out) {
     if (addend >= 0)
         return checkedAddU64(base, static_cast<uint64_t>(addend), out);
@@ -99,21 +108,42 @@ bool checkedAddI64(uint64_t base, int64_t addend, uint64_t &out) {
     return true;
 }
 
-/// Build LocationMap: (objIdx, secIdx) → (outSecIdx, chunkOffset).
-using LocationMap =
-    std::unordered_map<InputSectionKey, std::pair<size_t, size_t>, InputSectionKeyHash>;
+/// Output placement for one input section inside the merged layout.
+struct OutputLocation {
+    size_t outSecIdx = 0;
+    size_t outputOffset = 0;
+    size_t inputSize = 0;
+};
 
-LocationMap buildLocMap(const LinkLayout &layout) {
-    LocationMap map;
+/// @brief Build a reverse lookup from input sections to merged output placement.
+/// @details Trampoline insertion consults this map repeatedly while resolving
+///          local and global branch targets. Duplicate non-synthetic chunks for
+///          the same input section are rejected because target resolution would be
+///          ambiguous after layout mutation.
+using LocationMap = std::unordered_map<InputSectionKey, OutputLocation, InputSectionKeyHash>;
+
+/// @brief Populate the input-section placement map for branch trampoline passes.
+/// @param layout Current merged link layout.
+/// @param map    Destination map, cleared before population.
+/// @param err    Receives diagnostics for duplicate placements.
+/// @return false if a non-synthetic input section appears in more than one output chunk.
+bool buildLocMap(const LinkLayout &layout, LocationMap &map, std::ostream &err) {
+    map.clear();
     for (size_t si = 0; si < layout.sections.size(); ++si) {
         for (const auto &chunk : layout.sections[si].chunks) {
             if (chunk.synthetic)
                 continue;
-            map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] = {si,
-                                                                              chunk.outputOffset};
+            InputSectionKey key{chunk.inputObjIndex, chunk.inputSecIndex};
+            if (map.find(key) != map.end()) {
+                err << "error: input section (" << chunk.inputObjIndex << ", "
+                    << chunk.inputSecIndex
+                    << ") appears in multiple output chunks before trampoline insertion\n";
+                return false;
+            }
+            map[key] = OutputLocation{si, chunk.outputOffset, chunk.size};
         }
     }
-    return map;
+    return true;
 }
 
 bool resolveLocalSymbol(const ObjSymbol &sym,
@@ -130,12 +160,12 @@ bool resolveLocalSymbol(const ObjSymbol &sym,
     auto it = locMap.find(InputSectionKey{objIdx, sym.sectionIndex});
     if (it == locMap.end())
         return false;
-    const auto &outSec = layout.sections[it->second.first];
-    const size_t outSize = outputSectionMemSize(outSec);
-    if (it->second.second > outSize || sym.offset > outSize - it->second.second)
+    const auto &outSec = layout.sections[it->second.outSecIdx];
+    if (it->second.outputOffset > outputSectionMemSize(outSec) || sym.offset > it->second.inputSize)
         return false;
     uint64_t withChunk = 0;
-    if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(it->second.second), withChunk) ||
+    if (!checkedAddU64(
+            outSec.virtualAddr, static_cast<uint64_t>(it->second.outputOffset), withChunk) ||
         !checkedAddU64(withChunk, static_cast<uint64_t>(sym.offset), addr))
         return false;
     return true;
@@ -148,9 +178,7 @@ bool resolveGlobalSymbol(const std::string &name,
     auto it = findWithPlatformFallback(layout.globalSyms, name, platform);
     if (it == layout.globalSyms.end())
         return false;
-    if (!it->second.resolvedAddrValid && it->second.resolvedAddr == 0 &&
-        (it->second.binding == GlobalSymEntry::Undefined ||
-         it->second.binding == GlobalSymEntry::Dynamic))
+    if (!it->second.resolvedAddrValid && it->second.resolvedAddr == 0)
         return false;
     addr = it->second.resolvedAddr;
     return true;
@@ -289,7 +317,9 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         return true;
 
     // Build location map.
-    auto locMap = buildLocMap(layout);
+    LocationMap locMap;
+    if (!buildLocMap(layout, locMap, err))
+        return false;
 
     // First: resolve all global symbol addresses (same as RelocApplier first pass).
     for (auto &[name, entry] : layout.globalSyms) {
@@ -302,16 +332,29 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         }
         auto it = locMap.find(InputSectionKey{entry.objIndex, entry.secIndex});
         if (it != locMap.end()) {
+            const auto &outSec = layout.sections[it->second.outSecIdx];
             uint64_t withChunk = 0;
-            if (!checkedAddU64(layout.sections[it->second.first].virtualAddr,
-                               static_cast<uint64_t>(it->second.second),
+            if (!checkedAddU64(outSec.virtualAddr,
+                               static_cast<uint64_t>(it->second.outputOffset),
                                withChunk) ||
                 !checkedAddU64(
                     withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
                 err << "error: symbol address overflow while resolving '" << name << "'\n";
                 return false;
             }
+            if (it->second.outputOffset > outputSectionMemSize(outSec) ||
+                entry.offset > it->second.inputSize) {
+                err << "error: symbol '" << name << "' is outside its input section bounds\n";
+                return false;
+            }
             entry.resolvedAddrValid = true;
+        } else {
+            if (entry.resolvedAddrValid || entry.resolvedAddr != 0)
+                continue;
+            err << "error: defined symbol '" << name
+                << "' references an input section that was not placed before trampoline "
+                   "insertion\n";
+            return false;
         }
     }
 
@@ -329,8 +372,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             if (mapIt == locMap.end())
                 continue;
 
-            const size_t outSecIdx = mapIt->second.first;
-            const size_t chunkBase = mapIt->second.second;
+            const size_t outSecIdx = mapIt->second.outSecIdx;
+            const size_t chunkBase = mapIt->second.outputOffset;
             const uint64_t secVA = layout.sections[outSecIdx].virtualAddr;
 
             for (size_t ri = 0; ri < sec.relocs.size(); ++ri) {
@@ -413,7 +456,13 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         auto mapIt = locMap.find(InputSectionKey{oob.objIdx, oob.secIdx});
         if (mapIt == locMap.end())
             continue;
-        const uint64_t sourceOffset = mapIt->second.second + rel.offset;
+        size_t sourceOffsetSize = 0;
+        if (!checkedAddSize(mapIt->second.outputOffset, rel.offset, sourceOffsetSize)) {
+            err << "error: branch relocation source offset overflows for '" << oob.targetSymName
+                << "'\n";
+            return false;
+        }
+        const uint64_t sourceOffset = static_cast<uint64_t>(sourceOffsetSize);
 
         TrampolineEntry *chosenExisting = nullptr;
         uint64_t bestExistingDistance = 0;
@@ -498,13 +547,27 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     size_t cursor = 0;
     for (const auto &[boundary, entries] : islands) {
         const size_t clampedBoundary = std::min(boundary, originalText.size());
+        if (cursor > clampedBoundary) {
+            err << "error: trampoline island boundaries are not monotonically ordered\n";
+            return false;
+        }
         newText.insert(newText.end(),
                        originalText.begin() + static_cast<std::ptrdiff_t>(cursor),
                        originalText.begin() + static_cast<std::ptrdiff_t>(clampedBoundary));
         const size_t islandOffset = newText.size();
         for (size_t i = 0; i < entries.size(); ++i) {
-            entries[i]->actualOffset = islandOffset + i * kTrampolineSize;
-            newText.resize(newText.size() + kTrampolineSize, 0);
+            size_t localOffset = 0;
+            if (!checkedMulSize(i, kTrampolineSize, localOffset) ||
+                !checkedAddSize(islandOffset, localOffset, entries[i]->actualOffset)) {
+                err << "error: trampoline entry offset overflows addressable size\n";
+                return false;
+            }
+            size_t nextSize = 0;
+            if (!checkedAddSize(newText.size(), kTrampolineSize, nextSize)) {
+                err << "error: trampoline-expanded text size overflows addressable size\n";
+                return false;
+            }
+            newText.resize(nextSize, 0);
         }
         size_t islandSize = 0;
         if (!checkedMulSize(entries.size(), kTrampolineSize, islandSize)) {
@@ -523,8 +586,12 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     for (auto &chunk : textSec.chunks) {
         size_t shift = 0;
         for (const auto &placement : placements) {
-            if (chunk.outputOffset >= placement.boundary)
-                shift += placement.size;
+            if (chunk.outputOffset >= placement.boundary) {
+                if (!checkedAddSize(shift, placement.size, shift)) {
+                    err << "error: trampoline chunk shift overflows addressable size\n";
+                    return false;
+                }
+            }
         }
         if (!checkedAddSize(chunk.outputOffset, shift, chunk.outputOffset)) {
             err << "error: trampoline chunk shift overflows addressable size\n";
@@ -546,7 +613,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
 
     if (!assignSectionVirtualAddresses(layout, platform, err))
         return false;
-    locMap = buildLocMap(layout);
+    if (!buildLocMap(layout, locMap, err))
+        return false;
 
     for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
@@ -558,16 +626,28 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         }
         auto it = locMap.find(InputSectionKey{entry.objIndex, entry.secIndex});
         if (it != locMap.end()) {
+            const auto &outSec = layout.sections[it->second.outSecIdx];
             uint64_t withChunk = 0;
-            if (!checkedAddU64(layout.sections[it->second.first].virtualAddr,
-                               static_cast<uint64_t>(it->second.second),
+            if (!checkedAddU64(outSec.virtualAddr,
+                               static_cast<uint64_t>(it->second.outputOffset),
                                withChunk) ||
                 !checkedAddU64(
                     withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
                 err << "error: symbol address overflow while resolving '" << name << "'\n";
                 return false;
             }
+            if (it->second.outputOffset > outputSectionMemSize(outSec) ||
+                entry.offset > it->second.inputSize) {
+                err << "error: symbol '" << name << "' is outside its input section bounds\n";
+                return false;
+            }
             entry.resolvedAddrValid = true;
+        } else {
+            if (entry.resolvedAddrValid || entry.resolvedAddr != 0)
+                continue;
+            err << "error: defined symbol '" << name
+                << "' references an input section that was not placed after trampoline insertion\n";
+            return false;
         }
     }
 
@@ -638,8 +718,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         if (mapIt == locMap.end())
             continue;
 
-        const size_t outSecIdx = mapIt->second.first;
-        const size_t chunkBase = mapIt->second.second;
+        const size_t outSecIdx = mapIt->second.outSecIdx;
+        const size_t chunkBase = mapIt->second.outputOffset;
         auto &outSec = layout.sections[outSecIdx];
 
         auto &rel = objects[oob.objIdx].sections[oob.secIdx].relocs[oob.relocIdx];
@@ -715,6 +795,11 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             ObjSymbol trampolineSym;
             trampolineSym.name = oob.trampolineSymName;
             trampolineSym.binding = ObjSymbol::Undefined;
+            if (obj.symbols.size() >= std::numeric_limits<uint32_t>::max()) {
+                err << "error: too many symbols while inserting branch trampoline for '"
+                    << oob.targetSymName << "'\n";
+                return false;
+            }
             obj.symbols.push_back(std::move(trampolineSym));
             trampolineSymIdx = static_cast<uint32_t>(obj.symbols.size() - 1);
             syntheticSymIndexByObjectAndName[symbolKey] = trampolineSymIdx;

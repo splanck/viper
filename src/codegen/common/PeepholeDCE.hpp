@@ -27,9 +27,11 @@
 
 #pragma once
 
+#include "codegen/common/ICE.hpp"
 #include "codegen/common/PeepholeUtil.hpp"
 
 #include <algorithm>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -152,6 +154,10 @@ template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::
         // When the traits disable fixed-point iteration, exit after one pass.
         if constexpr (!Traits::kIterateToFixpoint)
             break;
+    }
+    if (changed) {
+        VIPER_ICE("peephole dead-code elimination did not converge after " +
+                  std::to_string(kMaxDCEIterations) + " iterations");
     }
 
     return totalEliminated;

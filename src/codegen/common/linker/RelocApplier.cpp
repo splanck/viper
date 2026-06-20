@@ -295,6 +295,15 @@ static bool computeRelocPatchSite(const OutputSection &outSec,
     return true;
 }
 
+/// @brief Sort Windows unwind metadata records by function RVA.
+/// @details PE/COFF exception tables must be ordered for the OS unwinder. The
+///          record width differs by target architecture, so this helper validates
+///          the section size against the expected record size before applying a
+///          stable byte-preserving sort.
+/// @param layout Link layout containing any merged `.pdata` section.
+/// @param arch   Target architecture selecting the unwind record size.
+/// @param err    Receives diagnostics for malformed record spans.
+/// @return false when `.pdata` has a non-integral record count.
 static bool sortWindowsPdata(LinkLayout &layout, LinkArch arch, std::ostream &err) {
     const size_t recordSize = (arch == LinkArch::AArch64) ? 8 : 12;
 
@@ -375,10 +384,11 @@ static std::optional<size_t> findMatchingAArch64GotPageRelocOffset(const ObjFile
             continue;
         if (candidate.symIndex != pageOffRel.symIndex || candidate.addend != pageOffRel.addend)
             continue;
-        const bool isGotPage = classifyReloc(obj.format, arch, candidate.type) == RelocAction::GotPage21;
-        const bool isMachOTlvpPage =
-            obj.format == ObjFileFormat::MachO && pageOffRel.type == macho_a64::kTlvpLoadPageOff12 &&
-            candidate.type == macho_a64::kTlvpLoadPage21;
+        const bool isGotPage =
+            classifyReloc(obj.format, arch, candidate.type) == RelocAction::GotPage21;
+        const bool isMachOTlvpPage = obj.format == ObjFileFormat::MachO &&
+                                     pageOffRel.type == macho_a64::kTlvpLoadPageOff12 &&
+                                     candidate.type == macho_a64::kTlvpLoadPage21;
         if (!isGotPage && !isMachOTlvpPage)
             continue;
 
@@ -417,7 +427,7 @@ static bool findOutputLocation(const LocationMap &locMap,
 
 static bool computeTlsImageInfo(const LinkLayout &layout, TlsImageInfo &info, std::ostream &err) {
     for (const auto &sec : layout.sections) {
-        if (!sec.alloc || !sec.tls)
+        if (!sec.alloc || !sec.tls || sec.tlvDescriptors)
             continue;
 
         uint64_t secEnd = 0;
@@ -540,8 +550,7 @@ static bool resolveGlobalSymLocation(
         }
     }
 
-    if (!entry.resolvedAddrValid && entry.resolvedAddr == 0 &&
-        (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic))
+    if (!entry.resolvedAddrValid && entry.resolvedAddr == 0)
         return false;
     addr = entry.resolvedAddr;
     return true;
@@ -594,17 +603,24 @@ static bool resolveGlobalSymbolAddresses(LinkLayout &layout,
         if (findOutputLocation(
                 locMap, entry.objIndex, entry.secIndex, outSecIdx, chunkOffset, &inputSize)) {
             const auto &outSec = layout.sections[outSecIdx];
-            if (chunkOffset <= outputSectionMemSize(outSec) && entry.offset <= inputSize) {
-                uint64_t withChunk = 0;
-                if (!checkedAddU64(
-                        outSec.virtualAddr, static_cast<uint64_t>(chunkOffset), withChunk) ||
-                    !checkedAddU64(
-                        withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
-                    err << "error: symbol address overflow while resolving '" << name << "'\n";
-                    return false;
-                }
-                entry.resolvedAddrValid = true;
+            if (chunkOffset > outputSectionMemSize(outSec) || entry.offset > inputSize) {
+                err << "error: symbol '" << name << "' is outside its input section bounds\n";
+                return false;
             }
+            uint64_t withChunk = 0;
+            if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOffset), withChunk) ||
+                !checkedAddU64(
+                    withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
+                err << "error: symbol address overflow while resolving '" << name << "'\n";
+                return false;
+            }
+            entry.resolvedAddrValid = true;
+        } else {
+            if (entry.resolvedAddrValid || entry.resolvedAddr != 0)
+                continue;
+            err << "error: defined symbol '" << name
+                << "' references an input section that was not placed in the output layout\n";
+            return false;
         }
     }
     return true;
@@ -968,16 +984,37 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     }
                 }
 
-                const RelocAction action = classifyReloc(obj.format, arch, rel.type);
+                RelocAction action = classifyReloc(obj.format, arch, rel.type);
+                if (obj.format == ObjFileFormat::MachO &&
+                    ((arch == LinkArch::X86_64 && rel.type == macho_x64::kUnsigned) ||
+                     (arch == LinkArch::AArch64 && rel.type == macho_a64::kUnsigned))) {
+                    if (rel.length == 2) {
+                        action = RelocAction::Abs32;
+                    } else if (rel.length == 3) {
+                        action = RelocAction::Abs64;
+                    } else if (rel.length == 0 && action == RelocAction::Abs64) {
+                        // Synthetic unit-test objects historically left Mach-O's
+                        // length exponent unset. Real Mach-O input is validated and
+                        // normalized by MachOReader before reaching the applier.
+                    } else {
+                        err << "error: " << obj.name
+                            << ": unsupported Mach-O unsigned relocation length "
+                            << static_cast<unsigned>(rel.length);
+                        if (!symName.empty())
+                            err << " for '" << symName << "'";
+                        err << "\n";
+                        return false;
+                    }
+                }
                 if (!outSec.alloc && hasSymOutputSection && layout.sections[symOutSecIdx].alloc &&
                     (action == RelocAction::PCRel32 || action == RelocAction::PCRel64 ||
-                     action == RelocAction::Branch26 ||
-                     action == RelocAction::Page21 || action == RelocAction::PageOff12 ||
-                     action == RelocAction::PageOff12A || action == RelocAction::PageOff12L ||
-                     action == RelocAction::LdSt32Off || action == RelocAction::LdSt64Off ||
-                     action == RelocAction::LdSt128Off || action == RelocAction::CondBr19 ||
-                     action == RelocAction::GotPCRel32 || action == RelocAction::GotPage21 ||
-                     action == RelocAction::GotPageOff12 || action == RelocAction::GotPointer)) {
+                     action == RelocAction::Branch26 || action == RelocAction::Page21 ||
+                     action == RelocAction::PageOff12 || action == RelocAction::PageOff12A ||
+                     action == RelocAction::PageOff12L || action == RelocAction::LdSt32Off ||
+                     action == RelocAction::LdSt64Off || action == RelocAction::LdSt128Off ||
+                     action == RelocAction::CondBr19 || action == RelocAction::GotPCRel32 ||
+                     action == RelocAction::GotPage21 || action == RelocAction::GotPageOff12 ||
+                     action == RelocAction::GotPointer)) {
                     err << "error: " << obj.name << ": non-alloc section '" << outSec.name
                         << "' contains runtime PC/page relocation against alloc symbol '"
                         << targetDisplay << "'\n";
@@ -1043,10 +1080,6 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     case RelocAction::Abs64: {
                         if (!requirePatchBytes(8, "64-bit absolute"))
                             return false;
-                        // A 64-bit absolute relocation can represent the full wrapped
-                        // result. Mach-O arm64 also uses high bits in some relocated
-                        // pointer fields (for example RTTI name flags), so signed
-                        // overflow checks here reject valid object contents.
                         uint64_t val = S + static_cast<uint64_t>(A);
 
                         const bool isDynamicSym =
@@ -1214,12 +1247,13 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             err << "\n";
                             return false;
                         }
-                        if (!writeAArch64AddImmediate12(patch,
-                                                        static_cast<uint32_t>((tprel >> 12) & 0xFFFu),
-                                                        obj,
-                                                        symName,
-                                                        "AArch64 TLS local-exec HI12",
-                                                        err))
+                        if (!writeAArch64AddImmediate12(
+                                patch,
+                                static_cast<uint32_t>((tprel >> 12) & 0xFFFu),
+                                obj,
+                                symName,
+                                "AArch64 TLS local-exec HI12",
+                                err))
                             return false;
                         break;
                     }

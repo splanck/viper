@@ -59,9 +59,10 @@ static void draw_line(uint8_t *pixels,
 /// Slimmer than `raster_triangle` — only writes Z (no color, lighting,
 /// or texturing). Same edge-function approach.
 static float shadow_advance_edge_value(float value, float delta, int steps) {
-    for (int i = 0; i < steps; i++)
-        value += delta;
-    return value;
+    /* Closed-form advance, matching sw_advance_edge_value in the colour raster path: avoids a
+     * per-step loop (previously O(steps) on scissored shadow tiles with a large min-y offset)
+     * and keeps the two rasterizers' edge-function stepping consistent. */
+    return value + delta * (float)steps;
 }
 
 static void shadow_raster_tri_scissored(float *depth,

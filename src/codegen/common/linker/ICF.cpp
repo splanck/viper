@@ -412,6 +412,8 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                     it->second.objIndex = canonCand.objIdx;
                     it->second.secIndex = static_cast<uint32_t>(canonCand.secIdx);
                     it->second.offset = 0;
+                    it->second.resolvedAddr = 0;
+                    it->second.resolvedAddrValid = false;
                 }
 
                 // Keep relocations in the folded object's other sections from
@@ -430,6 +432,8 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                 auto &foldSec = allObjects[foldCand.objIdx].sections[foldCand.secIdx];
                 foldSec.data.clear();
                 foldSec.relocs.clear();
+                foldSec.memSize = 0;
+                foldSec.zeroFill = false;
                 foldSec.stripped = true;
 
                 ++folded;

@@ -676,6 +676,15 @@ int contact3d_expand_obb_manifold(rt_contact3d *contact,
         ph3d_obb_best_face_axis(ref_box, toward_b, &ref_axis, &ref_sign, NULL);
         vec3_copy(ref_normal, toward_b);
     }
+    /* final_normal is the A->B contact direction (toward_b) for every manifold point,
+     * independent of which box became the reference. ref_normal is the reference face's
+     * outward normal (= +toward_b when A is the reference box, -toward_b when B is) and
+     * is used only to measure `separation` and project points onto the mid-plane below.
+     * In BOTH branches a penetrating incident point lies behind the reference face, so
+     * `separation = dot(rel, ref_normal)` is negative for penetration in both cases —
+     * the same sign convention the solver applies with final_normal. The (separation,
+     * final_normal) pair is therefore consistent across the reference-flip; do not
+     * "align" ref_normal and final_normal or the projection sign below would invert. */
     vec3_copy(final_normal, toward_b);
 
     for (int i = 0; i < 3; ++i)

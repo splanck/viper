@@ -128,6 +128,8 @@ void *rt_spline_catmull_rom(void *points) {
         return NULL;
     }
     ViperSpline *s = spline_alloc(SPLINE_CATMULL_ROM, n);
+    if (!s) // spline_alloc traps on OOM, but rt_trap is not _Noreturn under test hooks
+        return NULL;
     extract_points(points, s);
     return s;
 }
@@ -140,6 +142,8 @@ void *rt_spline_bezier(void *p0, void *p1, void *p2, void *p3) {
         return NULL;
     }
     ViperSpline *s = spline_alloc(SPLINE_BEZIER, 4);
+    if (!s) // spline_alloc traps on OOM, but rt_trap is not _Noreturn under test hooks
+        return NULL;
     s->xs[0] = rt_vec2_x(p0);
     s->ys[0] = rt_vec2_y(p0);
     s->xs[1] = rt_vec2_x(p1);
@@ -164,6 +168,8 @@ void *rt_spline_linear(void *points) {
         return NULL;
     }
     ViperSpline *s = spline_alloc(SPLINE_LINEAR, n);
+    if (!s) // spline_alloc traps on OOM, but rt_trap is not _Noreturn under test hooks
+        return NULL;
     extract_points(points, s);
     return s;
 }

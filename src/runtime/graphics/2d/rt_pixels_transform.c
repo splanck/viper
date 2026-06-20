@@ -636,11 +636,15 @@ void *rt_pixels_invert(void *pixels) {
     if (!p)
         return NULL;
 
+    int64_t count = 0;
+    if (!pixels_transform_checked_layout(p, &count, NULL, NULL)) {
+        rt_trap("Pixels.Invert: image dimensions overflow");
+        return NULL;
+    }
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
 
-    int64_t count = p->width * p->height;
     for (int64_t i = 0; i < count; i++) {
         uint32_t px = p->data[i];
         // Format is 0xRRGGBBAA - invert RGB, keep alpha
@@ -662,11 +666,15 @@ void *rt_pixels_grayscale(void *pixels) {
     if (!p)
         return NULL;
 
+    int64_t count = 0;
+    if (!pixels_transform_checked_layout(p, &count, NULL, NULL)) {
+        rt_trap("Pixels.Grayscale: image dimensions overflow");
+        return NULL;
+    }
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
 
-    int64_t count = p->width * p->height;
     for (int64_t i = 0; i < count; i++) {
         uint32_t px = p->data[i];
         // Format is 0xRRGGBBAA
@@ -692,6 +700,11 @@ void *rt_pixels_tint(void *pixels, int64_t color) {
     if (!p)
         return NULL;
 
+    int64_t count = 0;
+    if (!pixels_transform_checked_layout(p, &count, NULL, NULL)) {
+        rt_trap("Pixels.Tint: image dimensions overflow");
+        return NULL;
+    }
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
@@ -713,7 +726,6 @@ void *rt_pixels_tint(void *pixels, int64_t color) {
         tb = color & 0xFF;
     }
 
-    int64_t count = p->width * p->height;
     for (int64_t i = 0; i < count; i++) {
         uint32_t px = p->data[i];
         // Format is 0xRRGGBBAA

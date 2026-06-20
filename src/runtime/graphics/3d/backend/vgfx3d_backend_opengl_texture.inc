@@ -115,6 +115,12 @@ static void texture_cache_prune(gl_context_t *ctx) {
     ctx->texture_cache_count = write_index;
     if (ctx->texture_cache_count > GL_TEXTURE_CACHE_MAX_RESIDENT) {
         const int32_t remove_goal = ctx->texture_cache_count - GL_TEXTURE_CACHE_MAX_RESIDENT;
+        /* Per-prune malloc+qsort+free of the age array (same pattern in cubemap_cache_prune and
+         * morph_cache_prune). This runs only when a cache is over its resident cap, not every
+         * frame, so impact is bounded. Optimisation path: a context-owned reusable age scratch
+         * (grown once, freed in the GL context destroy) reused across the three caches would
+         * remove the allocation churn entirely — kept out of this change because the GL TU is
+         * not locally compilable on macOS and the win is small. */
         uint64_t *ages = (uint64_t *)malloc((size_t)ctx->texture_cache_count * sizeof(*ages));
         if (ages) {
             uint64_t cutoff;

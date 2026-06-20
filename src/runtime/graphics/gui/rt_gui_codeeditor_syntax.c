@@ -418,6 +418,12 @@ static void rt_zia_syntax_cb(
     uint32_t c_comment = syn_color(ce, 4, SYN_COLOR_COMMENT);
     uint32_t c_number = syn_color(ce, 5, SYN_COLOR_NUMBER);
 
+    /* `len` bounds both the text scan and the colors[] writes. strlen(text) <= the line's stored
+     * byte length, and the vg layer sizes colors[] to that stored length, so writes stay in
+     * bounds (an embedded NUL only shortens the scan — harmless). Passing the line byte-length
+     * and the colors capacity into the callback signature would be more robust against a line
+     * buffer that is ever not NUL-terminated exactly at its length, but that is a lib-layer
+     * (vg syntax-callback) contract change, out of scope for this runtime callback. */
     size_t len = strlen(text);
     size_t i = 0;
     int block_depth = rt_zia_comment_depth_before_line(ce, line_num);

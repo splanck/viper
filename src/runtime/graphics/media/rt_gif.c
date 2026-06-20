@@ -845,7 +845,12 @@ int gif_decode_file(const char *filepath,
                 break;
             }
 
-            // Create Pixels object for this frame (snapshot of current canvas)
+            // Create Pixels object for this frame (snapshot of current canvas).
+            // Each animated GIF frame is materialised as a full screen-sized RGBA snapshot and
+            // every frame is retained simultaneously, so peak memory is O(frames * canvas). This
+            // is inherent to the "each frame is a complete image" contract and is bounded by the
+            // budget check below; callers needing only the first frame should use
+            // rt_pixels_load_gif (first-frame only), which avoids the per-frame snapshot cost.
             if (!gif_decoded_frame_budget_allows(decoded_frame_bytes, frame_snapshot_bytes)) {
                 decode_failed = GIF_DECODE_FAILURE_TOO_LARGE;
                 break;

@@ -25,6 +25,7 @@
 #include "codegen/common/linker/ObjFileReader.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <queue>
 #include <unordered_set>
 
@@ -288,7 +289,10 @@ void deadStrip(std::vector<ObjFile> &allObjects,
             if (deadSize == 0 && sec.relocs.empty())
                 continue;
 
-            strippedBytes += deadSize;
+            if (deadSize > std::numeric_limits<size_t>::max() - strippedBytes)
+                strippedBytes = std::numeric_limits<size_t>::max();
+            else
+                strippedBytes += deadSize;
             ++strippedSections;
             sec.stripped = true;
             sec.data.clear();

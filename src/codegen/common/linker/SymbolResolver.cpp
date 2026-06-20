@@ -572,6 +572,8 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     std::unordered_set<std::string> &dynamicSyms,
                     std::ostream &err,
                     LinkPlatform platform) {
+    globalSyms.clear();
+    dynamicSyms.clear();
     // Start with initial objects.
     allObjects = initialObjects;
     std::unordered_set<std::string> undefined;

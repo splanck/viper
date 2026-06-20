@@ -53,6 +53,8 @@ static void controller_finalize(void *obj) {
     controller->final_globals = NULL;
     free(controller->prev_final_palette);
     controller->prev_final_palette = NULL;
+    free(controller->blend_locals_scratch);
+    controller->blend_locals_scratch = NULL;
 }
 
 /// @brief Construct a new AnimController3D bound to a skeleton.
@@ -93,9 +95,10 @@ void *rt_anim_controller3d_new(void *skeleton) {
         controller->final_palette = (float *)calloc(1, palette_size);
         controller->final_globals = (float *)calloc(1, palette_size);
         controller->prev_final_palette = (float *)calloc(1, palette_size);
+        controller->blend_locals_scratch = (float *)calloc(1, palette_size);
     }
     if (!controller->final_palette || !controller->final_globals ||
-        !controller->prev_final_palette) {
+        !controller->prev_final_palette || !controller->blend_locals_scratch) {
         rt_trap("AnimController3D.New: palette allocation failed");
         if (rt_obj_release_check0(controller))
             rt_obj_free(controller);

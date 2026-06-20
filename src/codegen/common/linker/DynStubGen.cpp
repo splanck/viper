@@ -25,6 +25,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -37,6 +39,42 @@ void emitLE32(std::vector<uint8_t> &buf, uint32_t v) {
     buf.push_back(static_cast<uint8_t>(v >> 8));
     buf.push_back(static_cast<uint8_t>(v >> 16));
     buf.push_back(static_cast<uint8_t>(v >> 24));
+}
+
+/// @brief Narrow a synthetic symbol-table index to the relocation field width.
+/// @details Dynamic-stub objects are generated in memory, but their relocations
+///          still store symbol indices in the same 32-bit field used by object
+///          files. Throwing here prevents silent wraparound if an unexpectedly
+///          large import set ever pushes the synthetic table past that limit.
+uint32_t checkedSymbolIndex(size_t index, const char *context) {
+    if (index > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error(std::string("dynamic stub symbol index overflow while adding ") +
+                                 context);
+    }
+    return static_cast<uint32_t>(index);
+}
+
+/// @brief Checked size multiplication for deterministic synthetic offsets.
+/// @details Stub and GOT offsets are derived from fixed record sizes. This
+///          helper keeps those calculations from wrapping before the vector
+///          append paths get a chance to fail cleanly.
+size_t checkedMulSize(size_t lhs, size_t rhs, const char *context) {
+    if (lhs != 0 && rhs > std::numeric_limits<size_t>::max() / lhs) {
+        throw std::runtime_error(std::string("dynamic stub size multiplication overflow in ") +
+                                 context);
+    }
+    return lhs * rhs;
+}
+
+/// @brief Checked size addition for synthetic section growth.
+/// @details Used before vector resize operations so size arithmetic errors are
+///          diagnosed as linker bugs instead of relying on implementation-
+///          defined overflow behaviour.
+size_t checkedAddSize(size_t lhs, size_t rhs, const char *context) {
+    if (lhs > std::numeric_limits<size_t>::max() - rhs) {
+        throw std::runtime_error(std::string("dynamic stub size addition overflow in ") + context);
+    }
+    return lhs + rhs;
 }
 
 } // namespace
@@ -114,11 +152,12 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
 
     // Build symbols and relocations.
     for (size_t i = 0; i < selectorSyms.size(); ++i) {
-        const size_t stubOff = i * 12;
-        const size_t selrefOff = i * 8;
+        const size_t stubOff = checkedMulSize(i, 12, "ObjC selector stub offset");
+        const size_t selrefOff = checkedMulSize(i, 8, "ObjC selector reference offset");
 
         // Symbol for the selector string in rodata (section 3).
-        const uint32_t strSymIdx = static_cast<uint32_t>(stubObj.symbols.size());
+        const uint32_t strSymIdx =
+            checkedSymbolIndex(stubObj.symbols.size(), "ObjC selector string");
         ObjSymbol strSym;
         strSym.name = "__objc_selstr_" + std::to_string(i);
         strSym.binding = ObjSymbol::Local;
@@ -127,7 +166,8 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
         stubObj.symbols.push_back(std::move(strSym));
 
         // Symbol for the selector reference pointer in data (section 2).
-        const uint32_t selrefSymIdx = static_cast<uint32_t>(stubObj.symbols.size());
+        const uint32_t selrefSymIdx =
+            checkedSymbolIndex(stubObj.symbols.size(), "ObjC selector reference");
         ObjSymbol selrefSym;
         selrefSym.name = "__objc_selref_" + std::to_string(i);
         selrefSym.binding = ObjSymbol::Global;
@@ -177,7 +217,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     }
 
     // Add a symbol for objc_msgSend (undefined, resolved by the reloc applier).
-    const uint32_t msgSendSymIdx = static_cast<uint32_t>(stubObj.symbols.size());
+    const uint32_t msgSendSymIdx = checkedSymbolIndex(stubObj.symbols.size(), "objc_msgSend");
     ObjSymbol msgSendSym;
     msgSendSym.name = "objc_msgSend";
     msgSendSym.binding = ObjSymbol::Undefined;
@@ -187,7 +227,8 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     // Add B relocations for each stub -> objc_msgSend.
     for (size_t i = 0; i < selectorSyms.size(); ++i) {
         ObjReloc bReloc;
-        bReloc.offset = i * 12 + 8;
+        bReloc.offset = checkedAddSize(
+            checkedMulSize(i, 12, "ObjC branch stub offset"), 8, "ObjC branch relocation offset");
         bReloc.type = elf_a64::kJump26;
         bReloc.symIndex = msgSendSymIdx;
         bReloc.addend = 0;
@@ -240,11 +281,12 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
     std::sort(sorted.begin(), sorted.end());
 
     for (size_t i = 0; i < sorted.size(); ++i) {
-        const size_t stubOff = i * 12;
-        const size_t gotOff = i * 8;
+        const size_t stubOff = checkedMulSize(i, 12, "AArch64 dynamic stub offset");
+        const size_t gotOff = checkedMulSize(i, 8, "AArch64 dynamic GOT offset");
 
         // GOT entry symbol.
-        const uint32_t gotSymIdx = static_cast<uint32_t>(stubObj.symbols.size());
+        const uint32_t gotSymIdx =
+            checkedSymbolIndex(stubObj.symbols.size(), "AArch64 dynamic GOT symbol");
         ObjSymbol gotSym;
         gotSym.name = "__got_" + sorted[i];
         gotSym.binding = ObjSymbol::Global;
@@ -333,7 +375,8 @@ ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms
         gotSym.binding = ObjSymbol::Global;
         gotSym.sectionIndex = 2;
         gotSym.offset = gotOff;
-        const uint32_t gotSymIdx = static_cast<uint32_t>(stubObj.symbols.size());
+        const uint32_t gotSymIdx =
+            checkedSymbolIndex(stubObj.symbols.size(), "x86_64 dynamic GOT symbol");
         stubObj.symbols.push_back(std::move(gotSym));
 
         ObjSymbol stubSym;
@@ -352,7 +395,7 @@ ObjFile generateDynStubsX8664(const std::unordered_set<std::string> &dynamicSyms
         reloc.addend = -4;
         textSec.relocs.push_back(reloc);
 
-        gotSec.data.resize(gotOff + 8, 0);
+        gotSec.data.resize(checkedAddSize(gotOff, 8, "x86_64 dynamic GOT slot"), 0);
     }
 
     if (!textSec.data.empty())

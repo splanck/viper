@@ -13,10 +13,15 @@ typedef struct {
     float f;
 } heap_entry_t;
 
-/// @brief Push a `(triangle, f-score)` entry onto the A* min-heap and sift up. Silently
-/// no-ops on overflow — the heap is sized to the triangle count, so overflow only
-/// happens if duplicate insertion guards fail. Comparison uses `f` (g + heuristic) so
-/// the heap top is always the lowest-cost open triangle.
+/// @brief Push a `(triangle, f-score)` entry onto the A* min-heap and sift up. Comparison
+/// uses `f` (g + heuristic) so the heap top is always the lowest-cost open triangle.
+/// @note The `*size >= capacity` guard is an (intended) unreachable safety net, not a lossy
+/// drop: the caller sizes the heap to `triangle_count*3 + offmesh_links*2 + 8`, and the A*
+/// loop closes each triangle at most once, so every directed edge (≤3 triangle neighbours
+/// plus the off-mesh links incident on a node) triggers at most one push. Total pushes —
+/// and therefore the peak heap occupancy — can never exceed that capacity, so no frontier
+/// node is ever silently lost. The guard remains only to keep the function memory-safe were
+/// a future caller to under-size the buffer.
 static void heap_push(heap_entry_t *heap, int32_t *size, int32_t capacity, int32_t tri, float f) {
     if (*size >= capacity)
         return;
@@ -264,6 +269,11 @@ static double *navmesh3d_reconstruct_path(rt_navmesh3d *nm,
     for (int32_t c = goal; c != -1; c = parent[c])
         seq[idx--] = c;
 
+    /* String-pulling emits at most 2 waypoints per triangle transition (a portal midpoint,
+     * or an off-mesh link's two endpoints) across `count-1` transitions, plus the start and
+     * end points — i.e. at most ~2*count points. `count*3 + 2` is a deliberately generous
+     * upper bound with headroom; if the funnel emitter is ever changed to emit more points
+     * per segment, keep this >= the real per-segment bound rather than trusting the literal. */
     if (count > (INT32_MAX - 2) / 3) {
         free(seq);
         return NULL;

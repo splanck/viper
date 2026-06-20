@@ -1424,9 +1424,12 @@ static void raster_triangle_scissored(uint8_t *pixels,
                 sw_edge_accepts_sample(w1, g.edge20_top_left) &&
                 sw_edge_accepts_sample(w2, g.edge01_top_left)) {
                 inside_samples++;
-                /* Barycentric weights from edge functions; z is linearly
-                 * interpolated in screen space (not perspective-correct,
-                 * but sufficient for depth testing). */
+                /* Barycentric weights from edge functions. sz is the post-perspective-divide
+                 * NDC depth (clip.z * 1/w, set in the vertex stage), which is *linear in screen
+                 * space* — so this screen-space barycentric interpolation is exactly the depth
+                 * value GPU hardware produces, and matches the GL/D3D11 backends. (Perspective-
+                 * correct interpolation — z/w then divide by interpolated 1/w — is for vertex
+                 * *attributes* such as UVs, not for the depth buffer.) */
                 float b0 = w0 * g.inv_area, b1 = w1 * g.inv_area, b2 = w2 * g.inv_area;
                 float z = b0 * g.v0->sz + b1 * g.v1->sz + b2 * g.v2->sz;
                 z += depth_bias + slope_depth_bias;

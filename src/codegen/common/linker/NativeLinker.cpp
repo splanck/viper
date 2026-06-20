@@ -43,6 +43,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <iomanip>
 #include <limits>
 #include <stdexcept>
@@ -169,6 +170,18 @@ uint32_t checkedSyntheticSymbolIndex(size_t index, const char *context) {
                                  context);
     }
     return static_cast<uint32_t>(index);
+}
+
+/// @brief Checked size addition for synthetic helper section growth.
+/// @details Native helper objects are assembled directly into byte vectors.
+///          Their offsets later become relocation sites, so size arithmetic must
+///          fail before a vector resize can wrap the computed byte count.
+size_t checkedSyntheticSizeAdd(size_t lhs, size_t rhs, const char *context) {
+    if (lhs > std::numeric_limits<size_t>::max() - rhs) {
+        throw std::runtime_error(std::string("native linker: synthetic helper size overflow in ") +
+                                 context);
+    }
+    return lhs + rhs;
 }
 
 /// @brief Build a synthetic ObjFile that refers to @p symbolName as undefined.
@@ -461,7 +474,7 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         while ((dataSec.data.size() % align) != 0)
             dataSec.data.push_back(0);
         const size_t off = dataSec.data.size();
-        dataSec.data.resize(off + 8, 0);
+        dataSec.data.resize(checkedSyntheticSizeAdd(off, 8, name.c_str()), 0);
         ObjSymbol sym;
         sym.name = name;
         sym.binding = ObjSymbol::Global;
@@ -798,7 +811,7 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         while ((dataSec.data.size() % align) != 0)
             dataSec.data.push_back(0);
         const size_t off = dataSec.data.size();
-        dataSec.data.resize(off + 8, 0);
+        dataSec.data.resize(checkedSyntheticSizeAdd(off, 8, name.c_str()), 0);
         ObjSymbol sym;
         sym.name = name;
         sym.binding = ObjSymbol::Global;
@@ -1251,7 +1264,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Must come before dynamic stubs since it moves symbols from dynamicSyms and
     // ensures objc_msgSend itself is in the dynamic set.
     if (opts.arch == LinkArch::AArch64 && opts.platform == LinkPlatform::macOS) {
-        ObjFile objcStubs = generateObjcSelectorStubsAArch64(dynamicSyms);
+        ObjFile objcStubs;
+        try {
+            objcStubs = generateObjcSelectorStubsAArch64(dynamicSyms);
+        } catch (const std::exception &ex) {
+            err << "error: failed to generate ObjC selector stubs: " << ex.what() << "\n";
+            return 1;
+        }
         if (!objcStubs.sections.empty()) {
             const size_t objcIdx = allObjects.size();
             allObjects.push_back(std::move(objcStubs));
@@ -1274,7 +1293,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             std::any_of(allObjects.begin(), allObjects.end(), [](const ObjFile &obj) {
                 return std::any_of(
                     obj.sections.begin(), obj.sections.end(), [](const ObjSection &sec) {
-                        return sec.alloc && sec.tls && !sec.data.empty();
+                        return sec.alloc && sec.tls && objSectionMemSize(sec) > 0;
                     });
             });
 
@@ -1292,10 +1311,16 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 dynamicSyms.insert("free");
             }
 
-            ObjFile helperObj =
-                (opts.arch == LinkArch::AArch64)
-                    ? generateWindowsArm64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex)
-                    : generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
+            ObjFile helperObj;
+            try {
+                helperObj =
+                    (opts.arch == LinkArch::AArch64)
+                        ? generateWindowsArm64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex)
+                        : generateWindowsX64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex);
+            } catch (const std::exception &ex) {
+                err << "error: failed to generate Windows helper object: " << ex.what() << "\n";
+                return 1;
+            }
             if (!helperObj.sections.empty()) {
                 const size_t helperIdx = allObjects.size();
                 allObjects.push_back(std::move(helperObj));
@@ -1335,9 +1360,15 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         (opts.platform == LinkPlatform::Linux &&
          (opts.arch == LinkArch::X86_64 || opts.arch == LinkArch::AArch64));
     if (!dynamicSyms.empty() && supportsDynamicStubs) {
-        ObjFile stubObj = (opts.platform == LinkPlatform::Linux && opts.arch == LinkArch::X86_64)
-                              ? generateDynStubsX8664(dynamicSyms)
-                              : generateDynStubsAArch64(dynamicSyms);
+        ObjFile stubObj;
+        try {
+            stubObj = (opts.platform == LinkPlatform::Linux && opts.arch == LinkArch::X86_64)
+                          ? generateDynStubsX8664(dynamicSyms)
+                          : generateDynStubsAArch64(dynamicSyms);
+        } catch (const std::exception &ex) {
+            err << "error: failed to generate dynamic stubs: " << ex.what() << "\n";
+            return 1;
+        }
         const size_t stubObjIdx = allObjects.size();
         allObjects.push_back(std::move(stubObj));
 

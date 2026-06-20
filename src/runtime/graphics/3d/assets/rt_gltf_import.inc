@@ -227,6 +227,19 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     memcpy(vertices, blob + vertex_offset, vertex_bytes);
     memcpy(indices, blob + index_offset, index_bytes);
 
+    /* Validate every index against vertex_count before installing. This POD fast path
+     * bypasses rt_mesh3d_add_triangle (which range-checks indices on the normal load path),
+     * so without this scan a malformed or forged preload blob could leave indices that read
+     * out of bounds when a consumer later walks indices[] into vertices[]. */
+    {
+        uint32_t vc = (uint32_t)vertex_count;
+        uint32_t ic = (uint32_t)index_count;
+        for (uint32_t vi = 0; vi < ic; vi++) {
+            if (indices[vi] >= vc)
+                goto malformed;
+        }
+    }
+
     mesh_obj = rt_mesh3d_new_empty_storage();
     if (!mesh_obj)
         goto malformed;

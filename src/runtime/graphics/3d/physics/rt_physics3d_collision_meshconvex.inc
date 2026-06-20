@@ -479,6 +479,14 @@ static int gjk_epa_with_support(ph3d_gjk_support_fn support_fn,
         if (gjk_update_simplex(&simplex, direction)) {
             if (epa_solve_with_support(support_fn, support_ctx, &simplex, normal, depth))
                 return 1;
+            /* GJK enclosed the origin (shapes overlap) but EPA could not expand a valid
+             * polytope (degenerate simplex, or the 64-vertex cap in epa_solve_with_support).
+             * Report the overlap with zero penetration depth and the best available normal
+             * (the caller's seed direction, else +Y) rather than no-contact: a 0-depth
+             * contact still enforces the velocity-level non-penetration constraint in the
+             * solver (the shapes stop approaching) while contributing no Baumgarte push-out,
+             * which avoids both tunneling and an explosive correction from a fabricated
+             * depth. */
             if (seed_direction) {
                 vec3_copy(normal, seed_direction);
                 if (vec3_normalize_in_place(normal) <= 1e-12)
@@ -759,6 +767,12 @@ static int test_heightfield_sphere(void *heightfield,
         return 0;
     transform_normal_from_local(field_pose, local_normal, normal);
     *depth = penetration * scale_y;
+    if (!isfinite(*depth) || *depth <= 0.0) {
+        /* A malformed heightfield sample can yield a non-finite or absurd surface
+         * height; reject rather than hand the solver an explosive positional
+         * correction. */
+        return 0;
+    }
     return 1;
 }
 

@@ -112,6 +112,17 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
                     rt_trap("TextureAsset3D.LoadKTX2: invalid mip payload length");
                     return NULL;
                 }
+                /* This loader handles only non-supercompressed levels (length == expected
+                 * above), so the file's stored uncompressed_length must be 0 (KTX2's
+                 * "same as level length" sentinel) or exactly expected_bytes. Validate it
+                 * rather than retaining an unchecked file field that a future consumer
+                 * might trust. */
+                if (mips[i].uncompressed_length != 0 &&
+                    mips[i].uncompressed_length != expected_bytes) {
+                    free(mips);
+                    rt_trap("TextureAsset3D.LoadKTX2: inconsistent uncompressed level length");
+                    return NULL;
+                }
             }
         }
     }

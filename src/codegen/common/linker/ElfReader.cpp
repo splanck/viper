@@ -128,6 +128,28 @@ static bool isPowerOfTwoOrZero(uint64_t value) {
     return value == 0 || (value & (value - 1)) == 0;
 }
 
+/// @brief Narrow an ELF 64-bit file offset/size to the host address size.
+/// @details The ELF64 format can represent offsets and lengths that a 32-bit
+///          host process cannot address. Reader code uses this helper before
+///          passing format fields to size_t-based range checks.
+static bool checkedU64ToSize(uint64_t value, size_t &out) {
+    if (value > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+        return false;
+    out = static_cast<size_t>(value);
+    return true;
+}
+
+/// @brief Multiply two host-size values for table byte counts.
+/// @details Section, symbol, and relocation table spans are derived from
+///          format counts. This helper prevents wraparound before checkedRange()
+///          validates the resulting byte range.
+static bool checkedMulSize(size_t lhs, size_t rhs, size_t &out) {
+    if (lhs != 0 && rhs > std::numeric_limits<size_t>::max() / lhs)
+        return false;
+    out = lhs * rhs;
+    return true;
+}
+
 /// @brief Sign-extend the low @p bits of @p value to a 64-bit signed integer.
 static int64_t signExtend(uint64_t value, unsigned bits) {
     const uint64_t signBit = uint64_t{1} << (bits - 1);
@@ -192,7 +214,9 @@ static bool extractRelAddend(uint16_t machine,
         relocType == elf_a64::kCondBr19 || relocType == elf_a64::kAdrPrelPgHi21 ||
         relocType == elf_a64::kAdrGotPage || relocType == elf_a64::kAddAbsLo12Nc ||
         relocType == elf_a64::kLdSt32Lo12Nc || relocType == elf_a64::kLdSt64Lo12Nc ||
-        relocType == elf_a64::kLd64GotLo12Nc || relocType == elf_a64::kLdSt128Lo12Nc;
+        relocType == elf_a64::kLd64GotLo12Nc || relocType == elf_a64::kLdSt128Lo12Nc ||
+        relocType == elf_a64::kTlsLeAddTprelHi12 || relocType == elf_a64::kTlsLeAddTprelLo12 ||
+        relocType == elf_a64::kTlsLeAddTprelLo12Nc;
     if (!needsInsn)
         return false;
     if (!checkedRange(offset, 4, sectionData.size()))
@@ -215,7 +239,12 @@ static bool extractRelAddend(uint16_t machine,
             return true;
         }
         case elf_a64::kAddAbsLo12Nc:
+        case elf_a64::kTlsLeAddTprelLo12:
+        case elf_a64::kTlsLeAddTprelLo12Nc:
             out = static_cast<int64_t>((insn >> 10) & 0xFFFu);
+            return true;
+        case elf_a64::kTlsLeAddTprelHi12:
+            out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 12);
             return true;
         case elf_a64::kLdSt32Lo12Nc:
             out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 2);
@@ -277,8 +306,12 @@ bool readElfObj(
         return false;
     }
 
-    const auto sh0Value =
-        readStruct<elf::Elf64_Shdr>(data, size, static_cast<size_t>(ehdr->e_shoff));
+    size_t sectionHeaderOff = 0;
+    if (!checkedU64ToSize(ehdr->e_shoff, sectionHeaderOff)) {
+        err << "error: " << name << ": ELF section header offset exceeds addressable size\n";
+        return false;
+    }
+    const auto sh0Value = readStruct<elf::Elf64_Shdr>(data, size, sectionHeaderOff);
     if (!sh0Value) {
         err << "error: " << name << ": missing ELF section header 0\n";
         return false;
@@ -286,8 +319,10 @@ bool readElfObj(
     const auto *sh0 = &*sh0Value;
 
     size_t shnum = ehdr->e_shnum;
-    if (shnum == 0)
-        shnum = static_cast<size_t>(sh0->sh_size);
+    if (shnum == 0 && !checkedU64ToSize(sh0->sh_size, shnum)) {
+        err << "error: " << name << ": extended ELF section count exceeds addressable size\n";
+        return false;
+    }
     size_t shstrndx = ehdr->e_shstrndx;
     if (shstrndx == elf::SHN_XINDEX)
         shstrndx = sh0->sh_link;
@@ -302,15 +337,20 @@ bool readElfObj(
 
     // Read section headers.
     std::vector<elf::Elf64_Shdr> shdrs(shnum);
-    if (!checkedRange(static_cast<size_t>(ehdr->e_shoff),
-                      static_cast<size_t>(shnum) * ehdr->e_shentsize,
-                      size)) {
+    size_t sectionHeaderBytes = 0;
+    if (!checkedMulSize(shnum, ehdr->e_shentsize, sectionHeaderBytes) ||
+        !checkedRange(sectionHeaderOff, sectionHeaderBytes, size)) {
         err << "error: " << name << ": section header table is out of bounds\n";
         return false;
     }
     for (size_t i = 0; i < shnum; ++i) {
-        auto shdrValue =
-            readStruct<elf::Elf64_Shdr>(data, size, ehdr->e_shoff + i * ehdr->e_shentsize);
+        size_t entryOff = 0;
+        if (!checkedMulSize(i, ehdr->e_shentsize, entryOff) ||
+            entryOff > std::numeric_limits<size_t>::max() - sectionHeaderOff) {
+            err << "error: " << name << ": section header offset overflows addressable size\n";
+            return false;
+        }
+        auto shdrValue = readStruct<elf::Elf64_Shdr>(data, size, sectionHeaderOff + entryOff);
         if (!shdrValue) {
             err << "error: " << name << ": truncated section header " << i << "\n";
             return false;
@@ -321,8 +361,12 @@ bool readElfObj(
     // Locate .shstrtab for section names.
     size_t shstrOff = 0, shstrSize = 0;
     if (shstrndx < shnum) {
-        shstrOff = static_cast<size_t>(shdrs[shstrndx].sh_offset);
-        shstrSize = static_cast<size_t>(shdrs[shstrndx].sh_size);
+        if (!checkedU64ToSize(shdrs[shstrndx].sh_offset, shstrOff) ||
+            !checkedU64ToSize(shdrs[shstrndx].sh_size, shstrSize)) {
+            err << "error: " << name
+                << ": ELF section-name string table exceeds addressable size\n";
+            return false;
+        }
     }
 
     struct ElfComdatGroup {
@@ -341,23 +385,24 @@ bool readElfObj(
             (symtab.sh_size % sizeof(elf::Elf64_Sym)) != 0)
             return std::nullopt;
         const uint64_t symCount = symtab.sh_size / sizeof(elf::Elf64_Sym);
-        if (symIndex >= symCount || !checkedRange(static_cast<size_t>(symtab.sh_offset),
-                                                  static_cast<size_t>(symtab.sh_size),
-                                                  size))
+        size_t symtabOff = 0, symtabSize = 0;
+        if (symIndex >= symCount || !checkedU64ToSize(symtab.sh_offset, symtabOff) ||
+            !checkedU64ToSize(symtab.sh_size, symtabSize) ||
+            !checkedRange(symtabOff, symtabSize, size))
             return std::nullopt;
-        const auto sym =
-            readStruct<elf::Elf64_Sym>(data,
-                                       size,
-                                       static_cast<size_t>(symtab.sh_offset) +
-                                           static_cast<size_t>(symIndex) * sizeof(elf::Elf64_Sym));
+        size_t symOff = 0;
+        if (!checkedMulSize(symIndex, sizeof(elf::Elf64_Sym), symOff) ||
+            symOff > std::numeric_limits<size_t>::max() - symtabOff)
+            return std::nullopt;
+        const auto sym = readStruct<elf::Elf64_Sym>(data, size, symtabOff + symOff);
         if (!sym)
             return std::nullopt;
         const auto &strtab = shdrs[symtab.sh_link];
-        return readStringOpt(data,
-                             size,
-                             static_cast<size_t>(strtab.sh_offset),
-                             static_cast<size_t>(strtab.sh_size),
-                             sym->st_name);
+        size_t strtabOff = 0, strtabSize = 0;
+        if (!checkedU64ToSize(strtab.sh_offset, strtabOff) ||
+            !checkedU64ToSize(strtab.sh_size, strtabSize))
+            return std::nullopt;
+        return readStringOpt(data, size, strtabOff, strtabSize, sym->st_name);
     };
 
     std::vector<ElfComdatGroup> comdatGroups;
@@ -365,13 +410,14 @@ bool readElfObj(
         const auto *sh = &shdrs[i];
         if (sh->sh_type != elf::SHT_GROUP)
             continue;
+        size_t groupOff = 0, groupSize = 0;
         if (sh->sh_size < 4 || (sh->sh_size % 4) != 0 ||
-            !checkedRange(
-                static_cast<size_t>(sh->sh_offset), static_cast<size_t>(sh->sh_size), size)) {
+            !checkedU64ToSize(sh->sh_offset, groupOff) ||
+            !checkedU64ToSize(sh->sh_size, groupSize) || !checkedRange(groupOff, groupSize, size)) {
             err << "error: " << name << ": malformed ELF section group\n";
             return false;
         }
-        const uint32_t flags = readLE32(data + static_cast<size_t>(sh->sh_offset));
+        const uint32_t flags = readLE32(data + groupOff);
         if ((flags & elf::GRP_COMDAT) == 0)
             continue;
         auto signature = readSymbolNameFromTable(sh->sh_link, sh->sh_info);
@@ -380,9 +426,9 @@ bool readElfObj(
             return false;
         }
         std::vector<uint32_t> members;
-        const size_t count = static_cast<size_t>(sh->sh_size / 4);
+        const size_t count = groupSize / 4;
         for (size_t entry = 1; entry < count; ++entry) {
-            const uint32_t member = readLE32(data + static_cast<size_t>(sh->sh_offset) + entry * 4);
+            const uint32_t member = readLE32(data + groupOff + entry * 4);
             if (member >= shnum) {
                 err << "error: " << name << ": ELF section group references invalid section "
                     << member << "\n";
@@ -440,31 +486,39 @@ bool readElfObj(
 
         if (sh->sh_type == elf::SHT_NOBITS) {
             sec.zeroFill = true;
-            if (sh->sh_size > kMaxObjSectionBytes) {
+            size_t noBitsSize = 0;
+            if (!checkedU64ToSize(sh->sh_size, noBitsSize) || noBitsSize > kMaxObjSectionBytes) {
                 err << "error: " << name << ": ELF section '" << sec.name << "' is too large\n";
                 return false;
             }
-            sec.memSize = static_cast<size_t>(sh->sh_size);
-        } else if (sh->sh_size > 0 && checkedRange(static_cast<size_t>(sh->sh_offset),
-                                                   static_cast<size_t>(sh->sh_size),
-                                                   size)) {
-            auto off = static_cast<size_t>(sh->sh_offset);
-            auto sz = static_cast<size_t>(sh->sh_size);
-            if (sz > kMaxObjSectionBytes) {
-                err << "error: " << name << ": ELF section '" << sec.name << "' is too large\n";
+            sec.memSize = noBitsSize;
+        } else {
+            size_t off = 0, sz = 0;
+            if (!checkedU64ToSize(sh->sh_offset, off) || !checkedU64ToSize(sh->sh_size, sz)) {
+                err << "error: " << name << ": ELF section '" << sec.name
+                    << "' contents exceed addressable size\n";
                 return false;
             }
-            if (sz > kMaxObjMaterializedBytes - materializedBytes) {
-                err << "error: " << name << ": ELF materialized section data exceeds limit\n";
+            if (sz > 0 && !checkedRange(off, sz, size)) {
+                err << "error: " << name << ": ELF section '" << sec.name
+                    << "' contents are out of bounds\n";
                 return false;
             }
-            materializedBytes += sz;
-            sec.data.assign(data + off, data + off + sz);
-            sec.memSize = sec.data.size();
-        } else if (sh->sh_size > 0) {
-            err << "error: " << name << ": ELF section '" << sec.name
-                << "' contents are out of bounds\n";
-            return false;
+            if (sz == 0) {
+                sec.memSize = 0;
+            } else {
+                if (sz > kMaxObjSectionBytes) {
+                    err << "error: " << name << ": ELF section '" << sec.name << "' is too large\n";
+                    return false;
+                }
+                if (sz > kMaxObjMaterializedBytes - materializedBytes) {
+                    err << "error: " << name << ": ELF materialized section data exceeds limit\n";
+                    return false;
+                }
+                materializedBytes += sz;
+                sec.data.assign(data + off, data + off + sz);
+                sec.memSize = sec.data.size();
+            }
         }
 
         secMap[i] = static_cast<uint32_t>(obj.sections.size());
@@ -502,8 +556,10 @@ bool readElfObj(
             err << "error: " << name << ": ELF symbol table has invalid string table link\n";
             return false;
         }
-        if (!checkedRange(
-                static_cast<size_t>(symSh->sh_offset), static_cast<size_t>(symSh->sh_size), size)) {
+        size_t symtabOff = 0, symtabSize = 0;
+        if (!checkedU64ToSize(symSh->sh_offset, symtabOff) ||
+            !checkedU64ToSize(symSh->sh_size, symtabSize) ||
+            !checkedRange(symtabOff, symtabSize, size)) {
             err << "error: " << name << ": symbol table is out of bounds\n";
             return false;
         }
@@ -529,8 +585,12 @@ bool readElfObj(
         auto &symMap = symMapsBySection[symShIndex];
         symMap.assign(symCount, 0);
         const auto &strSh = shdrs[symSh->sh_link];
-        const size_t strOff = static_cast<size_t>(strSh.sh_offset);
-        const size_t strSize = static_cast<size_t>(strSh.sh_size);
+        size_t strOff = 0, strSize = 0;
+        if (!checkedU64ToSize(strSh.sh_offset, strOff) ||
+            !checkedU64ToSize(strSh.sh_size, strSize)) {
+            err << "error: " << name << ": ELF symbol string table exceeds addressable size\n";
+            return false;
+        }
         if (!checkedRange(strOff, strSize, size)) {
             err << "error: " << name << ": ELF symbol string table is out of bounds\n";
             return false;
@@ -545,25 +605,25 @@ bool readElfObj(
                 err << "error: " << name << ": unsupported ELF symbol section-index entry size\n";
                 return false;
             }
-            if (candidate.sh_size < static_cast<uint64_t>(symCount) * sizeof(uint32_t) ||
-                !checkedRange(static_cast<size_t>(candidate.sh_offset),
-                              static_cast<size_t>(candidate.sh_size),
-                              size)) {
+            size_t minShndxBytes = 0, shndxOff = 0, shndxSize = 0;
+            if (!checkedMulSize(symCount, sizeof(uint32_t), minShndxBytes) ||
+                !checkedU64ToSize(candidate.sh_offset, shndxOff) ||
+                !checkedU64ToSize(candidate.sh_size, shndxSize) || shndxSize < minShndxBytes ||
+                !checkedRange(shndxOff, shndxSize, size)) {
                 err << "error: " << name << ": ELF symbol section-index table is malformed\n";
                 return false;
             }
             extendedSectionIndexes.resize(symCount, 0);
             for (uint32_t idx = 0; idx < symCount; ++idx) {
                 extendedSectionIndexes[idx] =
-                    readLE32(data + static_cast<size_t>(candidate.sh_offset) +
-                             static_cast<size_t>(idx) * sizeof(uint32_t));
+                    readLE32(data + shndxOff + static_cast<size_t>(idx) * sizeof(uint32_t));
             }
             break;
         }
 
         for (uint32_t i = 1; i < symCount; ++i) {
             const auto symValue = readStruct<elf::Elf64_Sym>(
-                data, size, static_cast<size_t>(symSh->sh_offset) + i * sizeof(elf::Elf64_Sym));
+                data, size, symtabOff + static_cast<size_t>(i) * sizeof(elf::Elf64_Sym));
             if (!symValue)
                 break;
             const auto *sym = &*symValue;
@@ -600,7 +660,12 @@ bool readElfObj(
             if (effectiveShndx == elf::SHN_ABS) {
                 os.absolute = true;
             } else if (effectiveShndx == elf::SHN_COMMON) {
-                const size_t alignment = static_cast<size_t>(sym->st_value);
+                size_t alignment = 0;
+                if (!checkedU64ToSize(sym->st_value, alignment)) {
+                    err << "error: " << name
+                        << ": ELF common symbol alignment exceeds addressable size\n";
+                    return false;
+                }
                 if (alignment != 0 && ((alignment & (alignment - 1)) != 0 ||
                                        alignment > std::numeric_limits<uint32_t>::max())) {
                     err << "error: " << name << ": ELF common symbol has unsupported alignment\n";
@@ -676,9 +741,10 @@ bool readElfObj(
         }
 
         auto &targetSec = obj.sections[secMap[targetSecElf]];
-        if (!checkedRange(static_cast<size_t>(shdrs[i].sh_offset),
-                          static_cast<size_t>(shdrs[i].sh_size),
-                          size)) {
+        size_t relocTableOff = 0, relocTableSize = 0;
+        if (!checkedU64ToSize(shdrs[i].sh_offset, relocTableOff) ||
+            !checkedU64ToSize(shdrs[i].sh_size, relocTableSize) ||
+            !checkedRange(relocTableOff, relocTableSize, size)) {
             err << "error: " << name << ": relocation table is out of bounds\n";
             return false;
         }
@@ -702,26 +768,36 @@ bool readElfObj(
         for (uint32_t r = 0; r < relCount; ++r) {
             ObjReloc rel;
             uint64_t rInfo = 0;
+            size_t relEntryOff = 0;
+            if (!checkedMulSize(static_cast<size_t>(r), relEntSize, relEntryOff) ||
+                relEntryOff > std::numeric_limits<size_t>::max() - relocTableOff) {
+                err << "error: " << name << ": ELF relocation entry offset overflows\n";
+                return false;
+            }
             if (isRela) {
-                const auto relaValue = readStruct<elf::Elf64_Rela>(
-                    data,
-                    size,
-                    static_cast<size_t>(shdrs[i].sh_offset) + r * sizeof(elf::Elf64_Rela));
+                const auto relaValue =
+                    readStruct<elf::Elf64_Rela>(data, size, relocTableOff + relEntryOff);
                 if (!relaValue)
                     break;
                 const auto *rela = &*relaValue;
-                rel.offset = static_cast<size_t>(rela->r_offset);
+                if (!checkedU64ToSize(rela->r_offset, rel.offset)) {
+                    err << "error: " << name
+                        << ": ELF relocation offset exceeds addressable size\n";
+                    return false;
+                }
                 rInfo = rela->r_info;
                 rel.addend = rela->r_addend;
             } else {
-                const auto relNoAddendValue = readStruct<elf::Elf64_Rel>(
-                    data,
-                    size,
-                    static_cast<size_t>(shdrs[i].sh_offset) + r * sizeof(elf::Elf64_Rel));
+                const auto relNoAddendValue =
+                    readStruct<elf::Elf64_Rel>(data, size, relocTableOff + relEntryOff);
                 if (!relNoAddendValue)
                     break;
                 const auto *relNoAddend = &*relNoAddendValue;
-                rel.offset = static_cast<size_t>(relNoAddend->r_offset);
+                if (!checkedU64ToSize(relNoAddend->r_offset, rel.offset)) {
+                    err << "error: " << name
+                        << ": ELF relocation offset exceeds addressable size\n";
+                    return false;
+                }
                 rInfo = relNoAddend->r_info;
             }
 

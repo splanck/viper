@@ -13,6 +13,7 @@
 
 #include "codegen/common/NativeEHLowering.hpp"
 
+#include "codegen/common/ICE.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Instr.hpp"
@@ -107,6 +108,32 @@ static Type i64Ty() {
     return Type(Type::Kind::I64);
 }
 
+/// @brief Compare two IL primitive types for exact native-EH ABI equality.
+/// @details `Type` intentionally has a tiny value representation, so native EH
+///          signature checks only need to compare the primitive kind. Keeping
+///          this in one helper makes the extern validation path explicit.
+static bool sameType(const Type &lhs, const Type &rhs) {
+    return lhs.kind == rhs.kind;
+}
+
+/// @brief Validate that an existing extern declaration matches an expected signature.
+/// @details Native EH lowering injects calls to setjmp/runtime helpers. Reusing
+///          a same-named extern with a different return type or parameter list
+///          would produce invalid call sites, so this helper performs an exact
+///          arity and primitive-type comparison before `ensureExtern` accepts
+///          an existing declaration.
+static bool externSignatureMatches(const Extern &ext,
+                                   const Type &retType,
+                                   const std::vector<Type> &params) {
+    if (!sameType(ext.retType, retType) || ext.params.size() != params.size())
+        return false;
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        if (!sameType(ext.params[i], params[i]))
+            return false;
+    }
+    return true;
+}
+
 static unsigned reserveTemp(Function &fn, const std::string &name) {
     const unsigned id = static_cast<unsigned>(fn.valueNames.size());
     fn.valueNames.push_back(name);
@@ -158,8 +185,14 @@ static bool mayTrap(Opcode op) {
 
 static void ensureExtern(Module &module, std::string name, Type retType, std::vector<Type> params) {
     for (const auto &ext : module.externs) {
-        if (ext.name == name)
-            return;
+        if (ext.name != name)
+            continue;
+        if (!externSignatureMatches(ext, retType, params)) {
+            VIPER_ICE("native EH runtime extern '" + name +
+                      "' already exists with a different "
+                      "signature");
+        }
+        return;
     }
     module.externs.push_back(Extern{std::move(name), retType, std::move(params)});
     module.externs.back().nameSymbol = module.internIdentifier(module.externs.back().name);
@@ -334,8 +367,8 @@ static std::vector<int> handlerEntryStackFor(const std::vector<ScopeInfo> &scope
 /// @details The native lowering currently represents one EH stack per block.
 ///          Valid structured IL reaches ordinary joins with the same stack, and
 ///          handler helper blocks are seeded through the handler that dispatched
-///          to them. If an already-seeded block is seen again, the first stack
-///          is kept to preserve deterministic lowering.
+///          to them. If an already-seeded block is seen with a different stack,
+///          the structured EH graph is malformed and lowering stops immediately.
 /// @param entryStacks Per-block entry stack table being populated.
 /// @param worklist Blocks whose outgoing edges still need propagation.
 /// @param blockIndex Index of the block being seeded.
@@ -344,8 +377,13 @@ static void seedEntryStack(std::vector<std::optional<std::vector<int>>> &entrySt
                            std::deque<std::size_t> &worklist,
                            std::size_t blockIndex,
                            const std::vector<int> &stack) {
-    if (entryStacks[blockIndex].has_value())
+    if (entryStacks[blockIndex].has_value()) {
+        if (*entryStacks[blockIndex] != stack) {
+            VIPER_ICE("native EH stack mismatch at CFG join for block index " +
+                      std::to_string(blockIndex));
+        }
         return;
+    }
     entryStacks[blockIndex] = stack;
     worklist.push_back(blockIndex);
 }
@@ -424,7 +462,12 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
             if (!isEhOpcode(instr.op))
                 continue;
             hasEh = true;
-            if (instr.op == Opcode::EhPush && !instr.labels.empty()) {
+            if (instr.op == Opcode::EhPush && instr.labels.empty()) {
+                VIPER_ICE(
+                    "native EH lowering encountered eh.push without a handler label in block '" +
+                    bb.label + "'");
+            }
+            if (instr.op == Opcode::EhPush) {
                 ScopeInfo scope;
                 scope.id = static_cast<int>(scopes.size());
                 scope.handlerLabel = instr.labels[0];
@@ -622,28 +665,28 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
 
             if (instr.op == Opcode::EhPop) {
                 rewritten.changed = true;
-                if (!active.empty()) {
-                    const int scopeId = active.back();
-                    active.pop_back();
-                    const auto &scope = scopes[static_cast<std::size_t>(scopeId)];
-                    const unsigned frameLoad = reserveTemp(
-                        fn,
-                        "__neh.pop.frame." + std::to_string(scopeId) + "." + std::to_string(ii));
-                    current.instructions.push_back(
-                        makeLoad(frameLoad, Value::temp(scope.slotTemp)));
-                    current.instructions.push_back(
-                        makeCallVoid(kFramePop, {Value::temp(frameLoad)}));
-                    current.instructions.push_back(
-                        makeCallVoid(kFrameFree, {Value::temp(frameLoad)}));
-                    current.instructions.push_back(
-                        makeStore(Value::temp(scope.slotTemp), Value::null()));
-                }
+                if (active.empty())
+                    continue;
+                const int scopeId = active.back();
+                active.pop_back();
+                const auto &scope = scopes[static_cast<std::size_t>(scopeId)];
+                const unsigned frameLoad = reserveTemp(
+                    fn, "__neh.pop.frame." + std::to_string(scopeId) + "." + std::to_string(ii));
+                current.instructions.push_back(makeLoad(frameLoad, Value::temp(scope.slotTemp)));
+                current.instructions.push_back(makeCallVoid(kFramePop, {Value::temp(frameLoad)}));
+                current.instructions.push_back(makeCallVoid(kFrameFree, {Value::temp(frameLoad)}));
+                current.instructions.push_back(
+                    makeStore(Value::temp(scope.slotTemp), Value::null()));
                 continue;
             }
 
             if ((instr.op == Opcode::ResumeLabel || instr.op == Opcode::ResumeSame ||
                  instr.op == Opcode::ResumeNext) &&
                 handlerSiteParam.find(orig.label) != handlerSiteParam.end()) {
+                if (ii + 1 != orig.instructions.size()) {
+                    VIPER_ICE("native EH lowering encountered resume before the end of block '" +
+                              orig.label + "'");
+                }
                 rewritten.changed = true;
                 if (instr.op == Opcode::ResumeLabel) {
                     const auto tokIt = handlerSiteParam.find(orig.label);
@@ -750,6 +793,11 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                 const int64_t siteId = site.siteId;
                 const std::string &siteLabel = site.sameLabel;
                 const bool isTerm = il::verify::isTerminator(instr.op);
+                if (isTerm && ii + 1 != orig.instructions.size()) {
+                    VIPER_ICE(
+                        "native EH lowering encountered terminator before the end of block '" +
+                        orig.label + "'");
+                }
                 const std::string &nextLabel = site.nextLabel;
 
                 current.instructions.push_back(makeBr(siteLabel));
@@ -781,7 +829,7 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
             current.instructions.push_back(std::move(instr));
         }
 
-        if (!current.label.empty() && !current.instructions.empty())
+        if (!current.label.empty())
             appendBlock(std::move(current));
     }
 

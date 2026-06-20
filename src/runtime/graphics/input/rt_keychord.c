@@ -179,6 +179,12 @@ static void add_entry(
     }
     memcpy(name_copy, name, name_len + 1);
 
+    /* Grow (and the name_copy malloc above) BEFORE removing any existing entry, so that every
+     * fallible allocation completes before the table is mutated — an OOM here leaves the chord
+     * list unchanged rather than having already dropped the old entry. When replacing an entry
+     * while the table is full this grows by one slot the removal below then frees; that small
+     * waste is the deliberate price of allocate-before-mutate atomicity and must NOT be
+     * "optimised away" by moving the removal before ensure_capacity. */
     if (!ensure_capacity(kc)) {
         free(name_copy);
         return;

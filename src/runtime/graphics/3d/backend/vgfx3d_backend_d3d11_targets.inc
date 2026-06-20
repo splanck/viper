@@ -726,5 +726,10 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
         return hr;
     ctx->shadow_width[slot] = width;
     ctx->shadow_height[slot] = height;
+    /* Fold the freshly-allocated slot into the advertised shadow_count so the main pass's
+     * `shadowIndex < shadowCount` guard accepts it. The GL backend and the D3D11
+     * failure/release paths recompute, but this success path previously did not, leaving a
+     * valid shadow map silently unsampled until some other path refreshed the count. */
+    d3d11_recompute_shadow_count(ctx);
     return S_OK;
 }

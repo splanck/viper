@@ -270,6 +270,14 @@ static void ik3d_set_global_position(rt_ik_solver3d *solver,
     locals[bone * 16 + 3] = local[0];
     locals[bone * 16 + 7] = local[1];
     locals[bone * 16 + 11] = local[2];
+    /* The full-globals rebuild here is required, not redundant: each FABRIK chain bone derives
+     * its local translation (above, via ik3d_parent_local_point) from its parent's *current*
+     * global, so the parent's update from the previous chain step must already be propagated.
+     * Deferring this to a single rebuild after the whole chain would feed stale parent globals
+     * and corrupt the result. Cost is bounded — the chain is capped at RT_IK_SOLVER3D_MAX_CHAIN
+     * (32) — so this is O(chain * bone_count) per solve, not a scaling concern. A correctness-
+     * preserving speedup would rebuild only the affected subtree, but the bounded chain makes it
+     * unnecessary. */
     ik3d_build_globals(solver->skeleton, locals, globals, bone_count);
 }
 

@@ -698,31 +698,63 @@ void world3d_update_sleep(rt_world3d *w, double sub_dt) {
     }
 }
 
+/// @brief Order two broad-phase entries along @p primary (0=X, 1=Y, 2=Z), then the
+///   other two axes, then the body's stable @c owner_index.
+/// @details Tie-breaking on @c owner_index — the body's slot index within the world,
+///   which is identical in the VM and native backends and stable run-to-run — rather
+///   than the body's heap pointer keeps sweep-and-prune order deterministic. Pointer
+///   values vary with allocation order / ASLR and would otherwise desynchronise the
+///   order-sensitive warm-started sequential-impulse solve between runs and backends.
+/// @param a,b     Entries to compare (already cast from the qsort void* operands).
+/// @param primary Axis (0/1/2) used as the primary sort key.
+/// @return -1, 0, or +1 per the qsort comparator contract.
+static int ph3d_broadphase_compare_axis(const ph3d_broadphase_entry *a,
+                                        const ph3d_broadphase_entry *b,
+                                        int primary) {
+    const int a1 = (primary + 1) % 3;
+    const int a2 = (primary + 2) % 3;
+    if (a->min[primary] < b->min[primary])
+        return -1;
+    if (a->min[primary] > b->min[primary])
+        return 1;
+    if (a->min[a1] < b->min[a1])
+        return -1;
+    if (a->min[a1] > b->min[a1])
+        return 1;
+    if (a->min[a2] < b->min[a2])
+        return -1;
+    if (a->min[a2] > b->min[a2])
+        return 1;
+    {
+        int32_t ia = a->body ? a->body->owner_index : -1;
+        int32_t ib = b->body ? b->body->owner_index : -1;
+        if (ia < ib)
+            return -1;
+        if (ia > ib)
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief qsort comparator for sweep-and-prune broad-phase — sorts entries by min-X.
 /// @details After sorting, the inner collision loop can break early as soon as
 ///   entry[j].min[0] > entry[i].max[0], reducing the O(n²) pair count in practice.
+///   Non-static: also reused by the spatial query path (rt_physics3d_query.c).
 int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs) {
-    const ph3d_broadphase_entry *a = (const ph3d_broadphase_entry *)lhs;
-    const ph3d_broadphase_entry *b = (const ph3d_broadphase_entry *)rhs;
-    if (a->min[0] < b->min[0])
-        return -1;
-    if (a->min[0] > b->min[0])
-        return 1;
-    /* qsort is not stable; tie-break equal X spans so stacked bodies solve
-     * bottom-up consistently across C runtimes. */
-    if (a->min[1] < b->min[1])
-        return -1;
-    if (a->min[1] > b->min[1])
-        return 1;
-    if (a->min[2] < b->min[2])
-        return -1;
-    if (a->min[2] > b->min[2])
-        return 1;
-    if ((uintptr_t)a->body < (uintptr_t)b->body)
-        return -1;
-    if ((uintptr_t)a->body > (uintptr_t)b->body)
-        return 1;
-    return 0;
+    return ph3d_broadphase_compare_axis(
+        (const ph3d_broadphase_entry *)lhs, (const ph3d_broadphase_entry *)rhs, 0);
+}
+
+/// @brief Sweep-and-prune comparator variant that sorts by min-Y (see compare_min_x).
+static int ph3d_broadphase_compare_min_y(const void *lhs, const void *rhs) {
+    return ph3d_broadphase_compare_axis(
+        (const ph3d_broadphase_entry *)lhs, (const ph3d_broadphase_entry *)rhs, 1);
+}
+
+/// @brief Sweep-and-prune comparator variant that sorts by min-Z (see compare_min_x).
+static int ph3d_broadphase_compare_min_z(const void *lhs, const void *rhs) {
+    return ph3d_broadphase_compare_axis(
+        (const ph3d_broadphase_entry *)lhs, (const ph3d_broadphase_entry *)rhs, 2);
 }
 
 /// @brief Return 1 if two 3D AABBs overlap, 0 if separated on any axis.
@@ -881,11 +913,48 @@ int world3d_detect_contacts(rt_world3d *w) {
         body_aabb(body, entries[entry_count].min, entries[entry_count].max);
         entry_count++;
     }
-    qsort(entries, (size_t)entry_count, sizeof(*entries), ph3d_broadphase_compare_min_x);
+    /* Sweep on the axis with the greatest spread of entry centres so the interval
+     * early-out (the inner `break`) prunes the most pairs. A fixed X sweep degrades
+     * toward O(n²) when many bodies share an X-span (e.g. a wide flat floor of stacked
+     * boxes); picking the widest axis keeps the common 1D-dominant layouts near-linear.
+     * The choice is derived from positions only, so it stays deterministic across the
+     * VM and native backends. (A uniform spatial hash would also help 2D-dense grids —
+     * a worthwhile future extension that is intentionally out of scope here.) */
+    int sweep_axis = 0;
+    if (entry_count > 1) {
+        double lo[3];
+        double hi[3];
+        for (int k = 0; k < 3; k++)
+            lo[k] = hi[k] = 0.5 * (entries[0].min[k] + entries[0].max[k]);
+        for (int32_t i = 1; i < entry_count; i++) {
+            for (int k = 0; k < 3; k++) {
+                double c = 0.5 * (entries[i].min[k] + entries[i].max[k]);
+                if (c < lo[k])
+                    lo[k] = c;
+                if (c > hi[k])
+                    hi[k] = c;
+            }
+        }
+        double best_spread = hi[0] - lo[0];
+        if (hi[1] - lo[1] > best_spread) {
+            best_spread = hi[1] - lo[1];
+            sweep_axis = 1;
+        }
+        if (hi[2] - lo[2] > best_spread) {
+            best_spread = hi[2] - lo[2];
+            sweep_axis = 2;
+        }
+    }
+    qsort(entries,
+          (size_t)entry_count,
+          sizeof(*entries),
+          sweep_axis == 0   ? ph3d_broadphase_compare_min_x
+          : sweep_axis == 1 ? ph3d_broadphase_compare_min_y
+                            : ph3d_broadphase_compare_min_z);
 
     for (int32_t i = 0; i < entry_count; i++) {
         for (int32_t j = i + 1; j < entry_count; j++) {
-            if (entries[j].min[0] > entries[i].max[0])
+            if (entries[j].min[sweep_axis] > entries[i].max[sweep_axis])
                 break;
             if (!ph3d_bounds_overlap(
                     entries[i].min, entries[i].max, entries[j].min, entries[j].max))

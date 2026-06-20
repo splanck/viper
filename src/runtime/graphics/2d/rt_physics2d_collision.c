@@ -626,11 +626,15 @@ static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, doubl
                 vel_along_t = rvx * tx + rvy * ty;
                 mu = (a->friction + b->friction) * 0.5; /* Average both surfaces */
                 jt = -vel_along_t / total_inv;
-                /* Clamp to Coulomb friction cone */
-                if (jt > j * mu)
-                    jt = j * mu;
-                else if (jt < -j * mu)
-                    jt = -j * mu;
+                /* Clamp to the Coulomb friction cone. j >= 0 here (vel_along_n <= 0
+                 * above), so fabs(j) == j; using fabs keeps the cone well-formed even
+                 * if a future caller reaches this path with a negative normal impulse
+                 * (e.g. the swept-CCD entry where pen==0 but velocities are full). */
+                double jmax = fabs(j) * mu;
+                if (jt > jmax)
+                    jt = jmax;
+                else if (jt < -jmax)
+                    jt = -jmax;
                 a->vx -= jt * a->inv_mass * tx;
                 a->vy -= jt * a->inv_mass * ty;
                 b->vx += jt * b->inv_mass * tx;

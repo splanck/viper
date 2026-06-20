@@ -11,6 +11,10 @@ static int controller_sample_state_global_matrix(const rt_anim_controller3d *con
                                                  float time,
                                                  int32_t bone_index,
                                                  float *out_global) {
+    /* ~32 KB of stack (two VGFX3D_MAX_BONES*16 matrices). This is a const single-bone query
+     * invoked from the main thread (e.g. root-motion / attachment lookups), not the parallel
+     * per-frame palette path, so the call depth is shallow and the default stack is ample; kept
+     * on the stack to preserve const-ness rather than threading mutable scratch through. */
     float globals[VGFX3D_MAX_BONES * 16] = {0.0f};
     float locals[VGFX3D_MAX_BONES * 16] = {0.0f};
     int32_t state_count;
@@ -51,10 +55,15 @@ static int controller_sample_state_global_matrix(const rt_anim_controller3d *con
 static void controller_compute_final_palette(rt_anim_controller3d *controller) {
     int32_t bone_count;
     int32_t state_count;
-    float final_locals[VGFX3D_MAX_BONES * 16];
+    /* Per-controller scratch instead of a ~16 KB stack array: this runs on the parallel
+     * animator's worker threads, and each controller is updated by a single job at a time, so
+     * the buffer is never shared concurrently. (Not zero-initialised — like the previous stack
+     * array — because every entry used is written before it is read.) */
+    float *final_locals;
     if (!controller || !controller->final_palette || !controller->final_globals ||
-        !controller->skeleton)
+        !controller->skeleton || !controller->blend_locals_scratch)
         return;
+    final_locals = controller->blend_locals_scratch;
     controller_repair_state_table(controller);
     controller_repair_layer_state_indices(controller);
     state_count = controller->state_count;
@@ -244,8 +253,11 @@ static void controller_quat_normalize(double *q) {
 ///          maximises numerical stability based on which of `trace`,
 ///          `m00`, `m11`, or `m22` is largest. This avoids the catastrophic
 ///          cancellation that the naive `sqrt(1+trace)/2` formulation
-///          produces near 180° rotations. Output quaternion is normalised
-///          before return.
+///          produces near 180° rotations. A degenerate (near-zero-scale) input
+///          matrix collapses the chosen branch's divisor `s` toward zero; each
+///          branch guards `s` and falls back to the identity quaternion to avoid
+///          dividing by ~0 and emitting a garbage-direction rotation. Output
+///          quaternion is normalised before return.
 static void controller_quat_from_matrix_rows(double m00,
                                              double m01,
                                              double m02,
@@ -267,24 +279,40 @@ static void controller_quat_from_matrix_rows(double m00,
     trace = m00 + m11 + m22;
     if (trace > 0.0) {
         double s = sqrt(trace + 1.0) * 2.0;
+        if (s < 1e-12) {
+            controller_quat_identity(out);
+            return;
+        }
         out[3] = 0.25 * s;
         out[0] = (m21 - m12) / s;
         out[1] = (m02 - m20) / s;
         out[2] = (m10 - m01) / s;
     } else if (m00 > m11 && m00 > m22) {
         double s = sqrt(1.0 + m00 - m11 - m22) * 2.0;
+        if (s < 1e-12) {
+            controller_quat_identity(out);
+            return;
+        }
         out[3] = (m21 - m12) / s;
         out[0] = 0.25 * s;
         out[1] = (m01 + m10) / s;
         out[2] = (m02 + m20) / s;
     } else if (m11 > m22) {
         double s = sqrt(1.0 + m11 - m00 - m22) * 2.0;
+        if (s < 1e-12) {
+            controller_quat_identity(out);
+            return;
+        }
         out[3] = (m02 - m20) / s;
         out[0] = (m01 + m10) / s;
         out[1] = 0.25 * s;
         out[2] = (m12 + m21) / s;
     } else {
         double s = sqrt(1.0 + m22 - m00 - m11) * 2.0;
+        if (s < 1e-12) {
+            controller_quat_identity(out);
+            return;
+        }
         out[3] = (m10 - m01) / s;
         out[0] = (m02 + m20) / s;
         out[1] = (m12 + m21) / s;

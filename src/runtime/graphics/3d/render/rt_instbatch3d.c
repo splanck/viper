@@ -636,6 +636,11 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
             }
         }
         if (mesh->bsphere_radius > 0.0f && b->instance_count > 0) {
+            /* Per-draw scratch for the frustum-culled subset. These are handed to the canvas
+             * temp-buffer tracker (or freed inline), so their lifetime is bounded to the frame
+             * and they never leak; the remaining cost is malloc/free churn for batches culled
+             * every frame. Pooling belongs in the temp-buffer manager (a frame arena that
+             * resets rather than frees), which would amortise this across all deferred draws. */
             float *visible_transforms =
                 (float *)malloc((size_t)b->instance_count * 16u * sizeof(float));
             float *visible_prev =
@@ -675,6 +680,9 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                         return;
                     }
                     free(owned_prev);
+                    owned_prev = NULL; /* visible_prev now carries prev data; NULL this so the
+                                        * submit_prev ownership check below never compares (or
+                                        * re-tracks) a freed pointer */
                     submit_transforms = visible_transforms;
                     submit_prev = visible_prev;
                     submit_count = visible_count;

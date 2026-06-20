@@ -626,6 +626,11 @@ static void *fbx_decompress_array(const uint8_t *data,
         return NULL;
     if (!rt_untrusted_count_ok((int64_t)count, (size_t)elem_size, FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
         return NULL;
+    /* Need the 2-byte zlib header + 4-byte adler32 trailer; comp_len >= 6 also keeps
+     * `comp_len - 6` (deflate_len) from underflowing and the data[comp_len-4..] adler reads
+     * in bounds. Callers pass an fbx_require'd length, but assert the precondition here. */
+    if (comp_len < 6u)
+        return NULL;
     expected = (size_t)count * (size_t)elem_size;
     if ((data[0] & 0x0fu) != 8u || (data[0] >> 4) > 7u ||
         ((((uint32_t)data[0] << 8) | (uint32_t)data[1]) % 31u) != 0u || (data[1] & 0x20u) != 0u)
@@ -703,11 +708,17 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
                 prop->v.string.str[len] = '\0';
                 prop->v.string.len = len;
             } else {
-                prop->v.raw.data = (uint8_t *)malloc(len);
-                if (len > 0 && !prop->v.raw.data)
-                    return -1;
-                if (len > 0)
+                /* Only allocate for a non-empty payload: malloc(0) may return NULL, which
+                 * would be indistinguishable from OOM. A zero-length raw property keeps a
+                 * NULL data pointer with len 0 (readers guard on len), mirroring the string
+                 * path which always allocates len+1. */
+                prop->v.raw.data = NULL;
+                if (len > 0) {
+                    prop->v.raw.data = (uint8_t *)malloc(len);
+                    if (!prop->v.raw.data)
+                        return -1;
                     memcpy(prop->v.raw.data, r->data + r->pos, len);
+                }
                 prop->v.raw.len = len;
             }
             fbx_skip(r, len);

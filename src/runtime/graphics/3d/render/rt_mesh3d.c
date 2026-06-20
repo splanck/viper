@@ -59,6 +59,11 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 #define MESH3D_OBJ_MAX_LINE_BYTES (1024u * 1024u)
 #define MESH3D_OBJ_MAX_FACE_VERTS 4096
+/// @brief Above this many vertices, obj_triangulate_face emits a triangle fan instead of
+/// O(n^2..n^3) ear-clipping (mirrors the FBX loader's FBX_MAX_EARCLIP_POLY_VERTS fallback).
+/// A fan is exact for convex faces; concave faces this large are vanishingly rare in OBJ and
+/// degrade gracefully rather than stalling the loader on a pathological mega-face.
+#define MESH3D_OBJ_MAX_EARCLIP_VERTS 1024
 #define MESH3D_STL_ASCII_MAX_LINE_BYTES (1024u * 1024u)
 #define MESH3D_PROCEDURAL_MAX_BYTES (128ull * 1024ull * 1024ull)
 #define MESH3D_CLEAR_RETAIN_VERTEX_CAP 65536u

@@ -36,6 +36,7 @@
 #include "rt_inputmgr.h"
 #include "rt_input.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,6 +55,13 @@ struct rt_inputmgr_impl {
 rt_inputmgr rt_inputmgr_new(void) {
     struct rt_inputmgr_impl *mgr =
         (struct rt_inputmgr_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_inputmgr_impl));
+    if (!mgr) {
+        // rt_obj_new_i64 already traps on OOM, but rt_trap is not _Noreturn under
+        // recoverable test hooks, so guard the NULL return the header documents
+        // rather than dereferencing a null handle below.
+        rt_trap("InputManager: allocation failed");
+        return NULL;
+    }
 
     mgr->debounce_delay = 12; // Default: 12 frames (~200ms at 60fps)
     mgr->debounce_count = 0;

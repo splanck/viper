@@ -466,7 +466,8 @@ static void *bitmapfont_load_bdf_as(rt_string path, int64_t class_id) {
                 // Parse hex row
                 if (cur_bitmap && bitmap_row < bbx_h) {
                     int rb = bf_row_bytes(bbx_w);
-                    for (int b = 0; b < rb && line[b * 2] != '\0' && line[b * 2 + 1] != '\0'; b++) {
+                    int b;
+                    for (b = 0; b < rb && line[b * 2] != '\0' && line[b * 2 + 1] != '\0'; b++) {
                         int val = bf_hex_byte(&line[b * 2]);
                         if (val >= 0) {
                             cur_bitmap[bitmap_row * rb + b] = (uint8_t)val;
@@ -475,6 +476,11 @@ static void *bitmapfont_load_bdf_as(rt_string path, int64_t class_id) {
                             break;
                         }
                     }
+                    /* A BITMAP row must supply exactly bf_row_bytes(bbx_w) hex bytes; a line that
+                     * ends early (NUL before rb bytes) means the glyph data is truncated, which
+                     * would otherwise be silently zero-filled into a malformed glyph. */
+                    if (!parse_failed && b < rb)
+                        parse_failed = 1;
                     bitmap_row++;
                 } else {
                     parse_failed = 1;

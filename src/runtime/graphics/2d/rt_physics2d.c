@@ -418,6 +418,11 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
     }
 
     if (w->joint_count > 0) {
+        /* Spring joints read dynamic-body velocities, which were already sanitised in
+         * the force-integration loop above (sanitize_body_state per dynamic body), so
+         * the solve sees finite, clamped inputs. The pass below then re-sanitises every
+         * body so spring-applied impulses cannot leave NaN/over-speed velocity for the
+         * position-integration step. */
         rt_physics2d_solve_spring_joints(obj, dt);
         for (i = 0; i < w->body_count; i++)
             sanitize_body_state(w->bodies[i]);

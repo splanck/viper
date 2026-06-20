@@ -857,6 +857,12 @@ static void fbx_anim_sort_unique_times(int64_t *times, int32_t *count) {
 /// @brief Walk a stack's AnimationLayers → CurveNodes → AnimationCurves, filling @p builders
 ///        (per-bone T/R/S curve views + base local transform). The deep connection walk
 ///        resolves each curve node to its target bone and TRS channel.
+/// @note Complexity is O(connections) per nesting level (layer → curve-node → model → curve),
+///        and each step also calls fbx_find_object_by_id (a linear object-tree walk). This is a
+///        deliberate trade-off: FBX scenes typically carry only a few hundred connections, so
+///        the one-time load cost is negligible. For very large rigs the optimization path is an
+///        id→node hash plus connection indices keyed by parent_id/child_id (O(1) lookups); it is
+///        intentionally not built here to keep this untrusted-input parser simple and auditable.
 static void fbx_anim_collect_curves(fbx_node_t *objects,
                                     const fbx_conn_table_t *ct,
                                     void *skeleton,

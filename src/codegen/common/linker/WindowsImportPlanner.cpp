@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -44,6 +45,11 @@ std::string stripImpPrefix(const std::string &name) {
     return name;
 }
 
+/// @brief Remove COFF symbol-decoration underscores for import classification.
+/// @details Some object producers preserve one or more leading underscores on C
+///          runtime and Windows API references. Import planning compares both the
+///          raw and stripped spellings so decorated input still maps to the right
+///          DLL or static-runtime bucket.
 std::string stripLeadingUnderscores(const std::string &name) {
     size_t i = 0;
     while (i < name.size() && name[i] == '_')
@@ -51,23 +57,35 @@ std::string stripLeadingUnderscores(const std::string &name) {
     return (i > 0) ? name.substr(i) : name;
 }
 
+/// @brief Identify libm-style symbols that should not be imported from Windows DLLs.
+/// @details The native linker shares some dynamic-symbol planning paths across
+///          platforms. These names are handled by Unix libm and must be filtered
+///          out of the Windows import planner.
 bool isLinuxMathSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kMath = {
-        "acos",  "acosf", "asin",  "asinf",    "atan",      "atan2",  "atan2f", "atanf", "cbrt",
-        "cbrtf", "ceil",  "ceilf", "copysign", "copysignf", "cos",    "cosf",   "cosh",  "exp",
-        "expf",  "fabs",  "fabsf", "floor",    "floorf",    "fmax",   "fmaxf",  "fmin",  "fmaxl",
-        "fminf", "fminl", "fmod",  "fmodf",    "hypot",     "ldexp",  "log",    "log10", "log2",
-        "logf",  "lrint", "lrintf", "nan",      "pow",       "powf",   "round",  "roundf",
-        "sin",   "sinf",  "sinh",   "sqrt",     "sqrtf",     "tan",    "tanf",   "tanh",
-        "trunc", "truncf",
+        "acos",  "acosf", "asin",   "asinf",    "atan",      "atan2", "atan2f", "atanf",  "cbrt",
+        "cbrtf", "ceil",  "ceilf",  "copysign", "copysignf", "cos",   "cosf",   "cosh",   "exp",
+        "expf",  "fabs",  "fabsf",  "floor",    "floorf",    "fmax",  "fmaxf",  "fmin",   "fmaxl",
+        "fminf", "fminl", "fmod",   "fmodf",    "hypot",     "ldexp", "log",    "log10",  "log2",
+        "logf",  "lrint", "lrintf", "nan",      "pow",       "powf",  "round",  "roundf", "sin",
+        "sinf",  "sinh",  "sqrt",   "sqrtf",    "tan",       "tanf",  "tanh",   "trunc",  "truncf",
     };
     return kMath.count(name) != 0;
 }
 
+/// @brief Check a prefix against both raw and underscore-stripped symbol spellings.
+/// @param name     Original symbol spelling.
+/// @param stripped Same symbol after leading underscore decoration is removed.
+/// @param prefix   Prefix to test.
+/// @return true when either spelling begins with @p prefix.
 bool hasPrefixEither(const std::string &name, const std::string &stripped, const char *prefix) {
     return name.rfind(prefix, 0) == 0 || stripped.rfind(prefix, 0) == 0;
 }
 
+/// @brief Decide whether a symbol belongs to the statically supplied Windows CRT/compiler set.
+/// @details These helper names are satisfied by generated linker support objects
+///          or local runtime archives. Treating them as DLL imports would emit an
+///          invalid import table entry and leave the actual static helper unused.
 bool isWindowsStaticCompilerRuntimeSymbol(const std::string &name, const std::string &stripped) {
     return name == "__RTC_memset" || stripped == "RTC_memset" || name == "__security_pop_cookie" ||
            stripped == "security_pop_cookie" || name == "__security_push_cookie" ||
@@ -675,6 +693,33 @@ std::string importNameForSymbol(const std::string &name) {
     return name;
 }
 
+/// @brief Checked addition for synthetic import-section byte offsets.
+/// @details The Windows import planner emits an in-memory COFF object. Its
+///          section offsets are later consumed as relocation patch sites, so
+///          offset arithmetic is validated before resizing the backing vectors.
+bool checkedImportSizeAdd(size_t lhs, size_t rhs, size_t &out) {
+    if (lhs > std::numeric_limits<size_t>::max() - rhs)
+        return false;
+    out = lhs + rhs;
+    return true;
+}
+
+/// @brief Narrow a synthetic import symbol index to COFF's 32-bit field.
+/// @details Returns false with a diagnostic instead of truncating if an
+///          unexpectedly large import plan would exceed the object format's
+///          symbol-index capacity.
+bool checkedImportSymbolIndex(size_t index,
+                              const std::string &name,
+                              std::ostream &err,
+                              uint32_t &out) {
+    if (index > std::numeric_limits<uint32_t>::max()) {
+        err << "error: Windows import symbol table index overflow while adding '" << name << "'\n";
+        return false;
+    }
+    out = static_cast<uint32_t>(index);
+    return true;
+}
+
 } // namespace
 
 bool generateWindowsImports(LinkArch arch,
@@ -682,6 +727,7 @@ bool generateWindowsImports(LinkArch arch,
                             bool debugRuntime,
                             WindowsImportPlan &plan,
                             std::ostream &err) {
+    plan = WindowsImportPlan{};
     plan.obj.name = (arch == LinkArch::AArch64) ? "<winarm64-imports>" : "<win64-imports>";
     plan.obj.synthetic = true;
     plan.obj.format = ObjFileFormat::COFF;
@@ -752,14 +798,21 @@ bool generateWindowsImports(LinkArch arch,
 
         for (const auto &fn : funcs) {
             const size_t slotOff = dataSec.data.size();
-            dataSec.data.resize(slotOff + 8, 0);
+            size_t slotEnd = 0;
+            if (!checkedImportSizeAdd(slotOff, 8, slotEnd)) {
+                err << "error: Windows import slot for '" << fn << "' overflows addressable size\n";
+                return false;
+            }
+            dataSec.data.resize(slotEnd, 0);
 
             ObjSymbol slotSym;
             slotSym.name = "__imp_" + fn;
             slotSym.binding = ObjSymbol::Global;
             slotSym.sectionIndex = 2;
             slotSym.offset = slotOff;
-            const uint32_t slotSymIdx = static_cast<uint32_t>(plan.obj.symbols.size());
+            uint32_t slotSymIdx = 0;
+            if (!checkedImportSymbolIndex(plan.obj.symbols.size(), slotSym.name, err, slotSymIdx))
+                return false;
             plan.obj.symbols.push_back(std::move(slotSym));
 
             const size_t stubOff = textSec.data.size();
@@ -787,14 +840,22 @@ bool generateWindowsImports(LinkArch arch,
                 textSec.relocs.push_back(pageReloc);
 
                 ObjReloc loadReloc;
-                loadReloc.offset = stubOff + 4;
+                if (!checkedImportSizeAdd(stubOff, 4, loadReloc.offset)) {
+                    err << "error: Windows ARM64 import load relocation for '" << fn
+                        << "' overflows addressable size\n";
+                    return false;
+                }
                 loadReloc.type = coff_a64::kPageOff12L;
                 loadReloc.symIndex = slotSymIdx;
                 loadReloc.addend = 0;
                 textSec.relocs.push_back(loadReloc);
             } else {
                 ObjReloc reloc;
-                reloc.offset = stubOff + 2;
+                if (!checkedImportSizeAdd(stubOff, 2, reloc.offset)) {
+                    err << "error: Windows x64 import jump relocation for '" << fn
+                        << "' overflows addressable size\n";
+                    return false;
+                }
                 reloc.type = coff_x64::kRel32;
                 reloc.symIndex = slotSymIdx;
                 reloc.addend = 0;
@@ -802,7 +863,12 @@ bool generateWindowsImports(LinkArch arch,
             }
         }
 
-        dataSec.data.resize(dataSec.data.size() + 8, 0);
+        size_t terminatorEnd = 0;
+        if (!checkedImportSizeAdd(dataSec.data.size(), 8, terminatorEnd)) {
+            err << "error: Windows import descriptor terminator overflows addressable size\n";
+            return false;
+        }
+        dataSec.data.resize(terminatorEnd, 0);
     }
 
     if (!textSec.data.empty())

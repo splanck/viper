@@ -1015,20 +1015,26 @@ static int8_t pixels_draw_text_raw(rt_pixels_impl *p,
         for (int row = 0; row < 8; row++) {
             uint8_t bits = glyph[row];
             int64_t py = rt_pixels_add_sat64(y, pixels_mul_nonneg_sat64((int64_t)row, scale));
-            for (int col = 0; col < 8; col++) {
-                int64_t px = rt_pixels_add_sat64(cx, pixels_mul_nonneg_sat64((int64_t)col, scale));
+            /* Coalesce horizontal runs of same-state cells into one fill instead of one fill/set
+             * per cell, so a glyph row costs at most a few clipped fills rather than eight (each
+             * fill otherwise re-runs full rect clipping). A run of unlit cells is skipped when no
+             * background colour is supplied. */
+            int col = 0;
+            while (col < 8) {
                 int8_t foreground = (bits & (uint8_t)(0x80u >> col)) != 0;
-                if (foreground) {
-                    if (scale == 1)
-                        wrote |= set_pixel_raw(p, px, py, fg);
-                    else
-                        wrote |= pixels_fill_rect_raw(p, px, py, scale, scale, fg);
-                } else if (bg) {
-                    if (scale == 1)
-                        wrote |= set_pixel_raw(p, px, py, *bg);
-                    else
-                        wrote |= pixels_fill_rect_raw(p, px, py, scale, scale, *bg);
+                if (!foreground && !bg) {
+                    col++;
+                    continue;
                 }
+                int run_start = col;
+                while (col < 8 && (((bits & (uint8_t)(0x80u >> col)) != 0) == foreground))
+                    col++;
+                int64_t run_cols = (int64_t)(col - run_start);
+                int64_t px =
+                    rt_pixels_add_sat64(cx, pixels_mul_nonneg_sat64((int64_t)run_start, scale));
+                uint32_t color = foreground ? fg : *bg;
+                wrote |= pixels_fill_rect_raw(
+                    p, px, py, pixels_mul_nonneg_sat64(run_cols, scale), scale, color);
             }
         }
         cx = rt_pixels_add_sat64(cx, advance);

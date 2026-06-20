@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <utility>
 
 namespace viper::codegen::linker {
 
@@ -51,18 +52,26 @@ ObjFileFormat detectFormat(const uint8_t *data, size_t size) {
 bool readObjFile(
     const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err) {
     const ObjFileFormat fmt = detectFormat(data, size);
+    ObjFile parsed;
+    bool ok = false;
     switch (fmt) {
         case ObjFileFormat::ELF:
-            return readElfObj(data, size, name, obj, err);
+            ok = readElfObj(data, size, name, parsed, err);
+            break;
         case ObjFileFormat::MachO:
-            return readMachOObj(data, size, name, obj, err);
+            ok = readMachOObj(data, size, name, parsed, err);
+            break;
         case ObjFileFormat::COFF:
-            return readCoffObj(data, size, name, obj, err);
+            ok = readCoffObj(data, size, name, parsed, err);
+            break;
         case ObjFileFormat::Unknown:
             err << "error: " << name << ": unknown object file format\n";
             return false;
     }
-    return false;
+    if (!ok)
+        return false;
+    obj = std::move(parsed);
+    return true;
 }
 
 bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err) {

@@ -1423,7 +1423,11 @@ static void *rt_gltf_load_impl(rt_string path,
             RT_ASSET_ERROR_UNREADABLE, "GLTF.Load: failed to read '%s'", filepath);
         return NULL;
     }
-    if (file_size > (size_t)LONG_MAX) {
+    /* Hard cap (256 MiB) bounding worst-case parse/allocation cost, matching the documented
+     * limit in this function's header and the sibling TEXTUREASSET3D/VSCN loaders. The
+     * previous LONG_MAX gate left the effective ceiling at ~8 EiB on 64-bit, contradicting
+     * the doc comment and admitting multi-GiB files. */
+    if (file_size > (size_t)256u * 1024u * 1024u) {
         if (!preloaded_data)
             free(file_data);
         rt_asset_error_setf(RT_ASSET_ERROR_TOO_LARGE, "GLTF.Load: '%s' is too large", filepath);

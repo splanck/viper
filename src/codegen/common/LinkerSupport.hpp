@@ -35,9 +35,9 @@ namespace viper::codegen::common {
 // Pure utility functions
 // =========================================================================
 
-/// @brief Check if a file exists at the given path, suppressing filesystem exceptions.
+/// @brief Check if a regular file exists at the given path, suppressing filesystem exceptions.
 /// @param path The filesystem path to check.
-/// @return True if the file exists and is accessible, false otherwise.
+/// @return True if the path names an accessible regular file, false otherwise.
 bool fileExists(const std::filesystem::path &path);
 
 /// @brief Read the entire contents of a file into a string.

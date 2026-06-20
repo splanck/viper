@@ -42,6 +42,18 @@ static bool checkedAdd(size_t a, size_t b, size_t &out) {
     return true;
 }
 
+/// @brief Multiply two size_t values into @p out, returning false on overflow.
+/// @details Archive symbol tables carry 32-bit counts but are parsed on hosts
+///          where size_t may be narrower than the object format's logical
+///          limits. Centralizing the multiplication check prevents wraparound
+///          before range validation.
+static bool checkedMul(size_t a, size_t b, size_t &out) {
+    if (a != 0 && b > std::numeric_limits<size_t>::max() / a)
+        return false;
+    out = a * b;
+    return true;
+}
+
 /// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
 /// @details Avoids the @c off+len overflow trap by computing the bound as
 ///          @p size − @p off, which never overflows once @p off ≤ @p size holds.
@@ -144,8 +156,8 @@ static void parseGnuSymbolTable(const uint8_t *data,
     if (size < 4)
         return;
     const uint32_t count = readBE32(data);
-    size_t offsetsBytes = static_cast<size_t>(count) * 4;
-    if (count != 0 && offsetsBytes / 4 != count)
+    size_t offsetsBytes = 0;
+    if (!checkedMul(static_cast<size_t>(count), 4, offsetsBytes))
         return;
     size_t namesOff = 0;
     if (!checkedAdd(4, offsetsBytes, namesOff) || namesOff > size)
@@ -170,8 +182,15 @@ static void parseGnuSymbolTable(const uint8_t *data,
 }
 
 /// Parse a BSD-style symbol table ("__.SYMDEF" or "__.SYMDEF SORTED").
-/// Format: 4-byte ranlib count (byte size of ranlib array), then ranlibs (8B each:
-/// string offset + member offset), then 4-byte string size, then string pool.
+/// @brief Parse the BSD/Darwin archive symbol table into symbol/member pairs.
+/// @details The first word stores the byte size of the ranlib array, followed by
+///          8-byte ranlib entries `(string offset, member offset)`, a string-table
+///          byte count, and a NUL-terminated string pool. Malformed offsets or
+///          unterminated symbol names are ignored so a bad optional index cannot
+///          corrupt member parsing.
+/// @param data    Start of the linker-member payload.
+/// @param size    Payload size in bytes.
+/// @param symbols Receives parsed symbol names paired with archive member offsets.
 static void parseBsdSymbolTable(const uint8_t *data,
                                 size_t size,
                                 std::vector<std::pair<std::string, size_t>> &symbols) {
@@ -207,13 +226,15 @@ static void parseBsdSymbolTable(const uint8_t *data,
     }
 }
 
-/// Parse the Microsoft COFF second linker member (the preferred symbol index).
-/// Format:
-///   u32le memberCount
-///   u32le offsets[memberCount]
-///   u32le symbolCount
-///   u16le indices[symbolCount]   (1-based into offsets[])
-///   char names[][NUL]
+/// @brief Parse the Microsoft COFF second linker member.
+/// @details This is the preferred COFF archive index:
+///          `u32le memberCount`, `u32le offsets[memberCount]`,
+///          `u32le symbolCount`, `u16le indices[symbolCount]`, then a packed
+///          NUL-terminated name table. The symbol indices are one-based into the
+///          member-offset array, so invalid zero/out-of-range entries are skipped.
+/// @param data    Start of the linker-member payload.
+/// @param size    Payload size in bytes.
+/// @param symbols Receives parsed symbol names paired with archive member offsets.
 static void parseCoffSecondLinkerMember(const uint8_t *data,
                                         size_t size,
                                         std::vector<std::pair<std::string, size_t>> &symbols) {
@@ -221,8 +242,8 @@ static void parseCoffSecondLinkerMember(const uint8_t *data,
         return;
 
     const uint32_t memberCount = readLE32(data);
-    const size_t offsetsBytes = static_cast<size_t>(memberCount) * 4;
-    if (memberCount != 0 && offsetsBytes / 4 != memberCount)
+    size_t offsetsBytes = 0;
+    if (!checkedMul(static_cast<size_t>(memberCount), 4, offsetsBytes))
         return;
     size_t symbolCountOff = 0;
     if (!checkedAdd(4, offsetsBytes, symbolCountOff) || !checkedRange(symbolCountOff, 4, size))
@@ -231,8 +252,8 @@ static void parseCoffSecondLinkerMember(const uint8_t *data,
     const uint8_t *offsets = data + 4;
     const uint8_t *symbolCountPtr = data + symbolCountOff;
     const uint32_t symbolCount = readLE32(symbolCountPtr);
-    const size_t indexBytes = static_cast<size_t>(symbolCount) * 2;
-    if (symbolCount != 0 && indexBytes / 2 != symbolCount)
+    size_t indexBytes = 0;
+    if (!checkedMul(static_cast<size_t>(symbolCount), 2, indexBytes))
         return;
     size_t indexEndOff = 0;
     if (!checkedAdd(symbolCountOff, 4, indexEndOff))
@@ -262,6 +283,9 @@ static void parseCoffSecondLinkerMember(const uint8_t *data,
 }
 
 bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
+    ar = Archive{};
+    ar.path = path;
+
     // Read the entire file.
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f) {
@@ -290,8 +314,6 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
         err << "error: failed to read archive '" << path << "'\n";
         return false;
     }
-
-    ar.path = path;
 
     // Verify magic.
     if (fileSize < kArMagicLen || std::memcmp(ar.data.data(), kArMagic, kArMagicLen) != 0) {
@@ -397,15 +419,18 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
                     }
                     offset = offset * 10 + digit;
                 }
-                if (offset < longNames.size()) {
-                    size_t end = offset;
-                    while (end < longNames.size() && longNames[end] != '\0' &&
-                           longNames[end] != '\n')
-                        ++end;
-                    resolvedName = longNames.substr(offset, end - offset);
-                    while (!resolvedName.empty() && resolvedName.back() == '/')
-                        resolvedName.pop_back();
+                if (offset >= longNames.size()) {
+                    err << "error: archive member at offset " << pos
+                        << " references missing GNU long-name offset " << offset << " in '" << path
+                        << "'\n";
+                    return false;
                 }
+                size_t end = offset;
+                while (end < longNames.size() && longNames[end] != '\0' && longNames[end] != '\n')
+                    ++end;
+                resolvedName = longNames.substr(offset, end - offset);
+                while (!resolvedName.empty() && resolvedName.back() == '/')
+                    resolvedName.pop_back();
             } else {
                 // Trim trailing '/' (GNU terminator) for normal short names.
                 while (!resolvedName.empty() && resolvedName.back() == '/')

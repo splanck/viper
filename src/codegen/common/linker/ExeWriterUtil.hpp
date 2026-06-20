@@ -193,7 +193,17 @@ inline bool writeBinaryFileAtomically(const std::string &path,
                                       std::ostream &err) {
     namespace fs = std::filesystem;
 
+    /// @brief Write the complete output buffer to @p target and apply final mode bits.
+    /// @details The stream API takes a signed byte count, so this rejects files
+    ///          larger than std::streamsize can represent before narrowing. On
+    ///          non-Windows hosts it also reports chmod-style permission failures
+    ///          instead of silently returning a non-executable binary.
     auto writeDirect = [&](const fs::path &target) -> bool {
+        if (data.size() > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
+            err << "error: output file '" << target.string()
+                << "' exceeds stream write size limit\n";
+            return false;
+        }
         std::ofstream out(target, std::ios::binary | std::ios::trunc);
         if (!out) {
             err << "error: cannot open '" << target.string() << "' for writing\n";
@@ -211,19 +221,69 @@ inline bool writeBinaryFileAtomically(const std::string &path,
             return false;
         }
 
-#if !defined(_WIN32)
-        if (makeExecutable) {
+        if constexpr (!viper::platform::kHostWindows) {
+            if (!makeExecutable)
+                return true;
             std::error_code permEc;
             fs::permissions(target,
                             fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
                                 fs::perms::group_read | fs::perms::group_exec |
                                 fs::perms::others_read | fs::perms::others_exec,
                             permEc);
+            if (permEc) {
+                err << "error: cannot set executable permissions on '" << target.string()
+                    << "': " << permEc.message() << "\n";
+                return false;
+            }
+        } else {
+            (void)makeExecutable;
         }
-#else
-        (void)makeExecutable;
-#endif
         return true;
+    };
+
+    /// @brief Replace @p finalPath with @p tempPath without destroying the old file first.
+    /// @details POSIX rename normally replaces the target atomically. When the
+    ///          platform refuses to replace an existing target, this falls back to
+    ///          moving the old file aside, installing the temp file, and restoring
+    ///          the old file if installation fails.
+    auto replaceWithTemp = [&](const fs::path &tempPath, const fs::path &finalPath) -> bool {
+        std::error_code renameEc;
+        fs::rename(tempPath, finalPath, renameEc);
+        if (!renameEc)
+            return true;
+
+        std::error_code existsEc;
+        if (!fs::exists(finalPath, existsEc) || existsEc) {
+            err << "error: cannot replace '" << path << "': " << renameEc.message() << "\n";
+            return false;
+        }
+
+        const fs::path backupPath = tempPath.string() + ".old";
+        std::error_code cleanupEc;
+        fs::remove(backupPath, cleanupEc);
+
+        std::error_code backupEc;
+        fs::rename(finalPath, backupPath, backupEc);
+        if (backupEc) {
+            err << "error: cannot move existing output '" << path
+                << "' aside for replacement: " << backupEc.message() << "\n";
+            return false;
+        }
+
+        renameEc.clear();
+        fs::rename(tempPath, finalPath, renameEc);
+        if (!renameEc) {
+            fs::remove(backupPath, cleanupEc);
+            return true;
+        }
+
+        std::error_code restoreEc;
+        fs::rename(backupPath, finalPath, restoreEc);
+        err << "error: cannot replace '" << path << "': " << renameEc.message();
+        if (restoreEc)
+            err << "; additionally failed to restore previous output: " << restoreEc.message();
+        err << "\n";
+        return false;
     };
 
     const fs::path finalPath(path);
@@ -249,22 +309,11 @@ inline bool writeBinaryFileAtomically(const std::string &path,
             return false;
         }
 
-        std::error_code renameEc;
-        fs::rename(tempPath, finalPath, renameEc);
-        if (!renameEc)
-            return true;
-
-        // Windows rename doesn't replace existing files; POSIX/macOS does.
-        std::error_code removeEc;
-        fs::remove(finalPath, removeEc);
-        renameEc.clear();
-        fs::rename(tempPath, finalPath, renameEc);
-        if (!renameEc)
+        if (replaceWithTemp(tempPath, finalPath))
             return true;
 
         std::error_code cleanupEc;
         fs::remove(tempPath, cleanupEc);
-        err << "error: cannot replace '" << path << "': " << renameEc.message() << "\n";
         return false;
     }
 

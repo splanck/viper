@@ -1121,6 +1121,11 @@ static int rt_codeeditor_visual_rows_for_line(const vg_codeeditor_t *ce,
 ///          line height makes the test oscillate; bounded iteration is
 ///          better than risking an infinite loop in the paint path.
 /// @return Pixel width available for text after gutter and (if needed) scrollbar.
+/// @note Recomputed on each cursor-pixel / hit-test query (O(line_count), bounded by the 3-pass
+///       cap). The per-query cost is therefore bounded, but for very large buffers with frequent
+///       per-frame cursor queries the converged width could be cached and invalidated per layout
+///       generation. That cache would live on the vg_codeeditor_t (the lib layer), so it is
+///       intentionally out of scope for this runtime wrapper.
 static float rt_codeeditor_content_draw_width(const vg_codeeditor_t *ce) {
     if (!ce)
         return 0.0f;

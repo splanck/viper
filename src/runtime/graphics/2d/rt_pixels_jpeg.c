@@ -1123,6 +1123,14 @@ static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
                         uint32_t ifd_off = jpeg_tiff_read_u32(tiff + 4, big);
                         if (tiff_len >= 2u && ifd_off <= tiff_len - 2u) {
                             uint16_t count = jpeg_tiff_read_u16(tiff + ifd_off, big);
+                            /* Bound the entry count to what the segment can actually hold: a
+                             * forged 16-bit count (up to 65535) would otherwise drive a long
+                             * pointer-arithmetic loop before the per-iteration bounds check below
+                             * breaks. No OOB risk either way — this is DoS-amplification hardening,
+                             * relevant on the MJPEG path where every AVI frame may carry EXIF. */
+                            size_t exif_max_entries = (tiff_len - ifd_off - 2u) / 12u;
+                            if ((size_t)count > exif_max_entries)
+                                count = (uint16_t)exif_max_entries;
                             for (int ei = 0; ei < count; ei++) {
                                 size_t entry = ifd_off + 2 + (size_t)ei * 12;
                                 if (entry > tiff_len || tiff_len - entry < 12u)

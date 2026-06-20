@@ -31,7 +31,6 @@
 
 #include "codegen/common/ICE.hpp"
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -66,7 +65,10 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
                                              const std::vector<std::unordered_set<VregId>> &kill,
                                              std::size_t maxIter = 1000) {
     const std::size_t n = succs.size();
-    assert(gen.size() == n && kill.size() == n);
+    if (gen.size() != n || kill.size() != n) {
+        VIPER_ICE("liveness dataflow input shape mismatch: succs=" + std::to_string(n) +
+                  " gen=" + std::to_string(gen.size()) + " kill=" + std::to_string(kill.size()));
+    }
 
     DataflowResult<VregId> result;
     result.liveIn.assign(n, {});
@@ -87,9 +89,14 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
         for (std::size_t i = n; i-- > 0;) {
             // liveOut[i] = union of liveIn[s] for all successors s
             std::unordered_set<VregId> newOut;
-            for (std::size_t s : succs[i])
+            for (std::size_t s : succs[i]) {
+                if (s >= n) {
+                    VIPER_ICE("liveness dataflow successor index " + std::to_string(s) +
+                              " is out of range for " + std::to_string(n) + " blocks");
+                }
                 for (VregId v : result.liveIn[s])
                     newOut.insert(v);
+            }
 
             // liveIn[i] = gen[i] union (liveOut[i] - kill[i])
             std::unordered_set<VregId> newIn = gen[i];
@@ -120,8 +127,13 @@ inline std::vector<std::vector<std::size_t>> buildPredecessors(
     const std::vector<std::vector<std::size_t>> &succs) {
     std::vector<std::vector<std::size_t>> preds(succs.size());
     for (std::size_t i = 0; i < succs.size(); ++i)
-        for (std::size_t s : succs[i])
+        for (std::size_t s : succs[i]) {
+            if (s >= succs.size()) {
+                VIPER_ICE("predecessor build successor index " + std::to_string(s) +
+                          " is out of range for " + std::to_string(succs.size()) + " blocks");
+            }
             preds[s].push_back(i);
+        }
     return preds;
 }
 
