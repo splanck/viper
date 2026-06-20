@@ -53,6 +53,21 @@ const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index) {
     assert(index < instr.brArgs.size());
     return instr.brArgs[index];
 }
+
+/// @brief Append branch arguments while preserving all-or-none brArgs shape.
+/// @details The append API historically exposes @c brArgs.back() immediately
+///          after adding a target. Therefore appended targets always receive a
+///          bundle, and older no-bundle edges are backfilled with explicit empty
+///          lists so @ref Instr::brArgs remains aligned with @ref Instr::labels.
+/// @param instr Instruction whose branch-argument vector is updated.
+/// @param args Argument list for the newly appended edge.
+/// @pre The new branch label has already been appended to @ref Instr::labels.
+void appendBranchArgs(Instr &instr, std::vector<Value> args) {
+    if (instr.brArgs.empty() && !instr.labels.empty())
+        instr.brArgs.resize(instr.labels.size() - 1);
+
+    instr.brArgs.push_back(std::move(args));
+}
 } // namespace
 
 /// @brief Determine whether this instruction uses call metadata.
@@ -138,7 +153,7 @@ void Instr::setBranchTargets(Module &module,
 /// @post @ref labelSymbols is cleared because the appended label has no symbol.
 void Instr::addBranchTarget(std::string target, std::vector<Value> args) {
     labels.push_back(std::move(target));
-    brArgs.push_back(std::move(args));
+    appendBranchArgs(*this, std::move(args));
     labelSymbols.clear();
 }
 
@@ -149,7 +164,15 @@ void Instr::addBranchTarget(std::string target, std::vector<Value> args) {
 /// @post @ref labelSymbols remains aligned with @ref labels.
 void Instr::addBranchTarget(Module &module, std::string target, std::vector<Value> args) {
     labels.push_back(std::move(target));
-    brArgs.push_back(std::move(args));
+    appendBranchArgs(*this, std::move(args));
+    if (labelSymbols.size() + 1 != labels.size()) {
+        labelSymbols.clear();
+        labelSymbols.reserve(labels.size());
+        for (const auto &label : labels)
+            labelSymbols.push_back(label.empty() ? il::support::Symbol{}
+                                                 : module.internIdentifier(label));
+        return;
+    }
     labelSymbols.push_back(labels.back().empty() ? il::support::Symbol{}
                                                  : module.internIdentifier(labels.back()));
 }

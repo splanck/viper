@@ -23,6 +23,7 @@
 #include "il/core/Value.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -134,40 +135,54 @@ bool isSimpleCbrBlock(const il::core::BasicBlock &block) {
 }
 
 /// @brief Compute the arguments to pass to the threaded target.
-std::vector<il::core::Value> computeThreadedArgs(const il::core::BasicBlock &pred,
-                                                 const il::core::BasicBlock &intermediate,
-                                                 const il::core::BasicBlock &target,
-                                                 size_t predToIntermediateEdge,
-                                                 size_t targetBranchIdx) {
+std::optional<std::vector<il::core::Value>> computeThreadedArgs(
+    const il::core::BasicBlock &pred,
+    const il::core::BasicBlock &intermediate,
+    const il::core::BasicBlock &target,
+    size_t predToIntermediateEdge,
+    size_t targetBranchIdx) {
     const il::core::Instr *predTerm = findTerminator(pred);
     const il::core::Instr *intTerm = findTerminator(intermediate);
     if (!predTerm || !intTerm)
-        return {};
+        return std::nullopt;
 
     // Get args that pred passes to intermediate
     if (predToIntermediateEdge >= predTerm->labels.size() ||
-        predTerm->labels[predToIntermediateEdge] != intermediate.label ||
-        predToIntermediateEdge >= predTerm->brArgs.size())
-        return {};
+        predTerm->labels[predToIntermediateEdge] != intermediate.label)
+        return std::nullopt;
 
-    const auto &predToIntArgs = predTerm->brArgs[predToIntermediateEdge];
+    static const std::vector<il::core::Value> kNoArgs;
+    const std::vector<il::core::Value> *predToIntArgs = &kNoArgs;
+    if (predToIntermediateEdge < predTerm->brArgs.size()) {
+        predToIntArgs = &predTerm->brArgs[predToIntermediateEdge];
+    } else if (!intermediate.params.empty()) {
+        return std::nullopt;
+    }
+
+    if (predToIntArgs->size() != intermediate.params.size())
+        return std::nullopt;
 
     // Build mapping: intermediate param id -> value from pred
     std::unordered_map<unsigned, il::core::Value> mapping;
-    for (size_t i = 0; i < intermediate.params.size() && i < predToIntArgs.size(); ++i) {
-        mapping[intermediate.params[i].id] = predToIntArgs[i];
+    for (size_t i = 0; i < intermediate.params.size(); ++i) {
+        mapping[intermediate.params[i].id] = (*predToIntArgs)[i];
     }
 
     // Get args that intermediate would pass to target
-    if (targetBranchIdx >= intTerm->brArgs.size())
-        return {};
+    const std::vector<il::core::Value> *intToTargetArgs = &kNoArgs;
+    if (targetBranchIdx < intTerm->brArgs.size()) {
+        intToTargetArgs = &intTerm->brArgs[targetBranchIdx];
+    } else if (!target.params.empty()) {
+        return std::nullopt;
+    }
 
-    const auto &intToTargetArgs = intTerm->brArgs[targetBranchIdx];
+    if (intToTargetArgs->size() != target.params.size())
+        return std::nullopt;
 
     // Substitute values through the mapping
     std::vector<il::core::Value> result;
-    result.reserve(intToTargetArgs.size());
-    for (const auto &arg : intToTargetArgs) {
+    result.reserve(intToTargetArgs->size());
+    for (const auto &arg : *intToTargetArgs) {
         result.push_back(substituteValue(arg, mapping));
     }
 
@@ -257,6 +272,8 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
                 continue;
             auto newArgs = computeThreadedArgs(
                 *pred, block, *targetBlock, predEdge.edgeIndex, targetBranchIdx);
+            if (!newArgs)
+                continue;
 
             // Find which branch index in pred goes to this block
             il::core::Instr *predTerm = findTerminator(*pred);
@@ -267,7 +284,7 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
                 predTerm->labels[predEdge.edgeIndex] != block.label)
                 continue;
 
-            candidates.push_back({pred, &block, newTarget, newArgs, predEdge.edgeIndex});
+            candidates.push_back({pred, &block, newTarget, *newArgs, predEdge.edgeIndex});
         }
     }
 
@@ -282,7 +299,9 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
             predTerm->labels[candidate.predBranchIdx] = candidate.newTarget;
         }
 
-        if (candidate.predBranchIdx < predTerm->brArgs.size()) {
+        if (!candidate.newArgs.empty() || !predTerm->brArgs.empty()) {
+            if (predTerm->brArgs.size() < predTerm->labels.size())
+                predTerm->brArgs.resize(predTerm->labels.size());
             predTerm->brArgs[candidate.predBranchIdx] = candidate.newArgs;
         }
 

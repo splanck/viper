@@ -111,19 +111,6 @@ Expected<il::core::EffectAttrs> parseEffectAttrsSuffix(std::string_view text, un
     return attrs;
 }
 
-std::string stripDeclarationComment(std::string text) {
-    std::size_t comment = std::string::npos;
-    for (std::size_t candidate : {text.find('#'), text.find("//"), text.find(';')}) {
-        if (candidate != std::string::npos &&
-            (candidate == 0 || std::isspace(static_cast<unsigned char>(text[candidate - 1])))) {
-            comment = std::min(comment, candidate);
-        }
-    }
-    if (comment != std::string::npos)
-        text = trim(text.substr(0, comment));
-    return text;
-}
-
 std::string directiveKeyword(const std::string &line) {
     std::istringstream ls(line);
     std::string kw;

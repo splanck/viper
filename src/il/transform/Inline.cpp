@@ -24,11 +24,13 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 
 #include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <climits>
 #include <optional>
 #include <unordered_map>
@@ -79,8 +81,8 @@ struct InlineCost {
             cost -= static_cast<long long>(config.tinyFunctionBonus);
 
         // Constant arguments enable optimization
-        cost -= static_cast<long long>(constArgCount) *
-                static_cast<long long>(config.constArgBonus);
+        cost -=
+            static_cast<long long>(constArgCount) * static_cast<long long>(config.constArgBonus);
 
         // Penalty for functions with many nested calls (may cause code explosion)
         cost += static_cast<long long>(nestedCalls) * 2LL;
@@ -233,13 +235,64 @@ std::unordered_set<std::string> collectUsedValueNames(const Function &F) {
     return names;
 }
 
+/// @brief Normalize an SSA debug name into an IL identifier fragment.
+/// @details Inliner-derived names can originate from user-facing value names
+///          that already include the `%` sigil or from intermediate debug names
+///          that contain parser delimiters. This helper strips redundant temp
+///          sigils, replaces delimiter characters with underscores, and falls
+///          back to `tmp` if the result still cannot be parsed as an IL
+///          identifier fragment.
+/// @param base Candidate name to normalize.
+/// @return A verifier-valid identifier fragment suitable for Param::name.
+std::string canonicalValueName(std::string base) {
+    while (!base.empty() && base.front() == '%')
+        base.erase(base.begin());
+
+    if (il::io::isValidILIdentifier(base))
+        return base;
+
+    for (size_t index = 0; index < base.size(); ++index) {
+        const unsigned char ch = static_cast<unsigned char>(base[index]);
+        if (std::isspace(ch)) {
+            base[index] = '_';
+            continue;
+        }
+        switch (static_cast<char>(ch)) {
+            case '@':
+            case '^':
+            case '(':
+            case ')':
+            case '{':
+            case '}':
+            case '[':
+            case ']':
+            case ',':
+            case ':':
+            case ';':
+            case '"':
+            case '\\':
+                base[index] = '_';
+                break;
+            default:
+                break;
+        }
+        if (index == 0 && (ch == '%' || ch == '#'))
+            base[index] = '_';
+    }
+
+    if (!il::io::isValidILIdentifier(base))
+        return "tmp";
+    return base;
+}
+
 /// @brief Make a temp/param name unique within a function namespace.
+/// @details Canonicalises generated names to the parser/verifier identifier
+///          fragment rules before adding a numeric suffix for collisions.
 /// @param usedNames Set of names already reserved in the function. Updated in place.
-/// @param base Desired name.
-/// @return A unique name derived from @p base.
+/// @param base Desired name, with an optional leading `%` tolerated.
+/// @return A valid unique name derived from @p base.
 std::string reserveUniqueValueName(std::unordered_set<std::string> &usedNames, std::string base) {
-    if (base.empty())
-        base = "tmp";
+    base = canonicalValueName(std::move(base));
     if (!usedNames.contains(base)) {
         usedNames.insert(base);
         return base;
@@ -719,7 +772,8 @@ bool inlineCallSite(Function &caller,
             p.id = nextId++;
             valueMap[param.id] = Value::temp(p.id);
             std::string origName = lookupValueName(callee, param.id, param.name);
-            std::string uniqueName = origName + "_il" + std::to_string(p.id);
+            std::string uniqueName =
+                reserveUniqueValueName(usedValueNames, origName + "_il" + std::to_string(p.id));
             p.name = uniqueName; // Update the Param's own name to avoid collision
             clone.params.push_back(p);
             ensureValueName(caller, p.id, uniqueName);
@@ -783,9 +837,11 @@ bool inlineCallSite(Function &caller,
                 cloned.result = nextId;
                 valueMap[*CI.result] = Value::temp(nextId);
                 std::string origName = lookupValueName(callee, *CI.result, "");
-                std::string uniqueName = origName.empty()
-                                             ? ("t" + std::to_string(nextId))
-                                             : (origName + "_il" + std::to_string(nextId));
+                std::string uniqueName =
+                    origName.empty()
+                        ? reserveUniqueValueName(usedValueNames, "t" + std::to_string(nextId))
+                        : reserveUniqueValueName(usedValueNames,
+                                                 origName + "_il" + std::to_string(nextId));
                 ensureValueName(caller, nextId, uniqueName);
                 ++nextId;
             }

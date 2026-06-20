@@ -69,12 +69,14 @@ std::string trim(const std::string &text) {
     return text.substr(begin, end - begin);
 }
 
-/// @brief Strip inline comments from an IL source line.
-///
-/// `#` and `//` begin comments only when they occur outside a quoted string and
-/// are at the beginning of a line or preceded by whitespace. This preserves IL
-/// identifiers such as BASIC-style `%name#` and `@F#`.
-std::string stripInlineComment(const std::string &text) {
+/// @brief Strip comments while preserving quoted text.
+/// @details Shared implementation for normal IL source comments and module
+///          declaration comments.  The declaration mode additionally treats a
+///          semicolon at a token boundary as a comment marker.
+/// @param text Input source text.
+/// @param allowSemicolon Whether semicolon can introduce a comment.
+/// @return Prefix before the first matching comment marker.
+std::string stripCommentImpl(const std::string &text, bool allowSemicolon) {
     bool inString = false;
     bool escape = false;
     const auto beginsComment = [&](size_t pos) {
@@ -104,8 +106,31 @@ std::string stripInlineComment(const std::string &text) {
             return text.substr(0, i);
         if (ch == '/' && i + 1 < text.size() && text[i + 1] == '/' && beginsComment(i))
             return text.substr(0, i);
+        if (allowSemicolon && ch == ';' && beginsComment(i))
+            return text.substr(0, i);
     }
     return text;
+}
+
+/// @brief Strip inline comments from an IL source line.
+///
+/// `#` and `//` begin comments only when they occur outside a quoted string and
+/// are at the beginning of a line or preceded by whitespace. This preserves IL
+/// identifiers such as BASIC-style `%name#` and `@F#`.
+std::string stripInlineComment(const std::string &text) {
+    return stripCommentImpl(text, false);
+}
+
+/// @brief Strip comments from a module declaration while preserving quoted text.
+///
+/// This routine is used for directive tails such as extern attributes and global
+/// initializers where semicolon is also accepted as a comment introducer.  Comment
+/// markers inside double-quoted strings are ignored, including escaped quotes.
+///
+/// @param text Input declaration text.
+/// @return Prefix before the first declaration comment marker.
+std::string stripDeclarationComment(const std::string &text) {
+    return trim(stripCommentImpl(text, true));
 }
 
 /// @brief Read the next token from a comma-delimited instruction tail segment.

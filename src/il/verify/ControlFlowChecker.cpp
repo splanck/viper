@@ -71,6 +71,10 @@ Expected<void> validateBlockParams_impl(const Function &fn,
     std::unordered_set<std::string> paramNames;
     std::unordered_set<unsigned> seenParamIds;
     for (const auto &param : bb.params) {
+        if (!il::io::isValidILIdentifier(param.name))
+            return Expected<void>{
+                makeError({}, formatBlockDiag(fn, bb, "malformed param name %" + param.name))};
+
         if (!paramNames.insert(param.name).second)
             return Expected<void>{
                 makeError({}, formatBlockDiag(fn, bb, "duplicate param %" + param.name))};

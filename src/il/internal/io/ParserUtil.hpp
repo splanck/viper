@@ -38,6 +38,14 @@ std::string trim(const std::string &text);
 /// @return Text before the first inline comment marker.
 std::string stripInlineComment(const std::string &text);
 
+/// @brief Remove module-declaration trailing comments while preserving strings.
+/// @details Handles the same quoted-string and backslash escaping rules as
+///          @ref stripInlineComment, and additionally treats semicolons as
+///          declaration comments when they begin a line or follow whitespace.
+/// @param text Source declaration tail to process.
+/// @return Text before the first declaration comment marker.
+std::string stripDeclarationComment(const std::string &text);
+
 enum class TokenDelimiter {
     End,
     Comma,

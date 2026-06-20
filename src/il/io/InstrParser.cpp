@@ -93,13 +93,13 @@ class InstructionParseGuard {
     }
 
   private:
-    ParserState &state_;                                      ///< Parser state being guarded.
-    std::unordered_map<std::string, unsigned> tempIds_;       ///< Saved temp-name mapping.
-    std::unordered_set<std::string> forwardTempNames_;        ///< Saved forward refs.
-    unsigned nextTemp_{0};                                    ///< Saved next temp id.
-    std::vector<ParserState::PendingBr> pendingBrs_;          ///< Saved pending branches.
-    std::optional<std::vector<std::string>> valueNames_;      ///< Saved value-name table.
-    bool committed_{false};                                   ///< True after successful append.
+    ParserState &state_;                                 ///< Parser state being guarded.
+    std::unordered_map<std::string, unsigned> tempIds_;  ///< Saved temp-name mapping.
+    std::unordered_set<std::string> forwardTempNames_;   ///< Saved forward refs.
+    unsigned nextTemp_{0};                               ///< Saved next temp id.
+    std::vector<ParserState::PendingBr> pendingBrs_;     ///< Saved pending branches.
+    std::optional<std::vector<std::string>> valueNames_; ///< Saved value-name table.
+    bool committed_{false};                              ///< True after successful append.
 };
 
 /// @brief Ensures an instruction matches the arity described by its opcode.
@@ -378,6 +378,8 @@ Expected<void> parseWithMetadata(Opcode opcode,
                 auto parsed = operandParser.parseSwitchTargets(remainder);
                 if (!parsed)
                     return parsed;
+                if (in.brArgs.empty() && !in.labels.empty())
+                    in.brArgs.resize(in.labels.size());
                 return {};
             }
         }

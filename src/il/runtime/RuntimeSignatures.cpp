@@ -2671,6 +2671,7 @@ const RuntimeDescriptor *findRuntimeDescriptor(RuntimeFeature feature) {
 const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures() {
     static const std::unordered_map<std::string_view, RuntimeSignature> table = [] {
         std::unordered_map<std::string_view, RuntimeSignature> map;
+        map.reserve(runtimeRegistry().size());
         for (const auto &entry : runtimeRegistry())
             map.emplace(entry.name, entry.signature);
         return map;

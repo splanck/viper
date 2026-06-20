@@ -34,6 +34,7 @@
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 using namespace il::core;
@@ -1107,7 +1108,15 @@ TEST(ILCorrectness, SerializerMarksMalformedOperands) {
 
     Module module;
     module.functions.push_back(std::move(fn));
-    const std::string text = il::io::Serializer::toString(module);
+    bool threw = false;
+    try {
+        (void)il::io::Serializer::toString(module);
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    EXPECT_TRUE(threw);
+
+    const std::string text = il::io::Serializer::toString(module, il::io::Serializer::Mode::Debug);
     EXPECT_CONTAINS(text, "br ; missing label");
     EXPECT_CONTAINS(text, "switch.i32 ; missing scrutinee");
     EXPECT_CONTAINS(text, "call.indirect ; missing callee");

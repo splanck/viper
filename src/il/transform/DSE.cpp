@@ -157,7 +157,7 @@ bool runDSE(Function &F, AnalysisManager &AM) {
     // Acquire BasicAA when available
     viper::analysis::BasicAA &AA =
         AM.getFunctionResult<viper::analysis::BasicAA>(kAnalysisBasicAA, F);
-    bool changed = false;
+    std::vector<InstructionSite> toRemove;
 
     for (auto &B : F.blocks) {
         // Backward scan in the block
@@ -204,9 +204,7 @@ bool runDSE(Function &F, AnalysisManager &AM) {
                 }
 
                 if (dead && isStoreKnownNonTrapping(F, I)) {
-                    B.instructions.erase(B.instructions.begin() + static_cast<std::size_t>(i));
-                    changed = true;
-                    // Note: do not advance i (the loop decrements i) — keep indices consistent
+                    toRemove.emplace_back(&B, i);
                     continue;
                 }
                 // Not dead: mark this address as killed for earlier stores
@@ -216,7 +214,7 @@ bool runDSE(Function &F, AnalysisManager &AM) {
         }
     }
 
-    return changed;
+    return eraseInstructionSites(F, toRemove) != 0;
 }
 
 //===----------------------------------------------------------------------===//

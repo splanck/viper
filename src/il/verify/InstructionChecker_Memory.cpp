@@ -56,28 +56,6 @@ bool addOverflows(long long lhs, long long rhs) {
            (rhs < 0 && lhs < std::numeric_limits<long long>::min() - rhs);
 }
 
-std::optional<long long> typeSizeBytes(Type::Kind kind) {
-    switch (kind) {
-        case Type::Kind::I1:
-            return 1;
-        case Type::Kind::I16:
-            return 2;
-        case Type::Kind::I32:
-            return 4;
-        case Type::Kind::I64:
-        case Type::Kind::F64:
-        case Type::Kind::Ptr:
-        case Type::Kind::Str:
-        case Type::Kind::ResumeTok:
-            return 8;
-        case Type::Kind::Error:
-            return 24;
-        case Type::Kind::Void:
-            return std::nullopt;
-    }
-    return std::nullopt;
-}
-
 Expected<void> rejectDirectGlobalAddress(const VerifyCtx &ctx,
                                          const Value &ptr,
                                          std::string_view operation) {
@@ -133,7 +111,7 @@ Expected<void> checkStackAccessBounds(const VerifyCtx &ctx,
                                       const Value &ptr,
                                       Type::Kind accessKind,
                                       std::string_view operation) {
-    const auto size = typeSizeBytes(accessKind);
+    const auto size = il::core::storageSizeBytes(accessKind);
     if (!size)
         return fail(ctx, std::string(operation) + " type has no storage size");
 

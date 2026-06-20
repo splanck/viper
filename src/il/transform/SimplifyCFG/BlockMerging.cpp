@@ -61,7 +61,7 @@ std::unordered_map<std::string, PredInfo> buildPredMap(il::core::Function &F) {
             auto &info = predMap[label];
             ++info.edgeCount;
             // Record first non-self predecessor as the merge candidate.
-            if (info.edgeCount == 1 && label != candidate.label) {
+            if (!info.pred && label != candidate.label) {
                 info.pred = &candidate;
                 info.predTerm = term;
             }
@@ -137,6 +137,9 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx,
     }
 
     if (block.params.size() != incomingArgs.size())
+        return false;
+
+    if (!block.params.empty() && blockParamsUsedOutside(F, block))
         return false;
 
     std::unordered_map<unsigned, il::core::Value> substitution;

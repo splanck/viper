@@ -34,6 +34,7 @@
 #include "il/verify/VerifierTable.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <string>
@@ -489,8 +490,9 @@ bool fullyUnrollLoop(Function &function,
     if (currentValues.size() != header.params.size())
         return false;
 
-    // Find insertion point (before preheader terminator)
-    size_t insertIdx = preheader->instructions.size() - 1;
+    // Collect cloned instructions and insert once before the preheader terminator.
+    std::vector<Instr> clonedInstrs;
+    clonedInstrs.reserve(bodyInstrs.size() * counted.tripCount);
 
     unsigned nextId = viper::il::nextTempId(function);
 
@@ -524,7 +526,7 @@ bool fullyUnrollLoop(Function &function,
             }
         }
 
-        // Clone and insert body instructions
+        // Clone body instructions for this iteration.
         for (const Instr &orig : bodyInstrs) {
             Instr cloned = orig;
 
@@ -551,9 +553,7 @@ bool fullyUnrollLoop(Function &function,
                 valueMap[oldId] = Value::temp(newId);
             }
 
-            preheader->instructions.insert(
-                preheader->instructions.begin() + static_cast<long>(insertIdx), std::move(cloned));
-            ++insertIdx;
+            clonedInstrs.push_back(std::move(cloned));
         }
 
         // Compute next iteration values
@@ -573,6 +573,11 @@ bool fullyUnrollLoop(Function &function,
             }
         }
     }
+
+    const size_t insertIdx = preheader->instructions.size() - 1;
+    preheader->instructions.insert(preheader->instructions.begin() + static_cast<long>(insertIdx),
+                                   std::make_move_iterator(clonedInstrs.begin()),
+                                   std::make_move_iterator(clonedInstrs.end()));
 
     // Map final exit args from the post-unroll header parameter values.
     // The previous iteration-local map is stale after currentValues advances.

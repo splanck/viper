@@ -85,6 +85,8 @@ TypeInference::TypeInference(std::unordered_map<unsigned, Type> &temps,
 /// @note Invariant: queries do not mutate @ref temps_ nor @ref defined_, keeping
 ///       lookup operations side-effect free.
 Type TypeInference::valueType(const Value &value, bool *missing) const {
+    if (missing)
+        *missing = false;
     switch (value.kind) {
         case Value::Kind::Temp: {
             auto it = temps_.find(value.id);
@@ -112,25 +114,7 @@ Type TypeInference::valueType(const Value &value, bool *missing) const {
 /// @return Size in bytes or zero if the type has no storage.
 /// @note This helper does not consult or mutate verifier state.
 size_t TypeInference::typeSize(Type::Kind kind) {
-    switch (kind) {
-        case Type::Kind::I1:
-            return 1;
-        case Type::Kind::I16:
-            return 2;
-        case Type::Kind::I32:
-            return 4;
-        case Type::Kind::I64:
-        case Type::Kind::F64:
-        case Type::Kind::Ptr:
-        case Type::Kind::Str:
-        case Type::Kind::ResumeTok:
-            return 8;
-        case Type::Kind::Error:
-            return 24;
-        case Type::Kind::Void:
-            return 0;
-    }
-    return 0;
+    return il::core::storageSizeBytes(kind).value_or(0);
 }
 
 /// @brief Record the result type of @p instr, updating the tracked temporaries.

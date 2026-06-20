@@ -21,16 +21,19 @@
 #include "il/transform/PipelineExecutor.hpp"
 
 #include "il/core/Module.hpp"
-#include "il/io/Serializer.hpp"
 #include "viper/pass/PassManager.hpp"
 
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 
@@ -50,14 +53,198 @@ bool isCleanupPass(std::string_view passId) {
     return passId == "dce" || passId == "simplify-cfg" || passId == "late-cleanup";
 }
 
-/// @brief Capture a deterministic textual snapshot of a module's semantic IR.
+constexpr std::uint64_t kFingerprintOffset = 1469598103934665603ull;
+constexpr std::uint64_t kFingerprintPrime = 1099511628211ull;
+
+/// @brief Mix one integer payload into a structural IR fingerprint.
+/// @details Uses the FNV-1a recurrence with a final avalanche-style perturbation
+///          for multi-byte scalar values. The fingerprint is only used for
+///          in-process before/after equality, not for persistence or security.
+/// @param hash Running fingerprint state.
+/// @param value Payload to incorporate.
+void mixFingerprint(std::uint64_t &hash, std::uint64_t value) {
+    hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+    hash *= kFingerprintPrime;
+}
+
+/// @brief Mix any non-bool integral payload into a structural IR fingerprint.
+/// @param hash Running fingerprint state.
+/// @param value Integral payload to incorporate.
+template <typename T,
+          typename = std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>>>
+void mixFingerprint(std::uint64_t &hash, T value) {
+    mixFingerprint(hash, static_cast<std::uint64_t>(value));
+}
+
+/// @brief Mix a boolean payload into a structural IR fingerprint.
+/// @param hash Running fingerprint state.
+/// @param value Boolean to incorporate.
+void mixFingerprint(std::uint64_t &hash, bool value) {
+    mixFingerprint(hash, value ? 1ull : 0ull);
+}
+
+/// @brief Mix a string payload into a structural IR fingerprint.
+/// @param hash Running fingerprint state.
+/// @param value Text to incorporate.
+void mixFingerprint(std::uint64_t &hash, std::string_view value) {
+    mixFingerprint(hash, static_cast<std::uint64_t>(value.size()));
+    for (unsigned char ch : value) {
+        hash ^= ch;
+        hash *= kFingerprintPrime;
+    }
+}
+
+/// @brief Mix an IL type payload into a structural IR fingerprint.
+/// @param hash Running fingerprint state.
+/// @param type Type to incorporate.
+void mixTypeFingerprint(std::uint64_t &hash, const core::Type &type) {
+    mixFingerprint(hash, static_cast<std::uint64_t>(type.kind));
+}
+
+/// @brief Mix an IL value payload into a structural IR fingerprint.
+/// @details Floating constants are mixed by bit representation so values such as
+///          negative zero remain distinguishable from positive zero.
+/// @param hash Running fingerprint state.
+/// @param value Value to incorporate.
+void mixValueFingerprint(std::uint64_t &hash, const core::Value &value) {
+    mixFingerprint(hash, static_cast<std::uint64_t>(value.kind));
+    switch (value.kind) {
+        case core::Value::Kind::Temp:
+            mixFingerprint(hash, value.id);
+            break;
+        case core::Value::Kind::ConstInt:
+            mixFingerprint(hash, static_cast<std::uint64_t>(value.i64));
+            mixFingerprint(hash, value.isBool);
+            break;
+        case core::Value::Kind::ConstFloat: {
+            static_assert(sizeof(double) == sizeof(std::uint64_t));
+            std::uint64_t bits = 0;
+            std::memcpy(&bits, &value.f64, sizeof(bits));
+            mixFingerprint(hash, bits);
+            break;
+        }
+        case core::Value::Kind::ConstStr:
+        case core::Value::Kind::GlobalAddr:
+            mixFingerprint(hash, value.str);
+            break;
+        case core::Value::Kind::NullPtr:
+            break;
+    }
+}
+
+/// @brief Mix a parameter declaration into a structural IR fingerprint.
+/// @param hash Running fingerprint state.
+/// @param param Parameter to incorporate.
+void mixParamFingerprint(std::uint64_t &hash, const core::Param &param) {
+    mixFingerprint(hash, param.name);
+    mixTypeFingerprint(hash, param.type);
+    mixFingerprint(hash, param.id);
+    mixFingerprint(hash, param.Attrs.noalias);
+    mixFingerprint(hash, param.Attrs.nocapture);
+    mixFingerprint(hash, param.Attrs.nonnull);
+}
+
+/// @brief Mix an instruction into a structural IR fingerprint.
+/// @param hash Running fingerprint state.
+/// @param instr Instruction to incorporate.
+void mixInstructionFingerprint(std::uint64_t &hash, const core::Instr &instr) {
+    mixFingerprint(hash, instr.result.has_value());
+    if (instr.result)
+        mixFingerprint(hash, *instr.result);
+    mixFingerprint(hash, static_cast<std::uint64_t>(instr.op));
+    mixTypeFingerprint(hash, instr.type);
+    mixFingerprint(hash, instr.operands.size());
+    for (const auto &operand : instr.operands)
+        mixValueFingerprint(hash, operand);
+    mixFingerprint(hash, instr.callee);
+    mixFingerprint(hash, instr.labels.size());
+    for (const auto &label : instr.labels)
+        mixFingerprint(hash, label);
+    mixFingerprint(hash, instr.brArgs.size());
+    for (const auto &argList : instr.brArgs) {
+        mixFingerprint(hash, argList.size());
+        for (const auto &arg : argList)
+            mixValueFingerprint(hash, arg);
+    }
+    mixFingerprint(hash, instr.loc.file_id);
+    mixFingerprint(hash, instr.loc.line);
+    mixFingerprint(hash, instr.loc.column);
+    mixFingerprint(hash, instr.CallAttr.nothrow);
+    mixFingerprint(hash, instr.CallAttr.readonly);
+    mixFingerprint(hash, instr.CallAttr.pure);
+    mixFingerprint(hash, instr.hasIndirectSignature);
+    mixTypeFingerprint(hash, instr.indirectRetType);
+    mixFingerprint(hash, instr.indirectParamTypes.size());
+    for (const auto &type : instr.indirectParamTypes)
+        mixTypeFingerprint(hash, type);
+    mixFingerprint(hash, instr.indirectIsVarArg);
+}
+
+/// @brief Capture a deterministic structural fingerprint of a module's semantic IR.
 /// @details The pass executor uses this to distinguish actual IR mutation from
-///          analysis invalidation metadata. Canonical serialization is chosen so
-///          the comparison is stable across equivalent output formatting choices.
-/// @param module Module to snapshot before or after a pass.
-/// @return Canonical textual IL for exact before/after comparison.
-std::string moduleStateSnapshot(const core::Module &module) {
-    return il::io::Serializer::toString(module, il::io::Serializer::Mode::Canonical);
+///          analysis invalidation metadata. It intentionally ignores interned
+///          symbol sidecars because they mirror string identifiers and are
+///          refreshed by the executor after each pass.
+/// @param module Module to fingerprint before or after a pass.
+/// @return Stable in-process fingerprint of functions, globals, externs, and bodies.
+std::uint64_t moduleStateFingerprint(const core::Module &module) {
+    std::uint64_t hash = kFingerprintOffset;
+    mixFingerprint(hash, module.version);
+    mixFingerprint(hash, module.target.has_value());
+    if (module.target)
+        mixFingerprint(hash, *module.target);
+
+    mixFingerprint(hash, module.externs.size());
+    for (const auto &ext : module.externs) {
+        mixFingerprint(hash, ext.name);
+        mixTypeFingerprint(hash, ext.retType);
+        mixFingerprint(hash, ext.params.size());
+        for (const auto &type : ext.params)
+            mixTypeFingerprint(hash, type);
+        mixFingerprint(hash, ext.Attrs.nothrow);
+        mixFingerprint(hash, ext.Attrs.readonly);
+        mixFingerprint(hash, ext.Attrs.pure);
+    }
+
+    mixFingerprint(hash, module.globals.size());
+    for (const auto &global : module.globals) {
+        mixFingerprint(hash, global.name);
+        mixTypeFingerprint(hash, global.type);
+        mixFingerprint(hash, global.init);
+        mixFingerprint(hash, static_cast<std::uint64_t>(global.linkage));
+        mixFingerprint(hash, global.isConst);
+        mixFingerprint(hash, global.hasInitializer);
+    }
+
+    mixFingerprint(hash, module.functions.size());
+    for (const auto &fn : module.functions) {
+        mixFingerprint(hash, fn.name);
+        mixTypeFingerprint(hash, fn.retType);
+        mixFingerprint(hash, fn.params.size());
+        for (const auto &param : fn.params)
+            mixParamFingerprint(hash, param);
+        mixFingerprint(hash, fn.isVarArg);
+        mixFingerprint(hash, static_cast<std::uint64_t>(fn.callingConv));
+        mixFingerprint(hash, static_cast<std::uint64_t>(fn.linkage));
+        mixFingerprint(hash, fn.Attrs.nothrow);
+        mixFingerprint(hash, fn.Attrs.readonly);
+        mixFingerprint(hash, fn.Attrs.pure);
+        mixFingerprint(hash, fn.valueNames.size());
+        for (const auto &name : fn.valueNames)
+            mixFingerprint(hash, name);
+        mixFingerprint(hash, fn.blocks.size());
+        for (const auto &block : fn.blocks) {
+            mixFingerprint(hash, block.label);
+            mixFingerprint(hash, block.params.size());
+            for (const auto &param : block.params)
+                mixParamFingerprint(hash, param);
+            mixFingerprint(hash, block.terminated);
+            mixFingerprint(hash, block.instructions.size());
+            for (const auto &instr : block.instructions)
+                mixInstructionFingerprint(hash, instr);
+        }
+    }
+    return hash;
 }
 } // namespace
 
@@ -128,7 +315,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                 if (!factory)
                     return false;
 
-                const std::string beforeState = moduleStateSnapshot(module);
+                const std::uint64_t beforeState = moduleStateFingerprint(module);
                 bool executed = false;
                 bool passChanged = false;
                 AnalysisCounts parallelAnalysisCounts{};
@@ -195,7 +382,8 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             for (auto &worker : workers)
                                 worker.join();
                             for (const AnalysisCounts &counts : workerCounts) {
-                                parallelAnalysisCounts.moduleComputations += counts.moduleComputations;
+                                parallelAnalysisCounts.moduleComputations +=
+                                    counts.moduleComputations;
                                 parallelAnalysisCounts.functionComputations +=
                                     counts.functionComputations;
                             }
@@ -216,7 +404,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 
                 if (!executed)
                     return false;
-                passChanged = moduleStateSnapshot(module) != beforeState;
+                passChanged = moduleStateFingerprint(module) != beforeState;
                 module.internOwnedIdentifiers();
 
                 if (collectMetrics)

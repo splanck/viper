@@ -56,7 +56,7 @@ il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
             line.erase(0, 3);
         }
         line = trim(stripInlineComment(line));
-        if (line.empty() || line.rfind("//", 0) == 0 || (!line.empty() && line[0] == '#'))
+        if (line.empty())
             continue;
         if (auto result = detail::parseModuleHeader_E(is, line, st); !result)
             return result;

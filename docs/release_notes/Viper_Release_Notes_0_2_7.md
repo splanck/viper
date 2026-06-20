@@ -34,13 +34,13 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 152 | +152 |
+| Commits | — | 154 | +154 |
 | Source files | 3,096 | 3,363 | +267 |
-| Production SLOC | 669K | 737K | +68K |
+| Production SLOC | 669K | 738K | +69K |
 | Test SLOC | 278K | 300K | +22K |
 | Demo SLOC | 192K | 196K | +4K |
 
-Counts via `scripts/count_sloc.sh` (production 736,676 / test 300,447 / demo 196,188 / source files 3,363); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 738,310 / test 300,449 / demo 196,188 / source files 3,363); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -88,7 +88,7 @@ Counts via `scripts/count_sloc.sh` (production 736,676 / test 300,447 / demo 196
 - The EH `resumetok` becomes a linear handler-provenance capability (ADR 0005): exception dispatch is its sole producer, and new `resume_token_mismatch`/`handler_invalid_entry`/`resume_token_escape` diagnostics reject forged or stale tokens at verify time. Native EH lowering seeds each handler with its post-dispatch stack so a trap inside a catch/finally resolves to a concrete outer frame.
 - A VM-neutral `ScalarOps` kernel now backs the tree-walking VM and both bytecode engines, so one IL module yields identical values and trap kinds across every execution mode (bytecode format bumped to v3). `Function::blocks`/`BasicBlock::instructions` move to a stable-address `StableList` with interned `Symbol` handles so references survive insertion and erasure.
 - Shared `AllocaRoots` helpers make alias analysis conservative for unknown calls, ConstFold/SCCP/Peephole normalize integer folds to fixed result widths, and CheckOpt shares one checked-range implementation with the builder — now demoting proven-safe overflow-checked i64 arithmetic to plain ops.
-- Selection, encoding, Win64 unwind, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — and the native linker hardens relocation ordering, symbol resolution, and PE-image writing.
+- Selection, encoding, Win64 unwind, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — and the native linker hardens its four object readers, relocation ordering, trampoline-island growth, symbol resolution, and PE-image writing with checked count arithmetic and validated section bounds.
 - **Codegen performance.** AArch64 unlocks all sixteen argument registers via clobber-aware eviction and collapses N block reloads to one resident home; x86-64 eliminates duplicated end-of-block spill stores, models memory dependences precisely, and stops treating LEA as a barrier. Six correctness fixes accompany the work.
 
 ### Bytecode VM and support libraries
@@ -109,7 +109,7 @@ Counts via `scripts/count_sloc.sh` (production 736,676 / test 300,447 / demo 196
 
 ### Frontends, language servers, and CLI
 
-- BASIC adopts overflow-aware numeric, line-label, and `SELECT CASE` parsing and accepts numbered `DIM` fields inside `CLASS` bodies; Zia restores circular and self binds by treating an in-progress bind as a known dependency rather than a fatal `V1000`.
+- BASIC arrays move to inclusive upper bounds with overflow-checked row-major indexing and multidimensional `REDIM`/`LBOUND`/`UBOUND`, over a case-insensitive symbol table that preserves type suffixes and retain-before-release string/object reassignment; overflow-aware numeric, line-label, and `SELECT CASE` parsing and numbered `DIM` fields inside `CLASS` bodies round out the pass. Zia restores circular and self binds by treating an in-progress bind as a known dependency rather than a fatal `V1000`.
 - Zia gains `Map[Integer, T]` over the integer-keyed `IntMap` runtime (string-keyed `Map` unchanged), enforcing declared key types and routing map literals, indexing, methods, optionals, and `for`-in iteration through the right helpers; source files may now omit the module header, defaulting to `Main`.
 - The Zia parser and lexer tighten: CR/CRLF normalization, ranged diagnostics for malformed literals and unterminated strings/comments, capped numeric-literal exponents, overflow-rejected fixed-array counts, bounded lookahead, error recovery across a missing enum-variant comma and untyped lambdas, and corrected precedence for shifts, bitwise operators, coalescing, ranges, and ternaries; semantic checks add namespace-alias and imported-symbol conflict detection, inheritance-aware private/field access, scope-qualified definite initialization, underscore-prefixed unused parameters, and duplicate-local/bodyless-function rejection.
 - The Text/Time/IO surface closes documented edge cases (`TextWrap` at width ≤ 0, locale-independent `Json.Format`, embedded-NUL rejection in `DateOnly`/`DateTime`).

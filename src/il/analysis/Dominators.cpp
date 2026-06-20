@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <unordered_set>
 
 namespace viper::analysis {
@@ -115,18 +116,34 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F) {
             // chain using block visit indexes until the nearest common
             // ancestor is located.
             auto intersect = [&](il::core::Block *b1, il::core::Block *b2) {
+                auto blockIndex = [&](il::core::Block *block) -> std::optional<std::size_t> {
+                    auto it = index.find(block);
+                    if (it == index.end())
+                        return std::nullopt;
+                    return it->second;
+                };
                 while (b1 != b2) {
-                    while (index[b1] > index[b2]) {
+                    auto b1Index = blockIndex(b1);
+                    auto b2Index = blockIndex(b2);
+                    if (!b1Index || !b2Index)
+                        return b2;
+                    while (*b1Index > *b2Index) {
                         auto it = DT.idom.find(b1);
                         if (it == DT.idom.end() || !it->second)
                             return b2; // Broken idom chain — bail to other branch
                         b1 = it->second;
+                        b1Index = blockIndex(b1);
+                        if (!b1Index)
+                            return b2;
                     }
-                    while (index[b2] > index[b1]) {
+                    while (*b2Index > *b1Index) {
                         auto it = DT.idom.find(b2);
                         if (it == DT.idom.end() || !it->second)
                             return b1; // Broken idom chain — bail to other branch
                         b2 = it->second;
+                        b2Index = blockIndex(b2);
+                        if (!b2Index)
+                            return b1;
                     }
                 }
                 return b1;

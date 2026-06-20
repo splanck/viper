@@ -39,7 +39,7 @@ namespace viper::analysis {
 ///          the full instruction object lifetime.
 struct AllocaRootDefInfo {
     il::core::Opcode op{il::core::Opcode::Count}; ///< Defining opcode.
-    std::vector<il::core::Value> operands;         ///< Defining instruction operands.
+    std::vector<il::core::Value> operands;        ///< Defining instruction operands.
 };
 
 /// @brief Maps a temporary id to the set of alloca ids it may derive from.
@@ -48,9 +48,10 @@ using AllocaRootMap = std::unordered_map<unsigned, std::unordered_set<unsigned>>
 /// @brief Collect temporary definitions required for alloca-root analysis.
 /// @param F Function to scan.
 /// @return Map from result temporary id to opcode/operand summary.
-inline std::unordered_map<unsigned, AllocaRootDefInfo>
-collectAllocaRootDefs(const il::core::Function &F) {
+inline std::unordered_map<unsigned, AllocaRootDefInfo> collectAllocaRootDefs(
+    const il::core::Function &F) {
     std::unordered_map<unsigned, AllocaRootDefInfo> defs;
+    defs.reserve(F.valueNames.size());
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             if (I.result)
@@ -62,31 +63,65 @@ collectAllocaRootDefs(const il::core::Function &F) {
 
 /// @brief Compute alloca roots for temporaries and forwarded block parameters.
 /// @details Roots are propagated to GEP results from their base operand and to
-///          block parameters from predecessor branch arguments. The fixed-point
-///          loop handles chains of derived pointers and CFG edges in any order.
+///          block parameters from predecessor branch arguments. A reverse-use
+///          worklist propagates only from temporaries whose root set changed,
+///          avoiding repeated full scans of every definition and edge.
 /// @param F Function whose block parameters and terminators are inspected.
 /// @param defs Definition summary from @ref collectAllocaRootDefs.
 /// @return Temporary-to-alloca-root map.
 inline AllocaRootMap computeAllocaRoots(
-    const il::core::Function &F,
-    const std::unordered_map<unsigned, AllocaRootDefInfo> &defs) {
+    const il::core::Function &F, const std::unordered_map<unsigned, AllocaRootDefInfo> &defs) {
     using namespace il::core;
 
     AllocaRootMap roots;
     roots.reserve(defs.size());
-    for (const auto &[id, def] : defs)
+
+    std::vector<unsigned> worklist;
+    worklist.reserve(defs.size());
+
+    auto seedRoot = [&](unsigned id) {
+        if (roots[id].insert(id).second)
+            worklist.push_back(id);
+    };
+
+    for (const auto &[id, def] : defs) {
         if (def.op == Opcode::Alloca)
-            roots[id].insert(id);
+            seedRoot(id);
+    }
+
+    std::unordered_map<unsigned, std::vector<unsigned>> reverseUsers;
+    reverseUsers.reserve(defs.size());
+    for (const auto &[id, def] : defs) {
+        if (def.op == Opcode::GEP && !def.operands.empty() &&
+            def.operands[0].kind == Value::Kind::Temp)
+            reverseUsers[def.operands[0].id].push_back(id);
+    }
 
     std::unordered_map<std::string, const BasicBlock *> blocksByLabel;
     blocksByLabel.reserve(F.blocks.size());
     for (const auto &B : F.blocks)
         blocksByLabel.emplace(B.label, &B);
 
-    auto mergeRoots = [&](unsigned dst, const Value &src) {
-        if (src.kind != Value::Kind::Temp)
-            return false;
-        auto srcIt = roots.find(src.id);
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            for (std::size_t edge = 0; edge < I.labels.size() && edge < I.brArgs.size(); ++edge) {
+                auto targetIt = blocksByLabel.find(I.labels[edge]);
+                if (targetIt == blocksByLabel.end())
+                    continue;
+
+                const auto *target = targetIt->second;
+                const auto &args = I.brArgs[edge];
+                const std::size_t count = std::min(args.size(), target->params.size());
+                for (std::size_t idx = 0; idx < count; ++idx) {
+                    if (args[idx].kind == Value::Kind::Temp)
+                        reverseUsers[args[idx].id].push_back(target->params[idx].id);
+                }
+            }
+        }
+    }
+
+    auto mergeRootsFromTemp = [&](unsigned dst, unsigned src) {
+        auto srcIt = roots.find(src);
         if (srcIt == roots.end())
             return false;
         auto &dstRoots = roots[dst];
@@ -96,28 +131,23 @@ inline AllocaRootMap computeAllocaRoots(
         return changed;
     };
 
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (const auto &[id, def] : defs)
-            if (def.op == Opcode::GEP && !def.operands.empty())
-                changed |= mergeRoots(id, def.operands[0]);
+    while (!worklist.empty()) {
+        const unsigned src = worklist.back();
+        worklist.pop_back();
 
-        for (const auto &B : F.blocks) {
-            for (const auto &I : B.instructions) {
-                for (std::size_t edge = 0; edge < I.labels.size() && edge < I.brArgs.size();
-                     ++edge) {
-                    auto targetIt = blocksByLabel.find(I.labels[edge]);
-                    if (targetIt == blocksByLabel.end())
-                        continue;
-                    const auto *target = targetIt->second;
-                    const auto &args = I.brArgs[edge];
-                    const std::size_t count = std::min(args.size(), target->params.size());
-                    for (std::size_t idx = 0; idx < count; ++idx)
-                        changed |= mergeRoots(target->params[idx].id, args[idx]);
-                }
-            }
+        auto usersIt = reverseUsers.find(src);
+        if (usersIt == reverseUsers.end())
+            continue;
+
+        for (unsigned dst : usersIt->second) {
+            if (mergeRootsFromTemp(dst, src))
+                worklist.push_back(dst);
         }
+    }
+
+    for (const auto &[id, def] : defs) {
+        if (def.op == Opcode::Alloca && !roots.contains(id))
+            roots[id].insert(id);
     }
 
     return roots;
@@ -130,10 +160,10 @@ inline AllocaRootMap computeAllocaRoots(
 /// @param defs Definition summary from @ref collectAllocaRootDefs.
 /// @param depth Internal recursion depth; callers should omit this.
 /// @return Root alloca id, or nullopt if no unique alloca root is found.
-inline std::optional<unsigned>
-getAllocaId(const il::core::Value &ptr,
-            const std::unordered_map<unsigned, AllocaRootDefInfo> &defs,
-            unsigned depth = 0) {
+inline std::optional<unsigned> getAllocaId(
+    const il::core::Value &ptr,
+    const std::unordered_map<unsigned, AllocaRootDefInfo> &defs,
+    unsigned depth = 0) {
     using namespace il::core;
 
     if (ptr.kind != Value::Kind::Temp || depth > 8)
@@ -167,19 +197,25 @@ inline bool valueContainsAllocaRoot(const il::core::Value &value,
 }
 
 /// @brief Check whether an alloca-derived address escapes the function.
-/// @details Escapes are calls receiving the address, stores of the address into
-///          memory, and returns of the address. Branch argument forwarding is
-///          already accounted for in @p roots.
+/// @details Escapes are effectful calls receiving the address, stores of the
+///          address into memory, and returns of the address. Explicitly pure
+///          calls are ignored because capturing or dereferencing the pointer
+///          would contradict the call's no-side-effect/no-memory contract.
+///          Branch argument forwarding is already accounted for in @p roots.
 /// @param F Function to inspect.
 /// @param allocaId Root alloca id.
 /// @param roots Root map from @ref computeAllocaRoots.
 /// @return True when the alloca address may escape.
-inline bool allocaEscapes(const il::core::Function &F, unsigned allocaId, const AllocaRootMap &roots) {
+inline bool allocaEscapes(const il::core::Function &F,
+                          unsigned allocaId,
+                          const AllocaRootMap &roots) {
     using namespace il::core;
 
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
+                if (I.CallAttr.pure)
+                    continue;
                 for (const auto &op : I.operands)
                     if (valueContainsAllocaRoot(op, allocaId, roots))
                         return true;
@@ -203,10 +239,10 @@ inline bool allocaEscapes(const il::core::Function &F, unsigned allocaId, const 
 /// @param defs Definition summary from @ref collectAllocaRootDefs.
 /// @param roots Root map from @ref computeAllocaRoots.
 /// @return Set of alloca result ids proven non-escaping.
-inline std::unordered_set<unsigned>
-nonEscapingAllocas(const il::core::Function &F,
-                   const std::unordered_map<unsigned, AllocaRootDefInfo> &defs,
-                   const AllocaRootMap &roots) {
+inline std::unordered_set<unsigned> nonEscapingAllocas(
+    const il::core::Function &F,
+    const std::unordered_map<unsigned, AllocaRootDefInfo> &defs,
+    const AllocaRootMap &roots) {
     using namespace il::core;
 
     std::unordered_set<unsigned> result;

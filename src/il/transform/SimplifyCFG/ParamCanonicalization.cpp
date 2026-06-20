@@ -56,9 +56,11 @@ bool realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
             if (term->labels[edgeIdx] != block.label)
                 continue;
 
+            if (term->brArgs.empty())
+                continue;
+
             if (term->brArgs.size() <= edgeIdx) {
-                if (!block.params.empty())
-                    ok = false;
+                ok = false;
                 continue;
             }
 
@@ -82,22 +84,33 @@ bool realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
     return ok;
 }
 
-/// @brief Return true if @p tempId is referenced anywhere in @p function.
-bool isTempUsedInFunction(const il::core::Function &function, unsigned tempId) {
-    for (const auto &block : function.blocks) {
-        for (const auto &instr : block.instructions) {
-            for (const auto &operand : instr.operands)
-                if (valueReferencesTemp(operand, tempId))
-                    return true;
+/// @brief Check that every incoming edge carries a full argument list for @p block.
+/// @details Parameter canonicalization mutates the block signature and predecessor
+///          arguments together.  If any predecessor is already malformed, the
+///          helper skips the rewrite instead of making the arity mismatch worse.
+/// @param ctx SimplifyCFG context providing the parent function.
+/// @param block Block whose incoming edges should be inspected.
+/// @return True when all incoming edges either do not target @p block or carry
+///         exactly one argument per current block parameter.
+bool incomingArgsAligned(SimplifyCFG::SimplifyCFGPassContext &ctx,
+                         const il::core::BasicBlock &block) {
+    for (auto &pred : ctx.function.blocks) {
+        il::core::Instr *term = findTerminator(pred);
+        if (!term)
+            continue;
 
-            for (const auto &argList : instr.brArgs)
-                for (const auto &arg : argList)
-                    if (valueReferencesTemp(arg, tempId))
-                        return true;
+        for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx) {
+            if (term->labels[edgeIdx] != block.label)
+                continue;
+            if (term->brArgs.empty())
+                continue;
+            if (term->brArgs.size() <= edgeIdx)
+                return false;
+            if (term->brArgs[edgeIdx].size() != block.params.size())
+                return false;
         }
     }
-
-    return false;
+    return true;
 }
 
 /// @brief Remove parameters that receive the same value from every predecessor.
@@ -161,6 +174,11 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx,
             }
 
             if (!hasCommonValue || mismatch) {
+                ++paramIdx;
+                continue;
+            }
+
+            if (!incomingArgsAligned(ctx, block)) {
                 ++paramIdx;
                 continue;
             }
@@ -246,8 +264,8 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx,
             break;
     }
 
-    if (removedAny)
-        (void)realignBranchArgs(ctx, block);
+    if (removedAny && !realignBranchArgs(ctx, block))
+        return false;
 
     return removedAny;
 }
@@ -271,10 +289,14 @@ bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx,
 
     for (size_t paramIdx = 0; paramIdx < block.params.size();) {
         const unsigned paramId = block.params[paramIdx].id;
-        const bool used =
-            allUsedIds.count(paramId) > 0 || isTempUsedInFunction(ctx.function, paramId);
+        const bool used = allUsedIds.count(paramId) > 0;
 
         if (used) {
+            ++paramIdx;
+            continue;
+        }
+
+        if (!incomingArgsAligned(ctx, block)) {
             ++paramIdx;
             continue;
         }
@@ -302,8 +324,8 @@ bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx,
         removedAny = true;
     }
 
-    if (removedAny)
-        (void)realignBranchArgs(ctx, block);
+    if (removedAny && !realignBranchArgs(ctx, block))
+        return false;
 
     return removedAny;
 }

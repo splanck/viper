@@ -273,7 +273,7 @@ bool getConstBool(const Value &value, bool &out) {
 /// @brief Checked signed addition that returns nullopt on overflow.
 std::optional<long long> checkedAdd(long long lhs, long long rhs) {
     long long result{};
-    if (__builtin_add_overflow(lhs, rhs, &result))
+    if (detail::addOverflows(lhs, rhs, result))
         return std::nullopt;
     return result;
 }
@@ -281,7 +281,7 @@ std::optional<long long> checkedAdd(long long lhs, long long rhs) {
 /// @brief Checked signed subtraction that returns nullopt on overflow.
 std::optional<long long> checkedSub(long long lhs, long long rhs) {
     long long result{};
-    if (__builtin_sub_overflow(lhs, rhs, &result))
+    if (detail::subOverflows(lhs, rhs, result))
         return std::nullopt;
     return result;
 }
@@ -289,26 +289,26 @@ std::optional<long long> checkedSub(long long lhs, long long rhs) {
 /// @brief Checked signed multiplication that returns nullopt on overflow.
 std::optional<long long> checkedMul(long long lhs, long long rhs) {
     long long result{};
-    if (__builtin_mul_overflow(lhs, rhs, &result))
+    if (detail::mulOverflows(lhs, rhs, result))
         return std::nullopt;
     return result;
 }
 
 long long wrappingAdd(long long lhs, long long rhs) {
     long long result{};
-    (void)__builtin_add_overflow(lhs, rhs, &result);
+    (void)detail::addOverflows(lhs, rhs, result);
     return result;
 }
 
 long long wrappingSub(long long lhs, long long rhs) {
     long long result{};
-    (void)__builtin_sub_overflow(lhs, rhs, &result);
+    (void)detail::subOverflows(lhs, rhs, result);
     return result;
 }
 
 long long wrappingMul(long long lhs, long long rhs) {
     long long result{};
-    (void)__builtin_mul_overflow(lhs, rhs, &result);
+    (void)detail::mulOverflows(lhs, rhs, result);
     return result;
 }
 

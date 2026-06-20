@@ -77,6 +77,44 @@ Expected<void> OperandCountChecker::run() const {
         return report(ss.str());
     }
 
+    const auto &opcodeInfo = il::core::getOpcodeInfo(instr.op);
+    const bool variadicSuccessors = il::core::isVariadicSuccessorCount(opcodeInfo.numSuccessors);
+    if (variadicSuccessors) {
+        if (instr.labels.empty())
+            return report("invalid label count: expected at least 1 label");
+        if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size())
+            return report(
+                "invalid branch argument list count: expected one list per label, or none");
+    } else {
+        if (instr.labels.size() != opcodeInfo.numSuccessors) {
+            std::ostringstream ss;
+            ss << "invalid label count: expected "
+               << static_cast<unsigned>(opcodeInfo.numSuccessors) << " label";
+            if (opcodeInfo.numSuccessors != 1)
+                ss << 's';
+            return report(ss.str());
+        }
+
+        if (instr.brArgs.size() > opcodeInfo.numSuccessors) {
+            std::ostringstream ss;
+            ss << "invalid branch argument list count: expected at most "
+               << static_cast<unsigned>(opcodeInfo.numSuccessors) << " list";
+            if (opcodeInfo.numSuccessors != 1)
+                ss << 's';
+            return report(ss.str());
+        }
+
+        if (!instr.brArgs.empty() && instr.brArgs.size() != opcodeInfo.numSuccessors) {
+            std::ostringstream ss;
+            ss << "invalid branch argument list count: expected "
+               << static_cast<unsigned>(opcodeInfo.numSuccessors) << " list";
+            if (opcodeInfo.numSuccessors != 1)
+                ss << 's';
+            ss << ", or none";
+            return report(ss.str());
+        }
+    }
+
     return {};
 }
 

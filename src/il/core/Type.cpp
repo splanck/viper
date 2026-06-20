@@ -68,6 +68,42 @@ std::string kindToString(Type::Kind k) {
     return "";
 }
 
+/// @brief Return the byte width used to represent values of @p kind in memory.
+/// @details The size table matches the IL verifier and optimizer storage model:
+///          integer widths use their natural byte sizes, opaque pointer-like
+///          handles use one machine word in IL memory, and structured error
+///          records occupy three words.  Void intentionally has no storage size.
+/// @param kind Type kind to classify.
+/// @return Number of bytes used by the type, or empty for void/invalid kinds.
+std::optional<unsigned> storageSizeBytes(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I1:
+            return 1;
+        case Type::Kind::I16:
+            return 2;
+        case Type::Kind::I32:
+            return 4;
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+        case Type::Kind::Ptr:
+        case Type::Kind::Str:
+        case Type::Kind::ResumeTok:
+            return 8;
+        case Type::Kind::Error:
+            return 24;
+        case Type::Kind::Void:
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+/// @brief Return the byte width used to represent values of @p type in memory.
+/// @param type Type wrapper whose kind should be classified.
+/// @return Number of bytes used by the type, or empty for void/invalid kinds.
+std::optional<unsigned> storageSizeBytes(Type type) {
+    return storageSizeBytes(type.kind);
+}
+
 /// @brief Produce the canonical spelling for this type instance.
 ///
 /// Delegates to @ref kindToString so that all textual rendering flows through a

@@ -32,6 +32,7 @@
 #include <iostream>
 #include <optional>
 #include <queue>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -142,8 +143,24 @@ struct IncomingEdge {
     std::size_t edgeIndex = 0;
 };
 
+using IncomingEdgeMap = std::unordered_map<const BasicBlock *, std::vector<IncomingEdge>>;
+
+/// @brief Return a zero literal compatible with @p type.
+/// @details Mem2Reg synthesizes an initial value for loads that can reach an
+///          uninitialized promoted stack slot.  Boolean values must retain the
+///          IL boolean flag so downstream printers and optimizers do not widen
+///          them to an integer-looking constant.
+/// @param type Promoted scalar type.
+/// @return False for @c i1, @c 0.0 for @c f64, and integer zero otherwise.
 static Value zeroValueForType(const Type &type) {
-    return type.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
+    switch (type.kind) {
+        case Type::Kind::I1:
+            return Value::constBool(false);
+        case Type::Kind::F64:
+            return Value::constFloat(0.0);
+        default:
+            return Value::constInt(0);
+    }
 }
 
 static Value resolveReplacementValue(const ReplacementMap &replacements, Value value) {
@@ -187,20 +204,50 @@ static void addIncomplete(BlockState &state, unsigned varId) {
     }
 }
 
-static std::vector<IncomingEdge> incomingEdges(Function &F, const BasicBlock *target) {
-    std::vector<IncomingEdge> edges;
-    if (!target)
-        return edges;
+/// @brief Build an edge-specific predecessor index for @p F.
+/// @details The seal-and-rename algorithm repeatedly asks for the incoming
+///          edges of the same join blocks.  Indexing once avoids recursive
+///          O(blocks * edges) rescans while preserving duplicate edges, which
+///          are semantically distinct because each carries its own argument
+///          bundle.
+/// @param F Function whose terminators are indexed.
+/// @return Map from target block pointer to incoming predecessor edges.
+static IncomingEdgeMap buildIncomingEdgeMap(Function &F) {
+    IncomingEdgeMap incoming;
+    incoming.reserve(F.blocks.size());
+
+    std::unordered_map<std::string, BasicBlock *> labels;
+    labels.reserve(F.blocks.size());
+    for (auto &block : F.blocks) {
+        incoming.emplace(&block, std::vector<IncomingEdge>{});
+        labels.emplace(block.label, &block);
+    }
 
     for (auto &pred : F.blocks) {
         if (pred.instructions.empty())
             continue;
         const Instr &term = pred.instructions.back();
-        for (std::size_t edge = 0; edge < term.labels.size(); ++edge)
-            if (term.labels[edge] == target->label)
-                edges.push_back(IncomingEdge{&pred, edge});
+        for (std::size_t edge = 0; edge < term.labels.size(); ++edge) {
+            auto targetIt = labels.find(term.labels[edge]);
+            if (targetIt == labels.end())
+                continue;
+            incoming[targetIt->second].push_back(IncomingEdge{&pred, edge});
+        }
     }
-    return edges;
+    return incoming;
+}
+
+/// @brief Look up incoming edges for @p target in a precomputed edge map.
+/// @param incoming Edge map returned by @ref buildIncomingEdgeMap.
+/// @param target Target block to query.
+/// @return Borrowed edge list, or an immutable empty list for null/unindexed blocks.
+static const std::vector<IncomingEdge> &incomingEdges(const IncomingEdgeMap &incoming,
+                                                      const BasicBlock *target) {
+    static const std::vector<IncomingEdge> empty;
+    if (!target)
+        return empty;
+    auto it = incoming.find(target);
+    return it == incoming.end() ? empty : it->second;
 }
 
 /// @brief Gather information about @c alloca instructions within a function.
@@ -351,6 +398,7 @@ static Value renameUses(Function &F,
                         VarMap &vars,
                         BlockMap &blocks,
                         unsigned &nextId,
+                        const IncomingEdgeMap &incoming,
                         const analysis::CFGContext &ctx,
                         bool &ok);
 
@@ -367,6 +415,7 @@ static Value renameUses(Function &F,
 /// @param vars Variable state table.
 /// @param blocks Block state table.
 /// @param nextId Counter for generating temp ids.
+/// @param incoming Edge-specific predecessor index for @p F.
 /// @return SSA value representing the variable at block entry.
 /// @sideeffect May mutate the CFG by adding parameters and arguments.
 static Value readFromPreds(Function &F,
@@ -375,16 +424,17 @@ static Value readFromPreds(Function &F,
                            VarMap &vars,
                            BlockMap &blocks,
                            unsigned &nextId,
+                           const IncomingEdgeMap &incoming,
                            const analysis::CFGContext &ctx,
                            bool &ok) {
-    const auto preds = incomingEdges(F, B);
+    const auto &preds = incomingEdges(incoming, B);
     if (preds.empty()) {
         return vars[varId].initialValue;
     }
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value paramVal = Value::temp(B->params[pIdx].id);
     for (const auto &edge : preds) {
-        Value arg = renameUses(F, edge.pred, varId, vars, blocks, nextId, ctx, ok);
+        Value arg = renameUses(F, edge.pred, varId, vars, blocks, nextId, incoming, ctx, ok);
         if (!ok || !addIncoming(B, varId, edge.pred, arg, vars, blocks, nextId, edge.edgeIndex)) {
             ok = false;
             return paramVal;
@@ -406,6 +456,7 @@ static Value readFromPreds(Function &F,
 /// @param vars Variable state table.
 /// @param blocks Block state table indicating seal status.
 /// @param nextId Counter for generating temp ids.
+/// @param incoming Edge-specific predecessor index for @p F.
 /// @return SSA value for the variable within @p B.
 /// @sideeffect May add block parameters and update definition maps.
 static Value renameUses(Function &F,
@@ -414,6 +465,7 @@ static Value renameUses(Function &F,
                         VarMap &vars,
                         BlockMap &blocks,
                         unsigned &nextId,
+                        const IncomingEdgeMap &incoming,
                         const analysis::CFGContext &ctx,
                         bool &ok) {
     if (!ok)
@@ -429,14 +481,14 @@ static Value renameUses(Function &F,
         addIncomplete(BS, varId);
         return v;
     }
-    const auto preds = incomingEdges(F, B);
+    const auto &preds = incomingEdges(incoming, B);
     if (preds.empty()) {
         Value v = VS.initialValue;
         VS.defs[B] = v;
         return v;
     }
     if (preds.size() == 1) {
-        Value v = renameUses(F, preds.front().pred, varId, vars, blocks, nextId, ctx, ok);
+        Value v = renameUses(F, preds.front().pred, varId, vars, blocks, nextId, incoming, ctx, ok);
         VS.defs[B] = v;
         return v;
     }
@@ -448,7 +500,7 @@ static Value renameUses(Function &F,
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value placeholder = Value::temp(B->params[pIdx].id);
     VS.defs[B] = placeholder;
-    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, ok);
+    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, incoming, ctx, ok);
     if (!valueEquals(v, placeholder))
         VS.defs[B] = v;
     return VS.defs[B];
@@ -466,12 +518,14 @@ static Value renameUses(Function &F,
 /// @param vars Variable state table.
 /// @param blocks Block state table.
 /// @param nextId Counter for generating temp ids.
+/// @param incoming Edge-specific predecessor index for @p F.
 /// @sideeffect May mutate the CFG with additional parameters and arguments.
 static void sealBlocks(Function &F,
                        BasicBlock *B,
                        VarMap &vars,
                        BlockMap &blocks,
                        unsigned &nextId,
+                       const IncomingEdgeMap &incoming,
                        const analysis::CFGContext &ctx,
                        bool &ok) {
     BlockState &BS = blocks[B];
@@ -479,7 +533,7 @@ static void sealBlocks(Function &F,
         return;
     std::sort(BS.incomplete.begin(), BS.incomplete.end());
     for (unsigned varId : BS.incomplete) {
-        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, ok);
+        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, incoming, ctx, ok);
         if (!ok)
             break;
         if (!vars[varId].defs.contains(B))
@@ -516,6 +570,7 @@ static void repairPromotedBranchArgs(Function &F,
                                      VarMap &vars,
                                      BlockMap &blocks,
                                      unsigned &nextId,
+                                     const IncomingEdgeMap &incoming,
                                      const analysis::CFGContext &ctx,
                                      bool &ok) {
     std::unordered_map<std::string, BasicBlock *> labels;
@@ -556,7 +611,7 @@ static void repairPromotedBranchArgs(Function &F,
             for (const auto &[paramIdx, varId] : slots) {
                 if (!needsPromotedBranchArgRepair(args, paramIdx, target->params[paramIdx].type))
                     continue;
-                Value arg = renameUses(F, &Pred, varId, vars, blocks, nextId, ctx, ok);
+                Value arg = renameUses(F, &Pred, varId, vars, blocks, nextId, incoming, ctx, ok);
                 if (!ok)
                     return;
                 if (args.size() <= paramIdx)
@@ -613,6 +668,7 @@ static bool promoteVariables(Function &F,
         return true;
 
     unsigned nextId = viper::il::nextTempId(F);
+    const IncomingEdgeMap incoming = buildIncomingEdgeMap(F);
 
     if (std::getenv("VIPER_MEM2REG_TRACE")) {
         std::cerr << "[mem2reg] " << F.name << ": promoting " << vars.size()
@@ -630,7 +686,7 @@ static bool promoteVariables(Function &F,
     blocks.reserve(F.blocks.size());
     for (auto &B : F.blocks) {
         BlockState bs;
-        bs.totalPreds = analysis::predecessors(ctx, B).size();
+        bs.totalPreds = incomingEdges(incoming, &B).size();
         bs.sealed = bs.totalPreds == 0;
         blocks[&B] = bs;
     }
@@ -662,7 +718,7 @@ static bool promoteVariables(Function &F,
             if (I.op == Opcode::Load && I.operands.size() &&
                 I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id)) {
                 unsigned varId = I.operands[0].id;
-                Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx, ok);
+                Value v = renameUses(F, B, varId, vars, blocks, nextId, incoming, ctx, ok);
                 if (!ok)
                     return false;
                 if (I.result)
@@ -692,13 +748,13 @@ static bool promoteVariables(Function &F,
                 queued.insert(S);
             }
             if (SS.seenPreds == SS.totalPreds)
-                sealBlocks(F, S, vars, blocks, nextId, ctx, ok);
+                sealBlocks(F, S, vars, blocks, nextId, incoming, ctx, ok);
             if (!ok)
                 return false;
         }
     }
 
-    repairPromotedBranchArgs(F, vars, blocks, nextId, ctx, ok);
+    repairPromotedBranchArgs(F, vars, blocks, nextId, incoming, ctx, ok);
     if (!ok)
         return false;
     applyReplacements(F, replacements);
@@ -1008,12 +1064,15 @@ static bool runSROA(Function &F) {
 ///                       accept parallel transform semantics.
 /// @sideeffect Mutates functions within the module.
 void mem2reg(Module &M, Mem2RegStats *stats, bool enableParallel) {
+    for (auto &F : M.functions) {
+        if (!hasExceptionHandling(F))
+            runSROA(F);
+    }
+
     analysis::CFGContext cfg(M);
     auto processFunction = [&](Function &F, Mem2RegStats *localStats) {
         if (hasExceptionHandling(F))
             return;
-
-        runSROA(F);
 
         AllocaMap infos = collectAllocas(F);
 

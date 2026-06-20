@@ -27,6 +27,7 @@
 ///          single, well-documented reference for the pass' heuristics.
 
 #include "il/transform/DCE.hpp"
+#include "il/analysis/AllocaRoots.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -38,6 +39,7 @@
 #include <iostream>
 #include <optional>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -69,11 +71,11 @@ static bool isDeadOverflowOp(const il::core::Instr &instr) {
     long long result{};
     switch (instr.op) {
         case Opcode::IAddOvf:
-            return !__builtin_add_overflow(lhs, rhs, &result);
+            return !il::transform::detail::addOverflows(lhs, rhs, result);
         case Opcode::ISubOvf:
-            return !__builtin_sub_overflow(lhs, rhs, &result);
+            return !il::transform::detail::subOverflows(lhs, rhs, result);
         case Opcode::IMulOvf:
-            return !__builtin_mul_overflow(lhs, rhs, &result);
+            return !il::transform::detail::mulOverflows(lhs, rhs, result);
         default:
             return false;
     }
@@ -87,15 +89,55 @@ namespace il::transform {
 namespace {
 constexpr unsigned kMaxDenseUseVectorTempId = 10'000'000;
 
-/// @brief Validate that a temp id is safe for DCE's dense use-count vector.
-/// @details DCE intentionally uses vector indexing for speed on well-formed IL.
-///          A corrupted or hostile module can otherwise force a huge allocation
-///          by referencing a very large temporary id.
-/// @param id Highest temporary identifier observed.
-static void requireDenseUseVectorTempId(unsigned id) {
-    if (id > kMaxDenseUseVectorTempId)
-        throw std::overflow_error("DCE: temporary id exceeds dense use-count limit");
-}
+/// @brief Use-count table that keeps the normal dense fast path with sparse fallback.
+/// @details Well-formed compiler output tends to allocate compact temp ids, where a
+///          vector is fastest.  Programmatic or hostile IR can contain a single
+///          huge temp id; sparse mode avoids a massive allocation and lets DCE
+///          continue conservatively instead of throwing.
+struct UseCounts {
+    /// @brief Dense count storage indexed directly by temp id.
+    std::vector<size_t> dense;
+
+    /// @brief Sparse count storage used when max temp id is too large for dense mode.
+    std::unordered_map<unsigned, size_t> sparse;
+
+    /// @brief Highest temp id observed while building the table.
+    unsigned maxId = 0;
+
+    /// @brief Whether lookups should consult @ref sparse instead of @ref dense.
+    bool sparseMode = false;
+
+    /// @brief Return the logical size used by existing bounds checks.
+    /// @return One plus the highest observed temp id, without allocating that range.
+    [[nodiscard]] size_t size() const {
+        if (sparseMode)
+            return static_cast<size_t>(maxId) + 1;
+        return dense.size();
+    }
+
+    /// @brief Look up a temp's use count.
+    /// @param id Temp id to query.
+    /// @return Number of uses recorded for @p id, or zero when absent.
+    [[nodiscard]] size_t operator[](unsigned id) const {
+        if (!sparseMode)
+            return id < dense.size() ? dense[id] : 0;
+        auto it = sparse.find(id);
+        return it == sparse.end() ? 0 : it->second;
+    }
+
+    /// @brief Increment the use count for @p id.
+    /// @param id Temp id observed as an operand or branch argument.
+    void increment(unsigned id) {
+        maxId = std::max(maxId, id);
+        if (sparseMode) {
+            ++sparse[id];
+            return;
+        }
+        if (id >= dense.size())
+            dense.resize(static_cast<size_t>(id) + 1, 0);
+        ++dense[id];
+    }
+};
 } // namespace
 
 /// @brief Count how many times each temporary identifier is referenced.
@@ -106,42 +148,35 @@ static void requireDenseUseVectorTempId(unsigned id) {
 ///          every operand or branch argument referencing a temp id.
 ///
 /// @param F Function whose temporaries are inspected.
-/// @return Vector indexed by temp id with use counts.
-static std::vector<size_t> countUses(Function &F) {
+/// @return Table indexed by temp id with use counts.
+static UseCounts countUses(const Function &F) {
     // Compute maximum SSA id encountered across params, block params, and results
     unsigned maxId = 0;
-    for (auto &p : F.params)
+    for (const auto &p : F.params)
         maxId = std::max(maxId, p.id);
-    for (auto &B : F.blocks) {
-        for (auto &p : B.params)
+    for (const auto &B : F.blocks) {
+        for (const auto &p : B.params)
             maxId = std::max(maxId, p.id);
-        for (auto &I : B.instructions)
+        for (const auto &I : B.instructions)
             if (I.result)
                 maxId = std::max(maxId, static_cast<unsigned>(*I.result));
     }
-    requireDenseUseVectorTempId(maxId);
 
-    std::vector<size_t> uses(static_cast<size_t>(maxId) + 1, 0);
+    UseCounts uses;
+    uses.maxId = maxId;
+    uses.sparseMode = maxId > kMaxDenseUseVectorTempId;
+    if (!uses.sparseMode)
+        uses.dense.assign(static_cast<size_t>(maxId) + 1, 0);
 
-    // Touch block params to ensure zero entries exist even when unused
-    for (auto &B : F.blocks)
-        for (auto &p : B.params)
-            (void)uses[p.id];
+    auto touch = [&](unsigned id) { uses.increment(id); };
 
-    auto touch = [&](unsigned id) {
-        requireDenseUseVectorTempId(id);
-        if (id >= uses.size())
-            uses.resize(static_cast<size_t>(id) + 1, 0);
-        uses[id]++;
-    };
-
-    for (auto &B : F.blocks) {
-        for (auto &I : B.instructions) {
-            for (auto &Op : I.operands)
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            for (const auto &Op : I.operands)
                 if (Op.kind == Value::Kind::Temp)
                     touch(Op.id);
-            for (auto &ArgList : I.brArgs)
-                for (auto &Arg : ArgList)
+            for (const auto &ArgList : I.brArgs)
+                for (const auto &Arg : ArgList)
                     if (Arg.kind == Value::Kind::Temp)
                         touch(Arg.id);
         }
@@ -208,16 +243,18 @@ void dce(Module &M) {
             }
             std::cerr << "[dce] === END BEFORE ===\n";
         }
-        std::vector<size_t> uses;
+        UseCounts uses;
         bool removedInstruction = false;
         do {
             uses = countUses(F);
             removedInstruction = false;
 
-            // Gather allocas and track if they are "observed" (loaded from or used by GEP).
-            // An alloca is dead only if it has no uses at all, OR if it's only used by
-            // stores (no loads or GEPs that might lead to loads).
+            // Gather allocas and track if they are "observed" through a read,
+            // escaping call argument, returned value, or branch argument.
+            // Stores to unobserved alloca-derived addresses can be removed.
             std::unordered_map<unsigned, bool> allocaObserved;
+            const auto allocaRootDefs = viper::analysis::collectAllocaRootDefs(F);
+            const auto allocaRoots = viper::analysis::computeAllocaRoots(F, allocaRootDefs);
 
             for (auto &B : F.blocks)
                 for (auto &I : B.instructions) {
@@ -229,60 +266,67 @@ void dce(Module &M) {
                     }
                 }
 
+            auto markObservedAllocaRoots = [&](const Value &value, std::string_view reason) {
+                if (value.kind != Value::Kind::Temp)
+                    return;
+                bool marked = false;
+                if (auto direct = allocaObserved.find(value.id); direct != allocaObserved.end()) {
+                    direct->second = true;
+                    marked = true;
+                }
+                auto rootsIt = allocaRoots.find(value.id);
+                if (rootsIt != allocaRoots.end()) {
+                    for (unsigned root : rootsIt->second) {
+                        auto obsIt = allocaObserved.find(root);
+                        if (obsIt == allocaObserved.end())
+                            continue;
+                        obsIt->second = true;
+                        marked = true;
+                    }
+                }
+                if (marked && traceEnabled())
+                    std::cerr << "[dce] marking roots of %" << value.id << " as observed ("
+                              << reason << ") in " << F.name << "\n";
+            };
+
+            auto targetsOnlyUnobservedAllocaRoots = [&](const Value &value) {
+                if (value.kind != Value::Kind::Temp)
+                    return false;
+                bool sawAllocaRoot = false;
+                auto direct = allocaObserved.find(value.id);
+                if (direct != allocaObserved.end()) {
+                    sawAllocaRoot = true;
+                    if (direct->second)
+                        return false;
+                }
+                auto rootsIt = allocaRoots.find(value.id);
+                if (rootsIt != allocaRoots.end()) {
+                    for (unsigned root : rootsIt->second) {
+                        auto obsIt = allocaObserved.find(root);
+                        if (obsIt == allocaObserved.end())
+                            continue;
+                        sawAllocaRoot = true;
+                        if (obsIt->second)
+                            return false;
+                    }
+                }
+                return sawAllocaRoot;
+            };
+
             for (auto &B : F.blocks)
                 for (auto &I : B.instructions) {
-                    if (I.op == Opcode::Load && !I.operands.empty() &&
-                        I.operands[0].kind == Value::Kind::Temp &&
-                        allocaObserved.count(I.operands[0].id)) {
-                        allocaObserved[I.operands[0].id] = true;
-                        if (traceEnabled())
-                            std::cerr << "[dce] marking %" << I.operands[0].id
-                                      << " as observed (load) in " << F.name << "\n";
-                    }
-                    if (I.op == Opcode::GEP && !I.operands.empty() &&
-                        I.operands[0].kind == Value::Kind::Temp &&
-                        allocaObserved.count(I.operands[0].id)) {
-                        allocaObserved[I.operands[0].id] = true;
-                        if (traceEnabled())
-                            std::cerr << "[dce] marking %" << I.operands[0].id
-                                      << " as observed (gep) in " << F.name << "\n";
-                    }
-                    if ((I.op == Opcode::Call || I.op == Opcode::CallIndirect) &&
-                        !I.operands.empty()) {
-                        for (auto &op : I.operands) {
-                            if (op.kind == Value::Kind::Temp && allocaObserved.count(op.id)) {
-                                allocaObserved[op.id] = true;
-                                if (traceEnabled())
-                                    std::cerr << "[dce] marking %" << op.id
-                                              << " as observed (call arg) in " << F.name << "\n";
-                            }
-                        }
-                    }
-                    if (I.op == Opcode::Store && I.operands.size() > 1 &&
-                        I.operands[1].kind == Value::Kind::Temp &&
-                        allocaObserved.count(I.operands[1].id)) {
-                        allocaObserved[I.operands[1].id] = true;
-                        if (traceEnabled())
-                            std::cerr << "[dce] marking %" << I.operands[1].id
-                                      << " as observed (store value) in " << F.name << "\n";
-                    }
-                    if (I.op == Opcode::Ret && !I.operands.empty() &&
-                        I.operands[0].kind == Value::Kind::Temp &&
-                        allocaObserved.count(I.operands[0].id)) {
-                        allocaObserved[I.operands[0].id] = true;
-                        if (traceEnabled())
-                            std::cerr << "[dce] marking %" << I.operands[0].id
-                                      << " as observed (ret) in " << F.name << "\n";
-                    }
+                    if (I.op == Opcode::Load && !I.operands.empty())
+                        markObservedAllocaRoots(I.operands[0], "load");
+                    if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
+                        for (auto &op : I.operands)
+                            markObservedAllocaRoots(op, "call arg");
+                    if (I.op == Opcode::Store && I.operands.size() > 1)
+                        markObservedAllocaRoots(I.operands[1], "store value");
+                    if (I.op == Opcode::Ret && !I.operands.empty())
+                        markObservedAllocaRoots(I.operands[0], "ret");
                     for (const auto &argList : I.brArgs) {
-                        for (const auto &v : argList) {
-                            if (v.kind == Value::Kind::Temp && allocaObserved.count(v.id)) {
-                                allocaObserved[v.id] = true;
-                                if (traceEnabled())
-                                    std::cerr << "[dce] marking %" << v.id
-                                              << " as observed (branch arg) in " << F.name << "\n";
-                            }
-                        }
+                        for (const auto &v : argList)
+                            markObservedAllocaRoots(v, "branch arg");
                     }
                 }
 
@@ -301,9 +345,8 @@ void dce(Module &M) {
                         continue;
                     }
                     if (I.op == Opcode::Store && !I.operands.empty() &&
-                        I.operands[0].kind == Value::Kind::Temp &&
-                        allocaObserved.find(I.operands[0].id) != allocaObserved.end() &&
-                        !allocaObserved[I.operands[0].id] && isStoreKnownNonTrapping(F, I)) {
+                        targetsOnlyUnobservedAllocaRoots(I.operands[0]) &&
+                        isStoreKnownNonTrapping(F, I)) {
                         if (traceEnabled())
                             std::cerr << "[dce] removing dead store to %" << I.operands[0].id
                                       << " in " << F.name << ":" << B.label << "\n";
@@ -347,6 +390,11 @@ void dce(Module &M) {
             }
         } while (removedInstruction);
         uses = countUses(F);
+
+        std::unordered_set<unsigned> funcParamIds;
+        funcParamIds.reserve(F.params.size());
+        for (const auto &fp : F.params)
+            funcParamIds.insert(fp.id);
 
         // Build a predecessor edge index: for each target label, collect
         // (terminator*, successorIndex) pairs.  This must happen AFTER the dead
@@ -403,13 +451,9 @@ void dce(Module &M) {
             // serialized and parsed again. The calling convention is positional,
             // so DCE must keep the leading entry params even when their IDs do
             // not match F.params.
-            std::unordered_set<unsigned> funcParamIds;
             size_t entryAbiParamCount = 0;
-            if (&B == &F.blocks.front()) {
-                for (const auto &fp : F.params)
-                    funcParamIds.insert(fp.id);
+            if (&B == &F.blocks.front())
                 entryAbiParamCount = F.params.size();
-            }
 
             // Identify which param indices to keep.
             std::vector<size_t> keepIndices;
@@ -436,6 +480,24 @@ void dce(Module &M) {
             if (keepIndices.size() == numParams)
                 continue;
 
+            auto it = predEdges.find(B.label);
+            bool canCompactEdges = true;
+            if (it != predEdges.end()) {
+                for (auto &[term, succIdx] : it->second) {
+                    if (term->brArgs.size() <= succIdx) {
+                        canCompactEdges = false;
+                        break;
+                    }
+                    auto &args = term->brArgs[succIdx];
+                    if (args.size() != numParams) {
+                        canCompactEdges = false;
+                        break;
+                    }
+                }
+            }
+            if (!canCompactEdges)
+                continue;
+
             // Compact B.params: rebuild the vector with only kept params.
             {
                 std::vector<Param> compacted;
@@ -446,14 +508,13 @@ void dce(Module &M) {
             }
 
             // Compact predecessor brArgs for each edge targeting this block.
-            auto it = predEdges.find(B.label);
             if (it != predEdges.end()) {
                 for (auto &[term, succIdx] : it->second) {
                     if (term->brArgs.size() <= succIdx)
                         continue;
                     auto &args = term->brArgs[succIdx];
                     if (args.size() != numParams)
-                        continue; // Mismatch, skip to avoid corruption
+                        continue;
 
                     std::vector<Value> compacted;
                     compacted.reserve(keepIndices.size());

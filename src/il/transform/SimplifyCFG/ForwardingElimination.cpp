@@ -179,12 +179,13 @@ bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx,
 /// @param pred Predecessor block whose terminator will be rewritten.
 /// @param dead Forwarding block slated for removal.
 /// @param succ Successor originally targeted by @p dead.
-void redirectPredecessor(il::core::BasicBlock &pred,
-                         il::core::BasicBlock &dead,
-                         il::core::BasicBlock &succ) {
+/// @return Number of predecessor edges actually rewritten.
+size_t redirectPredecessor(il::core::BasicBlock &pred,
+                           il::core::BasicBlock &dead,
+                           il::core::BasicBlock &succ) {
     il::core::Instr *predTerm = findTerminator(pred);
     if (!predTerm)
-        return;
+        return 0;
 
     bool referencesDead = false;
     for (const auto &label : predTerm->labels) {
@@ -195,21 +196,22 @@ void redirectPredecessor(il::core::BasicBlock &pred,
     }
 
     if (!referencesDead)
-        return;
+        return 0;
 
     il::core::Instr *deadTerm = findTerminator(dead);
     if (!deadTerm || deadTerm->op != il::core::Opcode::Br || deadTerm->labels.size() != 1)
-        return;
+        return 0;
 
     const std::vector<il::core::Value> *deadArgs = nullptr;
     if (!deadTerm->brArgs.empty()) {
         if (deadTerm->brArgs.size() != 1)
-            return;
+            return 0;
         deadArgs = &deadTerm->brArgs.front();
     }
 
     std::unordered_map<unsigned, il::core::Value> substitution;
     substitution.reserve(dead.params.size());
+    size_t rewritten = 0;
 
     for (size_t idx = 0; idx < predTerm->labels.size(); ++idx) {
         if (predTerm->labels[idx] != dead.label)
@@ -234,6 +236,7 @@ void redirectPredecessor(il::core::BasicBlock &pred,
         }
 
         predTerm->labels[idx] = succ.label;
+        ++rewritten;
         if (deadArgs || !newArgs.empty() || !predTerm->brArgs.empty()) {
             if (predTerm->brArgs.size() < predTerm->labels.size())
                 predTerm->brArgs.resize(predTerm->labels.size());
@@ -241,6 +244,7 @@ void redirectPredecessor(il::core::BasicBlock &pred,
             clearIfAllBranchArgsEmpty(*predTerm);
         }
     }
+    return rewritten;
 }
 
 } // namespace
@@ -312,8 +316,7 @@ bool removeEmptyForwarders(SimplifyCFG::SimplifyCFGPassContext &ctx) {
             if (!touchesDead)
                 continue;
 
-            redirectPredecessor(pred, dead, succ);
-            ++redirected;
+            redirected += redirectPredecessor(pred, dead, succ);
         }
 
         if (redirected > 0) {

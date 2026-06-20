@@ -30,8 +30,11 @@ namespace il::io {
 /// @brief Serializes IL modules to their textual form.
 class Serializer {
   public:
-    /// @brief Controls output formatting style.
-    enum class Mode { Pretty, Canonical };
+    /// @brief Controls output formatting style and malformed-IR handling.
+    /// @details Pretty and Canonical produce parseable IL and throw when the
+    ///          module contains malformed instruction shapes. Debug preserves the
+    ///          historical best-effort comments for diagnostics and crash dumps.
+    enum class Mode { Pretty, Canonical, Debug };
 
     /// @brief Write module @p m to output stream @p os.
     /// @param m Module to serialize.

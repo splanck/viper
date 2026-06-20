@@ -177,7 +177,7 @@ static double roundHalfEven(double value) {
 /// @return Folded result or empty optional when overflow occurred.
 static std::optional<long long> checkedAdd(long long a, long long b) {
     long long result{};
-    if (__builtin_add_overflow(a, b, &result))
+    if (detail::addOverflows(a, b, result))
         return std::nullopt;
     return result;
 }
@@ -188,7 +188,7 @@ static std::optional<long long> checkedAdd(long long a, long long b) {
 /// @return Folded result or empty optional when overflow occurred.
 static std::optional<long long> checkedSub(long long a, long long b) {
     long long result{};
-    if (__builtin_sub_overflow(a, b, &result))
+    if (detail::subOverflows(a, b, result))
         return std::nullopt;
     return result;
 }
@@ -199,7 +199,7 @@ static std::optional<long long> checkedSub(long long a, long long b) {
 /// @return Folded result or empty optional when overflow occurred.
 static std::optional<long long> checkedMul(long long a, long long b) {
     long long result{};
-    if (__builtin_mul_overflow(a, b, &result))
+    if (detail::mulOverflows(a, b, result))
         return std::nullopt;
     return result;
 }
@@ -547,8 +547,8 @@ void constFold(Module &m) {
                             case Opcode::SDivChk0:
                                 lhs = normalizeIntegerForType(lhs, in.type.kind);
                                 rhs = normalizeIntegerForType(rhs, in.type.kind);
-                                if (rhs != 0 && !(lhs == signedMinForType(in.type.kind) &&
-                                                  rhs == -1)) {
+                                if (rhs != 0 &&
+                                    !(lhs == signedMinForType(in.type.kind) && rhs == -1)) {
                                     res = normalizeIntegerForType(lhs / rhs, in.type.kind);
                                 } else {
                                     folded = false;
@@ -557,8 +557,8 @@ void constFold(Module &m) {
                             case Opcode::SRemChk0:
                                 lhs = normalizeIntegerForType(lhs, in.type.kind);
                                 rhs = normalizeIntegerForType(rhs, in.type.kind);
-                                if (rhs != 0 && !(lhs == signedMinForType(in.type.kind) &&
-                                                  rhs == -1)) {
+                                if (rhs != 0 &&
+                                    !(lhs == signedMinForType(in.type.kind) && rhs == -1)) {
                                     res = normalizeIntegerForType(lhs % rhs, in.type.kind);
                                 } else {
                                     folded = false;
@@ -611,8 +611,8 @@ void constFold(Module &m) {
                                     normalizeUnsignedForType(static_cast<unsigned long long>(lhs),
                                                              in.type.kind) >>
                                     (static_cast<unsigned long long>(rhs) &
-                                     static_cast<unsigned long long>(
-                                         integerTypeBits(in.type.kind) - 1)));
+                                     static_cast<unsigned long long>(integerTypeBits(in.type.kind) -
+                                                                     1)));
                                 break;
                             case Opcode::AShr:
                                 lhs = normalizeIntegerForType(lhs, in.type.kind);
@@ -667,8 +667,8 @@ void constFold(Module &m) {
                                         static_cast<unsigned long long>(lhs), in.type.kind);
                                     const auto urhs = normalizeUnsignedForType(
                                         static_cast<unsigned long long>(rhs), in.type.kind);
-                                    res = normalizeIntegerForType(static_cast<long long>(ulhs / urhs),
-                                                                 in.type.kind);
+                                    res = normalizeIntegerForType(
+                                        static_cast<long long>(ulhs / urhs), in.type.kind);
                                 } else {
                                     folded = false;
                                 }
@@ -680,8 +680,8 @@ void constFold(Module &m) {
                                         static_cast<unsigned long long>(lhs), in.type.kind);
                                     const auto urhs = normalizeUnsignedForType(
                                         static_cast<unsigned long long>(rhs), in.type.kind);
-                                    res = normalizeIntegerForType(static_cast<long long>(ulhs % urhs),
-                                                                 in.type.kind);
+                                    res = normalizeIntegerForType(
+                                        static_cast<long long>(ulhs % urhs), in.type.kind);
                                 } else {
                                     folded = false;
                                 }

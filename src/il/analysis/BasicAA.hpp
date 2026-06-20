@@ -36,8 +36,10 @@
 
 #include <algorithm>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <queue>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -113,6 +115,8 @@ class BasicAA {
     std::unordered_set<unsigned> nonEscapingAllocas_;
     std::unordered_set<unsigned> noaliasParams_;
     std::unordered_set<unsigned> params_;
+    std::unordered_map<std::string_view, const il::core::Function *> functionIndex_;
+    std::unordered_map<std::string_view, const il::core::Extern *> externIndex_;
 
     using DefInfo = AllocaRootDefInfo;
 
@@ -123,6 +127,11 @@ class BasicAA {
         bool readonly = false;
         bool known = false;
     };
+
+    /// @brief Populate module-level callee indexes from the borrowed module.
+    /// @details The index avoids repeated linear scans when many call sites ask
+    ///          for ModRef information in the same function.
+    void collectModuleInfo();
 
     /// @brief Populate the internal alloca, parameter, and no-alias sets from @p function.
     /// @details Scans the entry block for @c Alloca instructions and records each
@@ -146,6 +155,15 @@ class BasicAA {
 
     [[nodiscard]] CallEffect queryRuntimeEffect(std::string_view name) const;
 
+    /// @brief Query dynamically registered runtime test signatures by name.
+    /// @details The generated runtime registry handles production helpers with
+    ///          allocation-free binary search. Unit tests and debug validation
+    ///          can also append signatures at runtime; this cache is rebuilt only
+    ///          when that append-only registry's version changes.
+    /// @param name Runtime helper name to inspect.
+    /// @return Effect metadata when a dynamic signature is registered.
+    [[nodiscard]] static CallEffect queryRegisteredSignatureEffect(std::string_view name);
+
     [[nodiscard]] CallEffect computeCalleeEffect(std::string_view name) const;
 
     [[nodiscard]] Location describe(const il::core::Value &value, unsigned depth = 0) const;
@@ -155,11 +173,25 @@ class BasicAA {
 
 inline BasicAA::BasicAA(const il::core::Function &function, const il::core::Module *module)
     : function_(&function), module_(module) {
+    collectModuleInfo();
     collectFunctionInfo(function);
 }
 
 inline BasicAA::BasicAA(const il::core::Module &module, const il::core::Function &function)
     : BasicAA(function, &module) {}
+
+inline void BasicAA::collectModuleInfo() {
+    if (!module_)
+        return;
+
+    functionIndex_.reserve(module_->functions.size());
+    for (const auto &fn : module_->functions)
+        functionIndex_.emplace(std::string_view(fn.name), &fn);
+
+    externIndex_.reserve(module_->externs.size());
+    for (const auto &ext : module_->externs)
+        externIndex_.emplace(std::string_view(ext.name), &ext);
+}
 
 inline void BasicAA::collectFunctionInfo(const il::core::Function &function) {
     for (const auto &param : function.params) {
@@ -227,14 +259,8 @@ inline const il::core::Function *BasicAA::findFunction(std::string_view name) co
     if (function_ && function_->name == name)
         return function_;
 
-    if (!module_)
-        return nullptr;
-
-    for (const auto &fn : module_->functions)
-        if (fn.name == name)
-            return &fn;
-
-    return nullptr;
+    auto it = functionIndex_.find(name);
+    return it == functionIndex_.end() ? nullptr : it->second;
 }
 
 inline BasicAA::CallEffect BasicAA::queryFunctionEffect(const il::core::Function &fn) const {
@@ -249,9 +275,8 @@ inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) co
     if (const auto *sig = il::runtime::findRuntimeSignature(name))
         return CallEffect{sig->pure, sig->readonly, true};
 
-    for (const auto &sig : il::runtime::signatures::all_signatures())
-        if (sig.name == name)
-            return CallEffect{sig.pure, sig.readonly, true};
+    if (const auto dynamic = queryRegisteredSignatureEffect(name); dynamic.known)
+        return dynamic;
 
     const auto helper = il::runtime::classifyHelperEffects(name);
     if (helper.known)
@@ -259,18 +284,40 @@ inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) co
     return {};
 }
 
-inline BasicAA::CallEffect BasicAA::queryExternEffect(std::string_view name) const {
-    if (!module_)
-        return {};
-    for (const auto &ext : module_->externs) {
-        if (ext.name != name)
-            continue;
-        // `nothrow` is control-flow metadata, not a memory-effect promise.
-        // Only pure/readonly extern attributes can refine ModRef.
-        if (ext.attrs().pure || ext.attrs().readonly)
-            return CallEffect{ext.attrs().pure, ext.attrs().readonly, true};
-        return {};
+inline BasicAA::CallEffect BasicAA::queryRegisteredSignatureEffect(std::string_view name) {
+    struct DynamicSignatureCache {
+        std::size_t version = static_cast<std::size_t>(-1);
+        std::unordered_map<std::string, CallEffect> effects;
+    };
+
+    static std::mutex mutex;
+    static DynamicSignatureCache cache;
+
+    std::lock_guard<std::mutex> lock(mutex);
+    const std::size_t version = il::runtime::signatures::registry_version();
+    if (cache.version != version) {
+        cache.effects.clear();
+        const auto &signatures = il::runtime::signatures::all_signatures();
+        cache.effects.reserve(signatures.size());
+        for (const auto &sig : signatures)
+            cache.effects.emplace(sig.name, CallEffect{sig.pure, sig.readonly, true});
+        cache.version = version;
     }
+
+    auto it = cache.effects.find(std::string(name));
+    return it == cache.effects.end() ? CallEffect{} : it->second;
+}
+
+inline BasicAA::CallEffect BasicAA::queryExternEffect(std::string_view name) const {
+    auto it = externIndex_.find(name);
+    if (it == externIndex_.end())
+        return {};
+
+    const auto &ext = *it->second;
+    // `nothrow` is control-flow metadata, not a memory-effect promise.
+    // Only pure/readonly extern attributes can refine ModRef.
+    if (ext.attrs().pure || ext.attrs().readonly)
+        return CallEffect{ext.attrs().pure, ext.attrs().readonly, true};
     return {};
 }
 
@@ -370,26 +417,7 @@ inline BasicAA::Location BasicAA::describe(const il::core::Value &value, unsigne
 }
 
 inline std::optional<unsigned> BasicAA::typeSizeBytes(const il::core::Type &type) {
-    using K = il::core::Type::Kind;
-    switch (type.kind) {
-        case K::I1:
-            return 1;
-        case K::I16:
-            return 2;
-        case K::I32:
-            return 4;
-        case K::I64:
-        case K::F64:
-            return 8;
-        case K::Ptr:
-        case K::Str:
-        case K::ResumeTok:
-            return 8;
-        case K::Error:
-            return 24;
-        default:
-            return std::nullopt;
-    }
+    return il::core::storageSizeBytes(type);
 }
 
 inline AliasResult BasicAA::alias(const il::core::Value &lhs,

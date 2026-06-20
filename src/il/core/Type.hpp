@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace il::core {
@@ -44,5 +45,18 @@ struct Type {
 /// @param k Kind to convert.
 /// @return Lowercase mnemonic defined in the spec.
 std::string kindToString(Type::Kind k);
+
+/// @brief Return the storage width for a scalar IL type when it is defined.
+/// @details The verifier, alias analysis, and memory optimizers share this
+///          helper so byte-width reasoning cannot drift between subsystems.
+///          Void has no storage size and returns @c std::nullopt.
+/// @param kind Primitive type kind to inspect.
+/// @return Size in bytes, or empty when @p kind has no object representation.
+std::optional<unsigned> storageSizeBytes(Type::Kind kind);
+
+/// @brief Return the storage width for a concrete IL type.
+/// @param type Type wrapper whose kind should be inspected.
+/// @return Size in bytes, or empty when @p type has no object representation.
+std::optional<unsigned> storageSizeBytes(Type type);
 
 } // namespace il::core

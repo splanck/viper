@@ -21,6 +21,7 @@
 #include "il/core/Value.hpp"
 #include "viper/il/IO.hpp"
 #include <cassert>
+#include <stdexcept>
 #include <string>
 
 int main() {
@@ -43,7 +44,15 @@ int main() {
     f.blocks.push_back(std::move(bb));
     m.functions.push_back(std::move(f));
 
-    std::string out = il::io::Serializer::toString(m);
+    bool threw = false;
+    try {
+        (void)il::io::Serializer::toString(m);
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    assert(threw);
+
+    std::string out = il::io::Serializer::toString(m, il::io::Serializer::Mode::Debug);
     assert(out.find("missing label") != std::string::npos);
     return 0;
 }

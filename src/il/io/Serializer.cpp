@@ -55,6 +55,9 @@ struct SerializeContext {
     /// @brief Preferred textual name for each SSA temp in the current function.
     std::vector<std::string> valueNames;
 
+    /// @brief Whether malformed instruction shapes should be rendered best-effort.
+    bool bestEffortMalformed = false;
+
     /// @brief Names owned by more than one SSA temp and therefore unsafe to print directly.
     std::unordered_set<std::string> ambiguousValueNames;
 
@@ -107,6 +110,98 @@ const std::string &checkedIdentifier(std::string_view role, const std::string &n
                                     " identifier '" + name + "'");
     }
     return name;
+}
+
+/// @brief Validate a raw scalar global initializer before printing it.
+/// @details String globals are quoted and escaped separately. Scalar globals are
+///          emitted as raw grammar tokens, so newline and comment introducers
+///          would change the surrounding module text rather than the
+///          initializer itself.
+/// @param global Global whose raw initializer should be emitted.
+/// @return Trimmed initializer text.
+/// @throws std::invalid_argument when the initializer is empty or contains text
+///         that cannot be emitted safely as a single global directive.
+std::string checkedRawGlobalInitializer(const Global &global) {
+    std::string init = trim(global.init);
+    if (init.empty()) {
+        throw std::invalid_argument("IL serializer: global @" + global.name +
+                                    " has an empty scalar initializer");
+    }
+    for (std::size_t index = 0; index < init.size(); ++index) {
+        const char ch = init[index];
+        if (ch == '\n' || ch == '\r' || ch == ';' || ch == '#') {
+            throw std::invalid_argument("IL serializer: global @" + global.name +
+                                        " has an unsafe scalar initializer");
+        }
+        if (ch == '/' && index + 1 < init.size() && init[index + 1] == '/') {
+            throw std::invalid_argument("IL serializer: global @" + global.name +
+                                        " has an unsafe scalar initializer");
+        }
+    }
+    return init;
+}
+
+/// @brief Build an exception for malformed instruction serialization.
+/// @param opcode Instruction mnemonic associated with the malformed payload.
+/// @param message Human-readable shape error.
+/// @return Exception object describing the serializer failure.
+std::invalid_argument malformedInstruction(std::string_view opcode, std::string_view message) {
+    return std::invalid_argument("IL serializer: malformed " + std::string(opcode) + ": " +
+                                 std::string(message));
+}
+
+/// @brief Handle malformed instruction state according to the active serializer policy.
+/// @details In normal modes this throws so invalid programmatic IR does not get
+///          printed as if it were parseable IL.  Debug mode keeps the old
+///          best-effort comments, making crash dumps readable without hiding the
+///          malformed shape from the text.
+/// @param instr Instruction whose opcode is reported.
+/// @param os Stream receiving a debug marker when best-effort mode is enabled.
+/// @param ctx Active serialization context.
+/// @param message Diagnostic text to report.
+void handleMalformed(const Instr &instr,
+                     std::ostream &os,
+                     const SerializeContext &ctx,
+                     std::string_view message) {
+    if (!ctx.bestEffortMalformed)
+        throw malformedInstruction(il::core::toString(instr.op), message);
+    os << " ; " << message;
+}
+
+/// @brief Ensure an instruction has at least @p count operands.
+/// @param instr Instruction to inspect.
+/// @param os Stream receiving a debug marker when best-effort mode is enabled.
+/// @param ctx Active serialization context.
+/// @param count Minimum required operand count.
+/// @param message Diagnostic text to report on failure.
+/// @return @c true when the requirement is satisfied.
+bool requireOperands(const Instr &instr,
+                     std::ostream &os,
+                     const SerializeContext &ctx,
+                     size_t count,
+                     std::string_view message) {
+    if (instr.operands.size() >= count)
+        return true;
+    handleMalformed(instr, os, ctx, message);
+    return false;
+}
+
+/// @brief Ensure an instruction has at least @p count successor labels.
+/// @param instr Instruction to inspect.
+/// @param os Stream receiving a debug marker when best-effort mode is enabled.
+/// @param ctx Active serialization context.
+/// @param count Minimum required label count.
+/// @param message Diagnostic text to report on failure.
+/// @return @c true when the requirement is satisfied.
+bool requireLabels(const Instr &instr,
+                   std::ostream &os,
+                   const SerializeContext &ctx,
+                   size_t count,
+                   std::string_view message) {
+    if (instr.labels.size() >= count)
+        return true;
+    handleMalformed(instr, os, ctx, message);
+    return false;
 }
 
 /// @brief Format a value operand into the textual representation used by IL.
@@ -239,10 +334,8 @@ void printFunctionAttrs(const FunctionAttrs &attrs, std::ostream &os) {
 /// @details Format: call.indirect %fnPtr(%arg1, %arg2, ...)
 ///          First operand is the function pointer, remaining are arguments.
 void printCallIndirectOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    if (instr.operands.empty()) {
-        os << " ; missing callee";
+    if (!requireOperands(instr, os, ctx, 1, "missing callee"))
         return;
-    }
     os << ' ';
     if (instr.hasIndirectSignature) {
         os << '[' << instr.indirectRetType.toString() << '(';
@@ -287,10 +380,10 @@ void printRetOperand(const Instr &instr, std::ostream &os, const SerializeContex
 /// @param ctx Serialization context with value name mappings.
 void printLoadOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     os << ' ' << instr.type.toString();
-    if (!instr.operands.empty()) {
-        os << ", ";
-        printValue(os, instr.operands[0], ctx);
-    }
+    if (!requireOperands(instr, os, ctx, 1, "missing pointer"))
+        return;
+    os << ", ";
+    printValue(os, instr.operands[0], ctx);
 }
 
 /// @brief Emit operands for store instructions including type annotation.
@@ -299,14 +392,12 @@ void printLoadOperands(const Instr &instr, std::ostream &os, const SerializeCont
 /// @param ctx Serialization context with value name mappings.
 void printStoreOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     os << ' ' << instr.type.toString();
-    if (!instr.operands.empty()) {
-        os << ", ";
-        printValue(os, instr.operands[0], ctx);
-        if (instr.operands.size() > 1) {
-            os << ", ";
-            printValue(os, instr.operands[1], ctx);
-        }
-    }
+    if (!requireOperands(instr, os, ctx, 2, "missing store operand"))
+        return;
+    os << ", ";
+    printValue(os, instr.operands[0], ctx);
+    os << ", ";
+    printValue(os, instr.operands[1], ctx);
 }
 
 /// @brief Emit the branch target label and arguments at a given index.
@@ -339,7 +430,7 @@ void printCaretBranchTarget(const Instr &instr,
                             const SerializeContext &ctx) {
     if (index >= instr.labels.size())
         return;
-    os << '^' << instr.labels[index];
+    os << '^' << checkedIdentifier("label", instr.labels[index]);
     if (index < instr.brArgs.size() && !instr.brArgs[index].empty()) {
         os << '(';
         printValueList(os, instr.brArgs[index], ctx);
@@ -352,10 +443,8 @@ void printCaretBranchTarget(const Instr &instr,
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
 void printBrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    if (instr.labels.empty()) {
-        os << " ; missing label";
+    if (!requireLabels(instr, os, ctx, 1, "missing label"))
         return;
-    }
     os << ' ';
     printBranchTarget(instr, 0, os, ctx);
 }
@@ -365,28 +454,19 @@ void printBrOperands(const Instr &instr, std::ostream &os, const SerializeContex
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
 void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    if (instr.operands.empty()) {
-        os << " ; missing label";
+    if (!requireOperands(instr, os, ctx, 1, "missing condition"))
         return;
-    }
 
     os << ' ';
     printValue(os, instr.operands[0], ctx);
 
-    if (instr.labels.empty()) {
-        os << " ; missing label";
+    if (!requireLabels(instr, os, ctx, 2, "missing label"))
         return;
-    }
 
     os << ", ";
     printBranchTarget(instr, 0, os, ctx);
-
-    if (instr.labels.size() >= 2) {
-        os << ", ";
-        printBranchTarget(instr, 1, os, ctx);
-    } else {
-        os << " ; missing label";
-    }
+    os << ", ";
+    printBranchTarget(instr, 1, os, ctx);
 }
 
 /// @brief Emit operands for switch.i32 instructions including case table.
@@ -394,14 +474,10 @@ void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeConte
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
 void printSwitchI32Operands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    if (instr.operands.empty()) {
-        os << " ; missing scrutinee";
+    if (!requireOperands(instr, os, ctx, 1, "missing scrutinee"))
         return;
-    }
-    if (instr.labels.empty()) {
-        os << " ; missing label";
+    if (!requireLabels(instr, os, ctx, 1, "missing label"))
         return;
-    }
 
     os << ' ';
     printValue(os, switchScrutinee(instr), ctx);
@@ -454,7 +530,10 @@ const Formatter &formatterFor(Opcode op) {
             };
         return table;
     }();
-    return formatters[toIndex(op)];
+    const auto index = toIndex(op);
+    if (index >= formatters.size())
+        throw malformedInstruction("<invalid>", "opcode out of range");
+    return formatters[index];
 }
 
 /// @brief Emit a single extern declaration following canonical IL syntax.
@@ -532,9 +611,15 @@ bool isHandlerBlock(const BasicBlock &bb) {
 ///              provides at most one label, `CBr` provides two). The function
 ///              assumes `os` remains valid for the duration of the call.
 void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) {
+    if (!ctx.bestEffortMalformed && !in.brArgs.empty() && in.brArgs.size() != in.labels.size())
+        throw malformedInstruction(il::core::toString(in.op),
+                                   "branch argument list count does not match label count");
     if (in.loc.isValid())
         os << "  .loc " << in.loc.file_id << ' ' << in.loc.line << ' ' << in.loc.column << "\n";
     os << "  ";
+    const auto opcodeIndex = toIndex(in.op);
+    if (opcodeIndex >= kNumOpcodes)
+        throw malformedInstruction("<invalid>", "opcode out of range");
     const auto &info = getOpcodeInfo(in.op);
     if (in.result) {
         os << '%' << ctx.printableNameForTemp(*in.result);
@@ -563,8 +648,10 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) 
 ///          safe to print.  This routine chooses each definition's preferred
 ///          source name when possible and lets `SerializeContext` fall back to
 ///          `%t<id>` otherwise.
-[[nodiscard]] SerializeContext makeSerializeContext(const Function &function) {
+[[nodiscard]] SerializeContext makeSerializeContext(const Function &function,
+                                                    bool bestEffortMalformed) {
     SerializeContext ctx;
+    ctx.bestEffortMalformed = bestEffortMalformed;
 
     size_t capacity = function.valueNames.size();
     auto touchId = [&](unsigned id) { capacity = std::max(capacity, static_cast<size_t>(id) + 1); };
@@ -635,7 +722,7 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) 
 void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
     os << "il " << m.version << "\n";
     if (m.target)
-        os << "target \"" << *m.target << "\"\n";
+        os << "target \"" << encodeEscapedString(*m.target) << "\"\n";
     if (mode == Mode::Canonical) {
         std::vector<Extern> ex(m.externs.begin(), m.externs.end());
         std::sort(
@@ -659,13 +746,13 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
         if (g.type.kind == Type::Kind::Str && g.linkage != Linkage::Import) {
             os << " = \"" << encodeEscapedString(g.init) << "\"";
         } else if (g.hasInitializer || !g.init.empty()) {
-            os << " = " << g.init;
+            os << " = " << checkedRawGlobalInitializer(g);
         }
         os << "\n";
     }
 
     for (const auto &f : m.functions) {
-        SerializeContext ctx = makeSerializeContext(f);
+        SerializeContext ctx = makeSerializeContext(f, mode == Mode::Debug);
 
         os << "func ";
         if (f.linkage == Linkage::Export)

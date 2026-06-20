@@ -469,6 +469,9 @@ Expected<void> validateFunctionParams(const Function &fn) {
     std::unordered_set<std::string> paramNames;
     std::unordered_set<unsigned> paramIds;
     for (const auto &param : fn.params) {
+        if (!il::io::isValidILIdentifier(param.name))
+            return Expected<void>{makeError({}, fn.name + ": malformed param name %" + param.name)};
+
         if (!paramNames.insert(param.name).second)
             return Expected<void>{makeError({}, fn.name + ": duplicate param %" + param.name)};
 

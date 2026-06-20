@@ -42,7 +42,11 @@ il::core::Instr *findTerminator(il::core::BasicBlock &block) {
 /// @param block Basic block to inspect.
 /// @return Pointer to the terminator or nullptr if the block lacks one.
 const il::core::Instr *findTerminator(const il::core::BasicBlock &block) {
-    return findTerminator(const_cast<il::core::BasicBlock &>(block));
+    for (auto it = block.instructions.rbegin(); it != block.instructions.rend(); ++it) {
+        if (il::verify::isTerminator(it->op))
+            return &*it;
+    }
+    return nullptr;
 }
 
 /// @brief Compare two IL values for structural equality.
@@ -147,6 +151,26 @@ bool instructionReferencesAnyTemp(const il::core::Instr &instr,
     return false;
 }
 
+bool instructionReferencesTemp(const il::core::Instr &instr, unsigned tempId) {
+    auto referencesTrackedTemp = [tempId](const il::core::Value &value) {
+        return value.kind == il::core::Value::Kind::Temp && value.id == tempId;
+    };
+
+    for (const auto &operand : instr.operands) {
+        if (referencesTrackedTemp(operand))
+            return true;
+    }
+
+    for (const auto &argList : instr.brArgs) {
+        for (const auto &arg : argList) {
+            if (referencesTrackedTemp(arg))
+                return true;
+        }
+    }
+
+    return false;
+}
+
 bool anyTempUsedOutsideBlock(const il::core::Function &function,
                              const il::core::BasicBlock &owner,
                              const std::unordered_set<unsigned> &tempIds) {
@@ -176,7 +200,17 @@ bool anyTempUsedOutsideBlock(const il::core::Function &function,
 bool isTempUsedOutsideBlock(const il::core::Function &function,
                             const il::core::BasicBlock &owner,
                             unsigned tempId) {
-    return anyTempUsedOutsideBlock(function, owner, std::unordered_set<unsigned>{tempId});
+    for (const auto &block : function.blocks) {
+        if (&block == &owner)
+            continue;
+
+        for (const auto &instr : block.instructions) {
+            if (instructionReferencesTemp(instr, tempId))
+                return true;
+        }
+    }
+
+    return false;
 }
 
 /// @brief Check whether block parameters have cross-block uses.

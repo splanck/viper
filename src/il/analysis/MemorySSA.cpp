@@ -163,7 +163,8 @@ bool hasExceptionHandling(const Function &F) {
 
 /// @brief Compute a reverse-post-order block listing via DFS over the CFG
 ///        (successors follow terminator labels). Used to drive forward dataflow.
-std::vector<Block *> buildReversePostOrder(Function &F) {
+std::vector<Block *> buildReversePostOrder(
+    Function &F, const std::unordered_map<std::string, Block *> &labelToBlock) {
     std::vector<Block *> rpo;
     std::unordered_set<Block *> visited;
     std::vector<Block *> postOrder;
@@ -172,17 +173,16 @@ std::vector<Block *> buildReversePostOrder(Function &F) {
             return;
         if (!b->instructions.empty()) {
             for (const auto &label : b->instructions.back().labels) {
-                for (auto &succ : F.blocks) {
-                    if (succ.label == label) {
-                        dfs(&succ);
-                        break;
-                    }
-                }
+                auto succIt = labelToBlock.find(label);
+                if (succIt != labelToBlock.end())
+                    dfs(succIt->second);
             }
         }
         postOrder.push_back(b);
     };
     dfs(&F.blocks.front());
+    for (auto &block : F.blocks)
+        dfs(&block);
     rpo.assign(postOrder.rbegin(), postOrder.rend());
     return rpo;
 }
@@ -240,15 +240,15 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     // Collect non-escaping allocas — calls are transparent for these.
     const std::unordered_set<unsigned> nonEsc = nonEscapingAllocas(F, defs, roots);
 
-    // -----------------------------------------------------------------------
-    // Phase 1: Compute RPO order for forward dataflow.
-    // -----------------------------------------------------------------------
-    std::vector<Block *> rpo = buildReversePostOrder(F);
-
     // Build label→Block* map for successor lookup.
     std::unordered_map<std::string, Block *> labelToBlock;
     for (auto &B : F.blocks)
         labelToBlock[B.label] = &B;
+
+    // -----------------------------------------------------------------------
+    // Phase 1: Compute RPO order for forward dataflow.
+    // -----------------------------------------------------------------------
+    std::vector<Block *> rpo = buildReversePostOrder(F, labelToBlock);
 
     // Build predecessor/successor maps for join-point phi insertion and
     // forward fixpoint propagation.

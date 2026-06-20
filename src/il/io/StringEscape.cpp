@@ -66,6 +66,7 @@ bool isHex(char c) {
 /// @return True when decoding succeeds; false and an error message otherwise.
 bool decodeEscapedString(std::string_view input, std::string &output, std::string *error) {
     output.clear();
+    output.reserve(input.size());
     for (std::size_t i = 0; i < input.size(); ++i) {
         char c = input[i];
         if (c != '\\') {

@@ -59,6 +59,18 @@ struct StoreSite {
     std::optional<unsigned> size; ///< Size in bytes of the store, if known.
 };
 
+/// @brief Stable summary of a value-defining instruction.
+/// @details LICM mutates instruction storage while scanning loops, so borrowed
+///          instruction pointers are unsafe for helper caches. This summary
+///          copies only the opcode and operands needed by pointer-derivation
+///          checks.
+struct DefSummary {
+    Opcode op{Opcode::Count};      ///< Defining opcode.
+    std::vector<Value> operands{}; ///< Operand payload copied from the definition.
+};
+
+using DefMap = std::unordered_map<unsigned, DefSummary>;
+
 /// @brief Classify how a call instruction interacts with memory for hoisting.
 /// @details Uses the shared call-effects classifier so runtime metadata and
 ///          verified call attributes are interpreted consistently across
@@ -85,30 +97,46 @@ CallHoistKind classifyCallForHoist(const Module &module, const Instr &instr) {
     return CallHoistKind::NotHoistable;
 }
 
-const Instr *findDef(const Function &function, unsigned tempId) {
-    for (const auto &block : function.blocks)
-        for (const auto &instr : block.instructions)
-            if (instr.result && *instr.result == tempId)
-                return &instr;
-    return nullptr;
+/// @brief Build a temp-definition map for pointer-derivation queries.
+/// @param function Function whose result-producing instructions are indexed.
+/// @return Map from temp id to copied definition summary.
+DefMap buildDefMap(const Function &function) {
+    DefMap defs;
+    for (const auto &block : function.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (!instr.result)
+                continue;
+            defs.emplace(*instr.result, DefSummary{instr.op, instr.operands});
+        }
+    }
+    return defs;
 }
 
-bool isDerivedFromNonEscapingAlloca(const Function &function,
+/// @brief Determine whether @p ptr is rooted at a non-escaping alloca.
+/// @details Follows copied GEP definitions through @p defs with a fixed depth
+///          limit so malformed cyclic IR cannot recurse indefinitely.
+/// @param defs Temp definition summaries for the function.
+/// @param aa Alias analysis carrying non-escaping alloca facts.
+/// @param ptr Pointer value to inspect.
+/// @param depth Current recursion depth.
+/// @return True when @p ptr is an alloca or GEP chain rooted at a non-escaping alloca.
+bool isDerivedFromNonEscapingAlloca(const DefMap &defs,
                                     const viper::analysis::BasicAA &aa,
                                     const Value &ptr,
                                     unsigned depth = 0) {
     if (ptr.kind != Value::Kind::Temp || depth > 8)
         return false;
 
-    const Instr *def = findDef(function, ptr.id);
-    if (!def)
+    auto defIt = defs.find(ptr.id);
+    if (defIt == defs.end())
         return false;
+    const DefSummary &def = defIt->second;
 
-    if (def->op == Opcode::Alloca)
+    if (def.op == Opcode::Alloca)
         return aa.isNonEscapingAlloca(ptr.id);
 
-    if (def->op == Opcode::GEP && !def->operands.empty())
-        return isDerivedFromNonEscapingAlloca(function, aa, def->operands[0], depth + 1);
+    if (def.op == Opcode::GEP && !def.operands.empty())
+        return isDerivedFromNonEscapingAlloca(defs, aa, def.operands[0], depth + 1);
 
     return false;
 }
@@ -327,6 +355,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
     for (auto &blk : function.blocks)
         blockLookup.emplace(blk.label, &blk);
 
+    const DefMap defs = buildDefMap(function);
     bool changed = false;
 
     for (const Loop &loop : loopInfo.loops()) {
@@ -384,9 +413,8 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                     // observe or modify stack memory whose address never left
                     // the function.
                     if (loopHasMod) {
-                        allowLoads =
-                            !instr.operands.empty() &&
-                            isDerivedFromNonEscapingAlloca(function, aa, instr.operands[0]);
+                        allowLoads = !instr.operands.empty() &&
+                                     isDerivedFromNonEscapingAlloca(defs, aa, instr.operands[0]);
                     }
                     if (allowLoads && !instr.operands.empty()) {
                         auto loadSize = viper::analysis::BasicAA::typeSizeBytes(instr.type);
