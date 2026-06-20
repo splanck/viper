@@ -219,18 +219,6 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
     return true;
 }
 
-/// @brief Return the first path in @p candidates that exists on disk, else empty.
-/// @details Used to probe Release / Debug / no-config sub-paths under CMake
-///          build directories so the same code works against single- and
-///          multi-config generators.
-std::filesystem::path pickFirstExisting(std::initializer_list<std::filesystem::path> candidates) {
-    for (const auto &candidate : candidates) {
-        if (common::fileExists(candidate))
-            return candidate;
-    }
-    return std::filesystem::path{};
-}
-
 /// @brief Compute the output assembly path from pipeline options.
 /// @details Falls back to sensible defaults when the input path is empty
 ///          or refers to a directory, mirroring traditional compiler

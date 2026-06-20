@@ -958,7 +958,6 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
             }
         }
 
-        const size_t entryIndex = blockIndex[entry];
         std::vector<std::vector<unsigned char>> dom(blocks.size(),
                                                     std::vector<unsigned char>(blocks.size(), 1));
 

@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///test.zia","languageId":"zia","version":1,"text":"func main() -> Int { return 0; }"}}}

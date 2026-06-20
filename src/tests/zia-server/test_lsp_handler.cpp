@@ -25,6 +25,7 @@
 #include "tools/lsp-common/Transport.hpp"
 #include "tools/zia-server/CompilerBridge.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -75,6 +76,49 @@ static void startLspSession(LspHandler &handler) {
     (void)handler.handleRequest(makeNotif("initialized"));
 }
 
+static void openDocument(LspHandler &handler,
+                         const std::string &uri,
+                         const std::string &source,
+                         int version = 1) {
+    auto params = JsonValue::object({
+        {"textDocument",
+         JsonValue::object({
+             {"uri", JsonValue(uri)},
+             {"languageId", JsonValue("zia")},
+             {"version", JsonValue(version)},
+             {"text", JsonValue(source)},
+         })},
+    });
+    handler.handleRequest(makeNotif("textDocument/didOpen", std::move(params)));
+}
+
+static JsonValue positionForOffset(const std::string &source, size_t offset) {
+    int line = 0;
+    int character = 0;
+    const size_t limit = std::min(offset, source.size());
+    for (size_t i = 0; i < limit; ++i) {
+        if (source[i] == '\n') {
+            ++line;
+            character = 0;
+        } else {
+            ++character;
+        }
+    }
+    return JsonValue::object({{"line", JsonValue(line)}, {"character", JsonValue(character)}});
+}
+
+static JsonValue positionOf(const std::string &source, const std::string &needle) {
+    const size_t offset = source.find(needle);
+    EXPECT_TRUE(offset != std::string::npos);
+    return positionForOffset(source, offset == std::string::npos ? 0 : offset);
+}
+
+static JsonValue positionAfter(const std::string &source, const std::string &needle) {
+    const size_t offset = source.find(needle);
+    EXPECT_TRUE(offset != std::string::npos);
+    return positionForOffset(source, offset == std::string::npos ? 0 : offset + needle.size());
+}
+
 /// Standard valid Zia source for testing.
 static const char *kValidSource =
     "module Test;\nfunc start() {\n    var x = 42;\n    Viper.Terminal.SayInt(x);\n}\n";
@@ -94,6 +138,14 @@ TEST(LspHandler, Initialize) {
     EXPECT_TRUE(caps["hoverProvider"].asBool());
     EXPECT_TRUE(caps["documentSymbolProvider"].asBool());
     EXPECT_TRUE(caps.has("completionProvider"));
+    EXPECT_TRUE(caps["definitionProvider"].asBool());
+    EXPECT_TRUE(caps["referencesProvider"].asBool());
+    EXPECT_TRUE(caps["renameProvider"].asBool());
+    EXPECT_TRUE(caps.has("signatureHelpProvider"));
+    EXPECT_TRUE(caps["workspaceSymbolProvider"].asBool());
+    EXPECT_TRUE(caps.has("semanticTokensProvider"));
+    EXPECT_TRUE(caps["semanticTokensProvider"]["full"].asBool());
+    EXPECT_TRUE(caps["semanticTokensProvider"]["legend"]["tokenTypes"].size() > 0u);
 
     auto info = resp["result"]["serverInfo"];
     EXPECT_EQ(info["name"].asString(), "zia-server");
@@ -490,6 +542,123 @@ TEST(LspHandler, DocumentSymbolsListsFunctions) {
         }
     }
     EXPECT_TRUE(foundStart);
+}
+
+// ===== Semantic Navigation =====
+
+TEST(LspHandler, DefinitionReferencesAndRenameUseProjectIndex) {
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
+
+    std::string source =
+        "module Test;\n"
+        "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
+        "func start() {\n"
+        "    var value = add(1, 2);\n"
+        "    Viper.Terminal.SayInt(value);\n"
+        "}\n";
+    openDocument(handler, "file:///test.zia", source);
+
+    auto defParams = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+        {"position", positionOf(source, "value);")},
+    });
+    auto defResp = parseResponse(
+        handler.handleRequest(makeReq("textDocument/definition", std::move(defParams))));
+    EXPECT_EQ(defResp["result"]["uri"].asString(), "file:///test.zia");
+    EXPECT_EQ(defResp["result"]["range"]["start"]["line"].asInt(), 3);
+
+    auto refsParams = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+        {"position", positionOf(source, "value =")},
+        {"context", JsonValue::object({{"includeDeclaration", JsonValue(true)}})},
+    });
+    auto refsResp = parseResponse(
+        handler.handleRequest(makeReq("textDocument/references", std::move(refsParams))));
+    EXPECT_TRUE(refsResp["result"].size() >= 2u);
+
+    auto renameParams = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+        {"position", positionOf(source, "value =")},
+        {"newName", JsonValue("total")},
+    });
+    auto renameResp = parseResponse(
+        handler.handleRequest(makeReq("textDocument/rename", std::move(renameParams))));
+    auto edits = renameResp["result"]["changes"]["file:///test.zia"];
+    EXPECT_TRUE(edits.size() >= 2u);
+    EXPECT_EQ(edits.at(0)["newText"].asString(), "total");
+}
+
+TEST(LspHandler, SignatureHelpReturnsActiveParameter) {
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
+
+    std::string source =
+        "module Test;\n"
+        "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
+        "func start() {\n"
+        "    var value = add(1, 2);\n"
+        "}\n";
+    openDocument(handler, "file:///test.zia", source);
+
+    auto params = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+        {"position", positionAfter(source, "add(1, ")},
+    });
+    auto resp = parseResponse(
+        handler.handleRequest(makeReq("textDocument/signatureHelp", std::move(params))));
+    EXPECT_TRUE(resp["result"]["signatures"].size() > 0u);
+    EXPECT_TRUE(resp["result"]["signatures"].at(0)["label"].asString().find("add") !=
+                std::string::npos);
+    EXPECT_EQ(resp["result"]["activeParameter"].asInt(), 1);
+}
+
+TEST(LspHandler, WorkspaceSymbolSearchesOpenDocuments) {
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
+
+    std::string source =
+        "module Test;\n"
+        "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
+        "func start() { var value = add(1, 2); }\n";
+    openDocument(handler, "file:///test.zia", source);
+
+    auto params = JsonValue::object({{"query", JsonValue("add")}});
+    auto resp =
+        parseResponse(handler.handleRequest(makeReq("workspace/symbol", std::move(params))));
+    bool foundAdd = false;
+    for (size_t i = 0; i < resp["result"].size(); ++i) {
+        if (resp["result"].at(i)["name"].asString() == "add") {
+            foundAdd = true;
+            EXPECT_EQ(resp["result"].at(i)["location"]["uri"].asString(), "file:///test.zia");
+        }
+    }
+    EXPECT_TRUE(foundAdd);
+}
+
+TEST(LspHandler, SemanticTokensFullReturnsDeltaEncodedData) {
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
+
+    std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
+    openDocument(handler, "file:///test.zia", source);
+
+    auto params = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
+    });
+    auto resp = parseResponse(handler.handleRequest(
+        makeReq("textDocument/semanticTokens/full", std::move(params))));
+    auto data = resp["result"]["data"];
+    EXPECT_TRUE(data.size() > 0u);
+    EXPECT_EQ(data.size() % 5u, 0u);
 }
 
 // ===== DocumentStore =====

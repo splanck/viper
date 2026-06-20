@@ -328,13 +328,13 @@ TEST(duplicate_id_rejected) {
     rt_quadtree_destroy(tree);
 }
 
-// GAME-C-3: Truncation flag — dense query capped at RT_QUADTREE_MAX_RESULTS must
-// set the truncation flag so callers can detect partial results.
+// GAME-C-3: Dense queries grow beyond the historical RT_QUADTREE_MAX_RESULTS
+// reservation. The truncation flag is now reserved for allocation failure.
 //
 // Items are spread on a 17×16 grid with spacing 5500 and half-size 2 so that
 // no item straddles any quadrant boundary at any subdivision depth, guaranteeing
 // all N items land in the node tree and are reachable by the query.
-TEST(query_truncation_detected) {
+TEST(query_grows_past_default_result_capacity) {
     const int N = RT_QUADTREE_MAX_RESULTS + 10; // 266 > 256
 
     // World 100000×100000; grid spacing 5500 starting at offset 2750 keeps
@@ -348,14 +348,29 @@ TEST(query_truncation_detected) {
         rt_quadtree_insert(tree, (int64_t)(i + 1), cx, cy, 4, 4);
     }
 
-    // Query entire world — all N items should be found, but result is capped.
+    // Query entire world — all N items should be found.
     int64_t count = rt_quadtree_query_rect(tree, 0, 0, 100000, 100000);
-    ASSERT(count == RT_QUADTREE_MAX_RESULTS);
-    ASSERT(rt_quadtree_query_was_truncated(tree) == 1);
+    ASSERT(count == N);
+    ASSERT(rt_quadtree_result_count(tree) == N);
+    ASSERT(rt_quadtree_query_was_truncated(tree) == 0);
 
     rt_quadtree_clear(tree);
     ASSERT(rt_quadtree_result_count(tree) == 0);
     ASSERT(rt_quadtree_query_was_truncated(tree) == 0);
+
+    rt_quadtree_destroy(tree);
+}
+
+TEST(pairs_grow_past_default_capacity) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
+
+    const int N = 50; // 1225 pairs, beyond the historical MAX_PAIRS reservation.
+    for (int i = 0; i < N; i++)
+        ASSERT(rt_quadtree_insert(tree, i + 1, 50000, 50000, 2000, 2000) == 1);
+
+    int64_t pair_count = rt_quadtree_get_pairs(tree);
+    ASSERT(pair_count == (int64_t)N * (N - 1) / 2);
+    ASSERT(rt_quadtree_pairs_was_truncated(tree) == 0);
 
     rt_quadtree_destroy(tree);
 }
@@ -413,7 +428,8 @@ int main() {
     RUN_TEST(many_items);
     RUN_TEST(invalid_result_index);
     RUN_TEST(duplicate_id_rejected);
-    RUN_TEST(query_truncation_detected);
+    RUN_TEST(query_grows_past_default_result_capacity);
+    RUN_TEST(pairs_grow_past_default_capacity);
     RUN_TEST(query_no_truncation_small_result);
     RUN_TEST(reuses_inactive_slots_after_remove);
 

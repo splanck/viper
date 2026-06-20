@@ -136,7 +136,7 @@ CompilerResult compile(const CompilerInput &input,
 
     // Debug timing
     auto debugTime = [](const char *phase) {
-        if (const char *env = std::getenv("ZIA_DEBUG_COMPILE"))
+        if (std::getenv("ZIA_DEBUG_COMPILE") != nullptr)
             std::cerr << "[zia] " << phase << std::endl;
     };
 

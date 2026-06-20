@@ -109,6 +109,12 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_functions PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_functions test_zia_functions)
 
+    # Constrained generic tests
+    viper_add_test(test_zia_constrained_generics
+            ${_VIPER_ZIA_DIR}/test_zia_constrained_generics.cpp)
+    target_link_libraries(test_zia_constrained_generics PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_constrained_generics test_zia_constrained_generics)
+
     # Statement tests
     viper_add_test(test_zia_statements ${_VIPER_ZIA_DIR}/test_zia_statements.cpp)
     target_link_libraries(test_zia_statements PRIVATE ${VIPER_ZIA_LIBS})

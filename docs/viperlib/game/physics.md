@@ -328,6 +328,7 @@ and impulse-based collision resolution.
 | `ContactNX(index)`    | `Double(Integer)`    | Contact normal X component from A toward B |
 | `ContactNY(index)`    | `Double(Integer)`    | Contact normal Y component from A toward B |
 | `ContactDepth(index)` | `Double(Integer)`    | Penetration depth for overlap contacts; 0 for swept contacts |
+| `ContactOverflowed()` | `Boolean()`          | True if contact storage could not grow during the most recent step |
 
 ### Body Constructor
 
@@ -415,7 +416,8 @@ Analytic projectile helper for preview arcs, lobbed attacks, and trajectory test
 - Very large finite forces, impulses, positions, and velocities are clamped during stepping to keep the broad phase finite
 - `World.Add(body)` ignores duplicate body handles
 - Fixed timestep recommended (e.g., `Step(1.0 / 60.0)` for 60 FPS)
-- **Limits:** A world supports at most **256 bodies** and **64 joints**. Exceeding either limit traps.
+- Body, joint, contact, broad-phase pair, and force-snapshot storage are world-owned and grow on demand from the `PH_MAX_*` default reservations.
+- `ContactOverflowed()` is reserved for allocation pressure: it reports true when a valid contact could not be recorded because contact storage failed to grow.
 
 ### Zia Example
 
@@ -527,13 +529,13 @@ Spatial partitioning data structure for efficient collision detection and spatia
 | `PairSecond(index)`        | `Integer(Integer)` | Get second ID of collision pair                  |
 | `QueryPoint(x, y, radius)` | `Integer(3×Int)`   | Find items whose bounds intersect the circular search area |
 | `QueryRect(x, y, w, h)`   | `Integer(4×Int)`   | Find items in rectangle; returns count           |
-| `QueryWasTruncated()`      | `Boolean()`        | True when the most recent query hit the 256-result cap |
+| `QueryWasTruncated()`      | `Boolean()`        | True when allocation pressure made the most recent query partial |
 | `Remove(id)`               | `Boolean(Integer)` | Remove item by ID                                |
 | `Update(id, x, y, w, h)`  | `Boolean(5×Int)`   | Update item position/size                        |
 
 ### Notes
 
-- Query results are capped at 256 items. Check `QueryWasTruncated()` after `QueryRect()` or `QueryPoint()` if the caller needs a complete answer.
+- Query results and pair output grow on demand from their default reservations. Check `QueryWasTruncated()` or `PairsWasTruncated()` to detect the rare allocation-failure case where output is partial.
 - `QueryPoint()` uses circle-vs-AABB testing, so large objects can match even when their centers are outside the radius.
 
 ### Zia Example

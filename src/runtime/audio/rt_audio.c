@@ -33,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_audio_fx.h"
 #include "rt_asset.h"
 #include "rt_error.h"
 #include "rt_mixgroup.h"
@@ -221,6 +222,21 @@ typedef struct {
 } rt_music_crossfade_state;
 
 static rt_music_crossfade_state g_crossfades[VAUD_MAX_MUSIC];
+
+static int rt_audio_fx_query_cb(void *userdata, int64_t group_id) {
+    (void)userdata;
+    return rt_audio_fx_group_has_effects(group_id);
+}
+
+static void rt_audio_fx_process_cb(void *userdata,
+                                   int64_t group_id,
+                                   float *samples,
+                                   int32_t frames,
+                                   int32_t channels,
+                                   int32_t sample_rate) {
+    (void)userdata;
+    rt_audio_fx_process_group(group_id, samples, frames, channels, sample_rate);
+}
 
 //===----------------------------------------------------------------------===//
 // Global Audio Context
@@ -525,6 +541,8 @@ static int ensure_audio_init(void) {
     if (g_audio_ctx) {
         g_audio_paused = 0;
         vaud_set_master_volume(g_audio_ctx, (float)g_master_volume / 100.0f);
+        vaud_set_group_effects_processor(
+            g_audio_ctx, rt_audio_fx_query_cb, rt_audio_fx_process_cb, NULL);
     }
 
     // Set initialization state (use release to ensure context is visible)
@@ -1053,6 +1071,7 @@ void rt_audio_shutdown(void) {
 #endif
 
     audio_state_unlock();
+    rt_audio_fx_clear_all();
     rt_audio_drain_releases(&releases);
 }
 
@@ -1437,8 +1456,8 @@ static int64_t rt_sound_play_internal(
     float vol = (float)effective / 100.0f;
     float p = (float)pan / 100.0f;
 
-    vaud_voice_id voice =
-        loop ? vaud_play_loop(snd->sound, vol, p) : vaud_play_ex(snd->sound, vol, p);
+    vaud_voice_id voice = loop ? vaud_play_loop_group(snd->sound, vol, p, group)
+                               : vaud_play_ex_group(snd->sound, vol, p, group);
     int64_t result = (int64_t)voice;
     tracked_voice_prune_locked();
     tracked_voice_set(result, group, volume);
@@ -1581,6 +1600,7 @@ void *rt_music_load(rt_string path) {
         audio_state_unlock();
         return NULL;
     }
+    vaud_music_set_group(mus, RT_MIXGROUP_MUSIC);
 
     /* Allocate wrapper object */
     rt_music *wrapper = (rt_music *)rt_obj_new_i64(0, (int64_t)sizeof(rt_music));
@@ -2075,6 +2095,61 @@ rt_string rt_audio_group_name(int64_t group_id) {
     rt_string result = rt_const_cstr(name);
     audio_state_unlock();
     return result;
+}
+
+static int8_t rt_audio_fx_group_valid(int64_t group) {
+    audio_state_lock();
+    int8_t ok = audio_group_id_valid_unlocked(group);
+    audio_state_unlock();
+    return ok;
+}
+
+int64_t rt_snd_group_add_lowpass(int64_t group, double cutoff_hz, double q) {
+    if (!rt_audio_fx_group_valid(group))
+        return -1;
+    return rt_audio_fx_add_lowpass(group, cutoff_hz, q);
+}
+
+int64_t rt_snd_group_add_highpass(int64_t group, double cutoff_hz, double q) {
+    if (!rt_audio_fx_group_valid(group))
+        return -1;
+    return rt_audio_fx_add_highpass(group, cutoff_hz, q);
+}
+
+int64_t rt_snd_group_add_peaking(int64_t group, double freq_hz, double q, double gain_db) {
+    if (!rt_audio_fx_group_valid(group))
+        return -1;
+    return rt_audio_fx_add_peaking(group, freq_hz, q, gain_db);
+}
+
+int64_t rt_snd_group_add_delay(int64_t group, double delay_ms, double feedback, double wet) {
+    if (!rt_audio_fx_group_valid(group))
+        return -1;
+    return rt_audio_fx_add_delay(group, delay_ms, feedback, wet);
+}
+
+int64_t rt_snd_group_add_reverb(int64_t group, double room_size, double damping, double wet) {
+    if (!rt_audio_fx_group_valid(group))
+        return -1;
+    return rt_audio_fx_add_reverb(group, room_size, damping, wet);
+}
+
+void rt_snd_group_fx_bypass(int64_t group, int64_t fx_id, int8_t bypass) {
+    if (!rt_audio_fx_group_valid(group))
+        return;
+    rt_audio_fx_set_bypass(group, fx_id, bypass);
+}
+
+void rt_snd_group_remove_fx(int64_t group, int64_t fx_id) {
+    if (!rt_audio_fx_group_valid(group))
+        return;
+    rt_audio_fx_remove(group, fx_id);
+}
+
+void rt_snd_group_clear_fx(int64_t group) {
+    if (!rt_audio_fx_group_valid(group))
+        return;
+    rt_audio_fx_clear_group(group);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2877,6 +2952,67 @@ int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, in
     (void)group;
     rt_audio_unavailable_("Sound.PlayLoopGroup: audio support not compiled in");
     return -1;
+}
+
+int64_t rt_snd_group_add_lowpass(int64_t group, double cutoff_hz, double q) {
+    (void)group;
+    (void)cutoff_hz;
+    (void)q;
+    rt_audio_unavailable_("Audio.GroupAddLowpass: audio support not compiled in");
+    return -1;
+}
+
+int64_t rt_snd_group_add_highpass(int64_t group, double cutoff_hz, double q) {
+    (void)group;
+    (void)cutoff_hz;
+    (void)q;
+    rt_audio_unavailable_("Audio.GroupAddHighpass: audio support not compiled in");
+    return -1;
+}
+
+int64_t rt_snd_group_add_peaking(int64_t group, double freq_hz, double q, double gain_db) {
+    (void)group;
+    (void)freq_hz;
+    (void)q;
+    (void)gain_db;
+    rt_audio_unavailable_("Audio.GroupAddPeaking: audio support not compiled in");
+    return -1;
+}
+
+int64_t rt_snd_group_add_delay(int64_t group, double delay_ms, double feedback, double wet) {
+    (void)group;
+    (void)delay_ms;
+    (void)feedback;
+    (void)wet;
+    rt_audio_unavailable_("Audio.GroupAddDelay: audio support not compiled in");
+    return -1;
+}
+
+int64_t rt_snd_group_add_reverb(int64_t group, double room_size, double damping, double wet) {
+    (void)group;
+    (void)room_size;
+    (void)damping;
+    (void)wet;
+    rt_audio_unavailable_("Audio.GroupAddReverb: audio support not compiled in");
+    return -1;
+}
+
+void rt_snd_group_fx_bypass(int64_t group, int64_t fx_id, int8_t bypass) {
+    (void)group;
+    (void)fx_id;
+    (void)bypass;
+    rt_audio_unavailable_("Audio.GroupSetFxBypass: audio support not compiled in");
+}
+
+void rt_snd_group_remove_fx(int64_t group, int64_t fx_id) {
+    (void)group;
+    (void)fx_id;
+    rt_audio_unavailable_("Audio.GroupRemoveFx: audio support not compiled in");
+}
+
+void rt_snd_group_clear_fx(int64_t group) {
+    (void)group;
+    rt_audio_unavailable_("Audio.GroupClearFx: audio support not compiled in");
 }
 
 #endif /* VIPER_ENABLE_AUDIO */

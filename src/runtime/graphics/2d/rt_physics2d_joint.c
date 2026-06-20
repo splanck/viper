@@ -437,7 +437,7 @@ static int8_t world_has_body(rt_world_impl *w, void *body) {
 /// @brief Register a joint with a world so it participates in constraint solving.
 /// @details Validates that both of the joint's bodies already belong to @p world
 ///   (traps if not), prevents duplicate registration, and enforces the
-///   PH_MAX_JOINTS hard limit (traps if exceeded).  Retains @p joint so the GC
+///   grows world joint storage as needed. Retains @p joint so the GC
 ///   cannot collect it while it is registered.  Sets the joint active flag to 1.
 /// @param world  Physics2D.World handle.
 /// @param joint  Physics2D joint handle to register.
@@ -448,7 +448,7 @@ void rt_physics2d_world_add_joint(void *world, void *joint) {
     ph_joint *j = checked_joint(joint, "Physics2D.World.AddJoint: expected Physics2D.Joint");
     if (!w || !j)
         return;
-    for (int32_t i = 0; i < w->joint_count; i++) {
+    for (int64_t i = 0; i < w->joint_count; i++) {
         if (w->joints[i] == j)
             return;
     }
@@ -457,9 +457,8 @@ void rt_physics2d_world_add_joint(void *world, void *joint) {
             "Physics2D.World.AddJoint: both joint bodies must be added to the same world first");
         return;
     }
-    if (w->joint_count >= PH_MAX_JOINTS) {
-        rt_trap("Physics2D.World.AddJoint: joint limit exceeded (max " RT_PH_MAX_JOINTS_STR
-                "); increase PH_MAX_JOINTS and recompile");
+    if (!rt_physics2d_world_reserve_joint_capacity(w, w->joint_count + 1)) {
+        rt_trap("Physics2D.World.AddJoint: joint storage allocation failed");
         return;
     }
     j->active = 1;
@@ -481,7 +480,7 @@ void rt_physics2d_world_remove_joint(void *world, void *joint) {
     ph_joint *j = checked_joint(joint, "Physics2D.World.RemoveJoint: expected Physics2D.Joint");
     if (!w || !j)
         return;
-    for (int32_t i = 0; i < w->joint_count; i++) {
+    for (int64_t i = 0; i < w->joint_count; i++) {
         if (w->joints[i] == j) {
             j->active = 0;
             if (rt_obj_release_check0(j))
@@ -674,7 +673,7 @@ void rt_physics2d_solve_spring_joints(void *world, double dt) {
     if (!w)
         return;
 
-    for (int32_t i = 0; i < w->joint_count; i++) {
+    for (int64_t i = 0; i < w->joint_count; i++) {
         ph_joint *j = w->joints[i];
         if (!j || !j->active || j->type != RT_JOINT_SPRING)
             continue;
@@ -695,7 +694,7 @@ void rt_physics2d_solve_position_joints(void *world, double dt) {
         return;
 
     for (int iter = 0; iter < PH_JOINT_ITERATIONS; iter++) {
-        for (int32_t i = 0; i < w->joint_count; i++) {
+        for (int64_t i = 0; i < w->joint_count; i++) {
             ph_joint *j = w->joints[i];
             if (!j || !j->active)
                 continue;

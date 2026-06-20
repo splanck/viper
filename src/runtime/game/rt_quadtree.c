@@ -25,19 +25,18 @@
 //     root object is collected. This means the tree is NOT fully GC-transparent:
 //     node memory is invisible to the GC and is freed via the finalizer path
 //     rather than by GC tracing.
-//   - The flat item array (items[MAX_TOTAL_ITEMS]) lives inside the root struct
-//     which IS GC-managed. item_count is the high-water mark (never decrements);
-//     inactive items are marked with active == 0.
+//   - The flat item array is root-owned heap storage. item_count is the
+//     high-water mark (never decrements); inactive items are marked with active
+//     == 0.
 //   - Duplicate-ID insert guard: rt_quadtree_insert() performs a linear scan of
 //     the flat array before insertion. Inserting the same ID twice is rejected
 //     (returns 0) to prevent ghost items after a single Remove().
-//   - Query results are stored in the root's results[] array (capacity
-//     RT_QUADTREE_MAX_RESULTS = 256). If more items match, query_truncated is
-//     set to 1. Callers that need all results must check
-//     rt_quadtree_query_was_truncated() after every query.
-//   - Pair collection (rt_quadtree_get_pairs) generates up to MAX_PAIRS (1024)
-//     candidate collision pairs by walking the tree recursively and testing
-//     items in each node against each other AND against all ancestor items.
+//   - Query results are stored in a root-owned growable results array. The
+//     legacy RT_QUADTREE_MAX_RESULTS value is only the initial reservation.
+//     query_truncated is set only when allocation prevents a complete result.
+//   - Pair collection (rt_quadtree_get_pairs) generates candidate collision
+//     pairs by walking the tree recursively and testing items in each node
+//     against each other AND against all ancestor items.
 //
 // Ownership/Lifetime:
 //   - The root struct is GC-managed (rt_obj_new_i64). Node memory is freed by
@@ -58,10 +57,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Maximum total items across all nodes.
-#define MAX_TOTAL_ITEMS 4096
+/// Default total item reservation. The storage grows on demand.
+#define QT_DEFAULT_ITEM_CAPACITY 256
 
-/// Maximum collision pairs.
+/// Default collision pair reservation. The storage grows on demand.
 #define MAX_PAIRS 1024
 
 /// Item entry.
@@ -93,14 +92,17 @@ struct qt_pair {
 /// Internal quadtree structure.
 struct rt_quadtree_impl {
     struct qt_node *root;
-    struct qt_item items[MAX_TOTAL_ITEMS];
+    struct qt_item *items;
     int64_t item_count;
-    int64_t results[RT_QUADTREE_MAX_RESULTS];
+    int64_t item_capacity;
+    int64_t *results;
     int64_t result_count;
-    int8_t query_truncated; ///< 1 if last query hit RT_QUADTREE_MAX_RESULTS cap.
-    struct qt_pair pairs[MAX_PAIRS];
+    int64_t result_capacity;
+    int8_t query_truncated; ///< 1 if allocation prevented complete query results.
+    struct qt_pair *pairs;
     int64_t pair_count;
-    int8_t pairs_truncated; ///< 1 if last get_pairs() hit MAX_PAIRS and dropped pairs.
+    int64_t pair_capacity;
+    int8_t pairs_truncated; ///< 1 if allocation prevented complete pair results.
 };
 
 /// @brief Safe-cast a handle to the QuadTree impl, trapping @p api on a
@@ -230,6 +232,94 @@ static int8_t ensure_node_capacity(struct qt_node *node, int64_t needed) {
 
     node->items = resized;
     node->item_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Grow a positive int64 capacity by doubling until it reaches @p needed.
+/// @return The new capacity, or 0 if the request cannot fit in size_t.
+static int64_t grow_capacity_for(int64_t current, int64_t needed, size_t elem_size) {
+    if (needed <= 0 || elem_size == 0)
+        return 0;
+    int64_t new_capacity = current > 0 ? current : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / elem_size)
+        return 0;
+    return new_capacity;
+}
+
+/// @brief Ensure the flat item array can store at least @p needed slots.
+static int8_t ensure_item_capacity(struct rt_quadtree_impl *tree, int64_t needed) {
+    if (!tree || needed <= tree->item_capacity)
+        return 1;
+    int64_t new_capacity = grow_capacity_for(tree->item_capacity, needed, sizeof(struct qt_item));
+    if (new_capacity <= 0)
+        return 0;
+    struct qt_item *resized =
+        (struct qt_item *)realloc(tree->items, (size_t)new_capacity * sizeof(struct qt_item));
+    if (!resized)
+        return 0;
+    if (new_capacity > tree->item_capacity) {
+        memset(resized + tree->item_capacity,
+               0,
+               (size_t)(new_capacity - tree->item_capacity) * sizeof(struct qt_item));
+    }
+    tree->items = resized;
+    tree->item_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Ensure the query-result array can store at least @p needed slots.
+static int8_t ensure_result_capacity(struct rt_quadtree_impl *tree, int64_t needed) {
+    if (!tree || needed <= tree->result_capacity)
+        return 1;
+    int64_t new_capacity = grow_capacity_for(tree->result_capacity, needed, sizeof(int64_t));
+    if (new_capacity <= 0)
+        return 0;
+    int64_t *resized = (int64_t *)realloc(tree->results, (size_t)new_capacity * sizeof(int64_t));
+    if (!resized)
+        return 0;
+    tree->results = resized;
+    tree->result_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Ensure the pair array can store at least @p needed slots.
+static int8_t ensure_pair_capacity(struct rt_quadtree_impl *tree, int64_t needed) {
+    if (!tree || needed <= tree->pair_capacity)
+        return 1;
+    int64_t new_capacity = grow_capacity_for(tree->pair_capacity, needed, sizeof(struct qt_pair));
+    if (new_capacity <= 0)
+        return 0;
+    struct qt_pair *resized =
+        (struct qt_pair *)realloc(tree->pairs, (size_t)new_capacity * sizeof(struct qt_pair));
+    if (!resized)
+        return 0;
+    tree->pairs = resized;
+    tree->pair_capacity = new_capacity;
+    return 1;
+}
+
+static int8_t append_query_result(struct rt_quadtree_impl *tree, int64_t id) {
+    if (!ensure_result_capacity(tree, tree->result_count + 1)) {
+        tree->query_truncated = 1;
+        return 0;
+    }
+    tree->results[tree->result_count++] = id;
+    return 1;
+}
+
+static int8_t append_pair(struct rt_quadtree_impl *tree, int64_t first, int64_t second) {
+    if (!ensure_pair_capacity(tree, tree->pair_count + 1)) {
+        tree->pairs_truncated = 1;
+        return 0;
+    }
+    tree->pairs[tree->pair_count].first = first;
+    tree->pairs[tree->pair_count].second = second;
+    tree->pair_count++;
     return 1;
 }
 
@@ -423,21 +513,11 @@ static void query_node(struct rt_quadtree_impl *tree,
                        int64_t h) {
     if (!node)
         return;
-    // When result_count is already at the cap, more matching items may exist in
-    // this subtree (the caller only invokes us when the subtree intersects the
-    // query rect).  Mark truncation so the caller can detect partial results.
-    if (tree->result_count >= RT_QUADTREE_MAX_RESULTS) {
-        tree->query_truncated = 1;
+    if (tree->query_truncated)
         return;
-    }
 
     // Check items in this node
     for (int64_t i = 0; i < node->item_count; i++) {
-        if (tree->result_count >= RT_QUADTREE_MAX_RESULTS) {
-            tree->query_truncated = 1; // Mark truncation for caller detection
-            break;
-        }
-
         struct qt_item *item = &tree->items[node->items[i]];
         if (!item->active)
             continue;
@@ -447,7 +527,8 @@ static void query_node(struct rt_quadtree_impl *tree,
         int64_t iy = qt_saturating_sub(item->y, item->height / 2);
 
         if (rects_intersect(x, y, w, h, ix, iy, item->width, item->height)) {
-            tree->results[tree->result_count++] = item->id;
+            if (!append_query_result(tree, item->id))
+                return;
         }
     }
 
@@ -495,49 +576,40 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
                                int64_t ancestor_cap) {
     if (!node)
         return;
-    if (tree->pair_count >= MAX_PAIRS) {
-        tree->pairs_truncated = 1;
+    if (tree->pairs_truncated)
         return;
-    }
 
     // Check items in this node against each other
-    for (int64_t i = 0; i < node->item_count && tree->pair_count < MAX_PAIRS; i++) {
+    for (int64_t i = 0; i < node->item_count; i++) {
         struct qt_item *item_i = &tree->items[node->items[i]];
         if (!item_i->active)
             continue;
 
         // Against other items in same node
-        for (int64_t j = i + 1; j < node->item_count && tree->pair_count < MAX_PAIRS; j++) {
+        for (int64_t j = i + 1; j < node->item_count; j++) {
             struct qt_item *item_j = &tree->items[node->items[j]];
             if (!item_j->active)
                 continue;
 
-            tree->pairs[tree->pair_count].first = item_i->id;
-            tree->pairs[tree->pair_count].second = item_j->id;
-            tree->pair_count++;
+            if (!append_pair(tree, item_i->id, item_j->id))
+                return;
         }
 
         // Against ancestor items
-        for (int64_t a = 0; a < ancestor_count && tree->pair_count < MAX_PAIRS; a++) {
+        for (int64_t a = 0; a < ancestor_count; a++) {
             struct qt_item *item_a = &tree->items[ancestors[a]];
             if (!item_a->active)
                 continue;
 
-            tree->pairs[tree->pair_count].first = item_i->id;
-            tree->pairs[tree->pair_count].second = item_a->id;
-            tree->pair_count++;
+            if (!append_pair(tree, item_i->id, item_a->id))
+                return;
         }
     }
 
-    if (tree->pair_count >= MAX_PAIRS)
-        tree->pairs_truncated = 1; // hit the pair cap — some pairs were dropped
-
     // Recurse into children with the ancestor list extended by this node's
     // items. `ancestors` is a single shared scratch buffer for the whole
-    // traversal, sized to MAX_TOTAL_ITEMS (the absolute item ceiling), so the
-    // ancestor list can never overflow: appending in place and passing the new
-    // length down replaces the old per-level 256-entry cap, which previously
-    // dropped collision pairs silently in dense scenes.
+    // traversal and is sized to the current item high-water mark, so appending
+    // in place and passing the new length down cannot overflow.
     if (node->is_split) {
         int64_t count = ancestor_count;
         for (int64_t i = 0; i < node->item_count && count < ancestor_cap; i++)
@@ -555,6 +627,12 @@ static void quadtree_finalizer(void *obj) {
     struct rt_quadtree_impl *tree = (struct rt_quadtree_impl *)obj;
     destroy_node(tree->root);
     tree->root = NULL;
+    free(tree->items);
+    tree->items = NULL;
+    free(tree->results);
+    tree->results = NULL;
+    free(tree->pairs);
+    tree->pairs = NULL;
 }
 
 /// @brief Create a new quadtree object.
@@ -568,8 +646,22 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
 
     memset(tree, 0, sizeof(struct rt_quadtree_impl));
 
+    if (!ensure_item_capacity(tree, QT_DEFAULT_ITEM_CAPACITY) ||
+        !ensure_result_capacity(tree, RT_QUADTREE_MAX_RESULTS) ||
+        !ensure_pair_capacity(tree, MAX_PAIRS)) {
+        free(tree->items);
+        free(tree->results);
+        free(tree->pairs);
+        if (rt_obj_release_check0(tree))
+            rt_obj_free(tree);
+        return NULL;
+    }
+
     tree->root = create_node(x, y, width, height, 0);
     if (!tree->root) {
+        free(tree->items);
+        free(tree->results);
+        free(tree->pairs);
         if (rt_obj_release_check0(tree))
             rt_obj_free(tree);
         return NULL;
@@ -642,7 +734,7 @@ int8_t rt_quadtree_insert(
     }
     int8_t grew_item_array = 0;
     if (idx < 0) {
-        if (tree->item_count >= MAX_TOTAL_ITEMS)
+        if (!ensure_item_capacity(tree, tree->item_count + 1))
             return 0;
         idx = tree->item_count++;
         grew_item_array = 1;
@@ -730,8 +822,8 @@ int8_t rt_quadtree_update(
 
 /// @brief Find all items intersecting the given AABB; returns the result count.
 /// Results are stored internally and accessed via `_get_result(i)`. If more than
-/// RT_QUADTREE_MAX_RESULTS items match, only the first batch is returned and
-/// `_query_was_truncated` returns 1.
+/// the internal result buffer grows to hold every match. `_query_was_truncated`
+/// returns 1 only if allocation fails and a partial result had to be returned.
 int64_t rt_quadtree_query_rect(
     rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height) {
     tree = checked_quadtree(tree, "Quadtree.QueryRect: expected Viper.Game.Quadtree");
@@ -822,14 +914,19 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
 
     tree->pair_count = 0;
     tree->pairs_truncated = 0;
-    // Shared ancestor scratch for the whole DFS, sized to the absolute item
-    // ceiling so the ancestor list can never overflow (no dropped pairs).
-    int64_t *ancestors = (int64_t *)malloc((size_t)MAX_TOTAL_ITEMS * sizeof(int64_t));
+    // Shared ancestor scratch for the whole DFS, sized to the current item
+    // high-water mark so the ancestor list can never overflow.
+    int64_t ancestor_cap = tree->item_count > 0 ? tree->item_count : 1;
+    if ((uint64_t)ancestor_cap > SIZE_MAX / sizeof(int64_t)) {
+        tree->pairs_truncated = 1;
+        return 0;
+    }
+    int64_t *ancestors = (int64_t *)malloc((size_t)ancestor_cap * sizeof(int64_t));
     if (!ancestors) {
         tree->pairs_truncated = 1; // no scratch -> cannot guarantee completeness
         return 0;
     }
-    collect_pairs_node(tree, tree->root, ancestors, 0, MAX_TOTAL_ITEMS);
+    collect_pairs_node(tree, tree->root, ancestors, 0, ancestor_cap);
     free(ancestors);
     return tree->pair_count;
 }
@@ -850,11 +947,9 @@ int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
     return tree->pairs[pair_index].second;
 }
 
-/// @brief Check whether the last rt_quadtree_get_pairs() hit the MAX_PAIRS cap.
+/// @brief Check whether the last rt_quadtree_get_pairs() returned partial pairs.
 /// @details Mirrors rt_quadtree_query_was_truncated() for the broad-phase pair
-///          list: returns 1 if collision pairs were dropped and the result is
-///          therefore incomplete. Callers relying on "all colliding pairs" MUST
-///          check this and re-run on a subset or raise MAX_PAIRS.
+///          list: returns 1 if allocation failure prevented collecting every pair.
 int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree) {
     tree = checked_quadtree(tree, "Quadtree.PairsWasTruncated: expected Viper.Game.Quadtree");
     return tree ? tree->pairs_truncated : 0;

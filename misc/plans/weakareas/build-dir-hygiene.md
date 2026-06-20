@@ -1,23 +1,29 @@
 # Build Directory Hygiene
 
-**Status:** Verified real (6 build directories, large disk, no documented canonical)
-**Area:** repo root, `.gitignore`, `scripts/clean.sh`
+**Status:** Completed — canonical and secondary build directories are documented and
+cleaned consistently across Unix and Windows helpers.
+**Area:** repo root, `.gitignore`, `scripts/clean.sh`, `scripts/clean.ps1`
 **Effort:** S
 **Roadmap fit:** v0.2.x hardening / developer ergonomics
 
 ## Problem
 
-Six build directories coexist at the repo root: `build/`, `build-release/`,
-`build-fuzz/`, `build-fuzz-llvm/`, `cmake-build-debug/` (CLion-generated), and
-`cmake-build-tsan-g3d/`. They consume substantial disk, there's no documented canonical
-dir, and stale binaries in secondary dirs are a known footgun (cf. the memory note about
-verifying the toolchain binary, never trusting a stale fixture build).
+The current checkout is clean at the root: only `build/` is present. `.gitignore` already
+covers `/build/`, `/build*/`, `cmake-build*/`, `coverage/`, `*.profraw`, and
+`*.profdata`, and `scripts/clean.sh` safely prompts before removing root `build*`
+directories.
+
+The remaining weakness is smaller: secondary build dirs used by sanitizer/fuzz/coverage
+lanes and IDEs are not documented as a layout, and `scripts/clean.ps1` does not appear to
+cover every `cmake-build*` variant that the Unix cleaner/gitignore cover. Stale binaries
+remain a footgun when contributors switch between `build/`, IDE builds, and specialized
+lanes.
 
 ## Goal & scope
 
-- **In:** Declare one canonical build dir; make secondary builds (release/fuzz/tsan)
-  script-driven into well-known, gitignored locations; ensure `.gitignore` covers all
-  variants; provide a clean script; document the layout.
+- **In:** Document the canonical build dir and script-owned secondary dirs; keep Unix and
+  Windows cleaners in sync for `build*`, `cmake-build*`, sanitizer/fuzz/coverage outputs;
+  verify `.gitignore` continues to cover generated dirs.
 - **Out:** Deleting the user's existing directories automatically (they may hold wanted
   state — **recommend, don't auto-destroy**; the user runs the cleanup).
 
@@ -36,14 +42,14 @@ verifying the toolchain binary, never trusting a stale fixture build).
 
 1. Audit which dirs are genuinely needed vs incidental; confirm none are tracked in git
    (`git ls-files | grep -E '^(build|cmake-build)'` should be empty).
-2. Update `.gitignore` to cover `build*/`, `cmake-build*/`, `*.profraw/.profdata`, fuzz
-   artifacts — verify the patterns actually match all six current dirs.
-3. Extend `scripts/clean.sh` to remove all generated build/sanitizer/fuzz/coverage dirs
-   (with a clear list of what it will delete; no surprise removals).
+2. Verify `.gitignore` covers `build*/`, `cmake-build*/`, sanitizer/fuzz/coverage dirs,
+   `*.profraw`, and `*.profdata`; update only for real misses.
+3. Extend `scripts/clean.sh` and `scripts/clean.ps1` to remove all generated
+   build/sanitizer/fuzz/coverage dirs (with a clear list of what they will delete; no
+   surprise removals).
 4. Document the canonical layout + how to produce each secondary build.
-5. **Recommend** to the user which existing dirs are safe to delete to reclaim disk
-   (e.g. duplicate `cmake-build-debug/`, stale `cmake-build-tsan-g3d/`) — do not delete
-   them as part of this plan.
+5. If a contributor has secondary dirs locally, recommend which are safe to delete to
+   reclaim disk — do not delete them automatically.
 
 ## Tests
 
@@ -63,6 +69,20 @@ verifying the toolchain binary, never trusting a stale fixture build).
 
 `.gitignore` + `clean.sh`/`clean.ps1` already exist for both Unix and Windows; keep them
 in sync. The canonical-dir convention applies on all platforms.
+
+## Implementation notes
+
+- `docs/getting-started.md` now documents the canonical `build/` directory plus
+  script-owned `build-coverage/`, `build-fuzz/`, sanitizer build directories,
+  `cmake-build-*`, and `coverage/`.
+- `scripts/clean.sh` and `scripts/clean.ps1` now remove `build*`, `cmake-build*`, and
+  `coverage` directories through the existing explicit cleanup flow.
+- The checkout contains no tracked build, `cmake-build`, or coverage directories.
+
+## Verification
+
+- `git ls-files | rg '^(build|cmake-build|coverage)'`
+- Full build verification is covered by the repository build script.
 
 ## Risks / open questions
 

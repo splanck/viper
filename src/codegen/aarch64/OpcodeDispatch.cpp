@@ -41,11 +41,6 @@ namespace viper::codegen::aarch64 {
 
 using il::core::Opcode;
 
-/// @brief Map an IL comparison opcode to its AArch64 condition-code string.
-static const char *condForOpcode(Opcode op) {
-    return lookupCondition(op);
-}
-
 /// @brief Materialize @p value into a GPR and move it into @p dstReg.
 /// @param what Human-readable name used in the error message on failure.
 static void moveValueToArg(const il::core::Value &value,
@@ -91,10 +86,10 @@ static std::string mapExternalSymbol(std::string_view name) {
 static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasicBlock &out) {
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     const uint16_t bitsGpr = allocateNextVReg(ctx.nextVRegId);
-    out.instrs.push_back(MInstr{MOpcode::MovRI,
-                                {MOperand::vregOp(RegClass::GPR, bitsGpr),
-                                 MOperand::immOp(static_cast<long long>(
-                                     viper::codegen::common::f64Bits(value)))}});
+    out.instrs.push_back(
+        MInstr{MOpcode::MovRI,
+               {MOperand::vregOp(RegClass::GPR, bitsGpr),
+                MOperand::immOp(static_cast<long long>(viper::codegen::common::f64Bits(value)))}});
     out.instrs.push_back(
         MInstr{MOpcode::FMovGR,
                {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, bitsGpr)}});

@@ -6,11 +6,14 @@ set(_VIPER_TEST_LABEL_WHITELIST
         arm64
         assemble_link
         basic
+        bytecode
         codegen
         comprehensive
         conformance
         contract
         e2e
+        examples
+        fuzz
         golden
         graphics3d
         il
@@ -119,7 +122,9 @@ function(_viper_assign_test_label name)
         viper_set_test_labels(${name} basic)
     elseif (name MATCHES "^test_il_" OR name MATCHES "^il_" OR name MATCHES "^test_analysis_" OR name MATCHES "^test_irbuilder_")
         viper_set_test_labels(${name} il)
-    elseif (name MATCHES "^test_vm_" OR name MATCHES "^vm_" OR name MATCHES "^test_bytecode_vm$")
+    elseif (name MATCHES "^test_bytecode_" OR name MATCHES "^bytecode_" OR name MATCHES "^test_bytecode_vm$")
+        viper_set_test_labels(${name} vm bytecode)
+    elseif (name MATCHES "^test_vm_" OR name MATCHES "^vm_")
         viper_set_test_labels(${name} vm)
     elseif (name MATCHES "^test_shift_conformance$" OR name MATCHES "^test_subwidth_arith$" OR name MATCHES "^test_crosslayer_arith$" OR name MATCHES "^test_zia_arith_conformance$" OR name MATCHES "^basic_arith_")
         viper_set_test_labels(${name} conformance)
@@ -143,6 +148,10 @@ function(_viper_assign_test_label name)
         viper_set_test_labels(${name} tui)
     elseif (name MATCHES "^perf_")
         viper_set_test_labels(${name} perf)
+    elseif (name MATCHES "^example_smoke_" OR name MATCHES "^examples_")
+        viper_set_test_labels(${name} examples)
+    elseif (name MATCHES "^fuzz_" OR name MATCHES "^test_fuzz_")
+        viper_set_test_labels(${name} fuzz)
     elseif (name MATCHES "^installer_")
         viper_set_test_labels(${name} installer)
     elseif (name MATCHES "^test_cli_" OR name MATCHES "^NoAssertFalseGuard$" OR name MATCHES "^test_tools_" OR name MATCHES "^test_vbasic_" OR name MATCHES "^test_zia_server_")

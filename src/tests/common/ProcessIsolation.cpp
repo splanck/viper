@@ -65,6 +65,7 @@ static std::vector<std::function<void()>> g_registeredChildFunctions;
 static int g_nextRunIsolatedIndex = 0;
 static const char *const kChildRunFlag = "--viper-child-run";
 static const char *const kChildILFlag = "--viper-child-il=";
+static const char *const kChildILInterruptFlag = "--viper-child-il-interrupt=";
 
 void setChildFunction(std::function<void()> fn) {
     g_childFunction = std::move(fn);
@@ -260,7 +261,9 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
     return launchChild(arg, timeoutMs);
 }
 
-ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
+static ChildResult runSerializedModuleChild(il::core::Module &module,
+                                            const char *flag,
+                                            unsigned timeoutMs) {
     // Serialize the module to a temp file
     char tempPath[MAX_PATH];
     char tempDir[MAX_PATH];
@@ -279,12 +282,20 @@ ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
         il::io::Serializer::write(module, ofs, il::io::Serializer::Mode::Canonical);
     }
 
-    std::string arg = std::string(kChildILFlag) + tempPath;
+    std::string arg = std::string(flag) + tempPath;
     ChildResult result = launchChild(arg, timeoutMs);
 
     // Clean up temp file
     DeleteFileA(tempPath);
     return result;
+}
+
+ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
+    return runSerializedModuleChild(module, kChildILFlag, timeoutMs);
+}
+
+ChildResult runModuleWithPendingInterruptIsolated(il::core::Module &module, unsigned timeoutMs) {
+    return runSerializedModuleChild(module, kChildILInterruptFlag, timeoutMs);
 }
 
 bool dispatchChild(int argc, char *argv[]) {
@@ -318,6 +329,27 @@ bool dispatchChild(int argc, char *argv[]) {
                 std::fprintf(stderr, "ProcessIsolation: IL parse failed: %s\n", path);
                 _exit(2);
             }
+            il::vm::VM vm(m);
+            vm.run();
+            _exit(0);
+        }
+        if (std::strncmp(argv[i], kChildILInterruptFlag, std::strlen(kChildILInterruptFlag)) ==
+            0) {
+            suppressDialogs();
+            const char *path = argv[i] + std::strlen(kChildILInterruptFlag);
+            std::ifstream ifs(path);
+            if (!ifs) {
+                std::fprintf(stderr, "ProcessIsolation: cannot open IL file: %s\n", path);
+                _exit(2);
+            }
+            il::core::Module m;
+            auto parseResult = il::io::Parser::parse(ifs, m);
+            if (!parseResult) {
+                std::fprintf(stderr, "ProcessIsolation: IL parse failed: %s\n", path);
+                _exit(2);
+            }
+            il::vm::VM::clearInterrupt();
+            il::vm::VM::requestInterrupt();
             il::vm::VM vm(m);
             vm.run();
             _exit(0);
@@ -436,6 +468,17 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
 ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
     return runIsolated(
         [&module]() {
+            il::vm::VM vm(module);
+            vm.run();
+        },
+        timeoutMs);
+}
+
+ChildResult runModuleWithPendingInterruptIsolated(il::core::Module &module, unsigned timeoutMs) {
+    return runIsolated(
+        [&module]() {
+            il::vm::VM::clearInterrupt();
+            il::vm::VM::requestInterrupt();
             il::vm::VM vm(module);
             vm.run();
         },

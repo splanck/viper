@@ -310,6 +310,7 @@ vaud_context_t vaud_create(void) {
         ctx->voices[i].state = VAUD_VOICE_INACTIVE;
         ctx->voices[i].sound = NULL;
         ctx->voices[i].id = VAUD_INVALID_VOICE;
+        ctx->voices[i].group_id = 0;
     }
 
     /* Initialize music slots */
@@ -600,6 +601,10 @@ vaud_voice_id vaud_play(vaud_sound_t sound) {
 }
 
 vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
+    return vaud_play_ex_group(sound, volume, pan, 0);
+}
+
+vaud_voice_id vaud_play_ex_group(vaud_sound_t sound, float volume, float pan, int64_t group_id) {
     if (!sound)
         return VAUD_INVALID_VOICE;
 
@@ -625,6 +630,7 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
     voice->volume = vaud_clamp_unit_float(volume);
     voice->pan = vaud_clamp_pan_float(pan);
     voice->loop = 0;
+    voice->group_id = group_id;
     voice->state = VAUD_VOICE_PLAYING;
 
     vaud_voice_id id = voice->id;
@@ -635,6 +641,13 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
 }
 
 vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
+    return vaud_play_loop_group(sound, volume, pan, 0);
+}
+
+vaud_voice_id vaud_play_loop_group(vaud_sound_t sound,
+                                   float volume,
+                                   float pan,
+                                   int64_t group_id) {
     if (!sound)
         return VAUD_INVALID_VOICE;
 
@@ -660,6 +673,7 @@ vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
     voice->volume = vaud_clamp_unit_float(volume);
     voice->pan = vaud_clamp_pan_float(pan);
     voice->loop = 1;
+    voice->group_id = group_id;
     voice->state = VAUD_VOICE_PLAYING;
 
     vaud_voice_id id = voice->id;
@@ -703,6 +717,17 @@ void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice_id, float pan) {
     if (voice) {
         voice->pan = vaud_clamp_pan_float(pan);
     }
+    vaud_mutex_unlock(&ctx->mutex);
+}
+
+void vaud_set_voice_group(vaud_context_t ctx, vaud_voice_id voice_id, int64_t group_id) {
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
+        return;
+
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_voice *voice = vaud_find_voice(ctx, voice_id);
+    if (voice)
+        voice->group_id = group_id;
     vaud_mutex_unlock(&ctx->mutex);
 }
 
@@ -1502,6 +1527,7 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
     music->position = 0;
     music->loop = 0;
     music->volume = VAUD_DEFAULT_MUSIC_VOLUME;
+    music->group_id = 0;
     music->current_buffer = 0;
     music->buffer_position = 0;
     music->resample_buf = NULL;
@@ -1564,6 +1590,7 @@ static vaud_music_t music_alloc_unregistered(vaud_context_t ctx) {
     music->ctx = ctx;
     music->state = VAUD_MUSIC_STOPPED;
     music->volume = VAUD_DEFAULT_MUSIC_VOLUME;
+    music->group_id = 0;
     return music;
 }
 
@@ -1980,6 +2007,19 @@ void vaud_music_set_volume(vaud_music_t music, float volume) {
     }
 }
 
+void vaud_music_set_group(vaud_music_t music, int64_t group_id) {
+    if (!music)
+        return;
+
+    if (music->ctx && !vaud_context_is_destroying(music->ctx)) {
+        vaud_mutex_lock(&music->ctx->mutex);
+        music->group_id = group_id;
+        vaud_mutex_unlock(&music->ctx->mutex);
+    } else {
+        music->group_id = group_id;
+    }
+}
+
 float vaud_music_get_volume(vaud_music_t music) {
     if (!music)
         return 0.0f;
@@ -2132,4 +2172,18 @@ void vaud_get_stats(vaud_context_t ctx, vaud_stats_t *out_stats) {
     out_stats->backend_recoveries = vaud_atomic_load_u64(&ctx->stats.backend_recoveries);
     out_stats->backend_write_failures =
         vaud_atomic_load_u64(&ctx->stats.backend_write_failures);
+}
+
+void vaud_set_group_effects_processor(vaud_context_t ctx,
+                                      vaud_group_effects_query_fn query_fn,
+                                      vaud_group_effects_process_fn process_fn,
+                                      void *userdata) {
+    if (vaud_context_is_destroying(ctx))
+        return;
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->group_effects_query = process_fn ? query_fn : NULL;
+    ctx->group_effects_process = process_fn;
+    ctx->group_effects_userdata = process_fn ? userdata : NULL;
+    vaud_mutex_unlock(&ctx->mutex);
 }

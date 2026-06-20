@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-12
+last-verified: 2026-06-20
 ---
 
 # Collections
@@ -19,7 +19,7 @@ last-verified: 2026-05-12
 | [Maps & Sets](maps-sets.md) | Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, TreeMap |
 | [Specialized Maps](multi-maps.md) | BiMap, MultiMap, CountMap, IntMap, DefaultMap, LruCache, WeakMap, SparseArray |
 | [Functional & Lazy](functional.md) | Seq, LazySeq, Iterator |
-| [Specialized Structures](specialized.md) | Bag, BloomFilter, Trie, UnionFind, BitSet, Bytes |
+| [Specialized Structures](specialized.md) | F64Buffer, I64Buffer, Bag, BloomFilter, Trie, UnionFind, BitSet, Bytes |
 
 ## Runtime Correctness Notes
 
@@ -27,6 +27,7 @@ last-verified: 2026-05-12
 - Owning collections retain stored objects and release them when overwritten, removed, cleared, or finalized. WeakMap is the exception: it stores zeroing weak references and does not keep values alive.
 - Collection APIs that expose keys, values, indices, or sorted slices return snapshots. String snapshots own copied strings, object-value snapshots retain their elements, and integer index/key snapshots use boxed `i64` values.
 - Stack and Queue default to borrowed elements at the C runtime layer, but conversion helpers such as `Seq.ToStack`, `List.ToQueue`, and `Stack.ToSeq` create retained snapshots so returned containers remain valid after the source is cleared.
+- Packed numeric buffers (`F64Buffer`, `I64Buffer`) own contiguous primitive payloads internally. `Slice` returns an independent copy, while `ToList` and `ToSeq` box values into ordinary object collections.
 - Capacity and count growth paths trap on overflow instead of wrapping into undersized allocations.
 
 ## See Also

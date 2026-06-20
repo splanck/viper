@@ -1141,6 +1141,13 @@ Acceptance:
 - Opening BASIC never invokes Zia semantic APIs.
 - Command palette clearly reflects supported/unsupported BASIC commands.
 
+Current status as of 2026-06-20: complete for the honesty gate. BASIC remains
+editable/buildable in ViperIDE, and `vbasic-server` is the standalone BASIC
+surface for diagnostics, completion, hover, document symbols, dumps, and MCP/LSP
+requests. ViperIDE keeps BASIC semantic command flags off until a non-blocking
+server adapter exists; `zia_viperide_phase0_phase1` covers the disabled command
+behavior and `test_basic_server_lsp` covers capability advertisement.
+
 ### E10 - Core Text-Editing UX
 
 Goal: deliver the everyday editing ergonomics that define a real editor. These

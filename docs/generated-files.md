@@ -109,6 +109,40 @@ ctest --test-dir build -R runtime
 
 ---
 
+## Embedded Time-Zone Subset
+
+### Source of Truth
+
+| File | Purpose |
+|------|---------|
+| `scripts/generate_tzdata_subset.py` | Curated deterministic IANA-zone subset generator |
+| `src/runtime/localization/rt_tzdata_generated.inc` | Generated transition/offset table included by `rt_timezone.c` |
+
+The runtime ships the generated table only; it does not read host OS zoneinfo or download timezone data. The initial subset is versioned as `viper-tz-subset-2026a` and covers UTC, Tokyo, New York, and Sydney transitions needed by deterministic runtime tests.
+
+### Regeneration
+
+```bash
+python3 scripts/generate_tzdata_subset.py
+python3 scripts/generate_tzdata_subset.py --check
+```
+
+After changing the subset, run:
+
+```bash
+cmake --build build --target test_rt_datetime
+ctest --test-dir build -R '^test_rt_datetime$' --output-on-failure
+```
+
+### Key Invariants
+
+- Transition rows are sorted by UTC effective timestamp.
+- Offsets are seconds east of UTC.
+- The generated include must remain byte-for-byte reproducible from the script.
+- Runtime output must be identical on macOS, Windows, and Linux for covered zones.
+
+---
+
 ## IL Verifier Specification Tables
 
 ### Source of Truth
@@ -141,8 +175,8 @@ ctest --test-dir build -R runtime
 
 | File                               | Purpose                       |
 |------------------------------------|-------------------------------|
-| `docs/spec/x86_64_encodings.json`  | x86-64 instruction encodings  |
-| `docs/spec/aarch64_encodings.json` | AArch64 instruction encodings |
+| `docs/specs/x86_64_encodings.json`  | x86-64 instruction encodings  |
+| `docs/specs/aarch64_encodings.json` | AArch64 instruction encodings |
 
 ### Generated Files
 

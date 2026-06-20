@@ -47,6 +47,10 @@ The implemented bytecode VM (see `src/bytecode/`):
 1. Compiles IL to compact bytecode at module load time via `BytecodeCompiler`
 2. Interprets bytecode using a stack-based evaluation model in `BytecodeVM`
 3. Targets a **100-500x speedup** over the IL tree-walking VM (10-50x slower than Python)
+4. Maintains semantic parity with the tree-walking VM through
+   `test_bytecode_full_program_parity`, which runs the shared IL corpus through
+   both bytecode dispatch modes and compares return values, runtime stdout, and
+   shared trap kinds.
 
 ### 1.3 Key Design Principles
 
@@ -55,6 +59,10 @@ The implemented bytecode VM (see `src/bytecode/`):
 3. **IL Compatibility:** All valid IL programs produce identical results
 4. **Incremental Deployment:** Optional mode, then default, then exclusive
 5. **Zero-Copy Integration:** Reuse existing runtime library unchanged
+
+The bytecode trap-kind enum deliberately keeps values 0-11 aligned with
+`il::vm::TrapKind`; bytecode-only traps start at 100. That alignment is a tested
+compatibility contract, not an implementation accident.
 
 ---
 

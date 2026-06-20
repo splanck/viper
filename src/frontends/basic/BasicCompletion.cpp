@@ -132,15 +132,6 @@ static std::string toLowerStr(const std::string &s) {
     return lower;
 }
 
-/// @brief Lower-case a string_view (overload avoiding an intermediate copy).
-static std::string toLowerStr(std::string_view s) {
-    std::string lower;
-    lower.reserve(s.size());
-    for (char c : s)
-        lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return lower;
-}
-
 /// @brief Test whether @p label begins with @p prefix, case-insensitively.
 /// @details An empty prefix matches everything. The match is anchored at
 ///          position 0 (true prefix), not a free substring search.

@@ -1393,8 +1393,8 @@ bool parsePeOverlayRange(const std::vector<uint8_t> &data,
     constexpr size_t kPeSecurityDirectoryIndex = 4;
     const uint16_t optMagic = rdLE16(data.data() + optOff);
     if (optMagic != 0x020B) {
-        err << "PE: expected PE32+ magic before overlay, got 0x" << std::hex << optMagic
-            << std::dec << "\n";
+        err << "PE: expected PE32+ magic before overlay, got 0x" << std::hex << optMagic << std::dec
+            << "\n";
         return false;
     }
     if (optHdrSize < kPe32PlusDataDirectoryOffset) {
@@ -1403,8 +1403,7 @@ bool parsePeOverlayRange(const std::vector<uint8_t> &data,
     }
     if (optHdrSize >= kPe32PlusDataDirectoryOffset + 4) {
         const uint32_t numberOfRvaAndSizes = rdLE32(data.data() + optOff + 108);
-        const uint64_t declaredDataDirBytes =
-            static_cast<uint64_t>(numberOfRvaAndSizes) * 8u;
+        const uint64_t declaredDataDirBytes = static_cast<uint64_t>(numberOfRvaAndSizes) * 8u;
         if (numberOfRvaAndSizes > 16 ||
             declaredDataDirBytes >
                 static_cast<uint64_t>(optHdrSize - kPe32PlusDataDirectoryOffset)) {
@@ -1428,15 +1427,6 @@ bool parsePeOverlayRange(const std::vector<uint8_t> &data,
         }
     }
     return true;
-}
-
-/// @brief Convenience wrapper over parsePeOverlayRange that discards the end offset.
-/// @details Returns only where the overlay begins, for callers that do not need
-///          the certificate-table-aware overlay end. Forwards failures from
-///          parsePeOverlayRange.
-bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, std::ostream &err) {
-    size_t overlayEnd = 0;
-    return parsePeOverlayRange(data, overlayOff, overlayEnd, err);
 }
 
 /// @brief Check that every path in requiredPaths (after sanitization) is present in names.
@@ -1916,8 +1906,7 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     }
     const uint32_t numberOfRvaAndSizes = rdLE32(data.data() + optOff + 108);
     if (numberOfRvaAndSizes > 16 ||
-        static_cast<uint64_t>(numberOfRvaAndSizes) * 8u >
-            static_cast<uint64_t>(optHdrSize - 112)) {
+        static_cast<uint64_t>(numberOfRvaAndSizes) * 8u > static_cast<uint64_t>(optHdrSize - 112)) {
         err << "PE: invalid data directory count in optional header\n";
         return false;
     }

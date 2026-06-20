@@ -8,14 +8,14 @@
 // File: src/runtime/game/rt_screenfx.c
 // Purpose: Screen effects manager for Viper games. Provides camera shake,
 //   color flash, fade-in, and fade-out effects that are composited each frame.
-//   Effects are stored in a small fixed-size slot array and updated with a
-//   delta-time value (milliseconds). Multiple effects of different types can
-//   run simultaneously; shake offsets are accumulated and the brightest
-//   overlay alpha wins (max-alpha compositing).
+//   Effects are stored in a growable slot array and updated with a delta-time
+//   value (milliseconds). Multiple effects of different types can run
+//   simultaneously; shake offsets are accumulated and the brightest overlay
+//   alpha wins (max-alpha compositing).
 //
 // Key invariants:
-//   - Up to RT_SCREENFX_MAX_EFFECTS simultaneous effects are supported. New
-//     effects that find no free slot are silently dropped (not an error).
+//   - The initial reservation is RT_SCREENFX_MAX_EFFECTS slots. New effects
+//     grow the slot array on demand instead of being silently dropped.
 //   - Shake: uses per-instance LCG RNG (seeded from the object pointer) so
 //     concurrent ScreenFX instances on different threads produce independent
 //     random sequences without global state.
@@ -76,7 +76,8 @@ struct screenfx_effect {
 
 /// Internal manager structure.
 struct rt_screenfx_impl {
-    struct screenfx_effect effects[RT_SCREENFX_MAX_EFFECTS];
+    struct screenfx_effect *effects;
+    int64_t effect_capacity;
     int64_t shake_x;       ///< Current shake offset X.
     int64_t shake_y;       ///< Current shake offset Y.
     int64_t overlay_color; ///< Current overlay color (RGB).
@@ -143,6 +144,30 @@ static int64_t mul_div_sat_i64(int64_t a, int64_t b, int64_t divisor) {
     return ld_to_i64_sat(value);
 }
 
+static int8_t ensure_effect_capacity(rt_screenfx fx, int64_t needed) {
+    if (!fx || needed <= fx->effect_capacity)
+        return 1;
+    int64_t new_capacity = fx->effect_capacity > 0 ? fx->effect_capacity : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2 ||
+            (uint64_t)new_capacity > SIZE_MAX / (2 * sizeof(struct screenfx_effect)))
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / sizeof(struct screenfx_effect))
+        return 0;
+    struct screenfx_effect *resized = (struct screenfx_effect *)realloc(
+        fx->effects, (size_t)new_capacity * sizeof(struct screenfx_effect));
+    if (!resized)
+        return 0;
+    memset(resized + fx->effect_capacity,
+           0,
+           (size_t)(new_capacity - fx->effect_capacity) * sizeof(struct screenfx_effect));
+    fx->effects = resized;
+    fx->effect_capacity = new_capacity;
+    return 1;
+}
+
 /// @brief Effect progress as per-mille (0..1000) of elapsed/duration; returns
 ///        1000 (complete) for a zero/negative duration or NULL effect.
 static int64_t effect_progress_per_mille(const struct screenfx_effect *e) {
@@ -156,6 +181,15 @@ static int64_t effect_progress_per_mille(const struct screenfx_effect *e) {
     return (int64_t)progress;
 }
 
+static void screenfx_finalizer(void *obj) {
+    rt_screenfx fx = (rt_screenfx)obj;
+    if (!fx)
+        return;
+    free(fx->effects);
+    fx->effects = NULL;
+    fx->effect_capacity = 0;
+}
+
 /// @brief Construct an empty ScreenFX manager. RNG state is seeded from the object pointer
 /// XOR 0xDEADBEEF so each instance gets a unique deterministic sequence. Returns a GC-managed
 /// handle; NULL on allocation failure.
@@ -166,7 +200,16 @@ rt_screenfx rt_screenfx_new(void) {
         return NULL;
 
     memset(fx, 0, sizeof(struct rt_screenfx_impl));
+    fx->effect_capacity = RT_SCREENFX_MAX_EFFECTS;
+    fx->effects = (struct screenfx_effect *)calloc((size_t)fx->effect_capacity,
+                                                   sizeof(struct screenfx_effect));
+    if (!fx->effects) {
+        if (rt_obj_release_check0(fx))
+            rt_obj_free(fx);
+        return NULL;
+    }
     fx->rand_state = (uint64_t)(uintptr_t)fx ^ UINT64_C(0xDEADBEEF); // per-instance seed
+    rt_obj_set_finalizer(fx, screenfx_finalizer);
     return fx;
 }
 
@@ -178,19 +221,22 @@ void rt_screenfx_destroy(rt_screenfx fx) {
         rt_obj_free(fx);
 }
 
-/// @brief Linear scan for the first slot whose `type == RT_SCREENFX_NONE`. Returns -1 when full.
-static int find_free_slot(rt_screenfx fx) {
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+/// @brief Linear scan for the first free slot, growing the slot array if needed.
+static int64_t find_free_slot(rt_screenfx fx) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         if (fx->effects[i].type == RT_SCREENFX_NONE)
             return i;
     }
+    int64_t slot = fx->effect_capacity;
+    if (ensure_effect_capacity(fx, slot + 1))
+        return slot;
     return -1;
 }
 
 /// @brief Locate an existing effect of the given type so it can be reused/restarted (e.g. shake
 /// only ever lives in one slot — re-triggering replaces in place rather than allocating).
-static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type) {
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+static int64_t find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         if (fx->effects[i].type == type)
             return i;
     }
@@ -219,7 +265,7 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
 
     int64_t max_overlay_alpha = 0;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         struct screenfx_effect *e = &fx->effects[i];
         if (e->type == RT_SCREENFX_NONE)
             continue;
@@ -329,7 +375,7 @@ void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int6
         intensity = 0;
 
     // Find existing shake or free slot
-    int slot = find_effect_of_type(fx, RT_SCREENFX_SHAKE);
+    int64_t slot = find_effect_of_type(fx, RT_SCREENFX_SHAKE);
     if (slot < 0)
         slot = find_free_slot(fx);
     if (slot < 0)
@@ -352,7 +398,7 @@ void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -376,7 +422,7 @@ void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration) {
     rt_screenfx_cancel_type(fx, RT_SCREENFX_FADE_IN);
     rt_screenfx_cancel_type(fx, RT_SCREENFX_FADE_OUT);
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -400,7 +446,7 @@ void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration) {
     rt_screenfx_cancel_type(fx, RT_SCREENFX_FADE_IN);
     rt_screenfx_cancel_type(fx, RT_SCREENFX_FADE_OUT);
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -420,7 +466,7 @@ void rt_screenfx_cancel_all(rt_screenfx fx) {
     if (!fx)
         return;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
+    for (int64_t i = 0; i < fx->effect_capacity; i++)
         fx->effects[i].type = RT_SCREENFX_NONE;
 
     fx->shake_x = 0;
@@ -437,7 +483,7 @@ void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
     if (!fx)
         return;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         if (fx->effects[i].type == (rt_screenfx_type_t)type)
             fx->effects[i].type = RT_SCREENFX_NONE;
     }
@@ -449,7 +495,7 @@ int8_t rt_screenfx_is_active(rt_screenfx fx) {
     if (!fx)
         return 0;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         if (fx->effects[i].type != RT_SCREENFX_NONE)
             return 1;
     }
@@ -463,7 +509,7 @@ int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type) {
     if (!fx)
         return 0;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         if (fx->effects[i].type == (rt_screenfx_type_t)type)
             return 1;
     }
@@ -511,7 +557,7 @@ void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t 
     if (direction < 0 || direction > 3)
         direction = RT_DIR_LEFT;
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -534,7 +580,7 @@ void rt_screenfx_circle_in(
     if (!fx || duration <= 0)
         return;
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -557,7 +603,7 @@ void rt_screenfx_circle_out(
     if (!fx || duration <= 0)
         return;
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -580,7 +626,7 @@ void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -605,7 +651,7 @@ void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t durati
     if (max_block_size < 2)
         max_block_size = 2;
 
-    int slot = find_free_slot(fx);
+    int64_t slot = find_free_slot(fx);
     if (slot < 0)
         return;
 
@@ -626,7 +672,7 @@ int8_t rt_screenfx_is_finished(rt_screenfx fx) {
     if (!fx)
         return 1;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         if (fx->effects[i].type != RT_SCREENFX_NONE)
             return 0;
     }
@@ -642,7 +688,7 @@ int64_t rt_screenfx_get_transition_progress(rt_screenfx fx) {
         return 0;
 
     // Find the first active transition effect and return its progress
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         struct screenfx_effect *e = &fx->effects[i];
         if (e->type >= RT_SCREENFX_WIPE && e->type <= RT_SCREENFX_PIXELATE) {
             if (e->duration <= 0)
@@ -688,7 +734,7 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
             canvas, 0, 0, screen_w, screen_h, fx->overlay_color >> 8, fx->overlay_alpha);
     }
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         struct screenfx_effect *e = &fx->effects[i];
         if (e->type == RT_SCREENFX_NONE)
             continue;

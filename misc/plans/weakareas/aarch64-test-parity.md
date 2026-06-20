@@ -1,8 +1,8 @@
 # AArch64 Codegen Test Organization & Cross-Backend Parity
 
-**Status:** Reframed — AArch64 is **not** untested (~15+ unit tests + e2e + differential
-exist); the gap is **organization/density** and an explicit cross-backend equivalence
-story.
+**Status:** Completed — AArch64 now has a dedicated `src/tests/codegen/aarch64/`
+entry point plus shared-corpus parity coverage and clear backend-equivalence
+documentation.
 **Area:** `src/tests/codegen/`, `src/tests/unit/codegen/`
 **Effort:** M
 **Roadmap fit:** v0.2.x hardening
@@ -12,7 +12,7 @@ story.
 The review's original "AArch64 has zero codegen tests / critical gap" was **false**.
 Verified reality:
 
-- ~15+ ARM64 unit tests exist in `src/tests/unit/codegen/`
+- 90+ ARM64/AArch64-specific unit/codegen tests exist in `src/tests/unit/codegen/`
   (`test_codegen_arm64_*`, `test_aarch64_*`: switch, bitwise, logical-imm, icmp-imm,
   call/stack args, callee-saved, GEP load/store, rodata pool, vararg, trap blocks, CLI…).
 - E2E: `test_arm64_comprehensive.cmake`, `test_arm64_frogger.cmake`,
@@ -23,9 +23,9 @@ Verified reality:
 The **actual** gaps:
 
 1. **No dedicated `src/tests/codegen/aarch64/` directory** — x86_64 has
-   `src/tests/codegen/x86_64/` with ~33 structured tests (ABI, encoding, regalloc
-   stress, FP, determinism); ARM64's are scattered in `unit/codegen/` without that
-   structure, so coverage is harder to audit and likely lower-density in some categories.
+   `src/tests/codegen/x86_64/` with structured e2e/backend tests; many ARM64 tests are
+   scattered in `unit/codegen/`, so coverage is harder to audit even where density is
+   good.
 2. **No explicit cross-backend equivalence assertion** — each backend is validated
    against the VM, but there is no single artifact stating "x86_64 and aarch64 agree."
 
@@ -56,9 +56,9 @@ opt-in lane.
 
 ## Implementation steps
 
-1. Create `src/tests/codegen/aarch64/` + CMake registration mirroring
-   `src/tests/codegen/x86_64/CMakeLists.txt`; move the scattered `unit/codegen/*arm64*`
-   tests in (keep ctest labels stable).
+1. Create `src/tests/codegen/aarch64/` + CMake registration mirroring the x86_64 layout
+   for end-to-end/backend tests. Do not mechanically move every low-level unit test if
+   `unit/codegen/` is still the clearer home; create an index so ownership is explicit.
 2. Diff x86_64's test categories against ARM64's; add the missing analogs (ABI/calling
    convention edge cases, encoding validation, regalloc stress/consistency, FP compare
    and conversion widths, determinism).
@@ -89,6 +89,16 @@ opt-in lane.
 - Golden snapshots stable across runs (determinism).
 - Coverage report (see `code-coverage.md`) shows comparable `codegen/aarch64` vs
   `codegen/x86_64` line coverage.
+
+Completion notes:
+
+- Added `src/tests/codegen/aarch64/` with `test_codegen_aarch64_shared_corpus`.
+- Added deterministic shared IL corpus programs under `src/tests/shared_corpus/il/`.
+- The AArch64 suite compiles representative corpus programs on every host
+  without executing ARM64 code and verifies deterministic assembly plus mnemonic
+  markers.
+- Updated `docs/testing.md` and `docs/contributor-guide.md` with the corpus
+  location and equivalence-via-VM rationale.
 
 ## Documentation
 

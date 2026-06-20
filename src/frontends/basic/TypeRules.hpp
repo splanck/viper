@@ -9,8 +9,11 @@
 // type promotion and operator result type computation rules.
 //
 // BASIC Numeric Type Lattice:
-// BASIC defines a type promotion hierarchy for numeric operations:
-//   Integer (16-bit) → Long (32-bit) → Single (32-bit float) → Double (64-bit float)
+// BASIC preserves the surface promotion hierarchy for diagnostics and result
+// spelling:
+//   Integer → Long → Single → Double
+// The current lowering maps integer results to i64 and floating results to f64;
+// see docs/specs/numerics.md for the normative storage contract.
 //
 // Type Promotion Rules:
 // When binary operators combine operands of different numeric types, BASIC
@@ -20,8 +23,8 @@
 //   Single + Double  → Double
 //   Integer * Double → Double
 //
-// These rules ensure that precision is never lost implicitly in numeric
-// expressions, matching the behavior of classic BASIC implementations.
+// These rules keep the frontend's semantic result names stable while lowering
+// uses the implemented IL storage widths.
 //
 // Key Responsibilities:
 // - Type promotion: Determines the result type of binary numeric operations
@@ -37,7 +40,7 @@
 // - Integer division (\): Requires both operands to be Integer or Long;
 //   result is always Integer or Long
 // - Modulo (MOD): Requires both operands to be Integer or Long
-// - Exponentiation (^): Promotes to Single or Double based on operands
+// - Exponentiation (^): Produces Double
 // - Comparison (=, <, >, <=, >=, <>): Operands promoted for comparison,
 //   result is always Boolean (represented as Integer in BASIC)
 //
@@ -67,10 +70,10 @@ class TypeRules {
   public:
     /// @brief Available numeric types ordered by promotion lattice.
     enum class NumericType {
-        Integer, ///< 16-bit signed integer.
-        Long,    ///< 32-bit signed integer.
-        Single,  ///< 32-bit IEEE-754 floating-point.
-        Double,  ///< 64-bit IEEE-754 floating-point.
+        Integer, ///< INTEGER/INT surface rank, stored as i64.
+        Long,    ///< LONG surface rank, stored as i64.
+        Single,  ///< SINGLE surface rank, stored as f64.
+        Double,  ///< DOUBLE surface rank, stored as f64.
     };
 
     /// @brief Structured information describing a numeric type error.

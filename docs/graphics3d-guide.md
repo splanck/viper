@@ -1864,71 +1864,10 @@ func start() {
 
 ## Spatial Audio
 
-Spatial audio now has two layers:
-
-- `SoundListener3D` and `SoundSource3D` are the preferred gameplay-facing APIs.
-- `SpatialAudio3D` remains as the low-level compatibility layer for direct listener/voice control.
-
-### SoundListener3D
-
-An `SoundListener3D` owns the active listener transform used for attenuation and stereo pan. The first listener you create becomes active automatically if no other active listener exists; you can switch the active listener by setting `IsActive = true` on another instance.
-
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `Position` | `Vec3` | read/write | Listener world position |
-| `Forward` | `Vec3` | read/write | Listener facing direction |
-| `Up` | `Vec3` | read/write | Listener up direction used to derive the right vector |
-| `Velocity` | `Vec3` | read/write | Listener velocity |
-| `IsActive` | `Boolean` | read/write | Whether this listener is driving `SpatialAudio3D` |
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `New()` | `obj()` | Create a listener object |
-| `SetPosition(position)` | `void(obj)` | Set world position from a `Vec3` |
-| `SetForward(forward)` | `void(obj)` | Set facing direction from a `Vec3` |
-| `SetUp(up)` | `void(obj)` | Set up direction from a `Vec3` |
-| `SetVelocity(velocity)` | `void(obj)` | Set velocity explicitly |
-| `BindNode(node)` | `void(obj)` | Follow a `SceneNode3D` world transform |
-| `ClearNodeBinding()` | `void()` | Stop following a node |
-| `BindCamera(camera)` | `void(obj)` | Follow a `Camera3D` position and forward vector |
-| `ClearCameraBinding()` | `void()` | Stop following a camera |
-
-### SoundSource3D
-
-An `SoundSource3D` owns one spatial sound instance. It caches world-space position and can follow a bound `SceneNode3D`.
-
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `Position` | `Vec3` | read/write | Source world position |
-| `Velocity` | `Vec3` | read/write | Source velocity |
-| `DopplerFactor` | `Float` | read | Latest computed Doppler pitch multiplier |
-| `RefDistance` | `Float` | read/write | Full-volume radius before attenuation begins |
-| `MaxDistance` | `Float` | read/write | Distance at which the sound attenuates to silence |
-| `Volume` | `Integer` | read/write | Base volume before attenuation `[0,100]` |
-| `Looping` | `Boolean` | read/write | Whether `Play()` uses looped voice playback |
-| `IsPlaying` | `Boolean` | read | Whether the current voice is still alive |
-| `VoiceId` | `Integer` | read | Current low-level voice handle, or `0` when idle |
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `New(sound)` | `obj(obj)` | Create a source around a `Sound` object |
-| `SetPosition(position)` | `void(obj)` | Set world position from a `Vec3` |
-| `SetVelocity(velocity)` | `void(obj)` | Set velocity explicitly |
-| `Play()` | `i64()` | Start playback and return the active voice handle |
-| `Stop()` | `void()` | Stop the active voice and clear `VoiceId` |
-| `BindNode(node)` | `void(obj)` | Follow a `SceneNode3D` world transform |
-| `ClearNodeBinding()` | `void()` | Stop following a node |
-
-### Binding Sync
-
-Bound audio objects are explicit, just like physics/animation bindings:
-
-- `SpatialAudio3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
-- `Scene3D.SyncBindings(dt)` calls `SpatialAudio3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
-- Property setters such as `source.Position = ...` update the cached spatial state immediately even when no scene binding is involved.
-- `BindNode` accepts only `SceneNode3D`, `BindCamera` accepts only `Camera3D`, and non-Vec3 position/velocity/forward values are ignored. Null vectors still collapse to origin for compatibility.
-- `SoundSource3D.MaxDistance` is finite and non-negative; invalid values become `0.0`.
-- `SoundSource3D.RefDistance` defaults to `1.0`; `MaxDistance` is raised when needed so it is never smaller than `RefDistance`.
+Spatial-audio math and low-level `Viper.Sound.SpatialAudio3D` playback live in
+the audio runtime. Graphics3D keeps only the `SoundListener3D` and
+`SoundSource3D` wrappers that bind listeners/sources to `SceneNode3D` and
+`Camera3D`.
 
 Recommended frame order for scene-driven audio:
 
@@ -1936,16 +1875,9 @@ Recommended frame order for scene-driven audio:
 2. Call `Scene3D.SyncBindings(dt)`.
 3. Trigger `SoundSource3D.Play()` or `SpatialAudio3D.PlayAt(...)` calls for the frame.
 
-### SpatialAudio3D Compatibility Layer
-
-`SpatialAudio3D` is available when you want direct listener/voice control without allocating objects.
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `SpatialAudio3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
-| `SpatialAudio3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
-| `SpatialAudio3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
-| `SpatialAudio3D.SyncBindings(dt)` | `void(f64)` | Update all bound `SoundListener3D` / `SoundSource3D` objects |
+See [Audio: Spatial Audio](viperlib/audio.md#spatial-audio) for the full
+spatial API and [Audio: Mix Group Effects](viperlib/audio.md#mix-group-effects)
+for group-level low-pass, EQ, delay, and reverb.
 
 ### Zia Example
 

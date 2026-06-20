@@ -64,10 +64,6 @@ Expected<void> expect(parser_impl::ParserState &state, TokenKind want, std::stri
     return lineError<void>(state.lineNo(), oss.str());
 }
 
-bool peekIs(const parser_impl::ParserState &state, TokenKind kind) {
-    return state.ts && state.ts->kind() == kind;
-}
-
 void recoverTo(parser_impl::ParserState &state, TokenKind boundary) {
     if (!state.ts)
         return;
@@ -276,10 +272,10 @@ Expected<Param> parseBlockParam(const std::string &paramText,
         // This is the entry block - check if this param shadows a function param
         auto it = st.tempIds.find(nm);
         if (it != st.tempIds.end()) {
-            const auto fnParamIt = std::find_if(
-                st.curFn->params.begin(), st.curFn->params.end(), [&](const Param &param) {
-                    return param.id == it->second;
-                });
+            const auto fnParamIt =
+                std::find_if(st.curFn->params.begin(),
+                             st.curFn->params.end(),
+                             [&](const Param &param) { return param.id == it->second; });
             if (fnParamIt != st.curFn->params.end() && fnParamIt->type.kind != ty.kind) {
                 return lineError<Param>(
                     st.lineNo, "entry block parameter type differs from function parameter");

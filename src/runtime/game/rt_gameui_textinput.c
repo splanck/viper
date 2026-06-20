@@ -32,6 +32,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_trap.h"
 
 #include <float.h>
 #include <limits.h>
@@ -44,14 +45,15 @@
 // UITextInput
 //=============================================================================
 
-#define RT_UITEXTINPUT_MAX_BYTES 512
+#define RT_UITEXTINPUT_DEFAULT_BYTES 512
 #define RT_UITEXTINPUT_DEFAULT_CURSOR_BLINK_MS 530
 
 typedef struct {
     void *vptr;
     int64_t x, y, w, h;
-    char text[RT_UITEXTINPUT_MAX_BYTES];
+    char *text;
     int64_t text_bytes;
+    int64_t text_capacity;
     int64_t cursor_byte;
     int64_t selection_anchor;
     int64_t scroll_byte;
@@ -70,7 +72,8 @@ typedef struct {
     int8_t password_mode;
     int8_t multiline;
     int64_t max_codepoints;
-    char placeholder[RT_UITEXTINPUT_MAX_BYTES];
+    char *placeholder;
+    int64_t placeholder_capacity;
 } rt_uitextinput_impl;
 
 /// @brief Safe-cast a handle to the UITextInput impl, trapping @p api on a
@@ -90,8 +93,35 @@ static void uitextinput_finalizer(void *obj) {
     rt_uitextinput_impl *ti = (rt_uitextinput_impl *)obj;
     if (!ti)
         return;
+    free(ti->text);
+    ti->text = NULL;
+    ti->text_bytes = 0;
+    ti->text_capacity = 0;
+    free(ti->placeholder);
+    ti->placeholder = NULL;
+    ti->placeholder_capacity = 0;
     ui_release_obj(ti->font);
     ti->font = NULL;
+}
+
+static int8_t ensure_text_storage(char **buffer, int64_t *capacity, int64_t needed) {
+    if (!buffer || !capacity || needed <= *capacity)
+        return 1;
+    int64_t new_capacity = *capacity > 0 ? *capacity : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2 || (uint64_t)new_capacity > SIZE_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX)
+        return 0;
+    char *resized = (char *)realloc(*buffer, (size_t)new_capacity);
+    if (!resized)
+        return 0;
+    memset(resized + *capacity, 0, (size_t)(new_capacity - *capacity));
+    *buffer = resized;
+    *capacity = new_capacity;
+    return 1;
 }
 
 /// @brief Replace the field's buffer with @p len bytes of @p text, resetting
@@ -103,9 +133,12 @@ static void textinput_set_bytes(rt_uitextinput_impl *ti, const char *text, size_
         len = 0;
     else
         len = ui_visible_len(text, len);
-    len = ui_utf8_trunc_len(text, len, RT_UITEXTINPUT_MAX_BYTES - 1);
-    if (ti->max_codepoints > 0)
+    if (text && len > 0 && ti->max_codepoints > 0)
         len = ui_utf8_trunc_codepoints(text, len, (size_t)ti->max_codepoints);
+    if (!ensure_text_storage(&ti->text, &ti->text_capacity, (int64_t)len + 1)) {
+        rt_trap("UITextInput.SetText: text allocation failed");
+        return;
+    }
     if (len > 0)
         memmove(ti->text, text, len);
     ti->text[len] = '\0';
@@ -182,8 +215,11 @@ static int8_t textinput_insert_bytes(rt_uitextinput_impl *ti, const char *src, s
         size_t cp_len = ui_utf8_cp_len(src, src_len, accepted);
         if (accepted + cp_len > src_len)
             break;
-        if ((int64_t)cp_len > (RT_UITEXTINPUT_MAX_BYTES - 1) - ti->text_bytes)
+        if (!ensure_text_storage(
+                &ti->text, &ti->text_capacity, ti->text_bytes + (int64_t)cp_len + 1)) {
+            rt_trap("UITextInput.HandleText: text allocation failed");
             break;
+        }
         if (src[accepted] == '\0' ||
             (!ti->multiline && (src[accepted] == '\n' || src[accepted] == '\r'))) {
             accepted += cp_len;
@@ -268,6 +304,13 @@ void *rt_uitextinput_new(int64_t x, int64_t y, int64_t w, int64_t h) {
     ti->visible = 1;
     ti->enabled = 1;
     rt_obj_set_finalizer(ti, uitextinput_finalizer);
+    if (!ensure_text_storage(&ti->text, &ti->text_capacity, RT_UITEXTINPUT_DEFAULT_BYTES) ||
+        !ensure_text_storage(
+            &ti->placeholder, &ti->placeholder_capacity, RT_UITEXTINPUT_DEFAULT_BYTES)) {
+        if (rt_obj_release_check0(ti))
+            rt_obj_free(ti);
+        return NULL;
+    }
     return ti;
 }
 
@@ -462,16 +505,21 @@ void rt_uitextinput_draw(void *ptr, void *canvas) {
                     ti->h,
                     ti->focused ? ti->border_color_focused : ti->border_color);
 
-    const char *draw_text = ti->text;
-    char password[RT_UITEXTINPUT_MAX_BYTES];
+    const char *draw_text = ti->text ? ti->text : "";
+    char *password = NULL;
     if (ti->password_mode && ti->text_bytes > 0) {
+        draw_text = "";
         int64_t cps = ui_codepoint_count_bytes(ti->text, ti->text_bytes);
-        if (cps >= RT_UITEXTINPUT_MAX_BYTES)
-            cps = RT_UITEXTINPUT_MAX_BYTES - 1;
-        memset(password, '*', (size_t)cps);
-        password[cps] = '\0';
-        draw_text = password;
-    } else if (ti->text_bytes == 0 && !ti->focused && ti->placeholder[0] != '\0') {
+        if (cps > 0 && (uint64_t)cps < SIZE_MAX) {
+            password = (char *)malloc((size_t)cps + 1);
+            if (password) {
+                memset(password, '*', (size_t)cps);
+                password[cps] = '\0';
+                draw_text = password;
+            }
+        }
+    } else if (ti->text_bytes == 0 && !ti->focused && ti->placeholder &&
+               ti->placeholder[0] != '\0') {
         draw_text = ti->placeholder;
     }
 
@@ -494,6 +542,7 @@ void rt_uitextinput_draw(void *ptr, void *canvas) {
         int64_t cx = ti->x + 4 + ui_text_prefix_width(ti->text, ti->cursor_byte, ti->font, 1);
         rt_canvas_line(canvas, cx, ti->y + 3, cx, ti->y + ti->h - 4, ti->cursor_color);
     }
+    free(password);
 }
 
 void rt_uitextinput_set_text_color(void *ptr, int64_t color) {
@@ -530,8 +579,8 @@ void rt_uitextinput_set_cursor_color(void *ptr, int64_t color) {
 }
 
 void rt_uitextinput_set_selection_color(void *ptr, int64_t color) {
-    rt_uitextinput_impl *ti =
-        checked_textinput(ptr, "UITextInput.SetSelectionColor: expected Viper.Game.UI.HudTextInput");
+    rt_uitextinput_impl *ti = checked_textinput(
+        ptr, "UITextInput.SetSelectionColor: expected Viper.Game.UI.HudTextInput");
     if (ti)
         ti->selection_color = color;
 }
@@ -611,8 +660,18 @@ void rt_uitextinput_set_password_mode(void *ptr, int8_t password) {
 void rt_uitextinput_set_placeholder(void *ptr, rt_string placeholder) {
     rt_uitextinput_impl *ti =
         checked_textinput(ptr, "UITextInput.SetPlaceholder: expected Viper.Game.UI.HudTextInput");
-    if (ti)
-        ui_copy_text(ti->placeholder, sizeof(ti->placeholder), placeholder);
+    if (!ti)
+        return;
+    const char *text = placeholder ? rt_string_cstr(placeholder) : "";
+    size_t len = placeholder ? (size_t)rt_str_len(placeholder) : 0;
+    len = ui_visible_len(text, len);
+    if (!ensure_text_storage(&ti->placeholder, &ti->placeholder_capacity, (int64_t)len + 1)) {
+        rt_trap("UITextInput.SetPlaceholder: placeholder allocation failed");
+        return;
+    }
+    if (len > 0)
+        memmove(ti->placeholder, text, len);
+    ti->placeholder[len] = '\0';
 }
 
 void rt_uitextinput_set_max_codepoints(void *ptr, int64_t max_cps) {

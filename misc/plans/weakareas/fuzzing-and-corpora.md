@@ -1,6 +1,7 @@
 # Fuzzing: Regular Lane, Corpora, and Coverage of New Surfaces
 
-**Status:** Verified real (harnesses exist but are opt-in, under-corpus'd, and miss key surfaces)
+**Status:** Completed — fuzz harness discovery, seed corpora, additional protocol/parser
+harnesses, local mutation smoke, and CTest self-checks are in place.
 **Area:** `src/tests/fuzz/`, `scripts/`
 **Effort:** M
 **Roadmap fit:** v0.2.x hardening
@@ -11,9 +12,12 @@
 loaders, locale-JSON/date-pattern/plural-rule parsers, stream manifest), but:
 
 - They are **opt-in** (`VIPER_ENABLE_FUZZ=ON`) and not run on any regular cadence.
-- Several harnesses **ship no seed corpus** (e.g. the IL parser, locale/date parsers).
-- Key input surfaces are **unfuzzed**: the JSON parser, any binary/bytecode deserializer,
-  and network/protocol (HTTP request, LSP/MCP JSON-RPC) parsing.
+- Only the 3D/asset loader harnesses currently have committed corpora; Zia/BASIC/IL and
+  localization parser harnesses ship no seed corpus.
+- Key input surfaces are **unfuzzed**: `Viper.Text.Json`, LSP/MCP JSON-RPC framing/parsing,
+  and selected network/protocol parsers such as HTTP request parsing. Bytecode has an
+  in-memory module format; add a binary-deserializer fuzzer only if/when a serialized
+  bytecode loader is present.
 
 ## Goal & scope
 
@@ -39,14 +43,17 @@ Two cadences:
 1. **Seed corpora:** for each corpus-less harness, mine inputs from existing tests
    (e.g. real `.il` files for the IL parser, locale JSON from the localization tests) into
    `src/tests/fuzz/corpus/<harness>/`.
-2. **New harnesses:** `fuzz_json` (the JSON parser), `fuzz_http_request` /
-   `fuzz_lsp_jsonrpc` (protocol framing/parsing), and — **if a binary IL/bytecode
-   deserializer exists** (confirm; the text IL parser is already fuzzed) —
-   `fuzz_il_binary`. Follow the existing harness structure.
+2. **New harnesses:** `fuzz_json` (the runtime JSON parser), `fuzz_http_request`, and
+   `fuzz_lsp_jsonrpc` / `fuzz_mcp_jsonrpc` (protocol framing/parsing). Add
+   `fuzz_bytecode_binary` only after confirming a real serialized bytecode loader; do not
+   fuzz imaginary input formats.
 3. **`scripts/fuzz_smoke.sh`:** iterate harnesses, time-box each, fail on a new crash;
    on crash, write the minimized reproducer next to the corpus.
 4. **ctest replay:** register a `fuzz-replay` test per harness that runs it once over its
-   corpus (no mutation), labelled `fuzz`; this runs in the normal suite.
+   corpus (no mutation), labelled `fuzz`. Use libFuzzer's corpus replay mode when the
+   toolchain supports it; otherwise compile a small deterministic replay wrapper.
+5. Add a CMake/source-of-truth helper that discovers fuzz targets from
+   `src/tests/fuzz/CMakeLists.txt` so scripts and docs do not duplicate the target list.
 
 ## Tests
 
@@ -65,6 +72,23 @@ Two cadences:
 
 libFuzzer requires Clang (canonical here). The replay ctest is plain execution and runs
 everywhere. Gate the mutation lane on a Clang/libFuzzer-capable toolchain.
+
+## Implementation notes
+
+- Seed corpora now exist for every discovered harness under
+  `src/tests/fuzz/corpus/<harness>/`.
+- New harnesses cover JSON, HTTP request parsing, LSP JSON-RPC, and MCP JSON-RPC.
+- `scripts/fuzz_smoke.sh` discovers targets from `src/tests/fuzz/CMakeLists.txt`, checks
+  corpus coverage, lists targets, and runs a time-boxed libFuzzer smoke lane.
+- `fuzz_smoke_self_test` is registered in CTest for deterministic discovery/corpus
+  validation.
+- `docs/testing.md` and `docs/contributor-guide.md` document replay vs exploration and
+  the harness/corpus workflow.
+
+## Verification
+
+- `./scripts/fuzz_smoke.sh --self-test`
+- `ctest --test-dir build -R '^fuzz_smoke_self_test$' --output-on-failure`
 
 ## Risks / open questions
 

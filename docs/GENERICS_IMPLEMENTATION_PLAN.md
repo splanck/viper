@@ -1071,7 +1071,16 @@ Add IL output verification for:
 
 ## 10. Future Considerations (v0.2+)
 
-### 10.1 Generic Constraints (v0.2)
+### 10.1 Generic Constraints (historical; completed in the shipped language)
+
+Zia now supports single interface constraints on generic functions, methods,
+classes, structs, and interfaces. Constraint names may be qualified, concrete
+class arguments satisfy constraints through base-class interface implementations,
+and violations are diagnosed when a generic is instantiated.
+
+Multiple bounds (`T: A + B`), associated types, variance, and broad `where`
+clauses remain future extensions. Treat the old sketch below as historical
+background, not as an active implementation plan:
 
 ```rust
 // Syntax extension
@@ -1084,11 +1093,11 @@ func max[T: Comparable[T]](a: T, b: T) -> T {
 }
 ```
 
-**Implementation requirements:**
-- AST: Add `constraints` field to generic parameter declarations
-- Parser: Extend `parseGenericParams()` for `: Interface` syntax
-- Sema: Validate constraints during instantiation
-- Lowerer: Generate constraint-aware method dispatch
+**Completed implementation:**
+- AST/parser: generic parameter declarations carry optional `: Interface`
+  constraints.
+- Sema: constraints are validated during instantiation.
+- Lowerer: instantiated generic bodies run with concrete type substitutions.
 
 ### 10.2 Variance Annotations (v0.2)
 
@@ -1179,8 +1188,8 @@ generic_params = "[" IDENT ("," IDENT)* "]" ;
 type = base_type generic_args? "?"? ;
 generic_args = "[" type ("," type)* "]" ;
 
-(* v0.2: Constraints *)
+(* Shipped: single interface constraints *)
 generic_params_v2 = "[" generic_param ("," generic_param)* "]" ;
 generic_param = IDENT (":" type_constraint)? ;
-type_constraint = IDENT ("+" IDENT)* ;  (* Interface bounds *)
+type_constraint = qualified_name ;  (* One interface bound *)
 ```

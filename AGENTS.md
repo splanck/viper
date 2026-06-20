@@ -8,7 +8,9 @@ and documents the agent-facing toolchain surface.
 ## Ground Rules
 
 - **Spec first.** `/docs/il-guide.md#reference` (IL v0.2.0) is normative.
-  Never change it, or `.github/workflows/*`, without an ADR.
+  ADRs are required for IL opcode, grammar, verifier-rule, cross-layer
+  dependency, runtime C ABI surface, `docs/il-guide.md#reference`, and
+  `.github/workflows/*` changes.
 - **Always green.** Build and tests must pass locally before proposing changes.
 - **Zero dependencies.** Viper is 100% from-scratch. Never introduce external
   libraries or package downloads into the product.

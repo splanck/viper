@@ -15,14 +15,14 @@
 //   - maybe_resolve_pair is the single entry point the world step calls per
 //     candidate body pair; all narrow-phase helpers are file-local.
 //   - Collision math rejects non-finite manifolds (see world_record_contact)
-//     so the contact list stays clean under degenerate input.
+//     so the growable contact list stays clean under degenerate input.
 //   - Swept tests use previous-frame bounds (body_prev_*) to catch tunneling.
 //
 // Ownership/Lifetime:
 //   - Borrows world/body handles owned by the caller; records contacts into
-//     the world's fixed per-step contact array. Allocates nothing.
+//     the world's growable per-step contact array.
 //
-// Links: src/runtime/graphics/2d/rt_physics2d.c (world/body lifecycle + API),
+// Links: src/runtime/graphics/2d/rt_physics2d.c (world/body/contact lifecycle + API),
 //        src/runtime/graphics/2d/rt_physics2d_joint.c (joint solver),
 //        src/runtime/graphics/2d/rt_physics2d_internal.h (shared types)
 //

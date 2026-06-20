@@ -118,20 +118,9 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // When accessing array fields, we'll compute 'base' by loading the pointer from
     // the object's field; otherwise we load from variable storage as usual.
-    Type::Kind memberElemIlKind = Type::Kind::I64; // default element kind
     ::il::frontends::basic::Type memberElemAstType = fieldInfo.elementAstType;
     bool isMemberObjectArray = fieldInfo.isObjectArray;
     Value base;
-
-    // Derive IL element kind from resolved field info
-    if (fieldInfo.isField) {
-        if (fieldInfo.elementAstType == ::il::frontends::basic::Type::Str)
-            memberElemIlKind = Type::Kind::Str;
-        else if (fieldInfo.isObjectArray)
-            memberElemIlKind = Type::Kind::Ptr;
-        else
-            memberElemIlKind = Type::Kind::I64;
-    }
 
     // Only resolve storage for non-member arrays
     std::optional<VariableStorage> storage;

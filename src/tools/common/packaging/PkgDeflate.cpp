@@ -39,7 +39,6 @@ namespace viper::pkg {
 // Constants
 //=============================================================================
 
-static constexpr int kDefaultLevel = 6;
 static constexpr int kMinLevel = 1;
 static constexpr int kMaxLevel = 9;
 
@@ -935,8 +934,7 @@ static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int lev
 
     BitWriter bw;
     constexpr size_t kMaxInitialReserve = 1024u * 1024u;
-    const size_t initialReserve =
-        len <= 64 ? 256u : std::min<size_t>(len, kMaxInitialReserve);
+    const size_t initialReserve = len <= 64 ? 256u : std::min<size_t>(len, kMaxInitialReserve);
     bw.init(initialReserve);
 
     if (len > static_cast<size_t>(std::numeric_limits<int>::max())) {

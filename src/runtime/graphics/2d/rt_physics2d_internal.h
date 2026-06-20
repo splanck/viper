@@ -11,7 +11,8 @@
 //
 // Key invariants:
 //   - rt_body_impl layout must match GC allocation expectations (vptr first).
-//   - rt_world_impl stores both bodies and joints in fixed-capacity arrays.
+//   - rt_world_impl stores bodies, joints, contacts, and step scratch in
+//     world-owned growable arrays. PH_MAX_* constants are initial reservations.
 //
 // Ownership/Lifetime:
 //   - Internal header — not part of public API.
@@ -23,6 +24,7 @@
 
 #include "rt_object.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define PH_MAX_BODIES 256
@@ -60,26 +62,39 @@ typedef struct {
 /// Forward declaration for joint
 typedef struct ph_joint ph_joint;
 
+typedef struct {
+    rt_body_impl *body_a;
+    rt_body_impl *body_b;
+    double nx;
+    double ny;
+    double penetration;
+} ph_contact_record;
+
 /// @brief Internal representation of a physics world.
 typedef struct {
     void *vptr;
     double gravity_x;
     double gravity_y;
-    rt_body_impl *bodies[PH_MAX_BODIES];
+    rt_body_impl **bodies;
     int64_t body_count;
-    ph_joint *joints[PH_MAX_JOINTS];
-    int32_t joint_count;
+    int64_t body_capacity;
+    ph_joint **joints;
+    int64_t joint_count;
+    int64_t joint_capacity;
 
-    struct {
-        rt_body_impl *body_a;
-        rt_body_impl *body_b;
-        double nx;
-        double ny;
-        double penetration;
-    } contacts[PH_MAX_CONTACTS];
+    ph_contact_record *contacts;
+    int64_t contact_count;
+    int64_t contact_capacity;
+    int8_t contact_overflow; ///< Set when the most recent step could not grow contact storage.
 
-    int32_t contact_count;
-    int8_t contact_overflow; ///< Set when the most recent step produced more than PH_MAX_CONTACTS.
+    uint8_t *pair_checked;
+    size_t pair_checked_bytes;
+    int64_t pair_checked_span;
+
+    rt_body_impl **force_bodies;
+    double *force_x;
+    double *force_y;
+    int64_t force_capacity;
 } rt_world_impl;
 
 /// @brief Joint internal representation.
@@ -140,3 +155,6 @@ void sanitize_body_state(rt_body_impl *b);
 /// @brief Append a contact manifold to the world's per-step contact list.
 void world_record_contact(
     rt_world_impl *w, rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
+
+/// @brief Ensure the world's joint array can hold at least @p needed entries.
+int8_t rt_physics2d_world_reserve_joint_capacity(rt_world_impl *w, int64_t needed);

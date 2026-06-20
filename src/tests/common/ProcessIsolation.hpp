@@ -71,6 +71,18 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs = 1000
 /// @return ChildResult with exit code and captured stderr.
 ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs = 10000);
 
+/// @brief Run an IL module in an isolated child with a pending VM interrupt.
+///
+/// The helper exists for trap-kind tests that need to verify the public
+/// interrupt path without relying on host signal delivery or POSIX fork state.
+/// The child requests an interrupt immediately before running the module.
+///
+/// @param module IL module to execute in the child.
+/// @param timeoutMs Maximum time to wait for child (0 = infinite).
+/// @return ChildResult with exit code and captured stderr.
+ChildResult runModuleWithPendingInterruptIsolated(il::core::Module &module,
+                                                  unsigned timeoutMs = 10000);
+
 /// @brief Check if this process was launched as an isolated child.
 ///
 /// Call at the top of main() in any test that uses runIsolated() or

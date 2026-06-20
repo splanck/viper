@@ -67,6 +67,34 @@ int64_t rt_audio_get_group_volume_named(rt_string group_name);
 rt_string rt_audio_group_name(int64_t group_id);
 
 //=========================================================================
+// Mix Group Effects
+//=========================================================================
+
+/// @brief Add a low-pass biquad to a mix group. Returns an effect id or -1.
+int64_t rt_snd_group_add_lowpass(int64_t group, double cutoff_hz, double q);
+
+/// @brief Add a high-pass biquad to a mix group. Returns an effect id or -1.
+int64_t rt_snd_group_add_highpass(int64_t group, double cutoff_hz, double q);
+
+/// @brief Add a peaking EQ biquad to a mix group. Returns an effect id or -1.
+int64_t rt_snd_group_add_peaking(int64_t group, double freq_hz, double q, double gain_db);
+
+/// @brief Add a delay insert to a mix group. Returns an effect id or -1.
+int64_t rt_snd_group_add_delay(int64_t group, double delay_ms, double feedback, double wet);
+
+/// @brief Add a small Freeverb-style reverb insert to a mix group.
+int64_t rt_snd_group_add_reverb(int64_t group, double room_size, double damping, double wet);
+
+/// @brief Bypass or enable one effect by id.
+void rt_snd_group_fx_bypass(int64_t group, int64_t fx_id, int8_t bypass);
+
+/// @brief Remove one effect from a group.
+void rt_snd_group_remove_fx(int64_t group, int64_t fx_id);
+
+/// @brief Remove every effect from a group.
+void rt_snd_group_clear_fx(int64_t group);
+
+//=========================================================================
 // Music Crossfade
 //=========================================================================
 

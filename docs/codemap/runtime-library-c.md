@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-06-20
 ---
 
 # CODEMAP: Runtime Library (C)
@@ -9,7 +9,7 @@ last-verified: 2026-04-09
 Portable C runtime library (`src/runtime/`) providing core types, collections, I/O, text, math,
 graphics, audio, input, networking, system, diagnostics, crypto, time, and threading support.
 
-Last updated: 2026-04-05
+Last updated: 2026-06-20
 
 ## Overview
 
@@ -130,6 +130,8 @@ Last updated: 2026-04-05
 | `rt_lrucache.h`       | LRU cache declarations                             |
 | `rt_multimap.c`       | Multi-value map implementation                     |
 | `rt_multimap.h`       | Multimap declarations                              |
+| `rt_numbuf.c`         | Packed F64Buffer/I64Buffer numeric buffers         |
+| `rt_numbuf.h`         | Packed numeric buffer declarations                 |
 | `rt_orderedmap.c`     | Insertion-ordered map implementation               |
 | `rt_orderedmap.h`     | Ordered map declarations                           |
 | `rt_set.c`            | Hash set implementation                            |
@@ -392,8 +394,6 @@ Last updated: 2026-04-05
 | `rt_cubemap3d.c` | CubeMap3D environment/skybox |
 | `rt_rendertarget3d.c` | RenderTarget3D offscreen rendering |
 | `rt_texatlas3d.c` / `.h` | TextureAtlas3D texture arrays |
-| `rt_sound3d.c` / `.h` | SpatialAudio3D helpers and low-level compatibility layer |
-| `rt_sound3d_objects.c`, `rt_soundlistener3d.h`, `rt_soundsource3d.h` | SoundListener3D / SoundSource3D object-backed spatial audio |
 | `rt_navmesh3d.c` / `.h` | NavMesh3D A* pathfinding |
 | `rt_navagent3d.c` / `.h` | NavAgent3D steering, path following, and Character3D / SceneNode3D bindings |
 | `rt_path3d.c` / `.h` | Path3D spline following |
@@ -417,6 +417,8 @@ Last updated: 2026-04-05
 |---------------------|--------------------------------------------------------|
 | `rt_audio.c`        | Audio playback, sound/music management, voice control  |
 | `rt_audio.h`        | Audio declarations                                     |
+| `rt_audio_diagnostics.c` / `.h` | Audio-domain degradation diagnostics counters |
+| `rt_audio_fx.c` / `.h` | Mix-group insert effects (filters, delay, reverb) |
 | `rt_mixgroup.h`     | Mix groups (MUSIC/SFX) with independent volume control |
 | `rt_musicgen.c`     | Procedural music composition (tracker-style sequencer) |
 | `rt_musicgen.h`     | MusicGen declarations                                  |
@@ -424,6 +426,8 @@ Last updated: 2026-04-05
 | `rt_ogg.c` / `.h`   | OGG container parser / packet reader                   |
 | `rt_playlist.c`     | Audio playlist (sequential/shuffle track queue)        |
 | `rt_playlist.h`     | Playlist declarations                                  |
+| `rt_sound3d.c` / `.h` | SpatialAudio3D helpers and low-level compatibility layer |
+| `rt_sound3d_objects.c`, `rt_soundlistener3d.h`, `rt_soundsource3d.h` | SoundListener3D / SoundSource3D object-backed spatial audio |
 | `rt_soundbank.c`    | Named sound registry for organized sound management    |
 | `rt_vorbis.c` / `.h`| Vorbis decoder used by OGG import and streaming        |
 | `rt_soundbank.h`    | SoundBank declarations                                 |

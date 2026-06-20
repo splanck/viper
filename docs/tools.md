@@ -43,6 +43,8 @@ vbasic program.bas -o program.il
 ### zia-server
 
 Language server for Zia — serves MCP (for AI assistants) and LSP (for editors).
+The LSP side includes diagnostics, completion, hover, document symbols, definition,
+references, rename, signature help, workspace symbols, and full semantic tokens.
 
 ```bash
 # Start in MCP mode (for Claude Code, Copilot, etc.)

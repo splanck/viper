@@ -46,18 +46,6 @@ struct ScratchRelease {
     RegClass cls{RegClass::GPR}; ///< Register class for the allocator's bookkeeping.
 };
 
-/// @brief Wrap a physical register in a Machine IR operand.
-/// @details The helper normalises construction of register operands so both the
-///          coalescer and the spiller share identical operand layouts.  It
-///          forwards to @ref makePhysRegOperand while performing the
-///          `PhysReg`→`uint16_t` cast mandated by the MIR representation.
-/// @param cls Register class describing the operand encoding.
-/// @param reg Physical register identifier being wrapped.
-/// @return Machine operand referencing @p reg.
-[[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg) {
-    return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
-}
-
 struct CopyLocation {
     enum class Kind { Reg, Mem };
 

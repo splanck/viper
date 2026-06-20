@@ -427,12 +427,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         mf.blocks.back().name = bb.label;
     }
 
-    // Helper to access a MIR block by IL block index
-    auto bbOut = [&](std::size_t idx) -> MBasicBlock & { return mf.blocks[idx]; };
-
     // Support i64 and pointer-centric functions; arithmetic patterns remain i64-centric.
-
-    const auto &argOrder = ti_->intArgOrder;
 
     // Phase 1: Walk allocas → frame locals.
     FrameBuilder fb{mf};
@@ -545,7 +540,6 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         if (itPhi != phiVregId.end() && itSpill != phiSpillOffset.end()) {
             const auto &ids = itPhi->second;
             const auto &spillOffsets = itSpill->second;
-            const auto &classes = phiRegClass[bbIn.label];
             for (std::size_t pi = 0; pi < bbIn.params.size() && pi < ids.size(); ++pi) {
                 const uint16_t vid = allocateNextVReg(nextVRegId);
                 const unsigned paramId = bbIn.params[pi].id;

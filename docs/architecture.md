@@ -267,6 +267,14 @@ string manipulation. The VM can trace execution (`--trace`, `--trace-calls`) to 
 events, and value states, aiding debugging and performance analysis. Traps surface structured diagnostics that include
 function, block, and source location information.
 
+### Bytecode VM
+
+`src/bytecode/` contains an alternative execution engine for verified IL. The
+bytecode compiler lowers IL into compact bytecode, and `BytecodeVM` can execute
+it with switch dispatch or threaded dispatch. The bytecode engine is
+parity-tested against the tree-walking VM over the shared IL corpus, including
+return values, runtime stdout, and shared trap kinds.
+
 ### Code generation
 
 `src/codegen/` contains native backends for x86-64 and ARM64:
@@ -275,7 +283,8 @@ function, block, and source location information.
   Validated on Windows with full codegen test suite passing.
 - **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64, Windows ARM64).
   Validated end-to-end on Apple Silicon across all demo games; Windows ARM64 emits COFF objects via the native
-  assembler and is exercised by dedicated codegen tests.
+  assembler and is exercised by dedicated codegen tests. Tests with shared corpus ownership live under
+  `src/tests/codegen/aarch64/`.
 
 Pipeline expectations:
 

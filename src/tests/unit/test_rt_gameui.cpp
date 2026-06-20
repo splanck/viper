@@ -26,6 +26,7 @@
 #include "rt.hpp"
 #include "rt_bitmapfont.h"
 #include "rt_gameui.h"
+#include "rt_gameui_internal.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
@@ -553,6 +554,21 @@ static void test_textinput_max_codepoints_truncates_existing_text(void) {
     PASS();
 }
 
+static void test_textinput_grows_beyond_default_bytes(void) {
+    TEST("UITextInput grows beyond default byte reservation");
+    char text[700];
+    std::memset(text, 'x', sizeof(text) - 1);
+    text[sizeof(text) - 1] = '\0';
+
+    void *input = rt_uitextinput_new(0, 0, 100, 20);
+    rt_uitextinput_set_text(input, rt_string_from_bytes(text, sizeof(text) - 1));
+
+    assert(rt_uitextinput_text_length(input) == (int64_t)sizeof(text) - 1);
+    rt_uitextinput_set_max_codepoints(input, 600);
+    assert(rt_uitextinput_text_length(input) == 600);
+    PASS();
+}
+
 static void test_dropdown_popup_hit_test_saturates_y(void) {
     TEST("UIDropdown popup hit-test saturates Y coordinate");
     void *dropdown = rt_uidropdown_new(0, INT64_MAX - 5, 20, 10);
@@ -561,6 +577,58 @@ static void test_dropdown_popup_hit_test_saturates_y(void) {
 
     assert(rt_uidropdown_handle_click(dropdown, 1, INT64_MAX) == 1);
     assert(rt_uidropdown_get_selected(dropdown) == 0);
+    PASS();
+}
+
+static void test_dropdown_grows_past_default_options(void) {
+    TEST("UIDropdown grows beyond default option reservation");
+    void *dropdown = rt_uidropdown_new(0, 0, 20, 10);
+    char label[32];
+    for (int i = 0; i < 40; i++) {
+        std::snprintf(label, sizeof(label), "opt%d", i);
+        rt_uidropdown_add_option(dropdown, rt_const_cstr(label));
+    }
+
+    rt_uidropdown_set_selected(dropdown, 39);
+    assert(rt_uidropdown_get_selected(dropdown) == 39);
+    assert(std::strcmp(rt_string_cstr(rt_uidropdown_get_selected_text(dropdown)), "opt39") == 0);
+    PASS();
+}
+
+static void test_table_grows_rows_and_columns(void) {
+    TEST("UITable grows beyond default row and column reservations");
+    void *table = rt_uitable_new(0, 0, 320, 200);
+    char label[32];
+    for (int i = 0; i < 20; i++) {
+        std::snprintf(label, sizeof(label), "c%d", i);
+        assert(rt_uitable_add_column(table, rt_const_cstr(label), 32, 0) == i);
+    }
+    for (int i = 0; i < 520; i++)
+        assert(rt_uitable_add_row(table) == i);
+
+    rt_uitable_set_cell(table, 519, 19, rt_const_cstr("tail"));
+    assert(rt_uitable_column_count(table) == 20);
+    assert(rt_uitable_row_count(table) == 520);
+    assert(std::strcmp(rt_string_cstr(rt_uitable_get_cell(table, 519, 19)), "tail") == 0);
+    PASS();
+}
+
+static void test_modal_grows_buttons_and_children(void) {
+    TEST("UIModal grows beyond default button and child reservations");
+    void *modal = rt_uimodal_new(240, 160);
+    char label[32];
+    for (int i = 0; i < 8; i++) {
+        std::snprintf(label, sizeof(label), "b%d", i);
+        assert(rt_uimodal_add_button(modal, rt_const_cstr(label), 100 + i) == i);
+    }
+    for (int i = 0; i < 20; i++) {
+        void *child = rt_uitextinput_new(0, 0, 80, 20);
+        rt_uimodal_add_child(modal, child);
+    }
+
+    rt_uimodal_set_default_button(modal, 7);
+    rt_uimodal_open(modal);
+    assert(rt_uimodal_handle_key(modal, UI_KEY_ENTER, 0) == 107);
     PASS();
 }
 
@@ -619,7 +687,11 @@ int main() {
     test_textinput_set_text_stops_at_embedded_nul();
     test_textinput_typed_nul_is_ignored();
     test_textinput_max_codepoints_truncates_existing_text();
+    test_textinput_grows_beyond_default_bytes();
     test_dropdown_popup_hit_test_saturates_y();
+    test_dropdown_grows_past_default_options();
+    test_table_grows_rows_and_columns();
+    test_modal_grows_buttons_and_children();
 
     printf("\n  %d/%d tests passed\n", tests_passed, tests_total);
     assert(tests_passed == tests_total);

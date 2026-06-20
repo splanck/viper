@@ -760,6 +760,65 @@ static void test_vaud_get_stats_handles_nulls_and_counts_render(void) {
     vaud_destroy(ctx);
 }
 
+static int test_group_fx_query(void *userdata, int64_t group_id) {
+    (void)userdata;
+    return group_id == 7;
+}
+
+static void test_group_fx_process(void *userdata,
+                                  int64_t group_id,
+                                  float *samples,
+                                  int32_t frames,
+                                  int32_t channels,
+                                  int32_t sample_rate) {
+    int *calls = (int *)userdata;
+    (void)group_id;
+    (void)sample_rate;
+    if (calls)
+        *calls += 1;
+    for (int32_t i = 0; i < frames * channels; i++)
+        samples[i] *= 0.5f;
+}
+
+static void test_mixer_processes_effect_group_bus_only_once(void) {
+    struct vaud_context ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.master_volume = 1.0f;
+    vaud_mutex_init(&ctx.mutex);
+
+    int16_t samples[VAUD_CHANNELS] = {8000, 8000};
+    struct vaud_sound sound;
+    memset(&sound, 0, sizeof(sound));
+    sound.ctx = &ctx;
+    sound.samples = samples;
+    sound.frame_count = 1;
+    sound.sample_rate = VAUD_SAMPLE_RATE;
+    sound.channels = VAUD_CHANNELS;
+    sound.source_channels = VAUD_CHANNELS;
+
+    ctx.voices[0].state = VAUD_VOICE_PLAYING;
+    ctx.voices[0].sound = &sound;
+    ctx.voices[0].volume = 1.0f;
+    ctx.voices[0].pan = 0.0f;
+    ctx.voices[0].group_id = 7;
+    ctx.voices[1].state = VAUD_VOICE_PLAYING;
+    ctx.voices[1].sound = &sound;
+    ctx.voices[1].volume = 1.0f;
+    ctx.voices[1].pan = 0.0f;
+    ctx.voices[1].group_id = 3;
+
+    int calls = 0;
+    vaud_set_group_effects_processor(&ctx, test_group_fx_query, test_group_fx_process, &calls);
+
+    int16_t out[VAUD_CHANNELS] = {0, 0};
+    vaud_mixer_render(&ctx, out, 1);
+    EXPECT_TRUE(calls == 1);
+    EXPECT_TRUE(out[0] == 12000);
+    EXPECT_TRUE(out[1] == 12000);
+
+    vaud_mutex_destroy(&ctx.mutex);
+}
+
 int main(void) {
     srand(1);
     test_destroy_detaches_loaded_sounds();
@@ -780,6 +839,7 @@ int main(void) {
     test_vaud_update_refills_without_holding_state_mutex();
     test_mixer_outputs_silence_when_state_lock_is_busy();
     test_vaud_get_stats_handles_nulls_and_counts_render();
+    test_mixer_processes_effect_group_bus_only_once();
 
     if (tests_failed != 0)
         return 1;

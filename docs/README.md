@@ -187,6 +187,9 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 - [ADR-0001](adr/0001-builtin-signatures-from-registry.md) — Runtime signatures from centralized registry
 - [ADR-0002](adr/0002-threads-monitor-safe.md) — Thread-safety for Monitor
 - [ADR-0003](adr/0003-il-linkage-and-module-linking.md) — IL module linking
+- [ADR-0004](adr/0004-graphics3d-runtime-surface-expansion.md) — Graphics3D runtime surface expansion
+- [ADR-0005](adr/0005-resume-token-provenance.md) — Resume-token provenance
+- [ADR-0006](adr/0006-spec-currency-and-adr-triggers.md) — Spec currency and ADR triggers
 
 ---
 

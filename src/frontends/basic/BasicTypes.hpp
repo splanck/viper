@@ -9,11 +9,10 @@
 // language's type system at the frontend level.
 //
 // BASIC Type System:
-// The BASIC language uses a simple type system with five fundamental types:
-// - Integer: 16-bit signed integers (suffix: %)
-// - Long: 32-bit signed integers (suffix: &)
-// - Single: 32-bit floating-point (suffix: !)
-// - Double: 64-bit floating-point (suffix: #)
+// The BASIC frontend currently groups numeric surface spellings into two
+// semantic categories:
+// - Int: INTEGER, INT, and LONG surface spellings (stored as i64)
+// - Float: SINGLE, FLOAT, and DOUBLE surface spellings (stored as f64)
 // - String: Variable-length character sequences (suffix: $)
 //
 // Additionally, the Void type represents procedures (SUB) that do not return
@@ -26,13 +25,13 @@
 //   name$ = "Alice"       ' String variable
 //
 // If no suffix is provided and no explicit DIM statement exists, BASIC defaults
-// to Single (32-bit float) for numeric variables.
+// to integer storage.
 //
 // Integration:
 // - Used by: Parser for type annotation during AST construction
 // - Used by: SemanticAnalyzer for type checking and validation
 // - Used by: Lowerer for mapping BASIC types to IL primitive types
-// - Mapped to IL types: Int→i32, Long→i64, Single→f32, Double→f64, String→string
+// - Mapped to IL types: Int→i64, Float→f64, Bool→i1, Object→ptr, String→string
 //
 // Design Notes:
 // - This is a frontend-specific type representation; the lowerer translates

@@ -1,7 +1,7 @@
 #!/bin/bash
-# check_codegen_opcode_completeness.sh
-# Validates consistency between JSON encoding specs, MOpcode enums, and
-# opcodeName() switch tables for both x86_64 and AArch64 backends.
+# Script: check_codegen_opcode_completeness.sh
+# Purpose: Validate consistency between JSON encoding specs, MOpcode enums, and
+#          opcodeName() switch tables for x86_64 and AArch64 backends.
 # Exits 1 if any mismatches are found.
 #
 # Usage: ./scripts/check_codegen_opcode_completeness.sh
@@ -123,7 +123,7 @@ echo "--- x86_64 Backend ---"
 
 X86_ENUM_FILE="src/codegen/x86_64/MachineIR.hpp"
 X86_SWITCH_FILE="src/codegen/x86_64/MachineIR.cpp"
-X86_JSON_FILE="docs/spec/x86_64_encodings.json"
+X86_JSON_FILE="docs/specs/x86_64_encodings.json"
 
 if [ ! -f "$X86_ENUM_FILE" ] || [ ! -f "$X86_SWITCH_FILE" ] || [ ! -f "$X86_JSON_FILE" ]; then
     echo "  ERROR: One or more x86_64 source files not found. Run from project root." >&2
@@ -251,7 +251,7 @@ echo "--- AArch64 Backend ---"
 
 A64_OPCODE_DEF_FILE="src/codegen/aarch64/MOpcodeDef.inc"
 A64_SWITCH_FILE="src/codegen/aarch64/MachineIR.cpp"
-A64_JSON_FILE="docs/spec/aarch64_encodings.json"
+A64_JSON_FILE="docs/specs/aarch64_encodings.json"
 
 if [ ! -f "$A64_OPCODE_DEF_FILE" ] || [ ! -f "$A64_SWITCH_FILE" ] || [ ! -f "$A64_JSON_FILE" ]; then
     echo "  ERROR: One or more AArch64 source files not found. Run from project root." >&2

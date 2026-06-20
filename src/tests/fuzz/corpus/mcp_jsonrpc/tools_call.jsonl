@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"check","method":"tools/call","params":{"name":"zia/check","arguments":{"source":"func main() -> Int { return 0; }"}}}

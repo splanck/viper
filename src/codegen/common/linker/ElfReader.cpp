@@ -33,11 +33,11 @@ using viper::codegen::objfile::readLE64;
 
 // ELF64 structures — defined inline to avoid system header dependencies.
 namespace elf {
-static constexpr uint16_t ET_REL = 1;
+[[maybe_unused]] static constexpr uint16_t ET_REL = 1;
 static constexpr uint16_t EM_X86_64 = 62;
 static constexpr uint16_t EM_AARCH64 = 183;
 
-static constexpr uint32_t SHT_PROGBITS = 1;
+[[maybe_unused]] static constexpr uint32_t SHT_PROGBITS = 1;
 static constexpr uint32_t SHT_SYMTAB = 2;
 static constexpr uint32_t SHT_STRTAB = 3;
 static constexpr uint32_t SHT_RELA = 4;
@@ -53,7 +53,7 @@ static constexpr uint32_t SHF_TLS = 0x400;
 static constexpr uint32_t GRP_COMDAT = 0x1;
 
 static constexpr uint8_t STB_LOCAL = 0;
-static constexpr uint8_t STB_GLOBAL = 1;
+[[maybe_unused]] static constexpr uint8_t STB_GLOBAL = 1;
 static constexpr uint8_t STB_WEAK = 2;
 
 static constexpr uint16_t SHN_UNDEF = 0;

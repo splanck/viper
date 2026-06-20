@@ -49,9 +49,9 @@ static constexpr uint32_t PF_W = 2;
 static constexpr uint32_t PF_R = 4;
 
 // Section header types.
-static constexpr uint32_t SHT_NULL = 0;
+[[maybe_unused]] static constexpr uint32_t SHT_NULL = 0;
 static constexpr uint32_t SHT_PROGBITS = 1;
-static constexpr uint32_t SHT_SYMTAB = 2;
+[[maybe_unused]] static constexpr uint32_t SHT_SYMTAB = 2;
 static constexpr uint32_t SHT_STRTAB = 3;
 static constexpr uint32_t SHT_RELA = 4;
 static constexpr uint32_t SHT_HASH = 5;
@@ -572,11 +572,8 @@ bool buildDynamicInfo(const LinkLayout &layout,
     }
     const size_t maxAllocEndSize = static_cast<size_t>(maxAllocEnd);
     size_t roBaseSize = 0;
-    if (!checkedAlignUpSize(maxAllocEndSize,
-                            pageSize,
-                            "dynamic section placement",
-                            err,
-                            roBaseSize))
+    if (!checkedAlignUpSize(
+            maxAllocEndSize, pageSize, "dynamic section placement", err, roBaseSize))
         return false;
     const uint64_t roBase = roBaseSize;
     info.roVaddr = roBase;
@@ -767,8 +764,10 @@ bool writeElfExe(const std::string &path,
                 return false;
             size_t segFileSize = 0;
             size_t segMemSize = 0;
-            if (!checkedAddSize(vaddrRemainder, fileSize, "load segment file size", err, segFileSize) ||
-                !checkedAddSize(vaddrRemainder, memSize, "load segment memory size", err, segMemSize))
+            if (!checkedAddSize(
+                    vaddrRemainder, fileSize, "load segment file size", err, segFileSize) ||
+                !checkedAddSize(
+                    vaddrRemainder, memSize, "load segment memory size", err, segMemSize))
                 return false;
             segments.push_back({filePos, segVaddr, segFileSize, segMemSize, flags});
         } else {
@@ -779,7 +778,8 @@ bool writeElfExe(const std::string &path,
                 return false;
             }
             const size_t delta = static_cast<size_t>(delta64);
-            if (!checkedAddSize(seg.fileOffset, delta, "load section file offset", err, secFileOffset))
+            if (!checkedAddSize(
+                    seg.fileOffset, delta, "load section file offset", err, secFileOffset))
                 return false;
 
             size_t segFileEnd = 0;
@@ -1190,8 +1190,7 @@ bool writeElfExe(const std::string &path,
         const auto &sec = layout.sections[loadableIndices[i]];
         if (sec.zeroFill || sec.data.empty())
             continue;
-        std::memcpy(
-            fileData.data() + loadableFileOffsets[i], sec.data.data(), sec.data.size());
+        std::memcpy(fileData.data() + loadableFileOffsets[i], sec.data.data(), sec.data.size());
     }
     if (hasDynRo)
         std::memcpy(

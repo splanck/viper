@@ -1,13 +1,56 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-06-20
 ---
 
 # Specialized Structures
-> Bag, BloomFilter, Trie, UnionFind, BitSet, Bytes
+> F64Buffer, I64Buffer, Bag, BloomFilter, Trie, UnionFind, BitSet, Bytes
 
 **Part of [Viper Runtime Library](../README.md) › [Collections](README.md)**
+
+---
+
+## Packed Numeric Buffers
+
+`Viper.Collections.F64Buffer` and `Viper.Collections.I64Buffer` store fixed-width numeric payloads in contiguous runtime arrays. Use them for dense numeric batches such as samples, particles, vertices, metrics, and solver state. Use `List` or `Seq` when elements must be heterogeneous, reference-typed, or frequently inserted in the middle.
+
+**Type:** Instance (obj)
+**Constructors:** `F64Buffer.New(length)`, `I64Buffer.New(length)`, `F64Buffer.FromSeq(seq)`, `I64Buffer.FromSeq(seq)`
+
+### Shared Properties
+
+| Property | Type    | Description             |
+|----------|---------|-------------------------|
+| `Length` | Integer | Number of numeric slots |
+| `Count`  | Integer | Alias for `Length`      |
+
+### Shared Methods
+
+| Method              | Signature                         | Description                                       |
+|---------------------|-----------------------------------|---------------------------------------------------|
+| `Get(index)`        | `Float(Integer)` or `Integer(Integer)` | Read one value                              |
+| `Set(index, value)` | `Void(Integer, value)`            | Write one value                                   |
+| `Fill(value)`       | `Void(value)`                     | Set every slot to the same value                  |
+| `CopyFrom(other)`   | `Void(Buffer)`                    | Resize this buffer to `other.Length` and copy it  |
+| `Slice(start, end)` | `Buffer(Integer, Integer)`        | Return an independent copy of `[start, end)`      |
+| `AddScalar(value)`  | `Void(value)`                     | Add a scalar to every slot                        |
+| `MulScalar(value)`  | `Void(value)`                     | Multiply every slot by a scalar                   |
+| `AddBuffer(other)`  | `Void(Buffer)`                    | Add another same-length buffer element-by-element |
+| `Sum()`             | `Float()` or `Integer()`          | Sum all values                                    |
+| `Dot(other)`        | `Float(Buffer)` or `Integer(Buffer)` | Dot product with another same-length buffer    |
+| `Min()`             | `Float()` or `Integer()`          | Minimum value                                     |
+| `Max()`             | `Float()` or `Integer()`          | Maximum value                                     |
+| `ToList()`          | `List()`                          | Box all values into a new List                    |
+| `ToSeq()`           | `Seq()`                           | Box all values into a new Seq                     |
+
+### Notes
+
+- Values are not boxed while stored in the buffer.
+- `Slice` is a copy in v1, not a zero-copy view.
+- `AddBuffer` and `Dot` trap on length mismatch.
+- `Min` and `Max` trap on empty buffers; `Sum` of an empty buffer returns zero.
+- `ToList` and `ToSeq` box values, and `FromSeq` reads boxed numeric values. `F64Buffer.FromSeq` accepts boxed floats and boxed integers; `I64Buffer.FromSeq` accepts boxed integers.
 
 ---
 

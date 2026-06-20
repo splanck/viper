@@ -96,6 +96,12 @@ TEST(BasicLsp, Initialize) {
     EXPECT_TRUE(caps["hoverProvider"].asBool());
     EXPECT_TRUE(caps["documentSymbolProvider"].asBool());
     EXPECT_TRUE(caps.has("completionProvider"));
+    EXPECT_FALSE(caps.has("definitionProvider"));
+    EXPECT_FALSE(caps.has("referencesProvider"));
+    EXPECT_FALSE(caps.has("renameProvider"));
+    EXPECT_FALSE(caps.has("signatureHelpProvider"));
+    EXPECT_FALSE(caps.has("workspaceSymbolProvider"));
+    EXPECT_FALSE(caps.has("semanticTokensProvider"));
 
     auto info = resp["result"]["serverInfo"];
     EXPECT_EQ(info["name"].asString(), "vbasic-server");

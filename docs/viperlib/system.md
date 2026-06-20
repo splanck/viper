@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-06-20
 ---
 
 # System
@@ -14,6 +14,7 @@ last-verified: 2026-05-15
 
 - [Viper.System.Environment](#viperenvironment)
 - [Viper.System.Clipboard](#vipersystemclipboard)
+- [Viper.System.Shutdown](#vipersystemshutdown)
 - [Viper.System.Exec](#viperexec)
 - [Viper.System.Process](#vipersystemprocess)
 - [Viper.System.Machine](#vipermachine)
@@ -143,6 +144,73 @@ END IF
 ```
 
 The clipboard helpers are available on desktop graphics backends. In headless or graphics-disabled builds, `Get()` returns an empty string, `HasText()` returns `FALSE`, and `Set()` is a no-op.
+
+---
+
+## Viper.System.Shutdown
+
+Poll-based graceful shutdown requests for long-running servers, games, and tools.
+
+**Type:** Static utility class
+
+### Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `NONE` | `0` | No shutdown request is pending |
+| `INTERRUPT` | `1` | Ctrl-C / VM interrupt / cooperative interrupt request |
+| `TERMINATE` | `2` | POSIX `SIGTERM`, Windows console close/logoff/shutdown, or cooperative terminate request |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Request(reason)` | `Void(Integer)` | Publish one or more shutdown reason bits |
+| `Poll()` | `Integer()` | Return and clear pending reason bits |
+| `Pending()` | `Boolean()` | Return `TRUE` when any reason is pending without clearing it |
+| `Clear()` | `Void()` | Clear pending reasons and the VM interrupt epoch |
+
+`Poll()` and `Pending()` arm graceful handling for the next VM interrupt. If Ctrl-C
+arrives after a loop has polled, the VM records `INTERRUPT` and lets the program reach
+its next `Shutdown.Poll()` call. If a program never polls, Ctrl-C still raises the
+normal `Interrupt` trap. This is deliberately poll-based; signal and console handlers
+only publish atomic state and never run managed callbacks.
+
+### Zia Example
+
+```rust
+module GracefulServer;
+
+bind Viper.System.Shutdown as Shutdown;
+bind Viper.Terminal;
+
+func start() {
+    var running = true;
+    while running {
+        var reason = Shutdown.Poll();
+        if reason != Shutdown.NONE {
+            Say("shutdown requested");
+            running = false;
+        } else {
+            tick();
+        }
+    }
+}
+```
+
+### BASIC Example
+
+```basic
+DO
+    reason = Viper.System.Shutdown.Poll()
+    IF reason <> Viper.System.Shutdown.NONE THEN
+        PRINT "shutdown requested"
+        EXIT DO
+    END IF
+
+    ' frame/update work
+LOOP
+```
 
 ---
 

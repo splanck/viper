@@ -620,23 +620,23 @@ static void test_world_remove_clears_contacts() {
     release_obj(world);
 }
 
-static void test_world_contact_overflow_flag() {
+static void test_world_contact_storage_grows_past_default_capacity() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *a = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
     void *b = rt_physics2d_body_new(5.0, 0.0, 10.0, 10.0, 1.0);
 
-    for (int i = 0; i < PH_MAX_CONTACTS; i++) {
-        world_record_contact((rt_world_impl *)world, (rt_body_impl *)a, (rt_body_impl *)b, 1.0, 0.0, 1.0);
+    const int total = PH_MAX_CONTACTS + 10;
+    for (int i = 0; i < total; i++) {
+        world_record_contact(
+            (rt_world_impl *)world, (rt_body_impl *)a, (rt_body_impl *)b, 1.0, 0.0, 1.0);
     }
-    ASSERT(rt_physics2d_world_contact_count(world) == PH_MAX_CONTACTS, "contact count reaches cap");
-    ASSERT(rt_physics2d_world_contact_overflowed(world) == 0, "exact cap does not report overflow");
-
-    world_record_contact((rt_world_impl *)world, (rt_body_impl *)a, (rt_body_impl *)b, 1.0, 0.0, 1.0);
-    ASSERT(rt_physics2d_world_contact_count(world) == PH_MAX_CONTACTS, "overflow keeps capped count");
-    ASSERT(rt_physics2d_world_contact_overflowed(world) == 1, "overflow flag reports omitted contacts");
+    ASSERT(rt_physics2d_world_contact_count(world) == total,
+           "contact storage grows past PH_MAX_CONTACTS");
+    ASSERT(rt_physics2d_world_contact_overflowed(world) == 0,
+           "successful contact growth does not report overflow");
 
     rt_physics2d_world_step(world, 0.0);
-    ASSERT(rt_physics2d_world_contact_count(world) == 0, "clear removes capped contacts");
+    ASSERT(rt_physics2d_world_contact_count(world) == 0, "clear removes grown contacts");
     ASSERT(rt_physics2d_world_contact_overflowed(world) == 0, "clear resets overflow flag");
 
     release_obj(a);
@@ -874,23 +874,21 @@ static void test_add_joint_requires_world_bodies() {
     release_obj(world);
 }
 
-static void test_joint_limit_traps() {
+static void test_joint_storage_grows_past_default_capacity() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0);
     rt_physics2d_world_add(world, a);
     rt_physics2d_world_add(world, b);
 
-    for (int i = 0; i < 64; i++) {
+    const int total = PH_MAX_JOINTS + 5;
+    for (int i = 0; i < total; i++) {
         void *joint = rt_physics2d_distance_joint_new(a, b, 20.0 + i);
         rt_physics2d_world_add_joint(world, joint);
         release_obj(joint);
     }
-    ASSERT(rt_physics2d_world_joint_count(world) == 64, "64 joints at limit");
-
-    void *extra = rt_physics2d_distance_joint_new(a, b, 100.0);
-    EXPECT_TRAP(rt_physics2d_world_add_joint(world, extra));
-    release_obj(extra);
+    ASSERT(rt_physics2d_world_joint_count(world) == total,
+           "joint storage grows past PH_MAX_JOINTS");
 
     release_obj(a);
     release_obj(b);
@@ -898,26 +896,41 @@ static void test_joint_limit_traps() {
 }
 
 //=============================================================================
-// GAME-C-4: PH_MAX_BODIES exceeded should trap
+// GAME-C-4: PH_MAX_BODIES is an initial reservation, not a hard body cap
 //=============================================================================
 
-static void test_body_limit_traps() {
+static void test_body_storage_grows_and_high_index_pair_resolves() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
-    // Fill to the limit (256 bodies)
-    for (int i = 0; i < 256; i++) {
-        void *body = rt_physics2d_body_new((double)i, 0, 1, 1, 1.0);
-        rt_physics2d_world_add(world, body);
-        rt_obj_release_check0(body);
+    void *wall = rt_physics2d_body_new(0, 0, 20, 20, 0.0);
+    rt_physics2d_body_set_collision_layer(wall, 1);
+    rt_physics2d_body_set_collision_mask(wall, 1);
+    rt_physics2d_world_add(world, wall);
+
+    for (int i = 0; i < PH_MAX_BODIES; i++) {
+        void *filler = rt_physics2d_body_new((double)(i + 1) * 100.0, 1000.0, 1, 1, 1.0);
+        rt_physics2d_body_set_collision_layer(filler, 2);
+        rt_physics2d_body_set_collision_mask(filler, 0);
+        rt_physics2d_world_add(world, filler);
+        release_obj(filler);
     }
-    ASSERT(rt_physics2d_world_body_count(world) == 256, "256 bodies at limit");
 
-    // Adding one more must trap (GAME-C-4 fix)
-    void *extra = rt_physics2d_body_new(0, 0, 1, 1, 1.0);
-    EXPECT_TRAP(rt_physics2d_world_add(world, extra));
-    rt_obj_release_check0(extra);
+    void *target = rt_physics2d_body_new(1, 0, 20, 20, 1.0);
+    rt_physics2d_body_set_collision_layer(target, 1);
+    rt_physics2d_body_set_collision_mask(target, 1);
+    rt_physics2d_body_set_vel(target, -5.0, 0.0);
+    rt_physics2d_world_add(world, target);
 
-    rt_obj_release_check0(world);
+    ASSERT(rt_physics2d_world_body_count(world) == PH_MAX_BODIES + 2,
+           "body storage grows past PH_MAX_BODIES");
+
+    rt_physics2d_world_step(world, 0.001);
+    ASSERT(fabs(rt_physics2d_body_vx(target) + 5.0) > EPSILON,
+           "high-index body pair resolves through dynamic pair scratch");
+
+    release_obj(target);
+    release_obj(wall);
+    release_obj(world);
 }
 
 /// @brief Main.
@@ -962,7 +975,7 @@ int main() {
     test_world_records_step_contacts();
     test_world_clears_contacts_on_noop_step();
     test_world_remove_clears_contacts();
-    test_world_contact_overflow_flag();
+    test_world_contact_storage_grows_past_default_capacity();
     test_extreme_forces_are_sanitized();
 
     // Safety tests
@@ -977,10 +990,10 @@ int main() {
     test_dense_cell_overflow_falls_back_to_all_pairs();
     test_world_finalizer_releases_joint_retained_bodies();
     test_add_joint_requires_world_bodies();
-    test_joint_limit_traps();
+    test_joint_storage_grows_past_default_capacity();
 
-    // GAME-C-4: body limit traps
-    test_body_limit_traps();
+    // GAME-C-4: PH_MAX_BODIES is an initial reservation
+    test_body_storage_grows_and_high_index_pair_resolves();
 
     printf("Physics2D tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

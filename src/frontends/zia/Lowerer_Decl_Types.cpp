@@ -475,7 +475,6 @@ void Lowerer::emitItableInit() {
 
             // Populate each slot with a function pointer
             for (size_t s = 0; s < slotCount; ++s) {
-                const std::string &methodName = ifaceInfo.methods[s]->name;
                 const std::string slotKey =
                     sema_.methodSlotKey(ifaceInfo.name, ifaceInfo.methods[s]);
                 int64_t offset = static_cast<int64_t>(s * 8ULL);

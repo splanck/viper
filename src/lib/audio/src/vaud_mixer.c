@@ -233,6 +233,137 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
     }
 }
 
+static int group_has_effects(vaud_context_t ctx, int64_t group_id) {
+    if (!ctx || !ctx->group_effects_process)
+        return 0;
+    if (!ctx->group_effects_query)
+        return 1;
+    return ctx->group_effects_query(ctx->group_effects_userdata, group_id) ? 1 : 0;
+}
+
+static int group_list_contains(const int64_t *groups, int32_t count, int64_t group_id) {
+    for (int32_t i = 0; i < count; i++) {
+        if (groups[i] == group_id)
+            return 1;
+    }
+    return 0;
+}
+
+static void group_list_add(int64_t *groups, int32_t *count, int32_t cap, int64_t group_id) {
+    if (!groups || !count || *count >= cap)
+        return;
+    if (group_list_contains(groups, *count, group_id))
+        return;
+    groups[*count] = group_id;
+    *count += 1;
+}
+
+static int32_t collect_effect_groups(vaud_context_t ctx, int64_t *groups, int32_t cap) {
+    int32_t count = 0;
+    if (!ctx || !groups || cap <= 0 || !ctx->group_effects_process)
+        return 0;
+
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+        vaud_voice *voice = &ctx->voices[i];
+        if (voice->state == VAUD_VOICE_PLAYING && voice->sound &&
+            group_has_effects(ctx, voice->group_id)) {
+            group_list_add(groups, &count, cap, voice->group_id);
+        }
+    }
+
+    for (int32_t i = 0; i < ctx->music_count; i++) {
+        vaud_music_t music = ctx->active_music[i];
+        if (music && music->state == VAUD_MUSIC_PLAYING &&
+            group_has_effects(ctx, music->group_id)) {
+            group_list_add(groups, &count, cap, music->group_id);
+        }
+    }
+
+    return count;
+}
+
+static void add_processed_group_to_master(vaud_context_t ctx,
+                                          int64_t group_id,
+                                          int32_t *group_accum,
+                                          int32_t *master_accum,
+                                          int32_t frames) {
+    if (!ctx || !group_accum || !master_accum || !ctx->group_effects_process)
+        return;
+
+    size_t sample_count = (size_t)frames * (size_t)VAUD_CHANNELS;
+    for (size_t i = 0; i < sample_count; i++)
+        ctx->group_fx_buf[i] = (float)group_accum[i] / 32768.0f;
+
+    ctx->group_effects_process(ctx->group_effects_userdata,
+                               group_id,
+                               ctx->group_fx_buf,
+                               frames,
+                               VAUD_CHANNELS,
+                               VAUD_SAMPLE_RATE);
+
+    for (size_t i = 0; i < sample_count; i++) {
+        float scaled = ctx->group_fx_buf[i] * 32768.0f;
+        int32_t sample = (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
+        master_accum[i] += sample;
+    }
+}
+
+static void mix_with_group_effects(vaud_context_t ctx, int32_t *accum, int32_t frames, float master) {
+    int64_t effect_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC];
+    int32_t effect_group_count = collect_effect_groups(
+        ctx, effect_groups, (int32_t)(sizeof(effect_groups) / sizeof(effect_groups[0])));
+
+    if (effect_group_count <= 0) {
+        for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
+            mix_voice(&ctx->voices[i], accum, frames, master);
+        for (int32_t i = 0; i < ctx->music_count; i++) {
+            if (ctx->active_music[i])
+                mix_music(ctx->active_music[i], accum, frames, master);
+        }
+        return;
+    }
+
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+        vaud_voice *voice = &ctx->voices[i];
+        if (voice->state != VAUD_VOICE_PLAYING || !voice->sound)
+            continue;
+        if (group_list_contains(effect_groups, effect_group_count, voice->group_id))
+            continue;
+        mix_voice(voice, accum, frames, master);
+    }
+
+    for (int32_t i = 0; i < ctx->music_count; i++) {
+        vaud_music_t music = ctx->active_music[i];
+        if (!music)
+            continue;
+        if (group_list_contains(effect_groups, effect_group_count, music->group_id))
+            continue;
+        mix_music(music, accum, frames, master);
+    }
+
+    size_t sample_count = (size_t)frames * (size_t)VAUD_CHANNELS;
+    for (int32_t g = 0; g < effect_group_count; g++) {
+        int64_t group_id = effect_groups[g];
+        memset(ctx->group_accum_buf, 0, sample_count * sizeof(int32_t));
+
+        for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+            vaud_voice *voice = &ctx->voices[i];
+            if (voice->state == VAUD_VOICE_PLAYING && voice->sound &&
+                voice->group_id == group_id) {
+                mix_voice(voice, ctx->group_accum_buf, frames, master);
+            }
+        }
+
+        for (int32_t i = 0; i < ctx->music_count; i++) {
+            vaud_music_t music = ctx->active_music[i];
+            if (music && music->group_id == group_id)
+                mix_music(music, ctx->group_accum_buf, frames, master);
+        }
+
+        add_processed_group_to_master(ctx, group_id, ctx->group_accum_buf, accum, frames);
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // Main Mixer Entry Point
 //===----------------------------------------------------------------------===//
@@ -284,17 +415,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
         return;
     }
 
-    /* Mix all active voices */
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
-        mix_voice(&ctx->voices[i], accum, frames, master);
-    }
-
-    /* Mix active music streams */
-    for (int32_t i = 0; i < ctx->music_count; i++) {
-        if (ctx->active_music[i]) {
-            mix_music(ctx->active_music[i], accum, frames, master);
-        }
-    }
+    mix_with_group_effects(ctx, accum, frames, master);
 
     ctx->frame_counter += frames;
 

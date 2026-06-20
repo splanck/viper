@@ -46,6 +46,73 @@ std::vector<RuntimeClassSummary> ICompilerBridge::runtimeClasses() {
     return result;
 }
 
+void ICompilerBridge::updateDocument(const std::string & /*path*/,
+                                     const std::string & /*source*/) {}
+
+void ICompilerBridge::removeDocument(const std::string & /*path*/) {}
+
+bool ICompilerBridge::supportsDefinition() const {
+    return false;
+}
+
+bool ICompilerBridge::supportsReferences() const {
+    return false;
+}
+
+bool ICompilerBridge::supportsRename() const {
+    return false;
+}
+
+bool ICompilerBridge::supportsSignatureHelp() const {
+    return false;
+}
+
+bool ICompilerBridge::supportsWorkspaceSymbols() const {
+    return false;
+}
+
+bool ICompilerBridge::supportsSemanticTokens() const {
+    return false;
+}
+
+std::optional<LocationInfo> ICompilerBridge::definition(const std::string & /*source*/,
+                                                        int /*line*/,
+                                                        int /*col*/,
+                                                        const std::string & /*path*/) {
+    return std::nullopt;
+}
+
+std::vector<LocationInfo> ICompilerBridge::references(const std::string & /*source*/,
+                                                      int /*line*/,
+                                                      int /*col*/,
+                                                      const std::string & /*path*/) {
+    return {};
+}
+
+RenameResult ICompilerBridge::rename(const std::string & /*source*/,
+                                     int /*line*/,
+                                     int /*col*/,
+                                     const std::string & /*path*/,
+                                     const std::string & /*newName*/) {
+    return {};
+}
+
+SignatureHelpInfo ICompilerBridge::signatureHelp(const std::string & /*source*/,
+                                                 int /*line*/,
+                                                 int /*col*/,
+                                                 const std::string & /*path*/) {
+    return {};
+}
+
+std::vector<SymbolInfo> ICompilerBridge::workspaceSymbols(const std::string & /*query*/) {
+    return {};
+}
+
+std::vector<SemanticTokenInfo> ICompilerBridge::semanticTokens(const std::string & /*source*/,
+                                                               const std::string & /*path*/) {
+    return {};
+}
+
 std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeMembers(const std::string &className) {
     const auto *cls = il::runtime::findRuntimeClassByQName(className);
     if (!cls)

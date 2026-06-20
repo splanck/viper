@@ -265,6 +265,13 @@ class Box[T: Named] {
 }
 ```
 
+Each type parameter may name at most one interface constraint. The constraint
+may be qualified, such as `T: Contracts.Named`. Multiple bounds (`T: A + B`)
+and `where` clauses are future extensions, not accepted syntax. A concrete class
+argument satisfies a constraint through interfaces implemented by the class or
+by any base class; struct arguments satisfy constraints through their own
+`implements` list.
+
 ### Class Types
 
 Reference types defined with the `class` keyword:
@@ -1131,6 +1138,8 @@ func findMax[T: Comparable](a: T, b: T) -> T {
 Type parameters are declared in `[...]` after the function name. Constraints
 (like `T: Comparable` or `T: Contracts.Named`) restrict the type parameter to
 types implementing the named interface.
+Each parameter supports a single interface constraint; multiple bounds and
+`where` clauses are reserved for future language work.
 Type inference works through generic container parameters such as `List[T]` and
 `Map[String, T]`. Explicit type arguments may be comma-separated and nested:
 `pair[Integer, String](1, "one")` and `identity[List[Integer]]([1])`.

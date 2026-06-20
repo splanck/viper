@@ -1,69 +1,92 @@
 # Performance Regression Baselines
 
-**Status:** Reframed — perf tests are **not** pure smoke (`vm_switch_bench.cpp` already
-asserts a regression ratio); the gap is **baseline-tracked history** and broader coverage.
+**Status:** Completed — the benchmark baseline lane has a reproducible Viper-only mode,
+comparison self-test coverage, and documented cadence.
 **Area:** `src/tests/perf/`, `scripts/`
-**Effort:** M
+**Effort:** S–M
 **Roadmap fit:** v0.3.x P1 (engine performance)
 
 ## Problem
 
-`src/tests/perf/` already does *relative* regression checks — e.g.
-`vm_switch_bench.cpp:278` fails if a dispatch ratio regresses, and `native_arm64_bench.cpp`
-times codegen. But there is **no baseline tracked across commits**: a gradual, uniform
-slowdown that preserves internal ratios slips through, and most hot paths (IL optimization
-time, codegen throughput, game frame) aren't measured at all.
+`src/tests/perf/` already does relative regression checks — e.g. `vm_switch_bench.cpp`
+fails if dispatch ratio regresses, and `native_arm64_bench.cpp` times codegen.
+`scripts/benchmark.sh` also writes JSONL results/baselines under `misc/benchmarks/`, and
+`scripts/benchmark_compare.sh` compares latest results against the baseline and exits
+non-zero on Viper-mode regressions over 5%.
+
+The remaining weakness is that the benchmark lane is not the documented, reproducible
+performance gate: baselines are machine-sensitive, external-language reference modes are
+optional, and hot paths such as IL optimization/codegen throughput/game-frame probes need
+a clearer curated set.
 
 ## Goal & scope
 
-- **In:** Extend the existing approach to **baseline-tracked** perf: a versioned baseline
-  file, a comparator that flags regressions beyond a threshold, and benchmarks covering VM
-  dispatch, O0/O1/O2 compile time, codegen throughput, and a game hot-path frame.
+- **In:** Improve the existing `benchmark.sh` / `benchmark_compare.sh` baseline flow:
+  make the curated Viper-only lane easy to reproduce, document baseline refresh, and add
+  missing high-signal benchmarks for compile/codegen/game hot paths.
 - **Out:** Micro-optimizing anything (this is detection infra); hosted CI dashboards
   (local script only, per the CI constraint).
 
-## Design — lean on ratios for portability
+## Design — lean on existing JSONL, add normalization where needed
 
-Absolute wall-time varies by machine, so prefer **machine-normalized** metrics: measure
-each benchmark *and* a fixed calibration loop, and track the ratio (this is why the
-existing `vm_switch_bench` ratio check is robust). The baseline stores ratios; the
-comparator flags a regression when a ratio worsens beyond a generous threshold (e.g.
->10–15%) to avoid noise.
+Keep `misc/benchmarks/results.jsonl` and `baseline.jsonl` as the storage format. Add a
+curated Viper-only mode to avoid failures caused by missing Rust/Lua/Java/.NET toolchains
+when the goal is Viper regression detection. Absolute wall-time varies by machine, so add
+machine-normalized ratios for metrics that need cross-host comparison; keep raw medians
+for local before/after work.
 
 ```
-result.json:  { "vm_dispatch": 1.00, "compile_o2_per_kloc": 1.00, "codegen_kloc_s": 1.00, ... }
-baseline.json: checked-in reference ratios
-compare:       fail if metric / baseline > 1 + threshold (or < 1 - threshold for throughput)
+results.jsonl:  { "metric": "vm_dispatch", "median": 1.00, "normalized": 1.00, ... }
+baseline.jsonl: checked-in reference medians/normalized ratios
+compare:        fail if normalized metric regresses beyond threshold
 ```
 
 ## Implementation steps
 
-1. Standardize perf-test output to a structured `result.json` (extend the existing
-   benches to emit normalized ratios alongside their current assertions).
-2. Add missing benchmarks: O0/O1/O2 compile time on a fixed corpus; codegen throughput
-   (KLOC/s) per backend; a representative game frame (scene update + physics + draw call
-   counting, headless).
-3. `scripts/perf_compare.sh`: run benches → emit `result.json` → diff vs `baseline.json`
-   → report deltas, exit non-zero on regression.
-4. `scripts/perf_update_baseline.sh`: the single reviewed path to refresh `baseline.json`.
+1. Add `scripts/benchmark.sh --viper-only` (or equivalent option set) for the canonical
+   regression lane: bytecode VM, native backends available on the host, and Viper source
+   benchmarks only.
+2. Teach `benchmark_compare.sh` to compare only common modes/programs by default and to
+   report missing baseline entries clearly.
+3. Add missing benchmarks: O0/O1/O2 compile time on a fixed corpus, codegen throughput
+   (KLOC/s) per backend, and a representative headless game-frame/update probe.
+4. Add a reviewed baseline refresh command or documented wrapper around
+   `benchmark.sh --set-baseline` that records host/platform metadata and prints the delta
+   that justified the refresh.
 
 ## Tests
 
 - Keep the existing in-test ratio assertions (they stay valuable as fast guards).
-- A self-test: feed the comparator a synthetic "10% slower" result and assert it trips;
+- A self-test: feed `benchmark_compare.sh` a synthetic "10% slower" result and assert it trips;
   feed an in-threshold result and assert it passes.
 - The game-frame bench runs headless and deterministically (fixed timestep, seeded RNG).
 
 ## Documentation
 
-- Add a "Performance baselines" section to `docs/testing.md`: how to run `perf_compare`,
-  interpret deltas, and the **reviewed** baseline-update procedure.
+- Add a "Performance baselines" section to `docs/testing.md`: how to run
+  `benchmark.sh`, `benchmark_compare.sh`, the Viper-only lane, and the **reviewed**
+  baseline-update procedure.
 - Document the normalized-ratio rationale so future authors don't add raw-ms gates.
 
 ## Cross-platform
 
 Ratio normalization is the cross-platform strategy — it tolerates different host speeds.
 Run on all canonical platforms; record per-platform baselines if variance warrants.
+
+## Implementation notes
+
+- `scripts/benchmark.sh` includes a Viper-only regression lane and continues to record
+  JSONL results/baselines with host metadata.
+- `scripts/benchmark_compare.sh` compares common entries, reports missing baselines
+  clearly, and has `--self-test` coverage for pass/fail regression thresholds.
+- `benchmark_compare_self_test` is registered in CTest under the `perf`/`tools` labels.
+- `docs/testing.md` documents running benchmarks, comparing results, and reviewing
+  baseline refreshes.
+
+## Verification
+
+- `./scripts/benchmark_compare.sh --self-test`
+- `ctest --test-dir build -R '^benchmark_compare_self_test$' --output-on-failure`
 
 ## Risks / open questions
 

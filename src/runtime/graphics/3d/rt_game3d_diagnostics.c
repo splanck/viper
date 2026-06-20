@@ -23,6 +23,8 @@
 
 #include "rt_game3d_diagnostics.h"
 
+#include "rt_audio_diagnostics.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -31,7 +33,6 @@ typedef struct {
     int64_t ccd_clamped_frames;
     int64_t ccd_clamped_bodies;
     int64_t anim_events_dropped;
-    int64_t audio_voices_evicted;
     int64_t nav_grid_fallbacks;
     int64_t stale_entity_calls;
     int64_t stale_async_loads_dropped;
@@ -90,7 +91,7 @@ int64_t rt_game3d_diagnostics_get_anim_events_dropped(void) {
 }
 
 int64_t rt_game3d_diagnostics_get_audio_voices_evicted(void) {
-    return diag_nonnegative(g_game3d_diagnostics.audio_voices_evicted);
+    return rt_audio_diagnostics_get_spatial_voice_evictions();
 }
 
 int64_t rt_game3d_diagnostics_get_nav_grid_fallbacks(void) {
@@ -107,6 +108,7 @@ int64_t rt_game3d_diagnostics_get_stale_async_loads_dropped(void) {
 
 void rt_game3d_diagnostics_reset(void) {
     memset(&g_game3d_diagnostics, 0, sizeof(g_game3d_diagnostics));
+    rt_audio_diagnostics_reset_spatial_voice_evictions();
 }
 
 rt_string rt_game3d_diagnostics_summary(void) {
@@ -137,7 +139,7 @@ rt_string rt_game3d_diagnostics_summary(void) {
                      sizeof(buffer),
                      &offset,
                      "AudioVoicesEvicted",
-                     g_game3d_diagnostics.audio_voices_evicted);
+                     rt_audio_diagnostics_get_spatial_voice_evictions());
     diag_append_line(buffer,
                      sizeof(buffer),
                      &offset,
@@ -172,7 +174,7 @@ void rt_game3d_diag_record_anim_events_dropped(int64_t count) {
 }
 
 void rt_game3d_diag_record_audio_voice_evicted(void) {
-    diag_increment(&g_game3d_diagnostics.audio_voices_evicted, 1);
+    rt_audio_diag_record_spatial_voice_evicted();
 }
 
 void rt_game3d_diag_record_nav_grid_fallback(void) {

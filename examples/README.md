@@ -97,6 +97,24 @@ Organized by namespace:
 
 > Run the full audit: `./examples/apiaudit/run_audit.sh`
 
+Example sources are classified by [`smoke_manifest.tsv`](smoke_manifest.tsv). The local
+smoke lane keeps tutorial examples and runnable IL samples compiling:
+
+```sh
+./scripts/example_smoke.sh --audit
+./scripts/example_smoke.sh --fast
+ctest --test-dir build -L examples --output-on-failure
+```
+
+---
+
+## 📘 Zia Language Examples
+
+The [`zia/`](zia/) directory contains compact source examples for specific Zia
+language features. `constrained_generics.zia` demonstrates a single interface
+constraint (`T: Named`) and a generic function that calls through the bound
+interface.
+
 ---
 
 ## 📘 BASIC Language Examples

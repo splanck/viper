@@ -48,7 +48,7 @@ static constexpr uint32_t LC_SEGMENT_64 = 0x19;
 static constexpr uint32_t LC_SYMTAB = 0x02;
 
 // Section type constants (low 8 bits of flags).
-static constexpr uint32_t S_REGULAR = 0x00;
+[[maybe_unused]] static constexpr uint32_t S_REGULAR = 0x00;
 static constexpr uint32_t S_ZEROFILL = 0x01;
 static constexpr uint32_t S_NON_LAZY_SYMBOL_POINTERS = 0x06;
 static constexpr uint32_t S_LAZY_SYMBOL_POINTERS = 0x07;
@@ -469,8 +469,6 @@ bool readMachOObj(
     // Skipped sections (debug, etc.) map to 0 (unmapped).
     std::vector<uint32_t> machoSecMap;
     machoSecMap.push_back(0); // Null section (index 0).
-    uint32_t machoSecIdx = 1;
-
     size_t tmpOff = lcOff;
     for (uint32_t c = 0; c < hdr->ncmds; ++c) {
         const auto lcValue = readAt<macho::load_command>(data, size, tmpOff);
@@ -709,7 +707,6 @@ bool readMachOObj(
                 machoSecMap.push_back(static_cast<uint32_t>(obj.sections.size()));
                 secAddrs.push_back(sec->addr);
                 obj.sections.push_back(std::move(os));
-                ++machoSecIdx;
                 if (!checkedAdd(secOff, sizeof(macho::section_64), secOff)) {
                     err << "error: " << name
                         << ": Mach-O section header offset overflows address space\n";

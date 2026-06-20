@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-06-20
 ---
 
 # Time & Timing
@@ -20,6 +20,7 @@ last-verified: 2026-04-22
 - [Viper.Time.Duration](#vipertimeduration)
 - [Viper.Time.RelativeTime](#vipertimerelativetime)
 - [Viper.Time.Stopwatch](#vipertimestopwatch)
+- [Viper.Time.TimeZone](#vipertimetimezone)
 
 ---
 
@@ -201,8 +202,10 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `Second(timestamp)`              | `Integer(Integer)`          | Extracts the second (0-59) from a timestamp              |
 | `DayOfWeek(timestamp)`           | `Integer(Integer)`          | Returns day of week (0=Sunday, 6=Saturday)               |
 | `Format(timestamp, format)`      | `String(Integer, String)`   | Formats a timestamp using strftime-style format          |
+| `FormatInZone(timestamp, zone, format)` | `String(Integer, TimeZone, String)` | Formats a UTC instant in a named time zone |
 | `ToISO(timestamp)`               | `String(Integer)`           | Returns ISO 8601 formatted string in UTC (with Z suffix) |
 | `ToLocal(timestamp)`             | `String(Integer)`           | Returns ISO 8601 formatted string in local time (no Z)   |
+| `ToZone(timestamp, zone)`        | `String(Integer, TimeZone)` | Returns ISO 8601 local wall time plus numeric zone offset |
 | `Create(y, m, d, h, min, s)`     | `Integer(Integer...)`       | Creates a timestamp from local time components           |
 | `AddSeconds(timestamp, seconds)` | `Integer(Integer, Integer)` | Adds seconds to a timestamp                              |
 | `AddDays(timestamp, days)`       | `Integer(Integer, Integer)` | Adds days to a timestamp                                 |
@@ -220,6 +223,8 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 - `ToISO` formats in **UTC** (appends `Z` suffix)
 - `ToLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
 - `Format` uses the **local time zone** with strftime-style format strings
+- `ToZone` and `FormatInZone` use Viper's embedded named-zone table, not host OS zoneinfo, so output is deterministic across macOS, Windows, and Linux for covered zones
+- `FormatInZone` currently supports `%Y`, `%m`, `%d`, `%H`, `%M`, `%S`, `%F`, `%T`, `%z`, `%Z`, and `%%`
 - Timestamp accessors and formatters return 0 or an empty string when a timestamp cannot be represented by the platform `time_t`
 - `Diff(t1, t2)` returns the signed difference `t1 - t2` in seconds
 - `AddSeconds`, `AddDays`, and `Diff` trap on signed 64-bit overflow
@@ -266,6 +271,57 @@ func start() {
     Say("Christmas: " + DateTime.ToLocal(christmas));
 }
 ```
+
+### Named-zone Example
+
+```rust
+module TimeZoneDemo;
+
+bind Viper.Terminal;
+bind Viper.Time.DateTime as DateTime;
+bind Viper.Time.TimeZone as TimeZone;
+
+func start() {
+    var ny = TimeZone.Find("America/New_York");
+    var instant = DateTime.ParseISO("2025-03-09T07:00:00Z");
+    Say(DateTime.ToZone(instant, ny));                         # 2025-03-09T03:00:00-04:00
+    Say(DateTime.FormatInZone(instant, ny, "%F %T %z %Z"));    # 2025-03-09 03:00:00 -0400 EDT
+}
+```
+
+---
+
+## Viper.Time.TimeZone
+
+Deterministic IANA named-zone lookup backed by an embedded subset. TimeZone handles are used with `DateTime.ToZone` and `DateTime.FormatInZone`.
+
+**Type:** Static lookup plus opaque zone handles
+
+### Methods and Properties
+
+| Method / Property | Signature | Description |
+|-------------------|-----------|-------------|
+| `Find(name)` | `TimeZone(String)` | Resolve a supported IANA zone name; traps for unknown names |
+| `Name` | `String` | Canonical zone name |
+| `OffsetAt(timestamp)` | `Integer(Integer)` | UTC offset in seconds east of UTC at the instant |
+| `IsDstAt(timestamp)` | `Boolean(Integer)` | True when daylight saving time is active |
+
+### Embedded Subset
+
+The initial deterministic subset covers:
+
+| Zone | Coverage |
+|------|----------|
+| `UTC`, `Etc/UTC` | Fixed UTC |
+| `Asia/Tokyo` | Fixed UTC+09:00 |
+| `America/New_York` | 2025-2026 EST/EDT transitions |
+| `Australia/Sydney` | 2025-2026 AEST/AEDT transitions |
+
+`Find` is exact and case-sensitive. Unknown zones trap with a runtime error rather than falling back to local time.
+
+### DST Policy
+
+`TimeZone` converts UTC instants to wall time, so skipped and repeated local hours are resolved by the instant itself. For example, `2025-03-09T07:00:00Z` in `America/New_York` formats as `2025-03-09T03:00:00-04:00`, skipping the nonexistent `02:00` hour.
 
 ### BASIC Example
 

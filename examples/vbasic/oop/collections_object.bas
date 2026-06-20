@@ -2,6 +2,8 @@ REM Example: Collections + Object methods
 
 NAMESPACE App
   CLASS Person
+    SUB New()
+    END SUB
   END CLASS
 END NAMESPACE
 
@@ -13,10 +15,10 @@ DIM p2 AS App.Person
 p1 = NEW App.Person()
 p2 = NEW App.Person()
 
-list.Add(p1)
-list.Add(p2)
+list.Push(p1)
+list.Push(p2)
 
-PRINT list.Count
-PRINT list.get_Item(0).ToString()
-PRINT list.get_Item(1).Equals(p2)
-PRINT list.get_Item(0).Equals(p2)
+PRINT list.Length
+PRINT list.Get(0).ToString()
+PRINT list.Get(1).Equals(p2)
+PRINT list.Get(0).Equals(p2)

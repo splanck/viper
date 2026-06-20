@@ -60,6 +60,7 @@
 #include "vm/VMContext.hpp"
 
 #include "rt_context.h"
+#include "rt_shutdown.h"
 
 #include <algorithm>
 #include <atomic>
@@ -96,20 +97,31 @@ static std::atomic<uint64_t> s_interruptClearedEpoch{0};
 /// @details This helper uses C++ atomics and is therefore called only outside
 ///          POSIX signal-handler context. POSIX signals set a sig_atomic_t flag
 ///          that is later folded into this epoch by @ref publishPendingSignalInterrupt.
-static void publishInterruptRequest() noexcept {
+static void publishInterruptRequest(int64_t reason = RT_SHUTDOWN_REASON_INTERRUPT) noexcept {
+    rt_shutdown_request(reason);
     s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
 }
 
 #if defined(_WIN32)
-static BOOL WINAPI windowsCtrlHandler(DWORD /*ctrlType*/) {
-    publishInterruptRequest();
+static BOOL WINAPI windowsCtrlHandler(DWORD ctrlType) {
+    int64_t reason = RT_SHUTDOWN_REASON_INTERRUPT;
+    if (ctrlType == CTRL_CLOSE_EVENT || ctrlType == CTRL_LOGOFF_EVENT ||
+        ctrlType == CTRL_SHUTDOWN_EVENT) {
+        reason = RT_SHUTDOWN_REASON_TERMINATE;
+    }
+    publishInterruptRequest(reason);
     return TRUE; // We handled it; do not call the next handler.
 }
 #else
 static volatile std::sig_atomic_t s_posixInterruptPending = 0;
+static volatile std::sig_atomic_t s_posixTerminatePending = 0;
 
 static void posixSigintHandler(int /*signum*/) {
     s_posixInterruptPending = 1;
+}
+
+static void posixSigtermHandler(int /*signum*/) {
+    s_posixTerminatePending = 1;
 }
 
 /// @brief Fold a POSIX signal-handler flag into the atomic interrupt epoch.
@@ -119,10 +131,18 @@ static void posixSigintHandler(int /*signum*/) {
 static void publishPendingSignalInterrupt() noexcept {
     if (s_posixInterruptPending) {
         s_posixInterruptPending = 0;
-        publishInterruptRequest();
+        publishInterruptRequest(RT_SHUTDOWN_REASON_INTERRUPT);
+    }
+    if (s_posixTerminatePending) {
+        s_posixTerminatePending = 0;
+        publishInterruptRequest(RT_SHUTDOWN_REASON_TERMINATE);
     }
 }
 #endif
+
+static void clearInterruptForShutdownPoll() noexcept {
+    VM::clearInterrupt();
+}
 
 /// @brief Register the process-level interrupt handler (called once per process).
 static void registerInterruptHandler() {
@@ -141,7 +161,14 @@ static void registerInterruptHandler() {
     // SA_RESTART: resume interrupted system calls where possible.
     sa.sa_flags = SA_RESTART;
     sigaction(SIGINT, &sa, nullptr);
+
+    struct sigaction termSa{};
+    termSa.sa_handler = posixSigtermHandler;
+    sigemptyset(&termSa.sa_mask);
+    termSa.sa_flags = SA_RESTART;
+    sigaction(SIGTERM, &termSa, nullptr);
 #endif
+    rt_shutdown_set_interrupt_clear_callback(clearInterruptForShutdownPoll);
 }
 
 //===----------------------------------------------------------------------===//
@@ -295,8 +322,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
     do {                                                                                           \
         if (state.ip < state.bb->instructions.size()) [[likely]] {                                 \
             if (vm.tracingActive_ || vm.stepBudget > 0 ||                                          \
-                vm.debugStepMode_ != VM::DebugStepMode::None ||                                    \
-                vm.debugBreakActive_) [[unlikely]]                                                 \
+                vm.debugStepMode_ != VM::DebugStepMode::None || vm.debugBreakActive_) [[unlikely]] \
                 goto LBL_SLOW_PATH;                                                                \
             ++vm.instrCount;                                                                       \
             currentInstr = &state.bb->instructions[state.ip];                                      \
@@ -500,6 +526,7 @@ void VM::requestInterrupt() noexcept {
 void VM::clearInterrupt() noexcept {
     const uint64_t epoch = s_interruptEpoch.load(std::memory_order_acquire);
     s_interruptClearedEpoch.store(epoch, std::memory_order_release);
+    rt_shutdown_clear_pending_only();
 }
 
 bool VM::consumePendingInterrupt() noexcept {
@@ -526,6 +553,9 @@ bool VM::consumePendingInterrupt() noexcept {
 /// @return True when an interrupt was delivered but control returned.
 bool VM::pollPendingInterrupt() {
     if (!consumePendingInterrupt()) [[likely]]
+        return false;
+
+    if (rt_shutdown_polling_enabled() && rt_shutdown_has_pending())
         return false;
 
     RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
@@ -1111,8 +1141,7 @@ bool VM::prepareTrap(VmError &error) {
             fr.resumeState.faultIp = faultIp;
             if (faultBlock) {
                 const size_t instructionCount = faultBlock->instructions.size();
-                fr.resumeState.nextIp =
-                    faultIp < instructionCount ? faultIp + 1 : instructionCount;
+                fr.resumeState.nextIp = faultIp < instructionCount ? faultIp + 1 : instructionCount;
             } else {
                 fr.resumeState.nextIp = faultIp;
             }

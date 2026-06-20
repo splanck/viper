@@ -209,16 +209,12 @@ bool rotateLoop(Function &function, const Loop &loop) {
     // Identify the body successor (inside loop) and exit successor (outside loop)
     std::string bodySuccLabel;
     std::string exitLabel;
-    size_t bodyBrArgIdx = SIZE_MAX;
-    size_t exitBrArgIdx = SIZE_MAX;
 
     for (size_t i = 0; i < headerTerm.labels.size(); ++i) {
         if (loop.contains(headerTerm.labels[i])) {
             bodySuccLabel = headerTerm.labels[i];
-            bodyBrArgIdx = i;
         } else {
             exitLabel = headerTerm.labels[i];
-            exitBrArgIdx = i;
         }
     }
 

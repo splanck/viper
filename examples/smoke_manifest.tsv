@@ -1,0 +1,37 @@
+# Example smoke manifest.
+# Columns: source_glob<TAB>lane<TAB>labels<TAB>target<TAB>reason
+# lane values:
+#   check-smoke  Fast lane: run `viper check` for the target.
+#   check        Full lane: run `viper check` for the target only under --all.
+#   il-run-smoke Fast lane: run the IL file through `viper -run`.
+#   classified  Audit-only classification for non-standalone sources.
+# target values:
+#   SELF     Use each matching source file as its own target.
+#   PROJECT2 Use examples/<segment1>/<segment2> as the target.
+#   <path>   Use the explicit examples-relative target path.
+hello-lsp.zia	check-smoke	examples,smoke	SELF	root LSP smoke example
+zia/*.zia	check-smoke	examples,zia,smoke	SELF	Zia language feature examples
+vbasic/*.bas	check-smoke	examples,basic,smoke	SELF	BASIC language examples
+vbasic/**/*.bas	check-smoke	examples,basic,smoke	SELF	nested BASIC language examples
+il/debug_script.il	il-run-smoke	examples,il,smoke	SELF	debugger integration IL example
+il/ex1_hello_cond.il	il-run-smoke	examples,il,smoke	SELF	runnable IL tutorial example
+il/ex2_sum_1_to_10.il	il-run-smoke	examples,il,smoke	SELF	runnable IL tutorial example
+il/ex3_table_5x5.il	il-run-smoke	examples,il,smoke	SELF	runnable IL tutorial example
+il/ex5_strings.il	il-run-smoke	examples,il,smoke	SELF	runnable IL tutorial example
+il/random_three.il	il-run-smoke	examples,il,smoke	SELF	runnable IL example
+il/summary.il	il-run-smoke	examples,il,smoke	SELF	runnable IL example
+il/trace_min.il	il-run-smoke	examples,il,smoke	SELF	runnable IL example
+il/break_label.il	classified	examples,il	SELF	trap-focused IL fixture, not a success smoke
+il/ex4_factorial.il	classified	examples,il	SELF	currently tracked by full example sweep
+il/ex6_heap_array_avg.il	classified	examples,il	SELF	currently tracked by full example sweep
+il/1.2/*.il	classified	examples,il	SELF	IL v1.2 syntax/reference corpus without main
+il/benchmarks/*.il	classified	examples,il,perf	SELF	benchmark corpus, not fast smoke
+localization/*.zia	check	examples	SELF	localization demos
+apiaudit/**/*.zia	check	examples	SELF	runtime API audit examples
+apiaudit/**/*.bas	check	examples,basic	SELF	runtime API audit BASIC examples
+3d/*.zia	check	examples,requires_display	SELF	3D examples compile-check headlessly
+3d/**/*.zia	check	examples,requires_display	SELF	nested 3D examples compile-check headlessly
+apps/**/*.zia	check	examples,slow	PROJECT2	app projects compile as project roots
+games/**/*.zia	check	examples,slow	PROJECT2	game projects compile as project roots
+games/**/*.bas	check	examples,basic,slow	PROJECT2	BASIC game projects compile as project roots
+sqldb-basic/*.bas	check	examples,basic,slow	sqldb-basic/main.bas	BASIC SQL engine compiles from main entry point

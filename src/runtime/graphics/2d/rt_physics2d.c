@@ -18,14 +18,15 @@
 //     position, then collision resolution. Simple and stable for games.
 //   - A body with mass == 0.0 is "static" (immovable). Its inv_mass is 0,
 //     so impulse calculations produce zero delta-velocity for it.
-//   - The body capacity per world is PH_MAX_BODIES (256). Exceeding this traps.
+//   - PH_MAX_BODIES, PH_MAX_JOINTS, and PH_MAX_CONTACTS are default reservations;
+//     world-owned storage grows on demand.
 //   - Collision filtering uses 64-bit layer/mask bitmasks: bodies A and B
 //     collide only when (A.layer & B.mask) && (B.layer & A.mask) are both
 //     non-zero (bidirectional filter).
 //   - Broad-phase uses a stack-local 8×8 uniform grid rebuilt each step.
 //     The grid arrays live on the stack, making concurrent physics worlds safe.
-//   - A 256×256 bit-matrix (pair_checked) ensures each candidate pair is
-//     tested at most once per step, even when they share multiple grid cells.
+//   - A growable pair_checked bit-matrix ensures each candidate pair is tested
+//     at most once per step, even when they share multiple grid cells.
 //   - Positional correction uses the Baumgarte stabilisation technique with
 //     a 1% slop and 40% correction factor to prevent sinking while avoiding
 //     jitter.
@@ -49,6 +50,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,24 +65,157 @@
 
 // Internal types are in rt_physics2d_internal.h
 
+static int8_t grow_capacity_i64(int64_t current,
+                                int64_t needed,
+                                int64_t default_capacity,
+                                int64_t *out) {
+    if (!out || needed < 0)
+        return 0;
+    int64_t capacity = current > 0 ? current : default_capacity;
+    if (capacity < 1)
+        capacity = 1;
+    while (capacity < needed) {
+        if (capacity > INT64_MAX / 2) {
+            capacity = needed;
+            break;
+        }
+        capacity *= 2;
+    }
+    *out = capacity;
+    return 1;
+}
+
+static int8_t ensure_body_capacity(rt_world_impl *w, int64_t needed) {
+    if (!w || needed < 0)
+        return 0;
+    if (needed <= w->body_capacity)
+        return 1;
+    int64_t new_capacity = 0;
+    if (!grow_capacity_i64(w->body_capacity, needed, PH_MAX_BODIES, &new_capacity) ||
+        (uint64_t)new_capacity > SIZE_MAX / sizeof(rt_body_impl *))
+        return 0;
+    rt_body_impl **bodies =
+        (rt_body_impl **)realloc(w->bodies, (size_t)new_capacity * sizeof(rt_body_impl *));
+    if (!bodies)
+        return 0;
+    memset(bodies + w->body_capacity,
+           0,
+           (size_t)(new_capacity - w->body_capacity) * sizeof(rt_body_impl *));
+    w->bodies = bodies;
+    w->body_capacity = new_capacity;
+    return 1;
+}
+
+int8_t rt_physics2d_world_reserve_joint_capacity(rt_world_impl *w, int64_t needed) {
+    if (!w || needed < 0)
+        return 0;
+    if (needed <= w->joint_capacity)
+        return 1;
+    int64_t new_capacity = 0;
+    if (!grow_capacity_i64(w->joint_capacity, needed, PH_MAX_JOINTS, &new_capacity) ||
+        (uint64_t)new_capacity > SIZE_MAX / sizeof(ph_joint *))
+        return 0;
+    ph_joint **joints = (ph_joint **)realloc(w->joints, (size_t)new_capacity * sizeof(ph_joint *));
+    if (!joints)
+        return 0;
+    memset(joints + w->joint_capacity,
+           0,
+           (size_t)(new_capacity - w->joint_capacity) * sizeof(ph_joint *));
+    w->joints = joints;
+    w->joint_capacity = new_capacity;
+    return 1;
+}
+
+static int8_t ensure_contact_capacity(rt_world_impl *w, int64_t needed) {
+    if (!w || needed < 0)
+        return 0;
+    if (needed <= w->contact_capacity)
+        return 1;
+    int64_t new_capacity = 0;
+    if (!grow_capacity_i64(w->contact_capacity, needed, PH_MAX_CONTACTS, &new_capacity) ||
+        (uint64_t)new_capacity > SIZE_MAX / sizeof(ph_contact_record))
+        return 0;
+    ph_contact_record *contacts =
+        (ph_contact_record *)realloc(w->contacts, (size_t)new_capacity * sizeof(ph_contact_record));
+    if (!contacts)
+        return 0;
+    memset(contacts + w->contact_capacity,
+           0,
+           (size_t)(new_capacity - w->contact_capacity) * sizeof(ph_contact_record));
+    w->contacts = contacts;
+    w->contact_capacity = new_capacity;
+    return 1;
+}
+
+static int8_t ensure_force_capacity(rt_world_impl *w, int64_t needed) {
+    if (!w || needed < 0)
+        return 0;
+    if (needed <= w->force_capacity)
+        return 1;
+    int64_t new_capacity = 0;
+    if (!grow_capacity_i64(w->force_capacity, needed, PH_MAX_BODIES, &new_capacity) ||
+        (uint64_t)new_capacity > SIZE_MAX / sizeof(rt_body_impl *) ||
+        (uint64_t)new_capacity > SIZE_MAX / sizeof(double))
+        return 0;
+
+    rt_body_impl **force_bodies =
+        (rt_body_impl **)realloc(w->force_bodies, (size_t)new_capacity * sizeof(rt_body_impl *));
+    if (!force_bodies)
+        return 0;
+    w->force_bodies = force_bodies;
+
+    double *force_x = (double *)realloc(w->force_x, (size_t)new_capacity * sizeof(double));
+    if (!force_x)
+        return 0;
+    w->force_x = force_x;
+
+    double *force_y = (double *)realloc(w->force_y, (size_t)new_capacity * sizeof(double));
+    if (!force_y)
+        return 0;
+    w->force_y = force_y;
+
+    w->force_capacity = new_capacity;
+    return 1;
+}
+
+static int8_t ensure_pair_checked_capacity(rt_world_impl *w, int64_t body_count) {
+    if (!w || body_count < 0)
+        return 0;
+    if (body_count <= 1)
+        return 1;
+    if ((uint64_t)body_count > SIZE_MAX / (uint64_t)body_count)
+        return 0;
+    size_t bits = (size_t)body_count * (size_t)body_count;
+    size_t bytes = bits / 8 + 1;
+    if (bytes <= w->pair_checked_bytes && w->pair_checked_span >= body_count)
+        return 1;
+    uint8_t *pair_checked = (uint8_t *)realloc(w->pair_checked, bytes);
+    if (!pair_checked)
+        return 0;
+    w->pair_checked = pair_checked;
+    w->pair_checked_bytes = bytes;
+    w->pair_checked_span = body_count;
+    return 1;
+}
+
 /// @brief Clear the world's per-step contact list (called at the start of
 ///        each physics step before broad/narrow-phase regenerates contacts).
 static void world_clear_contacts(rt_world_impl *w) {
     if (!w)
         return;
-    for (int32_t i = 0; i < w->contact_count; ++i) {
+    for (int64_t i = 0; i < w->contact_count; ++i) {
         if (w->contacts[i].body_a && rt_obj_release_check0(w->contacts[i].body_a))
             rt_obj_free(w->contacts[i].body_a);
         if (w->contacts[i].body_b && rt_obj_release_check0(w->contacts[i].body_b))
             rt_obj_free(w->contacts[i].body_b);
+        memset(&w->contacts[i], 0, sizeof(w->contacts[i]));
     }
     w->contact_count = 0;
     w->contact_overflow = 0;
-    memset(w->contacts, 0, sizeof(w->contacts));
 }
 
 /// @brief Append a contact record to the world's per-step contact list.
-/// @details Records an overflow flag when the list is full (PH_MAX_CONTACTS), and skips non-finite
+/// @details Records an overflow flag when the list cannot grow, and skips non-finite
 ///   manifold values so downstream queries always see a clean list even in degenerate numerical
 ///   situations. Penetration is clamped to [0, +inf) because negative depth would indicate
 ///   separation, not contact.
@@ -88,13 +223,13 @@ void world_record_contact(
     rt_world_impl *w, rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen) {
     if (!w || !a || !b)
         return;
-    if (w->contact_count >= PH_MAX_CONTACTS) {
+    if (!ensure_contact_capacity(w, w->contact_count + 1)) {
         w->contact_overflow = 1;
         return;
     }
     if (!isfinite(nx) || !isfinite(ny) || !isfinite(pen))
         return;
-    int32_t idx = w->contact_count++;
+    int64_t idx = w->contact_count++;
     rt_obj_retain_maybe(a);
     rt_obj_retain_maybe(b);
     w->contacts[idx].body_a = a;
@@ -286,7 +421,7 @@ static double body_swept_max_y(rt_body_impl *b) {
 /// @details Marks the joint inactive before releasing so any in-flight solver callbacks
 ///   that still hold a pointer see it as dead.  Uses swap-with-tail compaction to keep
 ///   the array packed without shifting.
-static void world_release_joint_at(rt_world_impl *w, int32_t joint_index) {
+static void world_release_joint_at(rt_world_impl *w, int64_t joint_index) {
     if (!w || joint_index < 0 || joint_index >= w->joint_count)
         return;
 
@@ -310,7 +445,7 @@ static void world_remove_joints_for_body(rt_world_impl *w, rt_body_impl *body) {
     if (!w || !body)
         return;
 
-    for (int32_t i = 0; i < w->joint_count;) {
+    for (int64_t i = 0; i < w->joint_count;) {
         ph_joint *joint = w->joints[i];
         if (joint && (joint->body_a == body || joint->body_b == body)) {
             world_release_joint_at(w, i);
@@ -341,6 +476,26 @@ static void world_finalizer(void *obj) {
                 rt_obj_free(w->bodies[i]);
         }
         w->body_count = 0;
+        free(w->bodies);
+        w->bodies = NULL;
+        w->body_capacity = 0;
+        free(w->joints);
+        w->joints = NULL;
+        w->joint_capacity = 0;
+        free(w->contacts);
+        w->contacts = NULL;
+        w->contact_capacity = 0;
+        free(w->pair_checked);
+        w->pair_checked = NULL;
+        w->pair_checked_bytes = 0;
+        w->pair_checked_span = 0;
+        free(w->force_bodies);
+        w->force_bodies = NULL;
+        free(w->force_x);
+        w->force_x = NULL;
+        free(w->force_y);
+        w->force_y = NULL;
+        w->force_capacity = 0;
     }
 }
 
@@ -361,6 +516,7 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
         rt_trap("Physics2D.World: allocation failed");
         return NULL;
     }
+    memset(w, 0, sizeof(*w));
     w->vptr = NULL;
     w->gravity_x = finite_or(gravity_x, 0.0);
     w->gravity_y = finite_or(gravity_y, 0.0);
@@ -368,10 +524,15 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
     w->joint_count = 0;
     w->contact_count = 0;
     w->contact_overflow = 0;
-    memset(w->bodies, 0, sizeof(w->bodies));
-    memset(w->joints, 0, sizeof(w->joints));
-    memset(w->contacts, 0, sizeof(w->contacts));
     rt_obj_set_finalizer(w, world_finalizer);
+    if (!ensure_body_capacity(w, PH_MAX_BODIES) ||
+        !rt_physics2d_world_reserve_joint_capacity(w, PH_MAX_JOINTS) ||
+        !ensure_contact_capacity(w, PH_MAX_CONTACTS)) {
+        rt_trap("Physics2D.World: allocation failed");
+        if (rt_obj_release_check0(w))
+            rt_obj_free(w);
+        return NULL;
+    }
     return w;
 }
 
@@ -460,19 +621,18 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
      * All grid arrays are stack-local, making this function safe to call on
      * concurrent worlds from separate threads with no data sharing.
      *
-     * The grid intentionally stores uint8_t body indices (not pointers) to
-     * keep each cell small. BPG_CELL_MAX caps the count per cell; if a cell
+     * The grid stores body indices (not pointers) to keep each cell small.
+     * BPG_CELL_MAX caps the count per cell; if a cell
      * overflows, the step falls back to an exhaustive O(n²) pair pass so
      * collision correctness is preserved in dense scenes.
      *
      * Narrow phase: for each pair of bodies that share a grid cell, test with
      * shape_overlap() or swept AABB and call resolve_collision() if they collide.
      *
-     * De-duplication: a 256×256 bit-matrix (pair_checked) ensures each pair
+     * De-duplication: a world-owned bit-matrix (pair_checked) ensures each pair
      * (i, j) is resolved at most once per step, even when the two bodies share
      * multiple grid cells (e.g., near a cell boundary). Bit (i,j) is stored at
-     * byte [i*PH_MAX_BODIES+j >> 3], bit [(i*PH_MAX_BODIES+j) & 7]. The matrix
-     * is stack-local: (256×256) / 8 = 8192 bytes ≈ 8 KB. */
+     * byte [i*body_count+j >> 3], bit [(i*body_count+j) & 7]. */
 
 #define BPG_BASE_DIM 8  /* Small-world broad-phase grid cells per axis. */
 #define BPG_MAX_DIM 16  /* Largest stack-backed grid cells per axis. */
@@ -516,7 +676,7 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
          * Each body is inserted into every cell its swept bounds touch. A body
          * that straddles a cell boundary appears in both cells so it will be
          * paired with neighbours on either side. */
-        uint8_t grid_bodies[BPG_MAX_DIM * BPG_MAX_DIM][BPG_CELL_MAX];
+        int32_t grid_bodies[BPG_MAX_DIM * BPG_MAX_DIM][BPG_CELL_MAX];
         int grid_count[BPG_MAX_DIM * BPG_MAX_DIM];
         int grid_overflow = 0;
         memset(grid_count, 0, sizeof(grid_count));
@@ -554,7 +714,7 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
                     int cell = cy * grid_dim + cx;
                     int cnt = grid_count[cell];
                     if (cnt < BPG_CELL_MAX) {
-                        grid_bodies[cell][cnt] = (uint8_t)i;
+                        grid_bodies[cell][cnt] = (int32_t)i;
                         grid_count[cell] = cnt + 1;
                     } else {
                         grid_overflow = 1;
@@ -563,7 +723,7 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
             }
         }
 
-        if (grid_overflow) {
+        if (grid_overflow || !ensure_pair_checked_capacity(w, w->body_count)) {
             for (int ii = 0; ii < w->body_count; ii++) {
                 for (int jj = ii + 1; jj < w->body_count; jj++)
                     maybe_resolve_pair(w, ii, jj, dt);
@@ -573,8 +733,7 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
              * pair_checked is a bit-matrix preventing duplicate pair resolution.
              * Pairs are always stored with the lower index first (ii < jj) so the
              * bit position is deterministic regardless of cell iteration order. */
-            uint8_t pair_checked[PH_MAX_BODIES * PH_MAX_BODIES / 8 + 1];
-            memset(pair_checked, 0, sizeof(pair_checked));
+            memset(w->pair_checked, 0, w->pair_checked_bytes);
 
             for (int cell = 0; cell < grid_dim * grid_dim; cell++) {
                 int cnt = grid_count[cell];
@@ -587,10 +746,10 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
                             ii = jj;
                             jj = tmp;
                         }
-                        int bit = ii * PH_MAX_BODIES + jj;
-                        if (pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
+                        size_t bit = (size_t)ii * (size_t)w->body_count + (size_t)jj;
+                        if (w->pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
                             continue;
-                        pair_checked[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+                        w->pair_checked[bit >> 3] |= (uint8_t)(1u << (bit & 7));
                         maybe_resolve_pair(w, ii, jj, dt);
                     }
                 }
@@ -630,23 +789,22 @@ void rt_physics2d_world_step(void *obj, double dt) {
         substeps = PHYSICS2D_MAX_SUBSTEPS;
     double sub_dt = dt / (double)substeps;
 
-    rt_body_impl *force_bodies[PH_MAX_BODIES];
-    double force_x[PH_MAX_BODIES];
-    double force_y[PH_MAX_BODIES];
     int64_t force_count = w->body_count;
-    if (force_count > PH_MAX_BODIES)
-        force_count = PH_MAX_BODIES;
+    if (!ensure_force_capacity(w, force_count)) {
+        rt_trap("Physics2D.World.Step: force snapshot allocation failed");
+        return;
+    }
     for (int64_t i = 0; i < force_count; ++i) {
-        force_bodies[i] = w->bodies[i];
-        force_x[i] = w->bodies[i] ? w->bodies[i]->fx : 0.0;
-        force_y[i] = w->bodies[i] ? w->bodies[i]->fy : 0.0;
+        w->force_bodies[i] = w->bodies[i];
+        w->force_x[i] = w->bodies[i] ? w->bodies[i]->fx : 0.0;
+        w->force_y[i] = w->bodies[i] ? w->bodies[i]->fy : 0.0;
     }
 
     for (int step = 0; step < substeps; ++step) {
         for (int64_t i = 0; i < force_count; ++i) {
-            if (force_bodies[i]) {
-                force_bodies[i]->fx = force_x[i];
-                force_bodies[i]->fy = force_y[i];
+            if (w->force_bodies[i]) {
+                w->force_bodies[i]->fx = w->force_x[i];
+                w->force_bodies[i]->fy = w->force_y[i];
             }
         }
         physics2d_world_step_once(obj, w, sub_dt);
@@ -654,7 +812,7 @@ void rt_physics2d_world_step(void *obj, double dt) {
 }
 
 /// @brief Insert a body into the world's simulation list. The world retains the body; remove
-/// later via `_remove`. Traps if the world's body count cap (PH_MAX_BODIES) is hit.
+/// later via `_remove`. Body storage grows from the PH_MAX_BODIES initial reservation.
 void rt_physics2d_world_add(void *obj, void *body) {
     rt_world_impl *w;
     if (!obj || !body)
@@ -671,9 +829,12 @@ void rt_physics2d_world_add(void *obj, void *body) {
         if (w->bodies[i] == (rt_body_impl *)body)
             return;
     }
-    if (w->body_count >= PH_MAX_BODIES) {
-        rt_trap("Physics2D.World.Add: body limit exceeded (max " RT_PH_MAX_BODIES_STR
-                "); increase PH_MAX_BODIES and recompile");
+    if (w->body_count >= INT_MAX) {
+        rt_trap("Physics2D.World.Add: body count exceeds solver index range");
+        return;
+    }
+    if (!ensure_body_capacity(w, w->body_count + 1)) {
+        rt_trap("Physics2D.World.Add: body storage allocation failed");
         return;
     }
     rt_obj_retain_maybe(body);
@@ -730,9 +891,9 @@ void rt_physics2d_world_set_gravity(void *obj, double gx, double gy) {
 
 /// @brief Number of contact pairs resolved during the most recent world step.
 /// @details The list is rebuilt fresh on every call to rt_physics2d_world_step and
-///   capped at PH_MAX_CONTACTS. If the cap is reached, `rt_physics2d_world_contact_overflowed`
-///   reports that additional contacts were omitted. Query it between steps to drive game logic
-///   (e.g. damage on collision, sound effects).
+///   stored in a growable list. If the list cannot grow,
+///   `rt_physics2d_world_contact_overflowed` reports that additional contacts were omitted.
+///   Query it between steps to drive game logic (e.g. damage on collision, sound effects).
 int64_t rt_physics2d_world_contact_count(void *obj) {
     if (!obj)
         return 0;
@@ -741,11 +902,11 @@ int64_t rt_physics2d_world_contact_count(void *obj) {
 }
 
 /// @brief Return whether contacts were omitted from the most recent world step.
-/// @details The fixed contact buffer stores at most PH_MAX_CONTACTS records. This flag is cleared
-///          when contacts are cleared and set the first time a valid contact cannot be appended
-///          because the buffer is full.
+/// @details Contact storage starts with PH_MAX_CONTACTS slots and grows on demand. This flag is
+///          cleared when contacts are cleared and set the first time a valid contact cannot be
+///          appended because allocation failed.
 /// @param obj Physics2D world handle.
-/// @return 1 if contact results overflowed during the most recent step, otherwise 0.
+/// @return 1 if contact storage could not grow during the most recent step, otherwise 0.
 int8_t rt_physics2d_world_contact_overflowed(void *obj) {
     if (!obj)
         return 0;

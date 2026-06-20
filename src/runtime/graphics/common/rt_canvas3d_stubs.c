@@ -672,6 +672,62 @@ int8_t rt_canvas3d_backend_supports(void *o, rt_string capability) {
     return 0;
 }
 
+/// @brief Stub for `Canvas3D.BackendDrawCalls` — backend draw telemetry.
+///
+/// Silent stub returning 0 because there is no backend in graphics-disabled builds.
+int64_t rt_canvas3d_get_backend_draw_calls(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.BackendDroppedDraws` — backend rejection telemetry.
+///
+/// Silent stub returning 0 because there is no backend in graphics-disabled builds.
+int64_t rt_canvas3d_get_backend_dropped_draws(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.BackendMeshCacheHits` — backend mesh-cache telemetry.
+///
+/// Silent stub returning 0 because there is no backend in graphics-disabled builds.
+int64_t rt_canvas3d_get_backend_mesh_cache_hits(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.BackendMeshCacheMisses` — backend mesh-cache telemetry.
+///
+/// Silent stub returning 0 because there is no backend in graphics-disabled builds.
+int64_t rt_canvas3d_get_backend_mesh_cache_misses(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.BackendMeshStreamUploads` — backend stream-upload telemetry.
+///
+/// Silent stub returning 0 because there is no backend in graphics-disabled builds.
+int64_t rt_canvas3d_get_backend_mesh_stream_uploads(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.BackendTextureFallbackBinds` — backend texture telemetry.
+///
+/// Silent stub returning 0 because there is no backend in graphics-disabled builds.
+int64_t rt_canvas3d_get_backend_texture_fallback_binds(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.BackendPresentPath` — backend presentation mode.
+///
+/// Silent stub returning 0 (unknown/unavailable).
+int64_t rt_canvas3d_get_backend_present_path(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.DrawCount` — latest main 3D draw-submission telemetry.
 ///
 /// Silent stub returning 0.

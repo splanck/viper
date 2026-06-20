@@ -1,8 +1,8 @@
 # Spec Currency & ADR Cadence
 
-**Status:** Verified real (two normative specs marked `draft`; il-guide predates ADR 0005;
-ADR rule and practice have drifted)
-**Area:** `docs/specs/`, `docs/il-guide.md`, `docs/adr/`, `CLAUDE.md`
+**Status:** Completed — normative spec metadata, ADR cadence, and drift checks are now
+current.
+**Area:** `docs/specs/`, `docs/il-guide.md`, `docs/adr/`, `CLAUDE.md`, `AGENTS.md`
 **Effort:** S
 **Roadmap fit:** v0.2.x hardening
 
@@ -11,17 +11,17 @@ ADR rule and practice have drifted)
 Three concrete issues:
 1. `docs/specs/errors.md` and `docs/specs/numerics.md` are **`status: draft`** (verified)
    yet are normative for trap kinds and deterministic numerics.
-2. `docs/il-guide.md` was last verified **before ADR 0005** (resume-token provenance,
-   2026-06-12) and does not reflect that `resumetok` is a handler-provenance capability,
-   not an ordinary value — so hand-written IL exception handlers can violate undocumented
-   verifier rules.
+2. `docs/il-guide.md` and `docs/specs/errors.md` now describe `resumetok` as a
+   handler-provenance capability and link/align with ADR 0005, but the front-matter
+   `last-verified` dates still lag the June 2026 ADR. The metadata no longer tells a
+   reliable currency story.
 3. The ADR set is small (5 ADRs) relative to CLAUDE.md's broad rule ("Changes require
    ADR, never silent divergence"); the rule and practice have diverged.
 
 ## Goal & scope
 
-- **In:** Promote the two specs to `active` after a re-verify; sync the il-guide EH
-  section with ADR 0005 (ADR-governed); right-size the ADR trigger in CLAUDE.md so it's
+- **In:** Promote the two specs to `active` after a re-verify; update verification
+  metadata for IL/EH docs; right-size the ADR trigger in CLAUDE.md/AGENTS.md so it is
   enforceable; optionally backfill ADRs for genuinely architectural recent changes.
 - **Out:** Rewriting the error/numeric models; mass retroactive ADRs for routine work.
 
@@ -31,14 +31,14 @@ Three concrete issues:
    enum and the verifier; fix drift; flip to `status: active` with today's `last-verified`.
 2. **Re-verify `numerics.md`:** cross-check deterministic-numeric rules against the VM +
    verifier (overflow opcodes, checked casts); fix drift; flip to `active`.
-3. **ADR 0006** (or amendment): record the error/numeric model as canonical and link the
-   now-active specs.
-4. **Sync il-guide EH section** to ADR 0005 (resumetok-as-capability + the provenance
-   verifier rules). Because this is the normative spec, do it as an ADR-governed change
-   (coordinate with `il-docs-consolidation.md`).
-5. **Right-size the ADR rule in CLAUDE.md:** replace the blanket "every change" with a
-   specific trigger — *IL opcode/grammar/verifier-rule changes, cross-layer dependencies,
-   and runtime-ABI surface changes require an ADR* — so the rule is actually followable.
+3. **ADR 0006** (or amendment): record the error/numeric spec promotion and the doc
+   currency process, not a semantic rewrite, unless the re-verify finds drift.
+4. **Update IL/EH verification metadata** after confirming `il-guide.md#reference` and
+   `errors.md` match ADR 0005 and `src/vm/Trap.hpp`.
+5. **Right-size the ADR rule in CLAUDE.md/AGENTS.md:** replace any blanket "every change"
+   phrasing with a specific trigger — *IL opcode/grammar/verifier-rule changes,
+   cross-layer dependencies, and runtime-ABI surface changes require an ADR* — so the
+   rule is actually followable.
 
 ## Tests
 
@@ -50,8 +50,9 @@ Three concrete issues:
 
 ## Documentation
 
-- The specs themselves (status flip + content fixes), `docs/il-guide.md` (EH sync), the
-  ADR index, and `CLAUDE.md` (ADR trigger) are all updated by this plan.
+- The specs themselves (status flip + content fixes), `docs/il-guide.md` metadata if
+  needed, the ADR index, and `CLAUDE.md`/`AGENTS.md` ADR trigger text are all updated by
+  this plan.
 - One release-notes line ("IL error/numeric specs promoted to normative; EH spec synced
   with ADR 0005").
 
@@ -59,6 +60,24 @@ Three concrete issues:
 
 N/A (documentation/process), though the numerics spec underpins the cross-platform
 determinism guarantee — the re-verify should confirm VM/native agreement claims still hold.
+
+## Implementation notes
+
+- `docs/specs/errors.md` and `docs/specs/numerics.md` are promoted to `status: active`
+  with `last-verified: 2026-06-20`.
+- `docs/il-guide.md` verification metadata is refreshed after confirming its EH model
+  remains aligned with ADR 0005.
+- `docs/adr/0006-spec-currency-and-adr-triggers.md` records the spec promotion and ADR
+  trigger policy.
+- `CLAUDE.md` and `AGENTS.md` now state the enforceable ADR trigger instead of a blanket
+  rule.
+- `test_tools_trap_kind_spec_consistency` checks doc/code trap-kind drift and rejects
+  draft normative specs.
+
+## Verification
+
+- `ctest --test-dir build -R '^test_tools_trap_kind_spec_consistency$' --output-on-failure`
+- `rg -n '^status: draft' docs/specs` should return no matches.
 
 ## Risks / open questions
 

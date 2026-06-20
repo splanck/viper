@@ -25,6 +25,8 @@
 
 #include <memory>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 
 namespace il::frontends::zia {
 class CompletionEngine;
@@ -48,6 +50,9 @@ class CompilerBridge : public ICompilerBridge {
 
     // ── IDE Features ──
 
+    void updateDocument(const std::string &path, const std::string &source) override;
+    void removeDocument(const std::string &path) override;
+
     std::vector<CompletionInfo> completions(const std::string &source,
                                             int line,
                                             int col,
@@ -57,6 +62,34 @@ class CompilerBridge : public ICompilerBridge {
                       int col,
                       const std::string &path) override;
     std::vector<SymbolInfo> symbols(const std::string &source, const std::string &path) override;
+
+    bool supportsDefinition() const override;
+    bool supportsReferences() const override;
+    bool supportsRename() const override;
+    bool supportsSignatureHelp() const override;
+    bool supportsWorkspaceSymbols() const override;
+    bool supportsSemanticTokens() const override;
+
+    std::optional<LocationInfo> definition(const std::string &source,
+                                           int line,
+                                           int col,
+                                           const std::string &path) override;
+    std::vector<LocationInfo> references(const std::string &source,
+                                         int line,
+                                         int col,
+                                         const std::string &path) override;
+    RenameResult rename(const std::string &source,
+                        int line,
+                        int col,
+                        const std::string &path,
+                        const std::string &newName) override;
+    SignatureHelpInfo signatureHelp(const std::string &source,
+                                    int line,
+                                    int col,
+                                    const std::string &path) override;
+    std::vector<SymbolInfo> workspaceSymbols(const std::string &query) override;
+    std::vector<SemanticTokenInfo> semanticTokens(const std::string &source,
+                                                  const std::string &path) override;
 
     // ── Dump ──
 
@@ -71,6 +104,11 @@ class CompilerBridge : public ICompilerBridge {
     ///          bridge contract if the server dispatch model becomes concurrent.
     mutable std::mutex completionMutex_;
     std::unique_ptr<il::frontends::zia::CompletionEngine> completionEngine_;
+
+    /// @brief Guards project index updates and workspace symbol scans.
+    mutable std::mutex projectMutex_;
+    void *projectIndex_{nullptr};
+    std::unordered_map<std::string, std::string> openDocuments_;
 };
 
 } // namespace viper::server

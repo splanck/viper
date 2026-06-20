@@ -32,7 +32,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
-#include <cstdlib>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -56,42 +55,6 @@ using viper::vm::SwitchMode;
 thread_local SwitchMode g_switchMode =
     SwitchMode::Auto; ///< Global override for switch backend selection.
 
-/// @brief Determine whether verbose VM debug logging has been requested.
-///
-/// @details Reads the `VIPER_DEBUG_VM` environment variable once and caches the
-///          boolean result in a static local so subsequent calls are cheap.  The
-///          helper is used by switch caching to emit backend selection traces.
-///
-/// @return @c true when `VIPER_DEBUG_VM` is non-empty.
-bool isVmDebugLoggingEnabled() {
-    static const bool enabled = [] {
-        if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
-            return flag[0] != '\0';
-        return false;
-    }();
-    return enabled;
-}
-
-/// @brief Convert a switch cache backend enumerator into a human-readable label.
-///
-/// @details Used exclusively for logging decisions about backend selection so
-///          developers can confirm whether auto-selection matched expectations.
-///
-/// @param kind Cache backend that will service switch lookups.
-/// @return Printable backend name.
-const char *switchCacheKindName(SwitchCacheEntry::Kind kind) {
-    switch (kind) {
-        case SwitchCacheEntry::Dense:
-            return "Dense";
-        case SwitchCacheEntry::Sorted:
-            return "Sorted";
-        case SwitchCacheEntry::Hashed:
-            return "Hashed";
-        case SwitchCacheEntry::Linear:
-            return "Linear";
-    }
-    return "Unknown";
-}
 } // namespace
 
 namespace viper::vm {

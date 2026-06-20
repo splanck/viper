@@ -11,7 +11,7 @@
 //
 // Key invariants:
 //   - Joints connect two bodies and are solved iteratively per world step.
-//   - A world holds at most PH_MAX_JOINTS (64) joints.
+//   - World joint storage starts with PH_MAX_JOINTS slots and grows on demand.
 //   - Circle bodies use radius for collision (distance-based, no SAT).
 //   - Joint type is immutable after creation.
 //
@@ -102,7 +102,7 @@ int8_t rt_physics2d_joint_is_active(void *joint);
 // World Joint Management
 //=========================================================================
 
-/// @brief Add a joint to the world's solver list (no-op if already present; max PH_MAX_JOINTS).
+/// @brief Add a joint to the world's solver list (no-op if already present; storage grows).
 void rt_physics2d_world_add_joint(void *world, void *joint);
 /// @brief Remove a joint from the world's solver list.
 void rt_physics2d_world_remove_joint(void *world, void *joint);

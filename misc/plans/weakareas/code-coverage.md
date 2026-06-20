@@ -1,6 +1,7 @@
 # Code Coverage Measurement
 
-**Status:** Verified real (no coverage instrumentation exists anywhere)
+**Status:** Completed — local Clang source-based coverage instrumentation and reporting
+are available through CMake, script, CTest self-check, and docs.
 **Area:** root `CMakeLists.txt`, `scripts/`
 **Effort:** S
 **Roadmap fit:** v0.2.x hardening — **this is the highest-leverage item**: it turns every
@@ -9,9 +10,10 @@ other "thin coverage" claim from a guess into a measurement.
 ## Problem
 
 A grep of the build for `coverage`/`gcov`/`llvm-cov`/`-fprofile-instr`/`--coverage`
-returns nothing. `.gitignore` reserves a `coverage/` path but it is never populated. So
-coverage is **inferred, never measured** — exactly the blind spot that let the original
-review over- and under-state several subsystems.
+returns no active instrumentation option or script. `.gitignore` already reserves
+`coverage/`, `*.profraw`, and `*.profdata`, but they are never populated. So coverage is
+**inferred, never measured** — exactly the blind spot that let the original review over-
+and under-state several subsystems.
 
 ## Goal & scope
 
@@ -43,7 +45,8 @@ coverage is far more accurate than line-only gcov and matches the toolchain.
    per-test `LLVM_PROFILE_FILE` pattern, `llvm-profdata merge`, then `llvm-cov report`
    (summary) + `llvm-cov show --format=html` (drill-down). Emit a **per-directory**
    rollup keyed to `src/runtime/<module>`, `src/frontends/*`, `src/codegen/*`, etc.
-3. `.gitignore`: ensure `*.profraw`, `*.profdata`, and the `coverage/` output are ignored.
+3. `.gitignore`: verify the existing `*.profraw`, `*.profdata`, and `coverage/` patterns
+   still cover the generated outputs; only update if a new output path is introduced.
 4. Print a ranked "lowest-covered subsystems" table so the output directly feeds the
    backlog.
 
@@ -51,8 +54,9 @@ coverage is far more accurate than line-only gcov and matches the toolchain.
 
 - A smoke that `scripts/coverage.sh` runs end-to-end and produces a non-empty report
   (can be a `slow`-labelled, opt-in ctest or a CI-script self-check).
-- Sanity assertion: a known well-tested subsystem (IL core) reports high coverage and a
-  known-thin one (audio, pre-`audio-effects-dsp.md`) reports low — validates the pipeline.
+- Sanity assertion: a known well-exercised subsystem reports high/nonzero coverage and
+  an intentionally tiny uncovered fixture reports low/zero coverage — validates the
+  pipeline before using numbers to rank backlog work.
 
 ## Documentation
 
@@ -65,6 +69,22 @@ coverage is far more accurate than line-only gcov and matches the toolchain.
 Clang source-based coverage works on macOS (Apple Clang) and Linux (clang++). Windows
 (clang-cl) is possible but secondary; scope the lane to the two canonical Unix dev
 platforms first and note Windows as a follow-up.
+
+## Implementation notes
+
+- `CMakeLists.txt` now exposes `VIPER_ENABLE_COVERAGE` and applies Clang
+  `-fprofile-instr-generate -fcoverage-mapping` instrumentation when enabled.
+- `scripts/coverage.sh` configures `build-coverage/`, runs CTest with profile output,
+  merges profiles, and emits `coverage/summary.txt`, `coverage/subsystems.txt`, and HTML.
+- `coverage_script_self_test` is registered in CTest to verify the lane remains
+  discoverable without running the full instrumented suite.
+- `docs/testing.md` and `docs/contributor-guide.md` document when and how to run the
+  coverage lane.
+
+## Verification
+
+- `./scripts/coverage.sh --self-test`
+- `ctest --test-dir build -R '^coverage_script_self_test$' --output-on-failure`
 
 ## Risks / open questions
 

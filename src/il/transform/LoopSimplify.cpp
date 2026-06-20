@@ -68,10 +68,6 @@ const Instr *getTerminator(const BasicBlock &block) {
     return il::transform::simplify_cfg::findTerminator(block);
 }
 
-BasicBlock *findBlock(Function &function, const std::string &label) {
-    return viper::il::findBlock(function, label);
-}
-
 static inline unsigned nextTempId(Function &function) {
     return viper::il::nextTempId(function);
 }
@@ -129,11 +125,6 @@ std::string reserveUniqueValueName(std::unordered_set<std::string> &used, std::s
         candidate = base + "." + std::to_string(++suffix);
     } while (!used.insert(candidate).second);
     return candidate;
-}
-
-// Use shared equality from SimplifyCFG utilities to avoid divergence.
-static inline bool valuesEqual(const Value &lhs, const Value &rhs) {
-    return il::transform::simplify_cfg::valuesEqual(lhs, rhs);
 }
 
 static inline bool valueVectorsEqual(const std::vector<Value> &lhs, const std::vector<Value> &rhs) {

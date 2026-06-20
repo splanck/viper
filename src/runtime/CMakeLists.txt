@@ -97,6 +97,7 @@ set(RT_COLLECTIONS_SOURCES
         collections/rt_weakmap.c
         collections/rt_map.c
         collections/rt_intmap.c
+        collections/rt_numbuf.c
         collections/rt_bimap.c
         collections/rt_countmap.c
         collections/rt_multimap.c
@@ -215,6 +216,7 @@ set(RT_EXEC_SOURCES
         system/rt_exec.c
         system/rt_process.c
         system/rt_machine.c
+        system/rt_shutdown.c
 )
 
 set(RT_GRAPHICS_SOURCES
@@ -326,8 +328,6 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/world/rt_particles3d.c
         graphics/3d/render/rt_postfx3d.c
         graphics/3d/scene/rt_raycast3d.c
-        graphics/3d/audio/rt_sound3d.c
-        graphics/3d/audio/rt_sound3d_objects.c
         graphics/3d/physics/rt_physics3d.c
         graphics/3d/physics/rt_physics3d_character.c
         graphics/3d/physics/rt_physics3d_collision.c
@@ -464,7 +464,11 @@ endif ()
 set(RT_AUDIO_SOURCES
         audio/rt_audio.c
         audio/rt_audio_decode.c
+        audio/rt_audio_diagnostics.c
+        audio/rt_audio_fx.c
         audio/rt_playlist.c
+        audio/rt_sound3d.c
+        audio/rt_sound3d_objects.c
         audio/rt_soundbank.c
         audio/rt_synth.c
         audio/rt_musicgen.c
@@ -509,6 +513,7 @@ set(RT_LOCALIZATION_SOURCES
         localization/rt_plural_rules.c
         localization/rt_dateformat.c
         localization/rt_dateformat_patterns.c
+        localization/rt_timezone.c
         localization/rt_reltime_format.c
         localization/rt_message_bundle.c
         localization/rt_list_format.c
@@ -614,6 +619,8 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_output.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_args.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_numbuf.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/system/rt_shutdown.h
         ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_sb_bridge.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/text/rt_font.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/common/rt_graphics.h
@@ -647,6 +654,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_achievement.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_typewriter.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_datetime.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/localization/rt_timezone.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/collections/rt_binbuf.h
         ${CMAKE_CURRENT_SOURCE_DIR}/text/rt_parse.h
@@ -662,6 +670,9 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/2d/rt_spritebatch.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/2d/rt_texatlas.h
         ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_audio.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_sound3d.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_soundlistener3d.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_soundsource3d.h
         ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_soundbank.h
         ${CMAKE_CURRENT_SOURCE_DIR}/audio/rt_synth.h
         ${CMAKE_CURRENT_SOURCE_DIR}/threads/rt_threads.h
@@ -770,7 +781,6 @@ set(_RT_SUBDIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/anim
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/nav
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/world
-        ${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/audio
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/assets
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/backend
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/gui
@@ -841,7 +851,6 @@ foreach (_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/anim>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/nav>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/world>
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/audio>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/assets>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/graphics/3d/backend>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/graphics/gui>
@@ -961,6 +970,7 @@ if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     message(STATUS "viper_runtime: Graphics support enabled")
     target_sources(viper_rt_graphics_obj PRIVATE ${RT_GRAPHICS_PLATFORM_SOURCES})
     target_compile_definitions(viper_rt_graphics_obj PRIVATE VIPER_ENABLE_GRAPHICS)
+    target_compile_definitions(viper_rt_audio_obj PRIVATE VIPER_ENABLE_GRAPHICS)
     if (VIPER_BUILD_TESTING)
         target_compile_definitions(viper_rt_graphics_obj PRIVATE RT_G3D_ALLOW_STACK_FIXTURES=1)
     endif ()

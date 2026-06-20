@@ -1,0 +1,6 @@
+bind Viper.Terminal;
+
+func main() -> Int {
+    Say("hello");
+    return 0;
+}

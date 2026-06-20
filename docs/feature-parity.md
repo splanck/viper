@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-16
+last-verified: 2026-06-20
 ---
 
 # Zia vs Viper BASIC: Feature Parity Matrix
@@ -9,6 +9,30 @@ last-verified: 2026-05-16
 ## Context
 
 This document is a comprehensive feature parity audit between the two Viper frontends: **Zia** (modern, Swift/Kotlin-influenced) and **Viper BASIC** (classic BASIC with OOP extensions). The goal is to identify gaps, surprising behavioral differences, and IL capabilities that one frontend hasn't wired up — prioritizing issues that would frustrate someone moving from BASIC to Zia.
+
+---
+
+## Tooling And IDE Parity
+
+Language-server and IDE parity are deliberately tracked separately from
+frontend-language parity:
+
+| Surface | Zia | BASIC | Notes |
+|---------|-----|-------|-------|
+| Standalone LSP/MCP diagnostics | **Full** | **Full** | `zia-server` and `vbasic-server` both expose structured diagnostics through the shared handler. |
+| Completion / hover / document symbols | **Full** | **Full in `vbasic-server`; not integrated in ViperIDE** | BASIC analysis exists at the server boundary, but ViperIDE does not yet call it. |
+| Definition / references / rename | **Full** | None | Zia uses `Viper.Zia.ProjectIndex`; BASIC has no equivalent project index yet. |
+| Signature help | **Full** | None | BASIC server does not advertise this capability. |
+| Workspace symbols | **Full** | None | Zia LSP can answer from open/project-indexed documents; BASIC remains document-scoped. |
+| Semantic tokens | **Full** | None | `vbasic-server` intentionally does not advertise semantic tokens. |
+| ViperIDE semantic commands | **Full** | Disabled by design | BASIC files can be edited/built in ViperIDE, but semantic commands are capability-gated off so the IDE never falls through to Zia-only services. |
+
+This split is intentional as of 2026-06-20. `vbasic-server` is the supported
+BASIC IDE-service surface for diagnostics, completion, hover, document symbols,
+and dumps. ViperIDE should only enable those BASIC capabilities after it has a
+non-blocking adapter to the server and matching probes. Project-wide BASIC
+navigation/refactoring needs a BASIC project index or equivalent semantic layer
+before any definition/reference/rename flag is advertised.
 
 ---
 

@@ -26,6 +26,7 @@
 #include "runtime/core/rt_gc.h"
 #include "runtime/core/rt_heap.h"
 #include "runtime/oop/rt_object.h"
+#include "runtime/system/rt_shutdown.h"
 
 #include <cassert>
 #include <cstdio>
@@ -290,6 +291,34 @@ static void test_audio_shutdown_detaches_loaded_handles() {
     printf("OK\n");
 }
 
+static void test_graceful_shutdown_poll_api() {
+    printf("  test_graceful_shutdown_poll_api ... ");
+
+    rt_shutdown_clear();
+    assert(rt_shutdown_const_none() == RT_SHUTDOWN_REASON_NONE);
+    assert(rt_shutdown_const_interrupt() == RT_SHUTDOWN_REASON_INTERRUPT);
+    assert(rt_shutdown_const_terminate() == RT_SHUTDOWN_REASON_TERMINATE);
+    assert(rt_shutdown_pending() == 0);
+    assert(rt_shutdown_poll() == RT_SHUTDOWN_REASON_NONE);
+
+    rt_shutdown_request(RT_SHUTDOWN_REASON_INTERRUPT);
+    assert(rt_shutdown_pending() == 1);
+    assert(rt_shutdown_poll() == RT_SHUTDOWN_REASON_INTERRUPT);
+    assert(rt_shutdown_pending() == 0);
+    assert(rt_shutdown_poll() == RT_SHUTDOWN_REASON_NONE);
+
+    rt_shutdown_request(RT_SHUTDOWN_REASON_INTERRUPT | RT_SHUTDOWN_REASON_TERMINATE);
+    assert(rt_shutdown_pending() == 1);
+    assert(rt_shutdown_poll() == (RT_SHUTDOWN_REASON_INTERRUPT | RT_SHUTDOWN_REASON_TERMINATE));
+    assert(rt_shutdown_pending() == 0);
+
+    rt_shutdown_request(RT_SHUTDOWN_REASON_TERMINATE);
+    rt_shutdown_clear();
+    assert(rt_shutdown_pending() == 0);
+
+    printf("OK\n");
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -301,6 +330,7 @@ int main() {
     test_gc_sweep_no_finalizer();
     test_legacy_context_shutdown();
     test_audio_shutdown_detaches_loaded_handles();
+    test_graceful_shutdown_poll_api();
 
     printf("All shutdown tests passed.\n");
     return 0;

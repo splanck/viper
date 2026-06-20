@@ -29,6 +29,8 @@
 #include "unit/VMTestHook.hpp"
 #include "vm/VM.hpp"
 
+#include "rt_shutdown.h"
+
 #include "common/ProcessIsolation.hpp"
 #include <array>
 #include <cstdio>
@@ -161,6 +163,43 @@ static int testNormalProgramAfterClear() {
     return 0;
 }
 
+// =============================================================================
+// Test: Shutdown polling consumes an interrupt before it becomes a trap
+// =============================================================================
+
+static int testGracefulShutdownPollConsumesInterrupt() {
+    VM::clearInterrupt();
+    rt_shutdown_clear();
+
+    Module mod;
+    buildReturnModule(mod);
+    VM vm(mod);
+
+    (void)rt_shutdown_pending(); // Arm graceful handling for the next interrupt.
+    VM::requestInterrupt();
+
+    if (vm.pollPendingInterrupt()) {
+        std::fprintf(stderr,
+                     "[FAIL] testGracefulShutdownPollConsumesInterrupt: interrupt trapped "
+                     "despite Shutdown polling arm\n");
+        return 1;
+    }
+
+    const int64_t mask = rt_shutdown_poll();
+    if (mask != RT_SHUTDOWN_REASON_INTERRUPT) {
+        std::fprintf(stderr,
+                     "[FAIL] testGracefulShutdownPollConsumesInterrupt: expected mask %lld, got "
+                     "%lld\n",
+                     (long long)RT_SHUTDOWN_REASON_INTERRUPT,
+                     (long long)mask);
+        return 1;
+    }
+
+    VM::clearInterrupt();
+    std::fprintf(stdout, "[PASS] Shutdown.Poll consumes VM interrupt path\n");
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(runInterruptChild);
     if (viper::tests::dispatchChild(argc, argv))
@@ -170,6 +209,7 @@ int main(int argc, char *argv[]) {
     failures += testInterruptApi();
     failures += testInterruptFires();
     failures += testNormalProgramAfterClear();
+    failures += testGracefulShutdownPollConsumesInterrupt();
 
     if (failures == 0)
         std::fprintf(stdout, "[PASS] all interrupt tests passed\n");

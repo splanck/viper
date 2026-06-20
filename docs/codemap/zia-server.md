@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-31
+last-verified: 2026-06-20
 ---
 
 # CODEMAP: Zia Language Server
@@ -31,7 +31,7 @@ shared files.
 ## Dependencies
 
 ```text
-zia-server → zia_server_lib → fe_zia, il_full, il_transform
+zia-server → zia_server_lib → fe_zia, zia_editor_services, il_full, il_transform
                              → viper_support (diagnostics, source manager)
                              → il_runtime (RuntimeClasses, RuntimeRegistry)
 ```
@@ -45,6 +45,7 @@ stdin → Transport.readMessage()
       → McpHandler/LspHandler.handleRequest()
       → CompilerBridge.method()
       → fe_zia API (parseAndAnalyze, compile, CompletionEngine)
+        or zia_editor_services (ProjectIndex-backed LSP navigation/rename)
       → response string
       → Transport.writeMessage() → stdout
 ```
@@ -57,4 +58,4 @@ stdin → Transport.readMessage()
 | `test_transport.cpp` | 18 | MCP/LSP framing, JSON-RPC parse/build |
 | `test_compiler_bridge.cpp` | 24 | Bridge methods against real Zia snippets |
 | `test_mcp_handler.cpp` | 18 | MCP lifecycle + tool dispatch integration |
-| `test_lsp_handler.cpp` | 16 | LSP lifecycle + feature handler integration |
+| `test_lsp_handler.cpp` | 20 | LSP lifecycle + feature handler integration |

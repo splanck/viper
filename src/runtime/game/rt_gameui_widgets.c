@@ -45,8 +45,8 @@
 // UITable
 //=============================================================================
 
-#define RT_UITABLE_MAX_COLUMNS 16
-#define RT_UITABLE_MAX_ROWS 512
+#define RT_UITABLE_DEFAULT_COLUMNS 16
+#define RT_UITABLE_DEFAULT_ROWS 512
 #define RT_UITABLE_MAX_CELL_BYTES 64
 
 typedef struct {
@@ -58,16 +58,18 @@ typedef struct {
 } rt_uitable_column_t;
 
 typedef struct {
-    char cells[RT_UITABLE_MAX_COLUMNS][RT_UITABLE_MAX_CELL_BYTES];
+    char *cells;
 } rt_uitable_row_t;
 
 typedef struct {
     void *vptr;
     int64_t x, y, w, h;
-    rt_uitable_column_t columns[RT_UITABLE_MAX_COLUMNS];
+    rt_uitable_column_t *columns;
     int64_t column_count;
-    rt_uitable_row_t rows[RT_UITABLE_MAX_ROWS];
+    int64_t column_capacity;
+    rt_uitable_row_t *rows;
     int64_t row_count;
+    int64_t row_capacity;
     int64_t header_height;
     int64_t row_height;
     int64_t sort_column;
@@ -106,6 +108,18 @@ static void uitable_finalizer(void *obj) {
     rt_uitable_impl *table = (rt_uitable_impl *)obj;
     if (!table)
         return;
+    if (table->rows) {
+        for (int64_t i = 0; i < table->row_count; i++)
+            free(table->rows[i].cells);
+    }
+    free(table->rows);
+    table->rows = NULL;
+    table->row_count = 0;
+    table->row_capacity = 0;
+    free(table->columns);
+    table->columns = NULL;
+    table->column_count = 0;
+    table->column_capacity = 0;
     ui_release_obj(table->font);
     table->font = NULL;
 }
@@ -146,6 +160,85 @@ static int64_t table_column_next_x(int64_t x, int64_t width) {
     return ui_add_sat_i64(x, width);
 }
 
+static char *table_cell_ptr(const rt_uitable_impl *table,
+                            const rt_uitable_row_t *row,
+                            int64_t col) {
+    if (!table || !row || !row->cells || col < 0 || col >= table->column_capacity)
+        return NULL;
+    return row->cells + (size_t)col * RT_UITABLE_MAX_CELL_BYTES;
+}
+
+static int8_t ensure_table_row_capacity(rt_uitable_impl *table, int64_t needed) {
+    if (!table || needed <= table->row_capacity)
+        return 1;
+    int64_t new_capacity = table->row_capacity > 0 ? table->row_capacity : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2 ||
+            (uint64_t)new_capacity > SIZE_MAX / (2 * sizeof(rt_uitable_row_t)))
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / sizeof(rt_uitable_row_t))
+        return 0;
+    rt_uitable_row_t *resized =
+        (rt_uitable_row_t *)realloc(table->rows, (size_t)new_capacity * sizeof(rt_uitable_row_t));
+    if (!resized)
+        return 0;
+    memset(resized + table->row_capacity,
+           0,
+           (size_t)(new_capacity - table->row_capacity) * sizeof(rt_uitable_row_t));
+    table->rows = resized;
+    table->row_capacity = new_capacity;
+    return 1;
+}
+
+static int8_t ensure_table_column_capacity(rt_uitable_impl *table, int64_t needed) {
+    if (!table || needed <= table->column_capacity)
+        return 1;
+    int64_t new_capacity = table->column_capacity > 0 ? table->column_capacity : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2 ||
+            (uint64_t)new_capacity > SIZE_MAX / (2 * sizeof(rt_uitable_column_t)))
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / sizeof(rt_uitable_column_t) ||
+        (uint64_t)new_capacity > SIZE_MAX / RT_UITABLE_MAX_CELL_BYTES)
+        return 0;
+    rt_uitable_column_t *columns = (rt_uitable_column_t *)realloc(
+        table->columns, (size_t)new_capacity * sizeof(rt_uitable_column_t));
+    if (!columns)
+        return 0;
+    memset(columns + table->column_capacity,
+           0,
+           (size_t)(new_capacity - table->column_capacity) * sizeof(rt_uitable_column_t));
+    table->columns = columns;
+
+    for (int64_t i = 0; i < table->row_count; i++) {
+        char *cells =
+            (char *)realloc(table->rows[i].cells, (size_t)new_capacity * RT_UITABLE_MAX_CELL_BYTES);
+        if (!cells)
+            return 0;
+        memset(cells + (size_t)table->column_capacity * RT_UITABLE_MAX_CELL_BYTES,
+               0,
+               (size_t)(new_capacity - table->column_capacity) * RT_UITABLE_MAX_CELL_BYTES);
+        table->rows[i].cells = cells;
+    }
+
+    table->column_capacity = new_capacity;
+    return 1;
+}
+
+static int8_t table_alloc_row_cells(rt_uitable_impl *table, rt_uitable_row_t *row) {
+    if (!table || !row)
+        return 0;
+    if (table->column_capacity <= 0 &&
+        !ensure_table_column_capacity(table, RT_UITABLE_DEFAULT_COLUMNS))
+        return 0;
+    row->cells = (char *)calloc((size_t)table->column_capacity, RT_UITABLE_MAX_CELL_BYTES);
+    return row->cells ? 1 : 0;
+}
+
 void *rt_uitable_new(int64_t x, int64_t y, int64_t w, int64_t h) {
     rt_uitable_impl *table =
         (rt_uitable_impl *)rt_obj_new_i64(RT_UITABLE_CLASS_ID, (int64_t)sizeof(*table));
@@ -173,6 +266,12 @@ void *rt_uitable_new(int64_t x, int64_t y, int64_t w, int64_t h) {
     table->show_header = 1;
     table->show_borders = 1;
     rt_obj_set_finalizer(table, uitable_finalizer);
+    if (!ensure_table_column_capacity(table, RT_UITABLE_DEFAULT_COLUMNS) ||
+        !ensure_table_row_capacity(table, RT_UITABLE_DEFAULT_ROWS)) {
+        if (rt_obj_release_check0(table))
+            rt_obj_free(table);
+        return NULL;
+    }
     return table;
 }
 
@@ -180,8 +279,8 @@ int64_t rt_uitable_add_column(void *ptr, rt_string title, int64_t width, int64_t
     rt_uitable_impl *table = checked_table(ptr, "UITable.AddColumn: expected Viper.Game.UI.Table");
     if (!table)
         return -1;
-    if (table->column_count >= RT_UITABLE_MAX_COLUMNS) {
-        rt_trap("UITable.AddColumn: column limit exceeded");
+    if (!ensure_table_column_capacity(table, table->column_count + 1)) {
+        rt_trap("UITable.AddColumn: column allocation failed");
         return -1;
     }
     int64_t idx = table->column_count++;
@@ -212,12 +311,17 @@ int64_t rt_uitable_add_row(void *ptr) {
     rt_uitable_impl *table = checked_table(ptr, "UITable.AddRow: expected Viper.Game.UI.Table");
     if (!table)
         return -1;
-    if (table->row_count >= RT_UITABLE_MAX_ROWS) {
-        rt_trap("UITable.AddRow: row limit exceeded");
+    if (!ensure_table_row_capacity(table, table->row_count + 1)) {
+        rt_trap("UITable.AddRow: row allocation failed");
         return -1;
     }
     int64_t idx = table->row_count++;
     memset(&table->rows[idx], 0, sizeof(table->rows[idx]));
+    if (!table_alloc_row_cells(table, &table->rows[idx])) {
+        table->row_count--;
+        rt_trap("UITable.AddRow: cell allocation failed");
+        return -1;
+    }
     if (table->selected_row < 0)
         table->selected_row = 0;
     table_clamp_scroll(table);
@@ -228,20 +332,24 @@ void rt_uitable_set_cell(void *ptr, int64_t row, int64_t col, rt_string text) {
     rt_uitable_impl *table = checked_table(ptr, "UITable.SetCell: expected Viper.Game.UI.Table");
     if (!table || row < 0 || row >= table->row_count || col < 0 || col >= table->column_count)
         return;
-    ui_copy_text(table->rows[row].cells[col], sizeof(table->rows[row].cells[col]), text);
+    char *cell = table_cell_ptr(table, &table->rows[row], col);
+    if (cell)
+        ui_copy_text(cell, RT_UITABLE_MAX_CELL_BYTES, text);
 }
 
 rt_string rt_uitable_get_cell(void *ptr, int64_t row, int64_t col) {
     rt_uitable_impl *table = checked_table(ptr, "UITable.GetCell: expected Viper.Game.UI.Table");
     if (!table || row < 0 || row >= table->row_count || col < 0 || col >= table->column_count)
         return rt_str_empty();
-    return rt_const_cstr(table->rows[row].cells[col]);
+    char *cell = table_cell_ptr(table, &table->rows[row], col);
+    return cell ? rt_const_cstr(cell) : rt_str_empty();
 }
 
 void rt_uitable_remove_row(void *ptr, int64_t row) {
     rt_uitable_impl *table = checked_table(ptr, "UITable.RemoveRow: expected Viper.Game.UI.Table");
     if (!table || row < 0 || row >= table->row_count)
         return;
+    free(table->rows[row].cells);
     for (int64_t i = row; i < table->row_count - 1; i++)
         table->rows[i] = table->rows[i + 1];
     table->row_count--;
@@ -253,7 +361,10 @@ void rt_uitable_clear_rows(void *ptr) {
     rt_uitable_impl *table = checked_table(ptr, "UITable.ClearRows: expected Viper.Game.UI.Table");
     if (!table)
         return;
-    memset(table->rows, 0, sizeof(table->rows));
+    for (int64_t i = 0; i < table->row_count; i++) {
+        free(table->rows[i].cells);
+        table->rows[i].cells = NULL;
+    }
     table->row_count = 0;
     table->scroll_offset = 0;
     table->selected_row = -1;
@@ -273,8 +384,12 @@ static int table_compare_rows(rt_uitable_impl *table,
     int64_t col = table->sort_column;
     if (col < 0 || col >= table->column_count)
         return 0;
-    const char *sa = a->cells[col];
-    const char *sb = b->cells[col];
+    const char *sa = table_cell_ptr(table, a, col);
+    const char *sb = table_cell_ptr(table, b, col);
+    if (!sa)
+        sa = "";
+    if (!sb)
+        sb = "";
     int cmp = 0;
     if (table->columns[col].sort_numeric) {
         double da = strtod(sa, NULL);
@@ -458,13 +573,9 @@ void rt_uitable_draw(void *ptr, void *canvas) {
         rt_canvas_box(canvas, table->x, ry, table->w, table->row_height, bg);
         int64_t x = table->x;
         for (int64_t c = 0; c < table->column_count; c++) {
-            ui_draw_text_basic(canvas,
-                               x + 4,
-                               ry + 4,
-                               table->rows[row].cells[c],
-                               table->font,
-                               1,
-                               table->text_color);
+            const char *cell = table_cell_ptr(table, &table->rows[row], c);
+            ui_draw_text_basic(
+                canvas, x + 4, ry + 4, cell ? cell : "", table->font, 1, table->text_color);
             x += table->columns[c].width;
         }
     }
@@ -663,14 +774,15 @@ void rt_uislider_draw(void *ptr, void *canvas) {
 // UIDropdown
 //=============================================================================
 
-#define RT_UIDROPDOWN_MAX_OPTIONS 32
+#define RT_UIDROPDOWN_DEFAULT_OPTIONS 32
 #define RT_UIDROPDOWN_MAX_TEXT 64
 
 typedef struct {
     void *vptr;
     int64_t x, y, w, h;
-    char options[RT_UIDROPDOWN_MAX_OPTIONS][RT_UIDROPDOWN_MAX_TEXT];
+    char (*options)[RT_UIDROPDOWN_MAX_TEXT];
     int64_t option_count;
+    int64_t option_capacity;
     int64_t selected;
     int8_t open;
     int64_t text_color, bg_color, caret_color, border_color, selected_bg_color;
@@ -695,8 +807,36 @@ static void uidropdown_finalizer(void *obj) {
     rt_uidropdown_impl *dd = (rt_uidropdown_impl *)obj;
     if (!dd)
         return;
+    free(dd->options);
+    dd->options = NULL;
+    dd->option_count = 0;
+    dd->option_capacity = 0;
     ui_release_obj(dd->font);
     dd->font = NULL;
+}
+
+static int8_t ensure_dropdown_option_capacity(rt_uidropdown_impl *dd, int64_t needed) {
+    if (!dd || needed <= dd->option_capacity)
+        return 1;
+    int64_t new_capacity = dd->option_capacity > 0 ? dd->option_capacity : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2 ||
+            (uint64_t)new_capacity > SIZE_MAX / (2 * RT_UIDROPDOWN_MAX_TEXT))
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / RT_UIDROPDOWN_MAX_TEXT)
+        return 0;
+    char (*options)[RT_UIDROPDOWN_MAX_TEXT] = (char (*)[RT_UIDROPDOWN_MAX_TEXT])realloc(
+        dd->options, (size_t)new_capacity * RT_UIDROPDOWN_MAX_TEXT);
+    if (!options)
+        return 0;
+    memset(options + dd->option_capacity,
+           0,
+           (size_t)(new_capacity - dd->option_capacity) * RT_UIDROPDOWN_MAX_TEXT);
+    dd->options = options;
+    dd->option_capacity = new_capacity;
+    return 1;
 }
 
 void *rt_uidropdown_new(int64_t x, int64_t y, int64_t w, int64_t h) {
@@ -718,6 +858,11 @@ void *rt_uidropdown_new(int64_t x, int64_t y, int64_t w, int64_t h) {
     dd->visible = 1;
     dd->enabled = 1;
     rt_obj_set_finalizer(dd, uidropdown_finalizer);
+    if (!ensure_dropdown_option_capacity(dd, RT_UIDROPDOWN_DEFAULT_OPTIONS)) {
+        if (rt_obj_release_check0(dd))
+            rt_obj_free(dd);
+        return NULL;
+    }
     return dd;
 }
 
@@ -726,8 +871,8 @@ void rt_uidropdown_add_option(void *ptr, rt_string text) {
         checked_dropdown(ptr, "UIDropdown.AddOption: expected Viper.Game.UI.HudDropdown");
     if (!dd)
         return;
-    if (dd->option_count >= RT_UIDROPDOWN_MAX_OPTIONS) {
-        rt_trap("UIDropdown.AddOption: option limit exceeded");
+    if (!ensure_dropdown_option_capacity(dd, dd->option_count + 1)) {
+        rt_trap("UIDropdown.AddOption: option allocation failed");
         return;
     }
     ui_copy_text(dd->options[dd->option_count], sizeof(dd->options[dd->option_count]), text);
@@ -741,7 +886,8 @@ void rt_uidropdown_clear_options(void *ptr) {
         checked_dropdown(ptr, "UIDropdown.ClearOptions: expected Viper.Game.UI.HudDropdown");
     if (!dd)
         return;
-    memset(dd->options, 0, sizeof(dd->options));
+    if (dd->options && dd->option_capacity > 0)
+        memset(dd->options, 0, (size_t)dd->option_capacity * RT_UIDROPDOWN_MAX_TEXT);
     dd->option_count = 0;
     dd->selected = -1;
     dd->open = 0;
@@ -995,8 +1141,8 @@ void rt_uitooltip_draw(void *ptr, void *canvas) {
 // UIModal
 //=============================================================================
 
-#define RT_UIMODAL_MAX_CHILDREN 16
-#define RT_UIMODAL_MAX_BUTTONS 4
+#define RT_UIMODAL_DEFAULT_CHILDREN 16
+#define RT_UIMODAL_DEFAULT_BUTTONS 4
 
 typedef struct {
     char text[64];
@@ -1010,10 +1156,12 @@ typedef struct {
     int64_t x, y, w, h;
     char title[128];
     char content_text[512];
-    void *children[RT_UIMODAL_MAX_CHILDREN];
+    void **children;
     int64_t child_count;
-    rt_uimodal_button_t buttons[RT_UIMODAL_MAX_BUTTONS];
+    int64_t child_capacity;
+    rt_uimodal_button_t *buttons;
     int64_t button_count;
+    int64_t button_capacity;
     int64_t selected_button;
     int64_t result;
     int8_t open;
@@ -1047,9 +1195,63 @@ static void uimodal_finalizer(void *obj) {
         return;
     for (int64_t i = 0; i < m->child_count; i++)
         ui_release_obj(m->children[i]);
+    free(m->children);
+    m->children = NULL;
     ui_release_obj(m->font);
     m->font = NULL;
     m->child_count = 0;
+    m->child_capacity = 0;
+    free(m->buttons);
+    m->buttons = NULL;
+    m->button_count = 0;
+    m->button_capacity = 0;
+}
+
+static int8_t ensure_modal_child_capacity(rt_uimodal_impl *m, int64_t needed) {
+    if (!m || needed <= m->child_capacity)
+        return 1;
+    int64_t new_capacity = m->child_capacity > 0 ? m->child_capacity : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2 ||
+            (uint64_t)new_capacity > SIZE_MAX / (2 * sizeof(void *)))
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / sizeof(void *))
+        return 0;
+    void **children = (void **)realloc(m->children, (size_t)new_capacity * sizeof(void *));
+    if (!children)
+        return 0;
+    memset(children + m->child_capacity,
+           0,
+           (size_t)(new_capacity - m->child_capacity) * sizeof(void *));
+    m->children = children;
+    m->child_capacity = new_capacity;
+    return 1;
+}
+
+static int8_t ensure_modal_button_capacity(rt_uimodal_impl *m, int64_t needed) {
+    if (!m || needed <= m->button_capacity)
+        return 1;
+    int64_t new_capacity = m->button_capacity > 0 ? m->button_capacity : 1;
+    while (new_capacity < needed) {
+        if (new_capacity > INT64_MAX / 2 ||
+            (uint64_t)new_capacity > SIZE_MAX / (2 * sizeof(rt_uimodal_button_t)))
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > SIZE_MAX / sizeof(rt_uimodal_button_t))
+        return 0;
+    rt_uimodal_button_t *buttons = (rt_uimodal_button_t *)realloc(
+        m->buttons, (size_t)new_capacity * sizeof(rt_uimodal_button_t));
+    if (!buttons)
+        return 0;
+    memset(buttons + m->button_capacity,
+           0,
+           (size_t)(new_capacity - m->button_capacity) * sizeof(rt_uimodal_button_t));
+    m->buttons = buttons;
+    m->button_capacity = new_capacity;
+    return 1;
 }
 
 /// @brief Initialize a freshly allocated modal's geometry and default state
@@ -1083,6 +1285,12 @@ void *rt_uimodal_new_at(int64_t x, int64_t y, int64_t w, int64_t h) {
         return NULL;
     modal_init(m, x, y, w, h);
     rt_obj_set_finalizer(m, uimodal_finalizer);
+    if (!ensure_modal_child_capacity(m, RT_UIMODAL_DEFAULT_CHILDREN) ||
+        !ensure_modal_button_capacity(m, RT_UIMODAL_DEFAULT_BUTTONS)) {
+        if (rt_obj_release_check0(m))
+            rt_obj_free(m);
+        return NULL;
+    }
     return m;
 }
 
@@ -1102,8 +1310,8 @@ int64_t rt_uimodal_add_button(void *ptr, rt_string text, int64_t return_value) {
     rt_uimodal_impl *m = checked_modal(ptr, "UIModal.AddButton: expected Viper.Game.UI.Modal");
     if (!m)
         return -1;
-    if (m->button_count >= RT_UIMODAL_MAX_BUTTONS) {
-        rt_trap("UIModal.AddButton: button limit exceeded");
+    if (!ensure_modal_button_capacity(m, m->button_count + 1)) {
+        rt_trap("UIModal.AddButton: button allocation failed");
         return -1;
     }
     int64_t idx = m->button_count++;
@@ -1139,8 +1347,8 @@ void rt_uimodal_add_child(void *ptr, void *child_widget) {
     rt_uimodal_impl *m = checked_modal(ptr, "UIModal.AddChild: expected Viper.Game.UI.Modal");
     if (!m || !child_widget)
         return;
-    if (m->child_count >= RT_UIMODAL_MAX_CHILDREN) {
-        rt_trap("UIModal.AddChild: child limit exceeded");
+    if (!ensure_modal_child_capacity(m, m->child_count + 1)) {
+        rt_trap("UIModal.AddChild: child allocation failed");
         return;
     }
     rt_obj_retain_maybe(child_widget);

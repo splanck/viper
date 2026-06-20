@@ -685,7 +685,6 @@ ExprPtr Parser::parsePrimary() {
             // Non-destructive probe to see if we have Ident( . Ident )+ '('
             size_t i = 0;
             bool ok = true;
-            bool sawAdditionalDot = false;
             // first ident and dot
             if (!(peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot))
                 ok = false;
@@ -697,7 +696,6 @@ ExprPtr Parser::parsePrimary() {
                 constexpr size_t kMaxProbeDistance = 512;
                 while (i < kMaxProbeDistance && isMemberIdentToken(peek(i).kind) &&
                        peek(i + 1).kind == TokenKind::Dot) {
-                    sawAdditionalDot = true;
                     i += 2;
                 }
                 if (i >= kMaxProbeDistance)

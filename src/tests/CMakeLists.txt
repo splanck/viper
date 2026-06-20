@@ -7,6 +7,7 @@
 # ============================================================================
 # Labels (use with ctest -L <label>):
 #   basic       — BASIC frontend tests (lexer, parser, sema, lowerer)
+#   bytecode    — Bytecode VM tests and bytecode/IL VM parity
 #   il          — IL core tests (parsing, serialization, verification, analysis)
 #   vm          — VM runtime tests (opcodes, traps, debugging, concurrency)
 #   runtime     — C runtime library tests (strings, collections, I/O, etc.)
@@ -14,6 +15,8 @@
 #   oop         — Object-oriented programming tests
 #   golden      — Golden file regression tests (diagnostic messages, IL output)
 #   e2e         — End-to-end pipeline tests (source -> IL -> VM/native -> compare)
+#   examples    — Example/demo manifest audit and build smoke
+#   fuzz        — Fuzz corpus replay / fuzz harness checks
 #   ilopt       — IL optimizer pass tests
 #   conformance — Arithmetic semantics cross-layer equivalence
 #   zia         — Zia language frontend tests
@@ -92,6 +95,56 @@ if (VIPER_BASH_EXECUTABLE)
     set_tests_properties(zia_runtime_name_literal_lint PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "tools;zia;requires_posix_shell")
+
+    add_test(NAME benchmark_compare_self_test
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/benchmark_compare.sh
+            --self-test)
+    set_tests_properties(benchmark_compare_self_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "perf;tools;requires_posix_shell")
+
+    add_test(NAME sanitizer_script_self_test
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/ci_full_sanitizer.sh
+            --self-test)
+    set_tests_properties(sanitizer_script_self_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "tools;requires_posix_shell")
+
+    add_test(NAME coverage_script_self_test
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/coverage.sh
+            --self-test)
+    set_tests_properties(coverage_script_self_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "tools;requires_posix_shell")
+
+    add_test(NAME example_smoke_manifest_audit
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/example_smoke.sh
+            --audit)
+    set_tests_properties(example_smoke_manifest_audit PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "examples;requires_posix_shell")
+
+    add_test(NAME example_smoke_fast
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/example_smoke.sh
+            --fast
+            --viper $<TARGET_FILE:viper>)
+    set_tests_properties(example_smoke_fast PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "examples;smoke;requires_posix_shell"
+            TIMEOUT 120)
+
+    add_test(NAME fuzz_smoke_self_test
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/fuzz_smoke.sh
+            --self-test)
+    set_tests_properties(fuzz_smoke_self_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "fuzz;tools;requires_posix_shell")
 endif ()
 
 add_library(viper_testing INTERFACE)
@@ -117,6 +170,7 @@ target_link_libraries(viper_test_common PUBLIC viper_testing il_vm il_build)
 ## docs_comment_check removed to avoid Python dependency
 
 add_subdirectory(unit)
+add_subdirectory(bytecode)
 add_subdirectory(il)
 add_subdirectory(vm)
 add_subdirectory(perf)
@@ -174,6 +228,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/objfile)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/binenc)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/linker)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/common)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/aarch64)
 
 # ── helpers for AArch64 and cross-platform codegen tests ────────────────────
 # Defined at file scope so they are available both inside and outside the
@@ -402,6 +457,11 @@ viper_add_ctest(test_tools_tls_signature_policy
         ${CMAKE_COMMAND}
         -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/src/tests/tools/TlsSignaturePolicyTest.cmake)
+
+viper_add_ctest(test_tools_trap_kind_spec_consistency
+        ${CMAKE_COMMAND}
+        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/src/tests/tools/TrapKindSpecConsistencyTest.cmake)
 
 viper_add_ctest(smoke_term_basic
         $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
@@ -643,8 +703,9 @@ endif ()
 #
 # Use `ctest -L <label>` to run tests with a specific label.
 # Use `ctest --print-labels` to see all available labels.
-# Available labels: basic, il, vm, runtime, codegen, oop, golden, e2e,
-#   ilopt, conformance, smoke, tools, unit, zia, namespace, perf, slow, tui
+# Available labels: basic, bytecode, il, vm, runtime, codegen, oop, golden,
+#   e2e, examples, fuzz, ilopt, conformance, smoke, tools, unit, zia,
+#   namespace, perf, slow, tui
 # =============================================================================
 
 # Demo compilation tests removed — covered by ARM64 native link tests in e2e/CMakeLists.txt

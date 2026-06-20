@@ -206,11 +206,11 @@ world.SetCollisionMask(enemyHandle, 0b101);   // collides with player + terrain,
 
 | Limit | Value | Notes |
 |---|---|---|
-| `PH_MAX_BODIES` | 256 | Maximum bodies per world. Traps if exceeded |
-| `BPG_DIM` | 8 | Broad-phase grid cells per axis (8×8 = 64 cells) |
-| `BPG_CELL_MAX` | 32 | Maximum bodies per broad-phase cell |
-
-> To increase `PH_MAX_BODIES`, edit the constant in `rt_physics2d.c` and recompile.
+| Bodies | Dynamic | `PH_MAX_BODIES` is the initial reservation |
+| Joints | Dynamic | `PH_MAX_JOINTS` is the initial reservation |
+| Contacts | Dynamic | `PH_MAX_CONTACTS` is the initial reservation; `ContactOverflowed()` reports allocation failure |
+| Broad-phase grid | Adaptive 8×8 / 12×12 / 16×16 | Per-world step scratch |
+| `BPG_CELL_MAX` | 32 | Dense-cell overflow falls back to an exhaustive pair pass |
 
 ---
 
@@ -231,30 +231,29 @@ query a rectangle to find all overlapping IDs.
 | `QueryRect(x, y, w, h)` | `Integer(Integer,Integer,Integer,Integer)` | Query overlapping items; returns count |
 | `GetResult(i)` | `Integer(Integer)` | Get the i-th result ID from last query |
 | `GetResultCount()` | `Integer()` | Number of results from last query |
-| `QueryWasTruncated()` | `Integer()` | 1 if last query exceeded the result cap |
+| `QueryWasTruncated()` | `Integer()` | 1 if last query returned a partial result after allocation failure |
 | `GetPairs()` | `Integer()` | Collect broad-phase collision pairs; returns count |
 | `PairFirst(i)` / `PairSecond(i)` | `Integer(Integer)` | IDs of the i-th collision pair |
-| `PairsWasTruncated()` | `Integer()` | 1 if the last `GetPairs()` hit the pair cap |
+| `PairsWasTruncated()` | `Integer()` | 1 if the last `GetPairs()` returned a partial result after allocation failure |
 | `ItemCount()` | `Integer()` | Total items in the tree |
 | `Destroy()` | `none()` | Free the quadtree |
 
-### Query Truncation
+### Query and Pair Growth
 
-`QueryRect` returns at most **256** results (`RT_QUADTREE_MAX_RESULTS`). If more items
-overlap the query rectangle, the results are truncated. Always check `QueryWasTruncated()`
-when the result count might exceed 256:
+`QueryRect` and `QueryPoint` grow their result buffer on demand. The historical
+`RT_QUADTREE_MAX_RESULTS` value is now only the initial reservation, so dense queries can
+return more than 256 IDs. Check `QueryWasTruncated()` after a query to detect the rare
+allocation-failure case where only a partial result could be returned:
 
 ```rust
 var count = tree.QueryRect(x, y, w, h);
 if tree.QueryWasTruncated() {
-    // Handle dense region — results incomplete
+    // Handle allocation pressure: results are incomplete.
 }
 ```
 
-`GetPairs()` similarly caps collected collision pairs at **1024** (`MAX_PAIRS`). Broad-phase
-collection walks clustered items through a single shared ancestor buffer (sized to the 4096-item
-ceiling), so no pairs are dropped from a per-node limit — the only loss is reaching the 1024 total.
-Check `PairsWasTruncated()` after `GetPairs()` to detect it.
+`GetPairs()` also grows its pair buffer on demand. `PairsWasTruncated()` is retained for
+compatibility and reports partial pair output only if the grow operation fails.
 
 ### Duplicate ID Guard
 
@@ -265,9 +264,9 @@ Inserting the same ID twice returns 0 and leaves the tree unchanged. Use distinc
 
 | Limit | Value | Notes |
 |---|---|---|
-| `RT_QUADTREE_MAX_RESULTS` | 256 | Maximum results per query; detect overflow with `QueryWasTruncated()` |
-| Max total items | 4096 | Items beyond this silently fail insertion |
-| Max overlap pairs | 1024 | `GetPairCount()` stops at this value |
+| Query results | Dynamic | `RT_QUADTREE_MAX_RESULTS` is the initial reservation; `QueryWasTruncated()` reports allocation failure |
+| Total items | Dynamic | Item storage grows on insert; duplicate/out-of-bounds inserts still return 0 |
+| Overlap pairs | Dynamic | Pair storage grows from the historical 1024-slot reservation; `PairsWasTruncated()` reports allocation failure |
 
 ---
 
@@ -909,14 +908,15 @@ cam.Follow(camX, camY);
 
 | Class | Limit | Constant | Notes |
 |---|---|---|---|
-| Physics2D | 256 bodies/world | `PH_MAX_BODIES` | Traps on overflow |
-| Physics2D | 8×8 broad-phase cells | `BPG_DIM = 8` | Per-world |
+| Physics2D | Dynamic bodies/joints/contacts | `PH_MAX_*` initial reservations | `ContactOverflowed()` only reports contact allocation failure |
+| Physics2D | Adaptive 8×8 / 12×12 / 16×16 broad-phase cells | Internal | Per-world step scratch |
 | Physics2D | 32 bodies/cell | `BPG_CELL_MAX = 32` | Dense-cell overflow falls back to an exhaustive pair pass |
-| Quadtree | 256 query results | `RT_QUADTREE_MAX_RESULTS` | Detect with `QueryWasTruncated()` |
-| Quadtree | 4096 total items | Internal | |
-| Quadtree | 1024 overlap pairs | `MAX_PAIRS` | Detect with `PairsWasTruncated()` |
+| Quadtree | Dynamic query results | `RT_QUADTREE_MAX_RESULTS` initial reservation | `QueryWasTruncated()` only reports allocation failure |
+| Quadtree | Dynamic total items | Internal | Grows on insert |
+| Quadtree | Dynamic overlap pairs | Internal 1024-slot initial reservation | `PairsWasTruncated()` only reports allocation failure |
 | StateMachine | 256 states | `RT_STATE_MAX` | Traps on overflow |
 | ButtonGroup | 256 buttons | `RT_BUTTONGROUP_MAX` | Traps on overflow |
+| ScreenFX | Dynamic active effects | `RT_SCREENFX_MAX_EFFECTS` initial reservation | Storage grows when all slots are active |
 | SpriteAnim | No limit | — | Start/end frame are plain integers |
 
 ## See Also

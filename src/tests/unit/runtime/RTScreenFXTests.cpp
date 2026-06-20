@@ -222,6 +222,20 @@ TEST(multiple_effects) {
     rt_screenfx_destroy(fx);
 }
 
+TEST(grows_past_default_effect_slots) {
+    rt_screenfx fx = rt_screenfx_new();
+
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS + 3; i++)
+        rt_screenfx_flash(fx, 0xFF0000FF, 1000 + i);
+
+    ASSERT(rt_screenfx_is_active(fx) == 1);
+    ASSERT(rt_screenfx_is_type_active(fx, RT_SCREENFX_FLASH) == 1);
+    rt_screenfx_update(fx, 10);
+    ASSERT(rt_screenfx_get_overlay_alpha(fx) > 0);
+
+    rt_screenfx_destroy(fx);
+}
+
 /// @brief Main.
 int main() {
     printf("RTScreenFXTests:\n");
@@ -238,6 +252,7 @@ int main() {
     RUN_TEST(shake_quadratic_decay);
     RUN_TEST(huge_shake_parameters_do_not_overflow);
     RUN_TEST(multiple_effects);
+    RUN_TEST(grows_past_default_effect_slots);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

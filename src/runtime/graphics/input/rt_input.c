@@ -222,6 +222,7 @@ static void rt_keyboard_append_reserved_key_event(int64_t *keys, int *count, int
 /// @brief Clamp a runtime int64 coordinate to the platform cursor-warp int32 range.
 /// @param value Runtime coordinate in canvas pixels.
 /// @return @p value saturated to the signed 32-bit range accepted by graphics backends.
+#if defined(VIPER_ENABLE_GRAPHICS)
 static int32_t rt_input_clamp_i64_to_i32(int64_t value) {
     if (value < (int64_t)INT32_MIN)
         return INT32_MIN;
@@ -229,6 +230,7 @@ static int32_t rt_input_clamp_i64_to_i32(int64_t value) {
         return INT32_MAX;
     return (int32_t)value;
 }
+#endif
 
 /// @brief Ensure the UTF-8 text buffer can append @p needed bytes this frame.
 /// @details Text input can arrive in bursts from IME or paste-like platform events. The buffer

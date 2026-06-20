@@ -22,7 +22,7 @@ REPEAT! DO NOT USE AGENTS FOR WRITING CODE!! Agents can be used for investigatio
 
 ## Core Principles (Priority Order)
 
-1. **Spec First** — IL spec is normative. Changes require ADR, never silent divergence.
+1. **Spec First** — IL spec is normative. IL opcode, grammar, verifier-rule, cross-layer dependency, and runtime C ABI surface changes require ADR; never allow silent divergence.
 2. **Always Green Locally** — Build + tests pass before proposing changes. No CI workflow modifications.
 3. **Discovery Before Questions** — Search codebase for 3-5 similar implementations before asking users.
 4. **Small Increments** — Each change = one coherent, verifiable unit (<50 files).
@@ -104,7 +104,7 @@ Codegen → IL (Core/Verify) + Support
 Runtime → Pure C, stable ABI, no compiler deps
 ```
 
-Cross-layer includes require ADR. Never modify `/docs/il-guide.md#reference` without ADR.
+IL opcode, grammar, verifier-rule, cross-layer dependency, and runtime C ABI surface changes require ADR. Never modify `/docs/il-guide.md#reference` without ADR.
 
 ---
 

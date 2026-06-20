@@ -32,17 +32,6 @@
 
 namespace il::frontends::basic::semantic_analyzer_detail {
 
-/// @brief Case-insensitive lowercase for qualified names (preserves dots).
-/// @param s The qualified name string to convert (e.g., "Viper.Graphics.Canvas").
-/// @return Lowercase version of the input string.
-static std::string toLowerQualified(std::string_view s) {
-    std::string out;
-    out.reserve(s.size());
-    for (unsigned char c : s)
-        out.push_back(static_cast<char>(std::tolower(c)));
-    return out;
-}
-
 /// @brief Check if an expression represents a runtime namespace chain (starting with "Viper").
 /// @param expr The expression to check.
 /// @return True if the expression is a qualified name chain starting with "Viper".
@@ -499,7 +488,6 @@ using semantic_analyzer_detail::resolveRuntimePropertyType;
 using semantic_analyzer_detail::resolveUserClassQNameFromExpr;
 using semantic_analyzer_detail::runtimeClassQNameFromExpr;
 using semantic_analyzer_detail::semanticTypeName;
-using semantic_analyzer_detail::toLowerQualified;
 
 bool SemanticAnalyzer::checkRuntimePointerSafety(std::string_view target,
                                                  bool rawPointerReturn,

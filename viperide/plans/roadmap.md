@@ -67,7 +67,11 @@ High-risk gaps:
 - The settings and overall shell UX need a polish pass so the app no longer
   feels like a demo.
 - Project loading eagerly walks the tree, has hardcoded excludes, and has no workspace manifest beyond a small `viper.project` parser.
-- BASIC has editor/build support in ViperIDE, while the separate `vbasic-server` IntelliSense surface is not yet integrated.
+- BASIC has editor/build support in ViperIDE, while the separate
+  `vbasic-server` diagnostics/completion/hover/document-symbol surface is not
+  yet integrated. BASIC semantic commands stay disabled by design until ViperIDE
+  has a non-blocking BASIC adapter and BASIC has a project-index-equivalent
+  layer for definition/references/rename.
 - The debugger uses the existing headless `Viper.Debug.Protocol` placeholder inside the IDE process. It is useful for UI and command-state wiring, but it does not execute compiled code, evaluate expressions, or expose real VM frames. A crash-isolated external adapter/subprocess debugger or hosted VM debugger is still future work.
 - Scene editing still needs IDE integration work beyond document-kind routing:
   a real scene surface, `SceneView`, `SceneDocumentState`, asset-resolution UX,

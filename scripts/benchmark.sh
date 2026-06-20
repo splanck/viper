@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Script: benchmark.sh
+# Purpose: Run the Viper benchmark suite across VM, bytecode, native, and
+#          external reference modes.
+
 set -euo pipefail
 
 # ============================================================================
@@ -30,6 +34,7 @@ SET_BASELINE=0
 NO_NATIVE=0
 NO_VM=0
 NO_REFERENCE=0
+VIPER_ONLY=0
 PROGRAMS_GLOB=""
 QUIET=0
 
@@ -59,6 +64,7 @@ Options:
   --no-native            Skip native codegen benchmarks
   --no-vm                Skip VM benchmarks
   --no-reference         Skip C/Rust/Lua/Python/Java/C# reference benchmarks
+  --viper-only           Run the curated Viper regression lane (VM + host native only)
   --programs GLOB        Only run programs matching this glob (e.g. "fib*")
   -q, --quiet            Suppress progress output
   -h, --help             Show this help message
@@ -74,6 +80,7 @@ while [[ $# -gt 0 ]]; do
         --no-native) NO_NATIVE=1; shift ;;
         --no-vm) NO_VM=1; shift ;;
         --no-reference) NO_REFERENCE=1; shift ;;
+        --viper-only) VIPER_ONLY=1; NO_REFERENCE=1; shift ;;
         --programs) PROGRAMS_GLOB="$2"; shift 2 ;;
         -q|--quiet) QUIET=1; shift ;;
         -h|--help) usage ;;
@@ -325,6 +332,7 @@ log "  Commit:      $COMMIT ($BRANCH)"
 log "  Viper:       $VIPER"
 log "  Iterations:  $ITERATIONS (+ $WARMUP warmup)"
 log "  Programs:    ${#PROGRAMS[*]}"
+[[ "$VIPER_ONLY" == "1" ]] && log "  Lane:        Viper-only regression"
 log ""
 log "  Available modes:"
 [[ "$NO_VM" != "1" ]] && log "    Bytecode:  bc-switch, bc-threaded"
@@ -643,7 +651,10 @@ if mismatches:
         print(m)
     print()
 else:
-    print('  All return values match c-O2 reference.')
+    if any('c-O2' in b['modes'] for b in data['benchmarks']):
+        print('  All return values match c-O2 reference.')
+    else:
+        print('  Return-value validation skipped: no c-O2 reference in this lane.')
     print()
 " 2>/dev/null)
 

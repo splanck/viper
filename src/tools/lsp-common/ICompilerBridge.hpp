@@ -21,6 +21,7 @@
 
 #include "tools/lsp-common/ServerTypes.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -56,6 +57,12 @@ class ICompilerBridge {
 
     // ── IDE Features ──
 
+    /// @brief Notify the bridge that a document is open/current in the editor.
+    virtual void updateDocument(const std::string &path, const std::string &source);
+
+    /// @brief Notify the bridge that a document has closed.
+    virtual void removeDocument(const std::string &path);
+
     /// @brief Get completions at (line, col) in source.
     virtual std::vector<CompletionInfo> completions(const std::string &source,
                                                     int line,
@@ -70,6 +77,56 @@ class ICompilerBridge {
 
     /// @brief List all top-level declarations in source.
     virtual std::vector<SymbolInfo> symbols(const std::string &source, const std::string &path) = 0;
+
+    /// @brief Whether the bridge can answer go-to-definition requests.
+    virtual bool supportsDefinition() const;
+
+    /// @brief Whether the bridge can answer references requests.
+    virtual bool supportsReferences() const;
+
+    /// @brief Whether the bridge can compute semantic rename edits.
+    virtual bool supportsRename() const;
+
+    /// @brief Whether the bridge can answer signature-help requests.
+    virtual bool supportsSignatureHelp() const;
+
+    /// @brief Whether the bridge can list workspace symbols.
+    virtual bool supportsWorkspaceSymbols() const;
+
+    /// @brief Whether the bridge can provide semantic tokens.
+    virtual bool supportsSemanticTokens() const;
+
+    /// @brief Resolve the definition for the symbol at (line, col).
+    virtual std::optional<LocationInfo> definition(const std::string &source,
+                                                   int line,
+                                                   int col,
+                                                   const std::string &path);
+
+    /// @brief Resolve all known references for the symbol at (line, col).
+    virtual std::vector<LocationInfo> references(const std::string &source,
+                                                 int line,
+                                                 int col,
+                                                 const std::string &path);
+
+    /// @brief Compute workspace edits for renaming the symbol at (line, col).
+    virtual RenameResult rename(const std::string &source,
+                                int line,
+                                int col,
+                                const std::string &path,
+                                const std::string &newName);
+
+    /// @brief Return signature help for the active call at (line, col).
+    virtual SignatureHelpInfo signatureHelp(const std::string &source,
+                                            int line,
+                                            int col,
+                                            const std::string &path);
+
+    /// @brief Search symbols across indexed/open workspace documents.
+    virtual std::vector<SymbolInfo> workspaceSymbols(const std::string &query);
+
+    /// @brief Return semantic tokens for the supplied source.
+    virtual std::vector<SemanticTokenInfo> semanticTokens(const std::string &source,
+                                                          const std::string &path);
 
     // ── Dump ──
 

@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Bodies are AABB or circle shapes; no rotational physics.
 //   - Fast bodies use shape-aware swept collision checks.
-//   - A world holds at most PH_MAX_BODIES (256) bodies; exceeding this traps.
+//   - World body storage starts with PH_MAX_BODIES slots and grows on demand.
 //   - Bodies with mass == 0.0 are static (immovable).
 //   - Collision filtering: bodies collide only when (A.layer & B.mask) != 0 AND (B.layer & A.mask)
 //   != 0.
@@ -50,7 +50,7 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y);
 /// @param dt Delta time in seconds.
 void rt_physics2d_world_step(void *world, double dt);
 
-/// @brief Add a body to the world. Duplicate adds are ignored; exceeding capacity traps.
+/// @brief Add a body to the world. Duplicate adds are ignored; storage grows on demand.
 /// @param world World handle.
 /// @param body Body handle.
 void rt_physics2d_world_add(void *world, void *body);
@@ -76,11 +76,11 @@ void rt_physics2d_world_set_gravity(void *world, double gx, double gy);
 int64_t rt_physics2d_world_contact_count(void *world);
 
 /// @brief Return whether contacts were omitted from the most recent world step.
-/// @details Contact storage is fixed at PH_MAX_CONTACTS. When more contacts are detected than can
-///          be stored, ContactCount returns the capped count and this query returns 1 until the next
-///          step or explicit contact clear caused by body removal.
+/// @details Contact storage starts with PH_MAX_CONTACTS slots and grows on demand. If allocation
+///          fails while recording a contact, ContactCount returns the partial count and this query
+///          returns 1 until the next step or explicit contact clear caused by body removal.
 /// @param world World handle.
-/// @return 1 if the last contact generation overflowed the fixed contact list, otherwise 0.
+/// @return 1 if the last contact generation could not grow the contact list, otherwise 0.
 int8_t rt_physics2d_world_contact_overflowed(void *world);
 
 /// @brief Body A for a contact from the most recent world step, or NULL if index is invalid.

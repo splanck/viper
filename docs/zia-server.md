@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-06-20
 ---
 
 # Zia Language Server Reference
@@ -157,7 +157,52 @@ client.start();
 | `completionProvider` | Trigger character: `.` |
 | `hoverProvider` | Type information on hover |
 | `documentSymbolProvider` | Top-level declarations outline |
+| `definitionProvider` | Go to definition through the Zia `ProjectIndex` |
+| `referencesProvider` | Find semantic references through the Zia `ProjectIndex` |
+| `renameProvider` | Workspace edits for semantic rename |
+| `signatureHelpProvider` | Call signature help, triggered by `(` and `,` |
+| `workspaceSymbolProvider` | Symbols from currently open/indexed documents |
+| `semanticTokensProvider` | Full-document semantic token stream |
 | `publishDiagnostics` | Errors and warnings pushed on open/change |
+
+The shared LSP handler advertises these capabilities per language bridge. `zia-server`
+supports the full table above. `vbasic-server` currently advertises diagnostics,
+completion, hover, and document symbols only; BASIC semantic navigation is tracked
+separately from the Zia LSP parity work.
+
+Definition, references, and rename use the same native `Viper.Zia.ProjectIndex`
+implementation as ViperIDE. The LSP handler keeps open documents indexed on
+`didOpen`/`didChange` and removes them on `didClose`.
+
+Semantic tokens are returned from `textDocument/semanticTokens/full` with this legend:
+
+```text
+namespace, type, class, enum, interface, function, method, variable,
+parameter, property, keyword, number, string, operator
+```
+
+### Example LSP Requests
+
+Definition and rename use standard LSP request shapes. Positions are zero-based
+UTF-16 code-unit offsets, as required by LSP:
+
+```json
+{"jsonrpc":"2.0","id":10,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///project/main.zia"},"position":{"line":4,"character":27}}}
+```
+
+```json
+{"jsonrpc":"2.0","id":11,"method":"textDocument/rename","params":{"textDocument":{"uri":"file:///project/main.zia"},"position":{"line":4,"character":27},"newName":"total"}}
+```
+
+Semantic tokens are full-document only:
+
+```json
+{"jsonrpc":"2.0","id":12,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"file:///project/main.zia"}}}
+```
+
+Responses follow the LSP 3.17 shapes: `Location` for definition, `Location[]` for
+references, `WorkspaceEdit` for rename, `SignatureHelp` for signature help,
+`SymbolInformation[]` for workspace symbols, and `{ "data": [...] }` for semantic tokens.
 
 ### Diagnostics
 

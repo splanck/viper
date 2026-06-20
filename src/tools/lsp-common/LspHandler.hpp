@@ -87,6 +87,18 @@ class LspHandler {
     std::string handleHover(const JsonRpcRequest &req);
     /// @brief Handle `textDocument/documentSymbol`: list the document's symbols.
     std::string handleDocumentSymbol(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/definition`: return the target symbol location.
+    std::string handleDefinition(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/references`: return known references for a symbol.
+    std::string handleReferences(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/rename`: return a workspace edit for semantic rename.
+    std::string handleRename(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/signatureHelp`: return call signature help.
+    std::string handleSignatureHelp(const JsonRpcRequest &req);
+    /// @brief Handle `workspace/symbol`: return indexed workspace symbols.
+    std::string handleWorkspaceSymbol(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/semanticTokens/full`: return full semantic tokens.
+    std::string handleSemanticTokensFull(const JsonRpcRequest &req);
 
     // Helpers
     /// @brief Compile the document for @p uri and publish its diagnostics notification.

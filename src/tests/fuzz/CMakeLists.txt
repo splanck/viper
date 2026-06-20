@@ -7,112 +7,69 @@ if (NOT VIPER_ENABLE_FUZZ)
     return()
 endif ()
 
-# ── Localization Plural-Rule Parser Fuzzer ──────────────────────────────────
-add_executable(fuzz_plural_rule_parser fuzz_plural_rule_parser.cpp)
-target_include_directories(fuzz_plural_rule_parser PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/src/runtime
-        ${CMAKE_SOURCE_DIR}/src/runtime/core
-        ${CMAKE_SOURCE_DIR}/src/runtime/localization)
-target_link_libraries(fuzz_plural_rule_parser PRIVATE viper_runtime)
-target_compile_options(fuzz_plural_rule_parser PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_plural_rule_parser PRIVATE -fsanitize=fuzzer)
-
-# ── Localization Date-Pattern Parser Fuzzer ─────────────────────────────────
-add_executable(fuzz_date_pattern_parser fuzz_date_pattern_parser.cpp)
-target_include_directories(fuzz_date_pattern_parser PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/src/runtime
-        ${CMAKE_SOURCE_DIR}/src/runtime/core
-        ${CMAKE_SOURCE_DIR}/src/runtime/localization)
-target_link_libraries(fuzz_date_pattern_parser PRIVATE viper_runtime)
-target_compile_options(fuzz_date_pattern_parser PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_date_pattern_parser PRIVATE -fsanitize=fuzzer)
-
-# ── Localization Locale-JSON Loader Fuzzer ──────────────────────────────────
-add_executable(fuzz_locale_json_loader fuzz_locale_json_loader.cpp)
-target_include_directories(fuzz_locale_json_loader PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/src/runtime
-        ${CMAKE_SOURCE_DIR}/src/runtime/core
-        ${CMAKE_SOURCE_DIR}/src/runtime/localization)
-target_link_libraries(fuzz_locale_json_loader PRIVATE viper_runtime)
-target_compile_options(fuzz_locale_json_loader PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_locale_json_loader PRIVATE -fsanitize=fuzzer)
-
-# ── Zia Lexer Fuzzer ─────────────────────────────────────────────────────────
-add_executable(fuzz_zia_lexer fuzz_zia_lexer.cpp)
-target_include_directories(fuzz_zia_lexer PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(fuzz_zia_lexer PRIVATE fe_zia)
-target_compile_options(fuzz_zia_lexer PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_zia_lexer PRIVATE -fsanitize=fuzzer)
-
-# ── Zia Parser Fuzzer ────────────────────────────────────────────────────────
-add_executable(fuzz_zia_parser fuzz_zia_parser.cpp)
-target_include_directories(fuzz_zia_parser PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(fuzz_zia_parser PRIVATE fe_zia)
-target_compile_options(fuzz_zia_parser PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_zia_parser PRIVATE -fsanitize=fuzzer)
-
-# ── BASIC Lexer Fuzzer ──────────────────────────────────────────────────────
-add_executable(fuzz_basic_lexer fuzz_basic_lexer.cpp)
-target_include_directories(fuzz_basic_lexer PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(fuzz_basic_lexer PRIVATE fe_basic)
-target_compile_options(fuzz_basic_lexer PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_basic_lexer PRIVATE -fsanitize=fuzzer)
-
-# ── BASIC Parser Fuzzer ─────────────────────────────────────────────────────
-add_executable(fuzz_basic_parser fuzz_basic_parser.cpp)
-target_include_directories(fuzz_basic_parser PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(fuzz_basic_parser PRIVATE fe_basic)
-target_compile_options(fuzz_basic_parser PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_basic_parser PRIVATE -fsanitize=fuzzer)
-
-# ── IL Parser Fuzzer ────────────────────────────────────────────────────────
-add_executable(fuzz_il_parser fuzz_il_parser.cpp)
-target_include_directories(fuzz_il_parser PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/generated
-        ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(fuzz_il_parser PRIVATE viper::il_full)
-target_compile_options(fuzz_il_parser PRIVATE -fsanitize=fuzzer)
-target_link_options(fuzz_il_parser PRIVATE -fsanitize=fuzzer)
-
-# ── 3D Content Loader Fuzzers ───────────────────────────────────────────────
-function(viper_add_3d_loader_fuzzer target source)
+function(viper_add_fuzzer target source)
+    set(options)
+    set(oneValueArgs CORPUS)
+    set(multiValueArgs LIBS INCLUDES)
+    cmake_parse_arguments(VF "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
     add_executable(${target} ${source})
     target_include_directories(${target} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_SOURCE_DIR}/include
             ${CMAKE_BINARY_DIR}/generated
             ${CMAKE_SOURCE_DIR}/src
             ${CMAKE_SOURCE_DIR}/src/runtime
             ${CMAKE_SOURCE_DIR}/src/runtime/core
+            ${CMAKE_SOURCE_DIR}/src/runtime/localization
+            ${CMAKE_SOURCE_DIR}/src/runtime/network
+            ${CMAKE_SOURCE_DIR}/src/runtime/text
+            ${VF_INCLUDES})
+    target_link_libraries(${target} PRIVATE ${VF_LIBS})
+    target_compile_options(${target} PRIVATE -fsanitize=fuzzer)
+    target_link_options(${target} PRIVATE -fsanitize=fuzzer)
+
+    if (VF_CORPUS)
+        set(_corpus "${VF_CORPUS}")
+    else ()
+        string(REGEX REPLACE "^fuzz_" "" _corpus_name "${target}")
+        set(_corpus "${CMAKE_CURRENT_SOURCE_DIR}/corpus/${_corpus_name}")
+    endif ()
+    if (EXISTS "${_corpus}")
+        add_test(NAME ${target}_replay
+                COMMAND $<TARGET_FILE:${target}> -runs=1 "${_corpus}")
+        set_tests_properties(${target}_replay PROPERTIES
+                LABELS "fuzz"
+                TIMEOUT 30)
+    endif ()
+endfunction()
+
+# ── Localization parser fuzzers ─────────────────────────────────────────────
+viper_add_fuzzer(fuzz_plural_rule_parser fuzz_plural_rule_parser.cpp LIBS viper_runtime)
+viper_add_fuzzer(fuzz_date_pattern_parser fuzz_date_pattern_parser.cpp LIBS viper_runtime)
+viper_add_fuzzer(fuzz_locale_json_loader fuzz_locale_json_loader.cpp LIBS viper_runtime)
+
+# ── Frontend / IL parser fuzzers ────────────────────────────────────────────
+viper_add_fuzzer(fuzz_zia_lexer fuzz_zia_lexer.cpp LIBS fe_zia)
+viper_add_fuzzer(fuzz_zia_parser fuzz_zia_parser.cpp LIBS fe_zia)
+viper_add_fuzzer(fuzz_basic_lexer fuzz_basic_lexer.cpp LIBS fe_basic)
+viper_add_fuzzer(fuzz_basic_parser fuzz_basic_parser.cpp LIBS fe_basic)
+viper_add_fuzzer(fuzz_il_parser fuzz_il_parser.cpp LIBS viper::il_full)
+
+# ── Runtime/protocol parser fuzzers ─────────────────────────────────────────
+viper_add_fuzzer(fuzz_json fuzz_json.cpp LIBS viper_runtime)
+viper_add_fuzzer(fuzz_http_request fuzz_http_request.cpp LIBS viper_runtime)
+viper_add_fuzzer(fuzz_lsp_jsonrpc fuzz_lsp_jsonrpc.cpp LIBS lsp_common_lib)
+viper_add_fuzzer(fuzz_mcp_jsonrpc fuzz_mcp_jsonrpc.cpp LIBS lsp_common_lib)
+
+# ── 3D Content Loader Fuzzers ───────────────────────────────────────────────
+function(viper_add_3d_loader_fuzzer target source)
+    viper_add_fuzzer(${target} ${source}
+            LIBS viper_runtime
+            INCLUDES
+            ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/assets
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/render
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/scene)
-    target_link_libraries(${target} PRIVATE viper_runtime)
-    target_compile_options(${target} PRIVATE -fsanitize=fuzzer)
-    target_link_options(${target} PRIVATE -fsanitize=fuzzer)
 endfunction()
 
 viper_add_3d_loader_fuzzer(fuzz_gltf_loader fuzz_gltf_loader.cpp)

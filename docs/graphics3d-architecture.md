@@ -443,12 +443,13 @@ src/runtime/graphics/
 │   ├── rt_fbx_loader.c/h          FBX binary plus minimal ASCII format loader
 │   ├── rt_gltf.c/h                glTF 2.0 format loader
 │   └── rt_model3d.c/h             Model3D unified prefab/import wrapper
-└── Audio
-    ├── rt_sound3d.c/h             SpatialAudio3D helpers and compatibility wrappers
-    ├── rt_soundlistener3d.h       SoundListener3D public surface
-    ├── rt_soundsource3d.h         SoundSource3D public surface
-    └── rt_sound3d_objects.c       Object-backed listener/source bindings and voice updates
+└── Audio bindings
+    └── rt_game3d_audio.c          Game3D facade that calls audio-owned spatial APIs
 ```
+
+SpatialAudio3D math and the SoundListener3D/SoundSource3D object implementation
+live under `src/runtime/audio/`. Graphics3D scene code keeps only the binding
+shims that pass node/camera transforms into the audio runtime.
 
 ## Asset Import Hardening
 

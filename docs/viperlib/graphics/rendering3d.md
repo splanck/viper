@@ -1167,26 +1167,15 @@ Time-limited projected decal placed in a 3D scene (bullet holes, blood splats, s
 
 ## Spatial Audio
 
-### Viper.Sound.SpatialAudio3D
-
-Static utilities for positioning audio in 3D space via listeners and voice IDs.
-
-**Type:** Static (none)
-
-#### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `SetListener(position, forward)` | `Void(Object, Object)` | Set the listener position and orientation |
-| `PlayAt(sound, position, volume, loop)` | `Integer(Object, Object, Double, Integer)` | Spawn a spatialized voice at a world position; returns voice ID |
-| `UpdateVoice(voiceId, position, volume)` | `Void(Integer, Object, Double)` | Update the position and volume of a live spatialized voice |
-| `SyncBindings(deltaSeconds)` | `Void(Double)` | Propagate node/camera bindings from `SoundSource3D` and `SoundListener3D` |
-
----
+SpatialAudio3D is part of the audio runtime, not the renderer. See
+[Audio: Spatial Audio](../audio.md#spatial-audio) for the canonical
+`Viper.Sound.SpatialAudio3D` API and [Audio: Mix Group Effects](../audio.md#mix-group-effects)
+for group-level filters, delay, and reverb.
 
 ### Viper.Graphics3D.SoundListener3D
 
-3D audio listener that tracks a scene node or camera position.
+3D audio listener wrapper that tracks a scene node or camera position and feeds
+the audio-owned spatial listener state.
 
 **Type:** Instance (obj)
 **Constructor:** `SoundListener3D.New()`

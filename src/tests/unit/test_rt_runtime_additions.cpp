@@ -108,8 +108,8 @@ static void test_textinput_unicode_selection_and_limits() {
     assert(rt_uitextinput_handle_text(input, full_text) == 1);
     assert(rt_uitextinput_text_length(input) == 511);
     rt_str_release_maybe(full_text);
-    assert(rt_uitextinput_handle_text(input, rt_const_cstr("y")) == 0);
-    assert(rt_uitextinput_text_length(input) == 511);
+    assert(rt_uitextinput_handle_text(input, rt_const_cstr("y")) == 1);
+    assert(rt_uitextinput_text_length(input) == 512);
 
     release_obj(input);
     PASS();

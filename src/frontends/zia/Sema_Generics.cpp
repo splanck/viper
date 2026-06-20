@@ -16,6 +16,7 @@
 
 #include "frontends/zia/Sema.hpp"
 #include <cctype>
+#include <unordered_set>
 
 namespace il::frontends::zia {
 
@@ -501,28 +502,34 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     if (type->kind == TypeKindSem::Interface)
         return type->name == resolvedInterfaceName;
 
-    // Check if the type is an class type
+    auto ifaceMatches = [&](const std::string &iface) {
+        std::string resolvedIface = iface;
+        if (TypeRef ifaceType = resolveNamedType(iface);
+            ifaceType && ifaceType->kind == TypeKindSem::Interface)
+            resolvedIface = ifaceType->name;
+        return resolvedIface == resolvedInterfaceName;
+    };
+
+    // Check class types, including interfaces inherited through base classes.
     if (type->kind == TypeKindSem::Class) {
-        if (auto *classDecl = lookupClassDeclForType(type->name)) {
+        std::unordered_set<std::string> visited;
+        std::string currentName = type->name;
+        while (!currentName.empty() && visited.insert(currentName).second) {
+            auto *classDecl = lookupClassDeclForType(currentName);
+            if (!classDecl)
+                break;
             for (const auto &iface : classDecl->interfaces) {
-                std::string resolvedIface = iface;
-                if (TypeRef ifaceType = resolveNamedType(iface);
-                    ifaceType && ifaceType->kind == TypeKindSem::Interface)
-                    resolvedIface = ifaceType->name;
-                if (resolvedIface == resolvedInterfaceName)
+                if (ifaceMatches(iface))
                     return true;
             }
+            currentName = classDecl->baseClass;
         }
     }
-    // Check if the type is a struct type
+    // Check if the type is a struct type.
     else if (type->kind == TypeKindSem::Struct) {
         if (auto *structDecl = lookupStructDeclForType(type->name)) {
             for (const auto &iface : structDecl->interfaces) {
-                std::string resolvedIface = iface;
-                if (TypeRef ifaceType = resolveNamedType(iface);
-                    ifaceType && ifaceType->kind == TypeKindSem::Interface)
-                    resolvedIface = ifaceType->name;
-                if (resolvedIface == resolvedInterfaceName)
+                if (ifaceMatches(iface))
                     return true;
             }
         }

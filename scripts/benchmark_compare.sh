@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Script: benchmark_compare.sh
+# Purpose: Compare benchmark result files and flag Viper performance regressions.
+
 set -euo pipefail
 
 # ============================================================================
@@ -19,6 +22,30 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 RESULTS_FILE="$ROOT_DIR/misc/benchmarks/results.jsonl"
 BASELINE_FILE="$ROOT_DIR/misc/benchmarks/baseline.jsonl"
 
+if [[ "${1:-}" == "--self-test" ]]; then
+    tmpdir="$(mktemp -d)"
+    trap "rm -rf '$tmpdir'" EXIT
+    base="$tmpdir/base.jsonl"
+    pass="$tmpdir/pass.jsonl"
+    fail="$tmpdir/fail.jsonl"
+    cat > "$base" <<'JSON'
+{"version":1,"metadata":{"timestamp":"2026-01-01T00:00:00","commit":"base","platform":"test"},"benchmarks":[{"program":"arith","modes":{"bc-switch":{"success":true,"time_ms":100},"native-x86_64":{"success":true,"time_ms":200},"python3":{"success":true,"time_ms":500}}}]}
+JSON
+    cat > "$pass" <<'JSON'
+{"version":1,"metadata":{"timestamp":"2026-01-01T00:01:00","commit":"pass","platform":"test"},"benchmarks":[{"program":"arith","modes":{"bc-switch":{"success":true,"time_ms":104},"native-x86_64":{"success":true,"time_ms":205},"python3":{"success":true,"time_ms":600}}}]}
+JSON
+    cat > "$fail" <<'JSON'
+{"version":1,"metadata":{"timestamp":"2026-01-01T00:02:00","commit":"fail","platform":"test"},"benchmarks":[{"program":"arith","modes":{"bc-switch":{"success":true,"time_ms":111},"native-x86_64":{"success":true,"time_ms":200},"python3":{"success":true,"time_ms":500}}}]}
+JSON
+    "$0" "$base" "$pass" >/dev/null
+    if "$0" "$base" "$fail" >/dev/null 2>&1; then
+        echo "benchmark_compare self-test: expected regression was not detected" >&2
+        exit 1
+    fi
+    echo "benchmark_compare self-test: ok"
+    exit 0
+fi
+
 # --- Parse arguments ---
 BASE_JSON=""
 HEAD_JSON=""
@@ -32,6 +59,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: scripts/benchmark_compare.sh [base.jsonl] [head.jsonl]"
             echo "       scripts/benchmark_compare.sh <head.jsonl>"
             echo "       scripts/benchmark_compare.sh --run N"
+            echo "       scripts/benchmark_compare.sh --self-test"
             echo "       scripts/benchmark_compare.sh  (latest vs baseline)"
             exit 0 ;;
         *)
@@ -114,11 +142,11 @@ except (json.JSONDecodeError, FileNotFoundError) as e:
 bm = base.get('metadata', {})
 hm = head.get('metadata', {})
 
-mode_order = [
+preferred_mode_order = [
     'bc-switch', 'bc-threaded',
-    'native-arm64', 'native-x86_64',
+    'native-arm64', 'zia-arm64', 'basic-arm64', 'native-x86_64',
     'c-O0', 'c-O2', 'c-O3',
-    'python3', 'java'
+    'rust-O', 'lua', 'python3', 'java', 'csharp'
 ]
 
 viper_modes = {'bc-switch','bc-threaded','native-arm64','native-x86_64'}
@@ -135,6 +163,9 @@ print(f"  {'Program':<18} {'Mode':<16} {'Base':>10} {'Head':>10} {'Delta':>10}")
 print(f"  {'-'*68}")
 
 base_idx = {b['program']: b for b in base.get('benchmarks', [])}
+head_programs = {b.get('program') for b in head.get('benchmarks', [])}
+missing_in_head = sorted(set(base_idx) - head_programs)
+missing_in_base = sorted(head_programs - set(base_idx))
 
 improved = 0
 regressed = 0
@@ -154,7 +185,11 @@ for bh in head.get('benchmarks', []):
     if not bb:
         continue
 
-    for mode in mode_order:
+    common_modes = set(bb.get('modes', {})) & set(bh.get('modes', {}))
+    ordered_modes = [m for m in preferred_mode_order if m in common_modes]
+    ordered_modes.extend(sorted(common_modes - set(ordered_modes)))
+
+    for mode in ordered_modes:
         mh = bh['modes'].get(mode, {})
         mb = bb['modes'].get(mode, {})
 
@@ -191,6 +226,12 @@ for bh in head.get('benchmarks', []):
         print(f"  {prog:<18} {mode:<16} {fmt_time(tb):>10} {fmt_time(th):>10} {color}{pct:>+8.1f}%{nc_c}{flag}")
 
 print()
+if missing_in_base:
+    print("  Missing baseline entries: " + ", ".join(missing_in_base))
+if missing_in_head:
+    print("  Missing head entries: " + ", ".join(missing_in_head))
+if missing_in_base or missing_in_head:
+    print()
 print(f"  {BOLD}SUMMARY{NC}")
 print(f"  {GREEN}Improved:{NC} {improved:>3} (>2% faster)     {RED}Regressed:{NC} {regressed:>3} (>5% slower)")
 print(f"  Stable:   {stable:>3} (within noise)")

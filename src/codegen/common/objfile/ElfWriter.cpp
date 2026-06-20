@@ -93,15 +93,15 @@ static constexpr uint32_t kRAarch64_LdSt64AbsLo12Nc = 286;
 static constexpr uint32_t kRAarch64_LdSt128AbsLo12Nc = 299;
 
 // Section indices (fixed layout)
-static constexpr uint16_t kSecNull = 0;
+[[maybe_unused]] static constexpr uint16_t kSecNull = 0;
 static constexpr uint16_t kSecText = 1;
 static constexpr uint16_t kSecRodata = 2;
-static constexpr uint16_t kSecRelaText = 3;
-static constexpr uint16_t kSecRelaRodata = 4;
+[[maybe_unused]] static constexpr uint16_t kSecRelaText = 3;
+[[maybe_unused]] static constexpr uint16_t kSecRelaRodata = 4;
 static constexpr uint16_t kSecSymtab = 5;
 static constexpr uint16_t kSecStrtab = 6;
 static constexpr uint16_t kSecShstrtab = 7;
-static constexpr uint16_t kSecNoteGnuStack = 8;
+[[maybe_unused]] static constexpr uint16_t kSecNoteGnuStack = 8;
 
 // kNumSections is computed dynamically in write() based on whether debug data is present.
 
@@ -823,7 +823,9 @@ bool ElfWriter::write(const std::string &path,
         // [2N+6] .note.GNU-stack
         auto secText = [](size_t i) -> uint16_t { return static_cast<uint16_t>(i + 1); };
         const uint16_t secRodata = static_cast<uint16_t>(N + 1);
-        auto secRelaText = [&](size_t i) -> uint16_t { return static_cast<uint16_t>(N + 2 + i); };
+        [[maybe_unused]] auto secRelaText = [&](size_t i) -> uint16_t {
+            return static_cast<uint16_t>(N + 2 + i);
+        };
         [[maybe_unused]] const uint16_t secRelaRodata = static_cast<uint16_t>(2 * N + 2);
         const uint16_t secSymtab = static_cast<uint16_t>(2 * N + 3);
         const uint16_t secStrtab = static_cast<uint16_t>(2 * N + 4);

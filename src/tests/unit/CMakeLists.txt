@@ -44,7 +44,6 @@ function(viper_add_isolated_runtime_test target)
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/anim
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/nav
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/world
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/audio
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/assets
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/backend
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/gui
@@ -1179,6 +1178,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_collections_correctness PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_collections_correctness test_rt_collections_correctness)
 
+    viper_add_test(test_rt_numbuf ${VIPER_TESTS_DIR}/runtime/RTNumBufTests.cpp)
+    target_link_libraries(test_rt_numbuf PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_numbuf test_rt_numbuf)
+
     viper_add_test(test_rt_set ${VIPER_TESTS_DIR}/runtime/RTSetTests.cpp)
     target_link_libraries(test_rt_set PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_set test_rt_set)
@@ -1350,9 +1353,9 @@ function(viper_add_runtime_tests)
 
     viper_add_isolated_runtime_test(test_rt_sound3d_contract
             ${VIPER_TESTS_DIR}/runtime/RTSound3DTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/audio/rt_sound3d.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/audio/rt_audio_diagnostics.c
+            ${CMAKE_SOURCE_DIR}/src/runtime/audio/rt_sound3d.c)
     target_compile_definitions(test_rt_sound3d_contract PRIVATE
-            VIPER_ENABLE_GRAPHICS=1
             RT_NO_MAIN_THREAD_ASSERT=1)
 
     viper_add_isolated_runtime_test(test_rt_videowidget_contract
@@ -2134,6 +2137,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_audio_integration ${VIPER_TESTS_DIR}/runtime/RTAudioIntegrationTests.cpp)
     target_link_libraries(test_rt_audio_integration PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     viper_add_ctest(test_rt_audio_integration test_rt_audio_integration)
+
+    viper_add_test(test_rt_audio_fx ${VIPER_TESTS_DIR}/runtime/RTAudioFxTests.cpp)
+    target_link_libraries(test_rt_audio_fx PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_audio_fx test_rt_audio_fx)
 
     viper_add_test(test_rt_heap_alloc ${VIPER_TESTS_DIR}/runtime/RTHeapAllocTests.cpp)
     target_link_libraries(test_rt_heap_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)

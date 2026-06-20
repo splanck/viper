@@ -49,16 +49,6 @@ std::string canonicalLabelKey(std::string_view name) {
     return std::string(name);
 }
 
-/// @brief Canonicalize a namespace-head key for case-insensitive parser lookups.
-/// @param name Namespace head spelling as seen in source.
-/// @return Lowercase canonical key, or original text when recovery input is invalid.
-std::string canonicalNamespaceKey(std::string_view name) {
-    std::string canon = CanonicalizeIdent(name);
-    if (!canon.empty() || name.empty())
-        return canon;
-    return std::string(name);
-}
-
 } // namespace
 
 /// @brief Construct a parser for the given source.

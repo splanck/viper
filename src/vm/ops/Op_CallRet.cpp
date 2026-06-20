@@ -188,8 +188,6 @@ VM::ExecResult handleCall(VM &vm,
         };
 
         struct SvHash {
-            using is_transparent = void;
-
             size_t operator()(std::string_view sv) const {
                 return std::hash<std::string_view>{}(sv);
             }
@@ -350,8 +348,7 @@ VM::ExecResult handleCall(VM &vm,
             const size_t paramCount = std::min(args.size(), signature->paramTypes.size());
             for (size_t index = 0; index < paramCount; ++index) {
                 const bool forcedOutCopy =
-                    index < 64 &&
-                    (signature->ownedOutArgMask & (std::uint64_t{1} << index)) != 0;
+                    index < 64 && (signature->ownedOutArgMask & (std::uint64_t{1} << index)) != 0;
                 // Compare slots using bitwise equality (safe for all types)
                 if (!forcedOutCopy && args[index].bitwiseEquals(originalArgs[index]))
                     continue;

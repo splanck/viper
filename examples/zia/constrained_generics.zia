@@ -1,0 +1,26 @@
+module constrained_generics;
+
+interface Named {
+    func name() -> String;
+}
+
+class Player implements Named {
+    expose String displayName;
+
+    expose func init(name: String) {
+        self.displayName = name;
+    }
+
+    expose func name() -> String {
+        return self.displayName;
+    }
+}
+
+func describe[T: Named](value: T) -> String {
+    return "named: " + value.name();
+}
+
+func start() {
+    var player = new Player("Ada");
+    Viper.Terminal.Say(describe[Player](player));
+}

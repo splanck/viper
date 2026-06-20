@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-30
+last-verified: 2026-06-20
 ---
 
 # Audio
@@ -22,6 +22,8 @@ All audio classes live in the `Viper.Sound` namespace.
 - [Viper.Sound.Synth](#vipersoundsynth)
 - [Viper.Sound.MusicGen](#vipersoundmusicgen)
 - [Mix Groups](#mix-groups)
+- [Mix Group Effects](#mix-group-effects)
+- [Spatial Audio](#spatial-audio)
 - [Music Crossfading](#music-crossfading)
 - [Audio File Format](#audio-file-format)
 - [Limits and Behaviors](#limits-and-behaviors)
@@ -731,6 +733,14 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 | `Audio.SetGroupVolumeNamed(name, vol)` | `Void(String, Integer)` | Register if needed, then set volume |
 | `Audio.GetGroupVolumeNamed(name)` | `Integer(String)` | Get a named group volume, or 100 if missing |
 | `Audio.GroupName(group)` | `String(Integer)` | Return a registered group name, or empty string |
+| `Audio.GroupAddLowpass(group, cutoffHz, q)` | `Integer(Integer, Float, Float)` | Add a low-pass filter insert and return an effect ID |
+| `Audio.GroupAddHighpass(group, cutoffHz, q)` | `Integer(Integer, Float, Float)` | Add a high-pass filter insert and return an effect ID |
+| `Audio.GroupAddPeaking(group, freqHz, q, gainDb)` | `Integer(Integer, Float, Float, Float)` | Add a peaking EQ insert and return an effect ID |
+| `Audio.GroupAddDelay(group, ms, feedback, wet)` | `Integer(Integer, Float, Float, Float)` | Add a delay insert and return an effect ID |
+| `Audio.GroupAddReverb(group, roomSize, damping, wet)` | `Integer(Integer, Float, Float, Float)` | Add a reverb insert and return an effect ID |
+| `Audio.GroupSetFxBypass(group, fxId, bypass)` | `Void(Integer, Integer, Boolean)` | Enable or bypass one group effect |
+| `Audio.GroupRemoveFx(group, fxId)` | `Void(Integer, Integer)` | Remove one group effect |
+| `Audio.GroupClearFx(group)` | `Void(Integer)` | Remove every effect from the group |
 
 ### Sound Methods (Group-Aware)
 
@@ -753,6 +763,90 @@ the current process and can be passed to `PlayGroup`, `PlayExGroup`, and
 
 Group names are stored as fixed-size C backend names. Embedded `NUL` bytes are sanitized
 to `_` before registration and lookup so `"amb\0x"` cannot alias `"amb"`.
+
+## Mix Group Effects
+
+Mix-group effects are insert chains on the group bus. Every playing voice and
+music stream first contributes to its group, the chain processes that group once,
+then the processed result is mixed into the master output.
+
+The built-in effects are:
+
+| Effect | Parameters | Typical use |
+|--------|------------|-------------|
+| Low-pass | `cutoffHz`, `q` | Occlusion, underwater/muffled SFX |
+| High-pass | `cutoffHz`, `q` | Radio/phone voices, thin UI cues |
+| Peaking EQ | `freqHz`, `q`, `gainDb` | Boost or cut one band |
+| Delay | `ms`, `feedback`, `wet` | Echoes and slapback |
+| Reverb | `roomSize`, `damping`, `wet` | Room or ambience tails |
+
+Effect creation allocates any needed delay/reverb buffers up front. The mixer
+process path performs no per-block allocations, and bypassed effects remain in
+the chain without changing the signal.
+
+### Zia Example
+
+```rust
+module AudioFxDemo;
+
+bind Viper.Sound.Audio as Audio;
+bind Viper.Sound.Sound as Sound;
+
+func start() {
+    if Audio.Init() == 0 {
+        return;
+    }
+
+    var ambience = Audio.RegisterGroup("ambience");
+    var sfx = Audio.RegisterGroup("sfx");
+
+    var reverb = Audio.GroupAddReverb(ambience, 0.72, 0.35, 0.45);
+    var occlusion = Audio.GroupAddLowpass(sfx, 1600.0, 0.707);
+
+    var hit = Sound.LoadAsset("assets/audio/hit.wav");
+    if hit != null {
+        hit.PlayExGroup(90, 0, sfx);
+    }
+
+    Audio.GroupSetFxBypass(sfx, occlusion, true);
+    Audio.GroupRemoveFx(ambience, reverb);
+    Audio.GroupClearFx(sfx);
+
+    Audio.Shutdown();
+}
+```
+
+Effects require compiled audio support. The plain mix-group volume/name APIs
+remain available as settings state in audio-disabled builds.
+
+## Spatial Audio
+
+`Viper.Sound.SpatialAudio3D` is the low-level spatial audio surface. Its
+implementation lives under `src/runtime/audio/` with the rest of the audio
+runtime. It computes distance attenuation, stereo pan, per-voice falloff state,
+and Doppler metadata before delegating to normal `Sound` voice playback.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SpatialAudio3D.SetListener(position, forward)` | `Void(Object, Object)` | Set the fallback listener position and forward direction |
+| `SpatialAudio3D.PlayAt(sound, position, maxDist, volume)` | `Integer(Object, Object, Float, Integer)` | Play a sound from a world position |
+| `SpatialAudio3D.UpdateVoice(voice, position, maxDist)` | `Void(Integer, Object, Float)` | Recompute attenuation and pan for a moving voice |
+| `SpatialAudio3D.SyncBindings(dt)` | `Void(Float)` | Sync object-backed listeners/sources bound to scene nodes or cameras |
+
+`SoundListener3D` and `SoundSource3D` remain in the
+`Viper.Graphics3D` namespace because those object wrappers bind to
+`SceneNode3D` and `Camera3D`. They call into the audio-owned spatial math; the
+graphics side owns only scene/camera binding and lifetime integration.
+
+| Graphics3D type | Description |
+|-----------------|-------------|
+| `SoundListener3D` | Active listener pose, velocity, node/camera binding, and `IsActive` selection |
+| `SoundSource3D` | Positional `Sound` instance with ref/max distance, velocity, looping, and optional node binding |
+
+Scene-driven games usually update transforms, call `Scene3D.SyncBindings(dt)`,
+then trigger `SoundSource3D.Play()` or `SpatialAudio3D.PlayAt(...)` for the
+frame. Direct spatial callers can skip the object wrappers and call
+`SpatialAudio3D.SetListener`, `PlayAt`, and `UpdateVoice` with `Vec3` handles.
 
 ---
 

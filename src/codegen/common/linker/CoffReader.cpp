@@ -55,7 +55,7 @@ static constexpr uint32_t IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x00000080;
 static constexpr uint32_t IMAGE_SCN_LNK_COMDAT = 0x00001000;
 static constexpr uint32_t IMAGE_SCN_LNK_NRELOC_OVFL = 0x01000000;
 static constexpr uint32_t IMAGE_SCN_MEM_EXECUTE = 0x20000000;
-static constexpr uint32_t IMAGE_SCN_MEM_READ = 0x40000000;
+[[maybe_unused]] static constexpr uint32_t IMAGE_SCN_MEM_READ = 0x40000000;
 static constexpr uint32_t IMAGE_SCN_MEM_WRITE = 0x80000000;
 
 static constexpr uint8_t IMAGE_COMDAT_SELECT_NODUPLICATES = 1;

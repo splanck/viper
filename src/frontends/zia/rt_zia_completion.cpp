@@ -685,27 +685,6 @@ std::optional<SymbolKey> findGlobalSymbolKey(const AnalysisResult &analysis,
     return importedCandidate;
 }
 
-std::optional<SymbolKey> resolveToken(ProjectIndex &index,
-                                      const std::string &path,
-                                      const std::string &source,
-                                      const IdentifierToken &token) {
-    il::support::SourceManager sm;
-    auto analysis = analyzeIndexedSource(index, path, source, sm);
-    if (!analysis || !analysis->sema)
-        return std::nullopt;
-
-    const ScopedSymbol *scoped = analysis->sema->findSymbolAtPosition(
-        token.text, analysis->fileId, token.loc.line, token.loc.column);
-    const std::string sourcePath = sourcePathForFile(analysis->fileId, sm, path);
-    if (scoped) {
-        SymbolKey key =
-            keyForSymbol(scoped->symbol, scoped->loc, scoped->ownerType, sm, sourcePath);
-        if (key.valid)
-            return key;
-    }
-    return findGlobalSymbolKey(*analysis, token, sm, sourcePath);
-}
-
 std::optional<SymbolKey> resolveAtPosition(ProjectIndex &index,
                                            const std::string &path,
                                            const std::string &source,

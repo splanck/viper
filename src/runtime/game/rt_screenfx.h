@@ -4,16 +4,16 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_screenfx.h
-// Purpose: Screen effects manager for camera shake, color flash, and screen fades, with up to
-// RT_SCREENFX_MAX_EFFECTS (8) concurrent effects outputting shake offsets and overlay colors per
-// frame.
+// Purpose: Screen effects manager for camera shake, color flash, and screen fades. It reserves
+// RT_SCREENFX_MAX_EFFECTS (8) slots initially and grows when more concurrent effects are needed.
 //
 // Key invariants:
 //   - Time values use fixed-point milliseconds; 1000 = 1 pixel for shake offsets.
 //   - Colors are packed as 0xRRGGBBAA.
 //   - rt_screenfx_update must be called once per frame with the elapsed delta time.
 //   - Non-positive update deltas are ignored; elapsed time saturates instead of overflowing.
-//   - Maximum concurrent effects is RT_SCREENFX_MAX_EFFECTS (8).
+//   - Initial concurrent-effect reservation is RT_SCREENFX_MAX_EFFECTS (8); storage grows on
+//   demand.
 //
 // Ownership/Lifetime:
 //   - GC-managed via rt_obj_new_i64; explicit destroy releases the caller's reference.
@@ -30,7 +30,7 @@
 extern "C" {
 #endif
 
-/// Maximum number of concurrent effects.
+/// Initial number of reserved concurrent effect slots.
 #define RT_SCREENFX_MAX_EFFECTS 8
 
 /// Runtime class ID used to validate ScreenFX handles.

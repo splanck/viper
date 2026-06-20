@@ -1,72 +1,103 @@
 # Zia Constrained Generics
 
-**Status:** Doc-sourced (deferred feature, `docs/GENERICS_IMPLEMENTATION_PLAN.md` §10.1)
+**Status:** Completed — constrained generics are implemented, hardened with a
+dedicated matrix, documented, and covered by example smoke.
 **Area:** `src/frontends/zia/`
-**Effort:** M–L
+**Effort:** M
 **Roadmap fit:** v0.3.x P3 (missing features)
 
 ## Problem
 
-Zia generics work end-to-end via monomorphization, but **interface constraints on type
-parameters** (e.g. `func max[T: Comparable](a: T, b: T) -> T`) are deferred per
-`docs/GENERICS_IMPLEMENTATION_PLAN.md` §10.1. Today a generic body can only use
-operations available on all types (or via explicit casts); it cannot require and rely on
-an interface contract, and mis-instantiation isn't caught with a clear diagnostic.
+The historical `docs/GENERICS_IMPLEMENTATION_PLAN.md` still contains old future-work
+language around constrained generics, but the active code and reference docs have moved
+on. `docs/zia-reference.md` documents optional interface constraints, release notes for
+0.2.6 say constrained generics shipped, and `src/frontends/zia/Sema_Generics.cpp`
+implements `validateGenericConstraints()`.
 
-This plan scopes the **remaining** work and defers to the existing design doc for the
-broader architecture rather than duplicating it.
+The real risk is not "feature absent"; it is that constrained generics are complex enough
+to regress at the edges: qualified constraints, generic classes/structs/interfaces,
+method-level constraints, inherited interface satisfaction, diagnostics, and lowering of
+calls inside constrained generic bodies.
 
-## Current state (verified via memory + the design doc)
+## Completed state (verified)
 
-- `Sema_Generics.cpp` performs monomorphization with a type-parameter substitution stack.
-- Generic syntax parses; constraint clauses are (per the plan) not fully enforced.
-- Interfaces + itable dispatch exist in the language already (used by non-generic code).
+- `Parser_Decl.cpp` parses generic parameters with optional `: qualifiedName`
+  constraints for functions, methods, classes, structs, and interfaces.
+- `Sema_Generics.cpp` records per-parameter constraints and validates each concrete type
+  argument with `typeImplementsInterface()`.
+- Class arguments now satisfy constraints through interfaces implemented by base
+  classes, with cycle protection while walking the base chain.
+- `docs/zia-reference.md` documents `class Box[T: Named]`,
+  `func max[T: Comparable]`, qualified constraints, single-bound syntax, and
+  future status for multiple bounds / `where` clauses.
+- `src/tests/zia/test_zia_constrained_generics.cpp` covers the shipped matrix:
+  constrained functions, methods, classes, structs, generic interfaces,
+  qualified constraints, inherited interface satisfaction, violation
+  diagnostics, rejected multiple-bound syntax, and stable lowered calls inside
+  constrained generic bodies.
+- `examples/zia/constrained_generics.zia` is wired into the manifest-driven
+  example smoke lane.
 
 ## Goal & scope
 
-- **In:** Parse `T: Interface` (and multiple bounds `T: A + B`); enforce at instantiation
-  that the concrete type satisfies every bound; allow constrained bodies to call the
-  interface's methods; emit a precise diagnostic on violation.
-- **Out:** Higher-kinded types, associated types, variance, where-clauses beyond simple
-  interface bounds (note as future work).
+- **In:** Expand conformance tests and diagnostics around the implemented constraint
+  model; clarify unsupported syntax in the historical plan; evaluate multiple bounds as a
+  deliberate future extension instead of assuming it belongs in the shipped grammar.
+- **Out:** Higher-kinded types, associated types, variance, and broad where-clauses.
 
 ## Design
 
-1. **Parser:** extend the generic-parameter grammar to accept `: Bound (+ Bound)*`;
-   attach bounds to the type-parameter AST node.
-2. **Sema:** when instantiating a generic with concrete type args, check each arg against
-   its bounds (reuse the existing interface-conformance check used for non-generic
-   `x: SomeInterface`). Record the satisfying itable so the body can dispatch. Inside a
-   generic body, treat a bounded `T` as conforming to its bounds for method resolution.
-3. **Lowerer:** constrained method calls on a `T` lower to interface (itable) dispatch,
-   exactly as a non-generic interface call does; monomorphization can later devirtualize
-   when the concrete type is known.
+The elegant path is to keep the single-bound syntax currently implemented and strengthen
+the semantic contract around it before adding new surface area.
 
-## Implementation steps
+1. **Conformance matrix:** collect the shipped constrained-generic behavior into a single
+   test file/table covering function, method, class, struct, interface, qualified name,
+   inherited implementation, and violation cases.
+2. **Diagnostics:** ensure every violation names the concrete type, required interface,
+   generic parameter, and generic subject; add stable diagnostic-code assertions where
+   the frontend has codes.
+3. **Lowering audit:** add IL inspections for constrained method calls inside generic
+   bodies so the generated dispatch is explicit and stable.
+4. **Future extension:** only after the matrix is green, decide whether `T: A + B` belongs
+   in the language. If yes, implement it as a small additive extension to the existing
+   `genericParamConstraints` representation (likely vector-of-vectors), not as a new
+   generics design.
 
-1. `Parser*`: grammar + AST for bounds (see `parseGenericParams`).
-2. `Sema_Generics.cpp` + conformance checker: validate bounds at instantiation; thread
-   the itable through the substitution; resolve `T`-method calls via the bound.
-3. `Lowerer_*`: emit itable dispatch for constrained calls; keep devirt opportunity.
-4. Update `docs/GENERICS_IMPLEMENTATION_PLAN.md` §10.1 status when done.
+## Completed work
+
+1. Added `src/tests/zia/test_zia_constrained_generics.cpp` and registered
+   `test_zia_constrained_generics`.
+2. Added IL inspection for constrained generic body calls. Current
+   monomorphized lowering emits a concrete class-id check and direct concrete
+   method call such as `genericName$User -> User.name`, not interface-table
+   dispatch.
+3. Updated `docs/GENERICS_IMPLEMENTATION_PLAN.md` so §10.1 is historical and
+   the appendix grammar shows shipped single-bound constraints.
+4. Updated `docs/zia-reference.md`, `docs/testing.md`, and `examples/README.md`.
+5. Added `examples/zia/constrained_generics.zia` to `examples/smoke_manifest.tsv`.
 
 ## Tests (`src/tests/zia/` + `tests/zia_runtime/`)
 
-- **Positive:** `max[T: Comparable]` instantiated with a conforming type compiles and runs
-  correctly; constrained method call dispatches to the right impl.
-- **Negative:** instantiating with a non-conforming type fails sema with a clear message
-  naming the unmet bound (Given/When/Then; assert the diagnostic code + text).
-- **Multiple bounds:** `T: A + B` requires both; missing either errors.
-- **Monomorphization:** confirm the constrained call devirtualizes where the concrete
-  type is statically known (IL inspection).
+- **Positive:** constrained function, method, class, struct, and interface declarations
+  instantiate with conforming class and struct types.
+- **Qualified:** `T: Contracts.Named` resolves through module/namespace qualification.
+- **Inherited:** a type satisfying a constraint through a parent/interface chain is
+  accepted if the language intends that behavior; otherwise rejected with a clear
+  diagnostic.
+- **Negative:** non-conforming type fails sema with a clear message naming the unmet
+  bound.
+- **Lowering:** constrained method calls inside generic bodies produce stable IL and run
+  identically on VM/native/bytecode.
+- **Future multiple-bounds tests:** add only when the grammar is intentionally extended.
 
 ## Documentation
 
-- Expand the generics section of `docs/zia-reference.md` and `docs/zia-grammar.md` with
-  constraint syntax, semantics, and a worked example.
+- Keep the generics section of `docs/zia-reference.md` authoritative and add any missing
+  edge semantics discovered by the matrix.
 - Add a short constrained-generics example under `examples/` (and wire it into the
   example build-smoke).
-- Mark §10.1 complete in `docs/GENERICS_IMPLEMENTATION_PLAN.md`; one release-notes line.
+- Mark §10.1 in `docs/GENERICS_IMPLEMENTATION_PLAN.md` as historical/completed or move it
+  to a "future extensions beyond shipped constrained generics" subsection.
 
 ## Cross-platform
 
@@ -74,7 +105,20 @@ Frontend-only; no platform concerns. Output IL must remain VM/native-determinist
 
 ## Risks / open questions
 
-- **Diagnostic quality** is the user-visible payoff — invest in the "unmet bound X for
-  type Y" message and a fixit suggestion where possible.
-- **Inherited/forward-reference interactions** (see the memory note on Sema pass-3
-  inherited-method copying) — test constrained generics that reference parent interfaces.
+- **Multiple bounds:** intentionally rejected until the grammar and
+  `genericParamConstraints` representation are extended.
+- **Richer diagnostics:** the current violation message names the concrete type,
+  required interface, type parameter, and generic subject. Fix-it suggestions can
+  be added later if the diagnostic framework gains a good interface-stub fix-it.
+
+## Verification
+
+Completed on 2026-06-20:
+
+```sh
+VIPER_SKIP_CLEAN=1 VIPER_SKIP_TESTS=1 VIPER_SKIP_LINT=1 VIPER_SKIP_AUDIT=1 VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper_mac.sh
+cmake --build build --target test_zia_constrained_generics -j 8
+ctest --test-dir build -R '^test_zia_constrained_generics$' --output-on-failure
+ctest --test-dir build -R '^(example_smoke_manifest_audit|example_smoke_fast)$' --output-on-failure
+./build/src/tools/viper/viper run examples/zia/constrained_generics.zia
+```

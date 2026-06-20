@@ -1,14 +1,14 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-06-20
 ---
 
 # Viper Runtime Library Reference
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-04-07
+> **Last updated:** 2026-06-20
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -21,7 +21,7 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Audio`, `Music`, `MusicGen`, `Sound`, `Synth`, `Voice` — audio playback and procedural generation |
-| [Collections](collections/README.md)   | `Bag`, `Bytes`, `Deque`, `Heap`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `Trie`, `WeakMap` |
+| [Collections](collections/README.md)   | `Bag`, `Bytes`, `Deque`, `F64Buffer`, `Heap`, `I64Buffer`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `Trie`, `WeakMap` |
 | [Core Types](core.md)           | `Box`, `Diagnostics`, `MessageBus`, `Object`, `Parse`, `String` — foundational types (`Viper.Core`) |
 | [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
@@ -93,7 +93,9 @@ implemented in C and exposed through the IL runtime system.
 | [`Deque`](collections/README.md#vipercollectionsdeque)               | Instance | Double-ended queue                         |
 | [`FrozenMap`](collections/README.md#vipercollectionsfrozenmap)       | Instance | Immutable key-value map                    |
 | [`FrozenSet`](collections/README.md#vipercollectionsfrozenset)       | Instance | Immutable string set                       |
+| [`F64Buffer`](collections/specialized.md#packed-numeric-buffers)      | Instance | Packed 64-bit float buffer                 |
 | [`Heap`](collections/README.md#vipercollectionsheap)                 | Instance | Priority queue (min/max heap)              |
+| [`I64Buffer`](collections/specialized.md#packed-numeric-buffers)      | Instance | Packed 64-bit integer buffer               |
 | [`IntMap`](collections/README.md#vipercollectionsintmap)             | Instance | Integer-keyed hash map                     |
 | [`Iterator`](collections/README.md#vipercollectionsiterator)         | Instance | Generic forward iterator                   |
 | [`LazySeq`](collections/README.md#viperlazyseq)                      | Instance | Lazy on-demand sequence (`Viper.Functional.LazySeq`)  |
@@ -397,6 +399,7 @@ implemented in C and exposed through the IL runtime system.
 | Legacy compatibility        | `List`      | Similar to VB6 Collection                   |
 | LIFO (last-in-first-out)    | `Stack`     | Simple push/pop interface                   |
 | Priority queue              | `Heap`      | Extract min/max by priority                 |
+| Packed numeric batches      | `F64Buffer` / `I64Buffer` | Dense primitive storage without per-element boxing |
 | Sorted key-value            | `TreeMap`   | Keys in sorted order, floor/ceil queries    |
 | Sorted unique strings       | `SortedSet` | Sorted order, range queries, floor/ceil     |
 | Unique objects              | `Set`       | Object set with set operations              |

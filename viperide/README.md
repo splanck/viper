@@ -204,7 +204,9 @@ It covers document kind detection, command id consistency, structured locations,
 language-service capabilities, command palette categories, search matching,
 signature-call parsing, session/recent-project persistence, active-tab close
 behavior, transactional workspace edits for open and closed files, recent-file
-persistence, recently closed tab tracking, and project-index queries.
+persistence, recently closed tab tracking, project-index queries, and the
+deliberate BASIC capability gate that keeps semantic commands disabled until
+ViperIDE has a real BASIC server adapter.
 
 The console/search regression probe is registered as
 `zia_viperide_console_search`. It covers raw output rendering through the

@@ -155,7 +155,7 @@ std::filesystem::path fallbackSupportLibraryPath(std::string_view libBaseName) {
     return supportLibBuildSubdir(libBaseName) / archiveFileName(libBaseName);
 }
 
-std::vector<std::string> preferredBuildConfigs() {
+[[maybe_unused]] std::vector<std::string> preferredBuildConfigs() {
     std::vector<std::string> configs;
     auto append = [&](std::string config) {
         if (config.empty())

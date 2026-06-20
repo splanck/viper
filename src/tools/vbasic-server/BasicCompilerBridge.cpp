@@ -406,20 +406,20 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
         }
         const auto loc = findBasicSymbolLocation(symbolLocations, sym);
         out.push_back(
-            {sym, "variable", typeStr, sema.isConstSymbol(sym), false, loc.line, loc.column});
+            {sym, "variable", typeStr, sema.isConstSymbol(sym), false, loc.line, loc.column, path});
     }
 
     // Procedures
     for (const auto &[name, sig] : sema.procs()) {
         std::string kind = sig.kind == ProcSignature::Kind::Function ? "function" : "method";
         const auto loc = findBasicSymbolLocation(symbolLocations, name);
-        out.push_back({name, kind, "", false, false, loc.line, loc.column});
+        out.push_back({name, kind, "", false, false, loc.line, loc.column, path});
     }
 
     // Classes
     for (const auto &[name, info] : sema.oopIndex().classes()) {
         const auto loc = findBasicSymbolLocation(symbolLocations, name);
-        out.push_back({name, "type", info.qualifiedName, false, false, loc.line, loc.column});
+        out.push_back({name, "type", info.qualifiedName, false, false, loc.line, loc.column, path});
     }
 
     return out;

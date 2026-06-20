@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-04-09
+last-verified: 2026-06-20
 ---
 
 # Testing Guide
@@ -63,6 +63,7 @@ ctest --test-dir build
 
 # Run tests by label
 ctest --test-dir build -L codegen          # Code generation tests only
+ctest --test-dir build -L bytecode         # Bytecode VM and VM/bytecode parity
 ctest --test-dir build -L golden           # Golden file tests only
 ctest --test-dir build -L "vm"             # VM tests only
 
@@ -83,7 +84,7 @@ ctest --test-dir build --print-labels
 ./scripts/update_goldens.sh il_opt         # Update only optimizer goldens
 
 # Run with sanitizers
-./scripts/ci_sanitizer_tests.sh
+./scripts/ci_full_sanitizer.sh
 ```
 
 ## Test Labels
@@ -91,6 +92,7 @@ ctest --test-dir build --print-labels
 | Label | Count | Description |
 |-------|-------|-------------|
 | `basic` | 95 | BASIC frontend (lexer, parser, sema, lowerer) |
+| `bytecode` | — | Bytecode VM direct tests and IL VM/bytecode parity |
 | `il` | 196 | IL core (parsing, serialization, verification, analysis, transforms) |
 | `vm` | 112 | VM runtime (opcodes, traps, debugging, concurrency) |
 | `runtime` | 373 | C runtime library (strings, collections, I/O, math, graphics, etc.) |
@@ -98,6 +100,8 @@ ctest --test-dir build --print-labels
 | `oop` | 31 | Object-oriented programming (classes, inheritance, interfaces) |
 | `golden` | 203 | Golden file regression (diagnostic messages, IL/optimizer output) |
 | `e2e` | 19 | End-to-end pipeline tests |
+| `examples` | — | Example/demo manifest audit and fast smoke |
+| `fuzz` | — | Fuzz corpus replay and fuzz-lane self-checks |
 | `ilopt` | 4 | IL optimizer pass golden tests |
 | `conformance` | 10 | Arithmetic semantics cross-layer equivalence |
 | `zia` | 101 | Zia language frontend tests |
@@ -120,6 +124,9 @@ Located in `src/tests/unit/`, `src/tests/il/`, `src/tests/vm/`. Test individual 
 - VM opcode semantics, traps, debugging
 - Codegen utilities (peephole, register allocation, ISel)
 - Runtime C functions (strings, collections, I/O, math)
+- Runtime audio coverage, including `test_rt_audio_fx`,
+  `test_rt_audio_integration`, `test_rt_sound3d_contract`, and
+  `test_rt_sound3d_objects`
 - Frontend parser, sema, lowerer for both Zia and BASIC
 
 ### Golden Tests
@@ -151,6 +158,35 @@ Located in `src/tests/e2e/`. Test complete pipelines:
 
 Located in `src/tests/unit/codegen/`. Verify that VM and native backends produce identical results
 for the same IL programs.
+
+`src/tests/codegen/aarch64/` is the dedicated home for AArch64 backend tests that
+consume shared or end-to-end corpus inputs. Low-level instruction, pass, or
+allocator tests may remain in `src/tests/unit/codegen/` when that is the clearer
+ownership boundary.
+
+### Shared IL Corpus
+
+`src/tests/shared_corpus/il/` contains deterministic IL programs used by more
+than one backend or execution engine. `success/` programs return a stable `i64`
+and may write stable runtime stdout; `traps/` programs intentionally terminate
+with one of the shared VM trap kinds. Avoid time, randomness, host file system
+state, network access, and unbounded loops in this corpus.
+
+The main consumers are:
+
+- `test_bytecode_full_program_parity`: runs each success program on the IL VM,
+  bytecode switch dispatch, and bytecode threaded dispatch, then compares return
+  value and runtime stdout. It also checks trap programs and locks down
+  bytecode/IL `TrapKind` value alignment for kinds 0-11.
+- `test_codegen_aarch64_shared_corpus`: compiles representative success programs
+  through the AArch64 command pipeline on every host without executing ARM64
+  code, and checks deterministic assembly plus stable mnemonic markers.
+
+Cross-backend native parity is enforced transitively through the VM: x86_64
+native and AArch64 native each compare covered programs to the same VM
+semantics, so widening shared-corpus VM-differential coverage widens backend
+equivalence. Direct both-native comparison remains a slow, opt-in workflow for
+hosts with emulation.
 
 ---
 
@@ -436,25 +472,23 @@ Located in `src/tests/unit/test_vm_concurrency_stress.cpp`. Exercises:
 
 ### Running with ThreadSanitizer (TSan)
 
-TSan detects data races at runtime. To run with TSan:
+Sanitizer lanes are local opt-in checks. `scripts/ci_full_sanitizer.sh` is the
+canonical entry point for broad ASan/UBSan coverage; the legacy
+`scripts/ci_sanitizer_tests.sh` wrapper delegates to it. Use the TSan variants after VM,
+runtime, or graphics concurrency changes.
 
 ```bash
-# Focused 3D/concurrency lane used by the 3D Next Level roadmap
-scripts/g3d_tsan_concurrency_lane.sh
+# Broad ASan + UBSan lane
+./scripts/ci_full_sanitizer.sh
 
-# Configure with TSan enabled
-cmake -S . -B build-tsan -DCMAKE_CXX_FLAGS="-fsanitize=thread -g" -DCMAKE_C_FLAGS="-fsanitize=thread -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+# Generic VM/runtime TSan lane
+./scripts/ci_full_sanitizer.sh --tsan
 
-# Build
-cmake --build build-tsan -j
+# Focused graphics3d concurrency TSan lane
+./scripts/g3d_tsan_concurrency_lane.sh
 
-# Run concurrency tests under TSan
-./build-tsan/src/tests/test_vm_concurrency_stress
-./build-tsan/src/tests/test_vm_threading_model
-./build-tsan/src/tests/test_vm_runtime_concurrency
-
-# Or run all tests under TSan (slower)
-ctest --test-dir build-tsan --output-on-failure
+# Confirm sanitizer toolchain availability without running the full lane
+./scripts/ci_full_sanitizer.sh --self-test
 ```
 
 #### Interpreting TSan Output
@@ -490,6 +524,58 @@ Run with suppressions:
 ```bash
 TSAN_OPTIONS="suppressions=tsan.supp" ./build-tsan/src/tests/test_vm_concurrency_stress
 ```
+
+### Measuring Coverage
+
+Clang source-based coverage is available through the opt-in
+`VIPER_ENABLE_COVERAGE` CMake option and the local coverage lane:
+
+```bash
+./scripts/coverage.sh
+```
+
+The script configures `build-coverage/`, runs CTest with coverage profile output, and
+writes:
+
+- `coverage/summary.txt` — `llvm-cov report` summary.
+- `coverage/subsystems.txt` — ranked per-subsystem line-coverage rollup.
+- `coverage/html/index.html` — drill-down HTML report.
+
+Coverage is for visibility only; it does not enforce thresholds. Use it when adding a new
+subsystem or when ranking weak areas by measured coverage instead of intuition.
+
+### Example Smoke
+
+Examples are classified by `examples/smoke_manifest.tsv` and checked by
+`scripts/example_smoke.sh`.
+
+```bash
+./scripts/example_smoke.sh --audit              # all example sources classified
+./scripts/example_smoke.sh --fast               # fast runnable/checkable subset
+./scripts/example_smoke.sh --all                # full manifest sweep
+ctest --test-dir build -L examples --output-on-failure
+```
+
+The manifest keeps graphical, project, benchmark, and non-standalone examples explicit
+while letting CTest run a fast headless smoke over compact Zia language examples,
+tutorial BASIC, and runnable IL samples.
+
+### Performance Baselines
+
+`scripts/benchmark.sh` stores JSONL runs in `misc/benchmarks/results.jsonl`; checked
+baselines live in `misc/benchmarks/baseline.jsonl`.
+
+```bash
+./scripts/benchmark.sh --viper-only
+./scripts/benchmark_compare.sh
+./scripts/benchmark_compare.sh --self-test
+```
+
+Use `--viper-only` for the canonical local regression lane when external language
+toolchains are not relevant. `benchmark_compare.sh` compares only common
+program/mode pairs and fails on Viper-mode regressions above the configured threshold.
+Refresh baselines with `benchmark.sh --set-baseline` only after reviewing the measured
+delta and host metadata in the JSONL output.
 
 ### Threading Model Invariants
 
@@ -530,21 +616,32 @@ The script runs each golden test, skips those already passing, and re-runs failu
 
 ## Fuzz Testing
 
-Fuzz harnesses are in `src/tests/fuzz/` (requires `VIPER_ENABLE_FUZZ=ON`):
+Fuzz harnesses are in `src/tests/fuzz/` (requires `VIPER_ENABLE_FUZZ=ON`). Each harness
+has a committed seed corpus under `src/tests/fuzz/corpus/<target-without-fuzz-prefix>/`.
 
-- `fuzz_zia_lexer.cpp` — Zia lexer fuzzing via libFuzzer
-- `fuzz_zia_parser.cpp` — Zia parser fuzzing via libFuzzer
+Two cadences are supported:
+
+- **Replay:** fuzz-enabled CMake builds register `<target>_replay` CTests over committed
+  corpora, labelled `fuzz`.
+- **Exploration:** `scripts/fuzz_smoke.sh` builds every discovered fuzzer and time-boxes
+  mutation over each corpus.
 
 ```bash
-cmake -S . -B build-fuzz -DVIPER_ENABLE_FUZZ=ON
-cmake --build build-fuzz --target fuzz_zia_lexer
-./build-fuzz/src/tests/fuzz_zia_lexer corpus/ -max_len=4096
+./scripts/fuzz_smoke.sh --self-test
+./scripts/fuzz_smoke.sh --list
+VIPER_FUZZ_SECONDS=10 ./scripts/fuzz_smoke.sh
+
+cmake -S . -B build-fuzz -DVIPER_ENABLE_FUZZ=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build-fuzz --target fuzz_zia_parser
+ctest --test-dir build-fuzz -L fuzz --output-on-failure
 ```
+
+When a new parser, wire format, or protocol surface is added, add a harness plus a small
+minimized corpus before treating the surface as covered. New crashes should be minimized
+and checked into the relevant corpus directory.
 
 ## Future Work
 
-- Expand fuzz testing to BASIC lexer/parser, IL parser, IL verifier, VM
-- Full-suite sanitizer CI (ASan + UBSan on all 1,393 tests)
 - Reusable DifferentialTestFixture for VM vs native comparisons
 - Test consolidation: merge 196 standalone runtime tests into ~30 themed files
 - LoopRotate, GVN, DSE, LICM edge-case tests

@@ -36,7 +36,7 @@ extern "C" {
 /// Maximum tree depth.
 #define RT_QUADTREE_MAX_DEPTH 8
 
-/// Maximum items in a query result.
+/// Default reservation for query results. The runtime grows beyond this when needed.
 #define RT_QUADTREE_MAX_RESULTS 256
 
 /// Opaque handle to a Quadtree instance.
@@ -118,12 +118,11 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index);
 /// @return Number of results from the most recent query.
 int64_t rt_quadtree_result_count(rt_quadtree tree);
 
-/// @brief Check whether the last query was silently truncated.
+/// @brief Check whether the last query returned partial results.
 ///
-/// Returns 1 if the most recent rt_quadtree_query_rect() or
-/// rt_quadtree_query_point() hit the RT_QUADTREE_MAX_RESULTS cap and
-/// dropped items. Callers that rely on "all overlapping entities" MUST
-/// check this flag and subdivide the query or increase the cap.
+/// Returns 1 only if the most recent rt_quadtree_query_rect() or
+/// rt_quadtree_query_point() could not grow its result storage and therefore
+/// returned a partial result. Normal queries grow beyond RT_QUADTREE_MAX_RESULTS.
 /// @param tree The quadtree.
 /// @return 1 if the last query was truncated, 0 otherwise.
 int8_t rt_quadtree_query_was_truncated(rt_quadtree tree);
@@ -153,11 +152,10 @@ int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index);
 /// @return Second item ID of the pair, or -1 if invalid index.
 int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index);
 
-/// @brief Check whether the last rt_quadtree_get_pairs() was silently truncated.
+/// @brief Check whether the last rt_quadtree_get_pairs() returned partial pairs.
 ///
-/// Returns 1 if the most recent rt_quadtree_get_pairs() hit the MAX_PAIRS cap
-/// and dropped collision pairs. Callers that rely on "all colliding pairs" MUST
-/// check this flag and subdivide the work or raise the cap.
+/// Returns 1 only if the most recent rt_quadtree_get_pairs() could not grow its
+/// pair storage and therefore returned partial pairs.
 /// @param tree The quadtree.
 /// @return 1 if the last pair collection was truncated, 0 otherwise.
 int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree);

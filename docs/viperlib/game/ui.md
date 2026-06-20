@@ -194,7 +194,7 @@ Editable single-line text field with UTF-8-safe cursoring, selection, placeholde
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Text` | String | Read/Write | Current text, truncated to the internal 511-byte buffer on codepoint boundaries; embedded NUL bytes terminate the stored visible text |
+| `Text` | String | Read/Write | Current text; storage grows as needed, `SetMaxCodepoints` can enforce a codepoint limit, and embedded NUL bytes terminate the stored visible text |
 | `Visible` | Boolean | Read/Write | Visibility toggle |
 | `Enabled` | Boolean | Read/Write | Input enable toggle |
 | `Focused` | Boolean | Read/Write | Keyboard focus |
@@ -222,6 +222,10 @@ Editable single-line text field with UTF-8-safe cursoring, selection, placeholde
 | `SetPlaceholder(text)` | `Void(String)` | Draw placeholder when empty |
 | `SetMaxCodepoints(count)` | `Void(Integer)` | Limit text length; `0` disables the limit |
 | `Update(deltaMs)` / `Draw(canvas)` | `Void(...)` | Advance caret blink and render |
+
+Text and placeholder buffers start with a 512-byte reservation and grow on demand. Text
+entry is still UTF-8 codepoint aware, and `SetMaxCodepoints(count)` is the user-visible
+length policy (`0` disables it).
 
 ---
 
@@ -257,6 +261,10 @@ Sortable table widget for compact scoreboards, inventories, debug panels, and se
 | `HandleScroll(delta)` / `HandleKey(key)` | `Void(Integer)` | Update scroll/selection |
 | `Draw(canvas)` | `Void(Canvas)` | Render the table |
 
+Tables start with room for 16 columns and 512 rows, then grow their column, row, and cell
+storage on demand. Cell text is copied into fixed-size per-cell storage and clipped on
+UTF-8 codepoint boundaries.
+
 ---
 
 ## Viper.Game.UI.Modal
@@ -281,6 +289,9 @@ Modal dialog with title, content text, buttons, and optional child widgets.
 | `HandleKey(key, shift)` | `Integer(Integer, Boolean)` | Handle tab, enter, escape, and child text input |
 | `HandleClick(x, y)` | `Integer(Integer, Integer)` | Trigger button clicks and child focus |
 | `Draw(canvas)` | `Void(Canvas)` | Render overlay, content, children, and buttons |
+
+Modals start with room for 4 buttons and 16 children, then grow those backing arrays on
+demand. Child widgets are retained until the modal is released.
 
 ---
 
@@ -325,6 +336,9 @@ Selectable option list with keyboard and pointer handling.
 | `Open()` / `Close()` | `Void()` | Toggle list state |
 | `HandleClick(x, y)` / `HandleKey(key)` | `Boolean(...)` | Input handling |
 | `Draw(canvas)` | `Void(Canvas)` | Render closed control and open options |
+
+Dropdowns start with room for 32 options and grow on demand. Option labels are copied
+into fixed-size option storage and clipped on UTF-8 codepoint boundaries.
 
 ---
 
@@ -482,6 +496,10 @@ if downPressed { menu.MoveDown(); }
 | Dialogue queued lines | 64 |
 | Dialogue text payload | 511 bytes (UTF-8-safe truncation) |
 | Dialogue speaker label | 63 bytes (UTF-8-safe truncation) |
+| HudTextInput text bytes | Dynamic, starts at 512-byte reservation |
+| Table rows/columns | Dynamic, starts at 512 rows / 16 columns |
+| HudDropdown options | Dynamic, starts at 32 options |
+| Modal buttons/children | Dynamic, starts at 4 buttons / 16 children |
 | Panel alpha range | 0-255 (clamped) |
 | Bar value | Clamped to [0, max] |
 | Bar max | Clamped to >= 1 |

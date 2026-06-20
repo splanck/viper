@@ -47,6 +47,25 @@ scripts\build_viper_win.cmd
 ```
 The macOS and Linux scripts are thin wrappers over `./scripts/build_viper_unix.sh`, which you can also run directly on any Unix system.
 
+### Build Directory Layout
+
+The canonical day-to-day build tree is `build/`, produced by the platform build scripts.
+Specialized local lanes use separate gitignored trees so stale instrumented binaries do
+not get confused with the normal toolchain:
+
+| Directory | Produced by |
+|-----------|-------------|
+| `build/` | `build_viper_mac.sh`, `build_viper_linux.sh`, `build_viper_win.cmd` |
+| `build-coverage/` | `scripts/coverage.sh` |
+| `build-fuzz/` | `scripts/fuzz_smoke.sh` |
+| `build_asan_full/`, `build_ubsan_full/`, `build_tsan_full/` | `scripts/ci_full_sanitizer.sh` |
+| `cmake-build-*` | IDEs such as CLion |
+| `coverage/` | HTML/text coverage reports |
+
+Use `./scripts/clean.sh` or `scripts\clean.ps1` to remove generated build/report
+directories after confirming the printed list. If a command behaves unexpectedly, verify
+which binary you are running with `which viper` (or `where viper` on Windows).
+
 ---
 
 ## Verify the Installation

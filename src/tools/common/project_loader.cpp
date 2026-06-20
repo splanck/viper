@@ -200,50 +200,6 @@ std::vector<std::string> collectFiles(const fs::path &dir,
     return result;
 }
 
-/// @brief Test whether a line begins with one of a set of keywords.
-/// @details Skips leading spaces/tabs, then checks each keyword for a prefix
-///          match. To avoid matching identifiers that merely start with the
-///          keyword, a match additionally requires the keyword to be followed by
-///          end-of-line, whitespace, or '(' (call syntax). Used to recognise
-///          BASIC statement leaders such as `Print` or `AddFile`.
-/// @param line Source line to inspect.
-/// @param keywords Candidate keywords to match at the start of @p line.
-/// @param caseInsensitive When true, compare using ASCII lowercasing.
-/// @return True when @p line starts with one of @p keywords as a whole token.
-bool startsWithKeywordLine(std::string_view line,
-                           std::initializer_list<std::string_view> keywords,
-                           bool caseInsensitive) {
-    std::size_t pos = line.find_first_not_of(" \t");
-    if (pos == std::string_view::npos)
-        return false;
-    line.remove_prefix(pos);
-    for (std::string_view keyword : keywords) {
-        if (line.size() < keyword.size())
-            continue;
-        bool matches = true;
-        for (std::size_t i = 0; i < keyword.size(); ++i) {
-            char lhs = line[i];
-            char rhs = keyword[i];
-            if (caseInsensitive) {
-                lhs = static_cast<char>(std::tolower(static_cast<unsigned char>(lhs)));
-                rhs = static_cast<char>(std::tolower(static_cast<unsigned char>(rhs)));
-            }
-            if (lhs != rhs) {
-                matches = false;
-                break;
-            }
-        }
-        if (!matches)
-            continue;
-        if (line.size() == keyword.size())
-            return true;
-        const char next = line[keyword.size()];
-        if (next == ' ' || next == '\t' || next == '(')
-            return true;
-    }
-    return false;
-}
-
 /// @brief Read a source file as text for convention-based lexical scans.
 /// @details Convention discovery should not report I/O diagnostics for every
 ///          unreadable candidate; callers receive an empty optional and treat it
@@ -1133,7 +1089,8 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
             std::string source =
                 viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "asset source path");
             if (source.empty())
-                return makeManifestErr(manifestPath, lineNum, "asset source path must not be empty");
+                return makeManifestErr(
+                    manifestPath, lineNum, "asset source path must not be empty");
             std::string target =
                 viper::pkg::sanitizePackageRelativePath(tokens.value()[1], "asset target path");
             config.packageConfig.assets.push_back({std::move(source), std::move(target)});
@@ -1245,8 +1202,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (arch != "x64" && arch != "arm64")
             return makeManifestErr(manifestPath,
                                    lineNum,
-                                   "invalid target-arch '" + arch +
-                                       "'; expected 'x64' or 'arm64'");
+                                   "invalid target-arch '" + arch + "'; expected 'x64' or 'arm64'");
         if (std::find(config.packageConfig.targetArchitectures.begin(),
                       config.packageConfig.targetArchitectures.end(),
                       arch) != config.packageConfig.targetArchitectures.end()) {
@@ -1264,8 +1220,7 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         std::string depToken;
         std::set<std::string> seenDeps(config.packageConfig.depends.begin(),
                                        config.packageConfig.depends.end());
-        auto appendDependency = [&](const std::string &raw)
-            -> il::support::Expected<bool> {
+        auto appendDependency = [&](const std::string &raw) -> il::support::Expected<bool> {
             size_t ds = raw.find_first_not_of(" \t");
             size_t de = raw.find_last_not_of(" \t");
             if (ds == std::string::npos)

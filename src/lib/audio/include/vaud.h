@@ -89,6 +89,23 @@ typedef int32_t vaud_voice_id;
 /// @brief Invalid voice ID constant.
 #define VAUD_INVALID_VOICE (-1)
 
+/// @brief Query whether a logical mix group has a registered effects processor.
+/// @details Called by the software mixer while it holds the ViperAUD state lock.
+///          Implementations must not allocate and should return quickly. Returning
+///          zero routes the group directly to the master mix.
+typedef int (*vaud_group_effects_query_fn)(void *userdata, int64_t group_id);
+
+/// @brief Process one logical mix group bus in-place.
+/// @details Samples are interleaved floating-point PCM in the conventional
+///          `[-1.0, 1.0]` range. Called by the software mixer after summing the
+///          group bus and before adding it to the master accumulator.
+typedef void (*vaud_group_effects_process_fn)(void *userdata,
+                                              int64_t group_id,
+                                              float *samples,
+                                              int32_t frames,
+                                              int32_t channels,
+                                              int32_t sample_rate);
+
 /// @brief Audio backend and mixer diagnostic counters.
 /// @details Counters are monotonic for the lifetime of a context. They are intended for debug
 ///          panels, smoke probes, and backend triage; applications should not use them for normal
@@ -230,6 +247,14 @@ vaud_voice_id vaud_play(vaud_sound_t sound);
 /// @return Voice ID for controlling playback, or VAUD_INVALID_VOICE on failure.
 vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan);
 
+/// @brief Play a sound effect with volume, pan, and logical mix-group routing.
+/// @param sound Sound to play.
+/// @param volume Playback volume (0.0 to 1.0).
+/// @param pan Stereo pan (-1.0 to 1.0).
+/// @param group_id Logical group id used by an optional effects processor.
+/// @return Voice ID for controlling playback, or VAUD_INVALID_VOICE on failure.
+vaud_voice_id vaud_play_ex_group(vaud_sound_t sound, float volume, float pan, int64_t group_id);
+
 /// @brief Play a sound effect with looping.
 /// @details Starts looped playback that continues until explicitly stopped.
 /// @param sound Sound to play.
@@ -239,6 +264,12 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan);
 ///            values become center; finite out-of-range values are clamped.
 /// @return Voice ID for controlling playback, or VAUD_INVALID_VOICE on failure.
 vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan);
+
+/// @brief Play a looping sound effect with logical mix-group routing.
+vaud_voice_id vaud_play_loop_group(vaud_sound_t sound,
+                                   float volume,
+                                   float pan,
+                                   int64_t group_id);
 
 /// @brief Stop a playing voice.
 /// @details Immediately stops playback of the specified voice.
@@ -259,6 +290,9 @@ void vaud_set_voice_volume(vaud_context_t ctx, vaud_voice_id voice, float volume
 /// @param pan New pan (-1.0 = left, 0.0 = center, 1.0 = right). Non-finite
 ///            values become center; finite out-of-range values are clamped.
 void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice, float pan);
+
+/// @brief Move a currently playing voice to a logical mix group.
+void vaud_set_voice_group(vaud_context_t ctx, vaud_voice_id voice, int64_t group_id);
 
 /// @brief Check if a voice is still playing.
 /// @param ctx Audio context.
@@ -345,6 +379,9 @@ void vaud_music_set_loop(vaud_music_t music, int loop);
 ///               out-of-range values are clamped.
 void vaud_music_set_volume(vaud_music_t music, float volume);
 
+/// @brief Assign a music stream to a logical mix group.
+void vaud_music_set_group(vaud_music_t music, int64_t group_id);
+
 /// @brief Get music playback volume.
 /// @param music Music handle.
 /// @return Current volume, or 0.0 if music is NULL.
@@ -398,6 +435,15 @@ float vaud_get_latency_ms(vaud_context_t ctx);
 /// @param ctx Audio context to inspect.
 /// @param out_stats Destination statistics snapshot.
 void vaud_get_stats(vaud_context_t ctx, vaud_stats_t *out_stats);
+
+/// @brief Install or clear the optional logical mix-group effects processor.
+/// @details Passing NULL for @p process_fn disables group processing. The
+///          callback is invoked only from the software mixer and must not
+///          perform allocation, blocking I/O, or context destruction.
+void vaud_set_group_effects_processor(vaud_context_t ctx,
+                                      vaud_group_effects_query_fn query_fn,
+                                      vaud_group_effects_process_fn process_fn,
+                                      void *userdata);
 
 #ifdef __cplusplus
 }

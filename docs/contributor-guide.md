@@ -163,6 +163,21 @@ enum class TokenKind {
 
 ## Testing
 
+For backend or execution-engine changes, prefer adding small deterministic
+programs to `src/tests/shared_corpus/il/` when the behavior should be shared
+across the IL VM, bytecode VM, and native backends. AArch64-specific shared or
+end-to-end backend coverage lives under `src/tests/codegen/aarch64/`; low-level
+instruction or allocator unit tests may stay in `src/tests/unit/codegen/` when
+that is the clearer ownership boundary.
+
+### New parser or protocol surfaces
+
+Any new parser, protocol frame reader, serialized format, or language input surface
+should add a small libFuzzer harness under `src/tests/fuzz/` and seed inputs under
+`src/tests/fuzz/corpus/`. Run `./scripts/fuzz_smoke.sh --self-test` to confirm the target
+is discoverable and `VIPER_FUZZ_SECONDS=10 ./scripts/fuzz_smoke.sh` for a local mutation
+smoke.
+
 ### Tolerance checks for float e2e
 
 Floating point outputs in end-to-end tests can vary slightly. To keep tests stable, expectations are

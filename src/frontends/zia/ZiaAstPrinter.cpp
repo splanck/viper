@@ -1203,20 +1203,6 @@ static void printParams(const std::vector<Param> &params, Printer &p) {
     p.pop();
 }
 
-/// @brief Print a declaration's generic type-parameter names to the dump.
-static void printGenericParams(const std::vector<std::string> &genericParams, Printer &p) {
-    if (genericParams.empty())
-        return;
-    std::string gp = "GenericParams: [";
-    for (size_t i = 0; i < genericParams.size(); ++i) {
-        if (i > 0)
-            gp += ", ";
-        gp += genericParams[i];
-    }
-    gp += "]";
-    p.line(gp);
-}
-
 /// @brief Print generic type parameters with their `: Constraint` bounds to
 ///        the dump.
 static void printGenericParamsWithConstraints(const std::vector<std::string> &genericParams,

@@ -1,0 +1,7 @@
+interface Named {
+    func Name() -> String;
+}
+
+class Box[T: Named] {
+    var value: T;
+}

@@ -943,7 +943,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         if (!isIndirectCall) {
             calleeName = mangleFunctionName(ident->name);
         }
-    } else if (auto *fieldExpr = exprAs<FieldExpr>(expr->callee.get(), ExprKind::Field)) {
+    } else if (exprAs<FieldExpr>(expr->callee.get(), ExprKind::Field) != nullptr) {
         // Check if this is a namespace-qualified function call (e.g., Math.add or
         // Outer.Inner.getValue) Recursively build the qualified name from nested FieldExpr nodes
         std::string qualifiedName;

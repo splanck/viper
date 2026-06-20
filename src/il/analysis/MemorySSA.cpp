@@ -96,28 +96,6 @@ const MemoryAccess *MemorySSA::accessFor(const Block *block, size_t instrIdx) co
 
 namespace {
 
-/// True if the instruction defines new memory (store or modifying call).
-inline bool isDef(const Instr &I, viper::analysis::BasicAA &AA) {
-    if (I.op == Opcode::Store)
-        return true;
-    if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-        auto mr = AA.modRef(I);
-        return mr == ModRefResult::Mod || mr == ModRefResult::ModRef;
-    }
-    return false;
-}
-
-/// True if the instruction reads memory (load or reading call).
-inline bool isUse(const Instr &I, viper::analysis::BasicAA &AA) {
-    if (I.op == Opcode::Load)
-        return true;
-    if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-        auto mr = AA.modRef(I);
-        return mr == ModRefResult::Ref || mr == ModRefResult::ModRef;
-    }
-    return false;
-}
-
 /// True if @p ptr refers to a non-escaping alloca, directly or via GEP.
 inline bool isNonEscapingAlloca(const Value &ptr,
                                 const std::unordered_set<unsigned> &nonEsc,

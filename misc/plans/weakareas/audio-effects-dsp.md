@@ -1,7 +1,7 @@
 # Audio Consolidation + Effects/DSP Layer
 
-**Status:** Verified real (two parts: relocate all audio under `audio/`, add an effects chain)
-**Area:** `src/runtime/audio/` (target), `src/runtime/graphics/3d/audio/` + others (source)
+**Status:** Completed and locally verified (2026-06-20)
+**Area:** `src/runtime/audio/`, `src/lib/audio/`, runtime bindings, tests, docs
 **Effort:** M
 **Roadmap fit:** v0.2.x hardening (audio is the thinnest non-trivial runtime module; the
 graphics/audio split is an architectural wart)
@@ -22,29 +22,44 @@ Two related issues:
    filter (only a private one-pole lowpass inside `rt_musicgen.c`). Dry-only playback is
    a real gap for a game platform.
 
-## Current state (verified)
+## Completion notes
 
-- Core audio under `audio/`: `rt_audio.c` (playback + software mixing), `rt_mixgroup.h`
-  (mix groups), decoders (`rt_mp3/ogg/vorbis`), `rt_synth.c`, `rt_playlist.c`,
-  `rt_soundbank.c`.
-- Public namespace is **`Viper.Sound.*`** (e.g. `Viper.Sound.Audio.Init/Update/
-  RegisterGroup/SetGroupVolume`). **Mix groups are integer IDs** (`RegisterGroup → i64`,
-  `SetGroupVolume(i64 group, i64 vol)`), not objects.
-- `rt_sound3d.c` includes only `rt_game3d_diagnostics.h`, `rt_platform.h`, `<math.h>` —
-  i.e. it is **almost dependency-free of 3D graphics types**, so the move is low-risk.
-- Tests: `src/tests/runtime/RTSound3DTests.cpp`, `src/tests/unit/test_rt_sound3d_objects.cpp`.
-- Docs referencing spatial audio: `docs/graphics3d-guide.md`,
-  `docs/graphics3d-architecture.md`, `docs/testing.md`.
+- Spatial-audio implementation files moved from `src/runtime/graphics/3d/audio/`
+  to `src/runtime/audio/`. `rt_sound3d.c` now compiles as an audio source without
+  `VIPER_ENABLE_GRAPHICS`; `rt_sound3d_objects.c` remains graphics-gated because
+  the object wrappers bind to `SceneNode3D` and `Camera3D`.
+- `rt_game3d_audio.c` and `rt_scene3d_spatial.c` remain thin graphics-side
+  scene/world integration shims that call the audio-owned spatial API.
+- The former `rt_game3d_diagnostics.h` dependency from `rt_sound3d.c` was replaced
+  with `rt_audio_diagnostics.{h,c}`. The existing Game3D diagnostics surface reads
+  and resets that audio-owned counter for compatibility.
+- Mix-group effects are implemented in `rt_audio_fx.{h,c}` and attached through
+  the existing integer mix-group model. ViperAUD now supports one group bus
+  processor per group so effects process the group sum once before master mixing.
+- Public functions added in `runtime.def`:
+  `GroupAddLowpass`, `GroupAddHighpass`, `GroupAddPeaking`, `GroupAddDelay`,
+  `GroupAddReverb`, `GroupSetFxBypass`, `GroupRemoveFx`, and `GroupClearFx`.
+- Focused verification passed:
+  `test_vaud_core_fixes`, `test_rt_sound3d_contract`,
+  `test_rt_sound3d_objects`, `test_rt_game3d_diagnostics`,
+  `test_rt_audio_integration`, `test_rt_audio_fx`,
+  `test_rt_audio_surface_link`, `test_rt_graphics_surface_link`,
+  `test_runtime_name_map`, `test_runtime_classes_catalog`, and
+  `test_runtime_surface_audit`.
+- Graphics-disabled build verification passed with
+  `VIPER_BUILD_DIR=build-nographics VIPER_EXTRA_CMAKE_ARGS='-DVIPER_GRAPHICS_MODE=OFF -DVIPER_BUILD_TESTING=OFF'`
+  after adding the missing Canvas3D backend metric stubs and cleaning stale
+  warning-as-error blockers in rebuilt toolchain targets.
 
 ---
 
 ## Part 1 — Consolidate all audio under `audio/`
 
 ### Design
-Move the audio-domain code into `src/runtime/audio/` and invert any residual coupling so
-that **audio never depends on graphics**; instead the 3D scene calls *into* the audio
-API with plain coordinates. Because `rt_sound3d` already operates on plain floats + math,
-this is mostly a file move + include/namespace fixups.
+Move the audio-domain state and DSP/positioning math into `src/runtime/audio/` and invert
+any residual coupling so that **audio never depends on graphics**; instead the 3D scene
+calls *into* the audio API with plain coordinates or common math values. Keep thin
+graphics-side shims only where a scene object needs to push transform updates into audio.
 
 Bonus: per the macOS backend build note (only Metal+SW+`*_shared` 3D TUs compile on
 mac), moving audio TUs out of the 3D-backend source group **decouples spatial audio from
@@ -60,13 +75,16 @@ mac), moving audio TUs out of the 3D-backend source group **decouples spatial au
 3. Replace `#include "rt_game3d_diagnostics.h"` with an audio/core diagnostics header (or
    relocate the few diagnostics counters used). Confirm no remaining `graphics/` includes
    in the moved files.
-4. **CMake:** remove the moved TUs from the graphics/3d source list; add them to the
+4. Audit Vec3 usage. Prefer a common `Viper.Math.Vec3`/runtime-math helper if one exists;
+   otherwise pass raw coordinates across the graphics/audio boundary and keep graphics
+   math out of `audio/`.
+5. **CMake:** remove the moved TUs from the graphics/3d source list; add them to the
    audio library source list. Confirm headless and 3D-disabled builds still link.
-5. **`runtime.def`:** audit the current registration of the sound3d/source/listener
-   functions; re-home canonical names under `Viper.Sound.*` (e.g.
-   `Viper.Sound.Sound3D.*`, `Viper.Sound.Listener.*`) and add `RT_ALIAS` entries for the
-   old canonical names to preserve back-compat. Run `./scripts/check_runtime_completeness.sh`.
-6. Run `./scripts/lint_platform_policy.sh` (the move touches `rt_platform.h` users).
+6. **`runtime.def`:** keep existing `Viper.Sound.SpatialAudio3D.*` names stable. For
+   `Viper.Graphics3D.SoundListener3D` / `SoundSource3D`, add `Viper.Sound.*` aliases or
+   facades only if demos/tests prove the public type should move; never break existing
+   code in this cleanup.
+7. Run `./scripts/lint_platform_policy.sh` (the move touches `rt_platform.h` users).
 
 ---
 
@@ -113,10 +131,10 @@ RT_FUNC(SndGroupClearFx,     rt_snd_group_clear_fx,     "Viper.Sound.Audio.Group
 **Migration (Part 1):**
 - `RTSound3DTests.cpp` + `test_rt_sound3d_objects.cpp`: update include paths to the new
   `audio/` location; assertions unchanged; confirm still registered and green.
-- Add a build assertion (or rely on CI smoke) that audio compiles with **3D graphics
+- Add a build assertion (or local script smoke) that spatial audio compiles with **3D graphics
   disabled** (proves decoupling).
-- `check_runtime_completeness.sh` + a name-resolution test confirming both new
-  `Viper.Sound.*` names and the `RT_ALIAS` back-compat names resolve.
+- `check_runtime_completeness.sh` + a name-resolution test confirming existing
+  `Viper.Sound.SpatialAudio3D.*` names remain valid and any new aliases resolve.
 
 **Effects (Part 2) — offline render, no device:**
 - Biquad LP: 1 kHz + 8 kHz input → high band RMS drops after a 2 kHz lowpass.
@@ -130,7 +148,8 @@ RT_FUNC(SndGroupClearFx,     rt_snd_group_clear_fx,     "Viper.Sound.Audio.Group
 - **Remove/redirect** the spatial-audio sections in `docs/graphics3d-guide.md` and
   `docs/graphics3d-architecture.md` (they now point to the audio docs).
 - **Expand** the audio reference in `docs/viperlib/` (audio/sound section): document the
-  relocated 3D-audio API under `Viper.Sound.*`, the new effects chain, the integer
+  relocated spatial-audio implementation under existing `Viper.Sound.*` names, the new
+  effects chain, the integer
   mix-group model, and a worked example (e.g. low-pass on the "sfx" group for occlusion,
   reverb on "ambience").
 - Update `docs/testing.md` for the moved test locations.
@@ -150,5 +169,6 @@ RT_FUNC(SndGroupClearFx,     rt_snd_group_clear_fx,     "Viper.Sound.Audio.Group
 - **`rt_scene3d_spatial.c` coupling:** if it genuinely needs scene types, leave a thin
   scene-side shim in graphics that calls the moved audio API — but the audio math itself
   must live in `audio/`.
-- **Namespace re-home:** keep `RT_ALIAS` back-compat for any externally-referenced
-  sound3d names; verify no demos/examples break (grep `examples/`).
+- **Namespace re-home:** prefer implementation relocation over public-name churn. Keep
+  aliases/back-compat for any externally referenced sound3d names and verify no demos or
+  examples break.

@@ -1,0 +1,95 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/system/rt_shutdown.c
+// Purpose: Implements Viper.System.Shutdown's poll-based graceful shutdown
+//          request bitmask.
+// Key invariants: Polling is cooperative and signal-safe work is kept in the
+//                 VM/platform layer; this module only stores ordinary atomic
+//                 process state.
+// Ownership/Lifetime: No heap ownership; state lasts for the process lifetime.
+// Links: src/runtime/system/rt_shutdown.h
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_shutdown.h"
+
+#include <stdatomic.h>
+#include <stdbool.h>
+
+static atomic_llong g_shutdown_pending = ATOMIC_VAR_INIT(0);
+static atomic_bool g_shutdown_polling_enabled = ATOMIC_VAR_INIT(false);
+static _Atomic(rt_shutdown_clear_interrupt_fn) g_clear_interrupt_callback =
+    ATOMIC_VAR_INIT((rt_shutdown_clear_interrupt_fn)0);
+
+static void mark_polling_enabled(void) {
+    atomic_store_explicit(&g_shutdown_polling_enabled, true, memory_order_release);
+}
+
+void rt_shutdown_set_interrupt_clear_callback(rt_shutdown_clear_interrupt_fn callback) {
+    atomic_store_explicit(&g_clear_interrupt_callback, callback, memory_order_release);
+}
+
+void rt_shutdown_request(int64_t reason) {
+    const int64_t mask = reason & RT_SHUTDOWN_REASON_MASK;
+    if (mask == RT_SHUTDOWN_REASON_NONE)
+        return;
+    atomic_fetch_or_explicit(&g_shutdown_pending, (long long)mask, memory_order_acq_rel);
+}
+
+int64_t rt_shutdown_poll(void) {
+    mark_polling_enabled();
+    const int64_t mask =
+        (int64_t)atomic_exchange_explicit(&g_shutdown_pending, 0, memory_order_acq_rel);
+    if (mask != RT_SHUTDOWN_REASON_NONE) {
+        atomic_store_explicit(&g_shutdown_polling_enabled, false, memory_order_release);
+        rt_shutdown_clear_interrupt_fn callback =
+            atomic_load_explicit(&g_clear_interrupt_callback, memory_order_acquire);
+        if (callback)
+            callback();
+    }
+    return mask;
+}
+
+int8_t rt_shutdown_pending(void) {
+    mark_polling_enabled();
+    return atomic_load_explicit(&g_shutdown_pending, memory_order_acquire) != 0 ? 1 : 0;
+}
+
+void rt_shutdown_clear_pending_only(void) {
+    atomic_store_explicit(&g_shutdown_pending, 0, memory_order_release);
+}
+
+void rt_shutdown_clear(void) {
+    rt_shutdown_clear_pending_only();
+    atomic_store_explicit(&g_shutdown_polling_enabled, false, memory_order_release);
+    rt_shutdown_clear_interrupt_fn callback =
+        atomic_load_explicit(&g_clear_interrupt_callback, memory_order_acquire);
+    if (callback)
+        callback();
+}
+
+int8_t rt_shutdown_polling_enabled(void) {
+    return atomic_exchange_explicit(&g_shutdown_polling_enabled, false, memory_order_acq_rel) ? 1
+                                                                                              : 0;
+}
+
+int8_t rt_shutdown_has_pending(void) {
+    return atomic_load_explicit(&g_shutdown_pending, memory_order_acquire) != 0 ? 1 : 0;
+}
+
+int64_t rt_shutdown_const_none(void) {
+    return RT_SHUTDOWN_REASON_NONE;
+}
+
+int64_t rt_shutdown_const_interrupt(void) {
+    return RT_SHUTDOWN_REASON_INTERRUPT;
+}
+
+int64_t rt_shutdown_const_terminate(void) {
+    return RT_SHUTDOWN_REASON_TERMINATE;
+}

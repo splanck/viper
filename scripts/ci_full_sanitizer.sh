@@ -14,10 +14,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR_BASE="${BUILD_DIR:-${REPO_ROOT}/build}"
 RUN_TSAN=false
+SELF_TEST=false
 
 for arg in "$@"; do
     case "$arg" in
         --tsan) RUN_TSAN=true ;;
+        --self-test) SELF_TEST=true ;;
     esac
 done
 
@@ -30,6 +32,29 @@ NC='\033[0m'
 if ! command -v clang++ > /dev/null 2>&1; then
     echo -e "${RED}Error: clang++ not found. Sanitizers require Clang.${NC}"
     exit 1
+fi
+
+if $SELF_TEST; then
+    tmpdir="$(mktemp -d)"
+    trap "rm -rf '$tmpdir'" EXIT
+    cat > "$tmpdir/sanitizer_probe.c" <<'EOF'
+#include <stdint.h>
+int main(void) {
+    volatile int x = 40;
+    volatile int y = 2;
+    return (x + y == 42) ? 0 : 1;
+}
+EOF
+    clang "$tmpdir/sanitizer_probe.c" -fsanitize=address -o "$tmpdir/asan_probe"
+    "$tmpdir/asan_probe"
+    clang "$tmpdir/sanitizer_probe.c" -fsanitize=undefined -o "$tmpdir/ubsan_probe"
+    "$tmpdir/ubsan_probe"
+    if $RUN_TSAN; then
+        clang "$tmpdir/sanitizer_probe.c" -fsanitize=thread -o "$tmpdir/tsan_probe"
+        "$tmpdir/tsan_probe"
+    fi
+    echo "sanitizer self-test: ok"
+    exit 0
 fi
 
 FAILED=0

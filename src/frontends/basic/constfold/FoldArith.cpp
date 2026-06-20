@@ -257,34 +257,6 @@ std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs) {
     return result;
 }
 
-/// @brief Fold numeric binary expressions when both operands are literals.
-/// @details Converts AST literal summaries into folding values, attempts the
-///          arithmetic fold, and returns the resulting numeric payload to the
-///          dispatcher when successful.
-/// @param op Binary operator describing the expression.
-/// @param lhsRaw Constant summary for the left-hand operand.
-/// @param rhsRaw Constant summary for the right-hand operand.
-/// @return Folded numeric value or empty optional when folding is unsafe.
-std::optional<NumericValue> fold_numeric(AST::BinaryExpr::Op op,
-                                         const NumericValue &lhsRaw,
-                                         const NumericValue &rhsRaw) {
-    auto folded = tryFold(op, makeValue(lhsRaw), makeValue(rhsRaw));
-#ifdef VIPER_CONSTFOLD_ASSERTS
-    if (folded && (op == AST::BinaryExpr::Op::Add || op == AST::BinaryExpr::Op::Mul)) {
-        auto swapped = tryFold(op, makeValue(rhsRaw), makeValue(lhsRaw));
-        if (swapped) {
-            if (folded->isFloat() || swapped->isFloat())
-                assert(folded->asDouble() == swapped->asDouble());
-            else
-                assert(folded->i == swapped->i);
-        }
-    }
-#endif
-    if (!folded)
-        return std::nullopt;
-    return toNumericValue(*folded);
-}
-
 } // namespace
 
 AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value) {

@@ -25,8 +25,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string_view>
 
@@ -47,6 +49,14 @@ const JsonValue *stringMember(const JsonValue &obj, const char *name) {
         return nullptr;
     const JsonValue *value = obj.get(name);
     return value && value->type() == JsonType::String ? value : nullptr;
+}
+
+/// @brief Return @p obj's member @p name only if it is a Bool, else null.
+const JsonValue *boolMember(const JsonValue &obj, const char *name) {
+    if (obj.type() != JsonType::Object)
+        return nullptr;
+    const JsonValue *value = obj.get(name);
+    return value && value->type() == JsonType::Bool ? value : nullptr;
 }
 
 /// @brief Return @p obj's member @p name only if it is an Int, else null.
@@ -126,6 +136,46 @@ JsonValue makeRange(int startLine, int startCharacter, int endLine, int endChara
         {"end",
          JsonValue::object({{"line", JsonValue(endLine)}, {"character", JsonValue(endCharacter)}})},
     });
+}
+
+static bool isUriPathChar(unsigned char c) {
+    return std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' || c == '/' ||
+           c == ':';
+}
+
+static std::string encodeUriPath(std::string_view path) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(path.size());
+    for (unsigned char c : path) {
+        if (isUriPathChar(c)) {
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back('%');
+            out.push_back(kHex[c >> 4u]);
+            out.push_back(kHex[c & 0x0Fu]);
+        }
+    }
+    return out;
+}
+
+/// @brief Best-effort conversion from a filesystem path to a file URI.
+std::string pathToFileUri(const std::string &path) {
+    if (path.rfind("file://", 0) == 0)
+        return path;
+    if (path.empty())
+        return "file:///";
+
+    const std::string encoded = encodeUriPath(path);
+    if (path.size() >= 2 && path[0] == '/' && path[1] == '/')
+        return "file:" + encoded;
+    if (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) &&
+        path[1] == ':') {
+        return "file:///" + encoded;
+    }
+    if (!path.empty() && path.front() == '/')
+        return "file://" + encoded;
+    return "file:///" + encoded;
 }
 
 /// @brief Decode the UTF-8 scalar at the front of @p bytes for LSP unit counting.
@@ -481,13 +531,153 @@ JsonValue diagnosticRangeForSpan(const std::string &content,
     return makeRange(startLspLine, startLspCol, endLspLine, endLspCol);
 }
 
+bool sourceRangeToLspSpan(const std::string &content,
+                          uint32_t beginLine,
+                          uint32_t beginColumn,
+                          uint32_t endLine,
+                          uint32_t endColumn,
+                          int &startLspLine,
+                          int &startLspCol,
+                          int &endLspLine,
+                          int &endLspCol) {
+    if (beginLine == 0 || beginColumn == 0 || endLine == 0 || endColumn == 0 ||
+        endLine < beginLine || (endLine == beginLine && endColumn <= beginColumn)) {
+        return false;
+    }
+
+    auto byteOffsetFor =
+        [&content](uint32_t oneBasedLine, uint32_t oneBasedColumn, size_t &offset) -> bool {
+        if (oneBasedLine == 0 ||
+            oneBasedLine > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
+            return false;
+        }
+        size_t lineStart = 0;
+        size_t lineEnd = 0;
+        if (!sourceLineByteSpan(content, static_cast<int>(oneBasedLine) - 1, lineStart, lineEnd))
+            return false;
+        const size_t byteColumn =
+            oneBasedColumn > 0 ? static_cast<size_t>(oneBasedColumn - 1u) : 0u;
+        offset = std::min(lineStart + byteColumn, lineEnd);
+        return true;
+    };
+
+    size_t beginOffset = 0;
+    size_t endOffset = 0;
+    if (!byteOffsetFor(beginLine, beginColumn, beginOffset) ||
+        !byteOffsetFor(endLine, endColumn, endOffset) || endOffset < beginOffset) {
+        return false;
+    }
+
+    byteOffsetToLspPosition(content, beginOffset, startLspLine, startLspCol);
+    byteOffsetToLspPosition(content, endOffset, endLspLine, endLspCol);
+    return true;
+}
+
+JsonValue rangeForSourceRange(const SourceRangeInfo &range,
+                              const std::string *content,
+                              const std::string &contentPath) {
+    if (content && range.file == contentPath)
+        return diagnosticRangeForSpan(
+            *content, range.line, range.column, range.endLine, range.endColumn);
+
+    const int startLine =
+        range.line > 0 && range.line <= static_cast<uint32_t>(std::numeric_limits<int>::max())
+            ? static_cast<int>(range.line) - 1
+            : 0;
+    const int startCol =
+        range.column > 0 && range.column <= static_cast<uint32_t>(std::numeric_limits<int>::max())
+            ? static_cast<int>(range.column) - 1
+            : 0;
+    const int endLine =
+        range.endLine > 0 && range.endLine <= static_cast<uint32_t>(std::numeric_limits<int>::max())
+            ? static_cast<int>(range.endLine) - 1
+            : startLine;
+    const int endCol = range.endColumn > 0 &&
+                               range.endColumn <=
+                                   static_cast<uint32_t>(std::numeric_limits<int>::max())
+                           ? static_cast<int>(range.endColumn) - 1
+                           : startCol + 1;
+    return makeRange(startLine, startCol, endLine, std::max(endCol, startCol + 1));
+}
+
+JsonValue locationToJson(const LocationInfo &location,
+                         const std::string *content,
+                         const std::string &contentPath) {
+    return JsonValue::object({
+        {"uri", JsonValue(pathToFileUri(location.range.file))},
+        {"range", rangeForSourceRange(location.range, content, contentPath)},
+    });
+}
+
+JsonValue signatureDocumentationJson(const std::string &documentation) {
+    if (documentation.empty())
+        return JsonValue();
+    return JsonValue::object({
+        {"kind", JsonValue("markdown")},
+        {"value", JsonValue(documentation)},
+    });
+}
+
+JsonValue signatureHelpToJson(const SignatureHelpInfo &help) {
+    JsonValue::ArrayType signatures;
+    signatures.reserve(help.signatures.size());
+    for (const auto &signature : help.signatures) {
+        JsonValue::ArrayType params;
+        params.reserve(signature.parameters.size());
+        for (const auto &param : signature.parameters) {
+            JsonValue::ObjectType paramObj;
+            paramObj.push_back({"label", JsonValue(param.label)});
+            if (!param.documentation.empty())
+                paramObj.push_back({"documentation", signatureDocumentationJson(param.documentation)});
+            params.push_back(JsonValue(std::move(paramObj)));
+        }
+
+        JsonValue::ObjectType signatureObj;
+        signatureObj.push_back({"label", JsonValue(signature.label)});
+        if (!signature.documentation.empty()) {
+            signatureObj.push_back(
+                {"documentation", signatureDocumentationJson(signature.documentation)});
+        }
+        signatureObj.push_back({"parameters", JsonValue(std::move(params))});
+        signatures.push_back(JsonValue(std::move(signatureObj)));
+    }
+
+    return JsonValue::object({
+        {"signatures", JsonValue(std::move(signatures))},
+        {"activeSignature", JsonValue(help.activeSignature)},
+        {"activeParameter", JsonValue(help.activeParameter)},
+    });
+}
+
+JsonValue semanticTokenTypesLegend() {
+    return JsonValue::array({
+        JsonValue("namespace"),
+        JsonValue("type"),
+        JsonValue("class"),
+        JsonValue("enum"),
+        JsonValue("interface"),
+        JsonValue("function"),
+        JsonValue("method"),
+        JsonValue("variable"),
+        JsonValue("parameter"),
+        JsonValue("property"),
+        JsonValue("keyword"),
+        JsonValue("number"),
+        JsonValue("string"),
+        JsonValue("operator"),
+    });
+}
+
 /// @brief Return true for methods that are request/response-shaped in LSP.
 /// @details Notifications must not receive responses. Dispatch uses this helper
 ///          to suppress accidental responses for missing-id calls to request
 ///          methods such as initialize, shutdown, completion, hover, and symbols.
 bool isRequestMethod(const std::string &method) {
     return method == "initialize" || method == "shutdown" || method == "textDocument/completion" ||
-           method == "textDocument/hover" || method == "textDocument/documentSymbol";
+           method == "textDocument/hover" || method == "textDocument/documentSymbol" ||
+           method == "textDocument/definition" || method == "textDocument/references" ||
+           method == "textDocument/rename" || method == "textDocument/signatureHelp" ||
+           method == "workspace/symbol" || method == "textDocument/semanticTokens/full";
 }
 
 } // namespace
@@ -557,6 +747,24 @@ std::string LspHandler::handleRequest(const JsonRpcRequest &req) {
     if (req.method == "textDocument/documentSymbol")
         return handleDocumentSymbol(req);
 
+    if (req.method == "textDocument/definition")
+        return handleDefinition(req);
+
+    if (req.method == "textDocument/references")
+        return handleReferences(req);
+
+    if (req.method == "textDocument/rename")
+        return handleRename(req);
+
+    if (req.method == "textDocument/signatureHelp")
+        return handleSignatureHelp(req);
+
+    if (req.method == "workspace/symbol")
+        return handleWorkspaceSymbol(req);
+
+    if (req.method == "textDocument/semanticTokens/full")
+        return handleSemanticTokensFull(req);
+
     if (req.isNotification())
         return {}; // Unknown notification — silently ignore
 
@@ -569,7 +777,7 @@ std::string LspHandler::handleInitialize(const JsonRpcRequest &req) {
     if (initializeResponded_)
         return buildError(req.id, kInvalidRequest, "Server has already been initialized");
 
-    auto capabilities = JsonValue::object({
+    JsonValue::ObjectType capabilityMembers{
         {"textDocumentSync", JsonValue(1)}, // Full sync
         {"completionProvider",
          JsonValue::object({
@@ -577,7 +785,38 @@ std::string LspHandler::handleInitialize(const JsonRpcRequest &req) {
          })},
         {"hoverProvider", JsonValue(true)},
         {"documentSymbolProvider", JsonValue(true)},
-    });
+    };
+
+    if (bridge_.supportsDefinition())
+        capabilityMembers.push_back({"definitionProvider", JsonValue(true)});
+    if (bridge_.supportsReferences())
+        capabilityMembers.push_back({"referencesProvider", JsonValue(true)});
+    if (bridge_.supportsRename())
+        capabilityMembers.push_back({"renameProvider", JsonValue(true)});
+    if (bridge_.supportsSignatureHelp()) {
+        capabilityMembers.push_back(
+            {"signatureHelpProvider",
+             JsonValue::object({
+                 {"triggerCharacters", JsonValue::array({JsonValue("("), JsonValue(",")})},
+             })});
+    }
+    if (bridge_.supportsWorkspaceSymbols())
+        capabilityMembers.push_back({"workspaceSymbolProvider", JsonValue(true)});
+    if (bridge_.supportsSemanticTokens()) {
+        capabilityMembers.push_back(
+            {"semanticTokensProvider",
+             JsonValue::object({
+                 {"legend",
+                  JsonValue::object({
+                      {"tokenTypes", semanticTokenTypesLegend()},
+                      {"tokenModifiers", JsonValue::array({})},
+                  })},
+                 {"full", JsonValue(true)},
+                 {"range", JsonValue(false)},
+             })});
+    }
+
+    auto capabilities = JsonValue(std::move(capabilityMembers));
 
     auto result = JsonValue::object({
         {"capabilities", std::move(capabilities)},
@@ -641,6 +880,7 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
     }
     (void)path;
 
+    bridge_.updateDocument(path, text);
     store_.open(uri, version, std::move(text));
     publishDiagnostics(uri);
 }
@@ -693,6 +933,7 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
         }
         text = textValue->asString();
     }
+    bridge_.updateDocument(path, text);
     store_.update(uri, version, std::move(text));
 
     publishDiagnostics(uri);
@@ -708,6 +949,7 @@ void LspHandler::handleDidClose(const JsonRpcRequest &req) {
         logMessage(2, pathErr);
         return;
     }
+    bridge_.removeDocument(path);
     store_.close(uri);
 
     // Clear diagnostics for the closed document
@@ -828,6 +1070,259 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req) {
     }
 
     return buildResponse(req.id, JsonValue(std::move(arr)));
+}
+
+// --- Definition ---
+
+std::string LspHandler::handleDefinition(const JsonRpcRequest &req) {
+    std::string uri;
+    int line = 0;
+    int col = 0;
+    if (!extractTextDocumentUri(req.params, uri) || !extractPosition(req.params, line, col))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/definition params");
+
+    const std::string *content = store_.getContent(uri);
+    if (!content || !bridge_.supportsDefinition())
+        return buildResponse(req.id, JsonValue());
+
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
+
+    int compilerLine = 0;
+    int compilerCol = 0;
+    if (!lspPositionToCompilerPosition(*content, line, col, compilerLine, compilerCol))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/definition position");
+
+    auto location = bridge_.definition(*content, compilerLine, compilerCol, path);
+    if (!location)
+        return buildResponse(req.id, JsonValue());
+    return buildResponse(req.id, locationToJson(*location, content, path));
+}
+
+// --- References ---
+
+std::string LspHandler::handleReferences(const JsonRpcRequest &req) {
+    std::string uri;
+    int line = 0;
+    int col = 0;
+    if (!extractTextDocumentUri(req.params, uri) || !extractPosition(req.params, line, col))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/references params");
+
+    const std::string *content = store_.getContent(uri);
+    if (!content || !bridge_.supportsReferences())
+        return buildResponse(req.id, JsonValue::array({}));
+
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
+
+    int compilerLine = 0;
+    int compilerCol = 0;
+    if (!lspPositionToCompilerPosition(*content, line, col, compilerLine, compilerCol))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/references position");
+
+    bool includeDeclaration = true;
+    if (const auto *context = objectMember(req.params, "context")) {
+        if (const auto *includeValue = boolMember(*context, "includeDeclaration"))
+            includeDeclaration = includeValue->asBool(true);
+    }
+
+    auto refs = bridge_.references(*content, compilerLine, compilerCol, path);
+    JsonValue::ArrayType arr;
+    arr.reserve(refs.size());
+    for (const auto &ref : refs) {
+        if (!includeDeclaration && ref.isDefinition)
+            continue;
+        arr.push_back(locationToJson(ref, content, path));
+    }
+    return buildResponse(req.id, JsonValue(std::move(arr)));
+}
+
+// --- Rename ---
+
+std::string LspHandler::handleRename(const JsonRpcRequest &req) {
+    std::string uri;
+    int line = 0;
+    int col = 0;
+    const auto *newName = stringMember(req.params, "newName");
+    if (!newName || !extractTextDocumentUri(req.params, uri) ||
+        !extractPosition(req.params, line, col)) {
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/rename params");
+    }
+
+    const std::string *content = store_.getContent(uri);
+    if (!content || !bridge_.supportsRename())
+        return buildResponse(req.id, JsonValue());
+
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
+
+    int compilerLine = 0;
+    int compilerCol = 0;
+    if (!lspPositionToCompilerPosition(*content, line, col, compilerLine, compilerCol))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/rename position");
+
+    RenameResult result =
+        bridge_.rename(*content, compilerLine, compilerCol, path, newName->asString());
+    if (!result.success)
+        return buildError(req.id, kInvalidRequest, "Rename failed: " + result.reason);
+
+    std::map<std::string, JsonValue::ArrayType> editsByUri;
+    for (const auto &edit : result.edits) {
+        editsByUri[pathToFileUri(edit.range.file)].push_back(JsonValue::object({
+            {"range", rangeForSourceRange(edit.range, content, path)},
+            {"newText", JsonValue(edit.newText)},
+        }));
+    }
+
+    JsonValue::ObjectType changes;
+    for (auto &[editUri, edits] : editsByUri)
+        changes.push_back({std::move(editUri), JsonValue(std::move(edits))});
+
+    return buildResponse(req.id,
+                         JsonValue::object({{"changes", JsonValue(std::move(changes))}}));
+}
+
+// --- Signature Help ---
+
+std::string LspHandler::handleSignatureHelp(const JsonRpcRequest &req) {
+    std::string uri;
+    int line = 0;
+    int col = 0;
+    if (!extractTextDocumentUri(req.params, uri) || !extractPosition(req.params, line, col))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/signatureHelp params");
+
+    const std::string *content = store_.getContent(uri);
+    if (!content || !bridge_.supportsSignatureHelp())
+        return buildResponse(req.id, JsonValue());
+
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
+
+    int compilerLine = 0;
+    int compilerCol = 0;
+    if (!lspPositionToCompilerPosition(*content, line, col, compilerLine, compilerCol))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/signatureHelp position");
+
+    SignatureHelpInfo help = bridge_.signatureHelp(*content, compilerLine, compilerCol, path);
+    if (!help.available || help.signatures.empty())
+        return buildResponse(req.id, JsonValue());
+    return buildResponse(req.id, signatureHelpToJson(help));
+}
+
+// --- Workspace Symbols ---
+
+std::string LspHandler::handleWorkspaceSymbol(const JsonRpcRequest &req) {
+    const auto *queryValue = stringMember(req.params, "query");
+    if (!queryValue)
+        return buildError(req.id, kInvalidParams, "Invalid workspace/symbol params");
+    if (!bridge_.supportsWorkspaceSymbols())
+        return buildResponse(req.id, JsonValue::array({}));
+
+    auto symbols = bridge_.workspaceSymbols(queryValue->asString());
+    JsonValue::ArrayType arr;
+    arr.reserve(symbols.size());
+    for (const auto &symbol : symbols) {
+        SourceRangeInfo range;
+        range.file = symbol.file;
+        range.line = symbol.line;
+        range.column = symbol.column;
+        range.endLine = symbol.line;
+        range.endColumn = symbol.column + static_cast<uint32_t>(symbol.name.size());
+        arr.push_back(JsonValue::object({
+            {"name", JsonValue(symbol.name)},
+            {"kind", JsonValue(symbolKindToLsp(symbol.kind))},
+            {"location",
+             JsonValue::object({
+                 {"uri", JsonValue(pathToFileUri(symbol.file))},
+                 {"range", rangeForSourceRange(range, nullptr, "")},
+             })},
+        }));
+    }
+    return buildResponse(req.id, JsonValue(std::move(arr)));
+}
+
+// --- Semantic Tokens ---
+
+std::string LspHandler::handleSemanticTokensFull(const JsonRpcRequest &req) {
+    std::string uri;
+    if (!extractTextDocumentUri(req.params, uri))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/semanticTokens/full params");
+
+    const std::string *content = store_.getContent(uri);
+    if (!content || !bridge_.supportsSemanticTokens())
+        return buildResponse(req.id, JsonValue::object({{"data", JsonValue::array({})}}));
+
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
+
+    struct EncodedToken {
+        int line{0};
+        int start{0};
+        int length{0};
+        int type{0};
+        int modifiers{0};
+    };
+
+    auto tokens = bridge_.semanticTokens(*content, path);
+    std::vector<EncodedToken> encoded;
+    encoded.reserve(tokens.size());
+    for (const auto &token : tokens) {
+        int startLine = 0;
+        int startCol = 0;
+        int endLine = 0;
+        int endCol = 0;
+        if (!sourceRangeToLspSpan(*content,
+                                  token.line,
+                                  token.column,
+                                  token.line,
+                                  token.column + token.length,
+                                  startLine,
+                                  startCol,
+                                  endLine,
+                                  endCol)) {
+            continue;
+        }
+        if (endLine != startLine || endCol <= startCol)
+            continue;
+        encoded.push_back({startLine,
+                           startCol,
+                           endCol - startCol,
+                           static_cast<int>(token.type),
+                           static_cast<int>(token.modifiers)});
+    }
+    std::sort(encoded.begin(), encoded.end(), [](const EncodedToken &lhs, const EncodedToken &rhs) {
+        if (lhs.line != rhs.line)
+            return lhs.line < rhs.line;
+        return lhs.start < rhs.start;
+    });
+
+    JsonValue::ArrayType data;
+    data.reserve(encoded.size() * 5u);
+    int prevLine = 0;
+    int prevStart = 0;
+    for (const auto &token : encoded) {
+        const int deltaLine = token.line - prevLine;
+        const int deltaStart = deltaLine == 0 ? token.start - prevStart : token.start;
+        data.push_back(JsonValue(deltaLine));
+        data.push_back(JsonValue(deltaStart));
+        data.push_back(JsonValue(token.length));
+        data.push_back(JsonValue(token.type));
+        data.push_back(JsonValue(token.modifiers));
+        prevLine = token.line;
+        prevStart = token.start;
+    }
+
+    return buildResponse(req.id, JsonValue::object({{"data", JsonValue(std::move(data))}}));
 }
 
 // --- Diagnostic Publishing ---

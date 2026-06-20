@@ -94,7 +94,8 @@ void installPackageUsage() {
         << "  Package the Viper toolchain from a staged install tree.\n"
         << "\n"
         << "Options:\n"
-        << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | appimage | tarball | all\n"
+        << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | appimage | tarball | "
+           "all\n"
         << "  --arch <arch>         x64 | arm64 (default: manifest/host)\n"
         << "  --stage-dir <dir>     Existing staged install tree\n"
         << "  --build-dir <dir>     Build tree; runs cmake --build then cmake --install\n"
@@ -954,26 +955,6 @@ bool requireListedPayloadPaths(const std::set<std::string> &actual,
         }
     }
     return true;
-}
-
-/// @brief Parse a newline-separated payload listing into a normalized path set.
-/// @details Trims CR/LF, strips leading slashes and a leading "./", and skips
-///          blank lines.
-std::set<std::string> parsePayloadListing(const std::string &text) {
-    std::set<std::string> paths;
-    std::istringstream in(text);
-    std::string line;
-    while (std::getline(in, line)) {
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
-            line.pop_back();
-        while (!line.empty() && line.front() == '/')
-            line.erase(line.begin());
-        if (line.rfind("./", 0) == 0)
-            line.erase(0, 2);
-        if (!line.empty())
-            paths.insert(line);
-    }
-    return paths;
 }
 
 /// @brief One index entry in an RPM header section.

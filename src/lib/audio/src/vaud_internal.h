@@ -120,6 +120,7 @@ typedef struct {
     int loop;               ///< Loop flag (0 = one-shot, 1 = loop)
     int32_t id;             ///< Unique voice ID for external reference
     int64_t start_time;     ///< Frame count when voice started (for age-based stealing)
+    int64_t group_id;       ///< Logical mix-group id for optional bus processing.
 } vaud_voice;
 
 //===----------------------------------------------------------------------===//
@@ -170,6 +171,7 @@ struct vaud_music {
     int64_t position;       ///< Current frame position
     int loop;               ///< Loop flag
     float volume;           ///< Playback volume
+    int64_t group_id;       ///< Logical mix-group id for optional bus processing.
 
     // Streaming buffers
     int16_t *buffers[VAUD_MUSIC_BUFFER_COUNT];      ///< Decoded audio buffers
@@ -230,6 +232,11 @@ struct vaud_context {
 
     // H-1: Pre-allocated mix accumulator — avoids malloc() inside the real-time audio callback.
     int32_t accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< 32-bit mix accumulator (RT-safe)
+    int32_t group_accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< Per-group scratch bus.
+    float group_fx_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< Float scratch for group effects.
+    vaud_group_effects_query_fn group_effects_query; ///< Optional group-effects query hook.
+    vaud_group_effects_process_fn group_effects_process; ///< Optional group-effects processor.
+    void *group_effects_userdata; ///< User data forwarded to group-effects hooks.
     vaud_stats_t stats; ///< Mixer/backend diagnostic counters.
 
     // Thread synchronization

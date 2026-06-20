@@ -44,8 +44,7 @@ namespace {
 ///          cannot inherit state from before a control-flow edge.
 [[nodiscard]] bool isControlBoundary(MOpcode opc) noexcept {
     return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Ret ||
-           opc == MOpcode::Bl || opc == MOpcode::Blr || opc == MOpcode::Cbz ||
-           opc == MOpcode::Cbnz;
+           opc == MOpcode::Bl || opc == MOpcode::Blr || opc == MOpcode::Cbz || opc == MOpcode::Cbnz;
 }
 
 /// @brief Return true if @p opc is a memory access through an arbitrary base register.
@@ -209,8 +208,7 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs,
     // in-block use marking their liveness; treat them as live at exit.
     if (carriedExitRegs != nullptr) {
         for (uint16_t phys : *carriedExitRegs) {
-            const RegClass cls =
-                isGPR(static_cast<PhysReg>(phys)) ? RegClass::GPR : RegClass::FPR;
+            const RegClass cls = isGPR(static_cast<PhysReg>(phys)) ? RegClass::GPR : RegClass::FPR;
             liveRegs.insert((static_cast<uint32_t>(cls) << 16) | phys);
         }
     }
@@ -327,22 +325,6 @@ struct RegSet {
     }
 };
 
-/// @brief Seed @p regs with the registers that are live at every function exit.
-/// @details The set includes the ABI return register (int and FP), the stack
-///          pointer, and every callee-saved register. Live-out at exit ensures
-///          DCE does not delete the final write to any of these.
-/// @param target Target ABI providing return + callee-saved register sets.
-/// @param regs   Set to which the live-at-exit register keys are added.
-void addTargetExitLive(const TargetInfo &target, std::unordered_set<uint32_t> &regs) {
-    regs.insert(physRegKey(target.intReturnReg));
-    regs.insert(physRegKey(target.f64ReturnReg));
-    regs.insert(physRegKey(PhysReg::SP));
-    for (PhysReg reg : target.calleeSavedGPR)
-        regs.insert(physRegKey(reg));
-    for (PhysReg reg : target.calleeSavedFPR)
-        regs.insert(physRegKey(reg));
-}
-
 /// @brief `RegSet` overload of @ref addTargetExitLive for the bitset live-set path.
 /// @param target Target ABI providing return + callee-saved register sets.
 /// @param regs   RegSet to which the live-at-exit register keys are added.
@@ -354,33 +336,6 @@ void addTargetExitLive(const TargetInfo &target, RegSet &regs) {
         regs.insertKey(physRegKey(reg));
     for (PhysReg reg : target.calleeSavedFPR)
         regs.insertKey(physRegKey(reg));
-}
-
-/// @brief Add the implicit-use register set of a call site to @p uses.
-/// @details A call implicitly uses every register that holds an argument
-///          (the architectural arg-passing GPRs and FPRs) plus the stack
-///          pointer (since outgoing stack args live above SP).
-/// @param target Target ABI providing the arg-register order.
-/// @param uses   Set to which the implicit-use register keys are added.
-void addCallImplicitUses(const TargetInfo &target, std::unordered_set<uint32_t> &uses) {
-    for (PhysReg reg : target.intArgOrder)
-        uses.insert(physRegKey(reg));
-    for (PhysReg reg : target.f64ArgOrder)
-        uses.insert(physRegKey(reg));
-    uses.insert(physRegKey(PhysReg::SP));
-}
-
-/// @brief Add the implicit-clobber register set of a call site to @p defs.
-/// @details A call clobbers every caller-saved register (the callee may
-///          freely overwrite them). Liveness uses this to invalidate any
-///          values held in caller-saved registers across the call boundary.
-/// @param target Target ABI providing the caller-saved sets.
-/// @param defs   Set to which the clobbered register keys are added.
-void addCallClobbers(const TargetInfo &target, std::unordered_set<uint32_t> &defs) {
-    for (PhysReg reg : target.callerSavedGPR)
-        defs.insert(physRegKey(reg));
-    for (PhysReg reg : target.callerSavedFPR)
-        defs.insert(physRegKey(reg));
 }
 
 /// @brief `RegSet` overload of @ref addCallImplicitUses.
@@ -402,37 +357,6 @@ void addCallClobbers(const TargetInfo &target, RegSet &defs) {
         defs.insertKey(physRegKey(reg));
     for (PhysReg reg : target.callerSavedFPR)
         defs.insertKey(physRegKey(reg));
-}
-
-/// @brief Compute the use and def register sets for a single MIR instruction.
-/// @details Walks @p instr's operands and consults `classifyOperand` to
-///          classify each as a use, def, or both. Call instructions
-///          (`Bl`/`Blr`) additionally pick up the call-implicit-uses and
-///          call-clobbers from the ABI metadata.
-/// @param instr  Machine instruction whose live-set contribution is computed.
-/// @param target Target ABI for call-implicit handling.
-/// @param uses   Set receiving the use register keys.
-/// @param defs   Set receiving the def register keys.
-void collectUsesDefs(const MInstr &instr,
-                     const TargetInfo &target,
-                     std::unordered_set<uint32_t> &uses,
-                     std::unordered_set<uint32_t> &defs) {
-    for (std::size_t idx = 0; idx < instr.ops.size(); ++idx) {
-        const auto [isUse, isDef] = classifyOperand(instr, idx);
-        const auto &op = instr.ops[idx];
-        if (!isPhysReg(op))
-            continue;
-        const uint32_t key = regKey(op);
-        if (isUse)
-            uses.insert(key);
-        if (isDef)
-            defs.insert(key);
-    }
-
-    if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
-        addCallImplicitUses(target, uses);
-        addCallClobbers(target, defs);
-    }
 }
 
 /// @brief `RegSet` overload of @ref collectUsesDefs for the bitset live-set path.

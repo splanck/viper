@@ -30,13 +30,24 @@
 #include "frontends/zia/ZiaAstPrinter.hpp"
 #include "frontends/zia/ZiaCompletion.hpp"
 #include "il/io/Serializer.hpp"
+#include "runtime/collections/rt_map.h"
+#include "runtime/collections/rt_seq.h"
+#include "runtime/core/rt_string.h"
+#include "runtime/graphics/common/rt_zia_completion.h"
+#include "runtime/oop/rt_object.h"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <limits>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace viper::server {
 
@@ -100,11 +111,246 @@ static void appendEscapedTokenText(std::string &out, const std::string &text) {
     }
 }
 
+/// @brief RAII wrapper for runtime strings allocated for editor-service calls.
+class RuntimeString {
+  public:
+    explicit RuntimeString(std::string_view text)
+        : value_(rt_string_from_bytes(text.data(), text.size())) {}
+
+    ~RuntimeString() {
+        rt_string_unref(value_);
+    }
+
+    RuntimeString(const RuntimeString &) = delete;
+    RuntimeString &operator=(const RuntimeString &) = delete;
+
+    [[nodiscard]] rt_string get() const {
+        return value_;
+    }
+
+  private:
+    rt_string value_{nullptr};
+};
+
+static std::string rtStringToStd(rt_string value) {
+    const char *cstr = value ? rt_string_cstr(value) : "";
+    const size_t len = value ? static_cast<size_t>(rt_str_len(value)) : 0;
+    return std::string(cstr ? cstr : "", len);
+}
+
+static std::string mapString(void *map, const char *name) {
+    if (!map)
+        return {};
+    RuntimeString key(name);
+    rt_string value = rt_map_get_str(map, key.get());
+    std::string out = rtStringToStd(value);
+    rt_string_unref(value);
+    return out;
+}
+
+static int64_t mapInt(void *map, const char *name, int64_t fallback = 0) {
+    if (!map)
+        return fallback;
+    RuntimeString key(name);
+    return rt_map_get_int_or(map, key.get(), fallback);
+}
+
+static bool mapBool(void *map, const char *name, bool fallback = false) {
+    if (!map)
+        return fallback;
+    RuntimeString key(name);
+    return rt_map_get_bool_or(map, key.get(), fallback ? 1 : 0) != 0;
+}
+
+static void *mapObject(void *map, const char *name) {
+    if (!map)
+        return nullptr;
+    RuntimeString key(name);
+    return rt_map_get(map, key.get());
+}
+
+static void releaseRuntimeObject(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static uint32_t toSourceCoord(int64_t value) {
+    if (value <= 0)
+        return 0;
+    if (value > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()))
+        return std::numeric_limits<uint32_t>::max();
+    return static_cast<uint32_t>(value);
+}
+
+static int zeroBasedColumnForRuntime(int col) {
+    return col > 0 ? col - 1 : 0;
+}
+
+static SourceRangeInfo rangeFromMap(void *map,
+                                    const char *lineKey,
+                                    const char *columnKey,
+                                    const char *endLineKey,
+                                    const char *endColumnKey) {
+    SourceRangeInfo range;
+    range.file = mapString(map, "file");
+    range.line = toSourceCoord(mapInt(map, lineKey));
+    range.column = toSourceCoord(mapInt(map, columnKey));
+    range.endLine = toSourceCoord(mapInt(map, endLineKey));
+    range.endColumn = toSourceCoord(mapInt(map, endColumnKey));
+    return range;
+}
+
+static LocationInfo locationFromMap(void *map, bool forceDefinition) {
+    LocationInfo location;
+    location.range = rangeFromMap(map, "line", "column", "endLine", "endColumn");
+    location.name = mapString(map, "name");
+    location.kind = mapString(map, "kind");
+    location.isDefinition = forceDefinition || mapBool(map, "isDefinition");
+    return location;
+}
+
+static std::optional<LocationInfo> definitionFromRuntimeMap(void *map) {
+    if (!map || !mapBool(map, "found"))
+        return std::nullopt;
+    return locationFromMap(map, true);
+}
+
+static std::vector<LocationInfo> referencesFromRuntimeSeq(void *seq) {
+    std::vector<LocationInfo> out;
+    const int64_t count = seq ? rt_seq_len(seq) : 0;
+    out.reserve(static_cast<size_t>(std::max<int64_t>(count, 0)));
+    for (int64_t i = 0; i < count; ++i) {
+        void *map = rt_seq_get(seq, i);
+        out.push_back(locationFromMap(map, false));
+    }
+    return out;
+}
+
+static RenameResult renameFromRuntimeMap(void *map) {
+    RenameResult result;
+    result.success = mapBool(map, "success");
+    result.reason = mapString(map, "reason");
+    void *edits = mapObject(map, "edits");
+    const int64_t count = edits ? rt_seq_len(edits) : 0;
+    result.edits.reserve(static_cast<size_t>(std::max<int64_t>(count, 0)));
+    for (int64_t i = 0; i < count; ++i) {
+        void *editMap = rt_seq_get(edits, i);
+        TextEditInfo edit;
+        edit.range =
+            rangeFromMap(editMap, "startLine", "startColumn", "endLine", "endColumn");
+        edit.newText = mapString(editMap, "newText");
+        result.edits.push_back(std::move(edit));
+    }
+    return result;
+}
+
+static SignatureParameterInfo parameterFromRuntimeMap(void *map) {
+    SignatureParameterInfo parameter;
+    std::string name = mapString(map, "name");
+    std::string type = mapString(map, "type");
+    parameter.label = type.empty() ? name : name + ": " + type;
+    parameter.documentation = mapString(map, "documentation");
+    return parameter;
+}
+
+static SignatureInfo signatureFromRuntimeMap(void *map) {
+    SignatureInfo signature;
+    signature.label = mapString(map, "display");
+    signature.documentation = mapString(map, "documentation");
+    void *params = mapObject(map, "parameters");
+    const int64_t count = params ? rt_seq_len(params) : 0;
+    signature.parameters.reserve(static_cast<size_t>(std::max<int64_t>(count, 0)));
+    for (int64_t i = 0; i < count; ++i)
+        signature.parameters.push_back(parameterFromRuntimeMap(rt_seq_get(params, i)));
+    return signature;
+}
+
+static SignatureHelpInfo signatureHelpFromRuntimeMap(void *map) {
+    SignatureHelpInfo result;
+    result.available = mapBool(map, "available");
+    result.activeSignature = static_cast<int>(mapInt(map, "activeSignature"));
+    result.activeParameter = static_cast<int>(mapInt(map, "activeParameter"));
+    if (!result.available)
+        return result;
+
+    void *overloads = mapObject(map, "overloads");
+    const int64_t count = overloads ? rt_seq_len(overloads) : 0;
+    result.signatures.reserve(static_cast<size_t>(std::max<int64_t>(count, 0)));
+    for (int64_t i = 0; i < count; ++i)
+        result.signatures.push_back(signatureFromRuntimeMap(rt_seq_get(overloads, i)));
+
+    if (result.signatures.empty()) {
+        SignatureInfo signature;
+        signature.label = mapString(map, "display");
+        signature.documentation = mapString(map, "documentation");
+        void *params = mapObject(map, "parameters");
+        const int64_t paramCount = params ? rt_seq_len(params) : 0;
+        signature.parameters.reserve(static_cast<size_t>(std::max<int64_t>(paramCount, 0)));
+        for (int64_t i = 0; i < paramCount; ++i)
+            signature.parameters.push_back(parameterFromRuntimeMap(rt_seq_get(params, i)));
+        result.signatures.push_back(std::move(signature));
+    }
+    return result;
+}
+
+static bool containsCaseInsensitive(std::string_view text, std::string_view needle) {
+    if (needle.empty())
+        return true;
+    auto lower = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
+    auto it = std::search(text.begin(),
+                          text.end(),
+                          needle.begin(),
+                          needle.end(),
+                          [&](char a, char b) { return lower(a) == lower(b); });
+    return it != text.end();
+}
+
+static SemanticTokenType semanticTypeForToken(const Token &token, TokenKind previous) {
+    if (token.isKeyword())
+        return SemanticTokenType::Keyword;
+
+    switch (token.kind) {
+        case TokenKind::Identifier:
+            if (previous == TokenKind::KwFunc)
+                return SemanticTokenType::Function;
+            if (previous == TokenKind::KwClass || previous == TokenKind::KwStruct ||
+                previous == TokenKind::KwType) {
+                return previous == TokenKind::KwClass ? SemanticTokenType::Class
+                                                      : SemanticTokenType::Type;
+            }
+            if (previous == TokenKind::KwEnum)
+                return SemanticTokenType::Enum;
+            if (previous == TokenKind::KwInterface)
+                return SemanticTokenType::Interface;
+            return SemanticTokenType::Variable;
+        case TokenKind::IntegerLiteral:
+        case TokenKind::NumberLiteral:
+            return SemanticTokenType::Number;
+        case TokenKind::StringLiteral:
+        case TokenKind::StringStart:
+        case TokenKind::StringMid:
+        case TokenKind::StringEnd:
+            return SemanticTokenType::String;
+        default:
+            return SemanticTokenType::Operator;
+    }
+}
+
 // --- Constructor / Destructor ---
 
-CompilerBridge::CompilerBridge() : completionEngine_(std::make_unique<CompletionEngine>()) {}
+CompilerBridge::CompilerBridge() : completionEngine_(std::make_unique<CompletionEngine>()) {
+    RuntimeString root(".");
+    projectIndex_ = rt_zia_project_index_new(root.get());
+}
 
-CompilerBridge::~CompilerBridge() = default;
+CompilerBridge::~CompilerBridge() {
+    std::lock_guard<std::mutex> lock(projectMutex_);
+    if (projectIndex_) {
+        rt_zia_project_index_destroy(projectIndex_);
+        releaseRuntimeObject(projectIndex_);
+        projectIndex_ = nullptr;
+    }
+}
 
 // --- Analysis ---
 
@@ -133,6 +379,50 @@ CompileResult CompilerBridge::compile(const std::string &source, const std::stri
 
     auto result = il::frontends::zia::compile(input, opts, sm);
     return {result.succeeded(), extractDiagnostics(result.diagnostics, &sm)};
+}
+
+void CompilerBridge::updateDocument(const std::string &path, const std::string &source) {
+    std::lock_guard<std::mutex> lock(projectMutex_);
+    openDocuments_[path] = source;
+    if (!projectIndex_)
+        return;
+    RuntimeString pathValue(path);
+    RuntimeString sourceValue(source);
+    (void)rt_zia_project_index_update_file(projectIndex_, pathValue.get(), sourceValue.get());
+}
+
+void CompilerBridge::removeDocument(const std::string &path) {
+    std::lock_guard<std::mutex> lock(projectMutex_);
+    openDocuments_.erase(path);
+    if (!projectIndex_)
+        return;
+    RuntimeString pathValue(path);
+    (void)rt_zia_project_index_remove_file(projectIndex_, pathValue.get());
+}
+
+bool CompilerBridge::supportsDefinition() const {
+    std::lock_guard<std::mutex> lock(projectMutex_);
+    return projectIndex_ && rt_zia_project_index_is_valid(projectIndex_) != 0;
+}
+
+bool CompilerBridge::supportsReferences() const {
+    return supportsDefinition();
+}
+
+bool CompilerBridge::supportsRename() const {
+    return supportsDefinition();
+}
+
+bool CompilerBridge::supportsSignatureHelp() const {
+    return true;
+}
+
+bool CompilerBridge::supportsWorkspaceSymbols() const {
+    return true;
+}
+
+bool CompilerBridge::supportsSemanticTokens() const {
+    return true;
 }
 
 // --- Hover helpers ---
@@ -484,6 +774,145 @@ static std::string formatHoverMarkdown(const HoverResult &info) {
 
 // --- IDE Features ---
 
+std::optional<LocationInfo> CompilerBridge::definition(const std::string &source,
+                                                       int line,
+                                                       int col,
+                                                       const std::string &path) {
+    std::lock_guard<std::mutex> lock(projectMutex_);
+    if (!projectIndex_)
+        return std::nullopt;
+    openDocuments_[path] = source;
+    RuntimeString pathValue(path);
+    RuntimeString sourceValue(source);
+    void *map = rt_zia_project_index_definition(projectIndex_,
+                                                pathValue.get(),
+                                                sourceValue.get(),
+                                                line,
+                                                zeroBasedColumnForRuntime(col));
+    auto result = definitionFromRuntimeMap(map);
+    releaseRuntimeObject(map);
+    return result;
+}
+
+std::vector<LocationInfo> CompilerBridge::references(const std::string &source,
+                                                     int line,
+                                                     int col,
+                                                     const std::string &path) {
+    std::lock_guard<std::mutex> lock(projectMutex_);
+    if (!projectIndex_)
+        return {};
+    openDocuments_[path] = source;
+    RuntimeString pathValue(path);
+    RuntimeString sourceValue(source);
+    void *seq = rt_zia_project_index_references(projectIndex_,
+                                                pathValue.get(),
+                                                sourceValue.get(),
+                                                line,
+                                                zeroBasedColumnForRuntime(col));
+    auto result = referencesFromRuntimeSeq(seq);
+    releaseRuntimeObject(seq);
+    return result;
+}
+
+RenameResult CompilerBridge::rename(const std::string &source,
+                                    int line,
+                                    int col,
+                                    const std::string &path,
+                                    const std::string &newName) {
+    std::lock_guard<std::mutex> lock(projectMutex_);
+    if (!projectIndex_) {
+        RenameResult invalid;
+        invalid.reason = "invalid_index";
+        return invalid;
+    }
+    openDocuments_[path] = source;
+    RuntimeString pathValue(path);
+    RuntimeString sourceValue(source);
+    RuntimeString newNameValue(newName);
+    void *map = rt_zia_project_index_rename_edits(projectIndex_,
+                                                  pathValue.get(),
+                                                  sourceValue.get(),
+                                                  line,
+                                                  zeroBasedColumnForRuntime(col),
+                                                  newNameValue.get());
+    RenameResult result = renameFromRuntimeMap(map);
+    releaseRuntimeObject(map);
+    return result;
+}
+
+SignatureHelpInfo CompilerBridge::signatureHelp(const std::string &source,
+                                                int line,
+                                                int col,
+                                                const std::string &path) {
+    RuntimeString sourceValue(source);
+    RuntimeString pathValue(path);
+    void *map = rt_zia_signature_info_for_file(
+        sourceValue.get(), pathValue.get(), line, zeroBasedColumnForRuntime(col));
+    SignatureHelpInfo result = signatureHelpFromRuntimeMap(map);
+    releaseRuntimeObject(map);
+    return result;
+}
+
+std::vector<SymbolInfo> CompilerBridge::workspaceSymbols(const std::string &query) {
+    std::vector<std::pair<std::string, std::string>> docs;
+    {
+        std::lock_guard<std::mutex> lock(projectMutex_);
+        docs.reserve(openDocuments_.size());
+        for (const auto &[path, source] : openDocuments_)
+            docs.emplace_back(path, source);
+    }
+
+    std::vector<SymbolInfo> out;
+    for (const auto &[path, source] : docs) {
+        auto docSymbols = symbols(source, path);
+        for (auto &symbol : docSymbols) {
+            if (!containsCaseInsensitive(symbol.name, query))
+                continue;
+            if (symbol.file.empty())
+                symbol.file = path;
+            out.push_back(std::move(symbol));
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const SymbolInfo &lhs, const SymbolInfo &rhs) {
+        if (lhs.name != rhs.name)
+            return lhs.name < rhs.name;
+        if (lhs.file != rhs.file)
+            return lhs.file < rhs.file;
+        if (lhs.line != rhs.line)
+            return lhs.line < rhs.line;
+        return lhs.column < rhs.column;
+    });
+    return out;
+}
+
+std::vector<SemanticTokenInfo> CompilerBridge::semanticTokens(const std::string &source,
+                                                              const std::string &path) {
+    il::support::DiagnosticEngine diag;
+    il::support::SourceManager sm;
+    uint32_t fileId = sm.addFile(path);
+    Lexer lexer(source, fileId, diag);
+
+    std::vector<SemanticTokenInfo> out;
+    TokenKind previous = TokenKind::Eof;
+    while (true) {
+        Token token = lexer.next();
+        if (token.kind == TokenKind::Eof)
+            break;
+        if (token.kind == TokenKind::Error || token.text.empty())
+            continue;
+
+        SemanticTokenInfo info;
+        info.line = token.loc.line;
+        info.column = token.loc.column;
+        info.length = static_cast<uint32_t>(
+            std::min<size_t>(token.text.size(), std::numeric_limits<uint32_t>::max()));
+        info.type = semanticTypeForToken(token, previous);
+        out.push_back(info);
+        previous = token.kind;
+    }
+    return out;
+}
+
 std::vector<CompletionInfo> CompilerBridge::completions(const std::string &source,
                                                         int line,
                                                         int col,
@@ -548,7 +977,8 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
                        sym.isFinal,
                        sym.isExtern,
                        sym.decl->loc.line,
-                       sym.decl->loc.column});
+                       sym.decl->loc.column,
+                       path});
     }
 
     auto types = result->sema->getTypeNames();
@@ -566,7 +996,7 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
                 ++typeColumn;
             }
         }
-        out.push_back({tn, "type", tn, false, false, typeLine, typeColumn});
+        out.push_back({tn, "type", tn, false, false, typeLine, typeColumn, path});
     }
 
     return out;

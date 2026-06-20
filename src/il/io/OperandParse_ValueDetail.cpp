@@ -33,7 +33,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
 #include <limits>
 #include <optional>
 #include <sstream>
@@ -97,27 +96,6 @@ std::optional<std::string_view> parseIdent(std::string_view &text) {
 
     text.remove_prefix(length);
     return original.substr(0, length);
-}
-
-/// @brief Parse a signed decimal integer from the beginning of a string view.
-/// @details Relies on @c std::from_chars for allocation-free conversion.  When
-///          parsing succeeds the consumed characters are removed from @p text and
-///          the numeric result is written to @p value.
-/// @param text [in,out] Buffer containing the candidate integer literal.
-/// @param value Destination for the parsed numeric value.
-/// @return @c true when a decimal integer was consumed successfully.
-bool parseInt(std::string_view &text, int64_t &value) {
-    std::string_view original = text;
-    if (original.empty())
-        return false;
-
-    const char *begin = original.data();
-    const char *end = begin + original.size();
-    auto [ptr, ec] = std::from_chars(begin, end, value, 10);
-    if (ec != std::errc{})
-        return false;
-    text.remove_prefix(static_cast<size_t>(ptr - begin));
-    return true;
 }
 
 /// @brief Extract the contents of a bracketed expression.

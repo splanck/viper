@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-06-20
 ---
 
 # Localization
@@ -26,7 +26,7 @@ last-verified: 2026-04-23
 
 ## Concept overview
 
-`Viper.Localization.*` exposes eleven classes built on top of a shared **locale record** (internally `rt_locale_data_t`) that carries the number separators, currency conventions, month / day names, date patterns, plural rules, relative-time templates, list-formatting templates, and collation tailorings for a single language/region pair.
+`Viper.Localization.*` exposes eleven classes built on top of a shared **locale record** (internally `rt_locale_data_t`) that carries the number separators, currency conventions, month / day names, date patterns, plural rules, relative-time templates, list-formatting templates, and collation tailorings for a single language/region pair. Named IANA time zones live under `Viper.Time.TimeZone`; they are separate from locale data because time-zone transitions are instant/region rules, not language formatting rules.
 
 **What ships baked in:** only **en-US**. Every other locale is loaded at runtime from JSON — either from the filesystem via `LocaleManager.LoadFromJson(path)` or from a VPA-embedded asset via `LocaleManager.LoadFromAsset(name)`.
 
@@ -67,6 +67,6 @@ VPA assets are loaded explicitly with `LocaleManager.LoadFromAsset(name)`.
 
 ## See Also
 
-- [Time](../time.md) — `DateTime`, `Duration`, `DateOnly` are the inputs consumed by `DateFormat` and `RelativeTimeFormat`.
+- [Time](../time.md) — `DateTime`, `TimeZone`, `Duration`, and `DateOnly`; `DateTime` values are the inputs consumed by `DateFormat` and `RelativeTimeFormat`.
 - [Text](../text/formats.md) — `Viper.Text.InvariantNumberFormat` is the C-locale sibling of `Viper.Localization.NumberFormat`.
 - [Collections](../collections/README.md) — `Map` and `List` are the value-carrier types for `MessageBundle.Format` / `ListFormat`.
