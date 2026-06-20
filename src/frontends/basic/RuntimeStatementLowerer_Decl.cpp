@@ -17,14 +17,49 @@
 #include "Lowerer.hpp"
 #include "RuntimeStatementLowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/LocationScope.hpp"
 
 #include <cassert>
+#include <limits>
+#include <optional>
 
 using namespace il::core;
 using AstType = ::il::frontends::basic::Type;
 
 namespace il::frontends::basic {
+namespace {
+
+/// @brief Map slot metadata back to the BASIC array element type expected by store helpers.
+/// @param slotInfo Lowerer slot metadata for the array variable.
+/// @return BASIC scalar type stored in each element.
+AstType arrayElementTypeFromSlot(const SlotType &slotInfo) {
+    if (slotInfo.type.kind == il::core::Type::Kind::Str)
+        return AstType::Str;
+    if (slotInfo.type.kind == il::core::Type::Kind::F64)
+        return AstType::F64;
+    if (slotInfo.isBoolean || slotInfo.type.kind == il::core::Type::Kind::I1)
+        return AstType::Bool;
+    return AstType::I64;
+}
+
+/// @brief Multiply inclusive array extents while detecting host integer overflow.
+/// @param extents Inclusive upper bounds for each dimension.
+/// @return Total element count, or std::nullopt if any extent is invalid/overflowing.
+std::optional<long long> checkedInclusiveExtentProduct(const std::vector<long long> &extents) {
+    long long total = 1;
+    for (long long extent : extents) {
+        if (extent < 0 || extent == std::numeric_limits<long long>::max())
+            return std::nullopt;
+        const long long length = extent + 1;
+        if (length != 0 && total > std::numeric_limits<long long>::max() / length)
+            return std::nullopt;
+        total *= length;
+    }
+    return total;
+}
+
+} // namespace
 
 /// @brief Lower a BASIC @c CONST statement.
 ///
@@ -50,7 +85,7 @@ void RuntimeStatementLowerer::lowerConst(const ConstStmt &stmt) {
     if (slotInfo.isArray) {
         lowerer_.storeArray(storage->pointer,
                             value.value,
-                            /*elementType*/ AstType::I64,
+                            arrayElementTypeFromSlot(storage->slotInfo),
                             /*isObjectArray*/ storage->slotInfo.isObject);
     } else {
         assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
@@ -130,7 +165,7 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
         cbr.op = Opcode::CBr;
         cbr.type = il::core::Type(il::core::Type::Kind::Void);
         cbr.operands.push_back(isNeg);
-        cbr.addBranchTarget(failLbl);        // failBlk has no parameters
+        cbr.addBranchTarget(failLbl);           // failBlk has no parameters
         cbr.addBranchTarget(contLbl, {length}); // contBlk receives length
         cbr.loc = lowerer_.curLoc;
         BasicBlock *curBlock = ctx.current();
@@ -171,7 +206,17 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt) {
                 dimExprs.push_back(&dimExpr);
         }
     }
-    assert(!dimExprs.empty() && "DIM array must have at least one dimension");
+    if (dimExprs.empty()) {
+        if (auto *em = lowerer_.diagnosticEmitter()) {
+            em->emit(il::support::Severity::Error,
+                     "B2000",
+                     stmt.loc,
+                     static_cast<uint32_t>(stmt.name.size()),
+                     "DIM array must have at least one dimension");
+        }
+        lowerer_.emitTrap();
+        return;
+    }
 
     // BUG-010 fix: If resolved extents are available from semantic analysis, use them
     // to compute array size as a compile-time constant. This handles CONST dimensions
@@ -179,11 +224,19 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt) {
     Value length;
     if (!stmt.resolvedExtents.empty() && stmt.resolvedExtents.size() == dimExprs.size()) {
         // Compute total size from resolved extents (add 1 to each for 0-based indexing)
-        long long totalSize = 1;
-        for (long long extent : stmt.resolvedExtents) {
-            totalSize *= (extent + 1);
+        auto totalSize = checkedInclusiveExtentProduct(stmt.resolvedExtents);
+        if (!totalSize) {
+            if (auto *em = lowerer_.diagnosticEmitter()) {
+                em->emit(il::support::Severity::Error,
+                         "B2000",
+                         stmt.loc,
+                         static_cast<uint32_t>(stmt.name.size()),
+                         "array size computation overflowed");
+            }
+            lowerer_.emitTrap();
+            return;
         }
-        length = lowerer_.emitConstI64(totalSize);
+        length = lowerer_.emitConstI64(*totalSize);
     } else if (dimExprs.size() == 1) {
         // For single-dimensional arrays, use the dimension directly
         Lowerer::RVal bound = lowerer_.lowerExpr(**dimExprs[0]);
@@ -219,6 +272,17 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt) {
     }
 
     const auto *info = lowerer_.findSymbol(stmt.name);
+    if (!info) {
+        if (auto *em = lowerer_.diagnosticEmitter()) {
+            em->emit(il::support::Severity::Error,
+                     "B2000",
+                     stmt.loc,
+                     static_cast<uint32_t>(stmt.name.size()),
+                     "DIM target has no symbol metadata");
+        }
+        lowerer_.emitTrap();
+        return;
+    }
     // Determine array element type and call appropriate runtime allocator
     Value handle;
     if (info->type == AstType::Str) {
@@ -270,9 +334,43 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt) {
 /// @param stmt Parsed @c REDIM statement describing the new bounds.
 void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
-    Lowerer::RVal bound = lowerer_.lowerExpr(*stmt.size);
-    bound = lowerer_.ensureI64(std::move(bound), stmt.loc);
-    Value length = emitArrayLengthCheck(bound.value, stmt.loc, "redim_len");
+    std::vector<const ExprPtr *> dimExprs;
+    if (stmt.size) {
+        dimExprs.push_back(&stmt.size);
+    } else {
+        for (const auto &dimExpr : stmt.dimensions) {
+            if (dimExpr)
+                dimExprs.push_back(&dimExpr);
+        }
+    }
+    if (dimExprs.empty()) {
+        lowerer_.emitTrap();
+        return;
+    }
+
+    Value length;
+    if (dimExprs.size() == 1) {
+        Lowerer::RVal bound = lowerer_.lowerExpr(**dimExprs[0]);
+        bound = lowerer_.ensureI64(std::move(bound), stmt.loc);
+        length = emitArrayLengthCheck(bound.value, stmt.loc, "redim_len");
+    } else {
+        Value sizeSlot = lowerer_.emitAlloca(8);
+        Lowerer::RVal bound = lowerer_.lowerExpr(**dimExprs[0]);
+        bound = lowerer_.ensureI64(std::move(bound), stmt.loc);
+        Value firstLen = emitArrayLengthCheck(bound.value, stmt.loc, "redim_len");
+        lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64), sizeSlot, firstLen);
+        for (size_t i = 1; i < dimExprs.size(); ++i) {
+            Lowerer::RVal dimBound = lowerer_.lowerExpr(**dimExprs[i]);
+            dimBound = lowerer_.ensureI64(std::move(dimBound), stmt.loc);
+            Value dimLen = emitArrayLengthCheck(dimBound.value, stmt.loc, "redim_len");
+            Value currentSize =
+                lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::I64), sizeSlot);
+            Value newSize = lowerer_.emitBinary(
+                Opcode::IMulOvf, il::core::Type(il::core::Type::Kind::I64), currentSize, dimLen);
+            lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64), sizeSlot, newSize);
+        }
+        length = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::I64), sizeSlot);
+    }
     const auto *info = lowerer_.findSymbol(stmt.name);
     auto storage = lowerer_.resolveVariableStorage(stmt.name, stmt.loc);
     assert(storage && "REDIM target should have resolvable storage");
@@ -293,7 +391,7 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt) {
         il::core::Type(il::core::Type::Kind::Ptr), resizeFn, {current, length});
     lowerer_.storeArray(storage->pointer,
                         resized,
-                        /*elementType*/ AstType::I64,
+                        info ? info->type : AstType::I64,
                         /*isObjectArray*/ info && info->isObject);
     if (lowerer_.boundsChecks && info && info->arrayLengthSlot)
         lowerer_.emitStore(
@@ -309,8 +407,11 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt) {
 /// @param stmt Parsed @c RANDOMIZE statement.
 void RuntimeStatementLowerer::lowerRandomize(const RandomizeStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
-    Lowerer::RVal s = lowerer_.lowerExpr(*stmt.seed);
-    Value seed = lowerer_.coerceToI64(std::move(s), stmt.loc).value;
+    Value seed = Value::constInt(0);
+    if (stmt.seed) {
+        Lowerer::RVal s = lowerer_.lowerExpr(*stmt.seed);
+        seed = lowerer_.coerceToI64(std::move(s), stmt.loc).value;
+    }
     lowerer_.emitCall("rt_randomize_i64", {seed});
 }
 

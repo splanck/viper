@@ -17,7 +17,7 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 - **Open-world streaming & navmesh tooling (new).** `WorldStream3D` cells load into a resident-byte budget, `NavMesh3D.Export`/`Import` round-trip versioned `VNAVMSH2`, and stream manifests resolve `asset://` sidecars.
 - **Runtime fails closed (repo-wide).** A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel; unrecoverable entropy/DRBG failures route through a non-returning `rt_abort` so no path proceeds with predictable key material.
 - **Asset loaders fail closed (new).** Corrupt, truncated, or oversized 2D images and 3D models/scenes return `null` with queryable diagnostics; a shared count guard rejects any element count larger than its backing bytes, and libFuzzer harnesses keep the parsers crash-free.
-- **Game3D degradation diagnostics (new).** A process-wide `Game3D.Diagnostics` surface counts the rare correct-but-degraded fallbacks (brute-force broadphase, clamped CCD, evicted audio voices, navmesh-grid fallback) so smoke probes can assert a clean run.
+- **Game3D degradation diagnostics (new).** A process-wide `Game3D.Diagnostics3D` surface counts the rare correct-but-degraded fallbacks (brute-force broadphase, clamped CCD, evicted audio voices, navmesh-grid fallback) so smoke probes can assert a clean run.
 - **Backend & audio telemetry (new).** Opt-in `Canvas3D` backend counters (draws, dropped draws, mesh-cache hits/misses, stream uploads, fallback binds, active presentation path) and an audio-mixer diagnostics surface (renders, partial writes, xruns, recoveries, write failures) make a degraded render or audio path measurable rather than silent.
 - **IL & codegen invariants validate in release.** The IL builder promotes debug-only invariants to release-mode validation, the verifier makes the EH `resumetok` a linear handler-provenance capability (ADR 0005), and codegen and the linker surface diagnostics instead of asserting.
 - **Codegen performance round.** The AArch64 allocator unlocks all sixteen argument registers and caches spilled-operand reloads, and shares pre-RA copy-forwarding with x86-64; six correctness fixes accompany the perf work.
@@ -27,19 +27,20 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 - **Agent-facing CLI (new).** `viper check`, `viper eval`, and `viper explain`/`--print-error-codes` over a central diagnostic-code catalog, plus `--dump-runtime-api`/`--dump-opcodes` registry dumps; the LSP/MCP servers now carry the same structured diagnostics.
 - **2D drawing surface (new).** `Pixels` gains bitmap-font text drawing and measurement (plain, scaled, centered/right-aligned) and `Gradient2D` adds normalized `Sample`/`SampleRGBA` with legacy-percent aliases — the runtime backing for a Viper Paint rebuilt around a registry-driven tool set with layers, blend modes, and an HSL picker.
 - **Zia integer maps & header-optional modules (new).** `Map[Integer, T]` lowers to the `IntMap` runtime (string-keyed `Map` unchanged) with declared key-type enforcement; source files may omit the module header (defaulting to `Main`); and the parser, lexer, and semantic checks tighten across precedence, diagnostics, and inheritance-aware visibility.
+- **Runtime class names disambiguated.** Colliding leaf names under `Viper.*` are made unique (`Graphics.Scene`→`SceneGraph`, the `Game.UI` widgets that shadowed `GUI` ones→`Hud*`, `Sound3D`→`SpatialAudio3D`) and duplicate `Parse`/`Convert` fold into `Viper.Core.*`, with old names kept as aliases and a test locking the no-collision invariant.
 - **Windows and Linux builds back to green.** Windows restores the BASIC-VM, installer, ViperIDE, and x86-64 suites and closes its D3D11 sign-off gaps; Linux returns to a full green suite — 1,670 passing.
 
 ### By the Numbers
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 146 | +146 |
-| Source files | 3,096 | 3,362 | +266 |
-| Production SLOC | 669K | 736K | +67K |
+| Commits | — | 152 | +152 |
+| Source files | 3,096 | 3,363 | +267 |
+| Production SLOC | 669K | 737K | +68K |
 | Test SLOC | 278K | 300K | +22K |
 | Demo SLOC | 192K | 196K | +4K |
 
-Counts via `scripts/count_sloc.sh` (production 735,768 / test 300,294 / demo 195,625 / source files 3,362); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 736,676 / test 300,447 / demo 196,188 / source files 3,363); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -110,10 +111,15 @@ Counts via `scripts/count_sloc.sh` (production 735,768 / test 300,294 / demo 195
 
 - BASIC adopts overflow-aware numeric, line-label, and `SELECT CASE` parsing and accepts numbered `DIM` fields inside `CLASS` bodies; Zia restores circular and self binds by treating an in-progress bind as a known dependency rather than a fatal `V1000`.
 - Zia gains `Map[Integer, T]` over the integer-keyed `IntMap` runtime (string-keyed `Map` unchanged), enforcing declared key types and routing map literals, indexing, methods, optionals, and `for`-in iteration through the right helpers; source files may now omit the module header, defaulting to `Main`.
-- The Zia parser and lexer tighten: CR/CRLF normalization, ranged diagnostics for malformed literals and unterminated strings/comments, bounded lookahead, and corrected precedence for shifts, bitwise operators, coalescing, ranges, and ternaries; semantic checks add namespace-alias and imported-symbol conflict detection, inheritance-aware private/field access, scope-qualified definite initialization, underscore-prefixed unused parameters, and duplicate-local/bodyless-function rejection.
+- The Zia parser and lexer tighten: CR/CRLF normalization, ranged diagnostics for malformed literals and unterminated strings/comments, capped numeric-literal exponents, overflow-rejected fixed-array counts, bounded lookahead, error recovery across a missing enum-variant comma and untyped lambdas, and corrected precedence for shifts, bitwise operators, coalescing, ranges, and ternaries; semantic checks add namespace-alias and imported-symbol conflict detection, inheritance-aware private/field access, scope-qualified definite initialization, underscore-prefixed unused parameters, and duplicate-local/bodyless-function rejection.
 - The Text/Time/IO surface closes documented edge cases (`TextWrap` at width ≤ 0, locale-independent `Json.Format`, embedded-NUL rejection in `DateOnly`/`DateTime`).
 - A new agent-facing CLI: `viper check` is a fast type-check/verify gate (exit 0/1/2), `viper eval` runs a snippet in one shot with JSON results, `viper explain`/`--print-error-codes` read a central `diag_catalog`, and `--dump-runtime-api`/`--dump-opcodes` emit registry inventories from the live binary.
 - The BASIC/Zia LSP/MCP servers compute UTF-16 ranges, enforce a strict initialize-before-use lifecycle, and route structured diagnostics (code, stage, range, help, fix-its) so did-you-mean corrections reach editor clients; the CLI rejects mismatched run/build/ABI combinations behind atomic, descriptor-safe outputs.
+
+### Runtime class-name disambiguation
+
+- No two runtime classes share a leaf name under `Viper.*` anymore: each collision is renamed unique — `Graphics.Scene`→`Graphics.SceneGraph`, `GUI.Clipboard`→`GUI.ClipboardText`, `Workspace.Watcher`→`Workspace.WorkspaceWatcher`, the `Game.UI` widgets that shadowed `GUI` ones→`HudLabel`/`HudTextInput`/`HudSlider`/`HudDropdown`/`HudTooltip`, and `Sound3D`→`SpatialAudio3D` — with the old fully-qualified names kept working through `RT_ALIAS` and a leaf-name-collision check in the qualified-surface test locking the invariant.
+- Duplicate `Viper.Parse` and `Viper.Convert` classes collapse into the canonical `Viper.Core.Parse`/`Viper.Core.Convert`, with the public `Viper.Parse`/`Viper.Convert` names preserved as function aliases.
 
 ### Project loading and packaging
 
@@ -124,19 +130,19 @@ Counts via `scripts/count_sloc.sh` (production 735,768 / test 300,294 / demo 195
 ### Windows and Linux builds
 
 - On Windows, NOMINMAX, extended MSVC atomic shims, a standard-VM bridge that no longer double-releases borrowed strings, and an 8-job MSVC parallelism cap restore the BASIC-VM, installer, ViperIDE, and x86-64 suites, while the D3D11 backend closes its sign-off gaps.
-- On Linux, restored OpenGL symbol loading, X11 backing-store sizing, and ELF zero-fill/`PT_LOAD` grouping bring the full suite to 1,670 passing; Linux now defaults to the deterministic software backend for reproducible headless and CI renders, with the hardened OpenGL backend explicitly selectable.
+- On Linux, restored OpenGL symbol loading, X11 backing-store sizing, ELF zero-fill/`PT_LOAD` grouping, native-import coverage (native-linked programs no longer pull `strtoumax` or quad-precision helpers as dynamic imports), and ARM regression fixes bring the full suite to 1,670 passing; Linux now defaults to the deterministic software backend for reproducible headless and CI renders, with the hardened OpenGL backend explicitly selectable.
 
 ### Tests
 
 ~22K new test SLOC. CTest resource locks now serialize tests that share generated codegen or VM-trace artifacts, keeping the suite parallel-safe.
 
-- **3D rendering, assets, and animation** — spot-shadow coordinate and budget-ordering coverage, vegetation sway, versioned navmesh round-trip, FBX/node-animation import, D3D11 upload/readback-helper validation, fail-closed content-loader diagnostics, untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics` fallback coverage.
+- **3D rendering, assets, and animation** — spot-shadow coordinate and budget-ordering coverage, vegetation sway, versioned navmesh round-trip, FBX/node-animation import, D3D11 upload/readback-helper validation, fail-closed content-loader diagnostics, untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics3D` fallback coverage.
 - **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, duplicate-spill-store elimination, and Game3D script-callback parity across interpreted and native runs.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
 - **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, Zia integer-map and lexer/parser-diagnostic coverage, `Pixels` text-drawing and normalized-gradient suites, GUI overlay/font-propagation regressions, and Linux AppImage / Windows installer-wizard packaging coverage.
 
 ---
 
-Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, wind-swayed foliage, a render-to-image minimap, spot shadows, a renderer/audio counter HUD, and a procedural fallback forest for its missing optional tree asset, and the `paint` app was rebuilt around a registry-driven tool interface — an HSL color picker, menu bar, and select/gradient/curve/polygon/spray/text tools over layers with blend modes and opacity — while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, and the agent-facing CLI. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
+Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, naturally desynchronized wind-swayed foliage, a render-to-image minimap, spot shadows, a renderer/audio counter HUD, and a procedural fallback forest plus expanded tree-material forest/terrain/sky scenes, and the `paint` app was rebuilt around a registry-driven tool interface — an HSL color picker, menu bar, and select/gradient/curve/polygon/spray/text tools over layers with blend modes and opacity — while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, the agent-facing CLI, and the canonical class names. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
 
 <!-- END DRAFT -->

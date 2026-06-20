@@ -220,6 +220,13 @@ struct LBoundExpr : Expr {
 
     /// Name of the array operand queried for its lower bound.
     std::string name;
+
+    /// Optional one-based dimension expression from `LBOUND(array, dim)`.
+    ExprPtr dimension;
+
+    /// Zero-based dimension resolved by semantic analysis when known.
+    std::optional<std::size_t> resolvedDimension;
+
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };
@@ -230,6 +237,16 @@ struct UBoundExpr : Expr {
 
     /// Name of the array operand queried for its upper bound.
     std::string name;
+
+    /// Optional one-based dimension expression from `UBOUND(array, dim)`.
+    ExprPtr dimension;
+
+    /// Zero-based dimension resolved by semantic analysis when known.
+    std::optional<std::size_t> resolvedDimension;
+
+    /// Inclusive upper bound resolved from array metadata when available.
+    std::optional<long long> resolvedUpperBound;
+
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };

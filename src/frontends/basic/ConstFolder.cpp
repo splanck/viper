@@ -354,10 +354,14 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor {
     }
 
     /// @brief Lower bound queries are left untouched because they resolve at runtime.
-    void visit(LBoundExpr &) override {}
+    void visit(LBoundExpr &expr) override {
+        foldExpr(expr.dimension);
+    }
 
     /// @brief Upper bound queries are left untouched because they resolve at runtime.
-    void visit(UBoundExpr &) override {}
+    void visit(UBoundExpr &expr) override {
+        foldExpr(expr.dimension);
+    }
 
     /// @brief Fold unary operations when the operand collapses to a literal.
     void visit(UnaryExpr &expr) override {
@@ -565,6 +569,8 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor {
     void visit(ReDimStmt &stmt) override {
         if (stmt.size)
             foldExpr(stmt.size);
+        for (auto &dim : stmt.dimensions)
+            foldExpr(dim);
     }
 
     /// @brief Fold expressions in SWAP statements when present.

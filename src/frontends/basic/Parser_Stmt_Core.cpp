@@ -45,7 +45,8 @@ namespace il::frontends::basic {
 ///          behaviour across multiple declarations.
 /// @param name Canonical procedure name encountered in the source program.
 void Parser::noteProcedureName(std::string_view name) {
-    knownProcedures_.emplace(name);
+    std::string canon = CanonicalizeIdent(StripTypeSuffix(name));
+    knownProcedures_.emplace(canon.empty() ? std::string(name) : std::move(canon));
 }
 
 /// @brief Query whether @p name is tracked as a known procedure.
@@ -57,7 +58,8 @@ void Parser::noteProcedureName(std::string_view name) {
 /// @return True when the parser has previously recorded the name as a
 ///         procedure.
 bool Parser::isKnownProcedureName(const std::string &name) const {
-    return knownProcedures_.find(name) != knownProcedures_.end();
+    std::string canon = CanonicalizeIdent(StripTypeSuffix(name));
+    return knownProcedures_.find(canon.empty() ? name : canon) != knownProcedures_.end();
 }
 
 Parser::StmtResult Parser::parseImplicitLet() {
@@ -83,7 +85,8 @@ bool Parser::isImplicitAssignmentStart() const {
 
     int depth = 0;
     int offset = 1;
-    while (true) {
+    constexpr int kMaxImplicitAssignmentProbe = 512;
+    while (offset <= kMaxImplicitAssignmentProbe) {
         const Token &tok = peek(offset);
         if (tok.kind == TokenKind::Equal) {
             if (depth == 0)
@@ -121,6 +124,7 @@ bool Parser::isImplicitAssignmentStart() const {
         }
         return false;
     }
+    return false;
 }
 
 /// @brief Parse a procedure or method call statement when possible.
@@ -177,7 +181,9 @@ Parser::StmtResult Parser::parseCall(int) {
                     // This fixes cases like game.awayTeam.InitPlayer() which should be parsed
                     // as a MethodCallExpr on MemberAccessExpr, not as a qualified CallExpr.
                     bool treatAsQualified = false;
-                    if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end()) {
+                    std::string headCanon = CanonicalizeIdent(identTok.lexeme);
+                    if (knownNamespaces_.find(headCanon.empty() ? identTok.lexeme : headCanon) !=
+                        knownNamespaces_.end()) {
                         treatAsQualified = true;
                     } else {
                         // When runtime namespaces are enabled, accept multi-segment
@@ -580,6 +586,8 @@ std::vector<Param> Parser::parseParamList() {
 /// @return Newly constructed function declaration statement.
 StmtPtr Parser::parseFunctionStatement() {
     auto func = parseFunctionHeader();
+    if (!func)
+        return nullptr;
     if (func->explicitRetType != BasicType::Unknown) {
         switch (func->explicitRetType) {
             case BasicType::Int:
@@ -610,8 +618,10 @@ StmtPtr Parser::parseFunctionStatement() {
     // BUG-086 fix: Register array parameters so the parser can distinguish
     // arr(i) from proc(i) when parsing the procedure body.
     std::vector<std::string> arrayParams;
+    std::vector<bool> hadOuterArray;
     for (const auto &param : func->params) {
         if (param.is_array) {
+            hadOuterArray.push_back(arrays_.contains(param.name));
             arrays_.insert(param.name);
             arrayParams.push_back(param.name);
         }
@@ -621,8 +631,9 @@ StmtPtr Parser::parseFunctionStatement() {
 
     // BUG-086 fix: Remove array parameters from the global set after parsing
     // the procedure body to maintain proper scoping.
-    for (const auto &name : arrayParams) {
-        arrays_.erase(name);
+    for (size_t i = 0; i < arrayParams.size(); ++i) {
+        if (!hadOuterArray[i])
+            arrays_.erase(arrayParams[i]);
     }
 
     return func;
@@ -637,14 +648,14 @@ StmtPtr Parser::parseFunctionStatement() {
 StmtPtr Parser::parseSubStatement() {
     auto loc = peek().loc;
     consume();
-    Token nameTok = expect(TokenKind::Identifier);
+    Token nameTok = expectSoftIdentifier();
     auto sub = std::make_unique<SubDecl>();
     sub->loc = loc;
     // Support qualified procedure names: Ident ('.' Ident)*
     std::vector<std::string> segs;
-    if (nameTok.kind == TokenKind::Identifier)
+    if (isSoftIdentToken(nameTok.kind))
         segs.push_back(nameTok.lexeme);
-    while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
+    while (at(TokenKind::Dot) && isMemberIdentToken(peek(1).kind)) {
         consume(); // '.'
         Token seg = consume();
         segs.push_back(seg.lexeme);
@@ -667,8 +678,10 @@ StmtPtr Parser::parseSubStatement() {
     // BUG-086 fix: Register array parameters so the parser can distinguish
     // arr(i) from proc(i) when parsing the procedure body.
     std::vector<std::string> arrayParams;
+    std::vector<bool> hadOuterArray;
     for (const auto &param : sub->params) {
         if (param.is_array) {
+            hadOuterArray.push_back(arrays_.contains(param.name));
             arrays_.insert(param.name);
             arrayParams.push_back(param.name);
         }
@@ -678,8 +691,9 @@ StmtPtr Parser::parseSubStatement() {
 
     // BUG-086 fix: Remove array parameters from the global set after parsing
     // the procedure body to maintain proper scoping.
-    for (const auto &name : arrayParams) {
-        arrays_.erase(name);
+    for (size_t i = 0; i < arrayParams.size(); ++i) {
+        if (!hadOuterArray[i])
+            arrays_.erase(arrayParams[i]);
     }
 
     return sub;
@@ -756,7 +770,7 @@ StmtPtr Parser::parseDeclareStatement() {
     if (at(TokenKind::KeywordSub)) {
         auto loc = peek().loc;
         consume(); // consume SUB
-        Token nameTok = expect(TokenKind::Identifier);
+        Token nameTok = expectSoftIdentifier();
         auto sub = std::make_unique<SubDecl>();
         sub->loc = loc;
         sub->name = nameTok.lexeme;

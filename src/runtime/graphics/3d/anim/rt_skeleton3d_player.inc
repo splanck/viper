@@ -264,25 +264,51 @@ static void compute_bone_palette(rt_anim_player3d *p) {
      * against bind pose instead of popping at transition boundaries. */
     if (crossfade_from && current && p->crossfade_duration > 0.0f) {
         float factor = skeleton3d_clamp01f(p->crossfade_time / p->crossfade_duration);
+        /* Map bone -> channel index for each clip once (O(channels)) so the per-bone
+         * blend below resolves channels with an O(1) lookup instead of the prior
+         * O(channels) scan per bone (turning O(bones*channels) into O(bones+channels)).
+         * A NULL channel reproduces the original find-miss bind-pose fallback exactly. */
+        int32_t from_ch[VGFX3D_MAX_BONES];
+        int32_t to_ch[VGFX3D_MAX_BONES];
+        int32_t mapped = bone_count < VGFX3D_MAX_BONES ? bone_count : VGFX3D_MAX_BONES;
+        int32_t from_count = animation3d_safe_channel_count(crossfade_from);
+        int32_t to_count = animation3d_safe_channel_count(current);
+        for (int32_t b = 0; b < mapped; b++) {
+            from_ch[b] = -1;
+            to_ch[b] = -1;
+        }
+        for (int32_t cidx = 0; cidx < from_count; cidx++) {
+            int32_t b = crossfade_from->channels[cidx].bone_index;
+            if (b >= 0 && b < mapped && from_ch[b] < 0)
+                from_ch[b] = cidx;
+        }
+        for (int32_t cidx = 0; cidx < to_count; cidx++) {
+            int32_t b = current->channels[cidx].bone_index;
+            if (b >= 0 && b < mapped && to_ch[b] < 0)
+                to_ch[b] = cidx;
+        }
 
         for (int32_t bone = 0; bone < bone_count; bone++) {
+            const vgfx3d_anim_channel_t *from_channel =
+                (bone < mapped && from_ch[bone] >= 0) ? &crossfade_from->channels[from_ch[bone]]
+                                                      : NULL;
+            const vgfx3d_anim_channel_t *to_channel =
+                (bone < mapped && to_ch[bone] >= 0) ? &current->channels[to_ch[bone]] : NULL;
             float from_pos[3], from_rot[4], from_scl[3];
             float to_pos[3], to_rot[4], to_scl[3];
             float blend_pos[3], blend_rot[4], blend_scl[3];
-            sample_animation_trs_for_bone(crossfade_from,
-                                          bone,
-                                          p->crossfade_from_time,
-                                          skel->bones[bone].bind_pose_local,
-                                          from_pos,
-                                          from_rot,
-                                          from_scl);
-            sample_animation_trs_for_bone(current,
-                                          bone,
-                                          p->current_time,
-                                          skel->bones[bone].bind_pose_local,
-                                          to_pos,
-                                          to_rot,
-                                          to_scl);
+            sample_animation_channel_trs(from_channel,
+                                         p->crossfade_from_time,
+                                         skel->bones[bone].bind_pose_local,
+                                         from_pos,
+                                         from_rot,
+                                         from_scl);
+            sample_animation_channel_trs(to_channel,
+                                         p->current_time,
+                                         skel->bones[bone].bind_pose_local,
+                                         to_pos,
+                                         to_rot,
+                                         to_scl);
             for (int i = 0; i < 3; i++) {
                 blend_pos[i] = from_pos[i] + factor * (to_pos[i] - from_pos[i]);
                 blend_scl[i] = from_scl[i] + factor * (to_scl[i] - from_scl[i]);

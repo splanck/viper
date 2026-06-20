@@ -18,6 +18,8 @@
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
+#include <unordered_set>
+
 namespace il::frontends::basic {
 
 namespace {
@@ -167,7 +169,9 @@ void OopEmitHelper::emitMethodEpilogue(
     const std::unordered_set<std::string> &excludeFromObjRelease) {
     lowerer_.curLoc = {};
     lowerer_.releaseDeferredTemps();
-    lowerer_.releaseObjectLocals(excludeFromObjRelease);
+    std::unordered_set<std::string> objectReleaseSkips = paramNames;
+    objectReleaseSkips.insert(excludeFromObjRelease.begin(), excludeFromObjRelease.end());
+    lowerer_.releaseObjectLocals(objectReleaseSkips);
     // Borrowed parameters are not released; caller owns their lifetime. (BUG-105)
     lowerer_.releaseArrayLocals(paramNames);
 }

@@ -7,7 +7,7 @@
 //
 // File: tests/unit/test_basic_lowerer_string_assignment.cpp
 // Purpose: Verify BASIC lowerer retains and releases strings on assignment.
-// Key invariants: String variables release old values before retaining new ones.
+// Key invariants: String variables retain new values before releasing old ones.
 // Ownership/Lifetime: Test owns parser, lowerer, and resulting module.
 // Links: docs/codemap.md
 //
@@ -71,10 +71,10 @@ int main() {
                 continue;
             const int line = instr.loc.line;
             if (instr.callee == "rt_str_release_maybe") {
+                assert(retainCounts[line] > 0);
                 ++releaseCounts[line];
                 assignmentLines.insert(line);
             } else if (instr.callee == "rt_str_retain_maybe") {
-                assert(releaseCounts[line] > 0);
                 ++retainCounts[line];
                 assignmentLines.insert(line);
             }

@@ -26,6 +26,7 @@
 
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 
 #include "frontends/basic/ASTUtils.hpp"
@@ -168,7 +169,15 @@ void SemanticAnalyzer::registerProcedureParam(const Param &param) {
     scopes_.bind(param.name, param.name);
 
     std::string paramName = param.name;
-    Type paramType = param.is_array ? Type::ArrayInt : astToSemanticType(param.type);
+    Type paramType = astToSemanticType(param.type);
+    if (param.is_array) {
+        if (!param.objectClass.empty())
+            paramType = Type::ArrayObject;
+        else if (param.type == ::il::frontends::basic::Type::Str)
+            paramType = Type::ArrayString;
+        else
+            paramType = Type::ArrayInt;
+    }
 
     auto itType = varTypes_.find(paramName);
     if (activeProcScope_) {
@@ -219,7 +228,7 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc,
     for (const auto &p : proc.params)
         registerProcedureParam(p);
     for (const auto &st : proc.body)
-        if (st) {
+        if (st && hasUserLine(st->line)) {
             auto insertResult = labels_.insert(st->line);
             if (insertResult.second && activeProcScope_)
                 activeProcScope_->noteLabelInserted(st->line);
@@ -595,7 +604,7 @@ void SemanticAnalyzer::analyze(const Program &prog) {
     // Pre-collect all labels (line numbers) from main block for GOTO/GOSUB validation.
     // This must happen before analysis since GOTO can jump forward.
     for (const auto &stmt : prog.main)
-        if (stmt)
+        if (stmt && hasUserLine(stmt->line))
             labels_.insert(stmt->line);
     mainHasGosub_ = containsGosubList(prog.main);
 
@@ -963,7 +972,7 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
         auto argTy = argTys[i];
         if (sig->params[i].is_array) {
             auto *argExpr = c.args[i].get();
-            auto *v = as<VarExpr>(*argExpr);
+            auto *v = argExpr ? as<VarExpr>(*argExpr) : nullptr;
             if (!v || !arrays_.contains(v->name)) {
                 il::support::SourceLoc loc = argExpr ? argExpr->loc : c.loc;
                 std::string msg = "argument " + std::to_string(i + 1) + " to " + c.callee +

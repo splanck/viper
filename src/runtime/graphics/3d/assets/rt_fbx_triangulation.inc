@@ -129,6 +129,23 @@ static int fbx_try_emit_mesh_triangle(void *mesh_obj, int32_t i0, int32_t i1, in
     return mesh->build_failed ? 0 : 1;
 }
 
+/// @brief Largest N-gon the ear-clipper will process. Beyond this a triangle fan is
+///   used: the O(n^2) ear-clip becomes too costly and `poly_count * poly_count` would
+///   overflow the loop guard for untrusted/degenerate polygons.
+#define FBX_MAX_EARCLIP_POLY_VERTS 1024
+
+/// @brief Emit a polygon as a triangle fan anchored at vertex 0.
+/// @details Safe fallback for degenerate or pathologically large N-gons. Index
+///   validation is handled by fbx_try_emit_mesh_triangle.
+/// @return 0 on mesh build failure, 1 otherwise.
+static int fbx_emit_polygon_fan(void *mesh_obj, const int32_t *polygon, int32_t poly_count) {
+    const rt_mesh3d *mesh = (const rt_mesh3d *)mesh_obj;
+    for (int32_t fi = 1; fi < poly_count - 1; ++fi)
+        if (!fbx_try_emit_mesh_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1]))
+            return 0;
+    return mesh->build_failed ? 0 : 1;
+}
+
 /// @brief Triangulate an FBX polygon of `poly_count` vertices and emit the triangles
 ///   into `mesh`. Returns 0 on allocation or mesh build failure, 1 otherwise.
 /// @details Fast-paths triangles; for N-gons it derives a projection plane from the
@@ -143,11 +160,14 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
     int drop_axis = 2;
     int ccw;
     int32_t remaining;
-    int guard;
+    int64_t guard;
     if (!mesh || !polygon || poly_count < 3)
         return 1;
     if (poly_count == 3) {
         return fbx_try_emit_mesh_triangle(mesh_obj, polygon[0], polygon[1], polygon[2]);
+    }
+    if (poly_count > FBX_MAX_EARCLIP_POLY_VERTS) {
+        return fbx_emit_polygon_fan(mesh_obj, polygon, poly_count);
     }
     if ((size_t)poly_count > sizeof(stack_indices) / sizeof(stack_indices[0])) {
         if ((size_t)poly_count > SIZE_MAX / sizeof(int32_t))
@@ -175,19 +195,14 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
         indices[i] = polygon[i];
     }
     if (!isfinite(area) || fabs(area) < 1e-12) {
-        for (int32_t fi = 1; fi < poly_count - 1; ++fi)
-            if (!fbx_try_emit_mesh_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1])) {
-                if (indices != stack_indices)
-                    free(indices);
-                return 0;
-            }
+        int fan_ok = fbx_emit_polygon_fan(mesh_obj, polygon, poly_count);
         if (indices != stack_indices)
             free(indices);
-        return mesh->build_failed ? 0 : 1;
+        return fan_ok;
     }
     ccw = area > 0.0;
     remaining = poly_count;
-    guard = poly_count * poly_count;
+    guard = (int64_t)poly_count * (int64_t)poly_count;
     while (remaining > 3 && guard-- > 0) {
         int clipped = 0;
         for (int32_t i = 0; i < remaining; ++i) {

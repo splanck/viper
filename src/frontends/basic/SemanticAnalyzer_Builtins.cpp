@@ -288,17 +288,17 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
     }
     // Prefer a full semantic signature view from the registry when available.
     if (const auto *view = getBuiltinSemanticSignature(builtin)) {
-        static BuiltinSignature cached; // reused per-call; safe since we return a reference
+        thread_local BuiltinSignature cached;
         cached.requiredArgs = view->minArgs;
         cached.optionalArgs =
             (view->maxArgs >= view->minArgs) ? (view->maxArgs - view->minArgs) : 0;
-        static SemanticAnalyzer::BuiltinArgSpec argSpecs[8]; // up to 8 args for now
-        static SemanticAnalyzer::Type allowedInt[] = {Type::Int};
-        static SemanticAnalyzer::Type allowedFloat[] = {Type::Float};
-        static SemanticAnalyzer::Type allowedString[] = {Type::String};
-        static SemanticAnalyzer::Type allowedBool[] = {Type::Bool};
-        static SemanticAnalyzer::Type allowedNumber[] = {Type::Int, Type::Float};
-        static SemanticAnalyzer::Type allowedAny[] = {
+        thread_local SemanticAnalyzer::BuiltinArgSpec argSpecs[32];
+        static const SemanticAnalyzer::Type allowedInt[] = {Type::Int};
+        static const SemanticAnalyzer::Type allowedFloat[] = {Type::Float};
+        static const SemanticAnalyzer::Type allowedString[] = {Type::String};
+        static const SemanticAnalyzer::Type allowedBool[] = {Type::Bool};
+        static const SemanticAnalyzer::Type allowedNumber[] = {Type::Int, Type::Float};
+        static const SemanticAnalyzer::Type allowedAny[] = {
             Type::Int, Type::Float, Type::String, Type::Bool};
 
         auto maskToAllowed =
@@ -323,7 +323,8 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
             }
         };
 
-        const std::size_t n = std::min<std::size_t>(view->argCount, 8);
+        constexpr std::size_t kMaxRegistryBuiltinArgs = 32;
+        const std::size_t n = std::min<std::size_t>(view->argCount, kMaxRegistryBuiltinArgs);
         for (std::size_t i = 0; i < n; ++i) {
             argSpecs[i].optional = view->args[i].optional;
             auto [ptr, cnt] = maskToAllowed(view->args[i].allowed);
@@ -353,10 +354,11 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
     // Fallback to legacy static table but override fixed result kind when possible to reduce drift.
     // Guard against legacy table drift; default to a minimally useful signature.
     const std::size_t idx = static_cast<std::size_t>(builtin);
-    static BuiltinSignature kDefault{/*required*/ 0, /*optional*/ 0, nullptr, 0, Type::Unknown};
+    static const BuiltinSignature kDefault{
+        /*required*/ 0, /*optional*/ 0, nullptr, 0, Type::Unknown};
     const BuiltinSignature &legacy =
         (idx < kBuiltinSignatures.size()) ? kBuiltinSignatures[idx] : kDefault;
-    static BuiltinSignature scratch;
+    thread_local BuiltinSignature scratch;
     scratch = legacy;
     switch (getBuiltinFixedResult(builtin)) {
         case BuiltinResultKind::Int:
@@ -398,6 +400,7 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
     if (signature.argumentCount == 0 || signature.arguments == nullptr)
         return true;
 
+    bool ok = true;
     std::size_t missing =
         signature.argumentCount > args.size() ? signature.argumentCount - args.size() : 0;
     std::size_t argIndex = 0;
@@ -415,12 +418,13 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
 
         if (spec.allowed != nullptr && spec.allowedCount > 0) {
             std::span<const Type> allowed(spec.allowed, spec.allowedCount);
-            checkArgType(c, argIndex, args[argIndex], allowed);
+            if (!checkArgType(c, argIndex, args[argIndex], allowed))
+                ok = false;
         }
         ++argIndex;
     }
 
-    return true;
+    return ok;
 }
 
 /// @brief Analyse a builtin using only its declarative signature.

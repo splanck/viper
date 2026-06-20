@@ -385,8 +385,7 @@ void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
 /// @param indices One index value per dimension.
 /// @param extents Inclusive upper bounds per dimension (BASIC convention; length = extent + 1).
 /// @param loc Source location for the emitted arithmetic.
-/// @return The linearized index value. Returns the sole index for 1-D arrays, and falls back to
-///         the first index if @p extents and @p indices disagree in rank.
+/// @return The linearized index value. Emits a diagnostic/trap when rank metadata is missing.
 il::core::Value BoundsCheckEmitter::computeFlattenedIndex(
     const std::vector<il::core::Value> &indices,
     const std::vector<long long> &extents,
@@ -397,45 +396,20 @@ il::core::Value BoundsCheckEmitter::computeFlattenedIndex(
     if (indices.size() == 1)
         return indices[0];
 
-    if (extents.size() != indices.size())
-        return indices[0]; // Fallback
-
-    // Compute lengths from extents (BASIC uses inclusive upper bounds)
-    std::vector<long long> lengths;
-    lengths.reserve(extents.size());
-    for (long long e : extents)
-        lengths.push_back(e + 1);
-
-    lowerer_.curLoc = loc;
-
-    // Start with first index * stride for remaining dimensions
-    long long stride = 1;
-    for (std::size_t i = 1; i < lengths.size(); ++i)
-        stride *= lengths[i];
-
-    il::core::Value result = lowerer_.emitBinary(il::core::Opcode::IMulOvf,
-                                                 il::core::Type(il::core::Type::Kind::I64),
-                                                 indices[0],
-                                                 il::core::Value::constInt(stride));
-
-    // Add remaining dimension contributions
-    for (std::size_t k = 1; k < indices.size(); ++k) {
-        stride = 1;
-        for (std::size_t i = k + 1; i < lengths.size(); ++i)
-            stride *= lengths[i];
-
-        lowerer_.curLoc = loc;
-        il::core::Value term = lowerer_.emitBinary(il::core::Opcode::IMulOvf,
-                                                   il::core::Type(il::core::Type::Kind::I64),
-                                                   indices[k],
-                                                   il::core::Value::constInt(stride));
-
-        lowerer_.curLoc = loc;
-        result = lowerer_.emitBinary(
-            il::core::Opcode::IAddOvf, il::core::Type(il::core::Type::Kind::I64), result, term);
+    if (extents.size() != indices.size()) {
+        if (auto *em = lowerer_.diagnosticEmitter()) {
+            em->emit(il::support::Severity::Error,
+                     "B2000",
+                     loc,
+                     1,
+                     "cannot flatten multidimensional array index without matching extents");
+        }
+        lowerer_.emitTrap();
+        return il::core::Value::constInt(0);
     }
 
-    return result;
+    lowerer_.curLoc = loc;
+    return lowerer_.emitRowMajorFlatIndex(indices, extents);
 }
 
 } // namespace il::frontends::basic

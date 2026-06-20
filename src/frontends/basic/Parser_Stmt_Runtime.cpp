@@ -377,12 +377,21 @@ StmtPtr Parser::parseReDimStatement() {
         consume();
     Token nameTok = expectSoftIdentifier();
     expect(TokenKind::LParen);
-    auto size = parseExpression();
+    std::vector<ExprPtr> dimensions;
+    dimensions.push_back(parseExpression());
+    while (at(TokenKind::Comma)) {
+        consume();
+        dimensions.push_back(parseExpression());
+    }
     expect(TokenKind::RParen);
     auto stmt = std::make_unique<ReDimStmt>();
     stmt->loc = loc;
     stmt->name = nameTok.lexeme;
-    stmt->size = std::move(size);
+    if (dimensions.size() == 1) {
+        stmt->size = std::move(dimensions.front());
+    } else {
+        stmt->dimensions = std::move(dimensions);
+    }
     arrays_.insert(stmt->name);
     return stmt;
 }
@@ -415,7 +424,8 @@ StmtPtr Parser::parseRandomizeStatement() {
     consume(); // RANDOMIZE
     auto stmt = std::make_unique<RandomizeStmt>();
     stmt->loc = loc;
-    stmt->seed = parseExpression();
+    if (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
+        stmt->seed = parseExpression();
     return stmt;
 }
 

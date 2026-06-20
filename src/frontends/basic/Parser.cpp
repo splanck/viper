@@ -34,6 +34,33 @@
 #include <utility>
 
 namespace il::frontends::basic {
+namespace {
+
+/// @brief Canonicalize a parser label key while preserving recovery for malformed names.
+/// @details BASIC labels are case-insensitive. Valid identifier labels use
+///          @ref CanonicalizeIdent; malformed recovery labels fall back to the
+///          original spelling so diagnostics can still refer to the source text.
+/// @param name Label spelling from a token or caller.
+/// @return Stable key used by the parser's named-label table.
+std::string canonicalLabelKey(std::string_view name) {
+    std::string canon = CanonicalizeIdent(name);
+    if (!canon.empty() || name.empty())
+        return canon;
+    return std::string(name);
+}
+
+/// @brief Canonicalize a namespace-head key for case-insensitive parser lookups.
+/// @param name Namespace head spelling as seen in source.
+/// @return Lowercase canonical key, or original text when recovery input is invalid.
+std::string canonicalNamespaceKey(std::string_view name) {
+    std::string canon = CanonicalizeIdent(name);
+    if (!canon.empty() || name.empty())
+        return canon;
+    return std::string(name);
+}
+
+} // namespace
+
 /// @brief Construct a parser for the given source.
 /// @details Instantiates the lexer, stores the diagnostic emitter pointer, and
 ///          seeds the token buffer with the first lookahead token.  The eager
@@ -53,7 +80,7 @@ Parser::Parser(std::string_view src,
     tokens_.push_back(lexer_.next());
 
     if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces()) {
-        knownNamespaces_.insert("Viper");
+        knownNamespaces_.insert("viper");
     }
 
     // Pre-scan source for SUB/FUNCTION names to enable parenthesis-free calls.
@@ -70,7 +97,8 @@ void Parser::prescanProcedureNames(std::string_view src, uint32_t file_id) {
             Token next = scanner.next();
             if (next.kind == TokenKind::Identifier) {
                 // Register the procedure name for parenthesis-free call detection.
-                knownProcedures_.insert(next.lexeme);
+                std::string canon = CanonicalizeIdent(StripTypeSuffix(next.lexeme));
+                knownProcedures_.insert(canon.empty() ? next.lexeme : std::move(canon));
             }
             tok = next;
         } else {
@@ -108,14 +136,15 @@ int Parser::allocateSyntheticLabelNumber() {
 /// @param name Label identifier from BASIC source.
 /// @return The label number (existing or newly allocated).
 int Parser::ensureLabelNumber(const std::string &name) {
-    auto it = namedLabels_.find(name);
+    const std::string key = canonicalLabelKey(name);
+    auto it = namedLabels_.find(key);
     if (it != namedLabels_.end())
         return it->second.number;
 
     int labelNumber = allocateSyntheticLabelNumber();
     NamedLabelEntry entry{};
     entry.number = labelNumber;
-    namedLabels_.emplace(name, entry);
+    namedLabels_.emplace(key, entry);
     usedLabelNumbers_.insert(labelNumber);
     return labelNumber;
 }
@@ -127,7 +156,7 @@ int Parser::ensureLabelNumber(const std::string &name) {
 /// @param name Label identifier to query.
 /// @return True if the label has been registered; false if unknown.
 bool Parser::hasLabelName(const std::string &name) const {
-    return namedLabels_.find(name) != namedLabels_.end();
+    return namedLabels_.find(canonicalLabelKey(name)) != namedLabels_.end();
 }
 
 /// @brief Look up the label number assigned to a named label.
@@ -137,7 +166,7 @@ bool Parser::hasLabelName(const std::string &name) const {
 /// @param name Label identifier to look up.
 /// @return Label number if the label exists, std::nullopt otherwise.
 std::optional<int> Parser::lookupLabelNumber(const std::string &name) const {
-    auto it = namedLabels_.find(name);
+    auto it = namedLabels_.find(canonicalLabelKey(name));
     if (it == namedLabels_.end())
         return std::nullopt;
     return it->second.number;
@@ -151,13 +180,14 @@ std::optional<int> Parser::lookupLabelNumber(const std::string &name) const {
 /// @param labelNumber The numeric label number associated with this named label.
 void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber) {
     usedLabelNumbers_.insert(labelNumber);
-    auto it = namedLabels_.find(tok.lexeme);
+    const std::string key = canonicalLabelKey(tok.lexeme);
+    auto it = namedLabels_.find(key);
     if (it == namedLabels_.end()) {
         NamedLabelEntry entry{};
         entry.number = labelNumber;
         entry.defined = true;
         entry.definitionLoc = tok.loc;
-        namedLabels_.emplace(tok.lexeme, entry);
+        namedLabels_.emplace(key, entry);
         return;
     }
 
@@ -181,13 +211,14 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber) {
 /// @param labelNumber The numeric label number associated with this named label.
 void Parser::noteNamedLabelReference(const Token &tok, int labelNumber) {
     usedLabelNumbers_.insert(labelNumber);
-    auto it = namedLabels_.find(tok.lexeme);
+    const std::string key = canonicalLabelKey(tok.lexeme);
+    auto it = namedLabels_.find(key);
     if (it == namedLabels_.end()) {
         NamedLabelEntry entry{};
         entry.number = labelNumber;
         entry.referenced = true;
         entry.referenceLoc = tok.loc;
-        namedLabels_.emplace(tok.lexeme, entry);
+        namedLabels_.emplace(key, entry);
         return;
     }
 
@@ -371,6 +402,8 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
     AddFileResult result;
 
     Token pathTok = expect(TokenKind::String);
+    if (pathTok.kind != TokenKind::String)
+        return result;
     std::string rawPath = pathTok.lexeme;
 
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
@@ -390,6 +423,17 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
     const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
 
     // Check include depth and cycles.
+    struct IncludeStackGuard {
+        std::vector<std::string> *stack = nullptr;
+        bool active = false;
+
+        /// @brief Pop the include stack when an include exits through any path.
+        ~IncludeStackGuard() {
+            if (active && stack && !stack->empty())
+                stack->pop_back();
+        }
+    } includeGuard;
+
     if (includeStack_) {
         if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_)) {
             emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
@@ -402,14 +446,21 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
             }
         }
         includeStack_->push_back(canonStr);
+        includeGuard.stack = includeStack_;
+        includeGuard.active = true;
     }
 
     // Read file contents.
     std::ifstream in(canonStr);
     if (!in) {
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
-        if (includeStack_ && !includeStack_->empty())
-            includeStack_->pop_back();
+        return result;
+    }
+    constexpr std::uintmax_t kMaxAddFileBytes = 64U * 1024U * 1024U;
+    ec.clear();
+    const auto fileSize = std::filesystem::file_size(canonStr, ec);
+    if (!ec && fileSize > kMaxAddFileBytes) {
+        emitError("B0001", kw.loc, "ADDFILE source exceeds 64 MiB limit: " + canonStr);
         return result;
     }
     std::ostringstream ss;
@@ -419,8 +470,6 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
     uint32_t newFileId = sm_->addFile(canonStr);
     if (newFileId == 0) {
         emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
-        if (includeStack_ && !includeStack_->empty())
-            includeStack_->pop_back();
         return result;
     }
     emitter_->addSource(newFileId, contents);
@@ -431,24 +480,26 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
     child.knownNamespaces_ = knownNamespaces_;
     child.knownConstInts_ = knownConstInts_;
     child.knownConstStrs_ = knownConstStrs_;
+    child.namedLabels_ = namedLabels_;
+    child.usedLabelNumbers_ = usedLabelNumbers_;
+    child.nextSyntheticLabel_ = nextSyntheticLabel_;
 
     // Parse the included file.
     auto subprog = child.parseProgram();
-    if (!subprog) {
-        if (includeStack_ && !includeStack_->empty())
-            includeStack_->pop_back();
+    if (!subprog)
         return result;
-    }
 
     // Extract child parser state for caller.
     result.success = true;
     result.subprog = std::move(subprog);
     result.arrays = child.arrays_;
+    result.namespaces = child.knownNamespaces_;
     result.constInts = child.knownConstInts_;
     result.constStrs = child.knownConstStrs_;
+    result.namedLabels = child.namedLabels_;
+    result.usedLabelNumbers = child.usedLabelNumbers_;
+    result.nextSyntheticLabel = child.nextSyntheticLabel_;
 
-    if (includeStack_ && !includeStack_->empty())
-        includeStack_->pop_back();
     return result;
 }
 
@@ -479,10 +530,15 @@ bool Parser::handleTopLevelAddFile(Program &prog) {
     // Merge child state back to parent.
     for (const auto &arrName : result.arrays)
         arrays_.insert(arrName);
+    for (const auto &nsName : result.namespaces)
+        knownNamespaces_.insert(nsName);
     for (const auto &kv : result.constInts)
         knownConstInts_.insert(kv);
     for (const auto &kv : result.constStrs)
         knownConstStrs_.insert(kv);
+    namedLabels_ = std::move(result.namedLabels);
+    usedLabelNumbers_ = std::move(result.usedLabelNumbers);
+    nextSyntheticLabel_ = result.nextSyntheticLabel;
 
     return true;
 }
@@ -512,10 +568,17 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst) {
         dst.push_back(std::move(s));
 
     // Merge CONSTs back to parent.
+    for (const auto &arrName : result.arrays)
+        arrays_.insert(arrName);
+    for (const auto &nsName : result.namespaces)
+        knownNamespaces_.insert(nsName);
     for (const auto &kv : result.constInts)
         knownConstInts_.insert(kv);
     for (const auto &kv : result.constStrs)
         knownConstStrs_.insert(kv);
+    namedLabels_ = std::move(result.namedLabels);
+    usedLabelNumbers_ = std::move(result.usedLabelNumbers);
+    nextSyntheticLabel_ = result.nextSyntheticLabel;
 
     return true;
 }

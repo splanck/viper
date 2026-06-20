@@ -72,6 +72,7 @@
 ///
 
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 
 #include "frontends/basic/BasicTypes.hpp"
@@ -157,6 +158,11 @@ std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(
     const std::string &name) const {
     if (auto it = varTypes_.find(name); it != varTypes_.end())
         return it->second;
+    std::string canon = CanonicalizeIdent(name);
+    if (!canon.empty()) {
+        if (auto it = varTypes_.find(canon); it != varTypes_.end())
+            return it->second;
+    }
     return std::nullopt;
 }
 
@@ -167,6 +173,11 @@ std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(
 std::optional<std::string> SemanticAnalyzer::lookupObjectClassQName(const std::string &name) const {
     if (auto it = objectClassTypes_.find(name); it != objectClassTypes_.end())
         return it->second;
+    std::string canon = CanonicalizeIdent(name);
+    if (!canon.empty()) {
+        if (auto it = objectClassTypes_.find(canon); it != objectClassTypes_.end())
+            return it->second;
+    }
     return std::nullopt;
 }
 
@@ -180,7 +191,10 @@ std::optional<std::string> SemanticAnalyzer::lookupObjectClassQName(const std::s
 /// @param name Symbol identifier to check.
 /// @return True when the symbol is registered at module scope.
 bool SemanticAnalyzer::isModuleLevelSymbol(const std::string &name) const {
-    return symbols_.contains(name);
+    if (symbols_.contains(name))
+        return true;
+    std::string canon = CanonicalizeIdent(name);
+    return !canon.empty() && symbols_.contains(canon);
 }
 
 /// @brief Check if a symbol is a module-level CONST.
@@ -193,7 +207,10 @@ bool SemanticAnalyzer::isModuleLevelSymbol(const std::string &name) const {
 /// @param name Symbol identifier to check.
 /// @return True when the symbol is a module-level CONST.
 bool SemanticAnalyzer::isConstSymbol(const std::string &name) const {
-    return constants_.contains(name);
+    if (constants_.contains(name))
+        return true;
+    std::string canon = CanonicalizeIdent(name);
+    return !canon.empty() && constants_.contains(canon);
 }
 
 /// @brief Resolve a symbol through the scope stack and update default type tracking.

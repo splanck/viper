@@ -68,14 +68,19 @@ namespace il::frontends::basic {
 /// @param ident Input identifier text.
 /// @return Lowercased identifier or empty on invalid characters.
 inline std::string CanonicalizeIdent(std::string_view ident) {
+    if (ident.empty())
+        return std::string{};
     std::string out;
     out.reserve(ident.size());
+    bool first = true;
     for (unsigned char ch : ident) {
-        if (std::isalnum(ch) || ch == '_') {
+        if ((first && (std::isalpha(ch) || ch == '_')) ||
+            (!first && (std::isalnum(ch) || ch == '_'))) {
             out.push_back(static_cast<char>(std::tolower(ch)));
         } else {
             return std::string{}; // invalid
         }
+        first = false;
     }
     return out;
 }
@@ -134,24 +139,21 @@ inline std::string CanonJoin(const std::vector<std::string> &parts) {
     return CanonicalizeQualified(parts);
 }
 
-/// @brief Split a dot-joined string into segments (empties ignored).
+/// @brief Split a dot-joined string into segments, preserving empty segments.
 /// @param dotted Qualified path like "A.B.C".
-/// @return Vector of non-empty segments in order.
+/// @return Vector of segments in order; malformed paths such as "A..B" contain an empty segment.
 inline std::vector<std::string> SplitDots(std::string_view dotted) {
     std::vector<std::string> out;
     std::string cur;
     for (char ch : dotted) {
         if (ch == '.') {
-            if (!cur.empty()) {
-                out.emplace_back(std::move(cur));
-                cur.clear();
-            }
+            out.emplace_back(std::move(cur));
+            cur.clear();
         } else {
             cur.push_back(ch);
         }
     }
-    if (!cur.empty())
-        out.emplace_back(std::move(cur));
+    out.emplace_back(std::move(cur));
     return out;
 }
 

@@ -757,7 +757,13 @@ ExprPtr Parser::parsePrimary() {
         return expr;
     }
 
-    return makeIntExpr(0, peek().loc);
+    Token unexpected = peek();
+    emitError("B0008", unexpected, "expected expression");
+    if (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon) &&
+        !at(TokenKind::Comma) && !at(TokenKind::RParen)) {
+        consume();
+    }
+    return makeIntExpr(0, unexpected.loc);
 }
 
 /// @brief Parse a NEW expression allocating a class instance.
@@ -768,7 +774,7 @@ ExprPtr Parser::parseNewExpression() {
 
     std::string className;
     std::vector<std::string> qual;
-    if (at(TokenKind::Identifier)) {
+    if (isMemberIdentToken(peek().kind)) {
         auto [segs, start] = parseQualifiedIdentSegments();
         (void)start;
         if (!segs.empty()) {
@@ -812,7 +818,7 @@ ExprPtr Parser::parseNewExpression() {
 std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifiedIdentSegments() {
     std::vector<std::string> segs;
     il::support::SourceLoc startLoc{};
-    if (!at(TokenKind::Identifier))
+    if (!isMemberIdentToken(peek().kind))
         return {segs, startLoc};
     Token first = peek();
     startLoc = first.loc;
@@ -844,18 +850,25 @@ ExprPtr Parser::parseBoundIntrinsic(TokenKind keyword) {
     Token ident = expectSoftIdentifier();
     if (isSoftIdentToken(ident.kind))
         name = ident.lexeme;
+    ExprPtr dimension;
+    if (at(TokenKind::Comma)) {
+        consume();
+        dimension = parseExpression();
+    }
     expect(TokenKind::RParen);
 
     if (keyword == TokenKind::KeywordLbound) {
         auto expr = std::make_unique<LBoundExpr>();
         expr->loc = loc;
         expr->name = std::move(name);
+        expr->dimension = std::move(dimension);
         return expr;
     }
 
     auto expr = std::make_unique<UBoundExpr>();
     expr->loc = loc;
     expr->name = std::move(name);
+    expr->dimension = std::move(dimension);
     return expr;
 }
 

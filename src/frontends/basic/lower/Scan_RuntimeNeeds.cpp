@@ -759,8 +759,15 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner> {
         ensureSymbolType(var.name, inferVariableType(var.name));
         // Use facade for array check
         if (query_.isSymbolArray(var.name)) {
-            lowerer_.requireArrayI64Retain();
-            lowerer_.requireArrayI64Release();
+            if (!query_.getObjectArrayElementClass(var.name).empty()) {
+                lowerer_.requireArrayObjRelease();
+            } else if (auto symType = query_.getSymbolType(var.name);
+                       symType && *symType == Type::Str) {
+                lowerer_.requireArrayStrRelease();
+            } else {
+                lowerer_.requireArrayI64Retain();
+                lowerer_.requireArrayI64Release();
+            }
             return;
         }
         // Use facade for type lookup
@@ -782,7 +789,10 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner> {
 
         // Determine array element type and require appropriate runtime functions
         auto elemType = query_.getArrayElementType(arr.name);
-        if (elemType && *elemType == Type::Str) {
+        if (!query_.getObjectArrayElementClass(arr.name).empty()) {
+            lowerer_.requireArrayObjLen();
+            lowerer_.requireArrayObjPut();
+        } else if (elemType && *elemType == Type::Str) {
             // String array
             lowerer_.requireArrayStrLen();
             lowerer_.requireArrayStrPut();

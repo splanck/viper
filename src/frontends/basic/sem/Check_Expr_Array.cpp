@@ -28,6 +28,8 @@
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/sem/Check_Common.hpp"
 
+#include <optional>
+
 namespace il::frontends::basic::sem {
 
 /// @brief Validate an array index expression and emit diagnostics as needed.
@@ -59,6 +61,58 @@ static SemanticAnalyzer::Type validateArrayIndex(ExprCheckContext &context,
             il::support::Severity::Error, "B2001", arrayLoc, 1, std::move(msg));
     }
     return ty;
+}
+
+/// @brief Resolve a one-based LBOUND/UBOUND dimension argument against array metadata.
+/// @details The parser stores the dimension as an expression so diagnostics can
+///          be attached precisely. Semantic analysis requires a constant integer
+///          dimension when the argument is supplied and records the zero-based
+///          index on the bound expression for lowering.
+/// @param context Expression checking context.
+/// @param dimension Optional dimension expression from the AST.
+/// @param metadata Array metadata containing declared extents when available.
+/// @param loc Source location of the bound intrinsic.
+/// @return Zero-based dimension index, or std::nullopt when invalid/unknown.
+static std::optional<std::size_t> resolveBoundDimension(ExprCheckContext &context,
+                                                        ExprPtr &dimension,
+                                                        const ArrayMetadata *metadata,
+                                                        il::support::SourceLoc loc) {
+    if (!dimension)
+        return std::size_t{0};
+
+    const auto ty = context.evaluate(*dimension);
+    if (ty != SemanticAnalyzer::Type::Unknown && ty != SemanticAnalyzer::Type::Int) {
+        context.diagnostics().emit(
+            il::support::Severity::Error, "B2001", loc, 1, "array bound dimension must be integer");
+        return std::nullopt;
+    }
+
+    const auto *literal = as<IntExpr>(*dimension);
+    if (!literal) {
+        context.diagnostics().emit(il::support::Severity::Error,
+                                   "B2001",
+                                   loc,
+                                   1,
+                                   "array bound dimension must be a constant integer");
+        return std::nullopt;
+    }
+    if (literal->value < 1) {
+        context.diagnostics().emit(il::support::Severity::Error,
+                                   "B2001",
+                                   loc,
+                                   1,
+                                   "array bound dimension must be one-based");
+        return std::nullopt;
+    }
+
+    const auto zeroBased = static_cast<std::size_t>(literal->value - 1);
+    if (metadata && !metadata->extents.empty() && zeroBased >= metadata->extents.size()) {
+        std::string msg = "array bound dimension out of range: expected 1 to " +
+                          std::to_string(metadata->extents.size());
+        context.diagnostics().emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
+        return std::nullopt;
+    }
+    return zeroBased;
 }
 
 /// @brief Type-check a BASIC array access expression and compute its element type.
@@ -129,10 +183,10 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
                     il::support::Severity::Error, "B3002", expr.loc, 1, std::move(msg));
             } else {
                 // Single-dimensional array: check bounds
-                long long arraySize = meta->extents[0];
-                if (arraySize >= 0) {
+                long long upperBound = meta->extents[0];
+                if (upperBound >= 0) {
                     if (auto *ci = as<const IntExpr>(*expr.index)) {
-                        if (ci->value < 0 || ci->value >= arraySize) {
+                        if (ci->value < 0 || ci->value > upperBound) {
                             std::string msg = "index out of bounds";
                             context.diagnostics().emit(il::support::Severity::Warning,
                                                        "B3001",
@@ -170,16 +224,16 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
                     if (!expr.indices[i])
                         continue;
 
-                    const long long dimSize = meta->extents[i];
-                    if (dimSize < 0)
+                    const long long upperBound = meta->extents[i];
+                    if (upperBound < 0)
                         continue; // Dynamic/unknown extent, skip static check
 
                     if (auto *ci = as<const IntExpr>(*expr.indices[i])) {
-                        if (ci->value < 0 || ci->value >= dimSize) {
+                        if (ci->value < 0 || ci->value > upperBound) {
                             std::string msg = "index out of bounds for dimension " +
                                               std::to_string(i + 1) + ": " +
                                               std::to_string(ci->value) + " not in [0, " +
-                                              std::to_string(dimSize - 1) + "]";
+                                              std::to_string(upperBound) + "]";
                             context.diagnostics().emit(il::support::Severity::Warning,
                                                        "B3001",
                                                        expr.loc,
@@ -239,6 +293,9 @@ SemanticAnalyzer::Type analyzeLBoundExpr(SemanticAnalyzer &analyzer, LBoundExpr 
         return Type::Unknown;
     }
 
+    const auto *meta = context.arrayMetadata(expr.name);
+    expr.resolvedDimension = resolveBoundDimension(context, expr.dimension, meta, expr.loc);
+
     return Type::Int;
 }
 
@@ -271,6 +328,13 @@ SemanticAnalyzer::Type analyzeUBoundExpr(SemanticAnalyzer &analyzer, UBoundExpr 
             static_cast<uint32_t>(expr.name.size()),
             std::initializer_list<diag::Replacement>{diag::Replacement{"name", expr.name}});
         return Type::Unknown;
+    }
+
+    const auto *meta = context.arrayMetadata(expr.name);
+    expr.resolvedDimension = resolveBoundDimension(context, expr.dimension, meta, expr.loc);
+    if (expr.resolvedDimension && meta && !meta->extents.empty() &&
+        *expr.resolvedDimension < meta->extents.size()) {
+        expr.resolvedUpperBound = meta->extents[*expr.resolvedDimension];
     }
 
     return Type::Int;

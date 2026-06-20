@@ -19,6 +19,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/StringUtils.hpp"
 
 #include <cassert>
 #include <optional>
@@ -604,7 +605,7 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
         // by releaseArrayLocals, not here. Skip arrays.
         if (info.isArray)
             continue;
-        if (name == "ME")
+        if (string_utils::iequals(name, "ME"))
             continue;
         if (paramNames.contains(name))
             continue;
@@ -633,7 +634,7 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
         // by releaseArrayParams, not here. Skip arrays.
         if (info.isArray)
             continue;
-        if (name == "ME")
+        if (string_utils::iequals(name, "ME"))
             continue;
         if (!paramNames.contains(name))
             continue;

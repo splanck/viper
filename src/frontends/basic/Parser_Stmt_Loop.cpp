@@ -135,38 +135,7 @@ StmtPtr Parser::parseForStatement() {
     auto stmt = std::make_unique<ForStmt>();
     stmt->loc = loc;
 
-    // BUG-081 fix: Parse loop variable as an lvalue expression
-    // Supports simple variables (i), member access (obj.field), and array elements (arr(i))
-    stmt->varExpr = parsePrimary();
-
-    // Continue parsing member access or array subscripts to build full lvalue
-    while (at(TokenKind::Dot) || at(TokenKind::LParen)) {
-        if (at(TokenKind::Dot)) {
-            consume(); // .
-            Token memberTok = peek();
-            if (isMemberIdentToken(memberTok.kind)) {
-                consume();
-            } else {
-                memberTok = expect(TokenKind::Identifier);
-            }
-            auto access = std::make_unique<MemberAccessExpr>();
-            access->loc = memberTok.loc;
-            access->base = std::move(stmt->varExpr);
-            access->member = memberTok.lexeme;
-            stmt->varExpr = std::move(access);
-        } else if (at(TokenKind::LParen)) {
-            consume(); // (
-            auto index = parseExpression();
-            expect(TokenKind::RParen);
-            auto arr = std::make_unique<ArrayExpr>();
-            arr->loc = stmt->varExpr->loc;
-            if (auto *v = as<VarExpr>(*stmt->varExpr)) {
-                arr->name = v->name;
-            }
-            arr->indices.push_back(std::move(index));
-            stmt->varExpr = std::move(arr);
-        }
-    }
+    stmt->varExpr = parseLetTarget();
 
     expect(TokenKind::Equal);
     stmt->start = parseExpression();
@@ -233,14 +202,6 @@ StmtPtr Parser::parseExitStatement() {
     } else if (at(TokenKind::KeywordFunction)) {
         consume();
         kind = ExitStmt::LoopKind::Function;
-    } else {
-        Token unexpected = peek();
-        il::support::SourceLoc diagLoc =
-            unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
-        emitError("B0002", diagLoc, "expected FOR, WHILE, DO, SUB, or FUNCTION after EXIT");
-        auto noop = std::make_unique<EndStmt>();
-        noop->loc = loc;
-        return noop;
     }
 
     auto stmt = std::make_unique<ExitStmt>();

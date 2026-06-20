@@ -306,6 +306,16 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
     animators = (void **)malloc((size_t)entity_count * sizeof(*animators));
     if (!animators)
         return;
+    /* Dedup animators in O(n) via a local open-addressing pointer set rather than the
+     * prior O(n^2) inner scan. Dedup is mandatory: the parallel path below partitions
+     * `animators` across workers, so a duplicate would let two threads update the same
+     * animator concurrently. Capacity >= 2*entity_count keeps a free slot for probing;
+     * a calloc failure falls back to the linear scan. */
+    size_t seen_cap = 1;
+    void **seen;
+    while (seen_cap < (size_t)entity_count * 2u && seen_cap < SIZE_MAX / 2u)
+        seen_cap <<= 1;
+    seen = (void **)calloc(seen_cap, sizeof(*seen));
     for (int32_t i = 0; i < entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
         void *anim = game3d_entity_anim_ref(entity);
@@ -313,15 +323,30 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
         if (!entity || !entity->alive || entity->destroyed || !anim ||
             !rt_game3d_animator_needs_game_update(anim))
             continue;
-        for (int32_t j = 0; j < animator_count; ++j) {
-            if (animators[j] == anim) {
-                duplicate = 1;
-                break;
+        if (seen) {
+            size_t mask = seen_cap - 1;
+            size_t slot = (((uintptr_t)anim) >> 4) & mask;
+            while (seen[slot]) {
+                if (seen[slot] == anim) {
+                    duplicate = 1;
+                    break;
+                }
+                slot = (slot + 1) & mask;
+            }
+            if (!duplicate)
+                seen[slot] = anim;
+        } else {
+            for (int32_t j = 0; j < animator_count; ++j) {
+                if (animators[j] == anim) {
+                    duplicate = 1;
+                    break;
+                }
             }
         }
         if (!duplicate)
             animators[animator_count++] = anim;
     }
+    free(seen);
     if (animator_count <= 0) {
         free(animators);
         return;

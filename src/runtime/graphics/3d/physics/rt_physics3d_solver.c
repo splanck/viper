@@ -71,7 +71,14 @@ static void ph3d_contact_tangents(const double *n, double *t1, double *t2) {
     if (vec3_normalize_in_place(t1) < 1e-12)
         vec3_set(t1, 1.0, 0.0, 0.0);
     vec3_cross(n, t1, t2);
-    vec3_normalize_in_place(t2);
+    if (vec3_normalize_in_place(t2) < 1e-12) {
+        /* n and t1 nearly parallel (only reachable with a degenerate, non-unit
+         * normal): pick any axis orthogonal to t1 so friction never operates on a
+         * zero-length tangent. No-op for the valid unit-normal case above. */
+        vec3_set(t2, -t1[1], t1[0], 0.0);
+        if (vec3_normalize_in_place(t2) < 1e-12)
+            vec3_set(t2, 0.0, 0.0, 1.0);
+    }
 }
 
 /// @brief Effective mass (1 / scalar inverse-mass) for a unit constraint @p axis

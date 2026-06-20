@@ -819,6 +819,38 @@ static void fbx_apply_model_node_trs(fbx_node_t *obj, void *node, int z_up) {
     rt_scene_node3d_set_scale(node, scale[0], scale[1], scale[2]);
 }
 
+/// @brief (id, model-index) pair used to build a sorted lookup table for FBX parent
+///   resolution, replacing repeated O(n) id scans with O(log n) binary search.
+typedef struct {
+    int64_t id;
+    int32_t index;
+} fbx_model_id_entry_t;
+
+/// @brief qsort comparator ordering fbx_model_id_entry_t by ascending id.
+static int fbx_model_id_entry_cmp(const void *a, const void *b) {
+    int64_t ia = ((const fbx_model_id_entry_t *)a)->id;
+    int64_t ib = ((const fbx_model_id_entry_t *)b)->id;
+    return (ia > ib) - (ia < ib);
+}
+
+/// @brief Binary-search a sorted id->index table; returns the model index or -1.
+static int32_t fbx_model_index_for_id(const fbx_model_id_entry_t *sorted,
+                                      int32_t count,
+                                      int64_t id) {
+    int32_t lo = 0;
+    int32_t hi = count - 1;
+    while (lo <= hi) {
+        int32_t mid = lo + (hi - lo) / 2;
+        if (sorted[mid].id == id)
+            return sorted[mid].index;
+        if (sorted[mid].id < id)
+            lo = mid + 1;
+        else
+            hi = mid - 1;
+    }
+    return -1;
+}
+
 /// @brief Three-phase builder that assembles a Viper `SceneNode3D` graph from the flat
 /// FBX `Objects` / `Connections` soup. Phase 1: iterate `Model` entries, skip skeleton
 /// limbs (handled by the skeleton importer), allocate a scene node per model with
@@ -1070,41 +1102,68 @@ static void *fbx_build_scene_root(fbx_node_t *root,
         }
     }
 
+    /* Resolve each model's direct parent index once (O(n log n)) so the hierarchy
+     * pass below is O(n * depth) instead of O(n^3) on deep or adversarial scenes. */
+    int32_t *parent_idx = NULL;
+    if (!failed && model_count > 0) {
+        parent_idx = (int32_t *)malloc((size_t)model_count * sizeof(*parent_idx));
+        if (!parent_idx) {
+            failed = 1;
+        } else {
+            fbx_model_id_entry_t *id_table =
+                (fbx_model_id_entry_t *)malloc((size_t)model_count * sizeof(*id_table));
+            if (id_table) {
+                for (int32_t i = 0; i < model_count; i++) {
+                    id_table[i].id = models[i].id;
+                    id_table[i].index = i;
+                }
+                qsort(id_table, (size_t)model_count, sizeof(*id_table), fbx_model_id_entry_cmp);
+                for (int32_t i = 0; i < model_count; i++)
+                    parent_idx[i] =
+                        models[i].parent_id != 0
+                            ? fbx_model_index_for_id(id_table, model_count, models[i].parent_id)
+                            : -1;
+                free(id_table);
+            } else {
+                /* Rare OOM on the lookup table: fill via one linear pass (O(n^2)),
+                 * still far better than the O(n^3) loop it replaces. */
+                for (int32_t i = 0; i < model_count; i++) {
+                    parent_idx[i] = -1;
+                    if (models[i].parent_id != 0)
+                        for (int32_t pi = 0; pi < model_count; pi++)
+                            if (models[pi].id == models[i].parent_id) {
+                                parent_idx[i] = pi;
+                                break;
+                            }
+                }
+            }
+        }
+    }
+
     for (int32_t i = 0; !failed && i < model_count; i++) {
         void *parent = scene_root;
         if (models[i].parent_id != 0) {
             int32_t guard = 0;
-            int64_t chain_parent_id = models[i].parent_id;
-            while (chain_parent_id != 0) {
-                int32_t found_parent = -1;
-                for (int32_t pi = 0; pi < model_count; pi++) {
-                    if (models[pi].id == chain_parent_id) {
-                        found_parent = pi;
-                        break;
-                    }
-                }
-                if (found_parent < 0)
-                    break;
-                if (found_parent == i || ++guard > model_count) {
+            int32_t walk = parent_idx[i];
+            /* Walk ancestors by index; detect self-cycles and over-long chains. */
+            while (walk >= 0) {
+                if (walk == i || ++guard > model_count) {
                     failed = 1;
                     break;
                 }
-                chain_parent_id = models[found_parent].parent_id;
+                walk = parent_idx[walk];
             }
             if (failed)
                 break;
-            for (int32_t pi = 0; pi < model_count; pi++) {
-                if (models[pi].id == models[i].parent_id) {
-                    parent = models[pi].node;
-                    break;
-                }
-            }
+            if (parent_idx[i] >= 0)
+                parent = models[parent_idx[i]].node;
         }
         if (!rt_scene_node3d_try_add_child(parent, models[i].node)) {
             failed = 1;
             break;
         }
     }
+    free(parent_idx);
 
     for (int32_t i = 0; i < model_count; i++)
         fbx_release_ref(&models[i].node);

@@ -30,6 +30,8 @@
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
+#include <climits>
+
 namespace il::frontends::basic::semantic_analyzer_detail {
 
 /// @brief Bind runtime statement helpers to the active semantic analyzer state.
@@ -661,12 +663,12 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d) {
             bool overflow = false;
 
             for (long long extent : extents) {
-                // Check for overflow: totalSize * extent > LLONG_MAX
-                if (extent > 0 && totalSize > LLONG_MAX / extent) {
+                // BASIC extents are inclusive upper bounds; runtime length is extent + 1.
+                if (extent < 0 || extent == LLONG_MAX || totalSize > LLONG_MAX / (extent + 1)) {
                     overflow = true;
                     break;
                 }
-                totalSize *= extent;
+                totalSize *= (extent + 1);
             }
 
             if (overflow) {
@@ -884,13 +886,25 @@ void SemanticAnalyzer::analyzeShared(SharedStmt &s) {
 /// @param d REDIM statement describing the new array bounds.
 void SemanticAnalyzer::analyzeReDim(ReDimStmt &d) {
     long long sz = -1;
-    if (d.size) {
+    std::vector<long long> extents;
+    bool allConstant = true;
+    std::vector<ExprPtr *> dimExprs;
+    if (d.size)
+        dimExprs.push_back(&d.size);
+    else {
+        for (auto &dim : d.dimensions) {
+            if (dim)
+                dimExprs.push_back(&dim);
+        }
+    }
+
+    for (ExprPtr *dimPtr : dimExprs) {
         FloatExpr *floatLiteral = nullptr;
-        auto ty = visitExpr(*d.size);
+        auto ty = visitExpr(**dimPtr);
         if (ty == Type::Float) {
-            floatLiteral = as<FloatExpr>(*d.size);
+            floatLiteral = as<FloatExpr>(**dimPtr);
             if (floatLiteral != nullptr) {
-                insertImplicitCast(*d.size, Type::Int);
+                insertImplicitCast(**dimPtr, Type::Int);
                 std::string msg = "narrowing conversion from FLOAT to INT in array size";
                 de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
             } else {
@@ -906,12 +920,15 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d) {
                 std::string msg = "array size must be non-negative";
                 de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
             }
-        } else if (auto *ci = as<const IntExpr>(*d.size)) {
+        } else if (auto *ci = as<const IntExpr>(**dimPtr)) {
             sz = ci->value;
             if (sz < 0) {
                 std::string msg = "array size must be non-negative";
                 de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
             }
+            extents.push_back(sz);
+        } else {
+            allConstant = false;
         }
     }
 
@@ -937,8 +954,20 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d) {
     if (activeProcScope_) {
         activeProcScope_->noteArrayMutation(d.name, itArray->second);
     }
-    // REDIM changes size - update metadata with new single-dimension size
-    arrays_[d.name] = ArrayMetadata(sz);
+    if (allConstant && !extents.empty()) {
+        long long totalSize = 1;
+        bool overflow = false;
+        for (long long extent : extents) {
+            if (extent < 0 || extent == LLONG_MAX || totalSize > LLONG_MAX / (extent + 1)) {
+                overflow = true;
+                break;
+            }
+            totalSize *= (extent + 1);
+        }
+        arrays_[d.name] = overflow ? ArrayMetadata() : ArrayMetadata(std::move(extents), totalSize);
+    } else {
+        arrays_[d.name] = ArrayMetadata();
+    }
 }
 
 /// @brief Validate SWAP statements for compatible types.

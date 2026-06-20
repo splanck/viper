@@ -159,11 +159,15 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
 
     void visit(const LBoundExpr &expr) override {
         callBefore(expr);
+        if (callShouldVisit(expr))
+            walker::detail::visitOptionalChild(*this, expr, expr.dimension);
         callAfter(expr);
     }
 
     void visit(const UBoundExpr &expr) override {
         callBefore(expr);
+        if (callShouldVisit(expr))
+            walker::detail::visitOptionalChild(*this, expr, expr.dimension);
         callAfter(expr);
     }
 
@@ -355,6 +359,7 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callBefore(stmt);
         if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.size);
+            walker::detail::visitChildRange(*this, stmt, stmt.dimensions);
         }
         callAfter(stmt);
     }

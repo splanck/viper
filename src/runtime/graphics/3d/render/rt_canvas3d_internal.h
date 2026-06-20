@@ -862,6 +862,9 @@ typedef struct {
     int32_t mesh_snapshot_capacity;
     int32_t *mesh_snapshot_hash;
     int32_t mesh_snapshot_hash_capacity;
+    /* 0 when the hash table indexes every snapshot (the common case); set to 1 if a
+     * hash rebuild fails (OOM) so lookups fall back to the linear scan for safety. */
+    int8_t mesh_snapshot_hash_dirty;
     size_t mesh_snapshot_bytes;
     vgfx3d_skinning_scratch_t skinning_scratch;
 

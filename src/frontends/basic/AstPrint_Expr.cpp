@@ -175,14 +175,24 @@ struct AstPrinter::ExprPrinter final : ExprVisitor {
     /// @brief Print an LBOUND expression with its array operand.
     /// @details Emits `(LBOUND name)` mirroring the parser's canonical form.
     void visit(const LBoundExpr &expr) override {
-        printer.os << "(LBOUND " << expr.name << ')';
+        printer.os << "(LBOUND " << expr.name;
+        if (expr.dimension) {
+            printer.os << ' ';
+            expr.dimension->accept(*this);
+        }
+        printer.os << ')';
     }
 
     /// @brief Print a UBOUND expression with its array operand.
     /// @details Mirrors the `LBOUND` formatting while using the appropriate
     ///          mnemonic.
     void visit(const UBoundExpr &expr) override {
-        printer.os << "(UBOUND " << expr.name << ')';
+        printer.os << "(UBOUND " << expr.name;
+        if (expr.dimension) {
+            printer.os << ' ';
+            expr.dimension->accept(*this);
+        }
+        printer.os << ')';
     }
 
     /// @brief Print a user-defined call expression with its argument list.

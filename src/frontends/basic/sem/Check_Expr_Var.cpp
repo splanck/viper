@@ -27,6 +27,7 @@
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/sem/Check_Common.hpp"
 
+#include <algorithm>
 #include <limits>
 
 namespace il::frontends::basic::sem {
@@ -72,6 +73,10 @@ SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
         std::string best;
         std::size_t bestDist = std::numeric_limits<std::size_t>::max();
         for (const auto &s : context.symbols()) {
+            const std::size_t longer = std::max(expr.name.size(), s.size());
+            const std::size_t shorter = std::min(expr.name.size(), s.size());
+            if (longer - shorter > 3)
+                continue;
             std::size_t d = semantic_analyzer_detail::levenshtein(expr.name, s);
             if (d < bestDist) {
                 bestDist = d;
@@ -80,7 +85,7 @@ SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
         }
 
         std::string suggestion;
-        if (!best.empty()) {
+        if (!best.empty() && bestDist <= 3) {
             suggestion = "; did you mean '" + best + "'?";
         }
 

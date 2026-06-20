@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 // Requires the consolidated Lowerer interface for expression lowering helpers.
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/LowerExprBuiltin.hpp"
 #include "frontends/basic/LowerExprLogical.hpp"
@@ -73,8 +74,21 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v) {
 /// @return Pair containing the computed upper bound and its integer type.
 Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr) {
     LocationScope loc(*this, expr.loc);
+    if (expr.resolvedUpperBound)
+        return {emitConstI64(*expr.resolvedUpperBound), Type(Type::Kind::I64)};
+
     const auto *sym = findSymbol(expr.name);
-    assert(sym && sym->slotId && "UBOUND requires materialized array slot");
+    if (!sym || !sym->slotId) {
+        if (auto *em = diagnosticEmitter()) {
+            em->emit(il::support::Severity::Error,
+                     "B2000",
+                     expr.loc,
+                     static_cast<uint32_t>(expr.name.size()),
+                     "UBOUND requires a materialized array slot");
+        }
+        emitTrap();
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
     Value slot = Value::temp(*sym->slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
 

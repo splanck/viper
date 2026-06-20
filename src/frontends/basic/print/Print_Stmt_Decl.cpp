@@ -122,6 +122,13 @@ void printReDim(const ReDimStmt &stmt, Context &ctx) {
     if (stmt.size) {
         os << ' ';
         ctx.printExpr(*stmt.size);
+    } else {
+        for (const auto &dim : stmt.dimensions) {
+            if (!dim)
+                continue;
+            os << ' ';
+            ctx.printExpr(*dim);
+        }
     }
     os << ')';
 }

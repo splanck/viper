@@ -36,6 +36,8 @@
 #include "viper/il/Module.hpp"
 
 #include <cassert>
+#include <limits>
+#include <optional>
 #include <utility>
 
 using namespace il::core;
@@ -101,7 +103,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // BUG-089: Object arrays detected via non-empty objectClassName.
     // BUG-108: Local variables shadow implicit field arrays.
     const MemberArrayInfo fieldInfo = resolveMemberArrayField(expr.name);
-    const bool isMemberArray = fieldInfo.isDottedAccess;
+    const bool isMemberArray = fieldInfo.isField;
 
     const auto *info = isMemberArray ? nullptr : findSymbol(expr.name);
 
@@ -135,9 +137,17 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     std::optional<VariableStorage> storage;
     if (!isMemberArray) {
         storage = resolveVariableStorage(expr.name, expr.loc);
-        assert(storage && "array access requires resolvable storage");
-        if (!storage)
+        if (!storage) {
+            if (auto *em = diagnosticEmitter()) {
+                em->emit(il::support::Severity::Error,
+                         "B2000",
+                         expr.loc,
+                         static_cast<uint32_t>(expr.name.size()),
+                         "array access requires resolvable storage");
+            }
+            emitTrap();
             return {Value::null(), Value::null()}; // Safety: null in Release.
+        }
     }
 
     // Require appropriate runtime functions based on array element type
@@ -199,8 +209,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         // Split into base variable and field name
         const std::string &full = expr.name;
         std::size_t dot = full.find('.');
-        std::string baseName = full.substr(0, dot);
-        std::string fieldName = full.substr(dot + 1);
+        std::string baseName = fieldInfo.isDottedAccess ? full.substr(0, dot) : "ME";
+        std::string fieldName = fieldInfo.isDottedAccess ? full.substr(dot + 1) : full;
 
         // Load the object pointer for the base
         const auto *baseSym = findSymbol(baseName);
@@ -244,7 +254,17 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 indexExprs.push_back(&idxExpr);
         }
     }
-    assert(!indexExprs.empty() && "array access must have at least one index");
+    if (indexExprs.empty()) {
+        if (auto *em = diagnosticEmitter()) {
+            em->emit(il::support::Severity::Error,
+                     "B2000",
+                     expr.loc,
+                     static_cast<uint32_t>(expr.name.size()),
+                     "array access requires at least one index");
+        }
+        emitTrap();
+        return {Value::null(), Value::null()};
+    }
 
     // Lower all index expressions to i64 for bounds checking in the current block
     std::vector<Value> indices;
@@ -286,8 +306,17 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
         if (metadata && metadata->extents.size() == idxVals.size())
             return emitRowMajorFlatIndex(idxVals, metadata->extents);
-        // Fallback: just use the first index.
-        return idxVals[0];
+        if (auto *em = diagnosticEmitter()) {
+            std::string msg = "cannot lower multidimensional array access for '" + expr.name +
+                              "' without matching extent metadata";
+            em->emit(il::support::Severity::Error,
+                     "B2000",
+                     expr.loc,
+                     static_cast<uint32_t>(expr.name.size()),
+                     std::move(msg));
+        }
+        emitTrap();
+        return Value::constInt(0);
     };
     index = computeFlatIndex(indices);
 
@@ -359,8 +388,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         if (isMemberArray) {
             const std::string &full = expr.name;
             std::size_t dot = full.find('.');
-            std::string baseName = full.substr(0, dot);
-            std::string fieldName = full.substr(dot + 1);
+            std::string baseName = fieldInfo.isDottedAccess ? full.substr(0, dot) : "ME";
+            std::string fieldName = fieldInfo.isDottedAccess ? full.substr(dot + 1) : full;
             const auto *baseSym = findSymbol(baseName);
             if (baseSym && baseSym->slotId) {
                 curLoc = expr.loc;
@@ -398,19 +427,74 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
 Value Lowerer::emitRowMajorFlatIndex(const std::vector<Value> &idxVals,
                                      const std::vector<long long> &extents) {
+    auto checkedMulConst = [&](long long lhs, long long rhs) -> std::optional<long long> {
+        if (lhs < 0 || rhs < 0)
+            return std::nullopt;
+        if (rhs != 0 && lhs > std::numeric_limits<long long>::max() / rhs)
+            return std::nullopt;
+        return lhs * rhs;
+    };
+
+    if (idxVals.empty() || idxVals.size() != extents.size()) {
+        if (auto *em = diagnosticEmitter()) {
+            em->emit(il::support::Severity::Error,
+                     "B2000",
+                     curLoc,
+                     1,
+                     "array index rank does not match array extent metadata");
+        }
+        emitTrap();
+        return Value::constInt(0);
+    }
+
     // Convert declared bounds to inclusive lengths: Lk = Ek + 1.
     std::vector<long long> lengths(extents.size(), 0);
-    for (size_t i = 0; i < extents.size(); ++i)
+    for (size_t i = 0; i < extents.size(); ++i) {
+        if (extents[i] == std::numeric_limits<long long>::max()) {
+            if (auto *em = diagnosticEmitter())
+                em->emit(il::support::Severity::Error,
+                         "B2000",
+                         curLoc,
+                         1,
+                         "array extent is too large to flatten");
+            emitTrap();
+            return Value::constInt(0);
+        }
         lengths[i] = extents[i] + 1;
+    }
     long long stride = 1;
-    for (size_t i = 1; i < lengths.size(); ++i)
-        stride *= lengths[i];
+    for (size_t i = 1; i < lengths.size(); ++i) {
+        auto product = checkedMulConst(stride, lengths[i]);
+        if (!product) {
+            if (auto *em = diagnosticEmitter())
+                em->emit(il::support::Severity::Error,
+                         "B2000",
+                         curLoc,
+                         1,
+                         "array stride computation overflowed");
+            emitTrap();
+            return Value::constInt(0);
+        }
+        stride = *product;
+    }
     Value sum =
         emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
     for (size_t k = 1; k < idxVals.size(); ++k) {
         stride = 1;
-        for (size_t i = k + 1; i < lengths.size(); ++i)
-            stride *= lengths[i];
+        for (size_t i = k + 1; i < lengths.size(); ++i) {
+            auto product = checkedMulConst(stride, lengths[i]);
+            if (!product) {
+                if (auto *em = diagnosticEmitter())
+                    em->emit(il::support::Severity::Error,
+                             "B2000",
+                             curLoc,
+                             1,
+                             "array stride computation overflowed");
+                emitTrap();
+                return Value::constInt(0);
+            }
+            stride = *product;
+        }
         Value term =
             emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
         sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);

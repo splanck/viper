@@ -283,6 +283,8 @@ bool Lowerer::shouldAllocateSlot(const std::string &name,
     // Skip module-level globals and constants (they resolve via runtime storage)
     // Constants use module-level storage and can't be shadowed (semantic analyzer prevents it)
     bool isMain = (context().function() && context().function()->name == "main");
+    if (!isParam && !isMain && isCrossProcGlobal(name))
+        return false;
     if (!isParam && !isMain && semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(name))
         return false;
 

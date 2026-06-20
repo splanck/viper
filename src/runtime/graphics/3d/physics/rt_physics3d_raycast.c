@@ -173,7 +173,27 @@ static int raycast_aabb_raw(const double *origin,
         if (out_started)
             *out_started = 1;
         if (out_normal) {
-            vec3_negate(dir, out_normal);
+            /* Origin starts inside the box: return the outward normal of the nearest
+             * face (the shortest push-out direction) instead of the ray direction. */
+            int best_axis = 0;
+            double best_sign = -1.0;
+            double best_dist = -1.0;
+            for (int axis = 0; axis < 3; axis++) {
+                double dlo = origin[axis] - mn[axis];
+                double dhi = mx[axis] - origin[axis];
+                if (best_dist < 0.0 || dlo < best_dist) {
+                    best_dist = dlo;
+                    best_axis = axis;
+                    best_sign = -1.0;
+                }
+                if (dhi < best_dist) {
+                    best_dist = dhi;
+                    best_axis = axis;
+                    best_sign = 1.0;
+                }
+            }
+            vec3_set(out_normal, 0.0, 0.0, 0.0);
+            out_normal[best_axis] = best_sign;
             query_normalize_normal(out_normal, dir);
         }
         return 1;
@@ -677,8 +697,9 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
         free(stack);
         if (!overflow)
             goto mesh_raycast_done;
-        best_t = max_distance + 1.0;
-        found = 0;
+        /* BVH stack overflowed mid-traversal: fall through to the exhaustive scan,
+         * but keep the best hit found so far as a tighter initial bound. The scan
+         * still tests every triangle, so the final nearest hit remains exact. */
     }
     for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
         uint32_t i0 = mesh->indices[i];

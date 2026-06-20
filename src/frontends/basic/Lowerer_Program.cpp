@@ -85,6 +85,16 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module) {
     build::IRBuilder builder(module);
     lowerer.builder = &builder;
 
+    struct LowererBindingGuard {
+        Lowerer &lowerer;
+
+        /// @brief Clear borrowed module and builder pointers when lowering exits.
+        ~LowererBindingGuard() {
+            lowerer.builder = nullptr;
+            lowerer.mod = nullptr;
+        }
+    } bindingGuard{lowerer};
+
     lowerer.mangler = NameMangler();
     auto &ctx = lowerer.context();
     ctx.reset();
@@ -115,9 +125,6 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module) {
     lowerer.emitProgram(prog);
     // Declare all helpers requested via scan and lowering in a single pass to avoid duplicates.
     lowerer.declareRequiredRuntime(builder);
-
-    lowerer.builder = nullptr;
-    lowerer.mod = nullptr;
 }
 
 } // namespace il::frontends::basic

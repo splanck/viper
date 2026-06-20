@@ -334,7 +334,6 @@ Token Lexer::lexNumber() {
     il::support::SourceLoc loc{fileId_, line_, column_};
     std::string s;
     bool seenDot = false;
-    bool seenExp = false;
     char suffix = '\0';
     constexpr size_t kMaxNumLen = 1024;
     if (peek() == '.') {
@@ -346,7 +345,7 @@ Token Lexer::lexNumber() {
     if (s.size() >= kMaxNumLen) {
         while (isDigit(peek()))
             get();
-        return {TokenKind::Number, s, loc};
+        return {TokenKind::Unknown, s, loc};
     }
     if (!seenDot && peek() == '.') {
         seenDot = true;
@@ -356,26 +355,26 @@ Token Lexer::lexNumber() {
         if (s.size() >= kMaxNumLen) {
             while (isDigit(peek()))
                 get();
-            return {TokenKind::Number, s, loc};
+            return {TokenKind::Unknown, s, loc};
         }
     }
     if ((peek() == 'e' || peek() == 'E')) {
-        seenExp = true;
         s.push_back(get());
         if (peek() == '+' || peek() == '-')
             s.push_back(get());
+        if (!isDigit(peek()))
+            return {TokenKind::Unknown, s, loc};
         while (isDigit(peek()) && s.size() < kMaxNumLen)
             s.push_back(get());
         if (s.size() >= kMaxNumLen) {
             while (isDigit(peek()))
                 get();
-            return {TokenKind::Number, s, loc};
+            return {TokenKind::Unknown, s, loc};
         }
     }
     if (peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
         suffix = get();
     (void)seenDot;
-    (void)seenExp;
     if (suffix != '\0')
         s.push_back(suffix);
     return {TokenKind::Number, s, loc};
@@ -416,7 +415,7 @@ Token Lexer::lexBasedNumber() {
     if (s.size() >= kMaxNumLen) {
         while (!eof() && (binary ? isBinaryDigit(peek()) : isHexDigit(peek())))
             get();
-        return sawDigit ? Token{TokenKind::Number, s, loc} : Token{TokenKind::Unknown, s, loc};
+        return {TokenKind::Unknown, s, loc};
     }
 
     if (!sawDigit)
@@ -468,6 +467,7 @@ Token Lexer::lexString() {
     std::string s;
     constexpr size_t kMaxStringLen = 16 * 1024 * 1024; // 16MB
     get();                                             // consume opening quote
+    bool closed = false;
     while (!eof()) {
         if (s.size() >= kMaxStringLen) {
             // Skip to closing quote or EOF to avoid OOM
@@ -475,8 +475,10 @@ Token Lexer::lexString() {
                 get();
             if (!eof())
                 get(); // consume closing quote
-            return {TokenKind::String, s, loc};
+            return {TokenKind::Unknown, s, loc};
         }
+        if (peek() == '\n')
+            return {TokenKind::Unknown, s, loc};
         if (peek() == '"') {
             get(); // consume the quote
             // Check for "" (double-quote escape convention in BASIC)
@@ -484,6 +486,7 @@ Token Lexer::lexString() {
                 s.push_back('"');
                 get(); // consume the second quote
             } else {
+                closed = true;
                 break; // closing quote
             }
         } else {
@@ -491,7 +494,7 @@ Token Lexer::lexString() {
             s.push_back(get());
         }
     }
-    return {TokenKind::String, s, loc};
+    return {closed ? TokenKind::String : TokenKind::Unknown, s, loc};
 }
 
 /// @brief Retrieve the next token from the input stream.

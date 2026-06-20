@@ -22,7 +22,26 @@
 
 #include "frontends/basic/TypeSuffix.hpp"
 
+#include <cctype>
+
 namespace il::frontends::basic {
+namespace {
+
+/// @brief Produce the case-insensitive storage key for BASIC symbols.
+/// @details Preserves BASIC type suffix characters while folding ASCII letters
+///          to lowercase. This keeps `A$` distinct from `A` while making
+///          `Counter` and `counter` resolve to the same symbol.
+/// @param name Symbol spelling supplied by a caller.
+/// @return Canonical map key.
+std::string canonicalSymbolKey(std::string_view name) {
+    std::string key;
+    key.reserve(name.size());
+    for (unsigned char ch : name)
+        key.push_back(static_cast<char>(std::tolower(ch)));
+    return key;
+}
+
+} // namespace
 
 // =============================================================================
 // Core Symbol Operations
@@ -31,7 +50,7 @@ namespace il::frontends::basic {
 /// @brief Get or create the symbol entry for @p name, initialized with BASIC defaults.
 /// @return Reference to the (existing or newly inserted) symbol info.
 SymbolInfo &SymbolTable::define(std::string_view name) {
-    std::string key(name);
+    std::string key = canonicalSymbolKey(name);
     auto [it, inserted] = symbols_.emplace(std::move(key), SymbolInfo{});
     if (inserted) {
         // Initialize with BASIC defaults
@@ -52,21 +71,23 @@ SymbolInfo &SymbolTable::define(std::string_view name) {
 /// @return Pointer to the symbol info, or nullptr if undefined.
 SymbolInfo *SymbolTable::lookup(std::string_view name) {
     // Check main symbol table first (heterogeneous lookup, no allocation)
-    if (auto it = symbols_.find(name); it != symbols_.end())
+    const std::string key = canonicalSymbolKey(name);
+    if (auto it = symbols_.find(key); it != symbols_.end())
         return &it->second;
 
     // Fall back to field scopes
-    return lookupInFieldScopes(name);
+    return lookupInFieldScopes(key);
 }
 
 /// @brief Look up a symbol (const), checking the main table then field scopes.
 /// @return Pointer to the symbol info, or nullptr if undefined.
 const SymbolInfo *SymbolTable::lookup(std::string_view name) const {
     // Heterogeneous lookup, no allocation
-    if (auto it = symbols_.find(name); it != symbols_.end())
+    const std::string key = canonicalSymbolKey(name);
+    if (auto it = symbols_.find(key); it != symbols_.end())
         return &it->second;
 
-    return lookupInFieldScopes(name);
+    return lookupInFieldScopes(key);
 }
 
 /// @brief Test whether a symbol (in the main table or a field scope) exists.
@@ -78,7 +99,8 @@ bool SymbolTable::contains(std::string_view name) const {
 /// @return True if a symbol was erased; false if it was not present.
 bool SymbolTable::remove(std::string_view name) {
     // Heterogeneous lookup for erase
-    auto it = symbols_.find(name);
+    const std::string key = canonicalSymbolKey(name);
+    auto it = symbols_.find(key);
     if (it != symbols_.end()) {
         symbols_.erase(it);
         return true;
@@ -343,7 +365,7 @@ void SymbolTable::pushFieldScope(const ClassLayout *layout) {
             info.referenced = false;
             info.isObject = !field.objectClassName.empty();
             info.objectClass = field.objectClassName;
-            scope.symbols.emplace(field.name, std::move(info));
+            scope.symbols.emplace(canonicalSymbolKey(field.name), std::move(info));
         }
     }
 
@@ -363,7 +385,7 @@ bool SymbolTable::isFieldInScope(std::string_view name) const {
 
     // Heterogeneous lookup, no allocation
     for (auto it = fieldScopes_.rbegin(); it != fieldScopes_.rend(); ++it) {
-        if (it->symbols.find(name) != it->symbols.end())
+        if (it->symbols.find(canonicalSymbolKey(name)) != it->symbols.end())
             return true;
     }
     return false;

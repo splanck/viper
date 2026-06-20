@@ -234,8 +234,12 @@ class Parser {
         bool success{false};                                    ///< True if include succeeded.
         std::unique_ptr<Program> subprog;                       ///< Parsed program from include.
         std::unordered_set<std::string> arrays;                 ///< Arrays from child parser.
+        std::unordered_set<std::string> namespaces;             ///< Namespaces from child parser.
         std::unordered_map<std::string, int64_t> constInts;     ///< CONSTs from child.
         std::unordered_map<std::string, std::string> constStrs; ///< CONSTs from child.
+        std::unordered_map<std::string, NamedLabelEntry> namedLabels; ///< Child named labels.
+        std::unordered_set<int> usedLabelNumbers; ///< Label ids consumed while parsing child.
+        int nextSyntheticLabel = 1'000'000;       ///< Child parser's next synthetic label id.
     };
 
     /// @brief Common logic for processing an ADDFILE directive.

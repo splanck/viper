@@ -83,11 +83,11 @@ UL999999997:
   .loc 1 4 15
   %t7 = const_str @.L0
   .loc 1 4 1
+  call @rt_str_retain_maybe(%t7)
+  .loc 1 4 1
   %t8 = load str, %t1
   .loc 1 4 1
   call @rt_str_release_maybe(%t8)
-  .loc 1 4 1
-  call @rt_str_retain_maybe(%t7)
   .loc 1 4 1
   store str, %t1, %t7
   .loc 1 4 1

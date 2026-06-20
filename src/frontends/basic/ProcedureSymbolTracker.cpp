@@ -19,6 +19,8 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 
+#include <utility>
+
 namespace il::frontends::basic {
 
 /// @brief Construct a symbol tracker bound to a lowerer.
@@ -62,6 +64,8 @@ void ProcedureSymbolTracker::trackArray(std::string_view name) {
         return;
     lowerer_.markSymbolReferenced(name);
     lowerer_.markArray(name);
+    if (std::string elemClass = lowerer_.lookupModuleArrayElemClass(name); !elemClass.empty())
+        lowerer_.setSymbolObjectType(name, std::move(elemClass));
     trackCrossProcGlobalIfNeeded(name);
 }
 

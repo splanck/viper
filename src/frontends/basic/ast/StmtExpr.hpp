@@ -309,8 +309,11 @@ struct ReDimStmt : Stmt {
     /// Array name whose storage is being reallocated.
     std::string name;
 
-    /// Number of elements in the resized array; owned and non-null.
+    /// Inclusive upper bound for single-dimensional arrays.
     ExprPtr size;
+
+    /// Inclusive upper bounds for multidimensional arrays.
+    std::vector<ExprPtr> dimensions;
 
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
@@ -338,7 +341,7 @@ struct RandomizeStmt : Stmt {
         return Kind::Randomize;
     }
 
-    /// Numeric seed expression, truncated to i64; owned and non-null.
+    /// Optional numeric seed expression, truncated to i64 when present.
     ExprPtr seed;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;

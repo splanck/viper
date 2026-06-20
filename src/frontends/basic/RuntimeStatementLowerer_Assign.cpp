@@ -74,11 +74,11 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
     }
 
     if (isStr) {
+        lowerer_.requireStrRetainMaybe();
+        lowerer_.emitCall("rt_str_retain_maybe", {value.value});
         lowerer_.requireStrReleaseMaybe();
         Value oldValue = lowerer_.emitLoad(targetTy, slot);
         lowerer_.emitCall("rt_str_release_maybe", {oldValue});
-        lowerer_.requireStrRetainMaybe();
-        lowerer_.emitCall("rt_str_retain_maybe", {value.value});
     }
 
     else if (slotInfo.isObject) {
@@ -86,6 +86,7 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
         lowerer_.requestHelper(RuntimeFeature::ObjFree);
         lowerer_.requestHelper(RuntimeFeature::ObjRetainMaybe);
 
+        lowerer_.emitCall("rt_obj_retain_maybe", {value.value});
         Value oldValue = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), slot);
         Value shouldDestroy =
             lowerer_.emitCallRet(lowerer_.ilBoolTy(), "rt_obj_release_check0", {oldValue});
@@ -134,7 +135,6 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
             ctx.setCurrent(contBlk);
         }
 
-        lowerer_.emitCall("rt_obj_retain_maybe", {value.value});
         targetTy = il::core::Type(il::core::Type::Kind::Ptr);
     }
 
@@ -171,6 +171,9 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
     const MemberArrayInfo fieldInfo = lowerer_.resolveMemberArrayField(target.name);
     const bool isMemberArray = fieldInfo.isDottedAccess;
     const bool isImplicitFieldArray = fieldInfo.isField && !fieldInfo.isDottedAccess;
+    std::string moduleObjectClass;
+    if (!isMemberArray && (!info || !info->isObject))
+        moduleObjectClass = lowerer_.lookupModuleArrayElemClass(target.name);
 
     // For implicit field arrays, recompute base as ME.<field> to ensure we are
     // storing into the instance field array even when the name is unqualified.
@@ -196,16 +199,15 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
         }
     }
 
-    // Prefer RHS-driven dispatch to avoid relying on fragile symbol/type
-    // resolution across scopes: a string RHS must use string array helpers,
-    // an object (ptr) RHS must use object array helpers; otherwise numeric.
-    if (value.type.kind == il::core::Type::Kind::Str || (info && info->type == AstType::Str) ||
+    // The target array element type selects the runtime helper; RHS type only
+    // controls coercion into that target representation.
+    if ((info && info->type == AstType::Str) ||
         (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::Str)) {
         // String array: use rt_arr_str_put (handles retain/release)
         // Pass the string handle directly - the C runtime expects rt_string by value.
         lowerer_.emitCall("rt_arr_str_put", {access.base, access.index, value.value});
-    } else if (value.type.kind == il::core::Type::Kind::Ptr ||
-               (!isMemberArray && info && info->isObject) || fieldInfo.isObjectArray) {
+    } else if ((!isMemberArray && info && info->isObject) || fieldInfo.isObjectArray ||
+               !moduleObjectClass.empty()) {
         // Object arrays (including member object arrays) use rt_arr_obj_put (BUG-089)
         lowerer_.requireArrayObjPut();
         lowerer_.emitCall("rt_arr_obj_put", {access.base, access.index, value.value});

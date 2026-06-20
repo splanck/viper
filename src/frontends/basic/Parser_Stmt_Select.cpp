@@ -18,6 +18,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
@@ -43,13 +44,39 @@ namespace {
 /// @param text Token lexeme containing an optional sign and decimal digits.
 /// @return Parsed integer, or @c std::nullopt if the text is invalid.
 std::optional<int64_t> parseCaseIntegerLiteral(std::string_view text) noexcept {
+    if (!text.empty()) {
+        char last = text.back();
+        if (last == '%' || last == '&')
+            text.remove_suffix(1);
+    }
+    int sign = 1;
+    if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
+        sign = text.front() == '-' ? -1 : 1;
+        text.remove_prefix(1);
+    }
+    int base = 10;
+    if (text.size() > 2 && text[0] == '&' && (text[1] == 'H' || text[1] == 'h')) {
+        base = 16;
+        text.remove_prefix(2);
+    } else if (text.size() > 2 && text[0] == '&' && (text[1] == 'B' || text[1] == 'b')) {
+        base = 2;
+        text.remove_prefix(2);
+    } else if (text.size() > 2 && text[0] == '0' && (text[1] == 'X' || text[1] == 'x')) {
+        base = 16;
+        text.remove_prefix(2);
+    } else if (text.size() > 2 && text[0] == '0' && (text[1] == 'B' || text[1] == 'b')) {
+        base = 2;
+        text.remove_prefix(2);
+    }
+    if (text.empty())
+        return std::nullopt;
     int64_t value = 0;
     const char *begin = text.data();
     const char *end = begin + text.size();
-    auto result = std::from_chars(begin, end, value, 10);
+    auto result = std::from_chars(begin, end, value, base);
     if (result.ec != std::errc{} || result.ptr != end)
         return std::nullopt;
-    return value;
+    return sign < 0 ? -value : value;
 }
 
 } // namespace
@@ -147,7 +174,11 @@ void Parser::parseSelectArms(SelectParseState &state) {
             TokenKind next = peek(1).kind;
             if (next == TokenKind::KeywordCase ||
                 (next == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordSelect)) {
-                consume();
+                Token lineTok = consume();
+                if (auto parsed = parseLineNumberLiteral(lineTok.lexeme))
+                    noteNumericLabelUsage(*parsed);
+                else
+                    emitError("B0001", lineTok, "line number is out of range");
             }
         }
 
@@ -688,7 +719,8 @@ il::support::Expected<CaseArm> Parser::lowerCaseArm(const CaseArmSyntax &syntax)
         auto lo = parseCaseIntegerLiteral(rangeTok.first.lexeme);
         auto hi = parseCaseIntegerLiteral(rangeTok.second.lexeme);
         if (!lo)
-            emitError("B0001", rangeTok.first, "SELECT CASE range start must be an integer literal");
+            emitError(
+                "B0001", rangeTok.first, "SELECT CASE range start must be an integer literal");
         if (!hi)
             emitError("B0001", rangeTok.second, "SELECT CASE range end must be an integer literal");
         if (lo && hi)
@@ -736,7 +768,9 @@ Parser::ErrorOr<void> Parser::validateCaseArm(const CaseArm &arm) {
         std::fprintf(stderr, "%s\n", msg.c_str());
     }
 
-    return ErrorOr<void>{};
+    return il::support::makeErrorWithCode(arm.range.begin,
+                                          std::string(diag::ERR_Case_EmptyLabelList.id),
+                                          std::string(diag::ERR_Case_EmptyLabelList.text));
 }
 
 /// @brief Parse a single `CASE` arm, including labels and body.
@@ -769,7 +803,8 @@ CaseArm Parser::parseCaseArm() {
     }
 
     CaseArm arm = std::move(lowered.value());
-    (void)validateCaseArm(arm);
+    if (!validateCaseArm(arm))
+        return arm;
 
     auto bodyResult = collectSelectBody();
     if (!inlineBody.empty()) {

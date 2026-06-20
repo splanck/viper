@@ -646,19 +646,6 @@ void *rt_animation3d_retarget(void *animation, void *src_skeleton, void *dst_ske
  * Keyframe sampling
  *=========================================================================*/
 
-/// @brief Find the channel for @p bone_index in an animation clip.
-static const vgfx3d_anim_channel_t *animation3d_find_channel(const rt_animation3d *anim,
-                                                             int32_t bone_index) {
-    if (!anim || bone_index < 0)
-        return NULL;
-    for (int32_t i = 0, channel_count = animation3d_safe_channel_count(anim); i < channel_count;
-         i++) {
-        if (anim->channels[i].bone_index == bone_index)
-            return &anim->channels[i];
-    }
-    return NULL;
-}
-
 /// @brief Resolve a keyframe's optional components against bind-pose fallback TRS.
 static void keyframe_effective_trs(const vgfx3d_keyframe_t *key,
                                    const float *fallback_pos,
@@ -767,21 +754,17 @@ static void sample_channel_with_fallback(const vgfx3d_anim_channel_t *ch,
 }
 
 /// @brief Sample an animation's bone channel, falling back to bind pose when absent.
-static void sample_animation_trs_for_bone(const rt_animation3d *anim,
-                                          int32_t bone_index,
-                                          float time,
-                                          const float *fallback_local,
-                                          float *out_pos,
-                                          float *out_rot,
-                                          float *out_scl) {
+/// @brief Sample an already-resolved (possibly NULL) channel's TRS at @p time, falling
+///   back to the decomposed @p fallback_local when the channel is absent. Lets callers
+///   that pre-resolved the channel skip the per-bone O(channels) lookup.
+static void sample_animation_channel_trs(const vgfx3d_anim_channel_t *channel,
+                                         float time,
+                                         const float *fallback_local,
+                                         float *out_pos,
+                                         float *out_rot,
+                                         float *out_scl) {
     float fallback_pos[3], fallback_rot[4], fallback_scl[3];
     mat4f_decompose_trs(fallback_local, fallback_pos, fallback_rot, fallback_scl);
-    sample_channel_trs_with_fallback(animation3d_find_channel(anim, bone_index),
-                                     time,
-                                     fallback_pos,
-                                     fallback_rot,
-                                     fallback_scl,
-                                     out_pos,
-                                     out_rot,
-                                     out_scl);
+    sample_channel_trs_with_fallback(
+        channel, time, fallback_pos, fallback_rot, fallback_scl, out_pos, out_rot, out_scl);
 }

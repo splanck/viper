@@ -104,6 +104,13 @@ class RuntimeStatementLowerer {
                                         il::support::SourceLoc loc,
                                         std::string_view labelBase);
 
+    /// @brief Coerce a lowered value to a BASIC scalar type expected by a setter.
+    /// @param value Lowered value to coerce.
+    /// @param target Declared BASIC scalar type.
+    /// @param loc Source location for conversion diagnostics.
+    /// @return Coerced value when a supported conversion exists.
+    Lowerer::RVal coerceToAstScalar(Lowerer::RVal value, Type target, il::support::SourceLoc loc);
+
     Lowerer &lowerer_; ///< Parent lowerer providing context and helpers
 };
 

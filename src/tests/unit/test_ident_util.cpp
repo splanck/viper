@@ -40,11 +40,13 @@ int main() {
     assert(parts[1] == std::string("Two"));
     assert(parts[2] == std::string("Three"));
 
-    // Split ignores empties
+    // Split preserves empty segments so callers can reject malformed paths.
     auto parts2 = SplitDots("A..B.");
-    assert(parts2.size() == 2);
+    assert(parts2.size() == 4);
     assert(parts2[0] == std::string("A"));
-    assert(parts2[1] == std::string("B"));
+    assert(parts2[1].empty());
+    assert(parts2[2] == std::string("B"));
+    assert(parts2[3].empty());
 
     return 0;
 }

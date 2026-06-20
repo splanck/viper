@@ -65,22 +65,16 @@ L10:
   br L20
 L20:
   .loc 1 2 10
-  %t4 = load ptr, %t0
+  call @Viper.Terminal.PrintI64(0)
   .loc 1 2 10
-  %t5:i64 = call @rt_arr_i64_len(%t4)
+  %t4 = const_str @.L0
   .loc 1 2 10
-  %t6 = isub.ovf %t5, 1
-  .loc 1 2 10
-  call @Viper.Terminal.PrintI64(%t6)
-  .loc 1 2 10
-  %t7 = const_str @.L0
-  .loc 1 2 10
-  call @Viper.Terminal.PrintStr(%t7)
+  call @Viper.Terminal.PrintStr(%t4)
   .loc 1 2 4
   br exit
 exit:
-  %t8 = load ptr, %t0
-  call @rt_arr_i64_release(%t8)
+  %t5 = load ptr, %t0
+  call @rt_arr_i64_release(%t5)
   store ptr, %t0, null
   ret 0
 }

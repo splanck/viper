@@ -1031,13 +1031,19 @@ class Lowerer {
     /// @param name BASIC symbol name to mark.
     void markCrossProcGlobal(const std::string &name) {
         crossProcGlobals_.insert(name);
+        std::string canon = CanonicalizeIdent(name);
+        if (!canon.empty())
+            crossProcGlobals_.insert(std::move(canon));
     }
 
     /// @brief Check whether a variable has been marked as cross-procedure global.
     /// @param name BASIC symbol name to query.
     /// @return True when the symbol was previously marked via markCrossProcGlobal.
     bool isCrossProcGlobal(const std::string &name) const {
-        return crossProcGlobals_.find(name) != crossProcGlobals_.end();
+        if (crossProcGlobals_.find(name) != crossProcGlobals_.end())
+            return true;
+        std::string canon = CanonicalizeIdent(name);
+        return !canon.empty() && crossProcGlobals_.find(canon) != crossProcGlobals_.end();
     }
 
     // runtime requirement tracking

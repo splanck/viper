@@ -111,8 +111,46 @@ static std::optional<std::string> runtimeCtorClassQNameFrom(const MethodCallExpr
     return runtimeCtorClassQNameFromName(calleeName);
 }
 
+/// @brief Map slot metadata back to the BASIC element type used for array handles.
+/// @param slotInfo Lowerer slot metadata for the target array.
+/// @return BASIC element type used by runtime array retain/release helpers.
+static AstType arrayElementTypeFromSlot(const SlotType &slotInfo) {
+    if (slotInfo.type.kind == il::core::Type::Kind::Str)
+        return AstType::Str;
+    if (slotInfo.type.kind == il::core::Type::Kind::F64)
+        return AstType::F64;
+    if (slotInfo.isBoolean || slotInfo.type.kind == il::core::Type::Kind::I1)
+        return AstType::Bool;
+    return AstType::I64;
+}
+
 /// @brief Bind a runtime-statement lowerer to its parent Lowerer (non-owning).
 RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
+
+/// @brief Coerce a lowered value to a user-declared BASIC scalar type when supported.
+/// @details Setter calls already have overload-selected AST parameter metadata.
+///          This helper applies the same scalar conversions used by ordinary
+///          assignments so property setter calls receive the declared IL shape.
+///          String/object values are returned unchanged because no implicit
+///          textual/object conversion is available at this lowering layer.
+/// @param value Lowered right-hand side value.
+/// @param target Declared BASIC scalar target type.
+/// @param loc Source location attributed to any emitted conversion.
+/// @return Value coerced for the target type when supported.
+Lowerer::RVal RuntimeStatementLowerer::coerceToAstScalar(Lowerer::RVal value,
+                                                         AstType target,
+                                                         il::support::SourceLoc loc) {
+    switch (target) {
+        case AstType::F64:
+            return lowerer_.coerceToF64(std::move(value), loc);
+        case AstType::Bool:
+            return lowerer_.coerceToBool(std::move(value), loc);
+        case AstType::Str:
+            return value;
+        default:
+            return lowerer_.coerceToI64(std::move(value), loc);
+    }
+}
 
 /// @brief Lower a BASIC @c LET statement.
 ///
@@ -124,6 +162,17 @@ RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lo
 /// @param stmt Parsed @c LET statement.
 void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
+    if (!stmt.expr || !stmt.target) {
+        if (auto *em = lowerer_.diagnosticEmitter()) {
+            em->emit(il::support::Severity::Error,
+                     "B2001",
+                     stmt.loc,
+                     1,
+                     "LET statement is missing a target or expression");
+        }
+        lowerer_.emitTrap();
+        return;
+    }
     Lowerer::RVal value = lowerer_.lowerExpr(*stmt.expr);
     if (auto *var = as<const VarExpr>(*stmt.target))
         lowerLetToVar(stmt, *var, std::move(value));
@@ -215,7 +264,7 @@ void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt,
         if (slotInfo.isArray) {
             lowerer_.storeArray(storage->pointer,
                                 value.value,
-                                /*elementType*/ AstType::I64,
+                                arrayElementTypeFromSlot(slotInfo),
                                 /*isObjectArray*/ slotInfo.isObject);
         } else {
             assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
@@ -290,46 +339,20 @@ void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt,
                                     index = indices[0];
                                 } else if (fld->isArray && !fld->arrayExtents.empty() &&
                                            fld->arrayExtents.size() == indices.size()) {
-                                    // Multi-dimensional: compute row-major flattened index
-                                    // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ...,
-                                    // i_{N-1}]: flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} +
-                                    // ... + i_{N-1} where Lk = (Ek + 1) are inclusive lengths per
-                                    // dimension.
-                                    std::vector<long long> lengths;
-                                    for (long long e : fld->arrayExtents)
-                                        lengths.push_back(e + 1);
-
-                                    long long stride = 1;
-                                    for (size_t i = 1; i < lengths.size(); ++i)
-                                        stride *= lengths[i];
-
                                     lowerer_.curLoc = stmt.loc;
-                                    index = lowerer_.emitBinary(
-                                        Opcode::IMulOvf,
-                                        il::core::Type(il::core::Type::Kind::I64),
-                                        indices[0],
-                                        Value::constInt(stride));
-
-                                    for (size_t k = 1; k < indices.size(); ++k) {
-                                        stride = 1;
-                                        for (size_t i = k + 1; i < lengths.size(); ++i)
-                                            stride *= lengths[i];
-                                        lowerer_.curLoc = stmt.loc;
-                                        Value term = lowerer_.emitBinary(
-                                            Opcode::IMulOvf,
-                                            il::core::Type(il::core::Type::Kind::I64),
-                                            indices[k],
-                                            Value::constInt(stride));
-                                        lowerer_.curLoc = stmt.loc;
-                                        index = lowerer_.emitBinary(
-                                            Opcode::IAddOvf,
-                                            il::core::Type(il::core::Type::Kind::I64),
-                                            index,
-                                            term);
-                                    }
+                                    index =
+                                        lowerer_.emitRowMajorFlatIndex(indices, fld->arrayExtents);
                                 } else {
-                                    // Fallback: use first index only
-                                    index = indices[0];
+                                    if (auto *em = lowerer_.diagnosticEmitter()) {
+                                        em->emit(il::support::Severity::Error,
+                                                 "B2000",
+                                                 stmt.loc,
+                                                 static_cast<uint32_t>(mc->method.size()),
+                                                 "cannot flatten multidimensional field array "
+                                                 "without matching extents");
+                                    }
+                                    lowerer_.emitTrap();
+                                    index = Value::constInt(0);
                                 }
                             }
 
@@ -462,12 +485,32 @@ void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt,
                             Value arrHandle = lowerer_.emitLoad(
                                 il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
 
-                            // Lower the index
-                            Value index = Value::constInt(0);
-                            if (!call->args.empty() && call->args[0]) {
-                                Lowerer::RVal idx = lowerer_.lowerExpr(*call->args[0]);
+                            std::vector<Value> indices;
+                            indices.reserve(call->args.size());
+                            for (const auto &arg : call->args) {
+                                if (!arg)
+                                    continue;
+                                Lowerer::RVal idx = lowerer_.lowerExpr(*arg);
                                 idx = lowerer_.coerceToI64(std::move(idx), stmt.loc);
-                                index = idx.value;
+                                indices.push_back(idx.value);
+                            }
+                            Value index = Value::constInt(0);
+                            if (indices.size() == 1) {
+                                index = indices[0];
+                            } else if (!indices.empty() &&
+                                       fld->arrayExtents.size() == indices.size()) {
+                                lowerer_.curLoc = stmt.loc;
+                                index = lowerer_.emitRowMajorFlatIndex(indices, fld->arrayExtents);
+                            } else if (!indices.empty()) {
+                                if (auto *em = lowerer_.diagnosticEmitter()) {
+                                    em->emit(il::support::Severity::Error,
+                                             "B2000",
+                                             stmt.loc,
+                                             static_cast<uint32_t>(call->callee.size()),
+                                             "cannot flatten multidimensional field array without "
+                                             "matching extents");
+                                }
+                                lowerer_.emitTrap();
                             }
 
                             // Now perform bounds-checked array assignment
@@ -707,14 +750,15 @@ void RuntimeStatementLowerer::lowerLetToMember(const LetStmt &stmt,
                     }
                 };
                 std::vector<::il::frontends::basic::Type> argTypes{mapIlToAst(value.type)};
-                if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
-                                                               qname,
-                                                               member->member,
-                                                               /*isStatic*/ false,
-                                                               argTypes,
-                                                               lowerer_.currentClass(),
-                                                               lowerer_.diagnosticEmitter(),
-                                                               stmt.loc)) {
+                auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
+                                                           qname,
+                                                           member->member,
+                                                           /*isStatic*/ false,
+                                                           argTypes,
+                                                           lowerer_.currentClass(),
+                                                           lowerer_.diagnosticEmitter(),
+                                                           stmt.loc);
+                if (resolved) {
                     setter = resolved->methodName;
                 } else if (lowerer_.diagnosticEmitter()) {
                     return;
@@ -722,6 +766,11 @@ void RuntimeStatementLowerer::lowerLetToMember(const LetStmt &stmt,
                 std::string callee = mangleMethod(qname, setter);
                 Lowerer::RVal base = lowerer_.lowerExpr(*member->base);
                 std::vector<Lowerer::Value> args{base.value, value.value};
+                if (resolved && resolved->method && !resolved->method->sig.paramTypes.empty()) {
+                    value = coerceToAstScalar(
+                        std::move(value), resolved->method->sig.paramTypes.front(), stmt.loc);
+                    args[1] = value.value;
+                }
                 lowerer_.emitCall(callee, args);
                 return;
             }
@@ -752,14 +801,15 @@ void RuntimeStatementLowerer::lowerLetToMember(const LetStmt &stmt,
                         }
                     };
                     std::vector<::il::frontends::basic::Type> argTypes{mapIlToAst(value.type)};
-                    if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
-                                                                   qname,
-                                                                   member->member,
-                                                                   /*isStatic*/ true,
-                                                                   argTypes,
-                                                                   lowerer_.currentClass(),
-                                                                   lowerer_.diagnosticEmitter(),
-                                                                   stmt.loc)) {
+                    auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
+                                                               qname,
+                                                               member->member,
+                                                               /*isStatic*/ true,
+                                                               argTypes,
+                                                               lowerer_.currentClass(),
+                                                               lowerer_.diagnosticEmitter(),
+                                                               stmt.loc);
+                    if (resolved) {
                         setter = resolved->methodName;
                     } else if (lowerer_.diagnosticEmitter()) {
                         return;
@@ -767,6 +817,12 @@ void RuntimeStatementLowerer::lowerLetToMember(const LetStmt &stmt,
                     auto it = ci->methods.find(setter);
                     if (it != ci->methods.end() && it->second.isStatic) {
                         std::string callee = mangleMethod(ci->qualifiedName, setter);
+                        if (resolved && resolved->method &&
+                            !resolved->method->sig.paramTypes.empty()) {
+                            value = coerceToAstScalar(std::move(value),
+                                                      resolved->method->sig.paramTypes.front(),
+                                                      stmt.loc);
+                        }
                         lowerer_.emitCall(callee, {value.value});
                         return;
                     }

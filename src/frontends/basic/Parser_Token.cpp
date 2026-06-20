@@ -44,9 +44,11 @@ bool Parser::at(TokenKind k) const {
 /// @param n Lookahead distance, where 0 refers to the current token.
 /// @return Reference to the token at position @p n.
 const Token &Parser::peek(int n) const {
-    static const int kMaxPeekDistance = 256;
+    static const Token kLookaheadLimitToken{
+        TokenKind::EndOfFile, "<lookahead-limit>", il::support::SourceLoc{}};
+    static const int kMaxPeekDistance = 512;
     if (n > kMaxPeekDistance)
-        n = kMaxPeekDistance;
+        return kLookaheadLimitToken;
     const size_t wantIndex = tokenStart_ + static_cast<size_t>(n);
     while (tokens_.size() <= wantIndex) {
         tokens_.push_back(lexer_.next());
@@ -135,6 +137,12 @@ void Parser::syncToStmtBoundary() {
            consumed < kMaxResyncTokens) {
         consume();
         ++consumed;
+    }
+    if (consumed == kMaxResyncTokens && !at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) &&
+        !at(TokenKind::Colon)) {
+        emitError("B0004", peek(), "parser recovery exceeded statement resynchronization limit");
+        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
+            consume();
     }
 }
 

@@ -1,4 +1,4 @@
-il 0.2.0
+il VERSION
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -97,11 +97,11 @@ L40:
   .loc 1 4 13
   %t13 = const_str @.L2
   .loc 1 4 4
+  call @rt_str_retain_maybe(%t13)
+  .loc 1 4 4
   %t14 = load str, %t2
   .loc 1 4 4
   call @rt_str_release_maybe(%t14)
-  .loc 1 4 4
-  call @rt_str_retain_maybe(%t13)
   .loc 1 4 4
   store str, %t2, %t13
   .loc 1 4 4

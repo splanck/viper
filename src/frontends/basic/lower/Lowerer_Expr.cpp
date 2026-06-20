@@ -646,44 +646,19 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                             indexVal = indices[0];
                         } else if (fld->isArray && !fld->arrayExtents.empty() &&
                                    fld->arrayExtents.size() == indices.size()) {
-                            // Multi-dimensional: compute row-major flattened index
-                            // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ...,
-                            // i_{N-1}]: flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... +
-                            // i_{N-1} where Lk = (Ek + 1) are inclusive lengths per dimension.
-                            std::vector<long long> lengths;
-                            for (long long e : fld->arrayExtents)
-                                lengths.push_back(e + 1);
-
-                            long long stride = 1;
-                            for (size_t i = 1; i < lengths.size(); ++i)
-                                stride *= lengths[i];
-
                             lowerer_.curLoc = expr.loc;
-                            indexVal = lowerer_.emitBinary(il::core::Opcode::IMulOvf,
-                                                           Lowerer::Type(Lowerer::Type::Kind::I64),
-                                                           indices[0],
-                                                           Lowerer::Value::constInt(stride));
-
-                            for (size_t k = 1; k < indices.size(); ++k) {
-                                stride = 1;
-                                for (size_t i = k + 1; i < lengths.size(); ++i)
-                                    stride *= lengths[i];
-                                lowerer_.curLoc = expr.loc;
-                                Lowerer::Value term =
-                                    lowerer_.emitBinary(il::core::Opcode::IMulOvf,
-                                                        Lowerer::Type(Lowerer::Type::Kind::I64),
-                                                        indices[k],
-                                                        Lowerer::Value::constInt(stride));
-                                lowerer_.curLoc = expr.loc;
-                                indexVal =
-                                    lowerer_.emitBinary(il::core::Opcode::IAddOvf,
-                                                        Lowerer::Type(Lowerer::Type::Kind::I64),
-                                                        indexVal,
-                                                        term);
-                            }
+                            indexVal = lowerer_.emitRowMajorFlatIndex(indices, fld->arrayExtents);
                         } else {
-                            // Fallback: use first index only
-                            indexVal = indices[0];
+                            if (auto *em = lowerer_.diagnosticEmitter()) {
+                                em->emit(il::support::Severity::Error,
+                                         "B2000",
+                                         expr.loc,
+                                         static_cast<uint32_t>(expr.method.size()),
+                                         "cannot flatten multidimensional field array without "
+                                         "matching extents");
+                            }
+                            lowerer_.emitTrap();
+                            indexVal = Lowerer::Value::constInt(0);
                         }
                     }
 

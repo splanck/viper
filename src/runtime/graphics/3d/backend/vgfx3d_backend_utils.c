@@ -922,6 +922,17 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
     out_matrix[8] = c20 * inv_det;
     out_matrix[9] = c21 * inv_det;
     out_matrix[10] = c22 * inv_det;
+
+    /* A near-singular (but above-eps) determinant combined with large cofactors can
+     * overflow the scaled result to non-finite even though inv_det itself was finite;
+     * fall back to identity so a degenerate transform never poisons lighting normals.
+     * (Clamping inv_det instead would wrongly reject legitimately small-scaled
+     * objects, whose normals are renormalized in-shader regardless of magnitude.) */
+    if (!isfinite(out_matrix[0]) || !isfinite(out_matrix[1]) || !isfinite(out_matrix[2]) ||
+        !isfinite(out_matrix[4]) || !isfinite(out_matrix[5]) || !isfinite(out_matrix[6]) ||
+        !isfinite(out_matrix[8]) || !isfinite(out_matrix[9]) || !isfinite(out_matrix[10])) {
+        vgfx3d_store_identity_normal_matrix4(out_matrix);
+    }
 }
 
 /// @brief Invert a 4×4 row-major matrix using cofactor expansion.

@@ -96,23 +96,30 @@ static int canvas3d_ensure_mesh_snapshot_hash(rt_canvas3d *c, int32_t needed) {
     int32_t *grown;
     if (!c || needed < 0)
         return 0;
-    if (needed > INT32_MAX / 2)
+    if (needed > INT32_MAX / 2) {
+        c->mesh_snapshot_hash_dirty = 1;
         return 0;
+    }
     new_cap = canvas3d_next_power_of_two_i32(needed > 0 ? needed * 2 : 16);
     if (new_cap < 16)
         new_cap = 16;
     if (c->mesh_snapshot_hash_capacity != new_cap) {
-        if ((size_t)new_cap > SIZE_MAX / sizeof(*c->mesh_snapshot_hash))
+        if ((size_t)new_cap > SIZE_MAX / sizeof(*c->mesh_snapshot_hash)) {
+            c->mesh_snapshot_hash_dirty = 1;
             return 0;
+        }
         grown = (int32_t *)realloc(c->mesh_snapshot_hash, (size_t)new_cap * sizeof(*grown));
-        if (!grown)
+        if (!grown) {
+            c->mesh_snapshot_hash_dirty = 1;
             return 0;
+        }
         c->mesh_snapshot_hash = grown;
         c->mesh_snapshot_hash_capacity = new_cap;
     }
     canvas3d_mesh_snapshot_hash_clear(c);
     for (int32_t i = 0; i < c->mesh_snapshot_count; ++i)
         (void)canvas3d_mesh_snapshot_hash_insert(c, i);
+    c->mesh_snapshot_hash_dirty = 0;
     return 1;
 }
 
@@ -142,6 +149,11 @@ static int32_t canvas3d_find_mesh_snapshot(rt_canvas3d *c,
                 return index;
             slot = (slot + 1) & mask;
         }
+        /* The probe terminated on an empty slot: a definitive miss. When the hash
+         * indexes every snapshot (the common case) the linear scan below cannot find
+         * anything more, so skip it. Only a failed (OOM) rebuild needs the fallback. */
+        if (!c->mesh_snapshot_hash_dirty)
+            return -1;
     }
     for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
         if (canvas3d_mesh_snapshot_entry_matches(&c->mesh_snapshots[i],

@@ -198,12 +198,23 @@ StmtPtr Parser::parseNamespaceDecl() {
     auto decl = std::make_unique<NamespaceDecl>();
     decl->loc = loc;
     decl->path = std::move(path);
-    if (!decl->path.empty())
-        knownNamespaces_.insert(decl->path.front());
+    if (!decl->path.empty()) {
+        std::string nsHead = CanonicalizeIdent(decl->path.front());
+        knownNamespaces_.insert(nsHead.empty() ? decl->path.front() : std::move(nsHead));
+    }
     // Track namespace nesting to enforce USING-at-file-scope rule.
     ++nsDepth_;
+
+    struct NamespaceDepthGuard {
+        int &depth;
+
+        /// @brief Restore parser namespace depth when namespace parsing exits.
+        ~NamespaceDepthGuard() {
+            --depth;
+        }
+    } guard{nsDepth_};
+
     parseProcedureBody(TokenKind::KeywordNamespace, decl->body);
-    --nsDepth_;
     return decl;
 }
 
@@ -225,9 +236,10 @@ StmtPtr Parser::parseUsingDecl() {
         return parseUsingStatement(loc);
     }
 
-    // Reject namespace USING inside procedures.
+    // Reject namespace USING inside procedures. Namespace-scoped USING is
+    // validated by semantic analysis so runtime-namespace mode can allow it.
     if (procDepth_ > 0) {
-        emitError("B0001", loc, "USING is not allowed inside procedures");
+        emitError("B0001", loc, "USING namespace imports are only allowed at file scope");
         // Attempt to recover by skipping to end of line.
         while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
             consume();
@@ -263,8 +275,8 @@ StmtPtr Parser::parseUsingDecl() {
         }
     }
 
-    // Be permissive: ignore any trailing tokens until end-of-line. Sequencer handles ':'.
-    while (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile)))
+    // Be permissive: ignore any trailing tokens until the current statement ends.
+    while (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon)))
         consume();
 
     return decl;
@@ -280,6 +292,7 @@ StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc) {
     // Parse variable name
     if (!at(TokenKind::Identifier)) {
         emitError("B0002", loc, "expected variable name after USING");
+        syncToStmtBoundary();
         return nullptr;
     }
     Token varTok = consume();
@@ -288,6 +301,7 @@ StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc) {
     // Consume AS
     if (!at(TokenKind::KeywordAs)) {
         emitError("B0002", loc, "expected AS after variable name in USING");
+        syncToStmtBoundary();
         return nullptr;
     }
     consume(); // AS
@@ -295,6 +309,7 @@ StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc) {
     // Parse qualified type name: Identifier ('.' Identifier)*
     if (!at(TokenKind::Identifier)) {
         emitError("B0002", loc, "expected type name after AS in USING");
+        syncToStmtBoundary();
         return nullptr;
     }
     Token typeTok = consume();
@@ -314,6 +329,7 @@ StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc) {
     // Expect '=' and initializer expression
     if (!at(TokenKind::Equal)) {
         emitError("B0002", loc, "expected '=' after type in USING statement");
+        syncToStmtBoundary();
         return nullptr;
     }
     consume(); // =
@@ -457,6 +473,18 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
     const bool isProcBody = (endKind != TokenKind::KeywordNamespace);
     if (isProcBody)
         ++procDepth_;
+
+    struct ProcedureDepthGuard {
+        int &depth;
+        bool active;
+
+        /// @brief Restore parser procedure depth when body parsing exits.
+        ~ProcedureDepthGuard() {
+            if (active)
+                --depth;
+        }
+    } guard{procDepth_, isProcBody};
+
     auto info = ctx.collectStatements(
         [&](int, il::support::SourceLoc) {
             return at(TokenKind::KeywordEnd) && peek(1).kind == endKind;
@@ -466,8 +494,11 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
             consume();
         },
         body);
-    if (isProcBody)
-        --procDepth_;
+    if (!info.loc.isValid() && at(TokenKind::EndOfFile)) {
+        std::string msg = "missing END ";
+        msg += tokenKindToString(endKind);
+        emitError("B0001", peek().loc, std::move(msg));
+    }
     return info.loc;
 }
 

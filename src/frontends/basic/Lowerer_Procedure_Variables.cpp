@@ -238,6 +238,12 @@ Type inferVariableTypeForLowering(const Lowerer &lowerer, std::string_view name)
                     return Type::Str;
                 case SemaType::Bool:
                     return Type::Bool;
+                case SemaType::ArrayInt:
+                    return Type::I64;
+                case SemaType::ArrayString:
+                    return Type::Str;
+                case SemaType::ArrayObject:
+                    return Type::I64;
                 default:
                     break;
             }
@@ -267,7 +273,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
 
     const auto *sym = findSymbol(name);
 
-    if (sym && sym->isObject && !sym->objectClass.empty() &&
+    if (sym && !sym->isArray && sym->isObject && !sym->objectClass.empty() &&
         isRuntimeStringObject(sym->objectClass)) {
         info.type = Type(Type::Kind::Str);
         info.isArray = false;
@@ -277,7 +283,8 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
         return info;
     }
 
-    if (sym && sym->isObject && !sym->objectClass.empty() && !isGenericObject(sym->objectClass)) {
+    if (sym && !sym->isArray && sym->isObject && !sym->objectClass.empty() &&
+        !isGenericObject(sym->objectClass)) {
         info.type = Type(Type::Kind::Ptr);
         info.isArray = false;
         info.isBoolean = false;
@@ -313,7 +320,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
     if (sym) {
         // BUG-BAS-002 fix: Only treat as object if it has a valid object class.
         // This prevents module-level object variables from polluting constructor parameters.
-        if (sym->isObject && !sym->objectClass.empty()) {
+        if (!sym->isArray && sym->isObject && !sym->objectClass.empty()) {
             if (isRuntimeStringObject(sym->objectClass)) {
                 info.type = Type(Type::Kind::Str);
                 info.isArray = false;
@@ -340,6 +347,10 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
         if (sym->hasType && (!hasSemaType || isProcParam(name)))
             astTy = sym->type;
         info.isArray = sym->isArray;
+        if (info.isArray) {
+            info.isObject = sym->isObject;
+            info.objectClass = sym->objectClass;
+        }
         if (sym->isBoolean && !info.isArray)
             info.isBoolean = true;
         else if (!sym->hasType && !info.isArray)
@@ -386,15 +397,16 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(
     if (const auto *info = findSymbol(name)) {
         if (info->slotId) {
             bool isMain = (context().function() && context().function()->name == "main");
+            bool isCrossProc = isCrossProcGlobal(std::string(name));
 
             // In SUB/FUNCTION, local variables always shadow module-level symbols
-            if (!isMain)
+            if (!isMain && !isCrossProc)
                 return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
 
             // In @main, check if this is a cross-procedure global
             bool isModLevel =
                 semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name));
-            bool isCrossProc = isModLevel && isCrossProcGlobal(std::string(name));
+            isCrossProc = isModLevel && isCrossProc;
 
             if (!isCrossProc)
                 return VariableStorage{slotInfo, Value::temp(*info->slotId), false};

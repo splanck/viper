@@ -142,12 +142,12 @@ void ProcRegistry::registerProcImpl(std::string_view name,
         key = CanonicalizeIdent(stripSuffix(name));
 
     if (key.empty()) {
-        // Fallback to original for error text, but avoid inserting.
         std::string nameStr{name};
-        de.emit(diag::BasicDiag::DuplicateProcedure,
-                loc,
-                static_cast<uint32_t>(nameStr.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", nameStr}});
+        de.emitter().emit(il::support::Severity::Error,
+                          "B0005",
+                          loc,
+                          static_cast<uint32_t>(nameStr.size()),
+                          "invalid procedure name '" + nameStr + "'");
         return;
     }
 
