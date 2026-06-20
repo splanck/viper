@@ -77,6 +77,21 @@ class ParticleSystem {
         emitter.Burst(8);
     }
 
+    // Colourful confetti for a board clear
+    expose func burstCelebrate(x: Integer, y: Integer) {
+        emitter.SetPosition(x + 0.0, y + 0.0);
+        emitter.SetLifetime(20, 40);
+        emitter.SetVelocity(6.0, 20.0, 0.0, 360.0);
+        emitter.SetGravity(0.0, 0.4);
+        emitter.SetSize(2.0, 4.0);
+        emitter.set_Color(config.COLOR_YELLOW);
+        emitter.Burst(10);
+        emitter.set_Color(config.COLOR_CYAN);
+        emitter.Burst(8);
+        emitter.set_Color(config.COLOR_PINK);
+        emitter.Burst(8);
+    }
+
     // Big explosion on death
     expose func burstDeath(x: Integer, y: Integer) {
         emitter.SetPosition(x + 0.0, y + 0.0);

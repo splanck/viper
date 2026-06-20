@@ -34,6 +34,7 @@
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/x86_64/CodegenPipeline.hpp"
+#include "common/PlatformCapabilities.hpp"
 #include "support/source_manager.hpp"
 
 #include <atomic>
@@ -49,7 +50,7 @@
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
 #include <fcntl.h>
 #include <io.h>
 #include <process.h>
@@ -82,7 +83,7 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
     if (ec)
         throw std::runtime_error("failed to locate temporary directory: " + ec.message());
     const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
     const auto pid = static_cast<uint64_t>(_getpid());
 #else
     const auto pid = static_cast<uint64_t>(getpid());
@@ -101,8 +102,9 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
 /// @throws std::runtime_error for non-collision failures such as permission or
 ///         filesystem errors.
 bool reserveTempPath(const std::string &path) {
-#ifdef _WIN32
-    const int fd = _open(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+#if VIPER_HOST_WINDOWS
+    const int fd =
+        _open(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
     if (fd < 0) {
         if (errno == EEXIST)
             return false;
@@ -126,16 +128,17 @@ bool reserveTempPath(const std::string &path) {
 } // namespace
 
 /// @brief Determine whether an output path requests a native binary.
-/// @details Treats any path whose extension is not ".il" as a native output
-///          target, which is how the frontends decide to invoke codegen rather
-///          than stopping after IL emission.
+/// @details Native output is intentionally explicit: extensionless executable
+///          paths and Windows-style ".exe" paths select codegen. ".il" selects
+///          IL text emission, and other extensions are left to the caller to
+///          reject instead of accidentally building a binary for a typo.
 /// @param path Output path supplied on the command line.
-/// @return True when @p path does not end in ".il".
+/// @return True when @p path should be treated as a native executable output.
 bool isNativeOutputPath(const std::string &path) {
     std::string ext = std::filesystem::path(path).extension().string();
     for (char &ch : ext)
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    return ext != ".il";
+    return ext.empty() || ext == ".exe";
 }
 
 /// @brief Generate a unique temporary path for serialized IL text.
@@ -210,10 +213,10 @@ int compileToNative(const std::string &ilPath,
     opts.time_passes = timePasses;
     opts.fast_link = fastLink;
     opts.windows_debug_runtime = windowsDebugRuntime;
-#if defined(_WIN32)
+#if VIPER_HOST_WINDOWS
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
-#elif defined(__APPLE__)
+#elif VIPER_HOST_MACOS
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
 #else
@@ -298,10 +301,10 @@ int compileModuleToNative(il::core::Module module,
     opts.time_passes = timePasses;
     opts.fast_link = fastLink;
     opts.windows_debug_runtime = windowsDebugRuntime;
-#if defined(_WIN32)
+#if VIPER_HOST_WINDOWS
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
-#elif defined(__APPLE__)
+#elif VIPER_HOST_MACOS
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
 #else

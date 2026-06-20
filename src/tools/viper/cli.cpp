@@ -86,6 +86,14 @@ SharedOptionParseResult parseSharedOption(int &index,
         opts.stdinPath = argv[++index];
         return SharedOptionParseResult::Parsed;
     }
+    constexpr std::string_view stdinPrefix = "--stdin-from=";
+    if (arg.substr(0, stdinPrefix.size()) == stdinPrefix) {
+        std::string_view value = arg.substr(stdinPrefix.size());
+        if (value.empty())
+            return failSharedOption("--stdin-from requires a file path");
+        opts.stdinPath = std::string(value);
+        return SharedOptionParseResult::Parsed;
+    }
     if (arg == "--max-steps") {
         if (index + 1 >= argc) {
             return failSharedOption("--max-steps requires a non-negative integer");
@@ -239,6 +247,43 @@ SharedOptionParseResult parseSharedOption(int &index,
 
 const std::string &lastSharedOptionError() {
     return g_lastSharedOptionError;
+}
+
+DiagnosticFormat detectDiagnosticFormatFlag(int argc, char **argv) {
+    for (int i = 0; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+        if (arg == "--diagnostic-format") {
+            if (i + 1 >= argc)
+                continue;
+            const std::string_view value = argv[i + 1];
+            if (value == "json")
+                return DiagnosticFormat::Json;
+            if (value == "text")
+                return DiagnosticFormat::Text;
+            continue;
+        }
+        std::string_view inlineValue;
+        if (splitInlineOptionValue(arg, "--diagnostic-format", inlineValue)) {
+            if (inlineValue == "json")
+                return DiagnosticFormat::Json;
+            if (inlineValue == "text")
+                return DiagnosticFormat::Text;
+        }
+    }
+    return DiagnosticFormat::Text;
+}
+
+bool splitInlineOptionValue(std::string_view arg,
+                            std::string_view optionName,
+                            std::string_view &value) {
+    if (arg.size() <= optionName.size() + 1)
+        return false;
+    if (arg.substr(0, optionName.size()) != optionName)
+        return false;
+    if (arg[optionName.size()] != '=')
+        return false;
+    value = arg.substr(optionName.size() + 1);
+    return true;
 }
 
 void printDiagnostic(const il::support::Diagnostic &diag,

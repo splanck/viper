@@ -34,10 +34,12 @@
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace viper::server {
 
@@ -64,6 +66,19 @@ static std::string stripBasicTypeSuffix(std::string text) {
     return text;
 }
 
+/// @brief Return text safe to embed inside a fenced BASIC hover block.
+/// @details BASIC identifiers should not contain markdown delimiters, but this
+///          defensive sanitizer keeps unexpected control characters or backticks
+///          from breaking the hover document layout.
+static std::string sanitizeBasicHoverCode(std::string text) {
+    for (char &c : text) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (uc < 0x20 || uc == 0x7F || c == '`')
+            c = ' ';
+    }
+    return text;
+}
+
 /// @brief Build a case-folded map from BASIC identifier spellings to source locations.
 /// @details The BASIC semantic model exposes symbol names without declaration locations. This
 /// helper lexes the source once, prefers identifiers immediately following declaration leaders
@@ -74,20 +89,45 @@ static std::unordered_map<std::string, il::support::SourceLoc> indexBasicIdentif
     std::unordered_map<std::string, il::support::SourceLoc> locations;
     std::unordered_map<std::string, il::support::SourceLoc> fallbackLocations;
     Lexer lexer(source, fileId);
-    bool nextIdentifierIsDeclaration = false;
+    enum class DeclarationMode { None, SingleIdentifier, VariableList };
+    DeclarationMode declarationMode = DeclarationMode::None;
+    bool skippingTypeClause = false;
+    auto rememberDeclaration = [&](const Token &tok) {
+        const std::string key = toUpperStr(tok.lexeme);
+        locations.emplace(key, tok.loc);
+        const std::string stripped = toUpperStr(stripBasicTypeSuffix(tok.lexeme));
+        if (!stripped.empty())
+            locations.emplace(stripped, tok.loc);
+    };
     while (true) {
         Token tok = lexer.next();
         if (tok.kind == TokenKind::EndOfFile)
             break;
-        if (tok.kind == TokenKind::KeywordDim || tok.kind == TokenKind::KeywordConst ||
-            tok.kind == TokenKind::KeywordSub || tok.kind == TokenKind::KeywordFunction ||
+        if (tok.kind == TokenKind::KeywordDim || tok.kind == TokenKind::KeywordConst) {
+            declarationMode = DeclarationMode::VariableList;
+            skippingTypeClause = false;
+            continue;
+        }
+        if (tok.kind == TokenKind::KeywordSub || tok.kind == TokenKind::KeywordFunction ||
             tok.kind == TokenKind::KeywordClass) {
-            nextIdentifierIsDeclaration = true;
+            declarationMode = DeclarationMode::SingleIdentifier;
+            skippingTypeClause = false;
+            continue;
+        }
+        if (tok.kind == TokenKind::EndOfLine || tok.kind == TokenKind::Colon) {
+            declarationMode = DeclarationMode::None;
+            skippingTypeClause = false;
+            continue;
+        }
+        if (declarationMode == DeclarationMode::VariableList && tok.kind == TokenKind::Comma) {
+            skippingTypeClause = false;
+            continue;
+        }
+        if (declarationMode == DeclarationMode::VariableList && tok.kind == TokenKind::KeywordAs) {
+            skippingTypeClause = true;
             continue;
         }
         if (tok.kind != TokenKind::Identifier || tok.lexeme.empty()) {
-            if (tok.kind == TokenKind::EndOfLine || tok.kind == TokenKind::Colon)
-                nextIdentifierIsDeclaration = false;
             continue;
         }
 
@@ -97,11 +137,11 @@ static std::unordered_map<std::string, il::support::SourceLoc> indexBasicIdentif
         const std::string stripped = toUpperStr(stripBasicTypeSuffix(tok.lexeme));
         if (!stripped.empty())
             fallbackLocations.emplace(stripped, tok.loc);
-        if (nextIdentifierIsDeclaration) {
-            locations.emplace(key, tok.loc);
-            if (!stripped.empty())
-                locations.emplace(stripped, tok.loc);
-            nextIdentifierIsDeclaration = false;
+        if (declarationMode == DeclarationMode::SingleIdentifier) {
+            rememberDeclaration(tok);
+            declarationMode = DeclarationMode::None;
+        } else if (declarationMode == DeclarationMode::VariableList && !skippingTypeClause) {
+            rememberDeclaration(tok);
         }
     }
     for (const auto &[name, loc] : fallbackLocations)
@@ -127,6 +167,20 @@ static il::support::SourceLoc findBasicSymbolLocation(
     }
 
     return {};
+}
+
+/// @brief Repair an absent BASIC symbol location to the start of the document.
+/// @details LSP ranges are one-based in bridge data and cannot use zero line or
+///          column values. Falling back to 1:1 is preferable to sending an
+///          invalid range when semantic data lacks a precise declaration span.
+static il::support::SourceLoc validBasicSymbolLocation(il::support::SourceLoc loc,
+                                                       uint32_t fileId) {
+    if (loc.line != 0 && loc.column != 0)
+        return loc;
+    loc.file_id = fileId;
+    loc.line = 1;
+    loc.column = 1;
+    return loc;
 }
 
 /// @brief Append token lexeme text with printable escapes for line-oriented dumps.
@@ -278,7 +332,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
             md += "CONST ";
         else
             md += "DIM ";
-        md += ident + " AS " + typeStr + "\n```";
+        md += sanitizeBasicHoverCode(ident) + " AS " + sanitizeBasicHoverCode(typeStr) + "\n```";
         return md;
     }
 
@@ -292,7 +346,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
             md += "FUNCTION ";
         else
             md += "SUB ";
-        md += ident;
+        md += sanitizeBasicHoverCode(ident);
         md += "(";
         for (size_t i = 0; i < sig.params.size(); ++i) {
             if (i > 0)
@@ -345,7 +399,8 @@ std::string BasicCompilerBridge::hover(const std::string &source,
     // Try looking up as a class
     const auto *classInfo = sema.oopIndex().findClass(ident);
     if (classInfo) {
-        std::string md = "```basic\nCLASS " + classInfo->qualifiedName + "\n```";
+        std::string md =
+            "```basic\nCLASS " + sanitizeBasicHoverCode(classInfo->qualifiedName) + "\n```";
         md += "\n\n*" + std::to_string(classInfo->fields.size()) + " fields, " +
               std::to_string(classInfo->methods.size()) + " methods*";
         return md;
@@ -404,7 +459,8 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
                     break;
             }
         }
-        const auto loc = findBasicSymbolLocation(symbolLocations, sym);
+        const auto loc =
+            validBasicSymbolLocation(findBasicSymbolLocation(symbolLocations, sym), fileId);
         out.push_back(
             {sym, "variable", typeStr, sema.isConstSymbol(sym), false, loc.line, loc.column, path});
     }
@@ -412,13 +468,15 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
     // Procedures
     for (const auto &[name, sig] : sema.procs()) {
         std::string kind = sig.kind == ProcSignature::Kind::Function ? "function" : "method";
-        const auto loc = findBasicSymbolLocation(symbolLocations, name);
+        const auto loc =
+            validBasicSymbolLocation(findBasicSymbolLocation(symbolLocations, name), fileId);
         out.push_back({name, kind, "", false, false, loc.line, loc.column, path});
     }
 
     // Classes
     for (const auto &[name, info] : sema.oopIndex().classes()) {
-        const auto loc = findBasicSymbolLocation(symbolLocations, name);
+        const auto loc =
+            validBasicSymbolLocation(findBasicSymbolLocation(symbolLocations, name), fileId);
         out.push_back({name, "type", info.qualifiedName, false, false, loc.line, loc.column, path});
     }
 

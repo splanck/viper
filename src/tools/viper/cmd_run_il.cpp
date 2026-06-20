@@ -52,12 +52,19 @@ using namespace il;
 namespace {
 
 /// @brief Clears bytecode runtime argv state around a `viper -run --bytecode` execution.
-/// @details The compatibility runner does not forward program arguments, so construction clears
-/// any host argv fallback and destruction clears the empty runtime argument list again.
+/// @details Construction clears any host argv fallback, then pushes forwarded
+///          program arguments. Destruction clears the runtime argument list so
+///          subsequent VM runs do not inherit it.
 class RuntimeArgsScope {
   public:
-    RuntimeArgsScope() {
+    /// @brief Replace runtime argv with @p programArgs for this scope.
+    explicit RuntimeArgsScope(const std::vector<std::string> &programArgs) {
         rt_args_clear();
+        for (const auto &arg : programArgs) {
+            rt_string tmp = rt_string_from_bytes(arg.data(), arg.size());
+            rt_args_push(tmp);
+            rt_string_unref(tmp);
+        }
     }
 
     ~RuntimeArgsScope() {
@@ -81,6 +88,7 @@ struct RunILConfig {
 
     std::string ilFile;                           ///< Path to the IL file to run.
     ilc::SharedCliOptions sharedOpts;             ///< Shared CLI settings (trace, steps, IO).
+    std::vector<std::string> programArgs;         ///< Args forwarded after `--`.
     std::vector<std::string> breakLabels;         ///< Block-label breakpoints.
     std::vector<SourceBreak> breakSrcLines;       ///< Source file:line breakpoints.
     std::vector<std::string> watchSymbols;        ///< Variables to watch.
@@ -194,7 +202,11 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config) {
 
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
-        if (arg == "--break") {
+        if (arg == "--") {
+            for (int j = i + 1; j < argc; ++j)
+                config.programArgs.emplace_back(argv[j]);
+            break;
+        } else if (arg == "--break") {
             if (i + 1 >= argc) {
                 usage();
                 return false;
@@ -382,10 +394,9 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
         std::cerr << " recompile the source with the desired bounds-check setting and rerun.\n";
         return 1;
     }
-    if (config.useBytecode &&
-        (!config.breakLabels.empty() || !config.breakSrcLines.empty() ||
-         !config.watchSymbols.empty() || !config.debugScriptPath.empty() || config.stepFlag ||
-         config.continueFlag)) {
+    if (config.useBytecode && (!config.breakLabels.empty() || !config.breakSrcLines.empty() ||
+                               !config.watchSymbols.empty() || !config.debugScriptPath.empty() ||
+                               config.stepFlag || config.continueFlag)) {
         std::cerr << "error: debugger flags are not supported with --bytecode/--bc-threaded\n";
         return 1;
     }
@@ -408,12 +419,22 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     dbg.setSourceManager(&sm);
 
     core::Module m;
-    auto load = il::tools::common::loadModuleFromFile(config.ilFile, m, std::cerr);
+    auto load = il::tools::common::loadModuleFromFile(
+        config.ilFile, m, std::cerr, "unable to open ", false);
     if (!load.succeeded()) {
+        if (load.diag)
+            ilc::printDiagnostic(*load.diag, std::cerr, &sm, config.sharedOpts.diagnosticFormat);
+        else
+            il::tools::common::printLoadResult(load, std::cerr, &sm);
         return 1;
     }
 
-    if (!il::tools::common::verifyModule(m, std::cerr, &sm)) {
+    auto verify = il::tools::common::verifyModuleResult(m);
+    if (!verify.succeeded()) {
+        if (verify.diag)
+            ilc::printDiagnostic(*verify.diag, std::cerr, &sm, config.sharedOpts.diagnosticFormat);
+        else
+            il::tools::common::printLoadResult(verify, std::cerr, &sm);
         return 1;
     }
 
@@ -421,7 +442,14 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     if (!config.sharedOpts.stdinPath.empty()) {
         stdinRedirect.emplace(config.sharedOpts.stdinPath);
         if (!stdinRedirect->ok()) {
-            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
+            ilc::printDiagnostic(il::support::Diagnostic{il::support::Severity::Error,
+                                                         "unable to open stdin file: " +
+                                                             stdinRedirect->errorMessage(),
+                                                         {},
+                                                         {}},
+                                 std::cerr,
+                                 &sm,
+                                 config.sharedOpts.diagnosticFormat);
             return 1;
         }
     }
@@ -448,7 +476,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
         }
         viper::bytecode::BytecodeModule bcModule = std::move(compiled.value());
 
-        RuntimeArgsScope runtimeArgs;
+        RuntimeArgsScope runtimeArgs(config.programArgs);
 
         // Create and configure VM
         viper::bytecode::BytecodeVM vm;
@@ -507,6 +535,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     runCfg.maxSteps = config.sharedOpts.maxSteps;
     runCfg.debug = std::move(dbg);
     runCfg.debugScript = config.debugScript ? config.debugScript.get() : nullptr;
+    runCfg.programArgs = config.programArgs;
 
     vm::Runner runner(m, std::move(runCfg));
 

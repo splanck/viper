@@ -206,6 +206,7 @@ static JsonValue toolDef(const std::string &name,
     auto schema = JsonValue::object({
         {"type", JsonValue("object")},
         {"properties", JsonValue(std::move(properties))},
+        {"additionalProperties", JsonValue(false)},
     });
 
     // Only add "required" if non-empty
@@ -363,70 +364,74 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req) {
     // Build expected tool names from config prefix
     const std::string &p = config_.toolPrefix;
 
-    JsonValue content;
+    ToolCallResult toolResult;
 
     std::optional<std::string> argError;
     if (name == p + "/check") {
         argError = validateCommonSourceArgs(args);
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callCheck(args);
+        toolResult = callCheck(args);
     } else if (name == p + "/compile") {
         argError = validateCommonSourceArgs(args);
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callCompile(args);
+        toolResult = callCompile(args);
     } else if (name == p + "/completions") {
         argError = validatePositionArgs(args);
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callCompletions(args);
+        toolResult = callCompletions(args);
     } else if (name == p + "/hover") {
         argError = validatePositionArgs(args);
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callHover(args);
+        toolResult = callHover(args);
     } else if (name == p + "/symbols") {
         argError = validateCommonSourceArgs(args);
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callSymbols(args);
+        toolResult = callSymbols(args);
     } else if (name == p + "/dump-il") {
         argError = validateCommonSourceArgs(args);
         if (!argError)
             argError = requireOptionalBool(args, "optimized");
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callDumpIL(args);
+        toolResult = callDumpIL(args);
     } else if (name == p + "/dump-ast") {
         argError = validateCommonSourceArgs(args);
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callDumpAst(args);
+        toolResult = callDumpAst(args);
     } else if (name == p + "/dump-tokens") {
         argError = validateCommonSourceArgs(args);
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callDumpTokens(args);
+        toolResult = callDumpTokens(args);
     } else if (name == p + "/runtime-classes") {
         if (args.size() != 0)
             return buildError(req.id, kInvalidParams, "runtime-classes does not accept arguments");
-        content = callRuntimeClasses(args);
+        toolResult = callRuntimeClasses(args);
     } else if (name == p + "/runtime-methods") {
         argError = requireString(args, "className");
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callRuntimeMembers(args);
+        toolResult = callRuntimeMembers(args);
     } else if (name == p + "/runtime-search") {
         argError = requireNonEmptyString(args, "keyword");
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
-        content = callRuntimeSearch(args);
+        toolResult = callRuntimeSearch(args);
     } else {
         return buildError(req.id, kMethodNotFound, "Unknown tool: " + name);
     }
 
-    auto result = JsonValue::object({{"content", std::move(content)}});
+    JsonValue::ObjectType resultMembers;
+    resultMembers.push_back({"content", std::move(toolResult.content)});
+    if (toolResult.structuredContent)
+        resultMembers.push_back({"structuredContent", std::move(*toolResult.structuredContent)});
+    auto result = JsonValue::object(std::move(resultMembers));
     return buildResponse(req.id, result);
 }
 
@@ -476,7 +481,7 @@ static JsonValue diagnosticToJson(const DiagnosticInfo &d) {
     });
 }
 
-JsonValue McpHandler::callCheck(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callCheck(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
@@ -487,10 +492,11 @@ JsonValue McpHandler::callCheck(const JsonValue &args) {
     for (const auto &d : diags)
         diagArr.push_back(diagnosticToJson(d));
 
-    return textContent(JsonValue(std::move(diagArr)).toCompactString());
+    JsonValue structured(std::move(diagArr));
+    return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
-JsonValue McpHandler::callCompile(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callCompile(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
@@ -505,10 +511,10 @@ JsonValue McpHandler::callCompile(const JsonValue &args) {
         {"succeeded", JsonValue(result.succeeded)},
         {"diagnostics", JsonValue(std::move(diagArr))},
     });
-    return textContent(obj.toCompactString());
+    return {textContent(obj.toCompactString()), std::move(obj)};
 }
 
-JsonValue McpHandler::callCompletions(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callCompletions(const JsonValue &args) {
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
@@ -527,20 +533,21 @@ JsonValue McpHandler::callCompletions(const JsonValue &args) {
         }));
     }
 
-    return textContent(JsonValue(std::move(arr)).toCompactString());
+    JsonValue structured(std::move(arr));
+    return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
-JsonValue McpHandler::callHover(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callHover(const JsonValue &args) {
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     auto result = bridge_.hover(source, line, col, path);
-    return textContent(result.empty() ? "(no type information)" : result);
+    return {textContent(result.empty() ? "(no type information)" : result), std::nullopt};
 }
 
-JsonValue McpHandler::callSymbols(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callSymbols(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
@@ -558,32 +565,33 @@ JsonValue McpHandler::callSymbols(const JsonValue &args) {
         }));
     }
 
-    return textContent(JsonValue(std::move(arr)).toCompactString());
+    JsonValue structured(std::move(arr));
+    return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
-JsonValue McpHandler::callDumpIL(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callDumpIL(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
     bool optimized = args.has("optimized") ? args["optimized"].asBool() : false;
 
-    return textContent(bridge_.dumpIL(source, path, optimized));
+    return {textContent(bridge_.dumpIL(source, path, optimized)), std::nullopt};
 }
 
-JsonValue McpHandler::callDumpAst(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callDumpAst(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
-    return textContent(bridge_.dumpAst(source, path));
+    return {textContent(bridge_.dumpAst(source, path)), std::nullopt};
 }
 
-JsonValue McpHandler::callDumpTokens(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callDumpTokens(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
-    return textContent(bridge_.dumpTokens(source, path));
+    return {textContent(bridge_.dumpTokens(source, path)), std::nullopt};
 }
 
-JsonValue McpHandler::callRuntimeClasses(const JsonValue & /*args*/) {
+McpHandler::ToolCallResult McpHandler::callRuntimeClasses(const JsonValue & /*args*/) {
     auto classes = bridge_.runtimeClasses();
 
     JsonValue::ArrayType arr;
@@ -596,10 +604,11 @@ JsonValue McpHandler::callRuntimeClasses(const JsonValue & /*args*/) {
         }));
     }
 
-    return textContent(JsonValue(std::move(arr)).toCompactString());
+    JsonValue structured(std::move(arr));
+    return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
-JsonValue McpHandler::callRuntimeMembers(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callRuntimeMembers(const JsonValue &args) {
     std::string className = args["className"].asString();
     auto members = bridge_.runtimeMembers(className);
 
@@ -613,10 +622,11 @@ JsonValue McpHandler::callRuntimeMembers(const JsonValue &args) {
         }));
     }
 
-    return textContent(JsonValue(std::move(arr)).toCompactString());
+    JsonValue structured(std::move(arr));
+    return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
-JsonValue McpHandler::callRuntimeSearch(const JsonValue &args) {
+McpHandler::ToolCallResult McpHandler::callRuntimeSearch(const JsonValue &args) {
     std::string keyword = args["keyword"].asString();
     auto results = bridge_.runtimeSearch(keyword);
 
@@ -630,7 +640,8 @@ JsonValue McpHandler::callRuntimeSearch(const JsonValue &args) {
         }));
     }
 
-    return textContent(JsonValue(std::move(arr)).toCompactString());
+    JsonValue structured(std::move(arr));
+    return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
 } // namespace viper::server

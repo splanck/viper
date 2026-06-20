@@ -35,8 +35,8 @@
 #include "viper/vm/VM.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -162,22 +162,21 @@ struct RunBuildConfig {
 /// @brief Print usage for the `viper run`, `viper build`, or `viper check` subcommand to stderr.
 void printRunBuildUsage(RunMode mode) {
     if (mode == RunMode::Check) {
-        std::cerr
-            << "Usage: viper check [target] [options]\n"
-            << "\n"
-            << "Type-check and verify a .zia file, .bas file, project directory, or\n"
-            << "viper.project without running or emitting anything.\n"
-            << "\n"
-            << "Check options:\n"
-            << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
-            << "  --no-strict-diagnostics       Keep safety warnings as warnings\n"
-            << "  --quiet-warnings              Suppress warning output\n"
-            << "  -h, --help                    Show this help\n"
-            << "\n"
-            << "Exit codes:\n"
-            << "  0  no errors (warnings allowed)\n"
-            << "  1  usage error or target could not be resolved\n"
-            << "  2  compile or verification errors\n";
+        std::cerr << "Usage: viper check [target] [options]\n"
+                  << "\n"
+                  << "Type-check and verify a .zia file, .bas file, project directory, or\n"
+                  << "viper.project without running or emitting anything.\n"
+                  << "\n"
+                  << "Check options:\n"
+                  << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
+                  << "  --no-strict-diagnostics       Keep safety warnings as warnings\n"
+                  << "  --quiet-warnings              Suppress warning output\n"
+                  << "  -h, --help                    Show this help\n"
+                  << "\n"
+                  << "Exit codes:\n"
+                  << "  0  no errors (warnings allowed)\n"
+                  << "  1  usage error or target could not be resolved\n"
+                  << "  2  compile or verification errors\n";
         return;
     }
     if (mode == RunMode::Run) {
@@ -269,6 +268,63 @@ bool shouldEnableParallelFunctionPasses(const ilc::SharedCliOptions &shared) {
            !shared.dumpAst && !shared.dumpSemaAst && !shared.dumpTokens;
 }
 
+/// @brief Create a user-facing command diagnostic without a source location.
+/// @param message Diagnostic message to display.
+/// @param code Optional machine-readable diagnostic code.
+/// @return Error-severity diagnostic suitable for text or JSON emission.
+il::support::Diagnostic makeCommandError(std::string message, std::string code = {}) {
+    return il::support::Diagnostic{
+        il::support::Severity::Error, std::move(message), {}, std::move(code)};
+}
+
+/// @brief Print a command diagnostic using the user-selected diagnostic format.
+/// @param diag Diagnostic to print.
+/// @param sm Source manager used for location rendering when present.
+/// @param format Output format requested by the user.
+void printCommandDiagnostic(const il::support::Diagnostic &diag,
+                            const il::support::SourceManager *sm,
+                            ilc::DiagnosticFormat format) {
+    ilc::printDiagnostic(diag, std::cerr, sm, format);
+}
+
+/// @brief Validate shared options whose effects only make sense while running code.
+/// @details The shared parser intentionally accepts these options for multiple
+///          subcommands. `build` and `check` reject them here so flags like
+///          `--stdin-from`, `--trace`, and `--profile` are not silently ignored.
+/// @param mode Active command mode.
+/// @param arg Current argument token.
+/// @return A diagnostic message when @p arg is not valid for @p mode.
+std::optional<std::string> executionOnlySharedOptionError(RunMode mode, std::string_view arg) {
+    if (mode == RunMode::Run)
+        return std::nullopt;
+    const auto command = mode == RunMode::Build ? "'build'" : "'check'";
+    const auto errorFor = [&](std::string_view option) {
+        return std::string(option) + " is only valid with 'run', not " + command;
+    };
+    if (arg == "--stdin-from" || arg.substr(0, 13) == "--stdin-from=")
+        return errorFor("--stdin-from");
+    if (arg == "--max-steps" || arg.substr(0, 12) == "--max-steps=")
+        return errorFor("--max-steps");
+    if (arg == "--dump-trap")
+        return errorFor("--dump-trap");
+    if (arg == "--trace" || arg.substr(0, 8) == "--trace=")
+        return errorFor("--trace");
+    if (arg == "--profile")
+        return errorFor("--profile");
+    return std::nullopt;
+}
+
+/// @brief Parse a native target architecture string.
+/// @param value User-supplied architecture name.
+/// @return Target architecture, or nullopt for an unsupported name.
+std::optional<viper::tools::TargetArch> parseTargetArch(std::string_view value) {
+    if (value == "arm64")
+        return viper::tools::TargetArch::ARM64;
+    if (value == "x64")
+        return viper::tools::TargetArch::X64;
+    return std::nullopt;
+}
+
 /// @brief Parse the arguments for `viper run`/`viper build` into a RunBuildConfig.
 /// @details Recognises the target, output path, shared options, optimization/profile
 ///          and architecture/link overrides, and program arguments after `--`.
@@ -287,11 +343,11 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
 
         if (arg == "--") {
             if (mode != RunMode::Run) {
-                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
-                    il::support::Severity::Error,
-                    "program arguments after -- are only valid with 'run'",
-                    {},
-                    {}});
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "program arguments after -- are only valid with 'run'",
+                                            {},
+                                            {}});
             }
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
@@ -309,6 +365,16 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                     il::support::Severity::Error, "missing output path after -o", {}, {}});
             }
             config.outputPath = argv[++i];
+        } else if (arg.substr(0, 3) == "-o=") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(
+                    makeCommandError("-o is only valid with 'build'"));
+            }
+            config.outputPath = std::string(arg.substr(3));
+            if (config.outputPath.empty()) {
+                return il::support::Expected<RunBuildConfig>(
+                    makeCommandError("missing output path after -o"));
+            }
         } else if (arg == "-O0" || arg == "-O1" || arg == "-O2") {
             config.optimizeLevelOverride = std::string(arg.substr(1));
         } else if (arg == "--build-profile") {
@@ -346,11 +412,11 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
             config.debugVm = true;
         } else if (arg == "--debug-adapter") {
             if (mode != RunMode::Run) {
-                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
-                    il::support::Severity::Error,
-                    "--debug-adapter is only valid with 'run'",
-                    {},
-                    {}});
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--debug-adapter is only valid with 'run'",
+                                            {},
+                                            {}});
             }
             config.debugAdapter = true;
             // Debug unoptimized code so every source line and local survives for
@@ -405,15 +471,28 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                     il::support::Severity::Error, "--arch requires arm64 or x64", {}, {}});
             }
             std::string_view val = argv[++i];
-            if (val == "arm64")
-                config.archOverride = viper::tools::TargetArch::ARM64;
-            else if (val == "x64")
-                config.archOverride = viper::tools::TargetArch::X64;
-            else {
+            if (auto arch = parseTargetArch(val)) {
+                config.archOverride = *arch;
+            } else {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error, "--arch must be 'arm64' or 'x64'", {}, {}});
+            }
+        } else if (arg.substr(0, 7) == "--arch=") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error, "--arch is only valid with 'build'", {}, {}});
+            }
+            std::string_view val = arg.substr(7);
+            if (auto arch = parseTargetArch(val)) {
+                config.archOverride = *arch;
+            } else {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "--arch must be 'arm64' or 'x64'", {}, {}});
             }
         } else {
+            if (auto error = executionOnlySharedOptionError(mode, arg)) {
+                return il::support::Expected<RunBuildConfig>(makeCommandError(std::move(*error)));
+            }
             switch (ilc::parseSharedOption(i, argc, argv, config.shared)) {
                 case ilc::SharedOptionParseResult::Parsed:
                     continue;
@@ -453,17 +532,20 @@ int verifyAndExecute(il::core::Module &module,
         return 1;
     }
 
-    if (debugAdapter)
-        return il::tools::debug::runDebugAdapter(module, programArgs, shared.maxSteps, sm);
-
     std::optional<viper::tools::ScopedStdinRedirect> stdinRedirect;
     if (!shared.stdinPath.empty()) {
         stdinRedirect.emplace(shared.stdinPath);
         if (!stdinRedirect->ok()) {
-            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
+            printCommandDiagnostic(
+                makeCommandError("unable to open stdin file: " + stdinRedirect->errorMessage()),
+                &sm,
+                shared.diagnosticFormat);
             return 1;
         }
     }
+
+    if (debugAdapter)
+        return il::tools::debug::runDebugAdapter(module, programArgs, shared.maxSteps, sm);
 
     bool useStandardVm = debugVm || shared.trace.enabled();
 
@@ -555,8 +637,16 @@ il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConf
     opts.warningPolicy.warningsAsErrors = shared.werror;
     opts.warningPolicy.strictSafetyWarnings = shared.strictDiagnostics;
     for (const auto &w : shared.disabledWarnings) {
-        if (auto code = il::frontends::zia::parseWarningCode(w))
+        if (auto code = il::frontends::zia::parseWarningCode(w)) {
             opts.warningPolicy.disabled.insert(*code);
+        } else {
+            il::support::Diagnostic diag{il::support::Severity::Error,
+                                         "unknown warning name in -Wno-" + w,
+                                         {},
+                                         "V-CLI-WARNING"};
+            ilc::printDiagnostic(diag, std::cerr, &sm, shared.diagnosticFormat);
+            return il::support::Expected<CompiledProjectModule>(diag);
+        }
     }
 
     if (!optimizeModule || project.optimizeLevel == "O0")
@@ -605,10 +695,7 @@ il::support::Expected<CompiledProjectModule> compileBasicProject(
         noRuntimeNamespacesEnv.emplace("VIPER_NO_RUNTIME_NAMESPACES", "1");
         if (!noRuntimeNamespacesEnv->ok()) {
             return il::support::Expected<CompiledProjectModule>(il::support::Diagnostic{
-                il::support::Severity::Error,
-                noRuntimeNamespacesEnv->errorMessage(),
-                {},
-                {}});
+                il::support::Severity::Error, noRuntimeNamespacesEnv->errorMessage(), {}, {}});
         }
     }
 
@@ -718,30 +805,47 @@ il::support::Expected<CompiledProjectModule> compileMixedProject(
     if (!entryResult)
         return entryResult;
 
-    // Compile the library module (the other language).
-    // Use the first library file as the entry file for the library project.
+    // Compile every library-side source file. Mixed projects can contain multiple
+    // independent files in the non-entry language, and picking just one makes
+    // symbols vanish at link time.
     if (libProject.sourceFiles.empty())
         return entryResult; // No library files, just return the entry module.
 
-    libProject.entryFile = selectMixedLibraryEntry(libProject.sourceFiles, libProject.lang);
-    if (libProject.entryFile.empty())
-        return entryResult;
-    il::support::Expected<CompiledProjectModule> libResult =
-        entryIsZia ? compileBasicProject(libProject, noRuntimeNamespaces, shared, sm, false)
-                   : compileZiaProject(libProject, shared, sm, false);
-    if (!libResult)
-        return libResult;
+    std::vector<std::string> libraryFiles = libProject.sourceFiles;
+    std::sort(libraryFiles.begin(), libraryFiles.end());
+    libraryFiles.erase(std::unique(libraryFiles.begin(), libraryFiles.end()), libraryFiles.end());
+    const std::string preferredEntry = selectMixedLibraryEntry(libraryFiles, libProject.lang);
+    if (!preferredEntry.empty()) {
+        auto it = std::find(libraryFiles.begin(), libraryFiles.end(), preferredEntry);
+        if (it != libraryFiles.end())
+            std::rotate(libraryFiles.begin(), it, it + 1);
+    }
 
-    // Generate boolean interop thunks.
-    auto thunks =
-        il::link::generateBooleanThunks(entryResult.value().module, libResult.value().module);
-    for (auto &thunk : thunks)
-        entryResult.value().module.functions.push_back(std::move(thunk.thunk));
+    std::vector<il::core::Module> libraryModules;
+    libraryModules.reserve(libraryFiles.size());
+    for (const auto &libraryFile : libraryFiles) {
+        ProjectConfig fileProject = libProject;
+        fileProject.entryFile = libraryFile;
+        fileProject.sourceFiles = {libraryFile};
+        il::support::Expected<CompiledProjectModule> libResult =
+            entryIsZia ? compileBasicProject(fileProject, noRuntimeNamespaces, shared, sm, false)
+                       : compileZiaProject(fileProject, shared, sm, false);
+        if (!libResult)
+            return libResult;
+
+        auto thunks =
+            il::link::generateBooleanThunks(entryResult.value().module, libResult.value().module);
+        for (auto &thunk : thunks)
+            entryResult.value().module.functions.push_back(std::move(thunk.thunk));
+        libraryModules.push_back(std::move(libResult.value().module));
+    }
 
     // Link the two modules.
     std::vector<il::core::Module> modules;
+    modules.reserve(1 + libraryModules.size());
     modules.push_back(std::move(entryResult.value().module));
-    modules.push_back(std::move(libResult.value().module));
+    for (auto &libraryModule : libraryModules)
+        modules.push_back(std::move(libraryModule));
 
     auto linkResult = il::link::linkModules(std::move(modules));
     if (!linkResult.succeeded()) {
@@ -775,18 +879,29 @@ il::support::Expected<CompiledProjectModule> compileMixedProject(
     return compiled;
 }
 
+/// @brief Execute a fully parsed run/build/check configuration.
+/// @param config Parsed command configuration.
+/// @return Process exit code for the requested command mode.
+int executeRunBuildConfig(RunBuildConfig config);
+
 /// @brief Common implementation for both run and build commands.
 int runOrBuild(RunMode mode, int argc, char **argv) {
+    const ilc::DiagnosticFormat earlyDiagnosticFormat = ilc::detectDiagnosticFormatFlag(argc, argv);
     auto parsed = parseRunBuildArgs(mode, argc, argv);
     if (!parsed) {
         const auto &diag = parsed.error();
         SourceManager sm;
-        il::support::printDiag(diag, std::cerr, &sm);
-        printRunBuildUsage(mode);
+        printCommandDiagnostic(diag, &sm, earlyDiagnosticFormat);
+        if (earlyDiagnosticFormat == ilc::DiagnosticFormat::Text)
+            printRunBuildUsage(mode);
         return 1;
     }
 
-    RunBuildConfig config = std::move(parsed.value());
+    return executeRunBuildConfig(std::move(parsed.value()));
+}
+
+int executeRunBuildConfig(RunBuildConfig config) {
+    const RunMode mode = config.mode;
     if (config.helpRequested) {
         printRunBuildUsage(mode);
         return 0;
@@ -797,7 +912,7 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     auto project = resolveProject(config.target);
     if (!project) {
         SourceManager sm;
-        il::support::printDiag(project.error(), std::cerr, &sm);
+        printCommandDiagnostic(project.error(), &sm, config.shared.diagnosticFormat);
         return 1;
     }
 
@@ -872,6 +987,18 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             return 0;
         }
 
+        std::string outputExt = std::filesystem::path(config.outputPath).extension().string();
+        for (char &ch : outputExt)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (!outputExt.empty() && outputExt != ".il" && outputExt != ".exe") {
+            printCommandDiagnostic(makeCommandError("unsupported build output extension '" +
+                                                    outputExt +
+                                                    "'; use .il, .exe, or no extension"),
+                                   &sm,
+                                   config.shared.diagnosticFormat);
+            return 1;
+        }
+
         // -o path ends in .il: emit IL text (backwards compat)
         if (!viper::tools::isNativeOutputPath(config.outputPath)) {
             const auto outputParent = std::filesystem::path(config.outputPath).parent_path();
@@ -879,22 +1006,30 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                 std::error_code ec;
                 std::filesystem::create_directories(outputParent, ec);
                 if (ec) {
-                    std::cerr << "error: cannot create output directory: " << outputParent.string()
-                              << ": " << ec.message() << "\n";
+                    printCommandDiagnostic(makeCommandError("cannot create output directory: " +
+                                                            outputParent.string() + ": " +
+                                                            ec.message()),
+                                           &sm,
+                                           config.shared.diagnosticFormat);
                     return 1;
                 }
             }
             std::ostringstream ilText;
             io::Serializer::write(module, ilText);
             if (!ilText) {
-                std::cerr << "error: failed to serialize IL for " << config.outputPath << "\n";
+                printCommandDiagnostic(
+                    makeCommandError("failed to serialize IL for " + config.outputPath),
+                    &sm,
+                    config.shared.diagnosticFormat);
                 return 1;
             }
             try {
                 viper::pkg::writeTextFileAtomic(config.outputPath, ilText.str());
             } catch (const std::exception &ex) {
-                std::cerr << "error: failed to write IL to " << config.outputPath << ": "
-                          << ex.what() << "\n";
+                printCommandDiagnostic(makeCommandError("failed to write IL to " +
+                                                        config.outputPath + ": " + ex.what()),
+                                       &sm,
+                                       config.shared.diagnosticFormat);
                 return 1;
             }
             return 0;
@@ -915,7 +1050,9 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             std::string assetErr;
             auto bundle = viper::asset::compileAssets(proj, outputDir, assetErr);
             if (!bundle) {
-                std::cerr << "error: asset compilation failed: " << assetErr << "\n";
+                printCommandDiagnostic(makeCommandError("asset compilation failed: " + assetErr),
+                                       &sm,
+                                       config.shared.diagnosticFormat);
                 return 1;
             }
 
@@ -931,8 +1068,11 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                 try {
                     viper::pkg::writeFileAtomic(assetBlobPath, bundle->embeddedBlob);
                 } catch (const std::exception &ex) {
-                    std::cerr << "error: failed to write temporary asset blob: " << assetBlobPath
-                              << ": " << ex.what() << "\n";
+                    printCommandDiagnostic(
+                        makeCommandError("failed to write temporary asset blob: " + assetBlobPath +
+                                         ": " + ex.what()),
+                        &sm,
+                        config.shared.diagnosticFormat);
                     return 1;
                 }
             }
@@ -980,4 +1120,43 @@ int cmdBuild(int argc, char **argv) {
 
 int cmdCheck(int argc, char **argv) {
     return runOrBuild(RunMode::Check, argc, argv);
+}
+
+int buildProjectToNativeForPackage(const std::string &target,
+                                   const std::string &outputPath,
+                                   const std::string &arch,
+                                   bool windowsReleaseRuntime) {
+    if (target.empty()) {
+        SourceManager sm;
+        printCommandDiagnostic(
+            makeCommandError("package build target is empty"), &sm, ilc::DiagnosticFormat::Text);
+        return 1;
+    }
+    if (outputPath.empty()) {
+        SourceManager sm;
+        printCommandDiagnostic(makeCommandError("package native output path is empty"),
+                               &sm,
+                               ilc::DiagnosticFormat::Text);
+        return 1;
+    }
+
+    RunBuildConfig config;
+    config.mode = RunMode::Build;
+    config.target = target;
+    config.outputPath = outputPath;
+    if (!arch.empty()) {
+        auto parsedArch = parseTargetArch(arch);
+        if (!parsedArch) {
+            SourceManager sm;
+            printCommandDiagnostic(makeCommandError("package build architecture must be 'arm64' or "
+                                                    "'x64'"),
+                                   &sm,
+                                   ilc::DiagnosticFormat::Text);
+            return 1;
+        }
+        config.archOverride = *parsedArch;
+    }
+    if (windowsReleaseRuntime)
+        config.windowsDebugRuntimeOverride = false;
+    return executeRunBuildConfig(std::move(config));
 }

@@ -19,6 +19,8 @@
 
 #include "tools/lsp-common/Transport.hpp"
 
+#include "common/PlatformCapabilities.hpp"
+
 #include <cctype>
 #include <charconv>
 #include <cstdlib>
@@ -26,7 +28,7 @@
 #include <stdexcept>
 #include <system_error>
 
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
 #include <fcntl.h>
 #include <io.h>
 #endif
@@ -53,7 +55,7 @@ void checkedWrite(FILE *out, const char *data, size_t size) {
 // --- Platform init ---
 
 void platformInitStdio() {
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
@@ -180,9 +182,13 @@ bool LspTransport::readMessage(RawMessage &out) {
                 size_t valStart = prefixLen;
                 while (valStart < line.size() && (line[valStart] == ' ' || line[valStart] == '\t'))
                     ++valStart;
+                size_t valEnd = line.size();
+                while (valEnd > valStart && (line[valEnd - 1] == ' ' || line[valEnd - 1] == '\t')) {
+                    --valEnd;
+                }
                 size_t parsed = 0;
                 const char *begin = line.data() + valStart;
-                const char *end = line.data() + line.size();
+                const char *end = line.data() + valEnd;
                 auto [ptr, ec] = std::from_chars(begin, end, parsed);
                 if (ec != std::errc{} || ptr != end || parsed == 0 ||
                     parsed > kMaxProtocolMessageBytes) {

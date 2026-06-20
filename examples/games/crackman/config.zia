@@ -95,6 +95,7 @@ final KEY_W = 87;
 final KEY_A = 65;
 final KEY_S = 83;
 final KEY_D = 68;
+final KEY_L = 76;
 
 // =============================================================================
 // GAMEPAD BUTTONS (from vgfx.h)
@@ -122,6 +123,7 @@ final ACTION_CONFIRM = "confirm";
 final ACTION_CANCEL = "cancel";
 final ACTION_PAUSE = "pause";
 final ACTION_RESTART = "restart";
+final ACTION_LIGHTS = "toggle_lights";
 
 // =============================================================================
 // GAME STATES (for state machine)

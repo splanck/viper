@@ -45,7 +45,6 @@ expose func buildPacmanSprite(size: Integer, dir: Integer, mouthOpen: Boolean) -
     var eyeWhite = 0xFFF2D0;
     var eyeBag = 0x8B5D7A;
     var pupil = 0x170C10;
-    var clear = 0;
 
     var sy = shadowY - 3;
     while sy <= shadowY + 3 {
@@ -61,8 +60,11 @@ expose func buildPacmanSprite(size: Integer, dir: Integer, mouthOpen: Boolean) -
         sy = sy + 1;
     }
 
-    px.DrawDisc(cx, cy, radius, body);
-
+    // SINGLE-PASS BODY. A pixel is body iff it is inside the disc AND outside
+    // the mouth wedge — one consistent coverage test, so no rim pixel can
+    // survive between two mismatched passes (the old "yellow outline" bug).
+    // The highlight is blended only where the body actually exists, so it can
+    // never re-fill the transparent mouth.
     for y in 0..size {
         for x in 0..size {
             var dx = x - cx;
@@ -93,19 +95,14 @@ expose func buildPacmanSprite(size: Integer, dir: Integer, mouthOpen: Boolean) -
                     }
                 }
 
-                if cut {
-                    px.Set(x, y, clear);
+                if !cut {
+                    px.Set(x, y, body);
+                    var hx = x - (cx - radius / 3);
+                    var hy = y - (cy - radius / 3);
+                    if hx * hx + hy * hy <= (radius / 2) * (radius / 2) {
+                        px.BlendPixel(x, y, highlight, 40);
+                    }
                 }
-            }
-        }
-    }
-
-    for y in 0..size {
-        for x in 0..size {
-            var hx = x - (cx - radius / 3);
-            var hy = y - (cy - radius / 3);
-            if hx * hx + hy * hy <= (radius / 2) * (radius / 2) {
-                px.BlendPixel(x, y, highlight, 40);
             }
         }
     }
@@ -160,21 +157,35 @@ expose func buildGhostSprite(size: Integer, bodyColor: Integer, dir: Integer, fr
     var pupil = sprite_support.rgba(theme.ACCENT_BLUE, 255);
     var face = sprite_support.rgba(theme.TEXT_PRIMARY, 255);
 
-    px.DrawEllipse(cx, baseY + 5, radius - 1, 4, shadow);
+    var bodyDark = sprite_support.rgba(Color.Darken(bodyColor, 26), 90);
+    var sheen = sprite_support.rgba(0xFFFFFF, 30);
+
+    // Soft ground shadow + outer glow, then the rounded-top body.
+    px.DrawEllipse(cx, baseY + 6, radius - 1, 4, shadow);
     px.DrawDisc(cx, cy - 1, radius + 3, glow);
     px.DrawDisc(cx, cy - 1, radius, body);
-    px.DrawBox(cx - radius, cy - 2, radius * 2, radius + 5, body);
+    px.DrawBox(cx - radius, cy - 2, radius * 2, radius + 6, body);
 
-    carveDisc(px, cx - radius + 4, baseY + 2, 4);
-    carveDisc(px, cx - radius + 12, baseY + 5, 4);
-    carveDisc(px, cx - radius + 20, baseY + 2, 4);
-    carveDisc(px, cx - radius + 28, baseY + 5, 4);
+    // Vertical shading: bright sheen up top, a darker band along the belly.
+    px.DrawDisc(cx - radius / 2, cy - radius / 2, radius / 2 + 1, sheen);
+    px.DrawBox(cx - radius + 1, cy + radius / 2, radius * 2 - 2, radius / 2 + 3, bodyDark);
 
-    px.DrawDisc(cx - 5, cy - 9, 6, sprite_support.rgba(0xFFFFFF, 36));
+    // Scalloped skirt: carve five upward notches to leave four rounded feet.
+    // Unrolled (no loop) so the -O2 IL optimizer handles the checked arithmetic
+    // cleanly; the spacing still scales with the ghost's radius.
+    var skirtY = baseY + 5;
+    var step = radius / 2;
+    var notchR = step / 2;
+    var left = cx - radius;
+    carveDisc(px, left, skirtY, notchR);
+    carveDisc(px, left + step, skirtY, notchR);
+    carveDisc(px, left + step * 2, skirtY, notchR);
+    carveDisc(px, left + step * 3, skirtY, notchR);
+    carveDisc(px, left + step * 4, skirtY, notchR);
 
     if !frightened {
-        px.DrawDisc(cx - 6, cy - 4, 5, eyeWhite);
-        px.DrawDisc(cx + 6, cy - 4, 5, eyeWhite);
+        px.DrawDisc(cx - 5, cy - 3, 5, eyeWhite);
+        px.DrawDisc(cx + 5, cy - 3, 5, eyeWhite);
 
         var pxOff = 0;
         var pyOff = 0;
@@ -182,8 +193,10 @@ expose func buildGhostSprite(size: Integer, bodyColor: Integer, dir: Integer, fr
         if dir == config.DIR_RIGHT { pxOff = 2; }
         if dir == config.DIR_UP { pyOff = -2; }
         if dir == config.DIR_DOWN { pyOff = 2; }
-        px.DrawDisc(cx - 6 + pxOff, cy - 3 + pyOff, 2, pupil);
-        px.DrawDisc(cx + 6 + pxOff, cy - 3 + pyOff, 2, pupil);
+        px.DrawDisc(cx - 5 + pxOff, cy - 3 + pyOff, 2, pupil);
+        px.DrawDisc(cx + 5 + pxOff, cy - 3 + pyOff, 2, pupil);
+        px.DrawDisc(cx - 6, cy - 5, 1, sprite_support.rgba(0xFFFFFF, 220));
+        px.DrawDisc(cx + 4, cy - 5, 1, sprite_support.rgba(0xFFFFFF, 220));
     } else {
         px.DrawDisc(cx - 5, cy - 4, 2, face);
         px.DrawDisc(cx + 5, cy - 4, 2, face);

@@ -36,6 +36,7 @@ bind "./player";
 bind "./ghost";
 bind "./fruit";
 bind "./particles";
+bind "./popups";
 bind "./sound";
 bind "./progression";
 bind "./ui/renderer";
@@ -55,6 +56,7 @@ class Session {
     hide List[ghost.Ghost] ghosts;
     hide fruit.Fruit theFruit;
     hide particles.ParticleSystem particleSys;
+    hide popups.ScorePopups scorePops;
     hide progression.Progression profile;
 
     hide Integer score;
@@ -76,7 +78,11 @@ class Session {
     hide Tween comboTween;
     hide Integer comboScore;
     hide Integer comboCount;
+    hide Boolean frightenedActive;
     hide FX fx;
+
+    hide Lighting2D lights;
+    hide Boolean deluxeLighting;
 
     expose func init() {
         theMaze = new maze.Maze();
@@ -94,7 +100,14 @@ class Session {
         theFruit.init();
 
         particleSys = new particles.ParticleSystem();
+        scorePops = new popups.ScorePopups();
         fx = FX.New();
+
+        lights = Lighting2D.New(16);
+        lights.set_Darkness(212);
+        lights.set_TintColor(0x0A0A24);
+        lights.SetPlayerLight(118, 0xFFE24A);
+        deluxeLighting = false;
 
         readyTimer = Timer.New();
         deathTimer = Timer.New();
@@ -116,6 +129,7 @@ class Session {
         ghostsEaten = 0;
         extraLifeAwarded = false;
         chaseMode = false;
+        frightenedActive = false;
     }
 
     expose func attachProgression(theProfile: progression.Progression) {
@@ -125,6 +139,7 @@ class Session {
     expose func updateFrame(dt: Integer) {
         fx.Update(dt);
         particleSys.update();
+        scorePops.update();
         displayScore.Target = score * 1.0;
         displayScore.Update();
         comboTimer.Update();
@@ -152,8 +167,13 @@ class Session {
 
     expose func updatePlaying(sfx: sound.SoundManager) -> Integer {
         if Action.Pressed(config.ACTION_PAUSE) {
+            self.killSiren(sfx);
             sfx.playPause();
             return EVENT_PAUSE;
+        }
+
+        if Action.Pressed(config.ACTION_LIGHTS) {
+            deluxeLighting = !deluxeLighting;
         }
 
         self.handleMovementInput();
@@ -167,6 +187,7 @@ class Session {
         self.handleExtraLife(sfx);
         self.updateHighScore();
         self.updateGhosts();
+        self.updateSiren(sfx);
 
         var collisionEvent = self.handleGhostCollisions(sfx);
         if collisionEvent != EVENT_NONE {
@@ -174,6 +195,12 @@ class Session {
         }
 
         if theMaze.allDotsEaten() {
+            self.killSiren(sfx);
+            var winX = config.PLAYFIELD_X + config.PLAYFIELD_WIDTH / 2;
+            var winY = config.PLAYFIELD_Y + config.PLAYFIELD_HEIGHT / 2;
+            particleSys.burstCelebrate(winX, winY);
+            fx.Flash(config.COLOR_WHITE * 256 + 0x55, 240);
+            Pad.Vibrate(config.PAD_IDX, 0.3, 0.6);
             if profile != null {
                 profile.noteBoardClear(level);
             }
@@ -184,8 +211,28 @@ class Session {
         return EVENT_NONE;
     }
 
+    /// @brief Keep the looping power-pellet siren in sync with frightened state.
+    hide func updateSiren(sfx: sound.SoundManager) {
+        if self.getMaxFrightenedRemaining() > 0 {
+            if !frightenedActive {
+                sfx.playSiren();
+                frightenedActive = true;
+            }
+        } else {
+            self.killSiren(sfx);
+        }
+    }
+
+    hide func killSiren(sfx: sound.SoundManager) {
+        if frightenedActive {
+            sfx.stopSiren();
+            frightenedActive = false;
+        }
+    }
+
     expose func updateDying() -> Integer {
         deathTimer.Update();
+        pacman.setDeathProgress(deathTimer.Progress);
         if deathTimer.IsExpired {
             self.resetActors();
             return EVENT_DYING_COMPLETE;
@@ -200,11 +247,13 @@ class Session {
         dotsEaten = 0;
         extraLifeAwarded = false;
         chaseMode = false;
+        frightenedActive = false;
 
         theMaze.reset();
         self.resetActors();
         theFruit.reset();
         particleSys.reset();
+        scorePops.reset();
         displayScore.SetImmediate(0.0);
         comboTimer.Stop();
         comboScore = 0;
@@ -215,10 +264,12 @@ class Session {
         level = level + 1;
         dotsEaten = 0;
         chaseMode = false;
+        frightenedActive = false;
 
         theMaze.reset();
         self.resetActors();
         theFruit.reset();
+        scorePops.reset();
         comboTimer.Stop();
         comboScore = 0;
         comboCount = 0;
@@ -227,7 +278,8 @@ class Session {
     expose func render(canvas: Canvas, overlayState: Integer, uiTick: Integer) {
         renderer.drawPlayfieldShell(canvas, uiTick);
 
-        theMaze.draw(canvas);
+        theMaze.draw(canvas, uiTick);
+        self.drawFrightenedVignette(canvas, uiTick);
         theFruit.draw(canvas);
         pacman.draw(canvas);
 
@@ -236,6 +288,11 @@ class Session {
         }
 
         particleSys.draw(canvas);
+        scorePops.draw(canvas);
+        self.drawDeluxeLighting(canvas);
+        if overlayState == config.STATE_WIN {
+            self.drawWinFlash(canvas, uiTick);
+        }
         renderer.drawHud(canvas, displayScore.ValueI64, highScore, level, lives,
                          theMaze.getDotsRemaining(), theMaze.getTotalDots(),
                          self.getMaxFrightenedRemaining(), config.FRIGHTENED_DURATION, uiTick);
@@ -255,6 +312,57 @@ class Session {
         }
 
         renderer.drawStateOverlay(canvas, overlayState, readyTween.Progress, uiTick);
+    }
+
+    /// @brief R11 — optional "deluxe" lighting mode (toggle with L). Darkens the
+    ///        maze and makes Crackman and the power pellets glow as light
+    ///        sources. Drawn before the HUD so the HUD stays readable.
+    hide func drawDeluxeLighting(canvas: Canvas) {
+        if !deluxeLighting {
+            return;
+        }
+        for gy in 0..config.GRID_HEIGHT {
+            for gx in 0..config.GRID_WIDTH {
+                if theMaze.getTile(gx, gy) == config.TILE_PELLET {
+                    lights.AddTileLight(utils.gridToCenterX(gx), utils.gridToCenterY(gy), 64, 0xFFE8B8);
+                }
+            }
+        }
+        lights.Update();
+        var pacX = pacman.getScreenX() + config.TILE_SIZE / 2;
+        var pacY = pacman.getScreenY() + config.TILE_SIZE / 2;
+        lights.Draw(canvas, 0, 0, pacX, pacY);
+    }
+
+    /// @brief R14 — gentle white maze pulse on board clear (soft, not a strobe).
+    hide func drawWinFlash(canvas: Canvas, uiTick: Integer) {
+        var pulse = (uiTick / 5) % 100;
+        if pulse > 50 { pulse = 100 - pulse; }
+        canvas.BoxAlpha(config.PLAYFIELD_X, config.PLAYFIELD_Y,
+                        config.PLAYFIELD_WIDTH, config.PLAYFIELD_HEIGHT,
+                        0xFFFFFF, 8 + pulse / 3);
+    }
+
+    /// @brief R8 — pulsing blue edge glow while any ghost is frightened, so the
+    ///        power-pellet window reads at a glance (not just by ghost recolor).
+    hide func drawFrightenedVignette(canvas: Canvas, uiTick: Integer) {
+        if self.getMaxFrightenedRemaining() <= 0 {
+            return;
+        }
+        var px = config.PLAYFIELD_X;
+        var py = config.PLAYFIELD_Y;
+        var pw = config.PLAYFIELD_WIDTH;
+        var ph = config.PLAYFIELD_HEIGHT;
+        var pulse = (uiTick / 6) % 100;
+        if pulse > 50 { pulse = 100 - pulse; }
+        var band = 16 + pulse / 3;
+        var blue = 0x2A7BFF;
+
+        canvas.BoxAlpha(px, py, pw, ph, 0x1030C0, 8 + pulse / 8);
+        canvas.BoxAlpha(px, py, pw, 24, blue, band);
+        canvas.BoxAlpha(px, py + ph - 24, pw, 24, blue, band);
+        canvas.BoxAlpha(px, py, 24, ph, blue, band);
+        canvas.BoxAlpha(px + pw - 24, py, 24, ph, blue, band);
     }
 
     expose func getScore() -> Integer {
@@ -418,7 +526,17 @@ class Session {
                 comboTimer.Start(90);
                 comboTween.StartI64(0, 26, 90, config.EASE_OUT_QUAD);
                 particleSys.burstGhostEat(gPx, gPy, g.getColor());
+
+                var popCol = config.COLOR_CYAN;
+                if ghostsEaten >= 4 {
+                    popCol = config.COLOR_YELLOW;
+                } else if ghostsEaten >= 3 {
+                    popCol = config.COLOR_PINK;
+                }
+                scorePops.spawn(gPx, gPy - 6, ghostPoints * mult, popCol);
+
                 fx.Shake(4000, 120, 500);
+                Pad.Vibrate(config.PAD_IDX, 0.45, 0.55);
                 sfx.playGhostEat();
                 if profile != null {
                     profile.noteGhostEaten(ghostsEaten, score);
@@ -439,9 +557,12 @@ class Session {
     hide func crackmanDeath(sfx: sound.SoundManager) {
         var deathPx = utils.gridToCenterX(pacman.getGridX());
         var deathPy = utils.gridToCenterY(pacman.getGridY());
+        self.killSiren(sfx);
+        pacman.beginDeath();
         particleSys.burstDeath(deathPx, deathPy);
         fx.Shake(8000, 200, 500);
         fx.Flash(config.COLOR_RED * 256 + 0xAA, 160);
+        Pad.Vibrate(config.PAD_IDX, 0.9, 0.9);
         sfx.playDeath();
         lives = lives - 1;
         if profile != null {

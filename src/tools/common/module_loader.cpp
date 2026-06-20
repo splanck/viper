@@ -113,34 +113,40 @@ LoadResult makeVerifyError(const il::support::Diag &diag) {
 /// @param module Module instance receiving parsed content on success.
 /// @param err Stream for human-readable diagnostics.
 /// @param ioErrorPrefix Prefix emitted before file-system error messages.
+/// @param printDiagnostics True to print diagnostics immediately.
 /// @return Load status describing success, file errors, or parse failures.
 LoadResult loadModuleFromFile(const std::string &path,
                               il::core::Module &module,
                               std::ostream &err,
-                              std::string_view ioErrorPrefix) {
+                              std::string_view ioErrorPrefix,
+                              bool printDiagnostics) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) {
         std::string message = std::string(ioErrorPrefix) + path;
-        err << message << '\n';
+        if (printDiagnostics)
+            err << message << '\n';
         return makeFileError(path, std::move(message));
     }
     const std::streamoff size = input.tellg();
     if (size < 0 || size > kMaxIlModuleSize) {
         std::string message = "IL module too large: " + path + " (limit: 256 MB)";
-        err << message << '\n';
+        if (printDiagnostics)
+            err << message << '\n';
         return makeFileError(path, std::move(message));
     }
     input.seekg(0, std::ios::beg);
     if (!input) {
         std::string message = "cannot seek IL module: " + path;
-        err << message << '\n';
+        if (printDiagnostics)
+            err << message << '\n';
         return makeFileError(path, std::move(message));
     }
 
     auto parsed = il::api::v2::parse_text_expected(input, module);
     if (!parsed) {
         const auto diag = parsed.error();
-        il::support::printDiag(diag, err);
+        if (printDiagnostics)
+            il::support::printDiag(diag, err);
         return makeParseError(path, diag);
     }
 
@@ -206,13 +212,15 @@ LoadResult verifyModuleResult(const il::core::Module &module) {
 /// @param sm Source manager providing path lookups for diagnostics.
 /// @param err Output stream receiving human-readable diagnostics.
 /// @param ioErrorPrefix Prefix emitted before file-system error messages.
+/// @param printDiagnostics True to print diagnostics immediately.
 /// @return Load status describing success or the first failure encountered.
 LoadResult loadAndVerifyModule(const std::string &path,
                                il::core::Module &module,
                                const il::support::SourceManager *sm,
                                std::ostream &err,
-                               std::string_view ioErrorPrefix) {
-    auto loadResult = loadModuleFromFile(path, module, err, ioErrorPrefix);
+                               std::string_view ioErrorPrefix,
+                               bool printDiagnostics) {
+    auto loadResult = loadModuleFromFile(path, module, err, ioErrorPrefix, printDiagnostics);
     if (!loadResult.succeeded()) {
         return loadResult;
     }
@@ -220,7 +228,7 @@ LoadResult loadAndVerifyModule(const std::string &path,
     auto verifyResult = verifyModuleResult(module);
     if (!verifyResult.succeeded()) {
         verifyResult.path = path;
-        if (verifyResult.diag) {
+        if (printDiagnostics && verifyResult.diag) {
             il::support::printDiag(*verifyResult.diag, err, sm);
         }
         return verifyResult;

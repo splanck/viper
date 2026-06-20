@@ -139,8 +139,7 @@ JsonValue makeRange(int startLine, int startCharacter, int endLine, int endChara
 }
 
 static bool isUriPathChar(unsigned char c) {
-    return std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' || c == '/' ||
-           c == ':';
+    return std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' || c == '/' || c == ':';
 }
 
 static std::string encodeUriPath(std::string_view path) {
@@ -166,14 +165,16 @@ std::string pathToFileUri(const std::string &path) {
     if (path.empty())
         return "file:///";
 
-    const std::string encoded = encodeUriPath(path);
-    if (path.size() >= 2 && path[0] == '/' && path[1] == '/')
+    std::string uriPath = path;
+    std::replace(uriPath.begin(), uriPath.end(), '\\', '/');
+    const std::string encoded = encodeUriPath(uriPath);
+    if (uriPath.size() >= 2 && uriPath[0] == '/' && uriPath[1] == '/')
         return "file:" + encoded;
-    if (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) &&
-        path[1] == ':') {
+    if (uriPath.size() >= 2 && std::isalpha(static_cast<unsigned char>(uriPath[0])) &&
+        uriPath[1] == ':') {
         return "file:///" + encoded;
     }
-    if (!path.empty() && path.front() == '/')
+    if (!uriPath.empty() && uriPath.front() == '/')
         return "file://" + encoded;
     return "file:///" + encoded;
 }
@@ -302,8 +303,8 @@ std::optional<size_t> findIdentifierInRange(const std::string &content,
     end = std::min(end, content.size());
     size_t pos = content.find(name, begin);
     while (pos != std::string::npos && pos + name.size() <= end) {
-        if (isIdentifierBoundary(content, pos) &&
-            (pos + name.size() == content.size() || !isIdentifierByte(content[pos + name.size()]))) {
+        if (isIdentifierBoundary(content, pos) && (pos + name.size() == content.size() ||
+                                                   !isIdentifierByte(content[pos + name.size()]))) {
             return pos;
         }
         pos = content.find(name, pos + 1);
@@ -592,11 +593,11 @@ JsonValue rangeForSourceRange(const SourceRangeInfo &range,
         range.endLine > 0 && range.endLine <= static_cast<uint32_t>(std::numeric_limits<int>::max())
             ? static_cast<int>(range.endLine) - 1
             : startLine;
-    const int endCol = range.endColumn > 0 &&
-                               range.endColumn <=
-                                   static_cast<uint32_t>(std::numeric_limits<int>::max())
-                           ? static_cast<int>(range.endColumn) - 1
-                           : startCol + 1;
+    const int endCol =
+        range.endColumn > 0 &&
+                range.endColumn <= static_cast<uint32_t>(std::numeric_limits<int>::max())
+            ? static_cast<int>(range.endColumn) - 1
+            : startCol + 1;
     return makeRange(startLine, startCol, endLine, std::max(endCol, startCol + 1));
 }
 
@@ -628,7 +629,8 @@ JsonValue signatureHelpToJson(const SignatureHelpInfo &help) {
             JsonValue::ObjectType paramObj;
             paramObj.push_back({"label", JsonValue(param.label)});
             if (!param.documentation.empty())
-                paramObj.push_back({"documentation", signatureDocumentationJson(param.documentation)});
+                paramObj.push_back(
+                    {"documentation", signatureDocumentationJson(param.documentation)});
             params.push_back(JsonValue(std::move(paramObj)));
         }
 
@@ -717,7 +719,8 @@ std::string LspHandler::handleRequest(const JsonRpcRequest &req) {
 
     if (!clientInitialized_) {
         if (req.isNotification()) {
-            logMessage(2, "Ignoring notification before LSP initialization completed: " + req.method);
+            logMessage(2,
+                       "Ignoring notification before LSP initialization completed: " + req.method);
             return {};
         }
         return buildError(req.id, kInvalidRequest, "Server has not been initialized");
@@ -803,17 +806,16 @@ std::string LspHandler::handleInitialize(const JsonRpcRequest &req) {
     if (bridge_.supportsWorkspaceSymbols())
         capabilityMembers.push_back({"workspaceSymbolProvider", JsonValue(true)});
     if (bridge_.supportsSemanticTokens()) {
-        capabilityMembers.push_back(
-            {"semanticTokensProvider",
-             JsonValue::object({
-                 {"legend",
-                  JsonValue::object({
-                      {"tokenTypes", semanticTokenTypesLegend()},
-                      {"tokenModifiers", JsonValue::array({})},
-                  })},
-                 {"full", JsonValue(true)},
-                 {"range", JsonValue(false)},
-             })});
+        capabilityMembers.push_back({"semanticTokensProvider",
+                                     JsonValue::object({
+                                         {"legend",
+                                          JsonValue::object({
+                                              {"tokenTypes", semanticTokenTypesLegend()},
+                                              {"tokenModifiers", JsonValue::array({})},
+                                          })},
+                                         {"full", JsonValue(true)},
+                                         {"range", JsonValue(false)},
+                                     })});
     }
 
     auto capabilities = JsonValue(std::move(capabilityMembers));
@@ -918,21 +920,22 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
         logMessage(2, "Ignoring textDocument/didChange without full document content");
         return;
     }
-    std::string text;
-    for (size_t i = 0; i < changes.size(); ++i) {
-        const auto &change = changes.at(i);
-        if (change.type() != JsonType::Object || change.has("range") || change.has("rangeLength")) {
-            logMessage(2,
-                       "Ignoring incremental textDocument/didChange; server only supports full sync");
-            return;
-        }
-        const auto *textValue = stringMember(change, "text");
-        if (!textValue) {
-            logMessage(2, "Ignoring textDocument/didChange content item without text");
-            return;
-        }
-        text = textValue->asString();
+    if (changes.size() != 1) {
+        logMessage(2, "Ignoring textDocument/didChange with multiple full-sync content items");
+        return;
     }
+    const auto &change = changes.at(0);
+    if (change.type() != JsonType::Object || change.has("range") || change.has("rangeLength")) {
+        logMessage(2,
+                   "Ignoring incremental textDocument/didChange; server only supports full sync");
+        return;
+    }
+    const auto *textValue = stringMember(change, "text");
+    if (!textValue) {
+        logMessage(2, "Ignoring textDocument/didChange content item without text");
+        return;
+    }
+    std::string text = textValue->asString();
     bridge_.updateDocument(path, text);
     store_.update(uri, version, std::move(text));
 
@@ -990,12 +993,14 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req) {
     JsonValue::ArrayType arr;
     arr.reserve(items.size());
     for (const auto &item : items) {
+        char sortBuf[32];
+        std::snprintf(sortBuf, sizeof(sortBuf), "%08d", item.sortPriority);
         arr.push_back(JsonValue::object({
             {"label", JsonValue(item.label)},
             {"insertText", JsonValue(item.insertText)},
             {"kind", JsonValue(completionKindToLsp(item.kind))},
             {"detail", JsonValue(item.detail)},
-            {"sortText", JsonValue(std::to_string(item.sortPriority))},
+            {"sortText", JsonValue(sortBuf)},
         }));
     }
 
@@ -1184,8 +1189,7 @@ std::string LspHandler::handleRename(const JsonRpcRequest &req) {
     for (auto &[editUri, edits] : editsByUri)
         changes.push_back({std::move(editUri), JsonValue(std::move(edits))});
 
-    return buildResponse(req.id,
-                         JsonValue::object({{"changes", JsonValue(std::move(changes))}}));
+    return buildResponse(req.id, JsonValue::object({{"changes", JsonValue(std::move(changes))}}));
 }
 
 // --- Signature Help ---
@@ -1254,7 +1258,8 @@ std::string LspHandler::handleWorkspaceSymbol(const JsonRpcRequest &req) {
 std::string LspHandler::handleSemanticTokensFull(const JsonRpcRequest &req) {
     std::string uri;
     if (!extractTextDocumentUri(req.params, uri))
-        return buildError(req.id, kInvalidParams, "Invalid textDocument/semanticTokens/full params");
+        return buildError(
+            req.id, kInvalidParams, "Invalid textDocument/semanticTokens/full params");
 
     const std::string *content = store_.getContent(uri);
     if (!content || !bridge_.supportsSemanticTokens())
@@ -1294,11 +1299,13 @@ std::string LspHandler::handleSemanticTokensFull(const JsonRpcRequest &req) {
         }
         if (endLine != startLine || endCol <= startCol)
             continue;
-        encoded.push_back({startLine,
-                           startCol,
-                           endCol - startCol,
-                           static_cast<int>(token.type),
-                           static_cast<int>(token.modifiers)});
+        const int tokenType = static_cast<int>(token.type);
+        if (tokenType < 0 || tokenType > static_cast<int>(SemanticTokenType::Operator) ||
+            token.modifiers != 0) {
+            continue;
+        }
+        encoded.push_back(
+            {startLine, startCol, endCol - startCol, tokenType, static_cast<int>(token.modifiers)});
     }
     std::sort(encoded.begin(), encoded.end(), [](const EncodedToken &lhs, const EncodedToken &rhs) {
         if (lhs.line != rhs.line)
@@ -1310,7 +1317,13 @@ std::string LspHandler::handleSemanticTokensFull(const JsonRpcRequest &req) {
     data.reserve(encoded.size() * 5u);
     int prevLine = 0;
     int prevStart = 0;
+    int prevEndOnLine = -1;
+    int prevTokenLine = -1;
     for (const auto &token : encoded) {
+        if (token.line == prevTokenLine && token.start < prevEndOnLine)
+            continue;
+        if (token.modifiers < 0)
+            continue;
         const int deltaLine = token.line - prevLine;
         const int deltaStart = deltaLine == 0 ? token.start - prevStart : token.start;
         data.push_back(JsonValue(deltaLine));
@@ -1320,6 +1333,8 @@ std::string LspHandler::handleSemanticTokensFull(const JsonRpcRequest &req) {
         data.push_back(JsonValue(token.modifiers));
         prevLine = token.line;
         prevStart = token.start;
+        prevTokenLine = token.line;
+        prevEndOnLine = token.start + token.length;
     }
 
     return buildResponse(req.id, JsonValue::object({{"data", JsonValue(std::move(data))}}));
@@ -1381,19 +1396,21 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
             for (const auto &n : d.notes) {
                 const bool sameFile = n.file.empty() || n.file == path;
                 const bool hasLoc = n.line > 0;
-                JsonValue noteRange =
-                    (sameFile && hasLoc)
-                        ? diagnosticRangeForLocation(*content, n.line, n.column)
-                        : diagnosticRangeForSpan(*content, d.line, d.column, d.endLine,
-                                                 d.endColumn);
+                JsonValue noteRange = (sameFile && hasLoc)
+                                          ? diagnosticRangeForLocation(*content, n.line, n.column)
+                                          : diagnosticRangeForSpan(
+                                                *content, d.line, d.column, d.endLine, d.endColumn);
                 std::string noteMessage = n.message;
                 if (!sameFile && hasLoc) {
                     noteMessage = n.file + ":" + std::to_string(n.line) + ":" +
                                   std::to_string(n.column) + ": " + noteMessage;
                 }
+                const std::string noteUri =
+                    (!sameFile && !n.file.empty()) ? pathToFileUri(n.file) : uri;
                 related.push_back(JsonValue::object({
                     {"location",
-                     JsonValue::object({{"uri", JsonValue(uri)}, {"range", std::move(noteRange)}})},
+                     JsonValue::object(
+                         {{"uri", JsonValue(noteUri)}, {"range", std::move(noteRange)}})},
                     {"message", JsonValue(std::move(noteMessage))},
                 }));
             }

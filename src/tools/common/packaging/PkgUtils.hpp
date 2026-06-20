@@ -23,11 +23,11 @@
 #pragma once
 
 #include <algorithm>
-#include <cerrno>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
-#include <cstring>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -42,11 +42,16 @@
 #include <vector>
 
 #include "PackageConfig.hpp"
+#include "../../../common/PlatformCapabilities.hpp"
 
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <fcntl.h>
 #include <io.h>
 #include <sys/stat.h>
+#include <windows.h>
 #else
 #include <fcntl.h>
 #include <unistd.h>
@@ -123,8 +128,7 @@ inline std::filesystem::path createUniqueTempDirectory(const std::filesystem::pa
         throw std::runtime_error("cannot create temp directory parent '" + parent.string() +
                                  "': " + ec.message());
     for (unsigned attempt = 0; attempt < 100; ++attempt) {
-        const fs::path candidate =
-            parent / (std::string(stem) + "-" + uniqueTempSuffix(attempt));
+        const fs::path candidate = parent / (std::string(stem) + "-" + uniqueTempSuffix(attempt));
         ec.clear();
         if (fs::create_directory(candidate, ec))
             return candidate;
@@ -138,18 +142,16 @@ inline std::filesystem::path createUniqueTempDirectory(const std::filesystem::pa
 
 namespace detail {
 
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
 inline int openExclusiveTempFile(const std::filesystem::path &path) {
-    return _wopen(path.native().c_str(),
-                  _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY,
-                  _S_IREAD | _S_IWRITE);
+    return _wopen(
+        path.native().c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
 }
 
 inline int writeTempFileBytes(int fd, const uint8_t *data, size_t size) {
     size_t written = 0;
     while (written < size) {
-        const unsigned chunk =
-            static_cast<unsigned>(std::min<size_t>(size - written, 1u << 20));
+        const unsigned chunk = static_cast<unsigned>(std::min<size_t>(size - written, 1u << 20));
         const int n = _write(fd, data + written, chunk);
         if (n <= 0)
             return -1;
@@ -168,6 +170,26 @@ inline int closeTempFile(int fd) {
 
 inline std::string lastIoError() {
     return std::strerror(errno);
+}
+
+/// @brief Atomically replace @p finalPath with @p tempPath on Windows.
+/// @details Uses MoveFileExW with MOVEFILE_REPLACE_EXISTING so overwriting an
+///          existing destination behaves consistently with POSIX rename(2).
+///          MOVEFILE_WRITE_THROUGH asks Windows to flush metadata before the
+///          operation returns.
+/// @param tempPath Same-directory temporary file containing the final bytes.
+/// @param finalPath Destination path to create or replace.
+/// @param ec Receives the Windows system error when replacement fails.
+inline void replaceFileAtomic(const std::filesystem::path &tempPath,
+                              const std::filesystem::path &finalPath,
+                              std::error_code &ec) {
+    if (MoveFileExW(tempPath.native().c_str(),
+                    finalPath.native().c_str(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        ec.clear();
+        return;
+    }
+    ec = std::error_code(static_cast<int>(GetLastError()), std::system_category());
 }
 
 #else
@@ -210,6 +232,18 @@ inline void syncParentDirectoryBestEffort(const std::filesystem::path &parent) {
 inline std::string lastIoError() {
     return std::strerror(errno);
 }
+
+/// @brief Atomically replace @p finalPath with @p tempPath on POSIX-like hosts.
+/// @details std::filesystem::rename maps to rename(2) for normal files on these
+///          hosts, which atomically replaces an existing same-filesystem target.
+/// @param tempPath Same-directory temporary file containing the final bytes.
+/// @param finalPath Destination path to create or replace.
+/// @param ec Receives the filesystem error when replacement fails.
+inline void replaceFileAtomic(const std::filesystem::path &tempPath,
+                              const std::filesystem::path &finalPath,
+                              std::error_code &ec) {
+    std::filesystem::rename(tempPath, finalPath, ec);
+}
 #endif
 
 /// @brief Same-directory temporary file reserved with O_EXCL.
@@ -223,8 +257,8 @@ class ExclusiveTempFile {
         const fs::path parent =
             finalPath.parent_path().empty() ? fs::current_path() : finalPath.parent_path();
         for (unsigned attempt = 0; attempt < 100; ++attempt) {
-            path_ = parent / ("." + finalPath.filename().string() + ".tmp-" +
-                              uniqueTempSuffix(attempt));
+            path_ = parent /
+                    ("." + finalPath.filename().string() + ".tmp-" + uniqueTempSuffix(attempt));
             fd_ = openExclusiveTempFile(path_);
             if (fd_ >= 0)
                 return;
@@ -311,12 +345,12 @@ inline void writeFileAtomic(const std::filesystem::path &path, const std::vector
                                  "': " + detail::lastIoError());
     temp.flushAndClose();
 
-    fs::rename(temp.path(), path, ec);
+    detail::replaceFileAtomic(temp.path(), path, ec);
     if (ec) {
         throw std::runtime_error("cannot move temporary output into place at '" + path.string() +
                                  "': " + ec.message());
     }
-#ifndef _WIN32
+#if !VIPER_HOST_WINDOWS
     detail::syncParentDirectoryBestEffort(parent);
 #endif
     temp.release();
@@ -1179,7 +1213,7 @@ inline bool isValidMacOSSignModeText(const std::string &mode) {
 inline std::string resolveMacOSSignModeForHost(const PackageConfig &pkg) {
     if (!pkg.macosSignMode.empty())
         return pkg.macosSignMode;
-#if defined(__APPLE__)
+#if VIPER_HOST_MACOS
     return "adhoc";
 #else
     return "preserve";
@@ -1283,12 +1317,13 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
             }
         }
         const std::size_t doubleColon = host.find("::");
-        if (doubleColon != std::string::npos && host.find("::", doubleColon + 2) != std::string::npos)
+        if (doubleColon != std::string::npos &&
+            host.find("::", doubleColon + 2) != std::string::npos)
             throw std::runtime_error(std::string(fieldName) +
                                      " URL IPv6 host has multiple '::' elisions: '" + url + "'");
         if (host.find(":::") != std::string::npos)
-            throw std::runtime_error(std::string(fieldName) +
-                                     " URL IPv6 host is malformed: '" + url + "'");
+            throw std::runtime_error(std::string(fieldName) + " URL IPv6 host is malformed: '" +
+                                     url + "'");
 
         int groups = 0;
         std::size_t groupStart = 0;
@@ -1310,8 +1345,8 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
         }
         const bool hasDoubleColon = doubleColon != std::string::npos;
         if (groups > 8 || (!hasDoubleColon && groups != 8) || (hasDoubleColon && groups >= 8)) {
-            throw std::runtime_error(std::string(fieldName) +
-                                     " URL IPv6 host is malformed: '" + url + "'");
+            throw std::runtime_error(std::string(fieldName) + " URL IPv6 host is malformed: '" +
+                                     url + "'");
         }
     } else {
         const std::size_t colon = authority.rfind(':');

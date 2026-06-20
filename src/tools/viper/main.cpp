@@ -20,6 +20,7 @@
 #include "cli.hpp"
 #include "cmd_codegen_arm64.hpp"
 #include "cmd_codegen_x64.hpp"
+#include "common/PlatformCapabilities.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -34,7 +35,7 @@
 #include <string_view>
 #include <vector>
 
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
 #include <cstdlib>
 #endif
 
@@ -52,7 +53,7 @@ void printVersion() {
     if (std::string(VIPER_SNAPSHOT_STR).size())
         std::cout << "snap: " << VIPER_SNAPSHOT_STR << "\n";
     std::cout << "IL current: " << VIPER_IL_VERSION_STR << "\n";
-    std::cout << "IL supported: 0.1.0 – " << VIPER_IL_VERSION_STR << "\n";
+    std::cout << "IL supported: 0.1.0 - " << VIPER_IL_VERSION_STR << "\n";
     std::cout << "Precise Numerics: enabled\n";
 }
 
@@ -366,16 +367,16 @@ int dumpRuntimeClasses() {
                   << " (type: " << (c.layout ? c.layout : "<unknown>") << ")\n";
         for (const auto &p : c.properties) {
             std::cout << "  PROP " << (p.name ? p.name : "<unnamed>") << ": "
-                      << (p.type ? p.type : "<type>") << "  \u2192 "
+                      << (p.type ? p.type : "<type>") << "  -> "
                       << (p.getter ? p.getter : "<getter>") << "\n";
         }
         for (const auto &m : c.methods) {
             std::cout << "  METH " << (m.name ? m.name : "<unnamed>") << "("
-                      << (m.signature ? m.signature : "") << ") \u2192 "
+                      << (m.signature ? m.signature : "") << ") -> "
                       << (m.target ? m.target : "<target>") << "\n";
         }
         if (c.ctor && std::string(c.ctor).size())
-            std::cout << "  CTOR \u2192 " << c.ctor << "\n";
+            std::cout << "  CTOR -> " << c.ctor << "\n";
     }
     return 0;
 }
@@ -431,13 +432,14 @@ int invokeHelp(int (*handler)(int, char **)) {
 
 /// @brief Print usage for the `viper codegen` subcommand (architectures + options).
 void codegenUsage() {
-    std::cerr << "Usage: viper codegen <arch> <file.il> [options]\n"
-              << "\n"
-              << "Architectures:\n"
-              << "  x64\n"
-              << "  arm64\n"
-              << "\n"
-              << "Use 'viper help codegen x64' or 'viper help codegen arm64' for backend options.\n";
+    std::cerr
+        << "Usage: viper codegen <arch> <file.il> [options]\n"
+        << "\n"
+        << "Architectures:\n"
+        << "  x64\n"
+        << "  arm64\n"
+        << "\n"
+        << "Use 'viper help codegen x64' or 'viper help codegen arm64' for backend options.\n";
 }
 
 namespace viper::tools::ilc {
@@ -471,7 +473,7 @@ int run_codegen_x64(int argc, char **argv) {
 ///          3. Dispatch to the matching handler with the remaining arguments.
 ///          4. Fall back to displaying usage when no match exists.
 int main(int argc, char **argv) {
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
     // Disable Windows abort dialog so runtime panics exit cleanly
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
@@ -502,7 +504,13 @@ int main(int argc, char **argv) {
         return dumpOpcodes();
     }
     if (cmd == "--print-error-codes") {
-        const bool json = argc >= 3 && std::string_view(argv[2]) == "--json";
+        bool json = false;
+        if (argc == 3 && std::string_view(argv[2]) == "--json") {
+            json = true;
+        } else if (argc > 2) {
+            std::cerr << "error: --print-error-codes accepts only optional --json\n";
+            return 1;
+        }
         return printErrorCodes(json);
     }
     if (cmd == "run") {
@@ -593,8 +601,8 @@ int main(int argc, char **argv) {
         return cmdBench(argc - 2, argv + 2);
     }
     if (cmd == "codegen") {
-        if (argc >= 3 && (std::string_view(argv[2]) == "--help" ||
-                          std::string_view(argv[2]) == "-h")) {
+        if (argc >= 3 &&
+            (std::string_view(argv[2]) == "--help" || std::string_view(argv[2]) == "-h")) {
             codegenUsage();
             return 0;
         }

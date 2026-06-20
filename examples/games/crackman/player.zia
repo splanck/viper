@@ -1,9 +1,9 @@
 // ============================================================================
 // MODULE: player (PacMan)
 // PURPOSE: The player avatar. Owns grid coords, sub-tile screen coords,
-//          current and queued directions, life count, mouth animation
-//          timer. Moves one pixel per frame times actor speed; at tile
-//          centers it commits the queued direction if legal.
+//          current and queued directions, life count, and the mouth
+//          chomp phase. Moves one pixel per frame times actor speed; at
+//          tile centers it commits the queued direction if legal.
 //
 // KEY-DESIGN-CHOICES:
 //   * TWO DIRECTIONS. `direction` is the current travel vector;
@@ -15,18 +15,19 @@
 //   * PIXEL MOVEMENT AT 8 FRAMES/TILE. PACMAN_SPEED = 3 px/frame on
 //     a 24 px tile = 8 frames to cross one tile. Tile-center
 //     detection via isAtTileCenter() from utils.
-//   * ANIMATION. Mouth-open/closed sprite cycles driven by a Timer
-//     at a constant tick rate — separate from movement so animation
-//     speed doesn't change with actor speed.
+//   * VECTOR RENDER, NOT CARVED SPRITE. The avatar is drawn directly
+//     each frame with Canvas.Arc — a true pie-slice whose mouth is a
+//     real angular gap. This eliminates the carved-raster rim bug
+//     (the old "yellow outline / closed circle") by construction:
+//     one fill pass defines the whole silhouette, so no leftover rim
+//     can bridge the mouth.
+//   * CONTINUOUS CHOMP SYNCED TO MOVEMENT. The mouth angle is a
+//     triangle wave of `chompPhase`, which advances ONLY while the
+//     player is moving. Stand still and Crackman freezes mid-chomp.
+//   * DEATH OPEN. On death the mouth opens from wide to nearly 360°
+//     and the body thins to a sliver then vanishes — the iconic
+//     arcade death beat, expressible for free once the body is an arc.
 // ============================================================================
-
-// =============================================================================
-// CRACKMAN - Player Entity
-// =============================================================================
-// Uses new Viper runtime features:
-// - Timer for mouth animation timing
-// - Simplified movement with cleaner logic
-// =============================================================================
 
 module player;
 
@@ -36,13 +37,52 @@ bind Viper.Graphics;
 bind "./config";
 bind "./utils";
 bind "./maze";
-bind "./ui/sprites";
+
+// --- Render tuning -----------------------------------------------------------
+final BODY_RADIUS = 11;     // body radius in pixels (fits the 24 px tile)
+final CHOMP_MIN   = 4;      // mouth half-angle when almost closed (degrees)
+final CHOMP_MAX   = 38;     // mouth half-angle when wide open (degrees)
+final CHOMP_PERIOD = 16;    // phase units for one full open->close cycle
+final CHOMP_STEP  = 1;      // phase advance per sim frame while moving
+final DEATH_MAX_ANGLE = 176; // mouth half-angle at the end of the death open
+
+// --- Palette (0x00RRGGBB; Canvas draws these opaque) -------------------------
+final COL_BODY    = 0x00FFE24A;  // warm Crackman yellow
+final COL_GLOW    = 0x00FFC24A;  // soft halo behind the body
+final COL_OUTLINE = 0x00C98A12;  // darker gold rim
+final COL_CRACK   = 0x009A6B08;  // hairline "crack" detailing
+final COL_EYE     = 0x00140C18;  // near-black eye
+final COL_EYE_HI  = 0x00FFFFFF;  // eye glint
+
+/// @brief Triangle-wave mouth half-angle (degrees) from the chomp phase.
+hide func chompAngle(phase: Integer) -> Integer {
+    var span = CHOMP_PERIOD;
+    var c = phase % span;
+    if c < 0 { c = c + span; }
+    var half = span / 2;
+    var t = 0;
+    if c < half {
+        t = c * 100 / half;
+    } else {
+        t = (span - c) * 100 / half;
+    }
+    return CHOMP_MIN + (CHOMP_MAX - CHOMP_MIN) * t / 100;
+}
+
+/// @brief Clockwise base angle (degrees) for the mouth opening direction.
+///        Matches Canvas.Arc convention: 0 = right, 90 = down (y grows down).
+hide func facingBase(dir: Integer) -> Integer {
+    if dir == config.DIR_LEFT { return 180; }
+    if dir == config.DIR_UP { return 270; }
+    if dir == config.DIR_DOWN { return 90; }
+    return 0;
+}
 
 // =============================================================================
 // CRACKMAN ENTITY - The player character
 // =============================================================================
 
-/// @brief Player character. Tile-aligned movement + mouth animation.
+/// @brief Player character. Tile-aligned movement + vector mouth animation.
 class PacMan {
     hide Integer gridX;
     hide Integer gridY;
@@ -51,9 +91,13 @@ class PacMan {
     hide Integer direction;
     hide Integer nextDirection;
 
-    // Use Timer for mouth animation
-    hide Timer mouthTimer;
-    hide Boolean mouthOpen;
+    // Mouth animation (continuous, movement-driven)
+    hide Integer facing;       // last non-NONE travel direction (mouth orientation)
+    hide Integer chompPhase;   // advances only while moving
+
+    // Death animation
+    hide Boolean dying;
+    hide Integer deathT;       // 0..100 progress through the death open
 
     expose func init(startX: Integer, startY: Integer) {
         gridX = startX;
@@ -63,10 +107,10 @@ class PacMan {
         direction = config.DIR_NONE;
         nextDirection = config.DIR_NONE;
 
-        // Setup mouth animation timer (toggles every 5 frames)
-        mouthTimer = Timer.New();
-        mouthTimer.StartRepeating(5);
-        mouthOpen = true;
+        facing = config.DIR_RIGHT;
+        chompPhase = 0;
+        dying = false;
+        deathT = 0;
     }
 
     expose func setNextDirection(dir: Integer) {
@@ -74,9 +118,11 @@ class PacMan {
     }
 
     expose func update(theMaze: maze.Maze) {
-        // Update mouth animation
-        if mouthTimer.Update() {
-            mouthOpen = !mouthOpen;
+        // Advance the chomp only while actually travelling, so Crackman
+        // freezes mid-bite when stopped. Remember the facing for the mouth.
+        if direction != config.DIR_NONE {
+            chompPhase = chompPhase + CHOMP_STEP;
+            facing = direction;
         }
 
         // Check if we can change direction (only at tile center)
@@ -149,6 +195,23 @@ class PacMan {
         return direction;
     }
 
+    /// @brief Begin the arcade death-open animation.
+    expose func beginDeath() {
+        dying = true;
+        deathT = 0;
+    }
+
+    /// @brief Drive the death animation from the Session's death timer (0..100).
+    expose func setDeathProgress(progress: Integer) {
+        deathT = progress;
+        if deathT < 0 { deathT = 0; }
+        if deathT > 100 { deathT = 100; }
+    }
+
+    expose func isDying() -> Boolean {
+        return dying;
+    }
+
     expose func reset(startX: Integer, startY: Integer) {
         gridX = startX;
         gridY = startY;
@@ -156,12 +219,92 @@ class PacMan {
         screenY = utils.gridToScreenY(startY);
         direction = config.DIR_NONE;
         nextDirection = config.DIR_NONE;
-        mouthOpen = true;
-        mouthTimer.Reset();
+        facing = config.DIR_RIGHT;
+        chompPhase = 0;
+        dying = false;
+        deathT = 0;
     }
 
     expose func draw(canvas: Canvas) {
-        var spr = sprites.getPacman(direction, mouthOpen);
-        canvas.BlitAlpha(screenX - 4, screenY - 4, spr);
+        var cx = screenX + config.TILE_SIZE / 2;
+        var cy = screenY + config.TILE_SIZE / 2;
+
+        if dying {
+            self.drawDeath(canvas, cx, cy);
+            return;
+        }
+
+        var theta = chompAngle(chompPhase);
+        var base = facingBase(facing);
+        var r = BODY_RADIUS;
+
+        // R10 — subtle lean + squash: nudge forward and flatten a hair at the
+        // widest part of the bite, so the chomp reads as a little lurch.
+        var openT = (theta - CHOMP_MIN) * 100 / (CHOMP_MAX - CHOMP_MIN);
+        if openT > 70 {
+            cx = cx + utils.getDirX(facing);
+            cy = cy + utils.getDirY(facing);
+        }
+        if openT > 80 {
+            r = r - 1;
+        }
+
+        // Soft halo for a richer read on the dark playfield.
+        canvas.DiscAlpha(cx, cy, r + 3, COL_GLOW, 26);
+
+        // Body as a single pie slice — the mouth is the angular gap [-theta,+theta].
+        canvas.Arc(cx, cy, r, base + theta, base + 360 - theta, COL_BODY);
+        // Rounded rim only on the curved back (ArcFrame omits the mouth radii).
+        canvas.ArcFrame(cx, cy, r, base + theta, base + 360 - theta, COL_OUTLINE);
+
+        self.drawCrack(canvas, cx, cy, r);
+        self.drawEye(canvas, cx, cy, r);
+    }
+
+    /// @brief The death "open" — mouth widens to a sliver, then vanishes.
+    hide func drawDeath(canvas: Canvas, cx: Integer, cy: Integer) {
+        var base = facingBase(config.DIR_UP);
+        var theta = CHOMP_MAX + (DEATH_MAX_ANGLE - CHOMP_MAX) * deathT / 100;
+        if theta > DEATH_MAX_ANGLE { theta = DEATH_MAX_ANGLE; }
+
+        var r = BODY_RADIUS;
+        if deathT > 70 {
+            r = BODY_RADIUS * (100 - deathT) / 30;
+        }
+        if r < 1 {
+            return;
+        }
+
+        canvas.DiscAlpha(cx, cy, r + 2, COL_GLOW, 20);
+        canvas.Arc(cx, cy, r, base + theta, base + 360 - theta, COL_BODY);
+    }
+
+    /// @brief A couple of hairline cracks on the back of the head (identity).
+    hide func drawCrack(canvas: Canvas, cx: Integer, cy: Integer, r: Integer) {
+        var bx = 0 - utils.getDirX(facing);
+        var by = 0 - utils.getDirY(facing);
+        var crx = cx + bx * r / 3;
+        var cry = cy + by * r / 3;
+        canvas.Line(crx, cry - 3, crx + 1, cry + 1, COL_CRACK);
+        canvas.Line(crx + 1, cry + 1, crx - 1, cry + 4, COL_CRACK);
+    }
+
+    /// @brief A single tracking eye placed up-and-forward of the mouth axis.
+    hide func drawEye(canvas: Canvas, cx: Integer, cy: Integer, r: Integer) {
+        var ex = cx;
+        var ey = cy - r / 2;
+        if facing == config.DIR_LEFT {
+            ex = cx - r / 5;
+        } else if facing == config.DIR_RIGHT {
+            ex = cx + r / 5;
+        } else if facing == config.DIR_UP {
+            ex = cx + r / 2;
+            ey = cy - r / 5;
+        } else if facing == config.DIR_DOWN {
+            ex = cx + r / 2;
+            ey = cy + r / 5;
+        }
+        canvas.Disc(ex, ey, 2, COL_EYE);
+        canvas.Disc(ex, ey - 1, 1, COL_EYE_HI);
     }
 }

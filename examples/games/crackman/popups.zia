@@ -1,0 +1,104 @@
+// ============================================================================
+// MODULE: popups (ScorePopups)
+// PURPOSE: Tiny pooled "floating score" system. When the player eats a
+//          frightened ghost, the chain value (200 / 400 / 800 / 1600)
+//          rises and fades AT the ghost's tile — the arcade convention,
+//          and a big readability win during a chain. Fruit points float
+//          on their own (see fruit.zia); this handles ghost chains and
+//          any other at-position number pop.
+//
+// KEY-DESIGN-CHOICES:
+//   * FIXED POOL, ZERO ALLOC. A flat set of parallel arrays sized to
+//     POOL slots. spawn() reuses the first dead slot; no per-pop
+//     allocation, no garbage during a frantic chain.
+//   * FRAME-BASED LIFETIME. update() ticks once per simulation frame
+//     (60 Hz), mirroring the rest of the gameplay clock. Pops rise one
+//     pixel per frame and fade over the final stretch of their life.
+// ============================================================================
+
+module popups;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+bind Viper.Text.Fmt;
+
+bind "./config";
+bind "./ui/theme";
+
+final POOL = 12;
+final LIFE = 50;       // frames a popup lives (~0.8s at 60 Hz)
+final FADE_FRAMES = 16; // frames over which it fades out at the end
+
+/// @brief Pooled rising/fading score numbers anchored at world tiles.
+class ScorePopups {
+    hide List[Integer] posX;
+    hide List[Integer] posY;
+    hide List[Integer] life;
+    hide List[Integer] value;
+    hide List[Integer] tint;
+
+    expose func init() {
+        posX = [];
+        posY = [];
+        life = [];
+        value = [];
+        tint = [];
+        var n = 0;
+        while n < POOL {
+            posX.add(0);
+            posY.add(0);
+            life.add(0);
+            value.add(0);
+            tint.add(0);
+            n = n + 1;
+        }
+    }
+
+    /// @brief Spawn a rising number centered on (x, y).
+    expose func spawn(x: Integer, y: Integer, val: Integer, col: Integer) {
+        var idx = -1;
+        for i in 0..POOL {
+            if life.get(i) <= 0 {
+                idx = i;
+                break;
+            }
+        }
+        if idx < 0 { idx = 0; }
+        posX.set(idx, x);
+        posY.set(idx, y);
+        value.set(idx, val);
+        tint.set(idx, col);
+        life.set(idx, LIFE);
+    }
+
+    expose func update() {
+        for i in 0..POOL {
+            var l = life.get(i);
+            if l > 0 {
+                posY.set(i, posY.get(i) - 1);
+                life.set(i, l - 1);
+            }
+        }
+    }
+
+    expose func draw(canvas: Canvas) {
+        for i in 0..POOL {
+            var l = life.get(i);
+            if l > 0 {
+                var col = tint.get(i);
+                if l < FADE_FRAMES {
+                    col = Color.Darken(col, (FADE_FRAMES - l) * 6);
+                }
+                var text = Int(value.get(i));
+                theme.drawTextCentered(canvas, posX.get(i) - 40, posY.get(i), 80, text,
+                                       theme.FONT_SMALL_SCALE, col);
+            }
+        }
+    }
+
+    expose func reset() {
+        for i in 0..POOL {
+            life.set(i, 0);
+        }
+    }
+}

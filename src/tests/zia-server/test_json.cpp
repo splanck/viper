@@ -141,9 +141,15 @@ TEST(Json, DefaultInt) {
     EXPECT_EQ(v.asInt(99), 99);
 }
 
-TEST(Json, IntFromDouble) {
+TEST(Json, IntegralDoubleAsInt) {
+    JsonValue v(3.0);
+    EXPECT_EQ(v.asInt(), 3);
+}
+
+TEST(Json, FractionalDoubleAsIntReturnsDefault) {
     JsonValue v(3.7);
-    EXPECT_EQ(v.asInt(), 3); // truncation
+    EXPECT_EQ(v.asInt(), 0);
+    EXPECT_EQ(v.asInt(99), 99);
 }
 
 TEST(Json, DoubleFromInt) {

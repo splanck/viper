@@ -24,6 +24,7 @@
 #include "tools/lsp-common/Json.hpp"
 #include "tools/lsp-common/JsonRpc.hpp"
 
+#include <optional>
 #include <string>
 
 namespace viper::server {
@@ -64,18 +65,28 @@ class McpHandler {
     /// @brief Handle `tools/call`: validate args and dispatch to the matching callXxx.
     std::string handleToolsCall(const JsonRpcRequest &req);
 
-    // Tool dispatch helpers — each returns the "content" array for the MCP response
-    JsonValue callCheck(const JsonValue &args);
-    JsonValue callCompile(const JsonValue &args);
-    JsonValue callCompletions(const JsonValue &args);
-    JsonValue callHover(const JsonValue &args);
-    JsonValue callSymbols(const JsonValue &args);
-    JsonValue callDumpIL(const JsonValue &args);
-    JsonValue callDumpAst(const JsonValue &args);
-    JsonValue callDumpTokens(const JsonValue &args);
-    JsonValue callRuntimeClasses(const JsonValue &args);
-    JsonValue callRuntimeMembers(const JsonValue &args);
-    JsonValue callRuntimeSearch(const JsonValue &args);
+    /// @brief Result payload for one MCP tool call.
+    /// @details `content` is always populated for compatibility with clients that
+    ///          only display text blocks. `structuredContent` is populated when the
+    ///          tool's natural result is JSON data that MCP-aware agents can consume
+    ///          without reparsing a text string.
+    struct ToolCallResult {
+        JsonValue content;                          ///< MCP `content` array.
+        std::optional<JsonValue> structuredContent; ///< Optional MCP structured payload.
+    };
+
+    // Tool dispatch helpers.
+    ToolCallResult callCheck(const JsonValue &args);
+    ToolCallResult callCompile(const JsonValue &args);
+    ToolCallResult callCompletions(const JsonValue &args);
+    ToolCallResult callHover(const JsonValue &args);
+    ToolCallResult callSymbols(const JsonValue &args);
+    ToolCallResult callDumpIL(const JsonValue &args);
+    ToolCallResult callDumpAst(const JsonValue &args);
+    ToolCallResult callDumpTokens(const JsonValue &args);
+    ToolCallResult callRuntimeClasses(const JsonValue &args);
+    ToolCallResult callRuntimeMembers(const JsonValue &args);
+    ToolCallResult callRuntimeSearch(const JsonValue &args);
 
     /// @brief Build the tool definitions for tools/list response.
     JsonValue buildToolDefinitions() const;

@@ -26,6 +26,7 @@ class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
     hide Integer musicVoice;
+    hide Integer sirenVoice;
     hide Integer currentTrack;
     hide Integer masterVolume;
     hide Integer musicVolume;
@@ -35,6 +36,7 @@ class SoundManager {
     expose func init() {
         ready = false;
         musicVoice = -1;
+        sirenVoice = -1;
         currentTrack = -1;
         masterVolume = 76;
         musicVolume = 32;
@@ -57,10 +59,28 @@ class SoundManager {
 
     expose func shutdown() {
         if ready == false { return; }
+        self.stopSiren();
         self.stopMusic();
         Audio.StopAllSounds();
         Audio.Shutdown();
         ready = false;
+    }
+
+    /// @brief Start the looping power-pellet siren (no-op if already running).
+    expose func playSiren() {
+        if ready == false { return; }
+        if sirenVoice >= 0 { return; }
+        if bank.Has("siren") {
+            sirenVoice = bank.Get("siren").PlayLoopGroup(46, 0, 1);
+        }
+    }
+
+    /// @brief Stop the looping siren if it is playing.
+    expose func stopSiren() {
+        if sirenVoice >= 0 {
+            Voice.Stop(sirenVoice);
+            sirenVoice = -1;
+        }
     }
 
     expose func configure(masterVol: Integer, musicVol: Integer, sfxVol: Integer, isMuted: Boolean) {

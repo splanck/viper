@@ -28,13 +28,14 @@
 
 #include <cstring>
 #include <iostream>
-#include <iterator>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <string_view>
 
 namespace {
+
+constexpr std::size_t kMaxEvalStdinBytes = 4ULL * 1024ULL * 1024ULL;
 
 /// @brief Print usage for `viper eval` to the given stream.
 void printEvalUsage(std::ostream &os) {
@@ -86,6 +87,34 @@ std::string_view resultTypeName(viper::repl::ResultType type) {
 /// @brief Emit a string as a JSON-escaped, double-quoted literal.
 void printJsonString(std::ostream &os, std::string_view text) {
     il::support::printJsonStringEscaped(os, text);
+}
+
+/// @brief Read an eval snippet from stdin with a hard byte limit.
+/// @details `viper eval` is intended for short snippets. Bounding stdin keeps an
+///          accidental pipe of a large file from forcing unbounded memory growth
+///          before the compiler ever sees the input.
+/// @param out Receives the complete stdin contents on success.
+/// @param err Receives a user-facing failure message on read error or overflow.
+/// @return True when stdin was read completely within the size limit.
+bool readEvalStdin(std::string &out, std::string &err) {
+    out.clear();
+    char buffer[8192];
+    while (std::cin) {
+        std::cin.read(buffer, sizeof(buffer));
+        const std::streamsize n = std::cin.gcount();
+        if (n > 0) {
+            if (out.size() > kMaxEvalStdinBytes - static_cast<std::size_t>(n)) {
+                err = "stdin input for eval exceeds 4 MiB limit";
+                return false;
+            }
+            out.append(buffer, static_cast<std::size_t>(n));
+        }
+    }
+    if (std::cin.bad()) {
+        err = "failed reading eval input from stdin";
+        return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -144,7 +173,11 @@ int cmdEval(int argc, char **argv) {
     }
 
     if (!haveCode) {
-        code.assign(std::istreambuf_iterator<char>(std::cin), std::istreambuf_iterator<char>());
+        std::string readError;
+        if (!readEvalStdin(code, readError)) {
+            std::cerr << "error: " << readError << "\n";
+            return 1;
+        }
     }
     if (code.empty()) {
         std::cerr << "error: no code to evaluate (pass a snippet or pipe it on stdin)\n";

@@ -207,22 +207,57 @@ std::vector<std::string> collectFiles(const fs::path &dir,
 ///          are skipped for the same reason. Manifest-directed paths still use
 ///          the stricter source loader later in the pipeline.
 /// @param path Source file path to read.
+/// @param skipReason Optional reason populated when the file is skipped.
 /// @return File contents, or std::nullopt if the file could not be opened/read.
-std::optional<std::string> readConventionScanText(const std::string &path) {
+std::optional<std::string> readConventionScanText(const std::string &path,
+                                                  std::string *skipReason = nullptr) {
+    if (skipReason)
+        skipReason->clear();
     std::ifstream in(path, std::ios::binary | std::ios::ate);
-    if (!in)
+    if (!in) {
+        if (skipReason)
+            *skipReason = "cannot open " + path;
         return std::nullopt;
+    }
     const std::streamoff size = in.tellg();
-    if (size < 0 || size > kMaxConventionScanBytes)
+    if (size < 0 || size > kMaxConventionScanBytes) {
+        if (skipReason)
+            *skipReason = "skipped " + path + " during convention scan (larger than 1 MiB)";
         return std::nullopt;
+    }
     in.seekg(0, std::ios::beg);
-    if (!in)
+    if (!in) {
+        if (skipReason)
+            *skipReason = "cannot seek " + path + " during convention scan";
         return std::nullopt;
+    }
     std::ostringstream contents;
     contents << in.rdbuf();
-    if (!in.good() && !in.eof())
+    if (!in.good() && !in.eof()) {
+        if (skipReason)
+            *skipReason = "cannot read " + path + " during convention scan";
         return std::nullopt;
+    }
     return contents.str();
+}
+
+/// @brief Append convention-scan skip reasons to an entry-selection diagnostic.
+/// @details Limits the appended list so a large project with many unreadable
+///          files still gets a useful, bounded error message.
+/// @param message Diagnostic message to extend in place.
+/// @param skipped Reasons collected while scanning candidate source files.
+void appendConventionSkipReasons(std::string &message, const std::vector<std::string> &skipped) {
+    if (skipped.empty())
+        return;
+    message += "; skipped ";
+    const std::size_t limit = std::min<std::size_t>(skipped.size(), 5);
+    for (std::size_t i = 0; i < limit; ++i) {
+        if (i != 0)
+            message += "; ";
+        message += skipped[i];
+    }
+    if (skipped.size() > limit)
+        message += "; plus " + std::to_string(skipped.size() - limit) + " more";
 }
 
 /// @brief Check if a file contains a Zia entry point (func start() or func main()).
@@ -230,10 +265,14 @@ std::optional<std::string> readConventionScanText(const std::string &path) {
 ///          false entry-point candidates. The scan is intentionally shallow: it
 ///          looks for a function declaration token followed by an identifier
 ///          named @c start or @c main.
-bool hasZiaEntryPoint(const std::string &path) {
-    auto source = readConventionScanText(path);
-    if (!source)
+bool hasZiaEntryPoint(const std::string &path, std::vector<std::string> *skipped = nullptr) {
+    std::string skipReason;
+    auto source = readConventionScanText(path, &skipReason);
+    if (!source) {
+        if (skipped && !skipReason.empty())
+            skipped->push_back(std::move(skipReason));
         return false;
+    }
 
     il::support::DiagnosticEngine diag;
     zia::Lexer lexer(std::move(*source), 1, diag);
@@ -372,11 +411,16 @@ bool isBasicExecutableStatementLeader(const basic::Token &tok) {
 ///          library module look like a top-level program.
 /// @param path BASIC source file to inspect.
 /// @return Convention signals found in @p path.
-BasicConventionSignals scanBasicConventionSignals(const std::string &path) {
+BasicConventionSignals scanBasicConventionSignals(const std::string &path,
+                                                  std::vector<std::string> *skipped = nullptr) {
     BasicConventionSignals signals;
-    auto source = readConventionScanText(path);
-    if (!source)
+    std::string skipReason;
+    auto source = readConventionScanText(path, &skipReason);
+    if (!source) {
+        if (skipped && !skipReason.empty())
+            skipped->push_back(std::move(skipReason));
         return signals;
+    }
 
     basic::Lexer lexer(std::string_view(*source), 1);
     std::vector<basic::Token> line;
@@ -423,17 +467,6 @@ BasicConventionSignals scanBasicConventionSignals(const std::string &path) {
     }
 }
 
-/// @brief Check if a BASIC file has AddFile directives (indicating a root file).
-bool hasBasicAddFile(const std::string &path) {
-    return scanBasicConventionSignals(path).hasAddFile;
-}
-
-/// @brief Check if a BASIC file has top-level executable statements
-/// (not just SUB/FUNCTION definitions).
-bool hasBasicTopLevelCode(const std::string &path) {
-    return scanBasicConventionSignals(path).hasTopLevelCode;
-}
-
 /// @brief Find the Zia entry file from a list of source files.
 il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &files) {
     // Priority 1: file named main.zia
@@ -444,8 +477,9 @@ il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &
 
     // Priority 2: scan for func start() or func main()
     std::vector<std::string> candidates;
+    std::vector<std::string> skipped;
     for (const auto &f : files) {
-        if (hasZiaEntryPoint(f))
+        if (hasZiaEntryPoint(f, &skipped))
             candidates.push_back(f);
     }
 
@@ -459,8 +493,10 @@ il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &
         return makeErr(msg);
     }
 
-    return makeErr("no entry point found; expected func start() or func main() in a .zia file, "
-                   "or a file named main.zia");
+    std::string msg = "no entry point found; expected func start() or func main() in a .zia file, "
+                      "or a file named main.zia";
+    appendConventionSkipReasons(msg, skipped);
+    return makeErr(msg);
 }
 
 /// @brief Find the BASIC entry file from a list of source files.
@@ -471,11 +507,17 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
             return f;
     }
 
+    std::vector<std::string> skipped;
+    std::vector<BasicConventionSignals> signals;
+    signals.reserve(files.size());
+    for (const auto &f : files)
+        signals.push_back(scanBasicConventionSignals(f, &skipped));
+
     // Priority 2: look for files with AddFile directives (root files)
     std::vector<std::string> roots;
-    for (const auto &f : files) {
-        if (hasBasicAddFile(f))
-            roots.push_back(f);
+    for (std::size_t i = 0; i < files.size(); ++i) {
+        if (signals[i].hasAddFile)
+            roots.push_back(files[i]);
     }
 
     if (roots.size() == 1)
@@ -490,9 +532,9 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
 
     // Priority 3: look for files with top-level executable statements
     std::vector<std::string> execFiles;
-    for (const auto &f : files) {
-        if (hasBasicTopLevelCode(f))
-            execFiles.push_back(f);
+    for (std::size_t i = 0; i < files.size(); ++i) {
+        if (signals[i].hasTopLevelCode)
+            execFiles.push_back(files[i]);
     }
 
     if (execFiles.size() == 1)
@@ -508,8 +550,10 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
     if (files.size() == 1)
         return files[0];
 
-    return makeErr("no entry point found; expected a .bas file with top-level statements, "
-                   "or a file named main.bas");
+    std::string msg = "no entry point found; expected a .bas file with top-level statements, "
+                      "or a file named main.bas";
+    appendConventionSkipReasons(msg, skipped);
+    return makeErr(msg);
 }
 
 /// @brief Discover project configuration by convention (no manifest).
@@ -1504,6 +1548,8 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                     manifestPath, lineNum, "unknown directive '" + directive + "'");
         }
     }
+    if (file.bad())
+        return makeErr("error reading manifest: " + manifestPath);
 
     // Collect source files from declared directories (or project root by default)
     if (sourceDirs.empty())

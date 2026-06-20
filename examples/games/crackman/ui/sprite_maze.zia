@@ -14,39 +14,36 @@ bind "../config";
 bind "./theme";
 bind "./sprite_support";
 
+/// @brief Stamp one neon-tube layer (a centre node + rounded-cap arms) for the
+///        connected directions in @p mask. ThickLine has rounded caps, so the
+///        arm ends and the node disc together round every elbow automatically.
+hide func drawTubeLayer(px: Pixels, mask: Integer, c: Integer, edge: Integer, thick: Integer, color: Integer) {
+    var up = (mask / 1) % 2;
+    var right = (mask / 2) % 2;
+    var down = (mask / 4) % 2;
+    var left = (mask / 8) % 2;
+
+    px.DrawDisc(c, c, thick / 2, color);
+    if up != 0 { px.DrawThickLine(c, c, c, 0, thick, color); }
+    if right != 0 { px.DrawThickLine(c, c, edge, c, thick, color); }
+    if down != 0 { px.DrawThickLine(c, c, c, edge, thick, color); }
+    if left != 0 { px.DrawThickLine(c, c, 0, c, thick, color); }
+}
+
 /// @brief Build one wall tile sprite for the given neighbour mask.
+///        Rendered as a three-layer neon tube (outer glow / body / bright core)
+///        so corridors read as smooth rounded conduits rather than boxes.
+///        Mask bits: 1 = up, 2 = right, 4 = down, 8 = left.
 expose func buildWallTile(mask: Integer) -> Pixels {
     var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
     var c = config.TILE_SIZE / 2;
-    var glow = sprite_support.rgba(theme.MAZE_WALL_GLOW, 42);
-    var core = sprite_support.rgba(theme.MAZE_WALL_MID, 255);
-    var inner = sprite_support.rgba(0xB8F4FF, 120);
+    var edge = config.TILE_SIZE - 1;
+    var glow = sprite_support.rgba(theme.MAZE_WALL_GLOW, 44);
+    var body = sprite_support.rgba(theme.MAZE_WALL_MID, 255);
+    var core = sprite_support.rgba(0xCDEBFF, 150);
 
-    px.DrawBox(c - 7, c - 7, 14, 14, glow);
-    px.DrawBox(c - 5, c - 5, 10, 10, core);
-    px.DrawBox(c - 2, c - 2, 4, 4, inner);
-
-    if (mask & 1) != 0 {
-        px.DrawBox(c - 7, 0, 14, c + 1, glow);
-        px.DrawBox(c - 5, 0, 10, c + 1, core);
-        px.DrawBox(c - 1, 0, 2, c + 1, inner);
-    }
-    if (mask & 2) != 0 {
-        px.DrawBox(c, c - 7, config.TILE_SIZE - c, 14, glow);
-        px.DrawBox(c, c - 5, config.TILE_SIZE - c, 10, core);
-        px.DrawBox(c, c - 1, config.TILE_SIZE - c, 2, inner);
-    }
-    if (mask & 4) != 0 {
-        px.DrawBox(c - 7, c, 14, config.TILE_SIZE - c, glow);
-        px.DrawBox(c - 5, c, 10, config.TILE_SIZE - c, core);
-        px.DrawBox(c - 1, c, 2, config.TILE_SIZE - c, inner);
-    }
-    if (mask & 8) != 0 {
-        px.DrawBox(0, c - 7, c + 1, 14, glow);
-        px.DrawBox(0, c - 5, c + 1, 10, core);
-        px.DrawBox(0, c - 1, c + 1, 2, inner);
-    }
-
-    px.DrawRing(c, c, 9, sprite_support.rgba(theme.MAZE_WALL_GLOW, 20));
+    drawTubeLayer(px, mask, c, edge, 13, glow);
+    drawTubeLayer(px, mask, c, edge, 9, body);
+    drawTubeLayer(px, mask, c, edge, 3, core);
     return px;
 }

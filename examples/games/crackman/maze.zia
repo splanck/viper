@@ -54,10 +54,6 @@ class Maze {
     hide Integer totalDots;
     hide Integer dotsRemaining;
 
-    // Use Timer for pellet blinking instead of manual counter
-    hide Timer pelletBlinkTimer;
-    hide Boolean pelletVisible;
-
     expose func init() {
         // Create Grid2D with dimensions and default value
         tiles = Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
@@ -65,11 +61,6 @@ class Maze {
         wallLayer = null;
         totalDots = 0;
         dotsRemaining = 0;
-
-        // Setup pellet blink timer (toggles every 10 frames)
-        pelletBlinkTimer = Timer.New();
-        pelletBlinkTimer.StartRepeating(10);
-        pelletVisible = true;
 
         self.initializeMaze();
     }
@@ -291,14 +282,16 @@ class Maze {
         }
     }
 
-    expose func draw(canvas: Canvas) {
-        // Update pellet blink timer
-        if pelletBlinkTimer.Update() {
-            pelletVisible = !pelletVisible;
-        }
-
+    expose func draw(canvas: Canvas, tickMs: Integer) {
         self.ensureWallLayer();
         canvas.BlitAlpha(config.PLAYFIELD_X, config.PLAYFIELD_Y, wallLayer);
+
+        // R9 — power pellets breathe with a soft halo (triangle-wave pulse)
+        // instead of a hard on/off blink.
+        var pulse = (tickMs / 8) % 100;
+        if pulse > 50 { pulse = 100 - pulse; }
+        var glowR = 9 + pulse / 7;
+        var glowA = 26 + pulse;
 
         drawBatch.Begin();
         for y in 0..config.GRID_HEIGHT {
@@ -310,9 +303,9 @@ class Maze {
                 if tile == config.TILE_DOT {
                     drawBatch.DrawPixels(sprites.getDot(), screenX, screenY);
                 } else if tile == config.TILE_PELLET {
-                    if pelletVisible {
-                        drawBatch.DrawPixels(sprites.getPellet(), screenX, screenY);
-                    }
+                    canvas.DiscAlpha(utils.gridToCenterX(x), utils.gridToCenterY(y),
+                                     glowR, theme.PELLET_COLOR, glowA);
+                    drawBatch.DrawPixels(sprites.getPellet(), screenX, screenY);
                 }
             }
         }

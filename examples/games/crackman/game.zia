@@ -46,6 +46,9 @@ bind "./frontend";
 bind "./session";
 bind "./progression";
 
+// Duration of the fade-in veil played when the app switches screens (ms).
+final FADE_MS = 220;
+
 // =============================================================================
 // GAME ENTITY - Top-level app orchestration
 // =============================================================================
@@ -62,6 +65,10 @@ class Game {
     hide Integer uiTick;
     hide Integer simAccumulator;
     hide Boolean audioReady;
+
+    // Screen-transition fade veil
+    hide Integer fadeT;
+    hide Integer lastState;
 
     hide sound.SoundManager sfx;
     hide settings.Settings userSettings;
@@ -85,6 +92,8 @@ class Game {
         dt = config.SIM_STEP_MS;
         uiTick = 0;
         simAccumulator = 0;
+        fadeT = 0;
+        lastState = config.STATE_MENU;
 
         sfx = new sound.SoundManager();
         profile = new progression.Progression("crackman_profile");
@@ -147,6 +156,9 @@ class Game {
         Action.Define(config.ACTION_RESTART);
         Action.BindKey(config.ACTION_RESTART, config.KEY_R);
 
+        Action.Define(config.ACTION_LIGHTS);
+        Action.BindKey(config.ACTION_LIGHTS, config.KEY_L);
+
         // Gamepad bindings
         Action.BindPadButton(config.ACTION_UP, config.PAD_IDX, config.PAD_DPAD_UP);
         Action.BindPadButton(config.ACTION_DOWN, config.PAD_IDX, config.PAD_DPAD_DOWN);
@@ -175,6 +187,9 @@ class Game {
             // Advance frame counter and clear edge flags
             sm.Update();
             sm.ClearFlags();
+
+            // Kick off a fade-in veil whenever the active screen changes.
+            self.updateTransition();
 
             // State-specific logic via StateMachine
             if sm.IsState(config.STATE_MENU) {
@@ -269,6 +284,55 @@ class Game {
     }
 
     // =========================================================================
+    // SCREEN TRANSITIONS
+    // =========================================================================
+
+    /// @brief The current app state id (matched in the same order as the loop).
+    hide func currentStateId() -> Integer {
+        if sm.IsState(config.STATE_MENU) { return config.STATE_MENU; }
+        if sm.IsState(config.STATE_OPTIONS) { return config.STATE_OPTIONS; }
+        if sm.IsState(config.STATE_HIGHSCORES) { return config.STATE_HIGHSCORES; }
+        if sm.IsState(config.STATE_PROFILE) { return config.STATE_PROFILE; }
+        if sm.IsState(config.STATE_SUMMARY) { return config.STATE_SUMMARY; }
+        if sm.IsState(config.STATE_READY) { return config.STATE_READY; }
+        if sm.IsState(config.STATE_PLAYING) { return config.STATE_PLAYING; }
+        if sm.IsState(config.STATE_PAUSED) { return config.STATE_PAUSED; }
+        if sm.IsState(config.STATE_DYING) { return config.STATE_DYING; }
+        if sm.IsState(config.STATE_WIN) { return config.STATE_WIN; }
+        return config.STATE_MENU;
+    }
+
+    /// @brief Retrigger the fade-in veil on screen change; decay it each frame.
+    hide func updateTransition() {
+        var now = self.currentStateId();
+        if now != lastState {
+            fadeT = FADE_MS;
+            lastState = now;
+        }
+        fadeT = fadeT - dt;
+        if fadeT < 0 {
+            fadeT = 0;
+        }
+    }
+
+    /// @brief Black veil that starts opaque on entry and fades to clear.
+    hide func drawTransitionVeil() {
+        if fadeT <= 0 {
+            return;
+        }
+        var a = fadeT * 210 / FADE_MS;
+        if a > 210 { a = 210; }
+        canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, 0x000000, a);
+    }
+
+    /// @brief Common present path: notification badge, transition veil, flip.
+    hide func present() {
+        profile.drawNotification(canvas);
+        self.drawTransitionVeil();
+        canvas.Flip();
+    }
+
+    // =========================================================================
     // MENU STATE
     // =========================================================================
 
@@ -299,8 +363,7 @@ class Game {
 
     hide func renderMenu() {
         front.renderMenu(uiTick);
-        profile.drawNotification(canvas);
-        canvas.Flip();
+        self.present();
     }
 
     // =========================================================================
@@ -315,8 +378,7 @@ class Game {
 
     hide func renderOptions() {
         front.renderOptions(uiTick);
-        profile.drawNotification(canvas);
-        canvas.Flip();
+        self.present();
     }
 
     // =========================================================================
@@ -331,8 +393,7 @@ class Game {
 
     hide func renderHighScores() {
         front.renderHighScores(uiTick);
-        profile.drawNotification(canvas);
-        canvas.Flip();
+        self.present();
     }
 
     hide func updateProfile() {
@@ -343,8 +404,7 @@ class Game {
 
     hide func renderProfile() {
         front.renderProfile(uiTick);
-        profile.drawNotification(canvas);
-        canvas.Flip();
+        self.present();
     }
 
     hide func updateSummary() {
@@ -368,8 +428,7 @@ class Game {
 
     hide func renderSummary() {
         front.renderSummary(uiTick);
-        profile.drawNotification(canvas);
-        canvas.Flip();
+        self.present();
     }
 
     hide func updateReady() {
@@ -479,8 +538,6 @@ class Game {
             overlayState = config.STATE_DYING;
         }
         playSession.render(canvas, overlayState, uiTick);
-        profile.drawNotification(canvas);
-
-        canvas.Flip();
+        self.present();
     }
 }

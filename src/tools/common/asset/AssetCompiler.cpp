@@ -36,8 +36,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <mutex>
+#include <new>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -49,6 +50,80 @@ namespace viper::asset {
 namespace {
 constexpr std::uintmax_t kMaxAssetFileBytes = 256ULL * 1024ULL * 1024ULL;
 constexpr std::size_t kMaxAssetCacheEntries = 64;
+constexpr std::size_t kMaxAssetFileCacheEntries = 128;
+
+/// @brief Cached contents of one validated asset file.
+struct CachedAssetFile {
+    std::uintmax_t size{0};     ///< File size at cache time.
+    fs::file_time_type mtime{}; ///< Last-write time at cache time.
+    std::string hash;           ///< SHA-256 hex digest of @ref data.
+    std::vector<uint8_t> data;  ///< Complete file payload.
+};
+
+/// @brief Return a stable cache key for an asset path.
+static std::string assetFileCacheKey(const fs::path &path) {
+    std::error_code ec;
+    const fs::path canonical = fs::weakly_canonical(path, ec);
+    return (ec ? path.lexically_normal() : canonical).string();
+}
+
+/// @brief Shared cache for asset file payloads read during one process.
+static std::unordered_map<std::string, CachedAssetFile> &assetFileCache() {
+    static std::unordered_map<std::string, CachedAssetFile> cache;
+    return cache;
+}
+
+/// @brief Mutex protecting @ref assetFileCache.
+static std::mutex &assetFileCacheMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+/// @brief Remove one arbitrary cached asset payload when the cache reaches its cap.
+static void evictOneAssetFileCacheEntry() {
+    auto &cache = assetFileCache();
+    if (!cache.empty())
+        cache.erase(cache.begin());
+}
+
+/// @brief Read and validate an asset file payload from disk.
+static std::vector<uint8_t> readAssetFileUncached(const fs::path &path,
+                                                  std::uintmax_t expectedSize) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        throw std::runtime_error("cannot read asset: " + path.string());
+    std::vector<uint8_t> data(static_cast<size_t>(expectedSize));
+    if (!data.empty())
+        in.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
+    if (!in)
+        throw std::runtime_error("failed while reading asset: " + path.string());
+    return data;
+}
+
+/// @brief Return cached asset bytes when size and mtime still match disk.
+static std::optional<CachedAssetFile> lookupCachedAssetFile(const fs::path &path,
+                                                            std::uintmax_t size,
+                                                            fs::file_time_type mtime) {
+    std::lock_guard<std::mutex> lock(assetFileCacheMutex());
+    auto it = assetFileCache().find(assetFileCacheKey(path));
+    if (it == assetFileCache().end() || it->second.size != size || it->second.mtime != mtime)
+        return std::nullopt;
+    return it->second;
+}
+
+/// @brief Store asset bytes and hash for later payload writing.
+static void rememberCachedAssetFile(const fs::path &path,
+                                    std::uintmax_t size,
+                                    fs::file_time_type mtime,
+                                    std::string hash,
+                                    std::vector<uint8_t> data) {
+    std::lock_guard<std::mutex> lock(assetFileCacheMutex());
+    auto &cache = assetFileCache();
+    if (cache.size() >= kMaxAssetFileCacheEntries &&
+        cache.find(assetFileCacheKey(path)) == cache.end())
+        evictOneAssetFileCacheEntry();
+    cache[assetFileCacheKey(path)] = CachedAssetFile{size, mtime, std::move(hash), std::move(data)};
+}
 
 /// @brief Hash the full contents of @p path for cache invalidation.
 /// @details Asset cache keys must change even when a filesystem preserves size and
@@ -62,15 +137,16 @@ static std::string contentHashForFile(const fs::path &path) {
         throw std::runtime_error("cannot stat asset for cache key: " + path.string());
     if (size > kMaxAssetFileBytes)
         throw std::runtime_error("asset file too large for cache key: " + path.string());
-    std::ifstream in(path, std::ios::binary);
-    if (!in)
-        throw std::runtime_error("cannot read asset for cache key: " + path.string());
-    std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
-                              std::istreambuf_iterator<char>());
-    if (!in.good() && !in.eof())
-        throw std::runtime_error("failed while reading asset for cache key: " + path.string());
-    return data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
-                        : viper::pkg::sha256Hex(data.data(), data.size());
+    const auto mtime = fs::last_write_time(path, ec);
+    if (ec)
+        throw std::runtime_error("cannot stat asset mtime for cache key: " + path.string());
+    if (auto cached = lookupCachedAssetFile(path, size, mtime))
+        return cached->hash;
+    auto data = readAssetFileUncached(path, size);
+    std::string hash = data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
+                                    : viper::pkg::sha256Hex(data.data(), data.size());
+    rememberCachedAssetFile(path, size, mtime, hash, std::move(data));
+    return hash;
 }
 
 /// @brief Append a single file's identity fingerprint to a cache key.
@@ -167,33 +243,37 @@ static std::string assetCacheKey(const il::tools::common::ProjectConfig &config,
 /// @brief Read an entire file into a byte vector.
 /// @return true on success; sets err on failure.
 static bool readFile(const fs::path &path, std::vector<uint8_t> &out, std::string &err) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f.is_open()) {
-        err = "cannot open file: " + path.string();
-        return false;
-    }
-    auto size = f.tellg();
-    if (size < 0) {
+    std::error_code ec;
+    const auto size = fs::file_size(path, ec);
+    if (ec) {
         err = "cannot determine size of: " + path.string();
         return false;
     }
-    if (static_cast<std::uintmax_t>(size) > kMaxAssetFileBytes) {
+    if (size > kMaxAssetFileBytes) {
         err = "asset file too large: " + path.string() + " (limit: 256 MB)";
         return false;
     }
-    f.seekg(0);
+    const auto mtime = fs::last_write_time(path, ec);
+    if (ec) {
+        err = "cannot determine modification time of: " + path.string();
+        return false;
+    }
+    if (auto cached = lookupCachedAssetFile(path, size, mtime)) {
+        out = std::move(cached->data);
+        return true;
+    }
     try {
-        out.resize(static_cast<size_t>(size));
+        out = readAssetFileUncached(path, size);
     } catch (const std::bad_alloc &) {
         err = "out of memory reading asset: " + path.string();
         return false;
-    }
-    if (size > 0)
-        f.read(reinterpret_cast<char *>(out.data()), static_cast<std::streamsize>(out.size()));
-    if (!f) {
-        err = "read error on: " + path.string();
+    } catch (const std::exception &ex) {
+        err = ex.what();
         return false;
     }
+    std::string hash = out.empty() ? viper::pkg::sha256Hex(nullptr, 0)
+                                   : viper::pkg::sha256Hex(out.data(), out.size());
+    rememberCachedAssetFile(path, size, mtime, std::move(hash), out);
     return true;
 }
 
@@ -226,6 +306,9 @@ static bool enumerateDir(const fs::path &dir,
         err = e.what();
         return false;
     }
+    std::sort(entries.begin(), entries.end(), [](const auto &lhs, const auto &rhs) {
+        return lhs.first < rhs.first;
+    });
     return true;
 }
 
@@ -333,7 +416,8 @@ static bool addSourceToWriter(const std::string &sourcePath,
             return false;
         // Use the sourcePath as the asset name (forward slashes).
         try {
-            writer.addEntry(fs::path(cleanPath).generic_string(), data.data(), data.size(), compress);
+            writer.addEntry(
+                fs::path(cleanPath).generic_string(), data.data(), data.size(), compress);
         } catch (const std::exception &e) {
             err = e.what();
             return false;
@@ -456,8 +540,8 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
         if (cache.size() >= kMaxAssetCacheEntries && cache.find(cacheKey) == cache.end()) {
-            auto victim = std::min_element(
-                cache.begin(), cache.end(), [](const auto &lhs, const auto &rhs) {
+            auto victim =
+                std::min_element(cache.begin(), cache.end(), [](const auto &lhs, const auto &rhs) {
                     return lhs.first < rhs.first;
                 });
             if (victim != cache.end())

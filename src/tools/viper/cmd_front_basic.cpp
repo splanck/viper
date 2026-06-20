@@ -65,15 +65,15 @@ bool reportVerifierDiagnostics(il::core::Module &module,
 
 /// @brief Parsed configuration for the `viper front basic` subcommand.
 struct FrontBasicConfig {
-    bool emitIl{false};                   ///< True when `-emit-il` is requested.
-    bool run{false};                      ///< True when `-run` is requested.
-    bool debugVm{false};                  ///< True to use standard VM for debugging.
-    bool helpRequested{false};            ///< True when help was requested.
-    std::string sourcePath;               ///< Path to the input `.bas` source.
-    ilc::SharedCliOptions shared;         ///< Shared CLI settings (trace, steps, IO).
+    bool emitIl{false};                     ///< True when `-emit-il` is requested.
+    bool run{false};                        ///< True when `-run` is requested.
+    bool debugVm{false};                    ///< True to use standard VM for debugging.
+    bool helpRequested{false};              ///< True when help was requested.
+    std::string sourcePath;                 ///< Path to the input `.bas` source.
+    ilc::SharedCliOptions shared;           ///< Shared CLI settings (trace, steps, IO).
     std::optional<uint32_t> sourceFileId{}; ///< Source-manager file id, once registered.
-    std::vector<std::string> programArgs; ///< Arguments to pass to BASIC program after '--'.
-    bool noRuntimeNamespaces{false};      ///< Disable runtime namespace binding.
+    std::vector<std::string> programArgs;   ///< Arguments to pass to BASIC program after '--'.
+    bool noRuntimeNamespaces{false};        ///< Disable runtime namespace binding.
     std::string optLevel{"O0"}; ///< Optimization level: "O0", "O1", or "O2"; default = O0.
 };
 
@@ -93,6 +93,18 @@ void frontBasicUsage() {
         << "  --dump-trap                    Show detailed trap diagnostics\n"
         << "  --bounds-checks                Enable generated bounds checks\n"
         << "  --no-bounds-checks             Disable generated bounds checks\n"
+        << "  --dump-tokens                  Dump lexer tokens\n"
+        << "  --dump-ast                     Dump parsed AST\n"
+        << "  --dump-il                      Dump IL before optimization\n"
+        << "  --dump-il-opt                  Dump IL after optimization\n"
+        << "  --dump-il-passes               Dump IL before and after each optimization pass\n"
+        << "  --verify-each                  Verify after each optimization pass\n"
+        << "  --paranoid-verify              Run additional verifier checkpoints\n"
+        << "  --time-compile                 Print compile phase timings\n"
+        << "  --pass-stats                   Print optimizer pass statistics\n"
+        << "  --diagnostic-format text|json  Select diagnostic output format\n"
+        << "  -Wall, -Werror, -Wno-XXXX      Accepted for shared CLI compatibility\n"
+        << "  --no-runtime-namespaces        Disable runtime namespace binding\n"
         << "  -h, --help                     Show this help\n";
 }
 
@@ -151,8 +163,11 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
                     return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                         il::support::Severity::Error, ilc::lastSharedOptionError(), {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
-                    return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
-                        il::support::Severity::Error, "unknown flag", {}, {}});
+                    return il::support::Expected<FrontBasicConfig>(
+                        il::support::Diagnostic{il::support::Severity::Error,
+                                                std::string("unknown flag: ") + std::string(arg),
+                                                {},
+                                                {}});
             }
         }
     }
@@ -200,7 +215,12 @@ int runFrontBasic(const FrontBasicConfig &config,
     if (config.noRuntimeNamespaces) {
         noRuntimeNamespacesEnv.emplace("VIPER_NO_RUNTIME_NAMESPACES", "1");
         if (!noRuntimeNamespacesEnv->ok()) {
-            std::cerr << "error: " << noRuntimeNamespacesEnv->errorMessage() << "\n";
+            ilc::printDiagnostic(
+                il::support::Diagnostic{
+                    il::support::Severity::Error, noRuntimeNamespacesEnv->errorMessage(), {}, {}},
+                std::cerr,
+                &sm,
+                config.shared.diagnosticFormat);
             return 1;
         }
     }
@@ -295,7 +315,14 @@ int runFrontBasic(const FrontBasicConfig &config,
     if (!config.shared.stdinPath.empty()) {
         stdinRedirect.emplace(config.shared.stdinPath);
         if (!stdinRedirect->ok()) {
-            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
+            ilc::printDiagnostic(il::support::Diagnostic{il::support::Severity::Error,
+                                                         "unable to open stdin file: " +
+                                                             stdinRedirect->errorMessage(),
+                                                         {},
+                                                         {}},
+                                 std::cerr,
+                                 &sm,
+                                 config.shared.diagnosticFormat);
             return 1;
         }
     }
@@ -348,11 +375,13 @@ int runFrontBasic(const FrontBasicConfig &config,
 /// Any failure at these stages results in a non-zero exit status with diagnostics
 /// already printed to stderr, matching the behaviour expected by ilc callers.
 int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceManager &sm) {
+    const auto earlyFormat = ilc::detectDiagnosticFormatFlag(argc, argv);
     auto parsed = parseFrontBasicArgs(argc, argv);
     if (!parsed) {
         const auto &diag = parsed.error();
-        il::support::printDiag(diag, std::cerr, &sm);
-        frontBasicUsage();
+        ilc::printDiagnostic(diag, std::cerr, &sm, earlyFormat);
+        if (earlyFormat == ilc::DiagnosticFormat::Text)
+            frontBasicUsage();
         return 1;
     }
 

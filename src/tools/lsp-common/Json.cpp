@@ -19,6 +19,7 @@
 
 #include "tools/lsp-common/Json.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -26,7 +27,6 @@
 #include <limits>
 #include <stdexcept>
 #include <system_error>
-#include <unordered_set>
 
 namespace viper::server {
 
@@ -82,10 +82,11 @@ int64_t JsonValue::asInt(int64_t def) const {
     if (auto *p = std::get_if<double>(&storage_)) {
         if (!std::isfinite(*p))
             return def;
-        const long double raw = static_cast<long double>(*p);
-        const long double value = std::trunc(raw);
-        if (value < static_cast<long double>(std::numeric_limits<int64_t>::min()) ||
-            value > static_cast<long double>(std::numeric_limits<int64_t>::max())) {
+        const double value = *p;
+        if (std::trunc(value) != value)
+            return def;
+        if (value < static_cast<double>(std::numeric_limits<int64_t>::min()) ||
+            value > static_cast<double>(std::numeric_limits<int64_t>::max())) {
             return def;
         }
         return static_cast<int64_t>(value);
@@ -121,7 +122,7 @@ const JsonValue::ObjectType &JsonValue::asObject() const {
 
 // --- Object access ---
 
-const JsonValue *JsonValue::get(const std::string &key) const {
+const JsonValue *JsonValue::get(std::string_view key) const {
     if (auto *obj = std::get_if<ObjectType>(&storage_)) {
         for (const auto &[k, v] : *obj) {
             if (k == key)
@@ -131,13 +132,13 @@ const JsonValue *JsonValue::get(const std::string &key) const {
     return nullptr;
 }
 
-const JsonValue &JsonValue::operator[](const std::string &key) const {
+const JsonValue &JsonValue::operator[](std::string_view key) const {
     if (const auto *v = get(key))
         return *v;
     return kNull;
 }
 
-bool JsonValue::has(const std::string &key) const {
+bool JsonValue::has(std::string_view key) const {
     return get(key) != nullptr;
 }
 
@@ -657,11 +658,13 @@ class JsonParser {
     }
 
     /// @brief Parse a JSON object `{ "key": value, ... }`, preserving member order.
+    /// @details Duplicate keys are accepted with last-value-wins semantics. This
+    ///          matches common JSON protocol behavior while preserving the first
+    ///          key's position for deterministic re-emission.
     JsonValue parseObject(int depth) {
         expect('{');
         skipWhitespace();
         JsonValue::ObjectType obj;
-        std::unordered_set<std::string> seenKeys;
         if (peek() == '}') {
             ++pos_;
             return JsonValue(std::move(obj));
@@ -673,10 +676,14 @@ class JsonParser {
             std::string key = parseString();
             skipWhitespace();
             expect(':');
-            if (!seenKeys.insert(key).second)
-                error("duplicate object key");
             auto val = parseValue(depth);
-            obj.emplace_back(std::move(key), std::move(val));
+            auto existing = std::find_if(
+                obj.begin(), obj.end(), [&](const auto &member) { return member.first == key; });
+            if (existing != obj.end()) {
+                existing->second = std::move(val);
+            } else {
+                obj.emplace_back(std::move(key), std::move(val));
+            }
             skipWhitespace();
             if (peek() == '}') {
                 ++pos_;

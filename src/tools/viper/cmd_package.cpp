@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
+#include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
@@ -46,9 +47,9 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
-// Forward declarations of compile functions (defined in cmd_run.cpp)
 namespace {
 
 using namespace il::tools::common;
@@ -74,13 +75,20 @@ void packageUsage() {
         << "  [project]  Path to a directory or viper.project file (default: .)\n"
         << "\n"
         << "Options:\n"
-        << "  --target <platform>   macos, linux, windows, or tarball (default: host)\n"
-        << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
-        << "  --executable <path>   Package a prebuilt native executable instead of compiling\n"
-        << "  -o <path>             Output file path\n"
-        << "  --dry-run             List package contents without building\n"
-        << "  --verbose, -v         Show detailed packaging output\n"
-        << "  --help, -h            Show this help\n"
+        << "  --target <platform>       macos, linux, windows, or tarball (default: host)\n"
+        << "  --target=<platform>       Inline form of --target\n"
+        << "  --arch <arch>             Target architecture: x64 or arm64 (default: host)\n"
+        << "  --arch=<arch>             Inline form of --arch\n"
+        << "  --executable <path>       Package a prebuilt native executable instead of compiling\n"
+        << "  --executable=<path>       Inline form of --executable\n"
+        << "  -o, --output <path>       Output file path\n"
+        << "  --output=<path>           Inline form of --output\n"
+        << "  --dry-run                 List package contents without building or signing\n"
+        << "  --keep-failed-artifact    Preserve generated artifacts after a failed package step\n"
+        << "  --verbose, -v             Show detailed packaging output\n"
+        << "  --help, -h                Show this help\n"
+        << "\n"
+        << "Target-specific install/signing options are documented in docs/tools.md.\n"
         << "\n"
         << "Examples:\n"
         << "  viper package                       Package current dir for host platform\n"
@@ -125,21 +133,59 @@ struct PackageArgs {
     bool windowsSignNoVerify{false};
     bool windowsSignNoVerifySet{false};
     bool dryRun{false};
+    bool keepFailedArtifact{false};
     bool verbose{false};
     bool help{false};
 };
 
 /// @brief Determine the packaging target matching the host build platform.
 PackageTarget detectHostPlatform() {
-#if defined(__APPLE__)
+#if VIPER_HOST_MACOS
     return PackageTarget::MacOS;
-#elif defined(__linux__)
+#elif VIPER_HOST_LINUX
     return PackageTarget::Linux;
-#elif defined(_WIN32)
+#elif VIPER_HOST_WINDOWS
     return PackageTarget::Windows;
 #else
     return PackageTarget::Tarball;
 #endif
+}
+
+/// @brief Parse a package target name from the command line.
+/// @param value User supplied target value.
+/// @param out Receives the parsed target on success.
+/// @return True when @p value is one of macos, linux, windows, or tarball.
+bool parsePackageTargetValue(std::string_view value, PackageTarget &out) {
+    if (value == "macos")
+        out = PackageTarget::MacOS;
+    else if (value == "linux")
+        out = PackageTarget::Linux;
+    else if (value == "windows")
+        out = PackageTarget::Windows;
+    else if (value == "tarball")
+        out = PackageTarget::Tarball;
+    else
+        return false;
+    return true;
+}
+
+/// @brief Return true when @p value is a supported package architecture name.
+bool isPackageArchName(std::string_view value) {
+    return value == "x64" || value == "arm64";
+}
+
+/// @brief Remove a generated artifact unless the user requested failure preservation.
+/// @details Package failures are often easier to diagnose by inspecting the
+///          partially generated executable or installer. This helper centralizes
+///          the `--keep-failed-artifact` policy so success cleanup remains
+///          unchanged while failure paths are consistent.
+/// @param path Artifact path to remove.
+/// @param keep True when `--keep-failed-artifact` was supplied.
+/// @param ec Receives any best-effort filesystem removal error.
+void removeFailedArtifactUnlessKept(const fs::path &path, bool keep, std::error_code &ec) {
+    if (keep || path.empty())
+        return;
+    fs::remove(path, ec);
 }
 
 /// @brief Return the lowercase platform name for a target (e.g. "macos").
@@ -472,8 +518,7 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
             err << "error: Windows PFX signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
             return false;
         }
-        const std::string allowPasswordArgv =
-            getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK");
+        const std::string allowPasswordArgv = getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK");
         if (allowPasswordArgv != "1" && allowPasswordArgv != "true" &&
             allowPasswordArgv != "TRUE") {
             err << "error: PFX password signing passes the password to signtool argv; use "
@@ -543,21 +588,21 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
 bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
+        std::string_view inlineValue;
         if (arg == "--target") {
             if (i + 1 >= argc) {
                 std::cerr << "error: --target requires a value\n";
                 return false;
             }
             std::string val = argv[++i];
-            if (val == "macos")
-                args.platformTarget = PackageTarget::MacOS;
-            else if (val == "linux")
-                args.platformTarget = PackageTarget::Linux;
-            else if (val == "windows")
-                args.platformTarget = PackageTarget::Windows;
-            else if (val == "tarball")
-                args.platformTarget = PackageTarget::Tarball;
-            else {
+            if (!parsePackageTargetValue(val, args.platformTarget)) {
+                std::cerr << "error: unknown target '" << val
+                          << "'; expected macos, linux, windows, or tarball\n";
+                return false;
+            }
+        } else if (ilc::splitInlineOptionValue(arg, "--target", inlineValue)) {
+            std::string val(inlineValue);
+            if (!parsePackageTargetValue(val, args.platformTarget)) {
                 std::cerr << "error: unknown target '" << val
                           << "'; expected macos, linux, windows, or tarball\n";
                 return false;
@@ -568,7 +613,14 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                 return false;
             }
             args.archOverride = argv[++i];
-            if (args.archOverride != "x64" && args.archOverride != "arm64") {
+            if (!isPackageArchName(args.archOverride)) {
+                std::cerr << "error: unknown arch '" << args.archOverride
+                          << "'; expected x64 or arm64\n";
+                return false;
+            }
+        } else if (ilc::splitInlineOptionValue(arg, "--arch", inlineValue)) {
+            args.archOverride = std::string(inlineValue);
+            if (!isPackageArchName(args.archOverride)) {
                 std::cerr << "error: unknown arch '" << args.archOverride
                           << "'; expected x64 or arm64\n";
                 return false;
@@ -579,12 +631,30 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                 return false;
             }
             args.executablePath = argv[++i];
+        } else if (ilc::splitInlineOptionValue(arg, "--executable", inlineValue)) {
+            args.executablePath = std::string(inlineValue);
+            if (args.executablePath.empty()) {
+                std::cerr << "error: --executable requires a path\n";
+                return false;
+            }
         } else if (arg == "-o") {
             if (i + 1 >= argc) {
                 std::cerr << "error: -o requires a path\n";
                 return false;
             }
             args.outputPath = argv[++i];
+        } else if (arg == "--output") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --output requires a path\n";
+                return false;
+            }
+            args.outputPath = argv[++i];
+        } else if (ilc::splitInlineOptionValue(arg, "--output", inlineValue)) {
+            args.outputPath = std::string(inlineValue);
+            if (args.outputPath.empty()) {
+                std::cerr << "error: --output requires a path\n";
+                return false;
+            }
         } else if (arg == "--macos-sign-mode") {
             if (i + 1 >= argc) {
                 std::cerr << "error: --macos-sign-mode requires a value\n";
@@ -664,6 +734,8 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
             args.windowsSignNoVerifySet = true;
         } else if (arg == "--dry-run") {
             args.dryRun = true;
+        } else if (arg == "--keep-failed-artifact") {
+            args.keepFailedArtifact = true;
         } else if (arg == "--verbose" || arg == "-v") {
             args.verbose = true;
         } else if (arg == "--help" || arg == "-h") {
@@ -712,15 +784,15 @@ bool validatePackageSourcePathExists(const ProjectConfig &proj,
     ec.clear();
     const bool regular = fs::is_regular_file(resolved, ec);
     if (ec) {
-        std::cerr << "error: cannot inspect " << fieldName << " '" << path
-                  << "': " << ec.message() << "\n";
+        std::cerr << "error: cannot inspect " << fieldName << " '" << path << "': " << ec.message()
+                  << "\n";
         return false;
     }
     ec.clear();
     const bool directory = fs::is_directory(resolved, ec);
     if (ec) {
-        std::cerr << "error: cannot inspect " << fieldName << " '" << path
-                  << "': " << ec.message() << "\n";
+        std::cerr << "error: cannot inspect " << fieldName << " '" << path << "': " << ec.message()
+                  << "\n";
         return false;
     }
     if (!regular && !(allowDirectory && directory)) {
@@ -737,11 +809,15 @@ bool validatePackageSourcePathExists(const ProjectConfig &proj,
 /// @details Checks that referenced source paths exist and that target-specific
 ///          signing/installer settings are well-formed before building, printing
 ///          errors to @p err.
+/// @param requireSigningCredentials When false, dry-run validation keeps structural
+///        signing checks but skips credential/material presence checks that are only
+///        needed for an actual package build.
 /// @return true when the configuration is valid for @p target / @p archStr.
 bool validatePackageConfigForTarget(const ProjectConfig &proj,
                                     PackageTarget target,
                                     const std::string &archStr,
-                                    std::ostream &err) {
+                                    std::ostream &err,
+                                    bool requireSigningCredentials = true) {
     const auto &pkg = proj.packageConfig;
     const std::string displayName = pkg.displayName.empty() ? proj.name : pkg.displayName;
     const std::string version = proj.version.empty() ? "0.0.0" : proj.version;
@@ -777,7 +853,28 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 if (!pkg.minOsMacos.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsMacos,
                                                              "minimum macOS version");
-                viper::pkg::validateMacOSSigningConfig(pkg);
+                if (requireSigningCredentials)
+                    viper::pkg::validateMacOSSigningConfig(pkg);
+                else if (!viper::pkg::isValidMacOSSignModeText(pkg.macosSignMode)) {
+                    throw std::runtime_error("macOS sign mode must be none, preserve, adhoc, or "
+                                             "developer-id: " +
+                                             pkg.macosSignMode);
+                } else {
+                    const std::string mode = viper::pkg::resolveMacOSSignModeForHost(pkg);
+                    if (!pkg.macosNotaryProfile.empty() && mode != "developer-id") {
+                        throw std::runtime_error(
+                            "macOS notarization requires macos-sign-mode developer-id");
+                    }
+                    if (pkg.macosStaple) {
+                        if (mode != "developer-id")
+                            throw std::runtime_error(
+                                "macos-staple requires macos-sign-mode developer-id");
+                        if (pkg.macosNotaryProfile.empty())
+                            throw std::runtime_error(
+                                "macos-staple requires macos-notary-profile for this package "
+                                "build");
+                    }
+                }
                 if (!pkg.macosEntitlements.empty() &&
                     !validatePackageSourcePathExists(
                         proj, pkg.macosEntitlements, "macOS entitlements", false)) {
@@ -823,7 +920,7 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                                                     "Windows signtool path");
                 viper::pkg::validateWindowsCertificateThumbprint(pkg.windowsSignThumbprint,
                                                                  "Windows signing thumbprint");
-                if (!pkg.windowsSignPfx.empty()) {
+                if (requireSigningCredentials && !pkg.windowsSignPfx.empty()) {
                     const fs::path pfx =
                         resolveOptionalProjectPath(proj.rootDir, pkg.windowsSignPfx);
                     if (!fs::is_regular_file(pfx)) {
@@ -957,10 +1054,6 @@ std::vector<std::string> requiredAssetPayloadPaths(const ProjectConfig &proj,
 
 } // namespace
 
-// The compile functions are in cmd_run.cpp — we need to expose them or
-// duplicate the pattern. For now, we use the same resolveProject + compileToNative
-// pipeline that cmdBuild uses.
-
 int cmdPackage(int argc, char **argv) {
     using namespace il::tools::common;
     namespace fs = std::filesystem;
@@ -1042,7 +1135,8 @@ int cmdPackage(int argc, char **argv) {
             defaultPackageOutputPath(proj, resolvedVersion, args.platformTarget, archStr);
     }
 
-    if (!validatePackageConfigForTarget(proj, args.platformTarget, archStr, std::cerr))
+    if (!validatePackageConfigForTarget(
+            proj, args.platformTarget, archStr, std::cerr, !args.dryRun))
         return 1;
 
     // Dry-run mode: list what would be packaged, then exit
@@ -1213,7 +1307,7 @@ int cmdPackage(int argc, char **argv) {
         // observes project manifests, frontend options, assets, and native
         // backend flags consistently.
         std::string tempBinaryExt;
-#ifdef _WIN32
+#if VIPER_HOST_WINDOWS
         tempBinaryExt = ".exe";
 #endif
         std::string tempBinaryPath =
@@ -1221,24 +1315,13 @@ int cmdPackage(int argc, char **argv) {
         packageBinaryPath = tempBinaryPath;
         cleanupPackagedBinary = true;
 
-        // Build the native binary using cmdBuild directly (same binary)
-        {
-            // Construct argv for cmdBuild: <target> -o <tempBinaryPath>
-            std::vector<std::string> buildStorage = {
-                args.target, "-o", tempBinaryPath, "--arch", archStr};
-            if (args.platformTarget == PackageTarget::Windows)
-                buildStorage.push_back("--windows-release-runtime");
-            std::vector<char *> buildArgv;
-            buildArgv.reserve(buildStorage.size());
-            for (auto &arg : buildStorage)
-                buildArgv.push_back(arg.data());
-            int rc = cmdBuild(static_cast<int>(buildArgv.size()), buildArgv.data());
-            if (rc != 0) {
-                std::cerr << "error: compilation failed\n";
-                std::error_code ec;
-                fs::remove(packageBinaryPath, ec);
-                return 1;
-            }
+        const int buildRc = buildProjectToNativeForPackage(
+            args.target, tempBinaryPath, archStr, args.platformTarget == PackageTarget::Windows);
+        if (buildRc != 0) {
+            std::cerr << "error: compilation failed\n";
+            std::error_code ec;
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
+            return 1;
         }
 
         std::error_code compiledEc;
@@ -1247,12 +1330,13 @@ int cmdPackage(int argc, char **argv) {
                 std::cerr << "error: cannot inspect compiled binary at " << packageBinaryPath
                           << ": " << compiledEc.message() << "\n";
                 std::error_code cleanupEc;
-                fs::remove(packageBinaryPath, cleanupEc);
+                removeFailedArtifactUnlessKept(
+                    packageBinaryPath, args.keepFailedArtifact, cleanupEc);
                 return 1;
             }
             std::cerr << "error: compiled binary not found at " << packageBinaryPath << "\n";
             std::error_code ec;
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
             return 1;
         }
         try {
@@ -1261,7 +1345,7 @@ int cmdPackage(int argc, char **argv) {
             std::cerr << "error: compiled executable is not valid for this package: " << ex.what()
                       << "\n";
             std::error_code ec;
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
             return 1;
         }
     }
@@ -1346,7 +1430,8 @@ int cmdPackage(int argc, char **argv) {
         std::cerr << "error: packaging failed: " << e.what() << "\n";
         std::error_code ec;
         if (cleanupPackagedBinary)
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
+        removeFailedArtifactUnlessKept(args.outputPath, args.keepFailedArtifact, ec);
         return 1;
     }
 
@@ -1359,15 +1444,15 @@ int cmdPackage(int argc, char **argv) {
             std::cerr << "error: package builder did not create output file: " << args.outputPath
                       << "\n";
         if (cleanupPackagedBinary)
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
         return 1;
     }
 
     if (args.platformTarget == PackageTarget::Windows &&
         !signWindowsInstallerArtifact(proj, args.outputPath, args.verbose, std::cerr)) {
-        fs::remove(args.outputPath, ec);
+        removeFailedArtifactUnlessKept(args.outputPath, args.keepFailedArtifact, ec);
         if (cleanupPackagedBinary)
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
         return 1;
     }
 
@@ -1377,7 +1462,7 @@ int cmdPackage(int argc, char **argv) {
     } catch (const std::exception &ex) {
         std::cerr << "error: cannot read generated package for verification: " << ex.what() << "\n";
         if (cleanupPackagedBinary)
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
         return 1;
     }
 
@@ -1428,16 +1513,16 @@ int cmdPackage(int argc, char **argv) {
         }
     } catch (const std::exception &ex) {
         std::cerr << "error: cannot prepare package verification: " << ex.what() << "\n";
-        fs::remove(args.outputPath, ec);
+        removeFailedArtifactUnlessKept(args.outputPath, args.keepFailedArtifact, ec);
         if (cleanupPackagedBinary)
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
         return 1;
     }
     if (!valid) {
         std::cerr << "error: package verification failed:\n" << verifyErr.str();
-        fs::remove(args.outputPath, ec);
+        removeFailedArtifactUnlessKept(args.outputPath, args.keepFailedArtifact, ec);
         if (cleanupPackagedBinary)
-            fs::remove(packageBinaryPath, ec);
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
         return 1;
     }
     if (args.verbose)

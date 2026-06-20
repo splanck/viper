@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <iosfwd>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace il::support {
@@ -132,6 +133,29 @@ SharedOptionParseResult parseSharedOption(int &index,
 ///          missing-value or invalid-value reason instead of a generic failure.
 [[nodiscard]] const std::string &lastSharedOptionError();
 
+/// @brief Return the diagnostic format requested anywhere in @p argv.
+/// @details This lightweight pre-scan lets subcommands honor
+///          `--diagnostic-format=json` even when a later argument fails before
+///          the normal shared-option parser can produce a full configuration.
+///          Malformed or missing values are ignored here and reported by the
+///          authoritative parser.
+/// @param argc Number of arguments to inspect.
+/// @param argv Argument vector to scan.
+/// @return The requested diagnostic format, or text when no valid request is present.
+[[nodiscard]] DiagnosticFormat detectDiagnosticFormatFlag(int argc, char **argv);
+
+/// @brief Extract the value from a `--name=value` command-line token.
+/// @details The helper is intentionally small and allocation-free so individual
+///          subcommands can support the common GNU-style inline form without
+///          reimplementing prefix and empty-value checks.
+/// @param arg Full argument token to inspect.
+/// @param optionName Option name including leading dashes, for example `--target`.
+/// @param value Receives the substring after `=` when the token matches.
+/// @return True when @p arg is exactly `optionName=value`; false otherwise.
+[[nodiscard]] bool splitInlineOptionValue(std::string_view arg,
+                                          std::string_view optionName,
+                                          std::string_view &value);
+
 /// @brief Print one diagnostic according to the requested format.
 void printDiagnostic(const il::support::Diagnostic &diag,
                      std::ostream &os,
@@ -243,6 +267,22 @@ int cmdRun(int argc, char **argv);
 /// @param argv Array of argument strings.
 /// @return `0` on success, non-zero on failure.
 int cmdBuild(int argc, char **argv);
+
+/// @brief Build a project to a native executable for packaging workflows.
+/// @details This is the programmatic equivalent of `viper build <target> -o
+///          <output> --arch <arch>` and shares the same project-resolution,
+///          asset, verification, diagnostic, and native-codegen path as the
+///          public build command. It avoids constructing synthetic argv arrays
+///          in higher-level packaging code.
+/// @param target Project target path, source file, or manifest path.
+/// @param outputPath Native executable output path.
+/// @param arch Target architecture text (`x64` or `arm64`).
+/// @param windowsReleaseRuntime True to force the Windows release CRT.
+/// @return `0` on success; non-zero on build or validation failure.
+int buildProjectToNativeForPackage(const std::string &target,
+                                   const std::string &outputPath,
+                                   const std::string &arch,
+                                   bool windowsReleaseRuntime);
 
 /// @brief Handle `viper check` subcommand.
 ///

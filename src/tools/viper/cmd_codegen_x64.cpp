@@ -39,7 +39,7 @@ namespace viper::tools::ilc {
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: viper codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
+    "Usage: viper codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
     "[-run-native] [--stack-size=SIZE] [--native-asm|--system-asm] "
     "[--native-link|--system-link(deprecated)] [--asset-blob <file.vpa>] "
     "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64] "
@@ -333,7 +333,7 @@ int cmd_codegen_x64(int argc, char **argv) {
 
     const std::string_view token = args.front();
     if (token == "--help" || token == "-h") {
-        std::cerr << kUsage;
+        std::cout << kUsage;
         return 0;
     }
     if (const auto it = kHandlers.find(std::string(token)); it != kHandlers.end()) {

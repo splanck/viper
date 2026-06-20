@@ -127,11 +127,11 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv) {
                 case ilc::SharedOptionParseResult::NotMatched:
                     if (!arg.empty() && arg[0] != '-') {
                         if (!config.sourcePath.empty()) {
-                            return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
-                                il::support::Severity::Error,
-                                "multiple source files are not supported",
-                                {},
-                                {}});
+                            return il::support::Expected<FrontZiaConfig>(
+                                il::support::Diagnostic{il::support::Severity::Error,
+                                                        "multiple source files are not supported",
+                                                        {},
+                                                        {}});
                         }
                         config.sourcePath = arg;
                     } else {
@@ -188,8 +188,18 @@ int runFrontZia(const FrontZiaConfig &config,
     compilerOpts.warningPolicy.warningsAsErrors = config.shared.werror;
     compilerOpts.warningPolicy.strictSafetyWarnings = config.shared.strictDiagnostics;
     for (const auto &w : config.shared.disabledWarnings) {
-        if (auto code = parseWarningCode(w))
+        if (auto code = parseWarningCode(w)) {
             compilerOpts.warningPolicy.disabled.insert(*code);
+        } else {
+            ilc::printDiagnostic(il::support::Diagnostic{il::support::Severity::Error,
+                                                         "unknown warning name in -Wno-" + w,
+                                                         {},
+                                                         "V-CLI-WARNING"},
+                                 std::cerr,
+                                 &sm,
+                                 config.shared.diagnosticFormat);
+            return 1;
+        }
     }
 
     auto result = compile(compilerInput, compilerOpts, sm);
@@ -207,8 +217,11 @@ int runFrontZia(const FrontZiaConfig &config,
     core::Module module = std::move(result.module);
 
     if (config.emitIl) {
-        if (!reportVerifierDiagnostics(
-                module, std::cerr, sm, config.shared.diagnosticFormat, config.shared.showWarnings)) {
+        if (!reportVerifierDiagnostics(module,
+                                       std::cerr,
+                                       sm,
+                                       config.shared.diagnosticFormat,
+                                       config.shared.showWarnings)) {
             return 1;
         }
         io::Serializer::write(module, std::cout);
@@ -223,7 +236,14 @@ int runFrontZia(const FrontZiaConfig &config,
     if (!config.shared.stdinPath.empty()) {
         stdinRedirect.emplace(config.shared.stdinPath);
         if (!stdinRedirect->ok()) {
-            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
+            ilc::printDiagnostic(il::support::Diagnostic{il::support::Severity::Error,
+                                                         "unable to open stdin file: " +
+                                                             stdinRedirect->errorMessage(),
+                                                         {},
+                                                         {}},
+                                 std::cerr,
+                                 &sm,
+                                 config.shared.diagnosticFormat);
             return 1;
         }
     }
@@ -278,12 +298,14 @@ int runFrontZia(const FrontZiaConfig &config,
 /// @return Zero on success; non-zero on parsing, IO, or runtime failure.
 int cmdFrontZia(int argc, char **argv) {
     SourceManager sm;
+    const auto earlyFormat = ilc::detectDiagnosticFormatFlag(argc, argv);
 
     auto parsed = parseFrontZiaArgs(argc, argv);
     if (!parsed) {
         const auto &diag = parsed.error();
-        il::support::printDiag(diag, std::cerr, &sm);
-        frontZiaUsage();
+        ilc::printDiagnostic(diag, std::cerr, &sm, earlyFormat);
+        if (earlyFormat == ilc::DiagnosticFormat::Text)
+            frontZiaUsage();
         return 1;
     }
 

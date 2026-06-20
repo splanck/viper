@@ -7,6 +7,7 @@
 
 #include "cli.hpp"
 
+#include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/LinuxRuntimeStubGen.hpp"
@@ -18,6 +19,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -27,6 +29,8 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -140,9 +144,9 @@ void installPackageUsage() {
 
 /// @brief Return the host platform name ("macos"/"windows"/"linux").
 std::string hostPlatformName() {
-#if defined(__APPLE__)
+#if VIPER_HOST_MACOS
     return "macos";
-#elif defined(_WIN32)
+#elif VIPER_HOST_WINDOWS
     return "windows";
 #else
     return "linux";
@@ -163,8 +167,12 @@ std::string rpmArchFor(const std::string &arch) {
 
 /// @brief Return true if the `rpmbuild` tool is available on PATH.
 bool rpmbuildAvailable() {
+    static std::optional<bool> cached;
+    if (cached)
+        return *cached;
     const RunResult rr = run_process({"rpmbuild", "--version"});
-    return rr.exit_code == 0;
+    cached = rr.exit_code == 0;
+    return *cached;
 }
 
 /// @brief Read an environment variable, returning "" when it is unset.
@@ -322,7 +330,7 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
         return false;
     }
 
-#if !defined(__APPLE__)
+#if !VIPER_HOST_MACOS
     err << "error: macOS package signing requires running on macOS\n";
     (void)artifactPath;
     return false;
@@ -593,6 +601,25 @@ bool parseOnOff(const std::string &text, bool &out) {
     return false;
 }
 
+/// @brief Parse a strictly positive decimal integer option value.
+/// @details Requires full consumption of the input token, unlike std::stoi
+///          which accepts numeric prefixes such as `30abc`.
+/// @param text Raw command-line token to parse.
+/// @param out Receives the parsed integer on success.
+/// @return True when @p text is a positive base-10 int.
+bool parsePositiveIntOption(std::string_view text, int &out) {
+    if (text.empty())
+        return false;
+    int value = 0;
+    const char *begin = text.data();
+    const char *end = begin + text.size();
+    const auto parsed = std::from_chars(begin, end, value, 10);
+    if (parsed.ec != std::errc{} || parsed.ptr != end || value <= 0)
+        return false;
+    out = value;
+    return true;
+}
+
 /// @brief Return true if @p arg is an install-package option that takes a value.
 /// @details Used during argument parsing to know when to consume the next token.
 bool installPackageOptionRequiresValue(const std::string &arg) {
@@ -660,13 +687,8 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         } else if (arg == "--macos-staple") {
             args.macosStaple = true;
         } else if (arg == "--macos-notary-timeout" && i + 1 < argc) {
-            try {
-                args.macosNotaryTimeoutSeconds = std::stoi(argv[++i]);
-            } catch (const std::exception &) {
-                std::cerr << "error: --macos-notary-timeout expects a number of seconds\n";
-                return false;
-            }
-            if (args.macosNotaryTimeoutSeconds <= 0) {
+            const std::string_view timeoutValue = argv[++i];
+            if (!parsePositiveIntOption(timeoutValue, args.macosNotaryTimeoutSeconds)) {
                 std::cerr << "error: --macos-notary-timeout expects a positive number of seconds\n";
                 return false;
             }
@@ -770,7 +792,7 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         std::cerr << "error: require exactly one of --stage-dir, --build-dir, or --verify-only\n";
         return false;
     }
-#if defined(_WIN32)
+#if VIPER_HOST_WINDOWS
     if (!args.buildDir.empty() && args.buildConfig.empty())
         args.buildConfig = "Release";
 #endif
@@ -1490,8 +1512,10 @@ int cmdInstallPackage(int argc, char **argv) {
             std::cout << "Files: " << manifest.files.size() << "\n";
         }
 
-        if (args.stageOnly)
+        if (args.stageOnly) {
+            stageCleanup.dismiss();
             return 0;
+        }
 
         fs::path outBase = args.outputPath;
         if (outBase.empty())
@@ -1499,8 +1523,8 @@ int cmdInstallPackage(int argc, char **argv) {
         const auto targets = selectedTargets(args.target, manifest.platform);
         std::error_code outEc;
         const bool outPathExistsAsDirectory = !outBase.empty() && fs::is_directory(outBase, outEc);
-        const bool outIsDirectoryLike = args.outputPath.empty() || outPathExistsAsDirectory ||
-                                        (!outBase.has_extension() && targets.size() > 1);
+        const bool outIsDirectoryLike =
+            args.outputPath.empty() || outPathExistsAsDirectory || !outBase.has_extension();
         if (outIsDirectoryLike)
             fs::create_directories(outBase);
 
@@ -1632,6 +1656,21 @@ int cmdInstallPackage(int argc, char **argv) {
                 dmgParams.backgroundPng = args.macosDmgBackground;
                 dmgParams.volumeIcns = args.macosDmgIcon;
                 viper::pkg::buildMacOSToolchainDmg(dmgParams);
+                std::error_code dmgEc;
+                if (!fs::exists(dmgParams.outputPath, dmgEc)) {
+                    std::cerr << "error: macOS .dmg builder did not create output file: "
+                              << dmgParams.outputPath << "\n";
+                    return 1;
+                }
+                const auto dmgSize = fs::file_size(dmgParams.outputPath, dmgEc);
+                if (dmgEc || dmgSize == 0) {
+                    std::cerr << "error: macOS .dmg output is not readable or is empty: "
+                              << dmgParams.outputPath;
+                    if (dmgEc)
+                        std::cerr << ": " << dmgEc.message();
+                    std::cerr << "\n";
+                    return 1;
+                }
                 std::cout << dmgParams.outputPath << "\n";
             }
         }

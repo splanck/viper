@@ -15,6 +15,7 @@ module renderer;
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
 bind Viper.Text.Fmt;
+bind SmoothValue = Viper.Game.SmoothValue;
 
 bind "../config";
 bind "../progression";
@@ -26,6 +27,7 @@ bind "./sprites";
 
 var backdropCache_: Pixels;
 var playfieldShellCache_: Pixels;
+var menuHighlight_: SmoothValue = null;
 
 hide func drawStarField(canvas: Canvas, tickMs: Integer) {
     var i = 0;
@@ -261,6 +263,17 @@ expose func drawMenu(canvas: Canvas,
 
     theme.drawTextCentered(canvas, card.x, card.y + 52, card.w, "START AN ARCADE RUN", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
     theme.drawTextCentered(canvas, card.x, card.y + 76, card.w, "Classic maze chase with an arcade cabinet shell.", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    // R13 — eased selection highlight that glides between menu buttons.
+    var targetY = menuButtonRect(selected).y;
+    if menuHighlight_ == null {
+        menuHighlight_ = SmoothValue.New(targetY * 1.0, 18.0);
+    }
+    menuHighlight_.Target = targetY * 1.0;
+    menuHighlight_.Update();
+    var hl0 = menuButtonRect(0);
+    canvas.BoxAlpha(hl0.x - 8, menuHighlight_.ValueI64 - 5, hl0.w + 16, 50,
+                    theme.ACCENT_YELLOW, 22);
 
     widgets.drawButton(canvas, menuButtonRect(0), "START GAME", selected == 0, true, false, tickMs);
     widgets.drawButton(canvas, menuButtonRect(1), "PROFILE", selected == 1, false, false, tickMs);

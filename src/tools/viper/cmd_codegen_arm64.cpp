@@ -33,7 +33,7 @@ namespace {
 using viper::tools::ArgvView;
 
 constexpr std::string_view kUsage =
-    "usage: viper codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
+    "Usage: viper codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
     "       [--stack-size=SIZE]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
     "       [--native-asm|--system-asm] [--native-link|--system-link(deprecated)]\n"
@@ -259,7 +259,7 @@ int cmd_codegen_arm64(int argc, char **argv) {
         return 1;
     }
     if (args.front() == "--help" || args.front() == "-h") {
-        std::cerr << kUsage;
+        std::cout << kUsage;
         return 0;
     }
     const ParseOutcome parsed = parseArgs(args);

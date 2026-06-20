@@ -89,11 +89,13 @@ struct LoadResult {
 /// @param module Module receiving the parsed contents when successful.
 /// @param err Stream receiving human-readable diagnostics.
 /// @param ioErrorPrefix Prefix used when reporting file opening failures.
+/// @param printDiagnostics True to print load/parse diagnostics during loading.
 /// @return Structured result describing success or the failure category.
 LoadResult loadModuleFromFile(const std::string &path,
                               il::core::Module &module,
                               std::ostream &err,
-                              std::string_view ioErrorPrefix = "unable to open ");
+                              std::string_view ioErrorPrefix = "unable to open ",
+                              bool printDiagnostics = true);
 
 /// @brief Verify @p module and forward diagnostics to @p err when verification fails.
 /// @param module Module to verify.
@@ -119,12 +121,14 @@ LoadResult verifyModuleResult(const il::core::Module &module);
 /// @param sm Source manager used to resolve diagnostic file paths.
 /// @param err Stream receiving human-readable diagnostics.
 /// @param ioErrorPrefix Prefix used when reporting file opening failures.
+/// @param printDiagnostics True to print load/verify diagnostics during loading.
 /// @return Structured result describing success or the failure category.
 LoadResult loadAndVerifyModule(const std::string &path,
                                il::core::Module &module,
                                const il::support::SourceManager *sm,
                                std::ostream &err,
-                               std::string_view ioErrorPrefix = "unable to open ");
+                               std::string_view ioErrorPrefix = "unable to open ",
+                               bool printDiagnostics = true);
 
 /// @brief Print a LoadResult diagnostic to a stream.
 /// @param result Result containing the diagnostic to print.

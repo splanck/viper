@@ -99,15 +99,21 @@ class CompilerBridge : public ICompilerBridge {
 
   private:
     /// @brief Guards access to the shared completion engine cache.
-    /// @details Other bridge operations build fresh compiler state per call, but completions reuse a
-    ///          long-lived engine for cache locality. The mutex preserves the documented thread-safe
-    ///          bridge contract if the server dispatch model becomes concurrent.
+    /// @details Other bridge operations build fresh compiler state per call, but completions reuse
+    /// a
+    ///          long-lived engine for cache locality. The mutex preserves the documented
+    ///          thread-safe bridge contract if the server dispatch model becomes concurrent.
     mutable std::mutex completionMutex_;
     std::unique_ptr<il::frontends::zia::CompletionEngine> completionEngine_;
 
     /// @brief Guards project index updates and workspace symbol scans.
     mutable std::mutex projectMutex_;
     void *projectIndex_{nullptr};
+    /// @brief False after a runtime project-index mutation reports failure.
+    /// @details Capability advertisement remains independent from this flag;
+    ///          operations consult it to fail gracefully without hiding the
+    ///          feature from clients that can recover after document changes.
+    bool projectIndexUsable_{true};
     std::unordered_map<std::string, std::string> openDocuments_;
 };
 

@@ -38,7 +38,7 @@ constexpr TargetArch detectHostArch() {
 
 /// @brief Check if an output path implies native binary output.
 /// @param path The output path to inspect.
-/// @return true if the path does NOT end in ".il" case-insensitively.
+/// @return true for extensionless executable paths or ".exe" case-insensitively.
 bool isNativeOutputPath(const std::string &path);
 
 /// @brief Compile an IL file on disk to a native binary.

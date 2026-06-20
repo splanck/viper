@@ -41,17 +41,22 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <mutex>
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace viper::server {
 
 using namespace il::frontends::zia;
+namespace fs = std::filesystem;
 
 // --- Helpers ---
 
@@ -236,8 +241,7 @@ static RenameResult renameFromRuntimeMap(void *map) {
     for (int64_t i = 0; i < count; ++i) {
         void *editMap = rt_seq_get(edits, i);
         TextEditInfo edit;
-        edit.range =
-            rangeFromMap(editMap, "startLine", "startColumn", "endLine", "endColumn");
+        edit.range = rangeFromMap(editMap, "startLine", "startColumn", "endLine", "endColumn");
         edit.newText = mapString(editMap, "newText");
         result.edits.push_back(std::move(edit));
     }
@@ -297,15 +301,38 @@ static bool containsCaseInsensitive(std::string_view text, std::string_view need
     if (needle.empty())
         return true;
     auto lower = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
-    auto it = std::search(text.begin(),
-                          text.end(),
-                          needle.begin(),
-                          needle.end(),
-                          [&](char a, char b) { return lower(a) == lower(b); });
+    auto it =
+        std::search(text.begin(), text.end(), needle.begin(), needle.end(), [&](char a, char b) {
+            return lower(a) == lower(b);
+        });
     return it != text.end();
 }
 
-static SemanticTokenType semanticTypeForToken(const Token &token, TokenKind previous) {
+/// @brief Map a semantic symbol kind to an LSP semantic-token type.
+static SemanticTokenType semanticTypeForSymbolKind(Symbol::Kind kind) {
+    switch (kind) {
+        case Symbol::Kind::Function:
+            return SemanticTokenType::Function;
+        case Symbol::Kind::Method:
+            return SemanticTokenType::Method;
+        case Symbol::Kind::Field:
+            return SemanticTokenType::Property;
+        case Symbol::Kind::Type:
+            return SemanticTokenType::Type;
+        case Symbol::Kind::Module:
+            return SemanticTokenType::Namespace;
+        case Symbol::Kind::Parameter:
+        case Symbol::Kind::Variable:
+            return SemanticTokenType::Variable;
+    }
+    return SemanticTokenType::Variable;
+}
+
+/// @brief Classify a token using semantic symbol data when available.
+static SemanticTokenType semanticTypeForToken(
+    const Token &token,
+    TokenKind previous,
+    const std::unordered_map<std::string, SemanticTokenType> &semanticNames) {
     if (token.isKeyword())
         return SemanticTokenType::Keyword;
 
@@ -322,6 +349,8 @@ static SemanticTokenType semanticTypeForToken(const Token &token, TokenKind prev
                 return SemanticTokenType::Enum;
             if (previous == TokenKind::KwInterface)
                 return SemanticTokenType::Interface;
+            if (auto it = semanticNames.find(token.text); it != semanticNames.end())
+                return it->second;
             return SemanticTokenType::Variable;
         case TokenKind::IntegerLiteral:
         case TokenKind::NumberLiteral:
@@ -334,6 +363,100 @@ static SemanticTokenType semanticTypeForToken(const Token &token, TokenKind prev
         default:
             return SemanticTokenType::Operator;
     }
+}
+
+/// @brief Build semantic token classification data from a successful Zia analysis.
+static std::unordered_map<std::string, SemanticTokenType> buildSemanticNameMap(
+    const AnalysisResult &analysis) {
+    std::unordered_map<std::string, SemanticTokenType> names;
+    if (!analysis.sema)
+        return names;
+    for (const auto &sym : analysis.sema->getGlobalSymbols())
+        names.emplace(sym.name, semanticTypeForSymbolKind(sym.kind));
+    for (const auto &typeName : analysis.sema->getTypeNames())
+        names.emplace(typeName, SemanticTokenType::Type);
+    return names;
+}
+
+/// @brief Index declaration-token locations for Zia type-like declarations.
+/// @details The semantic API exposes type names but not every declaration span.
+///          This lexer pass records the identifier immediately following class,
+///          struct, type, enum, and interface keywords so document symbols use
+///          declaration locations instead of an arbitrary text search match.
+static std::unordered_map<std::string, il::support::SourceLoc> indexZiaTypeDeclarationLocations(
+    const std::string &source, uint32_t fileId) {
+    std::unordered_map<std::string, il::support::SourceLoc> out;
+    il::support::DiagnosticEngine diag;
+    Lexer lexer(source, fileId, diag);
+    TokenKind previous = TokenKind::Eof;
+    while (true) {
+        Token token = lexer.next();
+        if (token.kind == TokenKind::Eof)
+            break;
+        if (token.kind == TokenKind::Identifier &&
+            (previous == TokenKind::KwClass || previous == TokenKind::KwStruct ||
+             previous == TokenKind::KwType || previous == TokenKind::KwEnum ||
+             previous == TokenKind::KwInterface)) {
+            out.emplace(token.text, token.loc);
+        }
+        if (token.kind != TokenKind::Error)
+            previous = token.kind;
+    }
+    return out;
+}
+
+/// @brief Read a workspace `.zia` source file if it is small enough for symbols.
+static std::optional<std::string> readWorkspaceSourceFile(const fs::path &path) {
+    constexpr std::streamoff kMaxWorkspaceSymbolFileBytes =
+        static_cast<std::streamoff>(1024ULL * 1024ULL);
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in)
+        return std::nullopt;
+    const std::streamoff size = in.tellg();
+    if (size < 0 || size > kMaxWorkspaceSymbolFileBytes)
+        return std::nullopt;
+    in.seekg(0, std::ios::beg);
+    if (!in)
+        return std::nullopt;
+    std::string text(static_cast<std::size_t>(size), '\0');
+    if (size > 0)
+        in.read(text.data(), size);
+    if (!in)
+        return std::nullopt;
+    return text;
+}
+
+/// @brief Collect bounded `.zia` workspace files under the current directory.
+static std::vector<std::pair<std::string, std::string>> collectWorkspaceZiaSources(
+    const std::unordered_map<std::string, std::string> &openDocuments) {
+    constexpr std::size_t kMaxWorkspaceSymbolFiles = 256;
+    std::vector<std::pair<std::string, std::string>> docs;
+    docs.reserve(openDocuments.size());
+    std::unordered_set<std::string> seen;
+    for (const auto &[path, source] : openDocuments) {
+        docs.emplace_back(path, source);
+        seen.insert(path);
+    }
+
+    std::error_code ec;
+    fs::recursive_directory_iterator it(
+        fs::current_path(ec), fs::directory_options::skip_permission_denied, ec);
+    fs::recursive_directory_iterator end;
+    for (; !ec && it != end && docs.size() < kMaxWorkspaceSymbolFiles; it.increment(ec)) {
+        std::error_code entryEc;
+        if (!it->is_regular_file(entryEc) || entryEc)
+            continue;
+        if (it->path().extension() != ".zia")
+            continue;
+        fs::path canonical = fs::weakly_canonical(it->path(), entryEc);
+        std::string path = (entryEc ? it->path() : canonical).string();
+        if (!seen.insert(path).second)
+            continue;
+        auto source = readWorkspaceSourceFile(it->path());
+        if (source)
+            docs.emplace_back(std::move(path), std::move(*source));
+    }
+    return docs;
 }
 
 // --- Constructor / Destructor ---
@@ -388,21 +511,27 @@ void CompilerBridge::updateDocument(const std::string &path, const std::string &
         return;
     RuntimeString pathValue(path);
     RuntimeString sourceValue(source);
-    (void)rt_zia_project_index_update_file(projectIndex_, pathValue.get(), sourceValue.get());
+    if (rt_zia_project_index_update_file(projectIndex_, pathValue.get(), sourceValue.get()) == 0)
+        projectIndexUsable_ = false;
+    else
+        projectIndexUsable_ = true;
 }
 
 void CompilerBridge::removeDocument(const std::string &path) {
     std::lock_guard<std::mutex> lock(projectMutex_);
-    openDocuments_.erase(path);
+    const bool wasOpen = openDocuments_.erase(path) != 0;
     if (!projectIndex_)
         return;
     RuntimeString pathValue(path);
-    (void)rt_zia_project_index_remove_file(projectIndex_, pathValue.get());
+    if (wasOpen && rt_zia_project_index_remove_file(projectIndex_, pathValue.get()) == 0)
+        projectIndexUsable_ = false;
+    else if (wasOpen)
+        projectIndexUsable_ = true;
 }
 
 bool CompilerBridge::supportsDefinition() const {
     std::lock_guard<std::mutex> lock(projectMutex_);
-    return projectIndex_ && rt_zia_project_index_is_valid(projectIndex_) != 0;
+    return projectIndex_ != nullptr;
 }
 
 bool CompilerBridge::supportsReferences() const {
@@ -779,16 +908,17 @@ std::optional<LocationInfo> CompilerBridge::definition(const std::string &source
                                                        int col,
                                                        const std::string &path) {
     std::lock_guard<std::mutex> lock(projectMutex_);
-    if (!projectIndex_)
+    if (!projectIndex_ || !projectIndexUsable_)
         return std::nullopt;
     openDocuments_[path] = source;
     RuntimeString pathValue(path);
     RuntimeString sourceValue(source);
-    void *map = rt_zia_project_index_definition(projectIndex_,
-                                                pathValue.get(),
-                                                sourceValue.get(),
-                                                line,
-                                                zeroBasedColumnForRuntime(col));
+    if (rt_zia_project_index_update_file(projectIndex_, pathValue.get(), sourceValue.get()) == 0) {
+        projectIndexUsable_ = false;
+        return std::nullopt;
+    }
+    void *map = rt_zia_project_index_definition(
+        projectIndex_, pathValue.get(), sourceValue.get(), line, zeroBasedColumnForRuntime(col));
     auto result = definitionFromRuntimeMap(map);
     releaseRuntimeObject(map);
     return result;
@@ -799,16 +929,17 @@ std::vector<LocationInfo> CompilerBridge::references(const std::string &source,
                                                      int col,
                                                      const std::string &path) {
     std::lock_guard<std::mutex> lock(projectMutex_);
-    if (!projectIndex_)
+    if (!projectIndex_ || !projectIndexUsable_)
         return {};
     openDocuments_[path] = source;
     RuntimeString pathValue(path);
     RuntimeString sourceValue(source);
-    void *seq = rt_zia_project_index_references(projectIndex_,
-                                                pathValue.get(),
-                                                sourceValue.get(),
-                                                line,
-                                                zeroBasedColumnForRuntime(col));
+    if (rt_zia_project_index_update_file(projectIndex_, pathValue.get(), sourceValue.get()) == 0) {
+        projectIndexUsable_ = false;
+        return {};
+    }
+    void *seq = rt_zia_project_index_references(
+        projectIndex_, pathValue.get(), sourceValue.get(), line, zeroBasedColumnForRuntime(col));
     auto result = referencesFromRuntimeSeq(seq);
     releaseRuntimeObject(seq);
     return result;
@@ -820,7 +951,7 @@ RenameResult CompilerBridge::rename(const std::string &source,
                                     const std::string &path,
                                     const std::string &newName) {
     std::lock_guard<std::mutex> lock(projectMutex_);
-    if (!projectIndex_) {
+    if (!projectIndex_ || !projectIndexUsable_) {
         RenameResult invalid;
         invalid.reason = "invalid_index";
         return invalid;
@@ -829,6 +960,12 @@ RenameResult CompilerBridge::rename(const std::string &source,
     RuntimeString pathValue(path);
     RuntimeString sourceValue(source);
     RuntimeString newNameValue(newName);
+    if (rt_zia_project_index_update_file(projectIndex_, pathValue.get(), sourceValue.get()) == 0) {
+        projectIndexUsable_ = false;
+        RenameResult invalid;
+        invalid.reason = "invalid_index";
+        return invalid;
+    }
     void *map = rt_zia_project_index_rename_edits(projectIndex_,
                                                   pathValue.get(),
                                                   sourceValue.get(),
@@ -854,13 +991,12 @@ SignatureHelpInfo CompilerBridge::signatureHelp(const std::string &source,
 }
 
 std::vector<SymbolInfo> CompilerBridge::workspaceSymbols(const std::string &query) {
-    std::vector<std::pair<std::string, std::string>> docs;
+    std::unordered_map<std::string, std::string> openDocs;
     {
         std::lock_guard<std::mutex> lock(projectMutex_);
-        docs.reserve(openDocuments_.size());
-        for (const auto &[path, source] : openDocuments_)
-            docs.emplace_back(path, source);
+        openDocs = openDocuments_;
     }
+    auto docs = collectWorkspaceZiaSources(openDocs);
 
     std::vector<SymbolInfo> out;
     for (const auto &[path, source] : docs) {
@@ -889,6 +1025,12 @@ std::vector<SemanticTokenInfo> CompilerBridge::semanticTokens(const std::string 
                                                               const std::string &path) {
     il::support::DiagnosticEngine diag;
     il::support::SourceManager sm;
+    CompilerInput input{.source = source, .path = path};
+    CompilerOptions opts{};
+    auto analysis = parseAndAnalyze(input, opts, sm);
+    const auto semanticNames = analysis ? buildSemanticNameMap(*analysis)
+                                        : std::unordered_map<std::string, SemanticTokenType>{};
+
     uint32_t fileId = sm.addFile(path);
     Lexer lexer(source, fileId, diag);
 
@@ -906,7 +1048,7 @@ std::vector<SemanticTokenInfo> CompilerBridge::semanticTokens(const std::string 
         info.column = token.loc.column;
         info.length = static_cast<uint32_t>(
             std::min<size_t>(token.text.size(), std::numeric_limits<uint32_t>::max()));
-        info.type = semanticTypeForToken(token, previous);
+        info.type = semanticTypeForToken(token, previous, semanticNames);
         out.push_back(info);
         previous = token.kind;
     }
@@ -966,6 +1108,7 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
 
     std::vector<SymbolInfo> out;
     const uint32_t mainFileId = result->fileId;
+    const auto typeLocations = indexZiaTypeDeclarationLocations(source, mainFileId);
 
     auto globals = result->sema->getGlobalSymbols();
     for (const auto &sym : globals) {
@@ -983,20 +1126,10 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
 
     auto types = result->sema->getTypeNames();
     for (const auto &tn : types) {
-        const size_t pos = source.find(tn);
-        if (pos == std::string::npos)
+        auto it = typeLocations.find(tn);
+        if (it == typeLocations.end() || it->second.file_id != mainFileId)
             continue;
-        uint32_t typeLine = 1;
-        uint32_t typeColumn = 1;
-        for (size_t i = 0; i < pos; ++i) {
-            if (source[i] == '\n') {
-                ++typeLine;
-                typeColumn = 1;
-            } else {
-                ++typeColumn;
-            }
-        }
-        out.push_back({tn, "type", tn, false, false, typeLine, typeColumn, path});
+        out.push_back({tn, "type", tn, false, false, it->second.line, it->second.column, path});
     }
 
     return out;

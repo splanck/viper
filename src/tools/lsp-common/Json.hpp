@@ -107,13 +107,15 @@ class JsonValue {
     // --- Object member access ---
 
     /// @brief Get a member by key (nullptr if not found or not an object).
-    [[nodiscard]] const JsonValue *get(const std::string &key) const;
+    /// @details Accepts a string view to avoid allocating temporary strings when
+    ///          protocol handlers look up string-literal member names.
+    [[nodiscard]] const JsonValue *get(std::string_view key) const;
 
     /// @brief Get a member by key (returns null JsonValue if not found).
-    [[nodiscard]] const JsonValue &operator[](const std::string &key) const;
+    [[nodiscard]] const JsonValue &operator[](std::string_view key) const;
 
     /// @brief Check if this object has a member with the given key.
-    [[nodiscard]] bool has(const std::string &key) const;
+    [[nodiscard]] bool has(std::string_view key) const;
 
     // --- Array access ---
 

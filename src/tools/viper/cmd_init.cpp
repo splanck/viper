@@ -12,6 +12,8 @@
 
 #include "cli.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -64,6 +66,40 @@ static bool validateProjectName(const std::string &projectName) {
     return true;
 }
 
+/// @brief Quote a command argument for POSIX-style shells when needed.
+/// @details The generated hint is informational, but it should still be safe to
+///          paste for project names containing spaces, shell metacharacters, or
+///          leading dashes (after commandPathForProjectName prefixes `./`).
+/// @param value Raw argument text to quote.
+/// @return Either @p value unchanged or a single-quoted shell token.
+static std::string shellQuoteArgument(std::string_view value) {
+    const auto safeChar = [](char c) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        return std::isalnum(uc) || c == '_' || c == '-' || c == '.' || c == '/';
+    };
+    if (!value.empty() && std::all_of(value.begin(), value.end(), safeChar))
+        return std::string(value);
+    std::string quoted = "'";
+    for (char c : value) {
+        if (c == '\'')
+            quoted += "'\\''";
+        else
+            quoted.push_back(c);
+    }
+    quoted += "'";
+    return quoted;
+}
+
+/// @brief Build a shell-safe project target for the printed `viper run` hint.
+/// @param projectName Validated project directory name.
+/// @return Quoted path text suitable for pasting after `viper run`.
+static std::string commandPathForProjectName(const std::string &projectName) {
+    std::string target = projectName;
+    if (!target.empty() && target.front() == '-')
+        target = "./" + target;
+    return shellQuoteArgument(target);
+}
+
 /// @brief Print usage for the `viper init` subcommand to stderr.
 static void printInitUsage() {
     std::cerr << "Usage: viper init <project-name> [--lang zia|basic]\n"
@@ -72,17 +108,21 @@ static void printInitUsage() {
               << "\n"
               << "Options:\n"
               << "  --lang zia|basic   Source language for the generated entry file\n"
+              << "  --                 Treat the next token as the project name\n"
               << "  -h, --help         Show this help\n";
 }
 
 int cmdInit(int argc, char **argv) {
     std::string projectName;
     std::string lang = "zia";
+    bool endOfOptions = false;
 
     // Parse arguments.
     for (int i = 0; i < argc; ++i) {
         std::string_view arg = argv[i];
-        if (arg == "--lang") {
+        if (!endOfOptions && arg == "--") {
+            endOfOptions = true;
+        } else if (!endOfOptions && arg == "--lang") {
             if (i + 1 >= argc) {
                 std::cerr << "error: --lang requires a value (zia or basic)\n";
                 printInitUsage();
@@ -94,10 +134,10 @@ int cmdInit(int argc, char **argv) {
                 printInitUsage();
                 return 1;
             }
-        } else if (arg == "--help" || arg == "-h") {
+        } else if (!endOfOptions && (arg == "--help" || arg == "-h")) {
             printInitUsage();
             return 0;
-        } else if (arg.size() > 0 && arg[0] == '-') {
+        } else if (!endOfOptions && arg.size() > 0 && arg[0] == '-') {
             std::cerr << "error: unknown option: " << arg << "\n";
             printInitUsage();
             return 1;
@@ -170,7 +210,7 @@ int cmdInit(int argc, char **argv) {
               << "  " << projectName << "/viper.project\n"
               << "  " << projectName << "/" << entryFile << "\n"
               << "\n"
-              << "Run with:  viper run " << projectName << "\n";
+              << "Run with:  viper run " << commandPathForProjectName(projectName) << "\n";
 
     return 0;
 }

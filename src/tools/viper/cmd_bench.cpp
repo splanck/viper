@@ -354,6 +354,44 @@ double computeMedian(std::vector<double> values) {
     return values[n / 2];
 }
 
+/// @brief Return the benchmark strategy names selected by @p config.
+std::vector<std::string> selectedBenchStrategies(const BenchConfig &config) {
+    std::vector<std::string> strategies;
+    if (config.runTable)
+        strategies.push_back("table");
+    if (config.runSwitch)
+        strategies.push_back("switch");
+    if (config.runThreaded)
+        strategies.push_back("threaded");
+    if (config.runBytecodeSwitch)
+        strategies.push_back("bc-switch");
+    if (config.runBytecodeThreaded)
+        strategies.push_back("bc-threaded");
+    return strategies;
+}
+
+/// @brief Append failed setup results for every selected benchmark strategy.
+/// @param file Input file whose setup failed.
+/// @param config Benchmark configuration selecting strategies.
+/// @param message Failure message to attach to each synthetic result.
+/// @param results Output result list to extend.
+void appendSetupFailureResults(const std::string &file,
+                               const BenchConfig &config,
+                               const std::string &message,
+                               std::vector<BenchResult> &results) {
+    auto strategies = selectedBenchStrategies(config);
+    if (strategies.empty())
+        strategies.push_back("setup");
+    for (const auto &strategy : strategies) {
+        BenchResult result;
+        result.file = file;
+        result.strategy = strategy;
+        result.success = false;
+        result.errorMessage = message;
+        results.push_back(std::move(result));
+    }
+}
+
 /// @brief Run benchmarks for a single file.
 /// @param file Path to IL file.
 /// @param config Benchmark configuration.
@@ -365,14 +403,25 @@ bool benchmarkFile(const std::string &file,
     il::support::SourceManager sm;
     core::Module mod;
 
-    auto load = il::tools::common::loadModuleFromFile(file, mod, std::cerr);
+    auto load =
+        il::tools::common::loadModuleFromFile(file, mod, std::cerr, "unable to open ", false);
     if (!load.succeeded()) {
-        std::cerr << "Failed to load: " << file << "\n";
+        appendSetupFailureResults(
+            file, config, load.diag ? load.diag->message : "failed to load IL module", results);
+        if (!config.jsonOutput)
+            il::tools::common::printLoadResult(load, std::cerr, &sm);
         return false;
     }
 
-    if (!il::tools::common::verifyModule(mod, std::cerr, &sm)) {
-        std::cerr << "Verification failed: " << file << "\n";
+    auto verify = il::tools::common::verifyModuleResult(mod);
+    if (!verify.succeeded()) {
+        appendSetupFailureResults(file,
+                                  config,
+                                  verify.diag ? verify.diag->message
+                                              : "IL module verification failed",
+                                  results);
+        if (!config.jsonOutput)
+            il::tools::common::printLoadResult(verify, std::cerr, &sm);
         return false;
     }
 
@@ -439,7 +488,13 @@ bool benchmarkFile(const std::string &file,
         viper::bytecode::BytecodeCompiler compiler;
         auto compiled = compiler.compileChecked(mod, &sm, true);
         if (!compiled) {
-            il::support::printDiag(compiled.error(), std::cerr, &sm);
+            BenchConfig bytecodeOnly = config;
+            bytecodeOnly.runTable = false;
+            bytecodeOnly.runSwitch = false;
+            bytecodeOnly.runThreaded = false;
+            appendSetupFailureResults(file, bytecodeOnly, compiled.error().message, results);
+            if (!config.jsonOutput)
+                il::support::printDiag(compiled.error(), std::cerr, &sm);
             return false;
         }
         viper::bytecode::BytecodeModule bcModule = std::move(compiled.value());
@@ -542,9 +597,8 @@ void printTextResults(const std::vector<BenchResult> &results) {
         }
         std::cout << std::fixed << std::setprecision(2);
         std::cout << "BENCH " << quoteBenchField(r.file) << " " << r.strategy
-                  << " instr=" << r.instructions
-                  << " time_ms=" << r.timeMs << " insns_per_sec=" << std::setprecision(0)
-                  << r.insnsPerSec << "\n";
+                  << " instr=" << r.instructions << " time_ms=" << r.timeMs
+                  << " insns_per_sec=" << std::setprecision(0) << r.insnsPerSec << "\n";
     }
 }
 
