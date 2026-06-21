@@ -159,61 +159,81 @@ struct RunBuildConfig {
     std::optional<bool> windowsDebugRuntimeOverride;      ///< Windows debug/release runtime.
 };
 
-/// @brief Print usage for the `viper run`, `viper build`, or `viper check` subcommand to stderr.
-void printRunBuildUsage(RunMode mode) {
+/// @brief Print usage for the `viper run`, `viper build`, or `viper check` subcommand.
+void printRunBuildUsage(RunMode mode, std::ostream &out = std::cerr) {
     if (mode == RunMode::Check) {
-        std::cerr << "Usage: viper check [target] [options]\n"
-                  << "\n"
-                  << "Type-check and verify a .zia file, .bas file, project directory, or\n"
-                  << "viper.project without running or emitting anything.\n"
-                  << "\n"
-                  << "Check options:\n"
-                  << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
-                  << "  --no-strict-diagnostics       Keep safety warnings as warnings\n"
-                  << "  --quiet-warnings              Suppress warning output\n"
-                  << "  -h, --help                    Show this help\n"
-                  << "\n"
-                  << "Exit codes:\n"
-                  << "  0  no errors (warnings allowed)\n"
-                  << "  1  usage error or target could not be resolved\n"
-                  << "  2  compile or verification errors\n";
+        out << "Usage: viper check [target] [options]\n"
+            << "\n"
+            << "Type-check and verify a .zia file, .bas file, project directory, or\n"
+            << "viper.project without running or emitting anything.\n"
+            << "\n"
+            << "Check options:\n"
+            << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
+            << "  --dump-tokens|--dump-ast      Print frontend debug dumps\n"
+            << "  --dump-sema-ast|--dump-il     Print semantic AST or lowered IL\n"
+            << "  --time-compile                Print phase timing information\n"
+            << "  --pass-stats                  Print optimizer pass statistics\n"
+            << "  -Wall|-Werror|-Wno-NAME       Control warning handling\n"
+            << "  --no-strict-diagnostics       Keep safety warnings as warnings\n"
+            << "  --quiet-warnings              Suppress warning output\n"
+            << "  -h, --help                    Show this help\n"
+            << "\n"
+            << "Exit codes:\n"
+            << "  0  no errors (warnings allowed)\n"
+            << "  1  usage error or target could not be resolved\n"
+            << "  2  compile or verification errors\n";
         return;
     }
     if (mode == RunMode::Run) {
-        std::cerr << "Usage: viper run [target] [options] [-- program-args...]\n"
-                  << "\n"
-                  << "Run a .zia file, .bas file, project directory, or viper.project.\n"
-                  << "\n"
-                  << "Run options:\n"
-                  << "  --debug-vm                    Use the standard VM for debugging\n"
-                  << "  --stdin-from FILE             Redirect stdin from file\n"
-                  << "  --max-steps N                 Limit VM execution steps\n"
-                  << "  --dump-trap                   Show detailed trap diagnostics\n"
-                  << "  --trace[=il|src]              Enable execution tracing\n"
-                  << "  --bounds-checks               Enable generated bounds checks\n"
-                  << "  --no-bounds-checks            Disable generated bounds checks\n"
-                  << "  --build-profile debug|balanced|release\n"
-                  << "  -O0|-O1|-O2                   Override optimization level\n"
-                  << "  -h, --help                    Show this help\n";
+        out << "Usage: viper run [target] [options] [-- program-args...]\n"
+            << "\n"
+            << "Run a .zia file, .bas file, project directory, or viper.project.\n"
+            << "\n"
+            << "Run options:\n"
+            << "  --debug-vm                    Use the standard VM for debugging\n"
+            << "  --debug-adapter               Serve the JSON debug adapter protocol\n"
+            << "  --stdin-from FILE             Redirect stdin from file\n"
+            << "  --max-steps N                 Limit VM execution steps\n"
+            << "  --dump-trap                   Show detailed trap diagnostics\n"
+            << "  --trace[=il|src]              Enable execution tracing\n"
+            << "  --profile                     Print execution profile data\n"
+            << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
+            << "  --bounds-checks               Enable generated bounds checks\n"
+            << "  --no-bounds-checks            Disable generated bounds checks\n"
+            << "  --dump-tokens|--dump-ast      Print frontend debug dumps\n"
+            << "  --dump-sema-ast|--dump-il     Print semantic AST or lowered IL\n"
+            << "  --dump-il-opt|--dump-il-passes Print optimizer debug dumps\n"
+            << "  --time-compile                Print phase timing information\n"
+            << "  --pass-stats                  Print optimizer pass statistics\n"
+            << "  --build-profile debug|balanced|release\n"
+            << "  -O0|-O1|-O2                   Override optimization level\n"
+            << "  -h, --help                    Show this help\n";
         return;
     }
 
-    std::cerr << "Usage: viper build [target] [-o output] [options]\n"
-              << "\n"
-              << "Build IL or a native binary from a .zia file, .bas file, project directory, or "
-                 "viper.project.\n"
-              << "\n"
-              << "Build options:\n"
-              << "  -o PATH                       Output .il or native binary path\n"
-              << "  --arch arm64|x64              Override native target architecture\n"
-              << "  --fast-link | --no-fast-link  Override linker mode\n"
-              << "  --windows-debug-runtime       Link Windows debug runtime\n"
-              << "  --windows-release-runtime     Link Windows release runtime\n"
-              << "  --build-profile debug|balanced|release\n"
-              << "  -O0|-O1|-O2                   Override optimization level\n"
-              << "  --bounds-checks               Enable generated bounds checks\n"
-              << "  --no-bounds-checks            Disable generated bounds checks\n"
-              << "  -h, --help                    Show this help\n";
+    out << "Usage: viper build [target] [-o output] [options]\n"
+        << "\n"
+        << "Build IL or a native binary from a .zia file, .bas file, project directory, or "
+           "viper.project.\n"
+        << "\n"
+        << "Build options:\n"
+        << "  -o PATH                       Output .il or native binary path\n"
+        << "  --arch arm64|x64              Override native target architecture\n"
+        << "  --fast-link | --no-fast-link  Override linker mode\n"
+        << "  --windows-debug-runtime       Link Windows debug runtime\n"
+        << "  --windows-release-runtime     Link Windows release runtime\n"
+        << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
+        << "  --build-profile debug|balanced|release\n"
+        << "  -O0|-O1|-O2                   Override optimization level\n"
+        << "  --bounds-checks               Enable generated bounds checks\n"
+        << "  --no-bounds-checks            Disable generated bounds checks\n"
+        << "  --dump-tokens|--dump-ast      Print frontend debug dumps\n"
+        << "  --dump-sema-ast|--dump-il     Print semantic AST or lowered IL\n"
+        << "  --dump-il-opt|--dump-il-passes Print optimizer debug dumps\n"
+        << "  --time-compile                Print phase timing information\n"
+        << "  --pass-stats                  Print optimizer pass statistics\n"
+        << "  -Wall|-Werror|-Wno-NAME       Control warning handling\n"
+        << "  -h, --help                    Show this help\n";
 }
 
 /// @brief A compiled project module plus whether it has already been verified.
@@ -365,6 +385,10 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                     il::support::Severity::Error, "missing output path after -o", {}, {}});
             }
             config.outputPath = argv[++i];
+            if (config.outputPath.empty()) {
+                return il::support::Expected<RunBuildConfig>(
+                    makeCommandError("missing output path after -o"));
+            }
         } else if (arg.substr(0, 3) == "-o=") {
             if (mode != RunMode::Build) {
                 return il::support::Expected<RunBuildConfig>(
@@ -409,6 +433,10 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "--debug-vm is only valid with 'run'", {}, {}});
             }
+            if (config.debugAdapter) {
+                return il::support::Expected<RunBuildConfig>(
+                    makeCommandError("--debug-vm cannot be combined with --debug-adapter"));
+            }
             config.debugVm = true;
         } else if (arg == "--debug-adapter") {
             if (mode != RunMode::Run) {
@@ -417,6 +445,10 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                                             "--debug-adapter is only valid with 'run'",
                                             {},
                                             {}});
+            }
+            if (config.debugVm) {
+                return il::support::Expected<RunBuildConfig>(
+                    makeCommandError("--debug-adapter cannot be combined with --debug-vm"));
             }
             config.debugAdapter = true;
             // Debug unoptimized code so every source line and local survives for
@@ -449,6 +481,11 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                                             {},
                                             {}});
             }
+            if (config.windowsDebugRuntimeOverride == false) {
+                return il::support::Expected<RunBuildConfig>(
+                    makeCommandError("--windows-debug-runtime cannot be combined with "
+                                     "--windows-release-runtime"));
+            }
             config.windowsDebugRuntimeOverride = true;
         } else if (arg == "--windows-release-runtime") {
             if (mode != RunMode::Build) {
@@ -457,6 +494,11 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                                             "--windows-release-runtime is only valid with 'build'",
                                             {},
                                             {}});
+            }
+            if (config.windowsDebugRuntimeOverride == true) {
+                return il::support::Expected<RunBuildConfig>(
+                    makeCommandError("--windows-release-runtime cannot be combined with "
+                                     "--windows-debug-runtime"));
             }
             config.windowsDebugRuntimeOverride = false;
         } else if (arg == "--no-runtime-namespaces") {
@@ -903,7 +945,7 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
 int executeRunBuildConfig(RunBuildConfig config) {
     const RunMode mode = config.mode;
     if (config.helpRequested) {
-        printRunBuildUsage(mode);
+        printRunBuildUsage(mode, std::cout);
         return 0;
     }
 
@@ -928,9 +970,9 @@ int executeRunBuildConfig(RunBuildConfig config) {
     }
     if (config.optimizeLevelOverride)
         proj.optimizeLevel = *config.optimizeLevelOverride;
-    if (mode != RunMode::Build && !config.buildProfileOverride && !config.optimizeLevelOverride &&
+    if (mode == RunMode::Run && !config.buildProfileOverride && !config.optimizeLevelOverride &&
         !proj.buildProfileExplicit && !proj.optimizeLevelExplicit) {
-        // run: keep instruction-to-source mapping; check: fastest path to diagnostics.
+        // Run keeps instruction-to-source mapping unless the project or CLI asks otherwise.
         proj.buildProfile = "debug";
         proj.optimizeLevel = "O0";
     }
@@ -985,18 +1027,6 @@ int executeRunBuildConfig(RunBuildConfig config) {
         if (config.outputPath.empty()) {
             io::Serializer::write(module, std::cout);
             return 0;
-        }
-
-        std::string outputExt = std::filesystem::path(config.outputPath).extension().string();
-        for (char &ch : outputExt)
-            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-        if (!outputExt.empty() && outputExt != ".il" && outputExt != ".exe") {
-            printCommandDiagnostic(makeCommandError("unsupported build output extension '" +
-                                                    outputExt +
-                                                    "'; use .il, .exe, or no extension"),
-                                   &sm,
-                                   config.shared.diagnosticFormat);
-            return 1;
         }
 
         // -o path ends in .il: emit IL text (backwards compat)

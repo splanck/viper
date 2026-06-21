@@ -54,6 +54,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -277,6 +278,85 @@ bool rotateLoop(Function &function, const Loop &loop) {
     if (entryEdges.empty())
         return false;
 
+    // === SSA-reconstruction analysis (must run before any mutation) ===
+    // After rotation the header no longer dominates the loop body, so any header
+    // *parameter* that the body uses must be threaded into the body as a new
+    // block parameter (fed by the guard on entry and the latch on the back-edge).
+    // We only thread header params — they always carry a Type. To stay safe we
+    // conservatively decline to rotate when a header instruction result is live
+    // outside the header, when a header param is used outside the loop body
+    // region, or when the body successor has an unexpected predecessor.
+    auto valueRefs = [](const Value &v, unsigned id) {
+        return v.kind == Value::Kind::Temp && v.id == id;
+    };
+    auto instrRefs = [&](const Instr &ins, unsigned id) {
+        for (const auto &op : ins.operands)
+            if (valueRefs(op, id))
+                return true;
+        for (const auto &bundle : ins.brArgs)
+            for (const auto &arg : bundle)
+                if (valueRefs(arg, id))
+                    return true;
+        return false;
+    };
+    std::unordered_set<std::string> loopLabels(loop.blockLabels.begin(), loop.blockLabels.end());
+
+    // Bail if any header instruction result is referenced outside the header.
+    for (size_t i = 0; i + 1 < headerInstrs.size(); ++i) {
+        if (!headerInstrs[i].result.has_value())
+            continue;
+        unsigned rid = *headerInstrs[i].result;
+        for (const auto &bb : function.blocks) {
+            if (bb.label == headerLabel)
+                continue;
+            for (const auto &ins : bb.instructions) {
+                if (instrRefs(ins, rid))
+                    return false;
+            }
+        }
+    }
+
+    // Determine which header params are used in the loop body region; bail if any
+    // header param is referenced directly outside that region.
+    std::vector<size_t> usedParamIdx;
+    for (size_t pi = 0; pi < headerParams.size(); ++pi) {
+        unsigned pid = headerParams[pi].id;
+        bool usedInBody = false;
+        for (const auto &bb : function.blocks) {
+            if (bb.label == headerLabel)
+                continue;
+            bool used = false;
+            for (const auto &ins : bb.instructions) {
+                if (instrRefs(ins, pid)) {
+                    used = true;
+                    break;
+                }
+            }
+            if (!used)
+                continue;
+            if (loopLabels.count(bb.label) != 0)
+                usedInBody = true;
+            else
+                return false; // header param escapes the loop body region
+        }
+        if (usedInBody)
+            usedParamIdx.push_back(pi);
+    }
+
+    // Bail if the body successor is entered from any block other than the header
+    // (post-rotation its predecessors must be exactly the guard and the latch).
+    for (const auto &bb : function.blocks) {
+        if (bb.label == headerLabel || bb.instructions.empty())
+            continue;
+        const Instr &term = bb.instructions.back();
+        if (!viper::il::isTerminator(term))
+            continue;
+        for (const auto &lbl : term.labels) {
+            if (lbl == bodySuccLabel)
+                return false;
+        }
+    }
+
     unsigned nextId = viper::il::nextTempId(function);
 
     // === Step 1: Turn the header into a guard block ===
@@ -352,12 +432,75 @@ bool rotateLoop(Function &function, const Loop &loop) {
         instr.labels[edge.labelIdx] = guardLabel;
     }
 
-    // The original header now has no incoming labels. It remains in place as
-    // unreachable code for the existing SimplifyCFG cleanup, but the pass never
-    // continues with the pre-rotation LoopInfo snapshot.
+    // === Step 4: SSA reconstruction — thread header params used in the body ===
+    // Add a new parameter on the body-successor block for each header param the
+    // body uses, rewrite the (now-undominated) uses to it, and feed it the guard
+    // value on entry and the latch value on the back-edge.
+    if (!usedParamIdx.empty()) {
+        size_t bodyIdx = findBlockIndex(function, bodySuccLabel);
+        if (bodyIdx == SIZE_MAX)
+            return false;
 
-    // Add the guard block to the function
+        std::unordered_map<unsigned, unsigned> oldToNew;
+        for (size_t pi : usedParamIdx) {
+            const Param &hp = headerParams[pi];
+            Param np;
+            np.name = hp.name;
+            np.type = hp.type;
+            np.id = nextId++;
+            setValueName(function, np.id, hp.name);
+            function.blocks[bodyIdx].params.push_back(np);
+            oldToNew[hp.id] = np.id;
+        }
+
+        // Rewrite the body's (and latch's) live uses of the header params. The
+        // freshly cloned guard/latch condition references remapped ids, not the
+        // original header param ids, so it is untouched. The dead header keeps
+        // its internal references (harmless; SimplifyCFG removes it).
+        for (const auto &kv : oldToNew)
+            viper::il::replaceAllUses(function, kv.first, Value::temp(kv.second));
+
+        // Append incoming values for the new params on the guard and latch edges
+        // to the body. Map any header-param-valued arg through oldToNew so the
+        // back-edge passes the body's current value, not the now-dead header id.
+        auto threadArgs = [&](Instr &term, const std::unordered_map<unsigned, Value> &remap) {
+            for (size_t li = 0; li < term.labels.size(); ++li) {
+                if (term.labels[li] != bodySuccLabel)
+                    continue;
+                if (term.brArgs.size() < term.labels.size())
+                    term.brArgs.resize(term.labels.size());
+                for (size_t pi : usedParamIdx) {
+                    unsigned origId = headerParams[pi].id;
+                    auto it = remap.find(origId);
+                    Value v = (it != remap.end()) ? it->second : Value::temp(origId);
+                    if (v.kind == Value::Kind::Temp) {
+                        auto rn = oldToNew.find(v.id);
+                        if (rn != oldToNew.end())
+                            v = Value::temp(rn->second);
+                    }
+                    term.brArgs[li].push_back(v);
+                }
+            }
+        };
+        threadArgs(guard.instructions.back(), guardRemap);
+        threadArgs(function.blocks[latchIdx].instructions.back(), latchRemap);
+    }
+
+    // Add the guard block to the function.
     function.blocks.push_back(std::move(guard));
+
+    // The original header now has no incoming labels (entry edges go to the
+    // guard; the latch branches straight to the body). When we extended the
+    // body's parameter list, the dead header still carries a stale branch to the
+    // body with the old argument count, which the verifier rejects even though
+    // the block is unreachable — so remove it here. (SimplifyCFG would otherwise
+    // drop it on the next pass.) It is never the entry block: a loop header
+    // always has an out-of-loop predecessor.
+    if (!usedParamIdx.empty()) {
+        size_t deadHeaderIdx = findBlockIndex(function, headerLabel);
+        if (deadHeaderIdx != SIZE_MAX && deadHeaderIdx != 0)
+            function.blocks.erase(function.blocks.begin() + static_cast<long>(deadHeaderIdx));
+    }
 
     return true;
 }

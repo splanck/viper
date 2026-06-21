@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/tools/ilc/cmd_codegen_arm64.cpp
+// File: src/tools/viper/cmd_codegen_arm64.cpp
 // Purpose: Thin CLI adapter around the reusable AArch64 code-generation pipeline.
 //
 //===----------------------------------------------------------------------===//
@@ -39,7 +39,8 @@ constexpr std::string_view kUsage =
     "       [--native-asm|--system-asm] [--native-link|--system-link(deprecated)]\n"
     "       [--target-host|--target-darwin|--target-linux|--target-windows] [--debug-lines]\n"
     "       [--fast-link|--no-fast-link]\n"
-    "       [-O0|-O1|-O2]\n"
+    "       [--asset-blob <file.vpa>] [--extra-obj <file.o>]\n"
+    "       [-O0|-O1|-O2|-O3]\n"
     "       [--skip-il-optimization]\n";
 /// @brief Minimum accepted native stack reserve for generated executables.
 constexpr std::size_t kMinStackSize = 4096;
@@ -93,6 +94,11 @@ ParseOutcome parseArgs(const ArgvView &args) {
     ParseOutcome outcome{};
     if (args.empty()) {
         outcome.diagnostics = std::string{kUsage};
+        return outcome;
+    }
+    if (args.front().empty() || args.front()[0] == '-') {
+        outcome.diagnostics =
+            "error: missing input IL file before codegen options\n" + std::string{kUsage};
         return outcome;
     }
 
@@ -151,13 +157,13 @@ ParseOutcome parseArgs(const ArgvView &args) {
         }
         if (tok == "-O" || tok == "--optimize") {
             if (i + 1 >= args.argc) {
-                diag << "error: -O requires a level (0, 1, or 2)\n" << kUsage;
+                diag << "error: -O requires a level (0, 1, 2, or 3)\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
             }
             int level = 0;
             const std::string_view value = args.at(++i);
-            if (!parseIntInRange(value, 0, 2, level)) {
+            if (!parseIntInRange(value, 0, 3, level)) {
                 diag << "error: invalid -O level: " << value << "\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -165,7 +171,7 @@ ParseOutcome parseArgs(const ArgvView &args) {
             opts.optimize = level;
             continue;
         }
-        if (tok.size() == 3 && tok[0] == '-' && tok[1] == 'O' && tok[2] >= '0' && tok[2] <= '2') {
+        if (tok.size() == 3 && tok[0] == '-' && tok[1] == 'O' && tok[2] >= '0' && tok[2] <= '3') {
             opts.optimize = tok[2] - '0';
             continue;
         }

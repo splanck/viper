@@ -27,6 +27,7 @@
 #include <limits>
 #include <stdexcept>
 #include <system_error>
+#include <unordered_map>
 
 namespace viper::server {
 
@@ -380,7 +381,7 @@ class JsonParser {
 
     /// @brief Consume @p literal if it matches at the cursor; return whether it did.
     bool tryConsume(std::string_view literal) {
-        if (src_.substr(pos_).substr(0, literal.size()) == literal) {
+        if (src_.substr(pos_, literal.size()) == literal) {
             pos_ += literal.size();
             return true;
         }
@@ -428,6 +429,7 @@ class JsonParser {
     std::string parseString() {
         expect('"');
         std::string result;
+        result.reserve(16);
         while (true) {
             if (pos_ >= src_.size())
                 error("unterminated string");
@@ -665,6 +667,7 @@ class JsonParser {
         expect('{');
         skipWhitespace();
         JsonValue::ObjectType obj;
+        std::unordered_map<std::string, std::size_t> indexByKey;
         if (peek() == '}') {
             ++pos_;
             return JsonValue(std::move(obj));
@@ -677,11 +680,11 @@ class JsonParser {
             skipWhitespace();
             expect(':');
             auto val = parseValue(depth);
-            auto existing = std::find_if(
-                obj.begin(), obj.end(), [&](const auto &member) { return member.first == key; });
-            if (existing != obj.end()) {
-                existing->second = std::move(val);
+            auto existing = indexByKey.find(key);
+            if (existing != indexByKey.end()) {
+                obj[existing->second].second = std::move(val);
             } else {
+                indexByKey.emplace(key, obj.size());
                 obj.emplace_back(std::move(key), std::move(val));
             }
             skipWhitespace();

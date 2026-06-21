@@ -146,7 +146,7 @@ std::string McpHandler::handleRequest(const JsonRpcRequest &req) {
         return {}; // Notification — no response
     }
 
-    if (!initialized_ && (req.method == "tools/list" || req.method == "tools/call")) {
+    if (!initializeResponded_ && (req.method == "tools/list" || req.method == "tools/call")) {
         return buildError(req.id, kInvalidRequest, "Server has not been initialized");
     }
 
@@ -357,7 +357,8 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req) {
 
     std::string name = nameProp->asString();
     const auto *argsProp = req.params.get("arguments");
-    JsonValue args = argsProp ? *argsProp : JsonValue::object({});
+    JsonValue emptyArgs = JsonValue::object({});
+    const JsonValue &args = argsProp ? *argsProp : emptyArgs;
     if (args.type() != JsonType::Object)
         return buildError(req.id, kInvalidParams, "'arguments' must be an object");
 

@@ -95,11 +95,50 @@ struct FrontendToolCallbacks {
     std::function<int(int, char **)> frontendCommand;
 };
 
+/// @brief Structured stop requested while parsing wrapper arguments.
+/// @details Help and version are successful stops; malformed arguments are
+///          failing stops after the parser has already printed a diagnostic and
+///          usage text. Throwing this object unwinds normally instead of calling
+///          `std::exit` from a shared helper.
+struct FrontendToolParseStop {
+    int exitCode = 0; ///< Process exit code requested by the parser.
+};
+
+/// @brief Return true when a wrapper-forwarded option consumes the next token.
+/// @details The standalone `zia` and `vbasic` wrappers forward only options
+///          understood by the underlying `viper front` commands. This prevents
+///          spelling mistakes from being accepted as opaque passthrough flags.
+inline bool frontendForwardedFlagTakesValue(std::string_view arg) {
+    return arg == "--stdin-from" || arg == "--max-steps" || arg == "--diagnostic-format" ||
+           arg == "--build-profile";
+}
+
+/// @brief Return true when @p arg is a supported forwarded frontend option.
+/// @details Inline forms that include values are accepted here; separated forms
+///          are handled by @ref frontendForwardedFlagTakesValue.
+inline bool isKnownFrontendForwardedFlag(std::string_view arg) {
+    if (arg == "--debug-vm" || arg == "--dump-trap" || arg == "--bounds-checks" ||
+        arg == "--no-bounds-checks" || arg == "--dump-tokens" || arg == "--dump-ast" ||
+        arg == "--dump-sema-ast" || arg == "--dump-il" || arg == "--dump-il-opt" ||
+        arg == "--dump-il-passes" || arg == "--verify-each" || arg == "--paranoid-verify" ||
+        arg == "--time-compile" || arg == "--pass-stats" || arg == "-Wall" || arg == "-Werror" ||
+        arg == "--strict-diagnostics" || arg == "--no-strict-diagnostics" ||
+        arg == "--show-warnings" || arg == "--quiet-warnings" || arg == "--no-warnings" ||
+        arg == "--profile" || arg == "--no-runtime-namespaces" || arg == "-O0" || arg == "-O1" ||
+        arg == "-O2") {
+        return true;
+    }
+    return arg == "--trace" || arg == "--trace=il" || arg == "--trace=src" ||
+           arg.starts_with("--stdin-from=") || arg.starts_with("--max-steps=") ||
+           arg.starts_with("--diagnostic-format=") || arg.starts_with("--build-profile=") ||
+           (arg.starts_with("-Wno-") && arg.size() > 5);
+}
+
 /// @brief Parse frontend tool arguments into a @ref FrontendToolConfig.
 ///
 /// @details Walks @p argv recognising the shared option vocabulary:
 ///          - `-h`/`--help` and `--version` invoke the matching callback and
-///            terminate via @c std::exit(0).
+///            throw @ref FrontendToolParseStop with exit code 0.
 ///          - `-o`/`--output` records the output path and implies `--emit-il`.
 ///          - `--arch arm64|x64` overrides the native target architecture.
 ///          - `--` ends option parsing; everything after it becomes a program
@@ -111,14 +150,15 @@ struct FrontendToolCallbacks {
 ///          - A token ending in @ref FrontendToolCallbacks::fileExtension is the
 ///            single source file; a second source file is an error.
 ///          Missing required values, unknown tokens, or a missing source file
-///          print usage and terminate via @c std::exit(1). When no output mode is
-///          requested the config defaults to running the program.
+///          print usage and throw @ref FrontendToolParseStop with exit code 1.
+///          When no output mode is requested the config defaults to running the
+///          program.
 ///
 /// @param argc Number of command-line arguments.
 /// @param argv Array of argument strings.
 /// @param callbacks Language-specific callbacks (usage/version text, extension).
-/// @return Parsed configuration; the function does not return on
-///         error/help/version because it terminates the process.
+/// @return Parsed configuration on success.
+/// @throws FrontendToolParseStop for help, version, and parse failures.
 inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCallbacks &callbacks) {
     FrontendToolConfig config{};
 
@@ -127,19 +167,24 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
 
         if (arg == "-h" || arg == "--help") {
             callbacks.printUsage();
-            std::exit(0);
+            throw FrontendToolParseStop{0};
         } else if (arg == "--version") {
             callbacks.printVersion();
-            std::exit(0);
+            throw FrontendToolParseStop{0};
         } else if (arg == "--emit-il") {
             config.emitIl = true;
         } else if (arg == "-o" || arg == "--output") {
             if (i + 1 >= argc) {
                 std::cerr << "error: " << arg << " requires an output path\n\n";
                 callbacks.printUsage();
-                std::exit(1);
+                throw FrontendToolParseStop{1};
             }
             config.outputPath = argv[++i];
+            if (config.outputPath.empty()) {
+                std::cerr << "error: " << arg << " requires an output path\n\n";
+                callbacks.printUsage();
+                throw FrontendToolParseStop{1};
+            }
             config.emitIl = true; // -o implies emit-il
         } else if (arg == "--arch" || arg.starts_with("--arch=")) {
             std::string_view val;
@@ -148,7 +193,7 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
             } else if (i + 1 >= argc) {
                 std::cerr << "error: --arch requires arm64 or x64\n\n";
                 callbacks.printUsage();
-                std::exit(1);
+                throw FrontendToolParseStop{1};
             } else {
                 val = argv[++i];
             }
@@ -159,7 +204,7 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
             else {
                 std::cerr << "error: --arch must be 'arm64' or 'x64'\n\n";
                 callbacks.printUsage();
-                std::exit(1);
+                throw FrontendToolParseStop{1};
             }
         } else if (arg == "--") {
             // Remaining arguments are program arguments
@@ -167,16 +212,20 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
                 config.programArgs.emplace_back(argv[j]);
             break;
         } else if (arg.starts_with("-")) {
+            if (!isKnownFrontendForwardedFlag(arg)) {
+                std::cerr << "error: unknown option: " << arg << "\n\n";
+                callbacks.printUsage();
+                throw FrontendToolParseStop{1};
+            }
             // Forward other flags to underlying ilc implementation
             config.forwardedArgs.push_back(std::string(arg));
 
             // Check if this flag takes an argument
-            if (arg == "--stdin-from" || arg == "--max-steps" || arg == "--diagnostic-format" ||
-                arg == "--build-profile") {
+            if (frontendForwardedFlagTakesValue(arg)) {
                 if (i + 1 >= argc) {
                     std::cerr << "error: " << arg << " requires an argument\n\n";
                     callbacks.printUsage();
-                    std::exit(1);
+                    throw FrontendToolParseStop{1};
                 }
                 config.forwardedArgs.push_back(argv[++i]);
             }
@@ -184,14 +233,14 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
             if (!config.sourcePath.empty()) {
                 std::cerr << "error: multiple source files not supported\n\n";
                 callbacks.printUsage();
-                std::exit(1);
+                throw FrontendToolParseStop{1};
             }
             config.sourcePath = std::string(arg);
         } else {
             std::cerr << "error: unknown argument or file type: " << arg << "\n";
             std::cerr << "       (expected " << callbacks.fileExtension << " file)\n\n";
             callbacks.printUsage();
-            std::exit(1);
+            throw FrontendToolParseStop{1};
         }
     }
 
@@ -199,7 +248,7 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
     if (config.sourcePath.empty()) {
         std::cerr << "error: no input file specified\n\n";
         callbacks.printUsage();
-        std::exit(1);
+        throw FrontendToolParseStop{1};
     }
 
     // Default action: run the program
@@ -230,7 +279,8 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
 inline std::vector<char *> buildIlcArgs(const FrontendToolConfig &config,
                                         std::vector<std::string> &outStorage) {
     outStorage.clear();
-    outStorage.reserve(2 + config.forwardedArgs.size());
+    outStorage.reserve(2 + config.forwardedArgs.size() +
+                       (config.programArgs.empty() ? 0 : 1 + config.programArgs.size()));
 
     std::vector<char *> args;
 
@@ -271,10 +321,10 @@ inline std::vector<char *> buildIlcArgs(const FrontendToolConfig &config,
 ///          1. Parse arguments via @ref parseArgs.
 ///          2. Detect whether `-o` requests a native binary (a non-`.il` output
 ///             extension); if so, redirect IL emission to a temporary file so the
-    ///             native code generator can consume it afterwards.
-    ///          3. When an output path is set, redirect @c stdout with
-    ///             @ref ScopedStdoutRedirect so the descriptor is restored before
-    ///             native codegen writes to the terminal.
+///             native code generator can consume it afterwards.
+///          3. When an output path is set, redirect @c stdout with
+///             @ref ScopedStdoutRedirect so the descriptor is restored before
+///             native codegen writes to the terminal.
 ///          4. Delegate to @ref FrontendToolCallbacks::frontendCommand to emit IL
 ///             or run the program.
 ///          5. On success with native output, invoke @ref compileToNative using
@@ -291,8 +341,12 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
         return 1;
     }
 
-    // Parse arguments
-    FrontendToolConfig config = parseArgs(argc, argv, callbacks);
+    FrontendToolConfig config;
+    try {
+        config = parseArgs(argc, argv, callbacks);
+    } catch (const FrontendToolParseStop &stop) {
+        return stop.exitCode;
+    }
 
     // Detect native output: -o with non-.il extension
     const bool nativeOutput = !config.outputPath.empty() && isNativeOutputPath(config.outputPath);

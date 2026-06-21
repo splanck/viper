@@ -117,6 +117,11 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         outcome.diagnostics = std::string{kUsage};
         return outcome;
     }
+    if (args.front().empty() || args.front()[0] == '-') {
+        outcome.diagnostics =
+            "error: missing input IL file before codegen options\n" + std::string{kUsage};
+        return outcome;
+    }
 
     viper::codegen::x64::CodegenPipeline::Options opts{};
     opts.input_il_path = std::string(args.front());

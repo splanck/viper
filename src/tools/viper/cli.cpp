@@ -75,6 +75,9 @@ SharedOptionParseResult parseSharedOption(int &index,
         opts.trace.mode = il::vm::TraceConfig::IL;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--trace=") {
+        return failSharedOption("--trace requires il or src when a value is supplied");
+    }
     if (arg == "--trace=src") {
         opts.trace.mode = il::vm::TraceConfig::SRC;
         return SharedOptionParseResult::Parsed;
@@ -276,7 +279,7 @@ DiagnosticFormat detectDiagnosticFormatFlag(int argc, char **argv) {
 bool splitInlineOptionValue(std::string_view arg,
                             std::string_view optionName,
                             std::string_view &value) {
-    if (arg.size() <= optionName.size() + 1)
+    if (arg.size() < optionName.size() + 1)
         return false;
     if (arg.substr(0, optionName.size()) != optionName)
         return false;

@@ -69,12 +69,6 @@ fi
 RUN_TIMEOUT_DEFAULT="${VIPER_DEMO_TIMEOUT:-5}"
 RUN_DEMO_RC=0
 
-BASIC_DEMOS=(
-    "vtris:${GAMES_DIR}/vtris"
-    "frogger:${GAMES_DIR}/frogger-basic"
-    "centipede:${GAMES_DIR}/centipede-basic"
-)
-
 ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
@@ -170,12 +164,10 @@ build_demo() {
         return 1
     fi
 
-    # Large arm64 demos with deep control flow currently avoid backend O1 while
-    # the aggregate/phi-heavy native-codegen issues are being fixed.
-    local codegen_opt="-O1"
-    case "$name" in
-        centipede|chess-zia|crackman) codegen_opt="-O0" ;;
-    esac
+    # All demos build at -O2. The loop-rotate SSA-reconstruction and inliner
+    # escaped-param typing bugs that previously forced centipede/chess-zia/
+    # crackman down to -O0 have been fixed in the IL optimizer.
+    local codegen_opt="-O2"
 
     # Projects that bake assets into the build (embed -> .rodata, pack -> a .vpa
     # beside the binary) must build in one step: `viper build` runs the asset
@@ -250,26 +242,6 @@ echo ""
 FAILED=0
 SUCCEEDED=0
 SKIPPED=0
-
-echo "=== BASIC Demos ==="
-echo ""
-
-for demo in "${BASIC_DEMOS[@]}"; do
-    IFS=':' read -r name project_dir <<< "$demo"
-    if [[ ! -d "$project_dir" ]]; then
-        echo -e "Skipping $name (${YELLOW}directory not found${NC})"
-        SKIPPED=$((SKIPPED + 1))
-        echo ""
-        continue
-    fi
-    echo "Building $name..."
-    if build_demo "$name" "$project_dir"; then
-        SUCCEEDED=$((SUCCEEDED + 1))
-    else
-        FAILED=$((FAILED + 1))
-    fi
-    echo ""
-done
 
 echo "=== Zia Demos ==="
 echo ""

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build native binaries for all demos using the native assembler and linker at -O2.
+# Build native binaries for Zia demos using the native assembler and linker at -O2.
 # This uses zero external tools — no system assembler (cc -c), no system linker (cc/ld).
 # Usage: ./scripts/build_demos_o2.sh [--clean]
 
@@ -54,12 +54,6 @@ if [[ $CLEAN -eq 1 ]]; then
     echo "Cleaning existing binaries..."
     rm -f "$BIN_DIR"/*
 fi
-
-BASIC_DEMOS=(
-    "vtris:${GAMES_DIR}/vtris"
-    "frogger:${GAMES_DIR}/frogger-basic"
-    "centipede:${GAMES_DIR}/centipede-basic"
-)
 
 ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
@@ -129,26 +123,6 @@ echo ""
 FAILED=0
 SUCCEEDED=0
 SKIPPED=0
-
-echo "=== BASIC Demos ==="
-echo ""
-
-for demo in "${BASIC_DEMOS[@]}"; do
-    IFS=':' read -r name project_dir <<< "$demo"
-    if [[ ! -d "$project_dir" ]]; then
-        echo -e "Skipping $name (${YELLOW}directory not found${NC})"
-        SKIPPED=$((SKIPPED + 1))
-        echo ""
-        continue
-    fi
-    echo "Building $name..."
-    if build_demo "$name" "$project_dir"; then
-        SUCCEEDED=$((SUCCEEDED + 1))
-    else
-        FAILED=$((FAILED + 1))
-    fi
-    echo ""
-done
 
 echo "=== Zia Demos ==="
 echo ""

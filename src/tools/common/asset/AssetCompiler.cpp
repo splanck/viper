@@ -33,14 +33,17 @@
 #include "tools/common/project_loader.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -51,6 +54,8 @@ namespace {
 constexpr std::uintmax_t kMaxAssetFileBytes = 256ULL * 1024ULL * 1024ULL;
 constexpr std::size_t kMaxAssetCacheEntries = 64;
 constexpr std::size_t kMaxAssetFileCacheEntries = 128;
+constexpr std::uintmax_t kMaxAssetFileCacheBytes = 512ULL * 1024ULL * 1024ULL;
+constexpr std::uintmax_t kMaxAssetBundleCacheBytes = 512ULL * 1024ULL * 1024ULL;
 
 /// @brief Cached contents of one validated asset file.
 struct CachedAssetFile {
@@ -68,9 +73,15 @@ static std::string assetFileCacheKey(const fs::path &path) {
 }
 
 /// @brief Shared cache for asset file payloads read during one process.
-static std::unordered_map<std::string, CachedAssetFile> &assetFileCache() {
-    static std::unordered_map<std::string, CachedAssetFile> cache;
+static std::unordered_map<std::string, std::shared_ptr<const CachedAssetFile>> &assetFileCache() {
+    static std::unordered_map<std::string, std::shared_ptr<const CachedAssetFile>> cache;
     return cache;
+}
+
+/// @brief Return the total byte size currently retained by @ref assetFileCache.
+static std::uintmax_t &assetFileCacheBytes() {
+    static std::uintmax_t bytes = 0;
+    return bytes;
 }
 
 /// @brief Mutex protecting @ref assetFileCache.
@@ -82,8 +93,10 @@ static std::mutex &assetFileCacheMutex() {
 /// @brief Remove one arbitrary cached asset payload when the cache reaches its cap.
 static void evictOneAssetFileCacheEntry() {
     auto &cache = assetFileCache();
-    if (!cache.empty())
+    if (!cache.empty()) {
+        assetFileCacheBytes() -= cache.begin()->second->data.size();
         cache.erase(cache.begin());
+    }
 }
 
 /// @brief Read and validate an asset file payload from disk.
@@ -101,13 +114,13 @@ static std::vector<uint8_t> readAssetFileUncached(const fs::path &path,
 }
 
 /// @brief Return cached asset bytes when size and mtime still match disk.
-static std::optional<CachedAssetFile> lookupCachedAssetFile(const fs::path &path,
-                                                            std::uintmax_t size,
-                                                            fs::file_time_type mtime) {
+static std::shared_ptr<const CachedAssetFile> lookupCachedAssetFile(const fs::path &path,
+                                                                    std::uintmax_t size,
+                                                                    fs::file_time_type mtime) {
     std::lock_guard<std::mutex> lock(assetFileCacheMutex());
     auto it = assetFileCache().find(assetFileCacheKey(path));
-    if (it == assetFileCache().end() || it->second.size != size || it->second.mtime != mtime)
-        return std::nullopt;
+    if (it == assetFileCache().end() || it->second->size != size || it->second->mtime != mtime)
+        return {};
     return it->second;
 }
 
@@ -119,10 +132,19 @@ static void rememberCachedAssetFile(const fs::path &path,
                                     std::vector<uint8_t> data) {
     std::lock_guard<std::mutex> lock(assetFileCacheMutex());
     auto &cache = assetFileCache();
-    if (cache.size() >= kMaxAssetFileCacheEntries &&
-        cache.find(assetFileCacheKey(path)) == cache.end())
+    const std::string key = assetFileCacheKey(path);
+    if (auto old = cache.find(key); old != cache.end()) {
+        assetFileCacheBytes() -= old->second->data.size();
+        cache.erase(old);
+    }
+    while ((!cache.empty() && cache.size() >= kMaxAssetFileCacheEntries) ||
+           (!cache.empty() && assetFileCacheBytes() + data.size() > kMaxAssetFileCacheBytes)) {
         evictOneAssetFileCacheEntry();
-    cache[assetFileCacheKey(path)] = CachedAssetFile{size, mtime, std::move(hash), std::move(data)};
+    }
+    auto entry = std::make_shared<CachedAssetFile>(
+        CachedAssetFile{size, mtime, std::move(hash), std::move(data)});
+    assetFileCacheBytes() += entry->data.size();
+    cache[key] = std::move(entry);
 }
 
 /// @brief Hash the full contents of @p path for cache invalidation.
@@ -188,12 +210,8 @@ static void appendSourceFingerprint(const fs::path &rootDir,
                                     const std::string &sourcePath,
                                     bool compressed,
                                     std::string &key) {
-    fs::path absPath;
-    try {
-        absPath = viper::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
-    } catch (const std::exception &) {
-        absPath = rootDir / sourcePath;
-    }
+    fs::path absPath =
+        viper::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
     key += compressed ? "C:" : "U:";
     std::error_code ec;
     if (fs::is_directory(absPath, ec)) {
@@ -210,6 +228,9 @@ static void appendSourceFingerprint(const fs::path &rootDir,
             appendFileFingerprint(file, key);
         return;
     }
+    if (ec)
+        throw std::runtime_error("cannot inspect asset source path '" + sourcePath +
+                                 "': " + ec.message());
     appendFileFingerprint(absPath, key);
 }
 
@@ -236,6 +257,39 @@ static std::string assetCacheKey(const il::tools::common::ProjectConfig &config,
     return key;
 }
 
+/// @brief Estimate retained memory for an AssetBundle stored in the process cache.
+static std::uintmax_t retainedBytesForBundle(const AssetBundle &bundle) {
+    std::uintmax_t bytes = bundle.embeddedBlob.size();
+    for (const auto &path : bundle.packFilePaths)
+        bytes += path.size();
+    for (const auto &hash : bundle.packFileHashes)
+        bytes += hash.size();
+    bytes += bundle.packFileSizes.size() * sizeof(std::uintmax_t);
+    return bytes;
+}
+
+/// @brief Return the total retained bytes for cached AssetBundle values.
+static std::uintmax_t &assetBundleCacheBytes() {
+    static std::uintmax_t bytes = 0;
+    return bytes;
+}
+
+/// @brief Compute a SHA-256 hash for an already-generated pack file.
+/// @details Pack files are expected to be much smaller than the process memory
+///          limit enforced by asset validation. Reading here keeps cache
+///          validation self-contained and catches same-size external rewrites.
+static std::string hashGeneratedPackFile(const fs::path &path) {
+    const auto data = viper::pkg::readFile(path);
+    return data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
+                        : viper::pkg::sha256Hex(data.data(), data.size());
+}
+
+/// @brief Return true when asset compilation should print progress messages.
+static bool assetVerboseEnabled() {
+    const char *value = std::getenv("VIPER_ASSET_VERBOSE");
+    return value && value[0] != '\0' && std::string_view(value) != "0";
+}
+
 } // namespace
 
 // ─── File reading helper ────────────────────────────────────────────────────
@@ -259,7 +313,7 @@ static bool readFile(const fs::path &path, std::vector<uint8_t> &out, std::strin
         return false;
     }
     if (auto cached = lookupCachedAssetFile(path, size, mtime)) {
-        out = std::move(cached->data);
+        out = cached->data;
         return true;
     }
     try {
@@ -458,6 +512,8 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
             bool packsExist = true;
             if (it->second.packFileSizes.size() != it->second.packFilePaths.size())
                 packsExist = false;
+            if (it->second.packFileHashes.size() != it->second.packFilePaths.size())
+                packsExist = false;
             for (size_t i = 0; packsExist && i < it->second.packFilePaths.size(); ++i) {
                 const auto &pack = it->second.packFilePaths[i];
                 std::error_code ec;
@@ -467,6 +523,15 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
                 }
                 const auto size = fs::file_size(pack, ec);
                 if (ec || size != it->second.packFileSizes[i]) {
+                    packsExist = false;
+                    break;
+                }
+                try {
+                    if (hashGeneratedPackFile(pack) != it->second.packFileHashes[i]) {
+                        packsExist = false;
+                        break;
+                    }
+                } catch (const std::exception &) {
                     packsExist = false;
                     break;
                 }
@@ -491,8 +556,10 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
 
         if (embedWriter.entryCount() > 0) {
             bundle.embeddedBlob = embedWriter.writeToMemory();
-            std::cerr << "  embedded " << embedWriter.entryCount() << " asset(s) ("
-                      << bundle.embeddedBlob.size() << " bytes)\n";
+            if (assetVerboseEnabled()) {
+                std::cerr << "  embedded " << embedWriter.entryCount() << " asset(s) ("
+                          << bundle.embeddedBlob.size() << " bytes)\n";
+            }
         }
     }
 
@@ -534,19 +601,37 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
             return std::nullopt;
         }
         bundle.packFileSizes.push_back(vpaSize);
-        std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into " << vpaName << "\n";
+        try {
+            bundle.packFileHashes.push_back(hashGeneratedPackFile(vpaPath));
+        } catch (const std::exception &ex) {
+            err = "cannot hash generated asset pack: " + std::string(ex.what());
+            return std::nullopt;
+        }
+        if (assetVerboseEnabled())
+            std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into " << vpaName
+                      << "\n";
     }
 
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
-        if (cache.size() >= kMaxAssetCacheEntries && cache.find(cacheKey) == cache.end()) {
+        const std::uintmax_t bundleBytes = retainedBytesForBundle(bundle);
+        if (auto old = cache.find(cacheKey); old != cache.end()) {
+            assetBundleCacheBytes() -= retainedBytesForBundle(old->second);
+            cache.erase(old);
+        }
+        while (!cache.empty() &&
+               (cache.size() >= kMaxAssetCacheEntries ||
+                assetBundleCacheBytes() + bundleBytes > kMaxAssetBundleCacheBytes)) {
             auto victim =
                 std::min_element(cache.begin(), cache.end(), [](const auto &lhs, const auto &rhs) {
                     return lhs.first < rhs.first;
                 });
-            if (victim != cache.end())
+            if (victim != cache.end()) {
+                assetBundleCacheBytes() -= retainedBytesForBundle(victim->second);
                 cache.erase(victim);
+            }
         }
+        assetBundleCacheBytes() += bundleBytes;
         cache[cacheKey] = bundle;
     }
     return bundle;

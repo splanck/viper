@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM Build native binaries for all demos using viper project format
+REM Build native binaries for Zia demos using viper project format
 REM Usage: scripts\build_demos_win.cmd [--clean] [--arch arm64|x64]
 
 set "SCRIPT_DIR=%~dp0"
@@ -129,14 +129,6 @@ if %CLEAN%==1 (
     echo Cleaning existing binaries...
     del /q "%BIN_DIR%\*" 2>nul
 )
-
-echo === BASIC Demos ===
-echo.
-
-REM Build BASIC demos
-call :build_demo vtris "%GAMES_DIR%\vtris"
-call :build_demo frogger "%GAMES_DIR%\frogger-basic"
-call :build_demo centipede "%GAMES_DIR%\centipede-basic"
 
 echo === Zia Demos ===
 echo.

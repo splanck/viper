@@ -162,7 +162,7 @@ class ScopedFdRedirect {
         return error_;
     }
 
-    /// @brief Flush output when needed and restore the original descriptor.
+    /// @brief Flush redirected output when needed and restore the original descriptor.
     /// @details The method is idempotent. For stdout/stderr redirection, callers can
     ///          invoke it before returning so flush/restore failures become visible
     ///          diagnostics instead of destructor-only best effort.
@@ -170,8 +170,15 @@ class ScopedFdRedirect {
     bool finish() {
         if (!active_)
             return error_.empty();
-        if (writeMode_ && std::fflush(nullptr) != 0 && error_.empty())
-            error_ = "failed to flush redirected stream for " + path_;
+        if (writeMode_ && error_.empty()) {
+            FILE *stream = nullptr;
+            if (targetFd_ == fileno(stdout))
+                stream = stdout;
+            else if (targetFd_ == fileno(stderr))
+                stream = stderr;
+            if (stream != nullptr && std::fflush(stream) != 0)
+                error_ = "failed to flush redirected stream for " + path_;
+        }
         if (savedFd_ >= 0) {
             if (scopedDup2(savedFd_, targetFd_) < 0 && error_.empty())
                 error_ = "failed to restore descriptor after " + path_ + ": " + scopedLastError();

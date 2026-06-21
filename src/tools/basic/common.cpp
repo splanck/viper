@@ -26,9 +26,10 @@
 
 #include "tools/basic/common.hpp"
 
+#include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/source_loader.hpp"
 
-#include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -78,45 +79,14 @@ std::optional<std::uint32_t> loadBasicSource(const char *path,
         return std::nullopt;
     }
 
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
-        std::cerr << "cannot open " << path << "\n";
+    auto loaded = il::tools::common::loadSourceBuffer(path, sm);
+    if (!loaded) {
+        il::support::printDiag(loaded.error(), std::cerr, &sm);
         return std::nullopt;
     }
 
-    // Check file size before reading to avoid OOM on huge files.
-    in.seekg(0, std::ios::end);
-    auto fileSize = in.tellg();
-    in.seekg(0, std::ios::beg);
-    constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
-    if (fileSize < 0 || fileSize > kMaxSourceSize) {
-        std::cerr << "source file too large: " << path << " (limit: 256 MB)\n";
-        return std::nullopt;
-    }
-
-    std::string contents;
-    try {
-        contents.assign(static_cast<std::size_t>(fileSize), '\0');
-        if (!contents.empty()) {
-            in.read(contents.data(), static_cast<std::streamsize>(contents.size()));
-            if (!in || in.gcount() != static_cast<std::streamsize>(contents.size())) {
-                std::cerr << "incomplete read of " << path << "\n";
-                return std::nullopt;
-            }
-        }
-    } catch (const std::bad_alloc &) {
-        std::cerr << "out of memory reading " << path << "\n";
-        return std::nullopt;
-    }
-
-    std::uint32_t fileId = sm.addFile(path);
-    if (fileId == 0) {
-        std::cerr << "error[V-SRC-FILE-ID]: " << il::support::kSourceManagerFileIdOverflowMessage
-                  << "\n";
-        return std::nullopt;
-    }
-
-    buffer = contents;
+    const std::uint32_t fileId = loaded.value().fileId;
+    buffer = std::move(loaded.value().buffer);
     return fileId;
 }
 

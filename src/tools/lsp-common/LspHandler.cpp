@@ -99,13 +99,23 @@ bool extractTextDocumentUri(const JsonValue &params, std::string &uri) {
     return !uri.empty();
 }
 
-/// @brief Extract `params.textDocument.version` into @p version.
-/// @return true when an integer version is present.
-bool extractTextDocumentVersion(const JsonValue &params, int &version) {
+/// @brief Extract optional `params.textDocument.version` into @p version.
+/// @details Some LSP clients send null or omit versions for virtual or
+///          best-effort documents. This helper treats that as an absent version
+///          while still rejecting non-integer, non-null values.
+/// @return true when the version is valid or absent; false when malformed.
+bool extractOptionalTextDocumentVersion(const JsonValue &params, std::optional<int> &version) {
+    version.reset();
     const JsonValue *textDocument = objectMember(params, "textDocument");
-    const JsonValue *versionValue = textDocument ? intMember(*textDocument, "version") : nullptr;
-    return checkedJsonIntToInt(
-        versionValue, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), version);
+    const JsonValue *versionValue = textDocument ? textDocument->get("version") : nullptr;
+    if (!versionValue || versionValue->isNull())
+        return true;
+    int parsed = 0;
+    if (!checkedJsonIntToInt(
+            versionValue, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), parsed))
+        return false;
+    version = parsed;
+    return true;
 }
 
 /// @brief Extract `params.position` into 1-based @p line / @p col.
@@ -277,9 +287,32 @@ void byteOffsetToLspPosition(const std::string &content,
 }
 
 /// @brief Return true when @p c is an ASCII identifier byte used by the frontends.
+/// @param c Candidate byte from an LSP rename target.
+/// @return True when @p c is alphanumeric ASCII or underscore.
 bool isIdentifierByte(char c) {
     const auto uc = static_cast<unsigned char>(c);
     return std::isalnum(uc) || c == '_';
+}
+
+/// @brief Return true when @p c can start an ASCII identifier.
+/// @param c Candidate first byte from an LSP rename target.
+/// @return True when @p c is alphabetic ASCII or underscore.
+bool isIdentifierStartByte(char c) {
+    const auto uc = static_cast<unsigned char>(c);
+    return std::isalpha(uc) || c == '_';
+}
+
+/// @brief Validate a rename target before asking the compiler bridge to edit.
+/// @details LSP rename requests carry arbitrary strings. The current frontends
+///          accept ASCII identifier names, so rejecting whitespace, operators,
+///          empty names, and leading digits here gives clients deterministic
+///          `InvalidParams` errors instead of backend-specific failures.
+/// @param name Candidate replacement symbol name from the client request.
+/// @return True when @p name is a non-empty ASCII identifier.
+bool isValidRenameIdentifier(std::string_view name) {
+    if (name.empty() || !isIdentifierStartByte(name.front()))
+        return false;
+    return std::all_of(name.begin(), name.end(), isIdentifierByte);
 }
 
 /// @brief Return true when @p pos can begin or end an identifier occurrence.
@@ -315,6 +348,8 @@ std::optional<size_t> findIdentifierInRange(const std::string &content,
 /// @brief Build an LSP `Range` from byte offsets in @p content.
 /// @details Converts byte positions into zero-based LSP UTF-16 line/character positions.
 JsonValue rangeForByteSpan(const std::string &content, size_t start, size_t end) {
+    if (content.empty())
+        return makeRange(0, 0, 0, 1);
     start = std::min(start, content.size());
     end = std::min(std::max(end, start + 1), content.size());
     int startLine = 0;
@@ -857,21 +892,14 @@ void LspHandler::logMessage(int type, const std::string &message) {
 void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
     const auto *textDoc = objectMember(req.params, "textDocument");
     const auto *uriValue = textDoc ? stringMember(*textDoc, "uri") : nullptr;
-    const auto *versionValue = textDoc ? intMember(*textDoc, "version") : nullptr;
     const auto *textValue = textDoc ? stringMember(*textDoc, "text") : nullptr;
-    if (!uriValue || !versionValue || !textValue) {
+    std::optional<int> clientVersion;
+    if (!uriValue || !textValue || !extractOptionalTextDocumentVersion(req.params, clientVersion)) {
         logMessage(2, "Ignoring malformed textDocument/didOpen notification");
         return;
     }
     std::string uri = uriValue->asString();
-    int version = 0;
-    if (!checkedJsonIntToInt(versionValue,
-                             std::numeric_limits<int>::min(),
-                             std::numeric_limits<int>::max(),
-                             version)) {
-        logMessage(2, "Ignoring textDocument/didOpen with out-of-range document version: " + uri);
-        return;
-    }
+    int version = clientVersion.value_or(0);
     std::string text = textValue->asString();
 
     std::string path;
@@ -889,9 +917,9 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
 
 void LspHandler::handleDidChange(const JsonRpcRequest &req) {
     std::string uri;
-    int version = 0;
+    std::optional<int> clientVersion;
     if (!extractTextDocumentUri(req.params, uri) ||
-        !extractTextDocumentVersion(req.params, version)) {
+        !extractOptionalTextDocumentVersion(req.params, clientVersion)) {
         logMessage(2, "Ignoring malformed textDocument/didChange notification");
         return;
     }
@@ -907,7 +935,9 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
         logMessage(2, "Ignoring textDocument/didChange for unopened document: " + uri);
         return;
     }
-    if (version <= *currentVersion) {
+    const int version = clientVersion.value_or(
+        *currentVersion == std::numeric_limits<int>::max() ? *currentVersion : *currentVersion + 1);
+    if (clientVersion && version <= *currentVersion) {
         logMessage(4,
                    "Ignoring stale textDocument/didChange for " + uri + " version " +
                        std::to_string(version));
@@ -1157,6 +1187,8 @@ std::string LspHandler::handleRename(const JsonRpcRequest &req) {
         !extractPosition(req.params, line, col)) {
         return buildError(req.id, kInvalidParams, "Invalid textDocument/rename params");
     }
+    if (!isValidRenameIdentifier(newName->asString()))
+        return buildError(req.id, kInvalidParams, "Rename target must be an identifier");
 
     const std::string *content = store_.getContent(uri);
     if (!content || !bridge_.supportsRename())
@@ -1383,6 +1415,11 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
         if (!d.code.empty()) {
             auto diagObj = diag.asObject();
             diagObj.push_back({"code", JsonValue(d.code)});
+            if (!d.help.empty() &&
+                (d.help.rfind("http://", 0) == 0 || d.help.rfind("https://", 0) == 0)) {
+                diagObj.push_back(
+                    {"codeDescription", JsonValue::object({{"href", JsonValue(d.help)}})});
+            }
             diag = JsonValue(std::move(diagObj));
         }
 
@@ -1416,6 +1453,35 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
             }
             auto diagObj = diag.asObject();
             diagObj.push_back({"relatedInformation", JsonValue(std::move(related))});
+            diag = JsonValue(std::move(diagObj));
+        }
+
+        if (!d.stage.empty() || !d.help.empty() || !d.fixits.empty()) {
+            JsonValue::ArrayType fixits;
+            fixits.reserve(d.fixits.size());
+            for (const auto &f : d.fixits) {
+                JsonValue fixRange =
+                    (f.line > 0) ? diagnosticRangeForSpan(*content,
+                                                          f.line,
+                                                          f.column,
+                                                          f.endLine ? f.endLine : f.line,
+                                                          f.endColumn ? f.endColumn : f.column)
+                                 : diagnosticRangeForSpan(
+                                       *content, d.line, d.column, d.endLine, d.endColumn);
+                fixits.push_back(JsonValue::object({
+                    {"message", JsonValue(f.message)},
+                    {"replacement", JsonValue(f.replacement)},
+                    {"range", std::move(fixRange)},
+                }));
+            }
+
+            auto diagObj = diag.asObject();
+            diagObj.push_back({"data",
+                               JsonValue::object({
+                                   {"stage", JsonValue(d.stage)},
+                                   {"help", JsonValue(d.help)},
+                                   {"fixits", JsonValue(std::move(fixits))},
+                               })});
             diag = JsonValue(std::move(diagObj));
         }
 

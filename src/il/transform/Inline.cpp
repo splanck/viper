@@ -22,6 +22,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/internal/io/ParserUtil.hpp"
@@ -488,6 +489,112 @@ std::optional<std::vector<size_t>> mapEntryParamsToCallArgs(const Function &call
     return entryParamToCallArg;
 }
 
+/// @brief Map a fixed TypeCategory to a concrete Type, or Void when the category
+///        is not a fixed type (None/Any/InstrType/Dynamic).
+Type fixedCategoryType(TypeCategory cat) {
+    switch (cat) {
+        case TypeCategory::Void: return Type(Type::Kind::Void);
+        case TypeCategory::I1: return Type(Type::Kind::I1);
+        case TypeCategory::I16: return Type(Type::Kind::I16);
+        case TypeCategory::I32: return Type(Type::Kind::I32);
+        case TypeCategory::I64: return Type(Type::Kind::I64);
+        case TypeCategory::F64: return Type(Type::Kind::F64);
+        case TypeCategory::Ptr: return Type(Type::Kind::Ptr);
+        case TypeCategory::Str: return Type(Type::Kind::Str);
+        case TypeCategory::Error: return Type(Type::Kind::Error);
+        case TypeCategory::ResumeTok: return Type(Type::Kind::ResumeTok);
+        default: return Type(Type::Kind::Void);
+    }
+}
+
+Type resolveTempType(const Function &caller,
+                     const std::unordered_map<std::string, const Function *> &functionLookup,
+                     unsigned id,
+                     std::unordered_map<unsigned, Type> &memo,
+                     std::unordered_set<unsigned> &active);
+
+/// @brief Static result type of an instruction, mirroring the verifier's
+///        inference. Most non-F64 results record Void on the instruction (only
+///        F64 is stored, for register-class selection), so we recover the real
+///        type from the opcode result-type model and, for `InstrType` ops (the
+///        arithmetic / checked / bitwise / shift family), from the operands.
+Type resolveInstrResultType(const Function &caller,
+                            const std::unordered_map<std::string, const Function *> &functionLookup,
+                            const Instr &ins,
+                            std::unordered_map<unsigned, Type> &memo,
+                            std::unordered_set<unsigned> &active) {
+    if (ins.type.kind != Type::Kind::Void)
+        return ins.type; // concretely recorded (F64 results, casts, typed loads)
+    if (ins.op == Opcode::Call) {
+        auto it = functionLookup.find(ins.callee);
+        if (it != functionLookup.end())
+            return it->second->retType;
+        return Type(Type::Kind::I64);
+    }
+    const OpcodeInfo &info = getOpcodeInfo(ins.op);
+    Type fixed = fixedCategoryType(info.resultType);
+    if (fixed.kind != Type::Kind::Void)
+        return fixed;
+    if (info.resultType == TypeCategory::InstrType ||
+        info.resultType == TypeCategory::Dynamic ||
+        info.resultType == TypeCategory::Any) {
+        for (const auto &op : ins.operands) {
+            if (op.kind == Value::Kind::Temp)
+                return resolveTempType(caller, functionLookup, op.id, memo, active);
+        }
+    }
+    return Type(Type::Kind::I64);
+}
+
+/// @brief Resolve the static type of caller temporary @p id, recursing through
+///        operand types as needed. Memoized, with a cycle guard.
+Type resolveTempType(const Function &caller,
+                     const std::unordered_map<std::string, const Function *> &functionLookup,
+                     unsigned id,
+                     std::unordered_map<unsigned, Type> &memo,
+                     std::unordered_set<unsigned> &active) {
+    if (auto it = memo.find(id); it != memo.end())
+        return it->second;
+    if (!active.insert(id).second)
+        return Type(Type::Kind::I64); // cycle guard (should not occur in valid SSA)
+
+    Type result(Type::Kind::I64);
+    bool found = false;
+    for (const auto &fp : caller.params) {
+        if (fp.id == id) {
+            result = fp.type;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        for (const auto &bb : caller.blocks) {
+            for (const auto &bp : bb.params) {
+                if (bp.id == id) {
+                    result = bp.type;
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+                break;
+            for (const auto &ins : bb.instructions) {
+                if (ins.result && *ins.result == id) {
+                    result = resolveInstrResultType(caller, functionLookup, ins, memo, active);
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+                break;
+        }
+    }
+
+    active.erase(id);
+    memo[id] = result;
+    return result;
+}
+
 bool inlineCallSite(Function &caller,
                     size_t callBlockIdx,
                     size_t callIndex,
@@ -645,56 +752,22 @@ bool inlineCallSite(Function &caller,
     std::vector<EscapedParamInfo> escapedParamInfos;
     escapedParamInfos.reserve(escapedIds.size());
 
+    // Shared cache for the recursive value-type resolver.
+    std::unordered_map<unsigned, Type> typeMemo;
+    std::unordered_set<unsigned> typeActive;
+
     for (unsigned origId : escapedIds) {
         EscapedParamInfo info;
         Param &p = info.param;
         p.name = reserveUniqueValueName(
             usedValueNames, lookupValueName(caller, origId, "ext" + std::to_string(origId)));
         p.id = nextId++;
-        p.type = Type(Type::Kind::I64); // fallback default
-
-        // Search ALL caller blocks (including the FULL call block, not yet truncated).
-        for (const auto &bb : caller.blocks) {
-            for (const auto &bp : bb.params) {
-                if (bp.id == origId) {
-                    p.type = bp.type;
-                    info.typeFound = true;
-                }
-            }
-            for (const auto &ins : bb.instructions) {
-                if (ins.result && *ins.result == origId) {
-                    // Call instruction types are canonically Void for non-F64
-                    // returns (only F64 is recorded for register-class selection).
-                    // Resolve the actual return type from the module's function
-                    // lookup to avoid typing escaped Call results as Void.
-                    if (ins.op == Opcode::Call && ins.type.kind == Type::Kind::Void) {
-                        auto calleeFnIt = functionLookup.find(ins.callee);
-                        if (calleeFnIt != functionLookup.end())
-                            p.type = calleeFnIt->second->retType;
-                        // else: external/unresolved call — keep I64 fallback
-                    } else {
-                        p.type = ins.type;
-                    }
-                    info.typeFound = true;
-                }
-            }
-        }
-        // Also check function params.
-        for (const auto &fp : caller.params) {
-            if (fp.id == origId) {
-                p.type = fp.type;
-                info.typeFound = true;
-            }
-        }
-        // Also check continuation instructions.
-        if (!info.typeFound) {
-            for (const auto &ins : continuation.instructions) {
-                if (ins.result && *ins.result == origId) {
-                    p.type = ins.type;
-                    info.typeFound = true;
-                }
-            }
-        }
+        // Resolve the escaped value's real type the way the verifier infers it.
+        // Raw Instr.type is Void for most non-F64 results (e.g. the iadd.ovf
+        // family), which previously yielded void-typed continuation params and a
+        // branch-arg/param type mismatch.
+        p.type = resolveTempType(caller, functionLookup, origId, typeMemo, typeActive);
+        info.typeFound = true;
 
         escapedParamInfos.push_back(std::move(info));
     }

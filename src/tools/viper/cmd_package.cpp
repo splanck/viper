@@ -66,9 +66,8 @@ struct ExecutableInfo {
 };
 
 /// @brief Print usage information for `viper package`.
-void packageUsage() {
-    std::cerr
-        << "Usage: viper package [project] [options]\n"
+void packageUsage(std::ostream &out = std::cerr) {
+    out << "Usage: viper package [project] [options]\n"
         << "\n"
         << "  Build a Viper project and package it for a target platform.\n"
         << "\n"
@@ -115,21 +114,31 @@ struct PackageArgs {
     std::string archOverride; // "x64" or "arm64"
     std::string executablePath;
     std::string macosSignMode;
+    bool macosSignModeSet{false};
     std::string macosSignIdentity;
+    bool macosSignIdentitySet{false};
     std::string macosEntitlements;
+    bool macosEntitlementsSet{false};
     std::string macosNotaryProfile;
+    bool macosNotaryProfileSet{false};
     bool macosHardenedRuntime{false};
     bool macosHardenedRuntimeSet{false};
     bool macosStaple{false};
     bool macosStapleSet{false};
     std::string windowsInstallScope;
+    bool windowsInstallScopeSet{false};
     std::string windowsInstallDir;
+    bool windowsInstallDirSet{false};
     bool windowsSign{false};
     bool windowsSignSet{false};
     std::string windowsSignPfx;
+    bool windowsSignPfxSet{false};
     std::string windowsSignThumbprint;
+    bool windowsSignThumbprintSet{false};
     std::string windowsTimestampUrl;
+    bool windowsTimestampUrlSet{false};
     std::string windowsSigntoolPath;
+    bool windowsSigntoolPathSet{false};
     bool windowsSignNoVerify{false};
     bool windowsSignNoVerifySet{false};
     bool dryRun{false};
@@ -580,6 +589,56 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     return true;
 }
 
+/// @brief Consume a package option value from inline or following-argument syntax.
+/// @details Matches either `--name=value` or `--name value`, advances @p index
+///          only for the separated form, and optionally rejects an empty value.
+///          Keeping this in one place makes target-specific package options
+///          behave like the top-level target/output options.
+/// @param arg Current argument token.
+/// @param optionName Option name including leading dashes.
+/// @param index Current argv index, advanced when the value is the next token.
+/// @param argc Total argument count.
+/// @param argv Argument vector.
+/// @param value Receives the parsed value when the option matched.
+/// @param description User-facing noun for missing-value diagnostics.
+/// @param allowEmpty Whether `--name=` or `--name ""` is accepted.
+/// @param matched Receives whether @p arg matched @p optionName at all.
+/// @return True when @p arg matched @p optionName and @p value was populated.
+bool consumePackageOptionValue(std::string_view arg,
+                               std::string_view optionName,
+                               int &index,
+                               int argc,
+                               char **argv,
+                               std::string &value,
+                               std::string_view description,
+                               bool allowEmpty,
+                               bool &matched) {
+    matched = false;
+    std::string_view inlineValue;
+    if (ilc::splitInlineOptionValue(arg, optionName, inlineValue)) {
+        matched = true;
+        if (!allowEmpty && inlineValue.empty()) {
+            std::cerr << "error: " << optionName << " requires " << description << "\n";
+            return false;
+        }
+        value = std::string(inlineValue);
+        return true;
+    }
+    if (arg != optionName)
+        return false;
+    matched = true;
+    if (index + 1 >= argc) {
+        std::cerr << "error: " << optionName << " requires " << description << "\n";
+        return false;
+    }
+    value = argv[++index];
+    if (!allowEmpty && value.empty()) {
+        std::cerr << "error: " << optionName << " requires " << description << "\n";
+        return false;
+    }
+    return true;
+}
+
 /// @brief Parse the `viper package` command-line arguments into @p args.
 /// @details Handles the target/output/arch/executable options plus the macOS and
 ///          Windows signing option families; prints usage and returns false on a
@@ -588,147 +647,195 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
 bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
-        std::string_view inlineValue;
-        if (arg == "--target") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --target requires a value\n";
-                return false;
-            }
-            std::string val = argv[++i];
+        bool matched = false;
+        std::string val;
+        if (consumePackageOptionValue(
+                arg, "--target", i, argc, argv, val, "a value", false, matched)) {
             if (!parsePackageTargetValue(val, args.platformTarget)) {
                 std::cerr << "error: unknown target '" << val
                           << "'; expected macos, linux, windows, or tarball\n";
                 return false;
             }
-        } else if (ilc::splitInlineOptionValue(arg, "--target", inlineValue)) {
-            std::string val(inlineValue);
-            if (!parsePackageTargetValue(val, args.platformTarget)) {
-                std::cerr << "error: unknown target '" << val
-                          << "'; expected macos, linux, windows, or tarball\n";
-                return false;
-            }
-        } else if (arg == "--arch") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --arch requires a value\n";
-                return false;
-            }
-            args.archOverride = argv[++i];
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--arch",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.archOverride,
+                                             "a value",
+                                             false,
+                                             matched)) {
             if (!isPackageArchName(args.archOverride)) {
                 std::cerr << "error: unknown arch '" << args.archOverride
                           << "'; expected x64 or arm64\n";
                 return false;
             }
-        } else if (ilc::splitInlineOptionValue(arg, "--arch", inlineValue)) {
-            args.archOverride = std::string(inlineValue);
-            if (!isPackageArchName(args.archOverride)) {
-                std::cerr << "error: unknown arch '" << args.archOverride
-                          << "'; expected x64 or arm64\n";
-                return false;
-            }
-        } else if (arg == "--executable") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --executable requires a path\n";
-                return false;
-            }
-            args.executablePath = argv[++i];
-        } else if (ilc::splitInlineOptionValue(arg, "--executable", inlineValue)) {
-            args.executablePath = std::string(inlineValue);
-            if (args.executablePath.empty()) {
-                std::cerr << "error: --executable requires a path\n";
-                return false;
-            }
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--executable",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.executablePath,
+                                             "a path",
+                                             false,
+                                             matched)) {
+            // Parsed above.
+        } else if (matched) {
+            return false;
         } else if (arg == "-o") {
             if (i + 1 >= argc) {
                 std::cerr << "error: -o requires a path\n";
                 return false;
             }
             args.outputPath = argv[++i];
-        } else if (arg == "--output") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --output requires a path\n";
-                return false;
-            }
-            args.outputPath = argv[++i];
-        } else if (ilc::splitInlineOptionValue(arg, "--output", inlineValue)) {
-            args.outputPath = std::string(inlineValue);
             if (args.outputPath.empty()) {
-                std::cerr << "error: --output requires a path\n";
+                std::cerr << "error: -o requires a path\n";
                 return false;
             }
-        } else if (arg == "--macos-sign-mode") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --macos-sign-mode requires a value\n";
-                return false;
-            }
-            args.macosSignMode = argv[++i];
-        } else if (arg == "--macos-sign-identity") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --macos-sign-identity requires a value\n";
-                return false;
-            }
-            args.macosSignIdentity = argv[++i];
-        } else if (arg == "--macos-entitlements") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --macos-entitlements requires a path\n";
-                return false;
-            }
-            args.macosEntitlements = argv[++i];
-        } else if (arg == "--macos-notary-profile") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --macos-notary-profile requires a value\n";
-                return false;
-            }
-            args.macosNotaryProfile = argv[++i];
+        } else if (consumePackageOptionValue(
+                       arg, "--output", i, argc, argv, args.outputPath, "a path", false, matched)) {
+            // Parsed above.
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--macos-sign-mode",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.macosSignMode,
+                                             "a value",
+                                             true,
+                                             matched)) {
+            args.macosSignModeSet = true;
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--macos-sign-identity",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.macosSignIdentity,
+                                             "a value",
+                                             true,
+                                             matched)) {
+            args.macosSignIdentitySet = true;
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--macos-entitlements",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.macosEntitlements,
+                                             "a path",
+                                             true,
+                                             matched)) {
+            args.macosEntitlementsSet = true;
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--macos-notary-profile",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.macosNotaryProfile,
+                                             "a value",
+                                             true,
+                                             matched)) {
+            args.macosNotaryProfileSet = true;
+        } else if (matched) {
+            return false;
         } else if (arg == "--macos-hardened-runtime") {
             args.macosHardenedRuntime = true;
             args.macosHardenedRuntimeSet = true;
         } else if (arg == "--macos-staple") {
             args.macosStaple = true;
             args.macosStapleSet = true;
-        } else if (arg == "--windows-install-scope") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --windows-install-scope requires a value\n";
-                return false;
-            }
-            args.windowsInstallScope = argv[++i];
-            if (args.windowsInstallScope != "machine" && args.windowsInstallScope != "user") {
+        } else if (consumePackageOptionValue(arg,
+                                             "--windows-install-scope",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.windowsInstallScope,
+                                             "a value",
+                                             true,
+                                             matched)) {
+            args.windowsInstallScopeSet = true;
+            if (!args.windowsInstallScope.empty() && args.windowsInstallScope != "machine" &&
+                args.windowsInstallScope != "user") {
                 std::cerr << "error: unknown Windows install scope '" << args.windowsInstallScope
                           << "'; expected machine or user\n";
                 return false;
             }
-        } else if (arg == "--windows-install-dir") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --windows-install-dir requires a value\n";
-                return false;
-            }
-            args.windowsInstallDir = argv[++i];
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--windows-install-dir",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.windowsInstallDir,
+                                             "a value",
+                                             true,
+                                             matched)) {
+            args.windowsInstallDirSet = true;
+        } else if (matched) {
+            return false;
         } else if (arg == "--windows-sign") {
             args.windowsSign = true;
             args.windowsSignSet = true;
-        } else if (arg == "--windows-sign-pfx") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --windows-sign-pfx requires a path\n";
-                return false;
-            }
-            args.windowsSignPfx = argv[++i];
-        } else if (arg == "--windows-sign-thumbprint") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --windows-sign-thumbprint requires a SHA-1 thumbprint\n";
-                return false;
-            }
-            args.windowsSignThumbprint = argv[++i];
-        } else if (arg == "--windows-timestamp-url") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --windows-timestamp-url requires a URL\n";
-                return false;
-            }
-            args.windowsTimestampUrl = argv[++i];
-        } else if (arg == "--windows-signtool") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --windows-signtool requires a path\n";
-                return false;
-            }
-            args.windowsSigntoolPath = argv[++i];
+        } else if (consumePackageOptionValue(arg,
+                                             "--windows-sign-pfx",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.windowsSignPfx,
+                                             "a path",
+                                             true,
+                                             matched)) {
+            args.windowsSignPfxSet = true;
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--windows-sign-thumbprint",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.windowsSignThumbprint,
+                                             "a SHA-1 thumbprint",
+                                             true,
+                                             matched)) {
+            args.windowsSignThumbprintSet = true;
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--windows-timestamp-url",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.windowsTimestampUrl,
+                                             "a URL",
+                                             true,
+                                             matched)) {
+            args.windowsTimestampUrlSet = true;
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
+                                             "--windows-signtool",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.windowsSigntoolPath,
+                                             "a path",
+                                             true,
+                                             matched)) {
+            args.windowsSigntoolPathSet = true;
+        } else if (matched) {
+            return false;
         } else if (arg == "--windows-sign-no-verify") {
             args.windowsSignNoVerify = true;
             args.windowsSignNoVerifySet = true;
@@ -739,7 +846,7 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
         } else if (arg == "--verbose" || arg == "-v") {
             args.verbose = true;
         } else if (arg == "--help" || arg == "-h") {
-            packageUsage();
+            packageUsage(std::cout);
             args.help = true;
             return true;
         } else if (!arg.empty() && arg[0] == '-') {
@@ -771,7 +878,13 @@ bool validatePackageSourcePathExists(const ProjectConfig &proj,
                                      const std::string &path,
                                      const char *fieldName,
                                      bool allowDirectory = true) {
-    fs::path resolved = viper::pkg::resolvePackageSourcePath(proj.rootDir, path, fieldName);
+    fs::path resolved;
+    try {
+        resolved = viper::pkg::resolvePackageSourcePath(proj.rootDir, path, fieldName);
+    } catch (const std::exception &ex) {
+        std::cerr << "error: invalid " << fieldName << " '" << path << "': " << ex.what() << "\n";
+        return false;
+    }
     std::error_code ec;
     if (!fs::exists(resolved, ec)) {
         if (ec)
@@ -941,7 +1054,7 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 break;
         }
     } catch (const std::exception &ex) {
-        err << "error: package metadata invalid: " << ex.what() << "\n";
+        err << "error: package configuration invalid: " << ex.what() << "\n";
         return false;
     }
     return true;
@@ -952,33 +1065,33 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
 ///        manifest). Only set options override; unset ones leave the manifest
 ///        value intact.
 void applyPackageCliOverrides(ProjectConfig &proj, const PackageArgs &args) {
-    if (!args.macosSignMode.empty())
+    if (args.macosSignModeSet)
         proj.packageConfig.macosSignMode = args.macosSignMode;
-    if (!args.macosSignIdentity.empty())
+    if (args.macosSignIdentitySet)
         proj.packageConfig.macosSignIdentity = args.macosSignIdentity;
-    if (!args.macosEntitlements.empty())
+    if (args.macosEntitlementsSet)
         proj.packageConfig.macosEntitlements = args.macosEntitlements;
-    if (!args.macosNotaryProfile.empty())
+    if (args.macosNotaryProfileSet)
         proj.packageConfig.macosNotaryProfile = args.macosNotaryProfile;
     if (args.macosHardenedRuntimeSet)
         proj.packageConfig.macosHardenedRuntime = args.macosHardenedRuntime;
     if (args.macosStapleSet)
         proj.packageConfig.macosStaple = args.macosStaple;
-    if (!args.windowsInstallScope.empty())
+    if (args.windowsInstallScopeSet)
         proj.packageConfig.windowsInstallScope = args.windowsInstallScope;
-    if (!args.windowsInstallDir.empty())
+    if (args.windowsInstallDirSet)
         proj.packageConfig.windowsInstallDir = args.windowsInstallDir;
     if (args.windowsSignSet) {
         proj.packageConfig.windowsSign = args.windowsSign;
         proj.packageConfig.windowsSignSet = true;
     }
-    if (!args.windowsSignPfx.empty())
+    if (args.windowsSignPfxSet)
         proj.packageConfig.windowsSignPfx = args.windowsSignPfx;
-    if (!args.windowsSignThumbprint.empty())
+    if (args.windowsSignThumbprintSet)
         proj.packageConfig.windowsSignThumbprint = args.windowsSignThumbprint;
-    if (!args.windowsTimestampUrl.empty())
+    if (args.windowsTimestampUrlSet)
         proj.packageConfig.windowsTimestampUrl = args.windowsTimestampUrl;
-    if (!args.windowsSigntoolPath.empty())
+    if (args.windowsSigntoolPathSet)
         proj.packageConfig.windowsSigntoolPath = args.windowsSigntoolPath;
     if (args.windowsSignNoVerifySet)
         proj.packageConfig.windowsSignNoVerify = args.windowsSignNoVerify;
@@ -1087,24 +1200,6 @@ int cmdPackage(int argc, char **argv) {
         proj.packageConfig.displayName.empty() ? proj.name : proj.packageConfig.displayName;
     const std::string resolvedVersion = proj.version.empty() ? "0.0.0" : proj.version;
 
-    // Validate version string (warn on clearly invalid formats)
-    {
-        bool validVersion = !resolvedVersion.empty();
-        if (validVersion) {
-            for (char c : resolvedVersion) {
-                if (!std::isdigit(static_cast<unsigned char>(c)) && c != '.' && c != '-' &&
-                    c != '+' && !std::isalpha(static_cast<unsigned char>(c))) {
-                    validVersion = false;
-                    break;
-                }
-            }
-        }
-        if (!validVersion) {
-            std::cerr << "warning: version '" << resolvedVersion
-                      << "' may be invalid; expected format like '1.0.0' or '1.0.0-beta'\n";
-        }
-    }
-
     // Determine architecture
     viper::tools::TargetArch arch = viper::tools::detectHostArch();
     std::string archStr;
@@ -1141,78 +1236,78 @@ int cmdPackage(int argc, char **argv) {
 
     // Dry-run mode: list what would be packaged, then exit
     if (args.dryRun) {
-        std::cerr << "Dry run: " << displayName << " for " << platformName(args.platformTarget)
-                  << " (" << archStr << ")\n";
-        std::cerr << "  Output: " << args.outputPath << "\n";
+        std::ostream &dryOut = std::cout;
+        dryOut << "Dry run: " << displayName << " for " << platformName(args.platformTarget) << " ("
+               << archStr << ")\n";
+        dryOut << "  Output: " << args.outputPath << "\n";
         if (!args.executablePath.empty())
-            std::cerr << "  Executable: " << args.executablePath << " (prebuilt)\n";
+            dryOut << "  Executable: " << args.executablePath << " (prebuilt)\n";
         else
-            std::cerr << "  Executable: " << proj.name << " (build)\n";
+            dryOut << "  Executable: " << proj.name << " (build)\n";
         if (!proj.packageConfig.iconPath.empty()) {
             fs::path iconPath;
-            std::cerr << "  Icon: " << proj.packageConfig.iconPath;
+            dryOut << "  Icon: " << proj.packageConfig.iconPath;
             try {
                 iconPath = viper::pkg::resolvePackageSourcePath(
                     proj.rootDir, proj.packageConfig.iconPath, "package icon");
             } catch (const std::exception &ex) {
-                std::cerr << " [INVALID: " << ex.what() << "]";
+                dryOut << " [INVALID: " << ex.what() << "]";
             }
             std::error_code iconEc;
             if (!iconPath.empty() && !fs::exists(iconPath, iconEc))
-                std::cerr << " [NOT FOUND]";
-            std::cerr << "\n";
+                dryOut << " [NOT FOUND]";
+            dryOut << "\n";
         }
         if (args.platformTarget == PackageTarget::MacOS) {
             const std::string signMode =
                 viper::pkg::resolveMacOSSignModeForHost(proj.packageConfig);
-            std::cerr << "  macOS signing: " << signMode << "\n";
+            dryOut << "  macOS signing: " << signMode << "\n";
             if (!proj.packageConfig.macosSignIdentity.empty())
-                std::cerr << "  macOS signing identity: " << proj.packageConfig.macosSignIdentity
-                          << "\n";
+                dryOut << "  macOS signing identity: " << proj.packageConfig.macosSignIdentity
+                       << "\n";
             if (!proj.packageConfig.macosEntitlements.empty())
-                std::cerr << "  macOS entitlements: " << proj.packageConfig.macosEntitlements
-                          << "\n";
+                dryOut << "  macOS entitlements: " << proj.packageConfig.macosEntitlements << "\n";
             if (proj.packageConfig.macosHardenedRuntime)
-                std::cerr << "  macOS hardened runtime: on\n";
+                dryOut << "  macOS hardened runtime: on\n";
             if (!proj.packageConfig.macosNotaryProfile.empty())
-                std::cerr << "  macOS notary profile: " << proj.packageConfig.macosNotaryProfile
-                          << "\n";
+                dryOut << "  macOS notary profile: " << proj.packageConfig.macosNotaryProfile
+                       << "\n";
             if (proj.packageConfig.macosStaple)
-                std::cerr << "  macOS staple: on\n";
+                dryOut << "  macOS staple: on\n";
         }
         if (args.platformTarget == PackageTarget::Windows) {
             const std::string scope = proj.packageConfig.windowsInstallScope.empty()
                                           ? "machine"
                                           : proj.packageConfig.windowsInstallScope;
-            std::cerr << "  Windows install scope: " << scope << "\n";
+            dryOut << "  Windows install scope: " << scope << "\n";
             if (!proj.packageConfig.windowsInstallDir.empty())
-                std::cerr << "  Windows install directory: " << proj.packageConfig.windowsInstallDir
-                          << "\n";
+                dryOut << "  Windows install directory: " << proj.packageConfig.windowsInstallDir
+                       << "\n";
             if (windowsSigningRequested(proj.packageConfig)) {
-                std::cerr << "  Windows signing: on\n";
+                dryOut << "  Windows signing: on\n";
                 if (!proj.packageConfig.windowsSignPfx.empty())
-                    std::cerr << "  Windows signing PFX: " << proj.packageConfig.windowsSignPfx
-                              << "\n";
+                    dryOut << "  Windows signing PFX: " << proj.packageConfig.windowsSignPfx
+                           << "\n";
                 if (!proj.packageConfig.windowsSignThumbprint.empty())
-                    std::cerr << "  Windows signing thumbprint: "
-                              << proj.packageConfig.windowsSignThumbprint << "\n";
+                    dryOut << "  Windows signing thumbprint: "
+                           << proj.packageConfig.windowsSignThumbprint << "\n";
                 if (!proj.packageConfig.windowsTimestampUrl.empty())
-                    std::cerr << "  Windows timestamp URL: "
-                              << proj.packageConfig.windowsTimestampUrl << "\n";
+                    dryOut << "  Windows timestamp URL: " << proj.packageConfig.windowsTimestampUrl
+                           << "\n";
             }
         }
         for (const auto &asset : proj.packageConfig.assets) {
             fs::path assetPath;
-            std::cerr << "  Asset: " << asset.sourcePath << " -> " << asset.targetPath;
+            dryOut << "  Asset: " << asset.sourcePath << " -> " << asset.targetPath;
             try {
                 assetPath = viper::pkg::resolvePackageSourcePath(
                     proj.rootDir, asset.sourcePath, "asset source path");
             } catch (const std::exception &ex) {
-                std::cerr << " [INVALID: " << ex.what() << "]";
+                dryOut << " [INVALID: " << ex.what() << "]";
             }
             std::error_code assetEc;
             if (!assetPath.empty() && !fs::exists(assetPath, assetEc))
-                std::cerr << " [NOT FOUND]";
+                dryOut << " [NOT FOUND]";
             else if (!assetPath.empty() && fs::is_directory(assetPath, assetEc)) {
                 size_t count = 0;
                 try {
@@ -1221,26 +1316,26 @@ int cmdPackage(int argc, char **argv) {
                             if (e.regularFile)
                                 ++count;
                         });
-                    std::cerr << " (" << count << " files)";
+                    dryOut << " (" << count << " files)";
                 } catch (const std::exception &ex) {
-                    std::cerr << " [INVALID: " << ex.what() << "]";
+                    dryOut << " [INVALID: " << ex.what() << "]";
                 }
             }
-            std::cerr << "\n";
+            dryOut << "\n";
         }
         for (const auto &assoc : proj.packageConfig.fileAssociations) {
-            std::cerr << "  File assoc: " << assoc.extension << " (" << assoc.description << ")";
+            dryOut << "  File assoc: " << assoc.extension << " (" << assoc.description << ")";
             if (!assoc.openCommandArguments.empty())
-                std::cerr << " [Windows open args: " << assoc.openCommandArguments << "]";
-            std::cerr << "\n";
+                dryOut << " [Windows open args: " << assoc.openCommandArguments << "]";
+            dryOut << "\n";
         }
         if (!proj.packageConfig.category.empty())
-            std::cerr << "  Category: " << proj.packageConfig.category << "\n";
+            dryOut << "  Category: " << proj.packageConfig.category << "\n";
         if (!proj.packageConfig.depends.empty()) {
-            std::cerr << "  Depends:";
+            dryOut << "  Depends:";
             for (const auto &d : proj.packageConfig.depends)
-                std::cerr << " " << d;
-            std::cerr << "\n";
+                dryOut << " " << d;
+            dryOut << "\n";
         }
         return 0;
     }
@@ -1251,6 +1346,13 @@ int cmdPackage(int argc, char **argv) {
         std::cerr << "error: packaging for '" << platformName(args.platformTarget)
                   << "' from this host requires --executable because the built-in compile path "
                      "still targets the host platform\n";
+        return 1;
+    }
+    if (args.executablePath.empty() && args.platformTarget == PackageTarget::Tarball &&
+        arch != viper::tools::detectHostArch()) {
+        std::cerr << "error: tarball packaging for architecture '" << archStr
+                  << "' requires --executable because the built-in compile path still targets "
+                     "the host architecture\n";
         return 1;
     }
 
@@ -1372,8 +1474,14 @@ int cmdPackage(int argc, char **argv) {
 
     try {
         const fs::path outputParent = fs::path(args.outputPath).parent_path();
-        if (!outputParent.empty())
-            fs::create_directories(outputParent);
+        if (!outputParent.empty()) {
+            std::error_code mkdirEc;
+            fs::create_directories(outputParent, mkdirEc);
+            if (mkdirEc) {
+                throw std::runtime_error("cannot create output directory '" +
+                                         outputParent.string() + "': " + mkdirEc.message());
+            }
+        }
         switch (args.platformTarget) {
             case PackageTarget::MacOS: {
                 viper::pkg::MacOSBuildParams params;
@@ -1529,8 +1637,14 @@ int cmdPackage(int argc, char **argv) {
         std::cerr << "  Verification: passed\n";
 
     // Cleanup temp binary
-    if (cleanupPackagedBinary)
+    if (cleanupPackagedBinary) {
+        ec.clear();
         fs::remove(packageBinaryPath, ec);
+        if (ec && args.verbose) {
+            std::cerr << "warning: failed to remove temporary packaged binary '"
+                      << packageBinaryPath << "': " << ec.message() << "\n";
+        }
+    }
 
     std::cerr << "Package created: " << args.outputPath;
     ec.clear();

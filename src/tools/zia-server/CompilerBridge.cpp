@@ -47,6 +47,7 @@
 #include <mutex>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -120,7 +121,10 @@ static void appendEscapedTokenText(std::string &out, const std::string &text) {
 class RuntimeString {
   public:
     explicit RuntimeString(std::string_view text)
-        : value_(rt_string_from_bytes(text.data(), text.size())) {}
+        : value_(rt_string_from_bytes(text.data(), text.size())) {
+        if (!value_)
+            throw std::runtime_error("failed to allocate runtime string");
+    }
 
     ~RuntimeString() {
         rt_string_unref(value_);
@@ -426,35 +430,54 @@ static std::optional<std::string> readWorkspaceSourceFile(const fs::path &path) 
     return text;
 }
 
-/// @brief Collect bounded `.zia` workspace files under the current directory.
+/// @brief Collect bounded `.zia` workspace files rooted at open document directories.
+/// @details The language server does not own a formal workspace-root contract in
+///          the compiler bridge, so open documents define the search roots. This
+///          avoids scanning arbitrary process current directories while still
+///          finding nearby project files for normal editor sessions.
 static std::vector<std::pair<std::string, std::string>> collectWorkspaceZiaSources(
     const std::unordered_map<std::string, std::string> &openDocuments) {
     constexpr std::size_t kMaxWorkspaceSymbolFiles = 256;
     std::vector<std::pair<std::string, std::string>> docs;
     docs.reserve(openDocuments.size());
     std::unordered_set<std::string> seen;
+    std::vector<fs::path> roots;
+    std::unordered_set<std::string> rootKeys;
     for (const auto &[path, source] : openDocuments) {
         docs.emplace_back(path, source);
         seen.insert(path);
+        std::error_code ec;
+        fs::path root = fs::weakly_canonical(fs::path(path).parent_path(), ec);
+        if (ec)
+            root = fs::path(path).parent_path().lexically_normal();
+        if (root.empty())
+            continue;
+        std::string key = root.string();
+        if (rootKeys.insert(key).second)
+            roots.push_back(std::move(root));
     }
 
-    std::error_code ec;
-    fs::recursive_directory_iterator it(
-        fs::current_path(ec), fs::directory_options::skip_permission_denied, ec);
-    fs::recursive_directory_iterator end;
-    for (; !ec && it != end && docs.size() < kMaxWorkspaceSymbolFiles; it.increment(ec)) {
-        std::error_code entryEc;
-        if (!it->is_regular_file(entryEc) || entryEc)
-            continue;
-        if (it->path().extension() != ".zia")
-            continue;
-        fs::path canonical = fs::weakly_canonical(it->path(), entryEc);
-        std::string path = (entryEc ? it->path() : canonical).string();
-        if (!seen.insert(path).second)
-            continue;
-        auto source = readWorkspaceSourceFile(it->path());
-        if (source)
-            docs.emplace_back(std::move(path), std::move(*source));
+    for (const auto &root : roots) {
+        if (docs.size() >= kMaxWorkspaceSymbolFiles)
+            break;
+        std::error_code ec;
+        fs::recursive_directory_iterator it(
+            root, fs::directory_options::skip_permission_denied, ec);
+        fs::recursive_directory_iterator end;
+        for (; !ec && it != end && docs.size() < kMaxWorkspaceSymbolFiles; it.increment(ec)) {
+            std::error_code entryEc;
+            if (!it->is_regular_file(entryEc) || entryEc)
+                continue;
+            if (it->path().extension() != ".zia")
+                continue;
+            fs::path canonical = fs::weakly_canonical(it->path(), entryEc);
+            std::string path = (entryEc ? it->path() : canonical).string();
+            if (!seen.insert(path).second)
+                continue;
+            auto source = readWorkspaceSourceFile(it->path());
+            if (source)
+                docs.emplace_back(std::move(path), std::move(*source));
+        }
     }
     return docs;
 }
@@ -464,6 +487,7 @@ static std::vector<std::pair<std::string, std::string>> collectWorkspaceZiaSourc
 CompilerBridge::CompilerBridge() : completionEngine_(std::make_unique<CompletionEngine>()) {
     RuntimeString root(".");
     projectIndex_ = rt_zia_project_index_new(root.get());
+    projectIndexUsable_ = projectIndex_ != nullptr;
 }
 
 CompilerBridge::~CompilerBridge() {
@@ -507,6 +531,7 @@ CompileResult CompilerBridge::compile(const std::string &source, const std::stri
 void CompilerBridge::updateDocument(const std::string &path, const std::string &source) {
     std::lock_guard<std::mutex> lock(projectMutex_);
     openDocuments_[path] = source;
+    workspaceSymbolCacheDirty_ = true;
     if (!projectIndex_)
         return;
     RuntimeString pathValue(path);
@@ -520,6 +545,8 @@ void CompilerBridge::updateDocument(const std::string &path, const std::string &
 void CompilerBridge::removeDocument(const std::string &path) {
     std::lock_guard<std::mutex> lock(projectMutex_);
     const bool wasOpen = openDocuments_.erase(path) != 0;
+    if (wasOpen)
+        workspaceSymbolCacheDirty_ = true;
     if (!projectIndex_)
         return;
     RuntimeString pathValue(path);
@@ -991,33 +1018,53 @@ SignatureHelpInfo CompilerBridge::signatureHelp(const std::string &source,
 }
 
 std::vector<SymbolInfo> CompilerBridge::workspaceSymbols(const std::string &query) {
+    std::vector<SymbolInfo> cachedSymbols;
     std::unordered_map<std::string, std::string> openDocs;
+    bool rebuild = false;
     {
         std::lock_guard<std::mutex> lock(projectMutex_);
-        openDocs = openDocuments_;
-    }
-    auto docs = collectWorkspaceZiaSources(openDocs);
-
-    std::vector<SymbolInfo> out;
-    for (const auto &[path, source] : docs) {
-        auto docSymbols = symbols(source, path);
-        for (auto &symbol : docSymbols) {
-            if (!containsCaseInsensitive(symbol.name, query))
-                continue;
-            if (symbol.file.empty())
-                symbol.file = path;
-            out.push_back(std::move(symbol));
+        if (workspaceSymbolCacheDirty_) {
+            openDocs = openDocuments_;
+            rebuild = true;
+        } else {
+            cachedSymbols = workspaceSymbolCache_;
         }
     }
-    std::sort(out.begin(), out.end(), [](const SymbolInfo &lhs, const SymbolInfo &rhs) {
-        if (lhs.name != rhs.name)
-            return lhs.name < rhs.name;
-        if (lhs.file != rhs.file)
-            return lhs.file < rhs.file;
-        if (lhs.line != rhs.line)
-            return lhs.line < rhs.line;
-        return lhs.column < rhs.column;
-    });
+
+    if (rebuild) {
+        auto docs = collectWorkspaceZiaSources(openDocs);
+        std::vector<SymbolInfo> rebuilt;
+        for (const auto &[path, source] : docs) {
+            auto docSymbols = symbols(source, path);
+            for (auto &symbol : docSymbols) {
+                if (symbol.file.empty())
+                    symbol.file = path;
+                rebuilt.push_back(std::move(symbol));
+            }
+        }
+        std::sort(rebuilt.begin(), rebuilt.end(), [](const SymbolInfo &lhs, const SymbolInfo &rhs) {
+            if (lhs.name != rhs.name)
+                return lhs.name < rhs.name;
+            if (lhs.file != rhs.file)
+                return lhs.file < rhs.file;
+            if (lhs.line != rhs.line)
+                return lhs.line < rhs.line;
+            return lhs.column < rhs.column;
+        });
+        {
+            std::lock_guard<std::mutex> lock(projectMutex_);
+            workspaceSymbolCache_ = std::move(rebuilt);
+            workspaceSymbolCacheDirty_ = false;
+            cachedSymbols = workspaceSymbolCache_;
+        }
+    }
+
+    std::vector<SymbolInfo> out;
+    out.reserve(cachedSymbols.size());
+    for (const auto &symbol : cachedSymbols) {
+        if (containsCaseInsensitive(symbol.name, query))
+            out.push_back(symbol);
+    }
     return out;
 }
 
@@ -1186,7 +1233,11 @@ std::string CompilerBridge::dumpTokens(const std::string &source, const std::str
         std::snprintf(buf, sizeof(buf), "%u:%u", tok.loc.line, tok.loc.column);
         out += buf;
         out += '\t';
-        appendEscapedTokenText(out, tok.text);
+        out += tokenKindToString(tok.kind);
+        if (!tok.text.empty()) {
+            out += '\t';
+            appendEscapedTokenText(out, tok.text);
+        }
         out += '\n';
     }
     return out;

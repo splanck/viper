@@ -61,7 +61,7 @@ LoadResult makeSuccess(const std::string &path) {
 /// @param message Human-readable description of the I/O failure.
 /// @return Result tagged with @ref LoadStatus::FileError.
 LoadResult makeFileError(const std::string &path, std::string message) {
-    il::support::Diag diag{il::support::Severity::Error, std::move(message), {}, {}};
+    il::support::Diag diag{il::support::Severity::Error, std::move(message), {}, "V-IL-IO"};
     return {LoadStatus::FileError, diag, path};
 }
 
@@ -144,7 +144,11 @@ LoadResult loadModuleFromFile(const std::string &path,
 
     auto parsed = il::api::v2::parse_text_expected(input, module);
     if (!parsed) {
-        const auto diag = parsed.error();
+        auto diag = parsed.error();
+        if (diag.loc.file_id == 0) {
+            diag.notes.push_back(
+                il::support::DiagnosticNote{{}, "while parsing IL module: " + path});
+        }
         if (printDiagnostics)
             il::support::printDiag(diag, err);
         return makeParseError(path, diag);

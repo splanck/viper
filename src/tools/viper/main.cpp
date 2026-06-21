@@ -53,7 +53,7 @@ void printVersion() {
     if (std::string(VIPER_SNAPSHOT_STR).size())
         std::cout << "snap: " << VIPER_SNAPSHOT_STR << "\n";
     std::cout << "IL current: " << VIPER_IL_VERSION_STR << "\n";
-    std::cout << "IL supported: 0.1.0 - " << VIPER_IL_VERSION_STR << "\n";
+    std::cout << "IL supported: " << VIPER_IL_VERSION_STR << "\n";
     std::cout << "Precise Numerics: enabled\n";
 }
 
@@ -236,7 +236,9 @@ int dumpOpcodes() {
     using il::support::printJsonStringEscaped;
     std::ostream &os = std::cout;
 
-    os << "{\"ilVersion\":\"0.2.0\",\"opcodes\":[";
+    os << "{\"ilVersion\":";
+    printJsonStringEscaped(os, VIPER_IL_VERSION_STR);
+    os << ",\"opcodes\":[";
     bool first = true;
     for (const auto op : il::core::all_opcodes()) {
         const auto &info = il::core::getOpcodeInfo(op);
@@ -387,9 +389,8 @@ int dumpRuntimeClasses() {
 /// @details The top-level help intentionally stays short. Subcommand-specific
 ///          help carries detailed flags so unrelated implementation options do
 ///          not crowd the common command list.
-void usage() {
-    std::cerr
-        << "viper v" << VIPER_VERSION_STR << "\n"
+void printTopLevelUsage(std::ostream &out) {
+    out << "viper v" << VIPER_VERSION_STR << "\n"
         << "Usage: viper <command> [arguments]\n"
         << "\n"
         << "Common commands:\n"
@@ -422,6 +423,10 @@ void usage() {
         << "       viper --version\n";
 }
 
+void usage() {
+    printTopLevelUsage(std::cerr);
+}
+
 /// @brief Invoke a subcommand handler with a synthetic `--help` argument vector.
 /// @details Lets `viper help <command>` reuse each subcommand's own help text.
 int invokeHelp(int (*handler)(int, char **)) {
@@ -431,9 +436,8 @@ int invokeHelp(int (*handler)(int, char **)) {
 }
 
 /// @brief Print usage for the `viper codegen` subcommand (architectures + options).
-void codegenUsage() {
-    std::cerr
-        << "Usage: viper codegen <arch> <file.il> [options]\n"
+void codegenUsage(std::ostream &out = std::cerr) {
+    out << "Usage: viper codegen <arch> <file.il> [options]\n"
         << "\n"
         << "Architectures:\n"
         << "  x64\n"
@@ -484,7 +488,7 @@ int main(int argc, char **argv) {
     }
     std::string cmd = argv[1];
     if (cmd == "--help" || cmd == "-h") {
-        usage();
+        printTopLevelUsage(std::cout);
         return 0;
     }
     if (cmd == "--version") {
@@ -542,7 +546,7 @@ int main(int argc, char **argv) {
     }
     if (cmd == "help") {
         if (argc < 3) {
-            usage();
+            printTopLevelUsage(std::cout);
             return 1;
         }
         const std::string_view topic = argv[2];
@@ -584,8 +588,8 @@ int main(int argc, char **argv) {
                 return invokeHelp(viper::tools::ilc::cmd_codegen_x64);
             if (argc >= 4 && std::string_view(argv[3]) == "arm64")
                 return invokeHelp(viper::tools::ilc::cmd_codegen_arm64);
-            codegenUsage();
-            return 1;
+            codegenUsage(std::cout);
+            return 0;
         }
         std::cerr << "unknown help topic: " << topic << "\n";
         usage();
@@ -603,7 +607,7 @@ int main(int argc, char **argv) {
     if (cmd == "codegen") {
         if (argc >= 3 &&
             (std::string_view(argv[2]) == "--help" || std::string_view(argv[2]) == "-h")) {
-            codegenUsage();
+            codegenUsage(std::cout);
             return 0;
         }
         if (argc >= 3) {

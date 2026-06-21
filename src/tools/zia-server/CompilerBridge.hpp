@@ -115,6 +115,10 @@ class CompilerBridge : public ICompilerBridge {
     ///          feature from clients that can recover after document changes.
     bool projectIndexUsable_{true};
     std::unordered_map<std::string, std::string> openDocuments_;
+    /// @brief Cached workspace symbols derived from open documents and nearby files.
+    std::vector<SymbolInfo> workspaceSymbolCache_;
+    /// @brief True when open document changes require rebuilding workspace symbols.
+    bool workspaceSymbolCacheDirty_{true};
 };
 
 } // namespace viper::server

@@ -326,6 +326,238 @@ TEST(LoopRotate, RemapsConstantBackedgeArgs) {
     EXPECT_TRUE(sawConstRemappedCompare);
 }
 
+// Regression: the loop body uses the header's induction *parameter* directly
+// (it is not re-passed as a body parameter). Before the SSA-reconstruction fix,
+// rotation left the body referencing the header param, which no longer dominates
+// the body — producing "use of %X not dominated by definition". The body must
+// receive a new parameter so the module still verifies after rotation.
+TEST(LoopRotate, ThreadsHeaderParamUsedInBody) {
+    Module module;
+    Function fn;
+    fn.name = "header_param_in_body";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+    Param limitParam = makeParam("limit", Type(Type::Kind::I64), nextId);
+    fn.params.push_back(limitParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[limitParam.id] = limitParam.name;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.labels.push_back("header");
+    entryBr.brArgs.push_back({Value::constInt(0)});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
+
+    // header(%i): %cmp = scmp_lt %i, %limit; cbr %cmp, ^body, ^exit(%i)
+    BasicBlock header;
+    header.label = "header";
+    Param iParam = makeParam("i", Type(Type::Kind::I64), nextId);
+    header.params.push_back(iParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[iParam.id] = iParam.name;
+
+    Instr cmp;
+    cmp.op = Opcode::SCmpLT;
+    cmp.result = nextId++;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands = {Value::temp(iParam.id), Value::temp(limitParam.id)};
+    const unsigned cmpId = *cmp.result;
+    header.instructions.push_back(std::move(cmp));
+
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.operands.push_back(Value::temp(cmpId));
+    cbr.labels = {"body", "exit"};
+    cbr.brArgs.push_back({}); // body takes no params
+    cbr.brArgs.push_back({Value::temp(iParam.id)});
+    header.instructions.push_back(std::move(cbr));
+    header.terminated = true;
+
+    // body: %next = iadd.ovf %i, 1; br ^header(%next)   (uses header's %i directly)
+    BasicBlock body;
+    body.label = "body";
+    Instr next;
+    next.op = Opcode::IAddOvf;
+    next.result = nextId++;
+    next.operands = {Value::temp(iParam.id), Value::constInt(1)};
+    const unsigned nextValId = *next.result;
+    body.instructions.push_back(std::move(next));
+
+    Instr back;
+    back.op = Opcode::Br;
+    back.labels.push_back("header");
+    back.brArgs.push_back({Value::temp(nextValId)});
+    body.instructions.push_back(std::move(back));
+    body.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Param resultParam = makeParam("result", Type(Type::Kind::I64), nextId);
+    exit.params.push_back(resultParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[resultParam.id] = resultParam.name;
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.operands.push_back(Value::temp(resultParam.id));
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(header));
+    fn.blocks.push_back(std::move(body));
+    fn.blocks.push_back(std::move(exit));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    // Sanity: the pre-rotation IL is valid (header dominates body).
+    EXPECT_TRUE(static_cast<bool>(il::verify::Verifier::verify(module)));
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager am(module, registry);
+
+    il::transform::LoopSimplify simplify;
+    auto simplifyResult = simplify.run(function, am);
+    am.invalidateAfterFunctionPass(simplifyResult, function);
+
+    il::transform::LoopRotate rotate;
+    auto result = rotate.run(function, am);
+    (void)result;
+
+    // Rotation occurred: a guard block exists and the body gained a parameter for
+    // the header induction variable it used. The module still verifies — the very
+    // property that regressed before the SSA-reconstruction fix. (Block count is
+    // unchanged: the guard is added and the now-dead header removed.)
+    bool sawGuard = false;
+    bool bodyHasParam = false;
+    for (const auto &block : function.blocks) {
+        if (block.label.find(".guard") != std::string::npos)
+            sawGuard = true;
+        if (block.label == "body" && !block.params.empty())
+            bodyHasParam = true;
+    }
+    EXPECT_TRUE(sawGuard);
+    EXPECT_TRUE(bodyHasParam);
+    auto verify = il::verify::Verifier::verify(module);
+    EXPECT_TRUE(static_cast<bool>(verify));
+}
+
+// Regression: a header *instruction result* (not a param) is used in the body.
+// We only thread header params, so rotation must conservatively decline here and
+// leave the (already valid) loop untouched rather than emit undominated uses.
+TEST(LoopRotate, BailsWhenHeaderInstrResultUsedInBody) {
+    Module module;
+    Function fn;
+    fn.name = "header_instr_in_body";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+    Param limitParam = makeParam("limit", Type(Type::Kind::I64), nextId);
+    fn.params.push_back(limitParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[limitParam.id] = limitParam.name;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.labels.push_back("header");
+    entryBr.brArgs.push_back({Value::constInt(0)});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
+
+    // header(%i): %hv = and %i, 1; %cmp = scmp_lt %i, %limit; cbr %cmp, ^body, ^exit(%i)
+    BasicBlock header;
+    header.label = "header";
+    Param iParam = makeParam("i", Type(Type::Kind::I64), nextId);
+    header.params.push_back(iParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[iParam.id] = iParam.name;
+
+    Instr andInstr;
+    andInstr.op = Opcode::And;
+    andInstr.result = nextId++;
+    andInstr.type = Type(Type::Kind::I64);
+    andInstr.operands = {Value::temp(iParam.id), Value::constInt(1)};
+    const unsigned hvId = *andInstr.result;
+    header.instructions.push_back(std::move(andInstr));
+
+    Instr cmp;
+    cmp.op = Opcode::SCmpLT;
+    cmp.result = nextId++;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands = {Value::temp(iParam.id), Value::temp(limitParam.id)};
+    const unsigned cmpId = *cmp.result;
+    header.instructions.push_back(std::move(cmp));
+
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.operands.push_back(Value::temp(cmpId));
+    cbr.labels = {"body", "exit"};
+    cbr.brArgs.push_back({});
+    cbr.brArgs.push_back({Value::temp(iParam.id)});
+    header.instructions.push_back(std::move(cbr));
+    header.terminated = true;
+
+    // body: %next = iadd.ovf %hv, %i; br ^header(%next)  (uses header instr result %hv)
+    BasicBlock body;
+    body.label = "body";
+    Instr next;
+    next.op = Opcode::IAddOvf;
+    next.result = nextId++;
+    next.operands = {Value::temp(hvId), Value::temp(iParam.id)};
+    const unsigned nextValId = *next.result;
+    body.instructions.push_back(std::move(next));
+
+    Instr back;
+    back.op = Opcode::Br;
+    back.labels.push_back("header");
+    back.brArgs.push_back({Value::temp(nextValId)});
+    body.instructions.push_back(std::move(back));
+    body.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Param resultParam = makeParam("result", Type(Type::Kind::I64), nextId);
+    exit.params.push_back(resultParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[resultParam.id] = resultParam.name;
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.operands.push_back(Value::temp(resultParam.id));
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(header));
+    fn.blocks.push_back(std::move(body));
+    fn.blocks.push_back(std::move(exit));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    EXPECT_TRUE(static_cast<bool>(il::verify::Verifier::verify(module)));
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager am(module, registry);
+
+    il::transform::LoopSimplify simplify;
+    auto simplifyResult = simplify.run(function, am);
+    am.invalidateAfterFunctionPass(simplifyResult, function);
+
+    il::transform::LoopRotate rotate;
+    auto result = rotate.run(function, am);
+    (void)result;
+
+    // Whether or not it rotated, the module must still verify.
+    auto verify = il::verify::Verifier::verify(module);
+    EXPECT_TRUE(static_cast<bool>(verify));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

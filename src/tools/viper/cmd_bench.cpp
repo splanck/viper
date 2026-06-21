@@ -100,23 +100,24 @@ class RuntimeArgsScope {
 };
 
 /// @brief Print usage information for the bench subcommand.
-void benchUsage() {
-    std::cerr << "Usage: viper bench <file.il> [file2.il ...] [options]\n"
-              << "Options:\n"
-              << "  -n <N>            Number of iterations (default: 3)\n"
-              << "  --max-steps <N>   Maximum interpreter steps (0 = unlimited)\n"
-              << "  --table           Run only FnTable dispatch (standard VM)\n"
-              << "  --switch          Run only Switch dispatch (standard VM)\n"
-              << "  --threaded        Run only Threaded dispatch (standard VM)\n"
-              << "  --bc-switch       Run Bytecode VM with switch dispatch\n"
-              << "  --bc-threaded     Run Bytecode VM with threaded dispatch\n"
-              << "  --bytecode        Run both Bytecode VM dispatch strategies\n"
-              << "  --all             Run all dispatch strategies (default if none specified)\n"
-              << "  --json            Output results as JSON\n"
-              << "  -v, --verbose     Verbose output\n"
-              << "\n"
-              << "Output format (one line per file/strategy):\n"
-              << "  BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>\n";
+void benchUsage(std::ostream &out = std::cerr) {
+    out << "Usage: viper bench <file.il> [file2.il ...] [options]\n"
+        << "Options:\n"
+        << "  -n <N>            Number of iterations (default: 3)\n"
+        << "  --max-steps <N>   Maximum interpreter steps (0 = unlimited)\n"
+        << "  --max-steps=<N>   Inline form of --max-steps\n"
+        << "  --table           Run only FnTable dispatch (standard VM)\n"
+        << "  --switch          Run only Switch dispatch (standard VM)\n"
+        << "  --threaded        Run only Threaded dispatch (standard VM)\n"
+        << "  --bc-switch       Run Bytecode VM with switch dispatch\n"
+        << "  --bc-threaded     Run Bytecode VM with threaded dispatch\n"
+        << "  --bytecode        Run both Bytecode VM dispatch strategies\n"
+        << "  --all             Run all dispatch strategies (default if none specified)\n"
+        << "  --json            Output results as JSON\n"
+        << "  -v, --verbose     Verbose output\n"
+        << "\n"
+        << "Output format (one line per file/strategy):\n"
+        << "  BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>\n";
 }
 
 /// @brief Start an explicit benchmark strategy selection when the first specific flag is seen.
@@ -146,10 +147,11 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
         std::string_view arg = argv[i];
 
         if (arg == "--help" || arg == "-h") {
-            benchUsage();
+            benchUsage(std::cout);
             return false;
         } else if (arg == "-n") {
             if (i + 1 >= argc) {
+                std::cerr << "error: -n requires a positive iteration count\n";
                 benchUsage();
                 return false;
             }
@@ -166,6 +168,7 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
             config.iterations = parsed;
         } else if (arg == "--max-steps") {
             if (i + 1 >= argc) {
+                std::cerr << "error: --max-steps requires a non-negative integer\n";
                 benchUsage();
                 return false;
             }
@@ -175,6 +178,18 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
             const auto *end = value.data() + value.size();
             auto [ptr, ec] = std::from_chars(begin, end, parsed);
             if (ec != std::errc{} || ptr != end) {
+                std::cerr << "invalid --max-steps value: " << value << "\n";
+                benchUsage();
+                return false;
+            }
+            config.maxSteps = parsed;
+        } else if (arg.substr(0, 12) == "--max-steps=") {
+            std::string_view value = arg.substr(12);
+            uint64_t parsed = 0;
+            const auto *begin = value.data();
+            const auto *end = value.data() + value.size();
+            auto [ptr, ec] = std::from_chars(begin, end, parsed);
+            if (value.empty() || ec != std::errc{} || ptr != end) {
                 std::cerr << "invalid --max-steps value: " << value << "\n";
                 benchUsage();
                 return false;
@@ -210,8 +225,12 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
             config.jsonOutput = true;
         } else if (arg == "-v" || arg == "--verbose") {
             config.verbose = true;
-        } else if (arg[0] == '-') {
+        } else if (!arg.empty() && arg[0] == '-') {
             std::cerr << "Unknown option: " << arg << "\n";
+            benchUsage();
+            return false;
+        } else if (arg.empty()) {
+            std::cerr << "error: empty input file argument\n";
             benchUsage();
             return false;
         } else {
@@ -235,7 +254,7 @@ BenchParseResult parseBenchArgsChecked(int argc, char **argv, BenchConfig &confi
     for (int i = 0; i < argc; ++i) {
         std::string_view arg = argv[i];
         if (arg == "--help" || arg == "-h") {
-            benchUsage();
+            benchUsage(std::cout);
             return BenchParseResult::Help;
         }
     }
@@ -254,22 +273,18 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
     result.strategy = strategy;
 
     RuntimeArgsScope runtimeArgs;
-    viper::tools::ScopedEnvVar dispatchOverride("VIPER_DISPATCH", strategy.c_str());
-    if (!dispatchOverride.ok()) {
-        result.success = false;
-        result.errorMessage = dispatchOverride.errorMessage();
-        return result;
-    }
 
     // Create Runner with minimal configuration
     vm::RunConfig runCfg;
     runCfg.maxSteps = maxSteps;
 
-    auto start = std::chrono::steady_clock::now();
-
     try {
         vm::Runner runner(mod, std::move(runCfg));
+        auto start = std::chrono::steady_clock::now();
         result.returnValue = runner.run();
+        auto end = std::chrono::steady_clock::now();
+        result.timeMs =
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
         result.instructions = runner.instructionCount();
         if (const auto trap = runner.lastTrapMessage()) {
             result.success = false;
@@ -281,10 +296,6 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
         result.errorMessage = ex.what();
         return result;
     }
-
-    auto end = std::chrono::steady_clock::now();
-    result.timeMs =
-        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
 
     if (result.timeMs > 0) {
         result.insnsPerSec = (result.instructions / result.timeMs) * 1000.0;
@@ -308,8 +319,6 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
     bool useThreaded = (strategy == "bc-threaded");
     RuntimeArgsScope runtimeArgs;
 
-    auto start = std::chrono::steady_clock::now();
-
     try {
         viper::bytecode::BytecodeVM vm;
         vm.setThreadedDispatch(useThreaded);
@@ -317,9 +326,13 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
         vm.setMaxInstructions(maxSteps);
         vm.load(&bcModule);
 
+        auto start = std::chrono::steady_clock::now();
         auto retSlot = vm.exec("main", {});
+        auto end = std::chrono::steady_clock::now();
         result.returnValue = retSlot.i64;
         result.instructions = vm.instrCount();
+        result.timeMs =
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
 
         if (vm.state() == viper::bytecode::VMState::Trapped) {
             result.success = false;
@@ -331,10 +344,6 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
         result.errorMessage = ex.what();
         return result;
     }
-
-    auto end = std::chrono::steady_clock::now();
-    result.timeMs =
-        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
 
     if (result.timeMs > 0) {
         result.insnsPerSec = (result.instructions / result.timeMs) * 1000.0;
@@ -445,6 +454,17 @@ bool benchmarkFile(const std::string &file,
         if (config.verbose) {
             std::cerr << "Running " << file << " with " << strategy << " (" << config.iterations
                       << " iterations)...\n";
+        }
+
+        viper::tools::ScopedEnvVar dispatchOverride("VIPER_DISPATCH", strategy.c_str());
+        if (!dispatchOverride.ok()) {
+            BenchResult result;
+            result.file = file;
+            result.strategy = strategy;
+            result.success = false;
+            result.errorMessage = dispatchOverride.errorMessage();
+            results.push_back(std::move(result));
+            continue;
         }
 
         for (uint32_t iter = 0; iter < config.iterations; ++iter) {

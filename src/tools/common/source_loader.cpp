@@ -46,9 +46,17 @@ il::support::Expected<std::string> readSourceContents(const std::string &path) {
     }
 
     in.seekg(0, std::ios::end);
+    if (!in) {
+        return il::support::Expected<std::string>(il::support::Diagnostic{
+            il::support::Severity::Error, "cannot determine source file size: " + path, {}, {}});
+    }
     auto fileSize = in.tellg();
     in.seekg(0, std::ios::beg);
-    if (fileSize < 0 || fileSize > kMaxSourceSize) {
+    if (!in || fileSize < 0) {
+        return il::support::Expected<std::string>(il::support::Diagnostic{
+            il::support::Severity::Error, "cannot seek source file: " + path, {}, {}});
+    }
+    if (fileSize > kMaxSourceSize) {
         return il::support::Expected<std::string>(
             il::support::Diagnostic{il::support::Severity::Error,
                                     "source file too large: " + path + " (limit: 256 MB)",
@@ -59,7 +67,7 @@ il::support::Expected<std::string> readSourceContents(const std::string &path) {
     try {
         std::string contents(static_cast<std::size_t>(fileSize), '\0');
         if (fileSize > 0)
-            in.read(contents.data(), fileSize);
+            in.read(contents.data(), static_cast<std::streamsize>(fileSize));
         if (!in) {
             return il::support::Expected<std::string>(il::support::Diagnostic{
                 il::support::Severity::Error, "read error reading " + path, {}, {}});

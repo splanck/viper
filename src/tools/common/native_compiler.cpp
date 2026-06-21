@@ -128,17 +128,16 @@ bool reserveTempPath(const std::string &path) {
 } // namespace
 
 /// @brief Determine whether an output path requests a native binary.
-/// @details Native output is intentionally explicit: extensionless executable
-///          paths and Windows-style ".exe" paths select codegen. ".il" selects
-///          IL text emission, and other extensions are left to the caller to
-///          reject instead of accidentally building a binary for a typo.
+/// @details The toolchain treats `.il` as textual IL emission. Any other path,
+///          including extensionless paths and common native names such as
+///          `a.out`, `.bin`, or `.exe`, selects native code generation.
 /// @param path Output path supplied on the command line.
 /// @return True when @p path should be treated as a native executable output.
 bool isNativeOutputPath(const std::string &path) {
     std::string ext = std::filesystem::path(path).extension().string();
     for (char &ch : ext)
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    return ext.empty() || ext == ".exe";
+    return ext != ".il";
 }
 
 /// @brief Generate a unique temporary path for serialized IL text.
@@ -262,7 +261,8 @@ int compileModuleToNative(il::core::Module module,
                           bool timePasses,
                           bool fastLink,
                           std::optional<bool> windowsDebugRuntime) {
-    const std::string syntheticInputPath = generateUniqueTempPath("viper_build", ".il");
+    const std::string syntheticInputPath =
+        debugSourcePath.empty() ? std::string{"<in-memory>"} : debugSourcePath;
 
     if (arch == TargetArch::ARM64) {
         viper::codegen::aarch64::CodegenPipeline::Options opts;

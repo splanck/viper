@@ -110,12 +110,6 @@ if [[ $CLEAN -eq 1 ]]; then
     rm -f "$BIN_DIR"/*
 fi
 
-BASIC_DEMOS=(
-    "vtris:${GAMES_DIR}/vtris"
-    "frogger:${GAMES_DIR}/frogger-basic"
-    "centipede:${GAMES_DIR}/centipede-basic"
-)
-
 ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
@@ -227,12 +221,11 @@ build_demo() {
         return 1
     fi
 
-    local demo_opt="-O1"
-    if [[ "$TARGET_ARCH" == "arm64" ]]; then
-        case "$name" in
-            centipede|chess-zia|crackman) demo_opt="-O0" ;;
-        esac
-    fi
+    # All demos build at -O2. The loop-rotate SSA-reconstruction and inliner
+    # escaped-param typing bugs that previously forced centipede/chess-zia/
+    # crackman down to -O0 on arm64 have been fixed in the IL optimizer (the IL
+    # passes are target-independent, so this applies to x86_64 and arm64 alike).
+    local demo_opt="-O2"
 
     if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
         # Asset projects (embed -> .rodata, pack -> a .vpa beside the binary) must
@@ -340,26 +333,6 @@ echo ""
 FAILED=0
 SUCCEEDED=0
 SKIPPED=0
-
-echo "=== BASIC Demos ==="
-echo ""
-
-for demo in "${BASIC_DEMOS[@]}"; do
-    IFS=':' read -r name project_dir <<< "$demo"
-    if [[ ! -d "$project_dir" ]]; then
-        echo -e "Skipping $name (${YELLOW}directory not found${NC})"
-        SKIPPED=$((SKIPPED + 1))
-        echo ""
-        continue
-    fi
-    echo "Building $name..."
-    if build_demo "$name" "$project_dir"; then
-        SUCCEEDED=$((SUCCEEDED + 1))
-    else
-        FAILED=$((FAILED + 1))
-    fi
-    echo ""
-done
 
 echo "=== Zia Demos ==="
 echo ""
