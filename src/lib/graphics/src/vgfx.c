@@ -46,8 +46,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
 #include <malloc.h>
+#include <windows.h>
 #elif defined(__APPLE__) || defined(__linux__)
 #include <sched.h>
 #include <stdlib.h>
@@ -92,9 +92,20 @@ static vgfx_log_fn g_log_callback = NULL;
 // Internal Helper Functions
 //===----------------------------------------------------------------------===//
 
+/// @brief Return whether internal errors should also be mirrored to stderr.
+/// @details ViperGFX is often embedded in tools that manage their own diagnostic
+///          output.  Stderr mirroring is therefore opt-in via the
+///          `VIPER_GFX_STDERR` environment variable; the user log callback still
+///          receives errors regardless of this setting.
+/// @return 1 when stderr mirroring is enabled, 0 otherwise.
+static int vgfx_should_log_to_stderr(void) {
+    const char *value = getenv("VIPER_GFX_STDERR");
+    return value && value[0] != '\0' && strcmp(value, "0") != 0;
+}
+
 /// @brief Set the thread-local error state and invoke logging.
-/// @details Stores the error code/message in TLS, prints to stderr, and
-///          calls the user-provided log callback (if any).  This function
+/// @details Stores the error code/message in TLS and calls the user-provided
+///          log callback (if any).  This function
 ///          is called by both the core library and platform backends when
 ///          an error occurs.
 ///
@@ -103,14 +114,14 @@ static vgfx_log_fn g_log_callback = NULL;
 ///
 /// @post g_last_error_code == code
 /// @post g_last_error_str == msg
-/// @post Message printed to stderr (if msg != NULL)
+/// @post Message printed to stderr only when VIPER_GFX_STDERR is enabled.
 /// @post Log callback invoked (if set and msg != NULL)
 void vgfx_internal_set_error(vgfx_error_t code, const char *msg) {
     g_last_error_code = code;
     g_last_error_str = msg;
 
-    /* Print to stderr */
-    if (msg) {
+    /* Print to stderr only when explicitly requested by the embedding process. */
+    if (msg && vgfx_should_log_to_stderr()) {
         fprintf(stderr, "vgfx: %s\n", msg);
     }
 
@@ -178,12 +189,47 @@ static void aligned_free_wrapper(void *ptr) {
 #endif
 }
 
-static void clear_framebuffer_rgba(uint8_t *pixels, size_t size) {
-    if (!pixels || size == 0)
+/// @brief Build a host-endian word whose object representation is RGBA bytes.
+/// @details The framebuffer format is byte-oriented RGBA.  Constructing the word
+///          through `memcpy` preserves the desired byte order on every host
+///          endian while still allowing fast 32-bit stores into aligned pixels.
+/// @param r Red channel byte.
+/// @param g Green channel byte.
+/// @param b Blue channel byte.
+/// @param a Alpha channel byte.
+/// @return A uint32_t whose memory bytes are exactly r,g,b,a.
+static uint32_t make_rgba_word(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    uint8_t bytes[4] = {r, g, b, a};
+    uint32_t word = 0;
+    memcpy(&word, bytes, sizeof(word));
+    return word;
+}
+
+/// @brief Fill a contiguous RGBA pixel span with one color.
+/// @details The destination must point to the first byte of a 4-byte-aligned
+///          pixel.  ViperGFX framebuffers are aligned and all callers advance in
+///          whole pixels, so this avoids per-channel byte stores in hot paths.
+/// @param pixels First RGBA byte of the span.
+/// @param pixel_count Number of pixels to fill.
+/// @param r Red channel byte.
+/// @param g Green channel byte.
+/// @param b Blue channel byte.
+/// @param a Alpha channel byte.
+static void fill_rgba_pixels(
+    uint8_t *pixels, size_t pixel_count, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    if (!pixels || pixel_count == 0)
         return;
-    memset(pixels, 0, size);
-    for (size_t i = 3; i < size; i += 4)
-        pixels[i] = 0xFF;
+    uint32_t word = make_rgba_word(r, g, b, a);
+    uint32_t *dst = (uint32_t *)pixels;
+    for (size_t i = 0; i < pixel_count; i++)
+        dst[i] = word;
+}
+
+/// @brief Clear a raw framebuffer byte range to opaque black RGBA pixels.
+/// @param pixels First framebuffer byte.
+/// @param size Size in bytes; trailing non-pixel bytes are ignored defensively.
+static void clear_framebuffer_rgba(uint8_t *pixels, size_t size) {
+    fill_rgba_pixels(pixels, size / 4u, 0, 0, 0, 0xFF);
 }
 
 static int framebuffer_size_bytes(int32_t width, int32_t height, size_t *out_size) {
@@ -874,7 +920,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     clear_framebuffer_rgba(win->pixels, fb_size);
 
     /* Initialize event queue (empty ring buffer) */
-    vgfx_atomic_flag_clear(&win->event_lock);
+    vgfx_atomic_flag_init(&win->event_lock);
     win->event_head = 0;
     win->event_tail = 0;
     win->event_overflow = 0;
@@ -1349,14 +1395,7 @@ void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
 
     if (!window->clip_enabled) {
         size_t pixel_count = (size_t)window->width * (size_t)window->height;
-        uint8_t *p = window->pixels;
-        for (size_t i = 0; i < pixel_count; i++) {
-            p[0] = r;
-            p[1] = g;
-            p[2] = b;
-            p[3] = 0xFF;
-            p += 4;
-        }
+        fill_rgba_pixels(window->pixels, pixel_count, r, g, b, 0xFF);
         return;
     }
 
@@ -1380,13 +1419,7 @@ void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
 
     for (int64_t y = top; y < bottom; y++) {
         uint8_t *row = window->pixels + (size_t)y * (size_t)window->stride + (size_t)left * 4u;
-        for (int64_t x = left; x < right; x++) {
-            row[0] = r;
-            row[1] = g;
-            row[2] = b;
-            row[3] = 0xFF;
-            row += 4;
-        }
+        fill_rgba_pixels(row, (size_t)(right - left), r, g, b, 0xFF);
     }
 }
 

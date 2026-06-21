@@ -34,7 +34,8 @@ Algorithm Helpers (vgfx_draw.c - static)
 Pixel Operations (vgfx_draw.c - static)
     plot_callback()         ← For line/circle outline
     hline_callback()        ← For filled shapes
-    plot_pixel_checked()    ← Low-level with bounds check
+    store_rgba_word()       ← Packed RGBA pixel write
+    fill_rgba_span()        ← Packed RGBA scanline fill
 ```
 
 ## Algorithm Implementations
@@ -154,15 +155,15 @@ Each iteration of the octant fills 4 complete scanlines, building up the filled 
 ```c
 typedef struct {
     struct vgfx_window* win;
-    vgfx_color_t        color;
+    int64_t             min_x, min_y, max_x, max_y;
+    uint32_t            rgba_word;
 } plot_context_t;
 ```
 
 **Implementation:** `plot_callback()`
 
-- Extracts window and color from context
-- Calls `plot_pixel_checked()` with bounds checking
-- Writes RGBA pixel to framebuffer
+- Uses cached clip bounds from context
+- Writes one packed RGBA pixel to the framebuffer
 
 ### Horizontal Line Callback
 
@@ -175,7 +176,8 @@ typedef struct {
 ```c
 typedef struct {
     struct vgfx_window* win;
-    vgfx_color_t        color;
+    int64_t             min_x, min_y, max_x, max_y;
+    uint32_t            rgba_word;
 } hline_context_t;
 ```
 
@@ -191,7 +193,7 @@ typedef struct {
 
 **Algorithm:** Bresenham line
 
-**Clipping:** Per-pixel bounds check in `plot_pixel_checked()`
+**Clipping:** The line is clipped up front, then callback writes use cached clip bounds
 
 **Edge Cases:**
 

@@ -55,12 +55,12 @@
 /// @return Clipped sample in 16-bit range.
 static inline int16_t soft_clip(int32_t sample) {
     if (sample > VAUD_CLIP_THRESHOLD) {
-        float excess = (float)(sample - VAUD_CLIP_THRESHOLD);
-        float compressed = VAUD_CLIP_THRESHOLD + excess * VAUD_CLIP_KNEE;
+        double excess = (double)sample - (double)VAUD_CLIP_THRESHOLD;
+        double compressed = (double)VAUD_CLIP_THRESHOLD + excess * (double)VAUD_CLIP_KNEE;
         sample = (int32_t)compressed;
     } else if (sample < -VAUD_CLIP_THRESHOLD) {
-        float excess = (float)(-sample - VAUD_CLIP_THRESHOLD);
-        float compressed = -(VAUD_CLIP_THRESHOLD + excess * VAUD_CLIP_KNEE);
+        double excess = -(double)sample - (double)VAUD_CLIP_THRESHOLD;
+        double compressed = -((double)VAUD_CLIP_THRESHOLD + excess * (double)VAUD_CLIP_KNEE);
         sample = (int32_t)compressed;
     }
 
@@ -70,6 +70,62 @@ static inline int16_t soft_clip(int32_t sample) {
     if (sample < -32768)
         return -32768;
     return (int16_t)sample;
+}
+
+/// @brief Clamp a mixer volume multiplier to the public 0..1 range.
+/// @details Public setters already clamp these fields, but the realtime mixer
+///          also sanitizes them before arithmetic so corrupted internal state or
+///          cross-thread torn float reads cannot create undefined integer
+///          overflow in the accumulator.
+/// @param volume Candidate volume multiplier.
+/// @return Finite volume in the inclusive range [0, 1].
+static float vaud_mixer_unit_volume(float volume) {
+    if (!isfinite(volume) || volume <= 0.0f)
+        return 0.0f;
+    if (volume > 1.0f)
+        return 1.0f;
+    return volume;
+}
+
+/// @brief Convert a sanitized floating gain to 8.8 fixed-point.
+/// @param gain Floating gain, expected in [0, 1].
+/// @return Fixed-point gain with 256 representing unity.
+static int32_t vaud_mixer_gain_to_fixed(float gain) {
+    if (!isfinite(gain) || gain <= 0.0f)
+        return 0;
+    if (gain >= 1.0f)
+        return 256;
+    return (int32_t)(gain * 256.0f + 0.5f);
+}
+
+/// @brief Saturating add for 32-bit mixer accumulators.
+/// @param lhs Existing accumulator value.
+/// @param rhs Sample contribution to add.
+/// @return Sum clamped to INT32_MIN..INT32_MAX.
+static int32_t vaud_mixer_saturating_add_i32(int32_t lhs, int32_t rhs) {
+    int64_t sum = (int64_t)lhs + (int64_t)rhs;
+    if (sum > INT32_MAX)
+        return INT32_MAX;
+    if (sum < INT32_MIN)
+        return INT32_MIN;
+    return (int32_t)sum;
+}
+
+/// @brief Convert a float effect output sample to a bounded accumulator sample.
+/// @details Group effects exchange normalized float samples.  Non-finite values
+///          are silenced and huge finite values are clamped before conversion so
+///          third-party effect callbacks cannot trigger undefined casts or
+///          accumulator overflow.
+/// @param scaled Effect sample already scaled to 16-bit PCM units.
+/// @return Rounded int32 sample contribution.
+static int32_t vaud_mixer_float_to_accum_sample(float scaled) {
+    if (!isfinite(scaled))
+        return 0;
+    if (scaled > (float)INT32_MAX)
+        return INT32_MAX;
+    if (scaled < (float)INT32_MIN)
+        return INT32_MIN;
+    return (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
 }
 
 static void vaud_zero_output(int16_t *output, int32_t frames) {
@@ -129,15 +185,13 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
     float left_gain, right_gain;
     calculate_pan_gains(voice->pan, sound->source_channels, &left_gain, &right_gain);
 
-    float vol = voice->volume * master_vol;
-    if (!isfinite(vol))
-        vol = 0.0f;
+    float vol = vaud_mixer_unit_volume(voice->volume) * vaud_mixer_unit_volume(master_vol);
     left_gain *= vol;
     right_gain *= vol;
 
     /* Convert to fixed-point for efficiency */
-    int32_t left_gain_fp = (int32_t)(left_gain * 256.0f);
-    int32_t right_gain_fp = (int32_t)(right_gain * 256.0f);
+    int32_t left_gain_fp = vaud_mixer_gain_to_fixed(left_gain);
+    int32_t right_gain_fp = vaud_mixer_gain_to_fixed(right_gain);
 
     for (int32_t i = 0; i < frames; i++) {
         if (pos >= sound_frames) {
@@ -156,8 +210,10 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
         int16_t src_right = samples[pos * 2 + 1];
 
         /* Apply volume and panning, accumulate into output */
-        output[i * 2] += (src_left * left_gain_fp) >> 8;
-        output[i * 2 + 1] += (src_right * right_gain_fp) >> 8;
+        output[i * 2] =
+            vaud_mixer_saturating_add_i32(output[i * 2], (src_left * left_gain_fp) >> 8);
+        output[i * 2 + 1] =
+            vaud_mixer_saturating_add_i32(output[i * 2 + 1], (src_right * right_gain_fp) >> 8);
 
         pos++;
     }
@@ -181,10 +237,8 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
     if (music->buffer_refilling[music->current_buffer])
         return;
 
-    float vol = music->volume * master_vol;
-    if (!isfinite(vol))
-        vol = 0.0f;
-    int32_t vol_fp = (int32_t)(vol * 256.0f);
+    float vol = vaud_mixer_unit_volume(music->volume) * vaud_mixer_unit_volume(master_vol);
+    int32_t vol_fp = vaud_mixer_gain_to_fixed(vol);
 
     int32_t frames_remaining = frames;
     int32_t output_offset = 0;
@@ -222,8 +276,10 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
             int16_t left = src[src_offset + i * 2];
             int16_t right = src[src_offset + i * 2 + 1];
 
-            output[(output_offset + i) * 2] += (left * vol_fp) >> 8;
-            output[(output_offset + i) * 2 + 1] += (right * vol_fp) >> 8;
+            output[(output_offset + i) * 2] = vaud_mixer_saturating_add_i32(
+                output[(output_offset + i) * 2], (left * vol_fp) >> 8);
+            output[(output_offset + i) * 2 + 1] = vaud_mixer_saturating_add_i32(
+                output[(output_offset + i) * 2 + 1], (right * vol_fp) >> 8);
         }
 
         music->buffer_position += to_mix;
@@ -303,12 +359,15 @@ static void add_processed_group_to_master(vaud_context_t ctx,
 
     for (size_t i = 0; i < sample_count; i++) {
         float scaled = ctx->group_fx_buf[i] * 32768.0f;
-        int32_t sample = (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
-        master_accum[i] += sample;
+        int32_t sample = vaud_mixer_float_to_accum_sample(scaled);
+        master_accum[i] = vaud_mixer_saturating_add_i32(master_accum[i], sample);
     }
 }
 
-static void mix_with_group_effects(vaud_context_t ctx, int32_t *accum, int32_t frames, float master) {
+static void mix_with_group_effects(vaud_context_t ctx,
+                                   int32_t *accum,
+                                   int32_t frames,
+                                   float master) {
     int64_t effect_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC];
     int32_t effect_group_count = collect_effect_groups(
         ctx, effect_groups, (int32_t)(sizeof(effect_groups) / sizeof(effect_groups[0])));
@@ -348,8 +407,7 @@ static void mix_with_group_effects(vaud_context_t ctx, int32_t *accum, int32_t f
 
         for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
             vaud_voice *voice = &ctx->voices[i];
-            if (voice->state == VAUD_VOICE_PLAYING && voice->sound &&
-                voice->group_id == group_id) {
+            if (voice->state == VAUD_VOICE_PLAYING && voice->sound && voice->group_id == group_id) {
                 mix_voice(voice, ctx->group_accum_buf, frames, master);
             }
         }
@@ -405,9 +463,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
         return;
     }
 
-    float master = ctx->master_volume;
-    if (!isfinite(master))
-        master = 0.0f;
+    float master = vaud_mixer_unit_volume(ctx->master_volume);
 
     if (ctx->paused) {
         vaud_mutex_unlock(&ctx->mutex);

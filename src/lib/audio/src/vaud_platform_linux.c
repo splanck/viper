@@ -55,12 +55,8 @@ typedef struct {
     pthread_cond_t pause_cond;   ///< Signal for pause/resume
 } vaud_linux_data;
 
-static void alsa_silent_error_handler(const char *file,
-                                      int line,
-                                      const char *function,
-                                      int err,
-                                      const char *fmt,
-                                      ...) {
+static void alsa_silent_error_handler(
+    const char *file, int line, const char *function, int err, const char *fmt, ...) {
     (void)file;
     (void)line;
     (void)function;
@@ -156,8 +152,8 @@ static int alsa_recover_write_error(vaud_context_t ctx, vaud_linux_data *plat, i
 /// @brief Write a full interleaved PCM period to ALSA, handling partial writes and recovery.
 /// @details ALSA may accept fewer frames than requested, return transient `EAGAIN`, or report an
 ///          underrun/suspend that can be recovered. This loop keeps the audio thread responsive by
-///          waiting on `EAGAIN`, attempting recoveries for recoverable failures, and surfacing every
-///          branch through `vaud_stats_t` counters.
+///          waiting on `EAGAIN`, attempting recoveries for recoverable failures, and surfacing
+///          every branch through `vaud_stats_t` counters.
 /// @param ctx Audio context owning diagnostics.
 /// @param plat Linux platform state.
 /// @param buffer Interleaved stereo PCM frames.
@@ -313,14 +309,14 @@ int vaud_platform_init(vaud_context_t ctx) {
         return 0;
     }
 
-    err = snd_pcm_nonblock(plat->pcm, 0);
+    err = snd_pcm_nonblock(plat->pcm, 1);
     if (err < 0) {
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
         free(plat);
         ctx->platform_data = NULL;
-        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to configure ALSA blocking mode");
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to configure ALSA nonblocking mode");
         return 0;
     }
 

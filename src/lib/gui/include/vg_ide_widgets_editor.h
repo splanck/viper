@@ -254,6 +254,9 @@ typedef struct vg_codeeditor {
     int highlight_line_offsets_cap;   ///< Allocated offset entry count.
     int *highlight_line_span_indices; ///< Span indices touching each line, grouped by line.
     int highlight_line_span_indices_cap;
+    int *
+        highlight_line_write_offsets; ///< Reusable scratch offsets while rebuilding the line index.
+    int highlight_line_write_offsets_cap; ///< Allocated scratch offset entry count.
 
     // Inlay hints (display-only ghost text anchored to source positions)
     struct vg_inlay_hint {

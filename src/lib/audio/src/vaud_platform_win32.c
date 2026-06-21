@@ -433,7 +433,10 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         vaud_win32_render_to_buffer(ctx, plat, buffer, available);
 
         /* Release buffer */
-        IAudioRenderClient_ReleaseBuffer(plat->render, available, 0);
+        hr = IAudioRenderClient_ReleaseBuffer(plat->render, available, 0);
+        if (FAILED(hr)) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        }
     }
 
     if (com_initialized)

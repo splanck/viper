@@ -89,6 +89,9 @@ typedef struct {
 
 static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
+static INIT_ONCE g_vgfx_win32_dpi_awareness_once = INIT_ONCE_STATIC_INIT;
+static INIT_ONCE g_vgfx_win32_window_class_once = INIT_ONCE_STATIC_INIT;
+
 //===----------------------------------------------------------------------===//
 // Helper Functions
 //===----------------------------------------------------------------------===//
@@ -193,6 +196,60 @@ static void win32_apply_cursor(vgfx_win32_data *w32) {
     HCURSOR hc = win32_cursor_handle(w32->cursor_type);
     if (hc)
         SetCursor(hc);
+}
+
+/// @brief Declare process DPI awareness once when the Win32 backend first needs DPI.
+/// @details Newer Windows SDKs expose SetProcessDpiAwarenessContext dynamically.
+///          Calling it once avoids repeated process-wide state changes while
+///          preserving compatibility with older user32.dll versions.
+/// @param init_once Windows one-time initialization token.
+/// @param parameter Unused.
+/// @param context Unused.
+/// @return TRUE so InitOnceExecuteOnce records completion.
+static BOOL CALLBACK win32_set_dpi_awareness_once(PINIT_ONCE init_once,
+                                                  PVOID parameter,
+                                                  PVOID *context) {
+    (void)init_once;
+    (void)parameter;
+    (void)context;
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32) {
+        typedef BOOL(WINAPI * SPDA_fn)(HANDLE);
+        SPDA_fn fn = (SPDA_fn)(void *)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+        if (fn)
+            fn((HANDLE)(intptr_t)(-2)); /* DPI_AWARENESS_CONTEXT_SYSTEM_AWARE */
+    }
+    return TRUE;
+}
+
+/// @brief Register the ViperGFX Win32 window class exactly once per process.
+/// @details Multiple windows may be created from different threads.  This
+///          callback is executed by InitOnceExecuteOnce so RegisterClassExW is
+///          not raced by a plain static flag.  ERROR_CLASS_ALREADY_EXISTS is
+///          treated as success to coexist with already-registered compatible
+///          classes in the same process.
+/// @param init_once Windows one-time initialization token.
+/// @param parameter HINSTANCE to associate with the window class.
+/// @param context Unused.
+/// @return TRUE on successful registration or already-registered class.
+static BOOL CALLBACK win32_register_window_class_once(PINIT_ONCE init_once,
+                                                      PVOID parameter,
+                                                      PVOID *context) {
+    (void)init_once;
+    (void)context;
+    HINSTANCE hInstance = (HINSTANCE)parameter;
+    WNDCLASSEXW wc = {0};
+    wc.cbSize = sizeof(WNDCLASSEXW);
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    wc.lpfnWndProc = vgfx_win32_wndproc;
+    wc.hInstance = hInstance;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName = L"ViperGFXClass";
+
+    if (RegisterClassExW(&wc))
+        return TRUE;
+    return GetLastError() == ERROR_CLASS_ALREADY_EXISTS ? TRUE : FALSE;
 }
 
 static int win32_recreate_dib(struct vgfx_window *win) {
@@ -849,16 +906,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 /// @note This must be called before any windows are created.
 /// @return Scale factor ≥ 1.0
 float vgfx_platform_get_display_scale(void) {
-    /* Declare system DPI awareness so GetDeviceCaps returns the real DPI.
-     * DPI_AWARENESS_CONTEXT_SYSTEM_AWARE = (HANDLE)(intptr_t)(-2).
-     * Loaded dynamically to avoid hard SDK version dependency. */
-    HMODULE user32 = GetModuleHandleW(L"user32.dll");
-    if (user32) {
-        typedef BOOL(WINAPI * SPDA_fn)(HANDLE);
-        SPDA_fn fn = (SPDA_fn)(void *)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
-        if (fn)
-            fn((HANDLE)(intptr_t)(-2)); /* DPI_AWARENESS_CONTEXT_SYSTEM_AWARE */
-    }
+    (void)InitOnceExecuteOnce(
+        &g_vgfx_win32_dpi_awareness_once, win32_set_dpi_awareness_once, NULL, NULL);
 
     /* Query the primary monitor's DPI.  With awareness set, this returns the
      * real system DPI rather than the virtualised 96 DPI given to unaware
@@ -913,25 +962,14 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Get application instance */
     w32->hInstance = GetModuleHandleW(NULL);
 
-    /* Register window class (once per process) */
-    static int class_registered = 0;
-    if (!class_registered) {
-        WNDCLASSEXW wc = {0};
-        wc.cbSize = sizeof(WNDCLASSEXW);
-        wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-        wc.lpfnWndProc = vgfx_win32_wndproc;
-        wc.hInstance = w32->hInstance;
-        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-        wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-        wc.lpszClassName = L"ViperGFXClass";
-
-        if (!RegisterClassExW(&wc)) {
-            free(w32);
-            win->platform_data = NULL;
-            vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to register Win32 window class");
-            return 0;
-        }
-        class_registered = 1;
+    if (!InitOnceExecuteOnce(&g_vgfx_win32_window_class_once,
+                             win32_register_window_class_once,
+                             w32->hInstance,
+                             NULL)) {
+        free(w32);
+        win->platform_data = NULL;
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to register Win32 window class");
+        return 0;
     }
 
     /* Convert UTF-8 title to UTF-16 */
@@ -1360,10 +1398,16 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title) {
 
     /* Convert UTF-8 to UTF-16 */
     WCHAR *wtitle = utf8_to_utf16(title);
-    if (wtitle) {
-        SetWindowTextW(w32->hwnd, wtitle);
-        free(wtitle);
+    if (!wtitle) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to convert Win32 window title");
+        return;
     }
+    if (!SetWindowTextW(w32->hwnd, wtitle)) {
+        free(wtitle);
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to set Win32 window title");
+        return;
+    }
+    free(wtitle);
 }
 
 /// @brief Set the window to fullscreen or windowed mode.

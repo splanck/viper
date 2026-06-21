@@ -776,6 +776,10 @@ int32_t vaud_wav_read_frames_buffered(void *file,
 
     FILE *f = (FILE *)file;
     size_t bytes_read = fread(temp, 1, buffer_size, f);
+    if (bytes_read < buffer_size && ferror(f)) {
+        vaud_set_error(VAUD_ERR_FILE, "Failed to read WAV stream");
+        return 0;
+    }
     if ((bytes_read % (size_t)bytes_per_frame) != 0) {
         vaud_set_error(VAUD_ERR_FORMAT, "Truncated WAV frame in stream");
         return 0;

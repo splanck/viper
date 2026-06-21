@@ -31,6 +31,7 @@
 #include "vaud_internal.h"
 #include <AudioToolbox/AudioToolbox.h>
 #include <mach/mach_time.h>
+#include <pthread.h>
 #include <stdlib.h>
 
 //===----------------------------------------------------------------------===//
@@ -39,6 +40,21 @@
 
 /// @brief Number of audio buffers (triple buffering for smooth playback).
 #define VAUD_MACOS_NUM_BUFFERS 3
+
+static mach_timebase_info_data_t g_vaud_macos_timebase = {0};
+static pthread_once_t g_vaud_macos_timebase_once = PTHREAD_ONCE_INIT;
+
+/// @brief Initialize mach timebase conversion factors exactly once.
+/// @details `vaud_platform_now_ms` can be called from multiple threads.  Using
+///          pthread_once avoids racing on a lazily initialized static timebase
+///          while keeping the fast path lock-free after initialization.
+static void vaud_macos_init_timebase(void) {
+    (void)mach_timebase_info(&g_vaud_macos_timebase);
+    if (g_vaud_macos_timebase.numer == 0)
+        g_vaud_macos_timebase.numer = 1;
+    if (g_vaud_macos_timebase.denom == 0)
+        g_vaud_macos_timebase.denom = 1;
+}
 
 /// @brief macOS-specific platform data.
 /// @details Stores AudioQueue state and buffer references.
@@ -80,7 +96,11 @@ static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBuffe
     buffer->mAudioDataByteSize = VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t);
 
     /* Re-enqueue the buffer for playback */
-    AudioQueueEnqueueBuffer(queue, buffer, 0, NULL);
+    OSStatus status = AudioQueueEnqueueBuffer(queue, buffer, 0, NULL);
+    if (status != noErr) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to re-enqueue AudioQueue buffer");
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -149,7 +169,17 @@ int vaud_platform_init(vaud_context_t ctx) {
         plat->buffers[i]->mAudioDataByteSize = buffer_size;
 
         /* Enqueue the buffer to start the callback chain */
-        AudioQueueEnqueueBuffer(plat->queue, plat->buffers[i], 0, NULL);
+        status = AudioQueueEnqueueBuffer(plat->queue, plat->buffers[i], 0, NULL);
+        if (status != noErr) {
+            for (int j = 0; j <= i; j++) {
+                AudioQueueFreeBuffer(plat->queue, plat->buffers[j]);
+            }
+            AudioQueueDispose(plat->queue, true);
+            free(plat);
+            ctx->platform_data = NULL;
+            vaud_set_error(VAUD_ERR_PLATFORM, "Failed to enqueue AudioQueue buffer");
+            return 0;
+        }
     }
 
     /* Start the audio queue */
@@ -189,7 +219,9 @@ void vaud_platform_pause(vaud_context_t ctx) {
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
     __atomic_store_n(&plat->paused, 1, __ATOMIC_RELEASE);
 
-    AudioQueuePause(plat->queue);
+    OSStatus status = AudioQueuePause(plat->queue);
+    if (status != noErr)
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to pause AudioQueue");
 }
 
 void vaud_platform_resume(vaud_context_t ctx) {
@@ -199,7 +231,9 @@ void vaud_platform_resume(vaud_context_t ctx) {
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
     __atomic_store_n(&plat->paused, 0, __ATOMIC_RELEASE);
 
-    AudioQueueStart(plat->queue, NULL);
+    OSStatus status = AudioQueueStart(plat->queue, NULL);
+    if (status != noErr)
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to resume AudioQueue");
 }
 
 //===----------------------------------------------------------------------===//
@@ -207,14 +241,11 @@ void vaud_platform_resume(vaud_context_t ctx) {
 //===----------------------------------------------------------------------===//
 
 int64_t vaud_platform_now_ms(void) {
-    static mach_timebase_info_data_t timebase = {0};
-    if (timebase.denom == 0) {
-        mach_timebase_info(&timebase);
-    }
+    pthread_once(&g_vaud_macos_timebase_once, vaud_macos_init_timebase);
 
     uint64_t ticks = mach_absolute_time();
-    long double nanos =
-        ((long double)ticks * (long double)timebase.numer) / (long double)timebase.denom;
+    long double nanos = ((long double)ticks * (long double)g_vaud_macos_timebase.numer) /
+                        (long double)g_vaud_macos_timebase.denom;
     if (nanos > (long double)INT64_MAX)
         return INT64_MAX / 1000000;
     return (int64_t)(nanos / 1000000);

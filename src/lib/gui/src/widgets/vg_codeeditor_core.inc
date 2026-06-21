@@ -264,10 +264,13 @@ static void codeeditor_free_highlight_line_index(vg_codeeditor_t *editor) {
         return;
     free(editor->highlight_line_offsets);
     free(editor->highlight_line_span_indices);
+    free(editor->highlight_line_write_offsets);
     editor->highlight_line_offsets = NULL;
     editor->highlight_line_span_indices = NULL;
+    editor->highlight_line_write_offsets = NULL;
     editor->highlight_line_offsets_cap = 0;
     editor->highlight_line_span_indices_cap = 0;
+    editor->highlight_line_write_offsets_cap = 0;
     editor->highlight_line_index_line_count = 0;
     editor->highlight_line_index_span_count = 0;
     editor->highlight_line_index_valid = false;
@@ -375,13 +378,19 @@ static bool codeeditor_ensure_highlight_line_index(vg_codeeditor_t *editor) {
         editor->highlight_line_span_indices_cap = (int)total_entries;
     }
 
-    int *write_offsets = NULL;
-    if ((size_t)offset_count > SIZE_MAX / sizeof(int))
-        return false;
-    write_offsets = (int *)malloc((size_t)offset_count * sizeof(int));
-    if (!write_offsets)
-        return false;
-    memcpy(write_offsets, editor->highlight_line_offsets, (size_t)offset_count * sizeof(int));
+    if (offset_count > editor->highlight_line_write_offsets_cap) {
+        if ((size_t)offset_count > SIZE_MAX / sizeof(int))
+            return false;
+        int *write_offsets = (int *)realloc(editor->highlight_line_write_offsets,
+                                            (size_t)offset_count * sizeof(int));
+        if (!write_offsets)
+            return false;
+        editor->highlight_line_write_offsets = write_offsets;
+        editor->highlight_line_write_offsets_cap = offset_count;
+    }
+    memcpy(editor->highlight_line_write_offsets,
+           editor->highlight_line_offsets,
+           (size_t)offset_count * sizeof(int));
 
     for (int s = 0; s < editor->highlight_span_count; s++) {
         int start = 0;
@@ -390,10 +399,9 @@ static bool codeeditor_ensure_highlight_line_index(vg_codeeditor_t *editor) {
                 editor, &editor->highlight_spans[s], &start, &end))
             continue;
         for (int line = start; line <= end; line++)
-            editor->highlight_line_span_indices[write_offsets[line]++] = s;
+            editor->highlight_line_span_indices[editor->highlight_line_write_offsets[line]++] = s;
     }
 
-    free(write_offsets);
     editor->highlight_line_index_line_count = editor->line_count;
     editor->highlight_line_index_span_count = editor->highlight_span_count;
     editor->highlight_line_index_valid = true;
@@ -429,7 +437,7 @@ static void codeeditor_paint_highlights_for_line(vg_codeeditor_t *editor,
         if (!indexed) {
             if (span->start_line > line)
                 break;
-            if (line < span->start_line || line > span->end_line)
+            if (line > span->end_line)
                 continue;
         }
 

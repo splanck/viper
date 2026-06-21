@@ -585,7 +585,6 @@ void vaud_detach_sound(vaud_sound_t sound) {
         sound->ctx = NULL;
         vaud_mutex_unlock(&ctx->mutex);
     }
-
 }
 
 int vaud_sound_is_attached(vaud_sound_t sound) {
@@ -644,10 +643,7 @@ vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
     return vaud_play_loop_group(sound, volume, pan, 0);
 }
 
-vaud_voice_id vaud_play_loop_group(vaud_sound_t sound,
-                                   float volume,
-                                   float pan,
-                                   int64_t group_id) {
+vaud_voice_id vaud_play_loop_group(vaud_sound_t sound, float volume, float pan, int64_t group_id) {
     if (!sound)
         return VAUD_INVALID_VOICE;
 
@@ -1364,6 +1360,32 @@ void vaud_music_prefill_locked(struct vaud_music *music) {
     }
 }
 
+/// @brief Fill empty stream buffers while a forced refill owns every buffer slot.
+/// @details Seek and stopped-to-playing transitions mark all stream buffers as
+///          refilling before dropping the context mutex.  That prevents the
+///          realtime mixer from consuming partially replaced buffers, but also
+///          means the generic prefill helper will intentionally skip those
+///          slots.  This helper is only used by forced refills and therefore
+///          ignores the per-slot refilling marker while still preserving already
+///          primed buffers, such as the first buffer populated by seek.
+/// @param music Music stream currently protected by `refill_in_progress`.
+static void vaud_music_prefill_forced(vaud_music_t music) {
+    if (!music)
+        return;
+
+    for (int32_t n = 0; n < VAUD_MUSIC_BUFFER_COUNT && !music->stream_eof; n++) {
+        int32_t idx = (music->current_buffer + n) % VAUD_MUSIC_BUFFER_COUNT;
+        if (music->buffer_frames[idx] > 0)
+            continue;
+        int32_t read = vaud_music_fill_buffer(music, idx);
+        music->buffer_frames[idx] = read;
+        if (read <= 0) {
+            music->stream_eof = 1;
+            break;
+        }
+    }
+}
+
 static int vaud_music_needs_refill_locked(vaud_music_t music) {
     if (!music || music->refill_in_progress)
         return 0;
@@ -1417,6 +1439,8 @@ static int vaud_music_begin_forced_refill_locked(vaud_music_t music) {
     if (!music || music->refill_in_progress)
         return 0;
     music->refill_in_progress = 1;
+    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
+        music->buffer_refilling[i] = 1;
     return 1;
 }
 
@@ -1920,10 +1944,18 @@ void vaud_music_play(vaud_music_t music, int loop) {
             vaud_mutex_unlock(&ctx->mutex);
             return;
         }
+        vaud_mutex_unlock(&ctx->mutex);
+
         int ok = vaud_music_seek_output_frame(music, 0);
         if (ok)
-            vaud_music_prefill_locked(music);
-        music->state = ok ? VAUD_MUSIC_PLAYING : VAUD_MUSIC_STOPPED;
+            vaud_music_prefill_forced(music);
+
+        vaud_mutex_lock(&ctx->mutex);
+        if (music->ctx == ctx) {
+            music->state = ok ? VAUD_MUSIC_PLAYING : VAUD_MUSIC_STOPPED;
+            if (!ok)
+                music->stream_eof = 1;
+        }
         vaud_music_finish_refill_locked(music);
         vaud_mutex_unlock(&ctx->mutex);
         return;
@@ -2069,17 +2101,20 @@ void vaud_music_seek(vaud_music_t music, float seconds) {
         vaud_mutex_unlock(&ctx->mutex);
         return;
     }
+    vaud_mutex_unlock(&ctx->mutex);
 
-    if (!vaud_music_seek_output_frame(music, target_frame)) {
-        music->state = VAUD_MUSIC_STOPPED;
-        music->stream_eof = 1;
-        vaud_music_clear_stream_buffers(music);
-        vaud_music_finish_refill_locked(music);
-        vaud_mutex_unlock(&ctx->mutex);
-        return;
+    int ok = vaud_music_seek_output_frame(music, target_frame);
+    if (ok)
+        vaud_music_prefill_forced(music);
+
+    vaud_mutex_lock(&ctx->mutex);
+    if (music->ctx == ctx) {
+        if (!ok) {
+            music->state = VAUD_MUSIC_STOPPED;
+            music->stream_eof = 1;
+            vaud_music_clear_stream_buffers(music);
+        }
     }
-    vaud_music_prefill_locked(music);
-
     vaud_music_finish_refill_locked(music);
     vaud_mutex_unlock(&ctx->mutex);
 }
@@ -2170,8 +2205,7 @@ void vaud_get_stats(vaud_context_t ctx, vaud_stats_t *out_stats) {
     out_stats->backend_waits = vaud_atomic_load_u64(&ctx->stats.backend_waits);
     out_stats->backend_xruns = vaud_atomic_load_u64(&ctx->stats.backend_xruns);
     out_stats->backend_recoveries = vaud_atomic_load_u64(&ctx->stats.backend_recoveries);
-    out_stats->backend_write_failures =
-        vaud_atomic_load_u64(&ctx->stats.backend_write_failures);
+    out_stats->backend_write_failures = vaud_atomic_load_u64(&ctx->stats.backend_write_failures);
 }
 
 void vaud_set_group_effects_processor(vaud_context_t ctx,

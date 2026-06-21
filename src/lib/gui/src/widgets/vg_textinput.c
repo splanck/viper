@@ -41,6 +41,7 @@
 #define TEXTINPUT_GROWTH_FACTOR 2
 #define CURSOR_BLINK_RATE 0.5f // Seconds
 #define TEXTINPUT_UNDO_CAPACITY 32
+#define TEXTINPUT_STACK_TEXT_CAPACITY 512u
 
 //=============================================================================
 // Forward Declarations
@@ -132,7 +133,33 @@ static bool textinput_codepoint_is_text(uint32_t cp) {
 
 /// @brief Returns the number of UTF-8 codepoints in the input's text buffer.
 static size_t textinput_char_count(const vg_textinput_t *input) {
-    return input && input->text ? (size_t)vg_utf8_strlen(input->text) : 0;
+    return input ? input->text_char_count : 0;
+}
+
+/// @brief Refresh cached codepoint and line counts after text mutation.
+/// @details Text input code performs many cursor, selection, scroll, and paint
+///          operations between edits.  Keeping these counts beside text_len
+///          avoids repeatedly walking the whole UTF-8 buffer in hot paths while
+///          preserving byte/codepoint separation for editing operations.
+/// @param input Text input whose `text` and `text_len` fields are current.
+static void textinput_refresh_text_metrics(vg_textinput_t *input) {
+    if (!input || !input->text) {
+        if (input) {
+            input->text_char_count = 0;
+            input->text_line_count = 1;
+        }
+        return;
+    }
+
+    int chars = vg_utf8_strlen(input->text);
+    input->text_char_count = chars > 0 ? (size_t)chars : 0;
+
+    size_t lines = 1;
+    for (size_t i = 0; i < input->text_len; i++) {
+        if (input->text[i] == '\n')
+            lines++;
+    }
+    input->text_line_count = lines;
 }
 
 /// @brief Clamps @p pos to [0, char_count] so it is always a valid codepoint index.
@@ -397,27 +424,86 @@ static float textinput_line_height(const vg_textinput_t *input) {
 
 /// @brief Counts the number of newline-separated logical lines in the input (always ≥ 1).
 static size_t textinput_line_count(const vg_textinput_t *input) {
-    if (!input)
-        return 1;
-    size_t lines = 1;
-    for (size_t i = 0; i < input->text_len; i++) {
-        if (input->text[i] == '\n')
-            lines++;
-    }
-    return lines;
+    return input && input->text_line_count > 0 ? input->text_line_count : 1;
 }
 
-/// @brief Returns a heap-allocated copy of text[start_byte..end_byte), NUL-terminated.
-static char *textinput_dup_range(const char *text, size_t start_byte, size_t end_byte) {
+/// @brief Copy a byte range into stack storage, using heap storage only for long lines.
+/// @details Font measurement APIs expect NUL-terminated text.  Multiline text
+///          input often needs temporary per-line strings while painting and
+///          hit-testing; using caller-owned stack storage for typical short
+///          lines avoids per-frame malloc/free traffic.  When the range does
+///          not fit, `*heap_out` receives the owned heap string to free.
+/// @param text Source string.
+/// @param start_byte Inclusive byte offset.
+/// @param end_byte Exclusive byte offset.
+/// @param stack_buf Caller-owned fallback buffer.
+/// @param stack_cap Size of @p stack_buf in bytes.
+/// @param heap_out Receives heap allocation when one is used; may be NULL.
+/// @return NUL-terminated text range, or an empty string on invalid input/OOM.
+static const char *textinput_range_to_buffer(const char *text,
+                                             size_t start_byte,
+                                             size_t end_byte,
+                                             char *stack_buf,
+                                             size_t stack_cap,
+                                             char **heap_out) {
+    if (heap_out)
+        *heap_out = NULL;
+    if (!stack_buf || stack_cap == 0)
+        return "";
+    stack_buf[0] = '\0';
     if (!text || end_byte < start_byte)
-        return NULL;
+        return stack_buf;
     size_t len = end_byte - start_byte;
-    char *copy = (char *)malloc(len + 1);
-    if (!copy)
-        return NULL;
-    memcpy(copy, text + start_byte, len);
-    copy[len] = '\0';
-    return copy;
+    if (len >= stack_cap) {
+        if (len == SIZE_MAX)
+            return stack_buf;
+        char *copy = (char *)malloc(len + 1u);
+        if (!copy)
+            return stack_buf;
+        memcpy(copy, text + start_byte, len);
+        copy[len] = '\0';
+        if (heap_out)
+            *heap_out = copy;
+        return copy;
+    }
+    memcpy(stack_buf, text + start_byte, len);
+    stack_buf[len] = '\0';
+    return stack_buf;
+}
+
+/// @brief Build a password-mask string using stack storage when possible.
+/// @details Password-mode paint needs a temporary string with one mask glyph per
+///          codepoint.  The function mirrors textinput_range_to_buffer's
+///          ownership contract so callers can free only `*heap_out`.
+/// @param char_count Number of codepoints to mask.
+/// @param stack_buf Caller-owned fallback buffer.
+/// @param stack_cap Size of @p stack_buf in bytes.
+/// @param heap_out Receives heap allocation when one is used; may be NULL.
+/// @return NUL-terminated mask string, or an empty string on OOM.
+static const char *textinput_mask_to_buffer(size_t char_count,
+                                            char *stack_buf,
+                                            size_t stack_cap,
+                                            char **heap_out) {
+    if (heap_out)
+        *heap_out = NULL;
+    if (!stack_buf || stack_cap == 0)
+        return "";
+    stack_buf[0] = '\0';
+    if (char_count >= stack_cap) {
+        if (char_count == SIZE_MAX)
+            return stack_buf;
+        char *copy = (char *)malloc(char_count + 1u);
+        if (!copy)
+            return stack_buf;
+        memset(copy, '*', char_count);
+        copy[char_count] = '\0';
+        if (heap_out)
+            *heap_out = copy;
+        return copy;
+    }
+    memset(stack_buf, '*', char_count);
+    stack_buf[char_count] = '\0';
+    return stack_buf;
 }
 
 /// @brief Finds the byte range and char offset of the @p target_line'th newline-delimited line.
@@ -500,11 +586,14 @@ static size_t textinput_hit_test_line_x(const vg_textinput_t *input,
     size_t start_char = 0;
     textinput_get_line_at_index(input, line_index, &start_byte, &end_byte, &start_char);
 
-    char *line_text = textinput_dup_range(input->text, start_byte, end_byte);
+    char line_stack[TEXTINPUT_STACK_TEXT_CAPACITY];
+    char *line_heap = NULL;
+    const char *line_text = textinput_range_to_buffer(
+        input->text, start_byte, end_byte, line_stack, sizeof(line_stack), &line_heap);
     size_t line_chars =
         textinput_codepoint_count_in_prefix(input->text + start_byte, end_byte - start_byte);
-    int hit = line_text ? vg_font_hit_test(input->font, input->font_size, line_text, local_x) : -1;
-    free(line_text);
+    int hit = vg_font_hit_test(input->font, input->font_size, line_text, local_x);
+    free(line_heap);
     if (hit < 0)
         hit = (int)line_chars;
     if ((size_t)hit > line_chars)
@@ -542,13 +631,13 @@ static float textinput_multiline_cursor_x(const vg_textinput_t *input, size_t cu
     textinput_get_line_for_char_pos(
         input, cursor_pos, NULL, &line_start_byte, &line_end_byte, &line_start_char);
 
-    char *line_text = textinput_dup_range(input->text, line_start_byte, line_end_byte);
+    char line_stack[TEXTINPUT_STACK_TEXT_CAPACITY];
+    char *line_heap = NULL;
+    const char *line_text = textinput_range_to_buffer(
+        input->text, line_start_byte, line_end_byte, line_stack, sizeof(line_stack), &line_heap);
     size_t column = cursor_pos >= line_start_char ? (cursor_pos - line_start_char) : 0;
-    float cursor_x = 0.0f;
-    if (line_text) {
-        cursor_x = vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)column);
-        free(line_text);
-    }
+    float cursor_x = vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)column);
+    free(line_heap);
     return cursor_x;
 }
 
@@ -641,14 +730,15 @@ static void textinput_ensure_cursor_visible(vg_textinput_t *input) {
         for (size_t line = 0; line < line_count; line++) {
             size_t start_byte = 0, end_byte = 0;
             textinput_get_line_at_index(input, line, &start_byte, &end_byte, NULL);
-            char *line_text = textinput_dup_range(input->text, start_byte, end_byte);
-            if (line_text) {
-                vg_text_metrics_t metrics = {0};
-                vg_font_measure_text(input->font, input->font_size, line_text, &metrics);
-                if (metrics.width > max_line_width)
-                    max_line_width = metrics.width;
-                free(line_text);
-            }
+            char line_stack[TEXTINPUT_STACK_TEXT_CAPACITY];
+            char *line_heap = NULL;
+            const char *line_text = textinput_range_to_buffer(
+                input->text, start_byte, end_byte, line_stack, sizeof(line_stack), &line_heap);
+            vg_text_metrics_t metrics = {0};
+            vg_font_measure_text(input->font, input->font_size, line_text, &metrics);
+            if (metrics.width > max_line_width)
+                max_line_width = metrics.width;
+            free(line_heap);
         }
         float max_scroll_x = max_line_width - viewport_w;
         float max_scroll_y = (float)line_count * line_h - viewport_h;
@@ -724,6 +814,7 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     input->text[0] = '\0';
     input->text_len = 0;
     input->text_capacity = TEXTINPUT_INITIAL_CAPACITY;
+    textinput_refresh_text_metrics(input);
 
     // Initialize text input fields
     input->cursor_pos = 0;
@@ -960,9 +1051,14 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
             if (line_y + line_h < widget->y || line_y > widget->y + widget->height)
                 continue;
 
-            char *line_text = textinput_dup_range(input->text, line_start_byte, line_end_byte);
-            if (!line_text)
-                line_text = strdup("");
+            char line_stack[TEXTINPUT_STACK_TEXT_CAPACITY];
+            char *line_heap = NULL;
+            const char *line_text = textinput_range_to_buffer(input->text,
+                                                              line_start_byte,
+                                                              line_end_byte,
+                                                              line_stack,
+                                                              sizeof(line_stack),
+                                                              &line_heap);
 
             if ((widget->state & VG_STATE_FOCUSED) && sel_start != sel_end) {
                 size_t draw_start = sel_start > line_start_char ? sel_start : line_start_char;
@@ -988,15 +1084,11 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
             }
 
             const char *draw_text = line_text;
-            char *masked = NULL;
+            char mask_stack[TEXTINPUT_STACK_TEXT_CAPACITY];
+            char *mask_heap = NULL;
             if (input->password_mode && line_char_len > 0) {
-                masked = (char *)malloc(line_char_len + 1);
-                if (masked) {
-                    for (size_t m = 0; m < line_char_len; m++)
-                        masked[m] = '*';
-                    masked[line_char_len] = '\0';
-                    draw_text = masked;
-                }
+                draw_text = textinput_mask_to_buffer(
+                    line_char_len, mask_stack, sizeof(mask_stack), &mask_heap);
             }
 
             if (draw_text && draw_text[0]) {
@@ -1025,8 +1117,8 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
                           input->cursor_color);
             }
 
-            free(masked);
-            free(line_text);
+            free(mask_heap);
+            free(line_heap);
         }
 
         if (clip_w > 0 && clip_h > 0)
@@ -1177,6 +1269,7 @@ static void textinput_undo(vg_textinput_t *input) {
     input->undo_pos = next_pos;
     memcpy(input->text, snap, len + 1);
     input->text_len = len;
+    textinput_refresh_text_metrics(input);
 
     size_t cur = input->undo_cursors[input->undo_pos];
     textinput_set_cursor_internal(input, cur);
@@ -1203,6 +1296,7 @@ static void textinput_redo(vg_textinput_t *input) {
     input->undo_pos = next_pos;
     memcpy(input->text, snap, len + 1);
     input->text_len = len;
+    textinput_refresh_text_metrics(input);
 
     size_t cur = input->undo_cursors[input->undo_pos];
     textinput_set_cursor_internal(input, cur);
@@ -1515,6 +1609,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->cursor_pos--;
                         input->text_len -= (end - start);
+                        textinput_refresh_text_metrics(input);
                         textinput_ensure_cursor_visible(input);
                         textinput_push_undo(input);
                         if (input->on_change) {
@@ -1532,6 +1627,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         size_t end = textinput_byte_offset(input, input->cursor_pos + 1);
                         memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->text_len -= (end - start);
+                        textinput_refresh_text_metrics(input);
                         textinput_ensure_cursor_visible(input);
                         textinput_push_undo(input);
                         if (input->on_change) {
@@ -1750,6 +1846,7 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     memcpy(input->text, clean, len + 1);
     free(clean);
     input->text_len = len;
+    textinput_refresh_text_metrics(input);
     textinput_set_cursor_internal(input, chars);
     input->scroll_x = 0.0f;
     input->scroll_y = 0.0f;
@@ -1948,6 +2045,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     memcpy(input->text + selection_start_byte, clean, insert_len);
     free(clean);
     input->text_len = new_len;
+    textinput_refresh_text_metrics(input);
     input->cursor_pos += insert_chars;
     input->selection_start = input->selection_end = input->cursor_pos;
     textinput_ensure_cursor_visible(input);
@@ -1980,6 +2078,7 @@ static void textinput_delete_selection_internal(vg_textinput_t *input, bool noti
     memmove(input->text + start_byte, input->text + end_byte, input->text_len - end_byte + 1);
 
     input->text_len -= (end_byte - start_byte);
+    textinput_refresh_text_metrics(input);
     input->cursor_pos = start;
     input->selection_start = start;
     input->selection_end = start;

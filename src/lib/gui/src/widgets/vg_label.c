@@ -22,6 +22,7 @@
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <ctype.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -101,6 +102,22 @@ static void label_free_wrap_cache(vg_label_t *label) {
     label->wrap_cached_w = -1.0f;
 }
 
+/// @brief Quantize a label wrap width for stable cache reuse.
+/// @details Layout code can pass widths that differ by tiny floating-point
+///          roundoff even though they resolve to the same pixel columns.  The
+///          wrap cache only needs subpixel stability, so quarter-pixel buckets
+///          prevent redundant cache rebuilds without visibly changing wrapping.
+/// @param wrap_width Available text width in pixels.
+/// @return Width rounded to the nearest quarter pixel, or 0 for invalid values.
+static float label_quantized_wrap_width(float wrap_width) {
+    if (wrap_width <= 0.0f)
+        return 0.0f;
+    if (wrap_width >= (float)INT_MAX / 4.0f)
+        return (float)INT_MAX / 4.0f;
+    int quarter_pixels = (int)(wrap_width * 4.0f + 0.5f);
+    return (float)quarter_pixels / 4.0f;
+}
+
 /// @brief VTable destroy: frees the label text string and the word-wrap line cache.
 static void label_destroy(vg_widget_t *widget) {
     vg_label_t *label = (vg_label_t *)widget;
@@ -122,6 +139,8 @@ static int label_measure_wrapped(vg_label_t *label,
                                  float wrap_width,
                                  float line_height,
                                  float *out_total_height) {
+    wrap_width = label_quantized_wrap_width(wrap_width);
+
     /* Cache hit: same width as last measure — reuse stored lines. */
     if (label->wrap_line_bufs && label->wrap_cached_w == wrap_width) {
         if (out_total_height)

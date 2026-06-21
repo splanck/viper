@@ -39,10 +39,27 @@
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#include <errno.h>
 #include <mach/mach_time.h>
+#include <pthread.h>
 #include <time.h>
 
 static int g_vgfx_macos_cursor_hidden = 0;
+static mach_timebase_info_data_t g_vgfx_macos_timebase = {0};
+static pthread_once_t g_vgfx_macos_timebase_once = PTHREAD_ONCE_INIT;
+
+/// @brief Initialize mach timebase conversion factors exactly once.
+/// @details The graphics timer is called from event/update paths that may cross
+///          threads in embedding applications.  pthread_once prevents a data
+///          race on the cached conversion factors and normalizes unexpected
+///          zero fields defensively.
+static void vgfx_macos_init_timebase(void) {
+    (void)mach_timebase_info(&g_vgfx_macos_timebase);
+    if (g_vgfx_macos_timebase.numer == 0)
+        g_vgfx_macos_timebase.numer = 1;
+    if (g_vgfx_macos_timebase.denom == 0)
+        g_vgfx_macos_timebase.denom = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // Forward Declarations
@@ -1307,17 +1324,11 @@ int vgfx_platform_present(struct vgfx_window *win) {
 ///            - nanoseconds = mach_time * numer / denom
 ///            - milliseconds = nanoseconds / 1000000
 int64_t vgfx_platform_now_ms(void) {
-    static mach_timebase_info_data_t timebase;
-    static int initialized = 0;
-
-    if (!initialized) {
-        mach_timebase_info(&timebase); /* Query conversion factors once */
-        initialized = 1;
-    }
+    pthread_once(&g_vgfx_macos_timebase_once, vgfx_macos_init_timebase);
 
     uint64_t now = mach_absolute_time(); /* Get current time in mach units */
-    uint32_t denom = timebase.denom ? timebase.denom : 1u;
-    double ms = ((double)now * (double)timebase.numer) / ((double)denom * 1000000.0);
+    double ms = ((double)now * (double)g_vgfx_macos_timebase.numer) /
+                ((double)g_vgfx_macos_timebase.denom * 1000000.0);
     if (ms >= (double)INT64_MAX)
         return INT64_MAX;
     return (int64_t)ms;
@@ -1336,7 +1347,8 @@ void vgfx_platform_sleep_ms(int32_t ms) {
         struct timespec ts;
         ts.tv_sec = ms / 1000;              /* Whole seconds */
         ts.tv_nsec = (ms % 1000) * 1000000; /* Fractional seconds in nanoseconds */
-        nanosleep(&ts, NULL);               /* Sleep (may be interrupted) */
+        while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
+        }
     }
 }
 

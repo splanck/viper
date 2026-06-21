@@ -43,6 +43,7 @@
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 #include <dlfcn.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -109,13 +110,16 @@ typedef struct {
     XIC xic;                          ///< Input context for UTF-8 text input
     int cursor_type;                  ///< Last requested cursor type
     int cursor_visible;               ///< 1 if cursor should be visible
+    Cursor cursor_cache[6];           ///< Cached visible cursor handles by public cursor type
     Cursor blank_cursor;              ///< Cached invisible cursor
     struct vgfx_window *owner_window; ///< Backlink for multi-window global services
     struct vgfx_window *next_window;  ///< Intrusive list of live X11 windows
 } vgfx_x11_data;
 
-typedef GLXFBConfig *(*vgfx_glx_choose_fb_config_fn)(
-    Display *dpy, int screen, const int *attrib_list, int *nelements);
+typedef GLXFBConfig *(*vgfx_glx_choose_fb_config_fn)(Display *dpy,
+                                                     int screen,
+                                                     const int *attrib_list,
+                                                     int *nelements);
 typedef XVisualInfo *(*vgfx_glx_get_visual_from_fb_config_fn)(Display *dpy, GLXFBConfig config);
 
 static void *g_vgfx_glx_libgl_handle = NULL;
@@ -134,12 +138,19 @@ static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
     XVisualInfo *visual_info = NULL;
     int fb_count = 0;
     const int fb_attribs[] = {
-        VGFX_GLX_RENDER_TYPE,  VGFX_GLX_RGBA_BIT,   VGFX_GLX_DRAWABLE_TYPE,
-        VGFX_GLX_WINDOW_BIT,   VGFX_GLX_DOUBLEBUFFER,
-        1,                     VGFX_GLX_RED_SIZE,
-        8,                     VGFX_GLX_GREEN_SIZE,
-        8,                     VGFX_GLX_BLUE_SIZE,
-        8,                     VGFX_GLX_DEPTH_SIZE,
+        VGFX_GLX_RENDER_TYPE,
+        VGFX_GLX_RGBA_BIT,
+        VGFX_GLX_DRAWABLE_TYPE,
+        VGFX_GLX_WINDOW_BIT,
+        VGFX_GLX_DOUBLEBUFFER,
+        1,
+        VGFX_GLX_RED_SIZE,
+        8,
+        VGFX_GLX_GREEN_SIZE,
+        8,
+        VGFX_GLX_BLUE_SIZE,
+        8,
+        VGFX_GLX_DEPTH_SIZE,
         24,
         None,
     };
@@ -155,9 +166,8 @@ static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
 
     choose_fb_config =
         (vgfx_glx_choose_fb_config_fn)dlsym(g_vgfx_glx_libgl_handle, "glXChooseFBConfig");
-    get_visual_from_fb_config =
-        (vgfx_glx_get_visual_from_fb_config_fn)dlsym(g_vgfx_glx_libgl_handle,
-                                                     "glXGetVisualFromFBConfig");
+    get_visual_from_fb_config = (vgfx_glx_get_visual_from_fb_config_fn)dlsym(
+        g_vgfx_glx_libgl_handle, "glXGetVisualFromFBConfig");
     if (!choose_fb_config || !get_visual_from_fb_config)
         return 0;
 
@@ -698,6 +708,12 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
             XFreeCursor(x11->display, x11->blank_cursor);
             x11->blank_cursor = 0;
         }
+        for (size_t i = 0; i < sizeof(x11->cursor_cache) / sizeof(x11->cursor_cache[0]); i++) {
+            if (x11->cursor_cache[i]) {
+                XFreeCursor(x11->display, x11->cursor_cache[i]);
+                x11->cursor_cache[i] = 0;
+            }
+        }
         if (x11->xic) {
             XDestroyIC(x11->xic);
             x11->xic = NULL;
@@ -711,7 +727,8 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
             x11->colormap = 0;
         }
         if (x11->window) {
-            int (*old_handler)(Display *, XErrorEvent *) = XSetErrorHandler(x11_ignore_bad_window_error);
+            int (*old_handler)(Display *, XErrorEvent *) =
+                XSetErrorHandler(x11_ignore_bad_window_error);
             XDestroyWindow(x11->display, x11->window);
             XSync(x11->display, False);
             XSetErrorHandler(old_handler);
@@ -1734,7 +1751,8 @@ void vgfx_platform_sleep_ms(int32_t ms) {
         struct timespec ts;
         ts.tv_sec = ms / 1000;
         ts.tv_nsec = (ms % 1000) * 1000000;
-        nanosleep(&ts, NULL);
+        while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
+        }
     }
 }
 
@@ -2048,8 +2066,15 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
         win->prevent_close = prevent;
 }
 
+/// @brief Normalize a public ViperGFX cursor type to a cache index.
+/// @param cursor_type Public cursor type value.
+/// @return Cache index in the range [0, 5].
+static int x11_cursor_index_for_type(int32_t cursor_type) {
+    return (cursor_type >= 0 && cursor_type < 6) ? (int)cursor_type : 0;
+}
+
 static unsigned int x11_cursor_shape_for_type(int32_t cursor_type) {
-    switch (cursor_type) {
+    switch (x11_cursor_index_for_type(cursor_type)) {
         case 1:
             return XC_hand2;
         case 2:
@@ -2065,14 +2090,32 @@ static unsigned int x11_cursor_shape_for_type(int32_t cursor_type) {
     }
 }
 
+/// @brief Return a cached X11 cursor for a public cursor type.
+/// @details XCreateFontCursor allocates server resources.  Cursor changes can
+///          happen repeatedly during hover and drag tracking, so each window
+///          caches the small fixed set of cursor handles and frees them during
+///          backend cleanup.
+/// @param x11 X11 platform data for one ViperGFX window.
+/// @param cursor_type Public cursor type value.
+/// @return X11 cursor handle, or None on allocation failure.
+static Cursor x11_cached_cursor_for_type(vgfx_x11_data *x11, int32_t cursor_type) {
+    if (!x11 || !x11->display)
+        return None;
+    int index = x11_cursor_index_for_type(cursor_type);
+    if (!x11->cursor_cache[index]) {
+        x11->cursor_cache[index] =
+            XCreateFontCursor(x11->display, x11_cursor_shape_for_type(cursor_type));
+    }
+    return x11->cursor_cache[index];
+}
+
 static void x11_apply_visible_cursor(vgfx_x11_data *x11) {
     if (!x11 || !x11->display || !x11->window)
         return;
-    Cursor cursor = XCreateFontCursor(x11->display, x11_cursor_shape_for_type(x11->cursor_type));
+    Cursor cursor = x11_cached_cursor_for_type(x11, x11->cursor_type);
     if (!cursor)
         return;
     XDefineCursor(x11->display, x11->window, cursor);
-    XFreeCursor(x11->display, cursor);
 }
 
 void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
@@ -2082,7 +2125,7 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
     if (!x11->display || !x11->window)
         return;
 
-    x11->cursor_type = cursor_type;
+    x11->cursor_type = x11_cursor_index_for_type(cursor_type);
     if (!x11->cursor_visible)
         return;
 

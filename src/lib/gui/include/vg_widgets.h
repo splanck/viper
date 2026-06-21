@@ -202,6 +202,8 @@ typedef struct vg_textinput {
     char *text;             ///< Current text content (owned)
     size_t text_len;        ///< Current text length in bytes
     size_t text_capacity;   ///< Allocated capacity in bytes
+    size_t text_char_count; ///< Cached UTF-8 codepoint count for the current text.
+    size_t text_line_count; ///< Cached logical line count; always at least one.
     size_t cursor_pos;      ///< Cursor position (UTF-8 codepoint index)
     size_t selection_start; ///< Selection start position (UTF-8 codepoint index)
     size_t selection_end;   ///< Selection end position (UTF-8 codepoint index)

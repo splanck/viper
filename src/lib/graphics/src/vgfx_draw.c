@@ -33,6 +33,7 @@
 #include "vgfx_internal.h"
 #include <limits.h>
 #include <stdlib.h> /* abs */
+#include <string.h>
 
 static int64_t vgfx_abs_i64(int64_t value) {
     return value < 0 ? -value : value;
@@ -112,7 +113,11 @@ static void set_empty_clip(struct vgfx_window *win) {
 ///          circle algorithms.  Contains window handle and color.
 typedef struct {
     struct vgfx_window *win; ///< Target window for drawing
-    vgfx_color_t color;      ///< Color to plot (RGB 24-bit)
+    int64_t min_x;           ///< Inclusive clipped minimum X.
+    int64_t min_y;           ///< Inclusive clipped minimum Y.
+    int64_t max_x;           ///< Exclusive clipped maximum X.
+    int64_t max_y;           ///< Exclusive clipped maximum Y.
+    uint32_t rgba_word;      ///< Host word whose object bytes are RGBA.
 } plot_context_t;
 
 /// @brief Context for horizontal line drawing callbacks.
@@ -120,51 +125,55 @@ typedef struct {
 ///          Contains window handle and color for scanline fills.
 typedef struct {
     struct vgfx_window *win; ///< Target window for drawing
-    vgfx_color_t color;      ///< Color for scanline (RGB 24-bit)
+    int64_t min_x;           ///< Inclusive clipped minimum X.
+    int64_t min_y;           ///< Inclusive clipped minimum Y.
+    int64_t max_x;           ///< Exclusive clipped maximum X.
+    int64_t max_y;           ///< Exclusive clipped maximum Y.
+    uint32_t rgba_word;      ///< Host word whose object bytes are RGBA.
 } hline_context_t;
 
-//===----------------------------------------------------------------------===//
-// Low-Level Pixel Plotting
-//===----------------------------------------------------------------------===//
+/// @brief Build a host-endian word whose object representation is RGBA bytes.
+/// @details Framebuffer pixels are byte-addressed RGBA.  Initializing the word
+///          via `memcpy` preserves those bytes on both little- and big-endian
+///          targets while letting hot drawing loops use packed stores.
+/// @param color RGB color in 0x00RRGGBB format.
+/// @return A uint32_t whose memory bytes are R,G,B,0xFF.
+static uint32_t draw_rgba_word(vgfx_color_t color) {
+    uint8_t bytes[4] = {(uint8_t)((color >> 16) & 0xFF),
+                        (uint8_t)((color >> 8) & 0xFF),
+                        (uint8_t)(color & 0xFF),
+                        0xFF};
+    uint32_t word = 0;
+    memcpy(&word, bytes, sizeof(word));
+    return word;
+}
 
-/// @brief Plot a single pixel with bounds checking.
-/// @details Writes a colored pixel to the framebuffer at (x, y) if the
-///          coordinates are within the window bounds [0, width) × [0, height).
-///          Pixels outside the window are silently discarded.  Alpha is
-///          always set to 0xFF (fully opaque).
-///
-/// @param win   Pointer to the window structure
-/// @param x     X coordinate in pixels
-/// @param y     Y coordinate in pixels
-/// @param color RGB color (format: 0x00RRGGBB)
-///
-/// @pre  win != NULL
-/// @post If (x, y) in bounds: pixel is set to color with alpha=0xFF
-/// @post If (x, y) out of bounds: no-op (silent discard)
-static inline void plot_pixel_checked(struct vgfx_window *win,
-                                      int32_t x,
-                                      int32_t y,
-                                      vgfx_color_t color) {
-    int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
-    if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
-        return;
+/// @brief Store one packed RGBA pixel in a framebuffer.
+/// @param win Target window with an RGBA framebuffer.
+/// @param x Pixel X coordinate, already known to be in bounds.
+/// @param y Pixel Y coordinate, already known to be in bounds.
+/// @param rgba_word Host word whose object bytes are R,G,B,A.
+static inline void store_rgba_word(struct vgfx_window *win,
+                                   int32_t x,
+                                   int32_t y,
+                                   uint32_t rgba_word) {
+    uint32_t *pixel =
+        (uint32_t *)(win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u));
+    *pixel = rgba_word;
+}
 
-    if ((int64_t)x < min_x || (int64_t)x >= max_x || (int64_t)y < min_y || (int64_t)y >= max_y) {
-        return;
-    }
-
-    /* Extract RGB components from 24-bit color */
-    uint8_t r = (uint8_t)((color >> 16) & 0xFF);
-    uint8_t g = (uint8_t)((color >> 8) & 0xFF);
-    uint8_t b = (uint8_t)(color & 0xFF);
-    uint8_t a = 0xFF; /* Opaque alpha (required by RGBA format) */
-
-    /* Write to framebuffer in RGBA format (4 bytes per pixel) */
-    uint8_t *pixel = win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u);
-    pixel[0] = r;
-    pixel[1] = g;
-    pixel[2] = b;
-    pixel[3] = a;
+/// @brief Fill a clipped horizontal span with a packed RGBA pixel.
+/// @param win Target window with an RGBA framebuffer.
+/// @param x First pixel X coordinate.
+/// @param y Pixel row.
+/// @param count Number of pixels to write.
+/// @param rgba_word Host word whose object bytes are R,G,B,A.
+static void fill_rgba_span(
+    struct vgfx_window *win, int32_t x, int32_t y, int32_t count, uint32_t rgba_word) {
+    uint32_t *dst =
+        (uint32_t *)(win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u));
+    for (int32_t i = 0; i < count; i++)
+        dst[i] = rgba_word;
 }
 
 //===----------------------------------------------------------------------===//
@@ -185,7 +194,11 @@ static inline void plot_pixel_checked(struct vgfx_window *win,
 /// @pre  ctx points to a valid plot_context_t structure
 static void plot_callback(int32_t x, int32_t y, void *ctx) {
     plot_context_t *pctx = (plot_context_t *)ctx;
-    plot_pixel_checked(pctx->win, x, y, pctx->color);
+    if ((int64_t)x < pctx->min_x || (int64_t)x >= pctx->max_x || (int64_t)y < pctx->min_y ||
+        (int64_t)y >= pctx->max_y) {
+        return;
+    }
+    store_rgba_word(pctx->win, x, y, pctx->rgba_word);
 }
 
 /// @brief Callback for horizontal line drawing (used by filled circle).
@@ -203,14 +216,8 @@ static void plot_callback(int32_t x, int32_t y, void *ctx) {
 static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx) {
     hline_context_t *hctx = (hline_context_t *)ctx;
     struct vgfx_window *win = hctx->win;
-    vgfx_color_t color = hctx->color;
-
-    int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
-    if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
-        return;
-
     /* Bounds check Y coordinate (reject entire scanline if out of clip bounds) */
-    if ((int64_t)y < min_y || (int64_t)y >= max_y)
+    if ((int64_t)y < hctx->min_y || (int64_t)y >= hctx->max_y)
         return;
 
     /* Ensure x0 <= x1 (swap if needed) */
@@ -221,28 +228,13 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx) {
     }
 
     /* Clip X coordinates to clip bounds */
-    if ((int64_t)x0 < min_x)
-        x0 = (int32_t)min_x;
-    if ((int64_t)x1 >= max_x)
-        x1 = (int32_t)(max_x - 1);
+    if ((int64_t)x0 < hctx->min_x)
+        x0 = (int32_t)hctx->min_x;
+    if ((int64_t)x1 >= hctx->max_x)
+        x1 = (int32_t)(hctx->max_x - 1);
     if (x0 > x1)
         return; /* Scanline entirely clipped */
-
-    /* Extract color components once for efficiency */
-    uint8_t r = (uint8_t)((color >> 16) & 0xFF);
-    uint8_t g = (uint8_t)((color >> 8) & 0xFF);
-    uint8_t b = (uint8_t)(color & 0xFF);
-    uint8_t a = 0xFF;
-
-    /* Draw horizontal line segment (scanline fill) */
-    uint8_t *scanline = win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x0 * 4u);
-    for (int32_t x = x0; x <= x1; x++) {
-        scanline[0] = r;
-        scanline[1] = g;
-        scanline[2] = b;
-        scanline[3] = a;
-        scanline += 4;
-    }
+    fill_rgba_span(win, x0, y, x1 - x0 + 1, hctx->rgba_word);
 }
 
 //===----------------------------------------------------------------------===//
@@ -656,7 +648,12 @@ void vgfx_draw_line(
         return;
 
     /* Set up plot context (passed to bresenham_line via plot_callback) */
-    plot_context_t ctx = {.win = win, .color = color};
+    plot_context_t ctx = {.win = win,
+                          .min_x = min_x,
+                          .min_y = min_y,
+                          .max_x = max_x,
+                          .max_y = max_y,
+                          .rgba_word = draw_rgba_word(color)};
 
     /* Draw line using Bresenham algorithm */
     bresenham_line((int32_t)cx1, (int32_t)cy1, (int32_t)cx2, (int32_t)cy2, plot_callback, &ctx);
@@ -764,25 +761,11 @@ void vgfx_draw_fill_rect(
     int32_t x2 = (int32_t)clipped_x2;
     int32_t y2 = (int32_t)clipped_y2;
 
-    /* Extract color components once for efficiency (avoid repeated bit shifts) */
-    uint8_t r = (uint8_t)((color >> 16) & 0xFF);
-    uint8_t g = (uint8_t)((color >> 8) & 0xFF);
-    uint8_t b = (uint8_t)(color & 0xFF);
-    uint8_t a = 0xFF;
+    uint32_t rgba_word = draw_rgba_word(color);
 
     /* Fill each scanline (row-by-row rendering) */
     for (int32_t row = y1; row < y2; row++) {
-        /* Compute scanline base address (start of row) */
-        uint8_t *scanline = win->pixels + ((size_t)row * (size_t)win->stride) + ((size_t)x1 * 4u);
-
-        /* Fill scanline with color (column-by-column) */
-        for (int32_t col = x1; col < x2; col++) {
-            scanline[0] = r;
-            scanline[1] = g;
-            scanline[2] = b;
-            scanline[3] = a;
-            scanline += 4; /* Advance to next pixel (4 bytes = RGBA) */
-        }
+        fill_rgba_span(win, x1, row, x2 - x1, rgba_word);
     }
 }
 
@@ -809,8 +792,17 @@ void vgfx_draw_circle(
     if (radius < 0)
         return;
 
+    int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+    if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
+        return;
+
     /* Set up plot context (passed to midpoint_circle via plot_callback) */
-    plot_context_t ctx = {.win = win, .color = color};
+    plot_context_t ctx = {.win = win,
+                          .min_x = min_x,
+                          .min_y = min_y,
+                          .max_x = max_x,
+                          .max_y = max_y,
+                          .rgba_word = draw_rgba_word(color)};
 
     /* Draw circle outline using midpoint algorithm */
     midpoint_circle(cx, cy, radius, plot_callback, &ctx);
@@ -839,8 +831,17 @@ void vgfx_draw_fill_circle(
     if (radius < 0)
         return;
 
+    int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+    if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
+        return;
+
     /* Set up horizontal line context (passed to filled_circle via hline_callback) */
-    hline_context_t ctx = {.win = win, .color = color};
+    hline_context_t ctx = {.win = win,
+                           .min_x = min_x,
+                           .min_y = min_y,
+                           .max_x = max_x,
+                           .max_y = max_y,
+                           .rgba_word = draw_rgba_word(color)};
 
     /* Fill circle using scanline algorithm */
     filled_circle(cx, cy, radius, hline_callback, &ctx);

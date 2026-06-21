@@ -113,7 +113,6 @@ vg_font_t *vg_font_load(const uint8_t *data, size_t size) {
     vg_font_t *font = calloc(1, sizeof(vg_font_t));
     if (!font)
         return NULL;
-    vg_font_register_live(font);
 
     // Copy data
     font->data = malloc(size);
@@ -124,6 +123,7 @@ vg_font_t *vg_font_load(const uint8_t *data, size_t size) {
     memcpy(font->data, data, size);
     font->data_size = size;
     font->owns_data = true;
+    vg_font_register_live(font);
 
     // Parse tables
     if (!ttf_parse_tables(font)) {

@@ -37,6 +37,7 @@
 #include "vgfx_config.h"
 #include <limits.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -48,6 +49,16 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 typedef volatile long vgfx_atomic_flag_t;
 
+/// @brief Initialize a ViperGFX atomic flag to the unlocked state.
+/// @details MSVC's Interlocked-backed flag is a plain long-compatible value, so
+///          writing zero before publication is sufficient and avoids depending
+///          on calloc'd storage for synchronization state.
+/// @param flag Atomic flag to initialize. NULL is ignored.
+static inline void vgfx_atomic_flag_init(vgfx_atomic_flag_t *flag) {
+    if (flag)
+        *flag = 0;
+}
+
 static inline int vgfx_atomic_flag_test_and_set(vgfx_atomic_flag_t *flag) {
     return _InterlockedExchange(flag, 1) != 0;
 }
@@ -56,14 +67,24 @@ static inline void vgfx_atomic_flag_clear(vgfx_atomic_flag_t *flag) {
     (void)_InterlockedExchange(flag, 0);
 }
 #else
-typedef atomic_flag vgfx_atomic_flag_t;
+typedef atomic_bool vgfx_atomic_flag_t;
+
+/// @brief Initialize a ViperGFX atomic flag to the unlocked state.
+/// @details The internal non-MSVC flag is an atomic boolean instead of C11's
+///          `atomic_flag` so heap-allocated window objects have a well-defined
+///          runtime initialization path.
+/// @param flag Atomic flag to initialize. NULL is ignored.
+static inline void vgfx_atomic_flag_init(vgfx_atomic_flag_t *flag) {
+    if (flag)
+        atomic_init(flag, false);
+}
 
 static inline int vgfx_atomic_flag_test_and_set(vgfx_atomic_flag_t *flag) {
-    return atomic_flag_test_and_set_explicit(flag, memory_order_acquire);
+    return atomic_exchange_explicit(flag, true, memory_order_acquire);
 }
 
 static inline void vgfx_atomic_flag_clear(vgfx_atomic_flag_t *flag) {
-    atomic_flag_clear_explicit(flag, memory_order_release);
+    atomic_store_explicit(flag, false, memory_order_release);
 }
 #endif
 
