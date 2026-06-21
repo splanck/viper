@@ -111,12 +111,33 @@ class SourceManager {
     ///          views do not dangle after setSource() or invalidateSource().
     void retireLineCacheLocked(uint32_t file_id) const;
 
+    /// @brief Return the cache generation currently associated with @p file_id.
+    /// @param file_id Registered 1-based file identifier.
+    /// @return Monotonic generation used to reject stale asynchronous loads.
+    /// @pre Caller must hold @ref mutex_.
+    /// @details Disk source loading intentionally happens without holding the
+    ///          manager mutex.  A concurrent invalidateSource() or setSource() can
+    ///          therefore happen while a load is in flight.  The generation value
+    ///          lets the loader verify, under the lock, that the source metadata it
+    ///          observed before I/O is still current before publishing a cache.
+    [[nodiscard]] uint64_t lineCacheGenerationLocked(uint32_t file_id) const;
+
+    /// @brief Advance the cache generation for @p file_id.
+    /// @param file_id Registered 1-based file identifier.
+    /// @pre Caller must hold @ref mutex_.
+    /// @details Any in-flight disk load that captured an older generation becomes
+    ///          stale and will be discarded instead of overwriting newer cached
+    ///          source text or a deliberate invalidation.
+    void bumpLineCacheGenerationLocked(uint32_t file_id) const;
+
     /// Serializes access to path tables and mutable line cache.
     mutable std::mutex mutex_;
     /// Cached file contents split by line, keyed by file_id.
     /// Mutable because getLine() is logically const but lazily populates the cache.
     mutable std::unordered_map<uint32_t, std::shared_ptr<const std::vector<std::string>>>
         lineCache_;
+    /// Monotonic source cache generation by file_id, used to discard stale loads.
+    mutable std::unordered_map<uint32_t, uint64_t> lineCacheGenerations_;
     /// Retired line caches kept alive so previously returned string_views remain valid.
     mutable std::deque<std::shared_ptr<const std::vector<std::string>>> retiredLineCaches_;
     /// Stored file paths. Index corresponds to file identifier; index 0 is reserved.

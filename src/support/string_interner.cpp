@@ -35,8 +35,10 @@ StringInterner::StringInterner(uint32_t maxSymbols) noexcept : maxSymbols_(maxSy
 ///          @ref rebuildMap so the new instance lazily reconstructs the handle
 ///          lookup table.  The map is rebuilt rather than copied directly to
 ///          keep string_view keys pointing at the newly owned storage.
-StringInterner::StringInterner(const StringInterner &other)
-    : map_{}, storage_(other.storage_), maxSymbols_(other.maxSymbols_) {
+StringInterner::StringInterner(const StringInterner &other) : maxSymbols_(0) {
+    std::lock_guard lock(other.mutex_);
+    storage_ = other.storage_;
+    maxSymbols_ = other.maxSymbols_;
     rebuildMap();
 }
 
@@ -50,6 +52,7 @@ StringInterner &StringInterner::operator=(const StringInterner &other) {
     if (this == &other)
         return *this;
     StringInterner copy(other);
+    std::lock_guard lock(mutex_);
     swapWith(copy);
     return *this;
 }
@@ -59,8 +62,10 @@ StringInterner &StringInterner::operator=(const StringInterner &other) {
 /// @details The storage deque is moved first, then @ref rebuildMap recreates every
 ///          string_view key so it points into this object's storage. The moved-from
 ///          instance is cleared to leave it valid and cheap to destroy.
-StringInterner::StringInterner(StringInterner &&other)
-    : map_{}, storage_(std::move(other.storage_)), maxSymbols_(other.maxSymbols_) {
+StringInterner::StringInterner(StringInterner &&other) : maxSymbols_(0) {
+    std::lock_guard lock(other.mutex_);
+    storage_ = std::move(other.storage_);
+    maxSymbols_ = other.maxSymbols_;
     rebuildMap();
     other.map_.clear();
 }
@@ -74,6 +79,7 @@ StringInterner &StringInterner::operator=(StringInterner &&other) {
     if (this == &other)
         return *this;
     StringInterner moved(std::move(other));
+    std::lock_guard lock(mutex_);
     swapWith(moved);
     return *this;
 }
@@ -91,6 +97,7 @@ StringInterner &StringInterner::operator=(StringInterner &&other) {
 /// @param str String view to intern; copied when not already stored.
 /// @return Stable Symbol handle identifying the string.
 Symbol StringInterner::intern(std::string_view str) {
+    std::lock_guard lock(mutex_);
     auto it = map_.find(str);
     if (it != map_.end())
         return it->second;
@@ -133,7 +140,8 @@ std::string_view StringInterner::lookup(Symbol sym) const {
 /// @brief Check whether a symbol belongs to this interner.
 /// @param sym Candidate symbol handle.
 /// @return True when @p sym indexes an owned interned string.
-bool StringInterner::contains(Symbol sym) const noexcept {
+bool StringInterner::contains(Symbol sym) const {
+    std::lock_guard lock(mutex_);
     return sym.id != 0 && sym.id <= storage_.size();
 }
 
@@ -141,7 +149,8 @@ bool StringInterner::contains(Symbol sym) const noexcept {
 /// @param sym Symbol handle to resolve.
 /// @return Optional view of the stored string, or std::nullopt for invalid symbols.
 std::optional<std::string_view> StringInterner::lookupOptional(Symbol sym) const {
-    if (!contains(sym))
+    std::lock_guard lock(mutex_);
+    if (sym.id == 0 || sym.id > storage_.size())
         return std::nullopt;
     return std::string_view{storage_[sym.id - 1]};
 }

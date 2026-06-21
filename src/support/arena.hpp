@@ -101,6 +101,8 @@ class GrowingArena {
     ///          storage is reserved before construction so a bookkeeping allocation
     ///          failure cannot leave a live object untracked.
     template <typename T, typename... Args> T *create(Args &&...args) {
+        static_assert(std::is_nothrow_destructible_v<T>,
+                      "GrowingArena requires nothrow destructible arena objects");
         if constexpr (!std::is_trivially_destructible_v<T>) {
             if (destructors_.size() == destructors_.max_size())
                 throw std::bad_alloc();

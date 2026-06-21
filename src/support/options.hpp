@@ -16,6 +16,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 namespace il::support {
 
@@ -24,6 +25,13 @@ namespace il::support {
 /// @invariant Flags are independent booleans.
 /// @ownership Value type.
 struct Options {
+    /// @brief Default target selector used when callers do not choose a backend target.
+    /// @details The support-level options type is intentionally generic and does
+    ///          not own backend-specific target triples.  The value "host" lets
+    ///          downstream command layers resolve the actual platform/architecture
+    ///          through their cross-platform capability adapters.
+    static constexpr std::string_view kDefaultTarget = "host";
+
     /// @brief Enable verbose tracing of compilation steps.
     bool trace = false;
 
@@ -31,6 +39,6 @@ struct Options {
     bool verify = true;
 
     /// @brief Target architecture triple for code generation.
-    std::string target = "x86_64";
+    std::string target = std::string{kDefaultTarget};
 };
 } // namespace il::support

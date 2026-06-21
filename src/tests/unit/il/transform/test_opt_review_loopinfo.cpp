@@ -209,6 +209,30 @@ TEST(LoopInfo, NormalLoopBlockCount) {
     EXPECT_EQ(loop.blockLabels.size(), 2U);
 }
 
+TEST(LoopInfo, IgnoresUnrelatedFunctionsWhenBuildingCFG) {
+    Module module = buildNormalLoopModule();
+
+    Function unrelated;
+    unrelated.name = "unrelated";
+    unrelated.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr badBranch;
+    badBranch.op = Opcode::Br;
+    badBranch.type = Type(Type::Kind::Void);
+    badBranch.labels.push_back("missing");
+    badBranch.brArgs.emplace_back();
+    entry.instructions.push_back(std::move(badBranch));
+    entry.terminated = true;
+
+    unrelated.blocks = {std::move(entry)};
+    module.functions.push_back(std::move(unrelated));
+
+    Function &fn = module.functions.front();
+    EXPECT_NO_THROW(il::transform::computeLoopInfo(module, fn));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

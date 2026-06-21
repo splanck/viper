@@ -69,7 +69,7 @@ PassManager::PassManager() {
         [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
     analysisRegistry_.registerFunctionAnalysis<viper::analysis::DomTree>(
         kAnalysisDominators, [](core::Module &module, core::Function &fn) {
-            viper::analysis::CFGContext ctx(module);
+            viper::analysis::CFGContext ctx(module, fn);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
     analysisRegistry_.registerFunctionAnalysis<LoopInfo>(

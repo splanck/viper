@@ -18,26 +18,54 @@
 
 #include "support/diag_catalog.hpp"
 
-#include <algorithm>
+#include <array>
 #include <cctype>
+#include <unordered_map>
 
 namespace il::support {
-
-const std::vector<DiagCatalogEntry> &diagCatalog() {
-    static const std::vector<DiagCatalogEntry> entries = {
+namespace {
+/// @brief Static diagnostic catalog materialized directly from the X-macro list.
+/// @details The array has program lifetime and stores only string views into
+///          literals.  Vector and map views are derived from this single source so
+///          catalog iteration and lookup cannot disagree.
+static constexpr std::array kDiagCatalogEntries = {
 #define DIAG_CODE(code, subsystem, summary) DiagCatalogEntry{code, subsystem, summary},
 #include "support/diag_catalog.def"
 #undef DIAG_CODE
-    };
+};
+
+/// @brief Build the exact-code lookup map for the diagnostic catalog.
+/// @return Map from stable diagnostic code to its static catalog entry.
+/// @details The map is initialized once and then treated as immutable, making
+///          repeated `viper explain CODE` lookups constant-time while preserving
+///          the definition-order span used for listing.
+const std::unordered_map<std::string_view, const DiagCatalogEntry *> &diagCatalogMap() {
+    static const std::unordered_map<std::string_view, const DiagCatalogEntry *> map = [] {
+        std::unordered_map<std::string_view, const DiagCatalogEntry *> result;
+        result.reserve(kDiagCatalogEntries.size());
+        for (const auto &entry : kDiagCatalogEntries)
+            result.emplace(entry.code, &entry);
+        return result;
+    }();
+    return map;
+}
+} // namespace
+
+const std::vector<DiagCatalogEntry> &diagCatalog() {
+    static const std::vector<DiagCatalogEntry> entries(kDiagCatalogEntries.begin(),
+                                                       kDiagCatalogEntries.end());
     return entries;
 }
 
+std::span<const DiagCatalogEntry> diagCatalogEntries() {
+    return std::span<const DiagCatalogEntry>{kDiagCatalogEntries.data(),
+                                             kDiagCatalogEntries.size()};
+}
+
 const DiagCatalogEntry *findDiagCode(std::string_view code) {
-    const auto &entries = diagCatalog();
-    auto it = std::find_if(entries.begin(), entries.end(), [&](const DiagCatalogEntry &e) {
-        return e.code == code;
-    });
-    return it == entries.end() ? nullptr : &*it;
+    const auto &map = diagCatalogMap();
+    auto it = map.find(code);
+    return it == map.end() ? nullptr : it->second;
 }
 
 std::optional<std::string_view> diagCodeFamily(std::string_view code) {
@@ -45,6 +73,7 @@ std::optional<std::string_view> diagCodeFamily(std::string_view code) {
         std::string_view prefix;
         std::string_view description;
     };
+
     // Most specific prefixes first.
     static constexpr Family kFamilies[] = {
         {"V-ZIA-LEX", "Zia lexer diagnostics"},
@@ -54,10 +83,11 @@ std::optional<std::string_view> diagCodeFamily(std::string_view code) {
         {"V-IL-", "IL verification diagnostics"},
         {"V-BC-", "Bytecode compiler diagnostics"},
         {"V-CG-", "Native codegen diagnostics"},
+        {"V-CLI-", "Viper command-line diagnostics"},
+        {"V-IL-IO", "IL parser/serializer diagnostics"},
         {"V-OPT-", "IL optimizer pipeline diagnostics"},
         {"V-SRC-", "Source loading and registration diagnostics"},
         {"V-LSP-", "Language server bridge diagnostics"},
-        {"IL", "IL parser/serializer diagnostics"},
     };
     for (const auto &family : kFamilies) {
         if (code.size() >= family.prefix.size() &&
@@ -83,6 +113,8 @@ std::optional<std::string_view> diagCodeFamily(std::string_view code) {
         return "Zia warnings";
     if (!code.empty() && code[0] == 'E' && allDigitsFrom(1))
         return "BASIC semantic analysis diagnostics";
+    if (code.size() >= 3 && code[0] == 'I' && code[1] == 'L' && allDigitsFrom(2))
+        return "IL parser/serializer diagnostics";
     return std::nullopt;
 }
 

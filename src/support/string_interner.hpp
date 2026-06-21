@@ -19,6 +19,7 @@
 #include <deque>
 #include <functional>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -61,7 +62,7 @@ class StringInterner {
     /// @brief Check whether @p sym identifies a currently interned string.
     /// @param sym Symbol to validate against this interner.
     /// @return True when @p sym is nonzero and within the owned storage range.
-    [[nodiscard]] bool contains(Symbol sym) const noexcept;
+    [[nodiscard]] bool contains(Symbol sym) const;
 
     /// @brief Retrieve an interned string while preserving invalid-vs-empty state.
     /// @param sym Symbol previously returned by intern().
@@ -140,6 +141,8 @@ class StringInterner {
     using InternMap =
         std::unordered_map<std::string_view, Symbol, TransparentHash, TransparentEqual>;
 
+    /// Serializes access to storage_ and map_ for shared tooling/server use.
+    mutable std::mutex mutex_;
     /// Maps string content to assigned symbols for O(1) lookup during interning.
     InternMap map_;
     /// Retains copies of interned strings so lookups return stable views.

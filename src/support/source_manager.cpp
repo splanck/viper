@@ -30,6 +30,9 @@
 
 #include "source_manager.hpp"
 
+#include "common/PlatformCapabilities.hpp"
+
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -39,15 +42,39 @@
 
 namespace il::support {
 namespace {
+/// @brief Return whether @p path names an in-memory or generated source buffer.
+/// @param path Raw path supplied by the caller.
+/// @return True when the path uses Viper's angle-bracket virtual source form.
+/// @details Paths such as `<memory>.zia` and `<eval>` are user-facing labels, not
+///          filesystem paths.  Treating them as disk-backed would make their
+///          identifiers depend on the current working directory and would trigger
+///          pointless disk I/O when diagnostics ask for source lines.
+bool isVirtualSourcePath(std::string_view path) {
+    return !path.empty() && path.front() == '<' && path.find('>') != std::string_view::npos;
+}
+
+/// @brief Fold ASCII path casing when the host filesystem convention requires it.
+/// @param key Lookup key to mutate in place.
+/// @details Windows path comparisons in Viper are intentionally case-insensitive,
+///          but diagnostics should still preserve the user's display spelling.
+///          This helper is therefore applied only to internal lookup keys.
+void foldPathLookupKeyCase(std::string &key) {
+    if constexpr (viper::platform::kHostWindows) {
+        for (char &ch : key) {
+            if (ch >= 'A' && ch <= 'Z')
+                ch = static_cast<char>(ch - 'A' + 'a');
+        }
+    }
+}
+
 /// @brief Normalise a filesystem path into the canonical representation used by diagnostics.
 /// @details The helper constructs a `std::filesystem::path` from the raw input,
 ///          applies @ref std::filesystem::path::lexically_normal to collapse
 ///          redundant components, and finally emits the generic (forward-slash
-///          separated) representation.  On Windows the routine additionally
-///          lowercases ASCII letters so diagnostic comparisons become
-///          case-insensitive, mirroring how the rest of the compiler treats
-///          paths.  The resulting string is suitable for persistent storage
-///          inside the @ref SourceManager.
+///          separated) representation.  Display spelling and case are preserved;
+///          only the internal lookup key is case-folded on case-insensitive hosts.
+///          The resulting string is suitable for persistent storage inside the
+///          @ref SourceManager.
 /// @param path Raw filesystem path supplied by the caller.
 /// @return Normalised path string owned by the caller.
 std::string normalizePath(std::string path) {
@@ -57,13 +84,6 @@ std::string normalizePath(std::string path) {
     std::filesystem::path p(std::move(path));
     std::string normalized = p.lexically_normal().generic_string();
 
-#ifdef _WIN32
-    for (char &ch : normalized) {
-        if (ch >= 'A' && ch <= 'Z')
-            ch = static_cast<char>(ch - 'A' + 'a');
-    }
-#endif
-
     return normalized;
 }
 
@@ -72,9 +92,14 @@ std::string normalizePath(std::string path) {
 /// @return Absolute, lexically-normal filesystem path when it can be computed.
 /// @details Diagnostic display paths stay relative and portable, but disk reads
 ///          need a path that is independent of later current-working-directory
-///          changes. Filesystem errors fall back to the lexical input path so
-///          registration remains non-I/O and tolerant of virtual paths.
+///          changes. Existing paths are weakly canonicalized to deduplicate
+///          symlink spellings where the host filesystem can resolve them.
+///          Filesystem errors fall back to the lexical input path so registration
+///          remains tolerant of missing paths.
 std::filesystem::path makeDiskPath(const std::string &path) {
+    if (isVirtualSourcePath(path))
+        return {};
+
     std::filesystem::path p(path);
     if (p.empty())
         return p;
@@ -83,7 +108,13 @@ std::filesystem::path makeDiskPath(const std::string &path) {
     std::filesystem::path absolute = p.is_absolute() ? p : std::filesystem::absolute(p, ec);
     if (ec)
         absolute = p;
-    return absolute.lexically_normal();
+    std::filesystem::path normalized = absolute.lexically_normal();
+
+    ec.clear();
+    std::filesystem::path canonical = std::filesystem::weakly_canonical(normalized, ec);
+    if (!ec && !canonical.empty())
+        return canonical.lexically_normal();
+    return normalized;
 }
 
 /// @brief Build the deduplication key used for registered source paths.
@@ -103,12 +134,7 @@ std::string makePathLookupKey(const std::filesystem::path &diskPath, std::string
     if (key.empty())
         key = "<unknown>";
 
-#ifdef _WIN32
-    for (char &ch : key) {
-        if (ch >= 'A' && ch <= 'Z')
-            ch = static_cast<char>(ch - 'A' + 'a');
-    }
-#endif
+    foldPathLookupKeyCase(key);
 
     return (diskPath.empty() ? "display:" : "disk:") + key;
 }
@@ -128,6 +154,7 @@ void stripTrailingCarriageReturn(std::string &line) {
 ///          one empty line for an entirely empty source buffer.
 std::vector<std::string> splitSourceLines(std::string_view source) {
     std::vector<std::string> lines;
+    lines.reserve(static_cast<size_t>(std::count(source.begin(), source.end(), '\n')) + 1);
     std::string current;
     for (char ch : source) {
         if (ch == '\n') {
@@ -162,7 +189,20 @@ std::optional<std::vector<std::string>> loadSourceLinesFromDisk(const std::files
         stripTrailingCarriageReturn(buf);
         lines.push_back(std::move(buf));
     }
+    if (f.bad())
+        return std::nullopt;
+    if (lines.empty())
+        lines.emplace_back();
     return lines;
+}
+
+/// @brief Build an immutable cache for absent or unreadable source text.
+/// @return Shared empty line vector used as a cached "no source available" marker.
+/// @details SourceManager distinguishes "not cached yet" from "known unavailable"
+///          by storing an empty vector in the cache map.  This prevents repeated
+///          failed disk opens on every diagnostic while preserving hasLine() == false.
+std::shared_ptr<const std::vector<std::string>> makeUnavailableLineCache() {
+    return std::make_shared<const std::vector<std::string>>();
 }
 } // namespace
 
@@ -280,6 +320,9 @@ void SourceManager::invalidateSource(uint32_t file_id) const {
         return;
 
     std::lock_guard lock(mutex_);
+    if (!isRegisteredFileId(file_id))
+        return;
+    bumpLineCacheGenerationLocked(file_id);
     retireLineCacheLocked(file_id);
 }
 
@@ -296,13 +339,15 @@ void SourceManager::invalidateSource(uint32_t file_id) const {
 /// @param file_id Identifier previously returned by addFile().
 /// @param source Full source text to split into cached lines.
 void SourceManager::setSource(uint32_t file_id, std::string source) {
+    auto replacement = std::make_shared<const std::vector<std::string>>(splitSourceLines(source));
+
     std::lock_guard lock(mutex_);
     if (!isRegisteredFileId(file_id))
         return;
 
+    bumpLineCacheGenerationLocked(file_id);
     retireLineCacheLocked(file_id);
-    lineCache_[file_id] =
-        std::make_shared<const std::vector<std::string>>(splitSourceLines(source));
+    lineCache_[file_id] = std::move(replacement);
 }
 
 /// @brief Check whether a file identifier is in the registered range.
@@ -327,6 +372,7 @@ std::string_view SourceManager::getPathLocked(uint32_t file_id) const {
 std::shared_ptr<const std::vector<std::string>> SourceManager::ensureLineCache(
     uint32_t file_id) const {
     std::filesystem::path diskPath;
+    uint64_t generation = 0;
     {
         std::lock_guard lock(mutex_);
         if (!isRegisteredFileId(file_id))
@@ -337,16 +383,28 @@ std::shared_ptr<const std::vector<std::string>> SourceManager::ensureLineCache(
             return it->second;
 
         diskPath = disk_paths_[file_id - 1];
+        generation = lineCacheGenerationLocked(file_id);
     }
 
-    auto loadedLines = loadSourceLinesFromDisk(diskPath);
-    if (!loadedLines)
-        return {};
-    auto loaded = std::make_shared<const std::vector<std::string>>(std::move(*loadedLines));
+    std::shared_ptr<const std::vector<std::string>> loaded;
+    if (diskPath.empty()) {
+        loaded = makeUnavailableLineCache();
+    } else if (auto loadedLines = loadSourceLinesFromDisk(diskPath)) {
+        loaded = std::make_shared<const std::vector<std::string>>(std::move(*loadedLines));
+    } else {
+        loaded = makeUnavailableLineCache();
+    }
 
     std::lock_guard lock(mutex_);
     if (!isRegisteredFileId(file_id))
         return {};
+
+    if (generation != lineCacheGenerationLocked(file_id)) {
+        auto current = lineCache_.find(file_id);
+        if (current != lineCache_.end())
+            return current->second;
+        return {};
+    }
 
     auto it = lineCache_.find(file_id);
     if (it != lineCache_.end())
@@ -367,5 +425,26 @@ void SourceManager::retireLineCacheLocked(uint32_t file_id) const {
         return;
     retiredLineCaches_.push_back(std::move(it->second));
     lineCache_.erase(it);
+}
+
+/// @brief Read the cache generation for a registered file id.
+/// @param file_id Registered 1-based file identifier.
+/// @return Current generation, or zero when the file has never been invalidated.
+/// @pre Caller must hold @ref mutex_.
+uint64_t SourceManager::lineCacheGenerationLocked(uint32_t file_id) const {
+    auto it = lineCacheGenerations_.find(file_id);
+    return it == lineCacheGenerations_.end() ? 0 : it->second;
+}
+
+/// @brief Increment the cache generation for a registered file id.
+/// @param file_id Registered 1-based file identifier.
+/// @pre Caller must hold @ref mutex_.
+/// @details Saturating at the maximum 64-bit value is sufficient because a stale
+///          loader only needs to observe inequality with the generation it
+///          captured before I/O; wrapping would make a very old load appear fresh.
+void SourceManager::bumpLineCacheGenerationLocked(uint32_t file_id) const {
+    uint64_t &generation = lineCacheGenerations_[file_id];
+    if (generation != std::numeric_limits<uint64_t>::max())
+        ++generation;
 }
 } // namespace il::support

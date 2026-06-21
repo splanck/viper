@@ -24,6 +24,8 @@
 #include "diag_expected.hpp"
 #include "source_manager.hpp"
 
+#include <utility>
+
 namespace il::support {
 /// @brief Record a diagnostic and update severity counters.
 ///
@@ -35,13 +37,20 @@ namespace il::support {
 ///
 /// @param d Diagnostic to store (moved into the engine).
 void DiagnosticEngine::report(Diagnostic d) {
-    const bool isError = d.severity == Severity::Error;
-    const bool isWarning = d.severity == Severity::Warning;
     diags_.push_back(std::move(d));
-    if (isError)
-        ++errors_;
-    else if (isWarning)
-        ++warnings_;
+    switch (diags_.back().severity) {
+        case Severity::Error:
+            ++errors_;
+            break;
+        case Severity::Warning:
+            ++warnings_;
+            break;
+        case Severity::Note:
+            break;
+        default:
+            ++errors_;
+            break;
+    }
 }
 
 /// @brief Print all recorded diagnostics in insertion order.

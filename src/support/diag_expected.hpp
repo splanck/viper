@@ -23,6 +23,7 @@
 #include <cassert>
 #include <optional>
 #include <ostream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -44,7 +45,7 @@ inline constexpr SuccessDiagTag kSuccessDiag{};
 /// @tparam T Stored value type when the operation succeeds.
 /// @note Mirrors a subset of std::expected for tool-only usage until the
 ///       standard type becomes universally available on our toolchain.
-template <class T> class Expected {
+template <class T> class [[nodiscard]] Expected {
   public:
     /// @brief Construct a successful result containing @p value.
     /// @param value Value produced by a successful computation.
@@ -73,25 +74,34 @@ template <class T> class Expected {
 
     /// @brief Check whether a value is present.
     /// @return True when the Expected stores a value.
-    [[nodiscard]] bool hasValue() const {
+    [[nodiscard]] bool hasValue() const noexcept {
         return value_.has_value();
     }
 
     /// @brief Allow use in boolean contexts to test success.
-    explicit operator bool() const {
+    explicit operator bool() const noexcept {
         return hasValue();
     }
 
     /// @brief Access the stored value; requires hasValue().
-    T &value() {
+    T &value() & {
         assert(value_.has_value());
         return value_.value();
     }
 
     /// @brief Access the stored value; requires hasValue().
-    const T &value() const {
+    const T &value() const & {
         assert(value_.has_value());
         return value_.value();
+    }
+
+    /// @brief Move-access the stored value; requires hasValue().
+    /// @return Rvalue reference to the success payload.
+    /// @details This overload lets callers consume successful Expected values
+    ///          without an extra copy when the Expected itself is an rvalue.
+    T &&value() && {
+        assert(value_.has_value());
+        return std::move(value_.value());
     }
 
     /// @brief Access the diagnostic describing the failure.
@@ -100,13 +110,23 @@ template <class T> class Expected {
         return error_.value();
     }
 
+    /// @brief Move-access the diagnostic describing the failure.
+    /// @return Rvalue reference to the stored diagnostic payload.
+    /// @details This overload supports efficient propagation from temporary
+    ///          Expected values while preserving the lvalue accessor above for
+    ///          ordinary inspection.
+    Diag &&error() && {
+        assert(error_.has_value());
+        return std::move(error_.value());
+    }
+
   private:
     std::optional<T> value_;
     std::optional<Diag> error_;
 };
 
 /// @brief Expected specialization for void success type.
-template <> class Expected<void> {
+template <> class [[nodiscard]] Expected<void> {
   public:
     /// @brief Construct a successful result with no payload.
     Expected() = default;
@@ -116,13 +136,17 @@ template <> class Expected<void> {
     Expected(Diag diag);
 
     /// @brief Check whether the Expected represents success.
-    [[nodiscard]] bool hasValue() const;
+    [[nodiscard]] bool hasValue() const noexcept;
 
     /// @brief Allow use in boolean contexts to test success.
-    explicit operator bool() const;
+    explicit operator bool() const noexcept;
 
     /// @brief Access the diagnostic describing the failure.
     const Diag &error() const &;
+
+    /// @brief Move-access the diagnostic describing the failure.
+    /// @return Rvalue reference to the stored diagnostic payload.
+    Diag &&error() &&;
 
   private:
     std::optional<Diag> error_;
@@ -158,6 +182,17 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm = nul
 /// @param os Output stream receiving JSON.
 /// @param sm Optional source manager used to resolve file paths.
 void printDiagnosticsJson(const std::vector<Diag> &diagnostics,
+                          std::ostream &os,
+                          const SourceManager *sm = nullptr);
+
+/// @brief Print diagnostics as a compact JSON object from any contiguous span.
+/// @param diagnostics Diagnostics to encode under the "diagnostics" key.
+/// @param os Output stream receiving JSON.
+/// @param sm Optional source manager used to resolve file paths.
+/// @details This overload avoids forcing callers that already hold an array,
+///          SmallVector-backed span, or other contiguous view to first materialize
+///          a std::vector solely for serialization.
+void printDiagnosticsJson(std::span<const Diag> diagnostics,
                           std::ostream &os,
                           const SourceManager *sm = nullptr);
 

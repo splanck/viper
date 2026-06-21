@@ -21,6 +21,7 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -37,6 +38,13 @@ struct DiagCatalogEntry {
 
 /// @brief All cataloged diagnostic codes in definition order.
 const std::vector<DiagCatalogEntry> &diagCatalog();
+
+/// @brief All cataloged diagnostic codes as a static contiguous view.
+/// @return Span over program-lifetime catalog entries in definition order.
+/// @details This avoids constructing or iterating a std::vector for callers that
+///          only need a read-only view over the compiled-in catalog data.  The
+///          legacy @ref diagCatalog API remains available for existing code.
+std::span<const DiagCatalogEntry> diagCatalogEntries();
 
 /// @brief Find the catalog entry for @p code.
 /// @return The entry, or nullptr when the code is not cataloged.

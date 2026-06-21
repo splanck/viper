@@ -27,6 +27,7 @@ using namespace il::support;
 TEST(DiagCatalog, EntriesAreUniqueAndWellFormed) {
     const auto &entries = diagCatalog();
     EXPECT_GT(entries.size(), 100u);
+    EXPECT_EQ(diagCatalogEntries().size(), entries.size());
 
     std::set<std::string> seen;
     for (const auto &e : entries) {
@@ -62,12 +63,16 @@ TEST(DiagCatalog, FamilyFallbackCoversKnownPrefixes) {
     EXPECT_TRUE(diagCodeFamily("V-ZIA-PARSE-FUTURE").has_value());
     EXPECT_TRUE(diagCodeFamily("V-BC-FUTURE").has_value());
     EXPECT_TRUE(diagCodeFamily("V-CG-FUTURE").has_value());
+    EXPECT_TRUE(diagCodeFamily("V-CLI-WARNING").has_value());
+    EXPECT_TRUE(diagCodeFamily("V-IL-IO").has_value());
+    EXPECT_TRUE(diagCodeFamily("IL001").has_value());
     EXPECT_TRUE(diagCodeFamily("B2113").has_value());
     EXPECT_TRUE(diagCodeFamily("B9007").has_value());
     EXPECT_TRUE(diagCodeFamily("W042").has_value());
     EXPECT_TRUE(diagCodeFamily("E1009").has_value());
     EXPECT_FALSE(diagCodeFamily("XYZZY").has_value());
     EXPECT_FALSE(diagCodeFamily("B12X4").has_value());
+    EXPECT_FALSE(diagCodeFamily("ILLEGAL").has_value());
 }
 
 int main(int argc, char **argv) {

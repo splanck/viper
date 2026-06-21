@@ -22,6 +22,7 @@
 #include <ostream>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace il::support {
 /// @brief Sink that accumulates diagnostic text for later conversion.
@@ -36,7 +37,18 @@ struct DiagCapture {
 
     /// @brief Convert the captured text into an error diagnostic without a location.
     /// @return Diagnostic containing the captured message.
+    /// @details When multiple legacy diagnostics were captured, the first becomes
+    ///          the primary diagnostic and the remaining messages are attached as
+    ///          notes so callers using the historical single-diagnostic API still
+    ///          retain the extra context.
     [[nodiscard]] Diag toDiag() const;
+
+    /// @brief Convert captured text into all structured diagnostics it contains.
+    /// @return Diagnostics parsed from the capture buffer, or one fallback error.
+    /// @details Legacy APIs usually emit one diagnostic per line.  This helper
+    ///          preserves each line as an independent structured diagnostic while
+    ///          normalizing already-formatted severity/source prefixes.
+    [[nodiscard]] std::vector<Diag> toDiagnostics() const;
 };
 
 /// @brief Helper bridging legacy bool-returning APIs to Expected<void>.

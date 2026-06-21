@@ -31,7 +31,10 @@
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <optional>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 
 namespace il::support {
 namespace {
@@ -134,55 +137,214 @@ SourceLoc primarySnippetLoc(const Diag &diag) {
     return diag.loc;
 }
 
-/// @brief Emit indentation before a source caret using UTF-8 aware byte walking.
-/// @param os Output stream receiving spaces/tabs.
+/// @brief Return the number of visible cells emitted for an escaped ASCII byte.
+/// @param byte ASCII/control byte to classify.
+/// @return Number of output characters used by the escaped source-line printer.
+/// @details Source snippets escape all control bytes rather than printing them
+///          directly.  The caret renderer uses the same width accounting so
+///          underlines remain aligned with the escaped source text.
+uint32_t escapedAsciiByteWidth(unsigned char byte) {
+    switch (byte) {
+        case '\n':
+        case '\r':
+        case '\t':
+        case '\b':
+        case '\f':
+            return 2;
+        default:
+            if (byte < 0x20u || byte == 0x7fu)
+                return 4;
+            return 1;
+    }
+}
+
+/// @brief Print one escaped ASCII/control byte from a source snippet.
+/// @param os Output stream receiving the escaped byte.
+/// @param byte Byte to render.
+/// @details This mirrors @ref printTextEscaped for source lines but keeps the
+///          implementation local so the caret width code and source rendering
+///          remain tied to the same escape policy.
+void printEscapedSourceByte(std::ostream &os, unsigned char byte) {
+    constexpr char hex[] = "0123456789abcdef";
+    switch (byte) {
+        case '\n':
+            os << "\\n";
+            break;
+        case '\r':
+            os << "\\r";
+            break;
+        case '\t':
+            os << "\\t";
+            break;
+        case '\b':
+            os << "\\b";
+            break;
+        case '\f':
+            os << "\\f";
+            break;
+        default:
+            if (byte < 0x20u || byte == 0x7fu)
+                os << "\\x" << hex[(byte >> 4) & 0x0f] << hex[byte & 0x0f];
+            else
+                os << static_cast<char>(byte);
+            break;
+    }
+}
+
+/// @brief Return visible output columns for a source byte span after escaping.
+/// @param line Source line text.
+/// @param beginByte Zero-based byte offset at which to begin counting.
+/// @param requestedBytes Number of source bytes to account for.
+/// @return Escaped display width, with valid UTF-8 scalar values counted as one.
+/// @details Front ends currently report byte columns.  This helper walks exactly
+///          those bytes but mirrors the escaped snippet printer, so tabs, ANSI
+///          escape bytes, and malformed UTF-8 do not desynchronize the caret.
+uint32_t escapedDisplayColumnsForByteRange(std::string_view line,
+                                           size_t beginByte,
+                                           size_t requestedBytes) {
+    if (beginByte >= line.size() || requestedBytes == 0)
+        return 0;
+
+    const size_t endByte = std::min(line.size(), beginByte + requestedBytes);
+    uint32_t columns = 0;
+    for (size_t index = beginByte; index < endByte;) {
+        const auto byte = static_cast<unsigned char>(line[index]);
+        if (byte < 0x80u) {
+            columns += escapedAsciiByteWidth(byte);
+            ++index;
+            continue;
+        }
+
+        const size_t sequenceLength = validUtf8SequenceLength(line, index);
+        if (sequenceLength == 0) {
+            columns += 4;
+            ++index;
+        } else {
+            ++columns;
+            index += sequenceLength;
+        }
+    }
+    return columns;
+}
+
+/// @brief Emit indentation before a source caret using escaped source columns.
+/// @param os Output stream receiving spaces.
 /// @param line Source line text.
 /// @param column One-based byte column of the caret.
-/// @details Existing front ends report byte columns.  This helper walks those
-///          bytes but emits one padding cell per UTF-8 scalar value, so multibyte
-///          characters before the caret do not shift the underline too far right.
+/// @details Existing front ends report byte columns.  Source text is escaped
+///          before printing, so the indent width is computed from the escaped
+///          representation rather than from raw terminal control characters.
 void printCaretIndent(std::ostream &os, std::string_view line, uint32_t column) {
     if (column <= 1)
         return;
 
     const size_t byteLimit = std::min<size_t>(static_cast<size_t>(column - 1), line.size());
-    for (size_t index = 0; index < byteLimit;) {
-        if (line[index] == '\t') {
-            os << '\t';
+    const uint32_t columns = escapedDisplayColumnsForByteRange(line, 0, byteLimit);
+    for (uint32_t index = 0; index < columns; ++index)
+        os << ' ';
+}
+
+/// @brief Print a source line using visible escapes for unsafe bytes.
+/// @param os Output stream receiving the escaped line.
+/// @param line Source line text without a line terminator.
+/// @details Diagnostics are often rendered directly into terminals or logs.
+///          Printing raw control characters lets a source file alter subsequent
+///          output, so this helper escapes controls and malformed UTF-8 while
+///          preserving ordinary printable ASCII and valid UTF-8 bytes.
+void printSourceLineEscaped(std::ostream &os, std::string_view line) {
+    for (size_t index = 0; index < line.size();) {
+        const auto byte = static_cast<unsigned char>(line[index]);
+        if (byte < 0x80u) {
+            printEscapedSourceByte(os, byte);
             ++index;
             continue;
         }
 
-        const auto ch = static_cast<unsigned char>(line[index]);
-        const size_t length = ch < 0x80u ? 1 : validUtf8SequenceLength(line, index);
-        os << ' ';
-        index += length == 0 ? 1 : length;
+        const size_t sequenceLength = validUtf8SequenceLength(line, index);
+        if (sequenceLength == 0) {
+            os << "\\x";
+            constexpr char hex[] = "0123456789abcdef";
+            os << hex[(byte >> 4) & 0x0f] << hex[byte & 0x0f];
+            ++index;
+        } else {
+            os.write(line.data() + index, static_cast<std::streamsize>(sequenceLength));
+            index += sequenceLength;
+        }
     }
 }
 
-/// @brief Count display columns covered by a byte range in a UTF-8 source line.
+/// @brief Count display columns covered by a byte range in an escaped source line.
 /// @param line Source line text.
 /// @param beginByte Zero-based byte offset where the underline begins.
 /// @param requestedBytes Number of source bytes the underline should cover.
 /// @return At least one display column.
-/// @details Tabs and invalid UTF-8 bytes each count as one underline column.  The
-///          diagnostic printer preserves literal tabs in indentation, but the
-///          underline itself uses caret/tilde cells for stable plain-text output.
+/// @details Control bytes are counted according to their escaped representation.
+///          Valid UTF-8 scalar values still count as one column, matching the
+///          existing byte-oriented location model used by the front ends.
 uint32_t displayColumnsForByteRange(std::string_view line,
                                     size_t beginByte,
                                     uint32_t requestedBytes) {
-    if (beginByte >= line.size() || requestedBytes == 0)
-        return 1;
-
-    const size_t endByte = std::min(line.size(), beginByte + static_cast<size_t>(requestedBytes));
-    uint32_t columns = 0;
-    for (size_t index = beginByte; index < endByte;) {
-        const auto ch = static_cast<unsigned char>(line[index]);
-        const size_t length = ch < 0x80u ? 1 : validUtf8SequenceLength(line, index);
-        ++columns;
-        index += length == 0 ? 1 : length;
-    }
+    const uint32_t columns =
+        escapedDisplayColumnsForByteRange(line, beginByte, static_cast<size_t>(requestedBytes));
     return std::max<uint32_t>(1, columns);
+}
+
+/// @brief Print one escaped source line with its diagnostic gutter.
+/// @param loc Location whose line number and file id select the source line.
+/// @param os Output stream receiving the rendered source line.
+/// @param sm Source manager used to retrieve source text.
+/// @return The line text when available; otherwise std::nullopt.
+/// @details Returning the unescaped line lets callers compute byte-oriented caret
+///          placement after the visible source text has been printed.
+std::optional<std::string_view> printEscapedSourceGutterLine(SourceLoc loc,
+                                                             std::ostream &os,
+                                                             const SourceManager *sm) {
+    if (!sm || loc.file_id == 0 || loc.line == 0)
+        return std::nullopt;
+
+    if (!sm->hasLine(loc.file_id, loc.line))
+        return std::nullopt;
+
+    auto srcLine = sm->getLine(loc.file_id, loc.line);
+    std::string lineNumStr = std::to_string(loc.line);
+
+    os << ' ' << lineNumStr << " | ";
+    printSourceLineEscaped(os, srcLine);
+    os << '\n';
+    return srcLine;
+}
+
+/// @brief Print a caret/tilde marker under an already-rendered source line.
+/// @param lineNumber Source line number used to size the gutter.
+/// @param srcLine Raw source line text used for byte-to-column conversion.
+/// @param column One-based byte column where the marker starts.
+/// @param underlineLength Number of source bytes to underline.
+/// @param os Output stream receiving the marker line.
+/// @details Source text is printed in escaped form, so this helper mirrors that
+///          escaping policy when computing indentation and underline width.
+void printSourceMarker(uint32_t lineNumber,
+                       std::string_view srcLine,
+                       uint32_t column,
+                       uint32_t underlineLength,
+                       std::ostream &os) {
+    std::string lineNumStr = std::to_string(lineNumber);
+    std::string gutter(lineNumStr.size(), ' ');
+
+    if (column == 0 || column > srcLine.size() + 1)
+        return;
+
+    os << ' ' << gutter << " | ";
+    printCaretIndent(os, srcLine, column);
+    const size_t beginByte = static_cast<size_t>(column - 1);
+    const uint32_t maxLength = static_cast<uint32_t>(
+        std::min<size_t>(std::numeric_limits<uint32_t>::max(),
+                         srcLine.size() + 1 >= column ? srcLine.size() + 1 - column : 1));
+    const uint32_t caretCount =
+        displayColumnsForByteRange(srcLine, beginByte, std::min(underlineLength, maxLength));
+    os << '^';
+    for (uint32_t i = 1; i < caretCount; ++i)
+        os << '~';
+    os << '\n';
 }
 
 /// @brief Print the source line and caret marker for a diagnostic-like location.
@@ -190,33 +352,57 @@ void printSourceSnippet(SourceLoc loc,
                         uint32_t underlineLength,
                         std::ostream &os,
                         const SourceManager *sm) {
-    if (!sm || loc.file_id == 0 || loc.line == 0)
+    auto srcLine = printEscapedSourceGutterLine(loc, os, sm);
+    if (!srcLine)
         return;
+    printSourceMarker(loc.line, *srcLine, loc.column, underlineLength, os);
+}
 
-    if (!sm->hasLine(loc.file_id, loc.line))
-        return;
+/// @brief Print a bounded multi-line diagnostic range.
+/// @param range Concrete source range whose endpoints may span multiple lines.
+/// @param os Output stream receiving source snippet lines.
+/// @param sm Source manager used to retrieve source text.
+/// @return True when a multi-line snippet was rendered.
+/// @details Very large ranges are abbreviated after a small number of lines so a
+///          malicious or generated range cannot flood terminal output while still
+///          showing both the beginning and end coordinates.
+bool printMultilineSourceSnippet(const SourceRange &range,
+                                 std::ostream &os,
+                                 const SourceManager *sm) {
+    if (!range.isConcrete() || range.begin.file_id != range.end.file_id ||
+        range.begin.line >= range.end.line)
+        return false;
 
-    auto srcLine = sm->getLine(loc.file_id, loc.line);
-    std::string lineNumStr = std::to_string(loc.line);
-    std::string gutter(lineNumStr.size(), ' ');
+    constexpr uint32_t kMaxRenderedLines = 4;
+    uint32_t rendered = 0;
+    for (uint32_t line = range.begin.line; line <= range.end.line; ++line) {
+        if (rendered == kMaxRenderedLines && line < range.end.line) {
+            os << " ... | ...\n";
+            line = range.end.line;
+        }
 
-    os << ' ' << lineNumStr << " | " << srcLine << '\n';
+        SourceLoc lineLoc{range.begin.file_id, line, 1};
+        auto srcLine = printEscapedSourceGutterLine(lineLoc, os, sm);
+        if (!srcLine)
+            continue;
 
-    if (loc.column == 0 || loc.column > srcLine.size() + 1)
-        return;
-
-    os << ' ' << gutter << " | ";
-    printCaretIndent(os, srcLine, loc.column);
-    const size_t beginByte = static_cast<size_t>(loc.column - 1);
-    const uint32_t maxLength = static_cast<uint32_t>(
-        std::min<size_t>(std::numeric_limits<uint32_t>::max(),
-                         srcLine.size() + 1 >= loc.column ? srcLine.size() + 1 - loc.column : 1));
-    const uint32_t caretCount =
-        displayColumnsForByteRange(srcLine, beginByte, std::min(underlineLength, maxLength));
-    os << '^';
-    for (uint32_t i = 1; i < caretCount; ++i)
-        os << '~';
-    os << '\n';
+        uint32_t startColumn = 1;
+        uint32_t underlineLength = 1;
+        if (line == range.begin.line) {
+            startColumn = range.begin.column;
+            underlineLength = static_cast<uint32_t>(std::min<size_t>(
+                std::numeric_limits<uint32_t>::max(),
+                srcLine->size() + 1 >= startColumn ? srcLine->size() + 1 - startColumn : 1));
+        } else if (line == range.end.line) {
+            underlineLength = std::max<uint32_t>(1, range.end.column - 1);
+        } else {
+            underlineLength = static_cast<uint32_t>(std::min<size_t>(
+                std::numeric_limits<uint32_t>::max(), std::max<size_t>(1, srcLine->size())));
+        }
+        printSourceMarker(line, *srcLine, startColumn, underlineLength, os);
+        ++rendered;
+    }
+    return rendered != 0;
 }
 
 /// @brief Emit text in a single diagnostic line without raw control characters.
@@ -282,14 +468,49 @@ void printDiagHeader(const Diag &diag, std::ostream &os, const SourceManager *sm
     os << '\n';
 }
 
+/// @brief Print a human-readable source coordinate for a fix-it range.
+/// @param os Output stream receiving the coordinate.
+/// @param range Range attached to the fix-it.
+/// @param sm Optional source manager used to resolve file ids.
+/// @details Text diagnostics are consumed by humans, but fix-its can reference
+///          a different file than the primary diagnostic.  Including a path when
+///          it is known prevents cross-file edits from looking like same-file
+///          line/column pairs.
+void printFixItTextRange(std::ostream &os, const SourceRange &range, const SourceManager *sm) {
+    if (!range.isConcrete() && !range.isInsertion())
+        return;
+
+    const auto printPoint = [&](SourceLoc loc) {
+        if (sm && loc.file_id != 0) {
+            const auto path = sm->getPath(loc.file_id);
+            if (!path.empty()) {
+                printTextEscaped(os, path);
+                os << ':';
+            }
+        }
+        os << loc.line << ':' << loc.column;
+    };
+
+    os << " at ";
+    printPoint(range.begin);
+    if (range.isConcrete()) {
+        os << '-';
+        if (range.end.file_id != range.begin.file_id)
+            printPoint(range.end);
+        else
+            os << range.end.line << ':' << range.end.column;
+    }
+}
+
 /// @brief Print optional diagnostic metadata that has no source snippet of its own.
 /// @param diag Diagnostic whose secondary fields should be rendered.
 /// @param os Output stream receiving text diagnostics.
+/// @param sm Optional source manager used to resolve fix-it file identifiers.
 /// @details The support diagnostic model carries structured fields for stage,
 ///          help text, and fix-it suggestions.  Keeping these in the text output
 ///          makes command-line diagnostics match the information available to JSON
 ///          consumers without changing the primary header format.
-void printDiagDetails(const Diag &diag, std::ostream &os) {
+void printDiagDetails(const Diag &diag, std::ostream &os, const SourceManager *sm) {
     if (!diag.stage.empty()) {
         os << "  stage: ";
         printTextEscaped(os, diag.stage);
@@ -306,13 +527,12 @@ void printDiagDetails(const Diag &diag, std::ostream &os) {
             os << ": ";
             printTextEscaped(os, fixit.message);
         }
-        if (fixit.range.isConcrete() || fixit.range.isInsertion()) {
-            os << " at " << fixit.range.begin.line << ':' << fixit.range.begin.column;
-            if (fixit.range.isConcrete())
-                os << '-' << fixit.range.end.line << ':' << fixit.range.end.column;
-        }
+        printFixItTextRange(os, fixit.range, sm);
         os << " -> ";
-        printTextEscaped(os, fixit.replacement);
+        if (fixit.replacement.empty())
+            os << "<empty>";
+        else
+            printTextEscaped(os, fixit.replacement);
         os << '\n';
     }
 }
@@ -381,28 +601,63 @@ void printJsonEscaped(std::ostream &os, std::string_view text) {
     os << '"';
 }
 
+/// @brief Cache SourceManager file-id resolutions while printing one JSON diagnostic.
+/// @details A single diagnostic object can reference the same file in its primary
+///          location, range endpoints, notes, fix-its, and source snippet.  The
+///          SourceManager protects lookups with a mutex, so resolving once per
+///          file id keeps JSON serialization cheaper without changing output.
+struct JsonFileResolver {
+    /// @brief Source manager borrowed for the duration of JSON serialization.
+    const SourceManager *sm = nullptr;
+
+    /// @brief Cached resolved path by file id; std::nullopt means "unknown".
+    std::unordered_map<uint32_t, std::optional<std::string>> paths;
+
+    /// @brief Construct a resolver for an optional SourceManager.
+    /// @param sourceManager Manager used to resolve file ids, or nullptr.
+    explicit JsonFileResolver(const SourceManager *sourceManager) : sm(sourceManager) {}
+
+    /// @brief Resolve @p fileId to a display path if possible.
+    /// @param fileId SourceManager file identifier.
+    /// @return Optional display path string cached for repeated use.
+    const std::optional<std::string> &resolve(uint32_t fileId) {
+        auto [it, inserted] = paths.emplace(fileId, std::nullopt);
+        if (!inserted)
+            return it->second;
+        if (sm && fileId != 0) {
+            const auto path = sm->getPath(fileId);
+            if (!path.empty())
+                it->second = std::string(path);
+        }
+        return it->second;
+    }
+
+    /// @brief Print the JSON value for a file id's resolved path.
+    /// @param os Output stream receiving either a quoted path or null.
+    /// @param fileId SourceManager file identifier to serialize.
+    void printFile(std::ostream &os, uint32_t fileId) {
+        const auto &path = resolve(fileId);
+        if (path)
+            printJsonEscaped(os, *path);
+        else
+            os << "null";
+    }
+};
+
 /// @brief Emit a source location as a JSON `"location"` object.
 /// @details Writes the raw `file_id`/`line`/`column` triple alongside a resolved
 ///          `file` path; the path is `null` when no SourceManager is available or
 ///          the location carries no file identifier.
 /// @param os Output stream receiving the object.
 /// @param loc Source location to serialize.
-/// @param sm Optional source manager used to resolve the file identifier.
-void printJsonLoc(std::ostream &os, SourceLoc loc, const SourceManager *sm) {
+/// @param files Resolver used to cache SourceManager path lookups.
+void printJsonLoc(std::ostream &os, SourceLoc loc, JsonFileResolver &files) {
     os << "\"location\":{";
     os << "\"file_id\":" << loc.file_id << ',';
     os << "\"line\":" << loc.line << ',';
     os << "\"column\":" << loc.column << ',';
     os << "\"file\":";
-    if (sm && loc.file_id != 0) {
-        const auto path = sm->getPath(loc.file_id);
-        if (path.empty())
-            os << "null";
-        else
-            printJsonEscaped(os, path);
-    } else {
-        os << "null";
-    }
+    files.printFile(os, loc.file_id);
     os << '}';
 }
 
@@ -447,8 +702,8 @@ void printJsonSourceLine(std::ostream &os, SourceLoc loc, const SourceManager *s
 ///          `null` when the range is invalid.
 /// @param os Output stream receiving the object.
 /// @param range Source range to serialize.
-/// @param sm Optional source manager used to resolve endpoint file identifiers.
-void printJsonRange(std::ostream &os, const SourceRange &range, const SourceManager *sm) {
+/// @param files Resolver used to cache SourceManager path lookups.
+void printJsonRange(std::ostream &os, const SourceRange &range, JsonFileResolver &files) {
     os << "\"range\":";
     if (!range.isConcrete() && !range.isInsertion()) {
         os << "null";
@@ -460,29 +715,13 @@ void printJsonRange(std::ostream &os, const SourceRange &range, const SourceMana
     os << "\"line\":" << range.begin.line << ',';
     os << "\"column\":" << range.begin.column << ',';
     os << "\"file\":";
-    if (sm && range.begin.file_id != 0) {
-        const auto path = sm->getPath(range.begin.file_id);
-        if (path.empty())
-            os << "null";
-        else
-            printJsonEscaped(os, path);
-    } else {
-        os << "null";
-    }
+    files.printFile(os, range.begin.file_id);
     os << "},\"end\":{";
     os << "\"file_id\":" << range.end.file_id << ',';
     os << "\"line\":" << range.end.line << ',';
     os << "\"column\":" << range.end.column << ',';
     os << "\"file\":";
-    if (sm && range.end.file_id != 0) {
-        const auto path = sm->getPath(range.end.file_id);
-        if (path.empty())
-            os << "null";
-        else
-            printJsonEscaped(os, path);
-    } else {
-        os << "null";
-    }
+    files.printFile(os, range.end.file_id);
     os << "}}";
 }
 
@@ -490,25 +729,25 @@ void printJsonRange(std::ostream &os, const SourceRange &range, const SourceMana
 /// @param os Output stream receiving the JSON field.
 /// @param fixitRange Range stored on the fix-it suggestion.
 /// @param diagLoc Primary diagnostic location used for implicit insertions.
-/// @param sm Optional source manager used to resolve file identifiers.
+/// @param files Resolver used to cache SourceManager path lookups.
 /// @details A default-constructed @ref DiagnosticFixIt::range means "insert at
 ///          the diagnostic location".  JSON consumers need concrete coordinates,
 ///          so this helper materialises that implicit insertion when possible.
 void printJsonFixItRange(std::ostream &os,
                          const SourceRange &fixitRange,
                          SourceLoc diagLoc,
-                         const SourceManager *sm) {
+                         JsonFileResolver &files) {
     if (fixitRange.isConcrete() || fixitRange.isInsertion()) {
-        printJsonRange(os, fixitRange, sm);
+        printJsonRange(os, fixitRange, files);
         return;
     }
 
     if (diagLoc.hasFile() && diagLoc.hasLine() && diagLoc.hasColumn()) {
-        printJsonRange(os, SourceRange{diagLoc, diagLoc}, sm);
+        printJsonRange(os, SourceRange{diagLoc, diagLoc}, files);
         return;
     }
 
-    printJsonRange(os, fixitRange, sm);
+    printJsonRange(os, fixitRange, files);
 }
 
 /// @brief Emit a complete diagnostic as a single JSON object.
@@ -522,6 +761,8 @@ void printJsonFixItRange(std::ostream &os,
 /// @param os Output stream receiving the object.
 /// @param sm Optional source manager used to resolve file identifiers.
 void printJsonDiagObject(const Diag &diag, std::ostream &os, const SourceManager *sm) {
+    const SourceLoc snippetLoc = primarySnippetLoc(diag);
+    JsonFileResolver files(sm);
     os << '{';
     os << "\"severity\":";
     printJsonEscaped(os, detail::diagSeverityToString(diag.severity));
@@ -536,11 +777,11 @@ void printJsonDiagObject(const Diag &diag, std::ostream &os, const SourceManager
     os << ",\"message\":";
     printJsonEscaped(os, diag.message);
     os << ',';
-    printJsonLoc(os, diag.loc, sm);
+    printJsonLoc(os, diag.loc, files);
     os << ',';
-    printJsonRange(os, diag.range, sm);
+    printJsonRange(os, diag.range, files);
     os << ',';
-    printJsonSourceLine(os, diag.loc, sm);
+    printJsonSourceLine(os, snippetLoc, sm);
     os << ",\"help\":";
     printJsonOptionalString(os, diag.help);
     os << ",\"notes\":[";
@@ -552,7 +793,7 @@ void printJsonDiagObject(const Diag &diag, std::ostream &os, const SourceManager
         os << "\"message\":";
         printJsonEscaped(os, note.message);
         os << ',';
-        printJsonLoc(os, note.loc, sm);
+        printJsonLoc(os, note.loc, files);
         os << '}';
     }
     os << "],\"fixits\":[";
@@ -564,7 +805,7 @@ void printJsonDiagObject(const Diag &diag, std::ostream &os, const SourceManager
         os << "\"message\":";
         printJsonOptionalString(os, fixit.message);
         os << ',';
-        printJsonFixItRange(os, fixit.range, diag.loc, sm);
+        printJsonFixItRange(os, fixit.range, diag.loc, files);
         os << ",\"replacement\":";
         printJsonEscaped(os, fixit.replacement);
         os << '}';
@@ -597,7 +838,7 @@ Expected<void>::Expected(Diag diag) : error_(std::move(diag)) {}
 ///          diagnostic via @ref error().
 ///
 /// @return True if the instance holds no diagnostic (success), otherwise false.
-bool Expected<void>::hasValue() const {
+bool Expected<void>::hasValue() const noexcept {
     return !error_.has_value();
 }
 
@@ -607,7 +848,7 @@ bool Expected<void>::hasValue() const {
 ///          conditionals such as `if (auto ok = doThing())`.  The conversion is
 ///          explicit enough to avoid accidental narrowing yet terse enough to be
 ///          pleasant in control flow.
-Expected<void>::operator bool() const {
+Expected<void>::operator bool() const noexcept {
     return hasValue();
 }
 
@@ -623,6 +864,19 @@ Expected<void>::operator bool() const {
 const Diag &Expected<void>::error() const & {
     assert(error_.has_value());
     return error_.value();
+}
+
+/// @brief Move-access the diagnostic that describes the recorded failure.
+///
+/// @details Mirrors the const lvalue overload but lets callers efficiently
+///          propagate a diagnostic out of a temporary Expected<void> without an
+///          extra copy.  Calling this on a successful Expected remains a contract
+///          violation and is guarded by an assertion in debug builds.
+///
+/// @return Rvalue reference to the stored diagnostic payload.
+Diag &&Expected<void>::error() && {
+    assert(error_.has_value());
+    return std::move(error_.value());
 }
 
 namespace detail {
@@ -701,9 +955,12 @@ Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg) {
 /// @param sm Optional source manager for mapping file identifiers to paths.
 void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm) {
     printDiagHeader(diag, os, sm);
-    const SourceLoc snippetLoc = primarySnippetLoc(diag);
-    printSourceSnippet(snippetLoc, sameLineRangeLength(diag, snippetLoc), os, sm);
-    printDiagDetails(diag, os);
+    const bool renderedMultiline = printMultilineSourceSnippet(diag.range, os, sm);
+    if (!renderedMultiline) {
+        const SourceLoc snippetLoc = primarySnippetLoc(diag);
+        printSourceSnippet(snippetLoc, sameLineRangeLength(diag, snippetLoc), os, sm);
+    }
+    printDiagDetails(diag, os, sm);
 
     for (const auto &note : diag.notes) {
         Diag noteDiag{Severity::Note, note.message, note.loc, {}};
@@ -712,7 +969,7 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm) {
     }
 }
 
-void printDiagnosticsJson(const std::vector<Diag> &diagnostics,
+void printDiagnosticsJson(std::span<const Diag> diagnostics,
                           std::ostream &os,
                           const SourceManager *sm) {
     os << "{\"diagnostics\":[";
@@ -724,9 +981,15 @@ void printDiagnosticsJson(const std::vector<Diag> &diagnostics,
     os << "]}\n";
 }
 
+void printDiagnosticsJson(const std::vector<Diag> &diagnostics,
+                          std::ostream &os,
+                          const SourceManager *sm) {
+    printDiagnosticsJson(std::span<const Diag>{diagnostics.data(), diagnostics.size()}, os, sm);
+}
+
 void printDiagJson(const Diag &diag, std::ostream &os, const SourceManager *sm) {
-    std::vector<Diag> diagnostics;
-    diagnostics.push_back(diag);
-    printDiagnosticsJson(diagnostics, os, sm);
+    os << "{\"diagnostics\":[";
+    printJsonDiagObject(diag, os, sm);
+    os << "]}\n";
 }
 } // namespace il::support

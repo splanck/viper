@@ -269,7 +269,7 @@ std::size_t determineValueCapacity(const core::Function &fn) {
 /// @return Populated CFG information ready for data-flow analysis.
 CFGInfo buildCFG(core::Module &module, core::Function &fn) {
     CFGInfo info;
-    viper::analysis::CFGContext ctx(module);
+    viper::analysis::CFGContext ctx(module, fn);
 
     for (auto &block : fn.blocks) {
         auto &succ = info.successors[&block];

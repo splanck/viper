@@ -41,6 +41,100 @@ const std::vector<il::core::Block *> &emptyBlockList() {
     return empty;
 }
 
+void internInstructionIdentifiers(il::core::Module &module, il::core::Instr &instr) {
+    instr.calleeSymbol =
+        instr.callee.empty() ? il::support::Symbol{} : module.internIdentifier(instr.callee);
+
+    instr.labelSymbols.clear();
+    instr.labelSymbols.reserve(instr.labels.size());
+    for (const auto &label : instr.labels) {
+        instr.labelSymbols.push_back(label.empty() ? il::support::Symbol{}
+                                                   : module.internIdentifier(label));
+    }
+}
+
+void internFunctionIdentifiers(il::core::Module &module, il::core::Function &function) {
+    function.nameSymbol = module.internIdentifier(function.name);
+    for (auto &block : function.blocks) {
+        block.labelSymbol = module.internIdentifier(block.label);
+        for (auto &instr : block.instructions)
+            internInstructionIdentifiers(module, instr);
+    }
+}
+
+void indexFunction(CFGContext &ctx, il::core::Function &fn) {
+    auto &labelMap = ctx.functionLabelToBlock[&fn];
+    auto &symbolMap = ctx.functionLabelSymbolToBlock[&fn];
+    for (auto &blk : fn.blocks) {
+        ctx.blockToFunction[&blk] = &fn;
+        labelMap.emplace(blk.label, &blk);
+        if (blk.labelSymbol)
+            symbolMap.emplace(blk.labelSymbol, &blk);
+        ctx.blockSuccessors[&blk];
+        ctx.blockPredecessors[&blk];
+    }
+}
+
+void buildFunctionEdges(CFGContext &ctx, il::core::Function &fn) {
+    auto &labelMap = ctx.functionLabelToBlock[&fn];
+    auto &symbolMap = ctx.functionLabelSymbolToBlock[&fn];
+    for (auto &blk : fn.blocks) {
+        auto &succ = ctx.blockSuccessors[&blk];
+        if (blk.instructions.empty())
+            continue;
+
+        const il::core::Instr &term = blk.instructions.back();
+        bool isBranchTerminator = false;
+        switch (term.op) {
+            case il::core::Opcode::Br:
+            case il::core::Opcode::CBr:
+            case il::core::Opcode::SwitchI32:
+            case il::core::Opcode::ResumeLabel:
+                isBranchTerminator = true;
+                break;
+            default:
+                break;
+        }
+
+        if (!isBranchTerminator)
+            continue;
+
+        auto appendLabel = [&](std::size_t labelIndex, const std::string &label) {
+            if (labelIndex < term.labelSymbols.size() && term.labelSymbols[labelIndex]) {
+                auto symbolIt = symbolMap.find(term.labelSymbols[labelIndex]);
+                if (symbolIt != symbolMap.end()) {
+                    succ.push_back(symbolIt->second);
+                    return;
+                }
+            }
+            auto it = labelMap.find(label);
+            if (it == labelMap.end()) {
+                throw std::invalid_argument("CFGContext: unknown label '" + label +
+                                            "' in function @" + fn.name);
+            }
+            succ.push_back(it->second);
+        };
+
+        if (term.op == il::core::Opcode::SwitchI32) {
+            if (!term.labels.empty()) {
+                appendLabel(0, il::core::switchDefaultLabel(term));
+                const std::size_t caseCount = il::core::switchCaseCount(term);
+                for (std::size_t idx = 0; idx < caseCount; ++idx)
+                    appendLabel(idx + 1, il::core::switchCaseLabel(term, idx));
+            }
+        } else {
+            for (std::size_t idx = 0; idx < term.labels.size(); ++idx)
+                appendLabel(idx, term.labels[idx]);
+        }
+
+        for (auto *target : succ) {
+            if (!target)
+                continue;
+            ctx.blockPredecessors[target].push_back(&blk);
+        }
+    }
+}
+
 } // namespace
 
 /// @brief Construct a CFG analysis context for the provided module.
@@ -54,79 +148,18 @@ const std::vector<il::core::Block *> &emptyBlockList() {
 CFGContext::CFGContext(il::core::Module &module) : module(&module) {
     module.internOwnedIdentifiers();
     for (auto &fn : module.functions) {
-        auto &labelMap = functionLabelToBlock[&fn];
-        auto &symbolMap = functionLabelSymbolToBlock[&fn];
-        for (auto &blk : fn.blocks) {
-            blockToFunction[&blk] = &fn;
-            labelMap.emplace(blk.label, &blk);
-            if (blk.labelSymbol)
-                symbolMap.emplace(blk.labelSymbol, &blk);
-            blockSuccessors[&blk];
-            blockPredecessors[&blk];
-        }
+        indexFunction(*this, fn);
     }
 
     for (auto &fn : module.functions) {
-        auto &labelMap = functionLabelToBlock[&fn];
-        auto &symbolMap = functionLabelSymbolToBlock[&fn];
-        for (auto &blk : fn.blocks) {
-            auto &succ = blockSuccessors[&blk];
-            if (blk.instructions.empty())
-                continue;
-
-            const il::core::Instr &term = blk.instructions.back();
-            bool isBranchTerminator = false;
-            switch (term.op) {
-                case il::core::Opcode::Br:
-                case il::core::Opcode::CBr:
-                case il::core::Opcode::SwitchI32:
-                case il::core::Opcode::ResumeLabel:
-                    isBranchTerminator = true;
-                    break;
-                default:
-                    break;
-            }
-
-            if (!isBranchTerminator)
-                continue;
-
-            auto appendLabel = [&](std::size_t labelIndex, const std::string &label) {
-                if (labelIndex < term.labelSymbols.size() && term.labelSymbols[labelIndex]) {
-                    auto symbolIt = symbolMap.find(term.labelSymbols[labelIndex]);
-                    if (symbolIt == symbolMap.end()) {
-                        throw std::invalid_argument("CFGContext: unknown label '" + label +
-                                                    "' in function @" + fn.name);
-                    }
-                    succ.push_back(symbolIt->second);
-                    return;
-                }
-                auto it = labelMap.find(label);
-                if (it == labelMap.end()) {
-                    throw std::invalid_argument("CFGContext: unknown label '" + label +
-                                                "' in function @" + fn.name);
-                }
-                succ.push_back(it->second);
-            };
-
-            if (term.op == il::core::Opcode::SwitchI32) {
-                if (!term.labels.empty()) {
-                    appendLabel(0, il::core::switchDefaultLabel(term));
-                    const std::size_t caseCount = il::core::switchCaseCount(term);
-                    for (std::size_t idx = 0; idx < caseCount; ++idx)
-                        appendLabel(idx + 1, il::core::switchCaseLabel(term, idx));
-                }
-            } else {
-                for (std::size_t idx = 0; idx < term.labels.size(); ++idx)
-                    appendLabel(idx, term.labels[idx]);
-            }
-
-            for (auto *target : succ) {
-                if (!target)
-                    continue;
-                blockPredecessors[target].push_back(&blk);
-            }
-        }
+        buildFunctionEdges(*this, fn);
     }
+}
+
+CFGContext::CFGContext(il::core::Module &module, il::core::Function &function) : module(&module) {
+    internFunctionIdentifiers(module, function);
+    indexFunction(*this, function);
+    buildFunctionEdges(*this, function);
 }
 
 /// @brief Gather successor blocks of @p B.

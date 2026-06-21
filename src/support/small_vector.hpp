@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <initializer_list>
@@ -42,6 +43,9 @@ namespace il::support {
 /// @tparam N Number of elements to store inline (default: 8).
 template <typename T, size_t N = 8> class SmallVector {
     static_assert(N > 0, "SmallVector inline capacity must be positive");
+    static_assert(
+        std::is_copy_constructible_v<T> || std::is_nothrow_move_constructible_v<T>,
+        "SmallVector reallocation requires copy construction or noexcept move construction");
 
     using Allocator = std::allocator<T>;
     using AllocTraits = std::allocator_traits<Allocator>;
@@ -86,6 +90,93 @@ template <typename T, size_t N = 8> class SmallVector {
             heap_ = nullptr;
             capacity_ = 0;
         }
+    }
+
+    /// @brief Replace this vector with a copied snapshot of @p other.
+    /// @param other Source vector whose elements should be copied.
+    /// @details Allocates and constructs replacement heap storage before mutating
+    ///          this object when copies can throw, so copy assignment preserves the
+    ///          old value if allocation or element construction fails.  For small,
+    ///          nothrow-copyable vectors it keeps the replacement in inline storage.
+    void replaceWithCopiedElements(const SmallVector &other) {
+        if (other.size_ == 0) {
+            clear();
+            releaseHeap();
+            return;
+        }
+
+        if constexpr (std::is_nothrow_copy_constructible_v<T>) {
+            if (other.size_ <= N) {
+                clear();
+                releaseHeap();
+                for (size_t index = 0; index < other.size_; ++index)
+                    std::construct_at(inlineData() + index, other.data()[index]);
+                size_ = other.size_;
+                return;
+            }
+        }
+
+        const size_t newCapacity = std::max(other.size_, N);
+        T *newBuf = AllocTraits::allocate(allocator_, newCapacity);
+        size_t constructed = 0;
+        try {
+            for (; constructed < other.size_; ++constructed)
+                std::construct_at(newBuf + constructed, other.data()[constructed]);
+        } catch (...) {
+            destroyRange(newBuf, constructed);
+            AllocTraits::deallocate(allocator_, newBuf, newCapacity);
+            throw;
+        }
+
+        clear();
+        releaseHeap();
+        heap_ = newBuf;
+        capacity_ = newCapacity;
+        size_ = other.size_;
+    }
+
+    /// @brief Replace this vector by moving another vector's inline elements.
+    /// @param other Source vector currently using inline storage.
+    /// @details Constructs all moved elements in replacement heap storage before
+    ///          touching this object when element moves can throw.  For small,
+    ///          nothrow-movable vectors it keeps the replacement in inline storage.
+    ///          If a throwing move fails, this vector is unchanged and the source
+    ///          remains valid in its moved-from-prefix state, matching ordinary
+    ///          move-assignment expectations.
+    void replaceWithMovedInlineElements(SmallVector &other) {
+        if (other.size_ == 0) {
+            clear();
+            releaseHeap();
+            return;
+        }
+
+        if constexpr (std::is_nothrow_move_constructible_v<T>) {
+            if (other.size_ <= N) {
+                clear();
+                releaseHeap();
+                moveInlineFrom(other);
+                return;
+            }
+        }
+
+        const size_t newCapacity = std::max(other.size_, N);
+        T *newBuf = AllocTraits::allocate(allocator_, newCapacity);
+        size_t constructed = 0;
+        try {
+            for (; constructed < other.size_; ++constructed)
+                std::construct_at(newBuf + constructed, std::move(other.inlineData()[constructed]));
+        } catch (...) {
+            destroyRange(newBuf, constructed);
+            AllocTraits::deallocate(allocator_, newBuf, newCapacity);
+            throw;
+        }
+
+        clear();
+        releaseHeap();
+        heap_ = newBuf;
+        capacity_ = newCapacity;
+        size_ = other.size_;
+        other.clear();
     }
 
     /// @brief Compute a checked growth capacity for at least @p minCapacity elements.
@@ -212,6 +303,7 @@ template <typename T, size_t N = 8> class SmallVector {
             }
         } catch (...) {
             destroyRange(data(), constructed);
+            releaseHeap();
             throw;
         }
         size_ = constructed;
@@ -227,6 +319,7 @@ template <typename T, size_t N = 8> class SmallVector {
                 std::construct_at(data() + constructed, other.data()[constructed]);
         } catch (...) {
             destroyRange(data(), constructed);
+            releaseHeap();
             throw;
         }
         size_ = constructed;
@@ -259,32 +352,21 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @param other Source vector to copy elements from.
     /// @return Reference to this vector.
     SmallVector &operator=(const SmallVector &other) {
-        if (this != &other) {
-            clear();
-            reserve(other.size_);
-            size_t constructed = 0;
-            try {
-                for (; constructed < other.size_; ++constructed)
-                    std::construct_at(data() + constructed, other.data()[constructed]);
-            } catch (...) {
-                destroyRange(data(), constructed);
-                throw;
-            }
-            size_ = constructed;
-        }
+        if (this != &other)
+            replaceWithCopiedElements(other);
         return *this;
     }
 
     /// @brief Move assignment.
-    /// @details Frees any existing heap buffer, then steals or copies from @p other.
+    /// @details Builds replacement storage before mutating this vector when moving
+    ///          inline elements; heap-backed sources are still stolen in O(1).
     /// @param other Source vector to move from; left empty after the move.
     /// @return Reference to this vector.
     SmallVector &operator=(SmallVector &&other) noexcept(std::is_nothrow_move_constructible_v<T>) {
         if (this != &other) {
-            clear();
-            releaseHeap();
-
             if (other.isHeap()) {
+                clear();
+                releaseHeap();
                 heap_ = other.heap_;
                 capacity_ = other.capacity_;
                 size_ = other.size_;
@@ -292,7 +374,7 @@ template <typename T, size_t N = 8> class SmallVector {
                 other.capacity_ = 0;
                 other.size_ = 0;
             } else {
-                moveInlineFrom(other);
+                replaceWithMovedInlineElements(other);
             }
         }
         return *this;

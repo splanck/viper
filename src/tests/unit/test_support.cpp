@@ -30,6 +30,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -171,7 +172,7 @@ int main() {
     assert(rangedText.find("<memory>.zia:1:8: note: module declared here") != std::string::npos);
     assert(rangedText.find("  stage: sema") != std::string::npos);
     assert(rangedText.find("  help: Check the callee name.") != std::string::npos);
-    assert(rangedText.find("  fix-it: replace bad call at 2:16-2:23 -> goodCall") !=
+    assert(rangedText.find("  fix-it: replace bad call at <memory>.zia:2:16-2:23 -> goodCall") !=
            std::string::npos);
 
     il::support::Diag sanitizedTextDiag{
@@ -183,6 +184,20 @@ int main() {
     std::ostringstream sanitizedTextStream;
     il::support::printDiag(sanitizedTextDiag, sanitizedTextStream, &sm);
     assert(sanitizedTextStream.str().find("first line\\nsecond\\tline") != std::string::npos);
+
+    const uint32_t controlFile = sm.addFile("<control>.zia");
+    sm.setSource(controlFile, std::string("a\t") + static_cast<char>(0x1b) + "[31m\n");
+    il::support::Diag controlDiag{
+        il::support::Severity::Error,
+        "control source",
+        il::support::SourceLoc{controlFile, 1, 2},
+        {},
+    };
+    std::ostringstream controlTextStream;
+    il::support::printDiag(controlDiag, controlTextStream, &sm);
+    const std::string controlText = controlTextStream.str();
+    assert(controlText.find("a\\t\\x1b[31m") != std::string::npos);
+    assert(controlText.find(static_cast<char>(0x1b)) == std::string::npos);
 
     std::ostringstream jsonStream;
     il::support::printDiagJson(rangedDiag, jsonStream, &sm);
@@ -295,6 +310,8 @@ int main() {
             std::ofstream out(tempPath, std::ios::binary);
             out << "alpha\r\n\r\nomega\r\n";
         }
+        assert(!fileSm.hasLine(tempId, 1));
+        fileSm.invalidateSource(tempId);
         assert(fileSm.hasLine(tempId, 1));
         assert(fileSm.hasLine(tempId, 2));
         assert(fileSm.getLine(tempId, 1) == "alpha");
@@ -309,6 +326,19 @@ int main() {
         assert(oldLineView == "alpha");
         assert(fileSm.getLine(tempId, 1) == "updated");
         std::filesystem::remove(tempPath);
+    }
+
+    {
+        const auto emptyPath =
+            std::filesystem::temp_directory_path() / "viper_support_source_manager_empty.tmp";
+        {
+            std::ofstream out(emptyPath, std::ios::binary);
+        }
+        il::support::SourceManager emptyFileSm;
+        const uint32_t emptyFileId = emptyFileSm.addFile(emptyPath.string());
+        assert(emptyFileSm.hasLine(emptyFileId, 1));
+        assert(emptyFileSm.getLine(emptyFileId, 1).empty());
+        std::filesystem::remove(emptyPath);
     }
 
     {
@@ -390,7 +420,7 @@ int main() {
     const size_t winStoredAfter =
         il::support::SourceManagerTestAccess::storedPathCount(caseInsensitiveSm);
     assert(winStoredBefore == winStoredAfter);
-    assert(caseInsensitiveSm.getPath(winFirst) == "case/file.txt");
+    assert(caseInsensitiveSm.getPath(winFirst) == "Case/FILE.TXT");
 #endif
 
     // Diagnostics missing a registered path should not emit a leading colon.
@@ -432,6 +462,19 @@ int main() {
     auto locatedDiag = locatedCapture.toDiag();
     assert(locatedDiag.severity == il::support::Severity::Note);
     assert(locatedDiag.message == "details here");
+    il::support::DiagCapture literalMarkerCapture;
+    literalMarkerCapture.ss << "error: message mentions : warning: literally\n";
+    assert(literalMarkerCapture.toDiag().message == "message mentions : warning: literally");
+    il::support::DiagCapture multiCapture;
+    multiCapture.ss << "error: first\nwarning: second\n";
+    auto capturedDiagnostics = multiCapture.toDiagnostics();
+    assert(capturedDiagnostics.size() == 2);
+    assert(capturedDiagnostics[0].severity == il::support::Severity::Error);
+    assert(capturedDiagnostics[1].severity == il::support::Severity::Warning);
+    auto aggregateDiag = multiCapture.toDiag();
+    assert(aggregateDiag.message == "first");
+    assert(aggregateDiag.notes.size() == 1);
+    assert(aggregateDiag.notes[0].message == "second");
     il::support::DiagCapture emptyCapture;
     auto capturedFailure = il::support::capture_to_expected_impl(false, emptyCapture);
     assert(!capturedFailure);
@@ -537,7 +580,13 @@ int main() {
     assert(checkedAligned.has_value());
     assert(*checkedAligned == 8u);
     assert(!il::support::checkedAlignUp<uint32_t>(std::numeric_limits<uint32_t>::max() - 1u, 8u));
-    assert(il::support::alignUp<uint32_t>(5u, 0u) == 5u);
+    bool invalidAlignThrew = false;
+    try {
+        (void)il::support::alignUp<uint32_t>(5u, 0u);
+    } catch (const std::overflow_error &) {
+        invalidAlignThrew = true;
+    }
+    assert(invalidAlignThrew);
     assert(!il::support::isAligned<uint32_t>(8u, 0u));
     il::support::Arena arena(64);
     void *p1 = arena.allocate(1, 1);

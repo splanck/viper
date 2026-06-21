@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <type_traits>
 
 namespace il::support {
@@ -31,6 +32,7 @@ namespace il::support {
 ///          applying bit-mask formulas.  Signed negative values are rejected.
 template <typename T> [[nodiscard]] constexpr bool isPowerOfTwo(T value) noexcept {
     static_assert(std::is_integral_v<T>, "isPowerOfTwo requires an integral type");
+    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>, "isPowerOfTwo does not accept bool");
     if (value <= 0)
         return false;
     using Unsigned = std::make_unsigned_t<T>;
@@ -78,16 +80,21 @@ template <typename T>
 
 /// @brief Round a value up to the next multiple of alignment.
 /// @details Computes the smallest value >= n that is a multiple of alignment.
-///          Invalid alignments or overflow leave @p n unchanged; callers that
-///          need to distinguish those cases should use @ref checkedAlignUp.
+///          Invalid alignments or overflow throw @ref std::overflow_error so
+///          layout code cannot accidentally continue with an unaligned value.
+///          Callers that need non-throwing behavior should use
+///          @ref checkedAlignUp directly.
 /// @tparam T Integral type of the value being aligned.
 /// @param n Value to align.
 /// @param alignment Alignment boundary (must be power of two).
-/// @return Smallest value >= n that is a multiple of alignment, or @p n on failure.
-template <typename T> [[nodiscard]] constexpr T alignUp(T n, T alignment) noexcept {
+/// @return Smallest value >= n that is a multiple of alignment.
+/// @throws std::overflow_error when @p alignment is invalid or the result overflows.
+template <typename T> [[nodiscard]] constexpr T alignUp(T n, T alignment) {
     static_assert(std::is_integral_v<T>, "alignUp requires an integral type");
     auto aligned = checkedAlignUp(n, alignment);
-    return aligned ? *aligned : n;
+    if (!aligned)
+        throw std::overflow_error("alignUp invalid alignment or overflow");
+    return *aligned;
 }
 
 /// @brief Check if a value is aligned to a given boundary.

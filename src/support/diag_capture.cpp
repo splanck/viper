@@ -29,7 +29,9 @@
 
 #include "support/diag_capture.hpp"
 
+#include <sstream>
 #include <string_view>
+#include <utility>
 
 namespace il::support {
 namespace {
@@ -63,6 +65,43 @@ bool stripSeverityPrefix(std::string &text,
     return false;
 }
 
+/// @brief Check whether text before a severity marker looks like a source prefix.
+/// @param prefix Text preceding a candidate marker such as ": error: ".
+/// @return True when @p prefix resembles "file:line" or "file:line:column".
+/// @details Captured legacy output may already have a compiler-style prefix, but
+///          ordinary diagnostic messages can also contain the text ": error: ".
+///          This helper requires trailing numeric coordinate fields before a
+///          formatted-prefix strip is allowed.
+bool looksLikeFormattedSourcePrefix(std::string_view prefix) {
+    if (prefix.empty() || prefix.find('\n') != std::string_view::npos ||
+        prefix.find('\r') != std::string_view::npos)
+        return false;
+
+    const size_t lastColon = prefix.rfind(':');
+    if (lastColon == std::string_view::npos || lastColon + 1 >= prefix.size())
+        return false;
+
+    auto allDigits = [](std::string_view text) {
+        if (text.empty())
+            return false;
+        for (unsigned char ch : text) {
+            if (ch < '0' || ch > '9')
+                return false;
+        }
+        return true;
+    };
+
+    const std::string_view lastField = prefix.substr(lastColon + 1);
+    if (!allDigits(lastField))
+        return false;
+
+    const std::string_view beforeLast = prefix.substr(0, lastColon);
+    const size_t lineColon = beforeLast.rfind(':');
+    if (lineColon == std::string_view::npos || lineColon + 1 >= beforeLast.size())
+        return true;
+    return allDigits(beforeLast.substr(lineColon + 1));
+}
+
 /// @brief Strip a leading source prefix before a textual severity marker.
 /// @param text Captured diagnostic text that may be "file:line: severity: message".
 /// @param severity Severity assigned when a marker is found.
@@ -79,6 +118,8 @@ bool stripFormattedPrefix(std::string &text,
                           std::string_view marker) {
     const size_t pos = text.find(marker);
     if (pos == std::string::npos)
+        return false;
+    if (!looksLikeFormattedSourcePrefix(std::string_view{text}.substr(0, pos)))
         return false;
     text.erase(0, pos + marker.size());
     severity = parsed;
@@ -134,8 +175,41 @@ void DiagCapture::printTo(std::ostream &out, const Diag &diag) {
 ///
 /// @return Diagnostic containing a copy of the captured text.
 Diag DiagCapture::toDiag() const {
-    CapturedDiagnosticPayload payload = normalizeCapturedDiagnostic(ss.str());
-    return Diag{payload.severity, std::move(payload.message), {}, {}};
+    std::vector<Diag> diagnostics = toDiagnostics();
+    Diag primary = std::move(diagnostics.front());
+    for (size_t index = 1; index < diagnostics.size(); ++index) {
+        primary.notes.push_back({diagnostics[index].loc, std::move(diagnostics[index].message)});
+    }
+    return primary;
+}
+
+/// @brief Convert every captured diagnostic line into a structured value.
+///
+/// @details Splits the captured stream on line boundaries and normalizes each
+///          non-empty line independently.  If the legacy API failed silently, a
+///          single fallback error is returned so callers never see an empty error
+///          list for a failed operation.
+///
+/// @return Vector of diagnostics parsed from the capture buffer.
+std::vector<Diag> DiagCapture::toDiagnostics() const {
+    std::vector<Diag> diagnostics;
+    std::istringstream input(ss.str());
+    std::string line;
+    while (std::getline(input, line)) {
+        std::string trimmed = line;
+        while (!trimmed.empty() && (trimmed.back() == '\n' || trimmed.back() == '\r'))
+            trimmed.pop_back();
+        if (trimmed.empty())
+            continue;
+        CapturedDiagnosticPayload payload = normalizeCapturedDiagnostic(std::move(line));
+        diagnostics.push_back(Diag{payload.severity, std::move(payload.message), {}, {}});
+    }
+
+    if (diagnostics.empty()) {
+        CapturedDiagnosticPayload payload = normalizeCapturedDiagnostic(ss.str());
+        diagnostics.push_back(Diag{payload.severity, std::move(payload.message), {}, {}});
+    }
+    return diagnostics;
 }
 
 /// @brief Bridge a boolean success flag to an Expected<void> diagnostic result.

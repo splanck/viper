@@ -25,6 +25,8 @@
 
 #include "arena.hpp"
 
+#include "alignment.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -61,7 +63,9 @@ Arena::Arena(size_t size) : buffer_(size) {}
 /// @return Pointer to aligned memory on success, or nullptr on failure.
 void *Arena::allocate(size_t size, size_t align) {
     // Reject zero or non power-of-two alignments.
-    if (align == 0 || (align & (align - 1)) != 0)
+    if (!isPowerOfTwo(align))
+        return nullptr;
+    if (buffer_.empty())
         return nullptr;
 
     const size_t current = offset_;
@@ -70,12 +74,10 @@ void *Arena::allocate(size_t size, size_t align) {
         return nullptr;
 
     const std::uintptr_t current_ptr = base + current;
-    const std::uintptr_t mask = static_cast<std::uintptr_t>(align - 1);
-
-    if (current_ptr > std::numeric_limits<std::uintptr_t>::max() - mask)
+    auto aligned = checkedAlignUp<std::uintptr_t>(current_ptr, static_cast<std::uintptr_t>(align));
+    if (!aligned)
         return nullptr;
-
-    const std::uintptr_t aligned_ptr = (current_ptr + mask) & ~mask;
+    const std::uintptr_t aligned_ptr = *aligned;
     const size_t adjustment = static_cast<size_t>(aligned_ptr - current_ptr);
 
     if (adjustment > std::numeric_limits<size_t>::max() - current)
@@ -115,7 +117,7 @@ void Arena::reset() {
 
 void *GrowingArena::Chunk::tryAllocate(size_t sz, size_t align) {
     // Validate alignment (power of two, non-zero)
-    if (align == 0 || (align & (align - 1)) != 0)
+    if (!isPowerOfTwo(align))
         return nullptr;
     if (!data || offset > size)
         return nullptr;
@@ -125,11 +127,11 @@ void *GrowingArena::Chunk::tryAllocate(size_t sz, size_t align) {
         return nullptr;
 
     const std::uintptr_t current = base + offset;
-    const std::uintptr_t mask = static_cast<std::uintptr_t>(align - 1);
-    if (current > std::numeric_limits<std::uintptr_t>::max() - mask)
+    auto alignedPtr = checkedAlignUp<std::uintptr_t>(current, static_cast<std::uintptr_t>(align));
+    if (!alignedPtr)
         return nullptr;
 
-    const std::uintptr_t aligned = (current + mask) & ~mask;
+    const std::uintptr_t aligned = *alignedPtr;
     const size_t adjustment = static_cast<size_t>(aligned - current);
     if (adjustment > std::numeric_limits<size_t>::max() - offset)
         return nullptr;
@@ -171,7 +173,7 @@ GrowingArena &GrowingArena::operator=(GrowingArena &&other) noexcept {
 }
 
 void *GrowingArena::allocate(size_t size, size_t align) {
-    if (align == 0 || (align & (align - 1)) != 0)
+    if (!isPowerOfTwo(align))
         throw std::bad_alloc();
 
     // Try to allocate from the current chunk
@@ -204,8 +206,11 @@ void GrowingArena::reset() {
 
 size_t GrowingArena::totalAllocated() const noexcept {
     size_t total = 0;
-    for (const auto &chunk : chunks_)
+    for (const auto &chunk : chunks_) {
+        if (chunk.offset > std::numeric_limits<size_t>::max() - total)
+            return std::numeric_limits<size_t>::max();
         total += chunk.offset;
+    }
     return total;
 }
 
@@ -238,7 +243,7 @@ void GrowingArena::rewindTo(AllocationMark mark) noexcept {
 }
 
 void GrowingArena::allocateChunk(size_t minSize) {
-    chunks_.emplace_back(minSize);
+    chunks_.emplace_back(std::max<size_t>(1, minSize));
 }
 
 void GrowingArena::destroyObjects() {

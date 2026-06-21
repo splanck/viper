@@ -113,7 +113,7 @@ const std::vector<BasicBlock *> &getPredecessors(const viper::analysis::CFGConte
 LoopInfo computeLoopInfo(Module &module, Function &function) {
     LoopInfo info;
 
-    viper::analysis::CFGContext cfgCtx(module);
+    viper::analysis::CFGContext cfgCtx(module, function);
     viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfgCtx, function);
 
     // Discover loops (header, body, latches).
