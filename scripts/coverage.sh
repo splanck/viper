@@ -50,6 +50,28 @@ resolve_llvm_tool() {
         command -v "$tool"
         return 0
     fi
+
+    local clang_major=""
+    if command -v clang >/dev/null 2>&1; then
+        clang_major="$(clang --version | sed -n -E 's/.*version ([0-9]+).*/\1/p' | head -n 1)"
+        if [[ -n "$clang_major" ]] && command -v "${tool}-${clang_major}" >/dev/null 2>&1; then
+            command -v "${tool}-${clang_major}"
+            return 0
+        fi
+    fi
+
+    local dir candidate
+    IFS=: read -r -a _viper_path_dirs <<< "${PATH:-}"
+    for dir in "${_viper_path_dirs[@]}"; do
+        [[ -n "$dir" ]] || dir="."
+        for candidate in "${dir}/${tool}-"*; do
+            if [[ -x "$candidate" && ! -d "$candidate" ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done
+    done
+
     if command -v xcrun >/dev/null 2>&1; then
         xcrun -f "$tool" 2>/dev/null && return 0
     fi

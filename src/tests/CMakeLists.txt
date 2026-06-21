@@ -1186,13 +1186,17 @@ set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
         TIMEOUT 90)
-add_test(NAME zia_smoke_game3d_showcase_tree_materials
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/tree_material_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
-set_tests_properties(zia_smoke_game3d_showcase_tree_materials PROPERTIES
-        PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 45)
+set(VIPER_GAME3D_SHOWCASE_MAPLE_ASSET
+        "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/MapleTree_1.fbx")
+if (EXISTS "${VIPER_GAME3D_SHOWCASE_MAPLE_ASSET}")
+    add_test(NAME zia_smoke_game3d_showcase_tree_materials
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/tree_material_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
+    set_tests_properties(zia_smoke_game3d_showcase_tree_materials PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "zia;smoke;graphics3d;requires_display"
+            TIMEOUT 45)
+endif ()
 add_test(NAME zia_smoke_game3d_showcase_tree_fallback_materials
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/tree_fallback_material_probe.zia"
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
@@ -1203,16 +1207,20 @@ set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIE
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
-    set_tests_properties(zia_smoke_game3d_showcase_tree_materials PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+    if (TEST zia_smoke_game3d_showcase_tree_materials)
+        set_property(TEST zia_smoke_game3d_showcase_tree_materials PROPERTY
+                ENVIRONMENT "VIPER_3D_BACKEND=software")
+    endif ()
     set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
-    set_tests_properties(zia_smoke_game3d_showcase_tree_materials PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+    if (TEST zia_smoke_game3d_showcase_tree_materials)
+        set_property(TEST zia_smoke_game3d_showcase_tree_materials PROPERTY
+                ENVIRONMENT "VIPER_3D_BACKEND=software")
+    endif ()
     set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
     add_test(NAME zia_smoke_game3d_showcase_d3d11
