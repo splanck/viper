@@ -1,0 +1,40 @@
+# Source-health regression baseline.
+#
+# Values are intentionally local guardrails, not GitHub CI policy. Metrics that
+# represent debt or complexity fail when they increase. Metrics that represent
+# coverage/scaffolding fail when they decrease.
+runtime_api_contract_files 788
+runtime_surface_policy_rules 784
+vm_bridge_duplicate_markers 1
+vm_callback_pointer_traps 11
+vm_semantics_duplication_tests 7
+x86_placeholder_il_adapters 3
+codegen_unsupported_markers 69
+aarch64_backend_test_targets 203
+runtime_import_audit_tests 2
+graphics_stub_functions 866
+graphics_stub_unclassified_functions 270
+graphics_disabled_test_markers 141
+fuzz_targets_missing_corpus 0
+fuzz_corpus_seed_files 26
+fuzz_harness_registrations 18
+platform_skip_markers 121
+platform_policy_allowlist_entries 33
+raw_platform_macro_occurrences 740
+mega_files_over_3000_lines 25
+manual_alloc_hotspots_over_70 22
+sanitizer_coverage_options 11
+diagnostic_json_entrypoints 50
+mcp_tool_definitions 11
+mcp_tool_dispatch_branches 11
+mcp_argument_validators 27
+lsp_optional_capability_gates 38
+basic_server_semantic_entrypoints 8
+vbasic_server_test_targets 9
+ide_basic_capability_gates 3
+ide_scheduler_capability_jobs 60
+debug_adapter_protocol_markers 97
+packaging_verifier_entrypoints 40
+packaging_negative_test_markers 18
+todo_fixme_markers 3
+raw_not_implemented_markers 539

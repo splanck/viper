@@ -34,3 +34,11 @@ see [README.md](../README.md) for the complete documentation index.
 | `backend.md`        | Native code generation guide     |
 | `frontend-howto.md` | Build your own language frontend |
 | `vm.md`             | VM design and execution model    |
+
+## Testing And Maintenance
+
+| File                  | Purpose                                            |
+|-----------------------|----------------------------------------------------|
+| `testing.md`          | Local build, CTest, fuzz, and golden workflows     |
+| `source-health.md`    | Local high-ownership subsystem guardrail contract  |
+| `review-readiness.md` | Local review checklist and evidence expectations   |

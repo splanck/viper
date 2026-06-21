@@ -10,6 +10,7 @@ final LANGUAGE_SCENE = "scene";
 
 class LanguageService {
     expose String name;
+    expose String externalServerName;
     expose Boolean canComplete;
     expose Boolean canDiagnose;
     expose Boolean canHover;
@@ -18,9 +19,18 @@ class LanguageService {
     expose Boolean canFindReferences;
     expose Boolean canRename;
     expose Boolean canSignatureHelp;
+    expose Boolean serverCanComplete;
+    expose Boolean serverCanDiagnose;
+    expose Boolean serverCanHover;
+    expose Boolean serverCanDocumentSymbols;
+    expose Boolean serverCanGoToDefinition;
+    expose Boolean serverCanFindReferences;
+    expose Boolean serverCanRename;
+    expose Boolean serverCanSignatureHelp;
 
     expose func init() {
         name = LANGUAGE_TEXT;
+        externalServerName = "";
         canComplete = false;
         canDiagnose = false;
         canHover = false;
@@ -29,6 +39,14 @@ class LanguageService {
         canFindReferences = false;
         canRename = false;
         canSignatureHelp = false;
+        serverCanComplete = false;
+        serverCanDiagnose = false;
+        serverCanHover = false;
+        serverCanDocumentSymbols = false;
+        serverCanGoToDefinition = false;
+        serverCanFindReferences = false;
+        serverCanRename = false;
+        serverCanSignatureHelp = false;
     }
 }
 
@@ -41,6 +59,7 @@ class LanguageServiceManager {
     expose func init() {
         ziaService = new LanguageService();
         ziaService.name = LANGUAGE_ZIA;
+        ziaService.externalServerName = "zia-server";
         ziaService.canComplete = true;
         ziaService.canDiagnose = true;
         ziaService.canHover = true;
@@ -49,9 +68,22 @@ class LanguageServiceManager {
         ziaService.canFindReferences = true;
         ziaService.canRename = true;
         ziaService.canSignatureHelp = true;
+        ziaService.serverCanComplete = true;
+        ziaService.serverCanDiagnose = true;
+        ziaService.serverCanHover = true;
+        ziaService.serverCanDocumentSymbols = true;
+        ziaService.serverCanGoToDefinition = true;
+        ziaService.serverCanFindReferences = true;
+        ziaService.serverCanRename = true;
+        ziaService.serverCanSignatureHelp = true;
 
         basicService = new LanguageService();
         basicService.name = LANGUAGE_BASIC;
+        basicService.externalServerName = "vbasic-server";
+        basicService.serverCanComplete = true;
+        basicService.serverCanDiagnose = true;
+        basicService.serverCanHover = true;
+        basicService.serverCanDocumentSymbols = true;
 
         textService = new LanguageService();
         textService.name = LANGUAGE_TEXT;

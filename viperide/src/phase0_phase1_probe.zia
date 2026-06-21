@@ -105,6 +105,11 @@ func main() {
                   and Str.IndexOf(disabledReason, "BASIC") != 0
                   and Str.IndexOf(disabledReason, "rename") != 0,
                   "disabled command reason names language capability") == false { return; }
+    var serverReason = registry.DisabledReason("symboloutline", basicService);
+    if assertTrue(Str.IndexOf(serverReason, "vbasic-server") != 0
+                  and Str.IndexOf(serverReason, "ViperIDE") != 0
+                  and Str.IndexOf(serverReason, "adapter") != 0,
+                  "disabled command reason distinguishes server support from IDE adapter") == false { return; }
 
     var locs = new locations.LocationStore();
     var id = locs.Add("C:\\tmp\\a file.zia", 3, 4, 3, 8, locations.KIND_SEARCH, "hit");

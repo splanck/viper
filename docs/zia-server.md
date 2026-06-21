@@ -170,6 +170,10 @@ supports the full table above. `vbasic-server` currently advertises diagnostics,
 completion, hover, and document symbols only; BASIC semantic navigation is tracked
 separately from the Zia LSP parity work.
 
+ViperIDE mirrors that split with separate server-capability and wired-command
+flags: BASIC disabled-command messages can name `vbasic-server` support without
+enabling a UI command before the IDE has a non-blocking BASIC adapter.
+
 Definition, references, and rename use the same native `Viper.Zia.ProjectIndex`
 implementation as ViperIDE. The LSP handler keeps open documents indexed on
 `didOpen`/`didChange` and removes them on `didClose`.

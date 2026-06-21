@@ -7,7 +7,7 @@ last-verified: 2026-06-20
 # Testing Guide
 
 This document describes the testing infrastructure for the Viper compiler stack. The test suite
-contains 1,393 tests across unit, golden, end-to-end, differential, conformance, and fuzz
+contains 1,740 tests across unit, golden, end-to-end, differential, conformance, audit, and fuzz
 categories.
 
 ## Test Suite Overview
@@ -66,6 +66,7 @@ ctest --test-dir build -L codegen          # Code generation tests only
 ctest --test-dir build -L bytecode         # Bytecode VM and VM/bytecode parity
 ctest --test-dir build -L golden           # Golden file tests only
 ctest --test-dir build -L "vm"             # VM tests only
+ctest --test-dir build -L audit            # Local structural/source-health audits
 
 # Run a specific test
 ctest --test-dir build -R test_zia_lexer
@@ -102,6 +103,7 @@ ctest --test-dir build --print-labels
 | `e2e` | 19 | End-to-end pipeline tests |
 | `examples` | — | Example/demo manifest audit and fast smoke |
 | `fuzz` | — | Fuzz corpus replay and fuzz-lane self-checks |
+| `audit` | 46 | Zia audit corpus plus local source-health and structural drift audits |
 | `ilopt` | 4 | IL optimizer pass golden tests |
 | `conformance` | 10 | Arithmetic semantics cross-layer equivalence |
 | `zia` | 101 | Zia language frontend tests |
@@ -639,6 +641,28 @@ ctest --test-dir build-fuzz -L fuzz --output-on-failure
 When a new parser, wire format, or protocol surface is added, add a harness plus a small
 minimized corpus before treating the surface as covered. New crashes should be minimized
 and checked into the relevant corpus directory.
+
+## Source-Health Audit
+
+`scripts/source_health_audit.sh` is a local structural guardrail for
+high-ownership subsystems. It tracks 35 source-backed risk and coverage counters
+across runtime surface policy, VM duplication and callback gaps, backend
+unsupported paths, graphics-disabled stubs, fuzz corpus coverage, platform
+policy debt, large files, manual allocation hotspots, machine-readable tooling,
+MCP/LSP server coverage, ViperIDE capability gates, debugger protocol coverage,
+and packaging verification.
+
+```bash
+scripts/source_health_audit.sh --summary
+scripts/source_health_audit.sh --check
+ctest --test-dir build -R source_health_audit --output-on-failure
+ctest --test-dir build -L audit --output-on-failure
+```
+
+The check compares current values against
+`scripts/source_health_baseline.tsv`. Debt metrics should move down over time.
+Coverage/scaffolding metrics should not drop. See
+[Source Health Guardrails](source-health.md).
 
 ## Future Work
 

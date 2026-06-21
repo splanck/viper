@@ -22,6 +22,7 @@
 #   zia         — Zia language frontend tests
 #   namespace   — Namespace/module system tests
 #   tools       — CLI tool tests, language server tests
+#   audit       — Local source-health and structural drift audits
 #   smoke       — Quick sanity tests
 #   unit        — Focused unit tests for support libraries
 #   perf        — Performance benchmarks (excluded from default runs)
@@ -145,6 +146,15 @@ if (VIPER_BASH_EXECUTABLE)
     set_tests_properties(fuzz_smoke_self_test PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "fuzz;tools;requires_posix_shell")
+
+    add_test(NAME source_health_audit
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/source_health_audit.sh
+            --check)
+    set_tests_properties(source_health_audit PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "tools;audit;requires_posix_shell"
+            TIMEOUT 60)
 endif ()
 
 add_library(viper_testing INTERFACE)
@@ -704,7 +714,7 @@ endif ()
 # Use `ctest -L <label>` to run tests with a specific label.
 # Use `ctest --print-labels` to see all available labels.
 # Available labels: basic, bytecode, il, vm, runtime, codegen, oop, golden,
-#   e2e, examples, fuzz, ilopt, conformance, smoke, tools, unit, zia,
+#   e2e, examples, fuzz, audit, ilopt, conformance, smoke, tools, unit, zia,
 #   namespace, perf, slow, tui
 # =============================================================================
 

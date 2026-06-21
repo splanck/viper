@@ -21,7 +21,7 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 - **Backend & audio telemetry (new).** Opt-in `Canvas3D` backend counters (draws, dropped draws, mesh-cache hits/misses, stream uploads, fallback binds, active presentation path) and an audio-mixer diagnostics surface (renders, partial writes, xruns, recoveries, write failures) make a degraded render or audio path measurable rather than silent.
 - **Audio consolidation and effects.** Spatial audio moved under `src/runtime/audio/`, while mix groups gained low-pass, high-pass, peaking EQ, delay, and reverb insert chains.
 - **IL & codegen invariants validate in release.** The IL builder promotes debug-only invariants to release-mode validation, the verifier makes the EH `resumetok` a linear handler-provenance capability (ADR 0005), and codegen and the linker surface diagnostics instead of asserting.
-- **Codegen performance round.** The AArch64 allocator unlocks all sixteen argument registers and caches spilled-operand reloads, and shares pre-RA copy-forwarding with x86-64; six correctness fixes accompany the perf work.
+- **Codegen performance round, and every demo at `-O2`.** The AArch64 allocator unlocks all sixteen argument registers and caches spilled-operand reloads, and shares pre-RA copy-forwarding with x86-64 (six correctness fixes accompany the perf work); two optimizer fixes — verifier-accurate inliner type inference and SSA-reconstructing loop rotation — retire the last `-O0` demo carve-outs so every demo now builds and runs at `-O2`.
 - **Unified scalar semantics (new).** A VM-neutral kernel makes the tree-walking VM and both bytecode engines yield identical values and trap kinds for one IL module; block/instruction storage moves to stable-address containers with interned identifiers.
 - **GUI refined-depth visual pass.** A shared anti-aliased `vg_draw` core and new theme tokens route the whole widget set through one rounded, elevated style; ViperIDE gains vector toolbar icons and a `GUI.GroupBox` settings card.
 - **ViperIDE debugging & build feedback (new).** A VM-backed debug adapter (`viper run --debug-adapter`) replaces v0.2.6's non-executing placeholder with pause/continue/step, breakpoints, call stacks, and locals; the editor adds persistent UI zoom and build-duration/error status.
@@ -35,13 +35,13 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 154 | +154 |
-| Source files | 3,096 | 3,363 | +267 |
-| Production SLOC | 669K | 738K | +69K |
-| Test SLOC | 278K | 300K | +22K |
-| Demo SLOC | 192K | 196K | +4K |
+| Commits | — | 159 | +159 |
+| Source files | 3,096 | 3,386 | +290 |
+| Production SLOC | 669K | 744K | +75K |
+| Test SLOC | 278K | 303K | +25K |
+| Demo SLOC | 192K | 197K | +5K |
 
-Counts via `scripts/count_sloc.sh` (production 738,310 / test 300,449 / demo 196,188 / source files 3,363); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 744,012 / test 302,552 / demo 196,622 / source files 3,386); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -94,7 +94,7 @@ Counts via `scripts/count_sloc.sh` (production 738,310 / test 300,449 / demo 196
 - The IL error and numeric specs are promoted to active normative status, with EH metadata synced to ADR 0005 and a CTest guard preventing trap-kind drift.
 - A VM-neutral `ScalarOps` kernel now backs the tree-walking VM and both bytecode engines, so one IL module yields identical values and trap kinds across every execution mode (bytecode format bumped to v3). `Function::blocks`/`BasicBlock::instructions` move to a stable-address `StableList` with interned `Symbol` handles so references survive insertion and erasure.
 - Shared `AllocaRoots` helpers make alias analysis conservative for unknown calls, ConstFold/SCCP/Peephole normalize integer folds to fixed result widths, and CheckOpt shares one checked-range implementation with the builder — now demoting proven-safe overflow-checked i64 arithmetic to plain ops.
-- Selection, encoding, Win64 unwind, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — and the native linker hardens its four object readers, relocation ordering, trampoline-island growth, symbol resolution, and PE-image writing with checked count arithmetic and validated section bounds.
+- Selection, encoding, Win64 unwind, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — and the native linker hardens its four object readers, relocation ordering, trampoline-island growth, symbol resolution, and PE-image writing with checked count arithmetic and validated section bounds. Two optimizer correctness fixes accompany the linker work: the inliner now infers escaped continuation-block parameter types the way the verifier does — ending the `Void`-typed `iadd.ovf` results that produced branch-argument/parameter mismatches — and loop rotation reconstructs SSA by threading body-used header parameters through the guard and latch edges, retiring the centipede/chess/crackman `-O0` demo carve-outs.
 - **Codegen performance.** AArch64 unlocks all sixteen argument registers via clobber-aware eviction and collapses N block reloads to one resident home; x86-64 eliminates duplicated end-of-block spill stores, models memory dependences precisely, and stops treating LEA as a barrier. Six correctness fixes accompany the work.
 
 ### Bytecode VM and support libraries
@@ -140,15 +140,15 @@ Counts via `scripts/count_sloc.sh` (production 738,310 / test 300,449 / demo 196
 
 ### Tests
 
-~22K new test SLOC. CTest resource locks now serialize tests that share generated codegen or VM-trace artifacts, keeping the suite parallel-safe.
+~24K new test SLOC. CTest resource locks now serialize tests that share generated codegen or VM-trace artifacts, keeping the suite parallel-safe.
 
 - **3D rendering, assets, and animation** — spot-shadow coordinate and budget-ordering coverage, vegetation sway, versioned navmesh round-trip, FBX/node-animation import, D3D11 upload/readback-helper validation, fail-closed content-loader diagnostics, untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics3D` fallback coverage.
-- **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, duplicate-spill-store elimination, and Game3D script-callback parity across interpreted and native runs.
+- **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, duplicate-spill-store elimination, inliner escaped-type and loop-rotation SSA regressions, and Game3D script-callback parity across interpreted and native runs.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
 - **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, Zia integer-map and lexer/parser-diagnostic coverage, `Pixels` text-drawing and normalized-gradient suites, GUI overlay/font-propagation regressions, and Linux AppImage / Windows installer-wizard packaging coverage.
 
 ---
 
-Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, naturally desynchronized wind-swayed foliage, a render-to-image minimap, spot shadows, a renderer/audio counter HUD, and a procedural fallback forest plus expanded tree-material forest/terrain/sky scenes, and the `paint` app was rebuilt around a registry-driven tool interface — an HSL color picker, menu bar, and select/gradient/curve/polygon/spray/text tools over layers with blend modes and opacity — while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, the agent-facing CLI, and the canonical class names. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
+Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, naturally desynchronized wind-swayed foliage, a render-to-image minimap, spot shadows, a renderer/audio counter HUD, and a procedural fallback forest plus expanded tree-material forest/terrain/sky scenes, and the `paint` app was rebuilt around a registry-driven tool interface — an HSL color picker, menu bar, and select/gradient/curve/polygon/spray/text tools over layers with blend modes and opacity, and the `crackman` arcade demo gained a vector chomp-and-death animation, pulsing power pellets, score popups, a frightened-state vignette, looping siren, and board-clear celebration — while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, the agent-facing CLI, and the canonical class names. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
 
 <!-- END DRAFT -->

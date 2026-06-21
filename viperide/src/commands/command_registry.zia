@@ -293,12 +293,34 @@ class CommandRegistry {
         return true;
     }
 
+    expose func ServerSupportsCapability(capability: String,
+                                         service: language_service.LanguageService) -> Boolean {
+        if capability == "" { return false; }
+        if service == null { return false; }
+        if capability == "completion" { return service.serverCanComplete; }
+        if capability == "diagnostics" { return service.serverCanDiagnose; }
+        if capability == "definition" { return service.serverCanGoToDefinition; }
+        if capability == "references" { return service.serverCanFindReferences; }
+        if capability == "rename" { return service.serverCanRename; }
+        if capability == "signature" { return service.serverCanSignatureHelp; }
+        if capability == "symbols" { return service.serverCanDocumentSymbols; }
+        return false;
+    }
+
     expose func DisabledReasonFor(cmd: CommandEntry,
                                   service: language_service.LanguageService) -> String {
         if cmd == null { return "Command is not registered"; }
         var language = "this file";
         if service != null and service.name != "" {
             language = Str.ToUpper(service.name);
+        }
+        if service != null
+           and service.externalServerName != ""
+           and ServerSupportsCapability(cmd.capability, service) {
+            return cmd.label + " is unavailable: " + service.externalServerName
+                   + " supports " + CapabilityLabel(cmd.capability)
+                   + ", but ViperIDE has not wired a " + language
+                   + " adapter for this command.";
         }
         return cmd.label + " is unavailable: " + language
                + " does not support " + CapabilityLabel(cmd.capability) + ".";

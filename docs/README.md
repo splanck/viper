@@ -110,6 +110,7 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 - [REPL](repl.md) — Interactive Zia/BASIC environment
 - [Debugging Guide](debugging.md) — VM tracing, breakpoints, and diagnostics
 - [Testing Guide](testing.md) — Unit, golden, e2e, and performance tests
+- [Source Health Guardrails](source-health.md) — Local audit baselines for high-ownership subsystems
 - [Review Readiness](review-readiness.md) — Pre-review validation checklist and platform-claim rules
 
 ---
