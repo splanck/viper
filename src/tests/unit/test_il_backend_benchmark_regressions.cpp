@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_backend_benchmark_regressions.cpp
-// Purpose: Regression tests for optimizer/backend issues exposed by the Viper
-//          benchmark suite.
+// Purpose: Correctness regression tests for optimizer/backend issues that were first
+//          exposed by the Viper benchmark suite. NOTE: despite the file name, these
+//          assert IL/result correctness only — they do NOT measure or gate performance.
 // Key invariants: Owned string materialization is not CSE/LICM-safe, O2 keeps
 //                 verifier-clean checked unsigned div/rem, and O2 has a
 //                 bounded multi-block inliner.

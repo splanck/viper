@@ -552,6 +552,33 @@ endif ()
 if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
     set(_VIPER_E2E_DIR ${CMAKE_CURRENT_LIST_DIR})
 
+    # ── VM<->native differential gate over the shared IL corpus ──────────────
+    # Byte-diffs `viper -run` (VM) against `viper codegen arm64 -run-native` for
+    # each curated corpus program. Building this gate surfaced four real native
+    # codegen divergences; ALL FOUR are now fixed and included below:
+    #   - idxchk_normalize: idx.chk normalization (idx - lo) survived post-RA DCE.
+    #   - switch_i32: switch/narrow result no longer copy-forwarded to an undef vreg.
+    #   - eh_catch_return: trap.kind is rewritten off the handler %err.
+    #   - global_scalar_load_store: mutable scalar globals now emit a writable
+    #     __DATA,__data section in the binary object path; the text section's
+    #     undefined reference coalesces onto the data-section defined global.
+    set(_VIPER_DIFF_CORPUS
+            ret_i64 arith_chain block_params_sum conditional_abs recursive_factorial
+            alloca_store_load gep_stack bitwise_shift unsigned_div_rem signed_div_rem
+            fp_cast_round cast_round_to_even idxchk_normalize i1_bool_flow call_two_args
+            string_print print_i64 branch_join_value i16_narrow_store unsigned_compare
+            fcmp_ord_nan fcmp_uno_nan err_get_msg_exec switch_i32 eh_catch_return
+            global_scalar_load_store)
+    foreach (_prog IN LISTS _VIPER_DIFF_CORPUS)
+        viper_add_ctest(differential_${_prog}
+                ${CMAKE_COMMAND}
+                -DILC=$<TARGET_FILE:viper>
+                -DARCH=arm64
+                -DIL_FILE=${CMAKE_SOURCE_DIR}/src/tests/shared_corpus/il/success/${_prog}.il
+                -P ${_VIPER_E2E_DIR}/differential_vm_native.cmake)
+        viper_set_test_labels(differential_${_prog} arm64 differential)
+    endforeach ()
+
     # Chess demo - compile, assemble, link
     viper_add_ctest(arm64_native_chess
             ${CMAKE_COMMAND}

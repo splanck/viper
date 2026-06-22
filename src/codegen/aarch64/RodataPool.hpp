@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -62,6 +63,27 @@ class RodataPool {
     /// @param os The output stream to write assembly text to.
     void emit(std::ostream &os, const TargetInfo &target) const;
 
+    /// @brief Emit writable scalar globals to a `.data` section.
+    /// @details Each non-string global is given an externally visible, mangled
+    ///          symbol matching the AsmEmitter's adrp/add references, plus a
+    ///          size-appropriate initializer directive. Without this, `gaddr @g`
+    ///          on a mutable scalar global resolves to an undefined symbol.
+    void emitData(std::ostream &os, const TargetInfo &target) const;
+
+    /// @brief A writable scalar global to emit into `.data`.
+    struct DataGlobal {
+        std::string name;          ///< Unmangled IL global name (e.g. "counter").
+        int sizeBytes = 0;         ///< 1, 2, 4, or 8.
+        bool isFloat = false;      ///< True for f64.
+        std::string init;          ///< Serialized initializer; empty means zero.
+        std::vector<uint8_t> bytes;///< Little-endian initializer bytes for the object path.
+    };
+
+    /// @brief Writable scalar globals collected from the module (for the binary path).
+    const std::vector<DataGlobal> &dataGlobals() const noexcept {
+        return dataGlobals_;
+    }
+
   private:
     /// @brief Map from string content to its deduplicated assembly label.
     std::unordered_map<std::string, std::string> contentToLabel_;
@@ -71,6 +93,9 @@ class RodataPool {
 
     /// @brief Ordered list of (label, content) pairs for deterministic emission.
     std::vector<std::pair<std::string, std::string>> ordered_;
+
+    /// @brief Writable scalar (non-string) globals collected from the module.
+    std::vector<DataGlobal> dataGlobals_;
 
     /// @brief Generate a unique rodata label for the given pool index.
     /// @param index Zero-based index of the string in the pool.

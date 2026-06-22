@@ -80,9 +80,12 @@ static constexpr uint8_t kNUndf = 0x00;
 static constexpr uint8_t kNSect = 0x0E;
 static constexpr uint8_t kNExt = 0x01;
 
-// Section ordinals (1-based in Mach-O)
+// Section ordinals (1-based in Mach-O). __data follows __const so existing
+// __text/__const symbol `sect` values are unchanged; __compact_unwind and
+// __debug_line carry no nlist symbols, so their shifted ordinals are inert.
 static constexpr uint8_t kSectText = 1;
 static constexpr uint8_t kSectConst = 2;
+static constexpr uint8_t kSectData = 3;
 static constexpr uint8_t kNoSect = 0;
 
 // Load command sizes (fixed, except segment command which varies with section count)
@@ -372,6 +375,15 @@ bool MachOWriter::write(const std::string &path,
         size_t textAlign = static_cast<size_t>(1) << textAlignLog2;
         constexpr uint32_t constAlignLog2 = 3; // 2^3 = 8
         constexpr size_t constAlign = 8;
+        constexpr uint32_t dataAlignLog2 = 3; // 2^3 = 8
+        constexpr size_t dataAlign = 8;
+
+        // Writable initialized-data section (__DATA,__data). Empty unless a prior
+        // setDataSection() supplied scalar globals; symbols here satisfy the text
+        // section's undefined references to mutable globals by name coalescing.
+        const CodeSection emptyData;
+        const CodeSection &data = dataSection_ ? *dataSection_ : emptyData;
+        const bool hasData = !data.bytes().empty();
 
         // --- 1. Build string table with Darwin mangled names ---
         StringTable strtab;
@@ -400,6 +412,7 @@ bool MachOWriter::write(const std::string &path,
         // Map from (CodeSection symbol index) → Mach-O symbol table index.
         std::unordered_map<uint32_t, uint32_t> textSymMap;
         std::unordered_map<uint32_t, uint32_t> rodataSymMap;
+        std::unordered_map<uint32_t, uint32_t> dataSymMap;
         std::unordered_map<size_t, uint32_t> textOffsetAnchorMap;
         std::unordered_map<size_t, uint32_t> constOffsetAnchorMap;
 
@@ -432,7 +445,15 @@ bool MachOWriter::write(const std::string &path,
             return !sawRelocation;
         };
 
-        auto processSymbols = [&](const CodeSection &sec, bool isText) -> bool {
+        enum class SecRole { Text, Const, Data };
+        auto processSymbols = [&](const CodeSection &sec, SecRole role) -> bool {
+            const bool isText = role == SecRole::Text;
+            const uint8_t definedSect = role == SecRole::Text    ? kSectText
+                                        : role == SecRole::Const ? kSectConst
+                                                                 : kSectData;
+            const char *sectName = role == SecRole::Text    ? "__text"
+                                   : role == SecRole::Const ? "__const"
+                                                            : "__data";
             for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
                 const Symbol &s = sec.symbols().at(i);
                 if (s.binding == SymbolBinding::External && !externalNeedsUndefinedSymbol(sec, i))
@@ -454,15 +475,15 @@ bool MachOWriter::write(const std::string &path,
                     pendingUndef.push_back(ps);
                 } else if (s.binding == SymbolBinding::Local) {
                     ps.type = kNSect;
-                    ps.sect = isText ? kSectText : kSectConst;
-                    if (!physicalSymbolValue(sec, s, isText ? "__text" : "__const", err, ps.value))
+                    ps.sect = definedSect;
+                    if (!physicalSymbolValue(sec, s, sectName, err, ps.value))
                         return false;
                     pendingLocals.push_back(ps);
                 } else {
                     // Global defined.
                     ps.type = kNSect | kNExt;
-                    ps.sect = isText ? kSectText : kSectConst;
-                    if (!physicalSymbolValue(sec, s, isText ? "__text" : "__const", err, ps.value))
+                    ps.sect = definedSect;
+                    if (!physicalSymbolValue(sec, s, sectName, err, ps.value))
                         return false;
                     pendingExtDef.push_back(ps);
                 }
@@ -470,7 +491,9 @@ bool MachOWriter::write(const std::string &path,
             return true;
         };
 
-        if (!processSymbols(text, true) || !processSymbols(rodata, false))
+        if (!processSymbols(text, SecRole::Text) || !processSymbols(rodata, SecRole::Const))
+            return false;
+        if (hasData && !processSymbols(data, SecRole::Data))
             return false;
 
         std::unordered_set<size_t> textOffsetAnchors;
@@ -538,6 +561,8 @@ bool MachOWriter::write(const std::string &path,
                     textOffsetAnchorMap[static_cast<size_t>(ps.value)] = machoIdx;
                 else
                     constOffsetAnchorMap[static_cast<size_t>(ps.value)] = machoIdx;
+            } else if (ps.sect == kSectData) {
+                dataSymMap[ps.encoderIdx] = machoIdx;
             } else if (ps.fromText) {
                 textSymMap[ps.encoderIdx] = machoIdx;
             } else {
@@ -624,6 +649,8 @@ bool MachOWriter::write(const std::string &path,
                     if (anchorIt == anchorMap.end())
                         continue;
                     idx = anchorIt->second;
+                } else if (ps.sect == kSectData) {
+                    idx = dataSymMap[ps.encoderIdx];
                 } else {
                     idx = (ps.fromText) ? textSymMap[ps.encoderIdx] : rodataSymMap[ps.encoderIdx];
                 }
@@ -871,7 +898,7 @@ bool MachOWriter::write(const std::string &path,
 
         // --- 5. Compute file layout ---
         const bool hasDebugLine = !debugLineData_.empty();
-        const uint32_t nsects = 2 + (hasUnwind ? 1 : 0) + (hasDebugLine ? 1 : 0);
+        const uint32_t nsects = 2 + (hasData ? 1 : 0) + (hasUnwind ? 1 : 0) + (hasDebugLine ? 1 : 0);
         size_t sectionHeaderBytes = 0;
         size_t segCmdSizeSize = 0;
         size_t sizeOfCmdsSize = 0;
@@ -917,6 +944,7 @@ bool MachOWriter::write(const std::string &path,
 
         size_t textSize = text.bytes().size();
         size_t rodataSize = rodata.bytes().size();
+        size_t dataSize = hasData ? data.bytes().size() : 0;
         size_t debugLineSize = hasDebugLine ? debugLineData_.size() : 0;
 
         size_t unwindSize = unwindData.size();
@@ -932,10 +960,24 @@ bool MachOWriter::write(const std::string &path,
             return false;
         size_t constAddr = constFileOff - textFileOff; // virtual address of __const
 
-        // __compact_unwind goes after __const (8-byte aligned)
+        // __data (writable globals) goes after __const (8-byte aligned). Advance the
+        // cursor past it so __compact_unwind/__debug_line stack correctly afterward.
+        size_t dataFileOff = 0;
+        size_t dataAddr = 0;
+        if (!checkedAddSize(constFileOff, rodataSize, "MachOWriter", "__const data", err, cursor))
+            return false;
+        if (hasData) {
+            if (!checkedAlignUpSize(
+                    cursor, dataAlign, "MachOWriter", "__data file offset", err, dataFileOff))
+                return false;
+            dataAddr = dataFileOff - textFileOff; // virtual address of __data
+            if (!checkedAddSize(dataFileOff, dataSize, "MachOWriter", "__data data", err, cursor))
+                return false;
+        }
+
+        // __compact_unwind goes after __data (8-byte aligned)
         size_t unwindFileOff = 0;
-        if (!checkedAddSize(constFileOff, rodataSize, "MachOWriter", "__const data", err, cursor) ||
-            !checkedAlignUpSize(
+        if (!checkedAlignUpSize(
                 cursor, 8, "MachOWriter", "__compact_unwind file offset", err, unwindFileOff))
             return false;
         size_t unwindAddr = unwindFileOff - textFileOff;
@@ -1032,6 +1074,7 @@ bool MachOWriter::write(const std::string &path,
 
         uint32_t textFileOff32 = 0;
         uint32_t constFileOff32 = 0;
+        uint32_t dataFileOff32 = 0;
         uint32_t unwindFileOff32 = 0;
         uint32_t debugLineFileOff32 = 0;
         uint32_t textRelocOff32 = 0;
@@ -1042,6 +1085,7 @@ bool MachOWriter::write(const std::string &path,
         uint32_t strSize32 = 0;
         if (!checkedU32(textFileOff, "__text file offset", err, textFileOff32) ||
             !checkedU32(constFileOff, "__const file offset", err, constFileOff32) ||
+            !checkedU32(dataFileOff, "__data file offset", err, dataFileOff32) ||
             !checkedU32(unwindFileOff, "__compact_unwind file offset", err, unwindFileOff32) ||
             !checkedU32(debugLineFileOff, "__debug_line file offset", err, debugLineFileOff32) ||
             !checkedU32(textRelocOff, "__text relocation offset", err, textRelocOff32) ||
@@ -1093,6 +1137,20 @@ bool MachOWriter::write(const std::string &path,
                         nConstRelocs,
                         0);
 
+        // __data section header (writable globals; no relocations for scalar data)
+        if (hasData) {
+            writeSectionHdr(file,
+                            "__data",
+                            "__DATA",
+                            dataAddr,
+                            dataSize,
+                            dataFileOff32,
+                            dataAlignLog2,
+                            0,
+                            0,
+                            0); // S_REGULAR
+        }
+
         // __compact_unwind section header
         if (hasUnwind) {
             writeSectionHdr(file,
@@ -1138,6 +1196,12 @@ bool MachOWriter::write(const std::string &path,
         // __const
         padTo(file, constFileOff);
         file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+
+        // __data
+        if (hasData) {
+            padTo(file, dataFileOff);
+            file.insert(file.end(), data.bytes().begin(), data.bytes().end());
+        }
 
         // __compact_unwind
         if (hasUnwind) {
@@ -1257,10 +1321,12 @@ bool MachOWriter::write(const std::string &path,
         // --- Symbol table ---
         for (const auto &sym : allSyms) {
             uint64_t value = sym.value;
-            // Rodata symbols store offsets within the __const section. Mach-O nlist
-            // values are segment-relative, so add the __const section's base address.
+            // Rodata/data symbols store offsets within their own section. Mach-O nlist
+            // values are segment-relative, so add the section's base address.
             if (sym.sect == kSectConst)
                 value += constAddr;
+            else if (sym.sect == kSectData)
+                value += dataAddr;
             writeNlist(file, sym.strx, sym.type, sym.sect, 0, value);
         }
 

@@ -51,6 +51,7 @@ struct AArch64Module {
     // Binary emission output (populated by BinaryEmitPass).
     std::optional<objfile::CodeSection> binaryText;       ///< Machine code bytes + relocations.
     std::optional<objfile::CodeSection> binaryRodata;     ///< Read-only data section.
+    std::optional<objfile::CodeSection> binaryData;       ///< Writable initialized data section.
     std::vector<objfile::CodeSection> binaryTextSections; ///< Per-function text sections.
     std::vector<uint8_t> debugLineData;                   ///< Pre-encoded DWARF .debug_line bytes.
 };

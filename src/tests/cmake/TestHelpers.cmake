@@ -11,6 +11,7 @@ set(_VIPER_TEST_LABEL_WHITELIST
         comprehensive
         conformance
         contract
+        differential
         e2e
         examples
         fuzz

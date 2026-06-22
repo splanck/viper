@@ -62,6 +62,7 @@ static constexpr uint32_t kShtStrtab = 3;
 static constexpr uint32_t kShtRela = 4;
 
 // Section flags
+static constexpr uint64_t kShfWrite = 0x1;
 static constexpr uint64_t kShfAlloc = 0x2;
 static constexpr uint64_t kShfExecinstr = 0x4;
 static constexpr uint64_t kShfInfoLink = 0x40;
@@ -112,6 +113,7 @@ static uint8_t elfSymbolType(const Symbol &sym) {
         case SymbolSection::Text:
             return kSttFunc;
         case SymbolSection::Rodata:
+        case SymbolSection::Data:
             return kSttObject;
         case SymbolSection::Undefined:
         default:
@@ -264,6 +266,13 @@ bool ElfWriter::write(const std::string &path,
                       const CodeSection &rodata,
                       std::ostream &err) {
     try {
+        // Writable initialized-data section (.data). Empty unless setDataSection()
+        // supplied scalar globals; symbols here satisfy the text section's undefined
+        // references to mutable globals via name coalescing (globalNameMap).
+        const CodeSection emptyData;
+        const CodeSection &data = dataSection_ ? *dataSection_ : emptyData;
+        const bool hasData = !data.bytes().empty();
+
         // --- 1. Build .shstrtab (section name string table) ---
         StringTable shstrtab;
         uint32_t shNameNull = 0; // empty string at offset 0
@@ -280,6 +289,14 @@ bool ElfWriter::write(const std::string &path,
         uint32_t shNameDebugLine = 0;
         if (hasDebugLine)
             shNameDebugLine = shstrtab.add(".debug_line");
+
+        // .data is appended as the LAST section header so the fixed kSec* indices
+        // for .rela.*/.symtab/.strtab/.shstrtab/.note remain valid. Its section
+        // index is therefore the pre-.data section count.
+        uint32_t shNameData = 0;
+        const uint16_t secData = hasDebugLine ? 10 : 9;
+        if (hasData)
+            shNameData = shstrtab.add(".data");
 
         // --- 2. Build symbol table and .strtab ---
         // ELF requires: null sym, section syms (local), then globals, then externals.
@@ -313,7 +330,8 @@ bool ElfWriter::write(const std::string &path,
             uint32_t origIdx;
             const Symbol *sym;
             uint16_t shndx;
-            bool fromText; // true = text section, false = rodata
+            bool fromText;        // true = text section
+            bool fromData = false; // true = writable .data section (overrides fromText)
         };
 
         std::vector<PendingSym> pendingLocals, pendingGlobals;
@@ -352,14 +370,25 @@ bool ElfWriter::write(const std::string &path,
             }
         }
 
+        // Process .data section symbols (writable scalar globals). These are defined
+        // globals whose names coalesce the text section's undefined references.
+        for (uint32_t i = 1; i < data.symbols().count(); ++i) {
+            const Symbol &s = data.symbols().at(i);
+            PendingSym ps{i, &s, secData, false, true};
+            if (s.binding == SymbolBinding::Local)
+                pendingLocals.push_back(ps);
+            else
+                pendingGlobals.push_back(ps); // Global/External defined in .data
+        }
+
         // Write local symbols first.
         for (const auto &ps : pendingLocals) {
             uint32_t nameOff = strtab.add(ps.sym->name);
             uint8_t type = elfSymbolType(*ps.sym);
             uint64_t value = 0;
-            const CodeSection &source = ps.fromText ? text : rodata;
-            if (!physicalSymbolValue(
-                    source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
+            const CodeSection &source = ps.fromData ? data : (ps.fromText ? text : rodata);
+            const char *secName = ps.fromData ? ".data" : (ps.fromText ? ".text" : ".rodata");
+            if (!physicalSymbolValue(source, *ps.sym, secName, err, value))
                 return false;
             writeSym(symtabBytes,
                      nameOff,
@@ -369,6 +398,8 @@ bool ElfWriter::write(const std::string &path,
                      value,
                      ps.sym->size);
             uint32_t elfIdx = elfLocalCount++;
+            if (ps.fromData)
+                continue; // .data symbols are referenced by name, not by index map
             if (ps.fromText)
                 textSymMap[ps.origIdx] = elfIdx;
             else
@@ -399,9 +430,9 @@ bool ElfWriter::write(const std::string &path,
             uint8_t type = elfSymbolType(*ps.sym);
             uint16_t shndx = ps.shndx;
             uint64_t value = 0;
-            const CodeSection &source = ps.fromText ? text : rodata;
-            if (!physicalSymbolValue(
-                    source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
+            const CodeSection &source = ps.fromData ? data : (ps.fromText ? text : rodata);
+            const char *secName = ps.fromData ? ".data" : (ps.fromText ? ".text" : ".rodata");
+            if (!physicalSymbolValue(source, *ps.sym, secName, err, value))
                 return false;
             writeSym(symtabBytes,
                      nameOff,
@@ -410,7 +441,9 @@ bool ElfWriter::write(const std::string &path,
                      shndx,
                      value,
                      ps.sym->size);
-            if (ps.fromText)
+            if (ps.fromData)
+                ; // .data globals are referenced by name (globalNameMap), no index map
+            else if (ps.fromText)
                 textSymMap[ps.origIdx] = elfGlobalIdx;
             else
                 rodataSymMap[ps.origIdx] = elfGlobalIdx;
@@ -613,14 +646,26 @@ bool ElfWriter::write(const std::string &path,
         uint64_t debugLineSize = debugLineData_.size();
         uint64_t offDebugLine = offNoteGnuStack;
         uint64_t debugEnd = 0;
-        uint64_t offShtab = 0;
         if (!checkedAddU64(
-                offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
-            !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
+                offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd))
+            return false;
+
+        // .data (writable globals) — appended after .debug_line, before the SHT.
+        uint64_t dataSize = hasData ? data.bytes().size() : 0;
+        uint64_t offData = debugEnd;
+        uint64_t dataEnd = debugEnd;
+        if (hasData) {
+            if (!checkedAlignUpU64(debugEnd, 8, "ElfWriter", ".data offset", err, offData) ||
+                !checkedAddU64(offData, dataSize, "ElfWriter", ".data data", err, dataEnd))
+                return false;
+        }
+
+        uint64_t offShtab = 0;
+        if (!checkedAlignUpU64(dataEnd, 8, "ElfWriter", "section header table", err, offShtab))
             return false;
 
         // --- 5. Build the file ---
-        const uint16_t numSections = hasDebugLine ? 10 : 9;
+        const uint16_t numSections = static_cast<uint16_t>((hasDebugLine ? 10 : 9) + (hasData ? 1 : 0));
 
         std::vector<uint8_t> file;
         size_t reserveSize = 0;
@@ -671,6 +716,12 @@ bool ElfWriter::write(const std::string &path,
         // .debug_line (optional)
         if (hasDebugLine)
             file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
+
+        // .data (optional, writable)
+        if (hasData) {
+            padTo(file, static_cast<size_t>(offData));
+            file.insert(file.end(), data.bytes().begin(), data.bytes().end());
+        }
 
         // Section header table
         padTo(file, static_cast<size_t>(offShtab));
@@ -743,6 +794,19 @@ bool ElfWriter::write(const std::string &path,
             writeShdr(
                 file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
 
+        // [last] .data (optional, writable, alloc) — appended so existing indices hold.
+        if (hasData)
+            writeShdr(file,
+                      shNameData,
+                      kShtProgbits,
+                      kShfAlloc | kShfWrite,
+                      offData,
+                      dataSize,
+                      0,
+                      0,
+                      8,
+                      0);
+
         // --- 6. Write to disk ---
         std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
         if (!ofs) {
@@ -800,13 +864,24 @@ bool ElfWriter::write(const std::string &path,
         }
 
         const bool hasDebugLine = !debugLineData_.empty();
+
+        // Writable initialized-data section (.data); appended LAST so the computed
+        // per-function section indices below remain valid.
+        const CodeSection emptyData;
+        const CodeSection &data = dataSection_ ? *dataSection_ : emptyData;
+        const bool hasData = !data.bytes().empty();
+
         const size_t N = textSections.size();
         const size_t baseSectionCount = 7 + (hasDebugLine ? 1 : 0);
-        if (N > (static_cast<size_t>(UINT16_MAX) - baseSectionCount) / 2) {
+        if (N > (static_cast<size_t>(UINT16_MAX) - baseSectionCount - (hasData ? 1 : 0)) / 2) {
             err << "ElfWriter: too many text sections for ELF writer (" << N << ")\n";
             return false;
         }
-        const size_t sectionCount = 2 * N + baseSectionCount;
+        const size_t sectionCountNoData = 2 * N + baseSectionCount;
+        const size_t sectionCount = sectionCountNoData + (hasData ? 1 : 0);
+        // .data section index (valid only when hasData): the first index past the
+        // existing sections.
+        const uint16_t secData = static_cast<uint16_t>(sectionCountNoData);
 
         // --- 1. Extract function names from each text section ---
         const std::vector<std::string> funcNames = collectElfTextFuncNames(textSections);
@@ -855,6 +930,10 @@ bool ElfWriter::write(const std::string &path,
         if (hasDebugLine)
             shNameDebugLine = shstrtab.add(".debug_line");
 
+        uint32_t shNameData = 0;
+        if (hasData)
+            shNameData = shstrtab.add(".data");
+
         // --- 4. Build symbol table ---
         StringTable strtab;
         std::vector<uint8_t> symtabBytes;
@@ -880,7 +959,8 @@ bool ElfWriter::write(const std::string &path,
             uint32_t origIdx;
             const Symbol *sym;
             uint16_t shndx;
-            size_t textIdx; // index into textSections; SIZE_MAX for rodata
+            size_t textIdx;        // index into textSections; SIZE_MAX for rodata/data
+            bool fromData = false; // true = writable .data section
         };
 
         std::vector<PendingSym> pendingLocals, pendingDefinedGlobals, pendingExternals;
@@ -922,15 +1002,27 @@ bool ElfWriter::write(const std::string &path,
             }
         }
 
+        // Collect .data symbols (writable scalar globals). Defined globals whose
+        // names coalesce the text sections' undefined references.
+        for (uint32_t i = 1; i < data.symbols().count(); ++i) {
+            const auto &s = data.symbols().at(i);
+            PendingSym ps{i, &s, secData, SIZE_MAX, true};
+            if (s.binding == SymbolBinding::Local)
+                pendingLocals.push_back(ps);
+            else
+                pendingDefinedGlobals.push_back(ps);
+        }
+
         // Write local symbols first (ELF requires locals before globals).
         for (const auto &ps : pendingLocals) {
             uint32_t nameOff = strtab.add(ps.sym->name);
             uint8_t type = elfSymbolType(*ps.sym);
             uint64_t value = 0;
             const CodeSection &source =
-                (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
-            if (!physicalSymbolValue(
-                    source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
+                ps.fromData ? data : (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
+            const char *secName =
+                ps.fromData ? ".data" : (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata";
+            if (!physicalSymbolValue(source, *ps.sym, secName, err, value))
                 return false;
             writeSym(symtabBytes,
                      nameOff,
@@ -940,6 +1032,8 @@ bool ElfWriter::write(const std::string &path,
                      value,
                      ps.sym->size);
             uint32_t elfIdx = elfLocalCount++;
+            if (ps.fromData)
+                continue; // .data symbols referenced by name, not by index map
             if (ps.textIdx != SIZE_MAX)
                 textSymMaps[ps.textIdx][ps.origIdx] = elfIdx;
             else
@@ -961,9 +1055,10 @@ bool ElfWriter::write(const std::string &path,
             uint32_t nameOff = strtab.add(ps.sym->name);
             uint64_t value = 0;
             const CodeSection &source =
-                (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
-            if (!physicalSymbolValue(
-                    source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
+                ps.fromData ? data : (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
+            const char *secName =
+                ps.fromData ? ".data" : (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata";
+            if (!physicalSymbolValue(source, *ps.sym, secName, err, value))
                 return false;
             writeSym(symtabBytes,
                      nameOff,
@@ -973,7 +1068,9 @@ bool ElfWriter::write(const std::string &path,
                      value,
                      ps.sym->size);
             globalNameMap[ps.sym->name] = elfGlobalIdx;
-            if (ps.textIdx != SIZE_MAX)
+            if (ps.fromData)
+                ; // .data globals referenced by name (globalNameMap), no index map
+            else if (ps.textIdx != SIZE_MAX)
                 textSymMaps[ps.textIdx][ps.origIdx] = elfGlobalIdx;
             else
                 rodataSymMap[ps.origIdx] = elfGlobalIdx;
@@ -1257,10 +1354,22 @@ bool ElfWriter::write(const std::string &path,
         uint64_t debugLineSize = debugLineData_.size();
         uint64_t offDebugLine = offNoteGnuStack;
         uint64_t debugEnd = 0;
-        uint64_t offShtab = 0;
         if (!checkedAddU64(
-                offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
-            !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
+                offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd))
+            return false;
+
+        // .data (writable globals) — appended after .debug_line, before the SHT.
+        uint64_t dataSize = hasData ? data.bytes().size() : 0;
+        uint64_t offData = debugEnd;
+        uint64_t dataEnd = debugEnd;
+        if (hasData) {
+            if (!checkedAlignUpU64(debugEnd, 8, "ElfWriter", ".data offset", err, offData) ||
+                !checkedAddU64(offData, dataSize, "ElfWriter", ".data data", err, dataEnd))
+                return false;
+        }
+
+        uint64_t offShtab = 0;
+        if (!checkedAlignUpU64(dataEnd, 8, "ElfWriter", "section header table", err, offShtab))
             return false;
 
         // --- 7. Build the file ---
@@ -1319,6 +1428,12 @@ bool ElfWriter::write(const std::string &path,
         // .debug_line (optional)
         if (hasDebugLine)
             file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
+
+        // .data (optional, writable)
+        if (hasData) {
+            padTo(file, static_cast<size_t>(offData));
+            file.insert(file.end(), data.bytes().begin(), data.bytes().end());
+        }
 
         // --- 8. Section header table ---
         padTo(file, static_cast<size_t>(offShtab));
@@ -1394,6 +1509,19 @@ bool ElfWriter::write(const std::string &path,
         if (hasDebugLine)
             writeShdr(
                 file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
+
+        // [last] .data (optional, writable, alloc)
+        if (hasData)
+            writeShdr(file,
+                      shNameData,
+                      kShtProgbits,
+                      kShfAlloc | kShfWrite,
+                      offData,
+                      dataSize,
+                      0,
+                      0,
+                      8,
+                      0);
 
         // --- 9. Write to disk ---
         std::ofstream ofs(path, std::ios::binary | std::ios::trunc);

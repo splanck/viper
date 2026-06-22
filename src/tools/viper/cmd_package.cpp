@@ -100,6 +100,9 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
         << "  Tarball:  .tar.gz portable archive\n"
         << "\n"
+        << "macOS code-signing/notarization run only on a macOS host; Windows Authenticode\n"
+        << "signing runs only where signtool is available. .dmg and .rpm installers are built\n"
+        << "by 'viper install-package' (toolchain distribution), not 'viper package'.\n"
         << "Manifest directives and signing options are documented in docs/tools.md.\n";
 }
 

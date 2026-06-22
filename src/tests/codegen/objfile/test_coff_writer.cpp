@@ -760,6 +760,76 @@ int main() {
         CHECK(overflowText->relocs.size() == kRelocCount);
     }
 
+    // Writable .data section: scalar globals emit a writable .data section whose
+    // defined symbol coalesces the text section's undefined reference by name.
+    // Exercise both the single-section and per-function (≥2 sections) write paths.
+    for (int multi = 0; multi < 2; ++multi) {
+        CodeSection dtext, drodata, ddata;
+        const uint32_t cRef = dtext.findOrDeclareSymbol("counter");
+        dtext.addRelocation(RelocKind::A64AdrpPage21, cRef, 0);
+        dtext.emit32LE(0x90000000); // adrp x0, #0
+        dtext.emit32LE(0xD65F03C0); // ret
+        dtext.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+
+        ddata.defineSymbol("counter", SymbolBinding::Global, SymbolSection::Data);
+        const uint64_t kInit = 41;
+        ddata.emit64LE(kInit);
+
+        const std::string dpath =
+            multi ? "build/test-out/coff_data_multi.obj" : "build/test-out/coff_data_single.obj";
+        std::ostringstream derr;
+        CoffWriter dwriter(ObjArch::AArch64);
+        dwriter.setDataSection(ddata);
+        bool wrote = false;
+        if (multi) {
+            CodeSection dtext2;
+            const uint32_t cRef2 = dtext2.findOrDeclareSymbol("counter");
+            dtext2.addRelocation(RelocKind::A64AdrpPage21, cRef2, 0);
+            dtext2.emit32LE(0x90000000);
+            dtext2.emit32LE(0xD65F03C0);
+            dtext2.defineSymbol("helper", SymbolBinding::Global, SymbolSection::Text);
+            wrote = dwriter.write(dpath, std::vector<CodeSection>{dtext, dtext2}, drodata, derr);
+        } else {
+            wrote = dwriter.write(dpath, dtext, drodata, derr);
+        }
+        CHECK(wrote);
+
+        ObjFile dobj;
+        std::ostringstream dreadErr;
+        CHECK(readObjFile(dpath, dobj, dreadErr));
+
+        const ObjSection *dataSec = findSection(dobj, ".data");
+        CHECK(dataSec != nullptr);
+        if (dataSec != nullptr) {
+            CHECK(dataSec->writable);
+            CHECK(dataSec->data.size() == 8);
+            if (dataSec->data.size() == 8) {
+                uint64_t stored = 0;
+                for (int i = 0; i < 8; ++i)
+                    stored |= static_cast<uint64_t>(dataSec->data[static_cast<size_t>(i)])
+                              << (i * 8);
+                CHECK(stored == kInit);
+            }
+        }
+
+        // Exactly one `counter` symbol — the defined Global in .data (coalesced).
+        int counterCount = 0;
+        const ObjSymbol *counterSym = nullptr;
+        for (size_t i = 1; i < dobj.symbols.size(); ++i) {
+            if (dobj.symbols[i].name == "counter") {
+                ++counterCount;
+                counterSym = &dobj.symbols[i];
+            }
+        }
+        CHECK(counterCount == 1);
+        if (counterSym != nullptr) {
+            CHECK(counterSym->binding == ObjSymbol::Global);
+            if (counterSym->sectionIndex < dobj.sections.size())
+                CHECK(dobj.sections[counterSym->sectionIndex].name == ".data");
+        }
+        std::remove(dpath.c_str());
+    }
+
     if (gFail == 0) {
         std::cout << "All CoffWriter tests passed.\n";
         return EXIT_SUCCESS;

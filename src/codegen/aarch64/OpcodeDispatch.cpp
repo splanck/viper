@@ -252,11 +252,13 @@ static bool lowerCastOpcodes(const il::core::Instr &ins,
             const std::string trapLabel = requestSharedTrapBlock(ctx, "ovf", "rt_trap_ovf");
             bbOut().instrs.push_back(
                 MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
-            const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
-            ctx.tempVReg[*ins.result] = dst;
-            bbOut().instrs.push_back(MInstr{
-                MOpcode::MovRR,
-                {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::GPR, vt)}});
+            // The narrowed value in vt is the result — record it directly instead of
+            // copying into a fresh vreg. The extra `MovRR dst, vt` was a copy-forwarding
+            // hazard: pre-RA single-use copy forwarding could rewrite one use of a
+            // multi-use result (e.g. a switch scrutinee compared across several cases)
+            // and drop the copy, leaving the other uses pointing at an undefined vreg.
+            ctx.tempVReg[*ins.result] = vt;
+            ctx.tempRegClass[*ins.result] = RegClass::GPR;
             return true;
         }
         case Opcode::CastFpToSiRteChk:

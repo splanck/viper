@@ -43,6 +43,7 @@ enum class SymbolBinding : uint8_t {
 enum class SymbolSection : uint8_t {
     Text,      ///< .text section (machine code).
     Rodata,    ///< .rodata / __TEXT,__const section (read-only data).
+    Data,      ///< .data / __DATA,__data section (writable initialized data).
     Undefined, ///< External symbol, not defined in this object.
 };
 

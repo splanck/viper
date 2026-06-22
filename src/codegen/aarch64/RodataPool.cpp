@@ -24,8 +24,12 @@
 
 #include "codegen/aarch64/RodataPool.hpp"
 
+#include "codegen/common/LabelUtil.hpp"
+#include "codegen/common/ScalarGlobalLayout.hpp"
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
+
+#include <cstdint>
 
 namespace viper::codegen::aarch64 {
 
@@ -76,10 +80,65 @@ void RodataPool::addString(const std::string &ilName, const std::string &bytes) 
 }
 
 void RodataPool::buildFromModule(const il::core::Module &mod) {
+    using Kind = il::core::Type::Kind;
     for (const auto &g : mod.globals) {
-        if (g.type.kind == il::core::Type::Kind::Str)
+        if (g.type.kind == Kind::Str) {
             addString(g.name, g.init);
+            continue;
+        }
+        // Writable scalar globals (e.g. `global i64 @counter = 41`) need a real
+        // .data symbol, otherwise gaddr @counter resolves to an undefined symbol.
+        // Layout/initializer rules are shared with the x86-64 path.
+        const auto layout = viper::codegen::common::scalarGlobalLayout(g.type.kind);
+        if (layout.sizeBytes == 0)
+            continue; // void / error / resumetok — nothing to emit
+        DataGlobal dg;
+        dg.name = g.name;
+        dg.init = g.init;
+        dg.sizeBytes = layout.sizeBytes;
+        dg.isFloat = layout.isFloat;
+        // Compute little-endian initializer bytes for the binary object path.
+        const uint64_t raw = viper::codegen::common::scalarGlobalRawBits(g.init, layout.isFloat);
+        dg.bytes.resize(static_cast<size_t>(dg.sizeBytes));
+        for (int i = 0; i < dg.sizeBytes; ++i)
+            dg.bytes[static_cast<size_t>(i)] = static_cast<uint8_t>((raw >> (8 * i)) & 0xFF);
+        dataGlobals_.push_back(std::move(dg));
     }
+}
+
+void RodataPool::emitData(std::ostream &os, const TargetInfo &target) const {
+    if (dataGlobals_.empty())
+        return;
+    if (target.isLinux())
+        os << ".data\n";
+    else if (target.isWindows())
+        os << ".section .data,\"dw\"\n";
+    else
+        os << ".section __DATA,__data\n";
+    for (const auto &dg : dataGlobals_) {
+        const std::string sanitized = viper::codegen::common::sanitizeLabel(dg.name);
+        const std::string sym =
+            target.isLinux() || target.isWindows() ? sanitized : "_" + sanitized;
+        const int p2align =
+            dg.sizeBytes >= 8 ? 3 : dg.sizeBytes >= 4 ? 2 : dg.sizeBytes >= 2 ? 1 : 0;
+        const char *dir = dg.isFloat ? ".double"
+                          : dg.sizeBytes == 8 ? ".quad"
+                          : dg.sizeBytes == 4 ? ".long"
+                          : dg.sizeBytes == 2 ? ".short"
+                                              : ".byte";
+        std::string value = dg.init;
+        // trim surrounding whitespace
+        const auto b = value.find_first_not_of(" \t\r\n");
+        const auto e = value.find_last_not_of(" \t\r\n");
+        value = (b == std::string::npos) ? std::string() : value.substr(b, e - b + 1);
+        if (value.empty())
+            value = dg.isFloat ? "0.0" : "0";
+        os << "  .p2align " << p2align << "\n";
+        os << "  .globl " << sym << "\n";
+        os << sym << ":\n";
+        os << "  " << dir << " " << value << "\n";
+    }
+    os << "\n";
 }
 
 void RodataPool::emit(std::ostream &os, const TargetInfo &target) const {

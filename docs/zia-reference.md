@@ -449,6 +449,11 @@ Targets with side effects, such as a function call inside the indexed receiver o
 index expression, are rejected because compound assignment would otherwise need
 to evaluate the target twice.
 
+Operators are built into the language and apply to the built-in scalar, string, and
+collection types. Zia does not currently support user-defined operator overloading — a
+`struct` or `class` cannot define its own `+`, `==`, and so on; use named methods for
+custom value semantics.
+
 ### Ternary Operator
 
 ```rust

@@ -53,6 +53,7 @@ viper_add_fuzzer(fuzz_zia_parser fuzz_zia_parser.cpp LIBS fe_zia)
 viper_add_fuzzer(fuzz_basic_lexer fuzz_basic_lexer.cpp LIBS fe_basic)
 viper_add_fuzzer(fuzz_basic_parser fuzz_basic_parser.cpp LIBS fe_basic)
 viper_add_fuzzer(fuzz_il_parser fuzz_il_parser.cpp LIBS viper::il_full)
+viper_add_fuzzer(fuzz_il_verifier fuzz_il_verifier.cpp LIBS viper::il_full)
 
 # ── Runtime/protocol parser fuzzers ─────────────────────────────────────────
 viper_add_fuzzer(fuzz_json fuzz_json.cpp LIBS viper_runtime)

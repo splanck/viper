@@ -49,6 +49,7 @@ struct Module {
     /// Binary emission artefacts (populated by BinaryEmitPass instead of EmitPass).
     std::optional<objfile::CodeSection> binaryText;   ///< Merged text, present for debug output.
     std::optional<objfile::CodeSection> binaryRodata; ///< Read-only data section.
+    std::optional<objfile::CodeSection> binaryData;   ///< Writable initialized data (.data).
     std::vector<objfile::CodeSection> binaryTextSections; ///< Per-function text sections.
     std::vector<uint8_t> debugLineData;                   ///< Pre-encoded DWARF .debug_line bytes.
 };

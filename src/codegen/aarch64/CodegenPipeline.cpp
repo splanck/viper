@@ -648,6 +648,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         const bool hasDebugLine = !pipelineModule.debugLineData.empty();
         if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
+        if (pipelineModule.binaryData && !pipelineModule.binaryData->bytes().empty())
+            writer->setDataSection(*pipelineModule.binaryData);
         const bool wroteObject = !pipelineModule.binaryTextSections.empty()
                                      ? writer->write(objPath.string(),
                                                      pipelineModule.binaryTextSections,
@@ -677,6 +679,15 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             for (const auto &sym : pipelineModule.binaryRodata->symbols()) {
                 if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
                     extSymbols.insert(sym.name);
+            }
+        }
+        // Scalar globals are defined intra-object in __data; the text section names
+        // them as undefined externals, but the system linker resolves them locally —
+        // so drop them from the runtime-archive symbol closure.
+        if (pipelineModule.binaryData) {
+            for (const auto &sym : pipelineModule.binaryData->symbols()) {
+                if (sym.binding == viper::codegen::objfile::SymbolBinding::Global)
+                    extSymbols.erase(sym.name);
             }
         }
 

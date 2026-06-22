@@ -337,7 +337,9 @@ sleeping, and optional CCD.
 - `Sleep()` and `Wake()` only affect dynamic bodies. Static and kinematic bodies do not enter
   the sleeping state.
 - `Kinematic = true` makes the body move from explicit `Velocity` / `AngularVelocity` only.
-- `UseCCD` uses additional substeps to reduce tunneling for fast-moving bodies.
+- `UseCCD` uses additional substeps to reduce tunneling for fast-moving bodies. It is
+  **off by default**; enable it explicitly on small or fast bodies (projectiles, balls).
+  Without it, a fast body can tunnel through thin geometry within a single step.
 - Position, velocity, angular velocity, force, torque, and integrated state are
   sanitized to finite values and saturated to the runtime state bounds, so
   extreme impulses or forces cannot create `NaN`/`Inf` body state. CCD keeps

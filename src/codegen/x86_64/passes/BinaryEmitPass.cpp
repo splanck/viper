@@ -20,10 +20,43 @@
 
 #include "codegen/x86_64/passes/BinaryEmitPass.hpp"
 
+#include "codegen/common/ScalarGlobalLayout.hpp"
+#include "codegen/common/objfile/CodeSection.hpp"
+#include "il/core/Global.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Type.hpp"
+
+#include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace viper::codegen::x64::passes {
+
+namespace {
+
+/// @brief Build the writable __data/.data section from a module's scalar globals.
+/// @details Mutable non-string globals (`global i64 @counter = 41`) become defined
+///          Global symbols carrying little-endian initializer bytes. The text
+///          section's undefined references to these names coalesce onto these
+///          definitions in the object writer. Layout rules are shared with the
+///          AArch64 path via @ref common::scalarGlobalLayout.
+objfile::CodeSection buildScalarDataSection(const il::core::Module &mod) {
+    objfile::CodeSection data;
+    for (const auto &g : mod.globals) {
+        const auto layout = common::scalarGlobalLayout(g.type.kind);
+        if (layout.sizeBytes == 0)
+            continue; // strings (rodata) / void / error / resumetok — nothing to emit
+        const uint64_t raw = common::scalarGlobalRawBits(g.init, layout.isFloat);
+        data.alignTo(static_cast<size_t>(layout.sizeBytes));
+        data.defineSymbol(g.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Data);
+        for (int i = 0; i < layout.sizeBytes; ++i)
+            data.emit8(static_cast<uint8_t>((raw >> (8 * i)) & 0xFF));
+    }
+    return data;
+}
+
+} // namespace
 
 /// @brief Construct the binary emit pass with backend configuration.
 /// @details Stores @p options by value so the pass survives the caller's local
@@ -67,6 +100,7 @@ bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
     else
         module.binaryText.reset();
     module.binaryRodata = std::move(result.rodata);
+    module.binaryData = buildScalarDataSection(module.il);
     module.binaryTextSections = std::move(result.textSections);
     module.debugLineData = std::move(result.debugLineData);
     return true;

@@ -335,6 +335,7 @@ static bool rewriteErrGetterForHandlerToken(
     const BasicBlock &block,
     Instr &instr) {
     switch (instr.op) {
+        case Opcode::TrapKind:
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
         case Opcode::ErrGetIp:

@@ -965,6 +965,97 @@ static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
     }
 }
 
+// Verify a writable .data section is emitted for scalar globals, and that the
+// text section's undefined reference to the global coalesces onto the .data
+// definition. Exercises BOTH the single-section and per-function write paths.
+static void testDataSectionImpl(bool multiSection) {
+    CodeSection text, rodata, data;
+
+    // text: reference `counter` by name (undefined external) + a defined function.
+    const uint32_t counterRef = text.findOrDeclareSymbol("counter");
+    text.addRelocation(RelocKind::A64AdrpPage21, counterRef, 0);
+    text.emit32LE(0x90000000); // adrp x0, #0
+    text.emit32LE(0xD65F03C0); // ret
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+
+    // data: defined global `counter` = 41 (8 LE bytes).
+    data.defineSymbol("counter", SymbolBinding::Global, SymbolSection::Data);
+    const uint64_t kInit = 41;
+    data.emit64LE(kInit);
+
+    const std::string path =
+        tmpPath(multiSection ? "viper_test_elf_data_multi.o" : "viper_test_elf_data_single.o");
+    std::ostringstream errStream;
+    ElfWriter writer(ObjArch::AArch64);
+    writer.setDataSection(data);
+    if (multiSection) {
+        // Use two text sections so the genuine per-function path runs (it delegates
+        // to single-section for ≤1 section). The second function also references the
+        // global, exercising cross-section coalescing into per-function .text.* .
+        CodeSection text2;
+        const uint32_t counterRef2 = text2.findOrDeclareSymbol("counter");
+        text2.addRelocation(RelocKind::A64AdrpPage21, counterRef2, 0);
+        text2.emit32LE(0x90000000); // adrp x0, #0
+        text2.emit32LE(0xD65F03C0); // ret
+        text2.defineSymbol("helper", SymbolBinding::Global, SymbolSection::Text);
+        CHECK(writer.write(path, std::vector<CodeSection>{text, text2}, rodata, errStream));
+    } else {
+        CHECK(writer.write(path, text, rodata, errStream));
+    }
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(readObjFile(path, obj, readErr));
+
+    const ObjSection *dataSec = findSection(obj, ".data");
+    CHECK(dataSec != nullptr);
+    if (dataSec != nullptr) {
+        CHECK(dataSec->writable);
+        CHECK(dataSec->data.size() == 8);
+        if (dataSec->data.size() == 8) {
+            uint64_t stored = 0;
+            for (int i = 0; i < 8; ++i)
+                stored |= static_cast<uint64_t>(dataSec->data[static_cast<size_t>(i)]) << (i * 8);
+            CHECK(stored == kInit);
+        }
+    }
+
+    // Coalescing invariant (path-agnostic): there is EXACTLY ONE symbol named
+    // "counter" — the defined Global in .data — with no dangling undefined copy.
+    int counterCount = 0;
+    const ObjSymbol *counterSym = nullptr;
+    for (size_t i = 1; i < obj.symbols.size(); ++i) {
+        if (obj.symbols[i].name == "counter") {
+            ++counterCount;
+            counterSym = &obj.symbols[i];
+        }
+    }
+    CHECK(counterCount == 1);
+    CHECK(counterSym != nullptr);
+    if (counterSym != nullptr) {
+        CHECK(counterSym->binding == ObjSymbol::Global);
+        CHECK(counterSym->sectionIndex != 0);
+        if (counterSym->sectionIndex < obj.sections.size())
+            CHECK(obj.sections[counterSym->sectionIndex].name == ".data");
+    }
+
+    // Every relocation that targets "counter" resolves to that single defined symbol.
+    for (size_t si = 1; si < obj.sections.size(); ++si) {
+        for (const auto &rel : obj.sections[si].relocs) {
+            const ObjSymbol &target = obj.symbols[rel.symIndex];
+            if (target.name == "counter")
+                CHECK(target.binding == ObjSymbol::Global);
+        }
+    }
+
+    std::remove(path.c_str());
+}
+
+static void testDataSection() {
+    testDataSectionImpl(/*multiSection=*/false);
+    testDataSectionImpl(/*multiSection=*/true);
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -977,6 +1068,7 @@ int main() {
     testRodataSymbolType();
     testExplicitRodataRelocationHint();
     testRodataRelocations();
+    testDataSection();
     testA64Abs64RelocationUsesAArch64Type();
     testSectionOffsetRelocationUsesSectionSymbol();
     testMultiSectionOffsetRelocationUsesSectionSymbol();

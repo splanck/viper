@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -54,6 +55,13 @@ class ObjectFileWriter {
         debugLineData_ = std::move(data);
     }
 
+    /// Set the writable initialized-data section (.data / __DATA,__data).
+    /// If present and non-empty, concrete writers emit a writable data section whose
+    /// (global) symbols satisfy text relocations to mutable scalar globals.
+    void setDataSection(CodeSection data) {
+        dataSection_ = std::move(data);
+    }
+
     /// Write a complete .o file to disk.
     /// @param path   Output file path.
     /// @param text   Machine code section (.text).
@@ -75,7 +83,8 @@ class ObjectFileWriter {
                        std::ostream &err);
 
   protected:
-    std::vector<uint8_t> debugLineData_; ///< Pre-encoded DWARF .debug_line bytes.
+    std::vector<uint8_t> debugLineData_;     ///< Pre-encoded DWARF .debug_line bytes.
+    std::optional<CodeSection> dataSection_; ///< Writable initialized-data section (if any).
 };
 
 /// Detect the host object file format at compile time.

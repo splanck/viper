@@ -583,6 +583,37 @@ static void test_invalid_bytes_data_traps_at_api_boundary() {
 // Entry Point
 //=============================================================================
 
+// Verify the encoder actually emits a dynamic-Huffman (BTYPE=2) block when it
+// is smaller, and that the decoder reads it back. A ~4 KB payload drawn from a
+// skewed alphabet with few long matches gives dynamic code lengths a clear edge
+// over the fixed assignment, so the "keep the smaller block" driver picks type 2.
+static void test_deflate_dynamic_huffman() {
+    printf("Testing DEFLATE Dynamic Huffman (BTYPE=2):\n");
+
+    static const char alpha[] = "eeeeeeeeetttttttaaaaaaooooiiiinnnsssrrhhddl  .,";
+    const size_t alen = sizeof(alpha) - 1;
+    uint8_t buf[4096];
+    uint32_t s = 0x12345u;
+    for (size_t i = 0; i < sizeof(buf); i++) {
+        s = s * 1103515245u + 12345u;
+        buf[i] = (uint8_t)alpha[(s >> 16) % alen];
+    }
+
+    void *original = make_bytes(buf, sizeof(buf));
+    void *compressed = rt_compress_deflate(original);
+    void *decompressed = rt_compress_inflate(compressed);
+
+    test_result("Dynamic-Huffman round-trip", bytes_equal(original, decompressed));
+
+    // Block header low 3 bits = BFINAL(1) | (BTYPE << 1). Dynamic => 1 | (2<<1) = 5.
+    int header = get_bytes_len(compressed) > 0 ? (get_bytes_data(compressed)[0] & 7) : -1;
+    test_result("Dynamic-Huffman block selected (BTYPE=2)", header == 5);
+    printf("  Original: %lld bytes, Compressed: %lld bytes (header&7=%d)\n",
+           (long long)get_bytes_len(original),
+           (long long)get_bytes_len(compressed),
+           header);
+}
+
 int main() {
     printf("=== RT Compress Tests ===\n\n");
 
@@ -606,6 +637,8 @@ int main() {
     test_deflate_levels();
     printf("\n");
     test_deflate_binary();
+    printf("\n");
+    test_deflate_dynamic_huffman();
     printf("\n");
 
     // GZIP tests

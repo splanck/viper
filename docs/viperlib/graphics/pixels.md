@@ -75,7 +75,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 
 `LoadPng` rejects malformed chunk order, invalid IHDR compression/filter/interlace methods, indexed images without a palette, palette transparency entries that exceed the palette size, and PNG files without IEND. Sub-byte grayscale transparency compares the raw sample value from `tRNS`. `LoadBmp` uses checked file offsets when seeking to pixel data.
 `ToBytes()` and `FromBytes()` always use canonical `RR GG BB AA` bytes for each pixel, independent of CPU endianness. `FromBytes` requires an actual `Viper.Collections.Bytes` object.
-JPEG loading validates component, quantization, Huffman, scan, and chroma sampling tables before decode, and applies EXIF orientation without leaking the pre-rotated image.
+JPEG loading validates component, quantization, Huffman, scan, and chroma sampling tables before decode, and applies EXIF orientation without leaking the pre-rotated image. Only baseline (sequential) DCT JPEGs are supported; progressive, lossless, and arithmetic-coded JPEGs are rejected and return null.
 
 ### Drawing Primitives
 

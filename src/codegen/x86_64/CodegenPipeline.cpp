@@ -631,6 +631,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         }
         if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
+        if (pipelineModule.binaryData && !pipelineModule.binaryData->bytes().empty())
+            writer->setDataSection(*pipelineModule.binaryData);
 
         const bool wroteObject = hasDebugLine ? writer->write(objPath.string(),
                                                               *pipelineModule.binaryText,
@@ -675,6 +677,14 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
             for (const auto &sym : pipelineModule.binaryRodata->symbols()) {
                 if (sym.binding == objfile::SymbolBinding::External)
                     extSymbols.insert(sym.name);
+            }
+        }
+        // Scalar globals are defined intra-object in .data; drop their names from the
+        // runtime-archive symbol closure so they are not treated as external imports.
+        if (pipelineModule.binaryData) {
+            for (const auto &sym : pipelineModule.binaryData->symbols()) {
+                if (sym.binding == objfile::SymbolBinding::Global)
+                    extSymbols.erase(sym.name);
             }
         }
 

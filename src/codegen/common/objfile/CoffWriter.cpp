@@ -60,6 +60,7 @@ static constexpr uint32_t kImageScnLnkNrelocOvfl = 0x01000000;
 static constexpr uint32_t kImageScnMemExecute = 0x20000000;
 static constexpr uint32_t kImageScnMemDiscardable = 0x02000000;
 static constexpr uint32_t kImageScnMemRead = 0x40000000;
+static constexpr uint32_t kImageScnMemWrite = 0x80000000;
 static constexpr uint32_t kImageScnAlign1 = 0x00100000;
 
 static constexpr uint8_t kImageSymClassExternal = 2;
@@ -808,6 +809,12 @@ bool CoffWriter::write(const std::string &path,
                 text, arch_, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
             return false;
 
+        // Writable initialized-data section (.data) for scalar globals. Symbols here
+        // coalesce the text section's undefined references by name (definedGlobalNameMap).
+        const CodeSection emptyData;
+        const CodeSection &data = dataSection_ ? *dataSection_ : emptyData;
+        const bool hasData = !data.bytes().empty();
+
         const bool hasRodata = !rodata.empty();
         const bool hasXdata = !xdataBytes.empty();
         const bool hasPdata = !pdataBytes.empty();
@@ -816,6 +823,7 @@ bool CoffWriter::write(const std::string &path,
         uint32_t nextSecIndex = 1;
         const uint16_t secIdxText = static_cast<uint16_t>(nextSecIndex++);
         const uint16_t secIdxRdata = hasRodata ? static_cast<uint16_t>(nextSecIndex++) : 0;
+        const uint16_t secIdxData = hasData ? static_cast<uint16_t>(nextSecIndex++) : 0;
         const uint16_t secIdxXdata = hasXdata ? static_cast<uint16_t>(nextSecIndex++) : 0;
         if (hasPdata)
             ++nextSecIndex;
@@ -1012,6 +1020,42 @@ bool CoffWriter::write(const std::string &path,
             const uint32_t coffIdx = coffSymCount++;
             textSymMap[i] = coffIdx;
             if (s.binding != SymbolBinding::External) {
+                definedNameMap[s.name] = coffIdx;
+                if (s.binding == SymbolBinding::Global)
+                    definedGlobalNameMap[s.name] = coffIdx;
+            }
+        }
+
+        // Writable scalar globals in .data — defined symbols whose names coalesce the
+        // text section's undefined references (handled by the pendingExternals loop).
+        if (hasData) {
+            for (uint32_t i = 1; i < data.symbols().count(); ++i) {
+                const Symbol &s = data.symbols().at(i);
+                if (s.binding == SymbolBinding::External)
+                    continue; // a .data symbol is always a definition
+                uint32_t value = 0;
+                uint8_t storageClass = kImageSymClassExternal;
+                if (s.binding == SymbolBinding::Local) {
+                    if (!checkedPhysicalSymbolValue(data, s, ".data", err, value))
+                        return false;
+                    storageClass = kImageSymClassStatic;
+                } else {
+                    if (!rememberDefinedGlobal(definedGlobalNames, s, ".data", err))
+                        return false;
+                    if (!checkedPhysicalSymbolValue(data, s, ".data", err, value))
+                        return false;
+                }
+                uint32_t strOff = 0;
+                if (s.name.size() > 8)
+                    strOff = addToStrTab(s.name);
+                writeSymbol(symtabBytes,
+                            s.name,
+                            strOff,
+                            value,
+                            static_cast<int16_t>(secIdxData),
+                            0,
+                            storageClass);
+                const uint32_t coffIdx = coffSymCount++;
                 definedNameMap[s.name] = coffIdx;
                 if (s.binding == SymbolBinding::Global)
                     definedGlobalNameMap[s.name] = coffIdx;
@@ -1228,11 +1272,13 @@ bool CoffWriter::write(const std::string &path,
 
         uint32_t textSize = 0;
         uint32_t rdataSize = 0;
+        uint32_t dataSize = 0;
         uint32_t xdataSize = 0;
         uint32_t pdataSize = 0;
         uint32_t debugLineDataSize = 0;
         if (!checkedU32(patchedTextBytes.size(), ".text size", err, textSize) ||
             !checkedU32(hasRodata ? patchedRodataBytes.size() : 0, ".rdata size", err, rdataSize) ||
+            !checkedU32(hasData ? data.bytes().size() : 0, ".data size", err, dataSize) ||
             !checkedU32(hasXdata ? xdataBytes.size() : 0, ".xdata size", err, xdataSize) ||
             !checkedU32(hasPdata ? pdataBytes.size() : 0, ".pdata size", err, pdataSize) ||
             !checkedU32(hasDebugLine ? debugLineData_.size() : 0,
@@ -1273,6 +1319,15 @@ bool CoffWriter::write(const std::string &path,
             if (!addU32Checked(rdataRelocOff, rdataRelocSize, ".rdata relocation table", err, end))
                 return false;
             if (!alignU32Checked(end, 4, ".rdata relocation table", err, cursor))
+                return false;
+        }
+        uint32_t dataDataOff = 0;
+        if (hasData) {
+            dataDataOff = cursor;
+            uint32_t end = 0;
+            if (!addU32Checked(dataDataOff, dataSize, ".data data", err, end))
+                return false;
+            if (!alignU32Checked(end, 4, ".data data", err, cursor))
                 return false;
         }
         uint32_t xdataDataOff = 0;
@@ -1356,6 +1411,11 @@ bool CoffWriter::write(const std::string &path,
                                coffHeaderRelocCount(numRdataRelocs),
                                rdataChars);
         }
+        if (hasData) {
+            const uint32_t dataChars =
+                kImageScnCntInitData | kImageScnMemRead | kImageScnMemWrite | kImageScnAlign8;
+            writeSectionHeader(file, ".data", 0, 0, dataSize, dataDataOff, 0, 0, dataChars);
+        }
         if (hasXdata) {
             const uint32_t xdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
             writeSectionHeader(file, ".xdata", 0, 0, xdataSize, xdataDataOff, 0, 0, xdataChars);
@@ -1399,6 +1459,10 @@ bool CoffWriter::write(const std::string &path,
                 padTo(file, rdataRelocOff);
                 file.insert(file.end(), rdataRelocBytes.begin(), rdataRelocBytes.end());
             }
+        }
+        if (hasData) {
+            padTo(file, dataDataOff);
+            file.insert(file.end(), data.bytes().begin(), data.bytes().end());
         }
         if (hasXdata) {
             padTo(file, xdataDataOff);
@@ -1479,6 +1543,11 @@ bool CoffWriter::write(const std::string &path,
             }
         }
 
+        // Writable .data section for scalar globals (coalesces text undefined refs).
+        const CodeSection emptyData;
+        const CodeSection &data = dataSection_ ? *dataSection_ : emptyData;
+        const bool hasData = !data.bytes().empty();
+
         const bool hasRodata = !rodata.empty();
         const bool hasXdata = !xdataBytes.empty();
         const bool hasPdata = !pdataBytes.empty();
@@ -1496,6 +1565,7 @@ bool CoffWriter::write(const std::string &path,
         for (size_t i = 0; i < textCount; ++i)
             secIdxText[i] = static_cast<uint16_t>(nextSecIndex++);
         const uint16_t secIdxRdata = hasRodata ? static_cast<uint16_t>(nextSecIndex++) : 0;
+        const uint16_t secIdxData = hasData ? static_cast<uint16_t>(nextSecIndex++) : 0;
         const uint16_t secIdxXdata = hasXdata ? static_cast<uint16_t>(nextSecIndex++) : 0;
         if (hasPdata)
             ++nextSecIndex;
@@ -1706,6 +1776,36 @@ bool CoffWriter::write(const std::string &path,
                 writeSymbol(symtabBytes, s.name, strOff, value, secNum, 0x20, storageClass);
                 const uint32_t coffIdx = coffSymCount++;
                 textSymMaps[ti][i] = coffIdx;
+                definedNameMap[s.name] = coffIdx;
+                if (s.binding == SymbolBinding::Global)
+                    definedGlobalNameMap[s.name] = coffIdx;
+            }
+        }
+
+        // Writable scalar globals in .data — defined symbols coalescing text refs.
+        if (hasData) {
+            for (uint32_t i = 1; i < data.symbols().count(); ++i) {
+                const Symbol &s = data.symbols().at(i);
+                if (s.binding == SymbolBinding::External)
+                    continue; // a .data symbol is always a definition
+                uint32_t value = 0;
+                if (!checkedPhysicalSymbolValue(data, s, ".data", err, value))
+                    return false;
+                const uint8_t storageClass = (s.binding == SymbolBinding::Local)
+                                                 ? kImageSymClassStatic
+                                                 : kImageSymClassExternal;
+                if (s.binding == SymbolBinding::Global &&
+                    !rememberDefinedGlobal(definedGlobalNames, s, ".data", err))
+                    return false;
+                const uint32_t strOff = (s.name.size() > 8) ? addToStrTab(s.name) : 0;
+                writeSymbol(symtabBytes,
+                            s.name,
+                            strOff,
+                            value,
+                            static_cast<int16_t>(secIdxData),
+                            0,
+                            storageClass);
+                const uint32_t coffIdx = coffSymCount++;
                 definedNameMap[s.name] = coffIdx;
                 if (s.binding == SymbolBinding::Global)
                     definedGlobalNameMap[s.name] = coffIdx;
@@ -1996,10 +2096,12 @@ bool CoffWriter::write(const std::string &path,
                 return false;
         }
         uint32_t rdataSize = 0;
+        uint32_t dataSize = 0;
         uint32_t xdataSize = 0;
         uint32_t pdataSize = 0;
         uint32_t debugLineDataSize = 0;
         if (!checkedU32(hasRodata ? patchedRodataBytes.size() : 0, ".rdata size", err, rdataSize) ||
+            !checkedU32(hasData ? data.bytes().size() : 0, ".data size", err, dataSize) ||
             !checkedU32(hasXdata ? xdataBytes.size() : 0, ".xdata size", err, xdataSize) ||
             !checkedU32(hasPdata ? pdataBytes.size() : 0, ".pdata size", err, pdataSize) ||
             !checkedU32(hasDebugLine ? debugLineData_.size() : 0,
@@ -2046,6 +2148,15 @@ bool CoffWriter::write(const std::string &path,
                     rdataRelocOff, rdataRelocSize, ".rdata relocation table", err, rdataRelocEnd))
                 return false;
             if (!alignU32Checked(rdataRelocEnd, 4, ".rdata relocation table", err, cursor))
+                return false;
+        }
+        uint32_t dataDataOff = 0;
+        if (hasData) {
+            dataDataOff = cursor;
+            uint32_t end = 0;
+            if (!addU32Checked(dataDataOff, dataSize, ".data data", err, end))
+                return false;
+            if (!alignU32Checked(end, 4, ".data data", err, cursor))
                 return false;
         }
         uint32_t xdataDataOff = 0;
@@ -2131,6 +2242,11 @@ bool CoffWriter::write(const std::string &path,
                                coffHeaderRelocCount(numRdataRelocs),
                                rdataChars);
         }
+        if (hasData) {
+            const uint32_t dataChars =
+                kImageScnCntInitData | kImageScnMemRead | kImageScnMemWrite | kImageScnAlign8;
+            writeSectionHeader(file, ".data", 0, 0, dataSize, dataDataOff, 0, 0, dataChars);
+        }
         if (hasXdata) {
             const uint32_t xdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
             writeSectionHeader(file, ".xdata", 0, 0, xdataSize, xdataDataOff, 0, 0, xdataChars);
@@ -2173,6 +2289,10 @@ bool CoffWriter::write(const std::string &path,
                 padTo(file, rdataRelocOff);
                 file.insert(file.end(), rdataRelocBytes.begin(), rdataRelocBytes.end());
             }
+        }
+        if (hasData) {
+            padTo(file, dataDataOff);
+            file.insert(file.end(), data.bytes().begin(), data.bytes().end());
         }
         if (hasXdata) {
             padTo(file, xdataDataOff);

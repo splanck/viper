@@ -1946,26 +1946,22 @@ bool lowerFptosi(const il::core::Instr &ins,
     const uint16_t vt = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = vt;
 
-    // vt = narrowed version of sv
+    // vt = narrowed version of sv = (sv << sh) >> sh (arithmetic for signed, logical for
+    // unsigned). Read sv directly into the first shift rather than emitting a separate
+    // `MovRR vt, sv`: that copy is a copy-forwarding hazard, because vt is the narrowed
+    // result (e.g. a switch scrutinee) and pre-RA copy forwarding could re-point its later
+    // uses back at sv even though the shifts redefine vt.
     if (sh > 0) {
-        // Copy sv into vt first
-        out.instrs.push_back(
-            MInstr{MOpcode::MovRR,
-                   {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
+        out.instrs.push_back(MInstr{MOpcode::LslRI,
+                                    {MOperand::vregOp(RegClass::GPR, vt),
+                                     MOperand::vregOp(RegClass::GPR, sv),
+                                     MOperand::immOp(sh)}});
         if (ins.op == il::core::Opcode::CastSiNarrowChk) {
-            out.instrs.push_back(MInstr{MOpcode::LslRI,
-                                        {MOperand::vregOp(RegClass::GPR, vt),
-                                         MOperand::vregOp(RegClass::GPR, vt),
-                                         MOperand::immOp(sh)}});
             out.instrs.push_back(MInstr{MOpcode::AsrRI,
                                         {MOperand::vregOp(RegClass::GPR, vt),
                                          MOperand::vregOp(RegClass::GPR, vt),
                                          MOperand::immOp(sh)}});
         } else {
-            out.instrs.push_back(MInstr{MOpcode::LslRI,
-                                        {MOperand::vregOp(RegClass::GPR, vt),
-                                         MOperand::vregOp(RegClass::GPR, vt),
-                                         MOperand::immOp(sh)}});
             out.instrs.push_back(MInstr{MOpcode::LsrRI,
                                         {MOperand::vregOp(RegClass::GPR, vt),
                                          MOperand::vregOp(RegClass::GPR, vt),

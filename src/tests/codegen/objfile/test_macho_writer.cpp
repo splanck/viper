@@ -733,6 +733,82 @@ static void testRodataRelocation() {
 }
 
 // =============================================================================
+// Test: Writable __DATA,__data section (scalar globals)
+// =============================================================================
+
+// A mutable scalar global (`global i64 @counter = 41`) is emitted as a defined
+// global in __DATA,__data. The text section references it as an *undefined*
+// external; the writer must coalesce that reference onto the data-section
+// definition so the relocation resolves intra-object.
+static void testDataSection() {
+    CodeSection text, rodata, data;
+
+    // text: `adrp x0, counter` referencing the global by name (undefined external),
+    // plus a defined function symbol so the section is non-trivial.
+    const uint32_t counterRef = text.findOrDeclareSymbol("counter");
+    text.addRelocation(RelocKind::A64AdrpPage21, counterRef, 0);
+    text.emit32LE(0x90000000); // adrp x0, #0 (page filled by linker)
+    text.emit32LE(0xD65F03C0); // ret
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+
+    // data: defined global `counter` initialized to 41 (8 little-endian bytes).
+    data.defineSymbol("counter", SymbolBinding::Global, SymbolSection::Data);
+    const uint64_t kInit = 41;
+    data.emit64LE(kInit);
+
+    const std::string path = tmpPath("viper_test_macho_data_section.o");
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::AArch64);
+    writer.setDataSection(data);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(readObjFile(path, obj, readErr));
+
+    // The __DATA,__data section exists, is writable, and holds the initializer.
+    const ObjSection *dataSec = findSection(obj, "__DATA,__data");
+    CHECK(dataSec != nullptr);
+    if (dataSec != nullptr) {
+        CHECK(dataSec->writable);
+        CHECK(dataSec->data.size() == 8);
+        if (dataSec->data.size() == 8) {
+            uint64_t stored = 0;
+            for (int i = 0; i < 8; ++i)
+                stored |= static_cast<uint64_t>(dataSec->data[static_cast<size_t>(i)]) << (i * 8);
+            CHECK(stored == kInit);
+        }
+    }
+
+    // `counter` is defined (Global) and lives in the __data section. (The Mach-O
+    // reader strips the Darwin `_` prefix, so the parsed name is "counter".)
+    const ObjSymbol *counterSym = findSymbol(obj, "counter");
+    CHECK(counterSym != nullptr);
+    if (counterSym != nullptr) {
+        CHECK(counterSym->binding == ObjSymbol::Global);
+        CHECK(counterSym->sectionIndex != 0);
+        if (counterSym->sectionIndex < obj.sections.size())
+            CHECK(obj.sections[counterSym->sectionIndex].name == "__DATA,__data");
+    }
+
+    // The text relocation resolves to that single defined `counter` symbol —
+    // i.e. the undefined reference coalesced onto the data definition (no
+    // separate undefined `counter` left dangling).
+    const ObjSection *textSec = findSection(obj, "__TEXT,__text");
+    CHECK(textSec != nullptr);
+    if (textSec != nullptr) {
+        CHECK(textSec->relocs.size() == 1);
+        if (textSec->relocs.size() == 1) {
+            const ObjSymbol &target = obj.symbols[textSec->relocs[0].symIndex];
+            CHECK(target.name == "counter");
+            CHECK(target.binding == ObjSymbol::Global);
+        }
+    }
+
+    std::remove(path.c_str());
+}
+
+// =============================================================================
 // Test: DYSYMTAB ranges
 // =============================================================================
 
@@ -1211,6 +1287,7 @@ int main() {
     testFactory();
     testRodataSection();
     testRodataRelocation();
+    testDataSection();
     testDysymtabRanges();
     testMultiSectionReaderSplitsSubsectionsViaSymbols();
     testSplitSubsectionsDoesNotDuplicateDirectRelocs();

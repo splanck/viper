@@ -51,6 +51,8 @@ bool EmitPass::run(AArch64Module &module, Diagnostics &diags) {
     // SCCP constant-propagates const_str values after CSE has already run.
     // Monitor whether pass ordering changes eliminate the remaining cases.
     module.rodataPool.emit(os, *module.ti);
+    // Emit writable scalar globals (.data) so gaddr references resolve.
+    module.rodataPool.emitData(os, *module.ti);
 
     AsmEmitter emitter{*module.ti};
     for (const auto &fn : module.mir) {

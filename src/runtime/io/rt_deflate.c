@@ -477,14 +477,441 @@ static int deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int 
     return 1;
 }
 
+//=============================================================================
+// Dynamic Huffman (BTYPE=2)
+//=============================================================================
+
+#define DH_LITLEN 286   ///< Literal/length alphabet size (0..285).
+#define DH_DIST 30      ///< Distance alphabet size (0..29).
+#define DH_CODELEN 19   ///< Code-length alphabet size (0..18).
+#define DH_MAXBITS 15   ///< Max code length for the litlen/dist trees.
+#define DH_CL_MAXBITS 7 ///< Max code length for the code-length tree.
+/// @brief Cap on inputs for which the dynamic path is attempted: the token buffer
+///        is up to 4*len bytes, so this bounds its allocation to ~64 MB.
+#define DH_MAX_INPUT (16u * 1024u * 1024u)
+
+/// @brief RFC 1951 §3.2.7 code-length-code transmission order.
+static const int dh_cl_order[DH_CODELEN] = {16, 17, 18, 0, 8,  7, 9,  6, 10, 5,
+                                            11, 4,  12, 3, 13, 2, 14, 1, 15};
+
+/// @brief One collected LZ77 token. `dist == 0` is a literal byte held in `len`;
+///        `dist > 0` is a (length 3..258, distance 1..32768) back-reference.
+typedef struct {
+    uint16_t len;
+    uint16_t dist;
+} dh_token;
+
+/// @brief Build length-limited canonical Huffman code lengths from symbol
+///        frequencies. Produces `lengths[0..n-1]` (0 for unused symbols) with no
+///        code longer than `max_bits`. A min-heap builds the optimal tree, then
+///        any over-long codes are redistributed the way zlib's gen_bitlen does
+///        (least-frequent symbols absorb the longest codes). On allocation
+///        failure it leaves all-zero lengths, which makes the caller fall back.
+static void dh_build_lengths(const uint32_t *freq, int n, int max_bits, uint8_t *lengths) {
+    for (int i = 0; i < n; i++)
+        lengths[i] = 0;
+
+    const int cap = 2 * n;
+    uint32_t *nfreq = (uint32_t *)malloc((size_t)cap * sizeof(uint32_t));
+    int *nleft = (int *)malloc((size_t)cap * sizeof(int));
+    int *nright = (int *)malloc((size_t)cap * sizeof(int));
+    int *nsym = (int *)malloc((size_t)cap * sizeof(int));
+    int *heap = (int *)malloc((size_t)cap * sizeof(int));
+    if (!nfreq || !nleft || !nright || !nsym || !heap) {
+        free(nfreq);
+        free(nleft);
+        free(nright);
+        free(nsym);
+        free(heap);
+        return;
+    }
+
+    int node_count = 0, heap_size = 0, last = -1, nonzero = 0;
+    for (int i = 0; i < n; i++) {
+        if (freq[i]) {
+            nonzero++;
+            last = i;
+            nfreq[node_count] = freq[i];
+            nleft[node_count] = -1;
+            nright[node_count] = -1;
+            nsym[node_count] = i;
+            heap[heap_size++] = node_count;
+            node_count++;
+        }
+    }
+    if (nonzero <= 1) {
+        if (nonzero == 1)
+            lengths[last] = 1; // a one-symbol alphabet still needs a 1-bit code
+        free(nfreq);
+        free(nleft);
+        free(nright);
+        free(nsym);
+        free(heap);
+        return;
+    }
+
+#define DH_LESS(x, y) (nfreq[x] < nfreq[y])
+#define DH_SIFT_DOWN(start)                                                                        \
+    do {                                                                                           \
+        int p = (start);                                                                           \
+        for (;;) {                                                                                 \
+            int c = 2 * p + 1;                                                                      \
+            if (c >= heap_size)                                                                     \
+                break;                                                                             \
+            if (c + 1 < heap_size && DH_LESS(heap[c + 1], heap[c]))                                 \
+                c++;                                                                               \
+            if (!DH_LESS(heap[c], heap[p]))                                                         \
+                break;                                                                             \
+            int t = heap[p];                                                                        \
+            heap[p] = heap[c];                                                                      \
+            heap[c] = t;                                                                            \
+            p = c;                                                                                 \
+        }                                                                                          \
+    } while (0)
+
+    for (int i = heap_size / 2 - 1; i >= 0; i--)
+        DH_SIFT_DOWN(i);
+
+    while (heap_size > 1) {
+        int a = heap[0];
+        heap[0] = heap[--heap_size];
+        DH_SIFT_DOWN(0);
+        int b = heap[0];
+        heap[0] = heap[--heap_size];
+        DH_SIFT_DOWN(0);
+        int m = node_count++;
+        nfreq[m] = nfreq[a] + nfreq[b];
+        nleft[m] = a;
+        nright[m] = b;
+        nsym[m] = -1;
+        int c = heap_size++;
+        heap[c] = m;
+        while (c > 0) {
+            int p = (c - 1) / 2;
+            if (!DH_LESS(heap[c], heap[p]))
+                break;
+            int t = heap[p];
+            heap[p] = heap[c];
+            heap[c] = t;
+            c = p;
+        }
+    }
+    int root = heap[0];
+
+    int *stk_node = (int *)malloc((size_t)cap * sizeof(int));
+    int *stk_depth = (int *)malloc((size_t)cap * sizeof(int));
+    int bl_count[64];
+    for (int i = 0; i < 64; i++)
+        bl_count[i] = 0;
+    int maxlen_seen = 0;
+    if (stk_node && stk_depth) {
+        int sp = 0;
+        stk_node[sp] = root;
+        stk_depth[sp] = 0;
+        sp++;
+        while (sp > 0) {
+            sp--;
+            int nd = stk_node[sp], d = stk_depth[sp];
+            if (nsym[nd] >= 0) {
+                int dd = d < 1 ? 1 : d;
+                lengths[nsym[nd]] = (uint8_t)dd;
+                if (dd > maxlen_seen)
+                    maxlen_seen = dd;
+                if (dd < 64)
+                    bl_count[dd]++;
+            } else if (d + 1 < 60) {
+                stk_node[sp] = nleft[nd];
+                stk_depth[sp] = d + 1;
+                sp++;
+                stk_node[sp] = nright[nd];
+                stk_depth[sp] = d + 1;
+                sp++;
+            }
+        }
+    }
+    free(stk_node);
+    free(stk_depth);
+
+    if (maxlen_seen > max_bits) {
+        int overflow = 0;
+        for (int b = max_bits + 1; b <= maxlen_seen && b < 64; b++) {
+            overflow += bl_count[b];
+            bl_count[max_bits] += bl_count[b];
+            bl_count[b] = 0;
+        }
+        while (overflow > 0) {
+            int b = max_bits - 1;
+            while (b > 0 && bl_count[b] == 0)
+                b--;
+            if (b == 0)
+                break;
+            bl_count[b]--;
+            bl_count[b + 1] += 2;
+            bl_count[max_bits]--;
+            overflow -= 2;
+        }
+        // Reassign: least-frequent symbols get the longest codes. Collect used
+        // symbols sorted by ascending frequency, then hand out lengths from
+        // max_bits downward according to bl_count.
+        int used = 0;
+        int *syms = (int *)malloc((size_t)n * sizeof(int));
+        if (syms) {
+            for (int i = 0; i < n; i++)
+                if (lengths[i])
+                    syms[used++] = i;
+            for (int i = 1; i < used; i++) { // insertion sort by ascending freq
+                int key = syms[i], j = i - 1;
+                while (j >= 0 && freq[syms[j]] > freq[key]) {
+                    syms[j + 1] = syms[j];
+                    j--;
+                }
+                syms[j + 1] = key;
+            }
+            int k = 0;
+            for (int bits = max_bits; bits >= 1; bits--) {
+                int cnt = bl_count[bits];
+                while (cnt-- > 0 && k < used)
+                    lengths[syms[k++]] = (uint8_t)bits;
+            }
+            free(syms);
+        }
+    }
+
+#undef DH_SIFT_DOWN
+#undef DH_LESS
+    free(nfreq);
+    free(nleft);
+    free(nright);
+    free(nsym);
+    free(heap);
+}
+
+/// @brief Assign canonical (MSB-first) Huffman codes from code lengths per
+///        RFC 1951 §3.2.2. Zero-length symbols get code 0 (unused).
+static void dh_assign_codes(const uint8_t *lengths, int n, uint16_t *codes) {
+    int bl_count[DH_MAXBITS + 1];
+    for (int i = 0; i <= DH_MAXBITS; i++)
+        bl_count[i] = 0;
+    for (int i = 0; i < n; i++)
+        if (lengths[i])
+            bl_count[lengths[i]]++;
+    uint16_t next_code[DH_MAXBITS + 1];
+    uint16_t code = 0;
+    for (int bits = 1; bits <= DH_MAXBITS; bits++) {
+        code = (uint16_t)((code + bl_count[bits - 1]) << 1);
+        next_code[bits] = code;
+    }
+    for (int i = 0; i < n; i++)
+        codes[i] = lengths[i] ? next_code[lengths[i]]++ : 0;
+}
+
+/// @brief Emit a single DEFLATE type-2 (dynamic Huffman) block with LZ77 matching.
+///
+/// Runs LZ77 once to collect tokens and symbol frequencies, builds optimal
+/// length-limited Huffman trees for the literal/length and distance alphabets,
+/// RLE-encodes the two code-length vectors using the code-length alphabet,
+/// builds a third tree to describe that, then emits the block header, the tree
+/// descriptions, and the tokens. Returns 0 (and emits nothing) on allocation
+/// failure or when the input is too large for the token buffer, so the caller
+/// can fall back to the fixed block.
+static int deflate_dynamic(bit_writer_t *bw, const uint8_t *data, size_t len, int level) {
+    if (len == 0 || len > DH_MAX_INPUT)
+        return 0;
+
+    dh_token *tokens = (dh_token *)malloc(len * sizeof(dh_token));
+    if (!tokens)
+        return 0;
+
+    uint32_t ll_freq[DH_LITLEN];
+    uint32_t d_freq[DH_DIST];
+    memset(ll_freq, 0, sizeof(ll_freq));
+    memset(d_freq, 0, sizeof(d_freq));
+    size_t ntok = 0;
+
+    lz77_state_t lz;
+    if (!lz77_init(&lz)) {
+        free(tokens);
+        return 0;
+    }
+    int max_chain = 4 << level;
+    size_t pos = 0;
+    while (pos < len) {
+        int md = 0, ml = 0;
+        if (pos + MIN_MATCH_LEN <= len)
+            ml = find_match(&lz, data, pos, len, max_chain, &md);
+        if (ml >= MIN_MATCH_LEN) {
+            tokens[ntok].len = (uint16_t)ml;
+            tokens[ntok].dist = (uint16_t)md;
+            ntok++;
+            ll_freq[get_length_code(ml)]++;
+            d_freq[get_dist_code(md)]++;
+            for (int i = 0; i < ml; i++)
+                if (pos + i + MIN_MATCH_LEN <= len)
+                    update_hash(&lz, data, pos + i);
+            pos += ml;
+        } else {
+            tokens[ntok].len = data[pos];
+            tokens[ntok].dist = 0;
+            ntok++;
+            ll_freq[data[pos]]++;
+            if (pos + MIN_MATCH_LEN <= len)
+                update_hash(&lz, data, pos);
+            pos++;
+        }
+    }
+    lz77_free(&lz);
+    ll_freq[256]++; // end-of-block
+
+    uint8_t ll_len[DH_LITLEN], d_len[DH_DIST];
+    dh_build_lengths(ll_freq, DH_LITLEN, DH_MAXBITS, ll_len);
+    dh_build_lengths(d_freq, DH_DIST, DH_MAXBITS, d_len);
+    // A well-formed block needs at least one distance code, even with no matches.
+    int any_dist = 0;
+    for (int i = 0; i < DH_DIST; i++)
+        any_dist |= (d_len[i] != 0);
+    if (!any_dist)
+        d_len[0] = 1;
+    // The end-of-block symbol must be present.
+    if (ll_len[256] == 0) {
+        free(tokens);
+        return 0;
+    }
+
+    uint16_t ll_code[DH_LITLEN], d_code[DH_DIST];
+    dh_assign_codes(ll_len, DH_LITLEN, ll_code);
+    dh_assign_codes(d_len, DH_DIST, d_code);
+
+    int hlit = DH_LITLEN;
+    while (hlit > 257 && ll_len[hlit - 1] == 0)
+        hlit--;
+    int hdist = DH_DIST;
+    while (hdist > 1 && d_len[hdist - 1] == 0)
+        hdist--;
+
+    // Build the combined code-length vector and RLE-encode it.
+    uint8_t cl_seq[DH_LITLEN + DH_DIST];
+    int cl_n = 0;
+    for (int i = 0; i < hlit; i++)
+        cl_seq[cl_n++] = ll_len[i];
+    for (int i = 0; i < hdist; i++)
+        cl_seq[cl_n++] = d_len[i];
+
+    enum { DH_RLE_CAP = 2 * (DH_LITLEN + DH_DIST) };
+    uint8_t rle_sym[DH_RLE_CAP], rle_extra[DH_RLE_CAP], rle_xbits[DH_RLE_CAP];
+    int rle_n = 0;
+    uint32_t cl_freq[DH_CODELEN];
+    memset(cl_freq, 0, sizeof(cl_freq));
+    for (int i = 0; i < cl_n;) {
+        int v = cl_seq[i];
+        int run = 1;
+        while (i + run < cl_n && cl_seq[i + run] == v)
+            run++;
+        i += run;
+        int rem = run;
+        if (v == 0) {
+            while (rem >= 11) {
+                int r = rem > 138 ? 138 : rem;
+                rle_sym[rle_n] = 18;
+                rle_extra[rle_n] = (uint8_t)(r - 11);
+                rle_xbits[rle_n] = 7;
+                rle_n++;
+                cl_freq[18]++;
+                rem -= r;
+            }
+            while (rem >= 3) {
+                int r = rem > 10 ? 10 : rem;
+                rle_sym[rle_n] = 17;
+                rle_extra[rle_n] = (uint8_t)(r - 3);
+                rle_xbits[rle_n] = 3;
+                rle_n++;
+                cl_freq[17]++;
+                rem -= r;
+            }
+            while (rem-- > 0) {
+                rle_sym[rle_n] = 0;
+                rle_extra[rle_n] = 0;
+                rle_xbits[rle_n] = 0;
+                rle_n++;
+                cl_freq[0]++;
+            }
+        } else {
+            rle_sym[rle_n] = (uint8_t)v;
+            rle_extra[rle_n] = 0;
+            rle_xbits[rle_n] = 0;
+            rle_n++;
+            cl_freq[v]++;
+            rem--;
+            while (rem >= 3) {
+                int r = rem > 6 ? 6 : rem;
+                rle_sym[rle_n] = 16;
+                rle_extra[rle_n] = (uint8_t)(r - 3);
+                rle_xbits[rle_n] = 2;
+                rle_n++;
+                cl_freq[16]++;
+                rem -= r;
+            }
+            while (rem-- > 0) {
+                rle_sym[rle_n] = (uint8_t)v;
+                rle_extra[rle_n] = 0;
+                rle_xbits[rle_n] = 0;
+                rle_n++;
+                cl_freq[v]++;
+            }
+        }
+    }
+
+    uint8_t cl_len[DH_CODELEN];
+    dh_build_lengths(cl_freq, DH_CODELEN, DH_CL_MAXBITS, cl_len);
+    uint16_t cl_code[DH_CODELEN];
+    dh_assign_codes(cl_len, DH_CODELEN, cl_code);
+
+    int hclen = DH_CODELEN;
+    while (hclen > 4 && cl_len[dh_cl_order[hclen - 1]] == 0)
+        hclen--;
+
+    int ok = 1;
+    ok = ok && bw_write(bw, 1, 1) && bw_write(bw, 2, 2); // BFINAL=1, BTYPE=2 (dynamic)
+    ok = ok && bw_write(bw, (uint32_t)(hlit - 257), 5);
+    ok = ok && bw_write(bw, (uint32_t)(hdist - 1), 5);
+    ok = ok && bw_write(bw, (uint32_t)(hclen - 4), 4);
+    for (int j = 0; ok && j < hclen; j++)
+        ok = bw_write(bw, cl_len[dh_cl_order[j]], 3);
+    for (int j = 0; ok && j < rle_n; j++) {
+        ok = write_code(bw, cl_code[rle_sym[j]], cl_len[rle_sym[j]]);
+        if (ok && rle_xbits[j])
+            ok = bw_write(bw, rle_extra[j], rle_xbits[j]);
+    }
+    for (size_t t = 0; ok && t < ntok; t++) {
+        if (tokens[t].dist == 0) {
+            int lit = tokens[t].len;
+            ok = write_code(bw, ll_code[lit], ll_len[lit]);
+        } else {
+            int ml = tokens[t].len, md = tokens[t].dist;
+            int lc = get_length_code(ml), li = lc - 257;
+            ok = write_code(bw, ll_code[lc], ll_len[lc]);
+            if (ok && length_extra_bits[li])
+                ok = bw_write(bw, (uint32_t)(ml - length_base[li]), length_extra_bits[li]);
+            int dc = get_dist_code(md);
+            if (ok)
+                ok = write_code(bw, d_code[dc], d_len[dc]);
+            if (ok && dist_extra_bits[dc])
+                ok = bw_write(bw, (uint32_t)(md - dist_base[dc]), dist_extra_bits[dc]);
+        }
+    }
+    if (ok)
+        ok = write_code(bw, ll_code[256], ll_len[256]); // end-of-block
+
+    free(tokens);
+    return ok;
+}
+
 /// @brief Top-level DEFLATE compression driver.
 ///
 /// Picks the block strategy: inputs of ≤64 bytes or level=1 use stored
-/// blocks (no Huffman savings worth the overhead); everything else uses
-/// a single fixed-Huffman block with LZ77. Dynamic Huffman (block type
-/// 2) is not currently emitted — decoder supports it for
-/// interoperability, but the encoder keeps encoding simple. Level is
-/// clamped to [1..9].
+/// blocks (no Huffman savings worth the overhead); levels 2–5 use a fixed
+/// Huffman block; levels ≥6 emit both a fixed and a dynamic-Huffman block and
+/// keep whichever is smaller, so dynamic coding never regresses output size.
+/// Level is clamped to [1..9].
 void *deflate_data(const uint8_t *data, size_t len, int level) {
     if (level < DEFLATE_MIN_LEVEL)
         level = DEFLATE_MIN_LEVEL;
@@ -495,12 +922,33 @@ void *deflate_data(const uint8_t *data, size_t len, int level) {
     if (!bw_init(&bw, len))
         return NULL;
 
-    // For small data or level 1, use stored blocks
-    // For larger data, use fixed Huffman
+    // For small data or level 1, use stored blocks; levels 2-5 use fixed Huffman;
+    // levels >=6 additionally try a dynamic-Huffman block and keep the smaller one.
     if (len <= 64 || level == 1) {
         if (!deflate_stored(&bw, data, len)) {
             bw_free(&bw);
             return NULL;
+        }
+    } else if (level >= 6) {
+        bit_writer_t bw_dyn;
+        int have_dyn = 0;
+        if (bw_init(&bw_dyn, len)) {
+            if (deflate_dynamic(&bw_dyn, data, len, level) && bw_flush(&bw_dyn))
+                have_dyn = 1;
+            else
+                bw_free(&bw_dyn);
+        }
+        if (!deflate_fixed(&bw, data, len, level) || !bw_flush(&bw)) {
+            if (have_dyn)
+                bw_free(&bw_dyn);
+            bw_free(&bw);
+            return rt_bytes_new(0);
+        }
+        if (have_dyn && bw_dyn.len < bw.len) {
+            bw_free(&bw); // dynamic won
+            bw = bw_dyn;  // take ownership of the smaller stream (already flushed)
+        } else if (have_dyn) {
+            bw_free(&bw_dyn);
         }
     } else {
         if (!deflate_fixed(&bw, data, len, level)) {

@@ -663,19 +663,21 @@ static void parseLine(ParseState &state, const std::string &line) {
     if (trimmed.empty() || startsWith(trimmed, "//") || startsWith(trimmed, "#"))
         return;
 
-    // Parse macros
-    if (auto args = extractParens(trimmed, "RT_FUNC")) {
-        parseRtFunc(state, *args);
-    } else if (auto args = extractParens(trimmed, "RT_ALIAS")) {
-        parseRtAlias(state, *args);
-    } else if (auto args = extractParens(trimmed, "RT_BRIDGE")) {
-        parseRtBridge(state, *args);
-    } else if (auto args = extractParens(trimmed, "RT_CLASS_BEGIN")) {
-        parseRtClassBegin(state, *args);
-    } else if (auto args = extractParens(trimmed, "RT_PROP")) {
-        parseRtProp(state, *args);
-    } else if (auto args = extractParens(trimmed, "RT_METHOD")) {
-        parseRtMethod(state, *args);
+    // Parse macros. Each branch uses a distinct binding name: an `else if`
+    // condition declaration stays in scope through the rest of the chain, so a
+    // shared name trips -Wshadow.
+    if (auto funcArgs = extractParens(trimmed, "RT_FUNC")) {
+        parseRtFunc(state, *funcArgs);
+    } else if (auto aliasArgs = extractParens(trimmed, "RT_ALIAS")) {
+        parseRtAlias(state, *aliasArgs);
+    } else if (auto bridgeArgs = extractParens(trimmed, "RT_BRIDGE")) {
+        parseRtBridge(state, *bridgeArgs);
+    } else if (auto classBeginArgs = extractParens(trimmed, "RT_CLASS_BEGIN")) {
+        parseRtClassBegin(state, *classBeginArgs);
+    } else if (auto propArgs = extractParens(trimmed, "RT_PROP")) {
+        parseRtProp(state, *propArgs);
+    } else if (auto methodArgs = extractParens(trimmed, "RT_METHOD")) {
+        parseRtMethod(state, *methodArgs);
     } else if (trimmed == "RT_CLASS_END()") {
         parseRtClassEnd(state);
     } else {

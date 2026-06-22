@@ -462,8 +462,10 @@ Direct-call graph with strongly connected component analysis:
 
 ## Reassociate
 
-- Reassociates commutative/associative chains (add, mul, and/or/xor) to improve constant folding.
-- Normalizes expression trees so ConstFold can fold more constants in a single pass.
+- Canonicalizes operand order for commutative/associative ops (add, mul, and/or/xor): operands are
+  sorted (temporaries by descending ID, then constants) so equivalent expressions match for CSE/GVN.
+- Despite the pass name, it does not yet restructure or rebalance expression chains; canonical operand
+  order still helps ConstFold and GVN line up constants in a single pass.
 - Implementation: `src/il/transform/Reassociate.cpp`
 
 ## SiblingRecursion

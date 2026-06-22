@@ -381,6 +381,16 @@ void collectUsesDefs(const MInstr &instr, const TargetInfo &target, RegSet &uses
         addCallImplicitUses(target, uses);
         addCallClobbers(target, defs);
     }
+
+    // A Ret reads the function's return value from the ABI return registers even though
+    // the instruction carries no explicit operand. Mark them used so the chain computing
+    // the return value is not treated as dead when the Ret's block also has other
+    // successors (e.g. idx.chk's bounds-trap branches that precede the final Ret),
+    // because then the block's live-out is taken from successors that omit x0/v0.
+    if (instr.opc == MOpcode::Ret) {
+        uses.insertKey(physRegKey(target.intReturnReg));
+        uses.insertKey(physRegKey(target.f64ReturnReg));
+    }
 }
 
 /// @brief Append the block index for @p label to @p succs if not already present.

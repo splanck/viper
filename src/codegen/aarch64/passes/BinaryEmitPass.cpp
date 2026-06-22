@@ -120,6 +120,17 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         rodata.emit8(0); // NUL terminator
     }
 
+    // Seed writable scalar globals as a separate __DATA section so gaddr/store/load
+    // resolve to a real, writable symbol (text relocations to the name coalesce to it).
+    objfile::CodeSection data;
+    for (const auto &dg : module.rodataPool.dataGlobals()) {
+        if (dg.bytes.empty())
+            continue;
+        data.alignTo(static_cast<size_t>(dg.sizeBytes));
+        data.defineSymbol(dg.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Data);
+        data.emitBytes(dg.bytes.data(), dg.bytes.size());
+    }
+
     // Set up debug line table for address→line mapping when requested.
     viper::codegen::DebugLineTable debugLines;
     if (module.emitDebugLines)
@@ -219,6 +230,7 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         mergedText.appendSection(section);
     module.binaryText = std::move(mergedText);
     module.binaryRodata = std::move(rodata);
+    module.binaryData = std::move(data);
     return true;
 }
 

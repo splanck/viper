@@ -6,7 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/Reassociate.cpp
-// Purpose: Implements algebraic reassociation of commutative+associative ops.
+// Purpose: Canonicalizes operand order for commutative+associative ops (operand sorting
+//          only; this pass does not restructure or rebalance expression trees).
 //
 //===----------------------------------------------------------------------===//
 
