@@ -20,6 +20,7 @@
 
 #include "tools/lsp-common/LspHandler.hpp"
 
+#include "common/PlatformCapabilities.hpp"
 #include "tools/lsp-common/Transport.hpp"
 
 #include <algorithm>
@@ -27,10 +28,12 @@
 #include <cstdint>
 #include <cstdio>
 #include <exception>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <optional>
 #include <string_view>
+#include <system_error>
 
 namespace viper::server {
 namespace {
@@ -166,6 +169,27 @@ static std::string encodeUriPath(std::string_view path) {
         }
     }
     return out;
+}
+
+std::string comparableSourcePath(const std::string &path) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path p(path);
+    const fs::path absolute = fs::absolute(p, ec);
+    if (!ec)
+        p = absolute;
+    std::string normalized = p.lexically_normal().generic_string();
+#if VIPER_HOST_WINDOWS
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](char c) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    });
+#endif
+    return normalized;
+}
+
+bool sameSourceFile(const std::string &lhs, const std::string &rhs) {
+    return lhs == rhs ||
+           (!lhs.empty() && !rhs.empty() && comparableSourcePath(lhs) == comparableSourcePath(rhs));
 }
 
 /// @brief Best-effort conversion from a filesystem path to a file URI.
@@ -612,7 +636,7 @@ bool sourceRangeToLspSpan(const std::string &content,
 JsonValue rangeForSourceRange(const SourceRangeInfo &range,
                               const std::string *content,
                               const std::string &contentPath) {
-    if (content && range.file == contentPath)
+    if (content && sameSourceFile(range.file, contentPath))
         return diagnosticRangeForSpan(
             *content, range.line, range.column, range.endLine, range.endColumn);
 
@@ -636,11 +660,20 @@ JsonValue rangeForSourceRange(const SourceRangeInfo &range,
     return makeRange(startLine, startCol, endLine, std::max(endCol, startCol + 1));
 }
 
+std::string uriForSourceFile(const std::string &file,
+                             const std::string &contentPath,
+                             const std::string &contentUri) {
+    if (!contentUri.empty() && sameSourceFile(file, contentPath))
+        return contentUri;
+    return pathToFileUri(file);
+}
+
 JsonValue locationToJson(const LocationInfo &location,
                          const std::string *content,
-                         const std::string &contentPath) {
+                         const std::string &contentPath,
+                         const std::string &contentUri) {
     return JsonValue::object({
-        {"uri", JsonValue(pathToFileUri(location.range.file))},
+        {"uri", JsonValue(uriForSourceFile(location.range.file, contentPath, contentUri))},
         {"range", rangeForSourceRange(location.range, content, contentPath)},
     });
 }
@@ -1133,7 +1166,7 @@ std::string LspHandler::handleDefinition(const JsonRpcRequest &req) {
     auto location = bridge_.definition(*content, compilerLine, compilerCol, path);
     if (!location)
         return buildResponse(req.id, JsonValue());
-    return buildResponse(req.id, locationToJson(*location, content, path));
+    return buildResponse(req.id, locationToJson(*location, content, path, uri));
 }
 
 // --- References ---
@@ -1171,7 +1204,7 @@ std::string LspHandler::handleReferences(const JsonRpcRequest &req) {
     for (const auto &ref : refs) {
         if (!includeDeclaration && ref.isDefinition)
             continue;
-        arr.push_back(locationToJson(ref, content, path));
+        arr.push_back(locationToJson(ref, content, path, uri));
     }
     return buildResponse(req.id, JsonValue(std::move(arr)));
 }
@@ -1211,7 +1244,7 @@ std::string LspHandler::handleRename(const JsonRpcRequest &req) {
 
     std::map<std::string, JsonValue::ArrayType> editsByUri;
     for (const auto &edit : result.edits) {
-        editsByUri[pathToFileUri(edit.range.file)].push_back(JsonValue::object({
+        editsByUri[uriForSourceFile(edit.range.file, path, uri)].push_back(JsonValue::object({
             {"range", rangeForSourceRange(edit.range, content, path)},
             {"newText", JsonValue(edit.newText)},
         }));

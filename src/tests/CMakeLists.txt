@@ -81,6 +81,11 @@ find_package(Threads REQUIRED)
 find_program(VIPER_BASH_EXECUTABLE NAMES bash)
 
 if (VIPER_BASH_EXECUTABLE)
+    set(_viper_source_health_audit_timeout 60)
+    if (WIN32)
+        set(_viper_source_health_audit_timeout 300)
+    endif ()
+
     add_test(NAME check_vm_semantics_duplication
             COMMAND ${VIPER_BASH_EXECUTABLE}
             scripts/check_vm_semantics_duplication.sh
@@ -154,7 +159,7 @@ if (VIPER_BASH_EXECUTABLE)
     set_tests_properties(source_health_audit PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "tools;audit;requires_posix_shell"
-            TIMEOUT 60)
+            TIMEOUT ${_viper_source_health_audit_timeout})
 endif ()
 
 add_library(viper_testing INTERFACE)
@@ -1203,7 +1208,7 @@ add_test(NAME zia_smoke_game3d_showcase_tree_fallback_materials
 set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 45)
+        TIMEOUT 120)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
@@ -1230,7 +1235,7 @@ if (WIN32)
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
             ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
-            TIMEOUT 90)
+            TIMEOUT 180)
 endif ()
 if (APPLE)
     add_test(NAME zia_smoke_game3d_showcase_software

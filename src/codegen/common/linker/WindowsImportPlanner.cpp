@@ -366,6 +366,8 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "dclass",
         "difftime64",
         "_difftime64",
+        "_invalid_parameter",
+        "invalid_parameter",
         "dsign",
         "dtest",
         "_dtest",

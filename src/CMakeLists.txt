@@ -6,6 +6,7 @@ add_subdirectory(support)
 # Build the generator tool that creates .inc files from runtime.def
 add_executable(rtgen tools/rtgen/rtgen.cpp)
 target_compile_features(rtgen PRIVATE cxx_std_17)
+target_link_libraries(rtgen PRIVATE viper_common_opts)
 
 # Generate runtime registry files
 set(RTGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/il/runtime")

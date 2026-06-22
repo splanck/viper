@@ -279,7 +279,7 @@ static std::uintmax_t &assetBundleCacheBytes() {
 ///          limit enforced by asset validation. Reading here keeps cache
 ///          validation self-contained and catches same-size external rewrites.
 static std::string hashGeneratedPackFile(const fs::path &path) {
-    const auto data = viper::pkg::readFile(path);
+    const auto data = viper::pkg::readFile(path.string());
     return data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
                         : viper::pkg::sha256Hex(data.data(), data.size());
 }

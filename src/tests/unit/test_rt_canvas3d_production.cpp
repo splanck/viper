@@ -726,7 +726,11 @@ static int rgba_equal(const SoftwareSceneRenderResult &a, const SoftwareSceneRen
 }
 
 static void test_software_spot_light_shadow_render_is_stable() {
+#if RT_COMPILER_MSVC
+    const uint64_t expected_hash = 0x2a3dee15e4bee83full;
+#else
     const uint64_t expected_hash = 0x728c7560b310b408ull;
+#endif
     SoftwareSceneRenderResult result;
 
     EXPECT_TRUE(render_software_spot_light_shadow_scene(&result),

@@ -216,6 +216,7 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "_Smtx_lock_exclusive",
                                         "__std_find_trivial_1",
                                         "fsetpos",
+                                        "_invalid_parameter",
                                         "_beginthreadex",
                                         "terminate",
                                         "__imp_ExitProcess"},

@@ -31,6 +31,57 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+shell_path() {
+    local path="$1"
+    case "$path" in
+        [A-Za-z]:/*)
+            local drive="${path%%:*}"
+            local rest="${path#?:/}"
+            local drive_lower
+            drive_lower="$(printf '%s' "$drive" | tr '[:upper:]' '[:lower:]')"
+            local candidate="/mnt/$drive_lower/$rest"
+            if [[ -e "$candidate" ]]; then
+                printf '%s\n' "$candidate"
+                return
+            fi
+            ;;
+    esac
+    printf '%s\n' "$path"
+}
+
+windows_path() {
+    local path="$1"
+    case "$path" in
+        /mnt/[A-Za-z]/*)
+            local drive="${path#/mnt/}"
+            drive="${drive%%/*}"
+            local rest="${path#/mnt/$drive/}"
+            local drive_upper
+            drive_upper="$(printf '%s' "$drive" | tr '[:lower:]' '[:upper:]')"
+            printf '%s:/%s\n' "$drive_upper" "$rest"
+            return
+            ;;
+    esac
+    printf '%s\n' "$path"
+}
+
+VIPER_BIN_USES_WINDOWS_ARGS=0
+case "$VIPER_BIN" in
+    [A-Za-z]:/*) VIPER_BIN_USES_WINDOWS_ARGS=1 ;;
+esac
+VIPER_BIN="$(shell_path "$VIPER_BIN")"
+case "$VIPER_BIN" in
+    /mnt/[A-Za-z]/*.exe) VIPER_BIN_USES_WINDOWS_ARGS=1 ;;
+esac
+
+viper_arg_path() {
+    if [[ "$VIPER_BIN_USES_WINDOWS_ARGS" -eq 1 ]]; then
+        windows_path "$1"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
 if [[ ! -f "$MANIFEST" ]]; then
     echo "error: manifest not found: $MANIFEST" >&2
     exit 1
@@ -130,7 +181,7 @@ fi
 
 while IFS=$'\t' read -r action target; do
     [[ -z "${action:-}" ]] && continue
-    full_target="$ROOT_DIR/examples/$target"
+    full_target="$(viper_arg_path "$ROOT_DIR/examples/$target")"
     case "$action" in
         check)
             echo "[examples] check examples/$target"

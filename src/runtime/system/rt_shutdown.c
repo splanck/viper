@@ -21,10 +21,9 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 
-static atomic_llong g_shutdown_pending = ATOMIC_VAR_INIT(0);
-static atomic_bool g_shutdown_polling_enabled = ATOMIC_VAR_INIT(false);
-static _Atomic(rt_shutdown_clear_interrupt_fn) g_clear_interrupt_callback =
-    ATOMIC_VAR_INIT((rt_shutdown_clear_interrupt_fn)0);
+static atomic_llong g_shutdown_pending;
+static atomic_bool g_shutdown_polling_enabled;
+static _Atomic(rt_shutdown_clear_interrupt_fn) g_clear_interrupt_callback;
 
 static void mark_polling_enabled(void) {
     atomic_store_explicit(&g_shutdown_polling_enabled, true, memory_order_release);

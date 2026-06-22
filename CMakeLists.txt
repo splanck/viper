@@ -146,6 +146,7 @@ if(MSVC)
   # and UTF-8 source encoding. These must apply to ALL targets including
   # sub-libraries that don't link viper_common_opts.
   add_compile_options(/FS /utf-8)
+  add_compile_options($<$<COMPILE_LANGUAGE:C>:/experimental:c11atomics>)
 
   # MSVC-specific compiler flags
   list(APPEND IL_COMPILE_FLAGS /W4 /permissive-)

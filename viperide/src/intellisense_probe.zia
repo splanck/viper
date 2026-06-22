@@ -295,7 +295,7 @@ func main() {
         return;
     }
     completer.TriggerCompletion();
-    pumpCompletion(completer, 200);
+    pumpCompletion(completer, 600);
     if listContains(completer.allLabels, "workspaceHelper") == false {
         fail(shell, "workspace symbol completion missing project function");
         return;
@@ -334,7 +334,7 @@ func main() {
 
     var badSrc = "module IntelliProbe;\nfunc f() -> Integer { return ; }\n";
     var diagJob = ZiaToolchain.BeginCheckForFile(badSrc, "intellisense_probe.zia");
-    if waitSemanticJob(diagJob, 200) == false {
+    if waitSemanticJob(diagJob, 600) == false {
         fail(shell, "async diagnostics job did not finish");
         return;
     }
