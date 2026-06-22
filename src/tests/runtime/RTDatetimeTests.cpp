@@ -161,8 +161,17 @@ static void test_parsing(void) {
           rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00.Z")) == 0);
     check("ParseISO rejects malformed timezone offsets",
           rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+0230")) == 0);
+    parsed = rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+14:00"));
+    roundtrip = rt_datetime_to_iso(parsed);
+    check("ParseISO accepts maximum timezone offset",
+          strcmp(rt_string_cstr(roundtrip), "2024-01-14T20:30:00Z") == 0);
+    rt_string_unref(roundtrip);
     check("ParseISO rejects out-of-range timezone hour",
           rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+24:00")) == 0);
+    check("ParseISO rejects timezone offset beyond +14:00",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+14:01")) == 0);
+    check("ParseISO rejects timezone offset beyond -14:00",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00-14:01")) == 0);
     check("ParseISO rejects out-of-range timezone minute",
           rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+02:60")) == 0);
     check("ParseISO rejects invalid calendar date",

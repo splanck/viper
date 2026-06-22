@@ -123,6 +123,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "IsDebuggerPresent",
         "InitOnceExecuteOnce",
         "InitializeCriticalSection",
+        "InitializeCriticalSectionAndSpinCount",
         "InitializeSListHead",
         "LeaveCriticalSection",
         "DeleteCriticalSection",

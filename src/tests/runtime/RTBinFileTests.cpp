@@ -369,6 +369,40 @@ static void test_write_invalid_bytes_data_traps_before_write() {
     cleanup_test_file();
 }
 
+static void test_read_invalid_bytes_data_traps_before_read() {
+    cleanup_test_file();
+
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    rt_string path = make_string(test_file);
+    rt_string mode = make_string("w");
+    void *bf = rt_binfile_open(path, mode);
+    assert(bf != nullptr);
+    rt_binfile_write_byte(bf, 0x66);
+    rt_binfile_close(bf);
+
+    mode = make_string("r");
+    bf = rt_binfile_open(path, mode);
+    assert(bf != nullptr);
+
+    FakeBytes *bad =
+        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = 1;
+    bad->data = nullptr;
+
+    EXPECT_TRAP(rt_binfile_read(bf, bad, 0, 1));
+    assert(rt_binfile_pos(bf) == 0);
+    assert(rt_binfile_read_byte(bf) == 0x66);
+    rt_binfile_close(bf);
+
+    if (rt_obj_release_check0(bad))
+        rt_obj_free(bad);
+    cleanup_test_file();
+}
+
 static void test_eof() {
     cleanup_test_file();
 
@@ -686,6 +720,7 @@ int main() {
     test_large_count_clamps_without_overflow();
     test_invalid_bytes_handle_traps();
     test_write_invalid_bytes_data_traps_before_write();
+    test_read_invalid_bytes_data_traps_before_read();
     test_eof();
     test_append_mode();
     test_read_write_mode();

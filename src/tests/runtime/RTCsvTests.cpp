@@ -338,6 +338,16 @@ static void test_invalid_delimiter_traps() {
     printf("test_invalid_delimiter_traps: PASSED\n");
 }
 
+static void test_format_invalid_receivers_trap() {
+    EXPECT_TRAP(rt_csv_format_line((void *)make_str("not fields")));
+
+    void *rows = rt_seq_new();
+    rt_seq_push(rows, (void *)make_str("not a row"));
+    EXPECT_TRAP(rt_csv_format(rows));
+
+    printf("test_format_invalid_receivers_trap: PASSED\n");
+}
+
 // ============================================================================
 // Format (multi-line) Tests
 // ============================================================================
@@ -470,6 +480,7 @@ int main() {
     test_format_line_embedded_nul();
     test_format_line_boxed_non_strings();
     test_invalid_delimiter_traps();
+    test_format_invalid_receivers_trap();
 
     // Format (multi-line) tests
     test_format_multiline();

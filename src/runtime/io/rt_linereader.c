@@ -63,8 +63,10 @@ typedef struct rt_linereader_impl {
 } rt_linereader_impl;
 
 static rt_linereader_impl *linereader_require(void *obj, const char *context) {
-    if (!obj || rt_obj_class_id(obj) != RT_LINEREADER_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_LINEREADER_CLASS_ID) {
         rt_trap(context ? context : "LineReader: invalid reader");
+        return NULL;
+    }
     return (rt_linereader_impl *)obj;
 }
 
@@ -90,6 +92,8 @@ static void rt_linereader_finalize(void *obj) {
     if (!obj)
         return;
     rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
+    if (!lr)
+        return;
     if (lr->fp && !lr->closed) {
         fclose(lr->fp);
         lr->fp = NULL;
@@ -204,6 +208,8 @@ void rt_linereader_close(void *obj) {
         return;
 
     rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
+    if (!lr)
+        return;
     if (lr->fp && !lr->closed) {
         fclose(lr->fp);
         lr->fp = NULL;
@@ -283,6 +289,8 @@ rt_string rt_linereader_read(void *obj) {
     }
 
     rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
+    if (!lr)
+        return rt_string_from_bytes("", 0);
     if (!lr->fp || lr->closed) {
         rt_trap("LineReader.Read: reader is closed");
         return rt_string_from_bytes("", 0);
@@ -408,6 +416,8 @@ int64_t rt_linereader_read_char(void *obj) {
     }
 
     rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
+    if (!lr)
+        return -1;
     if (!lr->fp || lr->closed) {
         rt_trap("LineReader.ReadChar: reader is closed");
         return -1;
@@ -467,6 +477,8 @@ int64_t rt_linereader_peek_char(void *obj) {
     }
 
     rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
+    if (!lr)
+        return -1;
     if (!lr->fp || lr->closed) {
         rt_trap("LineReader.PeekChar: reader is closed");
         return -1;
@@ -535,6 +547,8 @@ rt_string rt_linereader_read_all(void *obj) {
     }
 
     rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
+    if (!lr)
+        return rt_string_from_bytes("", 0);
     if (!lr->fp || lr->closed) {
         rt_trap("LineReader.ReadAll: reader is closed");
         return rt_string_from_bytes("", 0);
@@ -651,6 +665,8 @@ int8_t rt_linereader_eof(void *obj) {
         return 1;
 
     rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
+    if (!lr)
+        return 1;
     if (!lr->fp || lr->closed)
         return 1;
 

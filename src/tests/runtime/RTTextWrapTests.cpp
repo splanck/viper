@@ -10,11 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt.hpp"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_textwrap.h"
 
 #include <cassert>
+#include <csetjmp>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -22,6 +25,24 @@
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
+}
+
+static rt_string invalid_string_handle() {
+    return (rt_string)(uintptr_t)1;
+}
+
+static void expect_trap(void (*fn)(), const char *snippet) {
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    if (setjmp(env) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        assert(false && "expected trap");
+    }
+
+    const char *message = rt_trap_get_error();
+    test_result("Trap message matches", message != nullptr && strstr(message, snippet) != nullptr);
+    rt_trap_clear_recovery();
 }
 
 //=============================================================================
@@ -285,6 +306,28 @@ static void test_alignment() {
     printf("\n");
 }
 
+static void trap_wrap_invalid_text() {
+    (void)rt_textwrap_wrap(invalid_string_handle(), 10);
+}
+
+static void trap_indent_invalid_prefix() {
+    (void)rt_textwrap_indent(rt_const_cstr("Line"), invalid_string_handle());
+}
+
+static void trap_center_invalid_text() {
+    (void)rt_textwrap_center(invalid_string_handle(), 5);
+}
+
+static void test_invalid_handles_trap() {
+    printf("Testing TextWrapper invalid handles:\n");
+
+    expect_trap(trap_wrap_invalid_text, "TextWrapper.Wrap: invalid string");
+    expect_trap(trap_indent_invalid_prefix, "TextWrapper.Indent: invalid prefix");
+    expect_trap(trap_center_invalid_text, "TextWrapper.Center: invalid string");
+
+    printf("\n");
+}
+
 static void test_utility() {
     printf("Testing TextWrapper Utility:\n");
 
@@ -362,6 +405,7 @@ int main() {
     test_truncate();
     test_shorten();
     test_alignment();
+    test_invalid_handles_trap();
     test_utility();
     test_hang();
 

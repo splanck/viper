@@ -35,6 +35,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_seq_internal.h"
 #include "rt_string.h"
 
 #include <limits.h>
@@ -92,10 +93,17 @@ static char get_delim(rt_string delim) {
     return d;
 }
 
-static void csv_checked_add(size_t *total, size_t add, const char *op) {
-    if (*total > SIZE_MAX - add)
+static bool csv_is_seq(void *obj) {
+    return rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, sizeof(rt_seq_impl)) != 0;
+}
+
+static bool csv_checked_add(size_t *total, size_t add, const char *op) {
+    if (*total > SIZE_MAX - add) {
         rt_trap(op);
+        return false;
+    }
     *total += add;
+    return true;
 }
 
 /// @brief Check if field needs quoting for CSV output.
@@ -478,8 +486,10 @@ static size_t calc_field_size(const char *field, size_t field_len, char delim) {
     size_t size = 2;
     for (size_t i = 0; i < field_len; i++) {
         size_t add = (field[i] == '"') ? 2 : 1;
-        if (size > SIZE_MAX - add)
+        if (size > SIZE_MAX - add) {
             rt_trap("Csv.Format: output length overflow");
+            return SIZE_MAX;
+        }
         size += add;
     }
     return size;
@@ -675,6 +685,8 @@ void *rt_csv_parse_with(rt_string text, rt_string delim) {
     parser_init(&p, input, len, d);
 
     void *rows = rt_seq_new();
+    if (!rows)
+        return NULL;
     rt_seq_set_owns_elements(rows, 1);
 
     while (!parser_eof(&p)) {
@@ -784,6 +796,10 @@ rt_string rt_csv_format_line(void *fields) {
 rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
     if (!fields)
         return rt_string_from_bytes("", 0);
+    if (!csv_is_seq(fields)) {
+        rt_trap("Csv.FormatLine: invalid fields");
+        return rt_string_from_bytes("", 0);
+    }
 
     char d = get_delim(delim);
     int64_t count = rt_seq_len(fields);
@@ -798,16 +814,27 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
         rt_string field = csv_value_to_string(rt_seq_get(fields, i), &owned);
         const char *str = field ? rt_string_cstr(field) : "";
         size_t field_len = field ? (size_t)rt_str_len(field) : 0;
-        csv_checked_add(&total_size,
-                        calc_field_size(str, field_len, d),
-                        "Csv.FormatLine: output length overflow");
-        if (i < count - 1)
-            csv_checked_add(&total_size, 1, "Csv.FormatLine: output length overflow");
+        size_t field_size = calc_field_size(str, field_len, d);
+        if (field_size == SIZE_MAX ||
+            !csv_checked_add(
+                &total_size, field_size, "Csv.FormatLine: output length overflow")) {
+            if (owned)
+                rt_string_unref(field);
+            return rt_string_from_bytes("", 0);
+        }
+        if (i < count - 1 &&
+            !csv_checked_add(&total_size, 1, "Csv.FormatLine: output length overflow")) {
+            if (owned)
+                rt_string_unref(field);
+            return rt_string_from_bytes("", 0);
+        }
         if (owned)
             rt_string_unref(field);
     }
-    if (total_size == SIZE_MAX)
+    if (total_size == SIZE_MAX) {
         rt_trap("Csv.FormatLine: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
 
     char *out = (char *)malloc(total_size + 1);
     if (!out) {
@@ -912,6 +939,10 @@ rt_string rt_csv_format(void *rows) {
 rt_string rt_csv_format_with(void *rows, rt_string delim) {
     if (!rows)
         return rt_string_from_bytes("", 0);
+    if (!csv_is_seq(rows)) {
+        rt_trap("Csv.Format: invalid rows");
+        return rt_string_from_bytes("", 0);
+    }
 
     char d = get_delim(delim);
     int64_t row_count = rt_seq_len(rows);
@@ -925,6 +956,10 @@ rt_string rt_csv_format_with(void *rows, rt_string delim) {
         void *row = rt_seq_get(rows, r);
         if (!row)
             continue;
+        if (!csv_is_seq(row)) {
+            rt_trap("Csv.Format: invalid row");
+            return rt_string_from_bytes("", 0);
+        }
 
         int64_t count = rt_seq_len(row);
         for (int64_t i = 0; i < count; i++) {
@@ -932,22 +967,35 @@ rt_string rt_csv_format_with(void *rows, rt_string delim) {
             rt_string field = csv_value_to_string(rt_seq_get(row, i), &owned);
             const char *str = field ? rt_string_cstr(field) : "";
             size_t field_len = field ? (size_t)rt_str_len(field) : 0;
-            csv_checked_add(&total_size,
-                            calc_field_size(str, field_len, d),
-                            "Csv.Format: output length overflow");
-            if (i < count - 1)
-                csv_checked_add(&total_size, 1, "Csv.Format: output length overflow");
+            size_t field_size = calc_field_size(str, field_len, d);
+            if (field_size == SIZE_MAX ||
+                !csv_checked_add(&total_size, field_size, "Csv.Format: output length overflow")) {
+                if (owned)
+                    rt_string_unref(field);
+                return rt_string_from_bytes("", 0);
+            }
+            if (i < count - 1 &&
+                !csv_checked_add(&total_size, 1, "Csv.Format: output length overflow")) {
+                if (owned)
+                    rt_string_unref(field);
+                return rt_string_from_bytes("", 0);
+            }
             if (owned)
                 rt_string_unref(field);
         }
-        csv_checked_add(&total_size, 1, "Csv.Format: output length overflow");
+        if (!csv_checked_add(&total_size, 1, "Csv.Format: output length overflow"))
+            return rt_string_from_bytes("", 0);
     }
-    if (total_size == SIZE_MAX)
+    if (total_size == SIZE_MAX) {
         rt_trap("Csv.Format: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
 
     char *out = (char *)malloc(total_size + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Csv.Format: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t pos = 0;
     for (int64_t r = 0; r < row_count; r++) {
@@ -955,6 +1003,11 @@ rt_string rt_csv_format_with(void *rows, rt_string delim) {
         if (!row) {
             out[pos++] = '\n';
             continue;
+        }
+        if (!csv_is_seq(row)) {
+            free(out);
+            rt_trap("Csv.Format: invalid row");
+            return rt_string_from_bytes("", 0);
         }
 
         int64_t count = rt_seq_len(row);

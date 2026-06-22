@@ -125,6 +125,34 @@ static void dur_append_snprintf(char **p, char *end, int len) {
     *p += len;
 }
 
+static void dur_append_iso_seconds(char **p,
+                                   char *end,
+                                   uint64_t seconds,
+                                   uint64_t millis) {
+    if (*p >= end)
+        return;
+    if (millis == 0) {
+        dur_append_snprintf(
+            p, end, snprintf(*p, (size_t)(end - *p), "%lluS", (unsigned long long)seconds));
+        return;
+    }
+
+    char frac[4];
+    snprintf(frac, sizeof(frac), "%03llu", (unsigned long long)millis);
+    size_t frac_len = 3;
+    while (frac_len > 0 && frac[frac_len - 1] == '0')
+        frac_len--;
+    frac[frac_len] = '\0';
+
+    dur_append_snprintf(p,
+                        end,
+                        snprintf(*p,
+                                 (size_t)(end - *p),
+                                 "%llu.%sS",
+                                 (unsigned long long)seconds,
+                                 frac));
+}
+
 //=============================================================================
 // Duration Creation
 //=============================================================================
@@ -502,22 +530,8 @@ rt_string rt_duration_to_iso(int64_t duration) {
                     &p, end, snprintf(p, (size_t)(end - p), "%lluM", (unsigned long long)minutes));
         }
         if (seconds > 0 || millis > 0) {
-            if (millis > 0) {
-                if (p < end)
-                    dur_append_snprintf(&p,
-                                        end,
-                                        snprintf(p,
-                                                 (size_t)(end - p),
-                                                 "%llu.%03lluS",
-                                                 (unsigned long long)seconds,
-                                                 (unsigned long long)millis));
-            } else {
-                if (p < end)
-                    dur_append_snprintf(
-                        &p,
-                        end,
-                        snprintf(p, (size_t)(end - p), "%lluS", (unsigned long long)seconds));
-            }
+            if (p < end)
+                dur_append_iso_seconds(&p, end, seconds, millis);
         }
     }
 

@@ -270,14 +270,28 @@ static void test_duration_formatting() {
         test_result("ToISO PT0S", strcmp(rt_string_cstr(s), "PT0S") == 0);
     }
 
-    // Test 7: INT64_MIN magnitude is formatted without signed negation overflow
+    // Test 7: ISO fractional seconds trim unnecessary trailing zeros
+    {
+        int64_t d = rt_duration_create(0, 0, 0, 1, 500);
+        rt_string s = rt_duration_to_iso(d);
+        test_result("ToISO PT1.5S", strcmp(rt_string_cstr(s), "PT1.5S") == 0);
+    }
+
+    // Test 8: ISO fractional milliseconds preserve non-zero precision
+    {
+        int64_t d = rt_duration_create(0, 0, 0, 1, 25);
+        rt_string s = rt_duration_to_iso(d);
+        test_result("ToISO PT1.025S", strcmp(rt_string_cstr(s), "PT1.025S") == 0);
+    }
+
+    // Test 9: INT64_MIN magnitude is formatted without signed negation overflow
     {
         rt_string s = rt_duration_to_string(INT64_MIN);
         test_result("ToString INT64_MIN non-empty", rt_str_len(s) > 0);
         test_result("ToString INT64_MIN negative", rt_string_cstr(s)[0] == '-');
     }
 
-    // Test 8: INT64_MIN ISO formatting is safe
+    // Test 10: INT64_MIN ISO formatting is safe
     {
         rt_string s = rt_duration_to_iso(INT64_MIN);
         test_result("ToISO INT64_MIN non-empty", rt_str_len(s) > 0);

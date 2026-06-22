@@ -58,9 +58,18 @@ typedef struct rt_linewriter_impl {
 } rt_linewriter_impl;
 
 static rt_linewriter_impl *linewriter_require(void *obj, const char *context) {
-    if (!obj || rt_obj_class_id(obj) != RT_LINEWRITER_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_LINEWRITER_CLASS_ID) {
         rt_trap(context ? context : "LineWriter: invalid writer");
+        return NULL;
+    }
     return (rt_linewriter_impl *)obj;
+}
+
+static int linewriter_require_string(rt_string text, const char *context) {
+    if (!text || rt_string_is_handle(text))
+        return 1;
+    rt_trap(context);
+    return 0;
 }
 
 /// @brief Finalizer callback invoked when a LineWriter is garbage collected.
@@ -88,6 +97,8 @@ static void rt_linewriter_finalize(void *obj) {
     if (!obj)
         return;
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return;
     if (lw->fp && !lw->closed) {
         fclose(lw->fp);
         lw->fp = NULL;
@@ -266,6 +277,8 @@ void rt_linewriter_close(void *obj) {
         return;
 
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return;
     if (lw->fp && !lw->closed) {
         int rc = fclose(lw->fp);
         lw->fp = NULL;
@@ -308,6 +321,8 @@ void rt_linewriter_write(void *obj, rt_string text) {
     }
 
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return;
     if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.Write: writer is closed");
         return;
@@ -317,6 +332,8 @@ void rt_linewriter_write(void *obj, rt_string text) {
         rt_trap("LineWriter.Write: null string");
         return;
     }
+    if (!linewriter_require_string(text, "LineWriter.Write: invalid string"))
+        return;
 
     const char *data = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
@@ -373,6 +390,8 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
     }
 
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return;
     if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.WriteLn: writer is closed");
         return;
@@ -382,6 +401,8 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
         rt_trap("LineWriter.WriteLn: null string");
         return;
     }
+    if (!linewriter_require_string(text, "LineWriter.WriteLn: invalid string"))
+        return;
 
     const char *data = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
@@ -449,6 +470,8 @@ void rt_linewriter_write_char(void *obj, int64_t ch) {
     }
 
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return;
     if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.WriteChar: writer is closed");
         return;
@@ -499,6 +522,8 @@ void rt_linewriter_flush(void *obj) {
         return;
 
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return;
     if (lw->fp && !lw->closed) {
         if (fflush(lw->fp) != 0) {
             rt_trap("LineWriter.Flush: flush failed (disk full or I/O error)");
@@ -530,6 +555,8 @@ rt_string rt_linewriter_newline(void *obj) {
     }
 
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
     if (lw->closed) {
         rt_trap("LineWriter.get_NewLine: writer is closed");
         return rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
@@ -581,6 +608,8 @@ void rt_linewriter_set_newline(void *obj, rt_string nl) {
     }
 
     rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
+    if (!lw)
+        return;
     if (lw->closed) {
         rt_trap("LineWriter.set_NewLine: writer is closed");
         return;
@@ -588,6 +617,8 @@ void rt_linewriter_set_newline(void *obj, rt_string nl) {
 
     rt_string next = NULL;
     if (nl) {
+        if (!linewriter_require_string(nl, "LineWriter.set_NewLine: invalid newline"))
+            return;
         next = rt_string_ref(nl);
     } else {
         next = rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));

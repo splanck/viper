@@ -38,22 +38,65 @@
 #include <string.h>
 
 static size_t checked_i64_to_size(int64_t value, const char *op) {
-    if (value < 0)
+    if (value < 0) {
         rt_trap(op);
+        return 0;
+    }
+    if ((uint64_t)value > (uint64_t)SIZE_MAX) {
+        rt_trap(op);
+        return 0;
+    }
     return (size_t)value;
 }
 
 static size_t checked_mul_add(size_t base, size_t count, size_t each, const char *op) {
-    if (each != 0 && count > (SIZE_MAX - base) / each)
+    if (each != 0 && count > (SIZE_MAX - base) / each) {
         rt_trap(op);
+        return 0;
+    }
     return base + count * each;
 }
 
 static char *checked_malloc(size_t size, const char *op) {
     char *ptr = (char *)malloc(size);
-    if (!ptr)
+    if (!ptr) {
         rt_trap(op);
+        return NULL;
+    }
     return ptr;
+}
+
+static int checked_add_one(size_t value, const char *op, size_t *out) {
+    if (value == SIZE_MAX) {
+        rt_trap(op);
+        return 0;
+    }
+    *out = value + 1;
+    return 1;
+}
+
+static int textwrap_valid_string(rt_string text, const char *op) {
+    if (!text || rt_string_is_handle(text))
+        return 1;
+    rt_trap(op);
+    return 0;
+}
+
+static rt_string textwrap_empty_string(void) {
+    return rt_string_from_bytes("", 0);
+}
+
+static char *alloc_spaces(int64_t count, const char *op) {
+    size_t n = checked_i64_to_size(count, op);
+    size_t alloc_size = 0;
+    if (!checked_add_one(n, op, &alloc_size))
+        return NULL;
+    char *spaces = checked_malloc(alloc_size, op);
+    if (!spaces)
+        return NULL;
+    memset(spaces, ' ', n);
+    spaces[n] = '\0';
+    return spaces;
 }
 
 //=============================================================================
@@ -70,7 +113,9 @@ static char *checked_malloc(size_t size, const char *op) {
 ///          Widths less than or equal to zero disable wrapping.
 rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     if (!text)
-        return rt_string_from_bytes("", 0);
+        return textwrap_empty_string();
+    if (!textwrap_valid_string(text, "TextWrapper.Wrap: invalid string"))
+        return textwrap_empty_string();
     if (width <= 0)
         return rt_string_ref(text);
 
@@ -83,6 +128,8 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
                         2,
                         "TextWrapper.Wrap: output length overflow");
     char *result = checked_malloc(alloc_size, "TextWrapper.Wrap: memory allocation failed");
+    if (!result)
+        return textwrap_empty_string();
 
     int64_t result_pos = 0;
     int64_t line_start = 0;
@@ -144,6 +191,10 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
 void *rt_textwrap_wrap_lines(rt_string text, int64_t width) {
     rt_string wrapped = rt_textwrap_wrap(text, width);
     void *lines = rt_seq_new();
+    if (!lines) {
+        rt_string_unref(wrapped);
+        return NULL;
+    }
     rt_seq_set_owns_elements(lines, 1);
 
     const char *src = rt_string_cstr(wrapped);
@@ -181,6 +232,10 @@ rt_string rt_textwrap_fill(rt_string text, int64_t width) {
 ///          Counts lines up-front to size the output buffer exactly:
 ///          `src_len + line_count * pre_len`.
 rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
+    if (!textwrap_valid_string(text, "TextWrapper.Indent: invalid string"))
+        return textwrap_empty_string();
+    if (!textwrap_valid_string(prefix, "TextWrapper.Indent: invalid prefix"))
+        prefix = NULL;
     const char *src = text ? rt_string_cstr(text) : "";
     int64_t src_len = rt_str_len(text);
     const char *pre = prefix ? rt_string_cstr(prefix) : "";
@@ -202,6 +257,8 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
                         checked_i64_to_size(pre_len, "TextWrapper.Indent: invalid prefix length"),
                         "TextWrapper.Indent: output length overflow");
     char *result = checked_malloc(alloc_size, "TextWrapper.Indent: memory allocation failed");
+    if (!result)
+        return textwrap_empty_string();
 
     int64_t result_pos = 0;
     int at_line_start = 1;
@@ -238,7 +295,9 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
 ///          removed as if it were a run of spaces.
 rt_string rt_textwrap_dedent(rt_string text) {
     if (!text)
-        return rt_string_from_bytes("", 0);
+        return textwrap_empty_string();
+    if (!textwrap_valid_string(text, "TextWrapper.Dedent: invalid string"))
+        return textwrap_empty_string();
 
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
@@ -281,6 +340,8 @@ rt_string rt_textwrap_dedent(rt_string text) {
     char *result =
         checked_malloc(checked_i64_to_size(src_len, "TextWrapper.Dedent: invalid length") + 1,
                        "TextWrapper.Dedent: memory allocation failed");
+    if (!result)
+        return textwrap_empty_string();
 
     int64_t result_pos = 0;
     line_start = 0;
@@ -325,7 +386,11 @@ rt_string rt_textwrap_dedent(rt_string text) {
 ///          alone; every subsequent line gets `prefix` prepended.
 rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
     if (!text)
-        return rt_string_from_bytes("", 0);
+        return textwrap_empty_string();
+    if (!textwrap_valid_string(text, "TextWrapper.Hang: invalid string"))
+        return textwrap_empty_string();
+    if (!textwrap_valid_string(prefix, "TextWrapper.Hang: invalid prefix"))
+        prefix = NULL;
 
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
@@ -345,6 +410,8 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
                         checked_i64_to_size(pre_len, "TextWrapper.Hang: invalid prefix length"),
                         "TextWrapper.Hang: output length overflow");
     char *result = checked_malloc(alloc_size, "TextWrapper.Hang: memory allocation failed");
+    if (!result)
+        return textwrap_empty_string();
 
     int64_t result_pos = 0;
     int first_line = 1;
@@ -387,10 +454,15 @@ rt_string rt_textwrap_truncate(rt_string text, int64_t width) {
 ///          suffix (no useful prefix can fit).
 rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix) {
     if (!text)
-        return rt_string_from_bytes("", 0);
+        return textwrap_empty_string();
+    if (!textwrap_valid_string(text, "TextWrapper.Truncate: invalid string"))
+        return textwrap_empty_string();
     rt_string suffix_eff = suffix;
     int release_suffix = 0;
     if (!suffix_eff) {
+        suffix_eff = rt_const_cstr("");
+        release_suffix = 1;
+    } else if (!textwrap_valid_string(suffix_eff, "TextWrapper.Truncate: invalid suffix")) {
         suffix_eff = rt_const_cstr("");
         release_suffix = 1;
     }
@@ -427,7 +499,9 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
 ///          even three dots plus one char on each side).
 rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
     if (!text)
-        return rt_string_from_bytes("", 0);
+        return textwrap_empty_string();
+    if (!textwrap_valid_string(text, "TextWrapper.Shorten: invalid string"))
+        return textwrap_empty_string();
 
     int64_t text_len = rt_str_len(text);
 
@@ -457,25 +531,25 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
 rt_string rt_textwrap_left(rt_string text, int64_t width) {
     if (!text) {
         if (width <= 0)
-            return rt_string_from_bytes("", 0);
-        char *spaces =
-            checked_malloc((size_t)width + 1, "TextWrapper.Left: memory allocation failed");
-        memset(spaces, ' ', (size_t)width);
-        spaces[width] = '\0';
+            return textwrap_empty_string();
+        char *spaces = alloc_spaces(width, "TextWrapper.Left: memory allocation failed");
+        if (!spaces)
+            return textwrap_empty_string();
         rt_string result = rt_string_from_bytes(spaces, width);
         free(spaces);
         return result;
     }
+    if (!textwrap_valid_string(text, "TextWrapper.Left: invalid string"))
+        return textwrap_empty_string();
 
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return rt_string_ref(text);
 
     int64_t pad = width - text_len;
-    char *spaces = checked_malloc((size_t)pad + 1, "TextWrapper.Left: memory allocation failed");
-
-    memset(spaces, ' ', (size_t)pad);
-    spaces[pad] = '\0';
+    char *spaces = alloc_spaces(pad, "TextWrapper.Left: memory allocation failed");
+    if (!spaces)
+        return textwrap_empty_string();
 
     rt_string padding = rt_string_from_bytes(spaces, pad);
     free(spaces);
@@ -487,25 +561,25 @@ rt_string rt_textwrap_left(rt_string text, int64_t width) {
 rt_string rt_textwrap_right(rt_string text, int64_t width) {
     if (!text) {
         if (width <= 0)
-            return rt_string_from_bytes("", 0);
-        char *spaces =
-            checked_malloc((size_t)width + 1, "TextWrapper.Right: memory allocation failed");
-        memset(spaces, ' ', (size_t)width);
-        spaces[width] = '\0';
+            return textwrap_empty_string();
+        char *spaces = alloc_spaces(width, "TextWrapper.Right: memory allocation failed");
+        if (!spaces)
+            return textwrap_empty_string();
         rt_string result = rt_string_from_bytes(spaces, width);
         free(spaces);
         return result;
     }
+    if (!textwrap_valid_string(text, "TextWrapper.Right: invalid string"))
+        return textwrap_empty_string();
 
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return rt_string_ref(text);
 
     int64_t pad = width - text_len;
-    char *spaces = checked_malloc((size_t)pad + 1, "TextWrapper.Right: memory allocation failed");
-
-    memset(spaces, ' ', (size_t)pad);
-    spaces[pad] = '\0';
+    char *spaces = alloc_spaces(pad, "TextWrapper.Right: memory allocation failed");
+    if (!spaces)
+        return textwrap_empty_string();
 
     rt_string padding = rt_string_from_bytes(spaces, pad);
     free(spaces);
@@ -519,15 +593,16 @@ rt_string rt_textwrap_right(rt_string text, int64_t width) {
 rt_string rt_textwrap_center(rt_string text, int64_t width) {
     if (!text) {
         if (width <= 0)
-            return rt_string_from_bytes("", 0);
-        char *spaces =
-            checked_malloc((size_t)width + 1, "TextWrapper.Center: memory allocation failed");
-        memset(spaces, ' ', (size_t)width);
-        spaces[width] = '\0';
+            return textwrap_empty_string();
+        char *spaces = alloc_spaces(width, "TextWrapper.Center: memory allocation failed");
+        if (!spaces)
+            return textwrap_empty_string();
         rt_string result = rt_string_from_bytes(spaces, width);
         free(spaces);
         return result;
     }
+    if (!textwrap_valid_string(text, "TextWrapper.Center: invalid string"))
+        return textwrap_empty_string();
 
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
@@ -537,15 +612,13 @@ rt_string rt_textwrap_center(rt_string text, int64_t width) {
     int64_t left_pad = total_pad / 2;
     int64_t right_pad = total_pad - left_pad;
 
-    char *left_spaces =
-        checked_malloc((size_t)left_pad + 1, "TextWrapper.Center: memory allocation failed");
-    char *right_spaces =
-        checked_malloc((size_t)right_pad + 1, "TextWrapper.Center: memory allocation failed");
-
-    memset(left_spaces, ' ', (size_t)left_pad);
-    left_spaces[left_pad] = '\0';
-    memset(right_spaces, ' ', (size_t)right_pad);
-    right_spaces[right_pad] = '\0';
+    char *left_spaces = alloc_spaces(left_pad, "TextWrapper.Center: memory allocation failed");
+    char *right_spaces = alloc_spaces(right_pad, "TextWrapper.Center: memory allocation failed");
+    if (!left_spaces || !right_spaces) {
+        free(left_spaces);
+        free(right_spaces);
+        return textwrap_empty_string();
+    }
 
     rt_string left_padding = rt_string_from_bytes(left_spaces, left_pad);
     rt_string right_padding = rt_string_from_bytes(right_spaces, right_pad);

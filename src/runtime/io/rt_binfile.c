@@ -68,8 +68,10 @@ int8_t rt_binfile_is_handle(void *obj) {
 }
 
 static rt_binfile_impl *binfile_require(void *obj, const char *context) {
-    if (!rt_binfile_is_handle(obj))
+    if (!rt_binfile_is_handle(obj)) {
         rt_trap(context ? context : "BinFile: invalid file");
+        return NULL;
+    }
     return (rt_binfile_impl *)obj;
 }
 
@@ -86,16 +88,17 @@ static rt_binfile_impl *binfile_require(void *obj, const char *context) {
 /// lets us fflush only when actually switching direction, so
 /// sequential reads don't pay the flush cost. Traps on flush
 /// failure so the caller never silently reads stale data.
-static void binfile_prepare_read(rt_binfile_impl *bf) {
+static int binfile_prepare_read(rt_binfile_impl *bf) {
     if (!bf || !bf->fp)
-        return;
+        return 0;
     if (bf->last_op == BINFILE_OP_WRITE) {
         if (fflush(bf->fp) != 0) {
             rt_trap("BinFile: failed to switch from write to read");
-            return;
+            return 0;
         }
     }
     bf->last_op = BINFILE_OP_READ;
+    return 1;
 }
 
 /// @brief Transition the FILE* from read mode to write mode before a write call.
@@ -105,18 +108,19 @@ static void binfile_prepare_read(rt_binfile_impl *bf) {
 /// buffer, keep position" — cheaper than closing/reopening. Also
 /// clears any EOF flag that could otherwise poison the next write's
 /// error check.
-static void binfile_prepare_write(rt_binfile_impl *bf) {
+static int binfile_prepare_write(rt_binfile_impl *bf) {
     if (!bf || !bf->fp)
-        return;
+        return 0;
     if (bf->last_op == BINFILE_OP_READ) {
         if (binfile_fseek(bf->fp, 0, SEEK_CUR) != 0) {
             rt_trap("BinFile: failed to switch from read to write");
-            return;
+            return 0;
         }
         clearerr(bf->fp);
     }
     bf->last_op = BINFILE_OP_WRITE;
     bf->eof = 0;
+    return 1;
 }
 
 /// @brief Prepare the FILE* for a seek by flushing any pending writes.
@@ -215,6 +219,11 @@ void *rt_binfile_open(void *path, void *mode) {
         return NULL;
     }
 
+    if (!rt_string_is_handle(mode)) {
+        rt_trap("BinFile.Open: invalid mode");
+        return NULL;
+    }
+
     const char *path_str = NULL;
     const char *mode_str = rt_string_cstr((rt_string)mode);
     int64_t mode_len = rt_str_len((rt_string)mode);
@@ -295,6 +304,8 @@ void rt_binfile_close(void *obj) {
     if (!obj)
         return;
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Close: invalid file");
+    if (!bf)
+        return;
     if (bf->fp && !bf->closed) {
         int rc = fclose(bf->fp);
         bf->fp = NULL;
@@ -347,6 +358,8 @@ void rt_binfile_close(void *obj) {
 /// @see rt_binfile_eof For checking end-of-file status
 int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Read: invalid file");
+    if (!bf)
+        return 0;
     if (!bytes || !rt_bytes_is_bytes(bytes)) {
         rt_trap("BinFile.Read: invalid bytes");
         return 0;
@@ -369,8 +382,13 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
     // Clamp count to available space without overflowing offset + count.
     if (count > bytes_len - offset)
         count = bytes_len - offset;
+    if (count > 0 && !bytes_data) {
+        rt_trap("BinFile.Read: invalid bytes");
+        return 0;
+    }
 
-    binfile_prepare_read(bf);
+    if (!binfile_prepare_read(bf))
+        return 0;
     size_t read = fread(bytes_data + offset, 1, (size_t)count, bf->fp);
 
     if (read < (size_t)count && ferror(bf->fp)) {
@@ -437,6 +455,8 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
     }
 
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Write: invalid file");
+    if (!bf)
+        return;
     if (!bf->fp || bf->closed) {
         rt_trap("BinFile.Write: file is closed");
         return;
@@ -459,7 +479,8 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
     if (count > bytes_len - offset)
         count = bytes_len - offset;
 
-    binfile_prepare_write(bf);
+    if (!binfile_prepare_write(bf))
+        return;
     size_t written = fwrite(bytes_data + offset, 1, (size_t)count, bf->fp);
     if (written < (size_t)count) {
         rt_trap("BinFile.Write: write failed");
@@ -501,12 +522,15 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
 /// @see rt_binfile_eof For checking end-of-file status
 int64_t rt_binfile_read_byte(void *obj) {
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.ReadByte: invalid file");
+    if (!bf)
+        return -1;
     if (!bf->fp || bf->closed) {
         rt_trap("BinFile.ReadByte: file is closed");
         return -1;
     }
 
-    binfile_prepare_read(bf);
+    if (!binfile_prepare_read(bf))
+        return -1;
     int c = fgetc(bf->fp);
     if (c == EOF) {
         if (ferror(bf->fp)) {
@@ -555,6 +579,8 @@ int64_t rt_binfile_read_byte(void *obj) {
 /// @see rt_binfile_read_byte For reading a single byte
 void rt_binfile_write_byte(void *obj, int64_t byte) {
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.WriteByte: invalid file");
+    if (!bf)
+        return;
     if (!bf->fp || bf->closed) {
         rt_trap("BinFile.WriteByte: file is closed");
         return;
@@ -564,7 +590,8 @@ void rt_binfile_write_byte(void *obj, int64_t byte) {
         return;
     }
 
-    binfile_prepare_write(bf);
+    if (!binfile_prepare_write(bf))
+        return;
     if (fputc((unsigned char)byte, bf->fp) == EOF) {
         rt_trap("BinFile.WriteByte: write failed");
     }
@@ -610,6 +637,8 @@ void rt_binfile_write_byte(void *obj, int64_t byte) {
 /// @see rt_binfile_size For getting total file size
 int64_t rt_binfile_seek(void *obj, int64_t offset, int64_t origin) {
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Seek: invalid file");
+    if (!bf)
+        return -1;
     if (!bf->fp || bf->closed) {
         rt_trap("BinFile.Seek: file is closed");
         return -1;
@@ -671,6 +700,8 @@ int64_t rt_binfile_pos(void *obj) {
         return -1;
 
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Pos: invalid file");
+    if (!bf)
+        return -1;
     if (!bf->fp || bf->closed)
         return -1;
 
@@ -715,6 +746,8 @@ int64_t rt_binfile_size(void *obj) {
         return -1;
 
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Size: invalid file");
+    if (!bf)
+        return -1;
     if (!bf->fp || bf->closed)
         return -1;
 
@@ -767,6 +800,8 @@ void rt_binfile_flush(void *obj) {
         return;
 
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Flush: invalid file");
+    if (!bf)
+        return;
     if (!bf->fp || bf->closed)
         return;
 
@@ -812,6 +847,8 @@ int8_t rt_binfile_eof(void *obj) {
         return 1;
 
     rt_binfile_impl *bf = binfile_require(obj, "BinFile.Eof: invalid file");
+    if (!bf)
+        return 1;
     if (!bf->fp || bf->closed)
         return 1;
 

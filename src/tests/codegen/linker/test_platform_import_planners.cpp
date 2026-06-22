@@ -204,7 +204,8 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     WindowsImportPlan plan;
     std::ostringstream err;
     ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64,
-                                       {"ExitProcess",
+                                        {"ExitProcess",
+                                        "InitializeCriticalSectionAndSpinCount",
                                         "CreateWindowExW",
                                         "CreateWaitableTimerExW",
                                         "SetWaitableTimer",

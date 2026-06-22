@@ -106,6 +106,10 @@ static int dt_i64_to_int(int64_t value, int *out) {
     return 1;
 }
 
+static int64_t dt_tm_year_full(const struct tm *tm) {
+    return (int64_t)tm->tm_year + 1900;
+}
+
 /// @brief Narrow @p value into a `time_t`, preserving exact representability.
 /// @details `time_t` may be 32- or 64-bit depending on ABI; the round-trip cast detects
 ///          truncation and returns 0 in that case. On success, @p out holds the
@@ -260,7 +264,7 @@ int64_t rt_datetime_year(int64_t timestamp) {
         return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
-    return tm ? (int64_t)(tm->tm_year + 1900) : 0;
+    return tm ? dt_tm_year_full(tm) : 0;
 }
 
 /// @brief Extracts the month component from a timestamp.
@@ -618,11 +622,11 @@ rt_string rt_datetime_to_iso(int64_t timestamp) {
         return rt_string_from_bytes("", 0);
     }
 
-    char buffer[32];
+    char buffer[64];
     int len = snprintf(buffer,
                        sizeof(buffer),
-                       "%04d-%02d-%02dT%02d:%02d:%02dZ",
-                       tm->tm_year + 1900,
+                       "%04lld-%02d-%02dT%02d:%02d:%02dZ",
+                       (long long)dt_tm_year_full(tm),
                        tm->tm_mon + 1,
                        tm->tm_mday,
                        tm->tm_hour,
@@ -656,11 +660,11 @@ rt_string rt_datetime_to_local(int64_t timestamp) {
         return rt_string_from_bytes("", 0);
     }
 
-    char buffer[32];
+    char buffer[64];
     int len = snprintf(buffer,
                        sizeof(buffer),
-                       "%04d-%02d-%02dT%02d:%02d:%02d",
-                       tm->tm_year + 1900,
+                       "%04lld-%02d-%02dT%02d:%02d:%02d",
+                       (long long)dt_tm_year_full(tm),
                        tm->tm_mon + 1,
                        tm->tm_mday,
                        tm->tm_hour,
@@ -1140,7 +1144,7 @@ static int dt_parse_iso_impl(rt_string s, int64_t *out) {
         offset_minute = dt_parse_digits(p, limit, 2, &end);
         if (offset_minute < 0)
             return 0;
-        if (offset_hour > 23 || offset_minute > 59)
+        if (offset_hour > 14 || (offset_hour == 14 && offset_minute != 0) || offset_minute > 59)
             return 0;
         p = end;
         offset_seconds = sign * (offset_hour * 3600 + offset_minute * 60);
