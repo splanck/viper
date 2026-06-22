@@ -13,7 +13,7 @@
 //   - vg_widget_destroy recursively destroys all children before the parent.
 //   - Widget IDs are assigned from a monotonically increasing global counter.
 // Ownership/Lifetime:
-//   - The base widget owns its name string (strdup'd on creation).
+//   - The base widget owns its name string (vg_strdup'd on creation).
 //   - impl_data ownership depends on the widget subtype's vtable destroy().
 // Links: lib/gui/include/vg_widget.h,
 //        lib/gui/include/vg_layout.h,
@@ -57,11 +57,111 @@ static float g_last_click_screen_y = 0.0f;
 static vg_widget_t *g_reported_click_widget = NULL;
 static uint64_t g_reported_click_time_ms = 0;
 static vg_widget_t *g_live_widgets = NULL;
+static vg_widget_t **g_live_widget_table = NULL;
+static size_t g_live_widget_table_cap = 0;
+static size_t g_live_widget_table_count = 0;
+
+#define VG_WIDGET_LIVE_TABLE_MIN_CAP 256u
+#define VG_WIDGET_LIVE_TABLE_TOMBSTONE ((vg_widget_t *)(uintptr_t)UINTPTR_MAX)
+
+/// @brief Hash a widget pointer for the open-addressed live-widget table.
+/// @param widget Widget pointer to hash.
+/// @return Mixed pointer hash suitable for power-of-two table capacities.
+static size_t widget_live_hash(const vg_widget_t *widget) {
+    uintptr_t x = (uintptr_t)widget >> 4;
+    x ^= x >> 33;
+    x *= (uintptr_t)0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    return (size_t)x;
+}
+
+/// @brief Insert @p widget into an already-allocated live-widget table.
+/// @param table Destination table.
+/// @param cap Power-of-two table capacity.
+/// @param widget Live widget pointer to insert.
+static void widget_live_table_insert_raw(vg_widget_t **table, size_t cap, vg_widget_t *widget) {
+    size_t mask = cap - 1u;
+    size_t index = widget_live_hash(widget) & mask;
+    while (table[index] && table[index] != VG_WIDGET_LIVE_TABLE_TOMBSTONE)
+        index = (index + 1u) & mask;
+    table[index] = widget;
+}
+
+/// @brief Rebuild the live-widget hash table with at least @p new_cap slots.
+/// @details The doubly-linked live list remains authoritative; allocation
+///          failure leaves the old table in place or disables the hash table so
+///          vg_widget_is_live can safely fall back to the list.
+/// @param new_cap Requested table capacity.
+/// @return true when the table was rebuilt, false on allocation failure.
+static bool widget_live_table_rehash(size_t new_cap) {
+    if (new_cap < VG_WIDGET_LIVE_TABLE_MIN_CAP)
+        new_cap = VG_WIDGET_LIVE_TABLE_MIN_CAP;
+    size_t cap = 1u;
+    while (cap < new_cap) {
+        if (cap > SIZE_MAX / 2u)
+            return false;
+        cap *= 2u;
+    }
+
+    vg_widget_t **table = (vg_widget_t **)calloc(cap, sizeof(*table));
+    if (!table)
+        return false;
+    size_t count = 0;
+    for (vg_widget_t *live = g_live_widgets; live; live = live->_live_next) {
+        widget_live_table_insert_raw(table, cap, live);
+        count++;
+    }
+    free(g_live_widget_table);
+    g_live_widget_table = table;
+    g_live_widget_table_cap = cap;
+    g_live_widget_table_count = count;
+    return true;
+}
+
+/// @brief Insert @p widget into the hash registry, growing when needed.
+/// @param widget Widget to insert.
+static void widget_live_table_insert(vg_widget_t *widget) {
+    if (!widget)
+        return;
+    if (!g_live_widget_table ||
+        (g_live_widget_table_count + 1u) * 4u >= g_live_widget_table_cap * 3u) {
+        size_t requested =
+            g_live_widget_table_cap ? g_live_widget_table_cap * 2u : VG_WIDGET_LIVE_TABLE_MIN_CAP;
+        if (!widget_live_table_rehash(requested)) {
+            free(g_live_widget_table);
+            g_live_widget_table = NULL;
+            g_live_widget_table_cap = 0;
+            g_live_widget_table_count = 0;
+            return;
+        }
+    }
+    widget_live_table_insert_raw(g_live_widget_table, g_live_widget_table_cap, widget);
+    g_live_widget_table_count++;
+}
+
+/// @brief Remove @p widget from the hash registry if the table is active.
+/// @param widget Widget to remove.
+static void widget_live_table_remove(vg_widget_t *widget) {
+    if (!widget || !g_live_widget_table || g_live_widget_table_cap == 0)
+        return;
+    size_t mask = g_live_widget_table_cap - 1u;
+    size_t index = widget_live_hash(widget) & mask;
+    while (g_live_widget_table[index]) {
+        if (g_live_widget_table[index] == widget) {
+            g_live_widget_table[index] = VG_WIDGET_LIVE_TABLE_TOMBSTONE;
+            if (g_live_widget_table_count > 0)
+                g_live_widget_table_count--;
+            return;
+        }
+        index = (index + 1u) & mask;
+    }
+}
 
 /// @brief Inserts @p widget at the head of the global live-widget doubly-linked list.
 static void widget_register_live(vg_widget_t *widget) {
     if (!widget)
         return;
+    widget_live_table_insert(widget);
     widget->_live_prev = NULL;
     widget->_live_next = g_live_widgets;
     if (g_live_widgets)
@@ -73,6 +173,7 @@ static void widget_register_live(vg_widget_t *widget) {
 static void widget_unregister_live(vg_widget_t *widget) {
     if (!widget)
         return;
+    widget_live_table_remove(widget);
     if (widget->_live_prev)
         widget->_live_prev->_live_next = widget->_live_next;
     else if (g_live_widgets == widget)
@@ -81,6 +182,18 @@ static void widget_unregister_live(vg_widget_t *widget) {
         widget->_live_next->_live_prev = widget->_live_prev;
     widget->_live_prev = NULL;
     widget->_live_next = NULL;
+}
+
+/// @brief Mark @p widget and every ancestor as needing layout and paint.
+/// @details Parent-chain propagation prevents nested layout containers from
+///          keeping stale measurements when a descendant is inserted, removed,
+///          hidden, or has layout-affecting parameters changed.
+/// @param widget First widget whose layout is dirty; may be NULL.
+static void widget_mark_layout_dirty(vg_widget_t *widget) {
+    for (vg_widget_t *current = widget; current; current = current->parent) {
+        current->needs_layout = true;
+        current->needs_paint = true;
+    }
 }
 
 /// @brief Returns true for widget types that paint their own children (ScrollView and custom
@@ -592,6 +705,16 @@ void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_
 bool vg_widget_is_live(const vg_widget_t *widget) {
     if (!widget)
         return false;
+    if (g_live_widget_table && g_live_widget_table_cap > 0) {
+        size_t mask = g_live_widget_table_cap - 1u;
+        size_t index = widget_live_hash(widget) & mask;
+        while (g_live_widget_table[index]) {
+            if (g_live_widget_table[index] == widget)
+                return widget->magic == VG_WIDGET_MAGIC;
+            index = (index + 1u) & mask;
+        }
+        return false;
+    }
     for (const vg_widget_t *live = g_live_widgets; live; live = live->_live_next) {
         if (live == widget)
             return live->magic == VG_WIDGET_MAGIC;
@@ -740,7 +863,7 @@ void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child) {
     parent->last_child = child;
     parent->child_count++;
 
-    parent->needs_layout = true;
+    widget_mark_layout_dirty(parent);
 }
 
 /// @brief Inserts @p child into @p parent at the given @p index (0 = before first); appends at end
@@ -801,7 +924,7 @@ void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index) 
     }
 
     parent->child_count++;
-    parent->needs_layout = true;
+    widget_mark_layout_dirty(parent);
 }
 
 /// @brief Detaches @p child from @p parent's list, clears runtime references for the subtree, and
@@ -830,7 +953,7 @@ void vg_widget_remove_child(vg_widget_t *parent, vg_widget_t *child) {
     child->next_sibling = NULL;
 
     parent->child_count--;
-    parent->needs_layout = true;
+    widget_mark_layout_dirty(parent);
 }
 
 /// @brief Detaches all children from @p parent without destroying them; runtime references for each
@@ -853,7 +976,7 @@ void vg_widget_clear_children(vg_widget_t *parent) {
     parent->first_child = NULL;
     parent->last_child = NULL;
     parent->child_count = 0;
-    parent->needs_layout = true;
+    widget_mark_layout_dirty(parent);
 }
 
 /// @brief Returns the child widget at the given @p index (0-based), or NULL if out of range.
@@ -919,7 +1042,7 @@ void vg_widget_set_constraints(vg_widget_t *widget, vg_constraints_t constraints
     if (memcmp(&widget->constraints, &constraints, sizeof(widget->constraints)) == 0)
         return;
     widget->constraints = constraints;
-    widget->needs_layout = true;
+    widget_mark_layout_dirty(widget);
 }
 
 /// @brief Sets the minimum allowed size for @p widget, re-normalizing other constraints to stay
@@ -934,7 +1057,7 @@ void vg_widget_set_min_size(vg_widget_t *widget, float width, float height) {
     widget->constraints.min_width = width;
     widget->constraints.min_height = height;
     widget_normalize_constraints(&widget->constraints);
-    widget->needs_layout = true;
+    widget_mark_layout_dirty(widget);
 }
 
 /// @brief Sets the maximum allowed size for @p widget, re-normalizing other constraints to stay
@@ -949,7 +1072,7 @@ void vg_widget_set_max_size(vg_widget_t *widget, float width, float height) {
     widget->constraints.max_width = width;
     widget->constraints.max_height = height;
     widget_normalize_constraints(&widget->constraints);
-    widget->needs_layout = true;
+    widget_mark_layout_dirty(widget);
 }
 
 /// @brief Sets the preferred (natural) size for @p widget; overrides content-derived sizes during
@@ -965,7 +1088,7 @@ void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height
     widget->constraints.preferred_width = width;
     widget->constraints.preferred_height = height;
     widget_normalize_constraints(&widget->constraints);
-    widget->needs_layout = true;
+    widget_mark_layout_dirty(widget);
 }
 
 /// @brief Locks @p widget to an exact pixel size by setting min, max, and preferred to the same
@@ -987,7 +1110,7 @@ void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height) {
     widget->constraints.min_height = height;
     widget->constraints.max_height = height;
     widget->constraints.preferred_height = height;
-    widget->needs_layout = true;
+    widget_mark_layout_dirty(widget);
 }
 
 /// @brief Clamps the widget's measured_width/height to its min/max/preferred constraints after
@@ -1083,8 +1206,7 @@ void vg_widget_set_flex(vg_widget_t *widget, float flex) {
     if (widget->layout.flex == flex)
         return;
     widget->layout.flex = flex;
-    if (widget->parent)
-        widget->parent->needs_layout = true;
+    widget_mark_layout_dirty(widget->parent);
 }
 
 /// @brief Sets all four margins of @p widget to the same value and marks the parent's layout dirty.
@@ -1100,8 +1222,7 @@ void vg_widget_set_margin(vg_widget_t *widget, float margin) {
     widget->layout.margin_top = margin;
     widget->layout.margin_right = margin;
     widget->layout.margin_bottom = margin;
-    if (widget->parent)
-        widget->parent->needs_layout = true;
+    widget_mark_layout_dirty(widget->parent);
 }
 
 /// @brief Sets per-side margins on @p widget and marks the parent's layout dirty.
@@ -1120,8 +1241,7 @@ void vg_widget_set_margins(vg_widget_t *widget, float left, float top, float rig
     widget->layout.margin_top = top;
     widget->layout.margin_right = right;
     widget->layout.margin_bottom = bottom;
-    if (widget->parent)
-        widget->parent->needs_layout = true;
+    widget_mark_layout_dirty(widget->parent);
 }
 
 /// @brief Sets all four padding sides of @p widget to the same value and marks the layout dirty.
@@ -1137,7 +1257,7 @@ void vg_widget_set_padding(vg_widget_t *widget, float padding) {
     widget->layout.padding_top = padding;
     widget->layout.padding_right = padding;
     widget->layout.padding_bottom = padding;
-    widget->needs_layout = true;
+    widget_mark_layout_dirty(widget);
 }
 
 /// @brief Sets per-side padding on @p widget and marks the layout dirty.
@@ -1156,7 +1276,7 @@ void vg_widget_set_paddings(vg_widget_t *widget, float left, float top, float ri
     widget->layout.padding_top = top;
     widget->layout.padding_right = right;
     widget->layout.padding_bottom = bottom;
-    widget->needs_layout = true;
+    widget_mark_layout_dirty(widget);
 }
 
 //=============================================================================
@@ -1247,8 +1367,7 @@ void vg_widget_set_visible(vg_widget_t *widget, bool visible) {
         vg_event_forget_widget_subtree(widget);
         clear_interactive_state_recursive(widget);
     }
-    if (widget->parent)
-        widget->parent->needs_layout = true;
+    widget_mark_layout_dirty(widget->parent);
     widget->needs_paint = true;
 }
 
@@ -1269,7 +1388,7 @@ void vg_widget_set_name(vg_widget_t *widget, const char *name) {
 
     char *copy = NULL;
     if (name) {
-        copy = strdup(name);
+        copy = vg_strdup(name);
         if (!copy)
             return;
     }
@@ -1393,16 +1512,7 @@ void vg_widget_invalidate(vg_widget_t *widget) {
 void vg_widget_invalidate_layout(vg_widget_t *widget) {
     if (!widget)
         return;
-    widget->needs_layout = true;
-    widget->needs_paint = true;
-
-    // Also invalidate parent chain
-    vg_widget_t *p = widget->parent;
-    while (p) {
-        p->needs_layout = true;
-        p->needs_paint = true;
-        p = p->parent;
-    }
+    widget_mark_layout_dirty(widget);
 }
 
 //=============================================================================

@@ -291,7 +291,7 @@ static vg_toolbar_item_t *create_item(vg_toolbar_item_type_t type, const char *i
     item->type = type;
     item->magic = VG_TOOLBAR_ITEM_MAGIC;
     item->owner = NULL;
-    item->id = id ? strdup(id) : NULL;
+    item->id = id ? vg_strdup(id) : NULL;
     if (id && !item->id) {
         free(item);
         return NULL;
@@ -1974,7 +1974,7 @@ vg_toolbar_item_t *vg_toolbar_add_button(vg_toolbar_t *tb,
         return NULL;
     }
 
-    char *label_copy = label ? strdup(label) : NULL;
+    char *label_copy = label ? vg_strdup(label) : NULL;
     if (label && !label_copy) {
         vg_icon_destroy(&icon);
         free_item(item);
@@ -2021,7 +2021,7 @@ vg_toolbar_item_t *vg_toolbar_add_toggle(vg_toolbar_t *tb,
         return NULL;
     }
 
-    char *label_copy = label ? strdup(label) : NULL;
+    char *label_copy = label ? vg_strdup(label) : NULL;
     if (label && !label_copy) {
         vg_icon_destroy(&icon);
         free_item(item);
@@ -2062,7 +2062,7 @@ vg_toolbar_item_t *vg_toolbar_add_dropdown(
         return NULL;
     }
 
-    char *label_copy = label ? strdup(label) : NULL;
+    char *label_copy = label ? vg_strdup(label) : NULL;
     if (label && !label_copy) {
         vg_icon_destroy(&icon);
         free_item(item);
@@ -2267,7 +2267,7 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
     if ((!item->tooltip && (!tooltip || tooltip[0] == '\0')) ||
         (item->tooltip && tooltip && strcmp(item->tooltip, tooltip) == 0))
         return;
-    char *copy = tooltip ? strdup(tooltip) : NULL;
+    char *copy = tooltip ? vg_strdup(tooltip) : NULL;
     if (tooltip && !copy)
         return;
     free(item->tooltip);
@@ -2288,7 +2288,7 @@ void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text) {
     if ((!item->label && (!text || text[0] == '\0')) ||
         (item->label && text && strcmp(item->label, text) == 0))
         return;
-    char *copy = text ? strdup(text) : NULL;
+    char *copy = text ? vg_strdup(text) : NULL;
     if (text && !copy)
         return;
     free(item->label);
@@ -2417,7 +2417,7 @@ vg_icon_t vg_icon_from_file(const char *path) {
         return icon;
 
     icon.type = VG_ICON_PATH;
-    icon.data.path = strdup(path);
+    icon.data.path = vg_strdup(path);
     if (!icon.data.path) {
         icon.type = VG_ICON_NONE;
     }

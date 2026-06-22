@@ -85,7 +85,7 @@ vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
     vg_theme_t *theme = vg_theme_get_current();
 
     // Initialize button-specific fields
-    button->text = text ? strdup(text) : strdup("");
+    button->text = text ? vg_strdup(text) : vg_strdup("");
     if (!button->text) {
         vg_widget_destroy(&button->base);
         return NULL;
@@ -427,7 +427,7 @@ void vg_button_set_text(vg_button_t *button, const char *text) {
     if (button->text && strcmp(button->text, new_text) == 0)
         return;
 
-    char *copy = strdup(new_text);
+    char *copy = vg_strdup(new_text);
     if (!copy)
         return;
 
@@ -536,7 +536,7 @@ void vg_button_set_icon(vg_button_t *button, const char *icon) {
         (button->icon_text && icon && strcmp(button->icon_text, icon) == 0))
         return;
 
-    char *copy = icon ? strdup(icon) : NULL;
+    char *copy = icon ? vg_strdup(icon) : NULL;
     if (icon && !copy)
         return;
 

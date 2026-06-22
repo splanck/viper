@@ -30,6 +30,7 @@
 
 #include "vaud_internal.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -381,15 +382,16 @@ static int32_t collect_effect_group_candidates_locked(vaud_context_t ctx,
 }
 
 /// @brief Apply the optional user query hook to candidate effect groups.
-/// @details Runs without the audio context mutex held so user code cannot
-///          block engine state updates. If no query hook is installed, every
+/// @details The caller holds the audio context mutex so the query callback,
+///          process callback, and their userdata cannot be replaced while a
+///          render pass is using them. If no query hook is installed, every
 ///          candidate group is treated as effect-enabled.
-static int32_t filter_effect_groups_unlocked(vaud_group_effects_query_fn query,
-                                             void *userdata,
-                                             const int64_t *candidates,
-                                             int32_t candidate_count,
-                                             int64_t *groups,
-                                             int32_t cap) {
+static int32_t filter_effect_groups_locked(vaud_group_effects_query_fn query,
+                                           void *userdata,
+                                           const int64_t *candidates,
+                                           int32_t candidate_count,
+                                           int64_t *groups,
+                                           int32_t cap) {
     int32_t count = 0;
     if (!candidates || !groups || candidate_count <= 0 || cap <= 0)
         return 0;
@@ -402,10 +404,9 @@ static int32_t filter_effect_groups_unlocked(vaud_group_effects_query_fn query,
 }
 
 /// @brief Process one group bus and add the processed samples to the master bus.
-/// @details The caller enters with @p ctx->mutex held and this helper returns
-///          with it held again. The user effect callback itself runs without
-///          the context mutex so control APIs are not blocked behind arbitrary
-///          user DSP code.
+/// @details The caller holds @p ctx->mutex for the full callback so
+///          `vaud_set_group_effects_processor()` cannot replace the callback or
+///          userdata while the render thread is using them.
 static void add_processed_group_to_master(vaud_context_t ctx,
                                           vaud_group_effects_process_fn process,
                                           void *userdata,
@@ -420,7 +421,6 @@ static void add_processed_group_to_master(vaud_context_t ctx,
     for (size_t i = 0; i < sample_count; i++)
         ctx->group_fx_buf[i] = (float)group_accum[i] / 32768.0f;
 
-    vaud_mutex_unlock(&ctx->mutex);
     process(userdata, group_id, ctx->group_fx_buf, frames, VAUD_CHANNELS, VAUD_SAMPLE_RATE);
 
     for (size_t i = 0; i < sample_count; i++) {
@@ -428,7 +428,6 @@ static void add_processed_group_to_master(vaud_context_t ctx,
         int32_t sample = vaud_mixer_float_to_accum_sample(scaled);
         master_accum[i] = vaud_mixer_saturating_add_i32(master_accum[i], sample);
     }
-    vaud_mutex_lock(&ctx->mutex);
 }
 
 static void mix_with_group_effects(vaud_context_t ctx,
@@ -550,14 +549,8 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     if (process) {
         int32_t candidate_count =
             collect_effect_group_candidates_locked(ctx, candidate_groups, group_cap);
-        vaud_mutex_unlock(&ctx->mutex);
-        effect_group_count = filter_effect_groups_unlocked(
+        effect_group_count = filter_effect_groups_locked(
             query, effects_userdata, candidate_groups, candidate_count, effect_groups, group_cap);
-        if (!vaud_mutex_trylock(&ctx->mutex)) {
-            vaud_stats_add(&ctx->stats.mixer_lock_misses, 1);
-            vaud_mixer_render_lock_miss_fallback(ctx, output, frames);
-            return;
-        }
         if (ctx->paused || vaud_atomic_load_i32(&ctx->destroying) != 0) {
             vaud_mutex_unlock(&ctx->mutex);
             vaud_zero_output(output, frames);
@@ -568,7 +561,10 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     mix_with_group_effects(
         ctx, accum, frames, master, effect_groups, effect_group_count, process, effects_userdata);
 
-    ctx->frame_counter += frames;
+    if (ctx->frame_counter > INT64_MAX - (int64_t)frames)
+        ctx->frame_counter = INT64_MAX;
+    else
+        ctx->frame_counter += frames;
 
     vaud_mutex_unlock(&ctx->mutex);
 
@@ -588,7 +584,7 @@ static vaud_voice_id vaud_next_voice_id(vaud_context_t ctx) {
     if (!ctx)
         return VAUD_INVALID_VOICE;
 
-    for (int32_t attempts = 0; attempts < INT32_MAX; attempts++) {
+    for (int32_t attempts = 0; attempts < VAUD_MAX_VOICES + 2; attempts++) {
         int32_t candidate = ctx->next_voice_id;
         if (ctx->next_voice_id >= INT32_MAX || ctx->next_voice_id <= 0 ||
             ctx->next_voice_id == VAUD_INVALID_VOICE) {

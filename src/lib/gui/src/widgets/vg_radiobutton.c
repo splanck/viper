@@ -234,7 +234,7 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
         return NULL;
 
     vg_widget_init(&radio->base, VG_WIDGET_RADIO, &g_radio_vtable);
-    radio->text = text ? strdup(text) : NULL;
+    radio->text = text ? vg_strdup(text) : NULL;
     if (text && !radio->text) {
         vg_widget_destroy(&radio->base);
         return NULL;

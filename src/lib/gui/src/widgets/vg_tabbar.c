@@ -158,10 +158,10 @@ static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
 /// modified; caller must free.
 static char *make_tab_title(const vg_tab_t *tab) {
     if (!tab || !tab->title)
-        return strdup("");
+        return vg_strdup("");
 
     if (!tab->modified)
-        return strdup(tab->title);
+        return vg_strdup(tab->title);
 
     size_t len = strlen(tab->title);
     char *title = (char *)malloc(len + 3); /* " *\0" */
@@ -186,19 +186,19 @@ static size_t utf8_prev_boundary(const char *text, size_t len) {
 /// pixels; caller must free.
 static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_width) {
     if (!title)
-        return strdup("");
+        return vg_strdup("");
     if (!tabbar->font || max_width <= 0.0f)
-        return strdup("");
+        return vg_strdup("");
 
     vg_text_metrics_t metrics;
     vg_font_measure_text(tabbar->font, tabbar->font_size, title, &metrics);
     if (metrics.width <= max_width)
-        return strdup(title);
+        return vg_strdup(title);
 
     vg_text_metrics_t ellipsis_metrics;
     vg_font_measure_text(tabbar->font, tabbar->font_size, "...", &ellipsis_metrics);
     if (ellipsis_metrics.width > max_width)
-        return strdup("");
+        return vg_strdup("");
 
     size_t len = strlen(title);
     char *buf = (char *)malloc(len + 4); /* original text + "...\0" */
@@ -353,7 +353,7 @@ static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
     if (hover_tooltip) {
         if (!tabbar->hover_tooltip_active) {
             char *saved_tooltip =
-                tabbar->base.tooltip_text ? strdup(tabbar->base.tooltip_text) : NULL;
+                tabbar->base.tooltip_text ? vg_strdup(tabbar->base.tooltip_text) : NULL;
             if (tabbar->base.tooltip_text && !saved_tooltip)
                 return;
             free(tabbar->saved_tooltip_text);
@@ -951,12 +951,12 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     if (!tab)
         return NULL;
 
-    char *title_copy = title ? strdup(title) : strdup("Untitled");
+    char *title_copy = title ? vg_strdup(title) : vg_strdup("Untitled");
     if (!title_copy) {
         free(tab);
         return NULL;
     }
-    char *tooltip_copy = strdup(title_copy);
+    char *tooltip_copy = vg_strdup(title_copy);
     if (!tooltip_copy) {
         free(title_copy);
         free(tab);
@@ -1155,13 +1155,13 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
         tooltip_tracks_title = true;
     }
 
-    char *new_title = title ? strdup(title) : strdup("Untitled");
+    char *new_title = title ? vg_strdup(title) : vg_strdup("Untitled");
     if (!new_title)
         return;
 
     char *new_tooltip = NULL;
     if (tooltip_tracks_title) {
-        new_tooltip = strdup(new_title);
+        new_tooltip = vg_strdup(new_title);
         if (!new_tooltip) {
             free(new_title);
             return;
@@ -1207,7 +1207,7 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     if (!vg_tab_is_live(tab))
         return;
 
-    char *copy = tooltip ? strdup(tooltip) : NULL;
+    char *copy = tooltip ? vg_strdup(tooltip) : NULL;
     if (tooltip && !copy)
         return;
     if (tab->tooltip)

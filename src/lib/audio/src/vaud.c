@@ -235,8 +235,8 @@ void vaud_clear_error(void) {
 
 #if defined(VAUD_PLATFORM_WINDOWS)
 
-void vaud_mutex_init(vaud_mutex_t *mutex) {
-    InitializeCriticalSection(mutex);
+int vaud_mutex_init(vaud_mutex_t *mutex) {
+    return mutex && InitializeCriticalSectionAndSpinCount(mutex, 4000) ? 1 : 0;
 }
 
 void vaud_mutex_destroy(vaud_mutex_t *mutex) {
@@ -257,8 +257,8 @@ int vaud_mutex_trylock(vaud_mutex_t *mutex) {
 
 #else /* POSIX */
 
-void vaud_mutex_init(vaud_mutex_t *mutex) {
-    pthread_mutex_init(mutex, NULL);
+int vaud_mutex_init(vaud_mutex_t *mutex) {
+    return mutex && pthread_mutex_init(mutex, NULL) == 0;
 }
 
 void vaud_mutex_destroy(vaud_mutex_t *mutex) {
@@ -419,7 +419,11 @@ vaud_context_t vaud_create(void) {
     }
 
     /* Initialize mutex */
-    vaud_mutex_init(&ctx->mutex);
+    if (!vaud_mutex_init(&ctx->mutex)) {
+        vaud_set_error(VAUD_ERR_ALLOC, "Failed to initialize audio mutex");
+        free(ctx);
+        return NULL;
+    }
 
     /* Initialize platform backend */
     if (!vaud_platform_init(ctx)) {

@@ -102,7 +102,7 @@ static int tooltip_wrap_text(vg_tooltip_t *tooltip, char ***out_lines, float *ou
     while (start <= text_len) {
         if (text[start] == '\0') {
             if (count == 0 && out_lines && lines) {
-                lines[count++] = strdup("");
+                lines[count++] = vg_strdup("");
             }
             break;
         }
@@ -199,7 +199,7 @@ static int tooltip_wrap_text(vg_tooltip_t *tooltip, char ***out_lines, float *ou
                     lines = new_lines;
                     cap = new_cap;
                 }
-                lines[count] = strdup("");
+                lines[count] = vg_strdup("");
                 if (!lines[count])
                     break;
                 count++;
@@ -445,7 +445,7 @@ void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text) {
 
     char *copy = NULL;
     if (text) {
-        copy = strdup(text);
+        copy = vg_strdup(text);
         if (!copy)
             return;
     }
@@ -734,7 +734,7 @@ void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text) {
         return;
     char *copy = NULL;
     if (text && text[0]) {
-        copy = strdup(text);
+        copy = vg_strdup(text);
         if (!copy)
             return;
     }

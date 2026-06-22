@@ -15,7 +15,7 @@
 // Key invariants:
 //   - Filter patterns use Win32-style `*.ext;*.ext` syntax; the bridge parses
 //     and translates them to `NSArray<UTType *>` / `NSArray<NSString *>`.
-//   - Returned `char *` paths are `strdup()`-allocated UTF-8 owned by the
+//   - Returned `char *` paths are `vg_strdup()`-allocated UTF-8 owned by the
 //     caller; multi-result helpers return a `char **` array that must be
 //     released with `vg_native_free_paths`.
 //   - Every entry point wraps Cocoa work in an `@autoreleasepool` to avoid
@@ -32,6 +32,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../include/vg_string.h"
 #import <Cocoa/Cocoa.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <stdint.h>
@@ -106,7 +107,7 @@ static void setAllowedExtensions(NSSavePanel *panel, NSArray *extensions) {
 /// @param filter_name    Human-readable filter label (ignored on macOS — the
 ///                       OS supplies the label from the UTType).
 /// @param filter_pattern Win32 filter string; restricts the panel's selection.
-/// @return `strdup()`-allocated UTF-8 path on selection; `NULL` if the user
+/// @return `vg_strdup()`-allocated UTF-8 path on selection; `NULL` if the user
 ///         cancelled. Caller owns the result and must `free()` it.
 char *vg_native_open_file(const char *title,
                           const char *initial_path,
@@ -137,7 +138,7 @@ char *vg_native_open_file(const char *title,
                 const char *path = [[url path] UTF8String];
                 if (!path)
                     return NULL;
-                return strdup(path);
+                return vg_strdup(path);
             }
         }
 
@@ -153,7 +154,7 @@ char *vg_native_open_file(const char *title,
 /// @param filter_name    Human-readable filter label (ignored on macOS).
 /// @param filter_pattern Win32 filter string.
 /// @param out_count      Receives the number of selected paths (0 if cancelled).
-/// @return Newly-allocated array of `strdup()`-allocated UTF-8 paths; `NULL`
+/// @return Newly-allocated array of `vg_strdup()`-allocated UTF-8 paths; `NULL`
 ///         if cancelled. Free with @ref vg_native_free_paths.
 char **vg_native_open_files(const char *title,
                             const char *initial_path,
@@ -196,7 +197,7 @@ char **vg_native_open_files(const char *title,
         size_t count = 0;
         for (NSURL *url in urls) {
             const char *path = [[url path] UTF8String];
-            paths[count] = path ? strdup(path) : NULL;
+            paths[count] = path ? vg_strdup(path) : NULL;
             if (!paths[count]) {
                 vg_native_free_paths(paths, count);
                 return NULL;
@@ -213,7 +214,7 @@ char **vg_native_open_files(const char *title,
 /// @brief Free the array returned by @ref vg_native_open_files.
 /// @details Releases every entry with `free()` then frees the outer array.
 ///          Safe on `NULL` arrays.
-/// @param paths Array of `strdup()`-allocated UTF-8 strings.
+/// @param paths Array of `vg_strdup()`-allocated UTF-8 strings.
 /// @param count Number of entries in @p paths.
 void vg_native_free_paths(char **paths, size_t count) {
     if (!paths)
@@ -232,7 +233,7 @@ void vg_native_free_paths(char **paths, size_t count) {
 /// @param default_name   Pre-filled filename, UTF-8 (may be `NULL`).
 /// @param filter_name    Human-readable filter label (ignored on macOS).
 /// @param filter_pattern Win32 filter string.
-/// @return `strdup()`-allocated UTF-8 destination path, or `NULL` if cancelled.
+/// @return `vg_strdup()`-allocated UTF-8 destination path, or `NULL` if cancelled.
 char *vg_native_save_file(const char *title,
                           const char *initial_path,
                           const char *default_name,
@@ -263,7 +264,7 @@ char *vg_native_save_file(const char *title,
                 const char *path = [[url path] UTF8String];
                 if (!path)
                     return NULL;
-                return strdup(path);
+                return vg_strdup(path);
             }
         }
 
@@ -277,7 +278,7 @@ char *vg_native_save_file(const char *title,
 ///          filter is applied — the user picks a directory.
 /// @param title        Window-title text, UTF-8 (may be `NULL`).
 /// @param initial_path Starting directory, UTF-8 (may be `NULL`).
-/// @return `strdup()`-allocated UTF-8 directory path, or `NULL` if cancelled.
+/// @return `vg_strdup()`-allocated UTF-8 directory path, or `NULL` if cancelled.
 char *vg_native_select_folder(const char *title, const char *initial_path) {
     @autoreleasepool {
         NSOpenPanel *panel = [NSOpenPanel openPanel];
@@ -301,7 +302,7 @@ char *vg_native_select_folder(const char *title, const char *initial_path) {
                 const char *path = [[url path] UTF8String];
                 if (!path)
                     return NULL;
-                return strdup(path);
+                return vg_strdup(path);
             }
         }
 

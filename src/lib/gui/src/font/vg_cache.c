@@ -243,27 +243,23 @@ static void cache_evict_some(vg_glyph_cache_t *cache) {
     if (count == 0)
         return;
 
-    // Collect all entry pointers into a flat array for sorting.
-    vg_cache_entry_t **all = malloc(count * sizeof(vg_cache_entry_t *));
-    if (!all)
-        return; // Fall back to no eviction rather than crash
-
-    size_t filled = 0;
-    for (size_t i = 0; i < cache->bucket_count && filled < count; i++) {
-        for (vg_cache_entry_t *e = cache->buckets[i]; e; e = e->next)
-            all[filled++] = e;
-    }
-
-    // Sort by ascending access_tick (lowest = LRU = evict first)
-    qsort(all, filled, sizeof(vg_cache_entry_t *), compare_ticks);
-
-    // Evict the bottom 25%
-    size_t to_evict = filled / 4;
+    // Evict the oldest 25% with repeated linear minimum scans. This avoids a
+    // scratch allocation and qsort on the render path while preserving LRU order
+    // for the small bounded cache sizes used here.
+    size_t to_evict = count / 4;
     if (to_evict < 1)
         to_evict = 1;
 
     for (size_t k = 0; k < to_evict; k++) {
-        vg_cache_entry_t *victim = all[k];
+        vg_cache_entry_t *victim = NULL;
+        for (size_t i = 0; i < cache->bucket_count; i++) {
+            for (vg_cache_entry_t *entry = cache->buckets[i]; entry; entry = entry->next) {
+                if (!victim || compare_ticks(&entry, &victim) < 0)
+                    victim = entry;
+            }
+        }
+        if (!victim)
+            break;
         // Remove from its bucket chain
         size_t bi = hash_key(victim->key, cache->bucket_count);
         vg_cache_entry_t **prev = &cache->buckets[bi];
@@ -281,8 +277,6 @@ static void cache_evict_some(vg_glyph_cache_t *cache) {
         cache->entry_count--;
         free_entry(victim);
     }
-
-    free(all);
 }
 
 //=============================================================================

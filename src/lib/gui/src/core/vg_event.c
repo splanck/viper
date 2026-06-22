@@ -180,17 +180,25 @@ void vg_event_forget_widget_subtree(vg_widget_t *widget) {
 
 /// @brief Frees any root-state slots whose root widget has since been destroyed or recycled.
 static void event_prune_dead_root_state_slots(void) {
+    size_t live_count = 0;
     for (size_t i = 0; i < g_root_state_slot_capacity; i++) {
         if (!g_root_state_slots[i].root)
             continue;
         if (vg_widget_is_live(g_root_state_slots[i].root) &&
-            g_root_state_slots[i].root->id == g_root_state_slots[i].root_id)
+            g_root_state_slots[i].root->id == g_root_state_slots[i].root_id) {
+            live_count++;
             continue;
+        }
         if (g_active_event_root == g_root_state_slots[i].root)
             g_active_event_root = NULL;
         if (!g_active_event_root)
             g_active_event_root_id = 0;
         memset(&g_root_state_slots[i], 0, sizeof(g_root_state_slots[i]));
+    }
+    if (live_count == 0 && g_root_state_slots) {
+        free(g_root_state_slots);
+        g_root_state_slots = NULL;
+        g_root_state_slot_capacity = 0;
     }
 }
 
@@ -683,6 +691,8 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
             // which fails for dropdown clicks outside the widget bounds.
             if (event->type == VG_EVENT_MOUSE_UP) {
                 bool handled = vg_event_send(capture, event);
+                if (!vg_widget_is_live(capture))
+                    return handled;
                 if (capture->type == VG_WIDGET_DROPDOWN &&
                     vg_widget_get_input_capture() == capture &&
                     !vg_widget_contains_point(
@@ -745,10 +755,10 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         vg_widget_t *capture = event_modal_safe_capture();
         if (capture) {
             event->target = capture;
-            if (capture->vtable && capture->vtable->handle_event) {
-                if (capture->vtable->handle_event(capture, event))
-                    return true;
-            }
+            if (vg_event_send(capture, event))
+                return true;
+            if (!vg_widget_is_live(capture))
+                event->target = NULL;
             // If captured widget didn't handle it, fall through to focused widget
         }
 
@@ -822,7 +832,6 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     bool synthesize_click = false;
     bool synthesize_double_click = false;
     vg_event_t click_source = {0};
-    vg_widget_t *bubble_parent = widget->parent;
 
     event_localize_mouse_to_widget(widget, event);
     if (event->type == VG_EVENT_CLICK)
@@ -864,15 +873,18 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
             handled = true;
         }
     }
-    if (!vg_widget_is_live(widget))
+    vg_widget_t *bubble_parent = NULL;
+    if (!vg_widget_is_live(widget)) {
         synthesize_click = false;
+    } else {
+        bubble_parent = widget->parent;
+    }
 
     // Bubble up the parent chain iteratively (avoids stack overflow on deep trees)
     vg_widget_t *current = bubble_parent;
     while (!event->handled && current) {
         if (!vg_widget_is_live(current))
             break;
-        vg_widget_t *next = current->parent;
         event_localize_mouse_to_widget(current, event);
         if (current->vtable && current->vtable->handle_event) {
             if (current->vtable->handle_event(current, event)) {
@@ -881,6 +893,9 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
                 break;
             }
         }
+        if (!vg_widget_is_live(current))
+            break;
+        vg_widget_t *next = current->parent;
         current = vg_widget_is_live(next) ? next : NULL;
     }
 

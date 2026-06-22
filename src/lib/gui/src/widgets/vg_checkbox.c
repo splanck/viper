@@ -71,7 +71,7 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
     float scale = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
 
     // Initialize checkbox-specific fields
-    checkbox->text = text ? strdup(text) : strdup("");
+    checkbox->text = text ? vg_strdup(text) : vg_strdup("");
     if (!checkbox->text) {
         vg_widget_destroy(&checkbox->base);
         return NULL;
@@ -354,7 +354,7 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     if (checkbox->text && strcmp(checkbox->text, new_text) == 0)
         return;
 
-    char *copy = strdup(new_text);
+    char *copy = vg_strdup(new_text);
     if (!copy)
         return;
 

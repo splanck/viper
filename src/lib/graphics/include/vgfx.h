@@ -107,12 +107,15 @@ vgfx_window_params_t vgfx_window_params_default(void);
 /// @details Provides raw access to the RGBA pixel buffer.  Each pixel is 4
 ///          bytes (RGBA order, 8 bits per channel).  The stride is always
 ///          width * 4.  Pixels are stored in row-major order with (0, 0) at
-///          the top-left corner.
+///          the top-left corner. The generation value changes whenever the
+///          framebuffer storage is replaced, so callers that retain a pointer
+///          across event/update calls can detect invalidation.
 typedef struct {
-    uint8_t *pixels; ///< RGBA pixel data (4 bytes per pixel)
-    int32_t width;   ///< Framebuffer width in pixels
-    int32_t height;  ///< Framebuffer height in pixels
-    int32_t stride;  ///< Bytes per row (always width * 4)
+    uint8_t *pixels;     ///< RGBA pixel data (4 bytes per pixel)
+    int32_t width;       ///< Framebuffer width in pixels
+    int32_t height;      ///< Framebuffer height in pixels
+    int32_t stride;      ///< Bytes per row (always width * 4)
+    uint64_t generation; ///< Monotonic storage generation; changes after resize/reallocation.
 } vgfx_framebuffer_t;
 
 /// @brief Logging callback function type.
@@ -573,7 +576,9 @@ int32_t vgfx_window_get_height(vgfx_window_t window);
 /// @details Returns a descriptor with pointers to the raw RGBA pixel data.
 ///          The framebuffer is always stored in row-major order with 4 bytes
 ///          per pixel (RGBA, 8 bits per channel).  Direct writes are visible
-///          after the next vgfx_update() call.
+///          after the next vgfx_update() call. Any API that pumps native events
+///          can resize the window and invalidate a previously returned pixels
+///          pointer; compare vgfx_framebuffer_t::generation after such calls.
 /// @param window Window handle
 /// @param out_fb Pointer to receive framebuffer descriptor
 /// @return 1 on success, 0 if window or out_fb is NULL

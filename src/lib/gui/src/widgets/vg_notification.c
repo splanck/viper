@@ -28,9 +28,9 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
-#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include <stdlib.h>
 #include <string.h>
@@ -130,8 +130,8 @@ static void notification_fill_round_rect(
 /// @brief Stroke a rounded-rectangle border via the shared anti-aliased core.
 static void notification_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
-                              color);
+    vg_draw_round_rect_stroke(
+        win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f, color);
 }
 
 /// @brief Heap-allocate a NUL-terminated copy of the first len bytes of text.
@@ -168,7 +168,7 @@ static int notification_wrap_text(vg_notification_manager_t *mgr,
     while (start <= text_len) {
         if (text[start] == '\0') {
             if (count == 0 && lines)
-                lines[count++] = strdup("");
+                lines[count++] = vg_strdup("");
             break;
         }
 
@@ -570,8 +570,17 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
 
         vg_elevation_t nel = theme->elevation.level2;
         uint8_t nshadow_a = (uint8_t)((float)nel.alpha * opacity);
-        vg_draw_round_rect_shadow(win, (float)x, (float)y, (float)w, (float)h, (float)radius,
-                                  nel.blur, nel.dx, nel.dy, nshadow_a, theme->elevation.shadow_rgb);
+        vg_draw_round_rect_shadow(win,
+                                  (float)x,
+                                  (float)y,
+                                  (float)w,
+                                  (float)h,
+                                  (float)radius,
+                                  nel.blur,
+                                  nel.dx,
+                                  nel.dy,
+                                  nshadow_a,
+                                  theme->elevation.shadow_rgb);
         notification_fill_round_rect(win, x, y, w, h, radius, card_bg);
         notification_stroke_round_rect(win, x, y, w, h, radius, card_border);
         notification_fill_round_rect(win, x, y, accent_w, h, radius / 2, accent_color);
@@ -890,11 +899,11 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
 
     notif->id = id;
     notif->type = type;
-    notif->title = title ? strdup(title) : NULL;
-    notif->message = message ? strdup(message) : NULL;
+    notif->title = title ? vg_strdup(title) : NULL;
+    notif->message = message ? vg_strdup(message) : NULL;
     notif->duration_ms = duration_ms;
     notif->created_at = 0; // Sentinel — populated on first manager_update tick.
-    notif->action_label = action_label ? strdup(action_label) : NULL;
+    notif->action_label = action_label ? vg_strdup(action_label) : NULL;
     notif->action_callback = action_callback;
     notif->action_user_data = user_data;
     notif->opacity = 0.0f;

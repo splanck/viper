@@ -167,6 +167,11 @@ struct vgfx_window {
     /// @brief Row stride in bytes (always width * 4 for contiguous rows).
     int32_t stride;
 
+    /// @brief Monotonic framebuffer storage generation.
+    /// @details Incremented each time pixels is allocated or replaced so direct
+    ///          framebuffer users can detect stale descriptors after resize.
+    uint64_t framebuffer_generation;
+
     /// @brief When 1, vgfx_platform_present skips the software framebuffer blit.
     /// @details Set by GPU backends (Metal, D3D11, OpenGL) to prevent the software
     ///          framebuffer CGImage from being drawn on top of GPU-rendered content.
@@ -270,6 +275,9 @@ struct vgfx_window {
     ///        close button (or equivalent).  Checked by the runtime to
     ///        auto-terminate without requiring application-level handling.
     int32_t close_requested;
+
+    /// @brief Non-zero while vgfx_destroy_window is tearing down native resources.
+    int32_t destroying;
 
     /// @brief When non-zero, clicking the close button does not close the window.
     /// @details The close event is still generated so the application can prompt
@@ -375,6 +383,23 @@ int vgfx_platform_process_events(struct vgfx_window *win);
 /// @pre  win->platform_data != NULL
 /// @post Framebuffer contents are visible in the native window
 int vgfx_platform_present(struct vgfx_window *win);
+
+/// @brief Allocate aligned storage for a framebuffer.
+/// @details Implemented by each platform adapter so core code does not need
+///          platform preprocessor branches for aligned allocation.  Returned
+///          storage is uninitialized and must be released with
+///          `vgfx_platform_aligned_free()`.
+/// @param alignment Required byte alignment, power of two.  Backends may also
+///                  require the platform's minimum pointer alignment.
+/// @param size Number of bytes to allocate.
+/// @return Aligned allocation, or NULL on failure.
+void *vgfx_platform_aligned_alloc(size_t alignment, size_t size);
+
+/// @brief Free storage returned by vgfx_platform_aligned_alloc().
+/// @details Dispatches to the platform-specific deallocator that matches the
+///          allocation routine above.  Passing NULL is a no-op.
+/// @param ptr Pointer returned by vgfx_platform_aligned_alloc(), or NULL.
+void vgfx_platform_aligned_free(void *ptr);
 
 /// @brief Sleep for the specified duration.
 /// @details Used by vgfx_present() for frame rate limiting.  The actual sleep
@@ -593,6 +618,54 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
 ///          polling APIs cannot report keys/buttons as held forever after the
 ///          operating system stops sending release events to the window.
 void vgfx_internal_clear_input_state(struct vgfx_window *win);
+
+/// @brief Set key polling state for a window.
+/// @details Validates the public key range, acquires the window event/state
+///          lock, and updates the sticky polling state used by
+///          `vgfx_key_down()`.  Invalid keys are ignored.
+/// @param win Window whose key state should be updated.
+/// @param key Viper key code to update.
+/// @param down Non-zero when pressed, zero when released.
+void vgfx_internal_set_key_state(struct vgfx_window *win, int32_t key, int32_t down);
+
+/// @brief Set mouse-button polling state for a window.
+/// @details Validates the button index, acquires the window event/state lock,
+///          and updates the sticky polling state used by
+///          `vgfx_mouse_button()`.
+/// @param win Window whose mouse-button state should be updated.
+/// @param button Mouse button index.
+/// @param down Non-zero when pressed, zero when released.
+void vgfx_internal_set_mouse_button_state(struct vgfx_window *win, int32_t button, int32_t down);
+
+/// @brief Store the latest raw framebuffer-space mouse position.
+/// @details Acquires the window event/state lock before updating the cached
+///          mouse coordinates.  Public getters convert from this raw coordinate
+///          space according to the current coordinate scale.
+/// @param win Window whose mouse coordinates should be updated.
+/// @param x Raw physical X coordinate.
+/// @param y Raw physical Y coordinate.
+void vgfx_internal_set_mouse_position(struct vgfx_window *win, int32_t x, int32_t y);
+
+/// @brief Set the close-requested polling flag.
+/// @details Acquires the window event/state lock before updating the flag read
+///          by `vgfx_close_requested()`.
+/// @param win Window whose close state should be updated.
+/// @param requested Non-zero when a close was requested, zero to clear.
+void vgfx_internal_set_close_requested(struct vgfx_window *win, int32_t requested);
+
+/// @brief Set the cached focus flag.
+/// @details Acquires the window event/state lock before updating the focus
+///          state used by platform focus queries and focus-lost cleanup.
+/// @param win Window whose focus state should be updated.
+/// @param focused Non-zero when focused, zero when unfocused.
+void vgfx_internal_set_focus_state(struct vgfx_window *win, int32_t focused);
+
+/// @brief Set whether close requests should be prevented.
+/// @details Acquires the window event/state lock before updating the flag used
+///          by native close-button handlers.
+/// @param win Window whose close-prevention flag should be updated.
+/// @param prevent Non-zero to prevent close requests, zero to allow them.
+void vgfx_internal_set_prevent_close(struct vgfx_window *win, int32_t prevent);
 
 static inline void vgfx_internal_event_lock(struct vgfx_window *win) {
     while (vgfx_atomic_flag_test_and_set(&win->event_lock)) {

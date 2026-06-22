@@ -53,6 +53,34 @@
 
 typedef void *GLXFBConfig;
 
+/// @brief Allocate an aligned framebuffer buffer using the POSIX allocator.
+/// @details Linux/X11 is an approved platform adapter layer, so it owns the
+///          direct `posix_memalign` call needed by the platform-neutral core.
+///          The returned pointer must be released with
+///          `vgfx_platform_aligned_free()`.
+/// @param alignment Required byte alignment; POSIX requires a power-of-two
+///                  multiple of `sizeof(void *)`.
+/// @param size Number of bytes requested.
+/// @return Aligned allocation on success, or NULL for invalid input/OOM.
+void *vgfx_platform_aligned_alloc(size_t alignment, size_t size) {
+    if (size == 0)
+        return NULL;
+    if (alignment < sizeof(void *))
+        alignment = sizeof(void *);
+    void *ptr = NULL;
+    if (posix_memalign(&ptr, alignment, size) != 0)
+        return NULL;
+    return ptr;
+}
+
+/// @brief Free a buffer returned by `vgfx_platform_aligned_alloc()`.
+/// @details POSIX aligned allocations are released with regular `free`.
+///          Passing NULL is permitted.
+/// @param ptr Pointer returned by `vgfx_platform_aligned_alloc()`, or NULL.
+void vgfx_platform_aligned_free(void *ptr) {
+    free(ptr);
+}
+
 #define VGFX_GLX_USE_GL 1
 #define VGFX_GLX_RGBA_BIT 0x00000001
 #define VGFX_GLX_WINDOW_BIT 0x00000001
@@ -532,6 +560,10 @@ static void x11_unregister_window(struct vgfx_window *win) {
         g_vgfx_cursor_window = g_vgfx_x11_windows;
     if (g_vgfx_clipboard_window == win)
         g_vgfx_clipboard_window = g_vgfx_x11_windows;
+    if (!g_vgfx_x11_windows && g_vgfx_glx_libgl_handle) {
+        dlclose(g_vgfx_glx_libgl_handle);
+        g_vgfx_glx_libgl_handle = NULL;
+    }
 }
 
 static struct vgfx_window *x11_clipboard_window(void) {
@@ -541,7 +573,10 @@ static struct vgfx_window *x11_clipboard_window(void) {
     for (struct vgfx_window *win = g_vgfx_x11_windows; win;) {
         vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
         struct vgfx_window *next = x11 ? x11->next_window : NULL;
-        if (x11_window_usable(win) && win->is_focused) {
+        vgfx_internal_event_lock(win);
+        int focused = win->is_focused;
+        vgfx_internal_event_unlock(win);
+        if (x11_window_usable(win) && focused) {
             g_vgfx_clipboard_window = win;
             return win;
         }
@@ -609,6 +644,21 @@ static void x11_set_window_title_utf8(Display *display, Window window, const cha
     XSetIconName(display, window, title);
 }
 
+/// @brief Validate that an XGetWindowProperty result is an Atom list.
+/// @details Several EWMH queries request `_NET_WM_STATE` as `XA_ATOM`.  Window
+///          managers or proxying X servers may still return an unexpected type
+///          or format.  This helper centralizes the check before the byte buffer
+///          is cast to `Atom *`.
+/// @param actual_type Type returned by XGetWindowProperty.
+/// @param actual_format Element width returned by XGetWindowProperty.
+/// @param data Returned property payload.
+/// @return 1 when `data` may be treated as an array of Atom values; otherwise 0.
+static int x11_is_atom_list_property(Atom actual_type,
+                                     int actual_format,
+                                     const unsigned char *data) {
+    return data && actual_type == XA_ATOM && actual_format == 32;
+}
+
 static int x11_create_ximage_resources(vgfx_x11_data *x11,
                                        int32_t width,
                                        int32_t height,
@@ -645,7 +695,7 @@ static int x11_create_ximage_resources(vgfx_x11_data *x11,
         return 0;
     }
 
-    image->byte_order = LSBFirst;
+    image->byte_order = ImageByteOrder(x11->display);
     *out_image = image;
     *out_buf = buf;
     *out_size = buf_size;
@@ -1411,8 +1461,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 vgfx_key_t key = translate_keysym(keysym);
 
                 if (key != VGFX_KEY_UNKNOWN && key < 512) {
-                    int is_repeat = win->key_state[key]; /* Already pressed = repeat */
-                    win->key_state[key] = 1;             /* Update input state */
+                    int is_repeat = vgfx_key_down(win, key);
+                    vgfx_internal_set_key_state(win, key, 1);
 
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_KEY_DOWN,
@@ -1444,7 +1494,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 vgfx_key_t key = translate_keysym(keysym);
 
                 if (key != VGFX_KEY_UNKNOWN && key < 512) {
-                    win->key_state[key] = 0; /* Update input state */
+                    vgfx_internal_set_key_state(win, key, 0);
 
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_KEY_UP,
@@ -1461,8 +1511,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 int32_t x = event.xmotion.x;
                 int32_t y = event.xmotion.y;
 
-                win->mouse_x = x; /* Update input state */
-                win->mouse_y = y;
+                vgfx_internal_set_mouse_position(win, x, y);
 
                 vgfx_event_t vgfx_event = {
                     .type = VGFX_EVENT_MOUSE_MOVE,
@@ -1476,8 +1525,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case ButtonPress: {
                 int32_t x = event.xbutton.x;
                 int32_t y = event.xbutton.y;
-                win->mouse_x = x;
-                win->mouse_y = y;
+                vgfx_internal_set_mouse_position(win, x, y);
 
                 /* X11 mouse button mapping:
                  *   Button1 = Left (1)
@@ -1520,9 +1568,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     break; /* Ignore extra buttons */
                 }
 
-                if ((int)button >= 0 && button < 8) {
-                    win->mouse_button_state[(int)button] = 1; /* Update input state */
-                }
+                vgfx_internal_set_mouse_button_state(win, (int32_t)button, 1);
 
                 vgfx_event_t vgfx_event = {
                     .type = VGFX_EVENT_MOUSE_DOWN,
@@ -1538,8 +1584,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case ButtonRelease: {
                 int32_t x = event.xbutton.x;
                 int32_t y = event.xbutton.y;
-                win->mouse_x = x;
-                win->mouse_y = y;
+                vgfx_internal_set_mouse_position(win, x, y);
 
                 vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
                 if (event.xbutton.button == Button1) {
@@ -1552,9 +1597,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     break; /* Ignore scroll wheel and extra buttons */
                 }
 
-                if ((int)button >= 0 && button < 8) {
-                    win->mouse_button_state[(int)button] = 0; /* Update input state */
-                }
+                vgfx_internal_set_mouse_button_state(win, (int32_t)button, 0);
 
                 vgfx_event_t vgfx_event = {
                     .type = VGFX_EVENT_MOUSE_UP,
@@ -1570,9 +1613,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case ClientMessage: {
                 /* Handle WM_DELETE_WINDOW (window close button clicked) */
                 if ((Atom)event.xclient.data.l[0] == x11->wm_delete_window) {
-                    if (!win->prevent_close) {
+                    vgfx_internal_event_lock(win);
+                    int prevent_close = win->prevent_close;
+                    vgfx_internal_event_unlock(win);
+                    if (!prevent_close) {
                         x11->close_requested = 1;
-                        win->close_requested = 1;
+                        vgfx_internal_set_close_requested(win, 1);
                     }
 
                     vgfx_event_t vgfx_event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
@@ -1649,7 +1695,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case FocusIn: {
                 if (x11->xic)
                     XSetICFocus(x11->xic);
-                win->is_focused = 1;
+                vgfx_internal_set_focus_state(win, 1);
                 g_vgfx_cursor_window = win;
                 g_vgfx_clipboard_window = win;
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
@@ -1660,7 +1706,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case FocusOut: {
                 if (x11->xic)
                     XUnsetICFocus(x11->xic);
-                win->is_focused = 0;
+                vgfx_internal_set_focus_state(win, 0);
                 vgfx_internal_clear_input_state(win);
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
@@ -1930,8 +1976,11 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win) {
                                     &bytes_after,
                                     &data);
 
-    if (status != Success || !data)
+    if (status != Success || !x11_is_atom_list_property(actual_type, actual_format, data)) {
+        if (data)
+            XFree(data);
         return 0;
+    }
 
     /* Check if _NET_WM_STATE_FULLSCREEN is in the list */
     int is_fullscreen = 0;
@@ -2028,8 +2077,11 @@ int32_t vgfx_platform_is_minimized(struct vgfx_window *win) {
                                     &nitems,
                                     &bytes_after,
                                     &data);
-    if (status != Success || !data)
+    if (status != Success || !x11_is_atom_list_property(actual_type, actual_format, data)) {
+        if (data)
+            XFree(data);
         return 0;
+    }
     int found = 0;
     Atom *atoms = (Atom *)data;
     for (unsigned long i = 0; i < nitems; i++) {
@@ -2067,8 +2119,11 @@ int32_t vgfx_platform_is_maximized(struct vgfx_window *win) {
                                     &nitems,
                                     &bytes_after,
                                     &data);
-    if (status != Success || !data)
+    if (status != Success || !x11_is_atom_list_property(actual_type, actual_format, data)) {
+        if (data)
+            XFree(data);
         return 0;
+    }
     int found_hz = 0;
     int found_vt = 0;
     Atom *atoms = (Atom *)data;
@@ -2127,12 +2182,14 @@ void vgfx_platform_focus(struct vgfx_window *win) {
 int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
     if (!win)
         return 0;
-    return win->is_focused;
+    vgfx_internal_event_lock(win);
+    int32_t focused = win->is_focused;
+    vgfx_internal_event_unlock(win);
+    return focused;
 }
 
 void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
-    if (win)
-        win->prevent_close = prevent;
+    vgfx_internal_set_prevent_close(win, prevent);
 }
 
 /// @brief Normalize a public ViperGFX cursor type to a cache index.

@@ -27,9 +27,9 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
-#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -97,8 +97,8 @@ static void breadcrumb_fill_round_rect(
 /// @brief Stroke a rounded rectangle border using four edge lines and four corner circles.
 static void breadcrumb_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
-                              color);
+    vg_draw_round_rect_stroke(
+        win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f, color);
 }
 
 /// @brief Return the outer horizontal padding used between the widget edge and the first item.
@@ -228,7 +228,7 @@ vg_breadcrumb_t *vg_breadcrumb_create(void) {
     vg_theme_t *theme = vg_theme_get_current();
 
     // Defaults
-    bc->separator = strdup(">");
+    bc->separator = vg_strdup(">");
     bc->item_padding = theme ? (uint32_t)(theme->spacing.sm + 4.0f) : 8;
     bc->separator_padding = theme ? (uint32_t)(theme->spacing.sm + 1.0f) : 4;
     bc->bg_color = 0;
@@ -636,7 +636,7 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data) {
         bc->item_capacity = new_cap;
     }
 
-    char *label_copy = strdup(label);
+    char *label_copy = vg_strdup(label);
     if (!label_copy)
         return;
 
@@ -722,7 +722,7 @@ void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *lab
         item->dropdown_capacity = new_cap;
     }
 
-    char *label_copy = strdup(label);
+    char *label_copy = vg_strdup(label);
     if (!label_copy)
         return;
 
@@ -740,7 +740,7 @@ void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep) {
     if (!bc)
         return;
 
-    char *new_separator = sep ? strdup(sep) : NULL;
+    char *new_separator = sep ? vg_strdup(sep) : NULL;
     if (sep && !new_separator)
         return;
 

@@ -180,7 +180,7 @@ void vg_codeeditor_add_inlay_hint(
         editor->inlay_hints = p;
         editor->inlay_hint_cap = new_cap;
     }
-    char *copy = strdup(text);
+    char *copy = vg_strdup(text);
     if (!copy)
         return;
     if (editor->inlay_hint_count > 0) {

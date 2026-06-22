@@ -137,8 +137,8 @@ static vg_menu_item_t *create_menu_item(const char *label,
                                         const char *shortcut,
                                         void (*action)(void *),
                                         void *user_data) {
-    char *label_copy = label ? strdup(label) : NULL;
-    char *shortcut_copy = shortcut ? strdup(shortcut) : NULL;
+    char *label_copy = label ? vg_strdup(label) : NULL;
+    char *shortcut_copy = shortcut ? vg_strdup(shortcut) : NULL;
     if ((label && !label_copy) || (shortcut && !shortcut_copy)) {
         free(label_copy);
         free(shortcut_copy);

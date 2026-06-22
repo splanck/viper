@@ -114,8 +114,8 @@ static void groupbox_paint(vg_widget_t *widget, void *canvas) {
 
     // Elevated rounded card.
     vg_elevation_t el = theme->elevation.level1;
-    vg_draw_round_rect_shadow(win, x, y, w, h, rad, el.blur, el.dx, el.dy, el.alpha,
-                              theme->elevation.shadow_rgb);
+    vg_draw_round_rect_shadow(
+        win, x, y, w, h, rad, el.blur, el.dx, el.dy, el.alpha, theme->elevation.shadow_rgb);
     vg_draw_round_rect_fill(win, x, y, w, h, rad, bg);
     vg_draw_inner_highlight_top(win, x, y + 1.0f, w, rad, vg_color_lighten(bg, 0.06f));
     vg_draw_round_rect_stroke(win, x, y, w, h, rad, 1.0f, border);
@@ -129,7 +129,12 @@ static void groupbox_paint(vg_widget_t *widget, void *canvas) {
         vg_font_draw_text(canvas, gb->font, gb->font_size, tx, ty, gb->title, tcol);
     }
     float underline_y = y + groupbox_title_height(gb) - 4.0f;
-    vg_draw_round_rect_fill(win, x + gb->padding, underline_y, w - gb->padding * 2.0f, 2.0f, 1.0f,
+    vg_draw_round_rect_fill(win,
+                            x + gb->padding,
+                            underline_y,
+                            w - gb->padding * 2.0f,
+                            2.0f,
+                            1.0f,
                             theme->colors.accent_primary);
 }
 
@@ -160,7 +165,7 @@ vg_groupbox_t *vg_groupbox_create(vg_widget_t *parent, const char *title) {
 
     vg_widget_init(&gb->base, VG_WIDGET_GROUPBOX, &g_groupbox_vtable);
 
-    gb->title = strdup(title ? title : "");
+    gb->title = vg_strdup(title ? title : "");
     if (!gb->title) {
         vg_widget_destroy(&gb->base);
         return NULL;
@@ -190,7 +195,7 @@ void vg_groupbox_destroy(vg_groupbox_t *gb) {
 void vg_groupbox_set_title(vg_groupbox_t *gb, const char *title) {
     if (!gb)
         return;
-    char *copy = strdup(title ? title : "");
+    char *copy = vg_strdup(title ? title : "");
     if (!copy)
         return;
     free(gb->title);

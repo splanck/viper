@@ -345,7 +345,7 @@ vg_commandpalette_t *vg_commandpalette_create(void) {
     palette->selected_index = -1;
     palette->hovered_index = -1;
     palette->first_visible_index = 0;
-    palette->placeholder_text = strdup("Type to search...");
+    palette->placeholder_text = vg_strdup("Type to search...");
     if (!palette->placeholder_text) {
         vg_widget_destroy(&palette->base);
         return NULL;
@@ -621,10 +621,10 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
     if (!cmd)
         return NULL;
 
-    cmd->id = strdup(id);
-    cmd->label = strdup(label);
+    cmd->id = vg_strdup(id);
+    cmd->label = vg_strdup(label);
     if (shortcut)
-        cmd->shortcut = strdup(shortcut);
+        cmd->shortcut = vg_strdup(shortcut);
     if (!cmd->id || !cmd->label || (shortcut && !cmd->shortcut)) {
         free_command(cmd);
         return NULL;
@@ -767,11 +767,11 @@ void vg_commandpalette_execute_selected(vg_commandpalette_t *palette) {
         return;
 
     vg_command_t snapshot = *cmd;
-    snapshot.id = cmd->id ? strdup(cmd->id) : NULL;
-    snapshot.label = cmd->label ? strdup(cmd->label) : NULL;
-    snapshot.description = cmd->description ? strdup(cmd->description) : NULL;
-    snapshot.shortcut = cmd->shortcut ? strdup(cmd->shortcut) : NULL;
-    snapshot.category = cmd->category ? strdup(cmd->category) : NULL;
+    snapshot.id = cmd->id ? vg_strdup(cmd->id) : NULL;
+    snapshot.label = cmd->label ? vg_strdup(cmd->label) : NULL;
+    snapshot.description = cmd->description ? vg_strdup(cmd->description) : NULL;
+    snapshot.shortcut = cmd->shortcut ? vg_strdup(cmd->shortcut) : NULL;
+    snapshot.category = cmd->category ? vg_strdup(cmd->category) : NULL;
     if ((cmd->id && !snapshot.id) || (cmd->label && !snapshot.label) ||
         (cmd->description && !snapshot.description) || (cmd->category && !snapshot.category) ||
         (cmd->shortcut && !snapshot.shortcut)) {
@@ -851,7 +851,7 @@ void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, f
 void vg_commandpalette_set_placeholder(vg_commandpalette_t *palette, const char *text) {
     if (!palette)
         return;
-    char *copy = text ? strdup(text) : NULL;
+    char *copy = text ? vg_strdup(text) : NULL;
     if (text && !copy)
         return;
     free(palette->placeholder_text);

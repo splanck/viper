@@ -29,8 +29,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
@@ -38,11 +38,9 @@
 #include <string.h>
 
 // For strcasecmp: Windows uses _stricmp, POSIX uses strcasecmp
-// For strdup: Windows uses _strdup
 // For strtok_r: Windows uses strtok_s
 #ifdef _WIN32
 #define strcasecmp _stricmp
-#define strdup _strdup
 #define strtok_r strtok_s
 #else
 #include <strings.h>
@@ -491,8 +489,12 @@ static void menubar_paint(vg_widget_t *widget, void *canvas) {
 
         // Draw highlight if this menu is open
         if (menu == menubar->open_menu) {
-            vg_draw_round_rect_fill(win, menu_x + 2.0f, widget->y + 3.0f, menu_width - 4.0f,
-                                    widget->height - 6.0f, vg_theme_get_current()->radius.sm,
+            vg_draw_round_rect_fill(win,
+                                    menu_x + 2.0f,
+                                    widget->y + 3.0f,
+                                    menu_width - 4.0f,
+                                    widget->height - 6.0f,
+                                    vg_theme_get_current()->radius.sm,
                                     menubar->highlight_bg);
         }
 
@@ -979,7 +981,7 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title) {
         return NULL;
 
     menu->magic = VG_MENU_MAGIC;
-    menu->title = title ? strdup(title) : strdup("Menu");
+    menu->title = title ? vg_strdup(title) : vg_strdup("Menu");
     if (!menu->title) {
         free(menu);
         return NULL;
@@ -1024,8 +1026,8 @@ vg_menu_item_t *vg_menu_add_item(
     if (!menu)
         return NULL;
 
-    char *item_text = text ? strdup(text) : NULL;
-    char *item_shortcut = shortcut ? strdup(shortcut) : NULL;
+    char *item_text = text ? vg_strdup(text) : NULL;
+    char *item_shortcut = shortcut ? vg_strdup(shortcut) : NULL;
     if ((text && !item_text) || (shortcut && !item_shortcut)) {
         free(item_text);
         free(item_shortcut);
@@ -1118,7 +1120,7 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
         return NULL;
     }
 
-    item->submenu->title = title ? strdup(title) : strdup("Submenu");
+    item->submenu->title = title ? vg_strdup(title) : vg_strdup("Submenu");
     if (!item->submenu->title) {
         free(item->submenu);
         item->submenu = NULL;
@@ -1402,7 +1404,7 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel) {
     accel->modifiers = 0;
 
     // Copy string for tokenizing
-    char *str = strdup(shortcut);
+    char *str = vg_strdup(shortcut);
     if (!str)
         return false;
 

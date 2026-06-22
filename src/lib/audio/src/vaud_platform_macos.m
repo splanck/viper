@@ -82,8 +82,8 @@ static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBuffe
 
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
 
-    if (!plat || !__atomic_load_n(&ctx->running, __ATOMIC_ACQUIRE) ||
-        __atomic_load_n(&plat->paused, __ATOMIC_ACQUIRE)) {
+    int running = plat ? __atomic_load_n(&ctx->running, __ATOMIC_ACQUIRE) : 0;
+    if (!plat || !running || __atomic_load_n(&plat->paused, __ATOMIC_ACQUIRE)) {
         /* Fill with silence when paused or stopping */
         memset(buffer->mAudioData, 0, buffer->mAudioDataBytesCapacity);
     } else {
@@ -94,6 +94,9 @@ static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBuffe
 
     /* Set actual data size */
     buffer->mAudioDataByteSize = VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t);
+
+    if (!running)
+        return;
 
     /* Re-enqueue the buffer for playback */
     OSStatus status = AudioQueueEnqueueBuffer(queue, buffer, 0, NULL);
@@ -220,8 +223,10 @@ void vaud_platform_pause(vaud_context_t ctx) {
     __atomic_store_n(&plat->paused, 1, __ATOMIC_RELEASE);
 
     OSStatus status = AudioQueuePause(plat->queue);
-    if (status != noErr)
+    if (status != noErr) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to pause AudioQueue");
+    }
 }
 
 void vaud_platform_resume(vaud_context_t ctx) {
@@ -232,8 +237,10 @@ void vaud_platform_resume(vaud_context_t ctx) {
     __atomic_store_n(&plat->paused, 0, __ATOMIC_RELEASE);
 
     OSStatus status = AudioQueueStart(plat->queue, NULL);
-    if (status != noErr)
+    if (status != noErr) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to resume AudioQueue");
+    }
 }
 
 //===----------------------------------------------------------------------===//

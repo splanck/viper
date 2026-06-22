@@ -275,7 +275,7 @@ vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base) {
         *theme = g_dark_theme;
     }
 
-    theme->name = strdup(name ? name : "Custom");
+    theme->name = vg_strdup(name ? name : "Custom");
     if (!theme->name) {
         free(theme);
         return NULL;

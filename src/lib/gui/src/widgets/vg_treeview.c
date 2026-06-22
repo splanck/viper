@@ -413,19 +413,19 @@ static float treeview_text_baseline(vg_treeview_t *tree, float row_y) {
 /// pixels.
 static char *treeview_fit_text(vg_treeview_t *tree, const char *text, float max_width) {
     if (!text)
-        return strdup("");
+        return vg_strdup("");
     if (!tree->font || max_width <= 0.0f)
-        return strdup("");
+        return vg_strdup("");
 
     vg_text_metrics_t metrics = {0};
     vg_font_measure_text(tree->font, tree->font_size, text, &metrics);
     if (metrics.width <= max_width)
-        return strdup(text);
+        return vg_strdup(text);
 
     vg_text_metrics_t ellipsis_metrics = {0};
     vg_font_measure_text(tree->font, tree->font_size, "...", &ellipsis_metrics);
     if (ellipsis_metrics.width > max_width)
-        return strdup("");
+        return vg_strdup("");
 
     size_t len = strlen(text);
     char *buf = (char *)malloc(len + 4);
@@ -1135,7 +1135,7 @@ vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree,
     if (!node)
         return NULL;
 
-    node->text = text ? strdup(text) : strdup("");
+    node->text = text ? vg_strdup(text) : vg_strdup("");
     if (!node->text) {
         free(node);
         return NULL;

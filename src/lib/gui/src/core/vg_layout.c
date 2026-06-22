@@ -655,6 +655,7 @@ static float flex_child_cross_outer(vg_widget_t *child, bool is_row) {
 }
 
 /// @brief Counts and optionally heap-allocates a flat array of all visible children of @p self.
+/// @return Number of visible layout-managed children, or -1 on allocation failure.
 static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_children) {
     int count = 0;
     VG_FOREACH_VISIBLE_CHILD(self, child) {
@@ -671,7 +672,7 @@ static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_c
 
     vg_widget_t **children = malloc((size_t)count * sizeof(vg_widget_t *));
     if (!children)
-        return 0;
+        return -1;
 
     int index = 0;
     VG_FOREACH_VISIBLE_CHILD(self, child) {
@@ -775,6 +776,11 @@ static void flex_measure(vg_widget_t *self, float available_width, float availab
     if (layout->wrap) {
         vg_widget_t **children = NULL;
         int child_count = flex_collect_visible_children(self, &children);
+        if (child_count < 0) {
+            self->measured_width = self->constraints.min_width;
+            self->measured_height = self->constraints.min_height;
+            return;
+        }
         float available_main =
             layout_nonnegative(is_row ? available_width - padding_h : available_height - padding_v);
         flex_line_t *lines = NULL;
@@ -848,6 +854,8 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
     if (layout->wrap) {
         vg_widget_t **children = NULL;
         int child_count = flex_collect_visible_children(self, &children);
+        if (child_count < 0)
+            return;
         flex_line_t *lines = NULL;
         int line_count =
             flex_build_lines(self, layout, is_row, main_size, children, child_count, &lines);
@@ -1441,6 +1449,11 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
             /* Auto-flow: place sequentially left-to-right, top-to-bottom */
             col = auto_idx % cols;
             row = auto_idx / cols;
+            if (row >= rows) {
+                vg_widget_arrange(child, content_x, content_y, 0.0f, 0.0f);
+                auto_idx++;
+                continue;
+            }
             cs = 1;
             rs = 1;
             auto_idx++;

@@ -13,6 +13,9 @@
 //   - Widget IDs are unique and monotonically increasing within a session.
 //   - The vtable pointer must remain valid for the lifetime of the widget.
 //   - vg_widget_destroy recursively destroys all children.
+//   - The GUI widget tree is single-thread-affine. Create, destroy, layout,
+//     paint, and event dispatch operations for a tree must run on the same UI
+//     thread unless the embedder provides external serialization.
 // Ownership/Lifetime:
 //   - vg_widget_remove_child detaches without destroying; caller takes ownership.
 //   - The `name` string and `impl_data` are owned by the base widget by default.
@@ -24,6 +27,8 @@
 //
 //===----------------------------------------------------------------------===//
 #pragma once
+
+#include "vg_string.h"
 
 #include <stdbool.h>
 #include <stddef.h>

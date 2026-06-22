@@ -277,7 +277,7 @@ static void listbox_refresh_virtual_cache_entry(vg_listbox_t *lb, size_t cache_i
     if (lb->data_provider)
         lb->data_provider(&lb->base, index, &text, NULL, lb->data_provider_user_data);
 
-    char *copy = strdup(text ? text : "");
+    char *copy = vg_strdup(text ? text : "");
     if (!copy)
         return;
 
@@ -332,7 +332,7 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) 
         if (lb->data_provider) {
             lb->data_provider(&lb->base, index, &text, NULL, lb->data_provider_user_data);
         }
-        lb->visible_cache[i].text = strdup(text ? text : "");
+        lb->visible_cache[i].text = vg_strdup(text ? text : "");
         lb->visible_cache[i].selected = listbox_selection_get(lb, index);
     }
 }
@@ -1035,7 +1035,7 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
     if (!item)
         return NULL;
 
-    item->text = strdup(text);
+    item->text = vg_strdup(text);
     if (!item->text) {
         free(item);
         return NULL;

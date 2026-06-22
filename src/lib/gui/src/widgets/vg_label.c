@@ -48,6 +48,102 @@ static vg_widget_vtable_t g_label_vtable = {.destroy = label_destroy,
                                             .on_focus = NULL};
 
 //=============================================================================
+// Text Wrapping Helpers
+//=============================================================================
+
+/// @brief Return the byte length of the UTF-8 unit beginning at @p text.
+/// @details Invalid or truncated leading bytes are treated as one-byte units so
+///          wrapping continues to make progress on malformed text.
+/// @param text Pointer to a UTF-8 byte sequence.
+/// @param remaining Number of available bytes at @p text.
+/// @return Byte length in the range [1, remaining] when remaining > 0, otherwise 0.
+static size_t label_utf8_unit_len(const char *text, size_t remaining) {
+    if (!text || remaining == 0)
+        return 0;
+    unsigned char c = (unsigned char)text[0];
+    if (c < 0x80)
+        return 1;
+    if ((c & 0xE0u) == 0xC0u && remaining >= 2)
+        return 2;
+    if ((c & 0xF0u) == 0xE0u && remaining >= 3)
+        return 3;
+    if ((c & 0xF8u) == 0xF0u && remaining >= 4)
+        return 4;
+    return 1;
+}
+
+/// @brief Clamp @p len down to a UTF-8 unit boundary in @p text.
+/// @details The returned length does not end immediately after a partial
+///          continuation sequence unless the first byte itself is malformed.
+/// @param text UTF-8 byte sequence.
+/// @param len Candidate prefix byte length.
+/// @return Prefix length ending at a UTF-8 unit boundary.
+static size_t label_utf8_boundary_len(const char *text, size_t len) {
+    if (!text || len == 0)
+        return 0;
+    while (len > 1 && (((unsigned char)text[len] & 0xC0u) == 0x80u))
+        len--;
+    return len;
+}
+
+/// @brief Measure a prefix of a word using the label's current font.
+/// @param label Label whose font metrics are used.
+/// @param word Source word segment.
+/// @param len Prefix byte length to measure.
+/// @param scratch Caller-provided buffer of at least len + 1 bytes.
+/// @return Measured width in pixels.
+static float label_measure_word_prefix(vg_label_t *label,
+                                       const char *word,
+                                       size_t len,
+                                       char *scratch) {
+    memcpy(scratch, word, len);
+    scratch[len] = '\0';
+    vg_text_metrics_t metrics;
+    vg_font_measure_text(label->font, label->font_size, scratch, &metrics);
+    return metrics.width;
+}
+
+/// @brief Find the longest word prefix that fits within @p max_width.
+/// @details Uses binary search over byte lengths and clamps probes to UTF-8 unit
+///          boundaries. If the first unit is wider than @p max_width, that unit
+///          is returned so the caller always advances.
+/// @param label Label whose font metrics are used.
+/// @param word Start of the word segment.
+/// @param word_len Available bytes in @p word.
+/// @param max_width Available width in pixels.
+/// @param scratch Caller-provided buffer of at least word_len + 1 bytes.
+/// @return Prefix byte length to place on the current line.
+static size_t label_fit_word_prefix(
+    vg_label_t *label, const char *word, size_t word_len, float max_width, char *scratch) {
+    if (!label || !word || !scratch || word_len == 0)
+        return 0;
+    if (max_width <= 0.0f)
+        return label_utf8_unit_len(word, word_len);
+
+    size_t low = 1;
+    size_t high = word_len;
+    size_t best = 0;
+    while (low <= high) {
+        size_t mid = low + (high - low) / 2u;
+        mid = label_utf8_boundary_len(word, mid);
+        if (mid == 0)
+            mid = 1;
+        float width = label_measure_word_prefix(label, word, mid, scratch);
+        if (width <= max_width) {
+            best = mid;
+            if (mid == word_len)
+                break;
+            low = mid + 1u;
+        } else {
+            if (mid <= 1)
+                break;
+            high = mid - 1u;
+        }
+    }
+    return best > 0 ? best : label_utf8_unit_len(word, word_len);
+}
+
+//=============================================================================
 // Label Implementation
 //=============================================================================
 
@@ -65,7 +161,7 @@ vg_label_t *vg_label_create(vg_widget_t *parent, const char *text) {
     vg_widget_init(&label->base, VG_WIDGET_LABEL, &g_label_vtable);
 
     // Initialize label-specific fields
-    label->text = text ? strdup(text) : strdup("");
+    label->text = text ? vg_strdup(text) : vg_strdup("");
     if (!label->text) {
         vg_widget_destroy(&label->base);
         return NULL;
@@ -187,14 +283,19 @@ static int label_measure_wrapped(vg_label_t *label,
 #define FLUSH_LINE()                                                                               \
     do {                                                                                           \
         if (line_count == cache_cap) {                                                             \
-            cache_cap *= 2;                                                                        \
-            char **tmp = realloc(cache, (size_t)cache_cap * sizeof(char *));                       \
+            if (cache_cap > INT_MAX / 2)                                                           \
+                goto wrap_oom;                                                                     \
+            int new_cap = cache_cap * 2;                                                           \
+            if ((size_t)new_cap > SIZE_MAX / sizeof(char *))                                       \
+                goto wrap_oom;                                                                     \
+            char **tmp = realloc(cache, (size_t)new_cap * sizeof(char *));                         \
             if (!tmp)                                                                              \
                 goto wrap_oom;                                                                     \
             cache = tmp;                                                                           \
+            cache_cap = new_cap;                                                                   \
         }                                                                                          \
         line_buf[line_pos] = '\0';                                                                 \
-        cache[line_count] = strdup(line_buf);                                                      \
+        cache[line_count] = vg_strdup(line_buf);                                                   \
         if (!cache[line_count])                                                                    \
             goto wrap_oom;                                                                         \
         line_count++;                                                                              \
@@ -210,25 +311,48 @@ static int label_measure_wrapped(vg_label_t *label,
         size_t word_len = (size_t)(p - start);
 
         if (word_len > 0) {
-            memcpy(word_buf, start, word_len);
-            word_buf[word_len] = '\0';
-            vg_text_metrics_t wm;
-            vg_font_measure_text(label->font, label->font_size, word_buf, &wm);
+            const char *segment = start;
+            size_t remaining = word_len;
+            bool first_segment = true;
+            while (remaining > 0) {
+                float sep_w = (line_w > 0.0f && first_segment) ? space_w : 0.0f;
+                size_t fit_len = remaining;
+                float available = wrap_width - line_w - sep_w;
+                if (available < 0.0f)
+                    available = 0.0f;
+                float segment_w = label_measure_word_prefix(label, segment, fit_len, word_buf);
 
-            float sep_w = (line_w > 0.0f) ? space_w : 0.0f;
+                if (line_w > 0.0f && sep_w + segment_w > wrap_width - line_w) {
+                    FLUSH_LINE();
+                    if (label->max_lines > 0 && line_count >= label->max_lines)
+                        goto wrap_done;
+                    sep_w = 0.0f;
+                    available = wrap_width;
+                    segment_w = label_measure_word_prefix(label, segment, fit_len, word_buf);
+                }
 
-            if (line_w > 0.0f && line_w + sep_w + wm.width > wrap_width) {
-                /* Wrap: flush line and start fresh */
-                FLUSH_LINE();
-                if (label->max_lines > 0 && line_count >= label->max_lines)
-                    goto wrap_done;
-            } else if (line_w > 0.0f) {
-                line_buf[line_pos++] = ' ';
-                line_w += sep_w;
+                if (segment_w > available && wrap_width > 0.0f) {
+                    fit_len = label_fit_word_prefix(label, segment, remaining, available, word_buf);
+                    segment_w = label_measure_word_prefix(label, segment, fit_len, word_buf);
+                }
+
+                if (line_w > 0.0f && first_segment) {
+                    line_buf[line_pos++] = ' ';
+                    line_w += sep_w;
+                }
+                memcpy(line_buf + line_pos, segment, fit_len);
+                line_pos += fit_len;
+                line_w += segment_w;
+                segment += fit_len;
+                remaining -= fit_len;
+                first_segment = false;
+
+                if (remaining > 0) {
+                    FLUSH_LINE();
+                    if (label->max_lines > 0 && line_count >= label->max_lines)
+                        goto wrap_done;
+                }
             }
-            memcpy(line_buf + line_pos, word_buf, word_len);
-            line_pos += word_len;
-            line_w += wm.width;
         }
 
         /* Skip spaces */
@@ -412,7 +536,7 @@ void vg_label_set_text(vg_label_t *label, const char *text) {
     if (label->text && strcmp(label->text, new_text) == 0)
         return;
 
-    char *copy = strdup(new_text);
+    char *copy = vg_strdup(new_text);
     if (!copy)
         return;
 

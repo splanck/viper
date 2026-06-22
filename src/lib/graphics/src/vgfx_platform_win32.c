@@ -38,6 +38,8 @@
 
 #ifdef _WIN32
 
+#include <limits.h>
+#include <malloc.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +93,29 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
 static INIT_ONCE g_vgfx_win32_dpi_awareness_once = INIT_ONCE_STATIC_INIT;
 static INIT_ONCE g_vgfx_win32_window_class_once = INIT_ONCE_STATIC_INIT;
+
+/// @brief Allocate an aligned framebuffer buffer with the Win32 CRT allocator.
+/// @details Windows requires `_aligned_malloc` so that the matching
+///          `_aligned_free` can release the buffer.  The platform-neutral core
+///          calls this adapter instead of using `_WIN32` conditionals.
+/// @param alignment Required byte alignment; must be a power of two.
+/// @param size Number of bytes requested.
+/// @return Aligned allocation on success, or NULL for invalid input/OOM.
+void *vgfx_platform_aligned_alloc(size_t alignment, size_t size) {
+    if (size == 0)
+        return NULL;
+    if (alignment < sizeof(void *))
+        alignment = sizeof(void *);
+    return _aligned_malloc(size, alignment);
+}
+
+/// @brief Free a buffer returned by `vgfx_platform_aligned_alloc()`.
+/// @details Uses `_aligned_free`, the required companion for `_aligned_malloc`.
+///          Passing NULL is permitted by the CRT.
+/// @param ptr Pointer returned by `vgfx_platform_aligned_alloc()`, or NULL.
+void vgfx_platform_aligned_free(void *ptr) {
+    _aligned_free(ptr);
+}
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -346,6 +371,10 @@ static int win32_resize_backing_store(struct vgfx_window *win,
                                       int64_t timestamp) {
     if (!win || !win->platform_data || client_w <= 0 || client_h <= 0)
         return 0;
+    if (client_w > VGFX_MAX_WIDTH || client_h > VGFX_MAX_HEIGHT) {
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Win32 resize exceeds framebuffer limits");
+        return 0;
+    }
 
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
     int phys_w = client_w;
@@ -549,11 +578,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
     switch (msg) {
         case WM_CLOSE: {
             /* User clicked close button - enqueue CLOSE event but don't destroy window */
-            if (!win->prevent_close && w32) {
+            vgfx_internal_event_lock(win);
+            int prevent_close = win->prevent_close;
+            vgfx_internal_event_unlock(win);
+            if (!prevent_close && w32) {
                 w32->close_requested = 1;
             }
-            if (!win->prevent_close) {
-                win->close_requested = 1;
+            if (!prevent_close) {
+                vgfx_internal_set_close_requested(win, 1);
             }
 
             vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
@@ -603,7 +635,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_SETFOCUS: {
             /* Window gained focus */
-            win->is_focused = 1;
+            vgfx_internal_set_focus_state(win, 1);
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
@@ -611,7 +643,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_KILLFOCUS: {
             /* Window lost focus */
-            win->is_focused = 0;
+            vgfx_internal_set_focus_state(win, 0);
             if (w32)
                 w32->pending_high_surrogate = 0;
             vgfx_internal_clear_input_state(win);
@@ -628,7 +660,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             if (key != VGFX_KEY_UNKNOWN && key < 512) {
                 /* Detect repeat: bit 30 of lparam indicates previous key state */
                 int is_repeat = (lparam & (1 << 30)) ? 1 : 0;
-                win->key_state[key] = 1; /* Update input state */
+                vgfx_internal_set_key_state(win, key, 1);
 
                 vgfx_event_t event = {.type = VGFX_EVENT_KEY_DOWN,
                                       .time_ms = timestamp,
@@ -644,7 +676,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             /* Key released */
             vgfx_key_t key = translate_vk(wparam);
             if (key != VGFX_KEY_UNKNOWN && key < 512) {
-                win->key_state[key] = 0; /* Update input state */
+                vgfx_internal_set_key_state(win, key, 0);
 
                 vgfx_event_t event = {
                     .type = VGFX_EVENT_KEY_UP,
@@ -694,8 +726,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win32_client_to_physical_mouse(
                 win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
-            win->mouse_x = x; /* Update input state */
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_position(win, x, y);
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_MOVE,
@@ -711,9 +742,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win32_client_to_physical_mouse(
                 win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
-            win->mouse_button_state[VGFX_MOUSE_LEFT] = 1;
-            win->mouse_x = x;
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_LEFT, 1);
+            vgfx_internal_set_mouse_position(win, x, y);
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
@@ -730,9 +760,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win32_client_to_physical_mouse(
                 win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
-            win->mouse_button_state[VGFX_MOUSE_LEFT] = 0;
-            win->mouse_x = x;
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_LEFT, 0);
+            vgfx_internal_set_mouse_position(win, x, y);
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
@@ -749,9 +778,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win32_client_to_physical_mouse(
                 win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
-            win->mouse_button_state[VGFX_MOUSE_RIGHT] = 1;
-            win->mouse_x = x;
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_RIGHT, 1);
+            vgfx_internal_set_mouse_position(win, x, y);
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
@@ -768,9 +796,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win32_client_to_physical_mouse(
                 win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
-            win->mouse_button_state[VGFX_MOUSE_RIGHT] = 0;
-            win->mouse_x = x;
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_RIGHT, 0);
+            vgfx_internal_set_mouse_position(win, x, y);
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
@@ -787,9 +814,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win32_client_to_physical_mouse(
                 win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
-            win->mouse_button_state[VGFX_MOUSE_MIDDLE] = 1;
-            win->mouse_x = x;
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_MIDDLE, 1);
+            vgfx_internal_set_mouse_position(win, x, y);
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
@@ -806,9 +832,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win32_client_to_physical_mouse(
                 win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
-            win->mouse_button_state[VGFX_MOUSE_MIDDLE] = 0;
-            win->mouse_x = x;
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_MIDDLE, 0);
+            vgfx_internal_set_mouse_position(win, x, y);
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
@@ -826,8 +851,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             int32_t x = 0;
             int32_t y = 0;
             win32_client_to_physical_mouse(win, (int32_t)pt.x, (int32_t)pt.y, &x, &y);
-            win->mouse_x = x;
-            win->mouse_y = y;
+            vgfx_internal_set_mouse_position(win, x, y);
 
             float delta = (float)GET_WHEEL_DELTA_WPARAM(wparam) / (float)WHEEL_DELTA;
             vgfx_event_t event = {.type = VGFX_EVENT_SCROLL,
@@ -874,6 +898,10 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 event.type = VGFX_EVENT_FILE_DROP;
                 event.time_ms = timestamp;
                 UINT wlen = DragQueryFileW(hDrop, i, NULL, 0);
+                if ((size_t)wlen > (SIZE_MAX / sizeof(WCHAR)) - 1u) {
+                    vgfx_internal_note_event_overflow(win);
+                    continue;
+                }
                 WCHAR *wpath = (WCHAR *)malloc(((size_t)wlen + 1u) * sizeof(WCHAR));
                 if (!wpath)
                     continue;
@@ -1593,13 +1621,17 @@ void vgfx_platform_focus(struct vgfx_window *win) {
 
 /// @brief Return 1 if the window currently has keyboard focus.
 int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
-    return (win && win->is_focused) ? 1 : 0;
+    if (!win)
+        return 0;
+    vgfx_internal_event_lock(win);
+    int32_t focused = win->is_focused;
+    vgfx_internal_event_unlock(win);
+    return focused ? 1 : 0;
 }
 
 /// @brief Set whether the close button dismisses the window.
 void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
-    if (win)
-        win->prevent_close = prevent;
+    vgfx_internal_set_prevent_close(win, prevent);
 }
 
 /// @brief Change the cursor shape for this window.
@@ -1661,16 +1693,22 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
         return;
     int32_t client_w = win32_logical_window_to_client_coord(win, w);
     int32_t client_h = win32_logical_window_to_client_coord(win, h);
+    if (client_w <= 0 || client_h <= 0 || client_w > VGFX_MAX_WIDTH || client_h > VGFX_MAX_HEIGHT)
+        return;
     RECT rect = {0, 0, client_w, client_h};
     DWORD style = (DWORD)GetWindowLong(data->hwnd, GWL_STYLE);
     DWORD exstyle = (DWORD)GetWindowLong(data->hwnd, GWL_EXSTYLE);
     win32_adjust_window_rect_for_scale(win, &rect, style, FALSE, exstyle);
+    int64_t window_w = (int64_t)rect.right - (int64_t)rect.left;
+    int64_t window_h = (int64_t)rect.bottom - (int64_t)rect.top;
+    if (window_w <= 0 || window_h <= 0 || window_w > INT_MAX || window_h > INT_MAX)
+        return;
     SetWindowPos(data->hwnd,
                  NULL,
                  0,
                  0,
-                 rect.right - rect.left,
-                 rect.bottom - rect.top,
+                 (int)window_w,
+                 (int)window_h,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     RECT client = {0};
     if (GetClientRect(data->hwnd, &client)) {

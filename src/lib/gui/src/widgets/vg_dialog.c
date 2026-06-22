@@ -31,9 +31,9 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
-#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
 #include <stdint.h>
@@ -182,8 +182,8 @@ static void dialog_fill_round_rect(
 /// @brief Stroke a rounded rectangle outline via the shared anti-aliased core.
 static void dialog_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
-                              color);
+    vg_draw_round_rect_stroke(
+        win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f, color);
 }
 
 /// @brief Heap-allocate a NUL-terminated copy of the first len bytes of text.
@@ -227,7 +227,7 @@ static int dialog_wrap_text(
     while (start <= text_len) {
         if (text[start] == '\0') {
             if (count == 0 && out_lines && lines) {
-                lines[count++] = strdup("");
+                lines[count++] = vg_strdup("");
             }
             break;
         }
@@ -244,7 +244,7 @@ static int dialog_wrap_text(
                     lines = new_lines;
                     cap = new_cap;
                 }
-                lines[count] = strdup("");
+                lines[count] = vg_strdup("");
                 if (!lines[count]) {
                     dialog_free_wrapped_lines(lines, count);
                     return 0;
@@ -352,7 +352,7 @@ static int dialog_wrap_text(
                     lines = new_lines;
                     cap = new_cap;
                 }
-                lines[count] = strdup("");
+                lines[count] = vg_strdup("");
                 if (!lines[count]) {
                     dialog_free_wrapped_lines(lines, count);
                     return 0;
@@ -562,7 +562,7 @@ vg_dialog_t *vg_dialog_create(const char *title) {
     vg_theme_t *theme = vg_theme_get_current();
 
     // Title bar
-    dlg->title = title ? strdup(title) : NULL;
+    dlg->title = title ? vg_strdup(title) : NULL;
     if (title && !dlg->title) {
         vg_widget_destroy(&dlg->base);
         return NULL;
@@ -832,8 +832,17 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
 
     // Real soft drop shadow (floating elevation) beneath the dialog panel.
     vg_elevation_t el = theme->elevation.level3;
-    vg_draw_round_rect_shadow(win, (float)x, (float)y, (float)w, (float)h, (float)radius, el.blur,
-                              el.dx, el.dy, el.alpha, theme->elevation.shadow_rgb);
+    vg_draw_round_rect_shadow(win,
+                              (float)x,
+                              (float)y,
+                              (float)w,
+                              (float)h,
+                              (float)radius,
+                              el.blur,
+                              el.dx,
+                              el.dy,
+                              el.alpha,
+                              theme->elevation.shadow_rgb);
     dialog_fill_round_rect(win, x, y, w, h, radius, panel_bg);
     vgfx_fill_rect(win, x + 1, y + 1, w - 2, (int32_t)title_h, header_bg);
     vgfx_fill_rect(win, x + 1, y + 1, w - 2, 1, highlight);
@@ -1365,7 +1374,7 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 void vg_dialog_set_title(vg_dialog_t *dialog, const char *title) {
     if (!dialog)
         return;
-    char *copy = title ? strdup(title) : NULL;
+    char *copy = title ? vg_strdup(title) : NULL;
     if (title && !copy)
         return;
     free(dialog->title);
@@ -1404,7 +1413,7 @@ void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content) {
 void vg_dialog_set_message(vg_dialog_t *dialog, const char *message) {
     if (!dialog)
         return;
-    char *copy = message ? strdup(message) : NULL;
+    char *copy = message ? vg_strdup(message) : NULL;
     if (message && !copy)
         return;
     free(dialog->message);
@@ -1477,7 +1486,7 @@ void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
             return;
         for (size_t i = 0; i < count; i++) {
             if (buttons[i].label) {
-                new_buttons[i].label = strdup(buttons[i].label);
+                new_buttons[i].label = vg_strdup(buttons[i].label);
                 if (!new_buttons[i].label) {
                     for (size_t j = 0; j < i; j++)
                         free(new_buttons[j].label);

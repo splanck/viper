@@ -445,7 +445,7 @@ int64_t vaud_platform_now_ms(void);
 //===----------------------------------------------------------------------===//
 
 /// @brief Initialize a mutex.
-void vaud_mutex_init(vaud_mutex_t *mutex);
+int vaud_mutex_init(vaud_mutex_t *mutex);
 
 /// @brief Destroy a mutex.
 void vaud_mutex_destroy(vaud_mutex_t *mutex);

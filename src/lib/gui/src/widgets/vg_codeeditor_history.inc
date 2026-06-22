@@ -242,8 +242,8 @@ static vg_edit_op_t *create_edit_op(vg_edit_op_type_t type,
     op->start_col = start_col;
     op->end_line = end_line;
     op->end_col = end_col;
-    op->old_text = old_text ? strdup(old_text) : NULL;
-    op->new_text = new_text ? strdup(new_text) : NULL;
+    op->old_text = old_text ? vg_strdup(old_text) : NULL;
+    op->new_text = new_text ? vg_strdup(new_text) : NULL;
     if ((old_text && !op->old_text) || (new_text && !op->new_text)) {
         edit_op_destroy(op);
         return NULL;

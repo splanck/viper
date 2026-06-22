@@ -365,6 +365,29 @@ static void vaud_win32_free_render_buffers(vaud_win32_data *plat) {
     plat->format = NULL;
 }
 
+/// @brief Join the WASAPI worker thread before backend resources are released.
+/// @details A finite first wait makes hung shutdowns visible through the error
+///          channel.  The final wait still completes before memory is freed so
+///          the worker cannot continue running on a released context.
+/// @param ctx Audio context used for diagnostics.
+/// @param plat Win32 backend state containing the thread handle.
+/// @param timeout_ms First wait timeout in milliseconds.
+static void vaud_win32_join_thread(vaud_context_t ctx, vaud_win32_data *plat, DWORD timeout_ms) {
+    if (!plat || !plat->thread)
+        return;
+    DWORD wait_rc = WaitForSingleObject(plat->thread, timeout_ms);
+    if (wait_rc != WAIT_OBJECT_0) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Timed out waiting for WASAPI audio thread");
+        if (plat->client)
+            IAudioClient_Stop(plat->client);
+        SetEvent(plat->stop_event);
+        WaitForSingleObject(plat->thread, INFINITE);
+    }
+    CloseHandle(plat->thread);
+    plat->thread = NULL;
+}
+
 //===----------------------------------------------------------------------===//
 // Audio Thread
 //===----------------------------------------------------------------------===//
@@ -678,8 +701,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     if (FAILED(hr)) {
         InterlockedExchange(&plat->running, 0);
         SetEvent(plat->stop_event);
-        WaitForSingleObject(plat->thread, INFINITE);
-        CloseHandle(plat->thread);
+        vaud_win32_join_thread(ctx, plat, 5000);
         IAudioRenderClient_Release(plat->render);
         CloseHandle(plat->event);
         CloseHandle(plat->stop_event);
@@ -709,10 +731,7 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
     SetEvent(plat->stop_event);
 
     /* Wait for thread */
-    if (plat->thread) {
-        WaitForSingleObject(plat->thread, INFINITE);
-        CloseHandle(plat->thread);
-    }
+    vaud_win32_join_thread(ctx, plat, 5000);
 
     /* Stop audio client */
     if (plat->client) {
@@ -754,7 +773,11 @@ void vaud_platform_pause(vaud_context_t ctx) {
     LeaveCriticalSection(&plat->pause_cs);
 
     if (plat->client) {
-        IAudioClient_Stop(plat->client);
+        HRESULT hr = IAudioClient_Stop(plat->client);
+        if (FAILED(hr)) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+            vaud_set_error(VAUD_ERR_PLATFORM, "Failed to pause WASAPI client");
+        }
     }
 }
 
@@ -765,7 +788,12 @@ void vaud_platform_resume(vaud_context_t ctx) {
     vaud_win32_data *plat = (vaud_win32_data *)ctx->platform_data;
 
     if (plat->client) {
-        IAudioClient_Start(plat->client);
+        HRESULT hr = IAudioClient_Start(plat->client);
+        if (FAILED(hr)) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+            vaud_set_error(VAUD_ERR_PLATFORM, "Failed to resume WASAPI client");
+            return;
+        }
     }
 
     EnterCriticalSection(&plat->pause_cs);

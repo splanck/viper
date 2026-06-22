@@ -111,13 +111,14 @@ typedef void (*vaud_group_effects_process_fn)(void *userdata,
 ///          panels, smoke probes, and backend triage; applications should not use them for normal
 ///          playback control. Fields unsupported by a platform backend remain zero.
 typedef struct {
-    uint64_t render_calls;          ///< Mixer render callbacks completed or attempted.
-    uint64_t mixer_lock_misses;     ///< Mixer callbacks that emitted silence due to state-lock contention.
-    uint64_t backend_write_calls;   ///< Platform write calls issued to the device API.
+    uint64_t render_calls; ///< Mixer render callbacks completed or attempted.
+    uint64_t
+        mixer_lock_misses; ///< Mixer callbacks that emitted silence due to state-lock contention.
+    uint64_t backend_write_calls;    ///< Platform write calls issued to the device API.
     uint64_t backend_partial_writes; ///< Device writes that accepted fewer frames than requested.
-    uint64_t backend_waits;         ///< Device waits/polls used to avoid busy retries.
-    uint64_t backend_xruns;         ///< Underrun/suspend recoveries observed by the backend.
-    uint64_t backend_recoveries;    ///< Successful or attempted backend recovery operations.
+    uint64_t backend_waits;          ///< Device waits/polls used to avoid busy retries.
+    uint64_t backend_xruns;          ///< Underrun/suspend recoveries observed by the backend.
+    uint64_t backend_recoveries;     ///< Successful or attempted backend recovery operations.
     uint64_t backend_write_failures; ///< Device writes that failed after recovery attempts.
 } vaud_stats_t;
 
@@ -266,10 +267,7 @@ vaud_voice_id vaud_play_ex_group(vaud_sound_t sound, float volume, float pan, in
 vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan);
 
 /// @brief Play a looping sound effect with logical mix-group routing.
-vaud_voice_id vaud_play_loop_group(vaud_sound_t sound,
-                                   float volume,
-                                   float pan,
-                                   int64_t group_id);
+vaud_voice_id vaud_play_loop_group(vaud_sound_t sound, float volume, float pan, int64_t group_id);
 
 /// @brief Stop a playing voice.
 /// @details Immediately stops playback of the specified voice.
@@ -438,7 +436,8 @@ void vaud_get_stats(vaud_context_t ctx, vaud_stats_t *out_stats);
 
 /// @brief Install or clear the optional logical mix-group effects processor.
 /// @details Passing NULL for @p process_fn disables group processing. The
-///          callback is invoked only from the software mixer and must not
+///          callbacks are invoked only from the software mixer while the audio
+///          context mutex is held, so they must not call back into ViperAUD,
 ///          perform allocation, blocking I/O, or context destruction.
 void vaud_set_group_effects_processor(vaud_context_t ctx,
                                       vaud_group_effects_query_fn query_fn,

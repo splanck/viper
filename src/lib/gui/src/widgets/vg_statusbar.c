@@ -26,8 +26,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
@@ -151,7 +151,7 @@ static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const cha
     item->type = type;
     item->magic = VG_STATUSBAR_ITEM_MAGIC;
     item->owner = NULL;
-    item->text = text ? strdup(text) : NULL;
+    item->text = text ? vg_strdup(text) : NULL;
     if (text && !item->text) {
         free(item);
         return NULL;
@@ -319,8 +319,13 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
 
     // Draw hover background for buttons
     if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item) {
-        vg_draw_round_rect_fill(win, x + 1.0f, wy + 2.0f, item_width - 2.0f, wh - 4.0f,
-                                vg_theme_get_current()->radius.sm, sb->hover_color);
+        vg_draw_round_rect_fill(win,
+                                x + 1.0f,
+                                wy + 2.0f,
+                                item_width - 2.0f,
+                                wh - 4.0f,
+                                vg_theme_get_current()->radius.sm,
+                                sb->hover_color);
     }
 
     switch (item->type) {
@@ -757,7 +762,7 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
         (item->text && text && strcmp(item->text, text) == 0))
         return;
 
-    char *copy = text ? strdup(text) : NULL;
+    char *copy = text ? vg_strdup(text) : NULL;
     if (text && !copy)
         return;
     free(item->text);
@@ -792,7 +797,7 @@ void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *toolti
         (item->tooltip && tooltip && strcmp(item->tooltip, tooltip) == 0))
         return;
 
-    char *copy = tooltip ? strdup(tooltip) : NULL;
+    char *copy = tooltip ? vg_strdup(tooltip) : NULL;
     if (tooltip && !copy)
         return;
     free(item->tooltip);

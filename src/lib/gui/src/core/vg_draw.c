@@ -26,6 +26,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "vg_draw.h"
+#include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -35,8 +37,23 @@
 
 /// @brief Round a pixel coordinate to Q8 fixed point (deterministic).
 static inline int32_t vg__q8(float v) {
+    if (!isfinite(v))
+        return 0;
+    const float max_q8 = (float)INT32_MAX / 256.0f;
+    const float min_q8 = (float)INT32_MIN / 256.0f;
+    if (v >= max_q8)
+        return INT32_MAX;
+    if (v <= min_q8)
+        return INT32_MIN;
     // Round half away from zero without depending on <math.h>.
     return (int32_t)(v * 256.0f + (v >= 0.0f ? 0.5f : -0.5f));
+}
+
+/// @brief Return the Q8 coordinate of an integer pixel center without int overflow.
+/// @param pixel Integer pixel coordinate.
+/// @return Q8 coordinate for the center of @p pixel.
+static inline int64_t vg__pixel_center_q8(int pixel) {
+    return (int64_t)pixel * 256 + 128;
 }
 
 /// @brief Floor of a float to int (for bounding-box lower edges).
@@ -99,10 +116,10 @@ static void vg__disc_box(vgfx_window_t win,
                          uint32_t base) {
     int32_t edge = rq + 128; // r + 0.5px in Q8
     for (int py = by0; py < by1; ++py) {
-        int64_t ddy = (int64_t)(py * 256 + 128) - cyq;
+        int64_t ddy = vg__pixel_center_q8(py) - cyq;
         int64_t ddy2 = ddy * ddy;
         for (int px = bx0; px < bx1; ++px) {
-            int64_t ddx = (int64_t)(px * 256 + 128) - cxq;
+            int64_t ddx = vg__pixel_center_q8(px) - cxq;
             uint64_t d2 = (uint64_t)(ddx * ddx + ddy2);
             int32_t distq = (int32_t)vg__isqrt64(d2);
             int32_t alpha = vg__cov_to_alpha(edge - distq);
@@ -127,10 +144,10 @@ static void vg__ring_box(vgfx_window_t win,
                          uint32_t base) {
     int32_t edge = halfq + 128; // half stroke + 0.5px ramp
     for (int py = by0; py < by1; ++py) {
-        int64_t ddy = (int64_t)(py * 256 + 128) - cyq;
+        int64_t ddy = vg__pixel_center_q8(py) - cyq;
         int64_t ddy2 = ddy * ddy;
         for (int px = bx0; px < bx1; ++px) {
-            int64_t ddx = (int64_t)(px * 256 + 128) - cxq;
+            int64_t ddx = vg__pixel_center_q8(px) - cxq;
             uint64_t d2 = (uint64_t)(ddx * ddx + ddy2);
             int32_t distq = (int32_t)vg__isqrt64(d2);
             int32_t off = distq - rmidq;
@@ -334,8 +351,8 @@ void vg_draw_line_aa(
 
     for (int py = by0; py < by1; ++py) {
         for (int px = bx0; px < bx1; ++px) {
-            int64_t apx = (int64_t)(px * 256 + 128) - x0q;
-            int64_t apy = (int64_t)(py * 256 + 128) - y0q;
+            int64_t apx = vg__pixel_center_q8(px) - x0q;
+            int64_t apy = vg__pixel_center_q8(py) - y0q;
             int32_t clx, cly;
             if (len2 <= 0) {
                 clx = x0q;
@@ -352,8 +369,8 @@ void vg_draw_line_aa(
                 clx = (int32_t)(x0q + (abx * ttq) / 256);
                 cly = (int32_t)(y0q + (aby * ttq) / 256);
             }
-            int64_t ddx = (int64_t)(px * 256 + 128) - clx;
-            int64_t ddy = (int64_t)(py * 256 + 128) - cly;
+            int64_t ddx = vg__pixel_center_q8(px) - clx;
+            int64_t ddy = vg__pixel_center_q8(py) - cly;
             int32_t distq = (int32_t)vg__isqrt64((uint64_t)(ddx * ddx + ddy * ddy));
             int32_t alpha = vg__cov_to_alpha(edge - distq);
             if (alpha != 0)
@@ -486,6 +503,38 @@ typedef struct vg_shadow_entry {
 static vg_shadow_entry g_shadow_cache[VG_SHADOW_CACHE_N];
 static uint32_t g_shadow_clock = 0;
 
+/// @brief Validate and compute padded shadow bitmap dimensions.
+/// @details Shadow caches allocate one byte per padded pixel. This helper keeps
+///          the int-facing raster loops while doing the padding and W*H product
+///          in wider types so oversized blur or widget dimensions fail closed.
+/// @param iw Source rectangle width in pixels.
+/// @param ih Source rectangle height in pixels.
+/// @param br Box-blur radius in pixels.
+/// @param outW Receives padded bitmap width.
+/// @param outH Receives padded bitmap height.
+/// @param outPad Receives padding in pixels.
+/// @param outBytes Receives the allocation byte count.
+/// @return Non-zero when every output is representable and safe to allocate.
+static int vg__shadow_dims(
+    int iw, int ih, int br, int *outW, int *outH, int *outPad, size_t *outBytes) {
+    if (iw <= 0 || ih <= 0 || br <= 0 || !outW || !outH || !outPad || !outBytes)
+        return 0;
+    int64_t pad64 = (int64_t)br * 3 + 1;
+    int64_t w64 = (int64_t)iw + 2 * pad64;
+    int64_t h64 = (int64_t)ih + 2 * pad64;
+    if (pad64 > INT32_MAX || w64 <= 0 || h64 <= 0 || w64 > INT32_MAX || h64 > INT32_MAX)
+        return 0;
+    size_t W = (size_t)w64;
+    size_t H = (size_t)h64;
+    if (W > SIZE_MAX / H)
+        return 0;
+    *outW = (int)W;
+    *outH = (int)H;
+    *outPad = (int)pad64;
+    *outBytes = W * H;
+    return 1;
+}
+
 /// @brief Rasterise a hard rounded-rect silhouette into a padded buffer.
 static void vg__rasterize_silhouette(uint8_t *buf, int W, int H, int pad, int iw, int ih, int r) {
     memset(buf, 0, (size_t)W * (size_t)H);
@@ -562,8 +611,12 @@ static void vg__box_blur_v(const uint8_t *src, uint8_t *dst, int W, int H, int r
 ///        free, used only when the result is too large to cache.
 static const uint8_t *vg__get_shadow(
     int iw, int ih, int r, int br, int *outW, int *outH, int *outPad, uint8_t **transient_out) {
-    int pad = 3 * br + 1;
-    int W = iw + 2 * pad, H = ih + 2 * pad;
+    int pad = 0;
+    int W = 0;
+    int H = 0;
+    size_t bytes = 0;
+    if (!vg__shadow_dims(iw, ih, br, &W, &H, &pad, &bytes))
+        return NULL;
     *outW = W;
     *outH = H;
     *outPad = pad;
@@ -580,8 +633,8 @@ static const uint8_t *vg__get_shadow(
         }
     }
 
-    uint8_t *a = (uint8_t *)malloc((size_t)W * (size_t)H);
-    uint8_t *b = (uint8_t *)malloc((size_t)W * (size_t)H);
+    uint8_t *a = (uint8_t *)malloc(bytes);
+    uint8_t *b = (uint8_t *)malloc(bytes);
     if (!a || !b) {
         free(a);
         free(b);
@@ -654,13 +707,19 @@ void vg_draw_round_rect_shadow(vgfx_window_t win,
     int br = (int)(blur * 0.5f + 0.5f);
     if (br < 1)
         br = 1;
-    int pad_estimate = 3 * br + 1;
+    int pad_estimate = 0;
+    int shadow_w = 0;
+    int shadow_h = 0;
+    size_t shadow_bytes = 0;
+    if (!vg__shadow_dims(iw, ih, br, &shadow_w, &shadow_h, &pad_estimate, &shadow_bytes))
+        return;
+    (void)shadow_bytes;
     vgfx_framebuffer_t fb;
     if (vgfx_get_framebuffer(win, &fb)) {
         int64_t shadow_left = (int64_t)ix + dx - pad_estimate;
         int64_t shadow_top = (int64_t)iy + dy - pad_estimate;
-        int64_t shadow_right = shadow_left + (int64_t)iw + 2 * (int64_t)pad_estimate;
-        int64_t shadow_bottom = shadow_top + (int64_t)ih + 2 * (int64_t)pad_estimate;
+        int64_t shadow_right = shadow_left + (int64_t)shadow_w;
+        int64_t shadow_bottom = shadow_top + (int64_t)shadow_h;
         if (shadow_right <= 0 || shadow_bottom <= 0 || shadow_left >= fb.width ||
             shadow_top >= fb.height)
             return;

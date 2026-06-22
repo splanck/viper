@@ -369,7 +369,7 @@ static void textinput_reset_undo_history(vg_textinput_t *input) {
         input->undo_stack[i] = NULL;
         input->undo_cursors[i] = 0;
     }
-    input->undo_stack[0] = strdup(input->text ? input->text : "");
+    input->undo_stack[0] = vg_strdup(input->text ? input->text : "");
     input->undo_cursors[0] = input->cursor_pos;
     input->undo_count = input->undo_stack[0] ? 1 : 0;
     input->undo_pos = 0;
@@ -852,7 +852,7 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     // Initialize undo history with the initial empty-string snapshot at position 0.
     // push_undo is called AFTER each edit, so undo_stack[0] is the "before any typing"
     // baseline that Ctrl+Z can restore to.
-    input->undo_stack[0] = strdup("");
+    input->undo_stack[0] = vg_strdup("");
     input->undo_cursors[0] = 0;
     input->undo_count = input->undo_stack[0] ? 1 : 0;
     input->undo_pos = 0;
@@ -1244,7 +1244,7 @@ static void textinput_push_undo(vg_textinput_t *input) {
     if (!input)
         return;
 
-    char *snapshot = strdup(input->text ? input->text : "");
+    char *snapshot = vg_strdup(input->text ? input->text : "");
     if (!snapshot)
         return;
 
@@ -1920,7 +1920,7 @@ void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder
     if (!input)
         return;
 
-    char *copy = placeholder ? strdup(placeholder) : NULL;
+    char *copy = placeholder ? vg_strdup(placeholder) : NULL;
     if (placeholder && !copy)
         return;
 

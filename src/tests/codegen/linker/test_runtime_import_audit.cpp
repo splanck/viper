@@ -188,7 +188,10 @@ TEST(LinkerRuntimeImportAudit, HostRuntimeArchivesUseKnownDynamicImports) {
         }
         case LinkPlatform::macOS: {
             MacImportPlan plan;
-            ASSERT_TRUE(planMacImports(dynamicSyms, plan, planErr));
+            const bool planned = planMacImports(dynamicSyms, plan, planErr);
+            if (!planned)
+                std::cerr << planErr.str();
+            ASSERT_TRUE(planned);
             break;
         }
         case LinkPlatform::Windows: {

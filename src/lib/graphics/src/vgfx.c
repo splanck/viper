@@ -39,19 +39,6 @@
 #include <string.h>
 
 //===----------------------------------------------------------------------===//
-// Platform-Specific Headers for Aligned Allocation
-//===----------------------------------------------------------------------===//
-
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <malloc.h>
-#elif defined(__APPLE__) || defined(__linux__)
-#include <stdlib.h>
-#endif
-
-//===----------------------------------------------------------------------===//
 // Thread-Local Error State
 //===----------------------------------------------------------------------===//
 // Errors are stored per-thread so concurrent windows can have independent
@@ -182,48 +169,6 @@ static inline int32_t clamp_int(int32_t value, int32_t min, int32_t max) {
     return value;
 }
 
-/// @brief Allocate memory aligned to a specified boundary.
-/// @details Wrapper around platform-specific aligned allocation functions:
-///            - Windows: _aligned_malloc()
-///            - POSIX:   posix_memalign()
-///            - Fallback: malloc() (may not be aligned)
-///
-/// @param alignment Alignment boundary in bytes (must be power of 2)
-/// @param size      Number of bytes to allocate
-/// @return Pointer to aligned memory on success, NULL on failure
-///
-/// @pre  alignment is a power of 2
-/// @post On success: returned pointer is aligned to alignment
-static void *aligned_alloc_wrapper(size_t alignment, size_t size) {
-#if defined(_WIN32)
-    return _aligned_malloc(size, alignment);
-#elif defined(__APPLE__) || defined(__linux__)
-    void *ptr = NULL;
-    if (posix_memalign(&ptr, alignment, size) == 0) {
-        return ptr;
-    }
-    return NULL;
-#else
-    /* Fallback to regular malloc (may not satisfy alignment requirement) */
-    (void)alignment; /* Suppress unused parameter warning */
-    return malloc(size);
-#endif
-}
-
-/// @brief Free memory allocated by aligned_alloc_wrapper().
-/// @details Uses the appropriate platform-specific deallocation function.
-///
-/// @param ptr Pointer to memory returned by aligned_alloc_wrapper() (may be NULL)
-///
-/// @post Memory is freed and ptr is invalid
-static void aligned_free_wrapper(void *ptr) {
-#if defined(_WIN32)
-    _aligned_free(ptr);
-#else
-    free(ptr);
-#endif
-}
-
 /// @brief Build a host-endian word whose object representation is RGBA bytes.
 /// @details The framebuffer format is byte-oriented RGBA.  Constructing the word
 ///          through `memcpy` preserves the desired byte order on every host
@@ -241,9 +186,9 @@ static uint32_t make_rgba_word(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 }
 
 /// @brief Fill a contiguous RGBA pixel span with one color.
-/// @details The destination must point to the first byte of a 4-byte-aligned
-///          pixel.  ViperGFX framebuffers are aligned and all callers advance in
-///          whole pixels, so this avoids per-channel byte stores in hot paths.
+/// @details Writes through `memcpy` so the byte-oriented framebuffer contract
+///          does not rely on the destination being suitably aligned for
+///          uint32_t stores or on aliasing through a wider integer type.
 /// @param pixels First RGBA byte of the span.
 /// @param pixel_count Number of pixels to fill.
 /// @param r Red channel byte.
@@ -255,9 +200,8 @@ static void fill_rgba_pixels(
     if (!pixels || pixel_count == 0)
         return;
     uint32_t word = make_rgba_word(r, g, b, a);
-    uint32_t *dst = (uint32_t *)pixels;
     for (size_t i = 0; i < pixel_count; i++)
-        dst[i] = word;
+        memcpy(pixels + (i * 4u), &word, sizeof(word));
 }
 
 /// @brief Clear a raw framebuffer byte range to opaque black RGBA pixels.
@@ -299,7 +243,8 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
         vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Framebuffer resize size overflow");
         return 0;
     }
-    uint8_t *new_pixels = (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
+    uint8_t *new_pixels =
+        (uint8_t *)vgfx_platform_aligned_alloc(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
     if (!new_pixels) {
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate resized framebuffer");
         return 0;
@@ -307,12 +252,13 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
 
     clear_framebuffer_rgba(new_pixels, fb_size);
 
-    if (win->pixels)
-        aligned_free_wrapper(win->pixels);
+    vgfx_internal_event_lock(win);
+    uint8_t *old_pixels = win->pixels;
     win->pixels = new_pixels;
     win->width = width;
     win->height = height;
     win->stride = width * 4;
+    win->framebuffer_generation++;
 
     if (win->clip_enabled) {
         if (win->clip_x >= width || win->clip_y >= height) {
@@ -328,6 +274,10 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
                 win->clip_enabled = 0;
         }
     }
+    vgfx_internal_event_unlock(win);
+
+    if (old_pixels)
+        vgfx_platform_aligned_free(old_pixels);
 
     return 1;
 }
@@ -335,8 +285,59 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
 void vgfx_internal_clear_input_state(struct vgfx_window *win) {
     if (!win)
         return;
+    vgfx_internal_event_lock(win);
     memset(win->key_state, 0, sizeof(win->key_state));
     memset(win->mouse_button_state, 0, sizeof(win->mouse_button_state));
+    vgfx_internal_event_unlock(win);
+}
+
+void vgfx_internal_set_key_state(struct vgfx_window *win, int32_t key, int32_t down) {
+    if (!win || key <= (int32_t)VGFX_KEY_UNKNOWN || key >= 512)
+        return;
+    vgfx_internal_event_lock(win);
+    win->key_state[key] = down ? 1u : 0u;
+    vgfx_internal_event_unlock(win);
+}
+
+void vgfx_internal_set_mouse_button_state(struct vgfx_window *win, int32_t button, int32_t down) {
+    if (!win || button < 0 || button >= 8)
+        return;
+    vgfx_internal_event_lock(win);
+    win->mouse_button_state[button] = down ? 1u : 0u;
+    vgfx_internal_event_unlock(win);
+}
+
+void vgfx_internal_set_mouse_position(struct vgfx_window *win, int32_t x, int32_t y) {
+    if (!win)
+        return;
+    vgfx_internal_event_lock(win);
+    win->mouse_x = x;
+    win->mouse_y = y;
+    vgfx_internal_event_unlock(win);
+}
+
+void vgfx_internal_set_close_requested(struct vgfx_window *win, int32_t requested) {
+    if (!win)
+        return;
+    vgfx_internal_event_lock(win);
+    win->close_requested = requested ? 1 : 0;
+    vgfx_internal_event_unlock(win);
+}
+
+void vgfx_internal_set_focus_state(struct vgfx_window *win, int32_t focused) {
+    if (!win)
+        return;
+    vgfx_internal_event_lock(win);
+    win->is_focused = focused ? 1 : 0;
+    vgfx_internal_event_unlock(win);
+}
+
+void vgfx_internal_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
+    if (!win)
+        return;
+    vgfx_internal_event_lock(win);
+    win->prevent_close = prevent ? 1 : 0;
+    vgfx_internal_event_unlock(win);
 }
 
 //===----------------------------------------------------------------------===//
@@ -490,6 +491,10 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
         return 0;
 
     vgfx_internal_event_lock(win);
+    if (win->destroying) {
+        vgfx_internal_event_unlock(win);
+        return 0;
+    }
     int32_t next_head = vgfx_ring_next_index(win->event_head);
 
     /* Queue full? */
@@ -519,6 +524,10 @@ void vgfx_internal_note_event_overflow(struct vgfx_window *win) {
         return;
 
     vgfx_internal_event_lock(win);
+    if (win->destroying) {
+        vgfx_internal_event_unlock(win);
+        return;
+    }
     if (win->event_overflow < INT32_MAX)
         win->event_overflow++;
     vgfx_internal_event_unlock(win);
@@ -958,7 +967,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
         vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Framebuffer size overflow");
         return NULL;
     }
-    win->pixels = (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
+    win->pixels = (uint8_t *)vgfx_platform_aligned_alloc(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
     if (!win->pixels) {
         free(win);
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate framebuffer");
@@ -966,6 +975,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     }
 
     clear_framebuffer_rgba(win->pixels, fb_size);
+    win->framebuffer_generation = 1;
 
     /* Initialize event queue (empty ring buffer) */
     vgfx_atomic_flag_init(&win->event_lock);
@@ -989,7 +999,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
 
     /* Initialize platform-specific resources (native window, etc.) */
     if (!vgfx_platform_init_window(win, &actual_params)) {
-        aligned_free_wrapper(win->pixels);
+        vgfx_platform_aligned_free(win->pixels);
         free(win);
         /* Error already set by platform backend */
         return NULL;
@@ -1009,12 +1019,25 @@ void vgfx_destroy_window(vgfx_window_t window) {
     if (!window)
         return;
 
+    vgfx_internal_event_lock(window);
+    window->destroying = 1;
+    vgfx_internal_event_unlock(window);
+
     /* Destroy platform resources (native window, platform_data) */
     vgfx_platform_destroy_window(window);
 
     /* Free framebuffer */
-    if (window->pixels) {
-        aligned_free_wrapper(window->pixels);
+    vgfx_internal_event_lock(window);
+    uint8_t *pixels = window->pixels;
+    window->pixels = NULL;
+    window->width = 0;
+    window->height = 0;
+    window->stride = 0;
+    window->framebuffer_generation++;
+    vgfx_internal_event_unlock(window);
+
+    if (pixels) {
+        vgfx_platform_aligned_free(pixels);
     }
 
     /* Free window structure */
@@ -1097,7 +1120,12 @@ int32_t vgfx_update(vgfx_window_t window) {
 int32_t vgfx_frame_time_ms(vgfx_window_t window) {
     if (!window)
         return -1;
-    return (int32_t)window->last_frame_time_ms;
+    int64_t frame_time = window->last_frame_time_ms;
+    if (frame_time > INT32_MAX)
+        return INT32_MAX;
+    if (frame_time < INT32_MIN)
+        return INT32_MIN;
+    return (int32_t)frame_time;
 }
 
 int32_t vgfx_pump_events(vgfx_window_t window) {
@@ -1263,7 +1291,10 @@ int32_t vgfx_close_requested(vgfx_window_t window) {
     if (!window)
         return 0;
 
-    return window->close_requested;
+    vgfx_internal_event_lock(window);
+    int32_t requested = window->close_requested;
+    vgfx_internal_event_unlock(window);
+    return requested;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1661,7 +1692,10 @@ int32_t vgfx_key_down(vgfx_window_t window, vgfx_key_t key) {
     int key_index = (int)key;
     if (!window || key_index <= (int)VGFX_KEY_UNKNOWN || key_index >= 512)
         return 0;
-    return window->key_state[key_index] != 0;
+    vgfx_internal_event_lock(window);
+    int32_t down = window->key_state[key_index] != 0;
+    vgfx_internal_event_unlock(window);
+    return down;
 }
 
 /// @brief Get the current mouse cursor position.
@@ -1680,9 +1714,13 @@ int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t *x, int32_t *y) {
     if (!window)
         return 0;
 
+    vgfx_internal_event_lock(window);
     float cs = vgfx_internal_coord_scale(window);
     int32_t mx = window->mouse_x;
     int32_t my = window->mouse_y;
+    int32_t width = window->width;
+    int32_t height = window->height;
+    vgfx_internal_event_unlock(window);
 
     /* Return logical coordinates when coord_scale is active */
     if (cs > 1.0f) {
@@ -1696,8 +1734,8 @@ int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t *x, int32_t *y) {
         *y = my;
 
     /* Logical bounds check */
-    int32_t lw = (cs > 1.0f) ? vgfx_internal_scale_down_i32(window->width, cs) : window->width;
-    int32_t lh = (cs > 1.0f) ? vgfx_internal_scale_down_i32(window->height, cs) : window->height;
+    int32_t lw = (cs > 1.0f) ? vgfx_internal_scale_down_i32(width, cs) : width;
+    int32_t lh = (cs > 1.0f) ? vgfx_internal_scale_down_i32(height, cs) : height;
     return (mx >= 0 && mx < lw && my >= 0 && my < lh);
 }
 
@@ -1714,15 +1752,18 @@ int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button) {
     int button_index = (int)button;
     if (!window || button_index < 0 || button_index >= 8)
         return 0;
-    return window->mouse_button_state[button_index] != 0;
+    vgfx_internal_event_lock(window);
+    int32_t down = window->mouse_button_state[button_index] != 0;
+    vgfx_internal_event_unlock(window);
+    return down;
 }
 
 void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
     if (!window)
         return;
     float cs = vgfx_internal_coord_scale(window);
-    window->mouse_x = vgfx_internal_scale_up_i32(x, cs);
-    window->mouse_y = vgfx_internal_scale_up_i32(y, cs);
+    vgfx_internal_set_mouse_position(
+        window, vgfx_internal_scale_up_i32(x, cs), vgfx_internal_scale_up_i32(y, cs));
 
     extern void vgfx_platform_warp_cursor(vgfx_window_t w, int32_t x, int32_t y);
     vgfx_platform_warp_cursor(window, x, y);
@@ -1761,10 +1802,13 @@ int32_t vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t *out_info)
     if (!window || !out_info)
         return 0;
 
+    vgfx_internal_event_lock(window);
     out_info->pixels = window->pixels;
     out_info->width = window->width;
     out_info->height = window->height;
     out_info->stride = window->stride;
+    out_info->generation = window->framebuffer_generation;
+    vgfx_internal_event_unlock(window);
     return 1;
 }
 

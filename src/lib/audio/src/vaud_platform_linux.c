@@ -393,20 +393,21 @@ void vaud_platform_pause(vaud_context_t ctx) {
 
     vaud_linux_data *plat = (vaud_linux_data *)ctx->platform_data;
 
+    pthread_mutex_lock(&plat->pause_mutex);
+    __atomic_store_n(&plat->paused, 1, __ATOMIC_RELEASE);
+    pthread_mutex_unlock(&plat->pause_mutex);
+
     int rc = snd_pcm_pause(plat->pcm, 1);
     if (rc < 0) {
         if (rc == -ENOSYS) {
             snd_pcm_drop(plat->pcm);
             snd_pcm_prepare(plat->pcm);
         } else if (snd_pcm_recover(plat->pcm, rc, 0) < 0) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             snd_pcm_drop(plat->pcm);
             snd_pcm_prepare(plat->pcm);
         }
     }
-
-    pthread_mutex_lock(&plat->pause_mutex);
-    __atomic_store_n(&plat->paused, 1, __ATOMIC_RELEASE);
-    pthread_mutex_unlock(&plat->pause_mutex);
 }
 
 void vaud_platform_resume(vaud_context_t ctx) {
@@ -421,6 +422,7 @@ void vaud_platform_resume(vaud_context_t ctx) {
         if (rc == -ENOSYS) {
             snd_pcm_prepare(plat->pcm);
         } else if (snd_pcm_recover(plat->pcm, rc, 0) < 0) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             snd_pcm_prepare(plat->pcm);
         }
     }

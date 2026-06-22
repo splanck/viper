@@ -31,6 +31,7 @@
 ///          and time control.  No real OS windows are created.
 
 #include "vgfx_internal.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -67,6 +68,44 @@ typedef struct {
     vgfx_event_t pending_events[VGFX_MOCK_PENDING_QUEUE_SLOTS];
 } vgfx_mock_platform;
 
+/// @brief Allocate an aligned buffer for the platform-agnostic framebuffer.
+/// @details The mock backend cannot rely on OS-specific aligned allocators, so
+///          it stores the original `malloc` pointer immediately before the
+///          aligned address.  The returned pointer is suitable for
+///          `vgfx_platform_aligned_free()` and has at least `alignment` byte
+///          alignment when `alignment` is a power of two.
+/// @param alignment Required byte alignment; must be a power of two.
+/// @param size Number of bytes requested.
+/// @return Aligned allocation on success, or NULL for invalid parameters or OOM.
+void *vgfx_platform_aligned_alloc(size_t alignment, size_t size) {
+    if (size == 0)
+        return NULL;
+    if (alignment < sizeof(void *))
+        alignment = sizeof(void *);
+    if ((alignment & (alignment - 1u)) != 0)
+        return NULL;
+    if (size > SIZE_MAX - alignment - sizeof(void *))
+        return NULL;
+
+    void *base = malloc(size + alignment - 1u + sizeof(void *));
+    if (!base)
+        return NULL;
+    uintptr_t raw = (uintptr_t)base + sizeof(void *);
+    uintptr_t aligned = (raw + (uintptr_t)alignment - 1u) & ~((uintptr_t)alignment - 1u);
+    ((void **)aligned)[-1] = base;
+    return (void *)aligned;
+}
+
+/// @brief Free memory returned by `vgfx_platform_aligned_alloc()`.
+/// @details Recovers the hidden base pointer stored by the mock aligned
+///          allocator and releases it with `free`.  Passing NULL is a no-op.
+/// @param ptr Pointer returned from `vgfx_platform_aligned_alloc()`, or NULL.
+void vgfx_platform_aligned_free(void *ptr) {
+    if (!ptr)
+        return;
+    free(((void **)ptr)[-1]);
+}
+
 static int mock_pending_enqueue(vgfx_mock_platform *platform, const vgfx_event_t *event) {
     if (!platform || !event)
         return 0;
@@ -98,47 +137,46 @@ static void mock_apply_event(struct vgfx_window *win,
 
     switch (event->type) {
         case VGFX_EVENT_KEY_DOWN:
-            if (event->data.key.key > VGFX_KEY_UNKNOWN && event->data.key.key < 512)
-                win->key_state[event->data.key.key] = 1;
+            vgfx_internal_set_key_state(win, event->data.key.key, 1);
             break;
         case VGFX_EVENT_KEY_UP:
-            if (event->data.key.key > VGFX_KEY_UNKNOWN && event->data.key.key < 512)
-                win->key_state[event->data.key.key] = 0;
+            vgfx_internal_set_key_state(win, event->data.key.key, 0);
             break;
         case VGFX_EVENT_MOUSE_MOVE:
-            win->mouse_x = event->data.mouse_move.x;
-            win->mouse_y = event->data.mouse_move.y;
+            vgfx_internal_set_mouse_position(
+                win, event->data.mouse_move.x, event->data.mouse_move.y);
             break;
         case VGFX_EVENT_MOUSE_DOWN:
-            if ((int)event->data.mouse_button.button >= 0 && event->data.mouse_button.button < 8)
-                win->mouse_button_state[(int)event->data.mouse_button.button] = 1;
-            win->mouse_x = event->data.mouse_button.x;
-            win->mouse_y = event->data.mouse_button.y;
+            vgfx_internal_set_mouse_button_state(win, (int32_t)event->data.mouse_button.button, 1);
+            vgfx_internal_set_mouse_position(
+                win, event->data.mouse_button.x, event->data.mouse_button.y);
             break;
         case VGFX_EVENT_MOUSE_UP:
-            if ((int)event->data.mouse_button.button >= 0 && event->data.mouse_button.button < 8)
-                win->mouse_button_state[(int)event->data.mouse_button.button] = 0;
-            win->mouse_x = event->data.mouse_button.x;
-            win->mouse_y = event->data.mouse_button.y;
+            vgfx_internal_set_mouse_button_state(win, (int32_t)event->data.mouse_button.button, 0);
+            vgfx_internal_set_mouse_position(
+                win, event->data.mouse_button.x, event->data.mouse_button.y);
             break;
         case VGFX_EVENT_SCROLL:
-            win->mouse_x = event->data.scroll.x;
-            win->mouse_y = event->data.scroll.y;
+            vgfx_internal_set_mouse_position(win, event->data.scroll.x, event->data.scroll.y);
             break;
         case VGFX_EVENT_RESIZE:
             vgfx_internal_resize_framebuffer(
                 win, event->data.resize.width, event->data.resize.height);
             break;
-        case VGFX_EVENT_CLOSE:
-            if (!win->prevent_close)
-                win->close_requested = 1;
+        case VGFX_EVENT_CLOSE: {
+            vgfx_internal_event_lock(win);
+            int prevent_close = win->prevent_close;
+            vgfx_internal_event_unlock(win);
+            if (!prevent_close)
+                vgfx_internal_set_close_requested(win, 1);
             break;
+        }
         case VGFX_EVENT_FOCUS_GAINED:
-            win->is_focused = 1;
+            vgfx_internal_set_focus_state(win, 1);
             platform->focused = 1;
             break;
         case VGFX_EVENT_FOCUS_LOST:
-            win->is_focused = 0;
+            vgfx_internal_set_focus_state(win, 0);
             platform->focused = 0;
             vgfx_internal_clear_input_state(win);
             break;
@@ -180,7 +218,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     platform->initialized = 1;
     platform->focused = 1;
     win->platform_data = platform;
-    win->is_focused = 1;
+    vgfx_internal_set_focus_state(win, 1);
 
     /* Success - no actual window created */
     return 1;
@@ -416,8 +454,7 @@ void vgfx_mock_inject_mouse_move(vgfx_window_t window, int32_t x, int32_t y) {
     vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
     if (!platform)
         return;
-    win->mouse_x = x;
-    win->mouse_y = y;
+    vgfx_internal_set_mouse_position(win, x, y);
 
     /* Enqueue event with current mock time */
     vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_MOVE,
@@ -450,10 +487,15 @@ void vgfx_mock_inject_mouse_button(vgfx_window_t window, vgfx_mouse_button_t btn
         return;
 
     /* Enqueue event with current mock time and mouse position */
-    vgfx_event_t event = {
-        .type = down ? VGFX_EVENT_MOUSE_DOWN : VGFX_EVENT_MOUSE_UP,
-        .time_ms = g_mock_time_ms,
-        .data.mouse_button = {.x = win->mouse_x, .y = win->mouse_y, .button = btn, .modifiers = 0}};
+    int32_t x = 0;
+    int32_t y = 0;
+    vgfx_internal_event_lock(win);
+    x = win->mouse_x;
+    y = win->mouse_y;
+    vgfx_internal_event_unlock(win);
+    vgfx_event_t event = {.type = down ? VGFX_EVENT_MOUSE_DOWN : VGFX_EVENT_MOUSE_UP,
+                          .time_ms = g_mock_time_ms,
+                          .data.mouse_button = {.x = x, .y = y, .button = btn, .modifiers = 0}};
     mock_pending_enqueue(platform, &event);
 }
 
@@ -660,8 +702,7 @@ int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
 }
 
 void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t p) {
-    if (win)
-        win->prevent_close = p;
+    vgfx_internal_set_prevent_close(win, p);
 }
 
 void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t type) {

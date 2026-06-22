@@ -170,6 +170,9 @@ static uint32_t draw_rgba_word(vgfx_color_t color) {
 }
 
 /// @brief Store one packed RGBA pixel in a framebuffer.
+/// @details Uses `memcpy` rather than a `uint32_t *` cast because the
+///          framebuffer API exposes byte storage and callers may not satisfy the
+///          aliasing or alignment requirements of wider integer stores.
 /// @param win Target window with an RGBA framebuffer.
 /// @param x Pixel X coordinate, already known to be in bounds.
 /// @param y Pixel Y coordinate, already known to be in bounds.
@@ -178,12 +181,13 @@ static inline void store_rgba_word(struct vgfx_window *win,
                                    int32_t x,
                                    int32_t y,
                                    uint32_t rgba_word) {
-    uint32_t *pixel =
-        (uint32_t *)(win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u));
-    *pixel = rgba_word;
+    uint8_t *pixel = win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u);
+    memcpy(pixel, &rgba_word, sizeof(rgba_word));
 }
 
 /// @brief Fill a clipped horizontal span with a packed RGBA pixel.
+/// @details Writes each packed pixel through `memcpy` to preserve the
+///          framebuffer's byte-addressed contract on strict-alignment targets.
 /// @param win Target window with an RGBA framebuffer.
 /// @param x First pixel X coordinate.
 /// @param y Pixel row.
@@ -191,10 +195,9 @@ static inline void store_rgba_word(struct vgfx_window *win,
 /// @param rgba_word Host word whose object bytes are R,G,B,A.
 static void fill_rgba_span(
     struct vgfx_window *win, int32_t x, int32_t y, int32_t count, uint32_t rgba_word) {
-    uint32_t *dst =
-        (uint32_t *)(win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u));
+    uint8_t *dst = win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u);
     for (int32_t i = 0; i < count; i++)
-        dst[i] = rgba_word;
+        memcpy(dst + ((size_t)i * 4u), &rgba_word, sizeof(rgba_word));
 }
 
 //===----------------------------------------------------------------------===//

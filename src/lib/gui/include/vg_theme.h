@@ -23,6 +23,7 @@
 #pragma once
 
 #include "vg_font.h"
+#include "vg_string.h"
 #include <stdbool.h>
 #include <stdint.h>
 

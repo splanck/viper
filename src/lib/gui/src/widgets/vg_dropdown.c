@@ -21,9 +21,9 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
-#include "../../include/vg_draw.h"
 #include "../../include/vg_widgets.h"
 #include <limits.h>
 #include <stdlib.h>
@@ -502,8 +502,17 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
 
     // Real soft drop shadow beneath the floating list (Refined Depth elevation).
     vg_elevation_t el = theme->elevation.level2;
-    vg_draw_round_rect_shadow(win, (float)px, (float)py, (float)pw, (float)ph, 0.0f, el.blur, el.dx,
-                              el.dy, el.alpha, theme->elevation.shadow_rgb);
+    vg_draw_round_rect_shadow(win,
+                              (float)px,
+                              (float)py,
+                              (float)pw,
+                              (float)ph,
+                              0.0f,
+                              el.blur,
+                              el.dx,
+                              el.dy,
+                              el.alpha,
+                              theme->elevation.shadow_rgb);
     vgfx_fill_rect(win, px, py, pw, ph, dd->dropdown_bg);
     vgfx_rect(win, px, py, pw, ph, dd->border_color);
     if (pw > 2)
@@ -796,7 +805,7 @@ int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text) {
         dropdown->item_capacity = new_cap;
     }
 
-    dropdown->items[dropdown->item_count] = strdup(text);
+    dropdown->items[dropdown->item_count] = vg_strdup(text);
     if (!dropdown->items[dropdown->item_count])
         return -1;
     dropdown->base.needs_layout = true;
@@ -920,7 +929,7 @@ void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text) {
     if ((!dropdown->placeholder && (!text || text[0] == '\0')) ||
         (dropdown->placeholder && text && strcmp(dropdown->placeholder, text) == 0))
         return;
-    char *copy = text ? strdup(text) : NULL;
+    char *copy = text ? vg_strdup(text) : NULL;
     if (text && !copy)
         return;
     free(dropdown->placeholder);

@@ -161,6 +161,8 @@ static constexpr const char *kMacAppKitPrefixes[] = {
     "NSDrag",       "NSBackingStore", "NSWindowStyle", "NSApplicationActivationPolicy",
     nullptr,
 };
+static constexpr const char *kMacAppKitExact[] = {
+    "NSEdgeInsetsZero", "NSZeroPoint", "NSZeroRect", "NSZeroSize", nullptr};
 static constexpr const char *kMacImageIOPrefixes[] = {
     "CGImageSource",
     "CGImageDestination",
@@ -192,7 +194,7 @@ static constexpr MacImportRule kMacImportRules[] = {
      kMacFoundationExact},
     {"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
      kMacAppKitPrefixes,
-     kMacNoMatches},
+     kMacAppKitExact},
     {"/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO",
      kMacImageIOPrefixes,
      kMacNoMatches},

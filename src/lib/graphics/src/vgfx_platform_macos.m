@@ -43,11 +43,40 @@
 #include <mach/mach_time.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 static int g_vgfx_macos_cursor_hidden = 0;
 static mach_timebase_info_data_t g_vgfx_macos_timebase = {0};
 static pthread_once_t g_vgfx_macos_timebase_once = PTHREAD_ONCE_INIT;
+
+/// @brief Allocate an aligned framebuffer buffer using POSIX allocation.
+/// @details macOS exposes `posix_memalign`, and this Cocoa adapter is the only
+///          layer that should use that platform API directly.  The core receives
+///          an aligned block without carrying platform conditionals.
+/// @param alignment Required byte alignment; POSIX requires a power-of-two
+///                  multiple of `sizeof(void *)`.
+/// @param size Number of bytes requested.
+/// @return Aligned allocation on success, or NULL for invalid input/OOM.
+void *vgfx_platform_aligned_alloc(size_t alignment, size_t size) {
+    if (size == 0)
+        return NULL;
+    if (alignment < sizeof(void *))
+        alignment = sizeof(void *);
+    void *ptr = NULL;
+    if (posix_memalign(&ptr, alignment, size) != 0)
+        return NULL;
+    return ptr;
+}
+
+/// @brief Free a buffer returned by `vgfx_platform_aligned_alloc()`.
+/// @details macOS `posix_memalign` allocations are released with `free`.
+///          Passing NULL is a no-op.
+/// @param ptr Pointer returned by `vgfx_platform_aligned_alloc()`, or NULL.
+void vgfx_platform_aligned_free(void *ptr) {
+    free(ptr);
+}
 
 /// @brief Initialize mach timebase conversion factors exactly once.
 /// @details The graphics timer is called from event/update paths that may cross
@@ -113,6 +142,35 @@ typedef struct {
 static BOOL g_finish_launching_called = NO;
 static NSMenu *g_default_main_menu = nil;
 
+/// @brief Convert a UTF-8 C string to an NSString with a safe fallback.
+/// @details Cocoa returns nil from `stringWithUTF8String:` when the byte stream
+///          is not valid UTF-8.  Window-title and menu APIs expect a non-nil
+///          string, so this helper centralizes the fallback to an empty string.
+/// @param text UTF-8 text, or NULL.
+/// @return Autoreleased NSString containing `text`, or an empty string.
+static NSString *vgfx_macos_string_or_empty(const char *text) {
+    if (!text)
+        return @ "";
+    NSString *string = [NSString stringWithUTF8String:text];
+    return string ? string : @ "";
+}
+
+/// @brief Duplicate a UTF-8 C string using portable C allocation.
+/// @details Clipboard reads return caller-owned C strings.  This helper avoids
+///          relying on POSIX `strdup` and keeps ownership explicit.
+/// @param text Null-terminated string to duplicate.
+/// @return Heap-allocated copy, or NULL on allocation failure.
+static char *vgfx_macos_strdup(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
+
 static NSCursor *macos_cursor_for_type(int32_t cursor_type) {
     switch (cursor_type) {
         case 1:
@@ -166,6 +224,52 @@ static void macos_event_location_to_physical(struct vgfx_window *win,
         *out_y = y;
 }
 
+/// @brief Translate a Cocoa mouse event into a Viper mouse button.
+/// @details Cocoa reports left and right mouse buttons through dedicated event
+///          types.  Other mouse events carry a button number; ViperGFX exposes
+///          only left/right/middle, so extra side buttons are ignored instead of
+///          being incorrectly reported as middle-button input.
+/// @param event Cocoa mouse event to translate.
+/// @param out_button Receives the Viper button on success.
+/// @return 1 when the event maps to a supported button; otherwise 0.
+static int macos_mouse_button_from_event(NSEvent *event, vgfx_mouse_button_t *out_button) {
+    if (!event || !out_button)
+        return 0;
+    switch ([event type]) {
+        case NSEventTypeLeftMouseDown:
+        case NSEventTypeLeftMouseUp:
+            *out_button = VGFX_MOUSE_LEFT;
+            return 1;
+        case NSEventTypeRightMouseDown:
+        case NSEventTypeRightMouseUp:
+            *out_button = VGFX_MOUSE_RIGHT;
+            return 1;
+        case NSEventTypeOtherMouseDown:
+        case NSEventTypeOtherMouseUp:
+            if ([event buttonNumber] == 2) {
+                *out_button = VGFX_MOUSE_MIDDLE;
+                return 1;
+            }
+            return 0;
+        default:
+            return 0;
+    }
+}
+
+/// @brief Get the screen frame used to normalize Cocoa window coordinates.
+/// @details Cocoa window frames use a bottom-left origin.  Public ViperGFX
+///          positioning APIs use top-left coordinates, so conversions need the
+///          containing screen's frame.  If the window is not yet attached to a
+///          screen, the main screen is used as a stable fallback.
+/// @param window Cocoa window whose screen should be used.
+/// @return Screen frame in global Cocoa coordinates, or a zero rect if no screen exists.
+static NSRect macos_screen_frame_for_window(NSWindow *window) {
+    NSScreen *screen = window ? [window screen] : nil;
+    if (!screen)
+        screen = [NSScreen mainScreen];
+    return screen ? [screen frame] : NSZeroRect;
+}
+
 static void macos_sync_window_metrics(struct vgfx_window *win,
                                       int emit_resize_event,
                                       int invoke_resize_callback) {
@@ -208,7 +312,7 @@ static void macos_sync_window_metrics(struct vgfx_window *win,
 
 static NSString *vgfx_macos_app_name(const char *preferred_title) {
     if (preferred_title && preferred_title[0] != '\0') {
-        NSString *title = [NSString stringWithUTF8String:preferred_title];
+        NSString *title = vgfx_macos_string_or_empty(preferred_title);
         if (title.length > 0) {
             return title;
         }
@@ -742,15 +846,19 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     if (!platform)
         return NO;
 
-    if (!_vgfxWindow->prevent_close) {
+    vgfx_internal_event_lock(_vgfxWindow);
+    int prevent_close = _vgfxWindow->prevent_close;
+    vgfx_internal_event_unlock(_vgfxWindow);
+
+    if (!prevent_close) {
         /* Mark close as requested (can be checked by the application) */
         platform->close_requested = 1;
-        _vgfxWindow->close_requested = 1;
-    }
+        vgfx_internal_set_close_requested(_vgfxWindow, 1);
 
-    /* Enqueue CLOSE event for the application to handle */
-    vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = vgfx_platform_now_ms()};
-    vgfx_internal_enqueue_event(_vgfxWindow, &event);
+        /* Enqueue CLOSE event for the application to handle */
+        vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = vgfx_platform_now_ms()};
+        vgfx_internal_enqueue_event(_vgfxWindow, &event);
+    }
 
     /* Don't actually close the window - let the application decide */
     return NO;
@@ -798,7 +906,7 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     if (!_vgfxWindow)
         return;
 
-    _vgfxWindow->is_focused = 1;
+    vgfx_internal_set_focus_state(_vgfxWindow, 1);
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -816,7 +924,7 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     if (!_vgfxWindow)
         return;
 
-    _vgfxWindow->is_focused = 0;
+    vgfx_internal_set_focus_state(_vgfxWindow, 0);
     vgfx_internal_clear_input_state(_vgfxWindow);
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
@@ -918,7 +1026,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         }
 
         /* Set window title */
-        [platform->window setTitle:[NSString stringWithUTF8String:params->title]];
+        [platform->window setTitle:vgfx_macos_string_or_empty(params->title)];
         if ([platform->window respondsToSelector:@selector(setTabbingMode:)]) {
             [platform->window setTabbingMode:NSWindowTabbingModeDisallowed];
         }
@@ -962,6 +1070,11 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 
     @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+
+        if (platform->delegate)
+            platform->delegate.vgfxWindow = NULL;
+        if (platform->view)
+            platform->view.vgfxWindow = NULL;
 
         /* Close and release window */
         if (platform->window) {
@@ -1095,9 +1208,9 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 }
             }
 
-            /* Don't forward keyboard events to NSApp - we handle them directly.
-               This prevents the system beep when arrow keys are pressed. */
-            if (eventType != NSEventTypeKeyDown && eventType != NSEventTypeKeyUp) {
+            int dispatch_key_after_viper =
+                (eventType == NSEventTypeKeyDown || eventType == NSEventTypeKeyUp);
+            if (!dispatch_key_after_viper) {
                 [NSApp sendEvent:event];
             }
 
@@ -1111,7 +1224,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_key_t key = translate_keycode(
                         [event keyCode], [event charactersIgnoringModifiers], flags);
                     if (key != VGFX_KEY_UNKNOWN && key < 512) {
-                        win->key_state[key] = 1; /* Update input state */
+                        vgfx_internal_set_key_state(win, key, 1);
 
                         vgfx_event_t vgfx_event = {
                             .type = VGFX_EVENT_KEY_DOWN,
@@ -1132,7 +1245,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_key_t key = translate_keycode(
                         [event keyCode], [event charactersIgnoringModifiers], flags);
                     if (key != VGFX_KEY_UNKNOWN && key < 512) {
-                        win->key_state[key] = 0; /* Update input state */
+                        vgfx_internal_set_key_state(win, key, 0);
 
                         vgfx_event_t vgfx_event = {
                             .type = VGFX_EVENT_KEY_UP,
@@ -1155,8 +1268,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     int32_t x, y;
                     macos_event_location_to_physical(win, location, contentRect, &x, &y);
 
-                    win->mouse_x = x; /* Update input state */
-                    win->mouse_y = y;
+                    vgfx_internal_set_mouse_position(win, x, y);
 
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_MOVE,
@@ -1176,19 +1288,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     int32_t x, y;
                     macos_event_location_to_physical(win, location, contentRect, &x, &y);
 
-                    /* Determine which button was pressed */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
-                    if ([event type] == NSEventTypeRightMouseDown) {
-                        button = VGFX_MOUSE_RIGHT;
-                    } else if ([event type] == NSEventTypeOtherMouseDown) {
-                        button = VGFX_MOUSE_MIDDLE;
-                    }
-
-                    if ((int)button >= 0 && button < 8) {
-                        win->mouse_button_state[(int)button] = 1; /* Update input state */
-                    }
-                    win->mouse_x = x;
-                    win->mouse_y = y;
+                    if (!macos_mouse_button_from_event(event, &button))
+                        break;
+                    vgfx_internal_set_mouse_button_state(win, (int32_t)button, 1);
+                    vgfx_internal_set_mouse_position(win, x, y);
 
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_DOWN,
@@ -1210,19 +1314,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     int32_t x, y;
                     macos_event_location_to_physical(win, location, contentRect, &x, &y);
 
-                    /* Determine which button was released */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
-                    if ([event type] == NSEventTypeRightMouseUp) {
-                        button = VGFX_MOUSE_RIGHT;
-                    } else if ([event type] == NSEventTypeOtherMouseUp) {
-                        button = VGFX_MOUSE_MIDDLE;
-                    }
-
-                    if ((int)button >= 0 && button < 8) {
-                        win->mouse_button_state[(int)button] = 0; /* Update input state */
-                    }
-                    win->mouse_x = x;
-                    win->mouse_y = y;
+                    if (!macos_mouse_button_from_event(event, &button))
+                        break;
+                    vgfx_internal_set_mouse_button_state(win, (int32_t)button, 0);
+                    vgfx_internal_set_mouse_position(win, x, y);
 
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_UP,
@@ -1241,8 +1337,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     float sf = win->scale_factor;
                     int32_t x, y;
                     macos_event_location_to_physical(win, location, contentRect, &x, &y);
-                    win->mouse_x = x;
-                    win->mouse_y = y;
+                    vgfx_internal_set_mouse_position(win, x, y);
 
                     float dx, dy;
                     if ([event hasPreciseScrollingDeltas]) {
@@ -1270,6 +1365,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 default:
                     /* Ignore remaining unhandled event types (gestures, etc.) */
                     break;
+            }
+
+            if (dispatch_key_after_viper) {
+                [NSApp sendEvent:event];
             }
         }
 
@@ -1409,7 +1508,7 @@ char *vgfx_clipboard_get_text(void) {
         if (!utf8)
             return NULL;
 
-        return strdup(utf8);
+        return vgfx_macos_strdup(utf8);
     }
 }
 
@@ -1422,7 +1521,7 @@ void vgfx_clipboard_set_text(const char *text) {
         [pasteboard clearContents];
 
         if (text) {
-            NSString *string = [NSString stringWithUTF8String:text];
+            NSString *string = vgfx_macos_string_or_empty(text);
             if (string) {
                 [pasteboard setString:string forType:NSPasteboardTypeString];
             }
@@ -1455,7 +1554,7 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title) {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
 
         if (platform->window) {
-            [platform->window setTitle:[NSString stringWithUTF8String:title]];
+            [platform->window setTitle:vgfx_macos_string_or_empty(title)];
         }
 
         vgfx_platform_macos_ensure_default_main_menu(title);
@@ -1576,10 +1675,13 @@ void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t
         if (!platform->window)
             return;
         NSRect frame = [platform->window frame];
+        NSRect screen_frame = macos_screen_frame_for_window(platform->window);
         if (out_x)
             *out_x = (int32_t)frame.origin.x;
-        if (out_y)
-            *out_y = (int32_t)frame.origin.y;
+        if (out_y) {
+            CGFloat top_y = NSMaxY(screen_frame) - NSMaxY(frame);
+            *out_y = (int32_t)top_y;
+        }
     }
 }
 
@@ -1588,8 +1690,12 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
         return;
     @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
-        if (platform->window)
-            [platform->window setFrameOrigin:NSMakePoint((CGFloat)x, (CGFloat)y)];
+        if (platform->window) {
+            NSRect frame = [platform->window frame];
+            NSRect screen_frame = macos_screen_frame_for_window(platform->window);
+            CGFloat cocoa_y = NSMaxY(screen_frame) - (CGFloat)y - frame.size.height;
+            [platform->window setFrameOrigin:NSMakePoint((CGFloat)x, cocoa_y)];
+        }
     }
 }
 
@@ -1613,8 +1719,7 @@ int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
 }
 
 void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
-    if (win)
-        win->prevent_close = prevent;
+    vgfx_internal_set_prevent_close(win, prevent);
 }
 
 void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
