@@ -82,8 +82,9 @@ static void alsa_end_quiet_probe(void) {
 /// @brief Apply explicit ALSA hardware and software parameters for ViperAUD output.
 /// @details This replaces `snd_pcm_set_params()` so the backend can control the period size,
 ///          buffer size, start threshold, and wakeup granularity independently. The requested
-///          format remains stereo 44.1 kHz signed 16-bit PCM; ALSA may negotiate a nearby rate
-///          through its normal plugin layer.
+///          format remains stereo 44.1 kHz signed 16-bit PCM; if ALSA cannot provide that exact
+///          mixer rate through the selected device/plugin, initialization fails instead of playing
+///          at the wrong speed.
 /// @param pcm Open playback PCM handle.
 /// @return 0 on success, otherwise a negative ALSA error code.
 static int alsa_configure_pcm(snd_pcm_t *pcm) {
@@ -112,6 +113,10 @@ static int alsa_configure_pcm(snd_pcm_t *pcm) {
         goto done;
     if ((err = snd_pcm_hw_params_set_rate_near(pcm, hw, &rate, &dir)) < 0)
         goto done;
+    if (rate != VAUD_SAMPLE_RATE) {
+        err = -EINVAL;
+        goto done;
+    }
     if ((err = snd_pcm_hw_params_set_period_size_near(pcm, hw, &period, &dir)) < 0)
         goto done;
     if ((err = snd_pcm_hw_params_set_buffer_size_near(pcm, hw, &buffer)) < 0)

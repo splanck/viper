@@ -559,8 +559,8 @@ typedef struct vg_listbox {
     vg_listbox_cache_entry_t *visible_cache; ///< Cache for visible items
     size_t cache_capacity;                   ///< Cache capacity
 
-    // Virtual mode selection (bitmap for large lists)
-    bool *selection_bitmap;           ///< Selection state for virtual mode
+    // Virtual mode selection (packed bitmap for large lists)
+    uint8_t *selection_bitmap;        ///< Packed selection bits for virtual mode
     size_t selection_bitmap_size;     ///< Logical bitmap size
     size_t selection_bitmap_capacity; ///< Allocated bitmap capacity
     size_t selected_index;            ///< Currently selected index (virtual mode)

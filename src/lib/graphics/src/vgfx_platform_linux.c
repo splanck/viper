@@ -44,6 +44,7 @@
 #include <X11/keysym.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <sched.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,6 +198,9 @@ static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
 static struct vgfx_window *g_vgfx_cursor_window = NULL;
 static struct vgfx_window *g_vgfx_clipboard_window = NULL;
 static struct vgfx_window *g_vgfx_x11_windows = NULL;
+static vgfx_atomic_flag_t g_x11_scale_lock;
+static int g_x11_scale_cached = 0;
+static float g_x11_scale_value = 1.0f;
 
 /// @brief Wait briefly for an X11 window to become viewable after `XMapWindow`.
 /// @details X11 mapping is asynchronous. Canvas3D can create an OpenGL context immediately after
@@ -557,6 +561,54 @@ static struct vgfx_window *x11_clipboard_window(void) {
     return NULL;
 }
 
+/// @brief Acquire the X11 display-scale cache lock.
+static void x11_scale_cache_lock(void) {
+    while (vgfx_atomic_flag_test_and_set(&g_x11_scale_lock))
+        vgfx_internal_event_wait();
+}
+
+/// @brief Release the X11 display-scale cache lock.
+static void x11_scale_cache_unlock(void) {
+    vgfx_atomic_flag_clear(&g_x11_scale_lock);
+}
+
+/// @brief Set modern and legacy X11 title properties from UTF-8 text.
+/// @details EWMH-aware window managers prefer _NET_WM_NAME/_NET_WM_ICON_NAME
+///          with UTF8_STRING. XStoreName/XSetIconName are still updated as a
+///          fallback for older window managers and tools.
+static void x11_set_window_title_utf8(Display *display, Window window, const char *title) {
+    if (!display || !window || !title)
+        return;
+
+    Atom utf8 = XInternAtom(display, "UTF8_STRING", False);
+    Atom net_wm_name = XInternAtom(display, "_NET_WM_NAME", False);
+    Atom net_wm_icon_name = XInternAtom(display, "_NET_WM_ICON_NAME", False);
+    size_t len = strlen(title);
+    if (utf8 != None && net_wm_name != None) {
+        XChangeProperty(display,
+                        window,
+                        net_wm_name,
+                        utf8,
+                        8,
+                        PropModeReplace,
+                        (const unsigned char *)title,
+                        (int)len);
+    }
+    if (utf8 != None && net_wm_icon_name != None) {
+        XChangeProperty(display,
+                        window,
+                        net_wm_icon_name,
+                        utf8,
+                        8,
+                        PropModeReplace,
+                        (const unsigned char *)title,
+                        (int)len);
+    }
+
+    XStoreName(display, window, title);
+    XSetIconName(display, window, title);
+}
+
 static int x11_create_ximage_resources(vgfx_x11_data *x11,
                                        int32_t width,
                                        int32_t height,
@@ -782,12 +834,20 @@ float vgfx_platform_get_display_scale(void) {
             return vgfx_internal_sanitize_scale(s);
     }
 
-    /* Priority 3: Xft.dpi from the X11 resource database.
-     * Open a temporary display connection just for this query so we don't
-     * interfere with the window's own Display connection (opened later). */
+    x11_scale_cache_lock();
+    if (g_x11_scale_cached) {
+        float scale = g_x11_scale_value;
+        x11_scale_cache_unlock();
+        return scale;
+    }
+    x11_scale_cache_unlock();
+
+    /* Priority 3: Xft.dpi from the X11 resource database.  The temporary
+     * display connection is cached after the first successful query so repeated
+     * scale reads do not continually connect to the X server. */
     Display *dpy = XOpenDisplay(NULL);
+    float scale = 1.0f;
     if (dpy) {
-        float scale = 1.0f;
         const char *rms = XResourceManagerString(dpy);
         if (rms) {
             /* Search for "Xft.dpi:\t96" or "Xft.dpi: 192" etc. */
@@ -802,10 +862,14 @@ float vgfx_platform_get_display_scale(void) {
             }
         }
         XCloseDisplay(dpy);
-        return vgfx_internal_sanitize_scale(scale);
     }
 
-    return 1.0f; /* fallback: assume standard 96 DPI */
+    scale = vgfx_internal_sanitize_scale(scale);
+    x11_scale_cache_lock();
+    g_x11_scale_value = scale;
+    g_x11_scale_cached = 1;
+    x11_scale_cache_unlock();
+    return scale;
 }
 
 /// @brief Initialize platform-specific window resources for X11.
@@ -903,8 +967,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     }
 
     /* Set window title */
-    XStoreName(x11->display, x11->window, params->title);
-    XSetIconName(x11->display, x11->window, params->title);
+    x11_set_window_title_utf8(x11->display, x11->window, params->title);
 
     x11->xim = XOpenIM(x11->display, NULL, NULL, NULL);
     if (x11->xim) {
@@ -1756,12 +1819,19 @@ void vgfx_platform_sleep_ms(int32_t ms) {
     }
 }
 
+/// @brief Yield the calling thread to the POSIX scheduler.
+/// @details Used for short internal spin waits without adding a millisecond
+///          sleep to event processing paths.
+void vgfx_platform_yield(void) {
+    sched_yield();
+}
+
 //===----------------------------------------------------------------------===//
 // Window Title and Fullscreen
 //===----------------------------------------------------------------------===//
 
 /// @brief Set the window title.
-/// @details Updates the X11 window's title using XStoreName.
+/// @details Updates EWMH UTF-8 title properties and legacy title fallbacks.
 ///
 /// @param win   Pointer to the window structure
 /// @param title New title string (UTF-8)
@@ -1773,8 +1843,7 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title) {
     if (!x11->display || !x11->window)
         return;
 
-    XStoreName(x11->display, x11->window, title);
-    XSetIconName(x11->display, x11->window, title);
+    x11_set_window_title_utf8(x11->display, x11->window, title);
     XFlush(x11->display);
 }
 

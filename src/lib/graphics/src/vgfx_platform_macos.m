@@ -42,6 +42,7 @@
 #include <errno.h>
 #include <mach/mach_time.h>
 #include <pthread.h>
+#include <sched.h>
 #include <time.h>
 
 static int g_vgfx_macos_cursor_hidden = 0;
@@ -937,6 +938,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         /* Center window on screen and make it visible */
         [platform->window center];
         [platform->window makeKeyAndOrderFront:nil];
+        macos_sync_window_metrics(win, 0, 0);
 
         /* Activate the application (bring to foreground) */
         [NSApp activateIgnoringOtherApps:YES];
@@ -1352,6 +1354,13 @@ void vgfx_platform_sleep_ms(int32_t ms) {
     }
 }
 
+/// @brief Yield the calling thread to the Darwin scheduler.
+/// @details Used for short internal spin waits without advancing frame pacing
+///          timers or sleeping for a full millisecond.
+void vgfx_platform_yield(void) {
+    sched_yield();
+}
+
 //===----------------------------------------------------------------------===//
 // Clipboard Operations
 //===----------------------------------------------------------------------===//
@@ -1659,6 +1668,7 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
         if (!platform->window)
             return;
         [platform->window setContentSize:NSMakeSize((CGFloat)w, (CGFloat)h)];
+        macos_sync_window_metrics(win, 1, 1);
     }
 }
 

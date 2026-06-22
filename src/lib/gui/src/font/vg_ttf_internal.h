@@ -212,6 +212,7 @@ typedef struct vg_glyph_cache {
     size_t bucket_count;        ///< Current number of hash buckets (always a power of two).
     size_t entry_count;         ///< Total number of cached glyph entries across all buckets.
     size_t memory_used;         ///< Total bytes of bitmap memory currently held by cached glyphs.
+    uint64_t access_tick;       ///< Per-cache monotonic access counter for LRU ordering.
 } vg_glyph_cache_t;
 
 //=============================================================================

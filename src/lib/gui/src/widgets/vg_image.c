@@ -14,7 +14,7 @@
 //   - VG_IMAGE_SCALE_FIT scales uniformly to fit inside the widget bounds.
 //   - VG_IMAGE_SCALE_FILL scales uniformly to fill, cropping excess pixels.
 //   - opacity is clamped to [0.0, 1.0]; 0.0 = fully transparent, 1.0 = opaque.
-//   - paint respects the canvas clip rectangle when clip_enabled is set.
+//   - paint respects the canvas clip rectangle reported by ViperGFX.
 // Ownership/Lifetime:
 //   - image->pixels is heap-allocated via vg_image_set_pixels and freed in
 //     image_destroy or vg_image_clear; the widget does not borrow pixel data.
@@ -22,7 +22,6 @@
 //        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
-#include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_widget.h"
 #include "../../include/vg_widgets.h"
 #include "vgfx.h"
@@ -336,18 +335,11 @@ static void image_paint(vg_widget_t *widget, void *canvas) {
     int start_y = clampi((int)draw_y, dy, dy + dh);
     int end_x = clampi((int)(draw_x + draw_w), dx, dx + dw);
     int end_y = clampi((int)(draw_y + draw_h), dy, dy + dh);
-    const struct vgfx_window *internal = (const struct vgfx_window *)canvas;
     int clip_x = 0;
     int clip_y = 0;
     int clip_w = fb.width;
     int clip_h = fb.height;
-
-    if (internal && internal->clip_enabled) {
-        clip_x = internal->clip_x;
-        clip_y = internal->clip_y;
-        clip_w = internal->clip_w;
-        clip_h = internal->clip_h;
-    }
+    (void)vgfx_get_clip((vgfx_window_t)canvas, &clip_x, &clip_y, &clip_w, &clip_h);
 
     if (start_x < 0)
         start_x = 0;

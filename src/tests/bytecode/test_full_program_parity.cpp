@@ -316,6 +316,16 @@ const std::vector<SuccessCase> &successCases() {
         {"branch_join_value.il", 22, ""},
         {"i16_narrow_store.il", 123, ""},
         {"unsigned_compare.il", 1, ""},
+        // Ordered/unordered float compares: NaN makes ord=0 (a NaN operand is not
+        // ordered) and uno=1 (a NaN operand is unordered) across all three dispatchers.
+        {"fcmp_ord_nan.il", 0, ""},
+        {"fcmp_uno_nan.il", 1, ""},
+        // ErrGetMsg: verify err.get_msg is dispatched without trapping in all three
+        // engines (the handler runs it then returns a constant). The exact message text
+        // differs by design — the IL VM returns the user-stored message (empty for
+        // internal traps), while the bytecode VM formats its own — so the fixture does
+        // not compare message content, only that the opcode executes.
+        {"err_get_msg_exec.il", 7, ""},
     };
     return cases;
 }

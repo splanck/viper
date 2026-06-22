@@ -181,8 +181,10 @@ struct vaud_music {
     int stream_eof;                                 ///< Decoder reached EOF while pre-filling.
     int stream_loop_pending;                        ///< Mixer requested a loop rewind.
     int refill_in_progress;                         ///< Non-realtime thread is mutating buffers.
-    int buffer_refilling[VAUD_MUSIC_BUFFER_COUNT];  ///< Per-buffer refill ownership flags.
-    int64_t stream_output_generated; ///< Output frames decoded since last reset/seek.
+    int refill_event_ready;    ///< Refill completion event has been initialized.
+    vaud_event_t refill_event; ///< Signals that non-realtime refill work is done.
+    int buffer_refilling[VAUD_MUSIC_BUFFER_COUNT]; ///< Per-buffer refill ownership flags.
+    int64_t stream_output_generated;               ///< Output frames decoded since last reset/seek.
 
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
     int16_t *resample_buf; ///< Temp buffer for raw frames before resampling
@@ -234,10 +236,12 @@ struct vaud_context {
     int32_t accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< 32-bit mix accumulator (RT-safe)
     int32_t group_accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< Per-group scratch bus.
     float group_fx_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< Float scratch for group effects.
+    int16_t last_output_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< Last rendered period fallback.
+    int32_t last_output_frames;                      ///< Number of valid frames in last_output_buf.
     vaud_group_effects_query_fn group_effects_query; ///< Optional group-effects query hook.
     vaud_group_effects_process_fn group_effects_process; ///< Optional group-effects processor.
     void *group_effects_userdata; ///< User data forwarded to group-effects hooks.
-    vaud_stats_t stats; ///< Mixer/backend diagnostic counters.
+    vaud_stats_t stats;           ///< Mixer/backend diagnostic counters.
 
     // Thread synchronization
     vaud_mutex_t mutex;      ///< Protects voice and music state
@@ -359,7 +363,8 @@ int32_t vaud_wav_read_frames_buffered(void *file,
 //===----------------------------------------------------------------------===//
 
 /// @brief Resample audio to target sample rate.
-/// @details Uses linear interpolation for simplicity and low CPU usage.
+/// @details Uses cubic interpolation for better quality while keeping the
+///          implementation dependency-free.
 /// @param input Input samples (interleaved stereo).
 /// @param in_frames Number of input frames.
 /// @param in_rate Input sample rate.
@@ -388,7 +393,7 @@ int vaud_pcm_s16_buffer_size(int64_t frames, int32_t channels, size_t *out_bytes
 
 /// @brief Fill a music buffer with frames, resampling if necessary.
 /// @details Reads raw frames from the music's WAV file and, when the source
-///          sample rate differs from VAUD_SAMPLE_RATE, resamples via linear
+///          sample rate differs from VAUD_SAMPLE_RATE, resamples via cubic
 ///          interpolation into the output buffer.
 /// @param music Music stream instance.
 /// @param buf_idx Index of the buffer to fill (0..VAUD_MUSIC_BUFFER_COUNT-1).

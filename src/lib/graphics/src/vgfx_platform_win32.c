@@ -109,7 +109,7 @@ static WCHAR *utf8_to_utf16(const char *utf8) {
         return NULL;
 
     /* Get required buffer size */
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+    int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
     if (wlen <= 0)
         return NULL;
 
@@ -119,7 +119,7 @@ static WCHAR *utf8_to_utf16(const char *utf8) {
         return NULL;
 
     /* Convert */
-    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wstr, wlen) == 0) {
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wstr, wlen) == 0) {
         free(wstr);
         return NULL;
     }
@@ -131,13 +131,27 @@ static int utf16_to_utf8_buffer(const WCHAR *wstr, char *out, size_t out_size) {
     if (!wstr || !out || out_size == 0)
         return 0;
 
-    int needed = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+    int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wstr, -1, NULL, 0, NULL, NULL);
     if (needed <= 0 || (size_t)needed > out_size)
         return 0;
 
-    if (WideCharToMultiByte(CP_UTF8, 0, wstr, -1, out, needed, NULL, NULL) == 0)
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wstr, -1, out, needed, NULL, NULL) == 0)
         return 0;
     return 1;
+}
+
+/// @brief Open the Win32 clipboard with a short retry window.
+/// @details The clipboard is a process-global resource and transiently fails
+///          when another process owns it. Retrying for a few milliseconds makes
+///          copy/paste operations more reliable without blocking indefinitely.
+/// @return Non-zero when OpenClipboard succeeded.
+static int win32_open_clipboard_retry(void) {
+    for (int attempt = 0; attempt < 8; attempt++) {
+        if (OpenClipboard(NULL))
+            return 1;
+        Sleep(1);
+    }
+    return 0;
 }
 
 static void win32_client_to_physical_mouse(
@@ -1284,6 +1298,13 @@ void vgfx_platform_sleep_ms(int32_t ms) {
     Sleep((DWORD)ms);
 }
 
+/// @brief Yield the calling thread to another ready Windows thread.
+/// @details Used for brief internal spin waits where sleeping for a full
+///          scheduler tick would add visible event latency.
+void vgfx_platform_yield(void) {
+    SwitchToThread();
+}
+
 //===----------------------------------------------------------------------===//
 // Clipboard Operations
 //===----------------------------------------------------------------------===//
@@ -1316,7 +1337,7 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
 ///          The caller is responsible for freeing the returned string.
 /// @return Clipboard text (caller must free), or NULL if not available
 char *vgfx_clipboard_get_text(void) {
-    if (!OpenClipboard(NULL))
+    if (!win32_open_clipboard_retry())
         return NULL;
 
     char *result = NULL;
@@ -1326,11 +1347,17 @@ char *vgfx_clipboard_get_text(void) {
         WCHAR *wstr = (WCHAR *)GlobalLock(hData);
         if (wstr) {
             /* Convert UTF-16 to UTF-8 */
-            int len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+            int len =
+                WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wstr, -1, NULL, 0, NULL, NULL);
             if (len > 0) {
                 result = (char *)malloc(len);
                 if (result) {
-                    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, result, len, NULL, NULL);
+                    if (WideCharToMultiByte(
+                            CP_UTF8, WC_ERR_INVALID_CHARS, wstr, -1, result, len, NULL, NULL) ==
+                        0) {
+                        free(result);
+                        result = NULL;
+                    }
                 }
             }
             GlobalUnlock(hData);
@@ -1345,22 +1372,24 @@ char *vgfx_clipboard_get_text(void) {
 /// @details Copies the specified UTF-8 string to the system clipboard.
 /// @param text Text to copy (NULL clears text from clipboard)
 void vgfx_clipboard_set_text(const char *text) {
-    if (!OpenClipboard(NULL))
+    if (!win32_open_clipboard_retry())
         return;
 
     EmptyClipboard();
 
     if (text) {
         /* Convert UTF-8 to UTF-16 */
-        int wlen = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+        int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
         if (wlen > 0) {
             HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wlen * sizeof(WCHAR));
             if (hMem) {
                 WCHAR *wstr = (WCHAR *)GlobalLock(hMem);
                 if (wstr) {
-                    MultiByteToWideChar(CP_UTF8, 0, text, -1, wstr, wlen);
+                    int converted =
+                        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wstr, wlen);
                     GlobalUnlock(hMem);
-                    SetClipboardData(CF_UNICODETEXT, hMem);
+                    if (converted == 0 || !SetClipboardData(CF_UNICODETEXT, hMem))
+                        GlobalFree(hMem);
                 } else {
                     GlobalFree(hMem);
                 }
@@ -1373,7 +1402,7 @@ void vgfx_clipboard_set_text(const char *text) {
 
 /// @brief Clear all clipboard contents.
 void vgfx_clipboard_clear(void) {
-    if (OpenClipboard(NULL)) {
+    if (win32_open_clipboard_retry()) {
         EmptyClipboard();
         CloseClipboard();
     }

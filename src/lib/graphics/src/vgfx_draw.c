@@ -92,6 +92,27 @@ static int get_effective_clip_bounds(
     return 1;
 }
 
+/// @brief Test whether a circle can touch the current effective clip bounds.
+/// @details Uses int64 arithmetic so large coordinates and radii cannot
+///          overflow while computing the bounding box. Extremely large radii
+///          are rejected to avoid unbounded midpoint loops.
+static int circle_intersects_clip_bounds(int32_t cx,
+                                         int32_t cy,
+                                         int32_t radius,
+                                         int64_t min_x,
+                                         int64_t min_y,
+                                         int64_t max_x,
+                                         int64_t max_y) {
+    if (radius < 0 || radius > INT32_MAX / 4)
+        return 0;
+    int64_t r = radius;
+    int64_t left = (int64_t)cx - r;
+    int64_t right = (int64_t)cx + r;
+    int64_t top = (int64_t)cy - r;
+    int64_t bottom = (int64_t)cy + r;
+    return right >= min_x && bottom >= min_y && left < max_x && top < max_y;
+}
+
 static void set_empty_clip(struct vgfx_window *win) {
     win->clip_x = 0;
     win->clip_y = 0;
@@ -795,6 +816,8 @@ void vgfx_draw_circle(
     int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
     if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
         return;
+    if (!circle_intersects_clip_bounds(cx, cy, radius, min_x, min_y, max_x, max_y))
+        return;
 
     /* Set up plot context (passed to midpoint_circle via plot_callback) */
     plot_context_t ctx = {.win = win,
@@ -833,6 +856,8 @@ void vgfx_draw_fill_circle(
 
     int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
     if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
+        return;
+    if (!circle_intersects_clip_bounds(cx, cy, radius, min_x, min_y, max_x, max_y))
         return;
 
     /* Set up horizontal line context (passed to filled_circle via hline_callback) */
@@ -926,6 +951,54 @@ void vgfx_clear_clip(vgfx_window_t window) {
         return;
 
     win->clip_enabled = 0;
+}
+
+/// @brief Query the current effective framebuffer clipping rectangle.
+/// @details The returned rectangle is expressed in physical framebuffer pixels.
+///          Disabled clipping reports the full framebuffer and returns 0, while
+///          active clipping reports the effective intersected clip and returns 1.
+/// @param window Window handle.
+/// @param out_x Optional destination for clip left edge.
+/// @param out_y Optional destination for clip top edge.
+/// @param out_w Optional destination for clip width.
+/// @param out_h Optional destination for clip height.
+/// @return 1 when explicit clipping is active, 0 otherwise.
+int vgfx_get_clip(
+    vgfx_window_t window, int32_t *out_x, int32_t *out_y, int32_t *out_w, int32_t *out_h) {
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win) {
+        if (out_x)
+            *out_x = 0;
+        if (out_y)
+            *out_y = 0;
+        if (out_w)
+            *out_w = 0;
+        if (out_h)
+            *out_h = 0;
+        return 0;
+    }
+
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t w = win->width;
+    int32_t h = win->height;
+    int active = win->clip_enabled;
+    if (active) {
+        x = win->clip_x;
+        y = win->clip_y;
+        w = win->clip_w;
+        h = win->clip_h;
+    }
+
+    if (out_x)
+        *out_x = x;
+    if (out_y)
+        *out_y = y;
+    if (out_w)
+        *out_w = w;
+    if (out_h)
+        *out_h = h;
+    return active ? 1 : 0;
 }
 
 //===----------------------------------------------------------------------===//

@@ -1281,11 +1281,11 @@ TEST(listbox_virtual_ctrl_toggle_off_clears_or_moves_current_index) {
     ev.modifiers = VG_MOD_CTRL;
     ev.mouse.y = 21.0f;
     ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
-    ASSERT_TRUE(lb->selection_bitmap[1]);
+    ASSERT_TRUE((lb->selection_bitmap[0] & (uint8_t)(1u << 1u)) != 0);
     ASSERT_EQ(lb->selected_index, (size_t)1);
 
     ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
-    ASSERT_FALSE(lb->selection_bitmap[1]);
+    ASSERT_FALSE((lb->selection_bitmap[0] & (uint8_t)(1u << 1u)) != 0);
     ASSERT_NEQ(lb->selected_index, (size_t)1);
     ASSERT_EQ(lb->selected_index, (size_t)0);
 
@@ -3347,11 +3347,11 @@ TEST(listbox_virtual_keyboard_navigation_handles_large_counts) {
     vg_listbox_t *listbox = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(listbox);
 
-    bool selection[4] = {0};
+    uint8_t selection[1] = {0};
     listbox->virtual_mode = true;
     listbox->total_item_count = (size_t)INT32_MAX + 4u;
     listbox->selection_bitmap = selection;
-    listbox->selection_bitmap_size = sizeof(selection) / sizeof(selection[0]);
+    listbox->selection_bitmap_size = 4;
     listbox->selected_index = SIZE_MAX;
     listbox->anchor_selected_index = SIZE_MAX;
     listbox->item_height = 20.0f;
@@ -3360,7 +3360,7 @@ TEST(listbox_virtual_keyboard_navigation_handles_large_counts) {
     vg_event_t ev = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_DOWN, 0, VG_MOD_NONE);
     ASSERT_TRUE(vg_event_send(&listbox->base, &ev));
     ASSERT_EQ(vg_listbox_get_selected_index(listbox), (size_t)0);
-    ASSERT_TRUE(selection[0]);
+    ASSERT_TRUE((selection[0] & 0x01u) != 0);
 
     listbox->selection_bitmap = NULL;
     listbox->selection_bitmap_size = 0;
@@ -4263,8 +4263,7 @@ TEST(listbox_virtual_shrink_reports_truncated_secondary_selection) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_set_virtual_mode(lb, true, 5, 20.0f);
-    lb->selection_bitmap[1] = true;
-    lb->selection_bitmap[4] = true;
+    lb->selection_bitmap[0] = (uint8_t)((1u << 1u) | (1u << 4u));
     lb->selected_index = 1;
 
     uint64_t before = lb->selection_revision;

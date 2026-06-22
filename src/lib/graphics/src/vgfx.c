@@ -47,9 +47,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <malloc.h>
-#include <windows.h>
 #elif defined(__APPLE__) || defined(__linux__)
-#include <sched.h>
 #include <stdlib.h>
 #endif
 
@@ -88,9 +86,44 @@ static int32_t g_default_fps = VGFX_DEFAULT_FPS;
 /// @brief Optional user-provided logging callback for error messages.
 static vgfx_log_fn g_log_callback = NULL;
 
+/// @brief Protects process-wide configuration globals.
+static vgfx_atomic_flag_t g_config_lock;
+
 //===----------------------------------------------------------------------===//
 // Internal Helper Functions
 //===----------------------------------------------------------------------===//
+
+/// @brief Acquire the process-wide configuration lock.
+/// @details Used for small global settings such as the default FPS and log
+///          callback. The lock is intentionally independent from per-window
+///          event locks so configuration updates do not block event queues.
+static void vgfx_config_lock(void) {
+    while (vgfx_atomic_flag_test_and_set(&g_config_lock))
+        vgfx_internal_event_wait();
+}
+
+/// @brief Release the process-wide configuration lock.
+static void vgfx_config_unlock(void) {
+    vgfx_atomic_flag_clear(&g_config_lock);
+}
+
+/// @brief Read the default FPS under the global configuration lock.
+/// @return Current process-wide default FPS.
+static int32_t vgfx_read_default_fps(void) {
+    vgfx_config_lock();
+    int32_t fps = g_default_fps;
+    vgfx_config_unlock();
+    return fps;
+}
+
+/// @brief Read the optional log callback under the global configuration lock.
+/// @return Current log callback, or NULL if logging callback forwarding is disabled.
+static vgfx_log_fn vgfx_read_log_callback(void) {
+    vgfx_config_lock();
+    vgfx_log_fn fn = g_log_callback;
+    vgfx_config_unlock();
+    return fn;
+}
 
 /// @brief Return whether internal errors should also be mirrored to stderr.
 /// @details ViperGFX is often embedded in tools that manage their own diagnostic
@@ -125,9 +158,11 @@ void vgfx_internal_set_error(vgfx_error_t code, const char *msg) {
         fprintf(stderr, "vgfx: %s\n", msg);
     }
 
-    /* Call logging callback if set */
-    if (g_log_callback && msg) {
-        g_log_callback(msg);
+    /* Call logging callback if set. Copy it first so invocation is outside
+     * the global config lock and user logging cannot deadlock configuration. */
+    vgfx_log_fn log_callback = vgfx_read_log_callback();
+    if (log_callback && msg) {
+        log_callback(msg);
     }
 }
 
@@ -316,13 +351,7 @@ void vgfx_internal_clear_input_state(struct vgfx_window *win) {
 ///          keeps the queue's critical section lightweight while preventing
 ///          producer/consumer contention from becoming a pure busy-wait.
 void vgfx_internal_event_wait(void) {
-#if defined(_WIN32)
-    SwitchToThread();
-#elif defined(__APPLE__) || defined(__linux__)
-    sched_yield();
-#else
-    vgfx_platform_sleep_ms(1);
-#endif
+    vgfx_platform_yield();
 }
 
 /// @brief Test whether an event must survive queue pressure.
@@ -345,9 +374,18 @@ static int vgfx_event_is_release_state_event(vgfx_event_type_t type) {
 /// @param type Event type to classify.
 /// @return Non-zero when the event is a preferred overflow victim.
 static int vgfx_event_is_transient_overflow_candidate(vgfx_event_type_t type) {
-    return type == VGFX_EVENT_MOUSE_MOVE || type == VGFX_EVENT_TEXT_INPUT ||
-           type == VGFX_EVENT_SCROLL || type == VGFX_EVENT_RESIZE ||
-           type == VGFX_EVENT_FOCUS_GAINED;
+    return type == VGFX_EVENT_MOUSE_MOVE || type == VGFX_EVENT_SCROLL ||
+           type == VGFX_EVENT_RESIZE || type == VGFX_EVENT_FOCUS_GAINED;
+}
+
+/// @brief Test whether an event must survive an explicit queue flush.
+/// @details A flush is caller-requested, so most queued work may be discarded,
+///          but close and release-like events still repair observable window
+///          state and should remain available to the application.
+/// @param type Event type to classify.
+/// @return Non-zero when the event should remain queued.
+static int vgfx_event_survives_flush(vgfx_event_type_t type) {
+    return vgfx_event_is_release_state_event(type);
 }
 
 /// @brief Advance a ring-buffer index by one slot.
@@ -358,14 +396,20 @@ static int vgfx_ring_next_index(int32_t index) {
 }
 
 /// @brief Remove one queued event while preserving the order of all others.
-/// @details The event queue lock must already be held.  Events after
-///          `drop_index` are shifted one slot toward the tail, and `event_head`
-///          is moved back to represent the newly freed slot.
+/// @details The event queue lock must already be held.  Dropping the oldest
+///          event is O(1); middle-slot removals compact later events one slot
+///          toward the tail and move `event_head` back to represent the newly
+///          freed slot.
 /// @param win Window whose event queue is full.
 /// @param drop_index Ring-buffer slot to remove.
 /// @pre win != NULL.
 /// @pre drop_index identifies an occupied slot in win's queue.
 static void vgfx_drop_event_at_locked(struct vgfx_window *win, int32_t drop_index) {
+    if (drop_index == win->event_tail) {
+        win->event_tail = vgfx_ring_next_index(win->event_tail);
+        return;
+    }
+
     int32_t cursor = drop_index;
     int32_t next = vgfx_ring_next_index(cursor);
     while (next != win->event_head) {
@@ -601,7 +645,9 @@ vgfx_error_t vgfx_last_error_code(void) {
 ///
 /// @post Future errors will invoke fn(message) if fn != NULL
 void vgfx_set_log_callback(vgfx_log_fn fn) {
+    vgfx_config_lock();
     g_log_callback = fn;
+    vgfx_config_unlock();
 }
 
 //===----------------------------------------------------------------------===//
@@ -617,11 +663,13 @@ void vgfx_set_log_callback(vgfx_log_fn fn) {
 ///
 /// @post vgfx_get_default_fps() returns fps (clamped if positive)
 void vgfx_set_default_fps(int32_t fps) {
+    vgfx_config_lock();
     if (fps > 0) {
         g_default_fps = clamp_int(fps, 1, 1000);
     } else {
         g_default_fps = fps; /* Allow negative for unlimited */
     }
+    vgfx_config_unlock();
 }
 
 /// @brief Get the current global default FPS.
@@ -630,7 +678,7 @@ void vgfx_set_default_fps(int32_t fps) {
 ///
 /// @return Global default FPS (positive, or negative for unlimited)
 int32_t vgfx_get_default_fps(void) {
-    return g_default_fps;
+    return vgfx_read_default_fps();
 }
 
 /// @brief Set the FPS limit for an existing window.
@@ -647,7 +695,7 @@ void vgfx_set_fps(vgfx_window_t window, int32_t fps) {
         return;
 
     if (fps == 0) {
-        window->fps = g_default_fps;
+        window->fps = vgfx_read_default_fps();
     } else if (fps > 0) {
         window->fps = clamp_int(fps, 1, 1000);
     } else {
@@ -896,7 +944,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
 
     /* Set FPS (apply default if params.fps == 0, clamp if positive) */
     if (actual_params.fps == 0) {
-        win->fps = g_default_fps;
+        win->fps = vgfx_read_default_fps();
     } else if (actual_params.fps > 0) {
         win->fps = clamp_int(actual_params.fps, 1, 1000);
     } else {
@@ -1154,25 +1202,36 @@ int32_t vgfx_peek_event(vgfx_window_t window, vgfx_event_t *out_event) {
     return vgfx_internal_peek_event(window, out_event);
 }
 
-/// @brief Discard all events from the window's event queue.
+/// @brief Discard non-critical events from the window's event queue.
 /// @details Dequeues and discards all pending events.  Useful for ignoring
-///          accumulated events (e.g., after a pause or dialog).
+///          accumulated events (e.g., after a pause or dialog).  Close,
+///          key/button release, and focus-lost events are preserved because
+///          they repair observable application state.
 ///
 /// @param window Window handle
-/// @return Number of events discarded, or 0 if window is NULL
+/// @return Number of non-critical events discarded, or 0 if window is NULL
 ///
-/// @post Event queue is empty
+/// @post Only critical state-repair events remain queued.
 int32_t vgfx_flush_events(vgfx_window_t window) {
     if (!window)
         return 0;
 
     vgfx_internal_event_lock(window);
-    int32_t count = window->event_head - window->event_tail;
-    if (count < 0)
-        count += VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
-    window->event_tail = window->event_head;
+    int32_t dropped = 0;
+    int32_t write = window->event_tail;
+    for (int32_t read = window->event_tail; read != window->event_head;
+         read = vgfx_ring_next_index(read)) {
+        vgfx_event_t event = window->event_queue[read];
+        if (vgfx_event_survives_flush(event.type)) {
+            window->event_queue[write] = event;
+            write = vgfx_ring_next_index(write);
+        } else {
+            dropped++;
+        }
+    }
+    window->event_head = write;
     vgfx_internal_event_unlock(window);
-    return count;
+    return dropped;
 }
 
 void vgfx_clear_events(vgfx_window_t window) {

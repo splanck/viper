@@ -134,6 +134,52 @@ static void vaud_zero_output(int16_t *output, int32_t frames) {
         memset(output, 0, output_bytes);
 }
 
+/// @brief Emit an attenuated copy of the last rendered period after a lock miss.
+/// @details A missed mixer lock used to become a full silent period. Reusing the
+///          previous period at reduced gain is still deterministic and
+///          allocation-free, but avoids a hard discontinuity on the output bus.
+/// @param ctx Audio context containing the cached render period.
+/// @param output Destination interleaved stereo PCM buffer.
+/// @param frames Number of frames to fill.
+static void vaud_mixer_render_lock_miss_fallback(vaud_context_t ctx,
+                                                 int16_t *output,
+                                                 int32_t frames) {
+    if (!ctx || !output || frames <= 0 || ctx->last_output_frames <= 0) {
+        vaud_zero_output(output, frames);
+        return;
+    }
+
+    int32_t valid = ctx->last_output_frames;
+    if (valid > frames)
+        valid = frames;
+    size_t samples = (size_t)valid * (size_t)VAUD_CHANNELS;
+    for (size_t i = 0; i < samples; i++)
+        output[i] = (int16_t)(ctx->last_output_buf[i] / 2);
+
+    if (valid < frames)
+        vaud_zero_output(output + (size_t)valid * VAUD_CHANNELS, frames - valid);
+
+    size_t output_bytes = 0;
+    if (vaud_pcm_s16_buffer_size(frames, VAUD_CHANNELS, &output_bytes)) {
+        memcpy(ctx->last_output_buf, output, output_bytes);
+        ctx->last_output_frames = frames;
+    }
+}
+
+/// @brief Cache the latest successfully mixed period for lock-miss fallback.
+/// @param ctx Audio context containing the fallback buffer.
+/// @param output Interleaved stereo PCM period just rendered by the mixer.
+/// @param frames Number of frames in @p output.
+static void vaud_mixer_cache_output(vaud_context_t ctx, const int16_t *output, int32_t frames) {
+    if (!ctx || !output || frames <= 0 || frames > VAUD_BUFFER_FRAMES)
+        return;
+    size_t output_bytes = 0;
+    if (!vaud_pcm_s16_buffer_size(frames, VAUD_CHANNELS, &output_bytes))
+        return;
+    memcpy(ctx->last_output_buf, output, output_bytes);
+    ctx->last_output_frames = frames;
+}
+
 /// @brief Calculate left/right gain from pan value.
 /// @param pan Pan value (-1.0 = left, 0.0 = center, 1.0 = right).
 /// @param source_channels Original source channel count (1 = mono, 2 = stereo).
@@ -289,14 +335,6 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
     }
 }
 
-static int group_has_effects(vaud_context_t ctx, int64_t group_id) {
-    if (!ctx || !ctx->group_effects_process)
-        return 0;
-    if (!ctx->group_effects_query)
-        return 1;
-    return ctx->group_effects_query(ctx->group_effects_userdata, group_id) ? 1 : 0;
-}
-
 static int group_list_contains(const int64_t *groups, int32_t count, int64_t group_id) {
     for (int32_t i = 0; i < count; i++) {
         if (groups[i] == group_id)
@@ -314,23 +352,27 @@ static void group_list_add(int64_t *groups, int32_t *count, int32_t cap, int64_t
     *count += 1;
 }
 
-static int32_t collect_effect_groups(vaud_context_t ctx, int64_t *groups, int32_t cap) {
+/// @brief Collect active logical groups that may need effects processing.
+/// @details The caller must hold the context mutex. This helper deliberately
+///          does not call the user query hook; the realtime render path filters
+///          candidates outside the context lock before mixing.
+static int32_t collect_effect_group_candidates_locked(vaud_context_t ctx,
+                                                      int64_t *groups,
+                                                      int32_t cap) {
     int32_t count = 0;
     if (!ctx || !groups || cap <= 0 || !ctx->group_effects_process)
         return 0;
 
     for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
         vaud_voice *voice = &ctx->voices[i];
-        if (voice->state == VAUD_VOICE_PLAYING && voice->sound &&
-            group_has_effects(ctx, voice->group_id)) {
+        if (voice->state == VAUD_VOICE_PLAYING && voice->sound) {
             group_list_add(groups, &count, cap, voice->group_id);
         }
     }
 
     for (int32_t i = 0; i < ctx->music_count; i++) {
         vaud_music_t music = ctx->active_music[i];
-        if (music && music->state == VAUD_MUSIC_PLAYING &&
-            group_has_effects(ctx, music->group_id)) {
+        if (music && music->state == VAUD_MUSIC_PLAYING) {
             group_list_add(groups, &count, cap, music->group_id);
         }
     }
@@ -338,40 +380,65 @@ static int32_t collect_effect_groups(vaud_context_t ctx, int64_t *groups, int32_
     return count;
 }
 
+/// @brief Apply the optional user query hook to candidate effect groups.
+/// @details Runs without the audio context mutex held so user code cannot
+///          block engine state updates. If no query hook is installed, every
+///          candidate group is treated as effect-enabled.
+static int32_t filter_effect_groups_unlocked(vaud_group_effects_query_fn query,
+                                             void *userdata,
+                                             const int64_t *candidates,
+                                             int32_t candidate_count,
+                                             int64_t *groups,
+                                             int32_t cap) {
+    int32_t count = 0;
+    if (!candidates || !groups || candidate_count <= 0 || cap <= 0)
+        return 0;
+    for (int32_t i = 0; i < candidate_count && count < cap; i++) {
+        int64_t group_id = candidates[i];
+        if (!query || query(userdata, group_id))
+            group_list_add(groups, &count, cap, group_id);
+    }
+    return count;
+}
+
+/// @brief Process one group bus and add the processed samples to the master bus.
+/// @details The caller enters with @p ctx->mutex held and this helper returns
+///          with it held again. The user effect callback itself runs without
+///          the context mutex so control APIs are not blocked behind arbitrary
+///          user DSP code.
 static void add_processed_group_to_master(vaud_context_t ctx,
+                                          vaud_group_effects_process_fn process,
+                                          void *userdata,
                                           int64_t group_id,
                                           int32_t *group_accum,
                                           int32_t *master_accum,
                                           int32_t frames) {
-    if (!ctx || !group_accum || !master_accum || !ctx->group_effects_process)
+    if (!ctx || !process || !group_accum || !master_accum)
         return;
 
     size_t sample_count = (size_t)frames * (size_t)VAUD_CHANNELS;
     for (size_t i = 0; i < sample_count; i++)
         ctx->group_fx_buf[i] = (float)group_accum[i] / 32768.0f;
 
-    ctx->group_effects_process(ctx->group_effects_userdata,
-                               group_id,
-                               ctx->group_fx_buf,
-                               frames,
-                               VAUD_CHANNELS,
-                               VAUD_SAMPLE_RATE);
+    vaud_mutex_unlock(&ctx->mutex);
+    process(userdata, group_id, ctx->group_fx_buf, frames, VAUD_CHANNELS, VAUD_SAMPLE_RATE);
 
     for (size_t i = 0; i < sample_count; i++) {
         float scaled = ctx->group_fx_buf[i] * 32768.0f;
         int32_t sample = vaud_mixer_float_to_accum_sample(scaled);
         master_accum[i] = vaud_mixer_saturating_add_i32(master_accum[i], sample);
     }
+    vaud_mutex_lock(&ctx->mutex);
 }
 
 static void mix_with_group_effects(vaud_context_t ctx,
                                    int32_t *accum,
                                    int32_t frames,
-                                   float master) {
-    int64_t effect_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC];
-    int32_t effect_group_count = collect_effect_groups(
-        ctx, effect_groups, (int32_t)(sizeof(effect_groups) / sizeof(effect_groups[0])));
-
+                                   float master,
+                                   const int64_t *effect_groups,
+                                   int32_t effect_group_count,
+                                   vaud_group_effects_process_fn process,
+                                   void *userdata) {
     if (effect_group_count <= 0) {
         for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
             mix_voice(&ctx->voices[i], accum, frames, master);
@@ -418,7 +485,8 @@ static void mix_with_group_effects(vaud_context_t ctx,
                 mix_music(music, ctx->group_accum_buf, frames, master);
         }
 
-        add_processed_group_to_master(ctx, group_id, ctx->group_accum_buf, accum, frames);
+        add_processed_group_to_master(
+            ctx, process, userdata, group_id, ctx->group_accum_buf, accum, frames);
     }
 }
 
@@ -459,7 +527,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
 
     if (!vaud_mutex_trylock(&ctx->mutex)) {
         vaud_stats_add(&ctx->stats.mixer_lock_misses, 1);
-        vaud_zero_output(output, frames);
+        vaud_mixer_render_lock_miss_fallback(ctx, output, frames);
         return;
     }
 
@@ -471,7 +539,34 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
         return;
     }
 
-    mix_with_group_effects(ctx, accum, frames, master);
+    int64_t candidate_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC];
+    int64_t effect_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC];
+    int32_t group_cap = (int32_t)(sizeof(effect_groups) / sizeof(effect_groups[0]));
+    int32_t effect_group_count = 0;
+    vaud_group_effects_query_fn query = ctx->group_effects_query;
+    vaud_group_effects_process_fn process = ctx->group_effects_process;
+    void *effects_userdata = ctx->group_effects_userdata;
+
+    if (process) {
+        int32_t candidate_count =
+            collect_effect_group_candidates_locked(ctx, candidate_groups, group_cap);
+        vaud_mutex_unlock(&ctx->mutex);
+        effect_group_count = filter_effect_groups_unlocked(
+            query, effects_userdata, candidate_groups, candidate_count, effect_groups, group_cap);
+        if (!vaud_mutex_trylock(&ctx->mutex)) {
+            vaud_stats_add(&ctx->stats.mixer_lock_misses, 1);
+            vaud_mixer_render_lock_miss_fallback(ctx, output, frames);
+            return;
+        }
+        if (ctx->paused || vaud_atomic_load_i32(&ctx->destroying) != 0) {
+            vaud_mutex_unlock(&ctx->mutex);
+            vaud_zero_output(output, frames);
+            return;
+        }
+    }
+
+    mix_with_group_effects(
+        ctx, accum, frames, master, effect_groups, effect_group_count, process, effects_userdata);
 
     ctx->frame_counter += frames;
 
@@ -481,6 +576,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     for (size_t i = 0; i < sample_count; i++) {
         output[i] = soft_clip(accum[i]);
     }
+    vaud_mixer_cache_output(ctx, output, frames);
     /* H-1: accum is ctx->accum_buf — no free needed */
 }
 

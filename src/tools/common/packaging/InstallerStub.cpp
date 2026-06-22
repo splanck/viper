@@ -178,6 +178,7 @@ enum InstallerIAT : uint32_t {
     kI_CreateDIBitmap = 48,
     kI_DeleteObject = 49,
     kI_CreateThread = 50,
+    kI_Count, ///< Sentinel: total IAT slot count (must equal installerImports() function count).
 };
 
 /// @brief Flat IAT slot indices for the Win32 APIs the uninstaller stub imports.
@@ -221,13 +222,33 @@ enum UninstallerIAT : uint32_t {
     kU_CreateDIBitmap = 34,
     kU_DeleteObject = 35,
     kU_CreateThread = 36,
+    kU_Count, ///< Sentinel: total IAT slot count (must equal uninstallerImports() function count).
 };
+
+/// @brief Validate that the flat function count in @p imports matches @p expectedSlots.
+/// @details The IAT enum (InstallerIAT/UninstallerIAT) and the PEImport list are a
+///          load-bearing pairing: codegen references imports by numeric slot
+///          (callIATSlot), so a count mismatch means an enum entry or an import was
+///          added without the other — which would silently call the wrong DLL
+///          function. Caught here at packaging time rather than as a runtime crash.
+inline void verifyImportSlotCount(const std::vector<PEImport> &imports,
+                                  std::size_t expectedSlots,
+                                  const char *label) {
+    std::size_t total = 0;
+    for (const PEImport &imp : imports)
+        total += imp.functions.size();
+    if (total != expectedSlots)
+        throw std::runtime_error(std::string("packaging: ") + label +
+                                 " IAT enum/import drift — " + std::to_string(total) +
+                                 " imported functions vs " + std::to_string(expectedSlots) +
+                                 " enum slots; keep the enum and the import list in sync");
+}
 
 /// @brief Return the ordered PEImport list for the installer PE.
 /// Slot indices must match the InstallerIAT enum — the pairing is load-bearing
 /// because the codegen references imports by numeric slot, not by name.
 std::vector<PEImport> installerImports() {
-    return {
+    std::vector<PEImport> imports = {
         {"kernel32.dll",
          {"ExitProcess",
           "GetModuleFileNameW",
@@ -280,12 +301,14 @@ std::vector<PEImport> installerImports() {
         {"gdi32.dll", {"CreateDIBSection", "CreateDIBitmap", "DeleteObject"}},
         {"kernel32.dll", {"CreateThread"}},
     };
+    verifyImportSlotCount(imports, kI_Count, "installer");
+    return imports;
 }
 
 /// @brief Return the ordered PEImport list for the uninstaller PE.
 /// Slot indices must match the UninstallerIAT enum for the same reason as installerImports().
 std::vector<PEImport> uninstallerImports() {
-    return {
+    std::vector<PEImport> imports = {
         {"kernel32.dll",
          {"ExitProcess",
           "GetModuleFileNameW",
@@ -324,6 +347,8 @@ std::vector<PEImport> uninstallerImports() {
         {"gdi32.dll", {"CreateDIBSection", "CreateDIBitmap", "DeleteObject"}},
         {"kernel32.dll", {"CreateThread"}},
     };
+    verifyImportSlotCount(imports, kU_Count, "uninstaller");
+    return imports;
 }
 
 /// @brief Round `value` up to the nearest multiple of `alignment` (must be a power of two).

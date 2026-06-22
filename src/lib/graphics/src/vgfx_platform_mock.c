@@ -259,6 +259,12 @@ void vgfx_platform_sleep_ms(int32_t ms) {
     }
 }
 
+/// @brief Yield during mock event-lock contention.
+/// @details The mock backend runs deterministically on test-controlled time, so
+///          this scheduler yield is intentionally a no-op and does not advance
+///          g_mock_time_ms.
+void vgfx_platform_yield(void) {}
+
 /// @brief Query HiDPI scale factor (mock version — always 1.0).
 /// @details Tests run at 1:1 scale so all existing tests continue to pass
 ///          unchanged.  Physical == logical in the mock backend.

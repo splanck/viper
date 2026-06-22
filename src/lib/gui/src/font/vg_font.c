@@ -97,6 +97,47 @@ static int vg_font_metric_to_int(double value) {
     return (int)value;
 }
 
+/// @brief Build a font around an owned TTF data buffer.
+/// @details Ownership of @p data transfers to this helper on entry. On success,
+///          the returned font frees it from vg_font_destroy(); on failure, the
+///          buffer is released before returning NULL.
+/// @param data Heap-allocated TTF data buffer.
+/// @param size Length of @p data in bytes.
+/// @return A newly allocated vg_font_t, or NULL on allocation or parse failure.
+static vg_font_t *vg_font_load_owned(uint8_t *data, size_t size) {
+    if (!data || size < 12) {
+        free(data);
+        return NULL;
+    }
+
+    vg_font_t *font = calloc(1, sizeof(vg_font_t));
+    if (!font) {
+        free(data);
+        return NULL;
+    }
+
+    font->data = data;
+    font->data_size = size;
+    font->owns_data = true;
+    vg_font_register_live(font);
+
+    if (!ttf_parse_tables(font)) {
+        vg_font_destroy(font);
+        return NULL;
+    }
+
+    font->cache = vg_cache_create();
+    if (!font->cache) {
+        vg_font_destroy(font);
+        return NULL;
+    }
+
+    if (font->family_name[0] == '\0')
+        strcpy(font->family_name, "Unknown");
+
+    return font;
+}
+
 /// @brief Load a font from an in-memory TTF buffer.
 ///
 /// @details Copies the buffer, parses all required TTF tables, and creates a
@@ -110,46 +151,17 @@ vg_font_t *vg_font_load(const uint8_t *data, size_t size) {
     if (!data || size < 12)
         return NULL;
 
-    vg_font_t *font = calloc(1, sizeof(vg_font_t));
-    if (!font)
+    uint8_t *copy = malloc(size);
+    if (!copy)
         return NULL;
-
-    // Copy data
-    font->data = malloc(size);
-    if (!font->data) {
-        free(font);
-        return NULL;
-    }
-    memcpy(font->data, data, size);
-    font->data_size = size;
-    font->owns_data = true;
-    vg_font_register_live(font);
-
-    // Parse tables
-    if (!ttf_parse_tables(font)) {
-        vg_font_destroy(font);
-        return NULL;
-    }
-
-    // Create glyph cache
-    font->cache = vg_cache_create();
-    if (!font->cache) {
-        vg_font_destroy(font);
-        return NULL;
-    }
-
-    // Set default name if not found
-    if (font->family_name[0] == '\0') {
-        strcpy(font->family_name, "Unknown");
-    }
-
-    return font;
+    memcpy(copy, data, size);
+    return vg_font_load_owned(copy, size);
 }
 
 /// @brief Load a font from a file path.
 ///
-/// @details Reads the entire file into a temporary buffer and delegates to
-///          vg_font_load. Rejects files larger than 100 MB.
+/// @details Reads the file in chunks into the owned font data buffer. Rejects
+///          files larger than 100 MB.
 ///
 /// @param path Null-terminated path to a TrueType font file.
 /// @return A newly allocated vg_font_t, or NULL on I/O or parse failure.
@@ -161,42 +173,53 @@ vg_font_t *vg_font_load_file(const char *path) {
     if (!f)
         return NULL;
 
-    // Get file size
-    if (fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    long size = ftell(f);
-    if (size < 0 || fseek(f, 0, SEEK_SET) != 0) {
-        fclose(f);
-        return NULL;
-    }
-
-    if (size <= 0 || size > 100 * 1024 * 1024) { // Max 100MB
-        fclose(f);
-        return NULL;
-    }
-
-    // Read file
-    uint8_t *data = malloc((size_t)size);
-    if (!data) {
-        fclose(f);
-        return NULL;
-    }
-
-    if (fread(data, 1, (size_t)size, f) != (size_t)size) {
-        free(data);
-        fclose(f);
-        return NULL;
+    const size_t max_font_bytes = 100u * 1024u * 1024u;
+    uint8_t *data = NULL;
+    size_t size = 0;
+    size_t capacity = 0;
+    uint8_t chunk[8192];
+    for (;;) {
+        size_t n = fread(chunk, 1, sizeof(chunk), f);
+        if (n > 0) {
+            if (size > max_font_bytes - n) {
+                free(data);
+                fclose(f);
+                return NULL;
+            }
+            size_t needed = size + n;
+            if (needed > capacity) {
+                size_t new_capacity = capacity ? capacity * 2u : sizeof(chunk);
+                while (new_capacity < needed) {
+                    if (new_capacity > max_font_bytes / 2u) {
+                        new_capacity = max_font_bytes;
+                        break;
+                    }
+                    new_capacity *= 2u;
+                }
+                uint8_t *new_data = realloc(data, new_capacity);
+                if (!new_data) {
+                    free(data);
+                    fclose(f);
+                    return NULL;
+                }
+                data = new_data;
+                capacity = new_capacity;
+            }
+            memcpy(data + size, chunk, n);
+            size = needed;
+        }
+        if (n < sizeof(chunk)) {
+            if (ferror(f)) {
+                free(data);
+                fclose(f);
+                return NULL;
+            }
+            break;
+        }
     }
 
     fclose(f);
-
-    // Load font
-    vg_font_t *font = vg_font_load(data, (size_t)size);
-    free(data);
-
-    return font;
+    return vg_font_load_owned(data, size);
 }
 
 /// @brief Destroy a font and free all associated resources.

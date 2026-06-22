@@ -10,7 +10,7 @@
 //          onto ViperGFX canvas surfaces using per-pixel alpha blending.
 // Key invariants:
 //   - vg_canvas_draw_glyph uses direct framebuffer access; it respects the
-//     window's active clip rectangle when internal->clip_enabled is set.
+//     window's active clip rectangle when vgfx_get_clip reports one.
 //   - vg_canvas_draw_glyph_pset is a slower fallback for contexts where
 //     framebuffer access is unavailable; it uses simple alpha threshold blending.
 //   - Both functions treat the canvas parameter as a vgfx_window_t handle.
@@ -20,7 +20,6 @@
 //        lib/gui/src/font/vg_raster.c
 //
 //===----------------------------------------------------------------------===//
-#include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_font.h"
 #include "vgfx.h"
 #include <stddef.h>
@@ -33,8 +32,7 @@
 /// @brief Draw a glyph alpha bitmap onto a vgfx canvas using per-pixel alpha
 ///        blending with direct framebuffer access.
 ///
-/// @details Respects the window's active clip rectangle when clip_enabled is
-///          set. Pixels with alpha == 0 are skipped entirely; pixels with
+/// @details Respects the window's active clip rectangle. Pixels with
 ///          alpha == 255 are written without blending. Colors are in 0xRRGGBB
 ///          format; alpha is sourced from the bitmap.
 ///
@@ -65,18 +63,11 @@ void vg_canvas_draw_glyph(
 
     int canvas_w = fb.width;
     int canvas_h = fb.height;
-    const struct vgfx_window *internal = (const struct vgfx_window *)window;
-
     int clip_x = 0;
     int clip_y = 0;
     int clip_w = canvas_w;
     int clip_h = canvas_h;
-    if (internal && internal->clip_enabled) {
-        clip_x = internal->clip_x;
-        clip_y = internal->clip_y;
-        clip_w = internal->clip_w;
-        clip_h = internal->clip_h;
-    }
+    (void)vgfx_get_clip(window, &clip_x, &clip_y, &clip_w, &clip_h);
 
     int start_x = x;
     int start_y = y;

@@ -32,7 +32,6 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -315,18 +314,12 @@ static void contextmenu_draw_image_icon(
     int start_y = contextmenu_clampi((int)draw_y, 0, fb.height);
     int end_x = contextmenu_clampi((int)(draw_x + draw_w), 0, fb.width);
     int end_y = contextmenu_clampi((int)(draw_y + draw_h), 0, fb.height);
-    const struct vgfx_window *internal = (const struct vgfx_window *)win;
     int clip_x = 0;
     int clip_y = 0;
     int clip_w = fb.width;
     int clip_h = fb.height;
 
-    if (internal && internal->clip_enabled) {
-        clip_x = internal->clip_x;
-        clip_y = internal->clip_y;
-        clip_w = internal->clip_w;
-        clip_h = internal->clip_h;
-    }
+    (void)vgfx_get_clip(win, &clip_x, &clip_y, &clip_w, &clip_h);
     if (start_x < clip_x)
         start_x = clip_x;
     if (start_y < clip_y)

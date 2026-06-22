@@ -41,10 +41,6 @@ static int glyph_bitmap_size(const vg_glyph_t *glyph, size_t *out_size) {
     return 1;
 }
 
-// Monotonic tick incremented on every cache hit — used for LRU eviction.
-// uint64_t prevents wrap-around after 4B+ hits in long-running applications.
-static uint64_t g_cache_tick = 0;
-
 //=============================================================================
 // Hash Function
 //=============================================================================
@@ -69,6 +65,34 @@ static size_t hash_key(uint64_t key, size_t bucket_count) {
     key *= 0xc4ceb9fe1a85ec53;
     key ^= key >> 33;
     return (size_t)(key % bucket_count);
+}
+
+/// @brief Normalize cache access ticks after a uint64_t wrap.
+/// @details Wrap is practically unreachable, but keeping entries ordered after
+///          it costs little and avoids reintroducing global shared state.
+/// @param cache Glyph cache whose entries should be marked as old.
+static void cache_reset_access_ticks(vg_glyph_cache_t *cache) {
+    if (!cache || !cache->buckets)
+        return;
+    for (size_t i = 0; i < cache->bucket_count; i++) {
+        for (vg_cache_entry_t *entry = cache->buckets[i]; entry; entry = entry->next)
+            entry->access_tick = 0;
+    }
+    cache->access_tick = 0;
+}
+
+/// @brief Return the next per-cache LRU access tick.
+/// @param cache Glyph cache being accessed.
+/// @return New non-zero access tick for one cache entry.
+static uint64_t cache_next_access_tick(vg_glyph_cache_t *cache) {
+    if (!cache)
+        return 0;
+    cache->access_tick++;
+    if (cache->access_tick == 0) {
+        cache_reset_access_ticks(cache);
+        cache->access_tick = 1;
+    }
+    return cache->access_tick;
 }
 
 //=============================================================================
@@ -278,7 +302,7 @@ const vg_glyph_t *vg_cache_get(vg_glyph_cache_t *cache, float size, uint32_t cod
     while (entry) {
         if (entry->key == key) {
             // Update LRU timestamp on every hit
-            entry->access_tick = ++g_cache_tick;
+            entry->access_tick = cache_next_access_tick(cache);
             return &entry->glyph;
         }
         entry = entry->next;
@@ -367,6 +391,7 @@ void vg_cache_put(vg_glyph_cache_t *cache,
     }
 
     // Insert at head of bucket
+    entry->access_tick = cache_next_access_tick(cache);
     entry->next = cache->buckets[idx];
     cache->buckets[idx] = entry;
     cache->entry_count++;

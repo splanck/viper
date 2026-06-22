@@ -41,6 +41,7 @@
 #define TEXTINPUT_GROWTH_FACTOR 2
 #define CURSOR_BLINK_RATE 0.5f // Seconds
 #define TEXTINPUT_UNDO_CAPACITY 32
+#define TEXTINPUT_UNDO_MAX_BYTES (64u * 1024u)
 #define TEXTINPUT_STACK_TEXT_CAPACITY 512u
 
 //=============================================================================
@@ -1197,6 +1198,46 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 // Undo / Redo — ring buffer of text snapshots
 //=============================================================================
 
+/// @brief Return total bytes currently owned by undo snapshot strings.
+/// @param input Text input whose undo stack should be measured.
+/// @return Sum of strlen(snapshot)+1 for every live undo snapshot.
+static size_t textinput_undo_total_bytes(const vg_textinput_t *input) {
+    if (!input)
+        return 0;
+    size_t total = 0;
+    for (int i = 0; i < input->undo_count; i++) {
+        if (!input->undo_stack[i])
+            continue;
+        size_t len = strlen(input->undo_stack[i]) + 1u;
+        if (total > SIZE_MAX - len)
+            return SIZE_MAX;
+        total += len;
+    }
+    return total;
+}
+
+/// @brief Evict the oldest undo snapshot and compact the fixed stack arrays.
+/// @details The current undo cursor is shifted to keep pointing at the same
+///          logical snapshot after compaction.
+static void textinput_evict_oldest_undo(vg_textinput_t *input) {
+    if (!input || input->undo_count <= 0)
+        return;
+    free(input->undo_stack[0]);
+    if (input->undo_count > 1) {
+        memmove(input->undo_stack,
+                input->undo_stack + 1,
+                (size_t)(input->undo_count - 1) * sizeof(char *));
+        memmove(input->undo_cursors,
+                input->undo_cursors + 1,
+                (size_t)(input->undo_count - 1) * sizeof(size_t));
+    }
+    input->undo_count--;
+    input->undo_stack[input->undo_count] = NULL;
+    input->undo_cursors[input->undo_count] = 0;
+    if (input->undo_pos > 0)
+        input->undo_pos--;
+}
+
 /// @brief Records the current text and cursor as a new undo snapshot; truncates any redo tail
 /// first.
 static void textinput_push_undo(vg_textinput_t *input) {
@@ -1250,6 +1291,9 @@ static void textinput_push_undo(vg_textinput_t *input) {
 
     input->undo_stack[input->undo_pos] = snapshot;
     input->undo_cursors[input->undo_pos] = input->cursor_pos;
+
+    while (input->undo_count > 1 && textinput_undo_total_bytes(input) > TEXTINPUT_UNDO_MAX_BYTES)
+        textinput_evict_oldest_undo(input);
 }
 
 /// @brief Restores the previous undo snapshot, moving undo_pos back one step and firing on_change.

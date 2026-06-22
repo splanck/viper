@@ -31,9 +31,9 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
-#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
 #ifdef _WIN32
@@ -238,8 +238,8 @@ static void tooltip_fill_round_rect(
 /// @brief Stroke a rounded-rectangle border via the shared anti-aliased core.
 static void tooltip_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
-                              color);
+    vg_draw_round_rect_stroke(
+        win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f, color);
 }
 
 //=============================================================================
@@ -378,8 +378,16 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas) {
                                           theme ? theme->colors.border_primary : 0x00555555u);
 
     vg_elevation_t tt_el = theme ? theme->elevation.level2 : (vg_elevation_t){10.0f, 0, 4, 64};
-    vg_draw_round_rect_shadow(win, (float)x, (float)y, (float)w, (float)h, (float)radius, tt_el.blur,
-                              tt_el.dx, tt_el.dy, tt_el.alpha,
+    vg_draw_round_rect_shadow(win,
+                              (float)x,
+                              (float)y,
+                              (float)w,
+                              (float)h,
+                              (float)radius,
+                              tt_el.blur,
+                              tt_el.dx,
+                              tt_el.dy,
+                              tt_el.alpha,
                               theme ? theme->elevation.shadow_rgb : 0x000000u);
     tooltip_fill_round_rect(win, x, y, w, h, radius, bg);
     if (w > radius * 2)
@@ -435,8 +443,15 @@ void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text) {
     if (!tooltip)
         return;
 
+    char *copy = NULL;
+    if (text) {
+        copy = strdup(text);
+        if (!copy)
+            return;
+    }
+
     free(tooltip->text);
-    tooltip->text = text ? strdup(text) : NULL;
+    tooltip->text = copy;
     tooltip->base.needs_layout = true;
     tooltip->base.needs_paint = true;
 }
@@ -717,6 +732,12 @@ void vg_tooltip_manager_widget_hidden(vg_widget_t *widget) {
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text) {
     if (!widget)
         return;
+    char *copy = NULL;
+    if (text && text[0]) {
+        copy = strdup(text);
+        if (!copy)
+            return;
+    }
     free(widget->tooltip_text);
-    widget->tooltip_text = (text && text[0]) ? strdup(text) : NULL;
+    widget->tooltip_text = copy;
 }

@@ -767,6 +767,16 @@ L_CMP_GE_F64:
     sp--;
     DISPATCH();
 
+L_CMP_ORD_F64:
+    sp[-2].i64 = (!std::isnan(sp[-2].f64) && !std::isnan(sp[-1].f64)) ? 1 : 0;
+    sp--;
+    DISPATCH();
+
+L_CMP_UNO_F64:
+    sp[-2].i64 = (std::isnan(sp[-2].f64) || std::isnan(sp[-1].f64)) ? 1 : 0;
+    sp--;
+    DISPATCH();
+
     // Type Conversions
 L_I64_TO_F64:
     sp[-1].f64 = static_cast<double>(sp[-1].i64);
@@ -1534,6 +1544,14 @@ L_ERR_GET_IP: {
 
 L_ERR_GET_LINE: {
     sp[-1].i64 = trapRecord_.valid ? static_cast<int64_t>(trapRecord_.faultLine) : -1;
+    DISPATCH();
+}
+
+L_ERR_GET_MSG: {
+    // Owned string from the current trap message (parity with the tree-walking VM).
+    const std::string &msg = trapMessage_;
+    sp[-1].ptr = rt_string_from_bytes(msg.data(), msg.size());
+    setSlotOwnsString(sp - 1, true);
     DISPATCH();
 }
 

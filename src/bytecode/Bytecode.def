@@ -128,6 +128,8 @@ BC_OPCODE(CMP_LT_F64, 0x82) // Float less-than: a < b.
 BC_OPCODE(CMP_LE_F64, 0x83) // Float less-or-equal: a <= b.
 BC_OPCODE(CMP_GT_F64, 0x84) // Float greater-than: a > b.
 BC_OPCODE(CMP_GE_F64, 0x85) // Float greater-or-equal: a >= b.
+BC_OPCODE(CMP_ORD_F64, 0x86) // Float ordered: 1 if neither operand is NaN, else 0.
+BC_OPCODE(CMP_UNO_F64, 0x87) // Float unordered: 1 if either operand is NaN, else 0.
 
 // Type Conversions (0x90-0x9F)
 BC_OPCODE(I64_TO_F64, 0x90)     // Convert signed i64 to f64.
@@ -186,6 +188,7 @@ BC_OPCODE(RESUME_SAME, 0xCA)   // Resume execution at the faulting instruction.
 BC_OPCODE(RESUME_NEXT, 0xCB)   // Resume execution at the instruction after the fault.
 BC_OPCODE(RESUME_LABEL, 0xCC)  // Resume execution at a labelled target.
 BC_OPCODE(TRAP_KIND, 0xCD)     // Push the current trap kind (no operands).
+BC_OPCODE(ERR_GET_MSG, 0xCE)   // Extract the message string from an error value (owned string).
 
 // Debug Operations (0xD0-0xDF)
 BC_OPCODE(LINE, 0xD0)       // Source line marker for debug info.

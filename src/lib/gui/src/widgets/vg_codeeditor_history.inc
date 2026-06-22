@@ -38,6 +38,7 @@
 //=============================================================================
 
 #define HISTORY_INITIAL_CAPACITY 64
+#define HISTORY_MAX_OPERATIONS 4096
 
 /// @brief Allocates and zero-initializes a new edit history with HISTORY_INITIAL_CAPACITY operation
 /// slots.
@@ -100,6 +101,25 @@ static void edit_history_clear(vg_edit_history_t *history) {
     history->current_group = 0;
 }
 
+/// @brief Destroy the oldest operation and compact the remaining history.
+/// @details Used to enforce HISTORY_MAX_OPERATIONS while preserving the newest
+///          edits. The current undo cursor is shifted with the compacted array.
+static void edit_history_evict_oldest(vg_edit_history_t *history) {
+    if (!history || history->count == 0)
+        return;
+
+    edit_op_destroy(history->operations[0]);
+    if (history->count > 1) {
+        memmove(history->operations,
+                history->operations + 1,
+                (history->count - 1) * sizeof(vg_edit_op_t *));
+    }
+    history->count--;
+    history->operations[history->count] = NULL;
+    if (history->current_index > 0)
+        history->current_index--;
+}
+
 /// @brief Discards any redo tail, grows the operation array if needed, and appends @p op; sets its
 /// group_id if grouping.
 static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op) {
@@ -113,9 +133,14 @@ static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op) {
     }
     history->count = history->current_index;
 
+    while (history->count >= HISTORY_MAX_OPERATIONS)
+        edit_history_evict_oldest(history);
+
     // Grow capacity if needed
     if (history->count >= history->capacity) {
         size_t new_capacity = history->capacity * 2;
+        if (new_capacity > HISTORY_MAX_OPERATIONS)
+            new_capacity = HISTORY_MAX_OPERATIONS;
         vg_edit_op_t **new_ops =
             realloc(history->operations, new_capacity * sizeof(vg_edit_op_t *));
         if (!new_ops) {

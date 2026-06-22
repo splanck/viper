@@ -626,6 +626,20 @@ void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_
 /// @param window Window handle
 void vgfx_clear_clip(vgfx_window_t window);
 
+/// @brief Query the current effective framebuffer clipping rectangle.
+/// @details Writes the active physical-pixel clip bounds. When no explicit clip
+///          is enabled, the returned rectangle covers the full framebuffer.
+///          Pass NULL for any output pointer that is not needed.
+/// @param window Window handle.
+/// @param out_x Destination for clip left edge in physical pixels.
+/// @param out_y Destination for clip top edge in physical pixels.
+/// @param out_w Destination for clip width in physical pixels.
+/// @param out_h Destination for clip height in physical pixels.
+/// @return 1 when an explicit clip is active, 0 when drawing is unclipped or
+///         when @p window is NULL.
+int vgfx_get_clip(
+    vgfx_window_t window, int32_t *out_x, int32_t *out_y, int32_t *out_w, int32_t *out_h);
+
 //===----------------------------------------------------------------------===//
 // Drawing Primitives
 //===----------------------------------------------------------------------===//
@@ -804,13 +818,15 @@ int vgfx_poll_event(vgfx_window_t window, vgfx_event_t *out_event);
 /// @return 1 if event was peeked, 0 if queue is empty or window/out_event is NULL
 int vgfx_peek_event(vgfx_window_t window, vgfx_event_t *out_event);
 
-/// @brief Discard all events from the queue and report how many were removed.
-/// @details Useful for ignoring accumulated input after a menu or dialog.
+/// @brief Discard non-critical events from the queue and report how many were removed.
+/// @details Useful for ignoring accumulated input after a menu or dialog.  Close,
+///          key/button release, and focus-lost events remain queued so applications
+///          can still observe state-repair transitions.
 /// @param window Window handle
-/// @return Number of events discarded, or 0 if window is NULL
+/// @return Number of non-critical events discarded, or 0 if window is NULL
 int32_t vgfx_flush_events(vgfx_window_t window);
 
-/// @brief Clear all events from the queue.
+/// @brief Clear non-critical events from the queue.
 /// @details Compatibility wrapper around vgfx_flush_events().
 /// @param window Window handle
 void vgfx_clear_events(vgfx_window_t window);

@@ -384,12 +384,17 @@ int vgfx_platform_present(struct vgfx_window *win);
 /// @param ms Duration to sleep in milliseconds
 void vgfx_platform_sleep_ms(int32_t ms);
 
+/// @brief Yield the current thread without advancing frame time.
+/// @details Used by short spin-wait paths such as the event queue lock.  Backends
+///          should prefer a native scheduler yield where available and may fall
+///          back to a minimal sleep on platforms without a zero-duration yield.
+void vgfx_platform_yield(void);
+
 /// @brief Yield while waiting for the event queue lock.
 /// @details Called by the internal event queue spin lock when another thread
-///          currently owns the queue.  The implementation delegates to the
-///          platform timing backend with a zero-duration sleep/yield so native
-///          event producers and the application consumer do not burn a full CPU
-///          core during brief contention.
+///          currently owns the queue.  Delegates to vgfx_platform_yield() so
+///          native event producers and the application consumer do not burn a
+///          full CPU core during brief contention.
 void vgfx_internal_event_wait(void);
 
 /// @brief Get current high-resolution timestamp in milliseconds.

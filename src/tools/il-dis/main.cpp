@@ -607,6 +607,8 @@ uint32_t disassembleInstruction(const bc::BytecodeModule &module,
         case bc::BCOpcode::CMP_LE_F64:
         case bc::BCOpcode::CMP_GT_F64:
         case bc::BCOpcode::CMP_GE_F64:
+        case bc::BCOpcode::CMP_ORD_F64:
+        case bc::BCOpcode::CMP_UNO_F64:
         case bc::BCOpcode::I64_TO_F64:
         case bc::BCOpcode::U64_TO_F64:
         case bc::BCOpcode::F64_TO_I64:
@@ -641,6 +643,7 @@ uint32_t disassembleInstruction(const bc::BytecodeModule &module,
         case bc::BCOpcode::ERR_GET_CODE:
         case bc::BCOpcode::ERR_GET_IP:
         case bc::BCOpcode::ERR_GET_LINE:
+        case bc::BCOpcode::ERR_GET_MSG:
         case bc::BCOpcode::RESUME_SAME:
         case bc::BCOpcode::RESUME_NEXT:
         case bc::BCOpcode::TRAP_KIND:

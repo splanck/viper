@@ -88,8 +88,15 @@ static inline int32_t vg__cov_to_alpha(int32_t cov_q8) {
 ///          for whole discs and for rounded-rect corner quadrants (the box
 ///          confines the work to the corner square so it never overdraws the
 ///          opaque interior bars).
-static void vg__disc_box(vgfx_window_t win, int32_t cxq, int32_t cyq, int32_t rq, int bx0, int by0,
-                         int bx1, int by1, uint32_t base) {
+static void vg__disc_box(vgfx_window_t win,
+                         int32_t cxq,
+                         int32_t cyq,
+                         int32_t rq,
+                         int bx0,
+                         int by0,
+                         int bx1,
+                         int by1,
+                         uint32_t base) {
     int32_t edge = rq + 128; // r + 0.5px in Q8
     for (int py = by0; py < by1; ++py) {
         int64_t ddy = (int64_t)(py * 256 + 128) - cyq;
@@ -108,8 +115,16 @@ static void vg__disc_box(vgfx_window_t win, int32_t cxq, int32_t cyq, int32_t rq
 /// @brief Composite an anti-aliased ring (annulus) of width t, in an int box.
 /// @details Coverage peaks on the mid-radius and feathers over the stroke
 ///          width plus a 1px ramp, so corner strokes line up with disc fills.
-static void vg__ring_box(vgfx_window_t win, int32_t cxq, int32_t cyq, int32_t rmidq, int32_t halfq,
-                         int bx0, int by0, int bx1, int by1, uint32_t base) {
+static void vg__ring_box(vgfx_window_t win,
+                         int32_t cxq,
+                         int32_t cyq,
+                         int32_t rmidq,
+                         int32_t halfq,
+                         int bx0,
+                         int by0,
+                         int bx1,
+                         int by1,
+                         uint32_t base) {
     int32_t edge = halfq + 128; // half stroke + 0.5px ramp
     for (int py = by0; py < by1; ++py) {
         int64_t ddy = (int64_t)(py * 256 + 128) - cyq;
@@ -132,8 +147,8 @@ static void vg__ring_box(vgfx_window_t win, int32_t cxq, int32_t cyq, int32_t rm
 // Public API
 //=============================================================================
 
-void vg_draw_round_rect_fill(vgfx_window_t win, float x, float y, float w, float h, float radius,
-                             uint32_t rgb) {
+void vg_draw_round_rect_fill(
+    vgfx_window_t win, float x, float y, float w, float h, float radius, uint32_t rgb) {
     if (!win || w <= 0.0f || h <= 0.0f)
         return;
 
@@ -170,18 +185,31 @@ void vg_draw_round_rect_fill(vgfx_window_t win, float x, float y, float w, float
     // Top-left: arc centre at the inner corner (ix+r, iy+r).
     vg__disc_box(win, (ix + r) * 256, (iy + r) * 256, rq, ix, iy, ix + r, iy + r, base);
     // Top-right.
-    vg__disc_box(win, (ix + iw - r) * 256, (iy + r) * 256, rq, ix + iw - r, iy, ix + iw, iy + r,
-                 base);
+    vg__disc_box(
+        win, (ix + iw - r) * 256, (iy + r) * 256, rq, ix + iw - r, iy, ix + iw, iy + r, base);
     // Bottom-left.
-    vg__disc_box(win, (ix + r) * 256, (iy + ih - r) * 256, rq, ix, iy + ih - r, ix + r, iy + ih,
-                 base);
+    vg__disc_box(
+        win, (ix + r) * 256, (iy + ih - r) * 256, rq, ix, iy + ih - r, ix + r, iy + ih, base);
     // Bottom-right.
-    vg__disc_box(win, (ix + iw - r) * 256, (iy + ih - r) * 256, rq, ix + iw - r, iy + ih - r,
-                 ix + iw, iy + ih, base);
+    vg__disc_box(win,
+                 (ix + iw - r) * 256,
+                 (iy + ih - r) * 256,
+                 rq,
+                 ix + iw - r,
+                 iy + ih - r,
+                 ix + iw,
+                 iy + ih,
+                 base);
 }
 
-void vg_draw_round_rect_stroke(vgfx_window_t win, float x, float y, float w, float h, float radius,
-                               float stroke_w, uint32_t rgb) {
+void vg_draw_round_rect_stroke(vgfx_window_t win,
+                               float x,
+                               float y,
+                               float w,
+                               float h,
+                               float radius,
+                               float stroke_w,
+                               uint32_t rgb) {
     if (!win || w <= 0.0f || h <= 0.0f)
         return;
 
@@ -224,12 +252,36 @@ void vg_draw_round_rect_stroke(vgfx_window_t win, float x, float y, float w, flo
     int32_t rmidq = (r * 256) - (t * 256) / 2; // mid-radius in Q8
     int32_t halfq = (t * 256) / 2;
     vg__ring_box(win, (ix + r) * 256, (iy + r) * 256, rmidq, halfq, ix, iy, ix + r, iy + r, base);
-    vg__ring_box(win, (ix + iw - r) * 256, (iy + r) * 256, rmidq, halfq, ix + iw - r, iy, ix + iw,
-                 iy + r, base);
-    vg__ring_box(win, (ix + r) * 256, (iy + ih - r) * 256, rmidq, halfq, ix, iy + ih - r, ix + r,
-                 iy + ih, base);
-    vg__ring_box(win, (ix + iw - r) * 256, (iy + ih - r) * 256, rmidq, halfq, ix + iw - r,
-                 iy + ih - r, ix + iw, iy + ih, base);
+    vg__ring_box(win,
+                 (ix + iw - r) * 256,
+                 (iy + r) * 256,
+                 rmidq,
+                 halfq,
+                 ix + iw - r,
+                 iy,
+                 ix + iw,
+                 iy + r,
+                 base);
+    vg__ring_box(win,
+                 (ix + r) * 256,
+                 (iy + ih - r) * 256,
+                 rmidq,
+                 halfq,
+                 ix,
+                 iy + ih - r,
+                 ix + r,
+                 iy + ih,
+                 base);
+    vg__ring_box(win,
+                 (ix + iw - r) * 256,
+                 (iy + ih - r) * 256,
+                 rmidq,
+                 halfq,
+                 ix + iw - r,
+                 iy + ih - r,
+                 ix + iw,
+                 iy + ih,
+                 base);
 }
 
 void vg_draw_disc_fill(vgfx_window_t win, float cx, float cy, float r, uint32_t rgb) {
@@ -242,8 +294,8 @@ void vg_draw_disc_fill(vgfx_window_t win, float cx, float cy, float r, uint32_t 
     vg__disc_box(win, vg__q8(cx), vg__q8(cy), vg__q8(r), bx0, by0, bx1, by1, rgb & 0x00FFFFFFu);
 }
 
-void vg_draw_circle_stroke(vgfx_window_t win, float cx, float cy, float r, float stroke_w,
-                           uint32_t rgb) {
+void vg_draw_circle_stroke(
+    vgfx_window_t win, float cx, float cy, float r, float stroke_w, uint32_t rgb) {
     if (!win || r <= 0.0f)
         return;
     float t = stroke_w < 1.0f ? 1.0f : stroke_w;
@@ -256,8 +308,8 @@ void vg_draw_circle_stroke(vgfx_window_t win, float cx, float cy, float r, float
     vg__ring_box(win, vg__q8(cx), vg__q8(cy), rmidq, halfq, bx0, by0, bx1, by1, rgb & 0x00FFFFFFu);
 }
 
-void vg_draw_line_aa(vgfx_window_t win, float x0, float y0, float x1, float y1, float stroke_w,
-                     uint32_t rgb) {
+void vg_draw_line_aa(
+    vgfx_window_t win, float x0, float y0, float x1, float y1, float stroke_w, uint32_t rgb) {
     if (!win)
         return;
     float t = stroke_w < 1.0f ? 1.0f : stroke_w;
@@ -331,8 +383,14 @@ static inline uint32_t vg__lerp_rgb(uint32_t a, uint32_t b, int32_t t_q8) {
 // Vertical gradient fill + inner highlight
 //=============================================================================
 
-void vg_draw_round_rect_gradient_v(vgfx_window_t win, float x, float y, float w, float h,
-                                   float radius, uint32_t top_rgb, uint32_t bottom_rgb) {
+void vg_draw_round_rect_gradient_v(vgfx_window_t win,
+                                   float x,
+                                   float y,
+                                   float w,
+                                   float h,
+                                   float radius,
+                                   uint32_t top_rgb,
+                                   uint32_t bottom_rgb) {
     if (!win || w <= 0.0f || h <= 0.0f)
         return;
     int ix = vg__floor_i(x + 0.5f);
@@ -373,17 +431,24 @@ void vg_draw_round_rect_gradient_v(vgfx_window_t win, float x, float y, float w,
         uint32_t cTop = vg__lerp_rgb(topc, botc, tTop);
         uint32_t cBot = vg__lerp_rgb(topc, botc, tBot);
         vg__disc_box(win, (ix + r) * 256, (iy + r) * 256, rq, ix, iy, ix + r, iy + r, cTop);
-        vg__disc_box(win, (ix + iw - r) * 256, (iy + r) * 256, rq, ix + iw - r, iy, ix + iw, iy + r,
-                     cTop);
-        vg__disc_box(win, (ix + r) * 256, (iy + ih - r) * 256, rq, ix, iy + ih - r, ix + r, iy + ih,
+        vg__disc_box(
+            win, (ix + iw - r) * 256, (iy + r) * 256, rq, ix + iw - r, iy, ix + iw, iy + r, cTop);
+        vg__disc_box(
+            win, (ix + r) * 256, (iy + ih - r) * 256, rq, ix, iy + ih - r, ix + r, iy + ih, cBot);
+        vg__disc_box(win,
+                     (ix + iw - r) * 256,
+                     (iy + ih - r) * 256,
+                     rq,
+                     ix + iw - r,
+                     iy + ih - r,
+                     ix + iw,
+                     iy + ih,
                      cBot);
-        vg__disc_box(win, (ix + iw - r) * 256, (iy + ih - r) * 256, rq, ix + iw - r, iy + ih - r,
-                     ix + iw, iy + ih, cBot);
     }
 }
 
-void vg_draw_inner_highlight_top(vgfx_window_t win, float x, float y, float w, float radius,
-                                 uint32_t rgb) {
+void vg_draw_inner_highlight_top(
+    vgfx_window_t win, float x, float y, float w, float radius, uint32_t rgb) {
     if (!win || w <= 0.0f)
         return;
     int ix = vg__floor_i(x + 0.5f);
@@ -495,8 +560,8 @@ static void vg__box_blur_v(const uint8_t *src, uint8_t *dst, int W, int H, int r
 /// @brief Fetch (or compute and cache) the blurred shadow bitmap.
 /// @param transient_out Receives a freshly-allocated bitmap the caller must
 ///        free, used only when the result is too large to cache.
-static const uint8_t *vg__get_shadow(int iw, int ih, int r, int br, int *outW, int *outH,
-                                     int *outPad, uint8_t **transient_out) {
+static const uint8_t *vg__get_shadow(
+    int iw, int ih, int r, int br, int *outW, int *outH, int *outPad, uint8_t **transient_out) {
     int pad = 3 * br + 1;
     int W = iw + 2 * pad, H = ih + 2 * pad;
     *outW = W;
@@ -561,8 +626,17 @@ static const uint8_t *vg__get_shadow(int iw, int ih, int r, int br, int *outW, i
     return a;
 }
 
-void vg_draw_round_rect_shadow(vgfx_window_t win, float x, float y, float w, float h, float radius,
-                               float blur, int dx, int dy, uint8_t alpha, uint32_t shadow_rgb) {
+void vg_draw_round_rect_shadow(vgfx_window_t win,
+                               float x,
+                               float y,
+                               float w,
+                               float h,
+                               float radius,
+                               float blur,
+                               int dx,
+                               int dy,
+                               uint8_t alpha,
+                               uint32_t shadow_rgb) {
     if (!win || w <= 0.0f || h <= 0.0f || blur <= 0.0f || alpha == 0)
         return;
     int ix = vg__floor_i(x + 0.5f);
@@ -580,6 +654,17 @@ void vg_draw_round_rect_shadow(vgfx_window_t win, float x, float y, float w, flo
     int br = (int)(blur * 0.5f + 0.5f);
     if (br < 1)
         br = 1;
+    int pad_estimate = 3 * br + 1;
+    vgfx_framebuffer_t fb;
+    if (vgfx_get_framebuffer(win, &fb)) {
+        int64_t shadow_left = (int64_t)ix + dx - pad_estimate;
+        int64_t shadow_top = (int64_t)iy + dy - pad_estimate;
+        int64_t shadow_right = shadow_left + (int64_t)iw + 2 * (int64_t)pad_estimate;
+        int64_t shadow_bottom = shadow_top + (int64_t)ih + 2 * (int64_t)pad_estimate;
+        if (shadow_right <= 0 || shadow_bottom <= 0 || shadow_left >= fb.width ||
+            shadow_top >= fb.height)
+            return;
+    }
 
     int W, H, pad;
     uint8_t *transient = NULL;

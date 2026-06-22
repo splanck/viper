@@ -24,8 +24,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdint.h>
@@ -84,6 +84,44 @@ static vg_widget_vtable_t g_listbox_vtable = {
 //=============================================================================
 // VTable Implementations
 //=============================================================================
+
+/// @brief Return the number of bytes needed for @p item_count packed selection bits.
+static size_t listbox_selection_bitmap_bytes(size_t item_count) {
+    return (item_count + 7u) / 8u;
+}
+
+/// @brief Read one virtual-mode selection bit.
+static bool listbox_selection_get(const vg_listbox_t *lb, size_t index) {
+    if (!lb || !lb->selection_bitmap || index >= lb->selection_bitmap_size)
+        return false;
+    return (lb->selection_bitmap[index / 8u] & (uint8_t)(1u << (index % 8u))) != 0;
+}
+
+/// @brief Set one virtual-mode selection bit.
+/// @return true if the bit changed, false if it already had @p selected.
+static bool listbox_selection_set(vg_listbox_t *lb, size_t index, bool selected) {
+    if (!lb || !lb->selection_bitmap || index >= lb->selection_bitmap_size)
+        return false;
+    uint8_t mask = (uint8_t)(1u << (index % 8u));
+    uint8_t *byte = &lb->selection_bitmap[index / 8u];
+    bool was_selected = (*byte & mask) != 0;
+    if (selected)
+        *byte |= mask;
+    else
+        *byte &= (uint8_t)~mask;
+    return was_selected != selected;
+}
+
+/// @brief Clear any unused high bits in the last logical selection byte.
+static void listbox_selection_mask_tail(vg_listbox_t *lb) {
+    if (!lb || !lb->selection_bitmap || lb->selection_bitmap_size == 0)
+        return;
+    size_t used_bits = lb->selection_bitmap_size % 8u;
+    if (used_bits == 0)
+        return;
+    uint8_t mask = (uint8_t)((1u << used_bits) - 1u);
+    lb->selection_bitmap[listbox_selection_bitmap_bytes(lb->selection_bitmap_size) - 1u] &= mask;
+}
 
 /// @brief Frees the text strings inside each cached visible row slot without releasing the cache
 /// array itself.
@@ -279,8 +317,7 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) 
             size_t index = start + i;
             if (!lb->visible_cache[i].text)
                 listbox_refresh_virtual_cache_entry(lb, i);
-            lb->visible_cache[i].selected =
-                index < lb->selection_bitmap_size && lb->selection_bitmap[index];
+            lb->visible_cache[i].selected = listbox_selection_get(lb, index);
         }
         return;
     }
@@ -296,8 +333,7 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) 
             lb->data_provider(&lb->base, index, &text, NULL, lb->data_provider_user_data);
         }
         lb->visible_cache[i].text = strdup(text ? text : "");
-        lb->visible_cache[i].selected =
-            index < lb->selection_bitmap_size && lb->selection_bitmap[index];
+        lb->visible_cache[i].selected = listbox_selection_get(lb, index);
     }
 }
 
@@ -365,13 +401,14 @@ static bool listbox_clear_virtual_selection(vg_listbox_t *lb) {
     if (!lb || !lb->selection_bitmap)
         return false;
     bool changed = false;
-    for (size_t i = 0; i < lb->selection_bitmap_size; i++) {
+    size_t bytes = listbox_selection_bitmap_bytes(lb->selection_bitmap_size);
+    for (size_t i = 0; i < bytes; i++) {
         if (lb->selection_bitmap[i]) {
             changed = true;
             break;
         }
     }
-    memset(lb->selection_bitmap, 0, lb->selection_bitmap_size * sizeof(bool));
+    memset(lb->selection_bitmap, 0, bytes);
     return changed;
 }
 
@@ -392,7 +429,7 @@ static size_t listbox_first_selected_virtual(vg_listbox_t *lb) {
     if (!lb || !lb->selection_bitmap)
         return SIZE_MAX;
     for (size_t i = 0; i < lb->selection_bitmap_size; i++) {
-        if (lb->selection_bitmap[i])
+        if (listbox_selection_get(lb, i))
             return i;
     }
     return SIZE_MAX;
@@ -472,11 +509,9 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
 
     if (!lb->multi_select || (!toggle && !range)) {
         bool changed = listbox_clear_virtual_selection(lb);
-        changed = changed || lb->selected_index != index || !lb->selection_bitmap ||
-                  index >= lb->selection_bitmap_size || !lb->selection_bitmap[index];
+        changed = changed || lb->selected_index != index || !listbox_selection_get(lb, index);
         lb->selected_index = index;
-        if (lb->selection_bitmap && index < lb->selection_bitmap_size)
-            lb->selection_bitmap[index] = true;
+        changed = listbox_selection_set(lb, index, true) || changed;
         lb->anchor_selected_index = index;
         if (changed || lb->selected_index != old_selected)
             listbox_note_selection_changed(lb);
@@ -489,11 +524,8 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
             lb->anchor_selected_index < lb->total_item_count ? lb->anchor_selected_index : index;
         size_t start = anchor < index ? anchor : index;
         size_t end = anchor > index ? anchor : index;
-        for (size_t i = start; lb->selection_bitmap && i <= end && i < lb->selection_bitmap_size;
-             i++) {
-            if (!lb->selection_bitmap[i])
-                changed = true;
-            lb->selection_bitmap[i] = true;
+        for (size_t i = start; i <= end && i < lb->selection_bitmap_size; i++) {
+            changed = listbox_selection_set(lb, i, true) || changed;
         }
         lb->selected_index = index;
         if (changed || lb->selected_index != old_selected)
@@ -504,9 +536,10 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
     if (!lb->selection_bitmap || index >= lb->selection_bitmap_size)
         return;
 
-    bool was_selected = lb->selection_bitmap[index];
-    lb->selection_bitmap[index] = !lb->selection_bitmap[index];
-    if (lb->selection_bitmap[index]) {
+    bool was_selected = listbox_selection_get(lb, index);
+    bool now_selected = !was_selected;
+    (void)listbox_selection_set(lb, index, now_selected);
+    if (now_selected) {
         lb->selected_index = index;
         lb->anchor_selected_index = index;
     } else {
@@ -515,7 +548,7 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
         if (lb->anchor_selected_index == index)
             lb->anchor_selected_index = lb->selected_index;
     }
-    if (was_selected != lb->selection_bitmap[index] || lb->selected_index != old_selected)
+    if (was_selected != now_selected || lb->selected_index != old_selected)
         listbox_note_selection_changed(lb);
 }
 
@@ -643,7 +676,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             uint32_t zebra = ((index & 1u) == 0u)
                                  ? lb->item_bg
                                  : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
-            bool is_selected = index < lb->selection_bitmap_size && lb->selection_bitmap[index];
+            bool is_selected = listbox_selection_get(lb, index);
             bool is_hover = (index == lb->hovered_index);
 
             int32_t iy = (int32_t)item_y;
@@ -654,11 +687,21 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
                     is_selected
                         ? vg_color_blend(lb->selected_bg, theme->colors.accent_primary, 0.28f)
                         : lb->hover_bg;
-                vg_draw_round_rect_fill(win, (float)(x + 6), (float)(iy + 2), (float)(w - 12),
-                                        (float)(ih32 - 4), theme->radius.lg, pill);
+                vg_draw_round_rect_fill(win,
+                                        (float)(x + 6),
+                                        (float)(iy + 2),
+                                        (float)(w - 12),
+                                        (float)(ih32 - 4),
+                                        theme->radius.lg,
+                                        pill);
                 if (is_selected)
-                    vg_draw_round_rect_fill(win, (float)(x + 9), (float)(iy + 6), 3.0f,
-                                            (float)(ih32 - 12), 1.5f, theme->colors.accent_primary);
+                    vg_draw_round_rect_fill(win,
+                                            (float)(x + 9),
+                                            (float)(iy + 6),
+                                            3.0f,
+                                            (float)(ih32 - 12),
+                                            1.5f,
+                                            theme->colors.accent_primary);
             }
 
             if (lb->visible_cache[i].text && lb->font) {
@@ -703,11 +746,21 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
                     is_selected
                         ? vg_color_blend(lb->selected_bg, theme->colors.accent_primary, 0.28f)
                         : lb->hover_bg;
-                vg_draw_round_rect_fill(win, (float)(x + 6), (float)(iy + 2), (float)(w - 12),
-                                        (float)(ih32 - 4), theme->radius.lg, pill);
+                vg_draw_round_rect_fill(win,
+                                        (float)(x + 6),
+                                        (float)(iy + 2),
+                                        (float)(w - 12),
+                                        (float)(ih32 - 4),
+                                        theme->radius.lg,
+                                        pill);
                 if (is_selected)
-                    vg_draw_round_rect_fill(win, (float)(x + 9), (float)(iy + 6), 3.0f,
-                                            (float)(ih32 - 12), 1.5f, theme->colors.accent_primary);
+                    vg_draw_round_rect_fill(win,
+                                            (float)(x + 9),
+                                            (float)(iy + 6),
+                                            3.0f,
+                                            (float)(ih32 - 12),
+                                            1.5f,
+                                            theme->colors.accent_primary);
             }
 
             if (item->text && lb->font) {
@@ -824,8 +877,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_DOUBLE_CLICK: {
             if (lb->virtual_mode) {
                 if (lb->selected_index != SIZE_MAX &&
-                    lb->selected_index < lb->selection_bitmap_size &&
-                    lb->selection_bitmap[lb->selected_index] && lb->on_activate) {
+                    listbox_selection_get(lb, lb->selected_index) && lb->on_activate) {
                     lb->on_activate(widget, NULL, lb->on_activate_data);
                     event->handled = true;
                     return true;
@@ -885,8 +937,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 case VG_KEY_ENTER:
                     if (lb->virtual_mode) {
                         if (lb->selected_index != SIZE_MAX &&
-                            lb->selected_index < lb->selection_bitmap_size &&
-                            lb->selection_bitmap[lb->selected_index] && lb->on_activate)
+                            listbox_selection_get(lb, lb->selected_index) && lb->on_activate)
                             lb->on_activate(widget, NULL, lb->on_activate_data);
                     } else if (lb->selected && lb->on_activate) {
                         lb->on_activate(widget, lb->selected, lb->on_activate_data);
@@ -1184,7 +1235,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
     if (!listbox)
         return;
 
-    if (enabled && total_count > 0 && total_count > SIZE_MAX / sizeof(bool))
+    if (enabled && total_count > SIZE_MAX - 7u)
         return;
 
     size_t old_virtual_selected = listbox->selected_index;
@@ -1200,7 +1251,8 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
 
     // Initialize selection bitmap
     if (enabled && total_count > 0) {
-        bool *new_selection = calloc(total_count, sizeof(bool));
+        size_t selection_bytes = listbox_selection_bitmap_bytes(total_count);
+        uint8_t *new_selection = calloc(selection_bytes, 1);
         if (!new_selection) {
             listbox->virtual_mode = false;
             listbox->total_item_count = 0;
@@ -1274,7 +1326,7 @@ void vg_listbox_set_data_provider(vg_listbox_t *listbox,
 void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
     if (!listbox || !listbox->virtual_mode)
         return;
-    if (count > SIZE_MAX / sizeof(bool))
+    if (count > SIZE_MAX - 7u)
         return;
 
     bool truncated_selection = false;
@@ -1282,13 +1334,12 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
     // Resize selection bitmap if needed. Capacity stays separate from logical
     // size so shrinking cannot leave stale selected rows addressable.
     if (count > listbox->selection_bitmap_capacity) {
-        bool *new_bitmap = realloc(listbox->selection_bitmap, count * sizeof(bool));
+        size_t old_bytes = listbox_selection_bitmap_bytes(listbox->selection_bitmap_capacity);
+        size_t new_bytes = listbox_selection_bitmap_bytes(count);
+        uint8_t *new_bitmap = realloc(listbox->selection_bitmap, new_bytes);
         if (!new_bitmap)
             return;
-        // Zero out new entries
-        memset(new_bitmap + listbox->selection_bitmap_capacity,
-               0,
-               (count - listbox->selection_bitmap_capacity) * sizeof(bool));
+        memset(new_bitmap + old_bytes, 0, new_bytes - old_bytes);
         listbox->selection_bitmap = new_bitmap;
         listbox->selection_bitmap_capacity = count;
     } else if (count == 0) {
@@ -1297,17 +1348,19 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
         listbox->selection_bitmap_capacity = 0;
     } else if (count < listbox->selection_bitmap_size) {
         for (size_t i = count; i < listbox->selection_bitmap_size; i++) {
-            if (listbox->selection_bitmap[i]) {
+            if (listbox_selection_get(listbox, i)) {
                 truncated_selection = true;
                 break;
             }
         }
-        memset(listbox->selection_bitmap + count,
-               0,
-               (listbox->selection_bitmap_size - count) * sizeof(bool));
+        size_t new_bytes = listbox_selection_bitmap_bytes(count);
+        size_t old_bytes = listbox_selection_bitmap_bytes(listbox->selection_bitmap_size);
+        if (new_bytes < old_bytes)
+            memset(listbox->selection_bitmap + new_bytes, 0, old_bytes - new_bytes);
     }
 
     listbox->selection_bitmap_size = count;
+    listbox_selection_mask_tail(listbox);
     listbox->total_item_count = count;
 
     // Reset selection if out of bounds

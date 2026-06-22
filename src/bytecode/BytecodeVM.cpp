@@ -1422,6 +1422,8 @@ bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
         case BCOpcode::CMP_LE_F64:
         case BCOpcode::CMP_GT_F64:
         case BCOpcode::CMP_GE_F64:
+        case BCOpcode::CMP_ORD_F64:
+        case BCOpcode::CMP_UNO_F64:
         case BCOpcode::I64_NARROW_CHK:
         case BCOpcode::U64_NARROW_CHK:
         case BCOpcode::STORE_LOCAL:
@@ -1434,6 +1436,7 @@ bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
         case BCOpcode::ERR_GET_CODE:
         case BCOpcode::ERR_GET_IP:
         case BCOpcode::ERR_GET_LINE:
+        case BCOpcode::ERR_GET_MSG:
         case BCOpcode::TRAP_FROM_ERR:
         case BCOpcode::RESUME_SAME:
         case BCOpcode::RESUME_NEXT:
@@ -2361,6 +2364,18 @@ void BytecodeVM::run() {
                 sp_--;
                 break;
 
+            case BCOpcode::CMP_ORD_F64:
+                // Ordered: true when neither operand is NaN.
+                sp_[-2].i64 = (!std::isnan(sp_[-2].f64) && !std::isnan(sp_[-1].f64)) ? 1 : 0;
+                sp_--;
+                break;
+
+            case BCOpcode::CMP_UNO_F64:
+                // Unordered: true when either operand is NaN.
+                sp_[-2].i64 = (std::isnan(sp_[-2].f64) || std::isnan(sp_[-1].f64)) ? 1 : 0;
+                sp_--;
+                break;
+
             //==================================================================
             // Type Conversions
             //==================================================================
@@ -3135,6 +3150,15 @@ void BytecodeVM::run() {
             case BCOpcode::ERR_GET_LINE:
                 sp_[-1].i64 = trapRecord_.valid ? static_cast<int64_t>(trapRecord_.faultLine) : -1;
                 break;
+
+            case BCOpcode::ERR_GET_MSG: {
+                // Replace the error token with an owned string holding the trap message,
+                // mirroring the tree-walking VM's ErrGetMsg (vm_current_trap_message()).
+                const std::string &msg = trapMessage_;
+                sp_[-1].ptr = rt_string_from_bytes(msg.data(), msg.size());
+                setSlotOwnsString(sp_ - 1, true);
+                break;
+            }
 
             case BCOpcode::RESUME_SAME:
                 if (!resumeTrap(false))

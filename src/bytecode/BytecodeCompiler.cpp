@@ -672,6 +672,8 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
         case Opcode::FCmpLE:
         case Opcode::FCmpGT:
         case Opcode::FCmpGE:
+        case Opcode::FCmpOrd:
+        case Opcode::FCmpUno:
             compileComparison(instr);
             break;
 
@@ -803,6 +805,20 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
                 pushValue(instr.operands[0]);
             }
             emit(BCOpcode::ERR_GET_LINE);
+            if (instr.operands.empty()) {
+                pushStack();
+            }
+            storeResult(instr);
+            break;
+
+        case Opcode::ErrGetMsg:
+            // Extract the trap message string from an error value, mirroring the
+            // tree-walking VM's ErrGetMsg. Consumes the error token, produces an
+            // owned rt_string (see BytecodeVM ERR_GET_MSG execution).
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);
+            }
+            emit(BCOpcode::ERR_GET_MSG);
             if (instr.operands.empty()) {
                 pushStack();
             }
@@ -1511,6 +1527,12 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr) {
             break;
         case Opcode::FCmpGE:
             bcOp = BCOpcode::CMP_GE_F64;
+            break;
+        case Opcode::FCmpOrd:
+            bcOp = BCOpcode::CMP_ORD_F64;
+            break;
+        case Opcode::FCmpUno:
+            bcOp = BCOpcode::CMP_UNO_F64;
             break;
         default:
             fail(instr.loc,

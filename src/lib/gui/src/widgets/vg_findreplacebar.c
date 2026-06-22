@@ -907,6 +907,13 @@ vg_findreplacebar_t *vg_findreplacebar_create(void) {
         vg_checkbox_set_on_change((vg_checkbox_t *)bar->regex_cb, on_option_change, bar);
     }
 
+    if (!bar->find_input || !bar->replace_input || !bar->find_prev_btn || !bar->find_next_btn ||
+        !bar->replace_btn || !bar->replace_all_btn || !bar->close_btn || !bar->case_sensitive_cb ||
+        !bar->whole_word_cb || !bar->regex_cb) {
+        vg_widget_destroy(&bar->base);
+        return NULL;
+    }
+
     return bar;
 }
 

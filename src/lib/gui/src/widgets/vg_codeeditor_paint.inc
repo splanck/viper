@@ -51,7 +51,6 @@ static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
     const uint8_t *src_pixels = icon->image.data.image.pixels;
     int src_w = (int)icon->image.data.image.width;
     int src_h = (int)icon->image.data.image.height;
-    const struct vgfx_window *internal = (const struct vgfx_window *)canvas;
     int clip_x = 0;
     int clip_y = 0;
     int clip_w = fb.width;
@@ -59,12 +58,7 @@ static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
     if (src_w <= 0 || src_h <= 0)
         return;
 
-    if (internal && internal->clip_enabled) {
-        clip_x = internal->clip_x;
-        clip_y = internal->clip_y;
-        clip_w = internal->clip_w;
-        clip_h = internal->clip_h;
-    }
+    (void)vgfx_get_clip(canvas, &clip_x, &clip_y, &clip_w, &clip_h);
 
     for (int row = 0; row < dst_h; row++) {
         int src_y = row * src_h / dst_h;

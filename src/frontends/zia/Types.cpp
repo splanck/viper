@@ -765,21 +765,34 @@ size_t typeSize(const ViperType &type) {
             if (!type.typeArgs.empty())
                 return 8 + typeSize(*type.typeArgs[0]);
             return 16; // Default
-        case TypeKindSem::Result:
-            // tag (8) + max(value size, error size)
-            // Simplified: assume 16 bytes
-            return 16;
+        case TypeKindSem::Result: {
+            // In-memory representation: tag (8 bytes) + payload, where the payload must
+            // hold either the success value or an error-object pointer (8 bytes). The
+            // success type is the sole type arg (see types::result); the error is implicit.
+            // NOTE: this helper is secondary — the lowerer's getSemanticTypeSize /
+            // getTupleStorageSize (Lowerer_Emit.cpp) are the layout source of truth.
+            const size_t valueSize = type.typeArgs.empty() ? 0 : typeSize(*type.typeArgs[0]);
+            const size_t errorSize = 8; // pointer to error object
+            return 8 + (valueSize > errorSize ? valueSize : errorSize);
+        }
         case TypeKindSem::Struct:
             // User-defined value size determined by fields
             return 0; // Must be computed from type definition
-        case TypeKindSem::Tuple:
-            // Sum of all element sizes (simplified, ignoring alignment padding)
-            {
-                size_t size = 0;
-                for (const auto &elem : type.typeArgs)
-                    size += typeSize(*elem);
-                return size;
+        case TypeKindSem::Tuple: {
+            // Inline struct layout: each element starts at its alignment boundary and the
+            // total is rounded up to the aggregate's max alignment. Mirrors the lowerer's
+            // getTupleStorageSize (Lowerer_Emit.cpp), the actual layout source of truth.
+            size_t size = 0;
+            size_t maxAlign = 1;
+            for (const auto &elem : type.typeArgs) {
+                const size_t a = typeAlignment(*elem);
+                if (a > maxAlign)
+                    maxAlign = a;
+                size = (size + a - 1) / a * a; // align element start
+                size += typeSize(*elem);
             }
+            return (size + maxAlign - 1) / maxAlign * maxAlign; // round to aggregate alignment
+        }
         case TypeKindSem::FixedArray:
             // Inline storage: elementSize * elementCount
             if (!type.typeArgs.empty())

@@ -41,6 +41,12 @@
 #include <time.h>
 #endif
 
+/// @brief Maximum number of music streams serviced by one vaud_update() call.
+/// @details Keeping the control-thread refill budget finite avoids a single
+///          update tick monopolizing the caller when many streams need disk or
+///          decoder work at once. Remaining streams are serviced by later calls.
+#define VAUD_UPDATE_MAX_REFILLS_PER_CALL 4
+
 static char *vaud_strdup(const char *s) {
     if (!s)
         return NULL;
@@ -273,16 +279,110 @@ int vaud_mutex_trylock(vaud_mutex_t *mutex) {
 
 #endif
 
+/// @brief Initialize a manual-reset event used by the music refill coordinator.
+/// @details The event starts signaled because newly allocated music has no
+///          refill in progress. Refill begin paths reset it while holding the
+///          context mutex, and refill completion paths signal it after clearing
+///          the in-progress flag.
+/// @param event Event object to initialize.
+/// @return Non-zero on success, zero if the platform object could not be created.
+static int vaud_event_init(vaud_event_t *event) {
+    if (!event)
+        return 0;
+#if defined(VAUD_PLATFORM_WINDOWS)
+    *event = CreateEventA(NULL, TRUE, TRUE, NULL);
+    return *event != NULL;
+#else
+    if (pthread_mutex_init(&event->mutex, NULL) != 0)
+        return 0;
+    if (pthread_cond_init(&event->cond, NULL) != 0) {
+        pthread_mutex_destroy(&event->mutex);
+        return 0;
+    }
+    event->signaled = 1;
+    return 1;
+#endif
+}
+
+/// @brief Destroy a refill event after all possible waiters have been released.
+/// @param event Event object previously initialized by vaud_event_init().
+static void vaud_event_destroy(vaud_event_t *event) {
+    if (!event)
+        return;
+#if defined(VAUD_PLATFORM_WINDOWS)
+    if (*event) {
+        CloseHandle(*event);
+        *event = NULL;
+    }
+#else
+    pthread_cond_destroy(&event->cond);
+    pthread_mutex_destroy(&event->mutex);
+#endif
+}
+
+/// @brief Mark a refill event as unsignaled before non-realtime refill work starts.
+/// @param event Event object previously initialized by vaud_event_init().
+static void vaud_event_reset(vaud_event_t *event) {
+    if (!event)
+        return;
+#if defined(VAUD_PLATFORM_WINDOWS)
+    if (*event)
+        ResetEvent(*event);
+#else
+    pthread_mutex_lock(&event->mutex);
+    event->signaled = 0;
+    pthread_mutex_unlock(&event->mutex);
+#endif
+}
+
+/// @brief Wake every waiter blocked on refill completion.
+/// @param event Event object previously initialized by vaud_event_init().
+static void vaud_event_set(vaud_event_t *event) {
+    if (!event)
+        return;
+#if defined(VAUD_PLATFORM_WINDOWS)
+    if (*event)
+        SetEvent(*event);
+#else
+    pthread_mutex_lock(&event->mutex);
+    event->signaled = 1;
+    pthread_cond_broadcast(&event->cond);
+    pthread_mutex_unlock(&event->mutex);
+#endif
+}
+
+/// @brief Wait until the refill event is signaled.
+/// @details This is only used by non-realtime control paths. The mixer callback
+///          must never block on this helper.
+/// @param event Event object previously initialized by vaud_event_init().
+static void vaud_event_wait(vaud_event_t *event) {
+    if (!event)
+        return;
+#if defined(VAUD_PLATFORM_WINDOWS)
+    if (*event)
+        WaitForSingleObject(*event, INFINITE);
+#else
+    pthread_mutex_lock(&event->mutex);
+    while (!event->signaled)
+        pthread_cond_wait(&event->cond, &event->mutex);
+    pthread_mutex_unlock(&event->mutex);
+#endif
+}
+
 //===----------------------------------------------------------------------===//
 // Version Functions
 //===----------------------------------------------------------------------===//
+
+#define VAUD_STR_IMPL(value) #value
+#define VAUD_STR(value) VAUD_STR_IMPL(value)
 
 uint32_t vaud_version(void) {
     return (VAUD_VERSION_MAJOR << 16) | (VAUD_VERSION_MINOR << 8) | VAUD_VERSION_PATCH;
 }
 
 const char *vaud_version_string(void) {
-    return "1.0.0";
+    return VAUD_STR(VAUD_VERSION_MAJOR) "." VAUD_STR(VAUD_VERSION_MINOR) "." VAUD_STR(
+        VAUD_VERSION_PATCH);
 }
 
 //===----------------------------------------------------------------------===//
@@ -359,12 +459,18 @@ void vaud_destroy(vaud_context_t ctx) {
      * without touching a destroyed context. */
     for (int32_t i = 0; i < ctx->music_count; i++) {
         while (ctx->active_music[i] && ctx->active_music[i]->refill_in_progress) {
+            vaud_music_t music = ctx->active_music[i];
             vaud_mutex_unlock(&ctx->mutex);
-            vaud_control_sleep_1ms();
+            if (music->refill_event_ready)
+                vaud_event_wait(&music->refill_event);
+            else
+                vaud_control_sleep_1ms();
             vaud_mutex_lock(&ctx->mutex);
         }
         if (ctx->active_music[i]) {
             ctx->active_music[i]->state = VAUD_MUSIC_STOPPED;
+            if (ctx->active_music[i]->refill_event_ready)
+                vaud_event_set(&ctx->active_music[i]->refill_event);
             ctx->active_music[i]->ctx = NULL;
             ctx->active_music[i] = NULL;
         }
@@ -1144,6 +1250,57 @@ static int32_t vaud_music_read_source_frames(struct vaud_music *music,
     return wav_stream_read_frames_with_leftover(music, output, max_frames);
 }
 
+/// @brief Clamp a floating-point music sample into signed 16-bit range.
+/// @param sample Interpolated sample value.
+/// @return Sample clipped to int16_t limits.
+static inline int16_t vaud_music_clamp_double_to_s16(double sample) {
+    if (!isfinite(sample))
+        return 0;
+    if (sample > 32767.0)
+        return INT16_MAX;
+    if (sample < -32768.0)
+        return INT16_MIN;
+    return (int16_t)(sample < 0.0 ? sample - 0.5 : sample + 0.5);
+}
+
+/// @brief Read one interleaved music sample with edge clamping.
+/// @param input Interleaved stereo source frames.
+/// @param frame Requested source frame.
+/// @param frame_count Number of available source frames.
+/// @param channel Stereo channel to read.
+/// @return Source sample as double for interpolation math.
+static inline double vaud_music_sample_clamped(const int16_t *input,
+                                               int64_t frame,
+                                               int32_t frame_count,
+                                               int32_t channel) {
+    if (frame < 0)
+        frame = 0;
+    if (frame >= frame_count)
+        frame = frame_count - 1;
+    return (double)input[frame * VAUD_CHANNELS + channel];
+}
+
+/// @brief Interpolate one streamed music channel using a cubic Catmull-Rom kernel.
+/// @param input Interleaved stereo source frames.
+/// @param frame Base source frame.
+/// @param frac Fractional distance from @p frame to the next frame.
+/// @param frame_count Number of available source frames.
+/// @param channel Stereo channel to interpolate.
+/// @return Interpolated sample in floating-point PCM units.
+static inline double vaud_music_cubic_sample(
+    const int16_t *input, int64_t frame, double frac, int32_t frame_count, int32_t channel) {
+    double y0 = vaud_music_sample_clamped(input, frame - 1, frame_count, channel);
+    double y1 = vaud_music_sample_clamped(input, frame, frame_count, channel);
+    double y2 = vaud_music_sample_clamped(input, frame + 1, frame_count, channel);
+    double y3 = vaud_music_sample_clamped(input, frame + 2, frame_count, channel);
+
+    double a0 = (-0.5 * y0) + (1.5 * y1) - (1.5 * y2) + (0.5 * y3);
+    double a1 = y0 - (2.5 * y1) + (2.0 * y2) - (0.5 * y3);
+    double a2 = (-0.5 * y0) + (0.5 * y2);
+    double a3 = y1;
+    return ((a0 * frac + a1) * frac + a2) * frac + a3;
+}
+
 static int32_t vaud_music_resample_source_into(struct vaud_music *music,
                                                int16_t *out,
                                                int32_t source_rate) {
@@ -1180,20 +1337,13 @@ static int32_t vaud_music_resample_source_into(struct vaud_music *music,
             break;
 
         double frac = phase - (double)in_idx;
-        if (in_idx + 1 >= raw_read && frac != 0.0 && !source_exhausted)
+        if (in_idx + 2 >= raw_read && !source_exhausted)
             break;
 
         for (int32_t ch = 0; ch < VAUD_CHANNELS; ch++) {
-            int16_t s0 = music->resample_buf[in_idx * VAUD_CHANNELS + ch];
-            int16_t s1 = (in_idx + 1 < raw_read)
-                             ? music->resample_buf[(in_idx + 1) * VAUD_CHANNELS + ch]
-                             : s0;
-            int32_t sample = (int32_t)(s0 * (1.0 - frac) + s1 * frac);
-            if (sample > 32767)
-                sample = 32767;
-            if (sample < -32768)
-                sample = -32768;
-            out[out_frames * VAUD_CHANNELS + ch] = (int16_t)sample;
+            double sample =
+                vaud_music_cubic_sample(music->resample_buf, in_idx, frac, raw_read, ch);
+            out[out_frames * VAUD_CHANNELS + ch] = vaud_music_clamp_double_to_s16(sample);
         }
 
         out_frames++;
@@ -1412,6 +1562,8 @@ static int vaud_music_begin_refill_locked(vaud_music_t music,
     if (!vaud_music_needs_refill_locked(music))
         return 0;
 
+    if (music->refill_event_ready)
+        vaud_event_reset(&music->refill_event);
     music->refill_in_progress = 1;
     if (music->stream_loop_pending) {
         *loop_pending = 1;
@@ -1430,6 +1582,8 @@ static int vaud_music_begin_refill_locked(vaud_music_t music,
 
     if (*fill_count == 0) {
         music->refill_in_progress = 0;
+        if (music->refill_event_ready)
+            vaud_event_set(&music->refill_event);
         return 0;
     }
     return 1;
@@ -1438,6 +1592,8 @@ static int vaud_music_begin_refill_locked(vaud_music_t music,
 static int vaud_music_begin_forced_refill_locked(vaud_music_t music) {
     if (!music || music->refill_in_progress)
         return 0;
+    if (music->refill_event_ready)
+        vaud_event_reset(&music->refill_event);
     music->refill_in_progress = 1;
     for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
         music->buffer_refilling[i] = 1;
@@ -1449,6 +1605,8 @@ static void vaud_music_finish_refill_locked(vaud_music_t music) {
         for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
             music->buffer_refilling[i] = 0;
         music->refill_in_progress = 0;
+        if (music->refill_event_ready)
+            vaud_event_set(&music->refill_event);
     }
 }
 
@@ -1471,10 +1629,14 @@ static void vaud_music_wait_for_refill(vaud_context_t ctx, vaud_music_t music) {
     for (;;) {
         vaud_mutex_lock(&ctx->mutex);
         int done = !music->refill_in_progress;
+        int can_wait = music->refill_event_ready;
         vaud_mutex_unlock(&ctx->mutex);
         if (done)
             return;
-        vaud_control_sleep_1ms();
+        if (can_wait)
+            vaud_event_wait(&music->refill_event);
+        else
+            vaud_control_sleep_1ms();
     }
 }
 
@@ -1512,25 +1674,11 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
         return NULL;
     }
 
-    vaud_music_t music = (vaud_music_t)calloc(1, sizeof(struct vaud_music));
+    vaud_music_t music = music_alloc_unregistered(ctx);
     if (!music) {
         fclose((FILE *)file);
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate music structure");
         return NULL;
-    }
-
-    /* Allocate streaming buffers */
-    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++) {
-        music->buffers[i] = (int16_t *)malloc(VAUD_MUSIC_BUFFER_FRAMES * 2 * sizeof(int16_t));
-        if (!music->buffers[i]) {
-            for (int32_t j = 0; j < i; j++)
-                free(music->buffers[j]);
-            free(music);
-            fclose((FILE *)file);
-            vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate music buffer");
-            return NULL;
-        }
-        music->buffer_frames[i] = 0;
     }
 
     music->ctx = ctx;
@@ -1600,11 +1748,18 @@ static vaud_music_t music_alloc_unregistered(vaud_context_t ctx) {
     if (!music)
         return NULL;
 
+    if (!vaud_event_init(&music->refill_event)) {
+        free(music);
+        return NULL;
+    }
+    music->refill_event_ready = 1;
+
     for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++) {
         music->buffers[i] = (int16_t *)malloc(VAUD_MUSIC_BUFFER_FRAMES * 2 * sizeof(int16_t));
         if (!music->buffers[i]) {
             for (int32_t j = 0; j < i; j++)
                 free(music->buffers[j]);
+            vaud_event_destroy(&music->refill_event);
             free(music);
             return NULL;
         }
@@ -1773,8 +1928,9 @@ void vaud_update(vaud_context_t ctx) {
     if (vaud_context_is_destroying(ctx))
         return;
 
+    int32_t refills_processed = 0;
     vaud_mutex_lock(&ctx->mutex);
-    for (;;) {
+    while (refills_processed < VAUD_UPDATE_MAX_REFILLS_PER_CALL) {
         vaud_music_t music = NULL;
         int32_t fill_indices[VAUD_MUSIC_BUFFER_COUNT];
         int32_t fill_count = 0;
@@ -1841,6 +1997,7 @@ void vaud_update(vaud_context_t ctx) {
             }
         }
         vaud_music_finish_refill_locked(music);
+        refills_processed++;
     }
     vaud_mutex_unlock(&ctx->mutex);
 }
@@ -1869,6 +2026,8 @@ void vaud_free_music(vaud_music_t music) {
         }
         music->state = VAUD_MUSIC_STOPPED;
         music->refill_in_progress = 0;
+        if (music->refill_event_ready)
+            vaud_event_set(&music->refill_event);
         music->ctx = NULL;
         vaud_mutex_unlock(&ctx->mutex);
     }
@@ -1895,6 +2054,9 @@ void vaud_free_music(vaud_music_t music) {
     free(music->resample_buf);
     free(music->wav_read_buf);
 
+    if (music->refill_event_ready)
+        vaud_event_destroy(&music->refill_event);
+
     free(music);
 }
 
@@ -1916,6 +2078,8 @@ void vaud_detach_music(vaud_music_t music) {
             }
         }
         music->refill_in_progress = 0;
+        if (music->refill_event_ready)
+            vaud_event_set(&music->refill_event);
         music->state = VAUD_MUSIC_STOPPED;
         music->ctx = NULL;
         vaud_mutex_unlock(&ctx->mutex);
@@ -1978,6 +2142,8 @@ void vaud_music_stop(vaud_music_t music) {
 
     music->state = VAUD_MUSIC_STOPPED;
     music->refill_in_progress = 0;
+    if (music->refill_event_ready)
+        vaud_event_set(&music->refill_event);
     music->position = 0;
     music->source_position = 0;
     music->stream_output_generated = 0;

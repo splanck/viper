@@ -230,13 +230,15 @@ void test_event_queue_flush_and_clear_wrappers(void) {
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
 
-    vgfx_mock_inject_key_event(win, VGFX_KEY_A, 1);
+    vgfx_mock_inject_mouse_move(win, 10, 20);
     vgfx_mock_inject_key_event(win, VGFX_KEY_A, 0);
     vgfx_update(win);
 
     vgfx_event_t ev;
     ASSERT_EQ(vgfx_peek_event(win, &ev), 1);
-    ASSERT_EQ(vgfx_flush_events(win), 2);
+    ASSERT_EQ(vgfx_flush_events(win), 1);
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_KEY_UP);
     ASSERT_EQ(vgfx_poll_event(win, &ev), 0);
 
     vgfx_mock_inject_mouse_move(win, 10, 20);

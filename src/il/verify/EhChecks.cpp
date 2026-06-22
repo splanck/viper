@@ -441,6 +441,14 @@ std::optional<ResumeTokenState> transitionResumeTokenForEdge(
     return nextToken;
 }
 
+/// @brief Upper bound on EH handler-state dequeues before the traversal gives up.
+/// @details The visited-state set is keyed on (block, handler-stack, resume-token), so
+///          deeply nested or irreducible handler regions could in principle enumerate an
+///          exponential number of distinct states. This cap is far above any legitimate
+///          function's reachable state count; crossing it means the handler structure is
+///          too complex to verify soundly, so the verifier fails closed instead of hanging.
+constexpr std::size_t kEhStateTraversalBudget = 1u << 20;
+
 class EhStackTraversal {
   public:
     EhStackTraversal(const EhModel &model, Diagnostics &diags) : model(model), diags(diags) {}
@@ -453,7 +461,15 @@ class EhStackTraversal {
         initial.block = model.entry();
         enqueueState(std::move(initial));
 
+        std::size_t budget = kEhStateTraversalBudget;
         while (!worklist.empty()) {
+            if (budget-- == 0) {
+                diags.fail(makeVerifierError(
+                    VerifyDiagCode::EhHandlerInvalidEntry, {},
+                    "exception-handling analysis exceeded its state budget; handler nesting "
+                    "is too deep or complex to verify"));
+                return false;
+            }
             const int stateIndex = worklist.front();
             worklist.pop_front();
             if (!processState(stateIndex))
