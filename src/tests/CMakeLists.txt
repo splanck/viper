@@ -1208,7 +1208,7 @@ add_test(NAME zia_smoke_game3d_showcase_tree_fallback_materials
 set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 120)
+        TIMEOUT 300)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")

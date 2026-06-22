@@ -400,7 +400,7 @@ rt_string rt_game3d_animator_event_name(void *obj, int64_t index) {
     int32_t event_count = game3d_animator_repair_event_buffer(animator);
     if (!animator || index < 0 || index >= event_count)
         return rt_const_cstr("");
-    return rt_string_is_handle(animator->events[index]) ? animator->events[index]
+    return rt_string_is_handle(animator->events[index]) ? rt_string_ref(animator->events[index])
                                                         : rt_const_cstr("");
 }
 
