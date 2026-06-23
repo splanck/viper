@@ -190,11 +190,11 @@ interface Drawable {
     func getColor() -> String;
 }
 
-class Circle implements Drawable {
+class Circle implements Drawable {  // Error: missing getColor()
     expose func draw() {
         Say("Drawing circle");
     }
-    // ERROR: Circle claims to implement Drawable but doesn't implement getColor()!
+    // Error: Circle claims to implement Drawable but doesn't implement getColor()!
 }
 ```
 
@@ -204,7 +204,7 @@ This is a feature, not a bug! The compiler is protecting you. If code expects a 
 
 The interface only specifies *what* must be done, not *how*. This gives implementers complete freedom:
 
-```rust
+```text
 interface DataStore {
     func save(key: String, value: String);
     func load(key: String) -> String;
@@ -274,8 +274,8 @@ func renderScene(items: List[Drawable]) {
     }
 }
 
-var circle = Circle { radius: 5.0 };
-var rect = Rectangle { width: 10.0, height: 3.0 };
+var circle = new Circle(5.0);
+var rect = new Rectangle(10.0, 3.0);
 
 var scene: List[Drawable] = [circle, rect];
 renderScene(scene);
@@ -291,7 +291,7 @@ You can use an interface as a type anywhere you'd use a class type:
 
 ```rust
 // As a variable type
-var drawable: Drawable = Circle { radius: 3.0 };
+var drawable: Drawable = new Circle(3.0);
 
 // As a parameter type
 func processDrawable(d: Drawable) {
@@ -299,23 +299,23 @@ func processDrawable(d: Drawable) {
 }
 
 // As a return type
-func createDrawable(type: String) -> Drawable {
-    if type == "circle" {
-        return Circle { radius: 5.0 };
+func createDrawable(kind: String) -> Drawable {
+    if kind == "circle" {
+        return new Circle(5.0);
     }
-    return Rectangle { width: 10.0, height: 5.0 };
+    return new Rectangle(10.0, 5.0);
 }
 
 // In collections
 var items: List[Drawable] = [];
-items.Push(Circle { radius: 2.0 });
-items.Push(Rectangle { width: 4.0, height: 3.0 });
+items.Push(new Circle(2.0));
+items.Push(new Rectangle(4.0, 3.0));
 ```
 
 When you use the interface type, you can only call methods that the interface defines. You can't call Circle-specific methods on a Drawable variable, even if the actual object is a Circle:
 
 ```rust
-var drawable: Drawable = Circle { radius: 5.0 };
+var drawable: Drawable = new Circle(5.0);
 drawable.draw();  // OK: Drawable has draw()
 drawable.radius;  // ERROR: Drawable doesn't define radius!
 ```
@@ -763,7 +763,9 @@ Imagine testing code that sends real emails, charges real credit cards, or talks
 
 With interfaces, you can create *test doubles* (also called mocks or fakes):
 
-```rust
+The following sketches are conceptual pseudocode. Current Zia does not ship a built-in `assert` statement or `test` block syntax.
+
+```text
 interface EmailSender {
     func send(to: String, subject: String, body: String);
 }
@@ -771,8 +773,8 @@ interface EmailSender {
 // Real implementation for production
 class SmtpEmailSender implements EmailSender {
     expose func send(to: String, subject: String, body: String) {
-        // Actually send email via SMTP
-        Viper.Net.SMTP.send(to, subject, body);
+        // Actually send email via the chosen SMTP provider
+        sendViaSmtp(to, subject, body);
     }
 }
 
@@ -798,7 +800,7 @@ class FakeEmailSender implements EmailSender {
 
 Now you can test email-sending code without sending real emails:
 
-```rust
+```text
 func testOrderConfirmationEmail() {
     var fakeEmail = FakeEmailSender();
     var fakePayments = FakePaymentProcessor();  // Always succeeds
@@ -826,7 +828,7 @@ func testOrderConfirmationEmail() {
 
 Fakes let you simulate scenarios that are hard to create with real systems:
 
-```rust
+```text
 class AlwaysFailingPaymentProcessor implements PaymentProcessor {
     expose func charge(amount: Number, cardNumber: String) -> Boolean {
         return false;  // Simulate payment failure
@@ -997,14 +999,16 @@ interface Drawable {
     func draw();
 }
 
-// Later, need animation support
-// Don't add to Drawable! Create new interface.
-interface Animatable extends Drawable {
+// Later, need animation support.
+// Don't add to Drawable! Create a second interface for the combined contract.
+interface AnimatableDrawable {
+    func draw();
     func animate(frame: Integer);
 }
 ```
 
-Existing code still uses Drawable. New code can use Animatable.
+Existing code still uses Drawable. New code can use AnimatableDrawable when it
+needs both drawing and animation.
 
 ---
 
@@ -1134,7 +1138,7 @@ class Document implements Printable {
 ```
 
 **BASIC**
-```basic
+```text
 INTERFACE Printable
     SUB Print()
 END INTERFACE
@@ -1200,6 +1204,8 @@ if data.Length < 10 {
 The observer pattern notifies interested parties when something happens:
 
 ```rust
+bind Viper.Terminal;
+
 interface Observer {
     func onEvent(event: String);
 }
@@ -1236,15 +1242,19 @@ class LoggingObserver implements Observer {
 class EmailObserver implements Observer {
     expose String adminEmail;
 
+    expose func init(adminEmail: String) {
+        self.adminEmail = adminEmail;
+    }
+
     expose func onEvent(event: String) {
-        Email.send(self.adminEmail, "Event: " + event);
+        Say("EMAIL to " + self.adminEmail + ": " + event);
     }
 }
 
 // Usage
-var subject = Subject();
-subject.subscribe(LoggingObserver());
-subject.subscribe(EmailObserver { adminEmail: "admin@example.com" });
+var subject = new Subject();
+subject.subscribe(new LoggingObserver());
+subject.subscribe(new EmailObserver("admin@example.com"));
 
 subject.notify("User signed up");  // Both observers notified
 ```

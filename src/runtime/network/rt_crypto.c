@@ -2026,6 +2026,7 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
     }
     if (rt_entropy_platform_random_bytes(buf, len) == 0)
         return;
+    memset(buf, 0, len);
     rt_trap("Crypto: failed to obtain OS entropy");
     rt_abort("Crypto: failed to obtain OS entropy");
 }

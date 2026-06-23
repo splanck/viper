@@ -23,8 +23,8 @@
 //     counter-clockwise from +X) and converted to Cartesian on spawn. Note that
 //     Y velocity is negated because screen Y increases downward.
 //   - Per-particle RNG uses a 64-bit LCG (Knuth multiplier) seeded from the
-//     emitter's pointer XOR'd with a constant to spread across the hash space.
-//     This produces independent sequences per emitter with no global state.
+//     active runtime RNG. RANDOMIZE therefore controls emitter reproducibility
+//     without leaking object addresses into generated sequences.
 //   - Color format is 0xAARRGGBB (alpha in high byte). Tagged Color.RGBA values
 //     preserve explicit alpha=0, while legacy 0x00RRGGBB colors remain opaque.
 //   - rt_particle_emitter_draw_to_pixels() renders directly to a Pixels canvas
@@ -48,6 +48,7 @@
 #include "rt_object.h"
 #include "rt_option.h"
 #include "rt_pixels.h"
+#include "rt_random.h"
 #include "rt_trap.h"
 
 #include <limits.h>
@@ -411,8 +412,12 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
     e->fade_out = 1;
     e->shrink = 0;
 
-    // Seed random with address (simple seeding)
-    e->rand_state = (uint64_t)(uintptr_t)e ^ 0x5DEECE66DULL;
+    // Seed random from the active runtime RNG; avoid zero because non-zero
+    // seeds give better early LCG distribution.
+    e->rand_state = ((uint64_t)rt_rand_range(0, LLONG_MAX) << 1) ^
+                    (uint64_t)rt_rand_range(0, LLONG_MAX) ^ UINT64_C(0x5DEECE66D);
+    if (e->rand_state == 0)
+        e->rand_state = UINT64_C(0x5DEECE66D);
 
     rt_obj_set_finalizer(e, particle_emitter_finalizer);
     return e;

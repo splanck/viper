@@ -934,7 +934,7 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
     }
     https_conn_set_recv_timeout(tls, 30000);
     https_conn_set_send_timeout(tls, 30000);
-    size_t buf_cap = 65536;
+    size_t buf_cap = 4096;
     size_t buf_len = 0;
     char *buf = (char *)malloc(buf_cap);
     if (!buf)

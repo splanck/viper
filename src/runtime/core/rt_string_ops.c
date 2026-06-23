@@ -755,8 +755,9 @@ rt_string rt_str_concat(rt_string a, rt_string b) {
     if (a && a == b) {
         rt_string out = rt_string_alloc(total, total + 1);
         if (!out) {
-            rt_string_unref(a);
-            rt_string_unref(b);
+            size_t remaining = rt_string_unref_count(a);
+            if (remaining > 0 && remaining != SIZE_MAX)
+                rt_string_unref(a);
             return NULL;
         }
         if (len_a > 0)
@@ -764,8 +765,9 @@ rt_string rt_str_concat(rt_string a, rt_string b) {
         if (len_b > 0)
             memcpy(out->data + len_a, a->data, len_b);
         out->data[total] = '\0';
-        rt_string_unref(a);
-        rt_string_unref(b);
+        size_t remaining = rt_string_unref_count(a);
+        if (remaining > 0 && remaining != SIZE_MAX)
+            rt_string_unref(a);
         return out;
     }
 

@@ -44,6 +44,13 @@ struct MacOSBuildParams {
 /// @throws std::runtime_error on failure.
 void buildMacOSPackage(const MacOSBuildParams &params);
 
+/// @brief Build a macOS .app bundle wrapped in a drag-to-install .dmg (macOS-only, hdiutil).
+/// @details Stages and signs the bundle exactly like buildMacOSPackage, then wraps it (with an
+///          /Applications symlink) into a compressed .dmg. `params.outputPath` is the .dmg path.
+/// @param params Build parameters.
+/// @throws std::runtime_error on failure or when run off macOS.
+void buildMacOSAppDmg(const MacOSBuildParams &params);
+
 /// @brief Parameters for building a macOS toolchain installer package.
 struct MacOSToolchainBuildParams {
     ToolchainInstallManifest manifest;             ///< Staged files and metadata to package.

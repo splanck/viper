@@ -1065,7 +1065,7 @@ canvas.Disc(100, 100, 50, Color.RED);
 **The bug:**
 ```rust
 var x = 100;  // Integer
-x = x + 0.5;  // Want to move half a pixel per frame
+x = x + 0.5;  // Error: Integer variables cannot store fractional movement
 // But x is still 100! Integer truncation lost the 0.5
 ```
 
@@ -1217,15 +1217,15 @@ canvas.Box(100, 100, 200, 150, Color.RED);
 canvas.Flip();
 ```
 
-**BASIC**
-```basic
+**BASIC-style pseudocode**
+```text
 SCREEN 800, 600
 COLOR RED
 FILL RECT 100, 100, 200, 150
 REFRESH
 ```
 
-The concepts are identical across both languages — only the syntax differs. A canvas is a canvas. A rectangle is a rectangle. RGB colors work the same way. Once you understand graphics in one language, you understand them in the other.
+The concepts are language-neutral. The current Viper graphics API is exposed through Zia runtime classes such as `Viper.Graphics.Canvas` and `Viper.Graphics.Color`; the BASIC-style block above is illustrative pseudocode rather than current BASIC syntax.
 
 ---
 

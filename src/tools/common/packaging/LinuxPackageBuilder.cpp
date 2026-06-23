@@ -193,7 +193,8 @@ std::vector<std::string> elfNeededLibraries(const std::vector<uint8_t> &data) {
             break;
         }
     }
-    if (dynamicOff == 0 || dynamicOff > data.size() || dynamicSize > data.size() - (size_t)dynamicOff)
+    if (dynamicOff == 0 || dynamicOff > data.size() ||
+        dynamicSize > data.size() - (size_t)dynamicOff)
         return {};
 
     uint64_t strtabVaddr = 0;
@@ -214,7 +215,8 @@ std::vector<std::string> elfNeededLibraries(const std::vector<uint8_t> &data) {
     }
     if (strtabVaddr == 0 || strtabSize == 0 || neededOffsets.empty())
         return {};
-    const auto strtabOff = elfFileOffsetForVaddr(data, strtabVaddr, strtabSize, phoff, phentsize, phnum);
+    const auto strtabOff =
+        elfFileOffsetForVaddr(data, strtabVaddr, strtabSize, phoff, phentsize, phnum);
     if (!strtabOff)
         return {};
 
@@ -454,9 +456,9 @@ bool manifestHasSupportLibrary(const ToolchainInstallManifest &manifest, std::st
 std::vector<std::string> manifestNeededLibraries(const ToolchainInstallManifest &manifest) {
     std::vector<std::string> needed;
     for (const auto &file : manifest.files) {
-        if (file.symlink ||
-            (file.kind != ToolchainFileKind::Binary && file.kind != ToolchainFileKind::SupportLibrary &&
-             file.kind != ToolchainFileKind::Library)) {
+        if (file.symlink || (file.kind != ToolchainFileKind::Binary &&
+                             file.kind != ToolchainFileKind::SupportLibrary &&
+                             file.kind != ToolchainFileKind::Library)) {
             continue;
         }
         std::error_code ec;
@@ -480,7 +482,8 @@ bool manifestNeedsX11(const ToolchainInstallManifest &manifest) {
     const auto needed = manifestNeededLibraries(manifest);
     if (std::find(needed.begin(), needed.end(), "libX11.so.6") != needed.end())
         return true;
-    return manifestHasSupportLibrary(manifest, "vipergfx") || manifestHasSupportLibrary(manifest, "vipergui");
+    return manifestHasSupportLibrary(manifest, "vipergfx") ||
+           manifestHasSupportLibrary(manifest, "vipergui");
 }
 
 /// @brief True if the manifest includes the audio library that needs ALSA.
@@ -695,7 +698,8 @@ root=$(CDPATH= cd "$(dirname "$0")" && pwd)
 install_root=${destdir%/}$prefix
 old_manifest="$install_root/share/viper/install_manifest.txt"
 new_manifest="$root/share/viper/install_manifest.txt"
-)VIPER_SCRIPT") + linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
+)VIPER_SCRIPT") +
+           linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
 set --
 for dir in bin include lib share; do
     if [ -e "$root/$dir" ]; then
@@ -762,7 +766,8 @@ esac
 
 install_root=${destdir%/}$prefix
 manifest="$install_root/share/viper/install_manifest.txt"
-)VIPER_SCRIPT") + linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
+)VIPER_SCRIPT") +
+           linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
 if [ ! -f "$manifest" ]; then
     echo "Viper install manifest not found: $manifest" >&2
     exit 1
@@ -1213,25 +1218,16 @@ class TempDirGuard {
 
 } // namespace
 
-/// @brief Build a Debian .deb package from the given build parameters.
-/// Assembles control.tar.gz (control + md5sums + maintainer scripts) and data.tar.gz
-/// (binary, assets, .desktop, icons, MIME XML) then wraps them in an ar archive.
-void buildDebPackage(const LinuxBuildParams &params) {
+/// @brief Collect the FHS-mapped data files (executable, assets, .desktop launcher,
+///        icons, MIME XML) for an end-user Linux application package.
+/// @details Shared by the Debian (.deb) and RPM application builders so both emit
+///          an identical install layout (`/usr/bin/<exe>`, `/usr/share/<pkg>/...`,
+///          `/usr/share/applications/<pkg>.desktop`, hicolor icons, MIME XML).
+static std::vector<DataFile> collectAppLinuxDataFiles(const LinuxBuildParams &params,
+                                                      const std::string &pkgName,
+                                                      const std::string &exeName,
+                                                      const std::string &displayName) {
     const auto &pkg = params.pkgConfig;
-    std::string pkgName = normalizeDebName(params.projectName);
-    std::string exeName = normalizeExecName(params.projectName);
-    std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
-    const std::string version = params.version.empty() ? "0.0.0" : params.version;
-    validatePackageHooksAllowed(pkg);
-    validateDebMetadata(pkg, displayName, version, params.archStr);
-    if (params.archStr != "amd64" && params.archStr != "arm64" && params.archStr != "all")
-        throw std::runtime_error("Debian package architecture must be amd64, arm64, or all: " +
-                                 params.archStr);
-    if (!fs::is_regular_file(params.executablePath))
-        throw std::runtime_error("Linux package executable is not a regular file: " +
-                                 params.executablePath);
-
-    // Collect all data files (for md5sums and data.tar)
     std::vector<DataFile> dataFiles;
 
     // The executable
@@ -1326,6 +1322,34 @@ void buildDebPackage(const LinuxBuildParams &params) {
         dataFiles.push_back({"usr/share/mime/packages/" + pkgName + ".xml", mdata});
     }
     validateDataFilePaths(dataFiles);
+    return dataFiles;
+}
+
+/// @brief Build a Debian .deb package from the given build parameters.
+/// Assembles control.tar.gz (control + md5sums + maintainer scripts) and data.tar.gz
+/// (binary, assets, .desktop, icons, MIME XML) then wraps them in an ar archive.
+void buildDebPackage(const LinuxBuildParams &params) {
+    const auto &pkg = params.pkgConfig;
+    std::string pkgName = normalizeDebName(params.projectName);
+    std::string exeName = normalizeExecName(params.projectName);
+    std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
+    const std::string version = params.version.empty() ? "0.0.0" : params.version;
+    validatePackageHooksAllowed(pkg);
+    validateDebMetadata(pkg, displayName, version, params.archStr);
+    if (params.archStr != "amd64" && params.archStr != "arm64" && params.archStr != "all")
+        throw std::runtime_error("Debian package architecture must be amd64, arm64, or all: " +
+                                 params.archStr);
+    if (!fs::is_regular_file(params.executablePath))
+        throw std::runtime_error("Linux package executable is not a regular file: " +
+                                 params.executablePath);
+
+    // Collect all data files (for md5sums and data.tar)
+    std::vector<DataFile> dataFiles =
+        collectAppLinuxDataFiles(params, pkgName, exeName, displayName);
+    // Recomputed here for the maintainer-script section below; the shared helper
+    // applies the same condition when it emits the .desktop entry.
+    const bool needDesktopEntry =
+        pkg.shortcutMenu || pkg.shortcutDesktop || !pkg.fileAssociations.empty();
 
     // ─── Build data.tar ────────────────────────────────────────────────
 
@@ -1593,6 +1617,261 @@ void buildTarball(const LinuxBuildParams &params) {
     writeFileAtomic(params.outputPath, tarGz);
 }
 
+/// @brief Build a self-extracting Linux AppImage for an end-user application.
+/// @details Reuses the same runtime stub and gzip-tar payload format as the
+///          toolchain AppImage path (buildToolchainAppImage), but sources its
+///          single executable, bundled assets, `.desktop` launcher, and icon from
+///          an application's `LinuxBuildParams`/`PackageConfig` rather than a
+///          staged toolchain manifest.
+void buildAppImage(const LinuxBuildParams &params) {
+    const auto &pkg = params.pkgConfig;
+    const std::string pkgName = normalizeDebName(params.projectName);
+    const std::string exeName = normalizeExecName(params.projectName);
+    const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
+    const std::string version = params.version.empty() ? "0.0.0" : params.version;
+    validatePortableMetadata(pkg, displayName, version);
+    if (params.archStr != "x64" && params.archStr != "arm64")
+        throw std::runtime_error("AppImage architecture must be x64 or arm64: " + params.archStr);
+    if (!fs::is_regular_file(params.executablePath))
+        throw std::runtime_error("AppImage executable is not a regular file: " +
+                                 params.executablePath);
+
+    TarWriter tar;
+    tar.addDirectory("./", 0755);
+    // Entry point: AppRun -> usr/bin/<exe>, matching the toolchain AppImage layout.
+    tar.addSymlink("AppRun", "usr/bin/" + exeName);
+
+    // Application executable.
+    auto execData = readFile(params.executablePath);
+    tar.addFile("usr/bin/" + exeName, execData.data(), execData.size(), 0755);
+
+    // Bundled assets under usr/share/<pkg>/ (mirrors the .deb layout).
+    const std::string assetBase = "usr/share/" + pkgName;
+    for (const auto &asset : pkg.assets) {
+        const std::string sourceRel =
+            sanitizePackageRelativePath(asset.sourcePath, "asset source path");
+        const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
+        const fs::path srcPath =
+            resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
+        const std::string targetDir =
+            sanitizePackageRelativePath(asset.targetPath, "asset target path");
+        const std::string prefix =
+            joinPackageRelativePath(assetBase, targetDir, "asset target path");
+
+        if (!fs::exists(srcPath))
+            throw std::runtime_error("asset not found: " + asset.sourcePath);
+
+        if (fs::is_directory(srcPath)) {
+            tar.addDirectory(prefix, 0755);
+            safeDirectoryIterateResolved(
+                srcPath, params.projectRoot, [&](const SafeDirectoryEntry &entry) {
+                    const auto relPath = sanitizePackageRelativePath(
+                        entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                        "asset path");
+                    if (entry.directory) {
+                        tar.addDirectory(joinPackageRelativePath(prefix, relPath, "asset path"),
+                                         0755);
+                    } else if (entry.regularFile) {
+                        auto fileData = readFile(entry.resolvedPath.string());
+                        tar.addFile(joinPackageRelativePath(prefix, relPath, "asset path"),
+                                    fileData.data(),
+                                    fileData.size(),
+                                    permissionBitsForFilesystemPath(entry.resolvedPath));
+                    }
+                });
+        } else if (fs::is_regular_file(srcPath)) {
+            auto fileData = readFile(srcPath.string());
+            tar.addFile(joinPackageRelativePath(prefix, sourceLeaf, "asset path"),
+                        fileData.data(),
+                        fileData.size(),
+                        permissionBitsForFilesystemPath(srcPath));
+        } else {
+            throw std::runtime_error("asset is not a regular file or directory: " +
+                                     asset.sourcePath);
+        }
+    }
+
+    // Desktop launcher at the payload root (Exec points at the AppRun entry).
+    {
+        DesktopEntryParams dep;
+        dep.name = displayName;
+        dep.comment = pkg.description;
+        dep.execPath = "AppRun";
+        dep.iconName = exeName;
+        dep.categories = pkg.category;
+        dep.terminal = false;
+        dep.fileAssociations = pkg.fileAssociations;
+        dep.acceptsFileArgument = !pkg.fileAssociations.empty();
+        const std::string desktopText = generateDesktopEntry(dep);
+        tar.addFileString(exeName + ".desktop", desktopText, 0644);
+    }
+
+    // Icon at the payload root (<exe>.png); falls back to a generated default icon.
+    {
+        std::vector<uint8_t> iconPng;
+        if (!pkg.iconPath.empty()) {
+            const fs::path iconSrc =
+                resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
+            if (!fs::is_regular_file(iconSrc))
+                throw std::runtime_error("package icon not found: " + pkg.iconPath);
+            const auto srcImage = pngRead(iconSrc.string());
+            iconPng = pngEncode(srcImage);
+        } else {
+            iconPng = defaultViperAppImageIconPng();
+        }
+        tar.addFileVec(exeName + ".png", iconPng, 0644);
+    }
+
+    const auto tarBytes = tar.finish();
+    const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
+    LinuxRuntimeStubParams stub;
+    stub.cacheName =
+        pkgName + "-" + portableArchiveVersionComponent(version) + "-linux-" + params.archStr;
+    stub.entryPath = "AppRun";
+    const auto appImage = buildLinuxAppImage(stub, tarGz);
+    writeFileAtomic(params.outputPath, appImage);
+    std::error_code ec;
+    fs::permissions(params.outputPath,
+                    fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+                    fs::perm_options::add,
+                    ec);
+    if (ec)
+        throw std::runtime_error("cannot mark AppImage executable: " + ec.message());
+}
+
+/// @brief Build an RPM package for an end-user application using rpmbuild.
+/// @details Mirrors the toolchain RPM path (buildToolchainRpmPackage): assembles a
+///          source tarball and .spec from the application's shared FHS data files
+///          (collectAppLinuxDataFiles), then invokes rpmbuild. Requires rpmbuild on
+///          PATH (Fedora/RHEL build hosts) and throws a clear diagnostic otherwise.
+void buildRpmPackage(const LinuxBuildParams &params) {
+    const auto &pkg = params.pkgConfig;
+    const std::string pkgName = normalizeDebName(params.projectName);
+    const std::string exeName = normalizeExecName(params.projectName);
+    const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
+    const std::string version = params.version.empty() ? "0.0.0" : params.version;
+    if (params.archStr != "x64" && params.archStr != "arm64")
+        throw std::runtime_error("RPM architecture must be x64 or arm64: " + params.archStr);
+    validateRpmVersion(version, "package version");
+    if (!fs::is_regular_file(params.executablePath))
+        throw std::runtime_error("RPM package executable is not a regular file: " +
+                                 params.executablePath);
+    const std::string arch = rpmArchFor(params.archStr);
+    const auto dataFiles = collectAppLinuxDataFiles(params, pkgName, exeName, displayName);
+    if (!rpmbuildAvailable()) {
+        throw std::runtime_error(
+            "rpmbuild is required to generate RPM application packages; install rpm-build "
+            "or use --target deb, appimage, or tarball");
+    }
+
+    const fs::path tmpRoot = uniqueTempPackagingDir("viper-app-rpm-" + version + "-" + arch);
+    TempDirGuard cleanup(tmpRoot);
+    fs::create_directories(tmpRoot / "BUILD");
+    fs::create_directories(tmpRoot / "BUILDROOT");
+    fs::create_directories(tmpRoot / "RPMS");
+    fs::create_directories(tmpRoot / "SOURCES");
+    fs::create_directories(tmpRoot / "SPECS");
+    fs::create_directories(tmpRoot / "SRPMS");
+
+    const std::string sourceTopDir = pkgName + "-" + version + "/";
+    TarWriter tar;
+    tar.addDirectory(sourceTopDir, 0755);
+    for (const auto &file : dataFiles) {
+        std::string sourcePath = file.installPath;
+        if (sourcePath.rfind("usr/", 0) == 0)
+            sourcePath = sourcePath.substr(4);
+        validateRpmSpecPath(file.installPath);
+        if (file.symlink) {
+            tar.addSymlink(sourceTopDir + sourcePath, file.symlinkTarget);
+        } else if (!file.directory) {
+            tar.addFile(sourceTopDir + sourcePath, file.data.data(), file.data.size(), file.mode);
+        }
+    }
+    const auto tarBytes = tar.finish();
+    const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
+    const fs::path sourceTar = tmpRoot / "SOURCES" / (pkgName + "-" + version + ".tar.gz");
+    writeFileAtomic(sourceTar, tarGz);
+
+    const std::string summary = pkg.description.empty() ? displayName : pkg.description;
+    std::ostringstream spec;
+    spec << "Name: " << pkgName << "\n";
+    spec << "Version: " << version << "\n";
+    spec << "Release: 1%{?dist}\n";
+    {
+        std::string summaryLine = summary;
+        validateSingleLineField(summaryLine, "package summary");
+        spec << "Summary: " << summaryLine << "\n";
+    }
+    {
+        std::string license = trimAsciiWhitespace(pkg.license);
+        if (license.empty())
+            license = "Proprietary";
+        validateSingleLineField(license, "package license");
+        spec << "License: " << license << "\n";
+    }
+    if (!pkg.homepage.empty()) {
+        validatePackageUrl(pkg.homepage, "package homepage");
+        spec << "URL: " << pkg.homepage << "\n";
+    }
+    spec << "BuildArch: " << arch << "\n";
+    spec << "Source0: %{name}-%{version}.tar.gz\n";
+    spec << "\n";
+    spec << "%description\n" << summary << "\n\n";
+    spec << "%prep\n%setup -q\n\n";
+    spec << "%build\n:\n\n";
+    spec << "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}/usr\ncp -a . "
+            "%{buildroot}/usr/\n\n";
+    if (!pkg.fileAssociations.empty()) {
+        spec << "%post\n";
+        spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
+                "/usr/share/mime || true; fi\n";
+        spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                "update-desktop-database /usr/share/applications || true; fi\n\n";
+        spec << "%postun\n";
+        spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
+                "/usr/share/mime || true; fi\n";
+        spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                "update-desktop-database /usr/share/applications || true; fi\n\n";
+    }
+    spec << "%files\n";
+    for (const auto &file : dataFiles) {
+        validateRpmSpecPath(file.installPath);
+        if (file.directory)
+            spec << "%dir " << rpmSpecFilePath(file.installPath) << "\n";
+        else
+            spec << rpmSpecFilePath(file.installPath) << "\n";
+    }
+
+    const fs::path specPath = tmpRoot / "SPECS" / (pkgName + ".spec");
+    {
+        std::ofstream out(specPath);
+        if (!out)
+            throw std::runtime_error("cannot write rpm spec file: " + specPath.string());
+        out << spec.str();
+    }
+
+    const RunResult rr = run_process({"rpmbuild",
+                                      "--define",
+                                      "_topdir " + tmpRoot.string(),
+                                      "--define",
+                                      "_sourcedir " + (tmpRoot / "SOURCES").string(),
+                                      "--define",
+                                      "_specdir " + (tmpRoot / "SPECS").string(),
+                                      "-bb",
+                                      specPath.string()});
+    if (rr.exit_code != 0) {
+        throw std::runtime_error("rpmbuild failed while generating application rpm:\n" + rr.out +
+                                 rr.err);
+    }
+
+    const fs::path rpmPath = findGeneratedRpm(tmpRoot, pkgName, version, arch);
+    std::error_code copyEc;
+    fs::copy_file(rpmPath, params.outputPath, fs::copy_options::overwrite_existing, copyEc);
+    if (copyEc)
+        throw std::runtime_error("cannot copy generated rpm to " + params.outputPath + ": " +
+                                 copyEc.message());
+}
+
 /// @brief Build a Debian .deb toolchain package from a staged install manifest.
 /// Validates the manifest, collects FHS-mapped files, generates control/md5sums/postinst/postrm,
 /// and assembles the ar-format .deb output file.
@@ -1821,8 +2100,8 @@ void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
     const auto tarBytes = tar.finish();
     const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
     LinuxRuntimeStubParams stub;
-    stub.cacheName = packageName + "-" + portableArchiveVersionComponent(version) + "-linux-" +
-                     manifest.arch;
+    stub.cacheName =
+        packageName + "-" + portableArchiveVersionComponent(version) + "-linux-" + manifest.arch;
     stub.entryPath = "AppRun";
     const auto appImage = buildLinuxAppImage(stub, tarGz);
     writeFileAtomic(params.outputPath, appImage);
@@ -1977,6 +2256,35 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     if (copyEc)
         throw std::runtime_error("cannot copy generated rpm to " + params.outputPath + ": " +
                                  copyEc.message());
+}
+
+/// @brief GPG-sign a built Debian (.deb) or RPM (.rpm) package in place.
+/// @details rpmsign and dpkg-sig are the standard signing tools and are not present on
+///          every host. run_process reports a missing binary via launch_failed, which is
+///          surfaced here distinctly from a signing failure.
+void signLinuxPackage(const std::string &packagePath, const std::string &gpgKeyId, bool isRpm) {
+    if (gpgKeyId.empty())
+        throw std::runtime_error("Linux package signing key must not be empty");
+    validateSingleLineField(gpgKeyId, "Linux signing key");
+
+    const char *tool = isRpm ? "rpmsign" : "dpkg-sig";
+    std::vector<std::string> argv;
+    if (isRpm)
+        argv = {"rpmsign", "--addsign", "--define", "_gpg_name " + gpgKeyId, packagePath};
+    else
+        argv = {"dpkg-sig", "--sign", "builder", "-k", gpgKeyId, packagePath};
+
+    const RunResult rr = run_process(argv);
+    if (rr.launch_failed) {
+        throw std::runtime_error(
+            std::string(tool) + " is required to sign " + (isRpm ? "RPM" : "Debian") +
+            " packages but was not found on PATH; install " + tool + " or omit --linux-sign-key");
+    }
+    if (rr.exit_code != 0) {
+        throw std::runtime_error(std::string(tool) + " failed to sign " + packagePath +
+                                 " (check that GPG key '" + gpgKeyId + "' is available):\n" +
+                                 rr.out + rr.err);
+    }
 }
 
 } // namespace viper::pkg

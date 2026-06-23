@@ -239,7 +239,7 @@ expose struct Frog {
 
     // If the frog is on a log or turtle, it moves with that platform
     // null means the frog is not riding anything
-    ridingPlatform: ?Platform;
+    ridingPlatform: Platform?;
 
     // Is the frog currently alive?
     alive: Boolean;
@@ -1103,20 +1103,28 @@ for enemy in enemies {
 
 **Right:**
 ```rust
-enemies = enemies.Filter(func(e) { return !e.dead; });
+var survivors: List[Enemy] = [];
+for enemy in enemies {
+    if !enemy.dead {
+        survivors.Push(enemy);
+    }
+}
+enemies = survivors;
 ```
 
 Or:
 ```rust
-var toRemove = [];
+var toRemove: List[Integer] = [];
 for i in 0..enemies.Length {
     if enemies[i].dead {
         toRemove.Push(i);
     }
 }
 // Remove in reverse order to preserve indices
-for i in (toRemove.Length - 1)..0 step -1 {
-    enemies.RemoveAt(toRemove[i]);
+var index = toRemove.Length - 1;
+while index >= 0 {
+    enemies.RemoveAt(toRemove[index]);
+    index -= 1;
 }
 ```
 
@@ -1396,7 +1404,7 @@ Each frog fills different homes and earns its own score. First to fill all five 
 
 Add collectible items that appear occasionally:
 
-```rust
+```text
 struct PowerUp {
     x: Number;
     y: Number;

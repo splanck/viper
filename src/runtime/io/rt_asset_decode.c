@@ -159,6 +159,21 @@ static uint64_t asset_random_u64(unsigned attempt) {
     return (uint64_t)GetCurrentProcessId() ^ (uint64_t)GetTickCount64() ^
            (uint64_t)counter.QuadPart ^ ((uint64_t)attempt << 48);
 }
+#else
+/// @brief Return the POSIX temporary-directory base without linking the system runtime module.
+/// @details Mirrors `rt_machine_temp`'s environment lookup order while keeping asset decode
+///          usable in reduced native-runtime link sets that do not include `rt_machine_temp`.
+/// @return Borrowed process-environment pointer, or the static `/tmp` fallback.
+static const char *asset_posix_temp_base(void) {
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp || !*tmp)
+        tmp = getenv("TMP");
+    if (!tmp || !*tmp)
+        tmp = getenv("TEMP");
+    if (!tmp || !*tmp)
+        tmp = "/tmp";
+    return tmp;
+}
 #endif
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -287,9 +302,7 @@ static void *load_via_tempfile(const uint8_t *data,
         return NULL;
     }
 #else
-    const char *tmpdir = getenv("TMPDIR");
-    if (!tmpdir || !*tmpdir)
-        tmpdir = "/tmp";
+    const char *tmpdir = asset_posix_temp_base();
     tmpdir_path = asset_join_temp_path(tmpdir, "viper_asset_XXXXXX");
     if (!tmpdir_path)
         return NULL;

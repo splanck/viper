@@ -1044,10 +1044,18 @@ void signMacOSBundle(const fs::path &stageRoot,
 // MacOS Package Builder
 //=============================================================================
 
-/// @brief Build a macOS .app bundle inside a ZIP archive from the given build parameters.
-/// Stages the bundle in a temp directory (exec, Resources, PkgInfo, Info.plist, ICNS),
-/// optionally signs it with codesign, then packs the result into a ZIP at `params.outputPath`.
-void buildMacOSPackage(const MacOSBuildParams &params) {
+/// @brief Result of staging a macOS .app bundle on disk.
+struct StagedMacOSApp {
+    fs::path appPath;    ///< Absolute path to the staged <name>.app bundle.
+    fs::path stagedExec; ///< Absolute path to the bundle's Contents/MacOS/<exe>.
+};
+
+/// @brief Stage (and code-sign) a macOS .app bundle into @p stageRoot.
+/// @details Shared by the .app-in-.zip and .app-in-.dmg builders so both emit an
+///          identical, signed bundle. The caller owns @p stageRoot and its
+///          TempDirGuard; this only populates it.
+static StagedMacOSApp stageMacOSAppBundle(const MacOSBuildParams &params,
+                                          const fs::path &stageRoot) {
     const auto &pkg = params.pkgConfig;
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const std::string version = params.version.empty() ? "0.0.0" : params.version;
@@ -1063,12 +1071,9 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
                                  params.executablePath);
 
     // Determine executable name (lowercase, no spaces)
-    std::string execName = normalizeExecName(params.projectName);
+    const std::string execName = normalizeExecName(params.projectName);
 
-    std::string appName = displayName + ".app";
-    const fs::path stageRoot = uniqueTempPackagingDir("viper-macos-app-" + execName);
-    TempDirGuard cleanup(stageRoot);
-
+    const std::string appName = displayName + ".app";
     const fs::path appPath = stageRoot / appName;
     const fs::path contentsDir = appPath / "Contents";
     const fs::path macosDir = contentsDir / "MacOS";
@@ -1125,7 +1130,78 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     }
 
     signMacOSBundle(stageRoot, appPath, stagedExec, params.projectRoot, pkg);
-    addStagedAppToZip(stageRoot, appPath, stagedExec, params.outputPath);
+    return {appPath, stagedExec};
+}
+
+/// @brief Wrap a staged .app bundle in a compressed .dmg with a drag-to-/Applications symlink.
+/// @details macOS-only (shells to hdiutil). Builds the image directly from a staging folder
+///          (no attach/Finder styling) so it stays robust in headless runs.
+static void addStagedAppToDmg(const fs::path &appPath,
+                              const std::string &volumeName,
+                              const std::string &outputPath) {
+    // hdiutil is macOS-only; off-platform it is simply absent and runChecked surfaces a
+    // clear failure, so this helper needs no host macro of its own.
+    if (volumeName.empty() || volumeName.find('/') != std::string::npos ||
+        volumeName.find(':') != std::string::npos)
+        throw std::runtime_error(
+            "macOS .dmg volume name must be non-empty and free of '/' and ':'");
+
+    const fs::path tmpRoot = uniqueTempPackagingDir("viper-app-dmg");
+    TempDirGuard cleanup(tmpRoot);
+    const fs::path stage = tmpRoot / "stage";
+    fs::create_directories(stage);
+    fs::copy(appPath,
+             stage / appPath.filename(),
+             fs::copy_options::recursive | fs::copy_options::copy_symlinks);
+
+    std::error_code symEc;
+    fs::create_directory_symlink("/Applications", stage / "Applications", symEc);
+    if (symEc)
+        throw std::runtime_error("cannot create /Applications symlink for .dmg staging: " +
+                                 symEc.message());
+
+    std::error_code rmEc;
+    fs::remove(outputPath, rmEc);
+    runChecked({"hdiutil",
+                "create",
+                "-srcfolder",
+                stage.string(),
+                "-volname",
+                volumeName,
+                "-fs",
+                "HFS+",
+                "-format",
+                "UDZO",
+                "-imagekey",
+                "zlib-level=9",
+                "-ov",
+                outputPath},
+               "macOS app .dmg creation");
+}
+
+/// @brief Build a macOS .app bundle inside a ZIP archive from the given build parameters.
+/// Stages the bundle in a temp directory (exec, Resources, PkgInfo, Info.plist, ICNS),
+/// optionally signs it with codesign, then packs the result into a ZIP at `params.outputPath`.
+void buildMacOSPackage(const MacOSBuildParams &params) {
+    const fs::path stageRoot =
+        uniqueTempPackagingDir("viper-macos-app-" + normalizeExecName(params.projectName));
+    TempDirGuard cleanup(stageRoot);
+    const StagedMacOSApp staged = stageMacOSAppBundle(params, stageRoot);
+    addStagedAppToZip(stageRoot, staged.appPath, staged.stagedExec, params.outputPath);
+}
+
+/// @brief Build a macOS .app bundle wrapped in a drag-to-install .dmg.
+/// @details Stages and signs the bundle exactly like buildMacOSPackage, then wraps it
+///          (with an /Applications symlink) into a compressed .dmg instead of a .zip.
+///          macOS-only (hdiutil).
+void buildMacOSAppDmg(const MacOSBuildParams &params) {
+    const auto &pkg = params.pkgConfig;
+    const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
+    const fs::path stageRoot =
+        uniqueTempPackagingDir("viper-macos-app-dmg-" + normalizeExecName(params.projectName));
+    TempDirGuard cleanup(stageRoot);
+    const StagedMacOSApp staged = stageMacOSAppBundle(params, stageRoot);
+    addStagedAppToDmg(staged.appPath, displayName, params.outputPath);
 }
 
 /// @brief Build a macOS `.pkg` installer for the staged toolchain.

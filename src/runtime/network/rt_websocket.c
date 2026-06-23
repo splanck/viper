@@ -847,6 +847,25 @@ static int create_tcp_socket(const char *host, int port, int timeout_ms) {
     return fd;
 }
 
+/// @brief Return the offset one byte past the HTTP handshake header terminator.
+/// @details The optimized handshake reader may receive the `\r\n\r\n`
+///          terminator and the first WebSocket frame in the same socket read.
+///          Returning the exact header-end offset lets the caller validate only
+///          the HTTP headers and preserve any already-read frame bytes for the
+///          frame parser.
+/// @param data Response bytes read so far.
+/// @param len Number of valid bytes in @p data.
+/// @return Offset just after `\r\n\r\n`, or zero when the terminator is absent.
+static size_t ws_handshake_header_end_offset(const char *data, size_t len) {
+    if (!data || len < 4)
+        return 0;
+    for (size_t i = 3; i < len; i++) {
+        if (data[i - 3] == '\r' && data[i - 2] == '\n' && data[i - 1] == '\r' && data[i] == '\n')
+            return i + 1;
+    }
+    return 0;
+}
+
 /// @brief Perform WebSocket handshake.
 static int ws_handshake(rt_ws_impl *ws,
                         const char *host,
@@ -910,19 +929,34 @@ static int ws_handshake(rt_ws_impl *ws,
         return 0;
 
     // Receive response headers
-    char response[4096];
-    int total = 0;
-    while (total < (int)sizeof(response) - 1) {
-        long n = ws_recv(ws, response + total, 1);
+    char response[16384];
+    size_t total = 0;
+    size_t header_end = 0;
+    while (total < sizeof(response) - 1) {
+        long n = ws_recv(ws, response + total, sizeof(response) - 1 - total);
         if (n <= 0)
             return 0;
-        total++;
+        total += (size_t)n;
 
-        // Check for end of headers
-        if (total >= 4 && memcmp(response + total - 4, "\r\n\r\n", 4) == 0)
+        header_end = ws_handshake_header_end_offset(response, total);
+        if (header_end)
             break;
     }
-    response[total] = '\0';
+    if (!header_end)
+        return 0;
+
+    if (total > header_end) {
+        size_t leftover_len = total - header_end;
+        uint8_t *leftover = (uint8_t *)malloc(leftover_len);
+        if (!leftover)
+            return 0;
+        memcpy(leftover, response + header_end, leftover_len);
+        free(ws->recv_buffer);
+        ws->recv_buffer = leftover;
+        ws->recv_buffer_size = leftover_len;
+        ws->recv_buffer_len = leftover_len;
+    }
+    response[header_end] = '\0';
 
     free(ws->subprotocol);
     ws->subprotocol = NULL;
@@ -988,6 +1022,17 @@ static int ws_send_frame(rt_ws_impl *ws, uint8_t opcode, const void *data, size_
 static int ws_recv_exact(rt_ws_impl *ws, void *buffer, size_t len) {
     size_t total = 0;
     while (total < len) {
+        if (ws->recv_buffer_len > 0) {
+            size_t available = ws->recv_buffer_len;
+            size_t needed = len - total;
+            size_t take = available < needed ? available : needed;
+            memcpy((uint8_t *)buffer + total, ws->recv_buffer, take);
+            total += take;
+            ws->recv_buffer_len -= take;
+            if (ws->recv_buffer_len > 0)
+                memmove(ws->recv_buffer, ws->recv_buffer + take, ws->recv_buffer_len);
+            continue;
+        }
         long n = ws_recv(ws, (uint8_t *)buffer + total, len - total);
         if (n <= 0)
             return 0;
@@ -1062,8 +1107,12 @@ static int ws_recv_frame(
     /* Reject server-controlled allocation larger than 64 MB (S-10 fix).
        This prevents a malicious server from causing malloc(huge). */
 #define WS_MAX_PAYLOAD (64u * 1024u * 1024u)
-    if (payload_len > WS_MAX_PAYLOAD)
+    if (payload_len > WS_MAX_PAYLOAD) {
+        ws->close_code = WS_CLOSE_MESSAGE_TOO_BIG;
+        ws->is_open = 0;
+        (void)ws_send_frame(ws, WS_OP_CLOSE, "\x03\xF1", 2);
         return 0;
+    }
 #undef WS_MAX_PAYLOAD
 
     // Payload
@@ -1218,7 +1267,10 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
     switch (opcode) {
         case WS_OP_PING:
             // Respond with pong
-            ws_send_frame(ws, WS_OP_PONG, data, len);
+            if (!ws_send_frame(ws, WS_OP_PONG, data, len)) {
+                ws->is_open = 0;
+                ws->close_code = WS_CLOSE_ABNORMAL;
+            }
             break;
 
         case WS_OP_PONG:
@@ -1230,7 +1282,8 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
             ws->is_open = 0;
             if (len == 1) {
                 ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-                ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2);
+                if (!ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2))
+                    ws->close_code = WS_CLOSE_ABNORMAL;
                 break;
             }
             if (len >= 2) {
@@ -1238,7 +1291,8 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
                 if (!ws_close_code_is_valid(code) ||
                     (len > 2 && !ws_is_valid_utf8(data + 2, len - 2))) {
                     ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-                    ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2);
+                    if (!ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2))
+                        ws->close_code = WS_CLOSE_ABNORMAL;
                     break;
                 }
                 ws->close_code = code;
@@ -1257,7 +1311,8 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
                 ws->close_code = WS_CLOSE_NO_STATUS;
             }
             // Send close response
-            ws_send_frame(ws, WS_OP_CLOSE, data, len);
+            if (!ws_send_frame(ws, WS_OP_CLOSE, data, len))
+                ws->close_code = WS_CLOSE_ABNORMAL;
             break;
     }
 }

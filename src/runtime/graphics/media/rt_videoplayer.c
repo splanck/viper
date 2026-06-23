@@ -64,6 +64,7 @@ extern int rt_jpeg_decode_buffer_into_rgba32(
 #define VIDEOPLAYER_MAX_FILE_BYTES (INT64_C(512) * 1024 * 1024)
 #define VIDEOPLAYER_MAX_OGV_UPDATE_DECODE_FRAMES 8
 #define VIDEOPLAYER_MAX_OGV_CONSECUTIVE_DECODE_ERRORS 16
+#define VIDEOPLAYER_MJPEG_SCRATCH_RETAIN_MAX (2u * 1024u * 1024u)
 #if defined(__clang__) || defined(__GNUC__)
 #define VIDEOPLAYER_UNUSED_PRIVATE __attribute__((unused))
 #else
@@ -712,6 +713,12 @@ static int mjpeg_prepare_decode_source(const uint8_t *data,
         return 0;
 
     if (has_dht || sos_pos == 0) {
+        if (scratch && scratch_capacity &&
+            *scratch_capacity > VIDEOPLAYER_MJPEG_SCRATCH_RETAIN_MAX) {
+            free(*scratch);
+            *scratch = NULL;
+            *scratch_capacity = 0;
+        }
         *out_data = data;
         *out_size = (size_t)size;
         return 1;
@@ -723,6 +730,12 @@ static int mjpeg_prepare_decode_source(const uint8_t *data,
     size_t new_size = size + dht_size;
     if (!scratch || !scratch_capacity)
         return 0;
+    if (*scratch_capacity > VIDEOPLAYER_MJPEG_SCRATCH_RETAIN_MAX &&
+        new_size < VIDEOPLAYER_MJPEG_SCRATCH_RETAIN_MAX / 2u) {
+        free(*scratch);
+        *scratch = NULL;
+        *scratch_capacity = 0;
+    }
     if (*scratch_capacity < new_size) {
         uint8_t *next = (uint8_t *)realloc(*scratch, new_size);
         if (!next)

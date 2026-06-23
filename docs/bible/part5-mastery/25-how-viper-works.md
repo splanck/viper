@@ -251,16 +251,14 @@ func another() {
 Functions that declare a return type must actually return a value:
 
 ```rust
-func getValue() -> Integer {
+func getValue() -> Integer {  // Error: may not return a value
     var x = 5;
-    // Error: function 'getValue' must return a value
 }
 
-func maybeReturn(flag: Boolean) -> Integer {
+func maybeReturn(flag: Boolean) -> Integer {  // Error: not all paths return a value
     if flag {
         return 42;
     }
-    // Error: not all paths return a value
 }
 ```
 
@@ -662,7 +660,7 @@ func buildName(first: String, last: String) -> String {
 }
 
 // More efficient: fewer allocations
-func buildName(first: String, last: String) -> String {
+func buildNameFast(first: String, last: String) -> String {
     return first + " " + last;  // compiler can optimize this
 }
 ```
@@ -685,9 +683,9 @@ var s = "unterminated  // String never closed
 
 **Syntax Errors** (Stage 2 - Parsing)
 ```rust
-func missing(         // Missing closing parenthesis
-    var x = ;         // Missing expression
-    if x { }          // Missing condition
+func missing(         // Error: missing closing parenthesis
+    var x = ;         // Error: missing expression
+    if x { }          // Error: missing condition
 ```
 
 **Semantic Errors** (Stage 3 - Analysis)
@@ -958,11 +956,13 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 IL helps you understand why some code is slow:
 
 ```rust
+bind Fmt = Viper.Text.Fmt;
+
 // This creates many temporary strings
 func slow() -> String {
     var result = "";
     for i in 0..1000 {
-        result = result + i.toString();  // New string each iteration!
+        result = result + Fmt.Int(i);  // New string each iteration!
     }
     return result;
 }
@@ -1134,10 +1134,14 @@ Trace the execution by hand for `sum_to_n(3)`. Track the values in each register
 **Exercise 25.6 - Memory Investigation**
 Create a program that makes many strings in a loop:
 ```rust
-func start() {
+bind Fmt = Viper.Text.Fmt;
+
+func makeManyStrings() -> String {
+    var last = "";
     for i in 0..10000 {
-        var s = "item " + i.toString();
+        last = "item " + Fmt.Int(i);
     }
+    return last;
 }
 ```
 Think about what happens to memory. When are strings created? When might they be collected?

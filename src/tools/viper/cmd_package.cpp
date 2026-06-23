@@ -28,6 +28,7 @@
 #include "common/RunProcess.hpp"
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
+#include "tools/common/packaging/LinuxRuntimeStubGen.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/packaging/PkgVerify.hpp"
@@ -56,7 +57,7 @@ using namespace il::tools::common;
 using namespace il::support;
 namespace fs = std::filesystem;
 
-enum class PackageTarget { MacOS, Linux, Windows, Tarball, Auto };
+enum class PackageTarget { MacOS, Linux, Windows, Tarball, AppImage, Rpm, Dmg, Auto };
 enum class ExecutableFormat { Unknown, MachO, ELF, PE };
 
 /// @brief Identifying details of a native executable detected from its header.
@@ -74,7 +75,8 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "  [project]  Path to a directory or viper.project file (default: .)\n"
         << "\n"
         << "Options:\n"
-        << "  --target <platform>       macos, linux, windows, or tarball (default: host)\n"
+        << "  --target <platform>       macos, linux, windows, appimage, rpm, dmg, or tarball "
+           "(default: host)\n"
         << "  --target=<platform>       Inline form of --target\n"
         << "  --arch <arch>             Target architecture: x64 or arm64 (default: host)\n"
         << "  --arch=<arch>             Inline form of --arch\n"
@@ -96,13 +98,16 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "\n"
         << "Output formats:\n"
         << "  macOS:    .app bundle in .zip (Finder-native, drag to /Applications)\n"
+        << "  DMG:      .app bundle in a .dmg with an /Applications drag-target (macOS host)\n"
         << "  Linux:    .deb package (dpkg -i), includes .desktop + MIME types\n"
+        << "  AppImage: self-extracting Linux .AppImage (portable, no install required)\n"
+        << "  RPM:      .rpm package (dnf/yum) — requires rpmbuild on the build host\n"
         << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
         << "  Tarball:  .tar.gz portable archive\n"
         << "\n"
         << "macOS code-signing/notarization run only on a macOS host; Windows Authenticode\n"
-        << "signing runs only where signtool is available. .dmg and .rpm installers are built\n"
-        << "by 'viper install-package' (toolchain distribution), not 'viper package'.\n"
+        << "signing runs only where signtool is available. .dmg builds on a macOS host and\n"
+        << ".rpm on an rpmbuild-capable host.\n"
         << "Manifest directives and signing options are documented in docs/tools.md.\n";
 }
 
@@ -144,6 +149,8 @@ struct PackageArgs {
     bool windowsSigntoolPathSet{false};
     bool windowsSignNoVerify{false};
     bool windowsSignNoVerifySet{false};
+    std::string linuxSignKey;
+    bool linuxSignKeySet{false};
     bool dryRun{false};
     bool keepFailedArtifact{false};
     bool verbose{false};
@@ -176,6 +183,12 @@ bool parsePackageTargetValue(std::string_view value, PackageTarget &out) {
         out = PackageTarget::Windows;
     else if (value == "tarball")
         out = PackageTarget::Tarball;
+    else if (value == "appimage")
+        out = PackageTarget::AppImage;
+    else if (value == "rpm")
+        out = PackageTarget::Rpm;
+    else if (value == "dmg")
+        out = PackageTarget::Dmg;
     else
         return false;
     return true;
@@ -211,6 +224,12 @@ std::string platformName(PackageTarget t) {
             return "windows";
         case PackageTarget::Tarball:
             return "tarball";
+        case PackageTarget::AppImage:
+            return "linux";
+        case PackageTarget::Rpm:
+            return "linux";
+        case PackageTarget::Dmg:
+            return "macos";
         default:
             return "unknown";
     }
@@ -227,6 +246,12 @@ std::string platformExtension(PackageTarget t) {
             return ".exe";
         case PackageTarget::Tarball:
             return ".tar.gz";
+        case PackageTarget::AppImage:
+            return ".AppImage";
+        case PackageTarget::Rpm:
+            return ".rpm";
+        case PackageTarget::Dmg:
+            return ".dmg";
         default:
             return ".zip";
     }
@@ -355,6 +380,12 @@ ExecutableFormat expectedExecutableFormat(PackageTarget target) {
         case PackageTarget::Tarball:
             throw std::runtime_error(
                 "tarball packages do not require a platform executable format");
+        case PackageTarget::AppImage:
+            return ExecutableFormat::ELF;
+        case PackageTarget::Rpm:
+            return ExecutableFormat::ELF;
+        case PackageTarget::Dmg:
+            return ExecutableFormat::MachO;
         case PackageTarget::Auto:
         default:
             return ExecutableFormat::ELF;
@@ -792,6 +823,18 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
             args.windowsSign = true;
             args.windowsSignSet = true;
         } else if (consumePackageOptionValue(arg,
+                                             "--linux-sign-key",
+                                             i,
+                                             argc,
+                                             argv,
+                                             args.linuxSignKey,
+                                             "a value",
+                                             true,
+                                             matched)) {
+            args.linuxSignKeySet = true;
+        } else if (matched) {
+            return false;
+        } else if (consumePackageOptionValue(arg,
                                              "--windows-sign-pfx",
                                              i,
                                              argc,
@@ -956,6 +999,7 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
 
         switch (target) {
             case PackageTarget::MacOS:
+            case PackageTarget::Dmg:
                 if (displayName.empty() || displayName.find('/') != std::string::npos ||
                     displayName.find('\\') != std::string::npos ||
                     displayName.find(':') != std::string::npos) {
@@ -1053,6 +1097,27 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                     "tarball top-level directory");
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
+            case PackageTarget::AppImage: {
+                if (archStr != "x64" && archStr != "arm64") {
+                    throw std::runtime_error("AppImage architecture must be x64 or arm64: " +
+                                             archStr);
+                }
+                viper::pkg::validateDebVersion(version, "package version");
+                viper::pkg::validateDesktopCategories(pkg.category);
+                (void)viper::pkg::normalizeDebName(proj.name);
+                (void)viper::pkg::normalizeExecName(proj.name);
+                break;
+            }
+            case PackageTarget::Rpm: {
+                if (archStr != "x64" && archStr != "arm64") {
+                    throw std::runtime_error("RPM architecture must be x64 or arm64: " + archStr);
+                }
+                viper::pkg::validateDebVersion(version, "package version");
+                viper::pkg::validateDesktopCategories(pkg.category);
+                (void)viper::pkg::normalizeDebName(proj.name);
+                (void)viper::pkg::normalizeExecName(proj.name);
+                break;
+            }
             case PackageTarget::Auto:
                 break;
         }
@@ -1476,6 +1541,11 @@ int cmdPackage(int argc, char **argv) {
     }
 
     try {
+        if (!args.linuxSignKey.empty() && args.platformTarget != PackageTarget::Linux &&
+            args.platformTarget != PackageTarget::Rpm) {
+            throw std::runtime_error(
+                "--linux-sign-key applies only to --target linux or --target rpm");
+        }
         const fs::path outputParent = fs::path(args.outputPath).parent_path();
         if (!outputParent.empty()) {
             std::error_code mkdirEc;
@@ -1508,6 +1578,10 @@ int cmdPackage(int argc, char **argv) {
                 // Map architecture: Debian uses "amd64" not "x64"
                 lparams.archStr = (archStr == "x64") ? "amd64" : archStr;
                 viper::pkg::buildDebPackage(lparams);
+                if (!args.linuxSignKey.empty())
+                    viper::pkg::signLinuxPackage(args.outputPath,
+                                                 args.linuxSignKey,
+                                                 /*isRpm=*/false);
                 break;
             }
             case PackageTarget::Windows: {
@@ -1532,6 +1606,45 @@ int cmdPackage(int argc, char **argv) {
                 tparams.outputPath = args.outputPath;
                 tparams.archStr = archStr;
                 viper::pkg::buildTarball(tparams);
+                break;
+            }
+            case PackageTarget::AppImage: {
+                viper::pkg::LinuxBuildParams aparams;
+                aparams.projectName = proj.name;
+                aparams.version = resolvedVersion;
+                aparams.executablePath = packageBinaryPath;
+                aparams.projectRoot = proj.rootDir;
+                aparams.pkgConfig = proj.packageConfig;
+                aparams.outputPath = args.outputPath;
+                aparams.archStr = archStr; // AppImage uses the portable x64/arm64 form
+                viper::pkg::buildAppImage(aparams);
+                break;
+            }
+            case PackageTarget::Rpm: {
+                viper::pkg::LinuxBuildParams rparams;
+                rparams.projectName = proj.name;
+                rparams.version = resolvedVersion;
+                rparams.executablePath = packageBinaryPath;
+                rparams.projectRoot = proj.rootDir;
+                rparams.pkgConfig = proj.packageConfig;
+                rparams.outputPath = args.outputPath;
+                rparams.archStr = archStr; // RPM uses the portable x64/arm64 form
+                viper::pkg::buildRpmPackage(rparams);
+                if (!args.linuxSignKey.empty())
+                    viper::pkg::signLinuxPackage(args.outputPath,
+                                                 args.linuxSignKey,
+                                                 /*isRpm=*/true);
+                break;
+            }
+            case PackageTarget::Dmg: {
+                viper::pkg::MacOSBuildParams params;
+                params.projectName = proj.name;
+                params.version = resolvedVersion;
+                params.executablePath = packageBinaryPath;
+                params.projectRoot = proj.rootDir;
+                params.pkgConfig = proj.packageConfig;
+                params.outputPath = args.outputPath;
+                viper::pkg::buildMacOSAppDmg(params);
                 break;
             }
             default:
@@ -1617,6 +1730,32 @@ int cmdPackage(int argc, char **argv) {
                 auto assetPaths = requiredAssetPayloadPaths(proj, topDir);
                 required.insert(required.end(), assetPaths.begin(), assetPaths.end());
                 valid = viper::pkg::verifyTarGzPayload(pkgData, required, verifyErr);
+                break;
+            }
+            case PackageTarget::AppImage: {
+                std::string appImageErr;
+                valid = viper::pkg::verifyLinuxAppImage(pkgData, &appImageErr);
+                if (!valid)
+                    verifyErr << appImageErr;
+                break;
+            }
+            case PackageTarget::Rpm: {
+                // rpmbuild produces the artifact; confirm the RPM lead magic is present.
+                valid = pkgData.size() >= 4 && pkgData[0] == static_cast<uint8_t>(0xED) &&
+                        pkgData[1] == static_cast<uint8_t>(0xAB) &&
+                        pkgData[2] == static_cast<uint8_t>(0xEE) &&
+                        pkgData[3] == static_cast<uint8_t>(0xDB);
+                if (!valid)
+                    verifyErr << "rpm: missing RPM lead magic\n";
+                break;
+            }
+            case PackageTarget::Dmg: {
+                // hdiutil produces a UDIF image; confirm the trailing "koly" block.
+                const size_t n = pkgData.size();
+                valid = n >= 512 && pkgData[n - 512] == 'k' && pkgData[n - 511] == 'o' &&
+                        pkgData[n - 510] == 'l' && pkgData[n - 509] == 'y';
+                if (!valid)
+                    verifyErr << "dmg: missing UDIF koly trailer\n";
                 break;
             }
             default:

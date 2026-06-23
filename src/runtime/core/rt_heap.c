@@ -422,29 +422,35 @@ static void rt_heap_registry_shutdown_(void) {
 /// @details Confirms the presence of the runtime magic tag, ensures the
 ///          reference count does not use the legacy reserved sentinel value for
 ///          corruptions, and validates that the heap kind enumerator is one of
-///          the recognised values.  Assertions fire in debug builds to surface
-///          memory corruptions or misuse of the allocator.
+///          the recognised values.  This check is deliberately active in
+///          release builds because heap entry points form the runtime's safety
+///          boundary for generated and host code.
 /// @param hdr Header pointer returned by a checked header lookup.
-#ifndef NDEBUG
 static void rt_heap_validate_header(const rt_heap_hdr_t *hdr) {
-    assert(hdr);
-    assert(hdr->magic == RT_MAGIC);
-    assert(__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != (size_t)-1);
+    if (!hdr) {
+        rt_trap("rt_heap_validate_header: null header");
+        return;
+    }
+    if (hdr->magic != RT_MAGIC) {
+        rt_trap("rt_heap_validate_header: invalid heap magic");
+        return;
+    }
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == (size_t)-1) {
+        rt_trap("rt_heap_validate_header: corrupt refcount");
+        return;
+    }
     switch ((rt_heap_kind_t)hdr->kind) {
         case RT_HEAP_STRING:
         case RT_HEAP_ARRAY:
         case RT_HEAP_OBJECT:
             break;
         default:
-            assert(!"rt_heap_validate_header: unknown heap kind");
+            rt_trap("rt_heap_validate_header: unknown heap kind");
+            return;
     }
 }
 
 #define RT_HEAP_VALIDATE(hdr) rt_heap_validate_header(hdr)
-#else
-// In release builds, skip validation for performance
-#define RT_HEAP_VALIDATE(hdr) ((void)0)
-#endif
 
 /// @brief Returns 1 if `payload` is a tracked rt_heap allocation. Looks up the registry under
 /// the heap lock. Used by polymorphic dispatch to distinguish heap-managed pointers from raw.
@@ -623,6 +629,12 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
                                         __ATOMIC_ACQUIRE)) {
             if (rt_register_shutdown_handler_() != 0) {
                 __atomic_store_n(&g_shutdown_registered, 0, __ATOMIC_RELEASE);
+                rt_trap("rt_heap_alloc: failed to register shutdown handler");
+                if (from_pool)
+                    rt_pool_free(hdr, total_bytes);
+                else
+                    free(hdr);
+                return NULL;
             }
         }
     }
@@ -869,9 +881,12 @@ rt_heap_hdr_t *rt_heap_hdr(void *payload) {
 }
 
 /// @brief Resize an existing heap allocation, updating len, cap, and the registry.
-/// @details Extends or shrinks the allocation by calling @c realloc on the header
-///          block. New elements are zero-filled when @p new_len > old_len. Not
-///          applicable to pool-allocated blocks (returns NULL for those).
+/// @details Extends or shrinks the allocation by allocating a replacement block,
+///          copying the preserved prefix, and then moving the live-payload
+///          registry entry under the registry lock. Allocator calls happen
+///          outside the lock so unrelated retain/release traffic is not blocked
+///          by the system allocator. New elements are zero-filled when
+///          @p new_len is larger than the previous logical length.
 /// @param payload  Existing payload pointer from rt_heap_alloc.
 /// @param elem_size Size in bytes of each logical element.
 /// @param new_len  New logical length.
@@ -881,13 +896,6 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     if (!payload)
         return NULL;
 
-    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_realloc");
-    if (!hdr)
-        return NULL;
-    RT_HEAP_VALIDATE(hdr);
-
-    if ((hdr->flags & RT_HEAP_FLAG_POOLED) != 0)
-        return NULL;
     if (elem_size == 0 && new_cap > 0)
         return NULL;
 
@@ -902,35 +910,48 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
         payload_bytes = cap * elem_size;
     }
     size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
-    size_t old_len = hdr->len;
+    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)malloc(total_bytes);
+    if (!resized)
+        return NULL;
 
     rt_heap_registry_lock_();
-    if (!rt_heap_registry_contains_locked_(payload)) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header_locked_(payload, &hdr) || !hdr) {
         rt_heap_registry_unlock_();
+        free(resized);
+        rt_trap("rt_heap_realloc: invalid or freed heap payload");
         return NULL;
     }
+    RT_HEAP_VALIDATE(hdr);
 
-    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
-    if (!resized) {
-        rt_heap_registry_unlock_();
-        return NULL;
-    }
+    size_t old_len = hdr->len;
+    size_t old_alloc_size = hdr->alloc_size;
+    int from_pool = (hdr->flags & RT_HEAP_FLAG_POOLED) != 0;
+    size_t copy_bytes = old_alloc_size < total_bytes ? old_alloc_size : total_bytes;
+    memcpy(resized, hdr, copy_bytes);
+    resized->flags &= ~RT_HEAP_FLAG_POOLED;
+    resized->len = new_len;
+    resized->cap = cap;
+    resized->alloc_size = total_bytes;
 
     void *new_payload = rt_heap_data(resized);
+    if (new_len > old_len && elem_size > 0) {
+        memset((uint8_t *)new_payload + old_len * elem_size, 0, (new_len - old_len) * elem_size);
+    }
+
     if (!rt_heap_registry_move_locked_(payload, new_payload)) {
         rt_heap_registry_unlock_();
+        free(resized);
         rt_abort("rt_heap_realloc: registry update failed");
         return NULL;
     }
     rt_heap_registry_unlock_();
 
-    if (new_len > old_len && elem_size > 0) {
-        memset((uint8_t *)new_payload + old_len * elem_size, 0, (new_len - old_len) * elem_size);
-    }
-
-    resized->len = new_len;
-    resized->cap = cap;
-    resized->alloc_size = total_bytes;
+    memset(hdr, 0, sizeof(*hdr));
+    if (from_pool)
+        rt_pool_free(hdr, old_alloc_size);
+    else
+        free(hdr);
 
     return new_payload;
 }

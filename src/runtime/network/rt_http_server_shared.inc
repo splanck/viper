@@ -265,6 +265,109 @@ static int is_server_managed_header_name(const char *name) {
             strcasecmp(name, "Transfer-Encoding") == 0);
 }
 
+/// @brief Compute the byte length of a JSON-escaped C string.
+/// @details Counts quote, reverse-solidus, short control escapes, and
+///          `\u00XX` escapes for other C0 controls without writing output.
+///          Returning @c SIZE_MAX signals that the escaped representation would
+///          overflow @c size_t.
+/// @param s Source string; NULL is treated as an empty string.
+/// @return Escaped byte length excluding the terminating NUL, or @c SIZE_MAX.
+static size_t json_escaped_len(const char *s) {
+    size_t n = 0;
+    if (!s)
+        return 0;
+    while (*s) {
+        unsigned char c = (unsigned char)*s++;
+        switch (c) {
+            case '"':
+            case '\\':
+            case '\b':
+            case '\f':
+            case '\n':
+            case '\r':
+            case '\t':
+                if (n > SIZE_MAX - 2)
+                    return SIZE_MAX;
+                n += 2;
+                break;
+            default:
+                if (c < 0x20) {
+                    if (n > SIZE_MAX - 6)
+                        return SIZE_MAX;
+                    n += 6;
+                } else {
+                    if (n == SIZE_MAX)
+                        return SIZE_MAX;
+                    n++;
+                }
+                break;
+        }
+    }
+    return n;
+}
+
+/// @brief Copy a C string into an already-sized JSON string buffer.
+/// @details Escapes characters exactly as counted by @ref json_escaped_len and
+///          always writes a trailing NUL. The destination must provide
+///          `json_escaped_len(s) + 1` bytes.
+/// @param out Destination buffer.
+/// @param s Source string; NULL is encoded as an empty string.
+static void json_escape_into(char *out, const char *s) {
+    static const char hex[] = "0123456789abcdef";
+    if (!out)
+        return;
+    if (!s) {
+        *out = '\0';
+        return;
+    }
+    while (*s) {
+        unsigned char c = (unsigned char)*s++;
+        switch (c) {
+            case '"':
+                *out++ = '\\';
+                *out++ = '"';
+                break;
+            case '\\':
+                *out++ = '\\';
+                *out++ = '\\';
+                break;
+            case '\b':
+                *out++ = '\\';
+                *out++ = 'b';
+                break;
+            case '\f':
+                *out++ = '\\';
+                *out++ = 'f';
+                break;
+            case '\n':
+                *out++ = '\\';
+                *out++ = 'n';
+                break;
+            case '\r':
+                *out++ = '\\';
+                *out++ = 'r';
+                break;
+            case '\t':
+                *out++ = '\\';
+                *out++ = 't';
+                break;
+            default:
+                if (c < 0x20) {
+                    *out++ = '\\';
+                    *out++ = 'u';
+                    *out++ = '0';
+                    *out++ = '0';
+                    *out++ = hex[(c >> 4) & 0x0F];
+                    *out++ = hex[c & 0x0F];
+                } else {
+                    *out++ = (char)c;
+                }
+                break;
+        }
+    }
+    *out = '\0';
+}
+
 /// @brief Replace the response body with a JSON error object.
 ///
 /// Used when route lookup fails or a handler binding is missing so both the
@@ -288,17 +391,18 @@ static void set_json_error_response(server_res_t *res, int status_code, const ch
     res->body_len = 0;
 
     if (message) {
-        size_t cap = strlen(message) + 32;
+        size_t escaped_len = json_escaped_len(message);
+        if (escaped_len == SIZE_MAX || escaped_len > SIZE_MAX - 13)
+            return;
+        size_t cap = escaped_len + 13;
         char *json = (char *)malloc(cap);
         if (json) {
-            int written = snprintf(json, cap, "{\"error\":\"%s\"}", message);
-            if (written >= 0) {
-                res->body = json;
-                res->body_len = (size_t)written;
-                res->sent = true;
-            } else {
-                free(json);
-            }
+            memcpy(json, "{\"error\":\"", 10);
+            json_escape_into(json + 10, message);
+            memcpy(json + 10 + escaped_len, "\"}", 3);
+            res->body = json;
+            res->body_len = 12 + escaped_len;
+            res->sent = true;
         }
     }
 
@@ -703,6 +807,33 @@ typedef enum {
     HTTP_REQUEST_FRAME_INVALID = -1
 } http_request_frame_status_t;
 
+/// @brief Validate line lengths in a partial HTTP request buffer.
+/// @details Scans all complete CRLF-delimited lines and the current trailing
+///          partial line. Any line exceeding @c HTTP_REQ_MAX_LINE is rejected
+///          before the aggregate header buffer grows to the full request cap.
+///          The CRLF bytes themselves are not counted as part of the line.
+/// @param buf Request bytes accumulated so far.
+/// @param buf_len Number of valid bytes in @p buf.
+/// @return @c true when every observed line is within the configured limit.
+static bool http_request_lines_within_limit(const char *buf, size_t buf_len) {
+    size_t line_start = 0;
+    if (!buf)
+        return false;
+    for (size_t i = 0; i < buf_len; i++) {
+        if (buf[i] == '\n') {
+            size_t line_end = i;
+            if (line_end > line_start && buf[line_end - 1] == '\r')
+                line_end--;
+            if (line_end < line_start || line_end - line_start > HTTP_REQ_MAX_LINE)
+                return false;
+            line_start = i + 1;
+        } else if (i + 1 - line_start > HTTP_REQ_MAX_LINE) {
+            return false;
+        }
+    }
+    return buf_len - line_start <= HTTP_REQ_MAX_LINE;
+}
+
 static http_request_frame_status_t find_complete_http_request_frame(const char *buf,
                                                                     size_t buf_len,
                                                                     size_t *request_len_out,
@@ -717,6 +848,8 @@ static http_request_frame_status_t find_complete_http_request_frame(const char *
     if (desired_cap_out)
         *desired_cap_out = 0;
     if (!buf)
+        return HTTP_REQUEST_FRAME_INVALID;
+    if (!http_request_lines_within_limit(buf, buf_len))
         return HTTP_REQUEST_FRAME_INVALID;
     if (!header_end)
         return HTTP_REQUEST_FRAME_INCOMPLETE;
@@ -758,6 +891,8 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
 
     const char *line_end = find_crlf(raw, raw_len);
     if (!line_end)
+        return false;
+    if ((size_t)(line_end - raw) > HTTP_REQ_MAX_LINE)
         return false;
 
     const char *p = raw;
@@ -812,6 +947,8 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
     while (p < raw + raw_len && header_count < HTTP_REQ_MAX_HEADERS) {
         const char *next_end = find_crlf(p, (size_t)(raw + raw_len - p));
         if (!next_end)
+            goto fail;
+        if ((size_t)(next_end - p) > HTTP_REQ_MAX_LINE)
             goto fail;
         if (next_end == p) {
             body_start = next_end + 2;

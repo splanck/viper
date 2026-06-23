@@ -148,6 +148,7 @@ Now, whenever your program mentions `age`, the computer knows to go find the box
 ```rust
 bind Viper.Terminal;
 
+var age = 25;
 Say(age);  // Goes to the 'age' box, finds 25, displays it
 ```
 
@@ -875,6 +876,7 @@ Think of it like updating a scoreboard. The old score was 10. Something happened
 The pattern "variable = variable + something" appears constantly in real programs:
 
 ```rust
+var score = 10;
 score = score + 5;   // Add 5 to score
 score = score - 3;   // Subtract 3 from score
 score = score * 2;   // Double the score
@@ -1088,7 +1090,7 @@ Integer divided by integer gives integer. Use floats for fractional results.
 bind Viper.Terminal;
 
 var age = InputLine();  // This is a string, not a number!
-var nextYear = age + 1;  // Error or wrong result!
+var nextYear = age + 1;  // Wrong result: string concatenation, not arithmetic!
 ```
 `InputLine()` returns a string. Use `Viper.Core.Convert.ToInt64()` or `Viper.Core.Convert.ToDouble()` to convert it to a number.
 

@@ -26,7 +26,9 @@
 
 #include "rt_synth.h"
 #include "rt_audio.h"
+#include "rt_random.h"
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -360,8 +362,8 @@ void *rt_synth_noise(int64_t duration_ms, int64_t volume) {
     if (!samples)
         return NULL;
 
-    /* Simple LCG PRNG for reproducible noise (no external dependency) */
-    uint32_t rng_state = 0x12345678;
+    /* Simple LCG PRNG seeded from the runtime RNG (no external dependency). */
+    uint32_t rng_state = (uint32_t)rt_rand_range(1, INT_MAX);
     double vol_scale = (double)volume / 100.0;
 
     for (int32_t i = 0; i < num_samples; i++) {

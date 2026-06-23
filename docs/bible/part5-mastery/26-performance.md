@@ -400,14 +400,16 @@ To determine Big O, count loops:
 But watch for hidden loops:
 
 ```rust
+bind Viper.Terminal as Terminal;
+
 func sneakyQuadratic(items: List[String]) {
     for item in items {
-        if items.Contains(item.reversed()) {  // contains() is O(n)!
+        if items.has(item + "!") {  // has() scans the list
             Terminal.Say("Found palindrome pair");
         }
     }
 }
-// Looks like O(n), but contains() loops internally, making it O(n²)
+// Looks like O(n), but has() loops internally, making it O(n²)
 ```
 
 ---
@@ -440,10 +442,14 @@ With 1,000,000 items: ~500,000,000,000 comparisons (could take minutes)
 
 ```rust
 func hasDuplicates_medium(items: List[Integer]) -> Boolean {
-    var sorted = items.sorted();  // O(n log n)
+    var sorted: List[Integer] = [];
+    for item in items {
+        sorted.add(item);
+    }
+    sorted.sort();  // O(n log n)
 
-    for i in 0..(sorted.Length - 1) {  // O(n)
-        if sorted[i] == sorted[i + 1] {
+    for i in 0..(sorted.count() - 1) {  // O(n)
+        if sorted.get(i) == sorted.get(i + 1) {
             return true;
         }
     }
@@ -622,9 +628,14 @@ Strings are immutable in Viper. Each concatenation creates a new String:
 
 **Slow:**
 ```rust
-var result = "";
-for i in 0..10000 {
-    result += "item " + i + "\n";  // Creates 10,000 intermediate strings!
+bind Fmt = Viper.Text.Fmt;
+
+func buildSlow() -> String {
+    var result = "";
+    for i in 0..10000 {
+        result += "item " + Fmt.Int(i) + "\n";  // Creates 10,000 intermediate strings!
+    }
+    return result;
 }
 ```
 
@@ -632,13 +643,18 @@ Each `+=` creates a new String, copies all existing content, adds the new part. 
 
 **Fast:**
 ```rust
-var builder = new Viper.Text.StringBuilder();
-for i in 0..10000 {
-    builder.Append("item ");
-    builder.Append(i);
-    builder.Append("\n");
+bind Builder = Viper.Text.StringBuilder;
+bind Fmt = Viper.Text.Fmt;
+
+func buildFast() -> String {
+    var builder = Builder.New();
+    for i in 0..10000 {
+        builder.Append("item ");
+        builder.Append(Fmt.Int(i));
+        builder.Append("\n");
+    }
+    return builder.ToString();  // One final String
 }
-var result = builder.ToString();  // One final String
 ```
 
 StringBuilder accumulates efficiently, creating only one final String.
@@ -679,17 +695,17 @@ class FibonacciCalculator {
     hide cache: Map[Integer, Integer];
 
     expose func init() {
-        self.cache = new Map();
+        self.cache = new Map[Integer, Integer]();
     }
 
     expose func calculate(n: Integer) -> Integer {
         // Check cache first
-        if self.cache.Has(n) {
-            return self.cache.Get(n);
+        if self.cache.has(n) {
+            return self.cache.get(n) ?? 0;
         }
 
         // Compute if not cached
-        var result: Integer;
+        var result = 0;
         if n <= 1 {
             result = n;
         } else {
@@ -697,7 +713,7 @@ class FibonacciCalculator {
         }
 
         // Store for next time
-        self.cache.Set(n, result);
+        self.cache.set(n, result);
         return result;
     }
 }
@@ -898,16 +914,29 @@ var data3 = Http.Get(url3);  // Wait 200ms
 
 **Fast: Parallel** *(see [Chapter 24](../part4-applications/24-concurrency.md))*
 ```rust
-bind Thread = Viper.Threads.Thread;
+bind Async = Viper.Threads.Async;
+bind Future = Viper.Threads.Future;
 bind Http = Viper.Network.Http;
 
-var t1 = Thread.Start(func() { return Http.Get(url1); });
-var t2 = Thread.Start(func() { return Http.Get(url2); });
-var t3 = Thread.Start(func() { return Http.Get(url3); });
+func fetchUrl1(arg: Any) -> Any {
+    return Http.Get(url1);
+}
 
-t1.Join();
-t2.Join();
-t3.Join();
+func fetchUrl2(arg: Any) -> Any {
+    return Http.Get(url2);
+}
+
+func fetchUrl3(arg: Any) -> Any {
+    return Http.Get(url3);
+}
+
+var f1 = Async.Run(&fetchUrl1, 0);
+var f2 = Async.Run(&fetchUrl2, 0);
+var f3 = Async.Run(&fetchUrl3, 0);
+
+var data1 = Future.Get(f1);
+var data2 = Future.Get(f2);
+var data3 = Future.Get(f3);
 // Total: ~200ms (they run simultaneously)
 ```
 
@@ -921,7 +950,7 @@ Let's walk through optimizing a real program step by step: counting word frequen
 
 ### Step 1: The Naive Implementation
 
-```rust
+```text
 func countWords_v1(text: String) -> Map[String, Integer] {
     var counts: Map[String, Integer] = new Map();
 
@@ -966,7 +995,7 @@ countWords_v1: 2340 ms
 
 **Version 2: Eliminate intermediate array from split**
 
-```rust
+```text
 func countWords_v2(text: String) -> Map[String, Integer] {
     var counts: Map[String, Integer] = new Map();
     var wordStart = -1;
@@ -1003,7 +1032,7 @@ Result: **1650 ms** (30% faster). No more giant array allocation.
 
 **Version 3: Build words without intermediate strings**
 
-```rust
+```text
 func countWords_v3(text: String) -> Map[String, Integer] {
     var counts: Map[String, Integer] = new Map();
     var builder = new Viper.Text.StringBuilder();
@@ -1166,7 +1195,7 @@ When comparing approaches, benchmark carefully. Computers are tricky; many thing
 
 ### A Proper Benchmark Function
 
-```rust
+```text
 bind Viper.Time;
 bind Viper.Terminal;
 bind Viper.Text.Fmt as Fmt;
@@ -1342,7 +1371,7 @@ When debugging performance, look for these usual suspects:
 ## The Two Languages
 
 **Zia**
-```rust
+```text
 bind Viper.Time;
 bind Viper.Terminal;
 
@@ -1357,7 +1386,7 @@ func benchmark(name: String, work: func()) {
 ```
 
 **BASIC**
-```basic
+```text
 SUB Benchmark(name AS STRING, work AS SUB())
     DIM start AS LONG, elapsed AS LONG
     DIM i AS INTEGER

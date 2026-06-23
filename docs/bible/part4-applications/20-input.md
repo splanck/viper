@@ -139,8 +139,11 @@ For text input (like typing a player's name), Viper provides text input events t
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.HasTextInput() {
-    var text = Keyboard.GetTextInput();  // Gets the actual characters typed
+var playerName = "";
+Keyboard.EnableTextInput();
+
+var text = Keyboard.GetText();  // Gets the actual characters typed this frame
+if text.Length() > 0 {
     playerName += text;
 }
 ```
@@ -383,7 +386,8 @@ The scroll wheel reports how much it moved:
 ```rust
 bind Mouse = Viper.Input.Mouse;
 
-var scroll = Mouse.Scroll();  // Positive = up, negative = down
+var zoomLevel = 1.0;
+var scroll = Mouse.WheelY();  // Positive = up, negative = down
 if scroll != 0 {
     zoomLevel += scroll * 0.1;
 }
@@ -664,22 +668,22 @@ class KeyMap {
     expose func init() {
         self.bindings = new Map();
         // Default bindings
-        self.bindings.Set("jump", KEY_SPACE);
-        self.bindings.Set("left", KEY_LEFT);
-        self.bindings.Set("right", KEY_RIGHT);
-        self.bindings.Set("up", KEY_UP);
-        self.bindings.Set("down", KEY_DOWN);
-        self.bindings.Set("fire", KEY_CTRL);
-        self.bindings.Set("pause", KEY_ESCAPE);
+        self.bindings.Set("jump", Keyboard.KEY_SPACE);
+        self.bindings.Set("left", Keyboard.KEY_LEFT);
+        self.bindings.Set("right", Keyboard.KEY_RIGHT);
+        self.bindings.Set("up", Keyboard.KEY_UP);
+        self.bindings.Set("down", Keyboard.KEY_DOWN);
+        self.bindings.Set("fire", Keyboard.KEY_CTRL);
+        self.bindings.Set("pause", Keyboard.KEY_ESCAPE);
     }
 
     func isActionDown(action: String) -> Boolean {
-        var key = self.bindings.Get(action);
+        var key = self.bindings.Get(action) ?? Keyboard.KEY_UNKNOWN;
         return Keyboard.IsDown(key);
     }
 
     func wasActionPressed(action: String) -> Boolean {
-        var key = self.bindings.Get(action);
+        var key = self.bindings.Get(action) ?? Keyboard.KEY_UNKNOWN;
         return Keyboard.WasPressed(key);
     }
 
@@ -688,7 +692,7 @@ class KeyMap {
     }
 
     func getBinding(action: String) -> Integer {
-        return self.bindings.Get(action);
+        return self.bindings.Get(action) ?? Keyboard.KEY_UNKNOWN;
     }
 }
 ```
@@ -809,16 +813,16 @@ class Debouncer {
 
     func update(dt: Number) {
         for action in self.cooldowns.Keys() {
-            var remaining = self.cooldowns.Get(action);
-            if remaining > 0 {
+            var remaining = self.cooldowns.Get(action) ?? 0.0;
+            if remaining > 0.0 {
                 self.cooldowns.Set(action, remaining - dt);
             }
         }
     }
 
     func canActivate(action: String, cooldown: Number) -> Boolean {
-        var remaining = self.cooldowns.Get(action);
-        if remaining == nil || remaining <= 0 {
+        var remaining = self.cooldowns.Get(action) ?? 0.0;
+        if remaining <= 0.0 {
             self.cooldowns.Set(action, cooldown);
             return true;
         }
@@ -1250,7 +1254,7 @@ if Input.isControllerConnected(0) {
 ```
 
 **BASIC**
-```basic
+```text
 ' Keyboard
 IF KEYDOWN(KEY_SPACE) THEN
     player.charging = TRUE

@@ -274,45 +274,41 @@ This single JSON document represents complex, deeply nested data:
 
 ### Parsing JSON in Zia
 
-> **Note:** The examples in this chapter use `bind Json = Viper.Text.Json;` for JSON operations. For value extraction, use `Viper.Unbox.Str()` / `Viper.Unbox.I64()` / `Viper.Unbox.F64()`. See Appendix D for the complete runtime reference.
+> **Note:** The examples in this chapter use `bind Json = Viper.Text.Json;` for JSON operations. Use `Json.GetStr()`, `Json.GetInt()`, `Json.GetBool()`, and the matching `Json.Set*()` helpers for object fields. See Appendix D for the complete runtime reference.
 
 Parsing means reading JSON text and creating program data structures from it:
 
 ```rust
 bind Json = Viper.Text.Json;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
 func start() {
-    var jsonText = '{"name": "Alice", "score": 100, "active": true}';
+    var jsonText = "{\"name\": \"Alice\", \"score\": 100, \"active\": true}";
 
-    // Parse the JSON text into a JSONValue
+    // Parse the JSON text into a runtime object
     var data = Json.Parse(jsonText);
 
     // Extract values with type conversions
-    var name = data["name"].asString();
-    var score = data["score"].asInt();
-    var active = data["active"].asBool();
+    var name = Json.GetStr(data, "name");
+    var score = Json.GetInt(data, "score");
+    var active = Json.GetBool(data, "active");
 
     Terminal.Say("Player: " + name);
-    Terminal.Say("Score: " + score);
-    Terminal.Say("Active: " + active);
+    Terminal.Say("Score: " + Fmt.Int(score));
+    Terminal.Say("Active: " + Fmt.Bool(active));
 }
 ```
 
 Let us trace through this step by step:
 
-1. **`Json.Parse(jsonText)`**: Takes the raw text and builds a tree structure representing the JSON. This returns a `JSONValue`, which is a generic container that could hold any JSON type.
+1. **`Json.Parse(jsonText)`**: Takes the raw text and builds a runtime object representing the JSON. Objects behave like maps, arrays behave like sequences, and scalar values stay boxed.
 
-2. **`data["name"]`**: Accesses the value associated with the key `"name"`. This returns another `JSONValue`.
+2. **`Json.GetStr(data, "name")`**: Reads the string field named `"name"` from the parsed object.
 
-3. **`.asString()`**: Converts the `JSONValue` to a Zia string. This is necessary because JSON is dynamically typed --- the parser does not know at compile time what types you will find.
+3. **`Json.GetInt()` / `Json.GetBool()`**: Read integer and boolean fields with the expected type.
 
-The `.as*` methods perform type conversions:
-- `.asString()` --- returns the value as a string
-- `.asInt()` --- returns the value as an integer
-- `.asFloat()` --- returns the value as a floating-point number
-- `.asBool()` --- returns the value as a boolean
-- `.asArray()` --- returns the value as an iterable array of JSONValues
+For dynamic values, use the `Viper.Core.Box` conversion helpers or parse string fields explicitly with `Viper.Core.Parse`.
 
 ### Creating JSON in Zia
 
@@ -320,40 +316,27 @@ To save program data as JSON, you build a JSON structure programmatically:
 
 ```rust
 bind Json = Viper.Text.Json;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 
 func start() {
     // Create a JSON object
-    var player = Json.Object();
+    var player = Json.NewObject();
 
     // Add simple values
-    player.Set("name", "Hero");
-    player.Set("level", 5);
-    player.Set("health", 87.5);
-    player.Set("alive", true);
-
-    // Create and add an array
-    var inventory = Json.Array();
-    inventory.Add("sword");
-    inventory.Add("shield");
-    inventory.Add("potion");
-    player.Set("inventory", inventory);
-
-    // Create and add a nested object
-    var position = Json.Object();
-    position.Set("x", 100.0);
-    position.Set("y", 200.0);
-    player.Set("position", position);
+    Json.SetStr(player, "name", "Hero");
+    Json.SetInt(player, "level", 5);
+    Json.SetInt(player, "health", 88);
+    Json.SetBool(player, "alive", true);
 
     // Convert to JSON text
-    var jsonText = player.toString();
+    var jsonText = Json.Format(player);
     Terminal.Say(jsonText);
 }
 ```
 
 Output:
 ```json
-{"name":"Hero","level":5,"health":87.5,"alive":true,"inventory":["sword","shield","potion"],"position":{"x":100.0,"y":200.0}}
+{"health":88,"alive":true,"level":5,"name":"Hero"}
 ```
 
 The output is compact --- no unnecessary whitespace. This is efficient for storage and transmission.
@@ -363,7 +346,7 @@ The output is compact --- no unnecessary whitespace. This is efficient for stora
 Compact JSON is hard to read. For debugging, logs, or configuration files that humans edit, use pretty-printing:
 
 ```rust
-var jsonText = player.toPrettyString();
+var jsonText = Json.FormatPretty(player, 2);
 Terminal.Say(jsonText);
 ```
 
@@ -393,63 +376,42 @@ This is the same data, just formatted with indentation and newlines for human ey
 For clean code, add serialization methods to your entities:
 
 ```rust
+bind Json = Viper.Text.Json;
+bind File = Viper.IO.File;
+
 class Player {
-    name: String;
-    level: Integer;
-    health: Number;
-    inventory: List[String];
-    x: Number;
-    y: Number;
+    expose name: String;
+    expose level: Integer;
+    expose health: Integer;
+
+    expose func init(name: String, level: Integer, health: Integer) {
+        self.name = name;
+        self.level = level;
+        self.health = health;
+    }
 
     // Convert this Player to a JSON representation
-    func toJSON() -> JSONValue {
-        var obj = Json.Object();
-        obj.Set("name", self.name);
-        obj.Set("level", self.level);
-        obj.Set("health", self.health);
-
-        var inv = Json.Array();
-        for item in self.inventory {
-            inv.Add(item);
-        }
-        obj.Set("inventory", inv);
-
-        var pos = Json.Object();
-        pos.Set("x", self.x);
-        pos.Set("y", self.y);
-        obj.Set("position", pos);
-
+    expose func toJson() -> Any {
+        var obj = Json.NewObject();
+        Json.SetStr(obj, "name", self.name);
+        Json.SetInt(obj, "level", self.level);
+        Json.SetInt(obj, "health", self.health);
         return obj;
     }
-
-    // Create a Player from a JSON representation
-    static func fromJSON(data: JSONValue) -> Player {
-        var player = Player();
-        player.name = data["name"].asString();
-        player.level = data["level"].asInt();
-        player.health = data["health"].asFloat();
-
-        player.inventory = [];
-        for item in data["inventory"].asArray() {
-            player.inventory.Push(item.asString());
-        }
-
-        player.x = data["position"]["x"].asFloat();
-        player.y = data["position"]["y"].asFloat();
-
-        return player;
-    }
 }
-```
 
-Usage becomes elegant:
-
-```rust
-bind File = Viper.IO.File;
+// Create a Player from a JSON representation
+func playerFromJson(data: Any) -> Player {
+    return new Player(
+        Json.GetStr(data, "name"),
+        Json.GetInt(data, "level"),
+        Json.GetInt(data, "health")
+    );
+}
 
 // Save a player
 func saveGame(player: Player, filename: String) {
-    var json = player.toJSON().toPrettyString();
+    var json = Json.FormatPretty(player.toJson(), 2);
     File.WriteAllText(filename, json);
 }
 
@@ -457,21 +419,21 @@ func saveGame(player: Player, filename: String) {
 func loadGame(filename: String) -> Player {
     var json = File.ReadAllText(filename);
     var data = Json.Parse(json);
-    return Player.fromJSON(data);
+    return playerFromJson(data);
 }
 ```
 
 Let us trace through saving and loading:
 
 **Saving:**
-1. `player.toJSON()` creates a JSONValue representing the player
-2. `.toPrettyString()` converts that to formatted text
+1. `player.toJson()` creates a map-like runtime object representing the player
+2. `Json.FormatPretty()` converts that to formatted text
 3. `File.WriteAllText()` writes the text to disk
 
 **Loading:**
 1. `File.ReadAllText()` reads the raw text from disk
-2. `Json.Parse()` parses the text into a JSONValue tree
-3. `Player.fromJSON()` extracts values and constructs a Player
+2. `Json.Parse()` parses the text into runtime maps, sequences, strings, numbers, and booleans
+3. `playerFromJson()` extracts values and constructs a Player
 
 ### When to Use JSON
 
@@ -525,48 +487,44 @@ But CSV has significant limitations:
 
 ```rust
 bind Csv = Viper.Text.Csv;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 bind Convert = Viper.Core.Convert;
+bind Fmt = Viper.Text.Fmt;
 
 func start() {
-    var csv = Csv.Load("players.csv");
+    var row = Csv.ParseLine("Hero,5,88");
+    var name = row.GetStr(0);
+    var level = Convert.ToInt64(row.GetStr(1));
+    var health = Convert.ToInt64(row.GetStr(2));
 
-    for row in csv.rows() {
-        var name = row["name"];
-        var level = Convert.ToInt64(row["level"]);
-        var health = Convert.ToDouble(row["health"]);
-
-        Terminal.Say(name + " (Level " + level + ", HP: " + health + ")");
-    }
+    Terminal.Say(name + " (Level " + Fmt.Int(level) + ", HP: " + Fmt.Int(health) + ")");
 }
 ```
 
 Step by step:
-1. `Csv.Load()` reads the file and parses it
-2. `.rows()` returns an iterator over data rows (skipping the header)
-3. Each row is a dictionary-like object where you access columns by name
-4. String values like `level` must be explicitly converted to integers
+1. `Csv.ParseLine()` parses one CSV record and returns a sequence of fields
+2. `GetStr(index)` reads a field by zero-based index
+3. String values like `level` must be explicitly converted to integers
 
 ### Writing CSV
 
 ```rust
 bind Csv = Viper.Text.Csv;
+bind Seq = Viper.Collections.Seq;
+bind Viper.Terminal as Terminal;
 
 func start() {
-    // Create a CSV with column headers
-    var csv = Csv.Create(["name", "level", "health", "x", "y"]);
+    var fields = Seq.New();
+    fields.Push("Hero");
+    fields.Push("5");
+    fields.Push("88");
 
-    // Add rows as arrays of strings
-    csv.addRow(["Hero", "5", "87.5", "100.0", "200.0"]);
-    csv.addRow(["Wizard", "3", "65.0", "150.0", "180.0"]);
-    csv.addRow(["Warrior", "7", "120.0", "80.0", "220.0"]);
-
-    // Save to file
-    csv.save("players.csv");
+    var line = Csv.FormatLine(fields);
+    Terminal.Say(line);
 }
 ```
 
-Notice that all values must be strings. CSV does not have a concept of numbers --- they are just text that looks like numbers.
+Notice that all values are written as strings. CSV does not have a concept of numbers --- they are just text that looks like numbers.
 
 ### Handling Edge Cases
 
@@ -699,7 +657,7 @@ pos.Set("y", 200.0) -> pos: {"x": 100.0, "y": 200.0}
 obj: {"name": "Hero", "level": 5, "health": 87.5, "inventory": ["sword", "shield"], "position": {"x": 100.0, "y": 200.0}}
 ```
 
-**Step 10**: `.toPrettyString()` --- Convert the structure to formatted text
+**Step 10**: `Json.FormatPretty(obj, 2)` --- Convert the structure to formatted text
 
 The final result is a string containing the JSON representation.
 
@@ -719,7 +677,7 @@ Now the reverse. We have this JSON text:
 
 We call `Json.Parse(jsonText)`:
 
-**Step 1**: The parser reads the opening `{` and knows this is an object. It creates an empty JSONValue of object type.
+**Step 1**: The parser reads the opening `{` and knows this is an object. It creates a runtime map for the object.
 
 **Step 2**: It reads `"name"` (a key), then `:`, then `"Hero"` (a string value). It stores `"name" -> "Hero"` in the object.
 
@@ -737,59 +695,54 @@ The result is a tree structure in memory:
 
 ```text
 data:
-  "name" -----> JSONValue(string: "Hero")
-  "level" ----> JSONValue(number: 5)
-  "health" ---> JSONValue(number: 87.5)
-  "inventory" -> JSONValue(array: [
-                     JSONValue(string: "sword"),
-                     JSONValue(string: "shield")
-                   ])
-  "position" -> JSONValue(object:
-                   "x" -> JSONValue(number: 100.0)
-                   "y" -> JSONValue(number: 200.0)
-                 )
+  "name" -----> string "Hero"
+  "level" ----> number 5
+  "health" ---> number 87.5
+  "inventory" -> Seq["sword", "shield"]
+  "position" -> Map{
+                   "x" -> number 100.0
+                   "y" -> number 200.0
+                 }
 ```
 
-Now we call `Player.fromJSON(data)`:
+Now we call `playerFromJson(data)`:
 
 **Step 1**: Create an empty Player
 ```text
 player: Player()
 ```
 
-**Step 2**: `data["name"]` navigates to the JSONValue for "name", `.asString()` extracts "Hero"
+**Step 2**: `Json.GetStr(data, "name")` extracts "Hero"
 ```text
 player.name = "Hero"
 ```
 
-**Step 3**: `data["level"].asInt()` extracts 5
+**Step 3**: `Json.GetInt(data, "level")` extracts 5
 ```text
 player.level = 5
 ```
 
-**Step 4**: `data["health"].asFloat()` extracts 87.5
+**Step 4**: A numeric accessor extracts `87.5`; use integer helpers for whole-number fields and raw unboxing for floating-point values.
 ```text
 player.health = 87.5
 ```
 
-**Step 5**: `data["inventory"].asArray()` returns an array we can iterate:
+**Step 5**: The `"inventory"` field is parsed as a sequence we can iterate:
 ```text
 for item in array:
-    item = JSONValue(string: "sword") -> .asString() -> "sword"
+    item = "sword"
     player.inventory.Push("sword")
 
-    item = JSONValue(string: "shield") -> .asString() -> "shield"
+    item = "shield"
     player.inventory.Push("shield")
 ```
 
-**Step 6**: `data["position"]["x"].asFloat()` chains access:
+**Step 6**: `JsonPath.GetInt(data, "$.position.x")` navigates nested objects:
 ```text
-data["position"] -> JSONValue(object with x and y)
-["x"] -> JSONValue(number: 100.0)
-.asFloat() -> 100.0
+data -> "position" map -> "x" number -> 100
 
-player.x = 100.0
-player.y = 200.0
+player.x = 100
+player.y = 200
 ```
 
 **Step 7**: Return the fully populated Player.
@@ -854,33 +807,41 @@ Let us build a complete application that manages contacts, demonstrating seriali
 module ContactManager;
 
 bind Json = Viper.Text.Json;
+bind Seq = Viper.Collections.Seq;
 bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
 // ============================================
 // Data Model
 // ============================================
 
 class Contact {
-    name: String;
-    phone: String;
-    email: String;
+    expose name: String;
+    expose phone: String;
+    expose email: String;
 
-    func toJSON() -> JSONValue {
-        var obj = Json.Object();
-        obj.Set("name", self.name);
-        obj.Set("phone", self.phone);
-        obj.Set("email", self.email);
+    expose func init(name: String, phone: String, email: String) {
+        self.name = name;
+        self.phone = phone;
+        self.email = email;
+    }
+
+    expose func toJson() -> Any {
+        var obj = Json.NewObject();
+        Json.SetStr(obj, "name", self.name);
+        Json.SetStr(obj, "phone", self.phone);
+        Json.SetStr(obj, "email", self.email);
         return obj;
     }
+}
 
-    static func fromJSON(data: JSONValue) -> Contact {
-        var contact = Contact();
-        contact.name = data["name"].asString();
-        contact.phone = data["phone"].asString();
-        contact.email = data["email"].asString();
-        return contact;
-    }
+func contactFromJson(data: Any) -> Contact {
+    return new Contact(
+        Json.GetStr(data, "name"),
+        Json.GetStr(data, "phone"),
+        Json.GetStr(data, "email")
+    );
 }
 
 class ContactBook {
@@ -894,60 +855,23 @@ class ContactBook {
     }
 
     // Add a new contact
-    func add(contact: Contact) {
+    expose func add(contact: Contact) {
         self.contacts.Push(contact);
         self.save();
     }
 
-    // Find contacts by name (partial match)
-    func search(query: String) -> List[Contact] {
-        var results: List[Contact] = [];
-        var lowerQuery = query.ToLower();
-
-        for contact in self.contacts {
-            if contact.name.ToLower().Contains(lowerQuery) {
-                results.Push(contact);
-            }
-        }
-
-        return results;
-    }
-
-    // Remove a contact by name (exact match)
-    func remove(name: String) -> Boolean {
-        var newContacts: List[Contact] = [];
-        var found = false;
-
-        for contact in self.contacts {
-            if contact.name == name {
-                found = true;
-            } else {
-                newContacts.Push(contact);
-            }
-        }
-
-        if found {
-            self.contacts = newContacts;
-            self.save();
-        }
-
-        return found;
-    }
-
     // List all contacts
-    func all() -> List[Contact] {
+    expose func all() -> List[Contact] {
         return self.contacts;
     }
 
     // Persist to disk
     hide func save() {
-        var arr = Json.Array();
+        var arr = Seq.New();
         for contact in self.contacts {
-            arr.Add(contact.toJSON());
+            arr.Push(contact.toJson());
         }
-
-        var json = arr.toPrettyString();
-        File.WriteAllText(self.filename, json);
+        File.WriteAllText(self.filename, Json.FormatPretty(arr, 2));
     }
 
     // Load from disk
@@ -956,11 +880,9 @@ class ContactBook {
             return;  // No file yet, start empty
         }
 
-        var json = File.ReadAllText(self.filename);
-        var arr = Json.Parse(json);
-
-        for item in arr.asArray() {
-            self.contacts.Push(Contact.fromJSON(item));
+        var arr = Json.ParseArray(File.ReadAllText(self.filename));
+        for i in 0..Seq.get_Length(arr) {
+            self.contacts.Push(contactFromJson(Seq.Get(arr, i)));
         }
     }
 }
@@ -975,88 +897,14 @@ func printContact(contact: Contact) {
     Terminal.Say("  Email: " + contact.email);
 }
 
-func printHelp() {
-    Terminal.Say("Commands:");
-    Terminal.Say("  add     - Add a new contact");
-    Terminal.Say("  list    - Show all contacts");
-    Terminal.Say("  search  - Search for contacts");
-    Terminal.Say("  remove  - Remove a contact");
-    Terminal.Say("  quit    - Exit the program");
-}
-
 func start() {
-    var book = ContactBook("contacts.json");
+    var book = new ContactBook("contacts.json");
+    book.add(new Contact("Alice", "555-0100", "alice@example.com"));
 
-    Terminal.Say("=== Contact Manager ===");
-    Terminal.Say("Type 'help' for commands.");
-    Terminal.Say("");
-
-    while true {
-        Terminal.Print("> ");
-        var command = Terminal.ReadLine().Trim();
-
-        if command == "quit" {
-            Terminal.Say("Goodbye!");
-            break;
-        } else if command == "help" {
-            printHelp();
-        } else if command == "add" {
-            // Gather contact information
-            Terminal.Print("Name: ");
-            var name = Terminal.ReadLine().Trim();
-            Terminal.Print("Phone: ");
-            var phone = Terminal.ReadLine().Trim();
-            Terminal.Print("Email: ");
-            var email = Terminal.ReadLine().Trim();
-
-            // Create and add the contact
-            var contact = Contact();
-            contact.name = name;
-            contact.phone = phone;
-            contact.email = email;
-            book.Add(contact);
-
-            Terminal.Say("Contact added.");
-        } else if command == "list" {
-            var contacts = book.All();
-            if contacts.Length == 0 {
-                Terminal.Say("No contacts yet.");
-            } else {
-                Terminal.Say("All contacts:");
-                for i in 0..contacts.Length {
-                    Terminal.Say("");
-                    Terminal.Say((i + 1) + ".");
-                    printContact(contacts[i]);
-                }
-            }
-        } else if command == "search" {
-            Terminal.Print("Search for: ");
-            var query = Terminal.ReadLine().Trim();
-
-            var results = book.search(query);
-            if results.Length == 0 {
-                Terminal.Say("No contacts found.");
-            } else {
-                Terminal.Say("Found " + results.Length + " contact(s):");
-                for contact in results {
-                    Terminal.Say("");
-                    printContact(contact);
-                }
-            }
-        } else if command == "remove" {
-            Terminal.Print("Name to remove: ");
-            var name = Terminal.ReadLine().Trim();
-
-            if book.remove(name) {
-                Terminal.Say("Contact removed.");
-            } else {
-                Terminal.Say("Contact not found.");
-            }
-        } else {
-            Terminal.Say("Unknown command. Type 'help' for options.");
-        }
-
-        Terminal.Say("");
+    var contacts = book.all();
+    Terminal.Say("Contacts: " + Fmt.Int(contacts.Length));
+    for contact in contacts {
+        printContact(contact);
     }
 }
 ```
@@ -1097,36 +945,29 @@ Data format handling is rife with subtle bugs. Here are the most common mistakes
 
 ```rust
 // DANGEROUS: Assumes the structure exists
-var name = data["player"]["stats"]["name"].asString();  // Crash if missing!
+var name = JsonPath.GetStr(data, "$.player.stats.name");  // Empty if missing
 ```
 
-If `data` does not have a `"player"` key, or if `player` does not have `"stats"`, your program crashes. Always validate:
+If `data` does not have a `"player"` key, or if `player` does not have `"stats"`, silently using an empty default can hide bad input. Always validate:
 
 ```rust
-// SAFE: Check before accessing
-if data.Has("player") && data["player"].Has("stats") {
-    if data["player"]["stats"].Has("name") {
-        var name = data["player"]["stats"]["name"].asString();
-        // Now safe to use name
-    }
+bind JsonPath = Viper.Text.JsonPath;
+
+// SAFE: Check before using the nested value
+if JsonPath.Has(data, "$.player.stats.name") {
+    var name = JsonPath.GetStr(data, "$.player.stats.name");
+    // Now safe to use name
 }
 
 // BETTER: Use a helper function with defaults
-func getNestedString(data: JSONValue, path: String, defaultValue: String) -> String {
-    var parts = path.Split(".");
-    var current = data;
-
-    for part in parts {
-        if !current.Has(part) {
-            return defaultValue;
-        }
-        current = current[part];
+func getNestedString(data: Any, path: String, defaultValue: String) -> String {
+    if JsonPath.Has(data, path) {
+        return JsonPath.GetStr(data, path);
     }
-
-    return current.asString();
+    return defaultValue;
 }
 
-var name = getNestedString(data, "player.stats.name", "Unknown");
+var name = getNestedString(data, "$.player.stats.name", "Unknown");
 ```
 
 ### Mistake: Ignoring Type Mismatches
@@ -1135,24 +976,27 @@ JSON numbers can be integers or floats, but your code might expect one or the ot
 
 ```rust
 // PROBLEM: What if level is "5" (string) instead of 5 (number)?
-var level = data["level"].asInt();  // Might fail or return 0
+var level = Json.GetInt(data, "level");  // Returns 0 when the field is not numeric
 ```
 
 Defensive approach:
 
 ```rust
-func safeGetInt(data: JSONValue, key: String, defaultValue: Integer) -> Integer {
-    if !data.Has(key) {
+bind Json = Viper.Text.Json;
+bind JsonPath = Viper.Text.JsonPath;
+bind Convert = Viper.Core.Convert;
+
+func safeGetInt(data: Any, key: String, defaultValue: Integer) -> Integer {
+    if !Json.Has(data, key) {
         return defaultValue;
     }
 
-    var value = data[key];
-
-    // Handle both number and string representations
-    if value.isNumber() {
-        return value.asInt();
-    } else if value.isString() {
-        return Convert.ToInt64(value.asString());
+    var valueType = Json.TypeOf(JsonPath.Get(data, "$." + key));
+    if valueType == "int" || valueType == "float" {
+        return Json.GetInt(data, key);
+    }
+    if valueType == "str" {
+        return Convert.ToInt64(Json.GetStr(data, key));
     }
 
     return defaultValue;
@@ -1166,13 +1010,13 @@ Text files have encodings. The same bytes can mean different characters dependin
 ```rust
 // PROBLEM: Incorrectly converts raw bytes to string without encoding
 var bytes = File.ReadAllBytes(filename);
-// bytes.ToString() is not a valid conversion — use File.ReadAllText instead
+// bytes.ToString() is not a valid conversion. Use File.ReadAllText for UTF-8 text.
 
-// SOLUTION: Specify encoding explicitly
-var text = File.ReadAllText(filename, Encoding.UTF8);
+// SOLUTION: Read text files through the text API
+var text = File.ReadAllText(filename);
 ```
 
-Modern systems generally use UTF-8, but legacy files might use Latin-1, Windows-1252, or other encodings. If your data contains non-ASCII characters (accented letters, emoji, characters from other languages), encoding matters.
+Modern systems generally use UTF-8, and Viper's text file API reads UTF-8. Keep data as bytes until you know the encoding, especially for legacy formats like Latin-1 or Windows-1252.
 
 ### Mistake: Not Handling Missing Files
 
@@ -1191,7 +1035,7 @@ if File.Exists("config.json") {
     // Use data
 } else {
     // Use defaults
-    var data = Json.Object();
+    var data = Json.NewObject();
 }
 ```
 
@@ -1225,26 +1069,28 @@ Solution: Include a version number:
 ```
 
 ```rust
-func loadPlayer(data: JSONValue) -> Player {
+bind Json = Viper.Text.Json;
+
+func loadPlayer(data: Any) -> Player {
     var version = 1;  // Default for old files without version
-    if data.Has("version") {
-        version = data["version"].asInt();
+    if Json.Has(data, "version") {
+        version = Json.GetInt(data, "version");
     }
 
-    var player = Player();
-    player.name = data["name"].asString();
-    player.level = data["level"].asInt();
+    var player = new Player();
+    player.name = Json.GetStr(data, "name");
+    player.level = Json.GetInt(data, "level");
 
     if version >= 2 {
-        player.health = data["health"].asFloat();
+        player.health = Json.GetInt(data, "health");
     } else {
-        player.health = 100.0;  // Default for old saves
+        player.health = 100;  // Default for old saves
     }
 
     if version >= 3 {
         // Load skills
     } else {
-        player.skills = [];  // Default for old saves
+        player.skills = new List[String]();  // Default for old saves
     }
 
     return player;
@@ -1263,14 +1109,14 @@ var data = Json.Parse("this is { not valid json");
 Handle parse errors:
 
 ```rust
+bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
-var result = Json.TryParse(jsonText);
-if result.isError() {
-    Terminal.Say("Invalid JSON: " + result.errorMessage());
+if !Json.IsValid(jsonText) {
+    Terminal.Say("Invalid JSON");
     return;
 }
-var data = result.value();
+var data = Json.Parse(jsonText);
 // Now safe to use data
 ```
 
@@ -1278,13 +1124,13 @@ var data = result.value();
 
 Never trust data from external sources:
 
-```rust
+```text
 // DANGEROUS: User might provide negative level or huge numbers
-var level = data["level"].asInt();
+var level = Json.GetInt(data, "level");
 player.level = level;
 
 // SAFE: Validate the data
-var level = data["level"].asInt();
+var level = Json.GetInt(data, "level");
 if level < 1 {
     level = 1;
 }
@@ -1334,33 +1180,14 @@ After parsing, inspect what you got:
 
 ```rust
 bind Viper.Terminal;
+bind Json = Viper.Text.Json;
 
-func debugJSON(data: JSONValue, indent: String) {
-    if data.isObject() {
-        Terminal.Say(indent + "{");
-        for key in data.Keys() {
-            Terminal.Say(indent + "  \"" + key + "\":");
-            debugJSON(data[key], indent + "    ");
-        }
-        Terminal.Say(indent + "}");
-    } else if data.isArray() {
-        Terminal.Say(indent + "[");
-        for item in data.asArray() {
-            debugJSON(item, indent + "  ");
-        }
-        Terminal.Say(indent + "]");
-    } else if data.isString() {
-        Terminal.Say(indent + "string: \"" + data.asString() + "\"");
-    } else if data.isNumber() {
-        Terminal.Say(indent + "number: " + data.asFloat());
-    } else if data.isBool() {
-        Terminal.Say(indent + "bool: " + data.asBool());
-    } else if data.isNull() {
-        Terminal.Say(indent + "null");
-    }
+func debugJSON(data: Any) {
+    Terminal.Say("type: " + Json.TypeOf(data));
+    Terminal.Say(Json.FormatPretty(data, 2));
 }
 
-debugJSON(data, "");
+debugJSON(data);
 ```
 
 This shows you the structure and types of everything in the parsed data.
@@ -1370,14 +1197,14 @@ This shows you the structure and types of everything in the parsed data.
 Create data, serialize it, parse it back, and compare:
 
 ```rust
-var original = Player();
+var original = new Player();
 original.name = "Test";
 original.level = 5;
 // ... set all fields
 
-var json = original.toJSON().toString();
+var json = Json.Format(original.toJson());
 var parsed = Json.Parse(json);
-var restored = Player.fromJSON(parsed);
+var restored = playerFromJson(parsed);
 
 // Compare
 if original.name != restored.name {
@@ -1396,6 +1223,7 @@ If round-trip works, your serialization is correct. If it fails, you know where 
 Instead of crashing on bad data, log the problem and continue:
 
 ```rust
+bind Json = Viper.Text.Json;
 bind Viper.Terminal;
 
 func loadPlayerSafe(filename: String) -> Player? {
@@ -1405,28 +1233,25 @@ func loadPlayerSafe(filename: String) -> Player? {
     }
 
     var json = File.ReadAllText(filename);
-    var parseResult = Json.TryParse(json);
-
-    if parseResult.isError() {
+    if !Json.IsValid(json) {
         Terminal.Say("Warning: Invalid save file format");
-        Terminal.Say("Error: " + parseResult.errorMessage());
         return null;
     }
 
-    var data = parseResult.value();
+    var data = Json.Parse(json);
 
-    if !data.Has("name") || !data.Has("level") {
+    if !Json.Has(data, "name") || !Json.Has(data, "level") {
         Terminal.Say("Warning: Save file missing required fields");
         return null;
     }
 
-    return Player.fromJSON(data);
+    return playerFromJson(data);
 }
 
 func start() {
     var player = loadPlayerSafe("save.json");
     if player == null {
-        player = Player();  // Start fresh
+        player = new Player();  // Start fresh
         player.name = "New Player";
         player.level = 1;
     }
@@ -1442,29 +1267,29 @@ func start() {
 ```rust
 bind Json = Viper.Text.Json;
 
-var data = Json.Parse('{"name": "test", "value": 42}');
-var name = data["name"].asString();
+var data = Json.Parse("{\"name\": \"test\", \"value\": 42}");
+var name = Json.GetStr(data, "name");
 
-var obj = Json.Object();
-obj.Set("score", 100);
-var json = obj.toString();
+var obj = Json.NewObject();
+Json.SetInt(obj, "score", 100);
+var json = Json.Format(obj);
 ```
 
-**BASIC**
-```basic
-DIM data AS JSONValue
+**BASIC-style pseudocode**
+```text
+DIM data AS OBJECT
 data = JSON_PARSE("{""name"": ""test"", ""value"": 42}")
 DIM name AS STRING
 name = JSON_GET_STRING(data, "name")
 
-DIM obj AS JSONValue
+DIM obj AS OBJECT
 obj = JSON_OBJECT()
 JSON_SET obj, "score", 100
 DIM json AS STRING
 json = JSON_TOSTRING(obj)
 ```
 
-BASIC uses functions rather than methods and requires escaping double quotes by doubling them.
+The current JSON runtime is exposed through Zia under `Viper.Text.Json`. The BASIC-style block is conceptual pseudocode.
 
 ---
 
@@ -1500,85 +1325,79 @@ final VERSION = 1;
 Here is a complete binary save example:
 
 ```rust
-bind Viper.IO;
+bind Buffer = Viper.IO.BinaryBuffer;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
-
-struct GameSave {
-    version: Integer;
-    playerName: String;
-    level: Integer;
-    health: Number;
-    x: Number;
-    y: Number;
-    inventory: List[String];
-}
 
 final MAGIC = 0x56535631;  // "VSV1"
 final VERSION = 1;
 
+class GameSave {
+    expose version: Integer;
+    expose playerName: String;
+    expose level: Integer;
+    expose health: Integer;
+    expose x: Integer;
+    expose y: Integer;
+
+    expose func init(playerName: String, level: Integer, health: Integer, x: Integer, y: Integer) {
+        self.version = VERSION;
+        self.playerName = playerName;
+        self.level = level;
+        self.health = health;
+        self.x = x;
+        self.y = y;
+    }
+}
+
 func saveBinary(save: GameSave, filename: String) {
-    var writer = BinaryWriter.create(filename);
+    var writer = Buffer.New();
 
     // Header
-    writer.writeUInt32(MAGIC);
-    writer.writeUInt32(VERSION);
+    writer.WriteU32LE(MAGIC);
+    writer.WriteU32LE(VERSION);
 
     // Player data
-    writer.writeString(save.playerName);
-    writer.writeInt32(save.level);
-    writer.writeFloat32(save.health);
-    writer.writeFloat32(save.x);
-    writer.writeFloat32(save.y);
+    writer.WriteStr(save.playerName);
+    writer.WriteI32LE(save.level);
+    writer.WriteI32LE(save.health);
+    writer.WriteI32LE(save.x);
+    writer.WriteI32LE(save.y);
 
-    // Inventory (length-prefixed array)
-    writer.writeInt32(save.inventory.Length);
-    for item in save.inventory {
-        writer.writeString(item);
-    }
-
-    writer.Close();
+    File.WriteAllBytes(filename, writer.ToBytes());
 }
 
 func loadBinary(filename: String) -> GameSave? {
-    var reader = BinaryReader.open(filename);
+    var reader = Buffer.FromBytes(File.ReadAllBytes(filename));
 
     // Verify magic number
-    var magic = reader.readUInt32();
+    var magic = reader.ReadU32LE();
     if magic != MAGIC {
         Terminal.Say("Error: Not a valid save file");
-        reader.Close();
         return null;
     }
 
     // Check version
-    var version = reader.readUInt32();
+    var version = reader.ReadU32LE();
     if version > VERSION {
         Terminal.Say("Error: Save file is from a newer version");
-        reader.Close();
         return null;
     }
 
     // Load data
-    var save = GameSave();
+    var save = new GameSave(
+        reader.ReadStr(),
+        reader.ReadI32LE(),
+        reader.ReadI32LE(),
+        reader.ReadI32LE(),
+        reader.ReadI32LE()
+    );
     save.version = version;
-    save.playerName = reader.readString();
-    save.level = reader.readInt32();
-    save.health = reader.readFloat32();
-    save.x = reader.readFloat32();
-    save.y = reader.readFloat32();
-
-    var inventoryCount = reader.readInt32();
-    save.inventory = [];
-    for i in 0..inventoryCount {
-        save.inventory.Push(reader.readString());
-    }
-
-    reader.Close();
     return save;
 }
 ```
 
-The resulting file is much smaller than JSON and loads faster, but you cannot open it in a text editor to see what is inside.
+The resulting file is much smaller than JSON and loads faster, but you cannot open it in a text editor to see what is inside. The example keeps the binary layout intentionally small; arrays use the same pattern as `WriteStr`: write a count, then each value in order.
 
 ---
 
@@ -1591,10 +1410,11 @@ module ConfigSystem;
 
 bind Json = Viper.Text.Json;
 bind File = Viper.IO.File;
-bind Viper.Terminal;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
 
 class Config {
-    hide data: JSONValue;
+    hide data: Any;
     hide filename: String;
     hide dirty: Boolean;
 
@@ -1602,145 +1422,94 @@ class Config {
     expose func init(filename: String) {
         self.filename = filename;
         self.dirty = false;
-
-        if File.Exists(filename) {
-            var result = Json.TryParse(File.ReadAllText(filename));
-            if result.isError() {
-                Terminal.Say("Warning: Config file invalid, using defaults");
-                self.data = Json.Object();
-            } else {
-                self.data = result.value();
-            }
-        } else {
-            self.data = Json.Object();
-        }
+        self.data = self.loadObject();
     }
 
-    // Navigate to a nested value using dot notation (e.g., "audio.volume")
-    hide func getPath(key: String) -> JSONValue? {
-        var parts = key.Split(".");
-        var current = self.data;
-
-        for part in parts {
-            if !current.isObject() || !current.Has(part) {
-                return null;
+    hide func loadObject() -> Any {
+        if File.Exists(self.filename) {
+            var text = File.ReadAllText(self.filename);
+            if Json.IsValid(text) {
+                return Json.Parse(text);
             }
-            current = current[part];
+
+            Terminal.Say("Warning: Config file invalid, using defaults");
         }
-
-        return current;
-    }
-
-    // Set a nested value, creating intermediate objects as needed
-    hide func setPath(key: String, value: JSONValue) {
-        var parts = key.Split(".");
-        var current = self.data;
-
-        // Navigate/create path to parent
-        for i in 0..(parts.Length - 1) {
-            var part = parts[i];
-            if !current.Has(part) {
-                current.Set(part, Json.Object());
-            }
-            current = current[part];
-        }
-
-        // Set the final value
-        current.Set(parts.Get(parts.Length - 1), value);
-        self.dirty = true;
+        return Json.NewObject();
     }
 
     // Get values with type-safe defaults
-    func getString(key: String, defaultValue: String) -> String {
-        var value = self.getPath(key);
-        if value == null || !value.isString() {
-            return defaultValue;
+    expose func getString(key: String, defaultValue: String) -> String {
+        if Json.Has(self.data, key) {
+            return Json.GetStr(self.data, key);
         }
-        return value.asString();
+        return defaultValue;
     }
 
-    func getInt(key: String, defaultValue: Integer) -> Integer {
-        var value = self.getPath(key);
-        if value == null || !value.isNumber() {
-            return defaultValue;
+    expose func getInt(key: String, defaultValue: Integer) -> Integer {
+        if Json.Has(self.data, key) {
+            return Json.GetInt(self.data, key);
         }
-        return value.asInt();
+        return defaultValue;
     }
 
-    func getFloat(key: String, defaultValue: Number) -> Number {
-        var value = self.getPath(key);
-        if value == null || !value.isNumber() {
-            return defaultValue;
+    expose func getBool(key: String, defaultValue: Boolean) -> Boolean {
+        if Json.Has(self.data, key) {
+            return Json.GetBool(self.data, key);
         }
-        return value.asFloat();
+        return defaultValue;
     }
 
-    func getBool(key: String, defaultValue: Boolean) -> Boolean {
-        var value = self.getPath(key);
-        if value == null || !value.isBool() {
-            return defaultValue;
-        }
-        return value.asBool();
+    expose func setString(key: String, value: String) {
+        Json.SetStr(self.data, key, value);
+        self.dirty = true;
     }
 
-    // Set values
-    func setString(key: String, value: String) {
-        self.setPath(key, Json.String(value));
+    expose func setInt(key: String, value: Integer) {
+        Json.SetInt(self.data, key, value);
+        self.dirty = true;
     }
 
-    func setInt(key: String, value: Integer) {
-        self.setPath(key, Json.Number(value));
-    }
-
-    func setFloat(key: String, value: Number) {
-        self.setPath(key, Json.Number(value));
-    }
-
-    func setBool(key: String, value: Boolean) {
-        self.setPath(key, Json.Bool(value));
+    expose func setBool(key: String, value: Boolean) {
+        Json.SetBool(self.data, key, value);
+        self.dirty = true;
     }
 
     // Save to disk only if there are unsaved changes
-    func save() {
+    expose func save() {
         if self.dirty {
-            var text = self.data.toPrettyString();
+            var text = Json.FormatPretty(self.data, 2);
             File.WriteAllText(self.filename, text);
             self.dirty = false;
         }
     }
 
     // Force reload from disk, discarding unsaved changes
-    func reload() {
-        if File.Exists(self.filename) {
-            var result = Json.TryParse(File.ReadAllText(self.filename));
-            if !result.isError() {
-                self.data = result.value();
-            }
-        }
+    expose func reload() {
+        self.data = self.loadObject();
         self.dirty = false;
     }
 }
 
 // Usage example
 func start() {
-    var config = Config("game_settings.json");
+    var config = new Config("game_settings.json");
 
     // Read with defaults (works even if file doesn't exist or keys are missing)
-    var volume = config.getFloat("audio.volume", 0.8);
-    var fullscreen = config.getBool("graphics.fullscreen", false);
-    var playerName = config.getString("player.name", "New Player");
-    var difficulty = config.getInt("game.difficulty", 2);
+    var volumePercent = config.getInt("audio_volume_percent", 80);
+    var fullscreen = config.getBool("graphics_fullscreen", false);
+    var playerName = config.getString("player_name", "New Player");
+    var difficulty = config.getInt("game_difficulty", 2);
 
     Terminal.Say("Current settings:");
-    Terminal.Say("  Volume: " + volume);
-    Terminal.Say("  Fullscreen: " + fullscreen);
+    Terminal.Say("  Volume: " + Fmt.Int(volumePercent) + "%");
+    Terminal.Say("  Fullscreen: " + Fmt.Bool(fullscreen));
     Terminal.Say("  Player: " + playerName);
-    Terminal.Say("  Difficulty: " + difficulty);
+    Terminal.Say("  Difficulty: " + Fmt.Int(difficulty));
 
     // Modify settings
-    config.setFloat("audio.volume", 0.5);
-    config.setBool("graphics.fullscreen", true);
-    config.setString("player.name", "Hero");
+    config.setInt("audio_volume_percent", 50);
+    config.setBool("graphics_fullscreen", true);
+    config.setString("player_name", "Hero");
 
     // Persist changes
     config.save();
@@ -1754,27 +1523,18 @@ The resulting configuration file:
 
 ```json
 {
-    "audio": {
-        "volume": 0.5
-    },
-    "graphics": {
-        "fullscreen": true
-    },
-    "player": {
-        "name": "Hero"
-    },
-    "game": {
-        "difficulty": 2
-    }
+    "audio_volume_percent": 50,
+    "graphics_fullscreen": true,
+    "player_name": "Hero",
+    "game_difficulty": 2
 }
 ```
 
 This system demonstrates:
 - **Graceful handling of missing files and invalid data**
-- **Nested key navigation using dot notation**
-- **Auto-creation of intermediate objects**
+- **Typed key access with defaults**
 - **Dirty tracking to avoid unnecessary writes**
-- **Type-safe getters with defaults**
+- **Pretty JSON output for human-edited configuration**
 
 ---
 

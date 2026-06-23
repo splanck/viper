@@ -63,6 +63,7 @@ typedef pthread_mutex_t http_pool_mutex_t;
 static bool host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
 }
+
 static int http_contains_ctl_or_space(const char *text) {
     if (!text)
         return 1;
@@ -585,7 +586,6 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
     conn->pool_slot = -1;
 }
 
-
 static RT_THREAD_LOCAL char g_http_tls_open_error[256];
 
 static void http_set_tls_open_error(const char *msg) {
@@ -1067,12 +1067,30 @@ static int response_has_no_body(const rt_http_req_t *req, int status) {
 static char *build_absolute_url(const parsed_url_t *url) {
     const char *scheme = url->use_tls ? "https" : "http";
     int default_port = url->use_tls ? 443 : 80;
+    size_t scheme_len = strlen(scheme);
     size_t host_len = strlen(url->host);
     size_t path_len = strlen(url->path);
     int include_port = url->port != default_port;
-    size_t out_len = strlen(scheme) + 3 + host_len + path_len + 16;
-    if (host_needs_brackets(url->host))
+    size_t out_len = 0;
+
+    if (scheme_len > SIZE_MAX - 3 || host_len > SIZE_MAX - scheme_len - 3)
+        return NULL;
+    out_len = scheme_len + 3 + host_len;
+    if (host_needs_brackets(url->host)) {
+        if (out_len > SIZE_MAX - 2)
+            return NULL;
         out_len += 2;
+    }
+    if (include_port) {
+        if (out_len > SIZE_MAX - 16)
+            return NULL;
+        out_len += 16;
+    }
+    if (path_len > SIZE_MAX - out_len)
+        return NULL;
+    out_len += path_len;
+    if (out_len == SIZE_MAX)
+        return NULL;
 
     char *full = (char *)malloc(out_len + 1);
     if (!full)
@@ -1111,18 +1129,37 @@ int8_t rt_http_header_is_sensitive_for_cross_origin_redirect(const char *name) {
 
 int8_t rt_http_url_has_same_origin(rt_string lhs, rt_string rhs) {
     int same_origin = 0;
-    void *lhs_parsed = rt_url_parse(lhs);
-    void *rhs_parsed = rt_url_parse(rhs);
-    rt_string lhs_scheme = rt_url_scheme(lhs_parsed);
-    rt_string rhs_scheme = rt_url_scheme(rhs_parsed);
-    rt_string lhs_host = rt_url_host(lhs_parsed);
-    rt_string rhs_host = rt_url_host(rhs_parsed);
-    const char *lhs_scheme_cstr = rt_string_cstr(lhs_scheme);
-    const char *rhs_scheme_cstr = rt_string_cstr(rhs_scheme);
-    const char *lhs_host_cstr = rt_string_cstr(lhs_host);
-    const char *rhs_host_cstr = rt_string_cstr(rhs_host);
-    const int64_t lhs_port = rt_url_port(lhs_parsed);
-    const int64_t rhs_port = rt_url_port(rhs_parsed);
+    void *lhs_parsed = NULL;
+    void *rhs_parsed = NULL;
+    rt_string lhs_scheme = NULL;
+    rt_string rhs_scheme = NULL;
+    rt_string lhs_host = NULL;
+    rt_string rhs_host = NULL;
+    const char *lhs_scheme_cstr = NULL;
+    const char *rhs_scheme_cstr = NULL;
+    const char *lhs_host_cstr = NULL;
+    const char *rhs_host_cstr = NULL;
+    int64_t lhs_port = 0;
+    int64_t rhs_port = 0;
+
+    if (!lhs || !rhs)
+        return 0;
+
+    lhs_parsed = rt_url_parse(lhs);
+    rhs_parsed = rt_url_parse(rhs);
+    if (!lhs_parsed || !rhs_parsed)
+        goto cleanup;
+
+    lhs_scheme = rt_url_scheme(lhs_parsed);
+    rhs_scheme = rt_url_scheme(rhs_parsed);
+    lhs_host = rt_url_host(lhs_parsed);
+    rhs_host = rt_url_host(rhs_parsed);
+    lhs_scheme_cstr = rt_string_cstr(lhs_scheme);
+    rhs_scheme_cstr = rt_string_cstr(rhs_scheme);
+    lhs_host_cstr = rt_string_cstr(lhs_host);
+    rhs_host_cstr = rt_string_cstr(rhs_host);
+    lhs_port = rt_url_port(lhs_parsed);
+    rhs_port = rt_url_port(rhs_parsed);
 
     if (lhs_scheme_cstr && rhs_scheme_cstr && lhs_host_cstr && rhs_host_cstr &&
         strcasecmp(lhs_scheme_cstr, rhs_scheme_cstr) == 0 &&
@@ -1130,6 +1167,7 @@ int8_t rt_http_url_has_same_origin(rt_string lhs, rt_string rhs) {
         same_origin = 1;
     }
 
+cleanup:
     rt_string_unref(rhs_host);
     rt_string_unref(lhs_host);
     rt_string_unref(rhs_scheme);
@@ -1139,6 +1177,46 @@ int8_t rt_http_url_has_same_origin(rt_string lhs, rt_string rhs) {
     if (lhs_parsed && rt_obj_release_check0(lhs_parsed))
         rt_obj_free(lhs_parsed);
     return same_origin ? 1 : 0;
+}
+
+/// @brief Determine whether a redirect target must be treated as cross-origin.
+/// @details Builds the current absolute URL, resolves the Location value, and
+///          compares origins. Any allocation, parsing, or resolution failure is
+///          treated as cross-origin so sensitive headers are stripped before
+///          following the redirect.
+/// @param current Parsed URL for the request being redirected.
+/// @param location Raw Location header value.
+/// @return Nonzero when the target is cross-origin or origin comparison failed.
+static int redirect_cross_origin_or_unknown(const parsed_url_t *current, const char *location) {
+    char *current_full = NULL;
+    rt_string current_url = NULL;
+    rt_string location_url = NULL;
+    rt_string next_url = NULL;
+    int cross_origin = 1;
+
+    if (!current || !location)
+        return 1;
+    current_full = build_absolute_url(current);
+    if (!current_full)
+        goto done;
+    current_url = rt_string_from_bytes(current_full, strlen(current_full));
+    location_url = rt_string_from_bytes(location, strlen(location));
+    if (!current_url || !location_url)
+        goto done;
+    next_url = rt_http_resolve_redirect_url(current_url, location_url);
+    if (!next_url)
+        goto done;
+    cross_origin = !rt_http_url_has_same_origin(current_url, next_url);
+
+done:
+    if (next_url)
+        rt_string_unref(next_url);
+    if (location_url)
+        rt_string_unref(location_url);
+    if (current_url)
+        rt_string_unref(current_url);
+    free(current_full);
+    return cross_origin;
 }
 
 rt_string rt_http_resolve_redirect_url(rt_string current_url, rt_string location) {
@@ -1223,7 +1301,6 @@ static int resolve_redirect_target(parsed_url_t *current, const char *location) 
     free_parsed_url(&next);
     return ok;
 }
-
 
 /// @brief GC finalizer for an HttpRes object.
 ///
@@ -1526,11 +1603,11 @@ static char *build_request(rt_http_req_t *req) {
     // Calculate total size
     size_t size = 0;
 #define HTTP_REQUEST_ADD_SIZE(amount_)                                                             \
-    do {                                                                                             \
-        size_t http_request_amount_ = (amount_);                                                     \
-        if (http_request_amount_ > SIZE_MAX - size)                                                  \
-            return NULL;                                                                             \
-        size += http_request_amount_;                                                                \
+    do {                                                                                           \
+        size_t http_request_amount_ = (amount_);                                                   \
+        if (http_request_amount_ > SIZE_MAX - size)                                                \
+            return NULL;                                                                           \
+        size += http_request_amount_;                                                              \
     } while (0)
 
     HTTP_REQUEST_ADD_SIZE(strlen(req->method));
@@ -1761,9 +1838,8 @@ static int parse_status_line(const char *line, int *http_minor_out, char **statu
 static int http_response_header_is_singleton(const char *lower_name) {
     return lower_name &&
            (strcmp(lower_name, "content-length") == 0 ||
-            strcmp(lower_name, "transfer-encoding") == 0 ||
-            strcmp(lower_name, "location") == 0 || strcmp(lower_name, "connection") == 0 ||
-            strcmp(lower_name, "content-encoding") == 0);
+            strcmp(lower_name, "transfer-encoding") == 0 || strcmp(lower_name, "location") == 0 ||
+            strcmp(lower_name, "connection") == 0 || strcmp(lower_name, "content-encoding") == 0);
 }
 
 static int append_response_header_value(void *headers_map, const char *name, const char *value) {
@@ -2601,10 +2677,6 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
     if (req->follow_redirects &&
         (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
         redirect_location) {
-        char *current_full = NULL;
-        rt_string current_url = NULL;
-        rt_string location_url = NULL;
-        rt_string next_url = NULL;
         int cross_origin = 0;
         if (redirects_remaining <= 0) {
             free(body);
@@ -2616,13 +2688,7 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
             return NULL;
         }
 
-        current_full = build_absolute_url(&req->url);
-        if (current_full) {
-            current_url = rt_string_from_bytes(current_full, strlen(current_full));
-            location_url = rt_string_from_bytes(redirect_location, strlen(redirect_location));
-            next_url = rt_http_resolve_redirect_url(current_url, location_url);
-            cross_origin = !rt_http_url_has_same_origin(current_url, next_url);
-        }
+        cross_origin = redirect_cross_origin_or_unknown(&req->url, redirect_location);
         reusable = http_request_wants_pool(req) && rt_http2_conn_is_usable(conn->http2);
         http_conn_pool_release(conn, reusable);
         free(body);
@@ -2640,37 +2706,16 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
             req->body_len = 0;
             strip_redirect_body_headers(req);
             if (!req->method) {
-                if (next_url)
-                    rt_string_unref(next_url);
-                if (location_url)
-                    rt_string_unref(location_url);
-                if (current_url)
-                    rt_string_unref(current_url);
-                free(current_full);
                 free(redirect_location);
                 rt_trap("HTTP: memory allocation failed");
                 return NULL;
             }
         }
         if (resolve_redirect_target(&req->url, redirect_location) != 0) {
-            if (next_url)
-                rt_string_unref(next_url);
-            if (location_url)
-                rt_string_unref(location_url);
-            if (current_url)
-                rt_string_unref(current_url);
-            free(current_full);
             free(redirect_location);
             rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
             return NULL;
         }
-        if (next_url)
-            rt_string_unref(next_url);
-        if (location_url)
-            rt_string_unref(location_url);
-        if (current_url)
-            rt_string_unref(current_url);
-        free(current_full);
         free(redirect_location);
         return do_http_request(req, redirects_remaining - 1);
     }
@@ -2793,10 +2838,6 @@ open_connection:
     if (req->follow_redirects &&
         (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
         redirect_location) {
-        char *current_full = NULL;
-        rt_string current_url = NULL;
-        rt_string location_url = NULL;
-        rt_string next_url = NULL;
         int cross_origin = 0;
         if (redirects_remaining <= 0) {
             http_conn_pool_release(&conn, 0);
@@ -2808,13 +2849,7 @@ open_connection:
             return NULL;
         }
 
-        current_full = build_absolute_url(&req->url);
-        if (current_full) {
-            current_url = rt_string_from_bytes(current_full, strlen(current_full));
-            location_url = rt_string_from_bytes(redirect_location, strlen(redirect_location));
-            next_url = rt_http_resolve_redirect_url(current_url, location_url);
-            cross_origin = !rt_http_url_has_same_origin(current_url, next_url);
-        }
+        cross_origin = redirect_cross_origin_or_unknown(&req->url, redirect_location);
         http_conn_pool_release(&conn, 0);
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
@@ -2833,13 +2868,6 @@ open_connection:
             req->body_len = 0;
             strip_redirect_body_headers(req);
             if (!req->method) {
-                if (next_url)
-                    rt_string_unref(next_url);
-                if (location_url)
-                    rt_string_unref(location_url);
-                if (current_url)
-                    rt_string_unref(current_url);
-                free(current_full);
                 free(redirect_location);
                 rt_trap("HTTP: memory allocation failed");
                 return NULL;
@@ -2847,24 +2875,10 @@ open_connection:
         }
 
         if (resolve_redirect_target(&req->url, redirect_location) != 0) {
-            if (next_url)
-                rt_string_unref(next_url);
-            if (location_url)
-                rt_string_unref(location_url);
-            if (current_url)
-                rt_string_unref(current_url);
-            free(current_full);
             free(redirect_location);
             rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
             return NULL;
         }
-        if (next_url)
-            rt_string_unref(next_url);
-        if (location_url)
-            rt_string_unref(location_url);
-        if (current_url)
-            rt_string_unref(current_url);
-        free(current_full);
         free(redirect_location);
 
         // Follow redirect
@@ -3073,21 +3087,11 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
     if (req->follow_redirects &&
         (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
         redirect_location) {
-        char *current_full = NULL;
-        rt_string current_url = NULL;
-        rt_string location_url = NULL;
-        rt_string next_url = NULL;
         int cross_origin = 0;
         if (redirects_remaining <= 0)
             goto cleanup;
 
-        current_full = build_absolute_url(&req->url);
-        if (current_full) {
-            current_url = rt_string_from_bytes(current_full, strlen(current_full));
-            location_url = rt_string_from_bytes(redirect_location, strlen(redirect_location));
-            next_url = rt_http_resolve_redirect_url(current_url, location_url);
-            cross_origin = !rt_http_url_has_same_origin(current_url, next_url);
-        }
+        cross_origin = redirect_cross_origin_or_unknown(&req->url, redirect_location);
         http_conn_close(&conn);
         if (cross_origin)
             strip_sensitive_redirect_headers(req);
@@ -3100,33 +3104,12 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
             req->body_len = 0;
             strip_redirect_body_headers(req);
             if (!req->method) {
-                if (next_url)
-                    rt_string_unref(next_url);
-                if (location_url)
-                    rt_string_unref(location_url);
-                if (current_url)
-                    rt_string_unref(current_url);
-                free(current_full);
                 goto cleanup;
             }
         }
         if (resolve_redirect_target(&req->url, redirect_location) != 0) {
-            if (next_url)
-                rt_string_unref(next_url);
-            if (location_url)
-                rt_string_unref(location_url);
-            if (current_url)
-                rt_string_unref(current_url);
-            free(current_full);
             goto cleanup;
         }
-        if (next_url)
-            rt_string_unref(next_url);
-        if (location_url)
-            rt_string_unref(location_url);
-        if (current_url)
-            rt_string_unref(current_url);
-        free(current_full);
 
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);

@@ -16,9 +16,8 @@
 // Key invariants:
 //   - The initial reservation is RT_SCREENFX_MAX_EFFECTS slots. New effects
 //     grow the slot array on demand instead of being silently dropped.
-//   - Shake: uses per-instance LCG RNG (seeded from the object pointer) so
-//     concurrent ScreenFX instances on different threads produce independent
-//     random sequences without global state.
+//   - Shake: uses per-instance LCG RNG seeded from the active runtime RNG, so
+//     RANDOMIZE controls reproducibility without exposing object addresses.
 //   - Shake decay model: decay parameter controls the exponent applied to the
 //     remaining-time factor (1 - progress):
 //       decay == 0      → no decay (constant amplitude throughout)
@@ -45,6 +44,7 @@
 
 #include "rt_screenfx.h"
 #include "rt_object.h"
+#include "rt_random.h"
 #include "rt_trap.h"
 
 #include <float.h>
@@ -190,9 +190,11 @@ static void screenfx_finalizer(void *obj) {
     fx->effect_capacity = 0;
 }
 
-/// @brief Construct an empty ScreenFX manager. RNG state is seeded from the object pointer
-/// XOR 0xDEADBEEF so each instance gets a unique deterministic sequence. Returns a GC-managed
-/// handle; NULL on allocation failure.
+/// @brief Construct an empty ScreenFX manager.
+/// @details RNG state is seeded from the active runtime RNG so callers can
+///          reproduce effects through RANDOMIZE without relying on process
+///          address layout. Returns a GC-managed handle; NULL on allocation
+///          failure.
 rt_screenfx rt_screenfx_new(void) {
     struct rt_screenfx_impl *fx = (struct rt_screenfx_impl *)rt_obj_new_i64(
         RT_SCREENFX_CLASS_ID, (int64_t)sizeof(struct rt_screenfx_impl));
@@ -208,7 +210,10 @@ rt_screenfx rt_screenfx_new(void) {
             rt_obj_free(fx);
         return NULL;
     }
-    fx->rand_state = (uint64_t)(uintptr_t)fx ^ UINT64_C(0xDEADBEEF); // per-instance seed
+    fx->rand_state = ((uint64_t)rt_rand_range(0, LLONG_MAX) << 1) ^
+                     (uint64_t)rt_rand_range(0, LLONG_MAX) ^ UINT64_C(0xDEADBEEF);
+    if (fx->rand_state == 0)
+        fx->rand_state = UINT64_C(0xDEADBEEF);
     rt_obj_set_finalizer(fx, screenfx_finalizer);
     return fx;
 }

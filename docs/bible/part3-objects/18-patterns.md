@@ -121,7 +121,7 @@ Think of a country's president or prime minister. There's exactly one at any tim
 
 The Singleton pattern provides a single instance and global access:
 
-```rust
+```text
 bind Viper.Terminal;
 
 class GameEngine {
@@ -319,7 +319,7 @@ A factory is like that kitchen. You ask for what you want; it handles the creati
 
 The Factory pattern centralizes object creation:
 
-```rust
+```text
 bind Viper.Terminal;
 bind Viper.Math as Math;
 
@@ -533,7 +533,7 @@ You build the order step by step, specifying only what matters to you, with sens
 
 The Builder pattern constructs objects step by step:
 
-```rust
+```text
 bind Viper.Terminal;
 
 class Character {
@@ -712,7 +712,7 @@ class CharacterBuilder {
 
 Now character creation is readable:
 
-```rust
+```text
 func start() {
     // Create a specific character
     var hero = CharacterBuilder()
@@ -1094,7 +1094,7 @@ class Subject {
 
 Now let's build a stock price monitoring system:
 
-```rust
+```text
 bind Viper.Terminal;
 bind Viper.Math as Math;
 bind Viper.Time;
@@ -1254,7 +1254,7 @@ The `StockPrice` doesn't know what observers do. The observers don't know about 
 
 ### Observer in Game Events
 
-```rust
+```text
 class GameEventSystem extends Subject {
     // Singleton for global game events
     hide static instance: GameEventSystem? = null;
@@ -1372,7 +1372,7 @@ The order ticket turns an action (make food) into an object (the written ticket)
 
 The Command pattern encapsulates actions as objects, enabling undo, queueing, and logging:
 
-```rust
+```text
 bind Viper.Terminal;
 
 interface Command {
@@ -1583,7 +1583,7 @@ func start() {
 
 Commands can be grouped and replayed:
 
-```rust
+```text
 class MacroCommand implements Command {
     hide commands: List[Command];
     hide name: String;
@@ -1693,7 +1693,7 @@ Same action, completely different behavior based on state. The state determines 
 
 The State pattern represents each state as an object that handles behavior for that state:
 
-```rust
+```text
 bind Viper.Terminal;
 
 interface VendingState {
@@ -2014,7 +2014,7 @@ Think of a plain t-shirt. You can add things to it: iron-on patches, embroidery,
 
 The Decorator pattern wraps objects to add behavior dynamically:
 
-```rust
+```text
 bind Viper.Terminal;
 
 interface Beverage {
@@ -2180,7 +2180,7 @@ Each decorator wraps a beverage, adds its own cost and description, and delegate
 
 Decorators work beyond pricing. Here's an I/O example:
 
-```rust
+```text
 bind Viper.Terminal;
 
 interface DataStream {
@@ -2330,7 +2330,7 @@ Real systems don't use patterns in isolation. They combine multiple patterns to 
 
 This example combines Factory, Strategy, Observer, and State:
 
-```rust
+```text
 bind Viper.Terminal;
 bind Viper.Math as Math;
 

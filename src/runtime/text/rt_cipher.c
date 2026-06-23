@@ -16,7 +16,8 @@
 //          metadata, version tags, etc.) in addition to the ciphertext.
 //
 // Key invariants:
-//   - Nonces are 12 bytes (96-bit), randomly generated per call.
+//   - Nonces are 12 bytes (96-bit), generated as random-prefix plus atomic
+//     counter to avoid per-process birthday-bound reuse under high volume.
 //   - Output format: [4-byte magic][12-byte nonce][16-byte tag][ciphertext].
 //     The leading magic distinguishes password-derived (CIPHER_PW_MAGIC) from
 //     raw-key (CIPHER_KEY_MAGIC) ciphertexts so a key-form value can't be fed
@@ -48,6 +49,7 @@
 #include "rt_crypto_module.h"
 #include "rt_keyderive_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -74,6 +76,7 @@ static const uint8_t CIPHER_PW_MAGIC[4] = {'V', 'C', 'P', '2'};
 static const uint8_t CIPHER_KEY_MAGIC[4] = {'V', 'C', 'K', '2'};
 static const uint8_t CIPHER_PW_APPROVED_MAGIC[4] = {'V', 'C', 'A', '1'};
 static const uint8_t CIPHER_KEY_APPROVED_MAGIC[4] = {'V', 'K', 'A', '1'};
+static int64_t g_cipher_nonce_counter = 0;
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
@@ -230,6 +233,34 @@ static void write_be32(uint8_t *out, uint32_t v) {
     out[3] = (uint8_t)v;
 }
 
+/// @brief Write a 64-bit unsigned integer to @p out in big-endian byte order.
+/// @details Used by @ref cipher_random_nonce to encode the process-local
+///          nonce counter into the low 64 bits of the 96-bit AEAD nonce.
+static void write_be64(uint8_t *out, uint64_t v) {
+    out[0] = (uint8_t)(v >> 56);
+    out[1] = (uint8_t)(v >> 48);
+    out[2] = (uint8_t)(v >> 40);
+    out[3] = (uint8_t)(v >> 32);
+    out[4] = (uint8_t)(v >> 24);
+    out[5] = (uint8_t)(v >> 16);
+    out[6] = (uint8_t)(v >> 8);
+    out[7] = (uint8_t)v;
+}
+
+/// @brief Fill a 96-bit AEAD nonce with random-prefix/counter bytes.
+/// @details The first four bytes are CSPRNG output and the remaining eight
+///          bytes are a process-local atomic counter. This preserves the
+///          existing nonce size while preventing duplicate nonces within one
+///          process until the 64-bit counter wraps. The random prefix keeps
+///          nonces distinct across processes that start with the same counter.
+/// @param nonce Destination buffer of exactly @c CIPHER_NONCE_SIZE bytes.
+static void cipher_random_nonce(uint8_t nonce[CIPHER_NONCE_SIZE]) {
+    rt_crypto_random_bytes(nonce, 4);
+    uint64_t counter =
+        (uint64_t)(__atomic_fetch_add(&g_cipher_nonce_counter, 1, __ATOMIC_RELAXED) + 1);
+    write_be64(nonce + 4, counter);
+}
+
 /// @brief Read a big-endian 32-bit unsigned integer from @p in.
 /// @details Inverse of write_be32. Used during decrypt to recover the
 ///          encoded iteration count and version flags from the envelope.
@@ -364,7 +395,7 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     uint8_t salt[CIPHER_SALT_SIZE];
     uint8_t nonce[CIPHER_NONCE_SIZE];
     rt_crypto_random_bytes(salt, CIPHER_SALT_SIZE);
-    rt_crypto_random_bytes(nonce, CIPHER_NONCE_SIZE);
+    cipher_random_nonce(nonce);
 
     // Derive key from password
     uint8_t key[CIPHER_KEY_SIZE];
@@ -633,7 +664,7 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
 
     // Generate random nonce
     uint8_t nonce[CIPHER_NONCE_SIZE];
-    rt_crypto_random_bytes(nonce, CIPHER_NONCE_SIZE);
+    cipher_random_nonce(nonce);
 
     void *result = cipher_bytes_new_or_trap(out_len, "Cipher.EncryptWithKey: allocation failed");
     uint8_t *out_data = bytes_data(result);

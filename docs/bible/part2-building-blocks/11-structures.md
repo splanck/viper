@@ -79,6 +79,7 @@ Every function that works with a point needs two parameters:
 
 ```rust
 bind Viper.Math as Math;
+bind Viper.Terminal;
 
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
@@ -157,8 +158,8 @@ This defines a new type called `Point`. It has two *fields*: `x` and `y`, both f
 Now we can create points:
 
 ```rust
-var origin = Point(0.0, 0.0);
-var position = Point(10.5, 20.3);
+var origin = new Point(0.0, 0.0);
+var position = new Point(10.5, 20.3);
 ```
 
 Each variable holds a complete point — both coordinates bundled together. You access individual fields with dot notation:
@@ -220,7 +221,7 @@ Table: Points
 +--------+--------+
 ```
 
-The structure definition (`struct Point { x: Number; y: Number; }`) defines the columns. Each actual `Point` value is one row.
+The structure definition (`struct Point { expose Number x; expose Number y; }`) defines the columns. Each actual `Point` value is one row.
 
 ---
 
@@ -239,7 +240,7 @@ struct Person {
     expose String email;
 }
 
-var alice = Person("Alice", 30, "alice@example.com");
+var alice = new Person("Alice", 30, "alice@example.com");
 ```
 
 Now `alice` is one thing — a person — that you can store, pass around, and work with as a unit.
@@ -254,7 +255,7 @@ struct Rectangle {
     expose Number height;
 }
 
-var screen = Rectangle(1920.0, 1080.0);
+var screen = new Rectangle(1920.0, 1080.0);
 ```
 
 ### A Date Combines Year, Month, and Day
@@ -268,7 +269,7 @@ struct Date {
     expose Integer day;
 }
 
-var birthday = Date(1990, 7, 4);
+var birthday = new Date(1990, 7, 4);
 ```
 
 ### A Color Mixes Red, Green, and Blue
@@ -282,7 +283,7 @@ struct Color {
     expose Integer blue;
 }
 
-var coral = Color(255, 127, 80);
+var coral = new Color(255, 127, 80);
 ```
 
 The pattern is universal: whenever multiple pieces of data describe a single concept, they belong in a structure.
@@ -316,10 +317,10 @@ struct Book {
 
 ### Creating Instances
 
-To create a value of your structure type, pass the field values in order:
+To create a value of your structure type, use `new` and pass the field values in order:
 
 ```rust
-var myBook = Book(
+var myBook = new Book(
     "The Viper Programming Guide",
     "Jane Developer",
     450,
@@ -330,7 +331,7 @@ var myBook = Book(
 You must provide values for all fields, in the order they are declared:
 
 ```rust
-var book1 = Book("A", "B", 100, 9.99);
+var book1 = new Book("A", "B", 100, 9.99);
 ```
 
 ### Accessing Fields
@@ -369,7 +370,7 @@ struct Point {
     expose Number y;
 }
 
-var p1 = Point(10.0, 20.0);
+var p1 = new Point(10.0, 20.0);
 var p2 = p1;  // p2 is a COPY of p1
 
 p2.x = 99.0;  // Modify p2
@@ -410,7 +411,7 @@ func tryToModify(point: Point) {
     Say("Inside function: " + point.x);  // 999.0
 }
 
-var original = Point(10.0, 20.0);
+var original = new Point(10.0, 20.0);
 tryToModify(original);
 Say("After function: " + original.x);  // 10.0 - unchanged!
 ```
@@ -429,7 +430,7 @@ func moveRight(point: Point, amount: Number) -> Point {
     return point;
 }
 
-var p = Point(10.0, 20.0);
+var p = new Point(10.0, 20.0);
 p = moveRight(p, 5.0);  // Replace p with the returned copy
 Say(p.x);  // 15.0
 ```
@@ -478,7 +479,7 @@ Now you can call these methods on any `Rectangle`:
 ```rust
 bind Viper.Terminal;
 
-var rect = Rectangle(10.0, 5.0);
+var rect = new Rectangle(10.0, 5.0);
 Say(rect.area());       // 50.0
 Say(rect.perimeter());  // 30.0
 ```
@@ -488,8 +489,8 @@ Say(rect.perimeter());  // 30.0
 Inside a method, `self` refers to the specific instance the method was called on. When you write `rect.area()`, inside the `area` method, `self` is `rect`. So `self.width` is `rect.width` (10.0) and `self.height` is `rect.height` (5.0).
 
 ```rust
-var small = Rectangle(3.0, 2.0);
-var large = Rectangle(100.0, 50.0);
+var small = new Rectangle(3.0, 2.0);
+var large = new Rectangle(100.0, 50.0);
 
 small.area();  // Inside: self is small, returns 6.0
 large.area();  // Inside: self is large, returns 5000.0
@@ -542,15 +543,12 @@ struct Point {
     }
 
     func midpoint(other: Point) -> Point {
-        return Point {
-            x: (self.x + other.x) / 2,
-            y: (self.y + other.y) / 2
-        };
+        return new Point((self.x + other.x) / 2, (self.y + other.y) / 2);
     }
 }
 
-var a = Point(0.0, 0.0);
-var b = Point(3.0, 4.0);
+var a = new Point(0.0, 0.0);
+var b = new Point(3.0, 4.0);
 
 Say(a.distance(b));  // 5.0 (3-4-5 right triangle)
 
@@ -582,13 +580,13 @@ struct Counter {
 
 bind Viper.Terminal;
 
-var c = Counter(0);
+var c = new Counter(0);
 c.increment();
 c.increment();
 c.increment();
 Say(c.count);  // 3
 
-c.Add(10);
+c.add(10);
 Say(c.count);  // 13
 
 c.reset();
@@ -605,26 +603,20 @@ struct Point {
     expose Number y;
 
     func add(other: Point) -> Point {
-        return Point {
-            x: self.x + other.x,
-            y: self.y + other.y
-        };
+        return new Point(self.x + other.x, self.y + other.y);
     }
 
     func scale(factor: Number) -> Point {
-        return Point {
-            x: self.x * factor,
-            y: self.y * factor
-        };
+        return new Point(self.x * factor, self.y * factor);
     }
 }
 
-var p = Point(2.0, 3.0);
-var v = Point(1.0, 1.0);
+var p = new Point(2.0, 3.0);
+var v = new Point(1.0, 1.0);
 
 bind Viper.Terminal;
 
-var moved = p.Add(v);  // New point at (3.0, 4.0)
+var moved = p.add(v);  // New point at (3.0, 4.0)
 var bigger = p.scale(2.0);  // New point at (4.0, 6.0)
 
 // Original p is unchanged!
@@ -661,7 +653,7 @@ struct Person {
     expose Address home;
 }
 
-var alice = Person("Alice", 30, Address("123 Main St", "Springfield", "IL", "62701"));
+var alice = new Person("Alice", 30, new Address("123 Main St", "Springfield", "IL", "62701"));
 ```
 
 Access nested fields with chained dots:
@@ -696,7 +688,7 @@ struct Vec2 {
     expose Number y;
 
     func add(other: Vec2) -> Vec2 {
-        return Vec2 { x: self.x + other.x, y: self.y + other.y };
+        return new Vec2(self.x + other.x, self.y + other.y);
     }
 
     func distance(other: Vec2) -> Number {
@@ -744,11 +736,10 @@ struct Player {
     }
 
     func move(direction: Vec2) {
-        self.position = self.position.Add(direction);
+        self.position = self.position.add(direction);
     }
 
     func takeDamage(amount: Integer) {
-        bind Viper.Terminal;
         self.health.damage(amount);
         if self.health.isDead() {
             Say(self.name + " has been defeated!");
@@ -760,12 +751,12 @@ struct Player {
 Now creating a player is clean and structured:
 
 ```rust
-var hero = Player("Hero", Vec2(0.0, 0.0), Health(100, 100), 0);
-
 bind Viper.Terminal;
 
+var hero = new Player("Hero", new Vec2(0.0, 0.0), new Health(100, 100), 0);
+
 // Use nested methods
-hero.move(Vec2(5.0, 3.0));
+hero.move(new Vec2(5.0, 3.0));
 hero.takeDamage(25);
 Say(hero.health.percentage());  // 75.0
 ```
@@ -795,18 +786,13 @@ Create a function that returns a structure with default values:
 ```rust
 struct Config {
     expose Integer volume;
-    expose String difficulty;
+    expose Integer difficulty;
     expose Boolean fullscreen;
     expose Boolean musicEnabled;
 }
 
 func defaultConfig() -> Config {
-    return Config {
-        volume: 50,
-        difficulty: "normal",
-        fullscreen: false,
-        musicEnabled: true
-    };
+    return new Config(50, 1, false, true);
 }
 
 // Use the defaults
@@ -814,7 +800,7 @@ var settings = defaultConfig();
 
 // Or customize after
 var mySettings = defaultConfig();
-mySettings.difficulty = "hard";
+mySettings.difficulty = 2;
 mySettings.fullscreen = true;
 ```
 
@@ -829,22 +815,22 @@ struct Rectangle {
 }
 
 func square(size: Number) -> Rectangle {
-    return Rectangle(size, size);
+    return new Rectangle(size, size);
 }
 
 func goldenRectangle(width: Number) -> Rectangle {
-    return Rectangle(width, width / 1.618);
+    return new Rectangle(width, width / 1.618);
 }
 
 func screen(resolution: String) -> Rectangle {
     if resolution == "720p" {
-        return Rectangle(1280.0, 720.0);
+        return new Rectangle(1280.0, 720.0);
     } else if resolution == "1080p" {
-        return Rectangle(1920.0, 1080.0);
+        return new Rectangle(1920.0, 1080.0);
     } else if resolution == "4K" {
-        return Rectangle(3840.0, 2160.0);
+        return new Rectangle(3840.0, 2160.0);
     }
-    return Rectangle(800.0, 600.0);
+    return new Rectangle(800.0, 600.0);
 }
 
 var s = square(100.0);
@@ -864,15 +850,15 @@ struct Circle {
 }
 
 func createCircle(x: Number, y: Number, r: Number) -> Circle {
-    return Circle { centerX: x, centerY: y, radius: r };
+    return new Circle(x, y, r);
 }
 
 func circleAtOrigin(radius: Number) -> Circle {
-    return Circle { centerX: 0.0, centerY: 0.0, radius: radius };
+    return new Circle(0.0, 0.0, radius);
 }
 
 func unitCircle() -> Circle {
-    return Circle { centerX: 0.0, centerY: 0.0, radius: 1.0 };
+    return new Circle(0.0, 0.0, 1.0);
 }
 ```
 
@@ -978,36 +964,48 @@ Let's see structures in action with several complete examples.
 ### Example: Playing Cards
 
 ```rust
-bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
 struct Card {
-    expose String suit;    // "Hearts", "Diamonds", "Clubs", "Spades"
-    expose String rank;    // "2"-"10", "J", "Q", "K", "A"
+    expose Integer suit;    // 0=Hearts, 1=Diamonds, 2=Clubs, 3=Spades
+    expose Integer rank;    // 2-14, where 11=J, 12=Q, 13=K, 14=A
 
     func display() -> String {
-        return self.rank + " of " + self.suit;
+        return self.rankName() + " of " + self.suitName();
     }
 
     func value() -> Integer {
-        if self.rank == "A" {
+        if self.rank == 14 {
             return 11;
-        } else if self.rank == "K" || self.rank == "Q" || self.rank == "J" {
+        } else if self.rank >= 11 {
             return 10;
         } else {
-            return Convert.ToInt64(self.rank);
+            return self.rank;
         }
+    }
+
+    func suitName() -> String {
+        if self.suit == 0 { return "Hearts"; }
+        if self.suit == 1 { return "Diamonds"; }
+        if self.suit == 2 { return "Clubs"; }
+        return "Spades";
+    }
+
+    func rankName() -> String {
+        if self.rank == 11 { return "J"; }
+        if self.rank == 12 { return "Q"; }
+        if self.rank == 13 { return "K"; }
+        if self.rank == 14 { return "A"; }
+        return "" + self.rank;
     }
 }
 
 func createDeck() -> List[Card] {
     var deck: List[Card] = [];
-    var suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
-    var ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 
-    for suit in suits {
-        for rank in ranks {
-            deck.Push(Card(suit, rank));
+    for suit in 0..4 {
+        for rank in 2..15 {
+            deck.Push(new Card(suit, rank));
         }
     }
 
@@ -1045,10 +1043,7 @@ struct Point {
     }
 
     func midpoint(other: Point) -> Point {
-        return Point {
-            x: (self.x + other.x) / 2,
-            y: (self.y + other.y) / 2
-        };
+        return new Point((self.x + other.x) / 2, (self.y + other.y) / 2);
     }
 }
 
@@ -1066,17 +1061,11 @@ struct Rectangle {
     }
 
     func center() -> Point {
-        return Point {
-            x: self.topLeft.x + self.width / 2,
-            y: self.topLeft.y + self.height / 2
-        };
+        return new Point(self.topLeft.x + self.width / 2, self.topLeft.y + self.height / 2);
     }
 
     func bottomRight() -> Point {
-        return Point {
-            x: self.topLeft.x + self.width,
-            y: self.topLeft.y + self.height
-        };
+        return new Point(self.topLeft.x + self.width, self.topLeft.y + self.height);
     }
 
     func contains(point: Point) -> Boolean {
@@ -1088,13 +1077,13 @@ struct Rectangle {
 }
 
 func start() {
-    var rect = Rectangle(Point(10.0, 20.0), 100.0, 50.0);
+    var rect = new Rectangle(new Point(10.0, 20.0), 100.0, 50.0);
 
     Say("Area: " + rect.area());         // 5000.0
     Say("Center: " + rect.center().toString());  // (60.0, 45.0)
 
-    var testPoint = Point(50.0, 40.0);
-    if rect.Contains(testPoint) {
+    var testPoint = new Point(50.0, 40.0);
+    if rect.contains(testPoint) {
         Say("Point is inside rectangle");
     }
 }
@@ -1175,8 +1164,8 @@ struct Student {
 }
 
 func start() {
-    var alice = Student("Alice", [92, 88, 95, 87, 91]);
-    var bob = Student("Bob", [78, 82, 75, 80, 79]);
+    var alice = new Student("Alice", [92, 88, 95, 87, 91]);
+    var bob = new Student("Bob", [78, 82, 75, 80, 79]);
 
     alice.report();
     Say("");
@@ -1196,12 +1185,19 @@ func start() {
 bind Viper.Terminal;
 
 struct Item {
-    expose String name;
+    expose Integer id;
     expose Number weight;
     expose Integer value;
 
     func toString() -> String {
-        return self.name + " (weight: " + self.weight + ", value: " + self.value + ")";
+        return self.name() + " (weight: " + self.weight + ", value: " + self.value + ")";
+    }
+
+    func name() -> String {
+        if self.id == 1 { return "Iron Sword"; }
+        if self.id == 2 { return "Wooden Shield"; }
+        if self.id == 3 { return "Health Potion"; }
+        return "Heavy Armor";
     }
 }
 
@@ -1252,23 +1248,23 @@ struct Inventory {
 }
 
 func start() {
-    var backpack = Inventory([], 50.0);
+    var backpack = new Inventory([], 50.0);
 
-    var sword = Item("Iron Sword", 10.0, 100);
-    var shield = Item("Wooden Shield", 8.0, 50);
-    var potion = Item("Health Potion", 0.5, 25);
-    var armor = Item("Heavy Armor", 40.0, 500);
+    var sword = new Item(1, 10.0, 100);
+    var shield = new Item(2, 8.0, 50);
+    var potion = new Item(3, 0.5, 25);
+    var armor = new Item(4, 40.0, 500);
 
-    backpack.Add(sword);
-    backpack.Add(shield);
-    backpack.Add(potion);
-    backpack.Add(potion);
-    backpack.Add(potion);
+    backpack.add(sword);
+    backpack.add(shield);
+    backpack.add(potion);
+    backpack.add(potion);
+    backpack.add(potion);
 
     backpack.display();
 
     Say("");
-    if backpack.Add(armor) {
+    if backpack.add(armor) {
         Say("Added armor!");
     } else {
         Say("Can't add armor - too heavy!");
@@ -1364,18 +1360,22 @@ struct Stats {
 }
 
 struct Player {
-    expose String name;
+    expose Integer kind;
     expose Vec2 position;
     stats: Stats;
     expose Integer score;
     expose Integer level;
 
-    expose func init(name: String, position: Vec2, stats: Stats, score: Integer, level: Integer) {
-        self.name = name;
+    expose func init(kind: Integer, position: Vec2, stats: Stats, score: Integer, level: Integer) {
+        self.kind = kind;
         self.position = position;
         self.stats = stats;
         self.score = score;
         self.level = level;
+    }
+
+    func displayName() -> String {
+        return "Hero";
     }
 
     func move(direction: Vec2) {
@@ -1386,14 +1386,14 @@ struct Player {
         var damage = target.stats.takeDamage(self.stats.attack);
         if !target.stats.isAlive() {
             self.score = self.score + target.pointValue;
-            Say(self.name + " defeated " + target.name + "!");
+            Say(self.displayName() + " defeated " + target.displayName() + "!");
             Say("  +" + target.pointValue + " points");
         }
         return damage;
     }
 
     func statusReport() {
-        Say("=== " + self.name + " ===");
+        Say("=== " + self.displayName() + " ===");
         Say("  Level: " + self.level);
         Say("  Position: " + self.position.toString());
         Say("  Health: " + self.stats.health + "/" + self.stats.maxHealth);
@@ -1404,16 +1404,26 @@ struct Player {
 }
 
 struct Enemy {
-    expose String name;
+    expose Integer kind;
     expose Vec2 position;
     stats: Stats;
     expose Integer pointValue;
 
-    expose func init(name: String, position: Vec2, stats: Stats, pointValue: Integer) {
-        self.name = name;
+    expose func init(kind: Integer, position: Vec2, stats: Stats, pointValue: Integer) {
+        self.kind = kind;
         self.position = position;
         self.stats = stats;
         self.pointValue = pointValue;
+    }
+
+    func displayName() -> String {
+        if self.kind == 1 {
+            return "Scout";
+        }
+        if self.kind == 2 {
+            return "Guard";
+        }
+        return "Enemy";
     }
 
     func distanceTo(player: Player) -> Number {
@@ -1429,52 +1439,51 @@ struct Enemy {
     }
 }
 
-func createPlayer(name: String) -> Player {
-    return new Player(name, new Vec2(0.0, 0.0), new Stats(100, 100, 15, 5), 0, 1);
+func createPlayer() -> Player {
+    return new Player(0, new Vec2(0.0, 0.0), new Stats(100, 100, 15, 5), 0, 1);
 }
 
-func createGoblin(x: Number, y: Number) -> Enemy {
-    return new Enemy("Goblin", new Vec2(x, y), new Stats(30, 30, 8, 2), 10);
+func createScout(x: Number, y: Number) -> Enemy {
+    return new Enemy(1, new Vec2(x, y), new Stats(30, 30, 8, 2), 10);
 }
 
-func createOrc(x: Number, y: Number) -> Enemy {
-    return new Enemy("Orc", new Vec2(x, y), new Stats(50, 50, 12, 5), 25);
+func createGuard(x: Number, y: Number) -> Enemy {
+    return new Enemy(2, new Vec2(x, y), new Stats(50, 50, 12, 5), 25);
 }
 
 func start() {
     Say("=== Adventure Game Demo ===");
     Say("");
 
-    var hero = createPlayer("Hero");
-    var goblin = createGoblin(3.0, 0.0);
-    var orc = createOrc(5.0, 2.0);
+    var hero = createPlayer();
+    var scout = createScout(3.0, 0.0);
 
     hero.statusReport();
 
     Say("");
-    Say("A goblin appears!");
+    Say("A " + scout.displayName() + " appears!");
 
-    // Move toward goblin
+    // Move toward the nearest enemy
     hero.move(new Vec2(2.0, 0.0));
     Say("Hero moves to " + hero.position.toString());
-    Say("Distance to goblin: " + goblin.distanceTo(hero));
+    Say("Distance to " + scout.displayName() + ": " + scout.distanceTo(hero));
 
     // Combat
     Say("");
     Say("Combat begins!");
 
-    while hero.stats.isAlive() && goblin.stats.isAlive() {
+    while hero.stats.isAlive() && scout.stats.isAlive() {
         // Hero attacks
-        var damage = hero.attack(goblin);
-        Say("Hero deals " + damage + " damage to Goblin");
+        var damage = hero.attack(scout);
+        Say("Hero deals " + damage + " damage to " + scout.displayName());
 
-        if goblin.stats.isAlive() {
-            // Goblin attacks back
-            damage = goblin.attack(hero);
-            Say("Goblin deals " + damage + " damage to Hero");
+        if scout.stats.isAlive() {
+            // Enemy attacks back
+            damage = scout.attack(hero);
+            Say(scout.displayName() + " deals " + damage + " damage to Hero");
         }
 
-        Say("  Hero HP: " + hero.stats.health + " | Goblin HP: " + goblin.stats.health);
+        Say("  Hero HP: " + hero.stats.health + " | " + scout.displayName() + " HP: " + scout.stats.health);
     }
 
     Say("");
@@ -1509,12 +1518,12 @@ struct Point {
     }
 }
 
-var p = Point(3.0, 4.0);
+var p = new Point(3.0, 4.0);
 Say(p.x);
 ```
 
-**BASIC**
-```basic
+**BASIC-style dialect comparison**
+```text
 TYPE Point
     x AS DOUBLE
     y AS DOUBLE
@@ -1527,7 +1536,7 @@ p.y = 4.0
 PRINT p.x
 ```
 
-BASIC uses `TYPE` to define structures and doesn't support methods directly — you use regular SUBs and FUNCTIONs instead.
+Classic BASIC dialects use `TYPE` to define structures and don't support methods directly — you use regular SUBs and FUNCTIONs instead.
 
 ---
 
@@ -1556,14 +1565,11 @@ Create instances with validated or computed values:
 bind Viper.Math as Math;
 
 func createPoint(x: Number, y: Number) -> Point {
-    return Point(x, y);
+    return new Point(x, y);
 }
 
 func pointFromAngle(angle: Number, distance: Number) -> Point {
-    return Point {
-        x: distance * Math.Cos(angle),
-        y: distance * Math.Sin(angle)
-    };
+    return new Point(distance * Math.Cos(angle), distance * Math.Sin(angle));
 }
 ```
 
@@ -1572,15 +1578,15 @@ func pointFromAngle(angle: Number, distance: Number) -> Point {
 ```rust
 struct Config {
     expose Integer volume;
-    expose String difficulty;
+    expose Integer difficulty;
 }
 
 func defaultConfig() -> Config {
-    return Config(50, "normal");
+    return new Config(50, 1);
 }
 
 func hardConfig() -> Config {
-    return Config(70, "hard");
+    return new Config(70, 2);
 }
 ```
 
@@ -1590,31 +1596,25 @@ For structures with many optional fields, build them step by step:
 
 ```rust
 struct Character {
-    expose String name;
+    expose Integer archetype;
     expose Integer health;
     expose Integer attack;
     expose Integer defense;
     expose Integer speed;
 }
 
-func baseCharacter(name: String) -> Character {
-    return Character {
-        name: name,
-        health: 100,
-        attack: 10,
-        defense: 10,
-        speed: 10
-    };
+func baseCharacter(archetype: Integer) -> Character {
+    return new Character(archetype, 100, 10, 10, 10);
 }
 
 // Then customize:
-var warrior = baseCharacter("Warrior");
+var warrior = baseCharacter(1);
 warrior.health = 150;
 warrior.attack = 20;
 warrior.defense = 15;
 warrior.speed = 5;
 
-var rogue = baseCharacter("Rogue");
+var rogue = baseCharacter(2);
 rogue.health = 80;
 rogue.attack = 25;
 rogue.defense = 5;
@@ -1647,7 +1647,7 @@ struct Person {
     }
 }
 
-var p = Person("Alice", 30);
+var p = new Person("Alice", 30);
 Say(p.toString());  // "Alice (age 30)"
 ```
 
@@ -1658,8 +1658,8 @@ Say(p.toString());  // "Alice (age 30)"
 ### Forgetting to Initialize All Fields
 
 ```rust
-var p = Point(5.0);       // Error: missing second argument
-var p = Point(5.0, 0.0);  // Correct: all fields provided
+var p = new Point(5.0);       // Error: missing second argument
+var p = new Point(5.0, 0.0);  // Correct: all fields provided
 ```
 
 Every field must have a value. If you want "optional" fields, use default values in factory functions.
@@ -1668,7 +1668,7 @@ Every field must have a value. If you want "optional" fields, use default values
 
 ```rust
 Point.x = 5.0;  // Wrong: Point is the type, not an instance
-var p = Point(5.0, 3.0);  // Create an instance
+var p = new Point(5.0, 3.0);  // Create an instance
 p.x = 5.0;  // Now you can access fields
 ```
 
@@ -1683,7 +1683,7 @@ func birthday(person: Person) {
     person.age = person.age + 1;  // Modifies a copy!
 }
 
-var alice = Person("Alice", 30);
+var alice = new Person("Alice", 30);
 birthday(alice);
 Say(alice.age);  // Still 30!
 ```
@@ -1698,7 +1698,7 @@ func birthday(person: Person) -> Person {
     return person;
 }
 
-var alice = Person("Alice", 30);
+var alice = new Person("Alice", 30);
 alice = birthday(alice);  // Assign the returned copy back
 Say(alice.age);  // 31
 ```
@@ -1714,7 +1714,7 @@ Field names are case-sensitive. The compiler will catch this.
 ### Modifying Through the Wrong Variable
 
 ```rust
-var p1 = Point(10.0, 20.0);
+var p1 = new Point(10.0, 20.0);
 var p2 = p1;  // Copy
 p2.x = 99.0;
 // Don't expect p1 to change!
@@ -1731,7 +1731,7 @@ Structures are fundamental to organizing data in programs. Here's what you've le
 **Core Concepts:**
 - Structures bundle related data under a single name
 - Define with `struct TypeName { expose Type field; ... }`
-- Create instances with `TypeName(value, ...)`
+- Create instances with `new TypeName(value, ...)`
 - Access fields with `instance.field`
 
 **Value Semantics:**

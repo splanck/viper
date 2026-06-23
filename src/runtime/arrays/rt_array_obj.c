@@ -169,12 +169,22 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
     }
 
     void **truncated = NULL;
+    size_t truncated_count = 0;
     if (len < old_len) {
-        size_t truncated_count = old_len - len;
-        truncated = (void **)malloc(truncated_count * sizeof(void *));
-        if (!truncated)
-            return NULL;
-        memcpy(truncated, arr + len, truncated_count * sizeof(void *));
+        for (size_t i = len; i < old_len; i++) {
+            if (arr[i])
+                truncated_count++;
+        }
+        if (truncated_count > 0) {
+            truncated = (void **)malloc(truncated_count * sizeof(void *));
+            if (!truncated)
+                return NULL;
+            size_t at = 0;
+            for (size_t i = len; i < old_len; i++) {
+                if (arr[i])
+                    truncated[at++] = arr[i];
+            }
+        }
     }
 
     size_t new_cap = len;
@@ -191,8 +201,8 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
     }
 
     if (truncated) {
-        for (size_t i = len; i < old_len; i++) {
-            rt_arr_obj_release_element(truncated[i - len]);
+        for (size_t i = 0; i < truncated_count; i++) {
+            rt_arr_obj_release_element(truncated[i]);
         }
         free(truncated);
     }

@@ -248,16 +248,18 @@ Random.Dice(2);        // 1 or 2 — simulates a coin flip
 
 ```rust
 bind Viper.Math.Random as Random;
+bind Seq = Viper.Collections.Seq;
+bind Box = Viper.Core.Box;
 bind Viper.Terminal;
 
-var deck: List[Integer] = [];
+var deck = Seq.New();
 var i = 1;
 while i <= 10 {
-    deck.add(i);
+    deck.Push(Box.I64(i));
     i = i + 1;
 }
 Random.Shuffle(deck);  // Shuffle in place
-SayInt(deck.count());
+SayInt(deck.Length);
 ```
 
 ### Reproducible Randomness
@@ -690,8 +692,8 @@ scores.set("Alice", 950);
 scores.set("Bob", 875);
 scores.set("Charlie", 1200);
 
-Say(Fmt.Int(scores.get("Alice")));    // 950
-Say(Fmt.Int(scores.count()));         // 3
+Say(Fmt.Int(scores.get("Alice") ?? 0));    // 950
+Say(Fmt.Int(scores.Length));          // 3
 
 if scores.has("David") {
     Say("David is in the game");
@@ -701,9 +703,9 @@ if scores.has("David") {
 
 var keys = scores.keys();
 var i = 0;
-while i < keys.count() {
-    var key = keys.get(i);
-    Say(key + ": " + Fmt.Int(scores.get(key)));
+while i < keys.Length {
+    var key = keys.GetStr(i);
+    Say(key + ": " + Fmt.Int(scores.get(key) ?? 0));
     i = i + 1;
 }
 
@@ -767,7 +769,7 @@ func countWords(text: String) -> Map[String, Integer] {
         var cleaned = word.Trim();
         if cleaned.Length > 0 {
             if frequency.has(cleaned) {
-                frequency.set(cleaned, frequency.get(cleaned) + 1);
+                frequency.set(cleaned, (frequency.get(cleaned) ?? 0) + 1);
             } else {
                 frequency.set(cleaned, 1);
             }
@@ -830,10 +832,11 @@ func getNumber(prompt: String) -> Integer {
 
         try {
             return Convert.ToInt64(input);
-        } catch(e) {
+        } catch {
             Say("Please enter a valid number.");
         }
     }
+    return 0;
 }
 
 // Usage:
@@ -914,11 +917,14 @@ Never concatenate paths with `+`:
 ```rust
 bind Viper.IO.Path as Path;
 
+var dir = "users";
+var filename = "file.txt";
+
 // BAD - breaks on different operating systems
-var path = dir + "/" + filename;
+var badPath = dir + "/" + filename;
 
 // GOOD - works everywhere
-var path = Path.Join(dir, filename);
+var goodPath = Path.Join(dir, filename);
 ```
 
 Windows uses backslashes (`\`), Unix uses forward slashes (`/`). `Path.Join()` handles this automatically.
@@ -1142,7 +1148,7 @@ What about time zones? Localization? 12-hour vs 24-hour time? The standard libra
 
 ### Cryptographic Hashing
 
-```rust
+```text
 // DON'T DO THIS - SHA256 is complex
 func sha256(input: String) -> String {
     // This is literally hundreds of lines of careful bit manipulation
@@ -1155,7 +1161,7 @@ Cryptography is easy to get wrong. Use the standard library.
 
 ### Random Number Generation
 
-```rust
+```text
 // DON'T DO THIS - not actually random
 func badRandom() -> Integer {
     // Most simple approaches produce predictable sequences
@@ -1209,7 +1215,7 @@ When you encounter a new standard library module:
 
 Don't try to learn every function. Start with the most common operations:
 
-```rust
+```text
 bind File = Viper.IO.File;
 
 // For File, start with:
@@ -1276,10 +1282,11 @@ func getInt(prompt: String) -> Integer {
         Print(prompt);
         try {
             return Convert.ToInt64((ReadLine() ?? "").Trim());
-        } catch(e) {
+        } catch {
             Say("Invalid input. Please enter a number.");
         }
     }
+    return 0;
 }
 ```
 
@@ -1326,17 +1333,18 @@ bind Viper.Time;
 bind Viper.Terminal;
 bind Viper.Text.Fmt as Fmt;
 
-func timed(name: String, operation: func()) {
-    var start = Time.Clock.Ticks();
-    operation();
-    var elapsed = Time.Clock.Ticks() - start;
-    Say(name + " took " + Fmt.Int(elapsed) + " ms");
+var start = Time.Clock.Ticks();
+
+// Code being measured goes here.
+var total = 0;
+var i = 0;
+while i < 1000 {
+    total = total + i;
+    i = i + 1;
 }
 
-// Usage:
-timed("Sort", func() {
-    sortLargeArray(data);
-});
+var elapsed = Time.Clock.Ticks() - start;
+Say("Loop took " + Fmt.Int(elapsed) + " ms");
 ```
 
 ### Pattern: Build a Path

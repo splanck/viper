@@ -306,12 +306,12 @@ void rt_canvas3d_flip(void *o) {
 /// @return `0`.
 int64_t rt_canvas3d_poll(void *o) {
     (void)o;
-    return 0;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.Poll: graphics support not compiled in", 0);
 }
 
 int64_t rt_canvas3d_poll_event(void *o) {
     (void)o;
-    return 0;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.PollEvent: graphics support not compiled in", 0);
 }
 
 /// @brief Stub for `Canvas3D.ShouldClose` — would normally report whether
@@ -326,7 +326,7 @@ int64_t rt_canvas3d_poll_event(void *o) {
 /// @return `0`.
 int8_t rt_canvas3d_should_close(void *o) {
     (void)o;
-    return 0;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.ShouldClose: graphics support not compiled in", 0);
 }
 
 /// @brief Stub for `Canvas3D.SetWireframe` — would normally enable or

@@ -71,6 +71,7 @@ struct InstallPackageArgs {
     std::string windowsTimestampUrl;
     std::string windowsSigntoolPath;
     bool windowsSignNoVerify{false};
+    std::string linuxSignKey;
     std::string windowsInstallScope{"user"};
     std::string windowsInstallDir{"Viper"};
     bool windowsAddToPath{true};
@@ -126,6 +127,7 @@ void installPackageUsage() {
         << "  --windows-timestamp-url <url> RFC3161 timestamp URL for Windows signing\n"
         << "  --windows-signtool <path> signtool.exe path override\n"
         << "  --windows-sign-no-verify Skip signtool verify after signing\n"
+        << "  --linux-sign-key <id> GPG key id/name to sign generated .deb/.rpm packages\n"
         << "  --windows-install-scope <scope> user | machine (default: user)\n"
         << "  --windows-install-dir <name> Directory name under install root (default: Viper)\n"
         << "  --windows-no-path    Do not add bin/ to PATH\n"
@@ -741,6 +743,8 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             args.windowsSigntoolPath = argv[++i];
         } else if (arg == "--windows-sign-no-verify") {
             args.windowsSignNoVerify = true;
+        } else if (arg == "--linux-sign-key" && i + 1 < argc) {
+            args.linuxSignKey = argv[++i];
         } else if (arg == "--windows-install-scope" && i + 1 < argc) {
             args.windowsInstallScope = argv[++i];
             if (args.windowsInstallScope != "user" && args.windowsInstallScope != "machine") {
@@ -1634,6 +1638,20 @@ int cmdInstallPackage(int argc, char **argv) {
                 std::error_code removeEc;
                 fs::remove(artifactPath, removeEc);
                 return 1;
+            }
+            if ((target == InstallPackageTarget::LinuxDeb ||
+                 target == InstallPackageTarget::LinuxRpm) &&
+                !args.linuxSignKey.empty()) {
+                try {
+                    viper::pkg::signLinuxPackage(artifactPath.string(),
+                                                 args.linuxSignKey,
+                                                 target == InstallPackageTarget::LinuxRpm);
+                } catch (const std::exception &ex) {
+                    std::cerr << "error: " << ex.what() << "\n";
+                    std::error_code removeEc;
+                    fs::remove(artifactPath, removeEc);
+                    return 1;
+                }
             }
 
             if (!args.noVerify) {

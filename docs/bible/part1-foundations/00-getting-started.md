@@ -498,7 +498,7 @@ Save this file as `test.zia` in your `viper-projects` folder.
 
 In your terminal (make sure you're in the viper-projects folder):
 ```bash
-zia test.zia
+viper run test.zia
 ```
 
 **What you should see:**

@@ -3186,7 +3186,7 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     EXPECT_TRUE(script.find("$installLeaf=") != std::string::npos);
     EXPECT_TRUE(script.find("$baseOffset=") != std::string::npos);
     EXPECT_TRUE(script.find("$display=") != std::string::npos);
-    EXPECT_TRUE(script.find(".Read(") != std::string::npos);     // overlay byte reader
+    EXPECT_TRUE(script.find(".Read(") != std::string::npos);      // overlay byte reader
     EXPECT_TRUE(script.find("testapp.exe") != std::string::npos); // payload file name
     // The layout's identifier must survive into the script (registry/uninstall key).
     EXPECT_TRUE(script.find("org.viper.testapp") != std::string::npos);
@@ -3296,6 +3296,288 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
     EXPECT_CONTAINS(nextManifestText, ".viper-install-manifest.txt\n");
 
     fs::remove_all(tmpRoot);
+}
+
+TEST(AppImage, BuildsVerifiableApplicationImage) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_appimage_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "assets" / "levels");
+
+    // Synthetic ELF executable. buildAppImage only reads the bytes; the
+    // Mach-O/ELF/PE format check lives in the CLI layer, not the builder.
+    {
+        std::vector<uint8_t> elf(128, 0);
+        elf[0] = 0x7F;
+        elf[1] = 'E';
+        elf[2] = 'L';
+        elf[3] = 'F';
+        elf[4] = 2; // ELFCLASS64
+        elf[5] = 1; // ELFDATA2LSB
+        std::ofstream exe(tmpRoot / "game", std::ios::binary);
+        exe.write(reinterpret_cast<const char *>(elf.data()),
+                  static_cast<std::streamsize>(elf.size()));
+    }
+    {
+        std::ofstream asset(tmpRoot / "assets" / "levels" / "level1.dat", std::ios::binary);
+        asset << "level-one";
+    }
+    {
+        PkgImage img;
+        img.width = 1;
+        img.height = 1;
+        img.pixels = {0, 128, 255, 255};
+        const auto png = pngEncode(img);
+        std::ofstream icon(tmpRoot / "icon.png", std::ios::binary);
+        icon.write(reinterpret_cast<const char *>(png.data()),
+                   static_cast<std::streamsize>(png.size()));
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Space Game";
+    pkg.description = "A test game";
+    pkg.iconPath = "icon.png";
+    pkg.assets.push_back({"assets", "data"});
+
+    const fs::path outPath = tmpRoot / "SpaceGame-x86_64.AppImage";
+    LinuxBuildParams params;
+    params.projectName = "spacegame";
+    params.version = "1.2.0";
+    params.executablePath = (tmpRoot / "game").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = outPath.string();
+    params.archStr = "x64";
+
+    buildAppImage(params);
+
+    auto appImage = readFile(outPath.string());
+    std::string verifyErr;
+    const bool ok = verifyLinuxAppImage(appImage, &verifyErr);
+    if (!ok)
+        std::cerr << verifyErr;
+    EXPECT_TRUE(ok);
+    // The FUSE-less self-extractor is a shell script (shebang), not an ELF.
+    ASSERT_GT(appImage.size(), static_cast<size_t>(2));
+    EXPECT_EQ(appImage[0], static_cast<uint8_t>('#'));
+    EXPECT_EQ(appImage[1], static_cast<uint8_t>('!'));
+
+    // The appended gzip payload must contain the expected portable layout.
+    const auto payloadGz = appImagePayloadBytes(appImage);
+    ASSERT_FALSE(payloadGz.empty());
+    const auto tarBytes = gunzip(payloadGz.data(), payloadGz.size());
+    ASSERT_FALSE(tarBytes.empty());
+    auto tarContains = [&](const std::string &name) {
+        return std::search(tarBytes.begin(), tarBytes.end(), name.begin(), name.end()) !=
+               tarBytes.end();
+    };
+    EXPECT_TRUE(tarContains("AppRun"));
+    EXPECT_TRUE(tarContains("usr/bin/spacegame"));
+    EXPECT_TRUE(tarContains("spacegame.desktop"));
+    EXPECT_TRUE(tarContains("spacegame.png"));
+    EXPECT_TRUE(tarContains("usr/share/spacegame/data/levels/level1.dat"));
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(LinuxAppPackage, DebUsesSharedAppFhsLayout) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_appdeb_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "assets" / "levels");
+    {
+        std::vector<uint8_t> elf(128, 0);
+        elf[0] = 0x7F;
+        elf[1] = 'E';
+        elf[2] = 'L';
+        elf[3] = 'F';
+        elf[4] = 2;
+        elf[5] = 1;
+        std::ofstream exe(tmpRoot / "game", std::ios::binary);
+        exe.write(reinterpret_cast<const char *>(elf.data()),
+                  static_cast<std::streamsize>(elf.size()));
+    }
+    {
+        std::ofstream asset(tmpRoot / "assets" / "levels" / "level1.dat", std::ios::binary);
+        asset << "level-one";
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Space Game";
+    pkg.description = "A test game";
+    pkg.assets.push_back({"assets", "data"});
+
+    const fs::path outPath = tmpRoot / "spacegame.deb";
+    LinuxBuildParams params;
+    params.projectName = "spacegame";
+    params.version = "1.2.0";
+    params.executablePath = (tmpRoot / "game").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = outPath.string();
+    params.archStr = "amd64";
+
+    buildDebPackage(params);
+
+    auto debBytes = readFile(outPath.string());
+    std::ostringstream err;
+    const bool ok = verifyDebPayload(
+        debBytes, {"usr/bin/spacegame", "usr/share/spacegame/data/levels/level1.dat"}, err);
+    if (!ok)
+        std::cerr << err.str();
+    EXPECT_TRUE(ok);
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(LinuxAppPackage, RpmBuildsOrReportsMissingRpmbuild) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_apprpm_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    {
+        std::vector<uint8_t> elf(128, 0);
+        elf[0] = 0x7F;
+        elf[1] = 'E';
+        elf[2] = 'L';
+        elf[3] = 'F';
+        elf[4] = 2;
+        elf[5] = 1;
+        std::ofstream exe(tmpRoot / "game", std::ios::binary);
+        exe.write(reinterpret_cast<const char *>(elf.data()),
+                  static_cast<std::streamsize>(elf.size()));
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Space Game";
+    pkg.description = "A test game";
+    pkg.license = "MIT";
+
+    const fs::path outPath = tmpRoot / "spacegame.rpm";
+    LinuxBuildParams params;
+    params.projectName = "spacegame";
+    params.version = "1.2.0";
+    params.executablePath = (tmpRoot / "game").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = outPath.string();
+    params.archStr = "x64";
+
+    // rpmbuild is the build engine for RPMs and is not present on every host
+    // (e.g. macOS). Either path is correct: a produced .rpm, or a clear diagnostic.
+    bool threw = false;
+    std::string what;
+    try {
+        buildRpmPackage(params);
+    } catch (const std::exception &ex) {
+        threw = true;
+        what = ex.what();
+    }
+    if (threw) {
+        EXPECT_CONTAINS(what, "rpmbuild");
+    } else {
+        auto rpm = readFile(outPath.string());
+        ASSERT_GE(rpm.size(), static_cast<size_t>(4));
+        EXPECT_EQ(rpm[0], static_cast<uint8_t>(0xED));
+        EXPECT_EQ(rpm[1], static_cast<uint8_t>(0xAB));
+        EXPECT_EQ(rpm[2], static_cast<uint8_t>(0xEE));
+        EXPECT_EQ(rpm[3], static_cast<uint8_t>(0xDB));
+    }
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(LinuxPackageSigning, ReportsMissingSigningToolClearly) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_sign_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    const fs::path pkgPath = tmpRoot / "pkg.deb";
+    {
+        std::ofstream f(pkgPath, std::ios::binary);
+        f << "stand-in package bytes";
+    }
+
+    // dpkg-sig/rpmsign are external tools not present on every host. Either outcome
+    // is correct, but both must clearly name the tool: a "not found on PATH"
+    // diagnostic (this host) or a signing failure (a host with the tool + bogus key).
+    bool threw = false;
+    std::string what;
+    try {
+        signLinuxPackage(pkgPath.string(), "Viper Test Signing Key", /*isRpm=*/false);
+    } catch (const std::exception &ex) {
+        threw = true;
+        what = ex.what();
+    }
+    EXPECT_TRUE(threw);
+    EXPECT_CONTAINS(what, "dpkg-sig");
+
+    // An empty key is rejected up front, independent of any external tool.
+    bool emptyThrew = false;
+    try {
+        signLinuxPackage(pkgPath.string(), "", /*isRpm=*/true);
+    } catch (const std::exception &) {
+        emptyThrew = true;
+    }
+    EXPECT_TRUE(emptyThrew);
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(MacOSAppDmg, BuildsVerifiableDiskImage) {
+#if !VIPER_HOST_MACOS
+    // hdiutil is macOS-only; nothing to build or verify on other hosts.
+    return;
+#else
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_appdmg_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "assets");
+    {
+        // Minimal Mach-O-ish stand-in. The builder reads the bytes and, with sign
+        // mode "none", does not invoke codesign, so a real binary is unnecessary.
+        std::vector<uint8_t> macho(256, 0);
+        macho[0] = 0xCF;
+        macho[1] = 0xFA;
+        macho[2] = 0xED;
+        macho[3] = 0xFE; // MH_MAGIC_64 (little-endian)
+        std::ofstream exe(tmpRoot / "game", std::ios::binary);
+        exe.write(reinterpret_cast<const char *>(macho.data()),
+                  static_cast<std::streamsize>(macho.size()));
+    }
+    {
+        std::ofstream a(tmpRoot / "assets" / "data.bin", std::ios::binary);
+        a << "asset";
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Space Game";
+    pkg.identifier = "com.example.spacegame";
+    pkg.macosSignMode = "none";
+    pkg.assets.push_back({"assets", "data"});
+
+    const fs::path outPath = tmpRoot / "SpaceGame.dmg";
+    MacOSBuildParams params;
+    params.projectName = "spacegame";
+    params.version = "1.2.0";
+    params.executablePath = (tmpRoot / "game").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = outPath.string();
+
+    buildMacOSAppDmg(params);
+
+    auto dmg = readFile(outPath.string());
+    ASSERT_GE(dmg.size(), static_cast<size_t>(512));
+    // UDIF images end with a 512-byte "koly" trailer block.
+    const size_t n = dmg.size();
+    EXPECT_EQ(dmg[n - 512], static_cast<uint8_t>('k'));
+    EXPECT_EQ(dmg[n - 511], static_cast<uint8_t>('o'));
+    EXPECT_EQ(dmg[n - 510], static_cast<uint8_t>('l'));
+    EXPECT_EQ(dmg[n - 509], static_cast<uint8_t>('y'));
+
+    fs::remove_all(tmpRoot);
+#endif
 }
 
 TEST(WindowsPackageBuilder, ImportedDllNamesFromPeReadsImportTableOnly) {
@@ -4415,8 +4697,8 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
     EXPECT_TRUE(std::search(appImage.begin(),
                             appImage.end(),
                             reinterpret_cast<const uint8_t *>(hashField.data()),
-                            reinterpret_cast<const uint8_t *>(hashField.data()) + hashField.size())
-                != appImage.end());
+                            reinterpret_cast<const uint8_t *>(hashField.data()) +
+                                hashField.size()) != appImage.end());
     const auto payload = appImagePayloadBytes(appImage);
     ASSERT_TRUE(payload.size() >= 2);
     EXPECT_EQ(payload[0], static_cast<uint8_t>(0x1F));

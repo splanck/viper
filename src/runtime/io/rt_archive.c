@@ -53,6 +53,7 @@
 #endif
 
 #include <errno.h>
+#include <limits.h>
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -114,8 +115,10 @@ void archive_save_trap_error(char *buffer, size_t buffer_size, const char *fallb
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
-static void archive_add_with_temp_data(
-    void *obj, rt_string name, void *data, const char *fallback) {
+static void archive_add_with_temp_data(void *obj,
+                                       rt_string name,
+                                       void *data,
+                                       const char *fallback) {
     void *volatile owned_data = data;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
@@ -168,7 +171,6 @@ static const char *archive_entry_name_cstr(rt_string name) {
         return NULL;
     return (const char *)data;
 }
-
 
 //=============================================================================
 // ZIP Entry Structure
@@ -488,7 +490,15 @@ static int add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
                                      "Archive: ZIP64 archives are not supported"))
         return 0;
     if (ar->write_entry_count >= ar->write_entry_cap) {
+        if (ar->write_entry_cap > INT_MAX / 2) {
+            rt_trap("Archive: entry capacity overflow");
+            return 0;
+        }
         int new_cap = ar->write_entry_cap == 0 ? 16 : ar->write_entry_cap * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(zip_entry_t)) {
+            rt_trap("Archive: entry allocation overflow");
+            return 0;
+        }
         zip_entry_t *new_entries =
             (zip_entry_t *)realloc(ar->write_entries, new_cap * sizeof(zip_entry_t));
         if (!new_entries) {
@@ -1508,7 +1518,8 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
         rt_trap_set_recovery(&recovery);
         if (setjmp(recovery) != 0) {
             char saved_error[256];
-            archive_save_trap_error(saved_error, sizeof(saved_error), "Archive: failed to compress entry");
+            archive_save_trap_error(
+                saved_error, sizeof(saved_error), "Archive: failed to compress entry");
             rt_trap_clear_recovery();
             archive_release_temp_object((void *)compressed_owner);
             free((char *)norm_name_owner);

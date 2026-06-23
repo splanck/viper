@@ -16,7 +16,8 @@
 //   - Each Draw fills a reusable per-frame vertex+index slot for all live particles.
 //   - Additive mode submits one batched draw; alpha mode sorts the batched quads
 //     back-to-front before upload so transparent draw order is deterministic.
-//   - xorshift32 PRNG for deterministic randomization (no stdlib rand).
+//   - xorshift32 PRNG seeded from a local monotonic counter for deterministic
+//     randomization without object-address-derived seeds (no stdlib rand).
 //   - Draw materials are slotted per frame so queued commands are not mutated by later draws.
 //
 // Ownership/Lifetime:
@@ -35,6 +36,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_platform.h"
 
 #include <float.h>
 #include <math.h>
@@ -107,6 +109,19 @@ typedef struct {
     int64_t draw_frame_serial;
     int32_t draw_slots_used;
 } rt_particles3d;
+
+/// @brief Generate a non-zero per-instance seed for Particles3D.
+/// @details Uses a process-local monotonic counter mixed with an odd constant
+///          instead of deriving seeds from object addresses. The helper is
+///          self-contained so graphics contract tests that compile this source
+///          without the full runtime RNG still link cleanly.
+/// @return Non-zero xorshift32 seed.
+static uint32_t particles3d_next_seed(void) {
+    static int64_t counter = INT64_C(0xA341316C);
+    int64_t old = __atomic_fetch_add(&counter, INT64_C(0x9E3779B9), __ATOMIC_RELAXED);
+    uint32_t seed = (uint32_t)old ^ 0x12345678u;
+    return seed ? seed : 0xA341316Cu;
+}
 
 /// @brief Validate @p obj as a Particles3D handle and return its typed pointer (NULL on mismatch).
 static rt_particles3d *particles3d_checked(void *obj) {
@@ -483,9 +498,7 @@ void *rt_particles3d_new(int64_t max_particles) {
     ps->texture = NULL;
     ps->emitter_shape = 0;
     ps->emitter_size[0] = ps->emitter_size[1] = ps->emitter_size[2] = 1.0;
-    ps->prng_state = (uint32_t)(uintptr_t)ps ^ 0x12345678u; /* unique per instance */
-    if (ps->prng_state == 0)
-        ps->prng_state = 0xA341316Cu;
+    ps->prng_state = particles3d_next_seed();
     ps->cached_material = NULL;
 
     rt_obj_set_finalizer(ps, rt_particles3d_finalize);

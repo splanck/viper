@@ -17,6 +17,12 @@
 
 #include "rt_tls_verify_internal.h"
 
+/// @brief Maximum DER certificate-list bytes retained for verification.
+/// @details TLS handshake framing already caps messages at 16 MiB, but keeping
+///          a smaller certificate-list limit avoids allocating attacker-sized
+///          chains before platform trust evaluation.
+#define RT_TLS_MAX_CERT_CHAIN_BYTES (1024u * 1024u)
+
 //=============================================================================
 // Certificate Validation — CS-1, CS-2, CS-3
 //=============================================================================
@@ -113,6 +119,10 @@ int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, si
 
     if (list_len < 5) {
         session->error = "TLS: Certificate list too short for one entry";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (list_len > RT_TLS_MAX_CERT_CHAIN_BYTES) {
+        session->error = "TLS: Certificate chain too large";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -334,6 +344,8 @@ static int tls_wildcard_suffix_allowed(const char *suffix) {
         "co.uk",  "org.uk", "ac.uk", "gov.uk", "au",    "com.au", "net.au", "org.au",
         "edu.au", "gov.au", "jp",    "co.jp",  "ne.jp", "or.jp",  "de",     "fr",
         "it",     "es",     "nl",    "br",     "ca",    "io",     "dev",    "app"};
+    static const char *const public_sld_labels[] = {
+        "ac", "co", "com", "edu", "gov", "mil", "net", "ne", "or", "org"};
 
     if (!suffix || !tls_dns_name_valid(suffix, 0))
         return 0;
@@ -342,6 +354,17 @@ static int tls_wildcard_suffix_allowed(const char *suffix) {
     for (size_t i = 0; i < sizeof(blocked_suffixes) / sizeof(blocked_suffixes[0]); i++) {
         if (strcasecmp(suffix, blocked_suffixes[i]) == 0)
             return 0;
+    }
+    const char *first_dot = strchr(suffix, '.');
+    const char *second_dot = first_dot ? strchr(first_dot + 1, '.') : NULL;
+    if (first_dot && !second_dot && strlen(first_dot + 1) == 2) {
+        size_t first_label_len = (size_t)(first_dot - suffix);
+        for (size_t i = 0; i < sizeof(public_sld_labels) / sizeof(public_sld_labels[0]); i++) {
+            if (strlen(public_sld_labels[i]) == first_label_len &&
+                strncasecmp(suffix, public_sld_labels[i], first_label_len) == 0) {
+                return 0;
+            }
+        }
     }
     return 1;
 }

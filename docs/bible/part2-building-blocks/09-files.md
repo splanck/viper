@@ -184,10 +184,12 @@ Always use `Path.Join` instead of string concatenation:
 bind Viper.IO.Path as Path;
 
 // Bad: might produce "/home/alice//documents" or wrong separators
-var path = directory + "/" + filename;
+var directory = "/home/alice";
+var filename = "documents/report.txt";
+var badPath = directory + "/" + filename;
 
 // Good: handles edge cases correctly
-var path = Path.Join(directory, filename);
+var goodPath = Path.Join(directory, filename);
 ```
 
 ### Cross-Platform Considerations
@@ -253,14 +255,14 @@ When you write to a file:
 
 ### Closing a File
 
-Closing a file is crucial:
+When an API exposes a long-lived file handle, closing it is crucial:
 
 1. Flushes any buffered writes to disk
 2. Releases the file handle back to the operating system
 3. Allows other programs to access the file
 4. Frees up system resources
 
-**Always close files when you're done.** Failing to close files can cause:
+Viper's current `Viper.IO.File` helpers (`ReadAllText`, `WriteAllText`, `Append`, and related calls) open and close the file for each operation. If you use an API that gives you an explicit handle, close it when you're done. Failing to close file handles can cause:
 - Data loss (unflushed buffers)
 - Resource exhaustion (too many open files)
 - Files being locked (other programs can't access them)
@@ -369,49 +371,41 @@ for line in lines {
 
 This is still loading everything at once, but having lines as separate strings is often more convenient.
 
-### Streaming: One Line at a Time
+### Processing a Line Sequence
 
-For large files, read one line at a time:
+When line-by-line processing is clearer than working with one large string, use `ReadAllLines` and process the returned sequence:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-var reader = openRead("huge.txt");
+var lines = File.ReadAllLines("huge.txt");
 
-while reader.hasMore() {
-    var line = reader.ReadLine();
+for line in lines {
     // Process this one line
     Say(line);
 }
-
-reader.Close();  // Don't forget!
 ```
 
 **What happens:**
-1. File is opened but not fully loaded
-2. Each `readLine()` fetches just one line into memory
-3. You process that line, then it can be garbage collected
-4. Only one line is in memory at any time
+1. File is opened and read
+2. Contents are split into a sequence of lines
+3. You process each line in order
+4. The file is closed automatically
 
-**When to use:** Files too large to fit in memory. Processing millions of records. When you might stop early (don't need the whole file).
+**When to use:** Files that fit comfortably in memory, but are naturally processed as records or lines. The current `Viper.IO.File` API is whole-file oriented; it does not expose explicit stream reader handles.
 
 ### Reading with a Position
 
 Sometimes you need to jump to a specific location:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-var reader = openRead("data.bin");
+var bytes = File.ReadAllBytes("data.bin");
 
-// Skip to position 100
-reader.seek(100);
-
-// Read 50 bytes from that position
-var data = reader.readBytes(50);
-
-reader.Close();
+// Copy 50 bytes starting at position 100
+var data = bytes.Slice(100, 50);
 ```
 
 This is more common with binary files (like reading specific parts of an image or database file).
@@ -461,46 +455,42 @@ Event 3 occurred
 
 Append is safer than write because you can't accidentally erase data.
 
-### Streaming: Write Incrementally
+### Building Output Before Writing
 
-For large amounts of data, or when building output over time:
+For generated output, build the content first and then write it in one call:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
+bind Viper.Text.StringBuilder as SB;
 
-var writer = openWrite("output.txt");
+var builder = new SB();
 
-writer.WriteLine("Header line");
+builder.AppendLine("Header line");
 
 for i in 0..1000 {
-    writer.WriteLine("Data line " + i);
+    builder.AppendLine("Data line " + i);
 }
 
-writer.Close();  // CRUCIAL: flushes buffered data to disk
+File.WriteAllText("output.txt", builder.ToString());
 ```
 
-**Why streaming matters:**
-- You don't need to build a huge string in memory first
-- Data is written in chunks as you go
-- For very large output, this is the only practical approach
+**Why this pattern matters:**
+- You avoid repeated `result = result + ...` copying
+- `StringBuilder` avoids repeated string copying while you assemble the content
+- `WriteAllText` handles open/write/close for you
 
-### Ensuring Data is Written
+### Ensuring Data Is Written
 
-Because of buffering, calling `writeLine` doesn't guarantee the data is on disk. To force data to disk:
+`WriteAllText`, `WriteAllBytes`, and `Append` open the file, perform the write, and close it before returning:
 
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-var writer = openWrite("critical.txt");
-
-writer.WriteLine("Important data");
-writer.Flush();  // Force buffered data to disk now
-
-writer.WriteLine("More data");
-writer.Close();  // Also flushes before closing
+File.WriteAllText("critical.txt", "Important data\n");
+File.Append("critical.txt", "More data\n");
 ```
 
-Use `flush()` when you absolutely need data persisted immediately (like before a risky operation). But don't overuse it — flushing after every line is slow.
+There is no exposed `Flush` method in the current whole-file API. If the write call reports success, the runtime has closed the file handle for that operation.
 
 ---
 
@@ -526,7 +516,7 @@ Each byte represents a character code (usually ASCII or UTF-8).
 - Linux/Mac: `\n` (line feed, byte 10)
 - Windows: `\r\n` (carriage return + line feed, bytes 13 and 10)
 
-Viper handles this automatically when you use `readLines` and `writeLine`.
+Viper handles common line-ending differences when you use `ReadAllLines` and `WriteAllText`.
 
 ### What Are Binary Files?
 
@@ -540,12 +530,17 @@ A simple example — storing numbers efficiently:
 
 ```rust
 bind File = Viper.IO.File;
+bind Viper.Collections.Bytes as Bytes;
 
 // Store the number 1000000 as text: needs 7 bytes ("1000000")
 // Store the number 1000000 as binary: needs 4 bytes (the actual bits)
 
 // Write binary data
-var data: List[byte] = [0x40, 0x42, 0x0F, 0x00];  // 1000000 in little-endian
+var data = new Bytes(4);
+data.Set(0, 0x40);
+data.Set(1, 0x42);
+data.Set(2, 0x0F);
+data.Set(3, 0x00);  // 1000000 in little-endian
 File.WriteAllBytes("number.bin", data);
 
 // Read binary data
@@ -570,18 +565,23 @@ var bytes = File.ReadAllBytes("number.bin");
 
 ```rust
 bind File = Viper.IO.File;
+bind Viper.Collections.Bytes as Bytes;
 bind Viper.Terminal;
 
 // Writing binary data
-var data: List[byte] = [0x89, 0x50, 0x4E, 0x47];  // PNG header bytes
+var data = new Bytes(4);
+data.Set(0, 0x89);
+data.Set(1, 0x50);
+data.Set(2, 0x4E);
+data.Set(3, 0x47);  // PNG header bytes
 File.WriteAllBytes("header.bin", data);
 
 // Reading binary data
-var bytes = File.ReadAllBytes("image.png");
-Say("File size: " + File.Size("image.png") + " bytes");
+var bytes = File.ReadAllBytes("header.bin");
+Say("File size: " + File.Size("header.bin") + " bytes");
 
 // Check for PNG signature
-if bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 {
+if bytes.Get(0) == 0x89 && bytes.Get(1) == 0x50 && bytes.Get(2) == 0x4E && bytes.Get(3) == 0x47 {
     Say("This is a PNG file!");
 }
 ```
@@ -705,7 +705,9 @@ func findTextFiles(directory: String) {
     }
 }
 
-findTextFiles("documents");
+func start() {
+    findTextFiles("documents");
+}
 ```
 
 ---
@@ -739,6 +741,7 @@ var content = File.ReadAllText("/etc/shadow");
 bind File = Viper.IO.File;
 
 // No space left on the storage device
+var massiveData = "very large content";
 File.WriteAllText("huge.txt", massiveData);
 // Error: No space left on device
 ```
@@ -827,6 +830,7 @@ Writing files is risky. If something goes wrong mid-write, you might end up with
 bind File = Viper.IO.File;
 
 // Dangerous: if this fails mid-write, data.txt is corrupted
+var newData = "replacement content";
 File.WriteAllText("data.txt", newData);
 ```
 
@@ -937,7 +941,6 @@ module Config;
 
 bind File = Viper.IO.File;
 bind Convert = Viper.Core.Convert;
-bind Viper.String as Str;
 bind Viper.Terminal;
 
 final CONFIG_FILE = "settings.cfg";
@@ -972,16 +975,12 @@ func loadConfig() -> Map[String, String] {
 }
 
 func saveConfig(config: Map[String, String], keys: List[String]) {
-    var lines: List[String] = [];
-    lines.add("# Application settings");
-    lines.add("# Edit with care!");
-    lines.add("");
+    var content = "# Application settings\n# Edit with care!\n\n";
 
     for key in keys {
-        lines.add(key + "=" + config.get(key));
+        content = content + key + "=" + config.get(key) + "\n";
     }
 
-    var content = Str.Join("\n", lines);
     File.WriteAllText(CONFIG_FILE, content);
 }
 
@@ -1078,21 +1077,12 @@ bind Viper.IO.Path as Path;
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 bind Convert = Viper.Core.Convert;
-bind Viper.String as Str;
 
 final SAVE_DIR = "saves";
 
-struct SaveData {
-    expose String playerName;
-    expose Integer level;
-    expose Integer score;
-    expose Integer health;
-    expose List[String] inventory;
-    expose Number posX;
-    expose Number posY;
-}
-
-func save(data: SaveData, slot: Integer) {
+func save(playerName: String, level: Integer, score: Integer,
+          health: Integer, inventory: String,
+          posX: Number, posY: Number, slot: Integer) {
     // Ensure save directory exists
     if !Dir.Exists(SAVE_DIR) {
         Dir.Make(SAVE_DIR);
@@ -1100,57 +1090,28 @@ func save(data: SaveData, slot: Integer) {
 
     var filename = Path.Join(SAVE_DIR, "save_" + slot + ".dat");
 
-    var lines: List[String] = [];
-    lines.add("name=" + data.playerName);
-    lines.add("level=" + data.level);
-    lines.add("score=" + data.score);
-    lines.add("health=" + data.health);
-    lines.add("inventory=" + Str.Join(",", data.inventory));
-    lines.add("position=" + data.posX + "," + data.posY);
+    var content =
+        "name=" + playerName + "\n" +
+        "level=" + level + "\n" +
+        "score=" + score + "\n" +
+        "health=" + health + "\n" +
+        "inventory=" + inventory + "\n" +
+        "position=" + posX + "," + posY + "\n";
 
-    File.WriteAllText(filename, Str.Join("\n", lines));
+    File.WriteAllText(filename, content);
     Say("Game saved to slot " + slot);
 }
 
-func load(slot: Integer) -> SaveData? {
+func load(slot: Integer) -> String {
     var filename = Path.Join(SAVE_DIR, "save_" + slot + ".dat");
 
     if !File.Exists(filename) {
         Say("No save found in slot " + slot);
-        return null;
-    }
-
-    var lines = File.ReadAllLines(filename);
-    var data = new SaveData();
-
-    for line in lines {
-        var separator = line.IndexOf("=");
-        if separator < 0 { continue; }
-
-        var key = line.Substring(0, separator);
-        var value = line.Substring(separator + 1, line.Length - separator - 1);
-
-        if key == "name" { data.playerName = value; }
-        else if key == "level" { data.level = Convert.ToInt64(value); }
-        else if key == "score" { data.score = Convert.ToInt64(value); }
-        else if key == "health" { data.health = Convert.ToInt64(value); }
-        else if key == "inventory" {
-            data.inventory = [];
-            for item in Viper.String.Split(value, ",") {
-                data.inventory.add(item);
-            }
-        }
-        else if key == "position" {
-            var comma = value.IndexOf(",");
-            if comma >= 0 {
-                data.posX = Convert.ToDouble(value.Substring(0, comma));
-                data.posY = Convert.ToDouble(value.Substring(comma + 1, value.Length - comma - 1));
-            }
-        }
+        return "";
     }
 
     Say("Game loaded from slot " + slot);
-    return data;
+    return File.ReadAllText(filename);
 }
 
 func listSaves() -> List[Integer] {
@@ -1163,7 +1124,7 @@ func listSaves() -> List[Integer] {
     for file in Dir.FilesSeq(SAVE_DIR) {
         if file.StartsWith("save_") && file.EndsWith(".dat") {
             var numStr = file.Substring(5, file.Length - 9);
-            saves.add(Convert.ToInt64(numStr));
+            saves.Push(Convert.ToInt64(numStr));
         }
     }
 
@@ -1179,39 +1140,46 @@ Exporting data for spreadsheets or other programs:
 bind File = Viper.IO.File;
 bind Viper.String as Str;
 bind Viper.Terminal;
+bind Seq = Viper.Collections.Seq;
 
-func exportToCSV(filename: String, headers: List[String], rows: List[List[String]]) {
-    var lines: List[String] = [];
-
-    // Header row
-    lines.add(Str.Join(",", headers));
-
-    // Data rows
-    for row in rows {
-        // Escape commas and quotes in values
-        var escapedRow: List[String] = [];
-        for value in row {
-            if value.Contains(",") || value.Contains("\"") {
-                value = "\"" + value.Replace("\"", "\"\"") + "\"";
-            }
-            escapedRow.add(value);
-        }
-        lines.add(Str.Join(",", escapedRow));
+func escapeCSV(value: String) -> String {
+    if value.Contains(",") || value.Contains("\"") {
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
-
-    File.WriteAllText(filename, Str.Join("\n", lines));
-    Say("Exported " + rows.count() + " rows to " + filename);
+    return value;
 }
 
-// Usage
-var headers = ["Name", "Age", "City"];
-var data = [
-    ["Alice", "25", "New York"],
-    ["Bob", "30", "Los Angeles"],
-    ["Charlie", "35", "Chicago"]
-];
+func joinCSV(values: Seq) -> String {
+    var line = "";
 
-exportToCSV("people.csv", headers, data);
+    for i in 0..values.Length {
+        if i > 0 {
+            line = line + ",";
+        }
+        line = line + escapeCSV(values.GetStr(i));
+    }
+
+    return line;
+}
+
+func exportToCSV(filename: String, headers: Seq, rows: Seq) {
+    var content = joinCSV(headers) + "\n";
+
+    for i in 0..rows.Length {
+        var row = rows.GetStr(i).Split("|");
+        content = content + joinCSV(row) + "\n";
+    }
+
+    File.WriteAllText(filename, content);
+    Say("Exported " + rows.Length + " rows to " + filename);
+}
+
+func start() {
+    var headers = "Name,Age,City".Split(",");
+    var rows = "Alice|25|New York\nBob|30|Los Angeles\nCharlie|35|Chicago".Split("\n");
+
+    exportToCSV("people.csv", headers, rows);
+}
 ```
 
 ### Data Import (CSV)
@@ -1223,30 +1191,21 @@ bind File = Viper.IO.File;
 bind Viper.String as Str;
 bind Viper.Terminal;
 
-func importFromCSV(filename: String) -> List[List[String]] {
-    var rows: List[List[String]] = [];
-    var lines = File.ReadAllLines(filename);
-
-    for line in lines {
-        if line.Trim().Length == 0 { continue; }
-
-        // Simple split (doesn't handle quoted commas)
-        var values: List[String] = [];
-        for value in Viper.String.Split(line, ",") {
-            values.add(value);
-        }
-        rows.add(values);
-    }
-
-    return rows;
+func importFromCSV(filename: String) -> Viper.Collections.Seq {
+    return File.ReadAllLines(filename);
 }
 
-// Usage
-var data = importFromCSV("people.csv");
-var headers = data[0];
+func start() {
+    var rows = importFromCSV("people.csv");
+    if rows.Length == 0 {
+        Say("No data");
+        return;
+    }
 
-Say("Columns: " + Str.Join(", ", headers));
-Say("Data rows: " + (data.count() - 1));
+    var headers = rows.GetStr(0).Split(",");
+    Say("Columns: " + Str.Join(", ", headers));
+    Say("Data rows: " + (rows.Length - 1));
+}
 ```
 
 ---
@@ -1260,11 +1219,23 @@ module NoteKeeper;
 
 bind File = Viper.IO.File;
 bind Convert = Viper.Core.Convert;
-bind Viper.String as Str;
 bind Viper.Terminal;
 
 final NOTES_FILE = "notes.txt";
 final BACKUP_FILE = "notes.txt.backup";
+
+func joinNotes(notes: List[String]) -> String {
+    var content = "";
+
+    for i in 0..notes.count() {
+        if i > 0 {
+            content = content + "\n";
+        }
+        content = content + notes.get(i);
+    }
+
+    return content;
+}
 
 // Load notes from file
 func loadNotes() -> List[String] {
@@ -1318,7 +1289,7 @@ func saveNotes(notes: List[String]) -> Boolean {
 
     // Write to temporary file first
     var tempFile = NOTES_FILE + ".tmp";
-    var content = Str.Join("\n", notes);
+    var content = joinNotes(notes);
     File.WriteAllText(tempFile, content);
 
     // Delete old file and rename temp to real
@@ -1514,30 +1485,30 @@ File.WriteAllText("file.txt", "Hello!");
 File.Append("file.txt", "More text\n");
 
 // Check existence
-if File.Exists("file.txt") { ... }
+if File.Exists("file.txt") {
+    var existing = File.ReadAllText("file.txt");
+}
 
 // Read lines
 var lines = File.ReadAllLines("file.txt");
 
-// Stream reading
-var reader = openRead("file.txt");
-while reader.hasMore() {
-    var line = reader.ReadLine();
+// Process lines
+for line in lines {
+    // Work with each line
 }
-reader.Close();
 ```
 
 **BASIC**
 ```basic
+' Write
+OPEN "file.txt" FOR OUTPUT AS #1
+PRINT #1, "Hello!"
+CLOSE #1
+
 ' Read
 OPEN "file.txt" FOR INPUT AS #1
 DIM content AS STRING
 LINE INPUT #1, content
-CLOSE #1
-
-' Write
-OPEN "file.txt" FOR OUTPUT AS #1
-PRINT #1, "Hello!"
 CLOSE #1
 
 ' Append
@@ -1545,10 +1516,7 @@ OPEN "file.txt" FOR APPEND AS #1
 PRINT #1, "More text"
 CLOSE #1
 
-' Check existence (varies by BASIC dialect)
-IF DIR$("file.txt") <> "" THEN
-    PRINT "File exists"
-END IF
+' Missing files are reported when OPEN FOR INPUT fails.
 ```
 
 BASIC uses file numbers (#1, #2, etc.) and requires explicit OPEN/CLOSE. The FOR clause specifies the mode: INPUT (read), OUTPUT (write), APPEND (append).
@@ -1596,45 +1564,36 @@ bind Viper.System.Machine as Machine;
 bind Viper.IO.Path as Path;
 
 // Bad: only works on your machine
-var file = "C:\\Users\\Alice\\Documents\\data.txt";
+var absoluteFile = "C:\\Users\\Alice\\Documents\\data.txt";
 
 // Better: use relative paths
-var file = "data/scores.txt";
+var relativeFile = "data/scores.txt";
 
 // Or build paths dynamically
 var home = Machine.Home;
-var file = Path.Join(home, "Documents/data.txt");
+var documentsFile = Path.Join(home, "Documents/data.txt");
 ```
 
-**Not closing files:**
+**Expecting stream handles from whole-file APIs:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
+bind Viper.Terminal;
 
-var reader = openRead("file.txt");
-// ... use reader ...
-// Forgot reader.Close()!  File stays locked, resources leak
-
-// Always close, even if errors occur:
-var reader = openRead("file.txt");
-try {
-    // ... use reader ...
-} finally {
-    reader.Close();
+// The current File API does not expose openRead/openWrite stream handles.
+// Use whole-file helpers instead.
+var lines = File.ReadAllLines("file.txt");
+for line in lines {
+    Say(line);
 }
 ```
 
-**Assuming writes are immediate:**
+**Looking for a Flush method on whole-file writes:**
 ```rust
-bind Viper.IO.File;
+bind File = Viper.IO.File;
 
-var writer = openWrite("important.txt");
-writer.WriteLine("Critical data");
-// Power fails here - data might be lost!
-
-// Better: flush critical data
-var writer = openWrite("important.txt");
-writer.WriteLine("Critical data");
-writer.Flush();  // Force to disk
+File.WriteAllText("important.txt", "Critical data\n");
+File.Append("important.txt", "More data\n");
+// Each call opens, writes, and closes the file before returning.
 ```
 
 **Not handling paths cross-platform:**
@@ -1642,13 +1601,13 @@ writer.Flush();  // Force to disk
 bind Viper.IO.Path as Path;
 
 // Bad: backslash doesn't work on Mac/Linux
-var path = "data\\files\\scores.txt";
+var windowsPath = "data\\files\\scores.txt";
 
 // Good: forward slash works everywhere (Viper converts as needed)
-var path = "data/files/scores.txt";
+var portablePath = "data/files/scores.txt";
 
-// Best: use Path.join
-var path = Path.Join("data/files", "scores.txt");
+// Best: use Path.Join
+var joinedPath = Path.Join("data/files", "scores.txt");
 ```
 
 ---
@@ -1659,12 +1618,12 @@ var path = Path.Join("data/files", "scores.txt");
 - **RAM is fast but temporary; storage is slow but permanent**
 - **Paths specify file locations** — absolute (full path) or relative (from current directory)
 - **File modes determine behavior** — read, write (overwrite), append (add to end)
-- **Always close files** when using stream APIs to prevent resource leaks
+- **Whole-file helpers close files for you**; explicit file handles must be closed by the code that opens them
 - **Handle errors gracefully** — files can fail in many ways
 - **Use temporary files and backups** for safe writing
 - **Text files are human-readable; binary files store raw data**
-- `File.ReadAllText/File.WriteAllText/File.Append` for simple operations
-- `openRead/openWrite` for streaming large files
+- `File.ReadAllText/File.WriteAllText/File.Append` for simple text operations
+- `File.ReadAllLines/File.ReadAllBytes` for line and binary data
 - `Dir` module for working with directories
 - `Path` module for manipulating paths safely and portably
 

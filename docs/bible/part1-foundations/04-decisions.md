@@ -397,18 +397,18 @@ var a = 5;
 var b = 10;
 var c = 5;
 
-a == b    // Is 5 equal to 10? No. Result: false
-a == c    // Is 5 equal to 5? Yes. Result: true
-a != b    // Is 5 not equal to 10? Yes, they're different. Result: true
-a != c    // Is 5 not equal to 5? No, they're the same. Result: false
+a == b;    // Is 5 equal to 10? No. Result: false
+a == c;    // Is 5 equal to 5? Yes. Result: true
+a != b;    // Is 5 not equal to 10? Yes, they're different. Result: true
+a != c;    // Is 5 not equal to 5? No, they're the same. Result: false
 
-a < b     // Is 5 less than 10? Yes. Result: true
-a > b     // Is 5 greater than 10? No. Result: false
-a <= c    // Is 5 less than or equal to 5? Yes (they're equal). Result: true
-a >= c    // Is 5 greater than or equal to 5? Yes (they're equal). Result: true
+a < b;     // Is 5 less than 10? Yes. Result: true
+a > b;     // Is 5 greater than 10? No. Result: false
+a <= c;    // Is 5 less than or equal to 5? Yes (they're equal). Result: true
+a >= c;    // Is 5 greater than or equal to 5? Yes (they're equal). Result: true
 
-b > a     // Is 10 greater than 5? Yes. Result: true
-b <= a    // Is 10 less than or equal to 5? No. Result: false
+b > a;     // Is 10 greater than 5? Yes. Result: true
+b <= a;    // Is 10 less than or equal to 5? No. Result: false
 ```
 
 ### Examples with Strings
@@ -418,12 +418,12 @@ String comparisons work too:
 ```rust
 var name = "Alice";
 
-name == "Alice"    // true - exact match
-name == "alice"    // false - case matters!
-name == "ALICE"    // false - case matters!
-name != "Bob"      // true - they're different
+name == "Alice";    // true - exact match
+name == "alice";    // false - case matters!
+name == "ALICE";    // false - case matters!
+name != "Bob";      // true - they're different
 
-name == "Alice "   // false - trailing space makes it different!
+name == "Alice ";   // false - trailing space makes it different!
 ```
 
 **Critical warning**: String comparisons are case-sensitive and whitespace-sensitive. `"Yes"` is not equal to `"yes"`. `"Hello"` is not equal to `"Hello "` (with a space at the end).
@@ -513,6 +513,9 @@ The AND operator (`&&`) returns `true` only when BOTH sides are true.
 ```rust
 bind Viper.Terminal;
 
+var age = 25;
+var hasTicket = true;
+
 if age >= 18 && hasTicket {
     Say("Welcome to the show!");
 }
@@ -542,10 +545,10 @@ var age = 25;
 var hasLicense = true;
 var hasCar = false;
 
-age >= 18 && hasLicense          // true && true = true
-age >= 18 && hasCar              // true && false = false
-age < 18 && hasLicense           // false && true = false
-age < 18 && hasCar               // false && false = false
+age >= 18 && hasLicense;          // true && true = true
+age >= 18 && hasCar;              // true && false = false
+age < 18 && hasLicense;           // false && true = false
+age < 18 && hasCar;               // false && false = false
 ```
 
 #### Multiple ANDs
@@ -554,6 +557,10 @@ You can chain multiple conditions:
 
 ```rust
 bind Viper.Terminal;
+
+var hasTicket = true;
+var age = 25;
+var isBanned = false;
 
 if hasTicket && age >= 18 && !isBanned {
     Say("You may enter");
@@ -568,6 +575,8 @@ The OR operator (`||`) returns `true` when AT LEAST ONE side is true.
 
 ```rust
 bind Viper.Terminal;
+
+var day = "Saturday";
 
 if day == "Saturday" || day == "Sunday" {
     Say("It's the weekend!");
@@ -594,16 +603,20 @@ var hasCash = false;
 var hasCard = true;
 var hasCoupon = false;
 
-hasCash || hasCard              // false || true = true (card works!)
-hasCash || hasCoupon            // false || false = false (nothing works)
-hasCard || hasCoupon            // true || false = true (card works!)
-hasCash || hasCard || hasCoupon // false || true || false = true
+hasCash || hasCard;              // false || true = true (card works!)
+hasCash || hasCoupon;            // false || false = false (nothing works)
+hasCard || hasCoupon;            // true || false = true (card works!)
+hasCash || hasCard || hasCoupon; // false || true || false = true
 ```
 
 #### Real Example: Multiple Payment Methods
 
 ```rust
 bind Viper.Terminal;
+
+var hasCash = false;
+var hasCard = true;
+var hasDigitalWallet = false;
 
 if hasCash || hasCard || hasDigitalWallet {
     Say("Payment accepted!");
@@ -666,6 +679,9 @@ You can build complex conditions:
 
 ```rust
 bind Viper.Terminal;
+
+var age = 42;
+var hasSpecialPass = false;
 
 if (age >= 18 && age <= 65) || hasSpecialPass {
     Say("You qualify for the program.");
@@ -745,13 +761,16 @@ if true || someExpensiveFunction() {
 This is useful for safety checks:
 
 ```rust
-// Safe: if name is null, we never try to check its length
-if name != null && name.Length > 0 {
-    Say("Hello, " + name);
+bind Viper.Terminal;
+
+// Safe: if divisor is zero, the division never runs
+var divisor = 0;
+if divisor != 0 && 100 / divisor > 10 {
+    Say("Large quotient");
 }
 ```
 
-If `name` is null, the left side is false, so we never try to access `name.Length` (which would crash).
+If `divisor` is zero, the left side is false, so we never try to divide by zero.
 
 ---
 
@@ -809,6 +828,13 @@ Nesting works, but deep nesting gets hard to read:
 ```rust
 bind Viper.Terminal;
 
+var hasAccount = true;
+var isVerified = true;
+var isBanned = false;
+var password = "secret123";
+var inputPassword = "secret123";
+var sessionExpired = false;
+
 if hasAccount {
     if isVerified {
         if !isBanned {
@@ -840,6 +866,13 @@ Often you can flatten nested code using "guard clauses" — checking for problem
 
 ```rust
 bind Viper.Terminal;
+
+var hasAccount = true;
+var isVerified = true;
+var isBanned = false;
+var password = "secret123";
+var inputPassword = "secret123";
+var sessionExpired = false;
 
 if !hasAccount {
     Say("Please create an account.");
@@ -1218,6 +1251,7 @@ You can match multiple values with `|`:
 ```rust
 bind Viper.Terminal;
 
+var day = 6;
 match day {
     1 | 2 | 3 | 4 | 5 => Say("Weekday"),
     6 | 7 => Say("Weekend"),
@@ -1415,6 +1449,7 @@ Your code inside an `if` block never executes, even when you think it should.
 ```rust
 bind Viper.Terminal;
 
+var score = 85;
 Say("DEBUG: score = " + score);
 Say("DEBUG: score >= 90 is " + (score >= 90));
 
@@ -1445,6 +1480,7 @@ The code takes the `else` path when it should take the `if` path (or vice versa)
 ```rust
 bind Viper.Terminal;
 
+var age = 17;
 var result = age >= 18;
 Say("DEBUG: age >= 18 evaluates to: " + result);
 ```
@@ -1457,6 +1493,9 @@ bind Viper.Terminal;
 if age >= 18 && hasID && !isBanned { ... }
 
 // Debug with:
+var age = 17;
+var hasID = true;
+var isBanned = false;
 var ageOK = age >= 18;
 var hasIDOK = hasID;
 var notBanned = !isBanned;
@@ -1486,6 +1525,7 @@ You expected only one action, but multiple things happened.
 bind Viper.Terminal;
 
 // BUG: Both messages might print!
+var score = 95;
 if score >= 60 {
     Say("You passed!");
 }
@@ -1509,6 +1549,7 @@ Your conditions are in the wrong order, and an earlier condition catches cases m
 bind Viper.Terminal;
 
 // BUG: score = 95 prints "You passed" instead of "Excellent"
+var score = 95;
 if score >= 60 {
     Say("You passed!");
 } else if score >= 90 {
@@ -1531,6 +1572,11 @@ When in doubt, print everything:
 
 ```rust
 bind Viper.Terminal;
+
+var age = 17;
+var hasAccount = true;
+var password = "secret123";
+var inputPassword = "guess";
 
 Say("=== DEBUG START ===");
 Say("age = " + age);
@@ -1556,6 +1602,7 @@ This reveals exactly what values you're working with and how the condition evalu
 bind Viper.Terminal;
 
 // User enters 18, expecting to pass, but fails
+var age = 18;
 if age > 18 {    // Should be >= 18
     Say("You can vote!");
 }
@@ -1563,9 +1610,12 @@ if age > 18 {    // Should be >= 18
 
 **Inverted logic:**
 ```rust
+bind Viper.Terminal;
+
 // Meant to check if NOT empty, but checked if empty
+var name = "";
 if name == "" {
-    processName(name);  // Bug! Processing an empty name
+    Say("Processing " + name);  // Bug! Processing an empty name
 }
 ```
 
@@ -1607,6 +1657,8 @@ if score == 100 {  // Right: this compares score to 100
 
 **Checking impossible conditions:**
 ```rust
+var score = 95;
+var grade = "";
 if score >= 90 {
     grade = "A";
 } else if score >= 80 {
@@ -1621,6 +1673,7 @@ if score >= 90 {
 bind Viper.Terminal;
 
 // Both could be true for score = 85
+var score = 85;
 if score >= 80 {
     Say("B or better");
 }
@@ -1633,6 +1686,7 @@ If you want only one to run, use `else if`:
 ```rust
 bind Viper.Terminal;
 
+var score = 85;
 if score >= 80 {
     Say("B or better");
 } else if score >= 70 {
@@ -1645,6 +1699,7 @@ if score >= 80 {
 bind Viper.Terminal;
 
 // Wrong: This is never true (nothing is both < 0 AND > 100)
+var score = 150;
 if score < 0 && score > 100 {
     Say("Invalid");
 }

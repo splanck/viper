@@ -23,6 +23,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_platform.h"
 
 #include <math.h>
 #ifndef M_PI
@@ -55,6 +56,19 @@ static void build_ortho(double *m,
                         double top,
                         double near_val,
                         double far_val);
+
+/// @brief Generate a non-zero seed for Camera3D shake noise.
+/// @details Uses a local monotonic counter rather than a fixed seed or object
+///          address. This keeps standalone graphics contract tests independent
+///          from the core runtime RNG while avoiding identical default shake
+///          sequences across cameras.
+/// @return Non-zero xorshift seed value.
+static uint32_t camera3d_next_shake_seed(void) {
+    static int64_t counter = INT64_C(0x12345678);
+    int64_t old = __atomic_fetch_add(&counter, INT64_C(0x9E3779B9), __ATOMIC_RELAXED);
+    uint32_t seed = (uint32_t)old ^ 0xA341316Cu;
+    return seed ? seed : 0x12345678u;
+}
 
 /// @brief Return `value` when finite, else `fallback`. Scalar boundary sanitizer.
 static double finite_or(double value, double fallback) {
@@ -246,18 +260,18 @@ static void camera_eye_with_shake(const rt_camera3d *cam, double out_eye[3]) {
         out_eye[0] = out_eye[1] = out_eye[2] = 0.0;
         return;
     }
-    out_eye[0] = clamp_abs_or(finite_or(cam->eye[0], fallback_eye[0]) +
-                                  finite_or(cam->shake_offset[0], 0.0),
-                              fallback_eye[0],
-                              CAMERA3D_WORLD_ABS_MAX);
-    out_eye[1] = clamp_abs_or(finite_or(cam->eye[1], fallback_eye[1]) +
-                                  finite_or(cam->shake_offset[1], 0.0),
-                              fallback_eye[1],
-                              CAMERA3D_WORLD_ABS_MAX);
-    out_eye[2] = clamp_abs_or(finite_or(cam->eye[2], fallback_eye[2]) +
-                                  finite_or(cam->shake_offset[2], 0.0),
-                              fallback_eye[2],
-                              CAMERA3D_WORLD_ABS_MAX);
+    out_eye[0] =
+        clamp_abs_or(finite_or(cam->eye[0], fallback_eye[0]) + finite_or(cam->shake_offset[0], 0.0),
+                     fallback_eye[0],
+                     CAMERA3D_WORLD_ABS_MAX);
+    out_eye[1] =
+        clamp_abs_or(finite_or(cam->eye[1], fallback_eye[1]) + finite_or(cam->shake_offset[1], 0.0),
+                     fallback_eye[1],
+                     CAMERA3D_WORLD_ABS_MAX);
+    out_eye[2] =
+        clamp_abs_or(finite_or(cam->eye[2], fallback_eye[2]) + finite_or(cam->shake_offset[2], 0.0),
+                     fallback_eye[2],
+                     CAMERA3D_WORLD_ABS_MAX);
 }
 
 /// @brief Replace any non-finite or out-of-range lane of the camera's eye position with a
@@ -604,7 +618,7 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     cam->shake_duration = 0.0;
     cam->shake_decay = 5.0;
     cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
-    cam->shake_seed = 0x12345678;
+    cam->shake_seed = camera3d_next_shake_seed();
     cam->last_shake_update_token = 0;
     cam->is_ortho = 0;
     cam->ortho_size = 10.0;
@@ -625,8 +639,10 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
 /// @param near_val       Near clipping plane distance.
 /// @param far_val        Far clipping plane distance.
 /// @return Opaque camera handle, or NULL on failure.
-void *rt_camera3d_new_horizontal_fov(
-    double horizontal_fov, double aspect, double near_val, double far_val) {
+void *rt_camera3d_new_horizontal_fov(double horizontal_fov,
+                                     double aspect,
+                                     double near_val,
+                                     double far_val) {
     return rt_camera3d_new(
         camera_vertical_fov_from_horizontal(horizontal_fov, aspect), aspect, near_val, far_val);
 }
@@ -701,7 +717,7 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
     cam->shake_duration = 0.0;
     cam->shake_decay = 5.0;
     cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
-    cam->shake_seed = 0x12345678;
+    cam->shake_seed = camera3d_next_shake_seed();
     cam->last_shake_update_token = 0;
     rebuild_projection(cam);
 
@@ -958,10 +974,9 @@ void *rt_camera3d_get_position(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
         return NULL;
-    return rt_vec3_new(
-        clamp_abs_or(cam->eye[0], 0.0, CAMERA3D_WORLD_ABS_MAX),
-        clamp_abs_or(cam->eye[1], 0.0, CAMERA3D_WORLD_ABS_MAX),
-        clamp_abs_or(cam->eye[2], 0.0, CAMERA3D_WORLD_ABS_MAX));
+    return rt_vec3_new(clamp_abs_or(cam->eye[0], 0.0, CAMERA3D_WORLD_ABS_MAX),
+                       clamp_abs_or(cam->eye[1], 0.0, CAMERA3D_WORLD_ABS_MAX),
+                       clamp_abs_or(cam->eye[2], 0.0, CAMERA3D_WORLD_ABS_MAX));
 }
 
 /// @brief Read the camera's world position into @p x / @p y / @p z (returns 0 with no writes if
@@ -1216,10 +1231,8 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
     }
 
     /* Screen → NDC */
-    double ndc_x =
-        clamp_abs_or((2.0 * (double)sx / (double)sw) - 1.0, 0.0, CAMERA3D_ASPECT_MAX);
-    double ndc_y =
-        clamp_abs_or(1.0 - (2.0 * (double)sy / (double)sh), 0.0, CAMERA3D_ASPECT_MAX);
+    double ndc_x = clamp_abs_or((2.0 * (double)sx / (double)sw) - 1.0, 0.0, CAMERA3D_ASPECT_MAX);
+    double ndc_y = clamp_abs_or(1.0 - (2.0 * (double)sy / (double)sh), 0.0, CAMERA3D_ASPECT_MAX);
 
     double aspect = sanitize_aspect((double)sw / (double)sh);
     double inv_vp[16];
@@ -1271,10 +1284,8 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
     if (!cam->is_ortho)
         return rt_vec3_new(eye_x, eye_y, eye_z);
 
-    double ndc_x =
-        clamp_abs_or((2.0 * (double)sx / (double)sw) - 1.0, 0.0, CAMERA3D_ASPECT_MAX);
-    double ndc_y =
-        clamp_abs_or(1.0 - (2.0 * (double)sy / (double)sh), 0.0, CAMERA3D_ASPECT_MAX);
+    double ndc_x = clamp_abs_or((2.0 * (double)sx / (double)sw) - 1.0, 0.0, CAMERA3D_ASPECT_MAX);
+    double ndc_y = clamp_abs_or(1.0 - (2.0 * (double)sy / (double)sh), 0.0, CAMERA3D_ASPECT_MAX);
     double aspect = sanitize_aspect((double)sw / (double)sh);
     double inv_vp[16];
     if (!camera_get_pick_inv_vp(cam, aspect, inv_vp))
@@ -1492,9 +1503,9 @@ void rt_camera3d_update_shake_for_frame(void *obj, double dt) {
 /// @details Canvas3D may render multiple 3D passes before the next poll/flip updates delta time.
 ///   Calling the un-tokened shake update from every pass decays the shake and advances its PRNG
 ///   multiple times in one visible frame, which can make otherwise stable triangles appear to jump
-///   or flicker. The tokened variant advances the stochastic state only when @p frame_token changes;
-///   repeated calls with the same token only re-apply the current offset after other camera code
-///   mutates the view.
+///   or flicker. The tokened variant advances the stochastic state only when @p frame_token
+///   changes; repeated calls with the same token only re-apply the current offset after other
+///   camera code mutates the view.
 /// @param obj         Camera3D handle.
 /// @param dt          Frame delta in seconds; negative/NaN values are sanitized by the shake path.
 /// @param frame_token Monotonic renderer timing token. Non-positive tokens fall back to the legacy

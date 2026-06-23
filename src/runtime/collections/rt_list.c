@@ -41,6 +41,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_random.h"
 #include "rt_string.h"
 
 #include <assert.h>
@@ -48,7 +49,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 /// @brief Internal List implementation structure.
 ///
@@ -1012,21 +1012,9 @@ void rt_list_shuffle(void *list) {
     if (len < 2)
         return;
 
-    // Fisher-Yates shuffle using thread-safe local PRNG
-    uint64_t rng_state = (uint64_t)time(NULL) ^ (uint64_t)(uintptr_t)&L;
-    for (int w = 0; w < 5; w++) {
-        rng_state ^= rng_state >> 12;
-        rng_state ^= rng_state << 25;
-        rng_state ^= rng_state >> 27;
-        rng_state *= 0x2545F4914F6CDD1DULL;
-    }
-
+    // Fisher-Yates shuffle using the active runtime RNG.
     for (size_t i = len - 1; i > 0; --i) {
-        rng_state ^= rng_state >> 12;
-        rng_state ^= rng_state << 25;
-        rng_state ^= rng_state >> 27;
-        uint64_t r = rng_state * 0x2545F4914F6CDD1DULL;
-        size_t j = (size_t)(r % (uint64_t)(i + 1));
+        size_t j = (size_t)rt_rand_range(0, (long long)i);
         void *a = L->arr[i];
         void *b = L->arr[j];
         L->arr[i] = b;

@@ -60,18 +60,21 @@ interface PaymentMethod {
 class CashPayment implements PaymentMethod {
     expose func pay(amount: Number) -> Boolean {
         // Count bills, make change
+        return amount >= 0.0;
     }
 }
 
 class CreditCard implements PaymentMethod {
     expose func pay(amount: Number) -> Boolean {
         // Contact bank, authorize transaction
+        return amount >= 0.0;
     }
 }
 
 class MobilePayment implements PaymentMethod {
     expose func pay(amount: Number) -> Boolean {
         // Communicate with phone, verify fingerprint
+        return amount >= 0.0;
     }
 }
 ```
@@ -101,7 +104,7 @@ Polymorphism isn't just an academic concept — it solves real problems that you
 
 Without polymorphism, your code becomes a cascade of type checks:
 
-```rust
+```text
 // Without polymorphism - this gets ugly fast
 func processEntity(class: Any, type: String) {
     if type == "player" {
@@ -131,9 +134,9 @@ With polymorphism:
 
 ```rust
 // With polymorphism - clean and maintainable
-func processEntity(class: GameEntity) {
-    class.update();
-    class.draw();
+func processEntity(entity: GameEntity) {
+    entity.update();
+    entity.draw();
 }
 ```
 
@@ -153,7 +156,7 @@ This is called the *Open-Closed Principle*: code should be open for extension bu
 
 Want to test your payment processing without actually charging credit cards? With polymorphism, create a `MockPaymentMethod` that always succeeds:
 
-```rust
+```text
 bind Viper.Terminal;
 
 class MockPayment implements PaymentMethod {
@@ -208,7 +211,7 @@ class Cow extends Animal {
 }
 
 // The key insight: variable type vs actual type
-var animal: Animal = Dog();  // Variable type is Animal, actual object is Dog
+var animal: Animal = new Dog();  // Variable type is Animal, actual object is Dog
 animal.speak();              // Output: "Woof!" - Dog's method is called!
 ```
 
@@ -224,11 +227,11 @@ bind Viper.Math.Random as Random;
 func makeRandomAnimal() -> Animal {
     var r = Random.Range(0, 2);
     if r == 0 {
-        return Dog();
+        return new Dog();
     } else if r == 1 {
-        return Cat();
+        return new Cat();
     } else {
-        return Cow();
+        return new Cow();
     }
 }
 
@@ -287,7 +290,7 @@ class Printer {
 Same method name, different parameter types. The compiler chooses the right version based on the arguments:
 
 ```rust
-var p = Printer();
+var p = new Printer();
 p.Print("hello");           // Calls print(text: String)
 p.Print(42);                // Calls print(number: Integer)
 p.Print(3.14);              // Calls print(number: Number)
@@ -363,7 +366,7 @@ class AnimatedDecoration implements Updatable {
 
 Now the game loop becomes beautifully simple:
 
-```rust
+```text
 var classes: List[Updatable] = [];
 
 // Add all kinds of things
@@ -424,7 +427,7 @@ class UIOverlay implements Drawable {
 }
 ```
 
-```rust
+```text
 var scene: List[Drawable] = [ui, foreground, player, enemy, ground, background];
 
 // Sort by depth
@@ -448,7 +451,7 @@ Let's see how polymorphism makes code genuinely extensible — able to grow with
 
 Imagine a document application that can export to different formats:
 
-```rust
+```text
 interface Exporter {
     func export(document: Document) -> String;
     func getExtension() -> String;
@@ -478,7 +481,7 @@ class MarkdownExporter implements Exporter {
 
 The export menu:
 
-```rust
+```text
 bind Viper.Terminal;
 
 class ExportMenu {
@@ -514,7 +517,7 @@ class ExportMenu {
 
 Later, someone wants to add Word export. They create a `WordExporter` class:
 
-```rust
+```text
 class WordExporter implements Exporter {
     expose func export(document: Document) -> String {
         // Convert to Word format
@@ -525,7 +528,7 @@ class WordExporter implements Exporter {
 
 And register it:
 
-```rust
+```text
 menu.addExporter(WordExporter());
 ```
 
@@ -535,7 +538,7 @@ No existing code was modified. The ExportMenu didn't change. The other exporters
 
 This extensibility is the foundation of plugin systems:
 
-```rust
+```text
 bind Viper.Terminal;
 
 interface Plugin {
@@ -574,7 +577,7 @@ Let's explore common patterns that leverage polymorphism.
 
 Different algorithms, interchangeable at runtime:
 
-```rust
+```text
 interface CompressionStrategy {
     func compress(data: String) -> String;
     func decompress(data: String) -> String;
@@ -624,7 +627,7 @@ class FileManager {
 
 Usage:
 
-```rust
+```text
 // Choose strategy based on needs
 var fastManager = FileManager(LZ4Compression());      // Speed priority
 var smallManager = FileManager(GzipCompression());    // Size priority
@@ -640,7 +643,7 @@ The Strategy pattern lets you swap algorithms without changing the code that use
 
 Polymorphism excels at event-driven systems:
 
-```rust
+```text
 bind Viper.Terminal;
 
 interface EventHandler {
@@ -835,10 +838,10 @@ func render(item: Drawable) {
 }
 
 // Any Drawable fits in that slot
-render(Circle());     // Circle fills the slot
-render(Rectangle());  // Rectangle fills the slot
-render(Text());       // Text fills the slot
-render(Group());      // Even a Group of Drawables fills the slot
+render(new Circle());     // Circle fills the slot
+render(new Rectangle());  // Rectangle fills the slot
+render(new Text());       // Text fills the slot
+render(new Group());      // Even a Group of Drawables fills the slot
 ```
 
 ---
@@ -847,7 +850,7 @@ render(Group());      // Even a Group of Drawables fills the slot
 
 Polymorphism is most powerful when you combine inheritance (shared code) with interfaces (shared contracts).
 
-```rust
+```text
 // Interface: defines what things can do
 interface Attackable {
     func takeDamage(amount: Integer);
@@ -1172,14 +1175,16 @@ class Cat implements Animal {
     }
 }
 
-var animals: List[Animal] = [Dog(), Cat()];
+var animals: List[Animal] = [];
+animals.Push(new Dog());
+animals.Push(new Cat());
 for a in animals {
     a.speak();  // Polymorphism: right method called for each
 }
 ```
 
 **BASIC**
-```basic
+```text
 INTERFACE Animal
     SUB Speak()
 END INTERFACE
@@ -1218,6 +1223,7 @@ func describe(dir: Direction) -> String {
         Direction.East  => return "Going right";
         Direction.West  => return "Going left";
     }
+    return "Unknown";
 }
 ```
 
@@ -1232,7 +1238,7 @@ Enums are especially useful for state machines, command types, and any domain wh
 ### Mistake 1: Confusing Variable Type with Object Type
 
 ```rust
-var animal: Animal = Dog();
+var animal: Animal = new Dog();
 ```
 
 The variable type is `Animal`. The object type is `Dog`. For polymorphism, the *object type* determines behavior.
@@ -1241,7 +1247,7 @@ The variable type is `Animal`. The object type is `Dog`. For polymorphism, the *
 
 Interfaces define *what*, not *how*. You can't put implementation in an interface:
 
-```rust
+```text
 // Wrong!
 interface Drawable {
     func draw() {
@@ -1277,7 +1283,7 @@ class UIElement implements Drawable { ... }
 
 If you see code like this:
 
-```rust
+```text
 if type == "A" {
     doA();
 } else if type == "B" {

@@ -427,6 +427,7 @@ var x = empty.Pop();  // Error! Can't pop from empty array
 Always check that the array has elements before popping:
 
 ```rust
+var numbers = [1, 2, 3];
 if numbers.Length > 0 {
     var last = numbers.Pop();
     // Safe to use last
@@ -821,6 +822,9 @@ var x = empty[0];  // Error! Array is empty, no index 0
 ```
 
 **Loop going too far:**
+
+This version is expected to trap at runtime:
+
 ```rust
 bind Viper.Terminal;
 
@@ -828,6 +832,14 @@ var arr = [1, 2, 3];
 for i in 0..=arr.Length {  // Wrong! 0..= includes the endpoint
     Say(arr[i]);  // Crashes when i=3
 }
+```
+
+This version uses the half-open range and should run:
+
+```rust
+bind Viper.Terminal;
+
+var arr = [1, 2, 3];
 for i in 0..arr.Length {   // Correct! 0.. excludes the endpoint
     Say(arr[i]);  // Works: i goes 0, 1, 2
 }
@@ -846,6 +858,9 @@ To prevent this, validate indices before using them:
 
 ```rust
 bind Viper.Terminal;
+
+var arr = [10, 20, 30];
+var userInput = Viper.Core.Convert.ToInt64(InputLine());
 
 if userInput >= 0 && userInput < arr.Length {
     var value = arr[userInput];
@@ -955,6 +970,12 @@ Row 2   |   7    |   8    |   9    |
 Use two indices: the first selects the row (which inner array), the second selects the column (which element within that row):
 
 ```rust
+var grid = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+
 var value = grid[1][2];  // Row 1, Column 2 = 6
 ```
 
@@ -1027,12 +1048,6 @@ Output:
 ```rust
 bind Viper.Terminal;
 
-var board = [
-    ["X", "O", "X"],
-    [" ", "X", "O"],
-    ["O", " ", "X"]
-];
-
 // Print the board nicely
 func printBoard(board: List[List[String]]) {
     for row in 0..board.Length {
@@ -1050,7 +1065,15 @@ func printBoard(board: List[List[String]]) {
     }
 }
 
-printBoard(board);
+func start() {
+    var board = [
+        ["X", "O", "X"],
+        [" ", "X", "O"],
+        ["O", " ", "X"]
+    ];
+
+    printBoard(board);
+}
 ```
 
 Output:
@@ -1582,6 +1605,8 @@ if arr.Length > 0 {
 
 ### Using Wrong Loop Range
 
+This version is expected to trap at runtime:
+
 ```rust
 bind Viper.Terminal;
 
@@ -1591,6 +1616,14 @@ var arr = [1, 2, 3, 4, 5];
 for i in 0..=arr.Length {
     Say(arr[i]);  // Crashes on last iteration (i=5)
 }
+```
+
+This version uses the half-open range and should run:
+
+```rust
+bind Viper.Terminal;
+
+var arr = [1, 2, 3, 4, 5];
 
 // CORRECT: 0..Length excludes the endpoint
 for i in 0..arr.Length {

@@ -296,14 +296,15 @@ Bob is 25 years old.
 
 ### Parameters Are Copies
 
-When you pass a value to a function, the function receives a **copy** of that value (for simple types like numbers and strings). Modifying the parameter inside the function does not affect the original:
+When you pass a value to a function, the function receives a **copy** of that value (for simple types like numbers and strings). Parameters themselves are immutable, so if you want to experiment with a changed value inside the function, copy the parameter into a local variable first. Changing that local copy does not affect the original:
 
 ```rust
 bind Viper.Terminal;
 
 func tryToChange(x: Integer) {
-    x = 999;  // This changes the local copy
-    Say("Inside function: " + x);
+    var localX = x;
+    localX = 999;  // This changes only the local copy
+    Say("Inside function: " + localX);
 }
 
 func start() {
@@ -314,7 +315,7 @@ func start() {
 }
 ```
 
-The function received a copy of `42`. Changing the copy doesn't change the original `number` variable. This is called **pass by value**, and it's a safety feature --- functions can't accidentally mess up your variables.
+The function received a copy of `42`. Changing `localX` doesn't change the original `number` variable. This is called **pass by value**, and it's a safety feature --- functions can't accidentally mess up your variables.
 
 (Note: For complex types like arrays and objects, the behavior is different. We'll cover this in later chapters.)
 
@@ -356,17 +357,25 @@ bind Viper.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
+}
+
+func stopEarly() {
+    return;
     Say("This never runs!");  // Dead code - never executed
 }
 ```
 
-The `Say` line never executes because `return` exits the function immediately.
+The `Say` line in `stopEarly` never executes because `return` exits the function immediately.
 
 ### What Happens to the Returned Value?
 
 When a function returns a value, that value appears at the place where the function was called. It's as if the function call gets replaced by the returned value:
 
 ```rust
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
+}
+
 var sum = add(3, 4);
 // After add() returns, this becomes:
 // var sum = 7;
@@ -377,21 +386,27 @@ The returned value can be used in any way a regular value can be used:
 ```rust
 bind Viper.Terminal;
 
-// Store it in a variable
-var result = add(3, 4);
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
+}
 
-// Use it directly in output
-Say(add(3, 4));      // prints 7
+func start() {
+    // Store it in a variable
+    var result = add(3, 4);
 
-// Use it in an expression
-var doubled = add(3, 4) * 2;             // 14
+    // Use it directly in output
+    Say(add(3, 4));      // prints 7
 
-// Use it as an argument to another function
-var bigger = add(add(1, 2), add(3, 4));  // add(3, 7) = 10
+    // Use it in an expression
+    var doubled = add(3, 4) * 2;             // 14
 
-// Use it in a condition
-if add(3, 4) > 5 {
-    Say("Sum is big!");
+    // Use it as an argument to another function
+    var bigger = add(add(1, 2), add(3, 4));  // add(3, 7) = 10
+
+    // Use it in a condition
+    if add(3, 4) > 5 {
+        Say("Sum is big!");
+    }
 }
 ```
 
@@ -1072,10 +1087,10 @@ A function should have a single, clear purpose. If you find yourself using "and"
 
 ```rust
 bind Viper.Terminal;
-bind Viper.IO;
+bind Viper.IO as IO;
 
 // Bad: Does three things
-func processGrades(grades: List[Integer]) {
+func processGradesBad(grades: List[Integer]) {
     var sum = 0;
     for g in grades { sum = sum + g; }
     var avg = sum / grades.Length;
@@ -1164,6 +1179,8 @@ func formatName(first: String, last: String) -> String {
 A function with **side effects** changes something outside itself:
 
 ```rust
+bind Viper.Terminal;
+
 var counter = 0;
 
 // Side effect: modifies global variable
@@ -1190,15 +1207,24 @@ When a function must have side effects, make them obvious from the name (`printR
 Within a single function, keep all the code at the same level of abstraction. Don't mix high-level operations with low-level details.
 
 ```rust
+struct Order {
+    var customerEmail: String;
+}
+
+func validateOrder(order: Order) {}
+func calculateTotals(order: Order) {}
+func chargePayment(order: Order) {}
+func sendConfirmation(order: Order) {}
+
 // Bad: Mixed levels of abstraction
-func processOrder(order: Order) {
+func processOrderMixed(order: Order) {
     // High level
     validateOrder(order);
 
     // Suddenly low-level String manipulation
     var email = order.customerEmail;
     var atPos = email.IndexOf("@");
-    var domain = email.Substring(atPos + 1);
+    var domain = email.Substring(atPos + 1, email.Length - atPos - 1);
     if domain == "spam.com" {
         return;
     }
@@ -1222,7 +1248,7 @@ func processOrder(order: Order) {
 
 func isSpamEmail(email: String) -> Boolean {
     var atPos = email.IndexOf("@");
-    var domain = email.Substring(atPos + 1);
+    var domain = email.Substring(atPos + 1, email.Length - atPos - 1);
     return domain == "spam.com";
 }
 ```
@@ -1501,7 +1527,8 @@ func start() {
 bind Viper.Terminal;
 
 func double(x: Integer) {
-    x = x * 2;  // Only modifies local copy
+    var localX = x;
+    localX = localX * 2;  // Only modifies local copy
 }
 
 func start() {

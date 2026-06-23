@@ -318,6 +318,7 @@ bind File = Viper.IO.File;
 bind Convert = Viper.Core.Convert;
 bind Viper.Terminal;
 
+var filename = "number.txt";
 var content = "";
 try {
     content = File.ReadAllText(filename);
@@ -361,8 +362,13 @@ Don't use try-catch when:
 
 ```rust
 // Unnecessary try-catch
+var arr = [10, 20, 30];
+var index = 5;
+var defaultValue = 0;
+var value = 0;
+
 try {
-    var value = arr[index];
+    value = arr[index];
 } catch {
     value = defaultValue;
 }
@@ -442,15 +448,15 @@ Sometimes you need to run cleanup code no matter what happens — whether the tr
 ```rust
 bind Viper.Terminal;
 
-var connection = Database.connect("localhost");
+var connectionOpen = true;
 
 try {
-    var data = connection.query("SELECT * FROM users");
-    processData(data);
+    Say("Reading users");
 } catch {
     Say("Database error: " + "an error occurred");
 } finally {
-    connection.Close();  // Always runs, error or not
+    connectionOpen = false;  // Always runs, error or not
+    Say("Connection closed");
 }
 ```
 
@@ -472,14 +478,14 @@ Use `finally` for:
 You can signal errors from your own code using `throw`:
 
 ```rust
-func setAge(age: Integer) {
+func validateAge(age: Integer) -> Integer {
     if age < 0 {
         throw ("Age cannot be negative: " + age);
     }
     if age > 150 {
         throw ("Age is unrealistically high: " + age);
     }
-    this.age = age;
+    return age;
 }
 ```
 
@@ -493,9 +499,11 @@ When your code encounters a situation it can't handle, throw an error. This:
 Since Zia uses a single `Error` type, write clear, descriptive messages that explain what went wrong:
 
 ```rust
-throw ("File not found: config.txt");
-throw ("Expected number, got: " + input);
-throw ("Email address is invalid");
+var input = "abc";
+
+throw ("File not found: config.txt");  // Error: example throw
+throw ("Expected number, got: " + input);  // Error: example throw
+throw ("Email address is invalid");  // Error: example throw
 ```
 
 Include relevant context in the message so the caller knows what happened:
@@ -503,12 +511,22 @@ Include relevant context in the message so the caller knows what happened:
 ```rust
 bind Viper.Terminal;
 
-try {
-    loadConfiguration();
-} catch {
-    Say("Configuration error: " + "an error occurred");
-    Say("Using defaults instead");
-    useDefaults();
+func loadConfiguration() {
+    throw ("missing configuration");
+}
+
+func useDefaults() {
+    Say("Defaults loaded");
+}
+
+func start() {
+    try {
+        loadConfiguration();
+    } catch {
+        Say("Configuration error: " + "an error occurred");
+        Say("Using defaults instead");
+        useDefaults();
+    }
 }
 ```
 
@@ -548,6 +566,11 @@ This is called "fail fast" — if something's wrong, you want to know immediatel
 Before performing dangerous operations, verify they'll succeed:
 
 ```rust
+var arr = [10, 20, 30];
+var index = 1;
+var a = 12;
+var b = 3;
+
 // Instead of:
 var value = arr[index];  // Might crash
 
@@ -575,8 +598,8 @@ When missing values are acceptable, use defaults:
 
 ```rust
 func getConfig(key: String, defaultValue: String) -> String {
-    if config.hasKey(key) {
-        return config[key];
+    if key == "timeout" {
+        return "60";
     }
     return defaultValue;
 }
@@ -634,6 +657,18 @@ Catch an error when:
 ```rust
 bind File = Viper.IO.File;
 
+func queryUser(id: Integer) -> String {
+    return "user-" + id;
+}
+
+func sendNotification(item: String) {
+    throw ("notification service unavailable");
+}
+
+func log(message: String) {
+    // Write to a log file in a real program.
+}
+
 // Recovery: try a backup file
 func loadData() -> String {
     try {
@@ -644,16 +679,16 @@ func loadData() -> String {
 }
 
 // Translation: hide implementation details
-func getUser(id: Integer) -> User {
+func getUser(id: Integer) -> String {
     try {
-        return database.query("SELECT * FROM users WHERE id = " + id);
+        return queryUser(id);
     } catch {
         throw ("Unable to load user " + id + ": " + "an error occurred");
     }
 }
 
 // Logging but continuing
-func processItem(item: Item) {
+func processItem(item: String) {
     try {
         sendNotification(item);
     } catch {
@@ -675,8 +710,16 @@ Let errors propagate when:
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 
+func parseConfig(content: String) -> String {
+    return content.Trim();
+}
+
+func runApplication(config: String) {
+    Say("Running with config: " + config);
+}
+
 // Can't handle it — let it propagate
-func loadConfig() -> Config {
+func loadConfig() -> String {
     var content = File.ReadAllText("config.txt");  // Might fail
     return parseConfig(content);  // Might fail
     // If either fails, we can't proceed — let it bubble up
@@ -757,7 +800,7 @@ When you have a lot of code and don't know where the bug is, use binary search: 
 4. If no, the bug is before this point
 5. Repeat, narrowing down each time
 
-```rust
+```text
 bind Viper.Terminal;
 
 func complexProcessing(input: Data) -> Result {
@@ -800,7 +843,7 @@ Example:
 
 If a bug is hard to find in complex code, create a simpler version that still shows the bug:
 
-```rust
+```text
 // Complex original
 func processTransactions(accounts: List[Account], transactions: List[Transaction]) -> Report {
     // 200 lines of code
@@ -887,6 +930,8 @@ func getValidAge() -> Integer {
             Say("That's not a valid number. Please try again.");
         }
     }
+
+    return 0;
 }
 ```
 
@@ -904,23 +949,18 @@ Programs can run out of resources: memory, disk space, file handles, network con
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 
-func processLargeFile(filename: String) {
-    var reader = openRead(filename);
+func writeReport(content: String) {
+    var tempFile = "report.txt.tmp";
 
     try {
-        while reader.hasMore() {
-            var chunk = reader.readChunk(1024 * 1024);  // 1MB at a time
-
-            try {
-                processChunk(chunk);
-            } catch {
-                Say("Memory low, pausing to free resources...");
-                gc();  // Force garbage collection
-                processChunk(chunk);  // Try again
-            }
-        }
+        File.WriteAllText(tempFile, content);
+        File.MoveOver(tempFile, "report.txt");
+    } catch {
+        Say("Could not write report");
     } finally {
-        reader.Close();
+        if File.Exists(tempFile) {
+            File.Delete(tempFile);
+        }
     }
 }
 ```
@@ -998,6 +1038,21 @@ func log(message: String) {
     }
 }
 
+func isInteger(text: String) -> Boolean {
+    if text.Length == 0 {
+        return false;
+    }
+
+    for i in 0..text.Length {
+        var c = text[i];
+        if c.Asc() < "0".Asc() || c.Asc() > "9".Asc() {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 func readDataFile(filename: String) -> List[Integer] {
     if filename.Length == 0 {
         throw "Filename cannot be empty";
@@ -1020,10 +1075,10 @@ func readDataFile(filename: String) -> List[Integer] {
             continue;
         }
 
-        try {
+        if isInteger(trimmed) {
             var num = Convert.ToInt64(trimmed);
             numbers.add(num);
-        } catch {
+        } else {
             log("Warning: skipping invalid number on line " + lineNum + ": " + trimmed);
         }
     }
@@ -1035,15 +1090,7 @@ func readDataFile(filename: String) -> List[Integer] {
     return numbers;
 }
 
-struct Stats {
-    expose Integer count;
-    expose Integer sum;
-    expose Integer min;
-    expose Integer max;
-    expose Integer average;
-}
-
-func calculateStats(numbers: List[Integer]) -> Stats {
+func printStats(filename: String, numbers: List[Integer]) {
     if numbers.count() == 0 {
         throw "Cannot calculate stats on an empty list";
     }
@@ -1060,13 +1107,12 @@ func calculateStats(numbers: List[Integer]) -> Stats {
 
     var average = sum / numbers.count();
 
-    return new Stats(
-        count: numbers.count(),
-        sum: sum,
-        min: min,
-        max: max,
-        average: average
-    );
+    Say("=== Statistics for " + filename + " ===");
+    Say("Count:   " + numbers.count());
+    Say("Sum:     " + sum);
+    Say("Min:     " + min);
+    Say("Max:     " + max);
+    Say("Average: " + average);
 }
 
 func processFile(filename: String) {
@@ -1076,14 +1122,7 @@ func processFile(filename: String) {
         var numbers = readDataFile(filename);
         log("Loaded " + numbers.count() + " numbers");
 
-        var stats = calculateStats(numbers);
-
-        Say("=== Statistics for " + filename + " ===");
-        Say("Count:   " + stats.count);
-        Say("Sum:     " + stats.sum);
-        Say("Min:     " + stats.min);
-        Say("Max:     " + stats.max);
-        Say("Average: " + stats.average);
+        printStats(filename, numbers);
 
         log("Successfully processed " + filename);
 
@@ -1130,15 +1169,27 @@ This program demonstrates:
 ```rust
 bind Viper.Terminal;
 
-try {
-    riskyOperation();
-} catch {
-    Say("Error: " + "an error occurred");
-} finally {
-    cleanup();
+func riskyOperation() {
+    throw ("example failure");
 }
 
-throw ("Something went wrong");
+func cleanup() {
+    Say("Cleaned up");
+}
+
+func demo() {
+    try {
+        riskyOperation();
+    } catch {
+        Say("Error: " + "an error occurred");
+    } finally {
+        cleanup();
+    }
+}
+
+func failExample() {
+    throw ("Something went wrong");
+}
 ```
 
 ### BASIC
@@ -1170,20 +1221,36 @@ The worst thing you can do with exceptions:
 
 ```rust
 // TERRIBLE: Silently ignoring errors
-try {
-    riskyOperation();
-} catch {
-    // Nothing here — errors vanish without a trace
+func riskyOperation() {
+    throw ("operation failed");
+}
+
+func start() {
+    try {
+        riskyOperation();
+    } catch {
+        // Nothing here — errors vanish without a trace
+    }
 }
 ```
 
 This makes debugging nearly impossible. If something goes wrong, you'll never know. At minimum:
 
 ```rust
-try {
-    riskyOperation();
-} catch {
-    log("Error ignored: " + "an error occurred");
+func riskyOperation() {
+    throw ("operation failed");
+}
+
+func log(message: String) {
+    // Write to a log file in a real program.
+}
+
+func start() {
+    try {
+        riskyOperation();
+    } catch {
+        log("Error ignored: " + "an error occurred");
+    }
 }
 ```
 
@@ -1194,12 +1261,27 @@ Catching everything in one block can hide which operation failed:
 ```rust
 bind Viper.Terminal;
 
-try {
-    var result = complexOperation(data);
-    saveResult(result);
-    sendNotification(result);
-} catch {
-    Say("Something went wrong");  // Which operation? What error?
+func complexOperation(data: String) -> String {
+    return data.ToUpper();
+}
+
+func saveResult(result: String) {
+    // Save in a real program.
+}
+
+func sendNotification(result: String) {
+    // Notify in a real program.
+}
+
+func start() {
+    var data = "example";
+    try {
+        var result = complexOperation(data);
+        saveResult(result);
+        sendNotification(result);
+    } catch {
+        Say("Something went wrong");  // Which operation? What error?
+    }
 }
 ```
 
@@ -1208,20 +1290,39 @@ Better -- separate the operations so you know which one failed:
 ```rust
 bind Viper.Terminal;
 
-var result = complexOperation(data);  // Let validation errors propagate
-
-try {
-    saveResult(result);
-} catch {
-    Say("Could not save: " + "an error occurred");
-    return;
+func complexOperation(data: String) -> String {
+    return data.ToUpper();
 }
 
-try {
-    sendNotification(result);
-} catch {
-    log("Notification failed: " + "an error occurred");
-    // Notification failure is not fatal, continue
+func saveResult(result: String) {
+    // Save in a real program.
+}
+
+func sendNotification(result: String) {
+    // Notify in a real program.
+}
+
+func log(message: String) {
+    // Write to a log file in a real program.
+}
+
+func start() {
+    var data = "example";
+    var result = complexOperation(data);  // Let validation errors propagate
+
+    try {
+        saveResult(result);
+    } catch {
+        Say("Could not save: " + "an error occurred");
+        return;
+    }
+
+    try {
+        sendNotification(result);
+    } catch {
+        log("Notification failed: " + "an error occurred");
+        // Notification failure is not fatal, continue
+    }
 }
 ```
 
@@ -1229,7 +1330,7 @@ try {
 
 Exceptions should be exceptional — not a normal part of logic:
 
-```rust
+```text
 // BAD: Using exceptions as control flow
 func findUser(name: String) -> User {
     for user in users {
@@ -1258,18 +1359,26 @@ Exceptions are slow compared to normal returns. Use them for errors, not everyda
 When catching and re-throwing, preserve the original error:
 
 ```rust
+func loadData() {
+    throw ("disk error");
+}
+
 // BAD: Original error is lost
-try {
-    loadData();
-} catch {
-    throw ("Data loading failed");
+func badExample() {
+    try {
+        loadData();
+    } catch {
+        throw ("Data loading failed");
+    }
 }
 
 // GOOD: Chain the original error
-try {
-    loadData();
-} catch {
-    throw ("Data loading failed: " + "an error occurred");
+func goodExample() {
+    try {
+        loadData();
+    } catch {
+        throw ("Data loading failed: " + "an error occurred");
+    }
 }
 ```
 

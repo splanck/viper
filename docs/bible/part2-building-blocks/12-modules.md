@@ -82,18 +82,18 @@ A module is a file containing related code: functions, structures, constants. Ev
 Here's a simple module:
 
 ```rust
-// file: math_utils.zia
+// file: MathUtils.zia
 module MathUtils;
 
-func square(x: Number) -> Number {
+expose func square(x: Number) -> Number {
     return x * x;
 }
 
-func cube(x: Number) -> Number {
+expose func cube(x: Number) -> Number {
     return x * x * x;
 }
 
-final PI = 3.14159265358979;
+expose final PI = 3.14159265358979;
 ```
 
 This module provides math utilities. Other code can *bind* this module to use its functions and constants.
@@ -123,7 +123,7 @@ This works, but it's tedious. Every function name becomes a small essay. And it 
 
 Modules provide *namespaces*. A namespace is like a last name for your functions. Just as there can be many people named "Alice" but only one "Alice Smith" and one "Alice Jones," there can be many `add` functions as long as they're in different modules:
 
-```rust
+```text
 // With modules: clean, qualified names
 bind Math;
 bind List;
@@ -143,7 +143,7 @@ Each module creates its own namespace. Functions inside `Math` don't conflict wi
 To use code from another module, you bind it:
 
 ```rust
-// file: main.zia
+// file: Main.zia
 module Main;
 
 bind MathUtils;
@@ -250,16 +250,15 @@ Real-world example:
 ```rust
 // Good: Bind with alias when using many functions
 bind Viper.Math as Math;
-var x = Math.Sqrt(a) + Math.Sin(b) + Math.Cos(c);
+bind Viper.Terminal { Say };
 
-// Good: Specific bind for frequently used items
-bind Viper.Terminal { Say, InputLine };
-Say("Enter name: ");
-var name = InputLine();
-
-// Good: Alias for clarity
-bind Physics.Collision as Collision;
-bind UI.Collision as UICollision;  // Different collision system
+func start() {
+    var a = 0.5;
+    var b = 1.0;
+    var c = 2.0;
+    var x = Math.Sqrt(a) + Math.Sin(b) + Math.Cos(c);
+    Say("Result: " + x);
+}
 ```
 
 ---
@@ -268,14 +267,16 @@ bind UI.Collision as UICollision;  // Different collision system
 
 Not everything in a module should be visible to outsiders. Some functions are internal helpers. Some variables are implementation details. Exposing them would let other code depend on things you might want to change.
 
-Use `expose` to mark what's public. `export` and `public` are accepted aliases,
-but `expose` is the canonical spelling used elsewhere in the reference:
+Top-level declarations are exported by default unless marked `hide`. Use
+`expose` to mark public API intentionally. `export` and `public` are accepted
+aliases, but `expose` is the canonical spelling used elsewhere in the
+reference:
 
 ```rust
-// file: counter.zia
+// file: Counter.zia
 module Counter;
 
-var count = 0;  // Private: only this module can see it
+hide var count = 0;  // Private: only this module can see it
 
 expose func increment() {
     count += 1;
@@ -289,16 +290,18 @@ expose func get() -> Integer {
     return count;
 }
 
-func reset() {  // Private: internal use only
+hide func reset() {  // Private: internal use only
     count = 0;
 }
 ```
 
-The `count` variable and `reset` function are internal implementation details.
-Other modules can only use the exposed functions.
+The `hide` modifier makes `count` and `reset` internal implementation details.
+Other modules can use `increment`, `decrement`, and `get`.
 
 ```rust
-// file: main.zia
+// file: Main.zia
+module Main;
+
 bind Counter;
 bind Viper.Terminal;
 
@@ -360,11 +363,11 @@ expose func isValid(email: String) -> Boolean {
 }
 
 // Private helpers: Users don't need these
-func containsAt(email: String) -> Boolean {
+hide func containsAt(email: String) -> Boolean {
     return Str.Has(email, "@");
 }
 
-func hasValidDomain(email: String) -> Boolean {
+hide func hasValidDomain(email: String) -> Boolean {
     var parts = Str.Split(email, "@");
     if Seq.get_Length(parts) != 2 {
         return false;
@@ -508,7 +511,7 @@ Understanding that these are namespaces helps you know where to look for functio
 Modules can bind other modules, creating a dependency graph:
 
 ```text
-main.zia
+Main.zia
     └── binds game.zia
         ├── binds player.zia
         │   └── binds physics.zia
@@ -720,44 +723,50 @@ Users see only `get`, `set`, and `clear`. You're free to completely rewrite the 
 
 Let's refactor our game demo into proper modules:
 
-**vec2.zia** — Vector math
+**Vec2.zia** — Vector math
 ```rust
+// file: Vec2.zia
 module Vec2;
 
+bind Viper.Math as Math;
+
 expose struct Vec2 {
-    x: Number;
-    y: Number;
+    expose Number x;
+    expose Number y;
+
+    expose func init(x: Number, y: Number) {
+        self.x = x;
+        self.y = y;
+    }
 }
 
 expose func create(x: Number, y: Number) -> Vec2 {
-    return Vec2 { x: x, y: y };
+    return new Vec2(x, y);
 }
 
 expose func add(a: Vec2, b: Vec2) -> Vec2 {
-    return Vec2 { x: a.x + b.x, y: a.y + b.y };
+    return new Vec2(a.x + b.x, a.y + b.y);
 }
 
 expose func subtract(a: Vec2, b: Vec2) -> Vec2 {
-    return Vec2 { x: a.x - b.x, y: a.y - b.y };
+    return new Vec2(a.x - b.x, a.y - b.y);
 }
 
 expose func scale(v: Vec2, factor: Number) -> Vec2 {
-    return Vec2 { x: v.x * factor, y: v.y * factor };
+    return new Vec2(v.x * factor, v.y * factor);
 }
 
 expose func distance(a: Vec2, b: Vec2) -> Number {
-    bind Viper.Math as Math;
     var dx = b.x - a.x;
     var dy = b.y - a.y;
     return Math.Sqrt(dx * dx + dy * dy);
 }
 
 expose func zero() -> Vec2 {
-    return Vec2 { x: 0.0, y: 0.0 };
+    return new Vec2(0.0, 0.0);
 }
 
 expose func magnitude(v: Vec2) -> Number {
-    bind Viper.Math as Math;
     return Math.Sqrt(v.x * v.x + v.y * v.y);
 }
 
@@ -766,32 +775,39 @@ expose func normalize(v: Vec2) -> Vec2 {
     if mag == 0.0 {
         return zero();
     }
-    return Vec2 { x: v.x / mag, y: v.y / mag };
+    return new Vec2(v.x / mag, v.y / mag);
 }
 ```
 
-**player.zia** — Player class
+**Player.zia** — Player module
 ```rust
+// file: Player.zia
 module Player;
 
 bind Vec2;
 
 expose struct Player {
-    name: String;
-    position: Vec2.Vec2;
-    health: Integer;
-    maxHealth: Integer;
-    score: Integer;
+    expose Integer kind;
+    expose Vec2.Vec2 position;
+    expose Integer health;
+    expose Integer maxHealth;
+    expose Integer score;
+
+    expose func init(kind: Integer, position: Vec2.Vec2, health: Integer, maxHealth: Integer, score: Integer) {
+        self.kind = kind;
+        self.position = position;
+        self.health = health;
+        self.maxHealth = maxHealth;
+        self.score = score;
+    }
 }
 
-expose func create(name: String) -> Player {
-    return Player {
-        name: name,
-        position: Vec2.zero(),
-        health: 100,
-        maxHealth: 100,
-        score: 0
-    };
+expose func create() -> Player {
+    return new Player(0, Vec2.zero(), 100, 100, 0);
+}
+
+expose func displayName(player: Player) -> String {
+    return "Hero";
 }
 
 expose func isAlive(player: Player) -> Boolean {
@@ -799,13 +815,7 @@ expose func isAlive(player: Player) -> Boolean {
 }
 
 expose func move(player: Player, direction: Vec2.Vec2) -> Player {
-    return Player {
-        name: player.name,
-        position: Vec2.add(player.position, direction),
-        health: player.health,
-        maxHealth: player.maxHealth,
-        score: player.score
-    };
+    return new Player(player.kind, Vec2.add(player.position, direction), player.health, player.maxHealth, player.score);
 }
 
 expose func takeDamage(player: Player, amount: Integer) -> Player {
@@ -813,13 +823,7 @@ expose func takeDamage(player: Player, amount: Integer) -> Player {
     if newHealth < 0 {
         newHealth = 0;
     }
-    return Player {
-        name: player.name,
-        position: player.position,
-        health: newHealth,
-        maxHealth: player.maxHealth,
-        score: player.score
-    };
+    return new Player(player.kind, player.position, newHealth, player.maxHealth, player.score);
 }
 
 expose func heal(player: Player, amount: Integer) -> Player {
@@ -827,44 +831,35 @@ expose func heal(player: Player, amount: Integer) -> Player {
     if newHealth > player.maxHealth {
         newHealth = player.maxHealth;
     }
-    return Player {
-        name: player.name,
-        position: player.position,
-        health: newHealth,
-        maxHealth: player.maxHealth,
-        score: player.score
-    };
+    return new Player(player.kind, player.position, newHealth, player.maxHealth, player.score);
 }
 
 expose func addScore(player: Player, points: Integer) -> Player {
-    return Player {
-        name: player.name,
-        position: player.position,
-        health: player.health,
-        maxHealth: player.maxHealth,
-        score: player.score + points
-    };
+    return new Player(player.kind, player.position, player.health, player.maxHealth, player.score + points);
 }
 ```
 
-**enemy.zia** — Enemy class
+**Enemy.zia** — Enemy module
 ```rust
+// file: Enemy.zia
 module Enemy;
 
 bind Vec2;
 
 expose struct Enemy {
-    position: Vec2.Vec2;
-    damage: Integer;
-    speed: Number;
+    expose Vec2.Vec2 position;
+    expose Integer damage;
+    expose Number speed;
+
+    expose func init(position: Vec2.Vec2, damage: Integer, speed: Number) {
+        self.position = position;
+        self.damage = damage;
+        self.speed = speed;
+    }
 }
 
 expose func create(x: Number, y: Number, damage: Integer) -> Enemy {
-    return Enemy {
-        position: Vec2.create(x, y),
-        damage: damage,
-        speed: 1.0
-    };
+    return new Enemy(Vec2.create(x, y), damage, 1.0);
 }
 
 expose func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
@@ -872,16 +867,13 @@ expose func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
     var normalized = Vec2.normalize(direction);
     var movement = Vec2.scale(normalized, enemy.speed);
 
-    return Enemy {
-        position: Vec2.add(enemy.position, movement),
-        damage: enemy.damage,
-        speed: enemy.speed
-    };
+    return new Enemy(Vec2.add(enemy.position, movement), enemy.damage, enemy.speed);
 }
 ```
 
-**main.zia** — Game entry point
+**Main.zia** — Game entry point
 ```rust
+// file: Main.zia
 module Main;
 
 bind Vec2;
@@ -893,10 +885,10 @@ func start() {
     Say("=== Modular Game Demo ===");
     Say("");
 
-    var player = Player.create("Hero");
+    var player = Player.create();
     var enemy = Enemy.create(5.0, 3.0, 10);
 
-    Say("Player: " + player.name);
+    Say("Player: " + Player.displayName(player));
     Say("Health: " + player.health + "/" + player.maxHealth);
     Say("Position: (" + player.position.x + ", " + player.position.y + ")");
     Say("");
@@ -1053,37 +1045,51 @@ One of the biggest benefits of good module design is testability. When code is p
 **Isolation.** You can test a module without loading the entire application. Testing `Vec2` doesn't require creating a player or starting a game loop.
 
 ```rust
-// vec2_test.zia
-bind Vec2;
-bind Viper.Test;
+// file: Vec2Test.zia
+module Vec2Test;
 
-test "add combines vectors" {
+bind Vec2;
+bind Viper.Terminal;
+
+func require(condition: Boolean, message: String) {
+    if !condition {
+        throw message;
+    }
+}
+
+func testAddCombinesVectors() {
     var a = Vec2.create(1.0, 2.0);
     var b = Vec2.create(3.0, 4.0);
     var result = Vec2.add(a, b);
 
-    assert result.x == 4.0;
-    assert result.y == 6.0;
+    require(result.x == 4.0, "x should be 4");
+    require(result.y == 6.0, "y should be 6");
 }
 
-test "distance calculates correctly" {
+func testDistanceCalculatesCorrectly() {
     var a = Vec2.create(0.0, 0.0);
     var b = Vec2.create(3.0, 4.0);
 
-    assert Vec2.distance(a, b) == 5.0;  // 3-4-5 triangle
+    require(Vec2.distance(a, b) == 5.0, "3-4-5 distance should be 5");
+}
+
+func start() {
+    testAddCombinesVectors();
+    testDistanceCalculatesCorrectly();
+    Say("Vec2 tests passed");
 }
 ```
 
 **Substitution.** You can replace modules with test versions. Instead of testing with a real database, use a fake one.
 
-```rust
+```text
 // In tests: use a mock
 var mockDatabase = MockDatabase.create();
 var userService = UserService.create(mockDatabase);
 
 // The UserService doesn't know (or care) that it's using a mock
 userService.createUser("alice");
-assert mockDatabase.hasUser("alice");
+require(mockDatabase.hasUser("alice"), "user should be saved");
 ```
 
 **Focused tests.** Each module has a clear responsibility, so tests are focused. `Player` tests check player behavior. `Enemy` tests check enemy behavior. You know where to look for tests and what they cover.
@@ -1099,6 +1105,14 @@ Sometimes you want to test internal functions that aren't exported. There are se
 **Option 2: Export with a "testing" convention.** Some teams export testing helpers with a prefix:
 
 ```rust
+module EmailValidator;
+
+bind Viper.String as Str;
+
+hide func containsAt(email: String) -> Boolean {
+    return Str.Has(email, "@");
+}
+
 // Exported for testing, not for normal use
 expose func test_containsAt(email: String) -> Boolean {
     return containsAt(email);
@@ -1112,18 +1126,29 @@ module EmailValidator;
 
 bind Viper.String as Str;
 
-func containsAt(email: String) -> Boolean {
+func require(condition: Boolean, message: String) {
+    if !condition {
+        throw message;
+    }
+}
+
+hide func containsAt(email: String) -> Boolean {
     return Str.Has(email, "@");
 }
 
 expose func isValid(email: String) -> Boolean {
     // Uses containsAt internally
+    return containsAt(email);
 }
 
 // Tests in the same module can access private functions
-test "containsAt detects @" {
-    assert containsAt("test@example.com");
-    assert !containsAt("invalid");
+func testContainsAt() {
+    require(containsAt("test@example.com"), "email should contain @");
+    require(!containsAt("invalid"), "plain text should not contain @");
+}
+
+func start() {
+    testContainsAt();
 }
 ```
 
@@ -1206,7 +1231,7 @@ Split it up! Authentication, UI, email, payments, and reporting are different co
 
 ### Circular Dependencies
 
-```rust
+```text
 // Bad: A binds B, B binds A
 // order.zia
 bind Customer;  // Order needs Customer
@@ -1214,7 +1239,7 @@ bind Customer;  // Order needs Customer
 bind Order;     // Customer needs Order
 ```
 
-```rust
+```text
 // Good: Extract shared concept
 // types.zia
 expose struct OrderSummary { ... }
@@ -1231,7 +1256,7 @@ bind types;
 
 ### Bind Pollution
 
-```rust
+```text
 // Bad: Binding everything unqualified
 bind MathUtils { * };  // Brings ALL names into scope
 bind StringUtils { * };
@@ -1241,15 +1266,15 @@ bind FileUtils { * };
 // Which module does "format" come from? Who knows!
 ```
 
-```rust
+```text
 // Good: Bind modules, use qualified names
 bind MathUtils;
 bind StringUtils;
 bind FileUtils;
 
-var x = MathUtils.Math.Sqrt(2);
-var s = StringUtils.Format("{}", x);
-FileUtils.Write("out.txt", s);
+var x = MathUtils.sqrt(2.0);
+var s = StringUtils.format("{}", x);
+FileUtils.writeAllText("out.txt", s);
 ```
 
 ### Wrong Abstraction Level

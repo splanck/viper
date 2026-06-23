@@ -133,9 +133,14 @@ static inline int rt_hex_digit_value(char c) {
 /// @endcode
 #define RT_ARR_DEFINE_ASSERT_HEADER_FN(fn_name, expected_elem_kind)                                \
     static void fn_name(rt_heap_hdr_t *hdr) {                                                      \
-        assert(hdr);                                                                               \
-        assert(hdr->kind == RT_HEAP_ARRAY);                                                        \
-        assert(hdr->elem_kind == (expected_elem_kind));                                            \
+        if (!hdr) {                                                                                \
+            rt_trap(#fn_name ": null array header");                                               \
+            return;                                                                                \
+        }                                                                                          \
+        if (hdr->magic != RT_MAGIC || hdr->kind != RT_HEAP_ARRAY ||                                \
+            hdr->elem_kind != (expected_elem_kind)) {                                              \
+            rt_trap(#fn_name ": invalid array header");                                            \
+        }                                                                                          \
     }
 
 /// @brief Generate a payload byte size calculation function (static).

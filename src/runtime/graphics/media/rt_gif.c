@@ -47,6 +47,7 @@ typedef struct {
 #define GIF_MAX_FILE_BYTES (INT64_C(100) * 1024 * 1024)
 #define GIF_MAX_DECODED_FRAME_BYTES ((size_t)512u * 1024u * 1024u)
 #define GIF_MAX_LZW_SUB_BLOCK_BYTES ((size_t)64u * 1024u * 1024u)
+#define GIF_PREVIOUS_CANVAS_RETAIN_PIXELS ((size_t)2u * 1024u * 1024u)
 
 void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
@@ -785,6 +786,12 @@ int gif_decode_file(const char *filepath,
                     free(indices);
                     decode_failed = GIF_DECODE_FAILURE_GENERIC;
                     break;
+                }
+                if (prev_canvas_capacity > GIF_PREVIOUS_CANVAS_RETAIN_PIXELS &&
+                    needed_pixels < GIF_PREVIOUS_CANVAS_RETAIN_PIXELS / 2u) {
+                    free(prev_canvas);
+                    prev_canvas = NULL;
+                    prev_canvas_capacity = 0;
                 }
                 if (needed_pixels > prev_canvas_capacity) {
                     uint32_t *grown =

@@ -637,17 +637,20 @@ static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, 
 
 /// @brief Return 1 if hostname matches the leaf certificate's SANs or CommonName.
 ///        Checks SubjectAltName DNS names first (preferred per RFC 6125); falls back to
-///        CommonName only when no SANs are present. IP literals always match (verified
-///        separately).  Returns 1 (accept) when the certificate or hostname is absent.
+///        CommonName only when no SANs are present. Returns 1 when no hostname
+///        was supplied; otherwise fails closed if the configured leaf
+///        certificate is unavailable or the SNI value is an IP literal.
 static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, const char *hostname) {
     char san_names[32][256];
     char cn[256];
     int san_count = 0;
 
-    if (!ctx || !ctx->leaf_cert_der || ctx->leaf_cert_der_len == 0 || !hostname || !*hostname)
+    if (!hostname || !*hostname)
         return 1;
+    if (!ctx || !ctx->leaf_cert_der || ctx->leaf_cert_der_len == 0)
+        return 0;
     if (tls_hostname_is_ip_literal(hostname))
-        return 1;
+        return 0;
 
     san_count = tls_extract_san_names(ctx->leaf_cert_der, ctx->leaf_cert_der_len, san_names, 32);
     for (int i = 0; i < san_count; i++) {
@@ -2927,6 +2930,8 @@ long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len) {
 
     if (len == 0)
         return 0;
+    if (len > (size_t)LONG_MAX)
+        return RT_TLS_ERROR;
 
     // Send in chunks
     const uint8_t *ptr = (const uint8_t *)data;

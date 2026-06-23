@@ -8,6 +8,8 @@ Now imagine a different scenario. You write the same feature, but this time you 
 
 This second approach takes more time upfront, but it saves far more time in the long run. Testing isn't just about finding bugs --- it's about building confidence, enabling safe changes, and documenting how code should behave. This chapter teaches you to test systematically, transforming testing from an afterthought into a fundamental part of how you write software.
 
+> **Current Viper note:** Zia does not currently have a built-in `test "name" { ... }` syntax, an `assert` statement, or a `Viper.Test` module. The test blocks in this chapter are pseudocode that show test intent and structure. In the Viper repository today, automated tests are written as C++ unit/e2e tests, BASIC/Zia sample programs, or shell-driven checks run through CTest and the scripts in `docs/testing.md`.
+
 ---
 
 ## Why Testing Saves Time
@@ -92,7 +94,7 @@ Not all tests are the same. Different tests verify different aspects of your sof
 
 Unit tests verify that individual pieces of code work correctly in isolation. A "unit" is typically a single function, method, or small class --- the smallest testable piece of behavior.
 
-```rust
+```text
 // The function we want to test
 func isPrime(n: Integer) -> Boolean {
     if n < 2 { return false; }
@@ -150,7 +152,7 @@ Think of unit tests as verifying that each brick is solid before you build the w
 
 Integration tests verify that multiple pieces work together correctly. While unit tests check individual functions, integration tests check that those functions collaborate properly.
 
-```rust
+```text
 // Unit test: Just the validator
 test "email validator rejects invalid format" {
     var validator = EmailValidator();
@@ -197,7 +199,7 @@ Think of integration tests as verifying that the bricks fit together properly to
 
 End-to-end (E2E) tests verify complete workflows from the user's perspective. They simulate real user actions and check that the entire system behaves correctly.
 
-```rust
+```text
 test "complete user journey: registration to purchase" {
     var app = Application.startForTesting();
     var browser = TestBrowser.create();
@@ -269,9 +271,7 @@ An inverted pyramid (many E2E tests, few unit tests) leads to slow test suites, 
 
 Let's start with the basics. Here's a simple function and a test for it:
 
-```rust
-bind Viper.Test;
-
+```text
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
@@ -283,26 +283,24 @@ test "add returns sum of two numbers" {
 }
 ```
 
-Run tests with:
+In the current toolchain, put runnable checks in a small `.zia` program and run it with:
 
 ```bash
-zia test myprogram.zia
+viper run myprogram.zia
 ```
 
-Output:
+Repository tests are run with CTest after a build:
 
 ```text
-Running tests...
-Pass: add returns sum of two numbers
-1 test passed, 0 failed
+ctest --test-dir build --output-on-failure
 ```
 
 Let's break down what's happening:
 
-- `test "description" { ... }` defines a test with a descriptive name
-- Inside the test, `assert` checks that a condition is true
-- If all assertions pass, the test passes
-- If any assertion fails, the test fails and reports which assertion failed
+- A test should have a descriptive name
+- Each check should verify one clear condition
+- If all checks pass, the test passes
+- If any check fails, report the failing behavior and enough context to debug it
 
 The test name is important --- it should describe what you're testing, not how. "add returns sum of two numbers" tells you exactly what behavior is being verified.
 
@@ -314,7 +312,7 @@ Assertions are statements that must be true for a test to pass. They're how you 
 
 ### Basic Assertions
 
-```rust
+```text
 test "basic assertions" {
     // Equality
     assert 1 + 1 == 2;
@@ -345,7 +343,7 @@ test "basic assertions" {
 
 When assertions fail, messages help you understand what went wrong:
 
-```rust
+```text
 test "with messages" {
     var result = calculateTax(100);
     assert result == 10, "Expected 10% tax on 100, got " + result;
@@ -356,11 +354,9 @@ Without a message, a failing assertion just tells you the condition was false. W
 
 ### Common Assert Functions
 
-The `Viper.Test` module provides specialized assertion functions with better error messages:
+Many test frameworks provide specialized assertion functions with better error messages. Viper does not currently ship this source-level assertion module, but these examples show the behavior such helpers would provide:
 
-```rust
-bind Viper.Test;
-
+```text
 test "assert variants" {
     // Basic
     assert condition;
@@ -391,7 +387,7 @@ test "assert variants" {
 
 Why use `assertEqual(actual, expected)` instead of `assert actual == expected`? Consider a failing test:
 
-```rust
+```text
 // With basic assert:
 assert result == 42;
 // Failure: assertion failed
@@ -409,7 +405,7 @@ The specialized assertion tells you what went wrong, not just that something wen
 
 Good tests follow a consistent pattern called "Arrange-Act-Assert" (or "Given-When-Then"):
 
-```rust
+```text
 test "user can update email" {
     // Arrange: Set up the test conditions
     var user = User("alice", "alice@old.com");
@@ -434,7 +430,7 @@ This three-part structure makes tests clear and consistent:
 
 Consider a test without clear structure:
 
-```rust
+```text
 test "confusing test" {
     var cart = ShoppingCart();
     cart.Add(Item("Book", 15.00));
@@ -452,7 +448,7 @@ What is this testing? Adding? Removing? Totals? It's hard to tell because multip
 
 Compare with structured tests:
 
-```rust
+```text
 test "adding item increases count" {
     // Arrange
     var cart = ShoppingCart();
@@ -505,7 +501,7 @@ Writing tests is not about covering every possible input (there are infinitely m
 
 Test typical usage --- the cases that should work:
 
-```rust
+```text
 test "divide normal cases" {
     assertEqual(divide(10, 2), 5);
     assertEqual(divide(9, 3), 3);
@@ -519,7 +515,7 @@ These verify the basic functionality works as expected.
 
 Test the boundaries and limits where bugs often hide:
 
-```rust
+```text
 test "divide edge cases" {
     assertEqual(divide(0, 5), 0);       // Zero numerator
     assertEqual(divide(5, 1), 5);       // Divide by one
@@ -536,7 +532,7 @@ Edge cases live at the boundaries: zero, one, negative numbers, maximum values, 
 
 Test that errors are handled correctly:
 
-```rust
+```text
 test "divide by zero throws" {
     assertThrows(func() {
         divide(5, 0);
@@ -568,7 +564,7 @@ A helpful mnemonic for remembering what to test:
 
 Let's apply ZOMBIES to testing a stack:
 
-```rust
+```text
 class Stack[T] {
     hide items: List[T];
 
@@ -659,7 +655,7 @@ Test names are documentation. They should describe what behavior is being tested
 
 ### Bad Test Names
 
-```rust
+```text
 test "test1" { ... }
 test "user test" { ... }
 test "it works" { ... }
@@ -670,7 +666,7 @@ These tell you nothing. When they fail, you have to read the test code to unders
 
 ### Good Test Names
 
-```rust
+```text
 test "new user starts with zero balance" { ... }
 test "deposit increases balance by deposit amount" { ... }
 test "withdraw fails when amount exceeds balance" { ... }
@@ -704,7 +700,7 @@ This list becomes living documentation of how your system behaves. Anyone can re
 
 Many tests need common setup --- creating test data, initializing objects, connecting to test databases. Rather than repeating this in every test, you can use setup and teardown blocks.
 
-```rust
+```text
 bind Viper.Test;
 
 var testDatabase: Database;
@@ -770,7 +766,7 @@ Test doubles are objects that stand in for real dependencies during testing. The
 
 A stub returns predetermined values, ignoring its inputs:
 
-```rust
+```text
 // Real implementation
 class WeatherService {
     func getTemperature(city: String) -> Number {
@@ -820,7 +816,7 @@ The stub lets us test the thermostat's logic without depending on real weather d
 
 A mock records how it was called, letting you verify interactions:
 
-```rust
+```text
 class MockEmailService implements IEmailService {
     hide sentEmails: List[Email];
 
@@ -874,7 +870,7 @@ Mocks verify not just what your code returns, but how it interacts with its depe
 
 A fake is a simplified but functional implementation:
 
-```rust
+```text
 // Real database: connects to PostgreSQL, handles transactions, etc.
 class ProductionDatabase implements IDatabase {
     // ... complex implementation
@@ -943,7 +939,7 @@ Let's build an `isPrime` function using TDD.
 
 **Step 1: Red --- Write a failing test**
 
-```rust
+```text
 test "2 is prime" {
     assert isPrime(2);
 }
@@ -953,7 +949,7 @@ This fails because `isPrime` doesn't exist yet.
 
 **Step 2: Green --- Make it pass with minimum code**
 
-```rust
+```text
 func isPrime(n: Integer) -> Boolean {
     return true;  // Minimum code to pass!
 }
@@ -963,7 +959,7 @@ The test passes. Yes, this implementation is wrong, but it passes the test we ha
 
 **Step 3: Red --- Write another failing test**
 
-```rust
+```text
 test "4 is not prime" {
     assert !isPrime(4);
 }
@@ -973,7 +969,7 @@ This fails because our function always returns true.
 
 **Step 4: Green --- Make it pass**
 
-```rust
+```text
 func isPrime(n: Integer) -> Boolean {
     if n == 4 {
         return false;
@@ -986,7 +982,7 @@ Both tests pass. Still a silly implementation, but we're being disciplined.
 
 **Step 5: Red --- More tests to drive the design**
 
-```rust
+```text
 test "1 is not prime" {
     assert !isPrime(1);
 }
@@ -1004,7 +1000,7 @@ These fail because we haven't handled these cases.
 
 **Step 6: Green --- Handle small numbers**
 
-```rust
+```text
 func isPrime(n: Integer) -> Boolean {
     if n < 2 {
         return false;
@@ -1018,7 +1014,7 @@ func isPrime(n: Integer) -> Boolean {
 
 **Step 7: Red --- Test more composites**
 
-```rust
+```text
 test "6 is not prime" {
     assert !isPrime(6);
 }
@@ -1032,7 +1028,7 @@ test "9 is not prime" {
 
 Time to write a real algorithm:
 
-```rust
+```text
 func isPrime(n: Integer) -> Boolean {
     if n < 2 {
         return false;
@@ -1052,7 +1048,7 @@ All tests pass.
 
 The algorithm works but is slow. Let's optimize:
 
-```rust
+```text
 bind Viper.Math as Math;
 bind Convert = Viper.Core.Convert;
 
@@ -1107,7 +1103,7 @@ Learning to test well means learning what not to do. Here are common mistakes an
 
 ### Testing Implementation, Not Behavior
 
-```rust
+```text
 // Bad: Tests internal details
 class Cache {
     hide storage: Map[String, String];
@@ -1133,7 +1129,7 @@ Test what the code *does*, not *how* it does it. Internal implementation should 
 
 Flaky tests pass sometimes and fail sometimes:
 
-```rust
+```text
 // Bad: Depends on timing
 test "async operation completes" {
     startAsyncOperation();
@@ -1159,7 +1155,7 @@ Flaky tests erode trust in your test suite. When tests sometimes fail for no rea
 
 ### Tests That Don't Test Anything
 
-```rust
+```text
 // Bad: Doesn't actually verify anything useful
 test "create user" {
     var user = User("alice");
@@ -1177,7 +1173,7 @@ Every test should verify something that could plausibly fail. If a test can't fa
 
 ### Too Many Assertions
 
-```rust
+```text
 // Bad: What exactly failed?
 test "everything about user" {
     var user = createUser("alice", 30, "alice@example.com");
@@ -1207,7 +1203,7 @@ When a test with many assertions fails, you only learn one thing failed --- you 
 
 ### Tests That Depend on Each Other
 
-```rust
+```text
 // Bad: Tests depend on shared state
 var globalUser: User?;
 
@@ -1236,7 +1232,7 @@ Tests should be independent --- each should work regardless of what other tests 
 
 ### Testing Only the Happy Path
 
-```rust
+```text
 // Incomplete: Only tests success cases
 test "withdraw works" {
     var account = BankAccount(100);
@@ -1274,7 +1270,7 @@ Error paths are just as important as success paths. Maybe more --- bugs in error
 Code coverage measures how much of your code is executed by your tests.
 
 ```bash
-zia test --coverage myprogram.zia
+./scripts/coverage.sh
 ```
 
 Output:
@@ -1289,6 +1285,8 @@ utils.zia           20/40         5/12        52%
 Total                 95/122        25/37       78%
 ```
 
+For the Viper repository itself, `./scripts/coverage.sh` configures a coverage build, runs CTest, and writes reports under `coverage/`.
+
 ### What Coverage Tells You
 
 **Statements covered**: How many lines of code were executed during tests.
@@ -1299,7 +1297,7 @@ Total                 95/122        25/37       78%
 
 High coverage doesn't mean good tests. Consider:
 
-```rust
+```text
 func divide(a: Integer, b: Integer) -> Integer {
     return a / b;
 }
@@ -1350,7 +1348,7 @@ Tests are powerful debugging tools. When you find a bug, write a test that repro
 1. **Receive bug report**: "Dividing 7 by 3 returns 3 instead of 2.33"
 
 2. **Write a test that fails**:
-```rust
+```text
 test "divide returns correct result for 7/3" {
     assertClose(divide(7, 3), 2.33, 0.01);
 }
@@ -1374,7 +1372,7 @@ test "divide returns correct result for 7/3" {
 
 When you have a complex bug, write increasingly focused tests to narrow down the problem:
 
-```rust
+```text
 // Start broad: Does the full workflow fail?
 test "user registration fails" {
     var result = registerUser("alice@example.com", "password");
@@ -1408,7 +1406,7 @@ Each test eliminates possibilities until you find the culprit.
 
 Instead of testing specific examples, property-based testing checks that properties hold for many randomly generated inputs.
 
-```rust
+```text
 bind Viper.Test;
 
 test "reversing twice returns original" {
@@ -1471,7 +1469,7 @@ Create a calculator that:
 
 ### Step 1: Empty String Returns Zero
 
-```rust
+```text
 test "empty string returns 0" {
     var calc = StringCalculator();
     assertEqual(calc.Add(""), 0);
@@ -1480,7 +1478,7 @@ test "empty string returns 0" {
 
 Implementation:
 
-```rust
+```text
 class StringCalculator {
     expose func init() {}
 
@@ -1495,7 +1493,7 @@ class StringCalculator {
 
 ### Step 2: Single Number Returns That Number
 
-```rust
+```text
 test "single number returns that number" {
     var calc = StringCalculator();
     assertEqual(calc.Add("5"), 5);
@@ -1505,7 +1503,7 @@ test "single number returns that number" {
 
 Implementation:
 
-```rust
+```text
 func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
@@ -1516,7 +1514,7 @@ func add(numbers: String) -> Integer {
 
 ### Step 3: Two Numbers Returns Sum
 
-```rust
+```text
 test "two numbers returns sum" {
     var calc = StringCalculator();
     assertEqual(calc.Add("1,2"), 3);
@@ -1526,7 +1524,7 @@ test "two numbers returns sum" {
 
 Implementation:
 
-```rust
+```text
 func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
@@ -1543,7 +1541,7 @@ func add(numbers: String) -> Integer {
 
 ### Step 4: Multiple Numbers
 
-```rust
+```text
 test "multiple numbers returns sum" {
     var calc = StringCalculator();
     assertEqual(calc.Add("1,2,3"), 6);
@@ -1555,7 +1553,7 @@ The implementation already handles this! The test passes.
 
 ### Step 5: Newlines as Separators
 
-```rust
+```text
 test "newlines work as separators" {
     var calc = StringCalculator();
     assertEqual(calc.Add("1\n2,3"), 6);
@@ -1565,7 +1563,7 @@ test "newlines work as separators" {
 
 Implementation:
 
-```rust
+```text
 func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
@@ -1584,7 +1582,7 @@ func add(numbers: String) -> Integer {
 
 ### Step 6: Negative Numbers Throw
 
-```rust
+```text
 test "negative numbers throw exception" {
     var calc = StringCalculator();
 
@@ -1610,7 +1608,7 @@ test "exception message includes negative number" {
 
 Implementation:
 
-```rust
+```text
 func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
@@ -1644,7 +1642,7 @@ func add(numbers: String) -> Integer {
 
 ### The Complete Solution
 
-```rust
+```text
 class StringCalculator {
     expose func init() {}
 
@@ -1690,7 +1688,7 @@ Notice how the tests guided us to a clean, well-designed implementation. Each te
 
 Each test should verify one behavior:
 
-```rust
+```text
 // Bad: Testing multiple concepts
 test "user operations" {
     var user = User("alice");
@@ -1726,7 +1724,7 @@ test "deactivate makes user inactive" {
 
 Tests should not share state or depend on execution order:
 
-```rust
+```text
 // Bad: Tests share state
 var sharedList: List[Integer] = [];
 
@@ -1756,7 +1754,7 @@ test "list contains added item" {
 
 ### Test Behavior, Not Implementation
 
-```rust
+```text
 // Bad: Tests how sorting works internally
 test "sort uses quicksort" {
     // Trying to verify algorithm choice - fragile!
@@ -1777,7 +1775,7 @@ test "sort puts elements in ascending order" {
 
 Tests are documentation. Make them clear:
 
-```rust
+```text
 // Hard to understand
 test "test1" {
     var x = f(1, 2, 3);
@@ -1798,7 +1796,7 @@ test "sumOfList returns total of all elements" {
 
 **Zia**
 
-```rust
+```text
 bind Viper.Test;
 
 test "example test" {
@@ -1812,7 +1810,7 @@ test "example test" {
 
 **BASIC**
 
-```basic
+```text
 TEST "example test"
     ASSERT 1 + 1 = 2
     ASSERT_EQUAL actual, expected
@@ -1887,7 +1885,7 @@ Test that these components work together correctly for login success, login fail
 
 **Exercise 27.7 (Debug)**: Here's a buggy function. Write tests that expose the bugs, then fix them:
 
-```rust
+```text
 func calculateGrade(score: Integer) -> String {
     if score >= 90 { return "A"; }
     if score >= 80 { return "B"; }

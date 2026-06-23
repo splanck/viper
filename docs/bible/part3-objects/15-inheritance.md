@@ -149,7 +149,7 @@ bind Viper.Terminal;
 
 class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
-        super(x, y, 30, "Goblin");
+        super.init(x, y, 30, "Goblin");
     }
 
     expose func attack() -> Integer {
@@ -159,7 +159,7 @@ class Goblin extends Enemy {
 
 class Orc extends Enemy {
     expose func init(x: Number, y: Number) {
-        super(x, y, 50, "Orc");
+        super.init(x, y, 50, "Orc");
     }
 
     expose func attack() -> Integer {
@@ -169,7 +169,7 @@ class Orc extends Enemy {
 
 class Dragon extends Enemy {
     expose func init(x: Number, y: Number) {
-        super(x, y, 200, "Dragon");
+        super.init(x, y, 200, "Dragon");
     }
 
     expose func attack() -> Integer {
@@ -215,7 +215,7 @@ Let's see this in action:
 ```rust
 bind Viper.Terminal;
 
-var goblin = Goblin(10.0, 20.0);
+var goblin = new Goblin(10.0, 20.0);
 
 // Using inherited fields
 Say(goblin.x);       // 10.0
@@ -241,10 +241,10 @@ A child class can *override* methods from its parent - providing its own impleme
 A child class can also *add* new fields and methods that don't exist in the parent. The `Dragon` class adds a `breatheFire()` method that only dragons have.
 
 ```rust
-var dragon = Dragon(0.0, 0.0);
+var dragon = new Dragon(0.0, 0.0);
 dragon.breatheFire();  // Works!
 
-var goblin = Goblin(0.0, 0.0);
+var goblin = new Goblin(0.0, 0.0);
 goblin.breatheFire();  // Error! Goblins can't breathe fire
 ```
 
@@ -256,7 +256,7 @@ The `super` keyword is how child classes communicate with their parent. It has t
 
 ### Calling the Parent Initializer
 
-When you create a child class, you typically need to initialize the parent's fields. The `super()` call in an initializer invokes the parent's initializer:
+When you create a child class, you typically need to initialize the parent's fields. The `super.init()` call in an initializer invokes the parent's initializer:
 
 ```rust
 class Enemy {
@@ -275,12 +275,12 @@ class Enemy {
 
 class Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
-        super(x, y, 30, "Goblin");  // Call Enemy's initializer
+        super.init(x, y, 30, "Goblin");  // Call Enemy's initializer
     }
 }
 ```
 
-Here, `Goblin`'s initializer takes only `x` and `y` (the goblin's position), then calls `super()` with those plus the goblin-specific values for health and name. This pattern is common - child initializers often have simpler signatures because some values are predetermined.
+Here, `Goblin`'s initializer takes only `x` and `y` (the goblin's position), then calls `super.init()` with those plus the goblin-specific values for health and name. This pattern is common - child initializers often have simpler signatures because some values are predetermined.
 
 Think of it like filling out a form. The parent class says "I need these four pieces of information." The child class says "I already know two of them, so I only need to ask for the other two."
 
@@ -292,6 +292,18 @@ Sometimes you want to *extend* the parent's behavior rather than completely repl
 bind Viper.Terminal;
 
 class Enemy {
+    expose Number x;
+    expose Number y;
+    expose Integer health;
+    expose String name;
+
+    expose func init(x: Number, y: Number, health: Integer, name: String) {
+        self.x = x;
+        self.y = y;
+        self.health = health;
+        self.name = name;
+    }
+
     expose func describe() {
         Say("An enemy named " + self.name);
         Say("  Position: (" + self.x + ", " + self.y + ")");
@@ -303,17 +315,17 @@ class Dragon extends Enemy {
     expose Integer fireBreaths;
 
     expose func init(x: Number, y: Number) {
-        super(x, y, 200, "Dragon");
+        super.init(x, y, 200, "Dragon");
         self.fireBreaths = 3;
     }
 
-    expose func describe() {
+    expose override func describe() {
         super.describe();  // First, do everything Enemy.describe() does
         Say("  Fire breaths remaining: " + self.fireBreaths);
     }
 }
 
-var dragon = Dragon(100.0, 50.0);
+var dragon = new Dragon(100.0, 50.0);
 dragon.describe();
 // An enemy named Dragon
 //   Position: (100, 50)
@@ -442,7 +454,7 @@ A `Dog` inherits from `Mammal`, which inherits from `Animal`. This means a dog h
 - Its own: `breed`, `fetch()`
 
 ```rust
-var fido = Dog("Fido", "Golden Retriever");
+var fido = new Dog("Fido", "Golden Retriever");
 fido.breathe();  // From Animal: "Fido is breathing"
 fido.nurse();    // From Mammal: "Fido is nursing its young"
 fido.speak();    // Overridden: "Fido says: Woof!"
@@ -523,7 +535,7 @@ class Rectangle extends Shape {
     expose Number height;
 
     expose func init(x: Number, y: Number, width: Number, height: Number) {
-        super(x, y);
+        super.init(x, y);
         self.width = width;
         self.height = height;
     }
@@ -549,16 +561,16 @@ class Circle extends Shape {
     expose Number radius;
 
     expose func init(x: Number, y: Number, radius: Number) {
-        super(x, y);
+        super.init(x, y);
         self.radius = radius;
     }
 
     expose override func area() -> Number {
-        return Viper.Math.Pi() * self.radius * self.radius;
+        return 3.14159265358979 * self.radius * self.radius;
     }
 
     expose override func perimeter() -> Number {
-        return 2.0 * Viper.Math.Pi() * self.radius;
+        return 2.0 * 3.14159265358979 * self.radius;
     }
 
     expose override func describe() {
@@ -576,7 +588,7 @@ class Circle extends Shape {
 
 class Square extends Rectangle {
     expose func init(x: Number, y: Number, size: Number) {
-        super(x, y, size, size);
+        super.init(x, y, size, size);
     }
 
     expose override func describe() {
@@ -792,7 +804,7 @@ Use composition for "has-a" relationships:
 - A Person *has an* Address - Use composition
 - A Computer *has a* CPU - Use composition
 
-```rust
+```text
 // WRONG: A car is not a type of engine!
 class Car extends Engine {
     // This makes no sense
@@ -872,7 +884,7 @@ class FlyingCar {
 
 If you find yourself creating odd inheritance relationships to reuse code, that's a sign to use composition:
 
-```rust
+```text
 // Awkward: A Window is not really a Rectangle in the UI sense
 class Window extends Rectangle { }
 
@@ -888,7 +900,7 @@ class Window {
 
 Should a Stack extend Array? After all, a stack uses array-like storage...
 
-```rust
+```text
 // Tempting but WRONG
 class Stack extends Array {
     expose func push(item) {
@@ -903,7 +915,7 @@ class Stack extends Array {
 
 This seems convenient, but now Stack inherits ALL of Array's methods. Users can call `stack.InsertAt(index)` or `stack.RemoveAt(index)`, which violates how stacks work. A stack is not an array - it just uses an array internally.
 
-```rust
+```text
 // RIGHT: Stack contains an array
 class Stack {
     expose List[any] items;
@@ -957,9 +969,9 @@ func processEnemy(enemy: Enemy) {
 }
 
 // All of these should work:
-processEnemy(Goblin(0.0, 0.0));   // Works!
+processEnemy(new Goblin(0.0, 0.0));   // Works!
 processEnemy(Orc(0.0, 0.0));      // Works!
-processEnemy(Dragon(0.0, 0.0));   // Works!
+processEnemy(new Dragon(0.0, 0.0));   // Works!
 ```
 
 This seems obvious, but it's easy to violate. Consider:
@@ -1144,7 +1156,7 @@ Inheritance is a fundamental object-oriented concept that lets you model "is-a" 
 
 - Use `extends` to create a child class that inherits from a parent
 - Child classes automatically receive all fields and methods from the parent
-- Use `super()` to call the parent's initializer
+- Use `super.init()` to call the parent's initializer
 - Use `super.methodName()` to call the parent's version of a method
 - Override methods to provide specialized behavior for the child
 - Use the `override` keyword to make overriding explicit and catch errors

@@ -47,20 +47,23 @@ Viper provides threads through the `Viper.Threads.Thread` class.
 
 ```rust
 bind Thread = Viper.Threads.Thread;
+bind Viper.Terminal as Terminal;
+
+func helloWorker(arg: Any) {
+    Terminal.Say("Hello from another thread!");
+}
 
 func start() {
     // Start a new thread that runs a function
-    var t = Thread.Start(func() {
-        Viper.Terminal.Say("Hello from another thread!");
-    });
+    var t = Thread.Start(&helloWorker, 0);
 
     // Wait for the thread to finish
     t.Join();
-    Viper.Terminal.Say("Thread completed.");
+    Terminal.Say("Thread completed.");
 }
 ```
 
-`Thread.Start` takes a function and runs it on a new OS thread. It returns a thread handle that you use to manage the thread's lifecycle.
+`Thread.Start` takes a function reference plus one argument and runs it on a new OS thread. It returns a thread handle that you use to manage the thread's lifecycle.
 
 ### Thread Properties
 
@@ -75,17 +78,21 @@ Every thread handle exposes useful properties:
 
 ```rust
 bind Thread = Viper.Threads.Thread;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+func sleepyWorker(arg: Any) {
+    Thread.Sleep(100);  // Sleep 100 milliseconds
+}
 
 func start() {
-    var t = Thread.Start(func() {
-        Thread.Sleep(100);  // Sleep 100 milliseconds
-    });
+    var t = Thread.StartSafe(&sleepyWorker, 0);
 
-    Viper.Terminal.Say("Thread ID: " + toString(t.Id));
-    Viper.Terminal.Say("Alive? " + toString(t.IsAlive));
+    Terminal.Say("Thread ID: " + Fmt.Int(t.SafeGetId()));
+    Terminal.Say("Alive? " + Fmt.Bool(t.SafeIsAlive()));
 
-    t.Join();
-    Viper.Terminal.Say("Still alive? " + toString(t.IsAlive));
+    t.SafeJoin();
+    Terminal.Say("Still alive? " + Fmt.Bool(t.SafeIsAlive()));
 }
 ```
 
@@ -96,11 +103,13 @@ func start() {
 ```rust
 bind Thread = Viper.Threads.Thread;
 
+func slowWorker(arg: Any) {
+    // Simulate work
+    Thread.Sleep(500);
+}
+
 func start() {
-    var t = Thread.Start(func() {
-        // Simulate work
-        Thread.Sleep(500);
-    });
+    var t = Thread.Start(&slowWorker, 0);
 
     // TryJoin returns immediately: true if done, false if still running
     var done = t.TryJoin();
@@ -116,17 +125,22 @@ func start() {
 
 ```rust
 bind Thread = Viper.Threads.Thread;
+bind Box = Viper.Core.Box;
+bind Viper.Terminal as Terminal;
+
+func riskyWorker(arg: Any) {
+    // If this traps, the error is captured by StartSafe
+    var divisor = Box.ToI64(arg);
+    var x = 1 / divisor;
+}
 
 func start() {
-    var t = Thread.StartSafe(func() {
-        // If this throws, the error is captured
-        var x = 1 / 0;
-    });
+    var t = Thread.StartSafeOwned(&riskyWorker, Box.I64(0));
 
     t.SafeJoin();  // Safe join that won't propagate errors
 
-    if (t.HasError) {
-        Viper.Terminal.Say("Thread error: " + t.Error);
+    if t.HasError {
+        Terminal.Say("Thread error: " + t.Error);
     }
 }
 ```
@@ -151,9 +165,12 @@ A `Monitor` provides mutual exclusion: only one thread can hold the monitor at a
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Monitor = Viper.Threads.Monitor;
+bind Map = Viper.Collections.Map;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
 
 var counter = 0;
-var lock = new Object();  // Any object can serve as a monitor target
+var lock = Map.New();  // Any runtime object can serve as a monitor target
 
 func incrementCounter() {
     Monitor.Enter(lock);
@@ -161,25 +178,20 @@ func incrementCounter() {
     Monitor.Exit(lock);
 }
 
+func incrementWorker(arg: Any) {
+    for j in 0..500 {
+        incrementCounter();
+    }
+}
+
 func start() {
-    var threads: List[Object] = [];
+    var t1 = Thread.Start(&incrementWorker, 0);
+    var t2 = Thread.Start(&incrementWorker, 0);
 
-    // Spawn 10 threads, each incrementing 100 times
-    for i in 0..10 {
-        var t = Thread.Start(func() {
-            for j in 0..100 {
-                incrementCounter();
-            }
-        });
-        threads.Push(t);
-    }
+    t1.Join();
+    t2.Join();
 
-    // Wait for all threads
-    for t in threads {
-        Thread.Join(t);
-    }
-
-    Viper.Terminal.Say("Counter: " + toString(counter));  // Should be 1000
+    Terminal.Say("Counter: " + Fmt.Int(counter));  // Should be 1000
 }
 ```
 
@@ -201,9 +213,11 @@ func start() {
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Monitor = Viper.Threads.Monitor;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
 
 var buffer: List[Integer] = [];
-var lock = new Object();
+var lock = Viper.Collections.Map.New();
 var done = false;
 
 func producer() {
@@ -222,16 +236,16 @@ func producer() {
 }
 
 func consumer(id: Integer) {
-    while (true) {
+    while true {
         Monitor.Enter(lock);
         while (buffer.count() == 0 && !done) {
             Monitor.Wait(lock);  // Release lock and sleep until notified
         }
         if (buffer.count() > 0) {
             var item = buffer.get(0);
-            buffer.RemoveAt(0);
+            buffer.removeAt(0);
             Monitor.Exit(lock);
-            Viper.Terminal.Say("Consumer " + toString(id) + " got: " + toString(item));
+            Terminal.Say("Consumer " + Fmt.Int(id) + " got: " + Fmt.Int(item));
         } else {
             Monitor.Exit(lock);
             if (done) { break; }
@@ -247,26 +261,27 @@ For simple numeric shared state, `SafeI64` provides lock-free atomic operations:
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind SafeI64 = Viper.Threads.SafeI64;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+var counter = SafeI64.New(0);
+
+func addWorker(arg: Any) {
+    for i in 0..1000 {
+        counter.Add(1);  // Atomic increment
+    }
+}
 
 func start() {
-    var counter = SafeI64.New(0);  // Create atomic counter starting at 0
+    counter.Set(0);
 
-    var t1 = Thread.Start(func() {
-        for i in 0..1000 {
-            counter.Add(1);  // Atomic increment
-        }
-    });
-
-    var t2 = Thread.Start(func() {
-        for i in 0..1000 {
-            counter.Add(1);
-        }
-    });
+    var t1 = Thread.Start(&addWorker, 0);
+    var t2 = Thread.Start(&addWorker, 0);
 
     t1.Join();
     t2.Join();
 
-    Viper.Terminal.Say("Counter: " + toString(counter.Get()));  // Always 2000
+    Terminal.Say("Counter: " + Fmt.Int(counter.Get()));  // Always 2000
 }
 ```
 
@@ -285,7 +300,7 @@ bind SafeI64 = Viper.Threads.SafeI64;
 
 // Lock-free maximum update
 func atomicMax(atom: SafeI64, candidate: Integer) {
-    while (true) {
+    while true {
         var current = atom.Get();
         if (candidate <= current) { break; }
         var old = atom.CompareExchange(current, candidate);
@@ -308,19 +323,28 @@ A `Gate` controls access to a limited resource. It maintains a count of availabl
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Gate = Viper.Threads.Gate;
+bind Box = Viper.Core.Box;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+var dbGate = Gate.New(3);
+
+func queryWorker(arg: Any) {
+    var id = Box.ToI64(arg);
+    dbGate.Enter();              // Wait for a permit
+    Terminal.Say("Query " + Fmt.Int(id) + " running");
+    Thread.Sleep(200);           // Simulate query
+    dbGate.Leave();              // Release permit
+}
 
 func start() {
-    // Allow up to 3 concurrent database connections
-    var dbGate = Gate.New(3);
+    var t1 = Thread.StartOwned(&queryWorker, Box.I64(1));
+    var t2 = Thread.StartOwned(&queryWorker, Box.I64(2));
+    var t3 = Thread.StartOwned(&queryWorker, Box.I64(3));
 
-    for i in 0..10 {
-        Thread.Start(func() {
-            dbGate.Enter();              // Wait for a permit
-            Viper.Terminal.Say("Query " + toString(i) + " running");
-            Thread.Sleep(200);           // Simulate query
-            dbGate.Leave();              // Release permit
-        });
-    }
+    t1.Join();
+    t2.Join();
+    t3.Join();
 }
 ```
 
@@ -343,17 +367,27 @@ A `Barrier` makes multiple threads wait until all of them have arrived at a sync
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Barrier = Viper.Threads.Barrier;
+bind Box = Viper.Core.Box;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+var barrier = Barrier.New(3);  // Wait for 3 threads
+
+func phaseWorker(arg: Any) {
+    var id = Box.ToI64(arg);
+    Terminal.Say("Thread " + Fmt.Int(id) + " phase 1 done");
+    barrier.Arrive();  // Wait until all 3 threads arrive
+    Terminal.Say("Thread " + Fmt.Int(id) + " phase 2 starting");
+}
 
 func start() {
-    var barrier = Barrier.New(3);  // Wait for 3 threads
+    var t1 = Thread.StartOwned(&phaseWorker, Box.I64(1));
+    var t2 = Thread.StartOwned(&phaseWorker, Box.I64(2));
+    var t3 = Thread.StartOwned(&phaseWorker, Box.I64(3));
 
-    for i in 0..3 {
-        Thread.Start(func() {
-            Viper.Terminal.Say("Thread " + toString(i) + " phase 1 done");
-            barrier.Arrive();  // Wait until all 3 threads arrive
-            Viper.Terminal.Say("Thread " + toString(i) + " phase 2 starting");
-        });
-    }
+    t1.Join();
+    t2.Join();
+    t3.Join();
 }
 ```
 
@@ -411,28 +445,32 @@ Channels provide safe communication between threads without shared mutable state
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Channel = Viper.Threads.Channel;
+bind Box = Viper.Core.Box;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+var ch = Channel.New(5);  // Buffered channel with capacity 5
+
+func producerWorker(arg: Any) {
+    for i in 1..=10 {
+        ch.Send(Box.I64(i));
+        Terminal.Say("Sent: " + Fmt.Int(i));
+    }
+    ch.Close();
+}
+
+func consumerWorker(arg: Any) {
+    while (!ch.IsClosed || !ch.IsEmpty) {
+        var item = ch.Recv();
+        if item != null {
+            Terminal.Say("Received: " + Fmt.Int(Box.ToI64(item)));
+        }
+    }
+}
 
 func start() {
-    var ch = Channel.New(5);  // Buffered channel with capacity 5
-
-    // Producer thread
-    var producer = Thread.Start(func() {
-        for i in 1..=10 {
-            ch.Send(i);
-            Viper.Terminal.Say("Sent: " + toString(i));
-        }
-        ch.Close();
-    });
-
-    // Consumer thread
-    var consumer = Thread.Start(func() {
-        while (!ch.IsClosed || !ch.IsEmpty) {
-            var item = ch.Recv();
-            if (item != null) {
-                Viper.Terminal.Say("Received: " + toString(item));
-            }
-        }
-    });
+    var producer = Thread.Start(&producerWorker, 0);
+    var consumer = Thread.Start(&consumerWorker, 0);
 
     producer.Join();
     consumer.Join();
@@ -471,37 +509,45 @@ Channels naturally compose into pipelines where each stage processes data and pa
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Channel = Viper.Threads.Channel;
+bind Box = Viper.Core.Box;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+var raw = Channel.New(10);
+var processed = Channel.New(10);
+
+func generateWorker(arg: Any) {
+    for i in 1..=5 {
+        raw.Send(Box.I64(i));
+    }
+    raw.Close();
+}
+
+func processWorker(arg: Any) {
+    while (!raw.IsClosed || !raw.IsEmpty) {
+        var item = raw.Recv();
+        if item != null {
+            var value = Box.ToI64(item);
+            processed.Send(Box.I64(value * 2));
+        }
+    }
+    processed.Close();
+}
 
 func start() {
-    var raw = Channel.New(10);
-    var processed = Channel.New(10);
-
-    // Stage 1: Generate data
-    Thread.Start(func() {
-        for i in 1..=5 {
-            raw.Send(i);
-        }
-        raw.Close();
-    });
-
-    // Stage 2: Process (double each value)
-    Thread.Start(func() {
-        while (!raw.IsClosed || !raw.IsEmpty) {
-            var item = raw.Recv();
-            if (item != null) {
-                processed.Send(item * 2);
-            }
-        }
-        processed.Close();
-    });
+    var generator = Thread.Start(&generateWorker, 0);
+    var processor = Thread.Start(&processWorker, 0);
 
     // Stage 3: Consume results
     while (!processed.IsClosed || !processed.IsEmpty) {
         var result = processed.Recv();
-        if (result != null) {
-            Viper.Terminal.Say("Result: " + toString(result));
+        if result != null {
+            Terminal.Say("Result: " + Fmt.Int(Box.ToI64(result)));
         }
     }
+
+    generator.Join();
+    processor.Join();
 }
 ```
 
@@ -513,23 +559,30 @@ Creating a new OS thread for every task is expensive. A *thread pool* maintains 
 
 ```rust
 bind Pool = Viper.Threads.Pool;
+bind Thread = Viper.Threads.Thread;
+bind Box = Viper.Core.Box;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+func poolTask(arg: Any) {
+    var id = Box.ToI64(arg);
+    Terminal.Say("Task " + Fmt.Int(id) + " running");
+    Thread.Sleep(100);
+}
 
 func start() {
     var pool = Pool.New(4);  // 4 worker threads
 
     // Submit 20 tasks to the pool
     for i in 0..20 {
-        pool.Submit(func() {
-            Viper.Terminal.Say("Task " + toString(i) + " running");
-            Thread.Sleep(100);
-        });
+        Pool.Submit(pool, &poolTask, Box.I64(i));
     }
 
     pool.Wait();      // Wait for all tasks to complete
     pool.Shutdown();   // Clean up pool resources
 
-    Viper.Terminal.Say("All tasks done.");
-    Viper.Terminal.Say("Pool processed " + toString(pool.Size) + " workers.");
+    Terminal.Say("All tasks done.");
+    Terminal.Say("Pool processed " + Fmt.Int(pool.Size) + " workers.");
 }
 ```
 
@@ -538,7 +591,7 @@ func start() {
 | Method | Description |
 |--------|-------------|
 | `Pool.New(size)` | Create pool with N worker threads |
-| `.Submit(func)` | Submit a task for execution |
+| `Pool.Submit(pool, callback, arg)` | Submit a task for execution |
 | `.Wait()` | Block until all submitted tasks complete |
 | `.WaitFor(ms)` | Wait with timeout |
 | `.Shutdown()` | Graceful shutdown (finishes pending tasks) |
@@ -564,20 +617,27 @@ A `Promise` represents a value that will be provided later. A `Future` is the re
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Promise = Viper.Threads.Promise;
+bind Future = Viper.Threads.Future;
+bind Box = Viper.Core.Box;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+func computeWorker(p: Promise) {
+    Thread.Sleep(200);  // Simulate computation
+    p.Set(Box.I64(42));  // Fulfill the promise
+}
 
 func start() {
     var p = Promise.New();
     var f = p.GetFuture();
 
     // Worker thread computes a result
-    Thread.Start(func() {
-        Thread.Sleep(200);  // Simulate computation
-        p.Set(42);          // Fulfill the promise
-    });
+    var t = Thread.StartOwned(&computeWorker, p);
 
     // Main thread waits for the result
-    var result = f.Get();  // Blocks until the promise is fulfilled
-    Viper.Terminal.Say("Got: " + toString(result));  // "Got: 42"
+    var result = Box.ToI64(Future.Get(f));  // Blocks until the promise is fulfilled
+    Terminal.Say("Got: " + Fmt.Int(result));  // "Got: 42"
+    t.Join();
 }
 ```
 
@@ -588,19 +648,24 @@ Promises can propagate errors to futures:
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind Promise = Viper.Threads.Promise;
+bind Future = Viper.Threads.Future;
+bind Viper.Terminal as Terminal;
+
+func failingPromiseWorker(p: Promise) {
+    p.SetError("computation failed");
+}
 
 func start() {
     var p = Promise.New();
     var f = p.GetFuture();
 
-    Thread.Start(func() {
-        p.SetError("computation failed");
-    });
+    var t = Thread.StartOwned(&failingPromiseWorker, p);
 
-    f.Wait();
-    if (f.IsError) {
-        Viper.Terminal.Say("Error: " + f.Error);
+    Future.Wait(f);
+    if Future.get_IsError(f) {
+        Terminal.Say("Error: " + Future.get_Error(f));
     }
+    t.Join();
 }
 ```
 
@@ -626,15 +691,23 @@ The `Async` class provides higher-level operations built on futures:
 
 ```rust
 bind Async = Viper.Threads.Async;
+bind Box = Viper.Core.Box;
+bind Seq = Viper.Collections.Seq;
+
+func computeExpensiveValue(arg: Any) -> Any {
+    return Box.I64(42);
+}
 
 func start() {
     // Run a function asynchronously, get a Future back
-    var f = Async.Run(func() {
-        return computeExpensiveValue();
-    });
+    var f = Async.Run(&computeExpensiveValue, 0);
 
     // Create a delayed future (resolves after N ms)
     var delayed = Async.Delay(1000);
+
+    var futures = Seq.New();
+    futures.Push(f);
+    futures.Push(delayed);
 
     // Wait for ALL futures in a list
     var results = Async.All(futures);
@@ -668,25 +741,32 @@ A thread-safe FIFO queue, ideal for producer-consumer patterns:
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind ConcurrentQueue = Viper.Threads.ConcurrentQueue;
+bind Box = Viper.Core.Box;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+var queue = ConcurrentQueue.New();
+
+func queueProducer(arg: Any) {
+    for i in 1..=10 {
+        queue.Enqueue(Box.I64(i));
+        Thread.Sleep(50);
+    }
+}
+
+func queueConsumer(arg: Any) {
+    for i in 0..10 {
+        var item = queue.Dequeue();  // Blocks if empty
+        Terminal.Say("Got: " + Fmt.Int(Box.ToI64(item)));
+    }
+}
 
 func start() {
-    var queue = ConcurrentQueue.New();
+    var producer = Thread.Start(&queueProducer, 0);
+    var consumer = Thread.Start(&queueConsumer, 0);
 
-    // Producer
-    Thread.Start(func() {
-        for i in 1..=10 {
-            queue.Enqueue(i);
-            Thread.Sleep(50);
-        }
-    });
-
-    // Consumer
-    Thread.Start(func() {
-        for i in 0..10 {
-            var item = queue.Dequeue();  // Blocks if empty
-            Viper.Terminal.Say("Got: " + toString(item));
-        }
-    });
+    producer.Join();
+    consumer.Join();
 }
 ```
 
@@ -709,21 +789,27 @@ A thread-safe key-value store with string keys:
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind ConcurrentMap = Viper.Threads.ConcurrentMap;
+bind Box = Viper.Core.Box;
+bind Viper.Terminal as Terminal;
+
+var config = ConcurrentMap.New();
+
+func configWriter(arg: Any) {
+    config.Set("host", Box.Str("localhost"));
+    config.Set("port", Box.Str("8080"));
+}
+
+func configReader(arg: Any) {
+    var host = Box.ToStr(config.GetOr("host", Box.Str("127.0.0.1")));
+    Terminal.Say("Connecting to " + host);
+}
 
 func start() {
-    var config = ConcurrentMap.New();
+    var writer = Thread.Start(&configWriter, 0);
+    var reader = Thread.Start(&configReader, 0);
 
-    // Writer thread
-    Thread.Start(func() {
-        config.Set("host", "localhost");
-        config.Set("port", "8080");
-    });
-
-    // Reader thread (safe to read concurrently)
-    Thread.Start(func() {
-        var host = config.GetOr("host", "127.0.0.1");
-        Viper.Terminal.Say("Connecting to " + host);
-    });
+    writer.Join();
+    reader.Join();
 }
 ```
 
@@ -750,23 +836,36 @@ The `Parallel` class provides high-level utilities for common parallel patterns 
 
 ```rust
 bind Parallel = Viper.Threads.Parallel;
+bind Box = Viper.Core.Box;
+bind Seq = Viper.Collections.Seq;
+bind Viper.Terminal as Terminal;
+
+func processIndex(i: Integer) {
+    // Process item i
+}
+
+func processItem(item: Any) {
+    Terminal.Say("Processing: " + Box.ToStr(item));
+}
+
+func addBang(item: Any) -> Any {
+    return Box.Str(Box.ToStr(item) + "!");
+}
 
 func start() {
     // Parallel for loop (partitioned across cores)
-    Parallel.For(0, 1000, func(i: Integer) {
-        // Process item i
-    });
+    Parallel.For(0, 1000, &processIndex);
 
     // Parallel for-each over a collection
-    var items: List[String] = ["a", "b", "c", "d"];
-    Parallel.ForEach(items, func(item: String) {
-        Viper.Terminal.Say("Processing: " + item);
-    });
+    var items = Seq.New();
+    items.Push(Box.Str("a"));
+    items.Push(Box.Str("b"));
+    items.Push(Box.Str("c"));
+    items.Push(Box.Str("d"));
+    Parallel.ForEach(items, &processItem);
 
     // Parallel map: transform each element concurrently
-    var results = Parallel.Map(items, func(item: String) {
-        return item + "!";
-    });
+    var results = Parallel.Map(items, &addBang);
 }
 ```
 
@@ -778,12 +877,14 @@ By default, `Parallel` uses a shared default pool. You can provide your own:
 bind Parallel = Viper.Threads.Parallel;
 bind Pool = Viper.Threads.Pool;
 
+func processIndex(i: Integer) {
+    // Runs on the custom pool
+}
+
 func start() {
     var pool = Pool.New(2);  // Only 2 workers
 
-    Parallel.ForPool(0, 100, func(i: Integer) {
-        // Runs on the custom pool
-    }, pool);
+    Parallel.ForPool(0, 100, &processIndex, pool);
 
     pool.Shutdown();
 }
@@ -806,7 +907,7 @@ func start() {
 | `Parallel.DefaultWorkers()` | Number of default worker threads |
 | `Parallel.DefaultPool()` | Access the shared default pool |
 
-Parallel operations wake the caller and trap with a `Parallel.*: task trapped` message if a worker callback traps. `Parallel.Map` transfers mapper return values into the returned sequence; exact input passthrough is retained by the runtime, while other borrowed runtime objects must be retained by the mapper before return. `Parallel.Reduce` leaves accumulator ownership to the reducer and returns the final accumulator pointer as produced. The callback-based `Parallel` and `Pool.Submit` APIs require native callback pointers; VM code should use VM-aware `Thread.Start` or `Async.Run` until VM-backed parallel callbacks are available.
+Parallel operations wake the caller and trap with a `Parallel.*: task trapped` message if a worker callback traps. `Parallel.Map` transfers mapper return values into the returned sequence; exact input passthrough is retained by the runtime, while other borrowed runtime objects must be retained by the mapper before return. `Parallel.Reduce` leaves accumulator ownership to the reducer and returns the final accumulator pointer as produced. Use named function references such as `&processItem`; Zia does not currently support inline function literals in these calls.
 
 ---
 
@@ -817,20 +918,24 @@ Long-running tasks should be cancellable. The `CancelToken` provides cooperative
 ```rust
 bind Thread = Viper.Threads.Thread;
 bind CancelToken = Viper.Threads.CancelToken;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
+
+var token = CancelToken.New();
+
+func cancellableWorker(arg: Any) {
+    for i in 0..1000000 {
+        // Periodically check for cancellation
+        if token.Check() {
+            Terminal.Say("Cancelled at iteration " + Fmt.Int(i));
+            return;
+        }
+        // Do work...
+    }
+}
 
 func start() {
-    var token = CancelToken.New();
-
-    var worker = Thread.Start(func() {
-        for i in 0..1000000 {
-            // Periodically check for cancellation
-            if (token.IsCancelled) {
-                Viper.Terminal.Say("Cancelled at iteration " + toString(i));
-                return;
-            }
-            // Do work...
-        }
-    });
+    var worker = Thread.Start(&cancellableWorker, 0);
 
     Thread.Sleep(100);   // Let it run a bit
     token.Cancel();      // Request cancellation
@@ -846,7 +951,7 @@ Create a child token that cancels when the parent does:
 bind CancelToken = Viper.Threads.CancelToken;
 
 var parentToken = CancelToken.New();
-var childToken = parentToken.Linked(parentToken);
+var childToken = CancelToken.Linked(parentToken);
 
 parentToken.Cancel();  // Both parent and child are now cancelled
 ```
@@ -858,8 +963,7 @@ parentToken.Cancel();  // Both parent and child are now cancelled
 | `.Reset()` | Reset to non-cancelled state |
 | `.Check()` | Returns true if cancelled |
 | `.ThrowIfCancelled()` | Throws if cancelled |
-| `.Linked(parent)` | Create a child linked to parent |
-| `.IsCancelled` | Whether cancellation was requested |
+| `CancelToken.Linked(parent)` | Create a child linked to parent |
 
 ---
 
@@ -870,7 +974,9 @@ parentToken.Cancel();  // Both parent and child are now cancelled
 A `Debouncer` suppresses repeated signals that arrive within a quiet period. Only after the signals stop for the configured delay does the debouncer become "ready". This is useful for UI events like search-as-you-type, where you want to wait until the user stops typing.
 
 ```rust
+bind Thread = Viper.Threads.Thread;
 bind Debouncer = Viper.Threads.Debouncer;
+bind Viper.Terminal as Terminal;
 
 func start() {
     var debounce = Debouncer.New(300);  // 300ms quiet period
@@ -885,8 +991,8 @@ func start() {
     // Wait for the quiet period
     Thread.Sleep(400);
 
-    if (debounce.IsReady) {
-        Viper.Terminal.Say("Now execute the search!");
+    if debounce.IsReady {
+        Terminal.Say("Now execute the search!");
     }
 }
 ```
@@ -905,16 +1011,19 @@ func start() {
 A `Throttler` limits how often an action can occur. At most one action per interval.
 
 ```rust
+bind Thread = Viper.Threads.Thread;
 bind Throttler = Viper.Threads.Throttler;
+bind Fmt = Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
 
 func start() {
     var throttle = Throttler.New(1000);  // At most once per second
 
     for i in 0..10 {
-        if (throttle.Try()) {
-            Viper.Terminal.Say("Action executed at iteration " + toString(i));
+        if throttle.Try() {
+            Terminal.Say("Action executed at iteration " + Fmt.Int(i));
         } else {
-            Viper.Terminal.Say("Throttled at iteration " + toString(i));
+            Terminal.Say("Throttled at iteration " + Fmt.Int(i));
         }
         Thread.Sleep(200);
     }
@@ -938,7 +1047,10 @@ func start() {
 The `Scheduler` manages named tasks that should execute at scheduled times:
 
 ```rust
+bind Thread = Viper.Threads.Thread;
 bind Scheduler = Viper.Threads.Scheduler;
+bind Box = Viper.Core.Box;
+bind Viper.Terminal as Terminal;
 
 func start() {
     var sched = Scheduler.New();
@@ -950,8 +1062,8 @@ func start() {
     // Poll loop
     while (sched.Pending > 0) {
         var dueTask = sched.Poll();  // Returns name of due task, or null
-        if (dueTask != null) {
-            Viper.Terminal.Say("Running: " + dueTask);
+        if dueTask != null {
+            Terminal.Say("Running: " + Box.ToStr(dueTask));
         }
         Thread.Sleep(100);
     }
@@ -988,12 +1100,20 @@ The primary source of concurrency bugs is shared mutable state. Prefer:
 Unjoined threads can outlive the main function, leading to undefined behavior or resource leaks:
 
 ```rust
-// Bad: thread might not finish before program exits
-Thread.Start(func() { doWork(); });
+bind Thread = Viper.Threads.Thread;
 
-// Good: always track and join
-var t = Thread.Start(func() { doWork(); });
-t.Join();
+func doWork(arg: Any) {
+    // Work goes here
+}
+
+func start() {
+    // Bad: thread might not finish before program exits
+    Thread.Start(&doWork, 0);
+
+    // Good: always track and join
+    var t = Thread.Start(&doWork, 0);
+    t.Join();
+}
 ```
 
 ### 3. Use StartSafe for Robustness
@@ -1001,10 +1121,21 @@ t.Join();
 `Thread.StartSafe` catches errors in the thread body, preventing crashes and allowing error inspection:
 
 ```rust
-var t = Thread.StartSafe(func() { riskyOperation(); });
-t.SafeJoin();
-if (t.HasError) {
-    Viper.Terminal.Say("Thread failed: " + t.Error);
+bind Thread = Viper.Threads.Thread;
+bind Box = Viper.Core.Box;
+bind Viper.Terminal as Terminal;
+
+func riskyOperation(arg: Any) {
+    var divisor = Box.ToI64(arg);
+    var x = 1 / divisor;
+}
+
+func start() {
+    var t = Thread.StartSafeOwned(&riskyOperation, Box.I64(0));
+    t.SafeJoin();
+    if t.HasError {
+        Terminal.Say("Thread failed: " + t.Error);
+    }
 }
 ```
 
@@ -1013,18 +1144,28 @@ if (t.HasError) {
 Thread pools reuse threads, avoiding the overhead of creating and destroying OS threads:
 
 ```rust
-// Bad: 1000 OS threads
-for i in 0..1000 {
-    Thread.Start(func() { processItem(i); });
+bind Thread = Viper.Threads.Thread;
+bind Pool = Viper.Threads.Pool;
+bind Box = Viper.Core.Box;
+
+func processItem(arg: Any) {
+    // Process one item
 }
 
+func start() {
+// Bad: 1000 OS threads
+    for i in 0..1000 {
+        Thread.StartOwned(&processItem, Box.I64(i));
+    }
+
 // Good: 4 workers handling 1000 tasks
-var pool = Pool.New(4);
-for i in 0..1000 {
-    pool.Submit(func() { processItem(i); });
+    var pool = Pool.New(4);
+    for i in 0..1000 {
+        Pool.Submit(pool, &processItem, Box.I64(i));
+    }
+    pool.Wait();
+    pool.Shutdown();
 }
-pool.Wait();
-pool.Shutdown();
 ```
 
 ### 5. Avoid Deadlocks
@@ -1041,13 +1182,19 @@ A *deadlock* occurs when two threads each wait for something the other holds. Ru
 Cooperative cancellation via `CancelToken` lets you cleanly stop long-running work:
 
 ```rust
+bind CancelToken = Viper.Threads.CancelToken;
+
 var token = CancelToken.New();
 
-pool.Submit(func() {
-    while (!token.IsCancelled) {
+func processNextBatch() {
+    // Process one batch
+}
+
+func processUntilCancelled(arg: Any) {
+    while !token.Check() {
         processNextBatch();
     }
-});
+}
 
 // Later: request clean shutdown
 token.Cancel();

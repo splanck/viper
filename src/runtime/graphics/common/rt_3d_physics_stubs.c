@@ -1481,7 +1481,7 @@ void *rt_collider3d_new_box(double hx, double hy, double hz) {
     (void)hx;
     (void)hy;
     (void)hz;
-    return NULL;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.NewBox: graphics support not compiled in", NULL);
 }
 
 /// @brief Stub for `Collider3D.NewSphere` — would normally allocate a
@@ -1495,7 +1495,7 @@ void *rt_collider3d_new_box(double hx, double hy, double hz) {
 /// @return `NULL`.
 void *rt_collider3d_new_sphere(double radius) {
     (void)radius;
-    return NULL;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.NewSphere: graphics support not compiled in", NULL);
 }
 
 /// @brief Stub for `Collider3D.NewCapsule` — would normally allocate a
@@ -1512,7 +1512,7 @@ void *rt_collider3d_new_sphere(double radius) {
 void *rt_collider3d_new_capsule(double radius, double height) {
     (void)radius;
     (void)height;
-    return NULL;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.NewCapsule: graphics support not compiled in", NULL);
 }
 
 /// @brief Stub for `Collider3D.NewConvexHull` — would normally compute
@@ -1527,7 +1527,8 @@ void *rt_collider3d_new_capsule(double radius, double height) {
 /// @return `NULL`.
 void *rt_collider3d_new_convex_hull(void *mesh) {
     (void)mesh;
-    return NULL;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.NewConvexHull: graphics support not compiled in",
+                                  NULL);
 }
 
 /// @brief Stub for `Collider3D.NewMesh` — would normally use the given
@@ -1542,7 +1543,7 @@ void *rt_collider3d_new_convex_hull(void *mesh) {
 /// @return `NULL`.
 void *rt_collider3d_new_mesh(void *mesh) {
     (void)mesh;
-    return NULL;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.NewMesh: graphics support not compiled in", NULL);
 }
 
 /// @brief Stub for `Collider3D.NewHeightfield` — would normally allocate
@@ -1563,7 +1564,8 @@ void *rt_collider3d_new_heightfield(void *heightmap, double sx, double sy, doubl
     (void)sx;
     (void)sy;
     (void)sz;
-    return NULL;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.NewHeightfield: graphics support not compiled in",
+                                  NULL);
 }
 
 /// @brief Stub for `Collider3D.NewCompound` — would normally allocate
@@ -1576,7 +1578,7 @@ void *rt_collider3d_new_heightfield(void *heightmap, double sx, double sy, doubl
 ///
 /// @return `NULL`.
 void *rt_collider3d_new_compound(void) {
-    return NULL;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.NewCompound: graphics support not compiled in", NULL);
 }
 
 /// @brief Stub for `Collider3D.AddChild` — attach a child collider to a
@@ -1592,6 +1594,7 @@ void rt_collider3d_add_child(void *compound, void *child, void *local_transform)
     (void)compound;
     (void)child;
     (void)local_transform;
+    RT_GRAPHICS_OPTIONAL_TRAP_VOID("Collider3D.AddChild: graphics support not compiled in");
 }
 
 /// @brief Stub for `Collider3D.Type` — get the shape type of the collider:
@@ -1604,7 +1607,7 @@ void rt_collider3d_add_child(void *compound, void *child, void *local_transform)
 /// @return `-1`.
 int64_t rt_collider3d_get_type(void *collider) {
     (void)collider;
-    return -1;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Collider3D.Type: graphics support not compiled in", -1);
 }
 
 /// @brief Stub for `Collider3D.LocalBoundsMin` — get the min corner of

@@ -58,9 +58,14 @@ RT_ARR_DEFINE_PAYLOAD_BYTES_FN(rt_arr_i64_payload_bytes, int64_t)
 /// @details Some operations (retain/release/len) are valid for both types.
 /// @param hdr Heap header to validate (must be non-NULL).
 static void rt_arr_64bit_assert_header(rt_heap_hdr_t *hdr) {
-    assert(hdr);
-    assert(hdr->kind == RT_HEAP_ARRAY);
-    assert(hdr->elem_kind == RT_ELEM_I64 || hdr->elem_kind == RT_ELEM_F64);
+    if (!hdr) {
+        rt_trap("rt_arr_64bit_assert_header: null array header");
+        return;
+    }
+    if (hdr->magic != RT_MAGIC || hdr->kind != RT_HEAP_ARRAY ||
+        (hdr->elem_kind != RT_ELEM_I64 && hdr->elem_kind != RT_ELEM_F64)) {
+        rt_trap("rt_arr_64bit_assert_header: invalid 64-bit numeric array header");
+    }
 }
 
 /// @brief Validate array bounds and panic on out-of-range access.
@@ -133,7 +138,7 @@ size_t rt_arr_i64_cap(int64_t *arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
-    rt_arr_i64_assert_header(hdr);
+    rt_arr_64bit_assert_header(hdr);
     return hdr->cap;
 }
 

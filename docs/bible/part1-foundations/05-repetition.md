@@ -278,11 +278,12 @@ Sometimes you *want* a loop that runs forever - or at least until something exte
 
 ```rust
 while true {
-    handleInput();
-    updateGameState();
-    drawFrame();
+    // Handle input
+    // Update game state
+    // Draw the next frame
 
-    if playerPressedQuit() {
+    var playerPressedQuit = true;
+    if playerPressedQuit {
         break;  // Exit the loop
     }
 }
@@ -291,9 +292,12 @@ while true {
 **Server loops** wait for connections indefinitely:
 
 ```rust
+bind Viper.Terminal;
+
 while true {
-    var connection = waitForConnection();
-    handleConnection(connection);
+    // Wait for the next connection
+    var connection = "client-1";
+    Say("Handling " + connection);
 }
 ```
 
@@ -633,7 +637,7 @@ while true {
         break;
     }
 
-    processCommand(command);
+    Say("Processing command: " + command);
 }
 ```
 
@@ -717,11 +721,15 @@ for i in 1..=20 {
 
 Without `continue`:
 ```rust
+bind Viper.Terminal;
+
+var items = [10, -5, 25, 3];
+
 for i in 0..items.Length {
-    if isValid(items[i]) {
-        if hasPermission(items[i]) {
-            if meetsThreshold(items[i]) {
-                processItem(items[i]);
+    if items[i] > 0 {
+        if items[i] < 20 {
+            if items[i] % 2 == 0 {
+                Say("Processing: " + items[i]);
             }
         }
     }
@@ -730,12 +738,16 @@ for i in 0..items.Length {
 
 With `continue` (cleaner):
 ```rust
-for i in 0..items.Length {
-    if !isValid(items[i]) { continue; }
-    if !hasPermission(items[i]) { continue; }
-    if !meetsThreshold(items[i]) { continue; }
+bind Viper.Terminal;
 
-    processItem(items[i]);
+var items = [10, -5, 25, 3];
+
+for i in 0..items.Length {
+    if items[i] <= 0 { continue; }
+    if items[i] >= 20 { continue; }
+    if items[i] % 2 != 0 { continue; }
+
+    Say("Processing: " + items[i]);
 }
 ```
 
@@ -977,6 +989,7 @@ Say("Maximum is " + max);  // 42
 
 For minimum, just change `>` to `<`:
 ```rust
+var values = [23, 7, 42, 15, 8, 31];
 var min = values[0];
 for i in 1..values.Length {
     if values[i] < min {
@@ -1140,6 +1153,8 @@ The loop never stops.
 - Forgetting to update the loop variable
 - Updating the wrong variable
 - Condition that can never become false
+
+The following examples are intentionally broken and expected to time out:
 
 ```rust
 bind Viper.Terminal;

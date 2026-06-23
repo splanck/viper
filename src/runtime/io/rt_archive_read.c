@@ -53,11 +53,6 @@ static inline uint8_t *bytes_data(void *obj) {
     return rt_bytes_data(obj);
 }
 
-/// @brief Byte count of a Bytes GC object (file-local copy).
-static inline int64_t bytes_len(void *obj) {
-    return rt_bytes_len(obj);
-}
-
 // ZIP Parsing (for reading)
 //=============================================================================
 
@@ -322,35 +317,36 @@ void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
 
     // Handle deflated data
     if (e->method == ZIP_METHOD_DEFLATE) {
-        // Create bytes with compressed data
-        void *comp_bytes = rt_bytes_new(e->compressed_size);
-        if (!comp_bytes)
-            return NULL;
-        memcpy(bytes_data(comp_bytes), compressed, e->compressed_size);
-
-        // Inflate
-        void *result = rt_compress_inflate_limit(comp_bytes, (int64_t)e->uncompressed_size);
-        archive_release_temp_object(comp_bytes);
-        if (!result) {
+        uint8_t *inflated = NULL;
+        size_t inflated_len = 0;
+        if (!rt_compress_inflate_raw(
+                compressed, e->compressed_size, e->uncompressed_size, &inflated, &inflated_len)) {
             rt_trap("Archive: failed to inflate entry");
             return NULL;
         }
 
         // Verify CRC
-        uint32_t crc = rt_crc32_compute(bytes_data(result), bytes_len(result));
+        uint32_t crc = rt_crc32_compute(inflated, inflated_len);
         if (crc != e->crc32) {
-            archive_release_temp_object(result);
+            free(inflated);
             rt_trap("Archive: CRC mismatch");
             return NULL;
         }
 
         // Verify size
-        if (bytes_len(result) != e->uncompressed_size) {
-            archive_release_temp_object(result);
+        if (inflated_len != e->uncompressed_size) {
+            free(inflated);
             rt_trap("Archive: size mismatch");
             return NULL;
         }
 
+        void *result = rt_bytes_new(e->uncompressed_size);
+        if (!result) {
+            free(inflated);
+            return NULL;
+        }
+        memcpy(bytes_data(result), inflated, e->uncompressed_size);
+        free(inflated);
         return result;
     }
 

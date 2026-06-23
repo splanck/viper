@@ -260,7 +260,8 @@ This line gives your program a name. In Zia, every program is organized into *mo
 
 **What's the semicolon for?** In Zia, semicolons mark the end of statements — complete thoughts or commands. It's like the period at the end of a sentence. The semicolon tells the compiler "this statement is complete, don't try to continue reading it onto the next line."
 
-**What happens without this line?** Try removing it and running your program:
+**Can you omit this line?** For a tiny single-file program, Viper can still
+compile and run your code by giving the file an implicit module name:
 
 ```rust
 func start() {
@@ -268,12 +269,9 @@ func start() {
 }
 ```
 
-You'll get an error like:
-```text
-hello.zia:1:1: error[V2000]: expected module, got func
-```
-
-Every Zia file must start by declaring what module it belongs to. There's no way around this — it's a fundamental requirement of the language.
+That works, but the examples in this book still declare modules explicitly.
+Explicit module names make larger programs easier to organize, make imports
+clearer, and avoid depending on file-name inference.
 
 ### Line 2: `bind Viper.Terminal;`
 
@@ -462,7 +460,7 @@ vbasic hello.bas
 
 Look at what both versions share:
 
-1. **A name for the program** — `Hello` in both cases
+1. **A place for the program to begin** — `start()` in Zia, the first statement in BASIC
 2. **A way to mark where code starts and ends** — braces or just file boundaries
 3. **A function to display text** — `Say`, `PRINT`
 4. **The text to display, in quotes**
@@ -666,6 +664,8 @@ Let's intentionally break our program to understand error messages better. This 
 
 ### Missing Quote
 
+This example is intentionally broken and expected to fail:
+
 ```rust
 module Hello;
 
@@ -689,6 +689,8 @@ The error message tells us:
 The compiler is surprisingly helpful once you learn to read its messages.
 
 ### Missing Semicolon
+
+This example is intentionally broken and expected to fail:
 
 ```rust
 module Hello;

@@ -51,6 +51,34 @@ void buildDebPackage(const LinuxBuildParams &params);
 /// @throws std::runtime_error on failure.
 void buildTarball(const LinuxBuildParams &params);
 
+/// @brief Build a self-extracting Linux AppImage for an end-user application.
+/// @details Lays the payload out as a portable tree (app binary at `usr/bin/<exe>`
+///          with an `AppRun` symlink entry point, bundled assets under
+///          `usr/share/<pkg>/`, and a `.desktop` launcher plus icon at the payload
+///          root), then wraps it in the shared FUSE-less self-extracting runtime
+///          stub. `params.archStr` must be the portable form ("x64" or "arm64").
+/// @param params Build parameters.
+/// @throws std::runtime_error on failure.
+void buildAppImage(const LinuxBuildParams &params);
+
+/// @brief Build an RPM package for an end-user application (requires rpmbuild on PATH).
+/// @details Reuses the shared FHS layout from the Debian application builder. Throws
+///          a clear diagnostic when rpmbuild is unavailable. `params.archStr` must be
+///          the portable form ("x64" or "arm64").
+/// @param params Build parameters.
+/// @throws std::runtime_error on failure.
+void buildRpmPackage(const LinuxBuildParams &params);
+
+/// @brief GPG-sign a built Debian (.deb) or RPM (.rpm) package in place.
+/// @details Shells out to the standard signing tool (rpmsign for RPM, dpkg-sig for
+///          Debian), mirroring the macOS/Windows external-tool signing approach.
+///          Throws a clear diagnostic when the tool is not on PATH or signing fails.
+/// @param packagePath Path to the built package (signed in place).
+/// @param gpgKeyId GPG key id or name to sign with.
+/// @param isRpm True to sign an RPM, false to sign a Debian package.
+/// @throws std::runtime_error on failure.
+void signLinuxPackage(const std::string &packagePath, const std::string &gpgKeyId, bool isRpm);
+
 /// @brief Parameters for building Linux toolchain packages from a staged install tree.
 struct LinuxToolchainBuildParams {
     ToolchainInstallManifest manifest; ///< Staged files and metadata to package.

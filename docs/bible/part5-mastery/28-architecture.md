@@ -442,7 +442,7 @@ interface IEmployee {
 
 A payroll system only needs `getName()` and `getSalary()`. But it must accept an interface with eight methods. If `getStockOptions()` changes, the payroll system might need recompilation even though it never uses stock options.
 
-```rust
+```text
 // Good: Segregated interfaces
 interface IIdentifiable {
     func getName() -> String;
@@ -582,7 +582,7 @@ MVC separates user interface applications into three components:
 
 **Controller** handles user input and coordinates between model and view. It translates user actions into model updates and triggers view refreshes.
 
-```rust
+```text
 bind Convert = Viper.Core.Convert;
 bind Viper.Text.Fmt as Fmt;
 
@@ -1012,7 +1012,7 @@ interface ICalculator {
 }
 
 class Calculator implements ICalculator {
-    func add(a: Integer, b: Integer) -> Integer {
+    expose func add(a: Integer, b: Integer) -> Integer {
         return a + b;
     }
 }
@@ -1787,9 +1787,9 @@ class LibraryService {
 }
 ```
 
-Now we can create in-memory implementations for testing:
+Now we can create in-memory implementations for testing. The final test case below is pseudocode; current Zia does not ship built-in `test` or `assert` syntax.
 
-```rust
+```text
 // tests/InMemoryBookRepository.zia
 class InMemoryBookRepository implements IBookRepository {
     hide books: Map[String, Book];
@@ -1947,7 +1947,7 @@ Start simple. Add abstraction when you feel pain, not before.
 
 Flexibility nobody needs:
 
-```rust
+```text
 // Supports 5 authentication methods, company uses 1
 class AuthenticationStrategyFactory {
     func create(type: String) -> IAuthenticationStrategy {

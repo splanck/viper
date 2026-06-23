@@ -7,10 +7,10 @@
 //
 // File: src/runtime/collections/rt_map.c
 // Purpose: Implements the primary string-keyed hash map (Map / Dictionary) for
-//   the Viper runtime. Maps arbitrary string keys to object values using FNV-1a
-//   hashing with separate chaining. Supports get, put, remove, contains, keys,
-//   values, and iteration. This is the most commonly used associative collection
-//   in the Viper standard library.
+//   the Viper runtime. Maps arbitrary string keys to object values using keyed
+//   SipHash-2-4 with separate chaining. Supports get, put, remove, contains,
+//   keys, values, and iteration. This is the most commonly used associative
+//   collection in the Viper standard library.
 //
 // Key invariants:
 //   - Initial capacity is MAP_INITIAL_CAPACITY (16) buckets; resizes (doubles)
@@ -19,7 +19,8 @@
 //     independent of the lifetime of the source rt_string objects.
 //   - Values are stored as raw void* pointers; the map retains a reference
 //     (rt_obj_retain) on insert and releases on remove/overwrite.
-//   - Hash is FNV-1a over the raw key bytes; collision chains are singly-linked.
+//   - Hashing uses a per-process SipHash seed over raw key bytes; collision
+//     chains are singly-linked.
 //   - All operations are O(1) average case; O(n) worst case due to chaining.
 //   - Not thread-safe; external synchronization required for concurrent access.
 //
@@ -28,7 +29,7 @@
 //     entry nodes (including copied key strings) are freed by the GC finalizer.
 //
 // Links: src/runtime/collections/rt_map.h (public API),
-//        src/runtime/collections/rt_hash_util.h (FNV-1a hash macro)
+//        src/runtime/text/rt_hash_util.h (keyed SipHash helper)
 //
 //===----------------------------------------------------------------------===//
 
@@ -84,7 +85,7 @@ typedef struct rt_map_entry {
 /// ```
 ///
 /// **Hash function:**
-/// Uses FNV-1a, a fast non-cryptographic hash with good distribution.
+/// Uses keyed SipHash-2-4 through the rt_fnv1a compatibility wrapper.
 ///
 /// **Load factor:**
 /// Resizes when count/capacity exceeds 75% (3/4) to maintain O(1) performance.

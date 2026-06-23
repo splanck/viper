@@ -44,6 +44,12 @@
 
 #include "rt_trap.h"
 
+/// @brief Maximum accumulated `data:` payload bytes for a single SSE event.
+/// @details The SSE spec permits multiple `data:` lines per event. This cap
+///          bounds memory use when a peer sends a never-ending event without a
+///          blank-line delimiter.
+#define SSE_MAX_EVENT_DATA (4u * 1024u * 1024u)
+
 //=============================================================================
 // Internal Structure
 //=============================================================================
@@ -971,7 +977,8 @@ void *rt_sse_connect(rt_string url) {
 ///          result so the previous event data remains valid if allocation
 ///          fails. The requested size is the payload length excluding the final
 ///          NUL terminator; this helper reserves one extra byte for callers
-///          that want to materialize the buffer as a C string.
+///          that want to materialize the buffer as a C string. Requests beyond
+///          @c SSE_MAX_EVENT_DATA trap and fail closed.
 /// @param buf In/out heap buffer pointer.
 /// @param cap In/out capacity of `*buf` in bytes.
 /// @param needed Non-NUL payload bytes required after the append.
@@ -979,6 +986,10 @@ void *rt_sse_connect(rt_string url) {
 static bool sse_reserve_event_data(char **buf, size_t *cap, size_t needed) {
     if (!buf || !cap || needed == SIZE_MAX) {
         rt_trap("SSE.Recv: event data length overflow");
+        return false;
+    }
+    if (needed > SSE_MAX_EVENT_DATA) {
+        rt_trap("SSE.Recv: event data exceeds maximum size");
         return false;
     }
     size_t required = needed + 1u;
@@ -1004,16 +1015,16 @@ static bool sse_reserve_event_data(char **buf, size_t *cap, size_t needed) {
 ///          failure, reconnect failure, or allocation failure.
 rt_string rt_sse_recv(void *obj) {
     if (!obj)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     if (!sse->is_open || (sse->socket_fd == INVALID_SOCK && !sse->tls))
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
     // Accumulate "data:" lines until a blank line (event boundary)
     size_t cap = 4096, len = 0;
     char *data_buf = (char *)malloc(cap);
     if (!data_buf)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
     while (sse->is_open) {
         rt_string line = sse_payload_recv_line(sse);
@@ -1107,18 +1118,18 @@ rt_string rt_sse_recv(void *obj) {
 /// @details Temporarily sets the socket recv timeout, reads one event, then clears the timeout.
 rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     int timeout_int = 0;
     if (!sse->is_open)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     if (timeout_ms < 0 || timeout_ms > INT_MAX) {
         rt_trap("SSE: invalid timeout");
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     }
     timeout_int = (int)timeout_ms;
     if (!sse_wait_readable(sse, timeout_ms))
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     sse_set_recv_timeout(sse, timeout_int);
     rt_string result = rt_sse_recv(obj);
     sse_set_recv_timeout(sse, 30000);
@@ -1153,7 +1164,7 @@ void rt_sse_close(void *obj) {
 /// @brief Last the event type of the sse.
 rt_string rt_sse_last_event_type(void *obj) {
     if (!obj)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     const char *t = sse->last_event_type ? sse->last_event_type : "";
     return rt_string_from_bytes(t, strlen(t));
@@ -1162,7 +1173,7 @@ rt_string rt_sse_last_event_type(void *obj) {
 /// @brief Last the event id of the sse.
 rt_string rt_sse_last_event_id(void *obj) {
     if (!obj)
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     const char *id = sse->last_event_id ? sse->last_event_id : "";
     return rt_string_from_bytes(id, strlen(id));

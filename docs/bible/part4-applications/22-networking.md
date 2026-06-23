@@ -284,6 +284,7 @@ The simplest networking is fetching web pages and APIs. HTTP (Hypertext Transfer
 ```rust
 bind Viper.Network;
 bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
 func start() {
     // Simple fetch — returns the body as a string
@@ -292,12 +293,13 @@ func start() {
 
     // For more control, use HttpReq/HttpRes:
     var req = HttpReq.New("GET", "https://api.example.com/data");
+    req.SetTimeout(5000);
     var res = HttpReq.Send(req);
-    if res.Status == 200 {
+    if HttpRes.get_Status(res) == 200 {
         Terminal.Say("Got response:");
-        Terminal.Say(HttpRes.Body(res));
+        Terminal.Say(HttpRes.BodyStr(res));
     } else {
-        Terminal.Say("Error: " + res.Status);
+        Terminal.Say("Error: " + Fmt.Int(HttpRes.get_Status(res)));
     }
 }
 ```
@@ -310,8 +312,9 @@ Let's trace through what this code actually does:
 4. It opens a TCP connection to that IP on port 443 (HTTPS)
 5. It sends an HTTP GET request
 6. It waits for and reads the response
-7. It packages the response (status code, headers, body) into a `response` value
-8. It returns that value to your code
+7. `Http.Get()` returns the response body as a string
+
+Use `HttpReq` and `HttpRes` when you need the status code, headers, timeout configuration, or TLS options.
 
 All of that complexity is hidden behind one function call. This is abstraction at work.
 
@@ -330,20 +333,20 @@ var users = Http.Get("https://api.example.com/users");
 
 ```rust
 // POST - send data to create something new
-var newUser = Http.Post("https://api.example.com/users", {
-    body: '{"name": "Alice", "email": "alice@example.com"}',
-    headers: { "Content-Type": "application/json" }
-});
+var newUser = Http.Post(
+    "https://api.example.com/users",
+    "{\"name\":\"Alice\",\"email\":\"alice@example.com\"}"
+);
 ```
 
 **PUT**: Update existing data. "Replace what you have with this." Used to update resources that already exist.
 
 ```rust
 // PUT - update existing data
-var updated = Http.Put("https://api.example.com/users/123", {
-    body: '{"name": "Alice Smith"}',
-    headers: { "Content-Type": "application/json" }
-});
+var updated = Http.Put(
+    "https://api.example.com/users/123",
+    "{\"name\":\"Alice Smith\"}"
+);
 ```
 
 **DELETE**: Remove data. "Get rid of this." Deletes resources from the server.
@@ -370,46 +373,55 @@ Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. 
 bind Viper.Network;
 bind Json = Viper.Text.Json;
 bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
-struct Weather {
-    temperature: Number;
-    conditions: String;
-    humidity: Number;
+class Weather {
+    expose temperature: Integer;
+    expose conditions: String;
+    expose humidity: Integer;
+
+    expose func init(temperature: Integer, conditions: String, humidity: Integer) {
+        self.temperature = temperature;
+        self.conditions = conditions;
+        self.humidity = humidity;
+    }
 }
 
 func fetchWeather(city: String) -> Weather? {
     // Build the URL with the city parameter
-    var url = "https://api.weather.example.com/current?city=" + city;
+    var url = "https://api.weather.example.com/current?city=" + Url.EncodeQuery(city);
 
-    // Make the request
-    var response = Http.Get(url);
+    // Make the request with a timeout
+    var req = HttpReq.New("GET", url);
+    req.SetTimeout(5000);
+    var response = HttpReq.Send(req);
 
     // Check if the request succeeded
-    if !response.ok {
-        Terminal.Say("Request failed with status: " + response.statusCode);
+    if !HttpRes.IsOk(response) {
+        Terminal.Say("Request failed with status: " + Fmt.Int(HttpRes.get_Status(response)));
         return null;
     }
 
     // Parse the JSON response
     // The response body might look like:
-    // {"temp": 72.5, "conditions": "Sunny", "humidity": 45.0}
-    var data = Json.Parse(response.body);
+    // {"temp": 72, "conditions": "Sunny", "humidity": 45}
+    var data = Json.Parse(HttpRes.BodyStr(response));
 
     // Extract the fields we need
-    return Weather {
-        temperature: data["temp"].asFloat(),
-        conditions: data["conditions"].asString(),
-        humidity: data["humidity"].asFloat()
-    };
+    return new Weather(
+        Json.GetInt(data, "temp"),
+        Json.GetStr(data, "conditions"),
+        Json.GetInt(data, "humidity")
+    );
 }
 
 func start() {
     var weather = fetchWeather("Seattle");
 
     if weather != null {
-        Terminal.Say("Temperature: " + weather.temperature + "F");
+        Terminal.Say("Temperature: " + Fmt.Int(weather.temperature) + "F");
         Terminal.Say("Conditions: " + weather.conditions);
-        Terminal.Say("Humidity: " + weather.humidity + "%");
+        Terminal.Say("Humidity: " + Fmt.Int(weather.humidity) + "%");
     } else {
         Terminal.Say("Could not fetch weather data");
     }
@@ -448,12 +460,13 @@ Here's how to connect to a server and communicate:
 
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
 func start() {
     // Connect to a server
     // This is like dialing a phone number
-    var socket = Tcp.Connect("example.com", 80);
+    var socket = Tcp.ConnectFor("example.com", 80, 3000);
 
     // Check if connection succeeded
     if socket == null {
@@ -465,12 +478,12 @@ func start() {
 
     // Send data (write to the socket)
     // This is like talking into the phone
-    socket.Write("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
+    socket.SendStr("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 
     // Receive response (read from the socket)
     // This is like listening to the other person
-    var response = socket.readAll();
-    Terminal.Say("Received " + response.Length + " bytes");
+    var response = socket.RecvStr(4096);
+    Terminal.Say("Received " + Fmt.Int(response.Length()) + " bytes");
     Terminal.Say(response);
 
     // Close the connection (hang up the phone)
@@ -487,13 +500,13 @@ Step 1: Tcp.Connect("example.com", 80)
    - TCP three-way handshake with 93.184.216.34:80
    - Return the connected socket
 
-Step 2: socket.Write("GET / HTTP/1.1\r\n...")
+Step 2: socket.SendStr("GET / HTTP/1.1\r\n...")
    - Convert string to bytes
    - Pass bytes to OS network stack
    - OS sends TCP packet(s) to server
    - Wait for acknowledgment
 
-Step 3: socket.readAll()
+Step 3: socket.RecvStr(4096)
    - Wait for incoming data
    - Receive TCP packets from server
    - Reassemble into continuous byte stream
@@ -512,7 +525,7 @@ A server listens for incoming connections instead of initiating them:
 
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 
 func start() {
     // Create a server socket that listens on port 8080
@@ -527,14 +540,14 @@ func start() {
         Terminal.Say("Waiting for client...");
         var client = server.Accept();
 
-        Terminal.Say("Client connected from " + client.remoteAddress());
+        Terminal.Say("Client connected from " + client.Host);
 
         // Read what the client sent
-        var message = client.ReadLine();
+        var message = client.RecvLine();
         Terminal.Say("Client said: " + message);
 
         // Send a response
-        client.Write("Hello, client! You said: " + message + "\n");
+        client.SendStr("Hello, client! You said: " + message + "\n");
 
         // Close this client connection
         // The server keeps running, ready for more clients
@@ -843,19 +856,20 @@ UDP trades reliability for speed. When you can tolerate lost packets or have you
 
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
 // UDP sender
 func sendUdpMessage() {
     // Create a UDP socket
-    var socket = UdpSocket.create();
+    var socket = Udp.New();
 
     // Send data - no connection needed!
     // Just specify destination address and port
-    socket.send("Hello!", "192.168.1.100", 5000);
+    socket.SendToStr("192.168.1.100", 5000, "Hello!");
 
     // Can send to different destinations with same socket
-    socket.send("Hi there!", "192.168.1.101", 5000);
+    socket.SendToStr("192.168.1.101", 5000, "Hi there!");
 
     socket.Close();
 }
@@ -863,16 +877,16 @@ func sendUdpMessage() {
 // UDP receiver
 func receiveUdpMessages() {
     // Bind to port 5000 - we'll receive anything sent here
-    var socket = UdpSocket.bind(5000);
+    var socket = Udp.Bind(5000);
     Terminal.Say("Listening for UDP messages on port 5000...");
 
     while true {
         // Wait for and receive a packet
-        var packet = socket.receive();
+        var data = socket.RecvFrom(1024);
 
-        // Packet contains data and sender info
-        Terminal.Say("From " + packet.address + ":" + packet.port);
-        Terminal.Say("Message: " + packet.data);
+        // The socket remembers the sender of the most recent packet
+        Terminal.Say("From " + socket.SenderHost() + ":" + Fmt.Int(socket.SenderPort()));
+        Terminal.Say("Received " + Fmt.Int(data.Length) + " bytes");
     }
 }
 ```
@@ -902,12 +916,12 @@ struct PlayerState {
 }
 
 class GameNetwork {
-    hide socket: UdpSocket;
+    hide socket: Udp;
     hide serverAddress: String;
     hide serverPort: Integer;
 
     expose func init(serverAddress: String, serverPort: Integer) {
-        self.socket = UdpSocket.create();
+        self.socket = Udp.New();
         self.serverAddress = serverAddress;
         self.serverPort = serverPort;
     }
@@ -916,7 +930,7 @@ class GameNetwork {
     // Called 60 times per second
     func sendState(state: PlayerState) {
         var data = packPlayerState(state);
-        self.socket.send(data, self.serverAddress, self.serverPort);
+        self.socket.SendToStr(self.serverAddress, self.serverPort, data);
         // Note: we don't wait for acknowledgment!
         // If this packet is lost, we'll send another in 16ms
     }
@@ -926,9 +940,12 @@ class GameNetwork {
         var states: List[PlayerState] = [];
 
         // Process all available packets (non-blocking)
-        while self.socket.hasData() {
-            var packet = self.socket.receive();
-            var state = unpackPlayerState(packet.data);
+        while self.socket.Port >= 0 {
+            var data = self.socket.RecvFor(1024, 1);
+            if data == null {
+                break;
+            }
+            var state = unpackPlayerState(data);
 
             // Only use recent states - discard old ones
             var now = Time.Clock.Ticks();
@@ -974,65 +991,63 @@ HTTP was designed for request-response: the client asks, the server answers, don
 
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 
 class WebSocketClient {
     hide ws: WebSocket;
-    hide connected: Boolean;
+    expose connected: Boolean;
 
-    func connect(url: String) {
+    expose func init() {
         self.connected = false;
-
-        // Initiate WebSocket connection
-        self.ws = WebSocket.connect(url);
-
-        // Set up event handlers
-        // These functions will be called when events occur
-
-        self.ws.onOpen(func() {
-            Terminal.Say("Connected to server!");
-            self.connected = true;
-            // Now we can send messages
-            self.ws.send("Hello server, I'm online!");
-        });
-
-        self.ws.onMessage(func(message: String) {
-            // Server sent us something
-            Terminal.Say("Server: " + message);
-        });
-
-        self.ws.onClose(func() {
-            Terminal.Say("Connection closed");
-            self.connected = false;
-        });
-
-        self.ws.onError(func(error: String) {
-            Terminal.Say("Error: " + error);
-        });
     }
 
-    func send(message: String) {
+    expose func connect(url: String) {
+        self.ws = WebSocket.ConnectFor(url, 5000);
+        self.connected = self.ws != null && self.ws.IsOpen;
+
         if self.connected {
-            self.ws.send(message);
+            Terminal.Say("Connected to server!");
+            self.ws.Send("Hello server, I'm online!");
+        }
+    }
+
+    expose func poll() {
+        if !self.connected {
+            return;
+        }
+
+        // Poll with a short timeout so the caller can keep updating the app.
+        var message = self.ws.RecvFor(10);
+        if message != "" {
+            Terminal.Say("Server: " + message);
+        }
+
+        self.connected = self.ws.IsOpen;
+    }
+
+    expose func send(message: String) {
+        if self.connected {
+            self.ws.Send(message);
         } else {
             Terminal.Say("Not connected!");
         }
     }
 
-    func close() {
+    expose func close() {
         self.ws.Close();
     }
 }
 
 func start() {
-    var client = WebSocketClient();
+    var client = new WebSocketClient();
     client.connect("wss://chat.example.com/room/general");
 
-    // Now we can send messages anytime, and receive them anytime
+    // Now we can send messages and poll for incoming messages.
     while true {
-        var input = Terminal.Ask("");
+        client.poll();
+        var input = Terminal.Ask("") ?? "";
         if input == "/quit" {
-            client.Close();
+            client.close();
             break;
         }
         client.send(input);
@@ -1057,20 +1072,22 @@ Networks are inherently unreliable. Connections drop. Servers go down. Packets g
 
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
 func demonstrateFailures() {
     // Failure 1: Cannot connect
     // Server might be down, address might be wrong
-    var socket = Tcp.Connect("nonexistent.example.com", 80);
+    var socket = Tcp.ConnectFor("nonexistent.example.com", 80, 3000);
     if socket == null {
         Terminal.Say("Could not connect - server unreachable");
+        return;
     }
 
     // Failure 2: Connection drops mid-conversation
     // WiFi cuts out, server crashes, network cable unplugged
-    var response = socket.ReadLine();
-    if response == null {
+    var response = socket.RecvLine();
+    if response == "" {
         Terminal.Say("Connection lost while reading");
     }
 
@@ -1080,10 +1097,12 @@ func demonstrateFailures() {
 
     // Failure 4: Server returns error
     // We connected and communicated, but server said "no"
-    var httpResponse = Http.Get("https://api.example.com/resource");
-    if httpResponse.statusCode == 404 {
+    var req = HttpReq.New("GET", "https://api.example.com/resource");
+    var httpResponse = HttpReq.Send(req);
+    var status = HttpRes.get_Status(httpResponse);
+    if status == 404 {
         Terminal.Say("Resource not found");
-    } else if httpResponse.statusCode == 500 {
+    } else if status == 500 {
         Terminal.Say("Server error");
     }
 }
@@ -1095,50 +1114,45 @@ For important operations, implement retry logic with exponential backoff:
 
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 bind Viper.Time;
+bind Fmt = Viper.Text.Fmt;
 
 func robustFetch(url: String, maxRetries: Integer) -> String? {
     var retries = 0;
 
     while retries < maxRetries {
-        try {
-            // Set a timeout so we don't wait forever
-            var response = Http.Get(url, { timeout: 5000 });
+        // Set a timeout so we don't wait forever.
+        var req = HttpReq.New("GET", url);
+        req.SetTimeout(5000);
+        var response = HttpReq.Send(req);
+        var status = HttpRes.get_Status(response);
 
-            if response.ok {
-                return response.body;  // Success!
-            }
+        if HttpRes.IsOk(response) {
+            return HttpRes.BodyStr(response);  // Success!
+        }
 
-            if response.statusCode >= 500 {
-                // Server error (5xx) - worth retrying
-                // The server might recover
-                retries += 1;
-                Terminal.Say("Server error " + response.statusCode +
-                             ", retrying... (" + retries + "/" + maxRetries + ")");
-
-                // Exponential backoff: wait longer each retry
-                // 1st retry: 1 second, 2nd: 2 seconds, 3rd: 4 seconds
-                var waitTime = 1000 * (1 << retries);  // 2^retries * 1000ms
-                Time.Clock.Sleep(waitTime);
-                continue;
-            }
-
-            // Client error (4xx) - don't retry
-            // Our request is wrong, retrying won't help
-            Terminal.Say("Client error " + response.statusCode + " - not retrying");
-            return null;
-
-        } catch NetworkError as e {
+        if status >= 500 {
+            // Server error (5xx) - worth retrying
+            // The server might recover
             retries += 1;
-            Terminal.Say("Network error: " + e.message +
-                         ", retrying... (" + retries + "/" + maxRetries + ")");
+            Terminal.Say("Server error " + Fmt.Int(status) +
+                         ", retrying... (" + Fmt.Int(retries) + "/" + Fmt.Int(maxRetries) + ")");
+
+            // Exponential backoff: wait longer each retry
+            // 1st retry: 1 second, 2nd: 2 seconds, 3rd: 4 seconds
             var waitTime = 1000 * (1 << retries);
             Time.Clock.Sleep(waitTime);
+            continue;
         }
+
+        // Client error (4xx) - don't retry
+        // Our request is wrong, retrying won't help
+        Terminal.Say("Client error " + Fmt.Int(status) + " - not retrying");
+        return null;
     }
 
-    Terminal.Say("Failed after " + maxRetries + " retries");
+    Terminal.Say("Failed after " + Fmt.Int(maxRetries) + " retries");
     return null;
 }
 
@@ -1171,17 +1185,19 @@ This pattern is used throughout the internet. It's polite and effective.
 
 Always set timeouts:
 
-```rust
+```text
 // Without timeout - could hang forever if server doesn't respond
 var response = Http.Get(url);  // Dangerous!
 
 // With timeout - give up after 5 seconds
-var response = Http.Get(url, { timeout: 5000 });
+var req = HttpReq.New("GET", url);
+req.SetTimeout(5000);
+var response = HttpReq.Send(req);
 
 // For sockets, set timeouts explicitly
-var socket = Tcp.Connect(host, port, { timeout: 3000 });
-socket.setReadTimeout(10000);   // 10 seconds to read
-socket.setWriteTimeout(5000);   // 5 seconds to write
+var socket = Tcp.ConnectFor(host, port, 3000);
+socket.SetRecvTimeout(10000);   // 10 seconds to read
+socket.SetSendTimeout(5000);    // 5 seconds to write
 ```
 
 How long should a timeout be? Long enough for normal operations, short enough to catch real problems. Common values:
@@ -1199,11 +1215,11 @@ Network programming has unique pitfalls. Here are the mistakes beginners make mo
 
 Every open connection uses system resources. Leaking connections will eventually crash your program or the system.
 
-```rust
+```text
 // BAD: Connection leak!
 func fetchData(host: String, port: Integer) -> String {
     var socket = Tcp.Connect(host, port);
-    var data = socket.readAll();
+    var data = socket.RecvStr(4096);
     return data;  // Socket never closed!
 }
 // If called 1000 times, you have 1000 open connections
@@ -1211,7 +1227,7 @@ func fetchData(host: String, port: Integer) -> String {
 // GOOD: Always close
 func fetchData(host: String, port: Integer) -> String {
     var socket = Tcp.Connect(host, port);
-    var data = socket.readAll();
+    var data = socket.RecvStr(4096);
     socket.Close();  // Clean up!
     return data;
 }
@@ -1225,7 +1241,7 @@ func fetchData(host: String, port: Integer) -> String? {
     }
 
     try {
-        var data = socket.readAll();
+        var data = socket.RecvStr(4096);
         return data;
     } finally {
         // 'finally' runs whether try succeeded or failed
@@ -1238,7 +1254,7 @@ func fetchData(host: String, port: Integer) -> String? {
 
 Network operations can take seconds. If your main thread waits for network responses, your program freezes.
 
-```rust
+```text
 // BAD: Freezes entire program during fetch
 func onButtonClick() {
     var data = Http.Get(slowUrl);  // User can't click anything for 10 seconds!
@@ -1248,15 +1264,13 @@ func onButtonClick() {
 // GOOD: Use a separate thread
 bind Thread = Viper.Threads.Thread;
 
-func onButtonClick() {
-    Thread.Start(func() {
-        var data = Http.Get(slowUrl);
+func fetchWorker(arg: Any) {
+    var data = Http.Get(slowUrl);
+    queueMainThreadUpdate(data);
+}
 
-        // Update UI from main thread
-        runOnMainThread(func() {
-            updateDisplay(data);
-        });
-    });
+func onButtonClick() {
+    Thread.Start(&fetchWorker, 0);
 }
 // Button click returns immediately, fetch happens in background
 ```
@@ -1267,17 +1281,17 @@ This is especially important in GUI applications and games. A frozen UI is a ter
 
 When you read from a socket, you might not get all the data at once. Networks deliver data in chunks.
 
-```rust
+```text
 // BAD: Assumes all data comes at once
-var message = socket.Read(1024);  // Might get less than 1024 bytes!
+var message = socket.RecvStr(1024);  // Might get less than 1024 bytes!
 
 // GOOD: Read until you have what you need
-func readExactly(socket: TcpSocket, count: Integer) -> String {
+func readExactly(socket: Tcp, count: Integer) -> String {
     var result = "";
 
-    while result.Length < count {
-        var chunk = socket.Read(count - result.Length);
-        if chunk == null {
+    while result.Length() < count {
+        var chunk = socket.RecvStr(count - result.Length());
+        if chunk == "" {
             // Connection closed before we got all data
             return null;
         }
@@ -1292,21 +1306,21 @@ func readExactly(socket: TcpSocket, count: Integer) -> String {
 
 Data from the network is untrusted. It might be malformed, malicious, or just wrong.
 
-```rust
+```text
 // BAD: Trusts network data blindly
-var packet = socket.receive();
-var index = Convert.ToInt64(packet.data);
+var packet = socket.RecvStr(1024);
+var index = Convert.ToInt64(packet);
 myArray[index] = value;  // What if index is negative? Or huge?
 
 // GOOD: Validate everything
-var packet = socket.receive();
+var packet = socket.RecvStr(1024);
 
-if packet.data.Length > 100 {
+if packet.Length() > 100 {
     Terminal.Say("Packet too large, ignoring");
     return;
 }
 
-var index = Convert.ToInt64(packet.data);
+var index = Convert.ToInt64(packet);
 
 if index < 0 || index >= myArray.Length {
     Terminal.Say("Invalid index received, ignoring");
@@ -1320,53 +1334,53 @@ myArray[index] = value;
 
 Both sides need to agree on message format. Without a clear protocol, you get gibberish.
 
-```rust
+```text
 // BAD: No clear message format
-socket.Write("Alice");
-socket.Write("25");
-socket.Write("Hello");
+socket.SendStr("Alice");
+socket.SendStr("25");
+socket.SendStr("Hello");
 // Receiver gets "Alice25Hello" - how to separate?
 
 // GOOD: Define a clear protocol
 // Option 1: Newline-delimited
-socket.Write("Alice\n");
-socket.Write("25\n");
-socket.Write("Hello\n");
+socket.SendStr("Alice\n");
+socket.SendStr("25\n");
+socket.SendStr("Hello\n");
 
 // Option 2: Length-prefixed
-func sendMessage(socket: TcpSocket, message: String) {
-    var length = message.Length;
-    socket.Write(length + ":" + message);  // "5:Hello"
+func sendMessage(socket: Tcp, message: String) {
+    var length = message.Length();
+    socket.SendStr(Fmt.Int(length) + ":" + message);  // "5:Hello"
 }
 
 // Option 3: Use a standard format like JSON
-socket.Write('{"name":"Alice","age":25,"message":"Hello"}\n');
+socket.SendStr("{\"name\":\"Alice\",\"age\":25,\"message\":\"Hello\"}\n");
 ```
 
 ### Mistake 6: Not Handling Connection Resets
 
 Servers restart. Connections break. Your code needs to detect this and recover.
 
-```rust
+```text
 // BAD: Assumes connection lasts forever
 while true {
-    var message = socket.ReadLine();
+    var message = socket.RecvLine();
     process(message);
 }
-// If socket breaks, readLine returns null, and process(null) crashes
+// If socket breaks, RecvLine returns an empty string, and process("") may be wrong
 
 // GOOD: Detect disconnection and reconnect
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 bind Viper.Time;
 
 func reliableConnection(host: String, port: Integer) {
-    var socket: TcpSocket? = null;
+    var socket: Tcp? = null;
 
     while true {
         // Connect if needed
         if socket == null {
             Terminal.Say("Connecting...");
-            socket = Tcp.Connect(host, port);
+            socket = Tcp.ConnectFor(host, port, 5000);
 
             if socket == null {
                 Terminal.Say("Connection failed, retrying in 5 seconds");
@@ -1378,9 +1392,9 @@ func reliableConnection(host: String, port: Integer) {
         }
 
         // Try to read
-        var message = socket.ReadLine();
+        var message = socket.RecvLine();
 
-        if message == null {
+        if message == "" {
             // Connection broke
             Terminal.Say("Disconnected!");
             socket.Close();
@@ -1405,15 +1419,13 @@ HTTP sends data in plain text. Anyone on the network path can read it. HTTPS enc
 
 ```rust
 // BAD: Password sent in plain text!
-Http.Post("http://example.com/login", {
-    body: '{"username": "alice", "password": "secret123"}'
-});
+Http.Post("http://example.com/login",
+          "{\"username\":\"alice\",\"password\":\"secret123\"}");
 // Anyone on the network can see "secret123"
 
 // GOOD: Encrypted connection
-Http.Post("https://example.com/login", {
-    body: '{"username": "alice", "password": "secret123"}'
-});
+Http.Post("https://example.com/login",
+          "{\"username\":\"alice\",\"password\":\"secret123\"}");
 // Data is encrypted, observers see gibberish
 ```
 
@@ -1425,7 +1437,9 @@ HTTPS uses certificates to prove the server is who it claims to be. Don't disabl
 
 ```rust
 // DANGEROUS: Disables security
-Http.Get(url, { verifyCertificate: false });
+var req = HttpReq.New("GET", url);
+req.SetTlsVerify(false);
+HttpReq.Send(req);
 // You might be talking to an attacker pretending to be the server
 
 // SAFE: Always verify (this is the default)
@@ -1436,30 +1450,30 @@ Http.Get(url);  // Certificate verified automatically
 
 Anything received from the network should be treated as potentially malicious.
 
-```rust
+```text
 // User sends a filename they want to download
-var filename = socket.ReadLine();
+var filename = socket.RecvLine();
 
 // BAD: Might download any file!
-var contents = File.Read("/data/" + filename);
+var contents = File.ReadAllText("/data/" + filename);
 // If filename is "../../../etc/passwd", you're exposing system files
 
 // GOOD: Validate and sanitize
-var filename = socket.ReadLine();
+var filename = socket.RecvLine();
 
 // Check for path traversal attacks
 if filename.Contains("..") || filename.Contains("/") || filename.Contains("\\") {
-    socket.Write("Invalid filename\n");
+    socket.SendStr("Invalid filename\n");
     return;
 }
 
 // Only allow certain file extensions
 if !filename.EndsWith(".txt") && !filename.EndsWith(".json") {
-    socket.Write("Invalid file type\n");
+    socket.SendStr("Invalid file type\n");
     return;
 }
 
-var contents = File.Read("/data/" + filename);
+var contents = File.ReadAllText("/data/" + filename);
 ```
 
 ### Rate Limiting
@@ -1467,7 +1481,7 @@ var contents = File.Read("/data/" + filename);
 Without limits, attackers can flood your server with requests.
 
 ```rust
-bind Viper.Time;
+bind Clock = Viper.Time.Clock;
 
 class RateLimitedServer {
     // Track requests per IP address
@@ -1477,13 +1491,13 @@ class RateLimitedServer {
 
     expose func init() {
         self.requestCounts = new Map();
-        self.lastReset = Time.Clock.Ticks();
+        self.lastReset = Clock.Ticks();
         self.maxRequestsPerMinute = 100;
     }
 
-    func handleRequest(client: TcpSocket) {
-        var ip = client.remoteAddress();
-        var now = Time.Clock.Ticks();
+    func handleRequest(client: Viper.Network.Tcp) {
+        var ip = client.Host;
+        var now = Clock.Ticks();
 
         // Reset counts every minute
         if now - self.lastReset > 60000 {
@@ -1492,10 +1506,10 @@ class RateLimitedServer {
         }
 
         // Check rate limit
-        var count = self.requestCounts.Get(ip, 0);
+        var count = self.requestCounts.Get(ip) ?? 0;
 
         if count >= self.maxRequestsPerMinute {
-            client.Write("Rate limit exceeded. Please slow down.\n");
+            client.SendStr("Rate limit exceeded. Please slow down.\n");
             client.Close();
             return;
         }
@@ -1515,12 +1529,12 @@ Never embed passwords, API keys, or tokens in your source code.
 
 ```rust
 // BAD: API key in source code
-var response = Http.Get("https://api.example.com/data?key=sk_live_abc123xyz");
+var hardCodedResponse = Http.Get("https://api.example.com/data?key=sk_live_abc123xyz");
 // If someone sees your code, they have your key
 
 // GOOD: Load from environment or config
-var apiKey = Viper.System.Environment.Get("API_KEY");
-var response = Http.Get("https://api.example.com/data?key=" + apiKey);
+var apiKey = Viper.System.Environment.GetVariable("API_KEY");
+var configuredResponse = Http.Get("https://api.example.com/data?key=" + apiKey);
 ```
 
 ---
@@ -1534,34 +1548,35 @@ Network bugs are notoriously hard to track down. The problem might be in your co
 When network code doesn't work, add logging at every step:
 
 ```rust
-bind Viper.Terminal;
+bind Viper.Network;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
-func debugFetch(url: String) -> String? {
+func debugFetch(url: String) -> String {
     Terminal.Say("[DEBUG] Starting fetch of: " + url);
 
-    try {
-        Terminal.Say("[DEBUG] Making HTTP request...");
-        var response = Http.Get(url, { timeout: 5000 });
+    Terminal.Say("[DEBUG] Making HTTP request...");
+    var req = HttpReq.New("GET", url);
+    req.SetTimeout(5000);
+    var response = HttpReq.Send(req);
+    var status = HttpRes.get_Status(response);
+    var body = HttpRes.BodyStr(response);
 
-        Terminal.Say("[DEBUG] Response status: " + response.statusCode);
-        Terminal.Say("[DEBUG] Response headers: " + response.headers);
-        Terminal.Say("[DEBUG] Response body length: " + response.body.Length);
-        Terminal.Say("[DEBUG] Response body (first 200 chars): " +
-                     response.body.Substring(0, 200));
-
-        if response.ok {
-            Terminal.Say("[DEBUG] Success!");
-            return response.body;
-        } else {
-            Terminal.Say("[DEBUG] Request failed with status " + response.statusCode);
-            return null;
-        }
-
-    } catch NetworkError as e {
-        Terminal.Say("[DEBUG] Network error: " + e.message);
-        Terminal.Say("[DEBUG] Error type: " + e.type);
-        return null;
+    Terminal.Say("[DEBUG] Response status: " + Fmt.Int(status));
+    Terminal.Say("[DEBUG] Response body length: " + Fmt.Int(body.Length()));
+    if body.Length() > 200 {
+        Terminal.Say("[DEBUG] Response body (first 200 chars): " + body.Substring(0, 200));
+    } else {
+        Terminal.Say("[DEBUG] Response body: " + body);
     }
+
+    if HttpRes.IsOk(response) {
+        Terminal.Say("[DEBUG] Success!");
+        return body;
+    }
+
+    Terminal.Say("[DEBUG] Request failed with status " + Fmt.Int(status));
+    return "";
 }
 ```
 
@@ -1573,7 +1588,7 @@ Network communication involves multiple layers. Test each one:
 ```rust
 bind Viper.Terminal;
 
-var socket = Tcp.Connect(host, port, { timeout: 3000 });
+var socket = Tcp.ConnectFor(host, port, 3000);
 if socket == null {
     Terminal.Say("Cannot connect to " + host + ":" + port);
     Terminal.Say("Check: Is the server running? Is the address correct?");
@@ -1585,7 +1600,7 @@ if socket == null {
 ```rust
 bind Viper.Terminal;
 
-socket.Write("test\n");
+socket.SendStr("test\n");
 Terminal.Say("Data sent successfully");
 // If this fails, connection might have dropped
 ```
@@ -1594,7 +1609,7 @@ Terminal.Say("Data sent successfully");
 ```rust
 bind Viper.Terminal;
 
-var response = socket.ReadLine();
+var response = socket.RecvLine();
 if response == null {
     Terminal.Say("No response from server");
     Terminal.Say("Check: Is server expecting different input format?");
@@ -1656,17 +1671,28 @@ module WeatherDashboard;
 
 bind Viper.Network;
 bind Json = Viper.Text.Json;
-bind Viper.Time;
-bind Viper.Terminal;
+bind Clock = Viper.Time.Clock;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
 
 // Data type for weather information
-struct CityWeather {
-    city: String;
-    temperature: Number;
-    conditions: String;
-    humidity: Number;
-    windSpeed: Number;
-    lastUpdated: Integer;
+class CityWeather {
+    expose city: String;
+    expose temperature: Integer;
+    expose conditions: String;
+    expose humidity: Integer;
+    expose windSpeed: Integer;
+    expose lastUpdated: Integer;
+
+    expose func init(city: String, temperature: Integer, conditions: String,
+                     humidity: Integer, windSpeed: Integer, lastUpdated: Integer) {
+        self.city = city;
+        self.temperature = temperature;
+        self.conditions = conditions;
+        self.humidity = humidity;
+        self.windSpeed = windSpeed;
+        self.lastUpdated = lastUpdated;
+    }
 }
 
 // Service class that handles weather API calls
@@ -1684,55 +1710,31 @@ class WeatherService {
     }
 
     // Fetch weather for a city, using cache when possible
-    func getWeather(city: String) -> CityWeather? {
+    expose func getWeather(city: String) -> CityWeather? {
         // Check cache first
         if self.cache.Has(city) {
             var cached = self.cache.Get(city);
-            var age = Time.Clock.Ticks() - cached.lastUpdated;
 
-            if age < self.cacheTimeout {
-                Terminal.Say("(Using cached data for " + city + ")");
-                return cached;
+            if cached != null {
+                var age = Clock.Ticks() - cached.lastUpdated;
+
+                if age < self.cacheTimeout {
+                    Terminal.Say("(Using cached data for " + city + ")");
+                    return cached;
+                }
             }
         }
 
         // Fetch from API
         var url = self.baseUrl + "/current?city=" +
-                  Network.urlEncode(city) + "&key=" + self.apiKey;
+                  Url.EncodeQuery(city) + "&key=" + self.apiKey;
 
-        try {
-            var response = Http.Get(url, { timeout: 10000 });
+        var req = HttpReq.New("GET", url);
+        req.SetTimeout(10000);
+        var response = HttpReq.Send(req);
 
-            if !response.ok {
-                Terminal.Say("API error for " + city + ": " + response.statusCode);
-
-                // If we have stale cache data, use it rather than nothing
-                if self.cache.Has(city) {
-                    Terminal.Say("(Using stale cached data)");
-                    return self.cache.Get(city);
-                }
-
-                return null;
-            }
-
-            var data = Json.Parse(response.body);
-
-            var weather = CityWeather {
-                city: city,
-                temperature: data["main"]["temp"].asFloat(),
-                conditions: data["weather"][0]["description"].asString(),
-                humidity: data["main"]["humidity"].asFloat(),
-                windSpeed: data["wind"]["speed"].asFloat(),
-                lastUpdated: Time.Clock.Ticks()
-            };
-
-            // Update cache
-            self.cache.Set(city, weather);
-
-            return weather;
-
-        } catch NetworkError as e {
-            Terminal.Say("Network error for " + city + ": " + e.message);
+        if !HttpRes.IsOk(response) {
+            Terminal.Say("API error for " + city + ": " + Fmt.Int(HttpRes.get_Status(response)));
 
             // Return stale cache if available
             if self.cache.Has(city) {
@@ -1741,11 +1743,25 @@ class WeatherService {
             }
 
             return null;
-
-        } catch JSONError as e {
-            Terminal.Say("Parse error for " + city + ": " + e.message);
-            return null;
         }
+
+        // This example expects a flat response like:
+        // {"temperature":72,"conditions":"Sunny","humidity":45,"windSpeed":8}
+        var data = Json.Parse(HttpRes.BodyStr(response));
+
+        var weather = new CityWeather(
+            city,
+            Json.GetInt(data, "temperature"),
+            Json.GetStr(data, "conditions"),
+            Json.GetInt(data, "humidity"),
+            Json.GetInt(data, "windSpeed"),
+            Clock.Ticks()
+        );
+
+        // Update cache
+        self.cache.Set(city, weather);
+
+        return weather;
     }
 }
 
@@ -1755,18 +1771,19 @@ func displayWeather(weather: CityWeather) {
     Terminal.Say("+----------------------------------+");
     Terminal.Say("|  " + padRight(weather.city, 32) + "|");
     Terminal.Say("+----------------------------------+");
-    Terminal.Say("|  Temperature: " + padRight(weather.temperature + "F", 17) + "|");
+    Terminal.Say("|  Temperature: " + padRight(Fmt.Int(weather.temperature) + "F", 17) + "|");
     Terminal.Say("|  Conditions:  " + padRight(weather.conditions, 17) + "|");
-    Terminal.Say("|  Humidity:    " + padRight(weather.humidity + "%", 17) + "|");
-    Terminal.Say("|  Wind:        " + padRight(weather.windSpeed + " mph", 17) + "|");
+    Terminal.Say("|  Humidity:    " + padRight(Fmt.Int(weather.humidity) + "%", 17) + "|");
+    Terminal.Say("|  Wind:        " + padRight(Fmt.Int(weather.windSpeed) + " mph", 17) + "|");
     Terminal.Say("+----------------------------------+");
 }
 
 func padRight(s: String, width: Integer) -> String {
-    while s.Length < width {
-        s = s + " ";
+    var out = s;
+    while out.Length() < width {
+        out += " ";
     }
-    return s;
+    return out;
 }
 
 func displayHeader() {
@@ -1778,9 +1795,9 @@ func displayHeader() {
 // Main program
 func start() {
     // In a real app, load this from environment
-    var service = WeatherService("your-api-key-here");
+    var service = new WeatherService("your-api-key-here");
 
-    var cities = ["Seattle", "New York", "London", "Tokyo", "Sydney"];
+    var cities: List[String] = ["Seattle", "New York", "London", "Tokyo", "Sydney"];
 
     displayHeader();
 
@@ -1816,28 +1833,26 @@ This example demonstrates:
 **Zia**
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 
 // HTTP request
 var response = Http.Get("https://api.example.com/data");
-if response.ok {
-    Terminal.Say(response.body);
-}
+Terminal.Say(response);
 
 // TCP client
 var socket = Tcp.Connect("example.com", 80);
-socket.Write("Hello\n");
-var reply = socket.ReadLine();
+socket.SendStr("Hello\n");
+var reply = socket.RecvLine();
 socket.Close();
 
 // UDP
-var udp = UdpSocket.create();
-udp.send("Hello", "192.168.1.100", 5000);
+var udp = Udp.New();
+udp.SendToStr("192.168.1.100", 5000, "Hello");
 udp.Close();
 ```
 
-**BASIC**
-```basic
+**BASIC-style pseudocode**
+```text
 DIM response AS HttpResponse
 response = HTTP_GET("https://api.example.com/data")
 IF response.Ok THEN
@@ -1856,6 +1871,8 @@ udp = UDP_CREATE()
 UDP_SEND udp, "Hello", "192.168.1.100", 5000
 UDP_CLOSE udp
 ```
+
+The current networking runtime is exposed through Zia classes under `Viper.Network`. The BASIC-style block is conceptual pseudocode, not current BASIC syntax.
 
 ---
 

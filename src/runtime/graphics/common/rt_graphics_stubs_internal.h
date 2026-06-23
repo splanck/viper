@@ -73,6 +73,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 /// @brief Raise the canonical "graphics support not compiled in" trap.
 ///
@@ -95,6 +97,19 @@ static inline void rt_graphics_unavailable_(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
 }
 
+/// @brief Return whether silent graphics stubs should trap instead of returning fallbacks.
+/// @details The default disabled-graphics behavior keeps documented probe
+///          fallbacks such as `0`, `NULL`, or `-1` so headless smoke tests can
+///          branch around unavailable backends. Setting
+///          `VIPER_GRAPHICS_STUBS_STRICT` to any non-empty value except `0`
+///          turns those silent stubs into traps, making accidental use of a
+///          disabled backend visible during development.
+/// @return Nonzero when strict stub trapping is enabled.
+static inline int rt_graphics_stub_strict_(void) {
+    const char *value = getenv("VIPER_GRAPHICS_STUBS_STRICT");
+    return value && value[0] != '\0' && strcmp(value, "0") != 0;
+}
+
 /// @brief Raise the graphics-unavailable trap from a void-returning stub.
 ///
 /// @param msg Diagnostic string naming the unavailable runtime entry point.
@@ -112,4 +127,23 @@ static inline void rt_graphics_unavailable_(const char *msg) {
     do {                                                                                           \
         rt_graphics_unavailable_(msg);                                                             \
         return (fallback);                                                                         \
+    } while (0)
+
+/// @brief Optionally trap from a silent value-returning graphics stub.
+/// @param msg Diagnostic string naming the unavailable runtime entry point.
+/// @param fallback Expression returned when strict stub trapping is disabled.
+#define RT_GRAPHICS_OPTIONAL_TRAP_RET(msg, fallback)                                               \
+    do {                                                                                           \
+        if (rt_graphics_stub_strict_())                                                            \
+            RT_GRAPHICS_TRAP_RET((msg), (fallback));                                               \
+        return (fallback);                                                                         \
+    } while (0)
+
+/// @brief Optionally trap from a silent void graphics stub.
+/// @param msg Diagnostic string naming the unavailable runtime entry point.
+#define RT_GRAPHICS_OPTIONAL_TRAP_VOID(msg)                                                        \
+    do {                                                                                           \
+        if (rt_graphics_stub_strict_())                                                            \
+            RT_GRAPHICS_TRAP_VOID((msg));                                                          \
+        return;                                                                                    \
     } while (0)

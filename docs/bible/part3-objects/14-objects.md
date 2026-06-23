@@ -24,7 +24,7 @@ struct BankAccount {
     expose Number balance;
 }
 
-var account = BankAccount("Alice", 1000.0);
+var account = new BankAccount("Alice", 1000.0);
 ```
 
 This works, but there's nothing stopping someone from writing:
@@ -76,7 +76,7 @@ struct Rectangle {
     expose Number height;
 }
 
-var rect = Rectangle(0.0, 0.0);  // Created with default values
+var rect = new Rectangle(0.0, 0.0);  // Created with default values
 rect.width = -5.0;  // Negative width makes no sense!
 ```
 
@@ -235,8 +235,8 @@ class Dog {
 }
 
 // Create two separate Dog objects
-var fido = Dog("Fido", 3);
-var rex = Dog("Rex", 7);
+var fido = new Dog("Fido", 3);
+var rex = new Dog("Rex", 7);
 
 fido.bark();         // "Fido says woof!"
 rex.bark();          // "Rex says woof!"
@@ -249,7 +249,7 @@ This distinction matters because:
 
 1. **Classes are defined once.** You write the `Dog` class definition one time. It describes all possible dogs.
 
-2. **Objects are created many times.** Each call to `Dog(...)` creates a new, independent object.
+2. **Objects are created many times.** Each `new Dog(...)` expression creates a new, independent object.
 
 3. **Objects have independent state.** Changing one object doesn't affect others.
 
@@ -259,13 +259,13 @@ This distinction matters because:
 
 ## Creating Objects
 
-You create an object by calling the class name like a function:
+You create an object with `new` followed by the class initializer arguments:
 
 ```rust
 bind Viper.Terminal;
 
-var rect1 = Rectangle(10.0, 5.0);
-var rect2 = Rectangle(3.0, 4.0);
+var rect1 = new Rectangle(10.0, 5.0);
+var rect2 = new Rectangle(3.0, 4.0);
 
 Say(rect1.area());  // 50
 Say(rect2.area());  // 12
@@ -273,7 +273,7 @@ Say(rect2.area());  // 12
 
 Each call creates a fresh object. The arguments you pass go to the initializer, which sets up the object's initial state.
 
-What happens when you write `Rectangle(10.0, 5.0)`?
+What happens when you write `new Rectangle(10.0, 5.0)`?
 
 1. **Memory is allocated** for a new Rectangle object
 2. **The initializer runs** with `width = 10.0` and `height = 5.0`
@@ -299,7 +299,7 @@ class Person {
     }
 }
 
-var alice = Person("Alice", 30);
+var alice = new Person("Alice", 30);
 ```
 
 ### Why Initializers Matter
@@ -308,7 +308,7 @@ Without initializers, objects would start with uninitialized or default values. 
 
 ```rust
 // Hypothetically, if we could create objects without initializers:
-var person = Person();  // What is person.name? What is person.age?
+var person = new Person();  // What is person.name? What is person.age?
 ```
 
 The object would be in a meaningless state. The initializer ensures that every object starts with the data it needs.
@@ -345,9 +345,9 @@ class Person {
     }
 }
 
-var alice = Person("Alice", 30, "alice@example.com");
-var bob = Person("Bob", 25);        // No email
-var baby = Person("Baby");          // Just a name
+var alice = new Person("Alice", 30, "alice@example.com");
+var bob = new Person("Bob", 25);        // No email
+var baby = new Person("Baby");          // Just a name
 ```
 
 Multiple initializers let callers provide different levels of detail. Some objects need full information; others can use sensible defaults.
@@ -380,7 +380,7 @@ class Rectangle {
 }
 
 // Even with invalid input, the object is valid
-var rect = Rectangle(-5.0, 0.0);
+var rect = new Rectangle(-5.0, 0.0);
 Say(rect.width);   // 1.0 (corrected)
 Say(rect.height);  // 1.0 (corrected)
 ```
@@ -454,7 +454,7 @@ class Circle {
     }
 
     expose func circumference() -> Number {
-        return 2 * PI * self.radius;  // Always accurate
+        return 2.0 * 3.14159265358979 * self.radius;  // Always accurate
     }
 }
 ```
@@ -498,12 +498,12 @@ Let's trace through exactly what happens:
 ```rust
 bind Viper.Terminal;
 
-var counter = Counter();       // Step 1: Create object
+var counter = new Counter();   // Step 1: Create object
 counter.increment();           // Step 2: Call method
 Say(counter.getCount());       // Step 3: Get value
 ```
 
-**Step 1: `Counter()` creates an object**
+**Step 1: `new Counter()` creates an object**
 - Memory is allocated for a new Counter
 - The initializer runs, with `self` pointing to this new object
 - `self.count = 0` sets the new object's count field to 0
@@ -538,8 +538,8 @@ This becomes clearer with multiple objects:
 ```rust
 bind Viper.Terminal;
 
-var counterA = Counter();
-var counterB = Counter();
+var counterA = new Counter();
+var counterB = new Counter();
 
 counterA.increment();  // Inside: self = counterA, self.count goes 0 -> 1
 counterA.increment();  // Inside: self = counterA, self.count goes 1 -> 2
@@ -578,7 +578,7 @@ class BankAccount {
     }
 }
 
-var account = BankAccount("Alice", 100.0);
+var account = new BankAccount("Alice", 100.0);
 
 // Anyone can do anything:
 account.balance = -500.0;      // Negative balance
@@ -600,7 +600,7 @@ class BankAccount {
     expose func init(owner: String, initialDeposit: Number) {
         self.ownerName = owner;
         if initialDeposit < 0 {
-            self.balance = 0;  // Don't allow negative initial balance
+            self.balance = 0.0;  // Don't allow negative initial balance
         } else {
             self.balance = initialDeposit;
         }
@@ -631,7 +631,7 @@ Now the balance is hidden -- external code cannot access it directly:
 ```rust
 bind Viper.Terminal;
 
-var account = BankAccount("Alice", 100.0);
+var account = new BankAccount("Alice", 100.0);
 account.deposit(50.0);
 Say(account.getBalance());  // 150
 
@@ -766,11 +766,11 @@ class Circle {
     }
 
     expose func area() -> Number {
-        return PI * self.radius * self.radius;
+        return 3.14159265358979 * self.radius * self.radius;
     }
 
     expose func circumference() -> Number {
-        return 2 * PI * self.radius;
+        return 2.0 * 3.14159265358979 * self.radius;
     }
 
     expose func scale(factor: Number) {
@@ -866,8 +866,14 @@ bind Viper.Math as Math;
 
 // Good as a method - operates on the circle's own data
 class Circle {
+    hide Number radius;
+
+    expose func init(radius: Number) {
+        self.radius = radius;
+    }
+
     expose func area() -> Number {
-        return PI * self.radius * self.radius;
+        return 3.14159265358979 * self.radius * self.radius;
     }
 }
 ```
@@ -982,7 +988,7 @@ class TrafficLight {
     }
 }
 
-var light = TrafficLight();
+var light = new TrafficLight();
 Say(light.getColor());  // "red"
 
 light.advance();
@@ -1151,13 +1157,13 @@ class BankAccount {
     expose func init(accountNumber: String, ownerName: String, initialDeposit: Number) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
-        var _dt = Time.DateTime.Now();
-        self.dateOpened = Time.DateTime.Year(_dt) + "-" + Time.DateTime.Month(_dt) + "-" + Time.DateTime.Day(_dt);
+        var _dt = DateTime.Now();
+        self.dateOpened = DateTime.Year(_dt) + "-" + DateTime.Month(_dt) + "-" + DateTime.Day(_dt);
         self.transactions = [];
 
         // Enforce non-negative initial balance
         if initialDeposit < 0 {
-            self.balance = 0;
+            self.balance = 0.0;
             self.addTransaction("Account opened with $0.00 (invalid initial deposit rejected)");
         } else {
             self.balance = initialDeposit;
@@ -1169,9 +1175,9 @@ class BankAccount {
     expose func init(accountNumber: String, ownerName: String) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
-        var _dt = Time.DateTime.Now();
-        self.dateOpened = Time.DateTime.Year(_dt) + "-" + Time.DateTime.Month(_dt) + "-" + Time.DateTime.Day(_dt);
-        self.balance = 0;
+        var _dt = DateTime.Now();
+        self.dateOpened = DateTime.Year(_dt) + "-" + DateTime.Month(_dt) + "-" + DateTime.Day(_dt);
+        self.balance = 0.0;
         self.transactions = [];
         self.addTransaction("Account opened with $0.00");
     }
@@ -1240,8 +1246,8 @@ class BankAccount {
     // ===== Private Helper Methods =====
 
     hide func addTransaction(description: String) {
-        var _dt2 = Time.DateTime.Now();
-        var timestamp = Time.DateTime.Hour(_dt2) + ":" + Time.DateTime.Minute(_dt2) + ":" + Time.DateTime.Second(_dt2);
+        var _dt2 = DateTime.Now();
+        var timestamp = DateTime.Hour(_dt2) + ":" + DateTime.Minute(_dt2) + ":" + DateTime.Second(_dt2);
         self.transactions.Push(timestamp + ": " + description);
     }
 }
@@ -1254,7 +1260,7 @@ bind Viper.Terminal;
 
 func start() {
     // Create an account
-    var account = BankAccount("1234-5678", "Alice Johnson", 500.0);
+    var account = new BankAccount("1234-5678", "Alice Johnson", 500.0);
 
     // Make some transactions
     account.deposit(200.0);    // Balance: 700
@@ -1479,13 +1485,13 @@ class Dog {
     }
 }
 
-var dog = Dog("Rex");
+var dog = new Dog("Rex");
 dog.bark();
 ```
 
-**BASIC**
+**BASIC-style dialect comparison**
 
-```basic
+```text
 CLASS Dog
     PUBLIC name AS STRING
 
@@ -1618,8 +1624,8 @@ class BankAccount {
     expose Number balance;  // Bad: anyone can modify directly
 }
 
-var account = BankAccount();
-account.balance = -1000;  // Oops, negative balance!
+var account = new BankAccount();
+account.balance = -1000.0;  // Oops, negative balance!
 ```
 
 Exposed fields bypass all your carefully written validation logic. Hide them and provide controlled access through methods.
