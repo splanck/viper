@@ -35,7 +35,7 @@
 
 #include "vgfx_internal.h"
 
-#if defined(__linux__) || defined(__unix__)
+#if defined(__linux__)
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -44,6 +44,8 @@
 #include <X11/keysym.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <limits.h>
+#include <pthread.h>
 #include <sched.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -51,7 +53,25 @@
 #include <time.h>
 #include <unistd.h>
 
+#define VGFX_X11_CLIPBOARD_MAX_BYTES (16u * 1024u * 1024u)
+#define VGFX_X11_CLIPBOARD_WAIT_MS 500
+
 typedef void *GLXFBConfig;
+
+static pthread_mutex_t g_x11_global_mu = PTHREAD_MUTEX_INITIALIZER;
+
+/// @brief Acquire the mutex protecting process-global X11 backend state.
+/// @details This lock covers Viper-owned globals such as the live-window list,
+///          cached GLX library handle, and temporary X error handler changes.
+///          It does not replace per-display Xlib locking.
+static void x11_global_lock(void) {
+    (void)pthread_mutex_lock(&g_x11_global_mu);
+}
+
+/// @brief Release the mutex protecting process-global X11 backend state.
+static void x11_global_unlock(void) {
+    (void)pthread_mutex_unlock(&g_x11_global_mu);
+}
 
 /// @brief Allocate an aligned framebuffer buffer using the POSIX allocator.
 /// @details Linux/X11 is an approved platform adapter layer, so it owns the
@@ -534,6 +554,7 @@ static int x11_ignore_bad_window_error(Display *display, XErrorEvent *event) {
 static void x11_register_window(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
+    x11_global_lock();
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
     x11->owner_window = win;
     x11->next_window = g_vgfx_x11_windows;
@@ -542,9 +563,11 @@ static void x11_register_window(struct vgfx_window *win) {
         g_vgfx_cursor_window = win;
     if (!g_vgfx_clipboard_window)
         g_vgfx_clipboard_window = win;
+    x11_global_unlock();
 }
 
 static void x11_unregister_window(struct vgfx_window *win) {
+    x11_global_lock();
     struct vgfx_window **cursor = &g_vgfx_x11_windows;
     while (*cursor) {
         vgfx_x11_data *x11 = (vgfx_x11_data *)(*cursor)->platform_data;
@@ -560,15 +583,29 @@ static void x11_unregister_window(struct vgfx_window *win) {
         g_vgfx_cursor_window = g_vgfx_x11_windows;
     if (g_vgfx_clipboard_window == win)
         g_vgfx_clipboard_window = g_vgfx_x11_windows;
+    x11_global_unlock();
+}
+
+/// @brief Release the cached GLX library handle once no X11 windows remain.
+/// @details `XCloseDisplay` may run GLX extension cleanup registered on the
+///          display.  The last window must therefore close its display before
+///          unloading the process-wide `libGL` handle that supplied those hooks.
+static void x11_maybe_close_glx_library(void) {
+    x11_global_lock();
     if (!g_vgfx_x11_windows && g_vgfx_glx_libgl_handle) {
         dlclose(g_vgfx_glx_libgl_handle);
         g_vgfx_glx_libgl_handle = NULL;
     }
+    x11_global_unlock();
 }
 
 static struct vgfx_window *x11_clipboard_window(void) {
-    if (x11_window_usable(g_vgfx_clipboard_window))
-        return g_vgfx_clipboard_window;
+    x11_global_lock();
+    if (x11_window_usable(g_vgfx_clipboard_window)) {
+        struct vgfx_window *result = g_vgfx_clipboard_window;
+        x11_global_unlock();
+        return result;
+    }
 
     for (struct vgfx_window *win = g_vgfx_x11_windows; win;) {
         vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
@@ -578,6 +615,7 @@ static struct vgfx_window *x11_clipboard_window(void) {
         vgfx_internal_event_unlock(win);
         if (x11_window_usable(win) && focused) {
             g_vgfx_clipboard_window = win;
+            x11_global_unlock();
             return win;
         }
         win = next;
@@ -585,14 +623,19 @@ static struct vgfx_window *x11_clipboard_window(void) {
 
     if (x11_window_usable(g_vgfx_cursor_window)) {
         g_vgfx_clipboard_window = g_vgfx_cursor_window;
-        return g_vgfx_clipboard_window;
+        struct vgfx_window *result = g_vgfx_clipboard_window;
+        x11_global_unlock();
+        return result;
     }
     if (x11_window_usable(g_vgfx_x11_windows)) {
         g_vgfx_clipboard_window = g_vgfx_x11_windows;
-        return g_vgfx_clipboard_window;
+        struct vgfx_window *result = g_vgfx_clipboard_window;
+        x11_global_unlock();
+        return result;
     }
 
     g_vgfx_clipboard_window = NULL;
+    x11_global_unlock();
     return NULL;
 }
 
@@ -829,15 +872,18 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
             x11->colormap = 0;
         }
         if (x11->window) {
+            x11_global_lock();
             int (*old_handler)(Display *, XErrorEvent *) =
                 XSetErrorHandler(x11_ignore_bad_window_error);
             XDestroyWindow(x11->display, x11->window);
             XSync(x11->display, False);
             XSetErrorHandler(old_handler);
+            x11_global_unlock();
             x11->window = 0;
         }
         XCloseDisplay(x11->display);
         x11->display = NULL;
+        x11_maybe_close_glx_library();
     }
 
     free(x11);
@@ -871,16 +917,20 @@ float vgfx_platform_get_display_scale(void) {
     /* Priority 1: GDK_SCALE env var (GNOME/Mutter on Wayland and X11) */
     const char *gdk = getenv("GDK_SCALE");
     if (gdk) {
-        float s = strtof(gdk, NULL);
-        if (s >= 1.0f)
+        char *end = NULL;
+        errno = 0;
+        float s = strtof(gdk, &end);
+        if (errno == 0 && end && *end == '\0' && s >= 1.0f)
             return vgfx_internal_sanitize_scale(s);
     }
 
     /* Priority 2: QT_SCALE_FACTOR (KDE Plasma) */
     const char *qt = getenv("QT_SCALE_FACTOR");
     if (qt) {
-        float s = strtof(qt, NULL);
-        if (s >= 1.0f)
+        char *end = NULL;
+        errno = 0;
+        float s = strtof(qt, &end);
+        if (errno == 0 && end && *end == '\0' && s >= 1.0f)
             return vgfx_internal_sanitize_scale(s);
     }
 
@@ -906,8 +956,10 @@ float vgfx_platform_get_display_scale(void) {
                 pos += 8; /* skip "Xft.dpi:" */
                 while (*pos == ' ' || *pos == '\t')
                     pos++;
-                float dpi = strtof(pos, NULL);
-                if (dpi >= 96.0f)
+                char *end = NULL;
+                errno = 0;
+                float dpi = strtof(pos, &end);
+                if (errno == 0 && end != pos && dpi >= 96.0f)
                     scale = dpi / 96.0f;
             }
         }
@@ -1064,6 +1116,16 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->targets_atom = XInternAtom(x11->display, "TARGETS", False);
     x11->incr_atom = XInternAtom(x11->display, "INCR", False);
     x11->clipboard_property_atom = XInternAtom(x11->display, "VIPERGFX_CLIPBOARD", False);
+    if (x11->wm_delete_window == None || x11->xdnd_aware == None || x11->xdnd_enter == None ||
+        x11->xdnd_position == None || x11->xdnd_status == None || x11->xdnd_drop == None ||
+        x11->xdnd_finished == None || x11->xdnd_selection == None || x11->xdnd_type_list == None ||
+        x11->text_uri_list == None || x11->clipboard_atom == None ||
+        x11->utf8_string_atom == None || x11->targets_atom == None || x11->incr_atom == None ||
+        x11->clipboard_property_atom == None) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to initialize X11 protocol atoms");
+        x11_cleanup_platform(win);
+        return 0;
+    }
     x11->xdnd_source = 0;
     {
         /* Advertise XDND version 5 support */
@@ -1202,6 +1264,8 @@ static int x11_append_bytes(
         return 0;
     if (nitems == 0)
         return 1;
+    if (*len > VGFX_X11_CLIPBOARD_MAX_BYTES || nitems > VGFX_X11_CLIPBOARD_MAX_BYTES - *len)
+        return 0;
     if (nitems > SIZE_MAX - *len - 1u)
         return 0;
     size_t needed = *len + nitems + 1u;
@@ -1696,8 +1760,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 if (x11->xic)
                     XSetICFocus(x11->xic);
                 vgfx_internal_set_focus_state(win, 1);
+                x11_global_lock();
                 g_vgfx_cursor_window = win;
                 g_vgfx_clipboard_window = win;
+                x11_global_unlock();
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
@@ -1846,7 +1912,8 @@ int vgfx_platform_present(struct vgfx_window *win) {
 /// @post Return value >= previous calls within the same process
 int64_t vgfx_platform_now_ms(void) {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 0;
     return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
 
@@ -2295,13 +2362,19 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) 
 }
 
 void vgfx_platform_hide_cursor(void) {
-    if (g_vgfx_cursor_window)
-        vgfx_platform_set_cursor_visible(g_vgfx_cursor_window, 0);
+    x11_global_lock();
+    struct vgfx_window *win = g_vgfx_cursor_window;
+    x11_global_unlock();
+    if (win)
+        vgfx_platform_set_cursor_visible(win, 0);
 }
 
 void vgfx_platform_show_cursor(void) {
-    if (g_vgfx_cursor_window)
-        vgfx_platform_set_cursor_visible(g_vgfx_cursor_window, 1);
+    x11_global_lock();
+    struct vgfx_window *win = g_vgfx_cursor_window;
+    x11_global_unlock();
+    if (win)
+        vgfx_platform_set_cursor_visible(win, 1);
 }
 
 void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h) {
@@ -2395,7 +2468,7 @@ char *vgfx_clipboard_get_text(void) {
 
         int64_t start = vgfx_platform_now_ms();
         int target_done = 0;
-        while (!target_done && vgfx_platform_now_ms() - start < 100) {
+        while (!target_done && vgfx_platform_now_ms() - start < VGFX_X11_CLIPBOARD_WAIT_MS) {
             XEvent event;
             if (XCheckIfEvent(x11->display,
                               &event,
@@ -2485,4 +2558,4 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
     XFlush(x11->display);
 }
 
-#endif /* __linux__ || __unix__ */
+#endif /* __linux__ */

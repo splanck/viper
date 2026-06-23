@@ -258,8 +258,10 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         add(RtComponent::Collections); // Game depends on Collections + OOP
         add(RtComponent::Text);        // LevelData/scene editor use JSON helpers
     }
-    if (has(RtComponent::IoFs))
+    if (has(RtComponent::IoFs)) {
         add(RtComponent::Text); // SaveData depends on rt_json_stream_*
+        add(RtComponent::Network); // IO uses the shared OS entropy adapter.
+    }
     if (has(RtComponent::Collections))
         add(RtComponent::Arrays);
     if (has(RtComponent::Collections) || has(RtComponent::Arrays) || has(RtComponent::Graphics) ||

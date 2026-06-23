@@ -1053,6 +1053,7 @@ static int mat4f_inverse_gl(const float *m, float *out) {
 /// resolved (the backend caller falls back to software in that case).
 /// Idempotent — `gl_loaded` flag short-circuits subsequent calls.
 static int load_gl(void) {
+    const char *missing_symbol = NULL;
     if (gl_loaded)
         return 0;
     gl_dispatch_lock();
@@ -1065,22 +1066,32 @@ static int load_gl(void) {
     if (!gl.lib)
         gl.lib = dlopen("libGL.so", RTLD_LAZY);
     if (!gl.lib) {
+        const char *err = dlerror();
+        const char *debug = getenv("VIPER_OPENGL_DEBUG");
+        if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
+            fprintf(stderr, "[OpenGL] failed to load libGL: %s\n", err ? err : "unknown error");
         gl_dispatch_unlock();
         return -1;
     }
 
 #define LOAD(name)                                                                                 \
     gl.name = (__typeof__(gl.name))dlsym(gl.lib, "gl" #name);                                      \
-    if (!gl.name)                                                                                  \
-    goto fail
+    if (!gl.name) {                                                                                \
+        missing_symbol = "gl" #name;                                                              \
+        goto fail;                                                                                 \
+    }
 #define LOADX(name)                                                                                \
     glx.name = (__typeof__(glx.name))dlsym(gl.lib, "glX" #name);                                   \
-    if (!glx.name)                                                                                 \
-    goto fail
+    if (!glx.name) {                                                                               \
+        missing_symbol = "glX" #name;                                                             \
+        goto fail;                                                                                 \
+    }
 #define LOADP(name)                                                                                \
     gl.name = (__typeof__(gl.name))glx.GetProcAddress((const unsigned char *)"gl" #name);          \
-    if (!gl.name)                                                                                  \
-    goto fail
+    if (!gl.name) {                                                                                \
+        missing_symbol = "gl" #name;                                                              \
+        goto fail;                                                                                 \
+    }
 
     LOAD(GetError);
     LOAD(GetString);
@@ -1199,6 +1210,17 @@ static int load_gl(void) {
     return 0;
 
 fail:
+    {
+        const char *debug = getenv("VIPER_OPENGL_DEBUG");
+        if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0) {
+            const char *err = dlerror();
+            fprintf(stderr,
+                    "[OpenGL] missing required symbol %s%s%s\n",
+                    missing_symbol ? missing_symbol : "<unknown>",
+                    err ? ": " : "",
+                    err ? err : "");
+        }
+    }
     gl_unload_partial_dispatch();
     gl_dispatch_unlock();
     return -1;
@@ -1223,7 +1245,11 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
     if (!ok) {
         char log[1024];
         gl.GetShaderInfoLog(shader, (GLsizei)sizeof(log), NULL, log);
-        fprintf(stderr, "[OpenGL] shader compile failed: %s\n", log);
+        {
+            const char *debug = getenv("VIPER_OPENGL_DEBUG");
+            if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
+                fprintf(stderr, "[OpenGL] shader compile failed: %s\n", log);
+        }
         gl.DeleteShader(shader);
         return 0;
     }
@@ -1253,7 +1279,11 @@ static GLuint link_program(GLuint vs, GLuint fs) {
     if (!ok) {
         char log[1024];
         gl.GetProgramInfoLog(program, (GLsizei)sizeof(log), NULL, log);
-        fprintf(stderr, "[OpenGL] program link failed: %s\n", log);
+        {
+            const char *debug = getenv("VIPER_OPENGL_DEBUG");
+            if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
+                fprintf(stderr, "[OpenGL] program link failed: %s\n", log);
+        }
         gl.DeleteProgram(program);
         return 0;
     }

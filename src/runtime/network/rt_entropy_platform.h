@@ -40,6 +40,17 @@ extern "C" {
 ///         NULL with a non-zero length.
 int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len);
 
+/// @brief Read one 64-bit value from the operating-system entropy source.
+/// @details This convenience helper centralizes the common "random suffix"
+///          pattern used by file-system helpers. It delegates to
+///          rt_entropy_platform_random_bytes(), so it inherits the same
+///          fail-closed behavior and never fabricates deterministic fallback
+///          bytes.
+/// @param out Receives the random value on success.
+/// @return 0 on success, -1 when @p out is NULL or the platform entropy source
+///         fails.
+int rt_entropy_platform_random_u64(uint64_t *out);
+
 #ifdef __cplusplus
 }
 #endif

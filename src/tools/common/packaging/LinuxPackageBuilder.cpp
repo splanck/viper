@@ -39,10 +39,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string_view>
@@ -97,6 +99,137 @@ std::string lowerAscii(std::string text) {
     for (char &c : text)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return text;
+}
+
+/// @brief Read a little-endian 16-bit integer from an ELF byte buffer.
+uint16_t readLe16(const std::vector<uint8_t> &data, size_t off) {
+    if (off + 2u > data.size())
+        return 0;
+    return (uint16_t)data[off] | ((uint16_t)data[off + 1u] << 8);
+}
+
+/// @brief Read a little-endian 32-bit integer from an ELF byte buffer.
+uint32_t readLe32(const std::vector<uint8_t> &data, size_t off) {
+    if (off + 4u > data.size())
+        return 0;
+    return (uint32_t)data[off] | ((uint32_t)data[off + 1u] << 8) |
+           ((uint32_t)data[off + 2u] << 16) | ((uint32_t)data[off + 3u] << 24);
+}
+
+/// @brief Read a little-endian 64-bit integer from an ELF byte buffer.
+uint64_t readLe64(const std::vector<uint8_t> &data, size_t off) {
+    uint64_t lo = readLe32(data, off);
+    uint64_t hi = readLe32(data, off + 4u);
+    return lo | (hi << 32);
+}
+
+/// @brief Return a file slice corresponding to an ELF virtual address range.
+/// @details Maps @p vaddr through PT_LOAD program headers. This is enough for
+///          the package dependency scanner to resolve DT_STRTAB into the
+///          dynamic string table without invoking host tools.
+/// @param data Full ELF file bytes.
+/// @param vaddr Virtual address to map.
+/// @param size Number of bytes needed.
+/// @param phoff ELF program-header table offset.
+/// @param phentsize Program-header entry size.
+/// @param phnum Program-header count.
+/// @return File offset on success, std::nullopt when no load segment covers it.
+std::optional<size_t> elfFileOffsetForVaddr(const std::vector<uint8_t> &data,
+                                            uint64_t vaddr,
+                                            uint64_t size,
+                                            uint64_t phoff,
+                                            uint16_t phentsize,
+                                            uint16_t phnum) {
+    for (uint16_t i = 0; i < phnum; ++i) {
+        const size_t off = (size_t)phoff + (size_t)i * phentsize;
+        if (off + 56u > data.size())
+            break;
+        const uint32_t type = readLe32(data, off);
+        if (type != 1u)
+            continue;
+        const uint64_t p_offset = readLe64(data, off + 8u);
+        const uint64_t p_vaddr = readLe64(data, off + 16u);
+        const uint64_t p_filesz = readLe64(data, off + 32u);
+        if (vaddr < p_vaddr || vaddr - p_vaddr > p_filesz)
+            continue;
+        const uint64_t delta = vaddr - p_vaddr;
+        if (size > p_filesz - delta)
+            continue;
+        if (p_offset > data.size() || delta > data.size() - (size_t)p_offset)
+            continue;
+        const size_t fileOff = (size_t)(p_offset + delta);
+        if (fileOff <= data.size() && size <= data.size() - fileOff)
+            return fileOff;
+    }
+    return std::nullopt;
+}
+
+/// @brief Read DT_NEEDED library names from a little-endian ELF64 binary.
+/// @details The parser intentionally supports the ELF64 shape produced by
+///          Viper's Linux x64/arm64 toolchains. Unsupported or malformed inputs
+///          simply return an empty list so callers can retain conservative
+///          fallback dependencies.
+/// @param data Full ELF file bytes.
+/// @return SONAMEs referenced by DT_NEEDED entries.
+std::vector<std::string> elfNeededLibraries(const std::vector<uint8_t> &data) {
+    if (data.size() < 64u || data[0] != 0x7F || data[1] != 'E' || data[2] != 'L' ||
+        data[3] != 'F' || data[4] != 2u || data[5] != 1u)
+        return {};
+    const uint64_t phoff = readLe64(data, 32u);
+    const uint16_t phentsize = readLe16(data, 54u);
+    const uint16_t phnum = readLe16(data, 56u);
+    if (phoff == 0 || phentsize < 56u || phnum == 0)
+        return {};
+
+    uint64_t dynamicOff = 0;
+    uint64_t dynamicSize = 0;
+    for (uint16_t i = 0; i < phnum; ++i) {
+        const size_t off = (size_t)phoff + (size_t)i * phentsize;
+        if (off + 56u > data.size())
+            return {};
+        if (readLe32(data, off) == 2u) {
+            dynamicOff = readLe64(data, off + 8u);
+            dynamicSize = readLe64(data, off + 32u);
+            break;
+        }
+    }
+    if (dynamicOff == 0 || dynamicOff > data.size() || dynamicSize > data.size() - (size_t)dynamicOff)
+        return {};
+
+    uint64_t strtabVaddr = 0;
+    uint64_t strtabSize = 0;
+    std::vector<uint64_t> neededOffsets;
+    for (size_t off = (size_t)dynamicOff; off + 16u <= (size_t)(dynamicOff + dynamicSize);
+         off += 16u) {
+        const uint64_t tag = readLe64(data, off);
+        const uint64_t value = readLe64(data, off + 8u);
+        if (tag == 0)
+            break;
+        if (tag == 1)
+            neededOffsets.push_back(value);
+        else if (tag == 5)
+            strtabVaddr = value;
+        else if (tag == 10)
+            strtabSize = value;
+    }
+    if (strtabVaddr == 0 || strtabSize == 0 || neededOffsets.empty())
+        return {};
+    const auto strtabOff = elfFileOffsetForVaddr(data, strtabVaddr, strtabSize, phoff, phentsize, phnum);
+    if (!strtabOff)
+        return {};
+
+    std::vector<std::string> names;
+    for (uint64_t nameOff : neededOffsets) {
+        if (nameOff >= strtabSize)
+            continue;
+        const size_t start = *strtabOff + (size_t)nameOff;
+        size_t end = start;
+        while (end < data.size() && end < *strtabOff + (size_t)strtabSize && data[end] != 0)
+            ++end;
+        if (end > start)
+            names.emplace_back(reinterpret_cast<const char *>(data.data() + start), end - start);
+    }
+    return names;
 }
 
 /// @brief Return Unix permission bits for a toolchain file.
@@ -312,14 +445,49 @@ bool manifestHasSupportLibrary(const ToolchainInstallManifest &manifest, std::st
     return false;
 }
 
+/// @brief Return every DT_NEEDED SONAME discovered in staged ELF files.
+/// @details Reads binary/support/library files from the manifest and parses
+///          ELF64 dynamic sections. Malformed or non-ELF files are ignored so
+///          package generation remains conservative rather than brittle.
+/// @param manifest Toolchain staging manifest to inspect.
+/// @return Sorted unique library SONAMEs.
+std::vector<std::string> manifestNeededLibraries(const ToolchainInstallManifest &manifest) {
+    std::vector<std::string> needed;
+    for (const auto &file : manifest.files) {
+        if (file.symlink ||
+            (file.kind != ToolchainFileKind::Binary && file.kind != ToolchainFileKind::SupportLibrary &&
+             file.kind != ToolchainFileKind::Library)) {
+            continue;
+        }
+        std::error_code ec;
+        if (!fs::is_regular_file(file.stagedAbsolutePath, ec) || ec)
+            continue;
+        try {
+            std::vector<uint8_t> data = readFile(file.stagedAbsolutePath.string());
+            std::vector<std::string> fileNeeded = elfNeededLibraries(data);
+            needed.insert(needed.end(), fileNeeded.begin(), fileNeeded.end());
+        } catch (const std::exception &) {
+            continue;
+        }
+    }
+    std::sort(needed.begin(), needed.end());
+    needed.erase(std::unique(needed.begin(), needed.end()), needed.end());
+    return needed;
+}
+
 /// @brief True if the manifest includes graphics/GUI libraries that need X11.
 bool manifestNeedsX11(const ToolchainInstallManifest &manifest) {
-    return manifestHasSupportLibrary(manifest, "vipergfx") ||
-           manifestHasSupportLibrary(manifest, "vipergui");
+    const auto needed = manifestNeededLibraries(manifest);
+    if (std::find(needed.begin(), needed.end(), "libX11.so.6") != needed.end())
+        return true;
+    return manifestHasSupportLibrary(manifest, "vipergfx") || manifestHasSupportLibrary(manifest, "vipergui");
 }
 
 /// @brief True if the manifest includes the audio library that needs ALSA.
 bool manifestNeedsAlsa(const ToolchainInstallManifest &manifest) {
+    const auto needed = manifestNeededLibraries(manifest);
+    if (std::find(needed.begin(), needed.end(), "libasound.so.2") != needed.end())
+        return true;
     return manifestHasSupportLibrary(manifest, "viperaud");
 }
 
@@ -356,9 +524,14 @@ ToolchainCxxRuntime detectToolchainCxxRuntime(const ToolchainInstallManifest &ma
     }
     if (data.size() < 4 || data[0] != 0x7F || data[1] != 'E' || data[2] != 'L' || data[3] != 'F')
         return ToolchainCxxRuntime::Unknown;
-    const std::string_view view(reinterpret_cast<const char *>(data.data()), data.size());
-    const bool hasStdCxx = view.find("libstdc++.so.6") != std::string_view::npos;
-    const bool hasLibCxx = view.find("libc++.so.1") != std::string_view::npos;
+    const auto needed = elfNeededLibraries(data);
+    bool hasStdCxx = std::find(needed.begin(), needed.end(), "libstdc++.so.6") != needed.end();
+    bool hasLibCxx = std::find(needed.begin(), needed.end(), "libc++.so.1") != needed.end();
+    if (needed.empty()) {
+        const std::string_view view(reinterpret_cast<const char *>(data.data()), data.size());
+        hasStdCxx = view.find("libstdc++.so.6") != std::string_view::npos;
+        hasLibCxx = view.find("libc++.so.1") != std::string_view::npos;
+    }
     if (hasStdCxx && !hasLibCxx)
         return ToolchainCxxRuntime::LibStdCxx;
     if (hasLibCxx && !hasStdCxx)

@@ -557,6 +557,27 @@ static std::vector<uint8_t> appImagePayloadBytes(const std::vector<uint8_t> &app
     return std::vector<uint8_t>(payload, appImage.end());
 }
 
+/**
+ * @brief Locate the first byte of the gzip payload appended to a Viper AppImage.
+ *
+ * The runtime stub is plain shell text followed by kLinuxRuntimePayloadMarker
+ * and then the gzip-compressed tar payload. Returning appImage.size() signals
+ * that the marker is absent.
+ *
+ * @param appImage Complete AppImage byte stream.
+ * @return Offset of the payload, or appImage.size() when no payload marker exists.
+ */
+static size_t appImagePayloadOffset(const std::vector<uint8_t> &appImage) {
+    const std::string marker = std::string(kLinuxRuntimePayloadMarker) + "\n";
+    const auto it = std::search(appImage.begin(),
+                                appImage.end(),
+                                reinterpret_cast<const uint8_t *>(marker.data()),
+                                reinterpret_cast<const uint8_t *>(marker.data()) + marker.size());
+    if (it == appImage.end())
+        return appImage.size();
+    return static_cast<size_t>(std::distance(appImage.begin(), it)) + marker.size();
+}
+
 static std::filesystem::path createMockToolchainStage(const std::filesystem::path &tmpRoot) {
     namespace fs = std::filesystem;
     const fs::path stage = tmpRoot / "stage";
@@ -4290,11 +4311,32 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
 
     std::string err;
     EXPECT_TRUE(verifyLinuxAppImage(appImage, &err));
+    const std::string hashField = "payload_sha256='";
+    EXPECT_TRUE(std::search(appImage.begin(),
+                            appImage.end(),
+                            reinterpret_cast<const uint8_t *>(hashField.data()),
+                            reinterpret_cast<const uint8_t *>(hashField.data()) + hashField.size())
+                != appImage.end());
     const auto payload = appImagePayloadBytes(appImage);
     ASSERT_TRUE(payload.size() >= 2);
     EXPECT_EQ(payload[0], static_cast<uint8_t>(0x1F));
     EXPECT_EQ(payload[1], static_cast<uint8_t>(0x8B));
-    EXPECT_THROWS((buildLinuxRuntimeStub({"../bad", "AppRun"})), std::runtime_error);
+    auto tamperedAppImage = appImage;
+    const size_t payloadOffset = appImagePayloadOffset(tamperedAppImage);
+    ASSERT_LT(payloadOffset, tamperedAppImage.size());
+    tamperedAppImage[payloadOffset] ^= static_cast<uint8_t>(0x01);
+    err.clear();
+    EXPECT_FALSE(verifyLinuxAppImage(tamperedAppImage, &err));
+    EXPECT_CONTAINS(err, "payload SHA-256 mismatch");
+    LinuxRuntimeStubParams invalidNameParams;
+    invalidNameParams.cacheName = "../bad";
+    invalidNameParams.entryPath = "AppRun";
+    EXPECT_THROWS(buildLinuxRuntimeStub(invalidNameParams), std::runtime_error);
+    LinuxRuntimeStubParams invalidHashParams;
+    invalidHashParams.cacheName = "viper-test-linux-x64";
+    invalidHashParams.entryPath = "AppRun";
+    invalidHashParams.payloadSha256 = "not-a-sha256";
+    EXPECT_THROWS(buildLinuxRuntimeStub(invalidHashParams), std::runtime_error);
 }
 
 TEST(ToolchainLinuxPackageBuilder, BuildsAppImageFromManifest) {

@@ -37,6 +37,7 @@
 #include "rt_platform.h"
 #include "rt_string.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -780,7 +781,13 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     pfd.fd = w->inotify_fd;
     pfd.events = POLLIN;
     int timeout = watcher_timeout_to_int(ms);
-    if (poll(&pfd, 1, timeout) > 0 && (pfd.revents & POLLIN)) {
+    int poll_rc = 0;
+    do {
+        poll_rc = poll(&pfd, 1, timeout);
+    } while (poll_rc < 0 && errno == EINTR);
+    if (poll_rc > 0 && (pfd.revents & POLLNVAL)) {
+        w->is_watching = 0;
+    } else if (poll_rc > 0 && (pfd.revents & POLLIN)) {
         watcher_read_inotify_events(w);
     }
 #elif RT_PLATFORM_MACOS

@@ -49,11 +49,14 @@ typedef struct {
     pthread_t thread;            ///< Audio thread
     int thread_started;          ///< pthread_create succeeded
     int16_t *mix_buffer;         ///< Preallocated audio thread mixing buffer
-    volatile int running;        ///< Thread running flag
-    volatile int paused;         ///< Pause state
+    int running;                 ///< Thread running flag accessed with GCC atomics.
+    int paused;                  ///< Pause state accessed with GCC atomics.
+    pthread_mutex_t pcm_mutex;   ///< Serializes ALSA PCM handle operations.
     pthread_mutex_t pause_mutex; ///< Protects pause state
     pthread_cond_t pause_cond;   ///< Signal for pause/resume
 } vaud_linux_data;
+
+static pthread_mutex_t g_alsa_error_handler_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void alsa_silent_error_handler(
     const char *file, int line, const char *function, int err, const char *fmt, ...) {
@@ -70,6 +73,7 @@ static int alsa_verbose_errors_enabled(void) {
 }
 
 static void alsa_begin_quiet_probe(void) {
+    pthread_mutex_lock(&g_alsa_error_handler_mutex);
     if (!alsa_verbose_errors_enabled())
         snd_lib_error_set_handler(alsa_silent_error_handler);
 }
@@ -77,6 +81,24 @@ static void alsa_begin_quiet_probe(void) {
 static void alsa_end_quiet_probe(void) {
     if (!alsa_verbose_errors_enabled())
         snd_lib_error_set_handler(NULL);
+    pthread_mutex_unlock(&g_alsa_error_handler_mutex);
+}
+
+/// @brief Lock the ALSA PCM handle for one backend operation group.
+/// @details ALSA PCM handles are shared between the audio thread and public
+///          pause/resume/shutdown calls. This mutex keeps prepare, recover,
+///          pause, drop, and write calls from racing each other.
+/// @param plat Linux audio platform state.
+static void alsa_pcm_lock(vaud_linux_data *plat) {
+    if (plat)
+        pthread_mutex_lock(&plat->pcm_mutex);
+}
+
+/// @brief Unlock a PCM operation group previously locked by alsa_pcm_lock().
+/// @param plat Linux audio platform state.
+static void alsa_pcm_unlock(vaud_linux_data *plat) {
+    if (plat)
+        pthread_mutex_unlock(&plat->pcm_mutex);
 }
 
 /// @brief Apply explicit ALSA hardware and software parameters for ViperAUD output.
@@ -174,9 +196,11 @@ static int alsa_write_all(vaud_context_t ctx,
         const int16_t *cursor = buffer + ((size_t)written_total * VAUD_CHANNELS);
         snd_pcm_uframes_t remaining = frames - written_total;
         vaud_stats_add(&ctx->stats.backend_write_calls, 1);
+        alsa_pcm_lock(plat);
         snd_pcm_sframes_t written = snd_pcm_writei(plat->pcm, cursor, remaining);
 
         if (written > 0) {
+            alsa_pcm_unlock(plat);
             if ((snd_pcm_uframes_t)written < remaining)
                 vaud_stats_add(&ctx->stats.backend_partial_writes, 1);
             written_total += (snd_pcm_uframes_t)written;
@@ -184,6 +208,7 @@ static int alsa_write_all(vaud_context_t ctx,
         }
 
         if (written == 0) {
+            alsa_pcm_unlock(plat);
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             return 0;
         }
@@ -191,13 +216,19 @@ static int alsa_write_all(vaud_context_t ctx,
         if (written == -EAGAIN) {
             vaud_stats_add(&ctx->stats.backend_waits, 1);
             int wait_rc = snd_pcm_wait(plat->pcm, 100);
-            if (wait_rc < 0 && !alsa_recover_write_error(ctx, plat, wait_rc))
+            if (wait_rc < 0 && !alsa_recover_write_error(ctx, plat, wait_rc)) {
+                alsa_pcm_unlock(plat);
                 return 0;
+            }
+            alsa_pcm_unlock(plat);
             continue;
         }
 
-        if (!alsa_recover_write_error(ctx, plat, (int)written))
+        if (!alsa_recover_write_error(ctx, plat, (int)written)) {
+            alsa_pcm_unlock(plat);
             return 0;
+        }
+        alsa_pcm_unlock(plat);
     }
 
     return written_total == frames;
@@ -237,7 +268,9 @@ static void *audio_thread_func(void *arg) {
         if (!alsa_write_all(ctx, plat, buffer, VAUD_BUFFER_FRAMES)) {
             if (!__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE))
                 break;
+            alsa_pcm_lock(plat);
             (void)snd_pcm_prepare(plat->pcm);
+            alsa_pcm_unlock(plat);
             struct timespec ts;
             ts.tv_sec = 0;
             ts.tv_nsec = 1000000L;
@@ -283,6 +316,15 @@ int vaud_platform_init(vaud_context_t ctx) {
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to initialize ALSA pause condition");
         return 0;
     }
+    err = pthread_mutex_init(&plat->pcm_mutex, NULL);
+    if (err != 0) {
+        pthread_cond_destroy(&plat->pause_cond);
+        pthread_mutex_destroy(&plat->pause_mutex);
+        free(plat);
+        ctx->platform_data = NULL;
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to initialize ALSA PCM mutex");
+        return 0;
+    }
 
     /* Open the default PCM device.  Keep startup probes quiet and nonblocking
      * so optional demo audio cannot flood stderr or stall window startup when
@@ -293,6 +335,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     if (err < 0) {
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
+        pthread_mutex_destroy(&plat->pcm_mutex);
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to open ALSA device");
@@ -308,6 +351,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
+        pthread_mutex_destroy(&plat->pcm_mutex);
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to configure ALSA device");
@@ -319,6 +363,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
+        pthread_mutex_destroy(&plat->pcm_mutex);
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to configure ALSA nonblocking mode");
@@ -330,6 +375,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
+        pthread_mutex_destroy(&plat->pcm_mutex);
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate ALSA mix buffer");
@@ -345,6 +391,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
+        pthread_mutex_destroy(&plat->pcm_mutex);
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to create audio thread");
@@ -369,18 +416,24 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
     pthread_mutex_unlock(&plat->pause_mutex);
 
     /* Abort any blocking snd_pcm_writei() so shutdown cannot hang behind ALSA. */
+    alsa_pcm_lock(plat);
     snd_pcm_drop(plat->pcm);
+    alsa_pcm_unlock(plat);
 
     /* Wait for thread to finish */
     if (plat->thread_started)
         pthread_join(plat->thread, NULL);
 
     /* Close ALSA device */
+    alsa_pcm_lock(plat);
     snd_pcm_close(plat->pcm);
+    plat->pcm = NULL;
+    alsa_pcm_unlock(plat);
 
     /* Clean up synchronization */
-    pthread_mutex_destroy(&plat->pause_mutex);
     pthread_cond_destroy(&plat->pause_cond);
+    pthread_mutex_destroy(&plat->pause_mutex);
+    pthread_mutex_destroy(&plat->pcm_mutex);
 
     free(plat->mix_buffer);
     free(plat);
@@ -397,6 +450,7 @@ void vaud_platform_pause(vaud_context_t ctx) {
     __atomic_store_n(&plat->paused, 1, __ATOMIC_RELEASE);
     pthread_mutex_unlock(&plat->pause_mutex);
 
+    alsa_pcm_lock(plat);
     int rc = snd_pcm_pause(plat->pcm, 1);
     if (rc < 0) {
         if (rc == -ENOSYS) {
@@ -408,6 +462,7 @@ void vaud_platform_pause(vaud_context_t ctx) {
             snd_pcm_prepare(plat->pcm);
         }
     }
+    alsa_pcm_unlock(plat);
 }
 
 void vaud_platform_resume(vaud_context_t ctx) {
@@ -417,6 +472,7 @@ void vaud_platform_resume(vaud_context_t ctx) {
     vaud_linux_data *plat = (vaud_linux_data *)ctx->platform_data;
 
     /* Resume ALSA playback */
+    alsa_pcm_lock(plat);
     int rc = snd_pcm_pause(plat->pcm, 0);
     if (rc < 0) {
         if (rc == -ENOSYS) {
@@ -426,6 +482,7 @@ void vaud_platform_resume(vaud_context_t ctx) {
             snd_pcm_prepare(plat->pcm);
         }
     }
+    alsa_pcm_unlock(plat);
 
     pthread_mutex_lock(&plat->pause_mutex);
     __atomic_store_n(&plat->paused, 0, __ATOMIC_RELEASE);
@@ -439,7 +496,8 @@ void vaud_platform_resume(vaud_context_t ctx) {
 
 int64_t vaud_platform_now_ms(void) {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 0;
     return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
 

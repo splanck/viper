@@ -38,6 +38,7 @@
 #include "rt_path.h"
 #include "rt_platform.h"
 #include "rt_string.h"
+#include "network/rt_entropy_platform.h"
 
 #include "rt_trap.h"
 
@@ -95,55 +96,10 @@ static const char *tempfile_require_fragment(rt_string fragment, const char *wha
 static int generate_unique_id(char *buffer, size_t size) {
     uint64_t rnd = 0;
 
-#ifdef _WIN32
-    /* Use CryptGenRandom for unpredictable IDs */
-    HCRYPTPROV hProv;
-    if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        int ok = CryptGenRandom(hProv, sizeof(rnd), (BYTE *)&rnd) != 0;
-        CryptReleaseContext(hProv, 0);
-        if (!ok) {
-            rt_trap("TempFile: failed to obtain secure randomness");
-            return 0;
-        }
-    } else {
+    if (rt_entropy_platform_random_u64(&rnd) != 0) {
         rt_trap("TempFile: failed to obtain secure randomness");
         return 0;
     }
-#else
-    /* Read from /dev/urandom for unpredictable IDs */
-    int flags = O_RDONLY;
-#ifdef O_CLOEXEC
-    flags |= O_CLOEXEC;
-#endif
-    int fd = open("/dev/urandom", flags);
-    if (fd >= 0) {
-#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
-        int fd_flags = fcntl(fd, F_GETFD);
-        if (fd_flags >= 0)
-            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
-#endif
-        size_t got = 0;
-        while (got < sizeof(rnd)) {
-            ssize_t n = read(fd, ((unsigned char *)&rnd) + got, sizeof(rnd) - got);
-            if (n < 0) {
-                if (errno == EINTR)
-                    continue;
-                break;
-            }
-            if (n == 0)
-                break;
-            got += (size_t)n;
-        }
-        close(fd);
-        if (got != sizeof(rnd)) {
-            rt_trap("TempFile: failed to obtain secure randomness");
-            return 0;
-        }
-    } else {
-        rt_trap("TempFile: failed to obtain secure randomness");
-        return 0;
-    }
-#endif
 
     snprintf(buffer, size, "%016llx", (unsigned long long)rnd);
     return 1;

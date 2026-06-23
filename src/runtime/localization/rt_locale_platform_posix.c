@@ -94,7 +94,7 @@ int rt_locale_platform_detect_system(char *out, size_t cap) {
     // which override LANG. We poll LC_ALL and LC_MESSAGES specifically because
     // message / display locale is what users generally mean by "the system
     // locale"; LC_NUMERIC or LC_COLLATE could legitimately differ.
-    static const char *const kVars[] = {"LC_ALL", "LANG", "LC_MESSAGES", NULL};
+    static const char *const kVars[] = {"LC_ALL", "LC_MESSAGES", "LANG", NULL};
     for (size_t i = 0; kVars[i]; ++i) {
         const char *val = getenv(kVars[i]);
         if (is_c_or_posix(val))

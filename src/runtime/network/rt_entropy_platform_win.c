@@ -60,3 +60,14 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
     }
     return 0;
 }
+
+/// @brief Fill a 64-bit scalar from the Windows entropy adapter.
+/// @details Delegates to BCrypt-backed rt_entropy_platform_random_bytes() so
+///          all runtime secure-random callers share one failure policy.
+/// @param out Receives the random scalar on success.
+/// @return 0 on success, -1 on invalid arguments or entropy failure.
+int rt_entropy_platform_random_u64(uint64_t *out) {
+    if (!out)
+        return -1;
+    return rt_entropy_platform_random_bytes((uint8_t *)out, sizeof(*out));
+}

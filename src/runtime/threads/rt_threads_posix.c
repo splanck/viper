@@ -71,6 +71,7 @@ typedef struct RtThread {
     pthread_t pthread;          ///< OS thread handle.
     int finished;               ///< 1 when thread has completed.
     int joined;                 ///< Reserved for ABI/debug compatibility; joins are repeatable.
+    int detached;               ///< 1 once pthread_detach has succeeded for the native handle.
     int64_t id;                 ///< Unique thread identifier.
     RtContext *inherited_ctx;   ///< Parent's runtime context.
     rt_thread_entry_fn entry;   ///< User's entry function.
@@ -274,8 +275,11 @@ static void *rt_thread_trampoline(void *p) {
         pthread_mutex_lock(&t->mu);
         t->finished = 1;
         pthread_cond_broadcast(&t->cv);
+        if (!t->detached) {
+            (void)pthread_detach(pthread_self());
+            t->detached = 1;
+        }
         pthread_mutex_unlock(&t->mu);
-
         if (rt_obj_release_check0(t))
             rt_obj_free(t);
     }
@@ -372,6 +376,7 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
 
     t->finished = 0;
     t->joined = 0;
+    t->detached = 0;
     t->magic = RT_THREAD_MAGIC;
     t->id = next_thread_id();
     t->inherited_ctx = ctx;
@@ -395,8 +400,15 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
         return NULL;
     }
 
-    // Detach so OS resources are reclaimed even if the thread is never joined.
-    (void)pthread_detach(t->pthread);
+    // Detach so OS resources are reclaimed even if the thread is never joined. If the initial
+    // detach fails, the worker retries by detaching itself immediately before it exits.
+    {
+        const int detach_rc = pthread_detach(t->pthread);
+        pthread_mutex_lock(&t->mu);
+        if (detach_rc == 0)
+            t->detached = 1;
+        pthread_mutex_unlock(&t->mu);
+    }
     return t;
 }
 
@@ -602,6 +614,12 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         if (rc == ETIMEDOUT && !t->finished) {
             pthread_mutex_unlock(&t->mu);
             thread_release_object(thread);
+            return 0;
+        }
+        if (rc != 0 && rc != ETIMEDOUT) {
+            pthread_mutex_unlock(&t->mu);
+            thread_release_object(thread);
+            rt_trap("Thread.JoinFor: condition wait failed");
             return 0;
         }
     }

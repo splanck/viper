@@ -125,6 +125,8 @@ bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out) {
     int bytes_available = 0;
     if (ioctl(sock, FIONREAD, &bytes_available) != 0)
         return false;
+    if (bytes_available < 0)
+        return false;
     *bytes_out = (int64_t)bytes_available;
     return true;
 #endif
@@ -134,13 +136,13 @@ bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out) {
 /// @param sock Socket descriptor to configure.
 /// @param timeout_ms Timeout in milliseconds; negative values are treated as zero.
 /// @param is_recv true selects SO_RCVTIMEO, false selects SO_SNDTIMEO.
-void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
+bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
     if (timeout_ms < 0)
         timeout_ms = 0;
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv));
+    return setsockopt(sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv)) == 0;
 }
 
 /// @brief Wait for a POSIX socket to become readable or writable.
@@ -162,6 +164,12 @@ int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
     do {
         result = poll(&pfd, 1, timeout_ms);
     } while (result < 0 && errno == EINTR);
+    if (result > 0 && (pfd.revents & POLLNVAL)) {
+        errno = EBADF;
+        return -1;
+    }
+    if (result > 0 && (pfd.revents & (POLLERR | POLLHUP)) && !(pfd.revents & (POLLIN | POLLOUT)))
+        return -1;
     return result;
 #else
     fd_set fds;

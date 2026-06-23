@@ -67,6 +67,7 @@ if (APPLE)
 elseif (UNIX)
     # Check for ALSA on Linux
     find_package(ALSA QUIET)
+    find_package(Threads REQUIRED)
     if (NOT ALSA_FOUND)
         set(VIPERAUD_UNAVAILABLE_REASON
                 "ALSA not found; install libasound2-dev/alsa-lib-devel or set VIPER_AUDIO_MODE=OFF"
@@ -82,7 +83,7 @@ elseif (UNIX)
     endif ()
     message(STATUS "ViperAUD: Building for Linux (ALSA backend)")
     set(VAUD_PLATFORM_SOURCES src/vaud_platform_linux.c)
-    set(VAUD_PLATFORM_LIBS ${ALSA_LIBRARIES})
+    set(VAUD_PLATFORM_LIBS ${ALSA_LIBRARIES} Threads::Threads)
     set(VIPERAUD_BACKEND "ALSA" CACHE INTERNAL "Selected ViperAUD backend" FORCE)
     include_directories(${ALSA_INCLUDE_DIRS})
 elseif (WIN32)

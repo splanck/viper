@@ -116,6 +116,7 @@ src/runtime/network/rt_websocket.c 8
 src/runtime/network/rt_ws_server.c 8
 src/runtime/network/rt_wss_server.c 9
 src/runtime/oop/rt_type_registry.c 7
+src/runtime/rt_platform_feature.h 2
 src/runtime/system/rt_exec.c 6
 src/runtime/system/rt_machine.c 31
 src/runtime/system/rt_process.c 7

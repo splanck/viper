@@ -171,7 +171,8 @@ bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out);
 /// @param sock Socket handle to configure.
 /// @param timeout_ms Timeout in milliseconds.
 /// @param is_recv True for SO_RCVTIMEO, false for SO_SNDTIMEO.
-void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv);
+/// @return true when the native socket option was applied, false on failure.
+bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv);
 
 /// @brief Wait for socket readability or writability.
 /// @details Uses poll() on POSIX platforms where available and select()

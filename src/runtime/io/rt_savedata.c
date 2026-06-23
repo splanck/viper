@@ -34,6 +34,7 @@
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "network/rt_entropy_platform.h"
 
 #ifdef _WIN32
 #ifndef _CRT_RAND_S
@@ -711,33 +712,7 @@ static int savedata_sync_parent_dir(const char *path) {
 /// @param out Receives the random value on success.
 /// @return 1 on success, 0 on entropy failure.
 static int savedata_random_u64(uint64_t *out) {
-    uint64_t value = 0;
-    int flags = O_RDONLY;
-#ifdef O_CLOEXEC
-    flags |= O_CLOEXEC;
-#endif
-    int fd = open("/dev/urandom", flags);
-    if (fd < 0)
-        return 0;
-#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
-    int fd_flags = fcntl(fd, F_GETFD);
-    if (fd_flags >= 0)
-        (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
-#endif
-    size_t got = 0;
-    while (got < sizeof(value)) {
-        ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
-        if (n < 0 && errno == EINTR)
-            continue;
-        if (n <= 0)
-            break;
-        got += (size_t)n;
-    }
-    close(fd);
-    if (got != sizeof(value))
-        return 0;
-    *out = value;
-    return 1;
+    return rt_entropy_platform_random_u64(out) == 0;
 }
 
 /// @brief Get the size of an open file in bytes using `fseeko`/`ftello` (POSIX).

@@ -30,6 +30,8 @@
 #endif
 #include <unistd.h>
 
+#define RT_ENTROPY_GETRANDOM_CHUNK ((size_t)256u * 1024u)
+
 #if RT_PLATFORM_MACOS
 /// @brief Darwin libc CSPRNG entry point.
 /// @details Declared locally because older SDK feature sets do not always
@@ -56,7 +58,10 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
 #elif RT_PLATFORM_LINUX
     size_t got = 0;
     while (got < len) {
-        ssize_t n = getrandom(buf + got, len - got, 0);
+        size_t request = len - got;
+        if (request > RT_ENTROPY_GETRANDOM_CHUNK)
+            request = RT_ENTROPY_GETRANDOM_CHUNK;
+        ssize_t n = getrandom(buf + got, request, 0);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
@@ -97,4 +102,17 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
     }
     close(fd);
     return 0;
+}
+
+/// @brief Fill a 64-bit scalar from the POSIX entropy adapter.
+/// @details Keeps temporary-file and atomic-save helpers from opening
+///          /dev/urandom directly. The byte-level adapter owns Linux
+///          getrandom(), macOS arc4random_buf(), and /dev/urandom fallback
+///          policy.
+/// @param out Receives the random scalar on success.
+/// @return 0 on success, -1 on invalid arguments or entropy failure.
+int rt_entropy_platform_random_u64(uint64_t *out) {
+    if (!out)
+        return -1;
+    return rt_entropy_platform_random_bytes((uint8_t *)out, sizeof(*out));
 }

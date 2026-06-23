@@ -34,6 +34,7 @@ constexpr const char *kLinuxRuntimePayloadMarker = "__VIPER_APPIMAGE_PAYLOAD_BEL
 struct LinuxRuntimeStubParams {
     std::string cacheName; ///< Stable cache directory name, e.g. "viper-1.2.3-x64".
     std::string entryPath; ///< Payload-relative executable path, e.g. "bin/viper".
+    std::string payloadSha256; ///< Optional 64-char SHA-256 digest for the appended tar.gz payload.
 };
 
 /// Build the self-extracting Linux runtime stub bytes.

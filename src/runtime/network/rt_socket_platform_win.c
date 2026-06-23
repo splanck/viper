@@ -152,12 +152,12 @@ bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out) {
 /// @param sock Socket handle to configure.
 /// @param timeout_ms Timeout in milliseconds; negative values are treated as zero.
 /// @param is_recv true selects SO_RCVTIMEO, false selects SO_SNDTIMEO.
-void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
+bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
     if (timeout_ms < 0)
         timeout_ms = 0;
     DWORD tv = (DWORD)timeout_ms;
-    setsockopt(
-        sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+    return setsockopt(
+               sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv)) == 0;
 }
 
 /// @brief Wait for a WinSock socket to become readable or writable.

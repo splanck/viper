@@ -38,6 +38,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "network/rt_entropy_platform.h"
 
 #include "rt_platform.h"
 
@@ -109,38 +110,10 @@ static void rt_fileext_save_trap_error(
 
 static uint64_t rt_fileext_random_u64(unsigned attempt) {
     uint64_t value = 0;
-#if RT_PLATFORM_WINDOWS
-    LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
-    value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
-            (uint64_t)counter.QuadPart ^ ((uint64_t)attempt << 48);
-    unsigned int rand_value = 0;
-    if (rand_s(&rand_value) == 0)
-        value ^= ((uint64_t)rand_value << 32) | rand_value;
-#else
-    int flags = O_RDONLY;
-#ifdef O_CLOEXEC
-    flags |= O_CLOEXEC;
-#endif
-    int fd = open("/dev/urandom", flags);
-    if (fd >= 0) {
-#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
-        int fd_flags = fcntl(fd, F_GETFD);
-        if (fd_flags >= 0)
-            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
-#endif
-        size_t got = 0;
-        while (got < sizeof(value)) {
-            ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
-            if (n < 0 && errno == EINTR)
-                continue;
-            if (n <= 0)
-                break;
-            got += (size_t)n;
-        }
-        close(fd);
-    }
-#endif
+    if (rt_entropy_platform_random_u64(&value) != 0)
+        value = (uint64_t)attempt << 48;
+    else
+        value ^= (uint64_t)attempt << 48;
     return value;
 }
 
