@@ -27,6 +27,7 @@
 //        lib/gui/src/font/vg_canvas_integration.c
 //
 //===----------------------------------------------------------------------===//
+#include "../../../../runtime/rt_platform.h"
 #include "vg_ttf_internal.h"
 #include <limits.h>
 #include <math.h>
@@ -95,6 +96,43 @@ static int vg_font_metric_to_int(double value) {
     if (value < (double)INT_MIN)
         return INT_MIN;
     return (int)value;
+}
+
+/// @brief Open a font file path using the platform's Unicode-aware API.
+/// @details POSIX platforms pass UTF-8 paths directly to fopen.  Windows uses
+///          `_wfopen` after converting the UTF-8 path and mode to UTF-16 so
+///          fonts outside the process ANSI code page can be loaded.
+/// @param path UTF-8 path to open.
+/// @param mode Standard fopen mode string.
+/// @return Open FILE handle, or NULL on conversion/open failure.
+static FILE *vg_font_fopen_utf8(const char *path, const char *mode) {
+#if RT_PLATFORM_WINDOWS
+    if (!path || !mode)
+        return NULL;
+    int path_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    int mode_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, NULL, 0);
+    if (path_len <= 0 || mode_len <= 0)
+        return NULL;
+    wchar_t *wide_path = (wchar_t *)malloc((size_t)path_len * sizeof(wchar_t));
+    wchar_t *wide_mode = (wchar_t *)malloc((size_t)mode_len * sizeof(wchar_t));
+    if (!wide_path || !wide_mode) {
+        free(wide_path);
+        free(wide_mode);
+        return NULL;
+    }
+    FILE *file = NULL;
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide_path, path_len) ==
+            path_len &&
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, wide_mode, mode_len) ==
+            mode_len) {
+        file = _wfopen(wide_path, wide_mode);
+    }
+    free(wide_path);
+    free(wide_mode);
+    return file;
+#else
+    return fopen(path, mode);
+#endif
 }
 
 /// @brief Build a font around an owned TTF data buffer.
@@ -169,7 +207,7 @@ vg_font_t *vg_font_load_file(const char *path) {
     if (!path)
         return NULL;
 
-    FILE *f = fopen(path, "rb");
+    FILE *f = vg_font_fopen_utf8(path, "rb");
     if (!f)
         return NULL;
 
@@ -352,6 +390,32 @@ const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepo
 
     // Return cached version
     return vg_cache_get(font->cache, size, codepoint);
+}
+
+/// @brief Return the rounded horizontal advance for a codepoint without rasterizing it.
+/// @details Text measurement and cursor hit-testing only need glyph advance.  Reading
+///          the `hmtx` metrics directly avoids populating the raster glyph cache
+///          during query-only operations.
+/// @param font Font to query.
+/// @param size Font size in pixels.
+/// @param codepoint Unicode codepoint whose glyph advance should be measured.
+/// @return Pixel advance, rounded to match `vg_rasterize_glyph` behavior.
+static float vg_font_get_codepoint_advance(vg_font_t *font, float size, uint32_t codepoint) {
+    if (!font || !vg_font_valid_size(size) || font->head.units_per_em == 0)
+        return 0.0f;
+    uint16_t glyph_id = ttf_get_glyph_index(font, codepoint);
+    int advance_width = 0;
+    int left_side_bearing = 0;
+    ttf_get_h_metrics(font, glyph_id, &advance_width, &left_side_bearing);
+    (void)left_side_bearing;
+    double scaled = (double)advance_width * (double)size / (double)font->head.units_per_em;
+    if (!isfinite(scaled))
+        return 0.0f;
+    if (scaled > (double)INT_MAX)
+        return (float)INT_MAX;
+    if (scaled < (double)INT_MIN)
+        return (float)INT_MIN;
+    return (float)(int)(scaled + (scaled >= 0.0 ? 0.5 : -0.5));
 }
 
 //=============================================================================
@@ -555,12 +619,8 @@ void vg_font_measure_text(vg_font_t *font,
             x += vg_font_get_kerning(font, size, prev_cp, cp);
         }
 
-        // Get glyph
-        const vg_glyph_t *glyph = vg_font_get_glyph(font, size, cp);
-        if (glyph) {
-            x += glyph->advance;
-            metrics->glyph_count++;
-        }
+        x += vg_font_get_codepoint_advance(font, size, cp);
+        metrics->glyph_count++;
 
         prev_cp = cp;
     }
@@ -602,15 +662,12 @@ int vg_font_hit_test(vg_font_t *font, float size, const char *text, float target
             x += vg_font_get_kerning(font, size, prev_cp, cp);
         }
 
-        // Get glyph
-        const vg_glyph_t *glyph = vg_font_get_glyph(font, size, cp);
-        if (glyph) {
-            float glyph_center = x + glyph->advance * 0.5f;
-            if (target_x < glyph_center) {
-                return index;
-            }
-            x += glyph->advance;
+        float advance = vg_font_get_codepoint_advance(font, size, cp);
+        float glyph_center = x + advance * 0.5f;
+        if (target_x < glyph_center) {
+            return index;
         }
+        x += advance;
 
         prev_cp = cp;
         index++;
@@ -649,11 +706,7 @@ float vg_font_get_cursor_x(vg_font_t *font, float size, const char *text, int ta
             x += vg_font_get_kerning(font, size, prev_cp, cp);
         }
 
-        // Get glyph
-        const vg_glyph_t *glyph = vg_font_get_glyph(font, size, cp);
-        if (glyph) {
-            x += glyph->advance;
-        }
+        x += vg_font_get_codepoint_advance(font, size, cp);
 
         prev_cp = cp;
         index++;
@@ -693,6 +746,8 @@ void vg_font_draw_text(
     float cursor_x = x;
     uint32_t prev_cp = 0;
     const char *p = text;
+    vg_font_metrics_t fm;
+    vg_font_get_metrics(font, size, &fm);
 
     while (*p) {
         uint32_t cp = vg_utf8_decode(&p);
@@ -701,8 +756,6 @@ void vg_font_draw_text(
 
         // Handle newlines
         if (cp == '\n') {
-            vg_font_metrics_t fm;
-            vg_font_get_metrics(font, size, &fm);
             cursor_x = x;
             y += fm.line_height;
             prev_cp = 0;

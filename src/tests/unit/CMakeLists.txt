@@ -80,6 +80,12 @@ function(viper_add_unit_support_tests)
     viper_add_test(test_diag_catalog ${VIPER_TESTS_DIR}/unit/test_diag_catalog.cpp)
     target_link_libraries(test_diag_catalog PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
     viper_add_ctest(test_diag_catalog test_diag_catalog)
+
+    viper_add_test(test_basic_diag_coverage ${VIPER_TESTS_DIR}/unit/test_basic_diag_coverage.cpp)
+    target_link_libraries(test_basic_diag_coverage PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
+    target_compile_definitions(test_basic_diag_coverage PRIVATE
+            VIPER_BASIC_FRONTEND_DIR="${CMAKE_SOURCE_DIR}/src/frontends/basic")
+    viper_add_ctest(test_basic_diag_coverage test_basic_diag_coverage)
 endfunction()
 
 if (NOT TARGET test_basic_terminal_scan)

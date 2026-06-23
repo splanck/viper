@@ -210,6 +210,9 @@ _Thread_local static vaud_error_t g_last_error_code = VAUD_OK;
 #elif defined(_WIN32)
 __declspec(thread) static const char *g_last_error = NULL;
 __declspec(thread) static vaud_error_t g_last_error_code = VAUD_OK;
+#elif defined(__GNUC__) || defined(__clang__)
+__thread static const char *g_last_error = NULL;
+__thread static vaud_error_t g_last_error_code = VAUD_OK;
 #else
 static const char *g_last_error = NULL;
 static vaud_error_t g_last_error_code = VAUD_OK;
@@ -1626,21 +1629,34 @@ static void vaud_music_clear_stream_buffers(vaud_music_t music) {
     music->stream_loop_pending = 0;
 }
 
+/// @brief Wait until a music stream's control-thread refill has completed.
+/// @details Refill operations decode while the caller has temporarily released
+///          the context mutex.  Callers that need to detach, destroy, or mutate
+///          stream-owned resources must wait for `refill_in_progress` to clear.
+///          This helper deliberately polls with a short sleep instead of waiting
+///          indefinitely on the refill event; if an event signal is lost or the
+///          event object was never initialized, teardown can still make progress
+///          to the next state check and report a diagnostic instead of blocking
+///          forever inside the event primitive.
+/// @param ctx Context whose mutex protects @p music.
+/// @param music Music stream whose refill flag should become clear.
 static void vaud_music_wait_for_refill(vaud_context_t ctx, vaud_music_t music) {
     if (!ctx || !music)
         return;
 
+    int64_t wait_start = vaud_platform_now_ms();
+    int warned = 0;
     for (;;) {
         vaud_mutex_lock(&ctx->mutex);
         int done = !music->refill_in_progress;
-        int can_wait = music->refill_event_ready;
         vaud_mutex_unlock(&ctx->mutex);
         if (done)
             return;
-        if (can_wait)
-            vaud_event_wait(&music->refill_event);
-        else
-            vaud_control_sleep_1ms();
+        if (!warned && vaud_platform_now_ms() - wait_start >= 5000) {
+            vaud_set_error(VAUD_ERR_PLATFORM, "Timed out waiting for music refill completion");
+            warned = 1;
+        }
+        vaud_control_sleep_1ms();
     }
 }
 

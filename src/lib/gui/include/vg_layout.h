@@ -170,6 +170,10 @@ typedef struct vg_flex_layout {
     vg_align_t align_content;     ///< Alignment of wrapped lines along the cross axis.
     float gap;                    ///< Uniform gap between adjacent items (pixels).
     bool wrap;                    ///< If true, children wrap to new lines when space runs out.
+    void *scratch_children;       ///< Internal reusable child-pointer scratch buffer.
+    int scratch_child_capacity;   ///< Capacity of scratch_children in widget pointers.
+    void *scratch_lines;          ///< Internal reusable wrapped-line scratch buffer.
+    int scratch_line_capacity;    ///< Capacity of scratch_lines in line records.
 } vg_flex_layout_t;
 
 //=============================================================================

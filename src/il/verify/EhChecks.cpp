@@ -897,6 +897,16 @@ struct DomInfo {
 ///          indices, and iteratively computes immediate dominators using the
 ///          Cooper–Harvey–Kennedy algorithm. The result allows O(depth) dominance
 ///          queries by walking the idom chain.
+///
+///          This intentionally duplicates @ref il::analysis::computeDominatorTree
+///          rather than calling it. The verify layer is a *foundational* pass that
+///          runs on potentially-malformed IL and deliberately carries no dependency
+///          on @c il/analysis/ — which is a *consumer* of the verifier's output and
+///          assumes the very CFG invariants (single entry, well-formed terminators,
+///          mutable Function) the verifier has not yet established. Consolidating
+///          onto the analysis tree would invert that layering and force the validator
+///          to assume validity. Operating over @ref EhModel also keeps queries on
+///          @c const blocks. Keep this self-contained.
 /// @param model Exception-handling model describing the function under check.
 /// @return Dominator info with immediate dominator map for all reachable blocks.
 DomInfo computeDominators(const EhModel &model) {

@@ -2046,9 +2046,10 @@ char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog) {
 /// @brief Register the callback invoked when the user confirms a selection.
 ///
 /// @details The callback receives the dialog pointer, the selected_files[] array,
-///          the selection count, and user_data. It is fired inside confirm_selection
-///          before the dialog closes, so vg_filedialog_get_selected_path remains
-///          valid during the callback. Passing NULL removes the callback.
+///          the selection count, and user_data. The selected_files[] array and
+///          each path string are owned by the dialog and remain valid only until
+///          the next confirmation or dialog destruction; callbacks that retain
+///          paths must copy them. Passing NULL removes the callback.
 ///          user_data is shared with the on_cancel callback (both read from
 ///          dialog->user_data).
 ///

@@ -197,8 +197,8 @@ void vaud_resume_all(vaud_context_t ctx);
 /// @details Reads the entire file into memory and converts to internal format.
 ///          Supports 8/16/24/32-bit PCM and 32-bit float WAV files, mono or
 ///          stereo, any sample rate (will be resampled to VAUD_SAMPLE_RATE).
-///          WAV headers are validated for block alignment, byte rate, and
-///          complete PCM frames.
+///          WAV headers are validated for block alignment and complete PCM
+///          frames; non-critical byte-rate mismatches are tolerated.
 /// @param ctx Audio context.
 /// @param path Path to the WAV file.
 /// @return Sound handle on success, NULL on failure.
@@ -206,8 +206,8 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path);
 
 /// @brief Load a sound effect from memory.
 /// @details Parses WAV data from a memory buffer. Useful for embedded resources.
-///          WAV headers are validated for block alignment, byte rate, and
-///          complete PCM frames.
+///          WAV headers are validated for block alignment and complete PCM
+///          frames; non-critical byte-rate mismatches are tolerated.
 /// @param ctx Audio context.
 /// @param data Pointer to WAV file data.
 /// @param size Size of the data in bytes.

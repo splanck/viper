@@ -88,7 +88,7 @@ static void codeeditor_paint_pair_highlight_for_segment(vg_codeeditor_t *editor,
 
 static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed);
 static bool ensure_text_capacity(vg_code_line_t *line, size_t needed);
-static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text);
+static bool insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text);
 static void delete_text_range_internal(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col);
 static void codeeditor_adjust_hidden_cursors(vg_codeeditor_t *editor);
@@ -994,6 +994,12 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
 
     // Grow the colors buffer if needed
     if (line->colors_capacity < line->length) {
+        if (line->length > SIZE_MAX - 16u || line->length + 16u > SIZE_MAX / sizeof(uint32_t)) {
+            free(line->colors);
+            line->colors = NULL;
+            line->colors_capacity = 0;
+            return;
+        }
         size_t new_cap = line->length + 16;
         uint32_t *nc = (uint32_t *)realloc(line->colors, new_cap * sizeof(uint32_t));
         if (!nc) {
@@ -1257,6 +1263,92 @@ static int codeeditor_chars_per_row(const vg_codeeditor_t *editor, float content
     return chars > 0 ? chars : 1;
 }
 
+/// @brief Convert a layout content width to a stable cache key.
+/// @details Layout row counts only change when the effective pixel width crosses
+///          a character boundary.  Rounding the floating width to whole pixels
+///          avoids invalidating the prefix-row cache for insignificant float
+///          noise from parent layout calculations.
+/// @param content_width Available text content width in pixels.
+/// @return Rounded non-negative width key stored in the layout cache.
+static float codeeditor_layout_width_cache_key(float content_width) {
+    if (content_width <= 0.0f)
+        return 0.0f;
+    if (content_width >= (float)INT_MAX)
+        return (float)INT_MAX;
+    return (float)(int)(content_width + 0.5f);
+}
+
+/// @brief Decode a UTF-8 sequence whose byte span has already been validated.
+/// @param text Pointer to the first byte of the sequence.
+/// @param span Number of bytes in the sequence.
+/// @return Unicode scalar value, or U+FFFD for invalid spans.
+static uint32_t codeeditor_decode_span_codepoint(const char *text, size_t span) {
+    const unsigned char *s = (const unsigned char *)text;
+    if (!s || span == 0)
+        return 0xFFFDu;
+    if (span == 1)
+        return s[0];
+    if (span == 2)
+        return ((uint32_t)(s[0] & 0x1Fu) << 6) | (uint32_t)(s[1] & 0x3Fu);
+    if (span == 3)
+        return ((uint32_t)(s[0] & 0x0Fu) << 12) | ((uint32_t)(s[1] & 0x3Fu) << 6) |
+               (uint32_t)(s[2] & 0x3Fu);
+    if (span == 4)
+        return ((uint32_t)(s[0] & 0x07u) << 18) | ((uint32_t)(s[1] & 0x3Fu) << 12) |
+               ((uint32_t)(s[2] & 0x3Fu) << 6) | (uint32_t)(s[3] & 0x3Fu);
+    return 0xFFFDu;
+}
+
+/// @brief Return a conservative terminal-style display width for one codepoint.
+/// @details The editor still renders text with fixed pixel advances.  This
+///          helper is used only for wrap-row estimation so wide CJK/fullwidth
+///          codepoints and combining marks are not counted as raw UTF-8 bytes.
+/// @param cp Unicode scalar value.
+/// @return Display column width: 0 for combining marks, 2 for common wide ranges, otherwise 1.
+static int codeeditor_codepoint_display_width(uint32_t cp) {
+    if ((cp >= 0x0300u && cp <= 0x036Fu) || (cp >= 0x1AB0u && cp <= 0x1AFFu) ||
+        (cp >= 0x1DC0u && cp <= 0x1DFFu) || (cp >= 0x20D0u && cp <= 0x20FFu) ||
+        (cp >= 0xFE20u && cp <= 0xFE2Fu))
+        return 0;
+    if ((cp >= 0x1100u && cp <= 0x115Fu) || (cp >= 0x2329u && cp <= 0x232Au) ||
+        (cp >= 0x2E80u && cp <= 0xA4CFu) || (cp >= 0xAC00u && cp <= 0xD7A3u) ||
+        (cp >= 0xF900u && cp <= 0xFAFFu) || (cp >= 0xFE10u && cp <= 0xFE19u) ||
+        (cp >= 0xFE30u && cp <= 0xFE6Fu) || (cp >= 0xFF00u && cp <= 0xFF60u) ||
+        (cp >= 0xFFE0u && cp <= 0xFFE6u))
+        return 2;
+    return 1;
+}
+
+/// @brief Count approximate display columns for one editor line.
+/// @param line Line whose UTF-8 text should be measured.
+/// @return Display columns with tabs expanded to four-column stops.
+static size_t codeeditor_line_display_columns(const vg_code_line_t *line) {
+    if (!line || !line->text)
+        return 0;
+    size_t columns = 0;
+    for (size_t pos = 0; pos < line->length;) {
+        unsigned char ch = (unsigned char)line->text[pos];
+        if (ch == '\t') {
+            size_t add = 4u - (columns % 4u);
+            if (add > SIZE_MAX - columns)
+                return SIZE_MAX;
+            columns += add;
+            pos++;
+            continue;
+        }
+        size_t span = codeeditor_utf8_span(line->text + pos);
+        if (span == 0 || span > line->length - pos)
+            span = 1;
+        int width = codeeditor_codepoint_display_width(
+            codeeditor_decode_span_codepoint(line->text + pos, span));
+        if ((size_t)width > SIZE_MAX - columns)
+            return SIZE_MAX;
+        columns += (size_t)width;
+        pos += span;
+    }
+    return columns;
+}
+
 /// @brief Returns the number of wrapped rows needed to display @p line given @p content_width
 /// (minimum 1).
 static int codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *editor,
@@ -1267,10 +1359,10 @@ static int codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *editor,
     int chars_per_row = codeeditor_chars_per_row(editor, content_width);
     if (chars_per_row <= 0)
         return 1;
-    size_t len = editor->lines[line].length;
-    if (len == 0)
+    size_t columns = codeeditor_line_display_columns(&editor->lines[line]);
+    if (columns == 0)
         return 1;
-    size_t rows = (len + (size_t)chars_per_row - 1) / (size_t)chars_per_row;
+    size_t rows = (columns + (size_t)chars_per_row - 1) / (size_t)chars_per_row;
     return rows > (size_t)INT_MAX ? INT_MAX : (int)rows;
 }
 
@@ -1292,9 +1384,10 @@ static bool codeeditor_layout_cache_ensure(vg_codeeditor_t *editor, float conten
         return false;
 
     vg_codeeditor_t *mutable_editor = editor;
+    float width_key = codeeditor_layout_width_cache_key(content_width);
     if (mutable_editor->layout_cache_valid &&
         mutable_editor->layout_cache_generation == mutable_editor->layout_generation &&
-        mutable_editor->layout_cache_content_width == content_width &&
+        mutable_editor->layout_cache_content_width == width_key &&
         mutable_editor->layout_cache_word_wrap == mutable_editor->word_wrap &&
         mutable_editor->layout_cache_line_count == mutable_editor->line_count)
         return true;
@@ -1329,7 +1422,7 @@ static bool codeeditor_layout_cache_ensure(vg_codeeditor_t *editor, float conten
 
     mutable_editor->layout_cache_valid = true;
     mutable_editor->layout_cache_generation = mutable_editor->layout_generation;
-    mutable_editor->layout_cache_content_width = content_width;
+    mutable_editor->layout_cache_content_width = width_key;
     mutable_editor->layout_cache_word_wrap = mutable_editor->word_wrap;
     mutable_editor->layout_cache_line_count = mutable_editor->line_count;
     mutable_editor->layout_cache_total_visual_rows = total_rows;

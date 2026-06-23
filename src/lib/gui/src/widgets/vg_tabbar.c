@@ -360,8 +360,7 @@ static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
             tabbar->saved_tooltip_text = saved_tooltip;
             tabbar->hover_tooltip_active = true;
         }
-        if ((!tabbar->base.tooltip_text && hover_tooltip) ||
-            (tabbar->base.tooltip_text && strcmp(tabbar->base.tooltip_text, hover_tooltip) != 0)) {
+        if (!tabbar->base.tooltip_text || strcmp(tabbar->base.tooltip_text, hover_tooltip) != 0) {
             vg_widget_set_tooltip_text(&tabbar->base, hover_tooltip);
         }
         return;

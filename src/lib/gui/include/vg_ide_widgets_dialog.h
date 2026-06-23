@@ -357,7 +357,7 @@ typedef struct vg_filedialog {
     size_t filename_cursor_pos; ///< Byte offset cursor for inline save-name editing
 
     // Result
-    char **selected_files;      ///< Result: array of selected paths
+    char **selected_files;      ///< Dialog-owned result array of selected paths.
     size_t selected_file_count; ///< Number of selected files
 
     // Callbacks
@@ -455,7 +455,7 @@ char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog);
 
 /// @brief Set the callback fired when the user confirms a selection.
 /// @param dialog    File dialog.
-/// @param callback  Handler called with the dialog, path array, count, and user_data.
+/// @param callback  Handler called with the dialog-owned path array, count, and user_data.
 /// @param user_data User data passed to the handler.
 void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, char **, size_t, void *),

@@ -78,6 +78,21 @@ ZIA_DEMOS=(
     "chess-zia:${GAMES_DIR}/chess"
     "xenoscape:${GAMES_DIR}/xenoscape"
     "baseball:${GAMES_DIR}/baseball"
+    "centipede:${GAMES_DIR}/centipede"
+    "frogger:${GAMES_DIR}/frogger"
+    "vtris:${GAMES_DIR}/vtris"
+    "3dscene:${GAMES_DIR}/3dscene"
+    "asset_demo:${APPS_DIR}/asset_demo"
+)
+
+# BASIC demos build through the same `viper build` project path as Zia demos
+# (each has a viper.project), so they reuse build_demo unchanged. This is the
+# first native-build coverage for the BASIC frontend's larger programs.
+BASIC_DEMOS=(
+    "pacman-basic:${GAMES_DIR}/pacman-basic"
+    "chess-basic:${GAMES_DIR}/chess-basic"
+    "frogger-basic:${GAMES_DIR}/frogger-basic"
+    "centipede-basic:${GAMES_DIR}/centipede-basic"
 )
 
 snapshot_bin_dir() {
@@ -247,6 +262,26 @@ echo "=== Zia Demos ==="
 echo ""
 
 for demo in "${ZIA_DEMOS[@]}"; do
+    IFS=':' read -r name project_dir <<< "$demo"
+    if [[ ! -d "$project_dir" ]]; then
+        echo -e "Skipping $name (${YELLOW}directory not found${NC})"
+        SKIPPED=$((SKIPPED + 1))
+        echo ""
+        continue
+    fi
+    echo "Building $name..."
+    if build_demo "$name" "$project_dir"; then
+        SUCCEEDED=$((SUCCEEDED + 1))
+    else
+        FAILED=$((FAILED + 1))
+    fi
+    echo ""
+done
+
+echo "=== BASIC Demos ==="
+echo ""
+
+for demo in "${BASIC_DEMOS[@]}"; do
     IFS=':' read -r name project_dir <<< "$demo"
     if [[ ! -d "$project_dir" ]]; then
         echo -e "Skipping $name (${YELLOW}directory not found${NC})"

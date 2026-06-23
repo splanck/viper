@@ -3092,6 +3092,106 @@ TEST(InstallerStub, ARM64UsesNativeBootstrap) {
     EXPECT_EQ(readLE16(peBytes.data() + 0x84), static_cast<uint16_t>(0xAA64));
 }
 
+namespace {
+
+/// @brief Decode a standard base64 string into raw bytes ('=' padding tolerated).
+std::vector<uint8_t> decodeBase64Bytes(const std::string &in) {
+    auto value = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z')
+            return c - 'A';
+        if (c >= 'a' && c <= 'z')
+            return c - 'a' + 26;
+        if (c >= '0' && c <= '9')
+            return c - '0' + 52;
+        if (c == '+')
+            return 62;
+        if (c == '/')
+            return 63;
+        return -1;
+    };
+    std::vector<uint8_t> out;
+    int buffer = 0;
+    int bits = 0;
+    for (char c : in) {
+        if (c == '=')
+            break;
+        const int v = value(c);
+        if (v < 0)
+            continue;
+        buffer = (buffer << 6) | v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>((buffer >> bits) & 0xFF));
+        }
+    }
+    return out;
+}
+
+/// @brief Extract the ASCII characters from a UTF-16LE byte buffer (drops the
+///        zero high bytes; non-ASCII code units are skipped).
+std::string utf16LeToAscii(const std::vector<uint8_t> &data) {
+    std::string out;
+    for (size_t i = 0; i + 1 < data.size(); i += 2) {
+        if (data[i + 1] == 0 && data[i] != 0 && data[i] < 0x80)
+            out.push_back(static_cast<char>(data[i]));
+    }
+    return out;
+}
+
+} // namespace
+
+/// @brief The ARM64 installer is a PowerShell launcher; its -EncodedCommand must
+///        round-trip from base64+UTF-16LE back to a structurally valid PS script.
+///        Without this, a broken encoder ships a stub that fails only at runtime.
+TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.version = "1.0.0";
+    layout.publisher = "Viper";
+    layout.identifier = "org.viper.testapp";
+    layout.overlayFileOffset = 0x800;
+    layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0x800, 16});
+    const auto stub = buildInstallerStub(layout, "arm64");
+
+    // The stub embeds the launch command line as UTF-16LE; recover its ASCII view
+    // and pull the base64 token that follows -EncodedCommand.
+    const std::string ascii = utf16LeToAscii(stub.stubData);
+    const std::string marker = "-EncodedCommand ";
+    const size_t markerPos = ascii.find(marker);
+    ASSERT_TRUE(markerPos != std::string::npos);
+
+    size_t b = markerPos + marker.size();
+    std::string b64;
+    for (; b < ascii.size(); ++b) {
+        const char c = ascii[b];
+        const bool isB64 = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                           (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=';
+        if (!isB64)
+            break;
+        b64.push_back(c);
+    }
+    ASSERT_TRUE(b64.size() > 64); // a real script is far larger than any stray token
+
+    // base64 -> UTF-16LE -> PowerShell source.
+    const std::vector<uint8_t> utf16 = decodeBase64Bytes(b64);
+    ASSERT_TRUE(!utf16.empty());
+    EXPECT_TRUE(utf16.size() % 2 == 0); // well-formed UTF-16LE
+    const std::string script = utf16LeToAscii(utf16);
+
+    // The decoded script must carry the install scaffolding and overlay-read loop,
+    // proving the encoder produced a complete, uncorrupted program.
+    EXPECT_TRUE(script.find("$installLeaf=") != std::string::npos);
+    EXPECT_TRUE(script.find("$baseOffset=") != std::string::npos);
+    EXPECT_TRUE(script.find("$display=") != std::string::npos);
+    EXPECT_TRUE(script.find(".Read(") != std::string::npos);     // overlay byte reader
+    EXPECT_TRUE(script.find("testapp.exe") != std::string::npos); // payload file name
+    // The layout's identifier must survive into the script (registry/uninstall key).
+    EXPECT_TRUE(script.find("org.viper.testapp") != std::string::npos);
+}
+
 TEST(InstallerStub, AllowsZeroBytePayloadFile) {
     WindowsPackageLayout layout;
     layout.displayName = "TestApp";

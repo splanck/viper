@@ -24,6 +24,7 @@
 #include "vg_filedialog_platform.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <pwd.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -98,7 +99,8 @@ char *vg_filedialog_platform_join_path(const char *dir, const char *file) {
         return NULL;
     size_t dir_len = strlen(dir);
     size_t file_len = strlen(file);
-    size_t sep_len = dir_len > 0u && !vg_filedialog_platform_is_separator(dir[dir_len - 1]) ? 1u : 0u;
+    size_t sep_len =
+        dir_len > 0u && !vg_filedialog_platform_is_separator(dir[dir_len - 1]) ? 1u : 0u;
     if (dir_len > SIZE_MAX - sep_len || dir_len + sep_len > SIZE_MAX - file_len ||
         dir_len + sep_len + file_len > SIZE_MAX - 1u) {
         return NULL;
@@ -212,12 +214,15 @@ bool vg_filedialog_platform_list_directory(const char *path,
 
         char *full_path = vg_filedialog_platform_join_path(path, entry->d_name);
         if (!full_path)
-            continue;
+            goto fail;
 
         struct stat st;
-        if (stat(full_path, &st) != 0) {
+        if (lstat(full_path, &st) != 0) {
+            int saved_errno = errno;
             free(full_path);
-            continue;
+            if (saved_errno == ENOENT)
+                continue;
+            goto fail;
         }
 
         vg_filedialog_platform_entry_t out;
@@ -231,7 +236,7 @@ bool vg_filedialog_platform_list_directory(const char *path,
         if (!out.name || !vg_filedialog_platform_append_entry(&entries, &count, &capacity, out)) {
             free(out.name);
             free(out.full_path);
-            continue;
+            goto fail;
         }
     }
 
@@ -239,6 +244,11 @@ bool vg_filedialog_platform_list_directory(const char *path,
     *entries_out = entries;
     *count_out = count;
     return true;
+
+fail:
+    closedir(dir);
+    vg_filedialog_platform_free_entries(entries, count);
+    return false;
 }
 
 /// @brief Free an entry array returned by vg_filedialog_platform_list_directory().

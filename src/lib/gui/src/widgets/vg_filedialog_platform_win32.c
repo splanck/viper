@@ -9,7 +9,7 @@
 // Purpose: Win32 filesystem adapter for the GUI file-dialog widget.
 //
 // Key invariants:
-//   - Directory enumeration uses FindFirstFileA/FindNextFileA and closes each
+//   - Directory enumeration uses FindFirstFileW/FindNextFileW and closes each
 //     search handle before returning.
 //   - Hidden entries are identified via FILE_ATTRIBUTE_HIDDEN.
 //
@@ -33,7 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include <wchar.h>
 #include <windows.h>
 
 /// @brief Duplicate a C string using malloc-owned storage.
@@ -50,6 +50,47 @@ static char *vg_filedialog_platform_strdup(const char *text) {
         return NULL;
     memcpy(copy, text, len + 1u);
     return copy;
+}
+
+/// @brief Convert a UTF-8 path string to a heap-owned UTF-16 Windows string.
+/// @details The file dialog stores paths as UTF-8 internally.  Win32 filesystem
+///          APIs are called through their wide-character variants so non-ACP
+///          paths work reliably.  NULL input returns NULL.
+/// @param text UTF-8 string to convert.
+/// @return Wide string allocated with malloc, or NULL on conversion/allocation failure.
+static wchar_t *vg_filedialog_platform_utf8_to_wide(const char *text) {
+    if (!text)
+        return NULL;
+    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
+    if (needed <= 0)
+        return NULL;
+    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    if (!wide)
+        return NULL;
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide, needed) != needed) {
+        free(wide);
+        return NULL;
+    }
+    return wide;
+}
+
+/// @brief Convert a UTF-16 Windows string to a heap-owned UTF-8 string.
+/// @param text Wide string to convert.
+/// @return UTF-8 string allocated with malloc, or NULL on conversion/allocation failure.
+static char *vg_filedialog_platform_wide_to_utf8(const wchar_t *text) {
+    if (!text)
+        return NULL;
+    int needed = WideCharToMultiByte(CP_UTF8, 0, text, -1, NULL, 0, NULL, NULL);
+    if (needed <= 0)
+        return NULL;
+    char *utf8 = (char *)malloc((size_t)needed);
+    if (!utf8)
+        return NULL;
+    if (WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, needed, NULL, NULL) != needed) {
+        free(utf8);
+        return NULL;
+    }
+    return utf8;
 }
 
 /// @brief Append one entry to a growing directory-entry array.
@@ -82,7 +123,17 @@ static bool vg_filedialog_platform_append_entry(vg_filedialog_platform_entry_t *
 /// @brief Return the default Windows root used as the file dialog fallback.
 /// @return Static "C:\\" string; caller must not free it.
 const char *vg_filedialog_platform_root_path(void) {
-    return "C:\\";
+    static char root[] = "C:\\";
+    DWORD drives = GetLogicalDrives();
+    if (drives != 0) {
+        for (char drive = 'A'; drive <= 'Z'; drive++) {
+            if (drives & (1u << (drive - 'A'))) {
+                root[0] = drive;
+                break;
+            }
+        }
+    }
+    return root;
 }
 
 /// @brief Test whether a character is a Windows path separator.
@@ -101,7 +152,8 @@ char *vg_filedialog_platform_join_path(const char *dir, const char *file) {
         return NULL;
     size_t dir_len = strlen(dir);
     size_t file_len = strlen(file);
-    size_t sep_len = dir_len > 0u && !vg_filedialog_platform_is_separator(dir[dir_len - 1]) ? 1u : 0u;
+    size_t sep_len =
+        dir_len > 0u && !vg_filedialog_platform_is_separator(dir[dir_len - 1]) ? 1u : 0u;
     if (dir_len > SIZE_MAX - sep_len || dir_len + sep_len > SIZE_MAX - file_len ||
         dir_len + sep_len + file_len > SIZE_MAX - 1u) {
         return NULL;
@@ -189,22 +241,29 @@ char *vg_filedialog_platform_parent_dir(const char *path) {
 bool vg_filedialog_platform_is_absolute_path(const char *path) {
     if (!path || !*path)
         return false;
-    return (strlen(path) > 2u && isalpha((unsigned char)path[0]) && path[1] == ':') ||
-           path[0] == '\\' || path[0] == '/';
+    if (strlen(path) >= 3u && isalpha((unsigned char)path[0]) && path[1] == ':' &&
+        vg_filedialog_platform_is_separator(path[2]))
+        return true;
+    return vg_filedialog_platform_is_separator(path[0]) &&
+           vg_filedialog_platform_is_separator(path[1]);
 }
 
 /// @brief Test whether a path exists and is a directory.
 /// @param path Path string to stat.
-/// @return true when _stat() succeeds and reports a directory.
+/// @return true when GetFileAttributesW succeeds and reports a directory.
 bool vg_filedialog_platform_path_is_dir(const char *path) {
     if (!path)
         return false;
-    struct _stat st;
-    return _stat(path, &st) == 0 && ((st.st_mode & _S_IFMT) == _S_IFDIR);
+    wchar_t *wide = vg_filedialog_platform_utf8_to_wide(path);
+    if (!wide)
+        return false;
+    DWORD attrs = GetFileAttributesW(wide);
+    free(wide);
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
 
 /// @brief Enumerate a Windows directory into malloc-owned entry records.
-/// @details Uses FindFirstFileA/FindNextFileA, skips "." and "..", and returns
+/// @details Uses FindFirstFileW/FindNextFileW, skips "." and "..", and returns
 ///          entry strings owned by the caller.
 /// @param path Directory to enumerate.
 /// @param entries_out Receives the allocated entry array.
@@ -224,9 +283,14 @@ bool vg_filedialog_platform_list_directory(const char *path,
     if (!search_path)
         return false;
 
-    WIN32_FIND_DATAA find_data;
-    HANDLE find = FindFirstFileA(search_path, &find_data);
+    wchar_t *search_path_w = vg_filedialog_platform_utf8_to_wide(search_path);
     free(search_path);
+    if (!search_path_w)
+        return false;
+
+    WIN32_FIND_DATAW find_data;
+    HANDLE find = FindFirstFileW(search_path_w, &find_data);
+    free(search_path_w);
     if (find == INVALID_HANDLE_VALUE)
         return false;
 
@@ -235,13 +299,22 @@ bool vg_filedialog_platform_list_directory(const char *path,
     size_t capacity = 0u;
 
     do {
-        if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0)
+        if (wcscmp(find_data.cFileName, L".") == 0 || wcscmp(find_data.cFileName, L"..") == 0)
             continue;
+
+        char *name = vg_filedialog_platform_wide_to_utf8(find_data.cFileName);
+        if (!name)
+            goto fail;
+        char *full_path = vg_filedialog_platform_join_path(path, name);
+        if (!full_path) {
+            free(name);
+            goto fail;
+        }
 
         vg_filedialog_platform_entry_t out;
         memset(&out, 0, sizeof(out));
-        out.name = vg_filedialog_platform_strdup(find_data.cFileName);
-        out.full_path = vg_filedialog_platform_join_path(path, find_data.cFileName);
+        out.name = name;
+        out.full_path = full_path;
         out.is_directory = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
         out.is_hidden = (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0;
         out.size = ((uint64_t)find_data.nFileSizeHigh << 32) | (uint64_t)find_data.nFileSizeLow;
@@ -255,14 +328,22 @@ bool vg_filedialog_platform_list_directory(const char *path,
             !vg_filedialog_platform_append_entry(&entries, &count, &capacity, out)) {
             free(out.name);
             free(out.full_path);
-            continue;
+            goto fail;
         }
-    } while (FindNextFileA(find, &find_data));
+    } while (FindNextFileW(find, &find_data));
+
+    if (GetLastError() != ERROR_NO_MORE_FILES)
+        goto fail;
 
     FindClose(find);
     *entries_out = entries;
     *count_out = count;
     return true;
+
+fail:
+    FindClose(find);
+    vg_filedialog_platform_free_entries(entries, count);
+    return false;
 }
 
 /// @brief Free an entry array returned by vg_filedialog_platform_list_directory().

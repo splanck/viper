@@ -873,7 +873,9 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
         return 0;
 
     uint32_t id = mgr->next_id;
-    for (uint32_t attempts = 0;; attempts++) {
+    bool found_id = false;
+    size_t max_attempts = mgr->notification_count + 1u;
+    for (size_t attempts = 0; attempts < max_attempts; attempts++) {
         if (id == 0)
             id = 1;
         bool collision = false;
@@ -883,12 +885,14 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
                 break;
             }
         }
-        if (!collision)
+        if (!collision) {
+            found_id = true;
             break;
-        if (attempts == UINT32_MAX)
-            return 0;
+        }
         id++;
     }
+    if (!found_id)
+        return 0;
     mgr->next_id = id + 1;
     if (mgr->next_id == 0)
         mgr->next_id = 1;

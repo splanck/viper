@@ -161,6 +161,20 @@ static uint64_t rt_heap_ptr_hash_(const void *p) {
 ///          set. Insertions and removals are rare relative to lookups,
 ///          so a simple test-and-set spinlock is faster than a full
 ///          mutex on typical workloads.
+///
+/// @note Deliberate safety-vs-throughput tradeoff. retain/release take this
+///       global lock even though the refcount step is already a lock-free CAS:
+///       the lock makes the *membership probe* safe against a concurrent grow()
+///       (which reallocs the slots array) and prevents a final release from
+///       freeing the header mid-retain. The payoff is deterministic misuse
+///       detection — retain/release on a bogus or freed pointer traps with a
+///       clear message instead of corrupting memory. Under heavy multithreaded
+///       refcount churn this serializes; the safe ways to relieve it without
+///       losing the safety net are (a) a reader-writer lock so retains/releases
+///       run concurrently and only alloc/free/grow are exclusive, or (b) sharding
+///       the registry into N hash tables keyed by pointer hash. Both are real
+///       concurrency redesigns — adopt one only when profiling shows this lock
+///       is a measured hot spot.
 static void rt_heap_registry_lock_(void) {
     if (__atomic_test_and_set(&g_heap_registry_.lock, __ATOMIC_ACQUIRE)) {
         do {

@@ -112,6 +112,8 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
         }
     }
 
+    if (!editor->document_buffer)
+        editor->document_buffer = viper_text_buffer_new();
     if (editor->document_buffer) {
         const char *buffer_text = text ? text : "";
         size_t buffer_len = text ? len : 0;
@@ -563,9 +565,9 @@ void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
 
 /// @brief Low-level text insert at (line, col) without recording to history; handles embedded
 /// newlines via line splits.
-static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text) {
+static bool insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text) {
     if (!editor || !text || line < 0 || line >= editor->line_count)
-        return;
+        return false;
 
     clamp_editor_position(editor, &line, &col);
 
@@ -576,7 +578,7 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
     for (const char *p = text; *p;) {
         if (*p == '\n') {
             if (!codeeditor_split_line_at(editor, cur_line, cur_col))
-                return;
+                return false;
             cur_line++;
             cur_col = 0;
             changed = true;
@@ -595,7 +597,7 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
         }
 
         if (!codeeditor_insert_bytes_at(editor, cur_line, &cur_col, p, span))
-            return;
+            return false;
         changed = true;
         p += span;
     }
@@ -606,6 +608,7 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
         editor->modified = true;
         vg_codeeditor_refresh_layout_state(editor);
     }
+    return true;
 }
 
 /// @brief Low-level range deletion without history recording; merges lines when the range spans
@@ -783,7 +786,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
 
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
-    codeeditor_sync_document_buffer_from_lines(editor);
+    codeeditor_discard_document_buffer_mirror(editor);
     codeeditor_bump_revision(editor);
     codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;
@@ -851,7 +854,7 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
 
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
-    codeeditor_sync_document_buffer_from_lines(editor);
+    codeeditor_discard_document_buffer_mirror(editor);
     codeeditor_bump_revision(editor);
     codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;

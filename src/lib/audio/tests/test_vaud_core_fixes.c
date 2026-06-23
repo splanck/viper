@@ -408,7 +408,7 @@ static void test_music_play_restarts_stopped_eof_stream(void) {
     remove(path);
 }
 
-static void test_wav_rejects_invalid_block_align_and_byte_rate(void) {
+static void test_wav_rejects_invalid_block_align_and_tolerates_byte_rate(void) {
     uint8_t wav[128];
     int16_t *samples = NULL;
     int64_t frames = 0;
@@ -426,9 +426,12 @@ static void test_wav_rejects_invalid_block_align_and_byte_rate(void) {
     size = make_wav_mem(wav, sizeof(wav), 2, 44100, 16, 1234, 4, 4);
     EXPECT_TRUE(size > 0);
     ok = vaud_wav_load_mem(wav, size, &samples, &frames, &rate, &channels);
-    if (ok)
-        free(samples);
-    EXPECT_TRUE(!ok);
+    EXPECT_TRUE(ok);
+    EXPECT_TRUE(samples != NULL);
+    EXPECT_TRUE(frames == 1);
+    EXPECT_TRUE(rate == 44100);
+    EXPECT_TRUE(channels == 2);
+    free(samples);
 }
 
 static void test_wav_rejects_partial_pcm_frame(void) {
@@ -826,7 +829,7 @@ int main(void) {
     test_music_seek_failure_stops_stream_and_clears_buffers();
     test_playback_parameters_sanitize_nonfinite_values();
     test_music_play_restarts_stopped_eof_stream();
-    test_wav_rejects_invalid_block_align_and_byte_rate();
+    test_wav_rejects_invalid_block_align_and_tolerates_byte_rate();
     test_wav_rejects_partial_pcm_frame();
     test_streaming_resample_preserves_total_frame_count();
     test_mp3_music_allows_unknown_total_samples();

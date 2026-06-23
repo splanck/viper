@@ -56,6 +56,11 @@ _Thread_local static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
 __declspec(thread) static const char *g_last_error_str = NULL;
 /// @brief Windows TLS error code.
 __declspec(thread) static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
+#elif defined(__GNUC__) || defined(__clang__)
+/// @brief GCC/Clang TLS error message string.
+__thread static const char *g_last_error_str = NULL;
+/// @brief GCC/Clang TLS error code.
+__thread static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
 #else
 /// @brief Fallback global error message (not thread-safe).
 static const char *g_last_error_str = NULL;
@@ -200,8 +205,15 @@ static void fill_rgba_pixels(
     if (!pixels || pixel_count == 0)
         return;
     uint32_t word = make_rgba_word(r, g, b, a);
-    for (size_t i = 0; i < pixel_count; i++)
-        memcpy(pixels + (i * 4u), &word, sizeof(word));
+    memcpy(pixels, &word, sizeof(word));
+    size_t filled = 1;
+    while (filled < pixel_count) {
+        size_t copy = filled;
+        if (copy > pixel_count - filled)
+            copy = pixel_count - filled;
+        memcpy(pixels + filled * 4u, pixels, copy * 4u);
+        filled += copy;
+    }
 }
 
 /// @brief Clear a raw framebuffer byte range to opaque black RGBA pixels.
@@ -209,6 +221,46 @@ static void fill_rgba_pixels(
 /// @param size Size in bytes; trailing non-pixel bytes are ignored defensively.
 static void clear_framebuffer_rgba(uint8_t *pixels, size_t size) {
     fill_rgba_pixels(pixels, size / 4u, 0, 0, 0, 0xFF);
+}
+
+/// @brief Retain a replaced framebuffer allocation until window destruction.
+/// @details The public framebuffer API exposes raw pixel pointers. Keeping old
+///          allocations alive after resize prevents stale descriptors from
+///          becoming immediate use-after-free hazards; generation checks still
+///          remain the caller's way to detect and stop using stale storage.
+/// @param win Window that owns the retired allocation list.
+/// @param pixels Previous aligned framebuffer pointer, or NULL.
+static void vgfx_retire_framebuffer(struct vgfx_window *win, uint8_t *pixels) {
+    if (!win || !pixels)
+        return;
+
+    vgfx_retired_framebuffer_t *node =
+        (vgfx_retired_framebuffer_t *)malloc(sizeof(vgfx_retired_framebuffer_t));
+    if (!node) {
+        vgfx_platform_aligned_free(pixels);
+        vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to retain retired framebuffer");
+        return;
+    }
+
+    node->pixels = pixels;
+    node->next = win->retired_framebuffers;
+    win->retired_framebuffers = node;
+}
+
+/// @brief Free every framebuffer allocation retired by prior resizes.
+/// @param win Window whose retired framebuffer list should be released.
+static void vgfx_free_retired_framebuffers(struct vgfx_window *win) {
+    if (!win)
+        return;
+
+    vgfx_retired_framebuffer_t *node = win->retired_framebuffers;
+    win->retired_framebuffers = NULL;
+    while (node) {
+        vgfx_retired_framebuffer_t *next = node->next;
+        vgfx_platform_aligned_free(node->pixels);
+        free(node);
+        node = next;
+    }
 }
 
 static int framebuffer_size_bytes(int32_t width, int32_t height, size_t *out_size) {
@@ -276,8 +328,7 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
     }
     vgfx_internal_event_unlock(win);
 
-    if (old_pixels)
-        vgfx_platform_aligned_free(old_pixels);
+    vgfx_retire_framebuffer(win, old_pixels);
 
     return 1;
 }
@@ -513,6 +564,49 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
     }
 
     /* Enqueue event (queue now has space) */
+    win->event_queue[win->event_head] = *event;
+    win->event_head = next_head;
+    vgfx_internal_event_unlock(win);
+    return 1;
+}
+
+int vgfx_internal_enqueue_coalesced_event(struct vgfx_window *win, const vgfx_event_t *event) {
+    if (!win || !event)
+        return 0;
+    if (event->type != VGFX_EVENT_MOUSE_MOVE)
+        return vgfx_internal_enqueue_event(win, event);
+
+    vgfx_internal_event_lock(win);
+    if (win->destroying) {
+        vgfx_internal_event_unlock(win);
+        return 0;
+    }
+
+    if (win->event_head != win->event_tail) {
+        int32_t previous =
+            (win->event_head == 0) ? (VGFX_INTERNAL_EVENT_QUEUE_SLOTS - 1) : (win->event_head - 1);
+        if (win->event_queue[previous].type == VGFX_EVENT_MOUSE_MOVE) {
+            win->event_queue[previous] = *event;
+            vgfx_internal_event_unlock(win);
+            return 1;
+        }
+    }
+
+    int32_t next_head = vgfx_ring_next_index(win->event_head);
+    if (next_head == win->event_tail) {
+        int32_t victim = vgfx_find_overflow_victim_locked(win, event);
+        if (victim < 0) {
+            if (win->event_overflow < INT32_MAX)
+                win->event_overflow++;
+            vgfx_internal_event_unlock(win);
+            return 0;
+        }
+        vgfx_drop_event_at_locked(win, victim);
+        next_head = vgfx_ring_next_index(win->event_head);
+        if (win->event_overflow < INT32_MAX)
+            win->event_overflow++;
+    }
+
     win->event_queue[win->event_head] = *event;
     win->event_head = next_head;
     vgfx_internal_event_unlock(win);
@@ -1039,6 +1133,7 @@ void vgfx_destroy_window(vgfx_window_t window) {
     if (pixels) {
         vgfx_platform_aligned_free(pixels);
     }
+    vgfx_free_retired_framebuffers(window);
 
     /* Free window structure */
     free(window);
@@ -1068,17 +1163,15 @@ int32_t vgfx_update(vgfx_window_t window) {
 
     int64_t frame_start = vgfx_platform_now_ms();
 
-    /* Present framebuffer to native window FIRST — this ensures the game's
-     * completed frame is displayed before any event handler (e.g. windowDidResize
-     * on macOS) can modify the framebuffer.  Events are processed afterwards so
-     * they take effect on the next frame. */
+    /* Pump native events first so resize, close, and input state observed by the
+     * platform backend is current before presenting the next framebuffer. */
+    if (!vgfx_pump_events(window))
+        return 0;
+
     if (!vgfx_platform_present(window)) {
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to present framebuffer");
         return 0;
     }
-
-    if (!vgfx_pump_events(window))
-        return 0;
 
     /* FPS limiting (only if fps > 0) */
     if (window->fps > 0) {

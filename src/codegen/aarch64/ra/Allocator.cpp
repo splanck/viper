@@ -87,6 +87,19 @@ bool rewriteVirtualUseToResidentPhys(MInstr &ins, uint16_t vreg, RegClass cls, P
 ///          not yet in @p scratch. Registers listed in @p blocked are never selected,
 ///          which prevents emergency scratch reloads from clobbering explicit physical
 ///          operands on the current instruction. Throws if all candidates conflict.
+///
+/// @par Reserved-scratch invariant
+/// The candidate count per class is sized to the maximum number of *simultaneous*
+/// register operands any single MIR instruction of that class can present:
+///   - GPR: 3 (kScratchGPR/2/3) — covers the 4-operand `MAddRRRR`/`MSubRRRR`
+///     (rd is def-only, so 3 distinct use reloads + the def reusing one).
+///   - FPR: 2 (kScratchFPR/2) — covers the widest FP op, the 3-operand
+///     `FAddRRR`/`FSubRRR`/`FMulRRR`/`FDivRRR` (def-only rd reuses a use slot).
+/// Because every current opcode honours this bound, the throw below is a guard
+/// against a *future* opcode that violates it — e.g. a 3-source read-modify-write
+/// FP op (`FMLA`: rd is use+def, defeating def-reuse) would present 3 simultaneous
+/// FPR uses and require adding `kScratchFPR3`. Keep the scratch sets in sync with
+/// the maximum-arity instruction of each class.
 PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
                              bool canReuseDefScratch,
                              const std::vector<PhysReg> &scratch,
@@ -104,8 +117,13 @@ PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
             return candidate;
         }
     }
-    throw std::runtime_error("AArch64 register allocator: no reserved emergency scratch register "
-                             "available for spilled operand reload");
+    throw std::runtime_error(
+        "AArch64 register allocator: reserved emergency scratch exhausted for a spilled-operand "
+        "reload (" +
+        std::to_string(candidates.size()) + " scratch reg(s), " + std::to_string(scratch.size()) +
+        " already taken this instruction). The instruction presents more simultaneous "
+        "spilled register operands than the class reserves — add another kScratch* register for "
+        "this class (see the reserved-scratch invariant on chooseFromScratchSet).");
 }
 
 /// @brief Select an emergency scratch register when the normal pool is exhausted.

@@ -539,7 +539,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     }
 
     int64_t candidate_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC];
-    int64_t effect_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC];
+    int64_t effect_groups[VAUD_MAX_VOICES + VAUD_MAX_MUSIC] = {0};
     int32_t group_cap = (int32_t)(sizeof(effect_groups) / sizeof(effect_groups[0]));
     int32_t effect_group_count = 0;
     vaud_group_effects_query_fn query = ctx->group_effects_query;

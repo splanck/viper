@@ -151,20 +151,16 @@ static void toolbar_draw_image_icon(
     if (sw <= 0 || sh <= 0)
         return;
 
-    float draw_x = x;
-    float draw_y = y;
-    float draw_w = w;
-    float draw_h = h;
     float scale = w / (float)sw;
     if ((float)sh * scale > h)
         scale = h / (float)sh;
     if (scale <= 0.0f)
         return;
 
-    draw_w = (float)sw * scale;
-    draw_h = (float)sh * scale;
-    draw_x = x + (w - draw_w) * 0.5f;
-    draw_y = y + (h - draw_h) * 0.5f;
+    float draw_w = (float)sw * scale;
+    float draw_h = (float)sh * scale;
+    float draw_x = x + (w - draw_w) * 0.5f;
+    float draw_y = y + (h - draw_h) * 0.5f;
 
     int start_x = toolbar_clampi((int)draw_x, 0, fb.width);
     int start_y = toolbar_clampi((int)draw_y, 0, fb.height);

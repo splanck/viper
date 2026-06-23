@@ -23,6 +23,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "vg_ttf_internal.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -45,12 +46,24 @@ static int glyph_bitmap_size(const vg_glyph_t *glyph, size_t *out_size) {
 // Hash Function
 //=============================================================================
 
-/// @brief Pack float size (as raw bits) and codepoint into a single uint64_t key.
+/// @brief Quantize a font size to a stable fixed-point cache component.
+/// @details Sub-pixel float noise can otherwise create duplicate glyph cache
+///          entries for sizes that render indistinguishably.  A 1/64 pixel grid
+///          preserves practical precision while improving cache hit rates.
+/// @param size Font size in pixels.
+/// @return Unsigned fixed-point representation, saturated on extreme input.
+static uint32_t quantize_cache_size(float size) {
+    if (!isfinite(size) || size <= 0.0f)
+        return 0;
+    double scaled = (double)size * 64.0 + 0.5;
+    if (scaled >= (double)UINT32_MAX)
+        return UINT32_MAX;
+    return (uint32_t)scaled;
+}
+
+/// @brief Pack quantized size and codepoint into a single uint64_t key.
 static uint64_t make_cache_key(float size, uint32_t codepoint) {
-    // Quantize size to avoid floating point comparison issues
-    uint32_t size_bits;
-    memcpy(&size_bits, &size, sizeof(uint32_t));
-    return ((uint64_t)size_bits << 32) | codepoint;
+    return ((uint64_t)quantize_cache_size(size) << 32) | codepoint;
 }
 
 /// @brief Hash a cache key to a bucket index using FNV-1a-style mixing.
@@ -243,12 +256,42 @@ static void cache_evict_some(vg_glyph_cache_t *cache) {
     if (count == 0)
         return;
 
-    // Evict the oldest 25% with repeated linear minimum scans. This avoids a
-    // scratch allocation and qsort on the render path while preserving LRU order
-    // for the small bounded cache sizes used here.
     size_t to_evict = count / 4;
     if (to_evict < 1)
         to_evict = 1;
+
+    vg_cache_entry_t **entries = (vg_cache_entry_t **)malloc(count * sizeof(*entries));
+    if (entries) {
+        size_t used = 0;
+        for (size_t i = 0; i < cache->bucket_count; i++) {
+            for (vg_cache_entry_t *entry = cache->buckets[i]; entry; entry = entry->next)
+                entries[used++] = entry;
+        }
+        qsort(entries, used, sizeof(*entries), compare_ticks);
+        if (to_evict > used)
+            to_evict = used;
+        for (size_t k = 0; k < to_evict; k++) {
+            vg_cache_entry_t *victim = entries[k];
+            size_t bi = hash_key(victim->key, cache->bucket_count);
+            vg_cache_entry_t **prev = &cache->buckets[bi];
+            while (*prev && *prev != victim)
+                prev = &(*prev)->next;
+            if (*prev != victim)
+                continue;
+            *prev = victim->next;
+
+            size_t victim_memory = 0;
+            if (glyph_bitmap_size(&victim->glyph, &victim_memory) &&
+                victim_memory <= cache->memory_used)
+                cache->memory_used -= victim_memory;
+            else
+                cache->memory_used = 0;
+            cache->entry_count--;
+            free_entry(victim);
+        }
+        free(entries);
+        return;
+    }
 
     for (size_t k = 0; k < to_evict; k++) {
         vg_cache_entry_t *victim = NULL;
@@ -348,8 +391,20 @@ void vg_cache_put(vg_glyph_cache_t *cache,
         return;
     if (glyph_memory > VG_CACHE_MAX_MEMORY)
         return;
-    if (cache->memory_used > VG_CACHE_MAX_MEMORY - glyph_memory) {
+    /* A full-budget glyph can only fit by emptying every existing entry. Evict
+     * one LRU batch for pressure relief, then skip caching it if hot entries
+     * remain rather than replacing the whole cache with one bitmap. */
+    if (glyph_memory == VG_CACHE_MAX_MEMORY && cache->memory_used > 0) {
         cache_evict_some(cache);
+        if (cache->memory_used > 0)
+            return;
+    }
+    while (cache->memory_used > VG_CACHE_MAX_MEMORY - glyph_memory && cache->entry_count > 0) {
+        size_t before_entries = cache->entry_count;
+        size_t before_memory = cache->memory_used;
+        cache_evict_some(cache);
+        if (cache->entry_count == before_entries && cache->memory_used == before_memory)
+            return;
     }
 
     // Check load factor and resize if necessary

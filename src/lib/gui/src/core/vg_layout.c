@@ -32,6 +32,7 @@ static void vbox_measure(vg_widget_t *self, float available_width, float availab
 static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float height);
 static void hbox_measure(vg_widget_t *self, float available_width, float available_height);
 static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float height);
+static void flex_destroy(vg_widget_t *self);
 static void flex_measure(vg_widget_t *self, float available_width, float available_height);
 static void flex_arrange(vg_widget_t *self, float x, float y, float width, float height);
 
@@ -121,6 +122,7 @@ static const vg_widget_vtable_t g_hbox_vtable = {
 };
 
 static const vg_widget_vtable_t g_flex_vtable = {
+    .destroy = flex_destroy,
     .measure = flex_measure,
     .arrange = flex_arrange,
 };
@@ -622,6 +624,58 @@ typedef struct flex_line {
     float total_flex;
 } flex_line_t;
 
+/// @brief Destroy a flex layout implementation and its reusable scratch buffers.
+/// @param self Flex container widget whose impl_data is a vg_flex_layout_t.
+static void flex_destroy(vg_widget_t *self) {
+    if (!self || !self->impl_data)
+        return;
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)vg_widget_take_impl_data(self);
+    free(layout->scratch_children);
+    free(layout->scratch_lines);
+    free(layout);
+}
+
+/// @brief Ensure the flex layout has a reusable child-pointer scratch buffer.
+/// @param layout Flex layout state that owns the scratch buffer.
+/// @param needed Number of child pointers required.
+/// @return Scratch child-pointer array, or NULL on allocation failure.
+static vg_widget_t **flex_ensure_child_scratch(vg_flex_layout_t *layout, int needed) {
+    if (!layout || needed <= 0)
+        return NULL;
+    if (layout->scratch_child_capacity >= needed)
+        return (vg_widget_t **)layout->scratch_children;
+    if ((size_t)needed > SIZE_MAX / sizeof(vg_widget_t *))
+        return NULL;
+    vg_widget_t **children =
+        (vg_widget_t **)realloc(layout->scratch_children, (size_t)needed * sizeof(vg_widget_t *));
+    if (!children)
+        return NULL;
+    layout->scratch_children = children;
+    layout->scratch_child_capacity = needed;
+    return children;
+}
+
+/// @brief Ensure the flex layout has a reusable wrapped-line scratch buffer.
+/// @param layout Flex layout state that owns the scratch buffer.
+/// @param needed Number of line records required.
+/// @return Zeroed scratch line array, or NULL on allocation failure.
+static flex_line_t *flex_ensure_line_scratch(vg_flex_layout_t *layout, int needed) {
+    if (!layout || needed <= 0)
+        return NULL;
+    if (layout->scratch_line_capacity < needed) {
+        if ((size_t)needed > SIZE_MAX / sizeof(flex_line_t))
+            return NULL;
+        flex_line_t *lines =
+            (flex_line_t *)realloc(layout->scratch_lines, (size_t)needed * sizeof(flex_line_t));
+        if (!lines)
+            return NULL;
+        layout->scratch_lines = lines;
+        layout->scratch_line_capacity = needed;
+    }
+    memset(layout->scratch_lines, 0, (size_t)needed * sizeof(flex_line_t));
+    return (flex_line_t *)layout->scratch_lines;
+}
+
 /// @brief Returns the child's measured size on the main axis (width for row, height for column).
 static float flex_child_main_size(vg_widget_t *child, bool is_row) {
     if (!child)
@@ -654,9 +708,15 @@ static float flex_child_cross_outer(vg_widget_t *child, bool is_row) {
                    : child->layout.margin_left + child->layout.margin_right);
 }
 
-/// @brief Counts and optionally heap-allocates a flat array of all visible children of @p self.
+/// @brief Counts and optionally fills the reusable scratch array of all visible children of @p
+/// self.
+/// @param self Flex container whose layout-managed children should be collected.
+/// @param layout Flex implementation state that owns the scratch child array.
+/// @param out_children Optional output pointer receiving the reusable scratch array.
 /// @return Number of visible layout-managed children, or -1 on allocation failure.
-static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_children) {
+static int flex_collect_visible_children(vg_widget_t *self,
+                                         vg_flex_layout_t *layout,
+                                         vg_widget_t ***out_children) {
     int count = 0;
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         if (child->manual_position)
@@ -670,7 +730,7 @@ static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_c
     if (count <= 0)
         return 0;
 
-    vg_widget_t **children = malloc((size_t)count * sizeof(vg_widget_t *));
+    vg_widget_t **children = flex_ensure_child_scratch(layout, count);
     if (!children)
         return -1;
 
@@ -700,7 +760,7 @@ static int flex_build_lines(vg_widget_t *self,
     if (!children || child_count <= 0)
         return 0;
 
-    flex_line_t *lines = calloc((size_t)child_count, sizeof(flex_line_t));
+    flex_line_t *lines = flex_ensure_line_scratch(layout, child_count);
     if (!lines)
         return 0;
 
@@ -775,7 +835,7 @@ static void flex_measure(vg_widget_t *self, float available_width, float availab
 
     if (layout->wrap) {
         vg_widget_t **children = NULL;
-        int child_count = flex_collect_visible_children(self, &children);
+        int child_count = flex_collect_visible_children(self, layout, &children);
         if (child_count < 0) {
             self->measured_width = self->constraints.min_width;
             self->measured_height = self->constraints.min_height;
@@ -805,8 +865,6 @@ static void flex_measure(vg_widget_t *self, float available_width, float availab
             self->measured_height = measured_main + padding_v;
         }
 
-        free(lines);
-        free(children);
     } else {
         if (visible_count > 1) {
             main_size += layout->gap * (visible_count - 1);
@@ -853,7 +911,7 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
 
     if (layout->wrap) {
         vg_widget_t **children = NULL;
-        int child_count = flex_collect_visible_children(self, &children);
+        int child_count = flex_collect_visible_children(self, layout, &children);
         if (child_count < 0)
             return;
         flex_line_t *lines = NULL;
@@ -1003,8 +1061,6 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
             }
         }
 
-        free(lines);
-        free(children);
         return;
     }
 

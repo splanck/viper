@@ -615,6 +615,70 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Regression guard: a subclass that inherits init(args) but declares none
+///        constructs field-wise (e.g. `new Derived(...)` then a named setup) and must
+///        compile — this is a supported pattern, not an error.
+TEST(ZiaSema, SubclassInheritingInitConstructsFieldWise) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+
+class Base {
+    expose Integer x;
+    expose func init(v: Integer) {
+        x = v;
+    }
+}
+
+class Derived extends Base {
+    expose Integer y;
+}
+
+func start() {
+    final d: Derived = new Derived(0);
+    d.y = 3;
+    Viper.Terminal.SayInt(d.y);
+}
+)",
+                                sm);
+    if (!result.succeeded())
+        dumpDiags(result);
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Regression guard: a subclass that declares its OWN init (forwarding via
+///        super.init) must still compile.
+TEST(ZiaSema, SubclassOwnInitWithSuperStillCompiles) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+
+class Base {
+    expose Integer x;
+    expose func init(v: Integer) {
+        x = v;
+    }
+}
+
+class Derived extends Base {
+    expose Integer y;
+    expose func init(v: Integer) {
+        super.init(v);
+        y = v + 1;
+    }
+}
+
+func start() {
+    final d: Derived = new Derived(5);
+    Viper.Terminal.SayInt(d.x);
+}
+)",
+                                sm);
+    if (!result.succeeded())
+        dumpDiags(result);
+    EXPECT_TRUE(result.succeeded());
+}
+
 //===----------------------------------------------------------------------===//
 // 19. For-in Loop Type Inference
 //===----------------------------------------------------------------------===//

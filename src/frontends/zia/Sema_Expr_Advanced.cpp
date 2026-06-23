@@ -1299,6 +1299,11 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
         resolvedInitOwnerTypes_[expr] = resolvedOwner;
         newArgBindings_[expr] = binding;
     } else {
+        // NOTE: constructing a subclass that inherits init(args) but declares none
+        // is the supported *field-wise* construction path (e.g. `new Dog(0)` then a
+        // named setup method); it must NOT be rejected here. The known bad-IL case is
+        // narrower — a *cross-module* inherited init invoked with args — and needs
+        // cross-module-aware detection to diagnose without breaking the valid pattern.
         CallArgBinding binding;
         auto fieldSpecs = type->kind == TypeKindSem::Class ? makeClassFieldSpecs(type->name)
                                                            : makeStructFieldSpecs(type->name);

@@ -196,8 +196,18 @@ static inline void store_rgba_word(struct vgfx_window *win,
 static void fill_rgba_span(
     struct vgfx_window *win, int32_t x, int32_t y, int32_t count, uint32_t rgba_word) {
     uint8_t *dst = win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u);
-    for (int32_t i = 0; i < count; i++)
-        memcpy(dst + ((size_t)i * 4u), &rgba_word, sizeof(rgba_word));
+    if (count <= 0)
+        return;
+    memcpy(dst, &rgba_word, sizeof(rgba_word));
+    size_t filled = 1;
+    size_t total = (size_t)count;
+    while (filled < total) {
+        size_t copy = filled;
+        if (copy > total - filled)
+            copy = total - filled;
+        memcpy(dst + filled * 4u, dst, copy * 4u);
+        filled += copy;
+    }
 }
 
 //===----------------------------------------------------------------------===//

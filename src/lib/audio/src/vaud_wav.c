@@ -70,6 +70,13 @@
 ///          conversion.
 #define VAUD_WAV_LOAD_CHUNK_FRAMES 4096
 
+/// @brief Maximum decoded in-memory WAV payload accepted by eager loaders.
+/// @details Sound effects are decoded into stereo 16-bit PCM before being handed
+///          to the mixer.  Keeping a hard cap avoids accidental multi-gigabyte
+///          allocations when an input file has a very large or malformed data
+///          chunk.  Long-form playback should use the streaming music path.
+#define VAUD_WAV_MAX_DECODED_BYTES ((size_t)512u * 1024u * 1024u)
+
 //===----------------------------------------------------------------------===//
 // Helper Functions
 //===----------------------------------------------------------------------===//
@@ -135,6 +142,31 @@ static inline int16_t f32_to_s16(const uint8_t *p) {
     if (val <= -1.0f)
         return INT16_MIN;
     return (int16_t)(val < 0.0f ? val * 32768.0f : val * 32767.0f);
+}
+
+/// @brief Compute the decoded stereo PCM byte count for a WAV frame count.
+/// @details All WAV loaders convert to the internal stereo S16 representation.
+///          This helper centralizes overflow checks and enforces the eager-load
+///          memory budget used to reject unusually large sound effects.
+/// @param frame_count Number of source frames in the WAV data chunk.
+/// @param out_bytes Receives `frame_count * 2 * sizeof(int16_t)` on success.
+/// @return Non-zero when the decoded buffer size is valid and within budget.
+static int wav_decoded_stereo_bytes(int64_t frame_count, size_t *out_bytes) {
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!out_bytes || frame_count <= 0 ||
+        (uint64_t)frame_count > SIZE_MAX / (2u * sizeof(int16_t))) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV data size");
+        return 0;
+    }
+
+    size_t bytes = (size_t)frame_count * 2u * sizeof(int16_t);
+    if (bytes > VAUD_WAV_MAX_DECODED_BYTES) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Decoded WAV data exceeds eager-load limit");
+        return 0;
+    }
+    *out_bytes = bytes;
+    return 1;
 }
 
 /// @brief Convert one PCM frame from raw bytes to stereo 16-bit signed samples.
@@ -223,11 +255,10 @@ static int validate_wav_format(const vaud_wav_info *info) {
         return 0;
     }
 
-    uint64_t expected_byte_rate = (uint64_t)(uint32_t)info->sample_rate * (uint64_t)bytes_per_frame;
-    if (expected_byte_rate > UINT32_MAX || info->byte_rate != (int32_t)expected_byte_rate) {
-        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV byte rate");
-        return 0;
-    }
+    /* Some authoring tools write an inconsistent byte_rate while the block
+     * alignment and data chunk are still valid. Playback relies on block_align
+     * and sample_rate, so tolerate byte_rate mismatches instead of rejecting
+     * otherwise decodable files. */
 
     return 1;
 }
@@ -562,13 +593,13 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data,
         return 0;
     }
     int64_t frame_count = info->data_size / bytes_per_frame;
-    if (frame_count <= 0 || (uint64_t)frame_count > SIZE_MAX / (2u * sizeof(int16_t))) {
-        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV data size");
+    size_t decoded_bytes = 0;
+    if (!wav_decoded_stereo_bytes(frame_count, &decoded_bytes)) {
         return 0;
     }
 
     /* Allocate output buffer (always stereo) */
-    int16_t *samples = (int16_t *)malloc((size_t)(frame_count * 2 * sizeof(int16_t)));
+    int16_t *samples = (int16_t *)malloc(decoded_bytes);
     if (!samples) {
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate sample buffer");
         return 0;
@@ -630,13 +661,13 @@ int vaud_wav_load_file(const char *path,
     }
 
     int64_t frame_count = info.data_size / bytes_per_frame;
-    if (frame_count <= 0 || (uint64_t)frame_count > SIZE_MAX / (2u * sizeof(int16_t))) {
+    size_t decoded_bytes = 0;
+    if (!wav_decoded_stereo_bytes(frame_count, &decoded_bytes)) {
         fclose(file);
-        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV data size");
         return 0;
     }
 
-    int16_t *samples = (int16_t *)malloc((size_t)frame_count * 2u * sizeof(int16_t));
+    int16_t *samples = (int16_t *)malloc(decoded_bytes);
     if (!samples) {
         fclose(file);
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate sample buffer");
@@ -974,6 +1005,14 @@ void vaud_resample(const int16_t *input,
     if (!input || !output || in_frames <= 0 || out_frames <= 0 || in_rate <= 0 || out_rate <= 0 ||
         channels <= 0)
         return;
+
+    if (in_rate == out_rate && in_frames == out_frames) {
+        if ((uint64_t)in_frames <= SIZE_MAX / (size_t)channels / sizeof(int16_t)) {
+            size_t bytes = (size_t)in_frames * (size_t)channels * sizeof(int16_t);
+            memmove(output, input, bytes);
+        }
+        return;
+    }
 
     /* Dependency-free cubic interpolation resampler. */
     double ratio = (double)in_rate / (double)out_rate;

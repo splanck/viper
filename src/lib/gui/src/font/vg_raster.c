@@ -36,6 +36,7 @@
 
 #define MAX_POINTS 16384
 #define MAX_GLYPH_BITMAP_DIM 4096
+#define MAX_CURVE_FLATTEN_DEPTH 32
 #define CURVE_TOLERANCE 0.25f
 #define OVERSAMPLE 4 // Supersampling factor for antialiasing
 
@@ -67,7 +68,15 @@ static int flatten_quadratic(float x0,
                              float tolerance,
                              raster_point_t *out,
                              int max_points,
-                             int count) {
+                             int count,
+                             int depth,
+                             int *truncated) {
+    if (depth > MAX_CURVE_FLATTEN_DEPTH) {
+        if (truncated)
+            *truncated = 1;
+        return count;
+    }
+
     // Calculate flatness (distance from control point to line)
     float dx = x2 - x0;
     float dy = y2 - y0;
@@ -80,6 +89,8 @@ static int flatten_quadratic(float x0,
             out[count].y = y2;
             return count + 1;
         }
+        if (truncated)
+            *truncated = 1;
         return count;
     }
 
@@ -92,6 +103,8 @@ static int flatten_quadratic(float x0,
             out[count].y = y2;
             return count + 1;
         }
+        if (truncated)
+            *truncated = 1;
         return count;
     }
 
@@ -103,8 +116,10 @@ static int flatten_quadratic(float x0,
     float x012 = (x01 + x12) * 0.5f;
     float y012 = (y01 + y12) * 0.5f;
 
-    count = flatten_quadratic(x0, y0, x01, y01, x012, y012, tolerance, out, max_points, count);
-    count = flatten_quadratic(x012, y012, x12, y12, x2, y2, tolerance, out, max_points, count);
+    count = flatten_quadratic(
+        x0, y0, x01, y01, x012, y012, tolerance, out, max_points, count, depth + 1, truncated);
+    count = flatten_quadratic(
+        x012, y012, x12, y12, x2, y2, tolerance, out, max_points, count, depth + 1, truncated);
 
     return count;
 }
@@ -128,6 +143,7 @@ static int outline_to_polygon(float *points_x,
                               int *out_contour_ends,
                               int *out_contour_count) {
     int count = 0;
+    int truncated = 0;
     if (out_contour_count)
         *out_contour_count = 0;
 
@@ -161,6 +177,8 @@ static int outline_to_polygon(float *points_x,
                     out[count].x = x0;
                     out[count].y = y0;
                     count++;
+                } else {
+                    truncated = 1;
                 }
             } else if (on0 && !on1) {
                 // Current on-curve, next is control point
@@ -183,11 +201,13 @@ static int outline_to_polygon(float *points_x,
                     out[count].x = x0;
                     out[count].y = y0;
                     count++;
+                } else {
+                    truncated = 1;
                 }
 
                 // Flatten the curve
                 count = flatten_quadratic(
-                    x0, y0, x1, y1, x2, y2, CURVE_TOLERANCE, out, max_points, count);
+                    x0, y0, x1, y1, x2, y2, CURVE_TOLERANCE, out, max_points, count, 0, &truncated);
             } else if (!on0 && !on1) {
                 // Both off-curve - implicit on-curve at midpoint
                 // The midpoint becomes our "on-curve" start
@@ -205,7 +225,7 @@ static int outline_to_polygon(float *points_x,
         }
     }
 
-    return count;
+    return truncated ? -1 : count;
 }
 
 //=============================================================================
@@ -349,6 +369,12 @@ static void rasterize_scanlines(raster_point_t *points,
             for (int e = 0; e < edge_count; e++) {
                 float y0 = edges[e].y0;
                 float y1 = edges[e].y1;
+                float min_y = (y0 < y1) ? y0 : y1;
+                float max_y = (y0 > y1) ? y0 : y1;
+                if (min_y > scan_y)
+                    break;
+                if (max_y <= scan_y)
+                    continue;
 
                 // Check if edge crosses this scanline
                 bool crosses = (y0 <= scan_y && y1 > scan_y) || (y1 <= scan_y && y0 > scan_y);
@@ -580,6 +606,16 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
                                            MAX_POINTS,
                                            polygon_contour_ends,
                                            &polygon_contour_count);
+    if (polygon_count < 0) {
+        free(polygon_contour_ends);
+        free(polygon);
+        free(glyph);
+        free(points_x);
+        free(points_y);
+        free(flags);
+        free(contour_ends);
+        return NULL;
+    }
 
     // Flip y coordinates (TTF y-up to bitmap y-down)
     for (int i = 0; i < polygon_count; i++) {

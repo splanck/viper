@@ -173,26 +173,18 @@ static char *codeeditor_materialize_lines(const vg_codeeditor_t *editor, size_t 
     return result;
 }
 
-/// @brief Reload the shared text-engine mirror from the editor's native line array.
-///
-/// @details The GUI editor still uses its established line array for cursor,
-///          folding, syntax, and paint behavior. This bridge keeps the shared
-///          piece-table buffer synchronized at mutation boundaries so public
-///          full-text operations can use the common engine without changing
-///          existing editing semantics.
-///
-/// @param editor Editor whose shared text mirror should be refreshed.
-static void codeeditor_sync_document_buffer_from_lines(vg_codeeditor_t *editor) {
+/// @brief Drop the optional shared text-buffer mirror after native line mutations.
+/// @details The editor's line array is the authoritative storage for painting,
+///          cursor movement, undo/redo, and full-text fallback queries.  Rebuilding
+///          the mirror after every keystroke is O(document size); invalidating it
+///          keeps edits proportional to the changed range while preserving correct
+///          public text retrieval through the existing line materialization path.
+/// @param editor Editor whose optional document_buffer mirror should be discarded.
+static void codeeditor_discard_document_buffer_mirror(vg_codeeditor_t *editor) {
     if (!editor || !editor->document_buffer)
         return;
-
-    size_t len = 0;
-    char *text = codeeditor_materialize_lines(editor, &len);
-    if (!text)
-        return;
-
-    (void)viper_text_buffer_load_bytes((viper_text_buffer_t *)editor->document_buffer, text, len);
-    free(text);
+    viper_text_buffer_free((viper_text_buffer_t *)editor->document_buffer);
+    editor->document_buffer = NULL;
 }
 
 /// @brief Clears the has_selection flag on all extra (non-primary) cursors.
@@ -501,8 +493,10 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
         }
 
         if (replacement_text && replacement_text[0] != '\0') {
-            insert_text_at_internal(
-                editor, target->start_line, target->start_col, replacement_text);
+            if (!insert_text_at_internal(
+                    editor, target->start_line, target->start_col, replacement_text)) {
+                break;
+            }
             changed = true;
         }
 
@@ -560,7 +554,7 @@ cleanup:
     free(has_old_texts);
     if (!changed)
         return;
-    codeeditor_sync_document_buffer_from_lines(editor);
+    codeeditor_discard_document_buffer_mirror(editor);
     codeeditor_bump_revision(editor);
     if (syntax_global_dirty)
         codeeditor_invalidate_all_highlights(editor);

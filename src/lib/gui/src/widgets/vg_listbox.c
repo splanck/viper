@@ -1500,15 +1500,15 @@ void vg_listbox_scroll_to_bottom(vg_listbox_t *listbox) {
     if (viewport_height < 0.0f)
         viewport_height = 0.0f;
     float old_scroll = listbox->scroll_y;
-    listbox_clamp_scroll(listbox, viewport_height);
-    float max_scroll = listbox->scroll_y;
+    float max_scroll = 0.0f;
     size_t count = listbox_virtual_item_count(listbox);
     if (count > 0 && listbox->item_height > 0.0f) {
         max_scroll = (float)count * listbox->item_height - viewport_height;
         if (max_scroll < 0.0f)
             max_scroll = 0.0f;
-        listbox->scroll_y = max_scroll;
     }
+    listbox->scroll_y = max_scroll;
+    listbox_clamp_scroll(listbox, viewport_height);
     if (listbox->scroll_y != old_scroll)
         listbox->base.needs_paint = true;
 }

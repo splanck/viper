@@ -472,6 +472,68 @@ static void test_drawtext_background_scaled_and_alignment() {
 // Main
 // ============================================================================
 
+// === Golden pixel-hash regression ===
+// The 2D pixels surface is the deterministic software rasterizer. Hashing the
+// whole framebuffer after a fixed scene turns it into a golden-image oracle:
+// any change to a rasterization primitive shifts the hash. This complements the
+// per-primitive spot checks above with a single whole-buffer fingerprint.
+
+/// @brief FNV-1a hash over every pixel of a surface (row-major RGBA).
+static uint64_t fnv1a_pixels(void *p) {
+    const int64_t w = rt_pixels_width(p);
+    const int64_t h = rt_pixels_height(p);
+    uint64_t hash = 1469598103934665603ULL; // FNV offset basis
+    for (int64_t y = 0; y < h; ++y) {
+        for (int64_t x = 0; x < w; ++x) {
+            const uint64_t px = static_cast<uint64_t>(rt_pixels_get(p, x, y));
+            for (int b = 0; b < 4; ++b) {
+                hash ^= (px >> (b * 8)) & 0xFFu;
+                hash *= 1099511628211ULL; // FNV prime
+            }
+        }
+    }
+    return hash;
+}
+
+/// @brief Render a fixed composition into @p p so the same scene hashes identically.
+static void draw_golden_scene(void *p) {
+    rt_pixels_fill(p, 0x202030FF);                // dark slate background
+    rt_pixels_draw_box(p, 8, 8, 40, 24, 0x3060A0FF);   // filled panel
+    rt_pixels_draw_frame(p, 6, 6, 44, 28, 0xFFFFFFFF); // panel border
+    rt_pixels_draw_disc(p, 24, 40, 12, 0xC04040FF);    // red disc
+    rt_pixels_draw_ring(p, 48, 44, 10, 0x40C060FF);    // green ring
+    rt_pixels_draw_line(p, 2, 2, 61, 61, 0xF0F000FF);  // yellow diagonal
+    rt_pixels_draw_ellipse(p, 40, 18, 8, 5, 0x8040C0FF); // purple ellipse
+}
+
+static void test_pixelhash_scene_is_deterministic() {
+    void *a = rt_pixels_new(64, 64);
+    void *b = rt_pixels_new(64, 64);
+    draw_golden_scene(a);
+    draw_golden_scene(b);
+    // Same scene → identical fingerprint on every run (deterministic SW raster).
+    assert(fnv1a_pixels(a) == fnv1a_pixels(b));
+    printf("test_pixelhash_scene_is_deterministic: PASSED\n");
+}
+
+static void test_pixelhash_golden_value() {
+    void *p = rt_pixels_new(64, 64);
+    draw_golden_scene(p);
+    const uint64_t hash = fnv1a_pixels(p);
+    // Golden fingerprint of the fixed scene. If a rasterization primitive changes
+    // output, this fails — regenerate after confirming the new pixels are correct.
+    const uint64_t kGolden = 0xC661E50FE4007883ULL;
+    if (hash != kGolden)
+        printf("test_pixelhash_golden_value: hash=0x%016llX (golden=0x%016llX)\n",
+               static_cast<unsigned long long>(hash),
+               static_cast<unsigned long long>(kGolden));
+    assert(hash == kGolden);
+    // Spot-check anchors so a hash mismatch is debuggable against known pixels.
+    assert(rt_pixels_get(p, 0, 0) == static_cast<int64_t>(0x202030FF)); // untouched bg corner
+    assert(rt_pixels_get(p, 24, 40) == static_cast<int64_t>(0xC04040FF)); // disc center
+    printf("test_pixelhash_golden_value: PASSED\n");
+}
+
 int main() {
     // SetRGB / GetRGB
     test_setrgb_getrgb_roundtrip();
@@ -526,6 +588,10 @@ int main() {
     // DrawBezier
     test_drawbezier_endpoints();
     test_drawbezier_connects_sparse_samples();
+
+    // Golden pixel-hash regression (whole-framebuffer fingerprint)
+    test_pixelhash_scene_is_deterministic();
+    test_pixelhash_golden_value();
 
     // DrawText
     test_drawtext_renders_font_metrics_and_alpha_colors();

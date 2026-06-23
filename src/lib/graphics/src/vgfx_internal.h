@@ -104,6 +104,18 @@ static inline void vgfx_atomic_flag_clear(vgfx_atomic_flag_t *flag) {
 // Internal Window Structure
 //===----------------------------------------------------------------------===//
 
+/// @brief Retired framebuffer allocation kept alive after a resize.
+/// @details Direct framebuffer descriptors returned by `vgfx_get_framebuffer`
+///          cannot be pinned by the current public API.  When a resize replaces
+///          `vgfx_window::pixels`, old allocations are linked here and released
+///          during window destruction so stale descriptors are not immediately
+///          turned into dangling pointers.  Callers should still compare
+///          generations and reacquire the current framebuffer after resize.
+typedef struct vgfx_retired_framebuffer {
+    uint8_t *pixels;                       ///< Previous aligned RGBA pixel buffer.
+    struct vgfx_retired_framebuffer *next; ///< Next retired allocation, or NULL.
+} vgfx_retired_framebuffer_t;
+
 /// @brief Complete internal representation of a ViperGFX window.
 /// @details Contains all state required to manage a window: framebuffer,
 ///          event queue, input tracking, timing, and platform-specific data.
@@ -171,6 +183,10 @@ struct vgfx_window {
     /// @details Incremented each time pixels is allocated or replaced so direct
     ///          framebuffer users can detect stale descriptors after resize.
     uint64_t framebuffer_generation;
+
+    /// @brief Previous framebuffer allocations retained until window destruction.
+    /// @details See `vgfx_retired_framebuffer_t` for the lifetime rationale.
+    vgfx_retired_framebuffer_t *retired_framebuffers;
 
     /// @brief When 1, vgfx_platform_present skips the software framebuffer blit.
     /// @details Set by GPU backends (Metal, D3D11, OpenGL) to prevent the software
@@ -568,6 +584,17 @@ void vgfx_internal_set_error(vgfx_error_t code, const char *msg);
 /// @post Event is in the queue OR event_overflow incremented
 int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *event);
 
+/// @brief Enqueue an event while coalescing consecutive mouse-motion updates.
+/// @details High-frequency native mouse motion can flood the fixed-size event
+///          queue.  When the newest queued event is already a mouse-move event,
+///          this helper replaces it with the latest coordinates instead of
+///          appending another redundant move.  Non-motion events use the regular
+///          enqueue semantics.
+/// @param win Window whose queue receives the event.
+/// @param event Event to enqueue or coalesce.
+/// @return 1 when the event was queued/coalesced, 0 when it was dropped.
+int vgfx_internal_enqueue_coalesced_event(struct vgfx_window *win, const vgfx_event_t *event);
+
 /// @brief Record a platform-side event that had to be dropped before enqueue.
 /// @details Used when a backend rejects an oversized or otherwise unsafe native
 ///          event payload before it can be represented as a vgfx_event_t.
@@ -668,8 +695,13 @@ void vgfx_internal_set_focus_state(struct vgfx_window *win, int32_t focused);
 void vgfx_internal_set_prevent_close(struct vgfx_window *win, int32_t prevent);
 
 static inline void vgfx_internal_event_lock(struct vgfx_window *win) {
+    uint32_t spins = 0;
     while (vgfx_atomic_flag_test_and_set(&win->event_lock)) {
-        vgfx_internal_event_wait();
+        spins++;
+        if ((spins & 63u) == 0u)
+            vgfx_platform_sleep_ms(1);
+        else
+            vgfx_internal_event_wait();
     }
 }
 

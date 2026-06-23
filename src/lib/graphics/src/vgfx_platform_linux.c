@@ -54,7 +54,7 @@
 #include <unistd.h>
 
 #define VGFX_X11_CLIPBOARD_MAX_BYTES (16u * 1024u * 1024u)
-#define VGFX_X11_CLIPBOARD_WAIT_MS 500
+#define VGFX_X11_CLIPBOARD_WAIT_MS 1000
 
 typedef void *GLXFBConfig;
 
@@ -249,6 +249,19 @@ static struct vgfx_window *g_vgfx_x11_windows = NULL;
 static vgfx_atomic_flag_t g_x11_scale_lock;
 static int g_x11_scale_cached = 0;
 static float g_x11_scale_value = 1.0f;
+
+/// @brief Initialize Xlib's thread support before opening any display.
+/// @details XInitThreads must be called before other Xlib calls in a process
+///          that may touch Xlib from multiple threads.  Calling it more than
+///          once is harmless for this backend; the flag only avoids repeated
+///          work on common single-threaded paths.
+static void x11_init_threads_once(void) {
+    static int initialized = 0;
+    if (!initialized) {
+        XInitThreads();
+        initialized = 1;
+    }
+}
 
 /// @brief Wait briefly for an X11 window to become viewable after `XMapWindow`.
 /// @details X11 mapping is asynchronous. Canvas3D can create an OpenGL context immediately after
@@ -662,6 +675,7 @@ static void x11_set_window_title_utf8(Display *display, Window window, const cha
     Atom net_wm_name = XInternAtom(display, "_NET_WM_NAME", False);
     Atom net_wm_icon_name = XInternAtom(display, "_NET_WM_ICON_NAME", False);
     size_t len = strlen(title);
+    int x_len = len > (size_t)INT_MAX ? INT_MAX : (int)len;
     if (utf8 != None && net_wm_name != None) {
         XChangeProperty(display,
                         window,
@@ -670,7 +684,7 @@ static void x11_set_window_title_utf8(Display *display, Window window, const cha
                         8,
                         PropModeReplace,
                         (const unsigned char *)title,
-                        (int)len);
+                        x_len);
     }
     if (utf8 != None && net_wm_icon_name != None) {
         XChangeProperty(display,
@@ -680,7 +694,7 @@ static void x11_set_window_title_utf8(Display *display, Window window, const cha
                         8,
                         PropModeReplace,
                         (const unsigned char *)title,
-                        (int)len);
+                        x_len);
     }
 
     XStoreName(display, window, title);
@@ -945,6 +959,7 @@ float vgfx_platform_get_display_scale(void) {
     /* Priority 3: Xft.dpi from the X11 resource database.  The temporary
      * display connection is cached after the first successful query so repeated
      * scale reads do not continually connect to the X server. */
+    x11_init_threads_once();
     Display *dpy = XOpenDisplay(NULL);
     float scale = 1.0f;
     if (dpy) {
@@ -1014,6 +1029,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->height = win->height;
 
     /* Open connection to X server */
+    x11_init_threads_once();
     x11->display = XOpenDisplay(NULL);
     if (!x11->display) {
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to open X11 display");
@@ -1582,7 +1598,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     .time_ms = timestamp,
                     .data.mouse_move = {
                         .x = x, .y = y, .modifiers = x11_modifiers(event.xmotion.state)}};
-                vgfx_internal_enqueue_event(win, &vgfx_event);
+                vgfx_internal_enqueue_coalesced_event(win, &vgfx_event);
                 break;
             }
 
@@ -1841,9 +1857,16 @@ static int x11_convert_rgba_to_native32(struct vgfx_window *win, vgfx_x11_data *
         }
     }
 
+    const size_t pixel_count = (size_t)win->width * (size_t)win->height;
+    const size_t byte_count = pixel_count * 4u;
+    if (r_index == 0 && g_index == 1 && b_index == 2 && a_index == 3 &&
+        byte_count <= x11->ximage_buf_size) {
+        memcpy(x11->ximage_buf, win->pixels, byte_count);
+        return 1;
+    }
+
     const uint8_t *src = win->pixels;
     uint8_t *dst = x11->ximage_buf;
-    const size_t pixel_count = (size_t)win->width * (size_t)win->height;
     for (size_t i = 0; i < pixel_count; ++i) {
         dst[0] = 0;
         dst[1] = 0;
@@ -2392,6 +2415,7 @@ void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int
         display = x11->display;
         screen = x11->screen;
     } else {
+        x11_init_threads_once();
         display = XOpenDisplay(NULL);
         close_display = 1;
         if (display)

@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <math.h>
@@ -147,20 +147,20 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
         int32_t track_h = (int32_t)track_th;
 
         float track_rad = track_th * 0.5f;
-        vg_draw_round_rect_fill(win, track_xf, (float)track_y, track_wf, (float)track_h, track_rad,
-                                track_color);
+        vg_draw_round_rect_fill(
+            win, track_xf, (float)track_y, track_wf, (float)track_h, track_rad, track_color);
 
         float fill_wf = norm * track_wf;
         if (fill_wf > 0.5f)
-            vg_draw_round_rect_fill(win, track_xf, (float)track_y, fill_wf, (float)track_h,
-                                    track_rad, fill_color);
+            vg_draw_round_rect_fill(
+                win, track_xf, (float)track_y, fill_wf, (float)track_h, track_rad, fill_color);
 
         float thumb_cx = track_xf + norm * track_wf;
         float thumb_cy = y + h / 2.0f;
         vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf + 1.0f, theme->colors.border_primary);
         vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf, thumb_color);
-        vg_draw_circle_stroke(win, thumb_cx, thumb_cy, thumb_rf, 1.0f,
-                              vg_color_darken(thumb_color, 0.18f));
+        vg_draw_circle_stroke(
+            win, thumb_cx, thumb_cy, thumb_rf, 1.0f, vg_color_darken(thumb_color, 0.18f));
     } else {
         float track_th = slider->track_thickness > 0 ? slider->track_thickness : 4.0f;
         float thumb_rf = slider->thumb_size * 0.5f;
@@ -172,26 +172,26 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
         int32_t track_w = (int32_t)track_th;
 
         float track_rad = track_th * 0.5f;
-        vg_draw_round_rect_fill(win, (float)track_x, track_yf, (float)track_w, track_hf, track_rad,
-                                track_color);
+        vg_draw_round_rect_fill(
+            win, (float)track_x, track_yf, (float)track_w, track_hf, track_rad, track_color);
 
         float fill_hf = norm * track_hf;
         float fill_yf = track_yf + track_hf - fill_hf;
         if (fill_hf > 0.5f)
-            vg_draw_round_rect_fill(win, (float)track_x, fill_yf, (float)track_w, fill_hf, track_rad,
-                                    fill_color);
+            vg_draw_round_rect_fill(
+                win, (float)track_x, fill_yf, (float)track_w, fill_hf, track_rad, fill_color);
 
         float thumb_cx = x + w / 2.0f;
         float thumb_cy = track_yf + track_hf - norm * track_hf;
         vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf + 1.0f, theme->colors.border_primary);
         vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf, thumb_color);
-        vg_draw_circle_stroke(win, thumb_cx, thumb_cy, thumb_rf, 1.0f,
-                              vg_color_darken(thumb_color, 0.18f));
+        vg_draw_circle_stroke(
+            win, thumb_cx, thumb_cy, thumb_rf, 1.0f, vg_color_darken(thumb_color, 0.18f));
     }
 
     if (widget->state & VG_STATE_FOCUSED) {
-        vg_draw_round_rect_stroke(win, x, y, w, h, theme->radius.sm, 1.5f,
-                                  theme->colors.border_focus);
+        vg_draw_round_rect_stroke(
+            win, x, y, w, h, theme->radius.sm, 1.5f, theme->colors.border_focus);
     }
 }
 
@@ -287,16 +287,15 @@ static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event) {
              * when step == 0).  Home/End jump to the min/max extremes. */
             float step = (slider->step > 0.0f) ? slider->step
                                                : (slider->max_value - slider->min_value) * 0.01f;
-            bool horiz = (slider->orientation == VG_SLIDER_HORIZONTAL);
             switch (event->key.key) {
                 case VG_KEY_RIGHT:
                 case VG_KEY_UP:
-                    vg_slider_set_value(slider, slider->value + (horiz ? step : step));
+                    vg_slider_set_value(slider, slider->value + step);
                     event->handled = true;
                     return true;
                 case VG_KEY_LEFT:
                 case VG_KEY_DOWN:
-                    vg_slider_set_value(slider, slider->value - (horiz ? step : step));
+                    vg_slider_set_value(slider, slider->value - step);
                     event->handled = true;
                     return true;
                 case VG_KEY_HOME:
