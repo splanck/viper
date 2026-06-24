@@ -57,6 +57,8 @@
 #include <time.h>
 #endif
 
+#define RT_THREADPOOL_DEFAULT_MAX_PENDING 65536
+
 //=============================================================================
 // Internal Structures
 //=============================================================================
@@ -88,6 +90,7 @@ typedef struct pool_impl {
     int8_t shutdown;          ///< Shutdown flag.
     int8_t shutdown_now;      ///< Immediate shutdown flag.
     int8_t cleanup_scheduled; ///< Deferred cleanup was scheduled from a worker finalizer.
+    int64_t max_pending;      ///< Maximum queued tasks before Submit applies backpressure.
 } pool_impl;
 
 //=============================================================================
@@ -109,6 +112,23 @@ static __declspec(thread) pool_impl *g_current_worker_pool = NULL;
 #else
 static __thread pool_impl *g_current_worker_pool = NULL;
 #endif
+
+/// @brief Compute the default pending-task limit for new thread pools.
+/// @details Uses VIPER_THREADPOOL_MAX_PENDING when it contains a positive
+///          integer, otherwise falls back to a conservative fixed cap. The cap
+///          prevents unbounded queue growth under load while preserving existing
+///          asynchronous behavior for normal workloads.
+/// @return Maximum number of tasks allowed to wait in the queue.
+static int64_t pool_default_max_pending(void) {
+    const char *env = getenv("VIPER_THREADPOOL_MAX_PENDING");
+    if (env && env[0]) {
+        char *end = NULL;
+        long long value = strtoll(env, &end, 10);
+        if (end && *end == '\0' && value > 0)
+            return (int64_t)value;
+    }
+    return RT_THREADPOOL_DEFAULT_MAX_PENDING;
+}
 
 /// @brief Release a worker-thread handle held in @p *slot and NULL the slot.
 /// @details Standard ownership-discipline helper used during pool shutdown
@@ -383,6 +403,7 @@ void *rt_threadpool_new(int64_t size) {
     pool->queue_tail = NULL;
     pool->pending_count = 0;
     pool->active_count = 0;
+    pool->max_pending = pool_default_max_pending();
     pool->error_count = 0;
     pool->last_error[0] = '\0';
     pool->shutdown = 0;
@@ -582,6 +603,11 @@ int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *a
         rt_monitor_exit(pool->monitor);
         pool_release_object(pool);
         rt_trap("Pool.Submit: pending task count overflow");
+        return 0;
+    }
+    if (pool->pending_count >= pool->max_pending) {
+        rt_monitor_exit(pool->monitor);
+        pool_release_object(pool);
         return 0;
     }
 

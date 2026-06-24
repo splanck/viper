@@ -222,6 +222,12 @@ namespace detail {
         return effects;
     }
 
+    if (name == "rt_line_input_ch_err") {
+        effects.ownedOutArgMask = 0b10;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
     if (name == "rt_bitset_to_string" || name == "rt_bytes_to_str" || name == "rt_bytes_to_hex" ||
         name == "rt_bytes_to_base64" || name == "rt_orderedmap_key_at" ||
         name == "rt_trie_longest_prefix" || name == "rt_sortedset_first" ||

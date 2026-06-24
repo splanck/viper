@@ -137,9 +137,20 @@ static inline uint64_t rt_siphash24(const void *data, size_t len) {
     return v0 ^ v1 ^ v2 ^ v3;
 }
 
+/// @brief Runtime keyed hash for collection keys.
+/// @details This is the preferred audit-friendly name for SipHash-2-4 over
+///          arbitrary byte sequences. It avoids implying that callers receive a
+///          deterministic FNV value.
+/// @param data Pointer to bytes to hash.
+/// @param len Number of bytes to hash.
+/// @return 64-bit per-process-keyed SipHash value.
+static inline uint64_t rt_keyed_hash_bytes(const void *data, size_t len) {
+    return rt_siphash24(data, len);
+}
+
 /// @brief Backward-compatible internal name for the runtime's fast keyed hash.
 static inline uint64_t rt_fnv1a(const void *data, size_t len) {
-    return rt_siphash24(data, len);
+    return rt_keyed_hash_bytes(data, len);
 }
 
 #undef RT_SIPROUND_

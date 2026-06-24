@@ -37,6 +37,7 @@
 #include "rt_string.h"
 #include "rt_threadpool.h"
 #include "rt_tls_server_internal.h"
+#include "system/rt_machine.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -84,6 +85,22 @@ extern void rt_trap_net(const char *msg, int err_code);
 #define HTTP_REQ_MAX_HEADERS 100
 #define HTTP_REQ_MAX_BODY (16 * 1024 * 1024) // 16 MB
 #define HTTP_REQ_MAX_ENCODED_BODY (HTTP_REQ_MAX_BODY + 65536)
+#define HTTPS_SERVER_MAX_ACTIVE_CONNS 4096
+
+/// @brief Compute the internal worker-pool size for HTTPS server instances.
+/// @details Uses the runtime machine adapter to query logical CPU count, then
+///          clamps the result to the range accepted by @ref rt_threadpool_new.
+///          Keeping this local avoids exposing a new public runtime C ABI symbol
+///          for a server implementation detail.
+/// @return Worker count in the inclusive range 1..1024.
+static int64_t https_server_default_worker_count(void) {
+    int64_t cores = rt_machine_cores();
+    if (cores < 1)
+        cores = 1;
+    if (cores > 1024)
+        cores = 1024;
+    return cores;
+}
 
 typedef struct {
     char *method;
@@ -182,6 +199,10 @@ static int https_server_register_active_conn(rt_http_server_impl *server, void *
             https_server_state_unlock(server);
             return 1;
         }
+    }
+    if (server->active_conn_count >= HTTPS_SERVER_MAX_ACTIVE_CONNS) {
+        https_server_state_unlock(server);
+        return 0;
     }
     if (server->active_conn_count == server->active_conn_cap) {
         int new_cap = server->active_conn_cap > 0 ? server->active_conn_cap * 2 : 8;
@@ -1141,7 +1162,7 @@ static void *accept_loop(void *arg)
 ///
 /// Allocates a GC-managed server impl, attaches the finalizer (which
 /// will tear down routes / worker pool / accept loop on collection),
-/// constructs the route trie and an 8-thread worker pool, and stores
+/// constructs the route trie and a CPU-sized worker pool, and stores
 /// the requested port for later use by `Start`. The TCP listener is
 /// not actually opened until `Start`; this constructor only validates
 /// inputs and reserves resources.
@@ -1171,7 +1192,7 @@ void *rt_https_server_new(int64_t port, rt_string cert_file, rt_string key_file)
             rt_obj_free(server);
         return NULL;
     }
-    server->worker_pool = rt_threadpool_new(8);
+    server->worker_pool = rt_threadpool_new(https_server_default_worker_count());
     if (!server->worker_pool) {
         rt_trap("HttpsServer: worker pool allocation failed");
         if (rt_obj_release_check0(server))
@@ -1363,7 +1384,7 @@ void rt_https_server_start(void *obj) {
     }
     server->port = rt_tcp_server_port(server->tcp_server);
     if (!server->worker_pool) {
-        server->worker_pool = rt_threadpool_new(8);
+        server->worker_pool = rt_threadpool_new(https_server_default_worker_count());
         if (!server->worker_pool) {
             rt_tcp_server_close(server->tcp_server);
             if (rt_obj_release_check0(server->tcp_server))

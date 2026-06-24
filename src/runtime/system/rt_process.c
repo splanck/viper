@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -278,9 +279,14 @@ static char *build_cmdline(const char *program, void *args) {
     size_t len = cmdline_quoted_len(program);
     for (int64_t i = 0; i < nargs; i++) {
         rt_string arg = rt_seq_get_str(args, i);
-        len += 1 + cmdline_quoted_len(arg ? rt_string_cstr(arg) : "");
+        size_t quoted_len = cmdline_quoted_len(arg ? rt_string_cstr(arg) : "");
         rt_str_release_maybe(arg);
+        if (quoted_len > SIZE_MAX - len - 1)
+            return NULL;
+        len += 1 + quoted_len;
     }
+    if (len == SIZE_MAX)
+        return NULL;
 
     char *cmdline = (char *)malloc(len + 1);
     if (!cmdline)
@@ -298,6 +304,37 @@ static char *build_cmdline(const char *program, void *args) {
     return cmdline;
 }
 
+/// @brief Validate a Windows environment block entry from a runtime string.
+/// @details CreateProcess expects NAME=VALUE entries separated by NUL bytes and
+///          terminated by an extra NUL. Rejecting embedded NUL bytes and missing
+///          names prevents truncation and malformed environment blocks.
+/// @param item Runtime string entry to inspect.
+/// @param text_out Receives a borrowed pointer when valid.
+/// @param len_out Receives the byte length when valid.
+/// @return 1 when @p item is valid, 0 otherwise.
+static int env_item_view(rt_string item, const char **text_out, size_t *len_out) {
+    const char *text = item ? rt_string_cstr(item) : NULL;
+    int64_t signed_len = item ? rt_str_len(item) : -1;
+    const char *equals = NULL;
+    if (text_out)
+        *text_out = NULL;
+    if (len_out)
+        *len_out = 0;
+    if (!text || signed_len <= 0 || (uint64_t)signed_len > SIZE_MAX)
+        return 0;
+    size_t len = (size_t)signed_len;
+    if (memchr(text, '\0', len))
+        return 0;
+    equals = (const char *)memchr(text, '=', len);
+    if (!equals || equals == text)
+        return 0;
+    if (text_out)
+        *text_out = text;
+    if (len_out)
+        *len_out = len;
+    return 1;
+}
+
 static char *build_env_block(void *env) {
     if (!env)
         return NULL;
@@ -306,8 +343,16 @@ static char *build_env_block(void *env) {
     size_t len = 2;
     for (int64_t i = 0; i < count; i++) {
         rt_string item = rt_seq_get_str(env, i);
-        len += strlen(item ? rt_string_cstr(item) : "") + 1;
+        const char *text = NULL;
+        size_t item_len = 0;
+        if (!env_item_view(item, &text, &item_len)) {
+            rt_str_release_maybe(item);
+            return NULL;
+        }
         rt_str_release_maybe(item);
+        if (item_len > SIZE_MAX - len - 1)
+            return NULL;
+        len += item_len + 1;
     }
 
     char *block = (char *)calloc(len, 1);
@@ -317,8 +362,13 @@ static char *build_env_block(void *env) {
     char *out = block;
     for (int64_t i = 0; i < count; i++) {
         rt_string item = rt_seq_get_str(env, i);
-        const char *text = item ? rt_string_cstr(item) : "";
-        size_t item_len = strlen(text);
+        const char *text = NULL;
+        size_t item_len = 0;
+        if (!env_item_view(item, &text, &item_len)) {
+            rt_str_release_maybe(item);
+            free(block);
+            return NULL;
+        }
         memcpy(out, text, item_len);
         out += item_len + 1;
         rt_str_release_maybe(item);
@@ -415,7 +465,15 @@ static void process_poll_internal(rt_process_impl *proc, int wait) {
     if (!proc->running || !proc->process)
         return;
 
-    DWORD wait_result = WaitForSingleObject(proc->process, wait ? INFINITE : 0);
+    DWORD wait_result = WAIT_TIMEOUT;
+    if (wait) {
+        do {
+            process_drain(proc);
+            wait_result = WaitForSingleObject(proc->process, 10);
+        } while (wait_result == WAIT_TIMEOUT);
+    } else {
+        wait_result = WaitForSingleObject(proc->process, 0);
+    }
     if (wait_result == WAIT_OBJECT_0) {
         DWORD exit_code = 0;
         if (GetExitCodeProcess(proc->process, &exit_code)) {
@@ -498,6 +556,8 @@ static rt_process_impl *process_start_impl(rt_string program,
 
     rt_process_impl *proc = process_alloc();
     if (!proc) {
+        (void)TerminateProcess(pi.hProcess, 1);
+        (void)WaitForSingleObject(pi.hProcess, INFINITE);
         close_handle(&stdout_read);
         close_handle(&stderr_read);
         close_handle(&stdin_write);
@@ -538,6 +598,46 @@ static rt_process_impl *process_start_impl(rt_string program,
 }
 
 #else
+
+/// @brief Write to a POSIX pipe without globally changing SIGPIPE behavior.
+/// @details Temporarily blocks SIGPIPE for the current thread, performs one
+///          write, consumes the generated SIGPIPE only when this write produced
+///          EPIPE and no signal was already pending, then restores the previous
+///          mask. This keeps Process.WriteStdin from mutating process-wide
+///          signal disposition.
+/// @param fd Pipe descriptor.
+/// @param bytes Bytes to write.
+/// @param len Maximum bytes to write in this syscall.
+/// @return The write(2) result.
+static ssize_t process_write_no_sigpipe(int fd, const char *bytes, size_t len) {
+    sigset_t set;
+    sigset_t old_set;
+    sigset_t pending;
+    int blocked = 0;
+    int had_pending = 0;
+    ssize_t n = -1;
+
+    sigemptyset(&set);
+    sigaddset(&set, SIGPIPE);
+    if (sigprocmask(SIG_BLOCK, &set, &old_set) == 0) {
+        blocked = 1;
+        if (sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE) == 1)
+            had_pending = 1;
+    }
+
+    do {
+        n = write(fd, bytes, len);
+    } while (n < 0 && errno == EINTR);
+
+    if (blocked && n < 0 && errno == EPIPE && !had_pending) {
+        int signo = 0;
+        if (sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE) == 1)
+            (void)sigwait(&set, &signo);
+    }
+    if (blocked)
+        (void)sigprocmask(SIG_SETMASK, &old_set, NULL);
+    return n;
+}
 
 static void close_fd(int *fd) {
     if (fd && *fd >= 0) {
@@ -605,9 +705,20 @@ static void process_poll_internal(rt_process_impl *proc, int wait) {
 
     int status = 0;
     pid_t result;
-    do {
-        result = waitpid(proc->pid, &status, wait ? 0 : WNOHANG);
-    } while (result < 0 && errno == EINTR);
+    for (;;) {
+        do {
+            result = waitpid(proc->pid, &status, WNOHANG);
+        } while (result < 0 && errno == EINTR);
+        if (!wait || result != 0)
+            break;
+        process_drain(proc);
+        {
+            struct timespec delay;
+            delay.tv_sec = 0;
+            delay.tv_nsec = 10000000L;
+            (void)nanosleep(&delay, NULL);
+        }
+    }
 
     if (result == proc->pid) {
         proc->exit_code = decode_exit_status(status);
@@ -707,6 +818,8 @@ static rt_process_impl *process_start_impl(rt_string program,
 
     rt_process_impl *proc = process_alloc();
     if (!proc) {
+        (void)kill(pid, SIGTERM);
+        (void)waitpid(pid, NULL, 0);
         close_fd(&stdout_pipe[0]);
         close_fd(&stderr_pipe[0]);
         close_fd(&stdin_pipe[1]);
@@ -844,21 +957,17 @@ int64_t rt_process_write_stdin(void *handle, rt_string data) {
 #else
     if (proc->stdin_fd < 0)
         return -1;
-    // Writing to a child that has closed stdin raises SIGPIPE, which would kill
-    // this process; ignore it once so the write fails with EPIPE instead.
-    static int sigpipe_ignored = 0;
-    if (!sigpipe_ignored) {
-        signal(SIGPIPE, SIG_IGN);
-        sigpipe_ignored = 1;
-    }
     size_t off = 0;
     while (off < len) {
-        ssize_t n = write(proc->stdin_fd, bytes + off, len - off);
+        size_t chunk = len - off;
+        if (chunk > (size_t)SSIZE_MAX)
+            chunk = (size_t)SSIZE_MAX;
+        ssize_t n = process_write_no_sigpipe(proc->stdin_fd, bytes + off, chunk);
         if (n < 0) {
-            if (errno == EINTR)
-                continue;
             return off > 0 ? (int64_t)off : -1;
         }
+        if (n == 0)
+            return off > 0 ? (int64_t)off : -1;
         off += (size_t)n;
     }
     return (int64_t)off;

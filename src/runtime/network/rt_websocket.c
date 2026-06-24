@@ -103,6 +103,7 @@ static void suppress_sigpipe(int sock) {
 
 // Maximum total size for reassembled fragmented messages (64 MB)
 #define WS_MAX_REASSEMBLY_SIZE (64u * 1024u * 1024u)
+#define WS_MAX_HANDSHAKE_HEADER_BYTES (16u * 1024u)
 
 /// @brief WebSocket connection implementation.
 typedef struct rt_ws_impl {
@@ -118,6 +119,7 @@ typedef struct rt_ws_impl {
     uint8_t *recv_buffer;    ///< Buffer for receiving frames.
     size_t recv_buffer_size; ///< Size of receive buffer.
     size_t recv_buffer_len;  ///< Bytes currently in buffer.
+    size_t recv_buffer_pos;  ///< Read cursor within recv_buffer.
 } rt_ws_impl;
 
 /// @brief True if `host` is an IPv6 literal that must be wrapped in `[…]` for URL/Host.
@@ -929,7 +931,7 @@ static int ws_handshake(rt_ws_impl *ws,
         return 0;
 
     // Receive response headers
-    char response[16384];
+    char response[WS_MAX_HANDSHAKE_HEADER_BYTES];
     size_t total = 0;
     size_t header_end = 0;
     while (total < sizeof(response) - 1) {
@@ -942,8 +944,10 @@ static int ws_handshake(rt_ws_impl *ws,
         if (header_end)
             break;
     }
-    if (!header_end)
+    if (!header_end) {
+        rt_trap_net("WebSocket: handshake response headers too large", Err_ProtocolError);
         return 0;
+    }
 
     if (total > header_end) {
         size_t leftover_len = total - header_end;
@@ -955,6 +959,7 @@ static int ws_handshake(rt_ws_impl *ws,
         ws->recv_buffer = leftover;
         ws->recv_buffer_size = leftover_len;
         ws->recv_buffer_len = leftover_len;
+        ws->recv_buffer_pos = 0;
     }
     response[header_end] = '\0';
 
@@ -1023,14 +1028,16 @@ static int ws_recv_exact(rt_ws_impl *ws, void *buffer, size_t len) {
     size_t total = 0;
     while (total < len) {
         if (ws->recv_buffer_len > 0) {
-            size_t available = ws->recv_buffer_len;
+            size_t available = ws->recv_buffer_len - ws->recv_buffer_pos;
             size_t needed = len - total;
             size_t take = available < needed ? available : needed;
-            memcpy((uint8_t *)buffer + total, ws->recv_buffer, take);
+            memcpy((uint8_t *)buffer + total, ws->recv_buffer + ws->recv_buffer_pos, take);
             total += take;
-            ws->recv_buffer_len -= take;
-            if (ws->recv_buffer_len > 0)
-                memmove(ws->recv_buffer, ws->recv_buffer + take, ws->recv_buffer_len);
+            ws->recv_buffer_pos += take;
+            if (ws->recv_buffer_pos == ws->recv_buffer_len) {
+                ws->recv_buffer_pos = 0;
+                ws->recv_buffer_len = 0;
+            }
             continue;
         }
         long n = ws_recv(ws, (uint8_t *)buffer + total, len - total);
@@ -1339,6 +1346,9 @@ static void rt_ws_finalize(void *obj) {
     ws->close_reason = NULL;
     ws->close_reason_len = 0;
     ws->recv_buffer = NULL;
+    ws->recv_buffer_size = 0;
+    ws->recv_buffer_len = 0;
+    ws->recv_buffer_pos = 0;
 }
 
 /// @brief Connect to a WebSocket URL with a 30-second default timeout.
@@ -1430,6 +1440,7 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
     ws->recv_buffer = NULL;
     ws->recv_buffer_size = 0;
     ws->recv_buffer_len = 0;
+    ws->recv_buffer_pos = 0;
 
     rt_obj_set_finalizer(ws, rt_ws_finalize);
 

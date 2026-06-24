@@ -37,6 +37,7 @@
 #include "rt_collection_ids.h"
 #include "rt_error.h"
 #include "rt_gc.h"
+#include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -82,14 +83,9 @@ static rt_orderedmap_impl *as_orderedmap(void *obj, const char *what) {
 // Hash helpers
 // ---------------------------------------------------------------------------
 
-/// @brief FNV-1a 64-bit hash of @p len bytes of @p key.
+/// @brief Per-process keyed hash of @p len bytes of @p key.
 static uint64_t om_hash(const char *key, size_t len) {
-    uint64_t h = 0xcbf29ce484222325ULL;
-    for (size_t i = 0; i < len; i++) {
-        h ^= (uint64_t)(unsigned char)key[i];
-        h *= 0x100000001b3ULL;
-    }
-    return h;
+    return rt_keyed_hash_bytes(key ? key : "", len);
 }
 
 /// @brief Borrow the byte buffer + length of a key string (empty "" if null).

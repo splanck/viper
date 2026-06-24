@@ -41,10 +41,10 @@ extern "C" {
 rt_string *rt_arr_str_alloc(size_t len);
 
 /// @brief Release each non-null string element and free the array.
-/// @details Iterates through all @p size elements, calling rt_str_release_maybe on each,
-///          then releases the array itself via the heap allocator.
+/// @details Iterates through the heap header's authoritative element count, calling
+///          rt_str_release_maybe on each, then releases the array itself via the heap allocator.
 /// @param arr Array payload pointer (may be NULL).
-/// @param size Number of elements in the array (logical length).
+/// @param size Historical caller-supplied element count; ignored.
 void rt_arr_str_release(rt_string *arr, size_t size);
 
 /// @brief Read string element at index @p idx and return a retained handle.

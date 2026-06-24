@@ -724,13 +724,20 @@ void rt_seq_push_all(void *obj, void *other) {
             return;
         }
         if (seq->owns_elements) {
-            for (int64_t i = 0; i < original_len; i++)
-                rt_seq_push(seq, seq->items[i]);
+            if (!seq_ensure_capacity(seq, original_len + original_len))
+                return;
+            for (int64_t i = 0; i < original_len; i++) {
+                void *item = seq->items[i];
+                if (item)
+                    rt_obj_retain_maybe(item);
+                seq->items[seq->len] = item;
+                seq->len++;
+            }
             return;
         }
         if (!seq_ensure_capacity(seq, original_len + original_len))
             return;
-        memmove(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
+        memcpy(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
         seq->len = original_len + original_len;
         return;
     }
@@ -740,8 +747,15 @@ void rt_seq_push_all(void *obj, void *other) {
         return;
     }
     if (seq->owns_elements) {
-        for (int64_t i = 0; i < src->len; i++)
-            rt_seq_push(seq, src->items[i]);
+        if (!seq_ensure_capacity(seq, seq->len + src->len))
+            return;
+        for (int64_t i = 0; i < src->len; i++) {
+            void *item = src->items[i];
+            if (item)
+                rt_obj_retain_maybe(item);
+            seq->items[seq->len] = item;
+            seq->len++;
+        }
         return;
     }
     if (!seq_ensure_capacity(seq, seq->len + src->len))

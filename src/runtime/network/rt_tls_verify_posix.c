@@ -18,7 +18,12 @@
 
 #if !defined(_WIN32)
 
+#include <stdlib.h>
+
 /// @brief Find a PEM CA bundle file by probing standard OS paths.
+/// @details The VIPER_TLS_CA_FILE environment variable can point at an
+///          application-managed CA bundle. When unset or unusable, standard
+///          distro bundle paths are probed in order.
 /// @return Path string literal on success, NULL if none found.
 static RT_TLS_MAYBE_UNUSED const char *find_ca_bundle(void) {
     static const char *bundles[] = {"/etc/ssl/certs/ca-certificates.crt",
@@ -26,6 +31,14 @@ static RT_TLS_MAYBE_UNUSED const char *find_ca_bundle(void) {
                                     "/etc/ssl/ca-bundle.pem",
                                     "/etc/ssl/cert.pem",
                                     NULL};
+    const char *override = getenv("VIPER_TLS_CA_FILE");
+    if (override && override[0]) {
+        FILE *f = fopen(override, "rb");
+        if (f) {
+            fclose(f);
+            return override;
+        }
+    }
     for (int i = 0; bundles[i]; i++) {
         FILE *f = fopen(bundles[i], "rb");
         if (f) {
@@ -67,7 +80,7 @@ static RT_TLS_MAYBE_UNUSED size_t pem_decode_cert(const char *pem_b64,
         if (c == '=')
             break;
         if (b64tab[c] < 0)
-            continue;
+            return 0;
         acc = (acc << 6) | (uint32_t)b64tab[c];
         bits += 6;
         if (bits >= 8) {

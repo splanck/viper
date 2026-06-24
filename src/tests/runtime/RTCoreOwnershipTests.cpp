@@ -136,6 +136,9 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     assert(!tryToStr.writesOwnedOutArg(1));
     const auto rawTryToStr = il::runtime::classifyRuntimeOwnership("rt_box_try_to_str");
     assert(rawTryToStr.writesOwnedOutArg(1));
+    const auto lineInput = il::runtime::classifyRuntimeOwnership("rt_line_input_ch_err");
+    assert(lineInput.writesOwnedOutArg(1));
+    assert(lineInput.mayAllocate);
     const auto tryToI64 = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.TryToI64");
     assert(tryToI64.returnsOwned);
     assert(tryToI64.mayAllocate);

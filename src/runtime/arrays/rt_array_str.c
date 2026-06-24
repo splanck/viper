@@ -81,7 +81,8 @@ rt_string *rt_arr_str_alloc(size_t len) {
 /// @details Iterates through all elements, releasing each non-null string,
 ///          then releases the array allocation itself.
 /// @param arr Array payload pointer (may be NULL).
-/// @param size Number of elements in the array.
+/// @param size Historical caller-supplied element count; ignored because the
+///             heap header owns the authoritative length.
 void rt_arr_str_release(rt_string *arr, size_t size) {
     if (!arr)
         return;
@@ -91,8 +92,10 @@ void rt_arr_str_release(rt_string *arr, size_t size) {
         return;
     rt_arr_str_assert_header(hdr);
 
-    // Release each string element
-    for (size_t i = 0; i < size; ++i) {
+    (void)size;
+
+    // Release each string element using the heap header's authoritative length.
+    for (size_t i = 0; i < hdr->len; ++i) {
         rt_str_release_maybe(arr[i]);
         arr[i] = NULL; // Clear slot after release
     }

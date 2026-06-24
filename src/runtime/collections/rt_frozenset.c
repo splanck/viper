@@ -8,7 +8,7 @@
 // File: src/runtime/collections/rt_frozenset.c
 // Purpose: Implements an immutable string set (FrozenSet) built once from a Seq
 //   of strings. After construction no elements can be added or removed. Uses
-//   open-addressing with FNV-1a hashing for O(1) average-case membership tests.
+//   open-addressing with the runtime keyed hash for O(1) average-case membership tests.
 //   Typical uses: constant keyword tables, stop-word lists, and any membership
 //   query where the set contents are known at build time.
 //
@@ -17,7 +17,7 @@
 //     at construction so load factor stays below 50%.
 //   - Slot key == NULL indicates an empty slot; no tombstones needed since the
 //     set is immutable after build.
-//   - FNV-1a hash over the raw string bytes; linear probing on collision.
+//   - Runtime keyed hash over the raw string bytes; linear probing on collision.
 //   - Keys are stored as retained rt_string references (not copied); the
 //     FrozenSet keeps references to prevent GC collection of key strings.
 //   - Contains returns 1 if the string is present, 0 otherwise.
@@ -36,6 +36,7 @@
 
 #include "rt_box.h"
 #include "rt_collection_ids.h"
+#include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -87,19 +88,14 @@ static rt_frozenset_impl *as_frozenset(void *obj, const char *what) {
     return (rt_frozenset_impl *)obj;
 }
 
-// --- FNV-1a hash ---
+// --- Keyed hash ---
 
-/// @brief FNV-1a 64-bit hash of @p len bytes of @p data.
+/// @brief Per-process keyed hash of @p len bytes of @p data.
 static uint64_t fs_hash(const char *data, int64_t len) {
-    uint64_t h = 14695981039346656037ULL;
-    for (int64_t i = 0; i < len; i++) {
-        h ^= (uint8_t)data[i];
-        h *= 1099511628211ULL;
-    }
-    return h;
+    return rt_keyed_hash_bytes(data ? data : "", len > 0 ? (size_t)len : 0);
 }
 
-/// @brief FNV-1a hash of an rt_string's bytes (empty string for NULL).
+/// @brief Keyed hash of an rt_string's bytes (empty string for NULL).
 static uint64_t fs_str_hash(rt_string s) {
     if (!s)
         return fs_hash("", 0);

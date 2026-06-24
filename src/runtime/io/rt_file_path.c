@@ -200,18 +200,15 @@ size_t rt_file_string_require_view(const ViperString *s,
 ///
 /// Used ubiquitously before calling the `W` variants of Win32/CRT
 /// APIs — the `A` variants use the system ANSI codepage, which loses
-/// data for non-ASCII filenames. Tries strict (MB_ERR_INVALID_CHARS)
-/// conversion first so malformed UTF-8 is rejected; falls back to
-/// lenient conversion (replaces bad sequences with U+FFFD) so legacy
-/// mis-encoded paths still open rather than hard-failing. Caller
-/// owns the returned buffer via `free`.
+/// data for non-ASCII filenames. Conversion is strict: malformed UTF-8
+/// is rejected so file operations never target a replacement-character
+/// path that differs from the caller's byte string. Caller owns the
+/// returned buffer via `free`.
 wchar_t *rt_file_path_utf8_to_wide(const char *utf8) {
     if (!utf8)
         return NULL;
 
     int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
-    if (needed <= 0)
-        needed = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
     if (needed <= 0)
         return NULL;
 
@@ -219,7 +216,7 @@ wchar_t *rt_file_path_utf8_to_wide(const char *utf8) {
     if (!wide)
         return NULL;
 
-    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, needed) <= 0) {
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
         free(wide);
         return NULL;
     }

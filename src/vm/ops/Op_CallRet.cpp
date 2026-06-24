@@ -349,8 +349,9 @@ VM::ExecResult handleCall(VM &vm,
             for (size_t index = 0; index < paramCount; ++index) {
                 const bool forcedOutCopy =
                     index < 64 && (signature->ownedOutArgMask & (std::uint64_t{1} << index)) != 0;
+                const bool argUnchanged = args[index].bitwiseEquals(originalArgs[index]);
                 // Compare slots using bitwise equality (safe for all types)
-                if (!forcedOutCopy && args[index].bitwiseEquals(originalArgs[index]))
+                if (!forcedOutCopy && argUnchanged)
                     continue;
 
                 const auto kind = signature->paramTypes[index].kind;
@@ -372,7 +373,7 @@ VM::ExecResult handleCall(VM &vm,
 
                 assignRegister(binding.reg);
 
-                if (binding.stackPtr) {
+                if (binding.stackPtr && !(forcedOutCopy && argUnchanged)) {
                     auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t {
                         switch (k) {
                             case il::core::Type::Kind::I1:

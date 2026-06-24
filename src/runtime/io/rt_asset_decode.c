@@ -48,11 +48,14 @@
 #include <windows.h>
 #else
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 extern char *mkdtemp(char *);
 #endif
 
+#include "network/rt_entropy_platform.h"
 #include "rt_file_path.h"
+#include "rt_pixels_internal.h"
 #include "rt_string.h"
 
 // ─── External declarations ──────────────────────────────────────────────────
@@ -65,6 +68,13 @@ extern void *rt_pixels_load(void *path);
 
 // Image decoder (buffer-based)
 extern void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len);
+extern int rt_png_decode_buffer_rgba32(const uint8_t *data,
+                                       size_t len,
+                                       uint32_t **out_pixels,
+                                       int64_t *out_width,
+                                       int64_t *out_height);
+extern int rt_gif_decode_memory_first_rgba32(
+    const uint8_t *data, size_t len, uint32_t **out_pixels, int *out_width, int *out_height);
 
 // Audio decoder (buffer-based)
 extern void *rt_sound_load_mem(const void *data, int64_t size);
@@ -172,18 +182,7 @@ static char *asset_join_temp_path(const char *dir, const char *leaf) {
     return path;
 }
 
-#ifdef _WIN32
-static uint64_t asset_random_u64(unsigned attempt) {
-    unsigned int lo = 0;
-    unsigned int hi = 0;
-    if (rand_s(&lo) == 0 && rand_s(&hi) == 0)
-        return ((uint64_t)hi << 32) | (uint64_t)lo;
-    LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
-    return (uint64_t)GetCurrentProcessId() ^ (uint64_t)GetTickCount64() ^
-           (uint64_t)counter.QuadPart ^ ((uint64_t)attempt << 48);
-}
-#else
+#ifndef _WIN32
 /// @brief Return the POSIX temporary-directory base without linking the system runtime module.
 /// @details Mirrors `rt_machine_temp`'s environment lookup order while keeping asset decode
 ///          usable in reduced native-runtime link sets that do not include `rt_machine_temp`.
@@ -196,9 +195,74 @@ static const char *asset_posix_temp_base(void) {
         tmp = getenv("TEMP");
     if (!tmp || !*tmp)
         tmp = "/tmp";
+    struct stat st;
+    if (tmp[0] != '/' || stat(tmp, &st) != 0 || !S_ISDIR(st.st_mode) ||
+        access(tmp, W_OK | X_OK) != 0 ||
+        ((st.st_mode & S_IWOTH) != 0 && (st.st_mode & S_ISVTX) == 0)) {
+        tmp = "/tmp";
+    }
     return tmp;
 }
 #endif
+
+/// @brief Build a Pixels object from malloc-owned raw RGBA32 pixels.
+/// @details The decoder helpers return row-major 0xRRGGBBAA pixels in a
+///          malloc-owned array. This helper copies that array into a runtime
+///          Pixels object, marks the buffer generation changed, releases the
+///          temporary raw array, and returns the GC-managed Pixels handle.
+/// @param raw_pixels Malloc-owned raw pixel array; consumed by this helper.
+/// @param width Image width in pixels.
+/// @param height Image height in pixels.
+/// @return New Pixels object, or NULL on invalid dimensions/allocation failure.
+static void *asset_pixels_from_raw_rgba32(uint32_t *raw_pixels, int64_t width, int64_t height) {
+    if (!raw_pixels || width <= 0 || height <= 0) {
+        free(raw_pixels);
+        return NULL;
+    }
+    if (width > INT64_MAX / height || (uint64_t)(width * height) > SIZE_MAX / sizeof(uint32_t)) {
+        free(raw_pixels);
+        return NULL;
+    }
+    void *pixels_obj = rt_pixels_new(width, height);
+    if (!pixels_obj) {
+        free(raw_pixels);
+        return NULL;
+    }
+    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_obj;
+    size_t bytes = (size_t)(width * height) * sizeof(uint32_t);
+    memcpy(pixels->data, raw_pixels, bytes);
+    pixels->generation++;
+    pixels->alpha_scan_valid = 0;
+    pixels->alpha_scan_has_alpha = 0;
+    free(raw_pixels);
+    return pixels_obj;
+}
+
+/// @brief Decode PNG bytes directly into a Pixels object.
+/// @param data PNG file bytes.
+/// @param size Number of bytes in @p data.
+/// @return New Pixels object on success, NULL on decode failure.
+static void *asset_decode_png_memory(const uint8_t *data, size_t size) {
+    uint32_t *raw_pixels = NULL;
+    int64_t width = 0;
+    int64_t height = 0;
+    if (!rt_png_decode_buffer_rgba32(data, size, &raw_pixels, &width, &height))
+        return NULL;
+    return asset_pixels_from_raw_rgba32(raw_pixels, width, height);
+}
+
+/// @brief Decode the first GIF frame directly into a Pixels object.
+/// @param data GIF file bytes.
+/// @param size Number of bytes in @p data.
+/// @return New Pixels object on success, NULL on decode failure.
+static void *asset_decode_gif_memory(const uint8_t *data, size_t size) {
+    uint32_t *raw_pixels = NULL;
+    int width = 0;
+    int height = 0;
+    if (!rt_gif_decode_memory_first_rgba32(data, size, &raw_pixels, &width, &height))
+        return NULL;
+    return asset_pixels_from_raw_rgba32(raw_pixels, (int64_t)width, (int64_t)height);
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -249,10 +313,17 @@ static void *load_via_tempfile(const uint8_t *data,
     HANDLE h = INVALID_HANDLE_VALUE;
     for (int attempt = 0; attempt < 128 && h == INVALID_HANDLE_VALUE; ++attempt) {
         char dir_leaf[64];
+        uint64_t random_value = 0;
+        if (rt_entropy_platform_random_u64(&random_value) != 0) {
+            free(tmpdir);
+            free(tmppath);
+            free(tmpdir_path);
+            return NULL;
+        }
         snprintf(dir_leaf,
                  sizeof(dir_leaf),
                  "viper_asset_%016llx_%d",
-                 (unsigned long long)asset_random_u64((unsigned)attempt),
+                 (unsigned long long)random_value,
                  attempt);
         free(tmpdir_path);
         tmpdir_path = asset_join_temp_path(tmpdir, dir_leaf);
@@ -439,17 +510,17 @@ void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size) 
     if (iext(name, ".wav") || iext(name, ".ogg") || iext(name, ".mp3"))
         return rt_sound_load_mem(data, (int64_t)size);
 
-    // PNG — via temp file
+    // PNG — direct buffer API
     if (iext(name, ".png"))
-        return load_via_tempfile(data, size, ".png", rt_pixels_load_png);
+        return asset_decode_png_memory(data, size);
 
     // BMP — via temp file
     if (iext(name, ".bmp"))
         return load_via_tempfile(data, size, ".bmp", rt_pixels_load_bmp);
 
-    // GIF — via temp file
+    // GIF — direct buffer API (first frame)
     if (iext(name, ".gif"))
-        return load_via_tempfile(data, size, ".gif", rt_pixels_load_gif);
+        return asset_decode_gif_memory(data, size);
 
     // Unknown extension — return NULL (caller will return as Bytes)
     return NULL;

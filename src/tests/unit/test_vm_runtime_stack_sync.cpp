@@ -46,6 +46,15 @@ std::filesystem::path makeTempFile() {
     path /= "viper_vm_stack_sync_" + std::to_string(unique) + ".txt";
     return path;
 }
+
+size_t stringRefCount(rt_string value) {
+    auto *impl = reinterpret_cast<rt_string_impl *>(value);
+    if (!impl)
+        return 0;
+    if (impl->heap && impl->heap != RT_SSO_SENTINEL)
+        return impl->heap->refcnt;
+    return impl->literal_refs;
+}
 } // namespace
 
 int main() {
@@ -169,12 +178,7 @@ int main() {
         return 1;
     }
 
-    if (!capturedImpl->heap) {
-        std::fprintf(stderr, "captured string is not heap backed\n");
-        return 1;
-    }
-
-    const size_t preCallRefs = capturedImpl->heap->refcnt;
+    const size_t preCallRefs = stringRefCount(captured);
     if (preCallRefs != 1) {
         std::fprintf(stderr, "unexpected retained refs: %zu\n", preCallRefs);
         return 1;

@@ -1745,6 +1745,7 @@ size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
             block_len = 16;
         for (size_t j = 0; j < block_len; j++)
             ciphertext[i + j] = pt[i + j] ^ keystream[j];
+        rt_secure_zero(keystream, sizeof(keystream));
         gcm_inc32(counter);
     }
 
@@ -1760,6 +1761,10 @@ size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
 
     rt_secure_zero(rk, sizeof(rk));
     rt_secure_zero(H, sizeof(H));
+    rt_secure_zero(J0, sizeof(J0));
+    rt_secure_zero(counter, sizeof(counter));
+    rt_secure_zero(ghash_tag, sizeof(ghash_tag));
+    rt_secure_zero(enc_j0, sizeof(enc_j0));
 
     return plaintext_len + 16;
 }
@@ -1828,6 +1833,10 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
     if (diff != 0) {
         rt_secure_zero(rk, sizeof(rk));
         rt_secure_zero(H, sizeof(H));
+        rt_secure_zero(J0, sizeof(J0));
+        rt_secure_zero(ghash_tag, sizeof(ghash_tag));
+        rt_secure_zero(enc_j0, sizeof(enc_j0));
+        rt_secure_zero(expected_tag, sizeof(expected_tag));
         return -1;
     }
 
@@ -1844,11 +1853,17 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
             block_len = 16;
         for (size_t j = 0; j < block_len; j++)
             plaintext[i + j] = ct[i + j] ^ keystream[j];
+        rt_secure_zero(keystream, sizeof(keystream));
         gcm_inc32(counter);
     }
 
     rt_secure_zero(rk, sizeof(rk));
     rt_secure_zero(H, sizeof(H));
+    rt_secure_zero(J0, sizeof(J0));
+    rt_secure_zero(counter, sizeof(counter));
+    rt_secure_zero(ghash_tag, sizeof(ghash_tag));
+    rt_secure_zero(enc_j0, sizeof(enc_j0));
+    rt_secure_zero(expected_tag, sizeof(expected_tag));
 
     return (long)data_len;
 }
@@ -1903,6 +1918,7 @@ size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
             block_len = 16;
         for (size_t j = 0; j < block_len; j++)
             ciphertext[i + j] = pt[i + j] ^ keystream[j];
+        rt_secure_zero(keystream, sizeof(keystream));
         gcm_inc32(counter);
     }
 
@@ -1916,6 +1932,10 @@ size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
 
     rt_secure_zero(rk, sizeof(rk));
     rt_secure_zero(H, sizeof(H));
+    rt_secure_zero(J0, sizeof(J0));
+    rt_secure_zero(counter, sizeof(counter));
+    rt_secure_zero(ghash_tag, sizeof(ghash_tag));
+    rt_secure_zero(enc_j0, sizeof(enc_j0));
 
     return plaintext_len + 16;
 }
@@ -1977,6 +1997,10 @@ long rt_aes256_gcm_decrypt(const uint8_t key[32],
     if (diff != 0) {
         rt_secure_zero(rk, sizeof(rk));
         rt_secure_zero(H, sizeof(H));
+        rt_secure_zero(J0, sizeof(J0));
+        rt_secure_zero(ghash_tag, sizeof(ghash_tag));
+        rt_secure_zero(enc_j0, sizeof(enc_j0));
+        rt_secure_zero(expected_tag, sizeof(expected_tag));
         return -1;
     }
 
@@ -1992,11 +2016,17 @@ long rt_aes256_gcm_decrypt(const uint8_t key[32],
             block_len = 16;
         for (size_t j = 0; j < block_len; j++)
             plaintext[i + j] = ct[i + j] ^ keystream[j];
+        rt_secure_zero(keystream, sizeof(keystream));
         gcm_inc32(counter);
     }
 
     rt_secure_zero(rk, sizeof(rk));
     rt_secure_zero(H, sizeof(H));
+    rt_secure_zero(J0, sizeof(J0));
+    rt_secure_zero(counter, sizeof(counter));
+    rt_secure_zero(ghash_tag, sizeof(ghash_tag));
+    rt_secure_zero(enc_j0, sizeof(enc_j0));
+    rt_secure_zero(expected_tag, sizeof(expected_tag));
 
     return (long)data_len;
 }

@@ -17,8 +17,9 @@
 //     increments len; pop reads items[len-1] and decrements len.
 //   - Pop on an empty stack traps with a descriptive error message.
 //   - Peek returns items[len-1] without removing it; returns NULL if empty.
-//   - The Stack does NOT retain element references; element lifetime is the
-//     caller's responsibility.
+//   - Stacks may own elements when created through the owning constructor; in
+//     that mode push retains and pop returns a retained transfer to the caller.
+//     Borrowing stacks store raw pointers without retain/release.
 //   - Not thread-safe; external synchronization required.
 //
 // Ownership/Lifetime:
@@ -96,9 +97,8 @@ static void stack_release_value(void *value) {
 ///
 /// @param obj Pointer to the Stack object being finalized. May be NULL (no-op).
 ///
-/// @note The Stack does NOT own the elements it contains. Elements are not
-///       freed during finalization - they must be managed separately by the
-///       caller. This allows the same object to be in multiple collections.
+/// @note Owning stacks release each stored element during finalization. Borrowing
+///       stacks skip element release so the same object can be shared elsewhere.
 /// @note This function is idempotent - safe to call on already-finalized stacks.
 ///
 /// @see rt_stack_clear For removing elements without finalization

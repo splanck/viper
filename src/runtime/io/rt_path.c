@@ -12,7 +12,8 @@
 //          including drive-letter paths and UNC paths.
 //
 // Key invariants:
-//   - Both '/' and '\' are accepted as separators on all platforms.
+//   - '/' is accepted everywhere; '\' is a separator on Windows and an ordinary
+//     filename byte on POSIX.
 //   - Norm removes redundant '.' and '..' components without filesystem access.
 //   - Join always produces a path using the native platform separator.
 //   - Ext returns the final '.' suffix including the dot, or "" if absent.
@@ -901,22 +902,6 @@ rt_string rt_path_norm(rt_string path) {
     if (len == 0)
         return rt_string_from_bytes(".", 1);
 
-    // Parse path components
-    // We'll store component start/end pairs
-    if (len > SIZE_MAX / sizeof(size_t)) {
-        rt_trap("rt_path: path too long");
-        return rt_const_cstr("");
-    }
-    size_t *comp_starts = (size_t *)malloc(len * sizeof(size_t));
-    size_t *comp_ends = (size_t *)malloc(len * sizeof(size_t));
-    if (!comp_starts || !comp_ends) {
-        free(comp_starts);
-        free(comp_ends);
-        rt_trap("rt_path: memory allocation failed");
-        return rt_const_cstr("");
-    }
-    size_t comp_count = 0;
-
     int is_absolute = 0;
     int is_drive_relative = 0;
     size_t prefix_len = 0;
@@ -951,6 +936,35 @@ rt_string rt_path_norm(rt_string path) {
         prefix_len = 1;
         is_absolute = 1;
     }
+
+    // Count path components before allocating scratch arrays. This avoids the
+    // old byte-length-sized arrays for paths containing long runs of separators.
+    size_t comp_cap = 0;
+    size_t count_pos = prefix_len;
+    while (count_pos < len) {
+        while (count_pos < len && is_path_sep(data[count_pos]))
+            count_pos++;
+        if (count_pos >= len)
+            break;
+        comp_cap++;
+        while (count_pos < len && !is_path_sep(data[count_pos]))
+            count_pos++;
+    }
+    if (comp_cap == 0)
+        comp_cap = 1;
+    if (comp_cap > SIZE_MAX / sizeof(size_t)) {
+        rt_trap("rt_path: path too long");
+        return rt_const_cstr("");
+    }
+    size_t *comp_starts = (size_t *)malloc(comp_cap * sizeof(size_t));
+    size_t *comp_ends = (size_t *)malloc(comp_cap * sizeof(size_t));
+    if (!comp_starts || !comp_ends) {
+        free(comp_starts);
+        free(comp_ends);
+        rt_trap("rt_path: memory allocation failed");
+        return rt_const_cstr("");
+    }
+    size_t comp_count = 0;
 
     // Parse components
     size_t i = prefix_len;

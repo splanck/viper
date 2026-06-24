@@ -36,20 +36,26 @@ extern "C" {
 /// @return Path to system temp directory.
 rt_string rt_tempfile_dir(void);
 
-/// @brief Create a unique temporary file path.
-/// @details Generates a unique filename in the temp directory.
-///          Does NOT create the file - just generates the path.
+/// @brief Create a unique temporary file path without creating the file.
+/// @details Generates a random filename in the temp directory. This helper is
+///          path-only and is not suitable for security-sensitive creation unless
+///          the caller subsequently opens the path atomically with exclusive
+///          create semantics.
 /// @return Unique temporary file path.
 rt_string rt_tempfile_path(void);
 
-/// @brief Create a unique temporary file path with prefix.
-/// @details Generates a unique filename with given prefix.
+/// @brief Create a unique temporary file path with prefix without creating the file.
+/// @details Generates a unique filename with given prefix. The returned path is
+///          path-only; prefer @ref rt_tempfile_create_with_prefix when the file
+///          should be created safely.
 /// @param prefix Prefix for the filename (e.g., "myapp_").
 /// @return Unique temporary file path.
 rt_string rt_tempfile_path_with_prefix(rt_string prefix);
 
 /// @brief Create a unique temporary file path with prefix and extension.
-/// @details Generates a unique filename with given prefix and extension.
+/// @details Generates a unique filename with given prefix and extension without
+///          creating it. Use only when the caller will perform an atomic
+///          exclusive create operation.
 /// @param prefix Prefix for the filename (e.g., "myapp_").
 /// @param extension File extension (e.g., ".txt").
 /// @return Unique temporary file path.

@@ -8,8 +8,8 @@
 // File: src/runtime/io/rt_file_io.c
 // Purpose: Provides the low-level file I/O layer used by the BASIC runtime.
 //          Manages descriptor lifetimes, translates errno codes into the
-//          runtime's structured RtError diagnostics, and implements buffered
-//          line reads and binary writes for both POSIX and Windows platforms.
+//          runtime's structured RtError diagnostics, and implements line reads
+//          and binary writes for both POSIX and Windows platforms.
 //
 // Key invariants:
 //   - All RtFile handles are fully initialised before being returned to callers.
@@ -314,7 +314,7 @@ void rt_file_init(RtFile *file) {
 
 /// @brief Open a file using BASIC runtime semantics.
 /// @details Validates arguments, translates the textual mode into POSIX flags,
-///          applies permissive default permissions, and records structured
+///          applies owner-only default permissions for newly created files, and records structured
 ///          errors when the system call fails.  On success the descriptor is
 ///          stored in @p file.
 /// @param file Handle receiving the descriptor.
@@ -336,7 +336,7 @@ int8_t rt_file_open(
         return 0;
     }
 
-    mode_t perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+    mode_t perms = S_IRUSR | S_IWUSR;
     errno = 0;
 #if RT_PLATFORM_WINDOWS
     flags |= O_NOINHERIT;
@@ -387,15 +387,16 @@ int8_t rt_file_close(RtFile *file, RtError *out_err) {
     }
 
     int fd = file->fd;
-    file->fd = -1;
     errno = 0;
     int rc = close(fd);
     if (rc < 0) {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
+        file->fd = -1;
         return 0;
     }
 
+    file->fd = -1;
     rt_file_set_ok(out_err);
     return 1;
 }
@@ -514,26 +515,10 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err) {
     }
     buffer[len] = '\0';
 
-    s = (rt_string)calloc(1, sizeof(*s));
+    s = rt_string_from_bytes(buffer, len);
     if (!s) {
         rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
         goto cleanup;
-    }
-
-    {
-        char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
-        if (!payload) {
-            rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
-            goto cleanup;
-        }
-        memcpy(payload, buffer, len + 1);
-
-        s->magic = RT_STRING_MAGIC;
-        s->data = payload;
-        s->heap = rt_heap_hdr(payload);
-        s->literal_len = 0;
-        s->literal_refs = 0;
-        rt_string_register_handle(s);
     }
 
     *out_line = s;
@@ -543,7 +528,7 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err) {
 cleanup:
     if (!ok) {
         if (s) {
-            free(s);
+            rt_string_unref(s);
             s = NULL;
         }
     }

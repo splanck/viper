@@ -71,7 +71,8 @@
 #define H2_DEFAULT_FRAME_SIZE 16384u
 #define H2_MAX_FRAME_SIZE 16777215u
 #define H2_MAX_HEADER_BLOCK (256u * 1024u)
-
+#define H2_DEFAULT_MAX_HEADER_LIST_SIZE (64u * 1024u)
+#define H2_MAX_BUFFER_BYTES (32u * 1024u * 1024u)
 
 typedef struct {
     uint8_t type;
@@ -90,6 +91,8 @@ struct rt_http2_conn {
     uint32_t peer_initial_window;
     uint32_t peer_max_frame_size;
     uint32_t local_max_frame_size;
+    uint32_t peer_max_header_list_size;
+    uint32_t local_max_header_list_size;
     int64_t peer_conn_window;
     int next_stream_id;
     int sent_goaway;
@@ -98,9 +101,6 @@ struct rt_http2_conn {
 };
 
 static const char kClientPreface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-
-
-
 
 static void h2_write_u16(uint8_t *dst, uint16_t v) {
     dst[0] = (uint8_t)(v >> 8);
@@ -154,11 +154,15 @@ static int h2_buf_reserve(h2_buf_t *buf, size_t needed) {
         return 0;
     if (needed <= buf->cap)
         return 1;
+    if (needed > H2_MAX_BUFFER_BYTES)
+        return 0;
     new_cap = buf->cap ? buf->cap : 256;
     while (new_cap < needed) {
         if (new_cap > SIZE_MAX / 2)
             return 0;
         new_cap *= 2;
+        if (new_cap > H2_MAX_BUFFER_BYTES)
+            new_cap = H2_MAX_BUFFER_BYTES;
     }
     grown = (uint8_t *)realloc(buf->data, new_cap);
     if (!grown)
@@ -320,6 +324,62 @@ void rt_http2_headers_free(rt_http2_header_t *headers) {
     }
 }
 
+/// @brief Compute an HTTP/2 SETTINGS_MAX_HEADER_LIST_SIZE total.
+/// @details RFC 7540 accounts each decoded header as name bytes, value bytes,
+///          plus 32 bytes of overhead. This helper also returns a field count
+///          so callers can enforce a separate structural cap.
+/// @param headers Decoded header chain to measure.
+/// @param size_out Receives the computed byte total.
+/// @param count_out Optional destination for number of fields.
+/// @return 1 on successful accounting, 0 on arithmetic overflow.
+static int h2_header_list_account(const rt_http2_header_t *headers,
+                                  size_t *size_out,
+                                  size_t *count_out) {
+    size_t total = 0;
+    size_t count = 0;
+    if (!size_out)
+        return 0;
+    for (const rt_http2_header_t *it = headers; it; it = it->next) {
+        size_t name_len = it->name ? strlen(it->name) : 0;
+        size_t value_len = it->value ? strlen(it->value) : 0;
+        size_t field_size = 0;
+        if (name_len > SIZE_MAX - value_len || name_len + value_len > SIZE_MAX - 32u)
+            return 0;
+        field_size = name_len + value_len + 32u;
+        if (total > SIZE_MAX - field_size)
+            return 0;
+        total += field_size;
+        count++;
+    }
+    *size_out = total;
+    if (count_out)
+        *count_out = count;
+    return 1;
+}
+
+/// @brief Add one field to an HTTP/2 header-list byte total.
+/// @details Applies the same name + value + 32-byte accounting used by
+///          SETTINGS_MAX_HEADER_LIST_SIZE. This is used before HPACK encoding
+///          so compressed size cannot hide an oversized logical header list.
+/// @param total_io Running total to update.
+/// @param name Header name; NULL is treated as empty.
+/// @param value Header value; NULL is treated as empty.
+/// @return 1 if the addition succeeds, 0 on arithmetic overflow.
+static int h2_header_list_add_field(size_t *total_io, const char *name, const char *value) {
+    size_t name_len = name ? strlen(name) : 0;
+    size_t value_len = value ? strlen(value) : 0;
+    size_t field_size = 0;
+    if (!total_io)
+        return 0;
+    if (name_len > SIZE_MAX - value_len || name_len + value_len > SIZE_MAX - 32u)
+        return 0;
+    field_size = name_len + value_len + 32u;
+    if (*total_io > SIZE_MAX - field_size)
+        return 0;
+    *total_io += field_size;
+    return 1;
+}
+
 void rt_http2_request_free(rt_http2_request_t *req) {
     if (!req)
         return;
@@ -339,7 +399,6 @@ void rt_http2_response_free(rt_http2_response_t *res) {
     free(res->body);
     memset(res, 0, sizeof(*res));
 }
-
 
 static int h2_io_read_exact(rt_http2_conn_t *conn, uint8_t *buf, size_t len) {
     size_t total = 0;
@@ -427,14 +486,19 @@ static int h2_read_frame(rt_http2_conn_t *conn, h2_frame_t *frame) {
 }
 
 static int h2_send_settings(rt_http2_conn_t *conn) {
-    uint8_t payload[6];
+    uint8_t payload[12];
+    size_t pos = 0;
     if (!conn)
         return 0;
-    if (conn->is_server)
-        return h2_send_frame(conn, H2_FRAME_SETTINGS, 0, 0, NULL, 0);
-    h2_write_u16(payload, H2_SETTINGS_ENABLE_PUSH);
-    h2_write_u32(payload + 2, 0);
-    return h2_send_frame(conn, H2_FRAME_SETTINGS, 0, 0, payload, sizeof(payload));
+    if (!conn->is_server) {
+        h2_write_u16(payload + pos, H2_SETTINGS_ENABLE_PUSH);
+        h2_write_u32(payload + pos + 2, 0);
+        pos += 6;
+    }
+    h2_write_u16(payload + pos, H2_SETTINGS_MAX_HEADER_LIST_SIZE);
+    h2_write_u32(payload + pos + 2, conn->local_max_header_list_size);
+    pos += 6;
+    return h2_send_frame(conn, H2_FRAME_SETTINGS, 0, 0, payload, pos);
 }
 
 static int h2_apply_setting(rt_http2_conn_t *conn,
@@ -468,6 +532,7 @@ static int h2_apply_setting(rt_http2_conn_t *conn,
             conn->peer_max_frame_size = value;
             break;
         case H2_SETTINGS_MAX_HEADER_LIST_SIZE:
+            conn->peer_max_header_list_size = value;
             break;
         default:
             break;
@@ -619,6 +684,16 @@ static int h2_decode_header_list(rt_http2_conn_t *conn,
         return h2_conn_fail(conn, decode_error);
     }
     h2_buf_free(&header_block);
+    {
+        size_t decoded_size = 0;
+        size_t decoded_count = 0;
+        if (!h2_header_list_account(*decoded_out, &decoded_size, &decoded_count) ||
+            decoded_size > conn->local_max_header_list_size || decoded_count > 256u) {
+            rt_http2_headers_free(*decoded_out);
+            *decoded_out = NULL;
+            return h2_conn_fail(conn, "HTTP/2: decoded header list too large");
+        }
+    }
     return 1;
 }
 
@@ -854,8 +929,15 @@ static int h2_build_request_block(rt_http2_conn_t *conn,
                                   const char *path,
                                   const rt_http2_header_t *headers,
                                   h2_buf_t *out) {
+    size_t header_list_size = 0;
     if (!conn || !method || !scheme || !authority || !path || !out)
         return 0;
+    if (!h2_header_list_add_field(&header_list_size, ":method", method) ||
+        !h2_header_list_add_field(&header_list_size, ":scheme", scheme) ||
+        !h2_header_list_add_field(&header_list_size, ":authority", authority) ||
+        !h2_header_list_add_field(&header_list_size, ":path", path)) {
+        return 0;
+    }
     memset(out, 0, sizeof(*out));
     if (!hpack_encode_header_field(out, &conn->encode_table, ":method", method) ||
         !hpack_encode_header_field(out, &conn->encode_table, ":scheme", scheme) ||
@@ -873,10 +955,22 @@ static int h2_build_request_block(rt_http2_conn_t *conn,
             continue;
         if (h2_header_is_connection_specific(it->name, it->value))
             continue;
+        if (!h2_header_list_add_field(&header_list_size, it->name, it->value)) {
+            h2_buf_free(out);
+            return 0;
+        }
         if (!hpack_encode_header_field(out, &conn->encode_table, it->name, it->value)) {
             h2_buf_free(out);
             return 0;
         }
+    }
+    if (header_list_size > conn->peer_max_header_list_size) {
+        h2_buf_free(out);
+        return 0;
+    }
+    if (out->len > conn->peer_max_header_list_size) {
+        h2_buf_free(out);
+        return 0;
     }
     return 1;
 }
@@ -886,9 +980,12 @@ static int h2_build_response_block(rt_http2_conn_t *conn,
                                    const rt_http2_header_t *headers,
                                    h2_buf_t *out) {
     char status_buf[4];
+    size_t header_list_size = 0;
     if (!conn || status < 100 || status > 599 || !out)
         return 0;
     snprintf(status_buf, sizeof(status_buf), "%d", status);
+    if (!h2_header_list_add_field(&header_list_size, ":status", status_buf))
+        return 0;
     memset(out, 0, sizeof(*out));
     if (!hpack_encode_header_field(out, &conn->encode_table, ":status", status_buf)) {
         h2_buf_free(out);
@@ -901,10 +998,22 @@ static int h2_build_response_block(rt_http2_conn_t *conn,
             continue;
         if (h2_header_is_connection_specific(it->name, it->value))
             continue;
+        if (!h2_header_list_add_field(&header_list_size, it->name, it->value)) {
+            h2_buf_free(out);
+            return 0;
+        }
         if (!hpack_encode_header_field(out, &conn->encode_table, it->name, it->value)) {
             h2_buf_free(out);
             return 0;
         }
+    }
+    if (header_list_size > conn->peer_max_header_list_size) {
+        h2_buf_free(out);
+        return 0;
+    }
+    if (out->len > conn->peer_max_header_list_size) {
+        h2_buf_free(out);
+        return 0;
     }
     return 1;
 }
@@ -921,6 +1030,8 @@ static rt_http2_conn_t *h2_conn_new_common(const rt_http2_io_t *io, int is_serve
     conn->peer_initial_window = H2_DEFAULT_WINDOW_SIZE;
     conn->peer_max_frame_size = H2_DEFAULT_FRAME_SIZE;
     conn->local_max_frame_size = H2_DEFAULT_FRAME_SIZE;
+    conn->peer_max_header_list_size = H2_MAX_HEADER_BLOCK;
+    conn->local_max_header_list_size = H2_DEFAULT_MAX_HEADER_LIST_SIZE;
     conn->peer_conn_window = H2_DEFAULT_WINDOW_SIZE;
     conn->next_stream_id = 1;
     conn->encode_table.max_bytes = 4096;

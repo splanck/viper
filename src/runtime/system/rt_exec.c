@@ -39,6 +39,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,13 +51,11 @@
 #define pclose _pclose
 #elif defined(__viperdos__)
 // ViperDOS provides POSIX-compatible process APIs via libc.
-#include <errno.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 extern char **environ;
 #else
-#include <errno.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -72,6 +71,23 @@ extern char **environ;
 /// @brief Thread-local exit code from the most recent rt_exec_shell_full() call.
 static _Thread_local int64_t tl_last_exit_code = -1;
 
+/// @brief Store a shell process exit status in the thread-local Exec state.
+/// @details Handles platform differences and treats pclose/_pclose failure
+///          (`status == -1`) as an execution failure instead of interpreting it
+///          with wait-status macros.
+/// @param status Status value returned by pclose/_pclose.
+static void exec_set_last_exit_from_status(int status) {
+    if (status == -1) {
+        tl_last_exit_code = -1;
+        return;
+    }
+#if RT_PLATFORM_WINDOWS
+    tl_last_exit_code = (int64_t)status;
+#else
+    tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
+#endif
+}
+
 /// @brief Read all output from a pipe into a dynamically allocated buffer.
 /// @details Captures up to `CAPTURE_MAX_SIZE` bytes. When the cap is reached,
 ///          `*out_truncated` is set so callers can report a distinct truncation
@@ -79,15 +95,20 @@ static _Thread_local int64_t tl_last_exit_code = -1;
 /// @param fp Open pipe to read from.
 /// @param out_len Receives the number of captured bytes.
 /// @param out_truncated Receives 1 if the capture limit was reached.
+/// @param out_error Receives errno-style failure information for allocation/read errors.
 /// @return Heap buffer containing captured bytes, or NULL on allocation failure.
-static char *read_pipe_output(FILE *fp, size_t *out_len, int *out_truncated) {
+static char *read_pipe_output(FILE *fp, size_t *out_len, int *out_truncated, int *out_error) {
     size_t cap = CAPTURE_INITIAL_SIZE;
     size_t len = 0;
     if (out_truncated)
         *out_truncated = 0;
+    if (out_error)
+        *out_error = 0;
     char *buf = (char *)malloc(cap);
     if (!buf) {
         *out_len = 0;
+        if (out_error)
+            *out_error = ENOMEM;
         return NULL;
     }
 
@@ -103,8 +124,13 @@ static char *read_pipe_output(FILE *fp, size_t *out_len, int *out_truncated) {
             if (new_cap > CAPTURE_MAX_SIZE)
                 new_cap = CAPTURE_MAX_SIZE;
             char *new_buf = (char *)realloc(buf, new_cap);
-            if (!new_buf)
-                break;
+            if (!new_buf) {
+                free(buf);
+                *out_len = 0;
+                if (out_error)
+                    *out_error = ENOMEM;
+                return NULL;
+            }
             buf = new_buf;
             cap = new_cap;
             space = cap - len;
@@ -114,6 +140,13 @@ static char *read_pipe_output(FILE *fp, size_t *out_len, int *out_truncated) {
         if (n == 0)
             break;
         len += n;
+    }
+    if (ferror(fp)) {
+        free(buf);
+        *out_len = 0;
+        if (out_error)
+            *out_error = EIO;
+        return NULL;
     }
 
     *out_len = len;
@@ -129,8 +162,12 @@ static char **build_argv(const char *program,
                          rt_string **out_owned_args,
                          int64_t *out_argc) {
     int64_t nargs = args ? rt_seq_len(args) : 0;
-    int64_t total = 1 + nargs + 1; // program + args + NULL terminator
     *out_owned_args = NULL;
+    if (out_argc)
+        *out_argc = 0;
+    if (nargs < 0 || (uint64_t)nargs > ((uint64_t)SIZE_MAX / sizeof(char *)) - 2u)
+        return NULL;
+    int64_t total = 1 + nargs + 1; // program + args + NULL terminator
 
     char **argv = (char **)malloc((size_t)total * sizeof(char *));
     if (!argv) {
@@ -254,7 +291,8 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
 
     size_t len;
     int truncated = 0;
-    char *output = read_pipe_output(fp, &len, &truncated);
+    int capture_error = 0;
+    char *output = read_pipe_output(fp, &len, &truncated, &capture_error);
     fclose(fp);
 
     // Wait for child
@@ -262,6 +300,8 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     free_argv(argv, owned_args, argc);
 
     if (!output) {
+        if (capture_error != 0)
+            rt_trap("Exec.CaptureArgs: output capture failed");
         return rt_string_from_bytes("", 0);
     }
     if (truncated) {
@@ -335,9 +375,14 @@ static char *build_cmdline(const char *program, void *args) {
     size_t len = cmdline_quoted_len(program);
     for (int64_t i = 0; i < nargs; i++) {
         rt_string arg_str = rt_seq_get_str(args, i);
-        len += 1 + cmdline_quoted_len(rt_string_cstr(arg_str)); /* space + quoted */
+        size_t quoted_len = cmdline_quoted_len(rt_string_cstr(arg_str));
         rt_str_release_maybe(arg_str);
+        if (quoted_len > SIZE_MAX - len - 1)
+            return NULL;
+        len += 1 + quoted_len; /* space + quoted */
     }
+    if (len == SIZE_MAX)
+        return NULL;
 
     char *cmdline = (char *)malloc(len + 1);
     if (!cmdline)
@@ -847,15 +892,14 @@ rt_string rt_exec_shell_capture(rt_string command) {
 
     size_t len;
     int truncated = 0;
-    char *output = read_pipe_output(fp, &len, &truncated);
+    int capture_error = 0;
+    char *output = read_pipe_output(fp, &len, &truncated, &capture_error);
     int status = pclose(fp);
-#if RT_PLATFORM_WINDOWS
-    tl_last_exit_code = (int64_t)status;
-#else
-    tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
-#endif
+    exec_set_last_exit_from_status(status);
 
     if (!output) {
+        if (capture_error != 0)
+            rt_trap("Exec.ShellCapture: output capture failed");
         return rt_string_from_bytes("", 0);
     }
     if (truncated) {
@@ -891,16 +935,14 @@ rt_string rt_exec_shell_full(rt_string command) {
 
     size_t len;
     int truncated = 0;
-    char *output = read_pipe_output(fp, &len, &truncated);
+    int capture_error = 0;
+    char *output = read_pipe_output(fp, &len, &truncated, &capture_error);
     int status = pclose(fp);
-
-#if RT_PLATFORM_WINDOWS
-    tl_last_exit_code = (int64_t)status;
-#else
-    tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
-#endif
+    exec_set_last_exit_from_status(status);
 
     if (!output) {
+        if (capture_error != 0)
+            rt_trap("Exec.ShellFull: output capture failed");
         return rt_string_from_bytes("", 0);
     }
     if (truncated) {

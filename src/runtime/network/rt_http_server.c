@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Accept loop runs in a dedicated thread.
 //   - Each request dispatched to thread pool for concurrent handling.
-//   - Connection: close after each request (no keep-alive in v1).
+//   - Sequential HTTP/1.1 keep-alive requests are supported when framing permits.
 //   - Routes matched via embedded HttpRouter.
 // Ownership/Lifetime:
 //   - Server object GC-managed. Stop() or finalizer stops accept loop.
@@ -35,6 +35,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_threadpool.h"
+#include "system/rt_machine.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -90,6 +91,22 @@ static int server_string_has_embedded_nul(rt_string s, const char **data_out, si
 #define HTTP_REQ_MAX_HEADERS 100
 #define HTTP_REQ_MAX_BODY (16 * 1024 * 1024) // 16 MB
 #define HTTP_REQ_MAX_ENCODED_BODY (HTTP_REQ_MAX_BODY + 65536)
+#define HTTP_SERVER_MAX_ACTIVE_CONNS 4096
+
+/// @brief Compute the internal worker-pool size for HTTP server instances.
+/// @details Uses the runtime machine adapter to query logical CPU count, then
+///          clamps the result to the range accepted by @ref rt_threadpool_new.
+///          The helper is deliberately local to the server implementation so
+///          worker sizing can improve without expanding the runtime C ABI.
+/// @return Worker count in the inclusive range 1..1024.
+static int64_t http_server_default_worker_count(void) {
+    int64_t cores = rt_machine_cores();
+    if (cores < 1)
+        cores = 1;
+    if (cores > 1024)
+        cores = 1024;
+    return cores;
+}
 
 typedef struct {
     char *method;
@@ -182,6 +199,10 @@ static int server_register_active_conn(rt_http_server_impl *server, void *conn) 
             server_state_unlock(server);
             return 1;
         }
+    }
+    if (server->active_conn_count >= HTTP_SERVER_MAX_ACTIVE_CONNS) {
+        server_state_unlock(server);
+        return 0;
     }
     if (server->active_conn_count == server->active_conn_cap) {
         int new_cap = server->active_conn_cap > 0 ? server->active_conn_cap * 2 : 8;
@@ -928,7 +949,7 @@ static void *accept_loop(void *arg)
 ///
 /// Allocates a GC-managed server impl, attaches the finalizer (which
 /// will tear down routes / worker pool / accept loop on collection),
-/// constructs the route trie and an 8-thread worker pool, and stores
+/// constructs the route trie and a CPU-sized worker pool, and stores
 /// the requested port for later use by `Start`. The TCP listener is
 /// not actually opened until `Start`; this constructor only validates
 /// inputs and reserves resources.
@@ -960,7 +981,7 @@ void *rt_http_server_new(int64_t port) {
             rt_obj_free(server);
         return NULL;
     }
-    server->worker_pool = rt_threadpool_new(8);
+    server->worker_pool = rt_threadpool_new(http_server_default_worker_count());
     if (!server->worker_pool) {
         rt_trap("HttpServer: worker pool allocation failed");
         if (rt_obj_release_check0(server))
@@ -1133,7 +1154,7 @@ void rt_http_server_start(void *obj) {
     }
     server->port = rt_tcp_server_port(server->tcp_server);
     if (!server->worker_pool) {
-        server->worker_pool = rt_threadpool_new(8);
+        server->worker_pool = rt_threadpool_new(http_server_default_worker_count());
         if (!server->worker_pool) {
             if (server->tcp_server) {
                 rt_tcp_server_close(server->tcp_server);

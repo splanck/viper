@@ -33,12 +33,12 @@
 
 #include "rt_tempfile.h"
 
+#include "network/rt_entropy_platform.h"
 #include "rt_dir.h"
 #include "rt_file_path.h"
 #include "rt_path.h"
 #include "rt_platform.h"
 #include "rt_string.h"
-#include "network/rt_entropy_platform.h"
 
 #include "rt_trap.h"
 
@@ -60,6 +60,7 @@
 #else
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 
@@ -106,11 +107,30 @@ static int generate_unique_id(char *buffer, size_t size) {
 }
 
 #if !defined(_WIN32)
+/// @brief Validate a POSIX temporary directory candidate.
+/// @details A usable candidate must be absolute and name an existing
+///          directory. The historical `TempFile.Dir` contract preserves `/`
+///          exactly when TMPDIR points at the filesystem root, so root is
+///          accepted for the path-reporting API even though creating files
+///          there may later fail for unprivileged callers. Other directories
+///          must be searchable and writable, and world-writable directories
+///          must carry the sticky bit to avoid unsafe shared-temp semantics.
+/// @param path Candidate path from the process environment.
+/// @return 1 when the candidate can be returned by @ref rt_tempfile_dir, 0 when
+///         the caller should fall back to `/tmp`.
 static int tempfile_dir_is_usable(const char *path) {
     if (!path || path[0] != '/')
         return 0;
     struct stat st;
-    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+    if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode))
+        return 0;
+    if (path[1] == '\0')
+        return 1;
+    if (access(path, W_OK | X_OK) != 0)
+        return 0;
+    if ((st.st_mode & S_IWOTH) != 0 && (st.st_mode & S_ISVTX) == 0)
+        return 0;
+    return 1;
 }
 #endif
 

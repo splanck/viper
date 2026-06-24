@@ -82,6 +82,51 @@ static int tls_select_alpn_from_wire_list(const char *preferred_list,
                                           size_t wire_list_len,
                                           char selected_out[64]);
 
+/// @brief Zero and free a heap buffer that may contain TLS secrets.
+/// @details This helper pairs secure wiping with ownership release for dynamic
+///          handshake buffers. The pointer value itself is not modified; callers
+///          clear their owning field after this returns.
+/// @param ptr Heap allocation to wipe and free; NULL is accepted.
+/// @param len Number of bytes to wipe before freeing.
+static void tls_secure_free(void *ptr, size_t len) {
+    if (!ptr)
+        return;
+    if (len > 0)
+        rt_secure_zero(ptr, len);
+    free(ptr);
+}
+
+/// @brief Clear all fixed-size secret-bearing fields in a TLS session.
+/// @details Leaves descriptor, state, and object-management fields intact so
+///          callers can still close sockets and release the runtime object, but
+///          removes private keys, traffic secrets, AEAD keys, and plaintext
+///          buffers before the session becomes unreachable.
+/// @param session TLS session to scrub; NULL is accepted.
+static void tls_scrub_session_secrets(rt_tls_session_t *session) {
+    if (!session)
+        return;
+    rt_secure_zero(session->client_private_key, sizeof(session->client_private_key));
+    rt_secure_zero(session->handshake_secret, sizeof(session->handshake_secret));
+    rt_secure_zero(session->client_handshake_traffic_secret,
+                   sizeof(session->client_handshake_traffic_secret));
+    rt_secure_zero(session->server_handshake_traffic_secret,
+                   sizeof(session->server_handshake_traffic_secret));
+    rt_secure_zero(session->master_secret, sizeof(session->master_secret));
+    rt_secure_zero(session->client_application_traffic_secret,
+                   sizeof(session->client_application_traffic_secret));
+    rt_secure_zero(session->server_application_traffic_secret,
+                   sizeof(session->server_application_traffic_secret));
+    rt_secure_zero(&session->write_keys, sizeof(session->write_keys));
+    rt_secure_zero(&session->read_keys, sizeof(session->read_keys));
+    rt_secure_zero(session->read_buffer, sizeof(session->read_buffer));
+    rt_secure_zero(session->app_buffer, sizeof(session->app_buffer));
+    rt_secure_zero(session->server_cert_der, sizeof(session->server_cert_der));
+    rt_secure_zero(session->transcript_hash, sizeof(session->transcript_hash));
+    rt_secure_zero(&session->transcript_ctx, sizeof(session->transcript_ctx));
+    rt_secure_zero(session->client_hello_hash, sizeof(session->client_hello_hash));
+    rt_secure_zero(session->cert_transcript_hash, sizeof(session->cert_transcript_hash));
+}
+
 /// @brief Free heap-allocated handshake scratch space hanging off a session.
 ///
 /// Releases the buffered server certificate chain and any
@@ -93,16 +138,18 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
         return;
 
     if (session->server_cert_list) {
-        free(session->server_cert_list);
+        tls_secure_free(session->server_cert_list, session->server_cert_list_len);
         session->server_cert_list = NULL;
         session->server_cert_list_len = 0;
         session->server_cert_count = 0;
     }
     if (session->hello_retry_cookie) {
-        free(session->hello_retry_cookie);
+        tls_secure_free(session->hello_retry_cookie, session->hello_retry_cookie_len);
         session->hello_retry_cookie = NULL;
         session->hello_retry_cookie_len = 0;
     }
+    rt_secure_zero(session->read_buffer, sizeof(session->read_buffer));
+    rt_secure_zero(session->app_buffer, sizeof(session->app_buffer));
     session->app_buffer_len = 0;
     session->app_buffer_pos = 0;
 }
@@ -404,8 +451,11 @@ void rt_tls_server_ctx_free(rt_tls_server_ctx_t *ctx) {
     if (!ctx)
         return;
     rt_rsa_key_free(&ctx->rsa_key);
-    free(ctx->cert_list_entries);
-    free(ctx->leaf_cert_der);
+    tls_secure_free(ctx->cert_list_entries, ctx->cert_list_entries_len);
+    tls_secure_free(ctx->leaf_cert_der, ctx->leaf_cert_der_len);
+    rt_secure_zero(ctx->private_key, sizeof(ctx->private_key));
+    rt_secure_zero(ctx->alpn_protocols, sizeof(ctx->alpn_protocols));
+    rt_secure_zero(ctx, sizeof(*ctx));
     free(ctx);
 }
 
@@ -745,12 +795,12 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
     uint8_t zero_key[32] = {0};
     uint8_t early_secret[32];
     uint8_t derived[32];
+    uint8_t empty_hash[32];
 
     // early_secret = HKDF-Extract(0, 0)
     rt_hkdf_extract(NULL, 0, zero_key, 32, early_secret);
 
     // derived = Derive-Secret(early_secret, "derived", "")
-    uint8_t empty_hash[32];
     rt_sha256(NULL, 0, empty_hash);
     rt_hkdf_expand_label(early_secret, "derived", empty_hash, 32, derived, 32);
 
@@ -788,6 +838,10 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
     session->write_keys.seq_num = 0;
 
     session->keys_established = 1;
+    rt_secure_zero(zero_key, sizeof(zero_key));
+    rt_secure_zero(early_secret, sizeof(early_secret));
+    rt_secure_zero(derived, sizeof(derived));
+    rt_secure_zero(empty_hash, sizeof(empty_hash));
 }
 
 /// @brief Server-side mirror of derive_handshake_keys: derives TLS 1.3 handshake secrets
@@ -798,15 +852,13 @@ static void derive_handshake_keys_server(rt_tls_session_t *session,
     uint8_t zero_key[32] = {0};
     uint8_t early_secret[32];
     uint8_t derived[32];
+    uint8_t empty_hash[32];
     int key_len;
 
     rt_hkdf_extract(NULL, 0, zero_key, 32, early_secret);
 
-    {
-        uint8_t empty_hash[32];
-        rt_sha256(NULL, 0, empty_hash);
-        rt_hkdf_expand_label(early_secret, "derived", empty_hash, 32, derived, 32);
-    }
+    rt_sha256(NULL, 0, empty_hash);
+    rt_hkdf_expand_label(early_secret, "derived", empty_hash, 32, derived, 32);
 
     rt_hkdf_extract(derived, 32, shared_secret, 32, session->handshake_secret);
 
@@ -837,6 +889,10 @@ static void derive_handshake_keys_server(rt_tls_session_t *session,
     session->write_keys.seq_num = 0;
 
     session->keys_established = 1;
+    rt_secure_zero(zero_key, sizeof(zero_key));
+    rt_secure_zero(early_secret, sizeof(early_secret));
+    rt_secure_zero(derived, sizeof(derived));
+    rt_secure_zero(empty_hash, sizeof(empty_hash));
 }
 
 /// @brief Derive TLS 1.3 application traffic secrets (RFC 8446 §7.1) after Finished.
@@ -870,6 +926,9 @@ static void derive_application_secrets(rt_tls_session_t *session) {
                          32,
                          session->server_application_traffic_secret,
                          32);
+    rt_secure_zero(derived, sizeof(derived));
+    rt_secure_zero(zero_key, sizeof(zero_key));
+    rt_secure_zero(empty_hash, sizeof(empty_hash));
 }
 
 /// @brief Expand a 32-byte TLS 1.3 traffic secret into a AEAD key and 12-byte IV.
@@ -927,6 +986,7 @@ static void update_application_secret_and_keys(uint8_t secret[32],
     rt_hkdf_expand_label(secret, "key", NULL, 0, keys->key, app_key_len);
     rt_hkdf_expand_label(secret, "iv", NULL, 0, keys->iv, sizeof(keys->iv));
     keys->seq_num = 0;
+    rt_secure_zero(next_secret, sizeof(next_secret));
 }
 
 /// @brief Ratchet the inbound application traffic keys after receiving a KeyUpdate.
@@ -1679,12 +1739,12 @@ static int process_server_hello(rt_tls_session_t *session,
     // Compute shared secret and derive handshake keys
     uint8_t shared_secret[32];
     if (rt_x25519(session->client_private_key, session->server_public_key, shared_secret) != 0) {
-        memset(shared_secret, 0, sizeof(shared_secret));
+        rt_secure_zero(shared_secret, sizeof(shared_secret));
         session->error = "TLS: invalid X25519 server key share";
         return RT_TLS_ERROR_HANDSHAKE;
     }
     derive_handshake_keys(session, shared_secret);
-    memset(shared_secret, 0, sizeof(shared_secret));
+    rt_secure_zero(shared_secret, sizeof(shared_secret));
 
     session->state = TLS_STATE_WAIT_ENCRYPTED_EXTENSIONS;
     return RT_TLS_OK;
@@ -2367,7 +2427,7 @@ static int send_server_hello(rt_tls_session_t *session) {
         return RT_TLS_ERROR_HANDSHAKE;
 
     if (rt_x25519(session->client_private_key, session->server_public_key, shared_secret) != 0) {
-        memset(shared_secret, 0, sizeof(shared_secret));
+        rt_secure_zero(shared_secret, sizeof(shared_secret));
         session->error = "TLS: invalid X25519 client key share";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -2377,13 +2437,13 @@ static int send_server_hello(rt_tls_session_t *session) {
     {
         int rc = send_record_fragmented(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
         if (rc != RT_TLS_OK) {
-            memset(shared_secret, 0, sizeof(shared_secret));
+            rt_secure_zero(shared_secret, sizeof(shared_secret));
             return rc;
         }
     }
 
     derive_handshake_keys_server(session, shared_secret);
-    memset(shared_secret, 0, sizeof(shared_secret));
+    rt_secure_zero(shared_secret, sizeof(shared_secret));
     return RT_TLS_OK;
 }
 
@@ -3133,6 +3193,7 @@ void rt_tls_close(rt_tls_session_t *session) {
     }
 
     tls_release_dynamic_state(session);
+    tls_scrub_session_secrets(session);
     if (session->socket_fd != INVALID_SOCK) {
         CLOSE_SOCKET(session->socket_fd);
         session->socket_fd = INVALID_SOCK;

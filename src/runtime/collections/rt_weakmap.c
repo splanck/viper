@@ -13,7 +13,7 @@
 //
 // Key invariants:
 //   - Open-addressing hash table with initial capacity WM_INITIAL_CAP (16).
-//   - FNV-1a hashes the raw key bytes, so embedded NUL bytes are part of keys.
+//   - The runtime keyed hash covers raw key bytes, so embedded NUL bytes are part of keys.
 //   - Load factor is kept below roughly 70% by doubling and rehashing.
 //   - Values are stored as rt_weakref handles and are never strongly retained.
 //     Runtime-managed objects and strings are zeroed on final release.
@@ -34,15 +34,22 @@
 
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
+#include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define WM_INITIAL_CAP 16
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 typedef struct {
     rt_string key;
@@ -86,14 +93,9 @@ static const char *wm_key_data(rt_string key, size_t *out_len) {
     return data;
 }
 
-/// @brief FNV-1a 64-bit hash of @p len bytes of @p data.
+/// @brief Per-process keyed hash of @p len bytes of @p data.
 static uint64_t wm_hash_bytes(const char *data, size_t len) {
-    uint64_t h = 14695981039346656037ULL;
-    for (size_t i = 0; i < len; i++) {
-        h ^= (uint64_t)(unsigned char)data[i];
-        h *= 1099511628211ULL;
-    }
-    return h;
+    return rt_keyed_hash_bytes(data ? data : "", len);
 }
 
 /// @brief True iff an occupied @p entry's key byte-matches @p key/@p key_len.
@@ -278,9 +280,31 @@ void rt_weakmap_set(void *map, rt_string key, void *value) {
     }
 
     rt_string stored_key = key ? key : rt_str_empty();
-    data->entries[slot].key = stored_key;
+    rt_weakref *new_ref = NULL;
+    volatile int key_retained = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "WeakMap: insertion failed");
+        rt_trap_clear_recovery();
+        if (key_retained)
+            rt_str_release_maybe(stored_key);
+        rt_weakref_free(new_ref);
+        rt_trap(saved_error);
+        return;
+    }
+    new_ref = rt_weakref_new(value);
     rt_obj_retain_maybe(stored_key);
-    data->entries[slot].value_ref = rt_weakref_new(value);
+    key_retained = stored_key ? 1 : 0;
+    rt_trap_clear_recovery();
+
+    data->entries[slot].key = stored_key;
+    data->entries[slot].value_ref = new_ref;
     data->entries[slot].occupied = 1;
     data->count++;
 }

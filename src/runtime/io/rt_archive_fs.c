@@ -29,6 +29,7 @@
 #include "rt_archive.h"
 #include "rt_archive_internal.h"
 
+#include "network/rt_entropy_platform.h"
 #include "rt_box.h"
 #include "rt_bytes.h"
 #include "rt_dir.h"
@@ -96,10 +97,7 @@ static inline int64_t bytes_len(void *obj) {
 /// @param share        Win32 share mode.
 /// @param create_disp  Win32 creation disposition (OPEN_EXISTING, CREATE_ALWAYS, ...).
 /// @return Open Windows file handle, or INVALID_HANDLE_VALUE on failure.
-HANDLE archive_open_win_path(const char *cpath,
-                                    DWORD access,
-                                    DWORD share,
-                                    DWORD create_disp) {
+HANDLE archive_open_win_path(const char *cpath, DWORD access, DWORD share, DWORD create_disp) {
     wchar_t *wide = rt_file_path_utf8_to_wide(cpath);
     if (!wide)
         return INVALID_HANDLE_VALUE;
@@ -134,10 +132,7 @@ static int archive_read_exact_win(HANDLE h, uint8_t *dst, size_t total, const ch
     return 1;
 }
 
-int archive_read_exact_win_or_free(HANDLE h,
-                                          uint8_t *dst,
-                                          size_t total,
-                                          const char *trap_msg) {
+int archive_read_exact_win_or_free(HANDLE h, uint8_t *dst, size_t total, const char *trap_msg) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -162,9 +157,9 @@ int archive_read_exact_win_or_free(HANDLE h,
 }
 
 int archive_read_exact_win_or_release_object(HANDLE h,
-                                                    void *bytes,
-                                                    size_t total,
-                                                    const char *trap_msg) {
+                                             void *bytes,
+                                             size_t total,
+                                             const char *trap_msg) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -272,10 +267,7 @@ static int archive_read_exact_posix(int fd, uint8_t *dst, size_t total, const ch
     return 1;
 }
 
-int archive_read_exact_posix_or_free(int fd,
-                                            uint8_t *dst,
-                                            size_t total,
-                                            const char *trap_msg) {
+int archive_read_exact_posix_or_free(int fd, uint8_t *dst, size_t total, const char *trap_msg) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -300,9 +292,9 @@ int archive_read_exact_posix_or_free(int fd,
 }
 
 int archive_read_exact_posix_or_release_object(int fd,
-                                                      void *bytes,
-                                                      size_t total,
-                                                      const char *trap_msg) {
+                                               void *bytes,
+                                               size_t total,
+                                               const char *trap_msg) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -382,31 +374,10 @@ static int archive_write_exact_posix(int fd,
 /// @param out Receives the random value on success.
 /// @return 1 on success, 0 when OS entropy is unavailable.
 static int archive_random_u64(uint64_t *out) {
-    uint64_t value = 0;
-#ifdef _WIN32
-    unsigned int rand_value = 0;
-    unsigned int rand_value2 = 0;
-    if (rand_s(&rand_value) != 0 || rand_s(&rand_value2) != 0)
+    if (!out)
         return 0;
-    value = ((uint64_t)rand_value << 32) | rand_value2;
-#else
-    int fd = archive_open_posix("/dev/urandom", O_RDONLY, 0);
-    if (fd < 0)
+    if (rt_entropy_platform_random_u64(out) != 0)
         return 0;
-    size_t got = 0;
-    while (got < sizeof(value)) {
-        ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
-        if (n < 0 && errno == EINTR)
-            continue;
-        if (n <= 0)
-            break;
-        got += (size_t)n;
-    }
-    close(fd);
-    if (got != sizeof(value))
-        return 0;
-#endif
-    *out = value;
     return 1;
 }
 
@@ -568,9 +539,9 @@ static int archive_sync_parent_dir(const char *path) {
 /// @param total    Number of bytes to write.
 /// @param trap_msg Trap message used on any failure.
 int archive_write_file_all_utf8(const char *cpath,
-                                       const uint8_t *src,
-                                       size_t total,
-                                       const char *trap_msg) {
+                                const uint8_t *src,
+                                size_t total,
+                                const char *trap_msg) {
 #ifdef _WIN32
     char *tmp = NULL;
     HANDLE h = INVALID_HANDLE_VALUE;
@@ -941,28 +912,36 @@ size_t archive_trim_trailing_seps(const char *path, size_t len) {
     return len;
 }
 
-/// @brief Return 1 if `path` is a symlink or reparse point, 0 otherwise.
+/// @brief Inspect whether `path` is a symlink or reparse point.
 ///
 /// Uses `lstat(2)` on POSIX and `GetFileAttributesW` on Windows. Does
 /// not follow the link — the check is on the link itself, which is
 /// exactly what the traversal guard needs.
 ///
 /// @param path UTF-8 path to inspect.
-/// @return 1 if the entry is a symlink / reparse point, 0 otherwise.
+/// @return 1 if the entry is a symlink/reparse point, 0 if it is absent or safe,
+///         and -1 when the path exists but cannot be inspected.
 static int archive_path_is_reparse_or_symlink(const char *path) {
 #ifdef _WIN32
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
-        return 0;
+        return -1;
     DWORD attrs = GetFileAttributesW(wide);
+    DWORD err = GetLastError();
     free(wide);
-    if (attrs == INVALID_FILE_ATTRIBUTES)
-        return 0;
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND)
+            return 0;
+        return -1;
+    }
     return (attrs & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 #else
     struct stat st;
-    if (lstat(path, &st) != 0)
-        return 0;
+    if (lstat(path, &st) != 0) {
+        if (errno == ENOENT || errno == ENOTDIR)
+            return 0;
+        return -1;
+    }
     return S_ISLNK(st.st_mode) ? 1 : 0;
 #endif
 }
@@ -998,9 +977,11 @@ void archive_reject_symlink_components(const char *path, size_t root_len, int in
     if (root_len > 0) {
         memcpy(scratch, path, root_len);
         scratch[root_len] = '\0';
-        if (archive_path_is_reparse_or_symlink(scratch)) {
+        int link_state = archive_path_is_reparse_or_symlink(scratch);
+        if (link_state != 0) {
             free(scratch);
-            rt_trap("Archive: refusing to extract through symlink");
+            rt_trap(link_state > 0 ? "Archive: refusing to extract through symlink"
+                                   : "Archive: unable to inspect destination path");
             return;
         }
     }
@@ -1023,9 +1004,11 @@ void archive_reject_symlink_components(const char *path, size_t root_len, int in
         }
         memcpy(scratch, path, i);
         scratch[i] = '\0';
-        if (archive_path_is_reparse_or_symlink(scratch)) {
+        int link_state = archive_path_is_reparse_or_symlink(scratch);
+        if (link_state != 0) {
             free(scratch);
-            rt_trap("Archive: refusing to extract through symlink");
+            rt_trap(link_state > 0 ? "Archive: refusing to extract through symlink"
+                                   : "Archive: unable to inspect destination path");
             return;
         }
     }

@@ -9,7 +9,7 @@
 // Purpose: Implements an immutable string-keyed map (FrozenMap) built once from
 //   a Seq of alternating key/value pairs or from a parallel keys/values Seq.
 //   After construction the map cannot be modified; all mutating operations are
-//   absent from the API. Uses open-addressing with FNV-1a hashing for O(1)
+//   absent from the API. Uses open-addressing with the runtime keyed hash for O(1)
 //   average-case lookup.
 //
 // Key invariants:
@@ -17,7 +17,7 @@
 //     slot array to 2× the number of entries at construction time.
 //   - Slot key == NULL indicates an empty slot (tombstones are not used since
 //     the map is immutable after build).
-//   - FNV-1a hash over the raw string bytes; linear probing on collision.
+//   - Runtime keyed hash over the raw string bytes; linear probing on collision.
 //   - Keys are stored as retained rt_string references (not copied); the FrozenMap
 //     keeps a reference to prevent GC collection of key strings.
 //   - Values are retained on insertion and released by the finalizer.
@@ -38,6 +38,7 @@
 #include "rt_box.h"
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
+#include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -97,19 +98,14 @@ static rt_frozenmap_impl *as_frozenmap(void *obj, const char *what) {
     return (rt_frozenmap_impl *)obj;
 }
 
-// --- FNV-1a hash ---
+// --- Keyed hash ---
 
-/// @brief FNV-1a 64-bit hash of @p len bytes of @p data.
+/// @brief Per-process keyed hash of @p len bytes of @p data.
 static uint64_t fm_hash(const char *data, int64_t len) {
-    uint64_t h = 14695981039346656037ULL;
-    for (int64_t i = 0; i < len; i++) {
-        h ^= (uint8_t)data[i];
-        h *= 1099511628211ULL;
-    }
-    return h;
+    return rt_keyed_hash_bytes(data ? data : "", len > 0 ? (size_t)len : 0);
 }
 
-/// @brief FNV-1a hash of an rt_string's bytes (empty string for NULL).
+/// @brief Keyed hash of an rt_string's bytes (empty string for NULL).
 static uint64_t fm_str_hash(rt_string s) {
     if (!s)
         return fm_hash("", 0);
@@ -180,6 +176,34 @@ static void fm_retain_new_slot_refs(rt_string key, void *value) {
     key_retained = key ? 1 : 0;
     rt_obj_retain_maybe(value);
     value_retained = value ? 1 : 0;
+    rt_trap_clear_recovery();
+}
+
+/// @brief Trap-safe replacement retain for an existing FrozenMap value slot.
+/// @details Retains the replacement before releasing the old value. If retain
+///          or release traps, the helper releases the replacement reference it
+///          acquired and rethrows the saved trap message, leaving the slot's
+///          stored pointer unchanged.
+/// @param slot Existing occupied slot to update.
+/// @param value Replacement value pointer.
+static void fm_replace_slot_value(fm_slot *slot, void *value) {
+    void *old_value = slot ? slot->value : NULL;
+    volatile int value_retained = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        fm_save_trap_error(saved_error, sizeof(saved_error), "FrozenMap: value replacement failed");
+        rt_trap_clear_recovery();
+        if (value_retained)
+            fm_release_value(value);
+        rt_trap(saved_error);
+        return;
+    }
+    rt_obj_retain_maybe(value);
+    value_retained = value ? 1 : 0;
+    fm_release_value(old_value);
+    slot->value = value;
     rt_trap_clear_recovery();
 }
 
@@ -292,9 +316,7 @@ static int8_t fm_insert(rt_frozenmap_impl *fm, rt_string key, void *value) {
         }
         if (fm_key_equals(fm->slots[slot].key, key_data, key_len)) {
             // Update value (last writer wins)
-            rt_obj_retain_maybe(value);
-            fm_release_value(fm->slots[slot].value);
-            fm->slots[slot].value = value;
+            fm_replace_slot_value(&fm->slots[slot], value);
             return 0;
         }
     }

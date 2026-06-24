@@ -33,6 +33,7 @@
 #include "rt_string.h"
 #include "rt_threadpool.h"
 #include "rt_tls_server_internal.h"
+#include "system/rt_machine.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -101,6 +102,21 @@ extern char *rt_ws_compute_accept_key(const char *key_cstr); // from rt_websocke
 #define WS_MASK 0x80
 #define WS_CLOSE_PROTOCOL_ERROR 1002
 #define WS_CLOSE_INVALID_DATA 1007
+
+/// @brief Compute the internal worker-pool size for WSS server instances.
+/// @details Uses the runtime machine adapter to query logical CPU count, then
+///          clamps the result to the range accepted by @ref rt_threadpool_new.
+///          This gives the TLS WebSocket server CPU-aware defaults without
+///          adding another public runtime helper.
+/// @return Worker count in the inclusive range 1..1024.
+static int64_t wss_server_default_worker_count(void) {
+    int64_t cores = rt_machine_cores();
+    if (cores < 1)
+        cores = 1;
+    if (cores > 1024)
+        cores = 1024;
+    return cores;
+}
 
 typedef struct {
     void *tcp; // TLS connection
@@ -734,7 +750,7 @@ void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
     memset(s, 0, sizeof(*s));
     rt_obj_set_finalizer(s, rt_ws_server_finalize);
     s->port = port;
-    s->worker_pool = rt_threadpool_new(8);
+    s->worker_pool = rt_threadpool_new(wss_server_default_worker_count());
     if (!s->worker_pool) {
         rt_trap("WssServer: worker pool allocation failed");
         if (rt_obj_release_check0(s))
@@ -787,7 +803,7 @@ void rt_wss_server_start(void *obj) {
     }
     s->port = rt_tcp_server_port(s->tcp_server);
     if (!s->worker_pool) {
-        s->worker_pool = rt_threadpool_new(8);
+        s->worker_pool = rt_threadpool_new(wss_server_default_worker_count());
         if (!s->worker_pool) {
             rt_tcp_server_close(s->tcp_server);
             if (rt_obj_release_check0(s->tcp_server))

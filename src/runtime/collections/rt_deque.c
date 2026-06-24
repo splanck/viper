@@ -21,6 +21,7 @@
 //   - Push-back: writes to (front + len) % cap; push-front: decrements front
 //     with wrap-around, then writes at the new front.
 //   - Out-of-bounds Get aborts via trap_with_message.
+//   - Deque retains pushed values and returns retained transfers from Pop/Peek.
 //   - Not thread-safe; external synchronization required.
 //
 // Ownership/Lifetime:

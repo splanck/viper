@@ -20,6 +20,8 @@
 //   - When head == (head + count) % capacity the buffer is full and must grow.
 //   - Dequeue on an empty queue traps with an error message.
 //   - Peek returns the head element without removing it; returns NULL if empty.
+//   - Owning queues retain enqueued values and return retained transfers from
+//     Take; borrowing queues store raw pointers without retain/release.
 //   - Not thread-safe; external synchronization required.
 //
 // Ownership/Lifetime:

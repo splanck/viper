@@ -14,7 +14,7 @@
 //
 // Key invariants:
 //   - Backed by a hash table with initial capacity 16 buckets and separate
-//     chaining using FNV-1a hashing.
+//     chaining using the runtime keyed hash.
 //   - Resizes (doubles) when count/capacity exceeds 75%.
 //   - Get returns default_value (NOT a copy) for missing keys; callers must
 //     not mutate the returned default object.
@@ -37,6 +37,7 @@
 #include "rt_defaultmap.h"
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
+#include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -86,14 +87,9 @@ static rt_defaultmap_impl *as_defaultmap(void *obj, const char *what) {
 // Hash helper
 // ---------------------------------------------------------------------------
 
-/// @brief FNV-1a 64-bit hash of @p len bytes of @p key.
+/// @brief Per-process keyed hash of @p len bytes of @p key.
 static uint64_t dm_hash(const char *key, size_t len) {
-    uint64_t h = 0xcbf29ce484222325ULL;
-    for (size_t i = 0; i < len; i++) {
-        h ^= (uint64_t)(unsigned char)key[i];
-        h *= 0x100000001b3ULL;
-    }
-    return h;
+    return rt_keyed_hash_bytes(key ? key : "", len);
 }
 
 /// @brief Borrow the byte buffer + length of a key string (empty "" if null).
@@ -374,7 +370,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
 // ---------------------------------------------------------------------------
 
 /// @brief Check whether a key exists in the default map.
-/// @details Hashes the key with FNV-1a, indexes into the bucket array, and
+/// @details Hashes the key with the runtime keyed hash, indexes into the bucket array, and
 ///          walks the separate-chaining linked list comparing by key length
 ///          and content. Returns 1 if found, 0 otherwise.
 int64_t rt_defaultmap_has(void *map, rt_string key) {
