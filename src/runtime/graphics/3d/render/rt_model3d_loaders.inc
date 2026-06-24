@@ -519,10 +519,7 @@ static int model3d_write_temp_asset_bytes(rt_string path, const uint8_t *bytes, 
     if (!f)
         return 0;
     written = fwrite(bytes, 1, size, f);
-    if (written != size || fclose(f) != 0) {
-        if (written == size)
-            return 0;
-        fclose(f);
+    if (fclose(f) != 0 || written != size) {
         return 0;
     }
     return 1;

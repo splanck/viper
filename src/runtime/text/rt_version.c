@@ -565,8 +565,10 @@ rt_string rt_version_bump_major(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
-    if (v->major == INT64_MAX)
+    if (v->major == INT64_MAX) {
         rt_trap("Version.BumpMajor: component overflow");
+        return rt_string_from_bytes("", 0);
+    }
     rt_string_builder sb;
     rt_sb_init(&sb);
     check_sb(rt_sb_append_int(&sb, v->major + 1), "Version.BumpMajor: formatting failed");
@@ -581,8 +583,10 @@ rt_string rt_version_bump_minor(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
-    if (v->minor == INT64_MAX)
+    if (v->minor == INT64_MAX) {
         rt_trap("Version.BumpMinor: component overflow");
+        return rt_string_from_bytes("", 0);
+    }
     rt_string_builder sb;
     rt_sb_init(&sb);
     check_sb(rt_sb_append_int(&sb, v->major), "Version.BumpMinor: formatting failed");
@@ -599,8 +603,10 @@ rt_string rt_version_bump_patch(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
-    if (v->patch == INT64_MAX)
+    if (v->patch == INT64_MAX) {
         rt_trap("Version.BumpPatch: component overflow");
+        return rt_string_from_bytes("", 0);
+    }
     rt_string_builder sb;
     rt_sb_init(&sb);
     check_sb(rt_sb_append_int(&sb, v->major), "Version.BumpPatch: formatting failed");

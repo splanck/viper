@@ -14,6 +14,7 @@
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_tilemap.h"
@@ -40,6 +41,8 @@
 #endif
 #include <windows.h>
 #else
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -1345,6 +1348,67 @@ std::filesystem::path makeSceneTempPath(const std::filesystem::path &dir,
     return dir / (stem + std::to_string(id));
 }
 
+/// @brief Write scene JSON to a newly created temporary file.
+/// @details Uses exclusive-create semantics so a stale or attacker-created
+///          temp path is never truncated. The caller is responsible for
+///          removing @p temp on failure and for atomically replacing the target
+///          on success.
+/// @param temp Temporary path in the destination directory.
+/// @param json Runtime string containing the serialized scene JSON.
+/// @return True when the complete JSON payload was written, flushed, and the
+///         file handle closed successfully.
+bool writeSceneJsonTempExclusive(const std::filesystem::path &temp, rt_string json) {
+    const char *data = rt_string_cstr(json);
+    int64_t len64 = rt_str_len(json);
+    if (!data || len64 < 0)
+        return false;
+    size_t len = static_cast<size_t>(len64);
+#if RT_PLATFORM_WINDOWS
+    HANDLE handle = CreateFileW(temp.wstring().c_str(),
+                                GENERIC_WRITE,
+                                0,
+                                NULL,
+                                CREATE_NEW,
+                                FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+                                NULL);
+    if (handle == INVALID_HANDLE_VALUE)
+        return false;
+    size_t pos = 0;
+    while (pos < len) {
+        DWORD chunk = static_cast<DWORD>(std::min<size_t>(len - pos, DWORD_MAX));
+        DWORD written = 0;
+        if (!WriteFile(handle, data + pos, chunk, &written, NULL) || written != chunk) {
+            CloseHandle(handle);
+            return false;
+        }
+        pos += written;
+    }
+    bool ok = FlushFileBuffers(handle) != 0;
+    ok = CloseHandle(handle) != 0 && ok;
+    return ok;
+#else
+    int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    int fd = open(temp.c_str(), flags, S_IRUSR | S_IWUSR);
+    if (fd < 0)
+        return false;
+    size_t pos = 0;
+    while (pos < len) {
+        ssize_t written = write(fd, data + pos, len - pos);
+        if (written <= 0) {
+            close(fd);
+            return false;
+        }
+        pos += static_cast<size_t>(written);
+    }
+    bool ok = fsync(fd) == 0;
+    ok = close(fd) == 0 && ok;
+    return ok;
+#endif
+}
+
 bool replaceFileWithTemp(const std::filesystem::path &temp,
                          const std::filesystem::path &target,
                          std::error_code &ec) {
@@ -1582,22 +1646,12 @@ if (dir.empty())
 std::filesystem::path temp = makeSceneTempPath(dir, target);
 
 rt_string json = rt_game_scene_to_json(scene);
-{
-    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        rt_string_unref(json);
-        addDiagnostic(s, "scene.save.write_failed", "error", "cannot create temporary scene file");
-        return 0;
-    }
-    out.write(rt_string_cstr(json), rt_str_len(json));
-    out.flush();
-    if (!out.good()) {
-        rt_string_unref(json);
-        std::error_code removeEc;
-        std::filesystem::remove(temp, removeEc);
-        addDiagnostic(s, "scene.save.write_failed", "error", "cannot write temporary scene file");
-        return 0;
-    }
+if (!writeSceneJsonTempExclusive(temp, json)) {
+    rt_string_unref(json);
+    std::error_code removeEc;
+    std::filesystem::remove(temp, removeEc);
+    addDiagnostic(s, "scene.save.write_failed", "error", "cannot write temporary scene file");
+    return 0;
 }
 rt_string_unref(json);
 

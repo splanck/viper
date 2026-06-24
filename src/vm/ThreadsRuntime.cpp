@@ -26,6 +26,7 @@
 #include "rt_future.h"
 #include "rt_object.h"
 #include "rt_parallel.h"
+#include "rt_seq.h"
 #include "rt_threadpool.h"
 #include "rt_threads.h"
 #include "vm/OpHandlerAccess.hpp"
@@ -558,13 +559,98 @@ static void threads_async_run_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = future;
 }
 
+/// @brief Run an index-range callback sequentially on the active VM.
+/// @details Parallel.For iterations are independent, so sequential execution on the VM yields the
+///          same result as the native parallel path — the VM trades the parallelism for a
+///          single-threaded, debuggable run rather than trapping. The callback must be
+///          `(Integer) -> Unit` (one i64 parameter, void return).
+static void runVmParallelForRange(VM &vm, int64_t start, int64_t end, void *func, const char *api) {
+    const il::core::Function *fn = resolveEntryFunction(vm.module(), func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return;
+    }
+    using Kind = il::core::Type::Kind;
+    if (fn->retType.kind != Kind::Void || fn->params.size() != 1 ||
+        fn->params[0].type.kind != Kind::I64) {
+        rt_trap((std::string(api) + ": callback must be (Integer) -> Unit").c_str());
+        return;
+    }
+    for (int64_t i = start; i < end; ++i) {
+        il::support::SmallVector<Slot, 1> callArgs;
+        Slot s{};
+        s.i64 = i;
+        callArgs.push_back(s);
+        detail::VMAccess::callFunction(vm, *fn, callArgs);
+    }
+}
+
+/// @brief Run a pool task callback synchronously on the active VM.
+/// @details The VM has no worker pool, so the task runs immediately on the calling thread instead
+///          of trapping. The callback must be `(Ptr) -> Unit` or take no parameters.
+static void runVmPoolTask(VM &vm, void *callback, void *arg, const char *api) {
+    const il::core::Function *fn = resolveEntryFunction(vm.module(), callback);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return;
+    }
+    using Kind = il::core::Type::Kind;
+    if (fn->retType.kind != Kind::Void || fn->params.size() > 1 ||
+        (fn->params.size() == 1 && fn->params[0].type.kind != Kind::Ptr)) {
+        rt_trap((std::string(api) + ": callback must be (Ptr) -> Unit").c_str());
+        return;
+    }
+    il::support::SmallVector<Slot, 1> taskArgs;
+    if (fn->params.size() == 1) {
+        Slot s{};
+        s.ptr = arg;
+        taskArgs.push_back(s);
+    }
+    detail::VMAccess::callFunction(vm, *fn, taskArgs);
+}
+
+/// @brief Invoke a sequence of zero-argument callbacks sequentially on the active VM.
+/// @details Parallel.Invoke runs a list of independent `() -> Unit` actions; the native path fans
+///          them across the pool, but on the VM they run in order on the calling thread rather
+///          than trapping. Each sequence element is a VM function value; a non-resolvable entry or
+///          one with the wrong arity/return type traps with an explicit message.
+static void runVmInvokeFunctions(VM &vm, void *funcs, const char *api) {
+    if (!funcs)
+        return;
+    const int64_t count = rt_seq_len(funcs);
+    if (count < 0) {
+        rt_trap((std::string(api) + ": negative sequence length").c_str());
+        return;
+    }
+    using Kind = il::core::Type::Kind;
+    for (int64_t i = 0; i < count; ++i) {
+        const il::core::Function *fn = resolveEntryFunction(vm.module(), rt_seq_get(funcs, i));
+        if (!fn) {
+            rt_trap((std::string(api) + ": invalid callback function").c_str());
+            return;
+        }
+        if (fn->retType.kind != Kind::Void || !fn->params.empty()) {
+            rt_trap((std::string(api) + ": callbacks must be () -> Unit").c_str());
+            return;
+        }
+        il::support::SmallVector<Slot, 1> noArgs;
+        detail::VMAccess::callFunction(vm, *fn, noArgs);
+    }
+}
+
 static void threads_pool_submit_handler(void **args, void *result) {
     void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
 
-    if (activeVMInstance())
-        rt_trap("Pool.Submit: VM callback pointers are not supported");
+    if (VM *vm = activeVMInstance()) {
+        // No worker pool on the VM: run the task synchronously and report success, preserving
+        // "submit, then it runs" semantics for dev/debug instead of trapping.
+        runVmPoolTask(*vm, callback, arg, "Pool.Submit");
+        if (result)
+            *reinterpret_cast<int8_t *>(result) = 1;
+        return;
+    }
 
     int8_t submitted = rt_threadpool_submit(pool, callback, arg);
     if (result)
@@ -576,7 +662,7 @@ static void threads_parallel_foreach_handler(void **args, void *result) {
     void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     if (activeVMInstance())
-        rt_trap("Parallel.ForEach: VM callback pointers are not supported");
+        rt_trap("Parallel.ForEach: sequence-callback execution is not yet supported on the VM; compile to native to run it");
     rt_parallel_foreach(seq, func);
 }
 
@@ -586,7 +672,7 @@ static void threads_parallel_foreach_pool_handler(void **args, void *result) {
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
     if (activeVMInstance())
-        rt_trap("Parallel.ForEachPool: VM callback pointers are not supported");
+        rt_trap("Parallel.ForEachPool: sequence-callback execution is not yet supported on the VM; compile to native to run it");
     rt_parallel_foreach_pool(seq, func, pool);
 }
 
@@ -594,7 +680,7 @@ static void threads_parallel_map_handler(void **args, void *result) {
     void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     if (activeVMInstance())
-        rt_trap("Parallel.Map: VM callback pointers are not supported");
+        rt_trap("Parallel.Map: sequence-callback execution is not yet supported on the VM; compile to native to run it");
     void *mapped = rt_parallel_map(seq, func);
     if (result)
         *reinterpret_cast<void **>(result) = mapped;
@@ -605,7 +691,7 @@ static void threads_parallel_map_pool_handler(void **args, void *result) {
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
     if (activeVMInstance())
-        rt_trap("Parallel.MapPool: VM callback pointers are not supported");
+        rt_trap("Parallel.MapPool: sequence-callback execution is not yet supported on the VM; compile to native to run it");
     void *mapped = rt_parallel_map_pool(seq, func, pool);
     if (result)
         *reinterpret_cast<void **>(result) = mapped;
@@ -614,8 +700,10 @@ static void threads_parallel_map_pool_handler(void **args, void *result) {
 static void threads_parallel_invoke_handler(void **args, void *result) {
     (void)result;
     void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.Invoke: VM callback pointers are not supported");
+    if (VM *vm = activeVMInstance()) {
+        runVmInvokeFunctions(*vm, funcs, "Parallel.Invoke");
+        return;
+    }
     rt_parallel_invoke(funcs);
 }
 
@@ -623,8 +711,12 @@ static void threads_parallel_invoke_pool_handler(void **args, void *result) {
     (void)result;
     void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *pool = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.InvokePool: VM callback pointers are not supported");
+    if (VM *vm = activeVMInstance()) {
+        // The pool is a native concurrency hint; on the VM the actions run sequentially.
+        (void)pool;
+        runVmInvokeFunctions(*vm, funcs, "Parallel.InvokePool");
+        return;
+    }
     rt_parallel_invoke_pool(funcs, pool);
 }
 
@@ -633,8 +725,10 @@ static void threads_parallel_for_handler(void **args, void *result) {
     int64_t start = args && args[0] ? *reinterpret_cast<int64_t *>(args[0]) : 0;
     int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
     void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.For: VM callback pointers are not supported");
+    if (VM *vm = activeVMInstance()) {
+        runVmParallelForRange(*vm, start, end, func, "Parallel.For");
+        return;
+    }
     rt_parallel_for(start, end, func);
 }
 
@@ -644,8 +738,12 @@ static void threads_parallel_for_pool_handler(void **args, void *result) {
     int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
     void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
     void *pool = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.ForPool: VM callback pointers are not supported");
+    if (VM *vm = activeVMInstance()) {
+        // The pool is a native concurrency hint; on the VM the range runs sequentially.
+        (void)pool;
+        runVmParallelForRange(*vm, start, end, func, "Parallel.ForPool");
+        return;
+    }
     rt_parallel_for_pool(start, end, func, pool);
 }
 
@@ -654,7 +752,7 @@ static void threads_parallel_reduce_handler(void **args, void *result) {
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
     if (activeVMInstance())
-        rt_trap("Parallel.Reduce: VM callback pointers are not supported");
+        rt_trap("Parallel.Reduce: sequence-callback execution is not yet supported on the VM; compile to native to run it");
     void *reduced = rt_parallel_reduce(seq, func, identity);
     if (result)
         *reinterpret_cast<void **>(result) = reduced;
@@ -666,7 +764,7 @@ static void threads_parallel_reduce_pool_handler(void **args, void *result) {
     void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
     void *pool = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
     if (activeVMInstance())
-        rt_trap("Parallel.ReducePool: VM callback pointers are not supported");
+        rt_trap("Parallel.ReducePool: sequence-callback execution is not yet supported on the VM; compile to native to run it");
     void *reduced = rt_parallel_reduce_pool(seq, func, identity, pool);
     if (result)
         *reinterpret_cast<void **>(result) = reduced;

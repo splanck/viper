@@ -110,6 +110,16 @@ int64_t rt_parallel_default_workers(void);
 /// @return The default shared thread pool.
 void *rt_parallel_default_pool(void);
 
+/// @brief Shut down and drain the shared default thread pool, joining its workers.
+/// @details Intended for per-run teardown (e.g. VM context destruction). The default pool is a
+///          process-lifetime singleton whose worker threads inherit and *bind* the runtime
+///          context active when the pool was first created (see rt_thread_trampoline). If that
+///          per-run context is freed while workers are still alive, their exit-time unbind
+///          underflows the context bind_count and touches freed memory. Draining here forces
+///          each worker to unbind while the context is still valid. Safe to call repeatedly and
+///          when no pool exists; the next rt_parallel_default_pool() lazily recreates one.
+void rt_parallel_shutdown_default_pool(void);
+
 #ifdef __cplusplus
 }
 #endif

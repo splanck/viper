@@ -1460,14 +1460,18 @@ void set_request_body_from_string(rt_http_req_t *req, rt_string body) {
     if (!req || !body_str)
         return;
     body_len64 = rt_str_len(body);
-    if (body_len64 < 0 || (uint64_t)body_len64 > (uint64_t)SIZE_MAX)
+    if (body_len64 < 0 || (uint64_t)body_len64 > (uint64_t)SIZE_MAX) {
         rt_trap("HTTP: invalid body length");
+        return;
+    }
     body_len = (size_t)body_len64;
     if (body_len == 0)
         return;
     req->body = (uint8_t *)malloc(body_len);
-    if (!req->body)
+    if (!req->body) {
         rt_trap("HTTP: memory allocation failed");
+        return;
+    }
     memcpy(req->body, body_str, body_len);
     req->body_len = body_len;
 }

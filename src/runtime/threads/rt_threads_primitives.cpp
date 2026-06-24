@@ -94,6 +94,7 @@ struct GateState {
     int64_t permits = 0;
     std::deque<GateWaiter *> waiters;
     bool closing = false;
+    bool owner_detached = false;
 };
 
 /// @brief Runtime object wrapper storing gate state.
@@ -107,7 +108,12 @@ template <typename T, typename... Args> static T *allocateState(Args &&...args) 
     void *mem = std::malloc(sizeof(T));
     if (!mem)
         return nullptr;
-    return ::new (mem) T(std::forward<Args>(args)...);
+    try {
+        return ::new (mem) T(std::forward<Args>(args)...);
+    } catch (...) {
+        std::free(mem);
+        return nullptr;
+    }
 }
 
 template <typename T> static void destroyState(T *state) {
@@ -115,6 +121,16 @@ template <typename T> static void destroyState(T *state) {
         return;
     state->~T();
     std::free(state);
+}
+
+/// @brief Test whether a detached gate state has no remaining stack waiters.
+/// @details Called with GateState::mu held after finalization or waiter removal.
+///          A detached state has no owning runtime object pointer left, so the
+///          last waiter to leave is responsible for freeing the heap state.
+/// @param state Gate state protected by the caller-held mutex.
+/// @return True when @p state may be destroyed after releasing the mutex.
+static bool gate_detached_and_idle_locked(const GateState &state) {
+    return state.owner_detached && state.waiters.empty();
 }
 
 //===----------------------------------------------------------------------===//
@@ -235,11 +251,12 @@ static void gate_finalizer(void *obj) {
     {
         std::unique_lock<std::mutex> lock(state->mu);
         state->closing = true;
+        state->owner_detached = true;
         for (GateWaiter *waiter : state->waiters) {
             waiter->cancelled = true;
             waiter->cv.notify_one();
         }
-        can_delete = state->waiters.empty();
+        can_delete = gate_detached_and_idle_locked(*state);
     }
 
     gate->state = nullptr;
@@ -262,7 +279,18 @@ struct BarrierState {
     int64_t waiting = 0;
     int64_t generation = 0;
     bool closing = false;
+    bool owner_detached = false;
 };
+
+/// @brief Test whether a detached barrier state has no waiting threads.
+/// @details Called with BarrierState::mu held. When true, the runtime object has
+///          already been finalized and every blocked arriver has left, so the
+///          heap state can be destroyed outside the mutex scope.
+/// @param state Barrier state protected by the caller-held mutex.
+/// @return True when @p state may be destroyed after unlocking.
+static bool barrier_detached_and_idle_locked(const BarrierState &state) {
+    return state.owner_detached && state.waiting == 0;
+}
 
 /// @brief Runtime object wrapper storing barrier state.
 /// @details The RtBarrier object is managed by the runtime heap and owns a
@@ -292,9 +320,10 @@ static void barrier_finalizer(void *obj) {
     {
         std::unique_lock<std::mutex> lock(state->mu);
         state->closing = true;
+        state->owner_detached = true;
         ++state->generation;
         state->cv.notify_all();
-        can_delete = state->waiting == 0;
+        can_delete = barrier_detached_and_idle_locked(*state);
     }
 
     barrier->state = nullptr;
@@ -321,6 +350,7 @@ struct RwLockState {
     std::condition_variable readers_cv;
 
     int64_t active_readers = 0;
+    int64_t waiting_readers = 0;
     std::unordered_map<std::thread::id, int64_t> reader_counts;
 
     bool writer_active = false;
@@ -329,7 +359,19 @@ struct RwLockState {
 
     std::deque<RwLockWriterWaiter *> waiting_writers;
     bool closing = false;
+    bool owner_detached = false;
 };
+
+/// @brief Test whether a detached reader-writer lock state has no users left.
+/// @details Called with RwLockState::mu held. The finalizer detaches ownership
+///          when readers, writers, or waiters still reference the state; the
+///          last exiting waiter or holder uses this predicate to free it.
+/// @param state Reader-writer lock state protected by the caller-held mutex.
+/// @return True when @p state may be destroyed after unlocking.
+static bool rwlock_detached_and_idle_locked(const RwLockState &state) {
+    return state.owner_detached && state.active_readers == 0 && state.waiting_readers == 0 &&
+           !state.writer_active && state.waiting_writers.empty();
+}
 
 /// @brief Runtime object wrapper storing reader-writer lock state.
 /// @details The RtRwLock object is managed by the runtime heap and owns a
@@ -359,13 +401,13 @@ static void rwlock_finalizer(void *obj) {
     {
         std::unique_lock<std::mutex> lock(state->mu);
         state->closing = true;
+        state->owner_detached = true;
         state->readers_cv.notify_all();
         for (RwLockWriterWaiter *waiter : state->waiting_writers) {
             waiter->cancelled = true;
             waiter->cv.notify_one();
         }
-        can_delete =
-            state->active_readers == 0 && !state->writer_active && state->waiting_writers.empty();
+        can_delete = rwlock_detached_and_idle_locked(*state);
     }
 
     rw->state = nullptr;
@@ -422,6 +464,7 @@ void rt_gate_enter(void *gate) {
     rt_obj_retain_maybe(gate);
 
     const char *trap_msg = nullptr;
+    GateState *state_to_destroy = nullptr;
     {
         GateState &state = *g->state;
         std::unique_lock<std::mutex> lock(state.mu);
@@ -440,11 +483,15 @@ void rt_gate_enter(void *gate) {
                 auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
                 if (it != state.waiters.end())
                     state.waiters.erase(it);
+                if (gate_detached_and_idle_locked(state))
+                    state_to_destroy = &state;
                 trap_msg = "Gate.Enter: object finalized while waiting";
             }
         }
     }
 
+    if (state_to_destroy)
+        destroyState(state_to_destroy);
     releaseRuntimeObject(gate);
     if (trap_msg)
         rt_trap(trap_msg);
@@ -496,6 +543,7 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
 
     const char *trap_msg = nullptr;
     int8_t result = 0;
+    GateState *state_to_destroy = nullptr;
     {
         GateState &state = *g->state;
         std::unique_lock<std::mutex> lock(state.mu);
@@ -517,6 +565,8 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
                     auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
                     if (it != state.waiters.end())
                         state.waiters.erase(it);
+                    if (gate_detached_and_idle_locked(state))
+                        state_to_destroy = &state;
                     timed_out = true;
                     break;
                 }
@@ -527,6 +577,8 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
                 auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
                 if (it != state.waiters.end())
                     state.waiters.erase(it);
+                if (gate_detached_and_idle_locked(state))
+                    state_to_destroy = &state;
                 trap_msg = "Gate.TryEnterFor: object finalized while waiting";
             } else {
                 result = 1;
@@ -534,6 +586,8 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
         }
     }
 
+    if (state_to_destroy)
+        destroyState(state_to_destroy);
     releaseRuntimeObject(gate);
     if (trap_msg)
         rt_trap(trap_msg);
@@ -666,6 +720,7 @@ int64_t rt_barrier_arrive(void *barrier) {
 
     const char *trap_msg = nullptr;
     int64_t index = 0;
+    BarrierState *state_to_destroy = nullptr;
     {
         BarrierState &state = *b->state;
         std::unique_lock<std::mutex> lock(state.mu);
@@ -688,12 +743,16 @@ int64_t rt_barrier_arrive(void *barrier) {
                 if (state.closing) {
                     if (state.waiting > 0)
                         --state.waiting;
+                    if (barrier_detached_and_idle_locked(state))
+                        state_to_destroy = &state;
                     trap_msg = "Barrier.Arrive: object finalized while waiting";
                 }
             }
         }
     }
 
+    if (state_to_destroy)
+        destroyState(state_to_destroy);
     releaseRuntimeObject(barrier);
     if (trap_msg)
         rt_trap(trap_msg);
@@ -819,6 +878,7 @@ void rt_rwlock_read_enter(void *lock) {
 
     const char *trap_msg = nullptr;
     int8_t acquired = 0;
+    RwLockState *state_to_destroy = nullptr;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -830,10 +890,14 @@ void rt_rwlock_read_enter(void *lock) {
             ++state.reader_counts[tid];
             acquired = 1;
         } else {
+            ++state.waiting_readers;
             while ((state.writer_active || !state.waiting_writers.empty()) && !state.closing) {
                 state.readers_cv.wait(lk);
             }
+            --state.waiting_readers;
             if (state.closing) {
+                if (rwlock_detached_and_idle_locked(state))
+                    state_to_destroy = &state;
                 trap_msg = "RwLock.ReadEnter: object finalized while waiting";
             } else {
                 ++state.active_readers;
@@ -843,6 +907,8 @@ void rt_rwlock_read_enter(void *lock) {
         }
     }
 
+    if (state_to_destroy)
+        destroyState(state_to_destroy);
     if (!acquired)
         releaseRuntimeObject(lock);
     if (trap_msg)
@@ -859,6 +925,7 @@ void rt_rwlock_read_exit(void *lock) {
 
     const char *trap_msg = nullptr;
     int8_t released = 0;
+    RwLockState *state_to_destroy = nullptr;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -876,9 +943,13 @@ void rt_rwlock_read_exit(void *lock) {
                 state.waiting_writers.front()->cv.notify_one();
             }
             released = 1;
+            if (rwlock_detached_and_idle_locked(state))
+                state_to_destroy = &state;
         }
     }
 
+    if (state_to_destroy)
+        destroyState(state_to_destroy);
     if (trap_msg)
         rt_trap(trap_msg);
     if (released)
@@ -898,6 +969,7 @@ void rt_rwlock_write_enter(void *lock) {
 
     const char *trap_msg = nullptr;
     int8_t acquired = 0;
+    RwLockState *state_to_destroy = nullptr;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -922,6 +994,8 @@ void rt_rwlock_write_enter(void *lock) {
                             state.waiting_writers.begin(), state.waiting_writers.end(), &waiter);
                         if (it != state.waiting_writers.end())
                             state.waiting_writers.erase(it);
+                        if (rwlock_detached_and_idle_locked(state))
+                            state_to_destroy = &state;
                         trap_msg = "RwLock.WriteEnter: object finalized while waiting";
                         break;
                     }
@@ -940,6 +1014,8 @@ void rt_rwlock_write_enter(void *lock) {
         }
     }
 
+    if (state_to_destroy)
+        destroyState(state_to_destroy);
     if (!acquired)
         releaseRuntimeObject(lock);
     if (trap_msg)
@@ -958,6 +1034,7 @@ void rt_rwlock_write_exit(void *lock) {
 
     const char *trap_msg = nullptr;
     int8_t released = 0;
+    RwLockState *state_to_destroy = nullptr;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -982,9 +1059,13 @@ void rt_rwlock_write_exit(void *lock) {
                     state.readers_cv.notify_all();
                 }
             }
+            if (rwlock_detached_and_idle_locked(state))
+                state_to_destroy = &state;
         }
     }
 
+    if (state_to_destroy)
+        destroyState(state_to_destroy);
     if (trap_msg)
         rt_trap(trap_msg);
     if (released)

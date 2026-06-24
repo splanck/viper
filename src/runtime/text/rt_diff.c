@@ -99,18 +99,24 @@ static line_array split_lines(const char *text, size_t text_len) {
     int count = 1;
     for (size_t i = 0; i < text_len; i++)
         if (text[i] == '\n') {
-            if (count == INT_MAX)
+            if (count == INT_MAX) {
                 rt_trap("rt_diff: too many lines");
+                return la;
+            }
             count++;
         }
 
     la.lines = (char **)malloc((size_t)count * sizeof(char *));
-    if (!la.lines)
+    if (!la.lines) {
         rt_trap("rt_diff: memory allocation failed");
+        return la;
+    }
     la.lens = (size_t *)malloc((size_t)count * sizeof(size_t));
     if (!la.lens) {
         free(la.lines);
+        la.lines = NULL;
         rt_trap("rt_diff: memory allocation failed");
+        return la;
     }
     la.count = 0;
 
@@ -122,6 +128,7 @@ static line_array split_lines(const char *text, size_t text_len) {
             if (!la.lines[la.count]) {
                 free_lines(&la);
                 rt_trap("rt_diff: memory allocation failed");
+                return la;
             }
             memcpy(la.lines[la.count], text + start, len);
             la.lines[la.count][len] = '\0';

@@ -51,8 +51,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
 #include <shellapi.h>
+#include <windows.h>
 #elif defined(__APPLE__)
 #include <crt_externs.h>
 #endif
@@ -679,10 +679,14 @@ void rt_env_set_var(rt_string name, rt_string value) {
 
     // Reject embedded null bytes: setenv/SetEnvironmentVariableA terminate at the
     // first '\0', so a Viper String with internal nulls would be silently truncated.
-    if (strlen(cname) != (size_t)rt_str_len(name))
+    if (strlen(cname) != (size_t)rt_str_len(name)) {
         rt_trap("Viper.System.Environment.SetVariable: name must not contain null bytes");
-    if (value && strlen(cvalue) != (size_t)rt_str_len(value))
+        return;
+    }
+    if (value && strlen(cvalue) != (size_t)rt_str_len(value)) {
         rt_trap("Viper.System.Environment.SetVariable: value must not contain null bytes");
+        return;
+    }
 
 #ifdef _WIN32
     wchar_t *wname = rt_env_utf8_to_wide_or_trap(

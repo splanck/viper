@@ -60,6 +60,7 @@
 #include "vm/VMContext.hpp"
 
 #include "rt_context.h"
+#include "rt_parallel.h"
 #include "rt_shutdown.h"
 
 #include <algorithm>
@@ -886,6 +887,12 @@ bool VM::runDispatchStep(VMContext &context, ExecState &st) {
 /// @brief Custom deleter implementation for RtContext.
 void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept {
     if (ctx) {
+        // Drain the shared default thread pool before this per-run context is freed. Its worker
+        // threads bind this context at creation (rt_thread_trampoline) and would otherwise unbind
+        // it during the process-exit finalizer sweep — after it has been freed — underflowing
+        // bind_count. Joining them here makes each worker's unbind nest inside the context's
+        // lifetime. No-op when no pool was ever created.
+        rt_parallel_shutdown_default_pool();
         rt_context_cleanup(ctx);
         delete ctx;
     }

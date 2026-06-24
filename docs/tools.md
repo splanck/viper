@@ -116,7 +116,7 @@ The CLI is organized around primary entry points:
 - `viper il-opt <in.il> -o <out.il>` — Run optimization passes
 - `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code
 - `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
-- `viper package <dir>` — Package a project for distribution (.app, .deb, .exe, .tar.gz)
+- `viper package <dir>` — Package a project for distribution (.app, .dmg, .deb, .rpm, .AppImage, .exe, .tar.gz)
 - `viper install-package` — Package the staged Viper toolchain itself (.exe, .pkg, .deb, .rpm, .tar.gz)
 - `viper repl` — Launch the interactive REPL
 
@@ -365,12 +365,14 @@ viper package .
 viper package . --target linux
 viper package . --target windows --executable build/myapp.exe
 viper package . --target tarball -o myapp.tar.gz
+viper package . --target appimage -o myapp.AppImage
+viper package . --target rpm --linux-sign-key "Maintainer Key"
 viper package . --dry-run --verbose
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--target macos|linux|windows|tarball` | Select output format; default is the host platform |
+| `--target macos|linux|windows|appimage|rpm|dmg|tarball` | Select output format; default is the host platform |
 | `--arch x64|arm64` | Select payload architecture |
 | `--executable <path>` | Package a prebuilt native executable; required for non-host installer targets |
 | `-o <path>` | Output artifact path |
@@ -388,8 +390,11 @@ viper package . --dry-run --verbose
 | `--windows-timestamp-url <url>` | RFC3161 timestamp URL for Windows signing |
 | `--windows-signtool <path>` | `signtool.exe` path override |
 | `--windows-sign-no-verify` | Skip `signtool verify` after signing |
+| `--linux-sign-key <id>` | GPG-sign the generated `.deb`/`.rpm` with `dpkg-sig`/`rpmsign` |
 | `--dry-run` | Validate metadata and print resolved package contents without building |
 | `--verbose` | Print binary, output, asset, and verification details |
+
+`.app`/`.dmg` build on a macOS host (`.dmg` shells to `hdiutil`), `.deb`/`.AppImage`/`.tar.gz` are emitted directly on any host, and `.rpm` requires `rpmbuild`. `--linux-sign-key` applies only to `--target linux`/`rpm` and requires `dpkg-sig`/`rpmsign`; each path fails with a clear diagnostic when its tool is unavailable.
 
 Packaging manifest paths are project-relative. The `--executable` CLI option is a normal command-line path: relative values resolve from the current working directory. Scalar package fields such as `package-name`, `package-author`, `package-homepage`, `package-license`, platform minimum versions, and `package-category` must be one manifest token; quote values that contain spaces. `package-icon`, `asset`, `post-install`, and `pre-uninstall` paths may also be quoted when they contain spaces. Sources are resolved inside the canonical project root and reject absolute paths, `..` traversal, unreadable directory entries, and symlinks that resolve outside the project. Missing icons/assets, non-file icons, and assets that are neither files nor directories are fatal. Archive entry paths are normalized to forward slashes, must remain relative, and must be unique after normalization.
 
@@ -453,6 +458,7 @@ Typical workflow:
 | `--windows-timestamp-url <url>` | RFC3161 timestamp URL for Windows signing |
 | `--windows-signtool <path>` | `signtool.exe` path override |
 | `--windows-sign-no-verify` | Skip `signtool verify` after signing |
+| `--linux-sign-key <id>` | GPG-sign generated `.deb`/`.rpm` toolchain packages with `dpkg-sig`/`rpmsign` |
 | `-o <path>` | Output path, or output directory when building multiple targets |
 | `--keep-stage-dir` | Preserve the auto-generated staging directory |
 | `--no-verify` | Skip post-build structural verification |

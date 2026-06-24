@@ -443,8 +443,10 @@ void *rt_glob_files(rt_string dir, rt_string pattern) {
 /// cycles.
 static void glob_recursive_helper(
     rt_string base_dir, rt_string rel_path, const char *pattern, void *result, size_t depth) {
-    if (depth > 4096)
+    if (depth > 4096) {
         rt_trap("Glob.FilesRecursive: recursion depth exceeded");
+        return;
+    }
     rt_string volatile current_dir = NULL;
     rt_string volatile full_path = NULL;
     rt_string volatile entry_rel = NULL;

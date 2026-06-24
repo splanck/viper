@@ -631,6 +631,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_channel_recv_for")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_channel_try_recv")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_monitor_forget")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_threadpool_current_worker_pool")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_parallel_shutdown_default_pool")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_seq_all")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_seq_any")

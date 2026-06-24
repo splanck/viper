@@ -147,22 +147,38 @@ void *makeRanges(const std::vector<int64_t> &positions) {
 extern "C" {
 
 int64_t rt_fuzzy_match_score(rt_string query, rt_string candidate) {
-    return computeMatch(toStd(query), toStd(candidate)).score;
+    try {
+        return computeMatch(toStd(query), toStd(candidate)).score;
+    } catch (...) {
+        return 0;
+    }
 }
 
 void *rt_fuzzy_match_match(rt_string query, rt_string candidate) {
-    std::string q = toStd(query);
-    std::string c = toStd(candidate);
-    MatchResult m = computeMatch(q, c);
-    void *result = rt_map_new();
-    mapSetBool(result, "matched", m.matched ? 1 : 0);
-    mapSetInt(result, "score", m.score);
-    mapSetStr(result, "query", q);
-    mapSetStr(result, "candidate", c);
-    void *ranges = makeRanges(m.positions);
-    mapSetObj(result, "ranges", ranges);
-    releaseObject(ranges);
-    return result;
+    try {
+        std::string q = toStd(query);
+        std::string c = toStd(candidate);
+        MatchResult m = computeMatch(q, c);
+        void *result = rt_map_new();
+        mapSetBool(result, "matched", m.matched ? 1 : 0);
+        mapSetInt(result, "score", m.score);
+        mapSetStr(result, "query", q);
+        mapSetStr(result, "candidate", c);
+        void *ranges = makeRanges(m.positions);
+        mapSetObj(result, "ranges", ranges);
+        releaseObject(ranges);
+        return result;
+    } catch (...) {
+        void *result = rt_map_new();
+        mapSetBool(result, "matched", 0);
+        mapSetInt(result, "score", 0);
+        mapSetStr(result, "query", "");
+        mapSetStr(result, "candidate", "");
+        void *ranges = rt_seq_new_owned();
+        mapSetObj(result, "ranges", ranges);
+        releaseObject(ranges);
+        return result;
+    }
 }
 
 } // extern "C"

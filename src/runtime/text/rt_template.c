@@ -310,10 +310,14 @@ static rt_string render_internal(const char *tmpl,
 
 /// @brief Render a Mustache-style template with {{key}} placeholders replaced from a Map.
 rt_string rt_template_render(rt_string tmpl, void *values) {
-    if (!tmpl)
+    if (!tmpl) {
         rt_trap("Template.Render: template is null");
-    if (!values)
+        return rt_const_cstr("");
+    }
+    if (!values) {
         rt_trap("Template.Render: values map is null");
+        return rt_const_cstr("");
+    }
 
     const char *tmpl_str = rt_string_cstr(tmpl);
     if (!tmpl_str)
@@ -326,10 +330,14 @@ rt_string rt_template_render(rt_string tmpl, void *values) {
 
 /// @brief Render a template with {{0}}, {{1}} positional placeholders replaced from a Seq.
 rt_string rt_template_render_seq(rt_string tmpl, void *values) {
-    if (!tmpl)
+    if (!tmpl) {
         rt_trap("Template.RenderSeq: template is null");
-    if (!values)
+        return rt_const_cstr("");
+    }
+    if (!values) {
         rt_trap("Template.RenderSeq: values seq is null");
+        return rt_const_cstr("");
+    }
 
     const char *tmpl_str = rt_string_cstr(tmpl);
     if (!tmpl_str)
@@ -345,14 +353,22 @@ rt_string rt_template_render_with(rt_string tmpl,
                                   void *values,
                                   rt_string prefix,
                                   rt_string suffix) {
-    if (!tmpl)
+    if (!tmpl) {
         rt_trap("Template.RenderWith: template is null");
-    if (!values)
+        return rt_const_cstr("");
+    }
+    if (!values) {
         rt_trap("Template.RenderWith: values map is null");
-    if (!prefix)
+        return rt_const_cstr("");
+    }
+    if (!prefix) {
         rt_trap("Template.RenderWith: prefix is null");
-    if (!suffix)
+        return rt_const_cstr("");
+    }
+    if (!suffix) {
         rt_trap("Template.RenderWith: suffix is null");
+        return rt_const_cstr("");
+    }
 
     const char *tmpl_str = rt_string_cstr(tmpl);
     if (!tmpl_str)
@@ -370,10 +386,14 @@ rt_string rt_template_render_with(rt_string tmpl,
     int prefix_len = safe_size_to_int((size_t)rt_str_len(prefix));
     int suffix_len = safe_size_to_int((size_t)rt_str_len(suffix));
 
-    if (prefix_len == 0)
+    if (prefix_len == 0) {
         rt_trap("Template.RenderWith: prefix is empty");
-    if (suffix_len == 0)
+        return rt_const_cstr("");
+    }
+    if (suffix_len == 0) {
         rt_trap("Template.RenderWith: suffix is empty");
+        return rt_const_cstr("");
+    }
 
     return render_internal(
         tmpl_str, tmpl_len, values, false, prefix_str, prefix_len, suffix_str, suffix_len);

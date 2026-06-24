@@ -48,11 +48,17 @@ using namespace il;
 
 namespace {
 
+/// @brief Default step budget applied when `--max-steps` is not given, so benchmarking an IL file
+///        with an infinite loop terminates (both VMs trap on the limit) instead of hanging forever.
+///        Generous enough for realistic throughput benchmarks; pass `--max-steps 0` for unlimited.
+constexpr uint64_t kDefaultBenchMaxSteps = 1'000'000'000;
+
 /// @brief Benchmark configuration parsed from command-line.
 struct BenchConfig {
     std::vector<std::string> ilFiles;
     uint32_t iterations = 3;
     uint64_t maxSteps = 0;
+    bool maxStepsExplicit = false;
     bool runTable = true;
     bool runSwitch = true;
     bool runThreaded = true;
@@ -78,6 +84,7 @@ struct BenchResult {
     double insnsPerSec = 0.0;
     int64_t returnValue = 0;
     bool success = true;
+    bool hitStepBudget = false; ///< True when the run aborted on the step/instruction budget.
     std::string errorMessage;
 };
 
@@ -104,7 +111,8 @@ void benchUsage(std::ostream &out = std::cerr) {
     out << "Usage: viper bench <file.il> [file2.il ...] [options]\n"
         << "Options:\n"
         << "  -n <N>            Number of iterations (default: 3)\n"
-        << "  --max-steps <N>   Maximum interpreter steps (0 = unlimited)\n"
+        << "  --max-steps <N>   Maximum interpreter steps before aborting (default: 1e9 watchdog\n"
+        << "                    so a hung IL file fails instead of hanging; 0 = unlimited)\n"
         << "  --max-steps=<N>   Inline form of --max-steps\n"
         << "  --table           Run only FnTable dispatch (standard VM)\n"
         << "  --switch          Run only Switch dispatch (standard VM)\n"
@@ -183,6 +191,7 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
                 return false;
             }
             config.maxSteps = parsed;
+            config.maxStepsExplicit = true;
         } else if (arg.substr(0, 12) == "--max-steps=") {
             std::string_view value = arg.substr(12);
             uint64_t parsed = 0;
@@ -195,6 +204,7 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
                 return false;
             }
             config.maxSteps = parsed;
+            config.maxStepsExplicit = true;
         } else if (arg == "--table") {
             beginExplicitStrategySelection(config, strategySpecified);
             config.runTable = true;
@@ -244,6 +254,11 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
         return false;
     }
 
+    // Apply the default watchdog step budget unless the user set one explicitly — including an
+    // explicit `--max-steps 0`, which opts back into unlimited execution.
+    if (!config.maxStepsExplicit)
+        config.maxSteps = kDefaultBenchMaxSteps;
+
     return true;
 }
 
@@ -286,6 +301,8 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
         result.timeMs =
             std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
         result.instructions = runner.instructionCount();
+        // The step budget stops the VM without a trap message, so detect it from the count.
+        result.hitStepBudget = (maxSteps > 0 && result.instructions >= maxSteps);
         if (const auto trap = runner.lastTrapMessage()) {
             result.success = false;
             result.errorMessage = *trap;
@@ -334,6 +351,8 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
         result.timeMs =
             std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
 
+        // The instruction budget stops the VM without trapping, so detect it from the count.
+        result.hitStepBudget = (maxSteps > 0 && result.instructions >= maxSteps);
         if (vm.state() == viper::bytecode::VMState::Trapped) {
             result.success = false;
             result.errorMessage = vm.trapMessage();
@@ -449,6 +468,7 @@ bool benchmarkFile(const std::string &file,
         uint64_t instructions = 0;
         int64_t returnValue = 0;
         bool allSuccess = true;
+        bool hitStepBudget = false;
         std::string errorMessage;
 
         if (config.verbose) {
@@ -469,6 +489,13 @@ bool benchmarkFile(const std::string &file,
 
         for (uint32_t iter = 0; iter < config.iterations; ++iter) {
             auto iterResult = runBenchmarkIteration(mod, strategy, config.maxSteps);
+            if (iterResult.hitStepBudget) {
+                allSuccess = false;
+                hitStepBudget = true;
+                errorMessage = "exceeded the step budget (" + std::to_string(config.maxSteps) +
+                               "); the program may not terminate (pass --max-steps 0 to disable)";
+                break;
+            }
             if (!iterResult.success) {
                 allSuccess = false;
                 errorMessage = iterResult.errorMessage;
@@ -487,6 +514,7 @@ bool benchmarkFile(const std::string &file,
         result.instructions = instructions;
         result.returnValue = returnValue;
         result.errorMessage = std::move(errorMessage);
+        result.hitStepBudget = hitStepBudget;
 
         if (allSuccess && !times.empty()) {
             result.timeMs = computeMedian(times);
@@ -494,6 +522,8 @@ bool benchmarkFile(const std::string &file,
         }
 
         results.push_back(result);
+        if (hitStepBudget)
+            break; // Non-terminating program — it hits the same budget on every strategy.
     }
 
     // Bytecode VM strategies
@@ -525,6 +555,7 @@ bool benchmarkFile(const std::string &file,
             uint64_t instructions = 0;
             int64_t returnValue = 0;
             bool allSuccess = true;
+            bool hitStepBudget = false;
             std::string errorMessage;
 
             if (config.verbose) {
@@ -535,6 +566,14 @@ bool benchmarkFile(const std::string &file,
             for (uint32_t iter = 0; iter < config.iterations; ++iter) {
                 auto iterResult =
                     runBytecodeBenchmarkIteration(mod, bcModule, strategy, config.maxSteps);
+                if (iterResult.hitStepBudget) {
+                    allSuccess = false;
+                    hitStepBudget = true;
+                    errorMessage =
+                        "exceeded the step budget (" + std::to_string(config.maxSteps) +
+                        "); the program may not terminate (pass --max-steps 0 to disable)";
+                    break;
+                }
                 if (!iterResult.success) {
                     allSuccess = false;
                     errorMessage = iterResult.errorMessage;
@@ -553,6 +592,7 @@ bool benchmarkFile(const std::string &file,
             result.instructions = instructions;
             result.returnValue = returnValue;
             result.errorMessage = std::move(errorMessage);
+            result.hitStepBudget = hitStepBudget;
 
             if (allSuccess && !times.empty()) {
                 result.timeMs = computeMedian(times);
@@ -560,6 +600,8 @@ bool benchmarkFile(const std::string &file,
             }
 
             results.push_back(result);
+            if (hitStepBudget)
+                break; // Non-terminating program — it hits the same budget on every strategy.
         }
     }
 

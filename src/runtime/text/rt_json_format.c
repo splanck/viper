@@ -40,8 +40,8 @@
 
 #include <locale.h>
 #include <math.h>
-#include <stdint.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,12 +62,14 @@ typedef struct {
     char *buf;
     size_t len;
     size_t cap;
+    int failed;
 } string_builder;
 
 typedef struct {
     void **items;
     size_t len;
     size_t cap;
+    int failed;
 } format_context;
 
 // ---------------------------------------------------------------------------
@@ -80,38 +82,59 @@ typedef struct {
 static void sb_init(string_builder *sb) {
     sb->cap = 256;
     sb->len = 0;
+    sb->failed = 0;
     sb->buf = (char *)malloc(sb->cap);
-    if (!sb->buf)
+    if (!sb->buf) {
+        sb->failed = 1;
         rt_trap("Json.Format: memory allocation failed");
+        return;
+    }
     sb->buf[0] = '\0';
 }
 
 /// @brief Ensure the builder has room for at least `needed` more bytes; doubles capacity.
 static void sb_grow(string_builder *sb, size_t needed) {
-    if (needed > SIZE_MAX - sb->len)
+    if (sb->failed)
+        return;
+    if (needed > SIZE_MAX - sb->len) {
+        sb->failed = 1;
         rt_trap("Json.Format: output length overflow");
+        return;
+    }
     size_t required = sb->len + needed;
     if (required < sb->cap)
         return;
 
     while (sb->cap <= required) {
-        if (sb->cap > SIZE_MAX / 2)
+        if (sb->cap > SIZE_MAX / 2) {
+            sb->failed = 1;
             rt_trap("Json.Format: output length overflow");
+            return;
+        }
         sb->cap *= 2;
     }
 
     char *tmp = (char *)realloc(sb->buf, sb->cap);
     if (!tmp) {
         free(sb->buf);
+        sb->buf = NULL;
+        sb->len = 0;
+        sb->cap = 0;
+        sb->failed = 1;
         rt_trap("Json.Format: memory allocation failed");
+        return;
     }
     sb->buf = tmp;
 }
 
 /// @brief Append a NUL-terminated C string to the builder.
 static void sb_append(string_builder *sb, const char *s) {
+    if (sb->failed)
+        return;
     size_t slen = strlen(s);
     sb_grow(sb, slen + 1);
+    if (sb->failed)
+        return;
     memcpy(sb->buf + sb->len, s, slen);
     sb->len += slen;
     sb->buf[sb->len] = '\0';
@@ -119,20 +142,31 @@ static void sb_append(string_builder *sb, const char *s) {
 
 /// @brief Append a single byte to the builder.
 static void sb_append_char(string_builder *sb, char c) {
+    if (sb->failed)
+        return;
     sb_grow(sb, 2);
+    if (sb->failed)
+        return;
     sb->buf[sb->len++] = c;
     sb->buf[sb->len] = '\0';
 }
 
 /// @brief Append `indent * level` literal spaces (pretty-print indentation).
 static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level) {
+    if (sb->failed)
+        return;
     if (indent <= 0)
         return;
-    if (level < 0 || (level > 0 && indent > INT64_MAX / level))
+    if (level < 0 || (level > 0 && indent > INT64_MAX / level)) {
+        sb->failed = 1;
         rt_trap("Json.Format: indentation overflow");
+        return;
+    }
 
     int64_t spaces = indent * level;
     sb_grow(sb, (size_t)spaces + 1);
+    if (sb->failed)
+        return;
     for (int64_t i = 0; i < spaces; i++)
         sb->buf[sb->len++] = ' ';
     sb->buf[sb->len] = '\0';
@@ -140,6 +174,11 @@ static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level) 
 
 /// @brief Convert the builder's contents to an `rt_string` and free the scratch buffer.
 static rt_string sb_finish(string_builder *sb) {
+    if (sb->failed || !sb->buf) {
+        free(sb->buf);
+        sb->buf = NULL;
+        return rt_const_cstr("");
+    }
     rt_string result = rt_string_from_bytes(sb->buf, sb->len);
     free(sb->buf);
     return result;
@@ -198,6 +237,7 @@ static void format_ctx_init(format_context *ctx) {
     ctx->items = NULL;
     ctx->len = 0;
     ctx->cap = 0;
+    ctx->failed = 0;
 }
 
 static void format_ctx_free(format_context *ctx) {
@@ -205,28 +245,44 @@ static void format_ctx_free(format_context *ctx) {
     ctx->items = NULL;
     ctx->len = 0;
     ctx->cap = 0;
+    ctx->failed = 0;
 }
 
-static void format_ctx_enter(format_context *ctx, void *obj) {
+static int format_ctx_enter(format_context *ctx, void *obj) {
+    if (ctx->failed)
+        return 0;
     if (!obj)
-        return;
+        return 1;
     for (size_t i = 0; i < ctx->len; i++) {
-        if (ctx->items[i] == obj)
+        if (ctx->items[i] == obj) {
+            ctx->failed = 1;
             rt_trap("Json.Format: cyclic object graph");
+            return 0;
+        }
     }
-    if (ctx->len >= JSON_MAX_DEPTH)
+    if (ctx->len >= JSON_MAX_DEPTH) {
+        ctx->failed = 1;
         rt_trap("Json.Format: maximum nesting depth exceeded");
+        return 0;
+    }
     if (ctx->len == ctx->cap) {
         size_t new_cap = ctx->cap == 0 ? 16 : ctx->cap * 2;
-        if (new_cap < ctx->cap || new_cap > SIZE_MAX / sizeof(void *))
+        if (new_cap < ctx->cap || new_cap > SIZE_MAX / sizeof(void *)) {
+            ctx->failed = 1;
             rt_trap("Json.Format: nesting stack overflow");
+            return 0;
+        }
         void **tmp = (void **)realloc(ctx->items, new_cap * sizeof(void *));
-        if (!tmp)
+        if (!tmp) {
+            ctx->failed = 1;
             rt_trap("Json.Format: memory allocation failed");
+            return 0;
+        }
         ctx->items = tmp;
         ctx->cap = new_cap;
     }
     ctx->items[ctx->len++] = obj;
+    return 1;
 }
 
 static void format_ctx_exit(format_context *ctx, void *obj) {
@@ -319,7 +375,10 @@ static void format_value(
 /// each element on its own line at `(level + 1) * indent` spaces.
 static void format_array(
     string_builder *sb, void *seq, int64_t indent, int64_t level, format_context *ctx) {
-    format_ctx_enter(ctx, seq);
+    if (!format_ctx_enter(ctx, seq)) {
+        sb->failed = 1;
+        return;
+    }
     int64_t len = rt_seq_len(seq);
 
     if (len == 0) {
@@ -338,6 +397,8 @@ static void format_array(
 
         void *item = rt_seq_get(seq, i);
         format_value(sb, item, indent, level + 1, ctx);
+        if (sb->failed || ctx->failed)
+            break;
 
         if (i < len - 1)
             sb_append_char(sb, ',');
@@ -358,7 +419,10 @@ static void format_array(
 /// string keys are silently coerced.
 static void format_object(
     string_builder *sb, void *map, int64_t indent, int64_t level, format_context *ctx) {
-    format_ctx_enter(ctx, map);
+    if (!format_ctx_enter(ctx, map)) {
+        sb->failed = 1;
+        return;
+    }
     int64_t len = rt_map_len(map);
 
     if (len == 0) {
@@ -387,6 +451,8 @@ static void format_object(
 
         void *value = rt_map_get(map, key);
         format_value(sb, value, indent, level + 1, ctx);
+        if (sb->failed || ctx->failed)
+            break;
 
         if (i < keys_len - 1)
             sb_append_char(sb, ',');
@@ -414,6 +480,9 @@ static void format_object(
 /// pretty printing with `indent` spaces per level.
 static void format_value(
     string_builder *sb, void *obj, int64_t indent, int64_t level, format_context *ctx) {
+    if (sb->failed || ctx->failed)
+        return;
+
     // null
     if (!obj) {
         sb_append(sb, "null");
@@ -533,6 +602,8 @@ rt_string rt_json_format(void *obj) {
     sb_init(&sb);
     format_ctx_init(&ctx);
     format_value(&sb, obj, 0, 0, &ctx);
+    if (ctx.failed)
+        sb.failed = 1;
     format_ctx_free(&ctx);
     return sb_finish(&sb);
 }
@@ -580,6 +651,8 @@ rt_string rt_json_format_pretty(void *obj, int64_t indent) {
     sb_init(&sb);
     format_ctx_init(&ctx);
     format_value(&sb, obj, indent, 0, &ctx);
+    if (ctx.failed)
+        sb.failed = 1;
     format_ctx_free(&ctx);
     return sb_finish(&sb);
 }

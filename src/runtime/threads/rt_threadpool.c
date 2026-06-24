@@ -320,9 +320,18 @@ static void pool_finalizer(void *obj) {
         free(handles);
     } else {
         for (int64_t i = 0; i < pool->worker_count; i++) {
+            void *thread = NULL;
+            if (pool->monitor)
+                rt_monitor_enter(pool->monitor);
             if (pool->workers && pool->workers[i].thread) {
-                rt_thread_join(pool->workers[i].thread);
-                pool_release_thread_handle(&pool->workers[i].thread);
+                thread = pool->workers[i].thread;
+                pool->workers[i].thread = NULL;
+            }
+            if (pool->monitor)
+                rt_monitor_exit(pool->monitor);
+            if (thread) {
+                rt_thread_join(thread);
+                pool_release_thread_handle(&thread);
             }
         }
     }

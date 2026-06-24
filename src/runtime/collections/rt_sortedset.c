@@ -284,8 +284,8 @@ int8_t rt_sortedset_add(void *obj, rt_string str) {
     }
 
     // Shift elements to make room
-    for (int64_t i = set->len; i > idx; i--) {
-        set->data[i] = set->data[i - 1];
+    if (idx < set->len) {
+        memmove(&set->data[idx + 1], &set->data[idx], (size_t)(set->len - idx) * sizeof(rt_string));
     }
 
     // Insert copy of string
@@ -315,8 +315,9 @@ int8_t rt_sortedset_remove(void *obj, rt_string str) {
     rt_str_release_maybe(set->data[idx]);
 
     // Shift elements down
-    for (int64_t i = idx; i < set->len - 1; i++) {
-        set->data[i] = set->data[i + 1];
+    if (idx + 1 < set->len) {
+        memmove(
+            &set->data[idx], &set->data[idx + 1], (size_t)(set->len - idx - 1) * sizeof(rt_string));
     }
 
     set->data[set->len - 1] = NULL;

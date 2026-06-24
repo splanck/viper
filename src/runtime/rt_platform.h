@@ -277,7 +277,7 @@ static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order) 
     _ReadWriteBarrier();
     return value;
 #else
-    return (size_t)_InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
+    return (size_t)_InterlockedCompareExchange((volatile long *)ptr, 0, 0);
 #endif
 }
 
@@ -293,7 +293,7 @@ static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int 
     *ptr = value;
     _ReadWriteBarrier();
 #else
-    _InterlockedExchange64((volatile long long *)ptr, (long long)value);
+    _InterlockedExchange((volatile long *)ptr, (long)value);
 #endif
 }
 
@@ -319,40 +319,40 @@ static inline int rt_atomic_compare_exchange_size(
 // Atomic fetch-add (size_t)
 static inline size_t rt_atomic_fetch_add_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
+#if defined(_M_X64) || defined(_M_ARM64)
     return (size_t)_InterlockedExchangeAdd64((volatile long long *)ptr, (long long)value);
+#else
+    return (size_t)_InterlockedExchangeAdd((volatile long *)ptr, (long)value);
+#endif
 }
 
 // Atomic fetch-sub (size_t)
 static inline size_t rt_atomic_fetch_sub_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
+#if defined(_M_X64) || defined(_M_ARM64)
     return (size_t)_InterlockedExchangeAdd64((volatile long long *)ptr, -(long long)value);
+#else
+    return (size_t)_InterlockedExchangeAdd((volatile long *)ptr, -(long)value);
+#endif
 }
 
 // Atomic load (pointer)
 static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order) {
     (void)order;
-    void *value = *ptr;
-#if defined(_M_ARM64)
-    __dmb(_ARM64_BARRIER_ISH);
+#if defined(_M_X64) || defined(_M_ARM64)
+    return _InterlockedCompareExchangePointer((void *volatile *)ptr, NULL, NULL);
 #else
-    _ReadWriteBarrier();
+    return (void *)_InterlockedCompareExchange((volatile long *)ptr, 0, 0);
 #endif
-    return value;
 }
 
 // Atomic store (pointer)
 static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int order) {
     (void)order;
-#if defined(_M_ARM64)
-    __dmb(_ARM64_BARRIER_ISH);
+#if defined(_M_X64) || defined(_M_ARM64)
+    _InterlockedExchangePointer(ptr, value);
 #else
-    _ReadWriteBarrier();
-#endif
-    *ptr = value;
-#if defined(_M_ARM64)
-    __dmb(_ARM64_BARRIER_ISH);
-#else
-    _ReadWriteBarrier();
+    _InterlockedExchange((volatile long *)ptr, (long)value);
 #endif
 }
 
@@ -387,30 +387,15 @@ static inline int rt_atomic_compare_exchange_ptr(
 // Atomic load/store for double values used with GCC's non-_n builtins.
 static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, int order) {
     (void)order;
-    double value = *ptr;
-#if defined(_M_ARM64)
-    __dmb(_ARM64_BARRIER_ISH);
-#else
-    _ReadWriteBarrier();
-#endif
-    memcpy(out, &value, sizeof(*out));
+    long long bits = _InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
+    memcpy(out, &bits, sizeof(*out));
 }
 
 static inline void rt_atomic_store_f64(volatile double *ptr, const double *value, int order) {
     (void)order;
-    double stored;
-    memcpy(&stored, value, sizeof(stored));
-#if defined(_M_ARM64)
-    __dmb(_ARM64_BARRIER_ISH);
-#else
-    _ReadWriteBarrier();
-#endif
-    *ptr = stored;
-#if defined(_M_ARM64)
-    __dmb(_ARM64_BARRIER_ISH);
-#else
-    _ReadWriteBarrier();
-#endif
+    long long bits;
+    memcpy(&bits, value, sizeof(bits));
+    _InterlockedExchange64((volatile long long *)ptr, bits);
 }
 
 // Map GCC-style atomic builtins to our functions

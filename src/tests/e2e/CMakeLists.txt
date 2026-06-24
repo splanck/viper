@@ -48,6 +48,13 @@ function(viper_add_e2e_vm_suite)
             -P ${_VIPER_E2E_DIR}/test_vm_block_params.cmake)
     viper_set_test_labels(vm_block_params vm)
 
+    viper_add_ctest(vm_parallel_callbacks
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:viper>
+            -DSRC_DIR=${CMAKE_SOURCE_DIR}
+            -P ${_VIPER_E2E_DIR}/test_vm_parallel_callbacks.cmake)
+    viper_set_test_labels(vm_parallel_callbacks vm)
+
     viper_add_ctest(vm_math_core
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:viper>

@@ -1229,8 +1229,10 @@ static void add_route_binding(void *obj,
         return;
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    if (https_server_is_running(server))
+    if (https_server_is_running(server)) {
         rt_trap("HttpsServer: cannot add routes while running");
+        return;
+    }
     adder(server->router, pattern);
 
     const char *tag = rt_string_cstr(handler_tag);
@@ -1278,8 +1280,10 @@ void rt_https_server_bind_handler(void *obj, rt_string handler_tag, void *entry)
     if (!obj || !entry)
         return;
 
-    if (https_server_is_running((rt_http_server_impl *)obj))
+    if (https_server_is_running((rt_http_server_impl *)obj)) {
         rt_trap("HttpsServer: cannot bind handlers while running");
+        return;
+    }
 
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
@@ -1310,8 +1314,10 @@ void rt_https_server_bind_handler_dispatch(
     if (!obj || !dispatch)
         return;
 
-    if (https_server_is_running((rt_http_server_impl *)obj))
+    if (https_server_is_running((rt_http_server_impl *)obj)) {
         rt_trap("HttpsServer: cannot bind handlers while running");
+        return;
+    }
 
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
@@ -1336,20 +1342,26 @@ void rt_https_server_bind_handler_dispatch(
 ///
 /// @param obj HttpServer handle.
 void rt_https_server_start(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HttpsServer: NULL server");
+        return;
+    }
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
     if (https_server_is_running(server))
         return;
+    if (!server->tls_ctx) {
+        rt_trap("HttpsServer: missing TLS context");
+        return;
+    }
 
     // Create TCP server
     server->tcp_server = rt_tcp_server_listen(server->port);
-    if (!server->tcp_server)
+    if (!server->tcp_server) {
         rt_trap("HttpsServer: failed to bind listener");
+        return;
+    }
     server->port = rt_tcp_server_port(server->tcp_server);
-    if (!server->tls_ctx)
-        rt_trap("HttpsServer: missing TLS context");
     if (!server->worker_pool)
         server->worker_pool = rt_threadpool_new(8);
     https_server_state_lock(server);

@@ -154,19 +154,32 @@ static DWORD g_main_thread_id_;
 #else
 static pthread_t g_main_thread_;
 #endif
-static int g_main_thread_set_ = 0;
+enum { RT_MAIN_THREAD_UNSET = 0, RT_MAIN_THREAD_INITIALIZING = 1, RT_MAIN_THREAD_READY = 2 };
+
+static int g_main_thread_set_ = RT_MAIN_THREAD_UNSET;
 
 /// @brief Atomically install the calling thread as the main thread (idempotent).
-/// @details Wins the CAS on the first call only — subsequent invocations
-///          short-circuit. Captures the platform-native thread handle
-///          (`GetCurrentThreadId` on Windows, `pthread_self` elsewhere)
-///          so `rt_is_main_thread` can compare against it later. Used
-///          to detect cross-thread access to GUI / input state, which
-///          is illegal on macOS and undefined on Windows.
+/// @details Wins an initializing CAS on the first call only — subsequent
+///          invocations wait until the first thread publishes READY. The
+///          platform-native thread handle (`GetCurrentThreadId` on Windows,
+///          `pthread_self` elsewhere) is stored before the READY state is
+///          released so readers never compare against uninitialized storage.
 static void rt_capture_process_main_thread_(void) {
-    int expected = 0;
-    if (!__atomic_compare_exchange_n(
-            &g_main_thread_set_, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+    int expected = RT_MAIN_THREAD_UNSET;
+    if (!__atomic_compare_exchange_n(&g_main_thread_set_,
+                                     &expected,
+                                     RT_MAIN_THREAD_INITIALIZING,
+                                     /*weak=*/0,
+                                     __ATOMIC_ACQ_REL,
+                                     __ATOMIC_ACQUIRE)) {
+        while (__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE) ==
+               RT_MAIN_THREAD_INITIALIZING) {
+#if RT_PLATFORM_WINDOWS
+            Sleep(0);
+#elif !RT_PLATFORM_VIPERDOS
+            sched_yield();
+#endif
+        }
         return;
     }
 #if RT_PLATFORM_WINDOWS
@@ -174,6 +187,7 @@ static void rt_capture_process_main_thread_(void) {
 #elif !RT_PLATFORM_VIPERDOS
     g_main_thread_ = pthread_self();
 #endif
+    __atomic_store_n(&g_main_thread_set_, RT_MAIN_THREAD_READY, __ATOMIC_RELEASE);
 }
 
 #if RT_PLATFORM_WINDOWS
@@ -203,7 +217,7 @@ void rt_set_main_thread(void) {
 #elif !RT_PLATFORM_VIPERDOS
     g_main_thread_ = pthread_self();
 #endif
-    __atomic_store_n(&g_main_thread_set_, 1, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_main_thread_set_, RT_MAIN_THREAD_READY, __ATOMIC_RELEASE);
 }
 
 /// @brief Return non-zero when the calling thread is the runtime's designated main thread.
@@ -214,7 +228,7 @@ void rt_set_main_thread(void) {
 ///          `pthread_equal` because `pthread_t` is opaque and
 ///          comparison via `==` isn't portable.
 int8_t rt_is_main_thread(void) {
-    if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
+    if (__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE) != RT_MAIN_THREAD_READY)
         rt_capture_process_main_thread_();
 #if RT_PLATFORM_WINDOWS
     return GetCurrentThreadId() == g_main_thread_id_;
@@ -240,6 +254,7 @@ void rt_assert_main_thread_(const char *file, int line) {
                  file ? file : "<unknown>",
                  line);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, line, buffer);
+        abort();
     }
 }
 

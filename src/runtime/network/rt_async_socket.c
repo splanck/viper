@@ -105,6 +105,23 @@ static void async_fail_submit(void *promise, const char *message) {
     async_release_owned(promise);
 }
 
+/// @brief Create a Future that is already resolved as an error.
+/// @details Used by public async entry points when validation fails before a
+///          worker item can be built. Returning a failed Future preserves the
+///          asynchronous API contract while preventing invalid handles or
+///          strings from reaching the worker pool after a recoverable trap.
+/// @param message Error text to store in the returned Future.
+/// @return A Future object resolved with @p message, or NULL if the promise
+///         allocation itself fails.
+static void *async_failed_future(const char *message) {
+    void *promise = rt_promise_new();
+    if (!promise)
+        return NULL;
+    void *future = rt_promise_get_future(promise);
+    async_fail_submit(promise, message);
+    return future;
+}
+
 /// @brief Resolve `promise` as Err with `msg` (or `fallback` if NULL), copying the message string.
 /// @details The copy step matters because the caller's `msg` pointer may
 ///          live in thread-local trap storage that gets clobbered by the
@@ -131,12 +148,20 @@ static void async_promise_error_from_trap(void *promise, const char *fallback) {
 }
 
 static size_t async_string_len_or_trap(rt_string str, const char *null_msg) {
+    if (!str) {
+        rt_trap(null_msg);
+        return 0;
+    }
     const char *data = rt_string_cstr(str);
     int64_t len = rt_str_len(str);
-    if (!data || len < 0)
+    if (!data || len < 0) {
         rt_trap(null_msg);
-    if ((uint64_t)len > (uint64_t)SIZE_MAX)
+        return 0;
+    }
+    if ((uint64_t)len > (uint64_t)SIZE_MAX) {
         rt_trap("AsyncSocket: string is too large");
+        return 0;
+    }
     return (size_t)len;
 }
 
@@ -204,10 +229,12 @@ static void async_connect_worker(void *arg) {
 ///          resolves the promise as Err synchronously rather than
 ///          leaking the request.
 void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
-    const char *h = rt_string_cstr(host);
     size_t host_len = async_string_len_or_trap(host, "AsyncSocket: NULL host");
-    if (host_len == 0 || async_has_embedded_nul(h, host_len))
+    const char *h = host_len > 0 ? rt_string_cstr(host) : NULL;
+    if (host_len == 0 || async_has_embedded_nul(h, host_len)) {
         rt_trap("AsyncSocket: invalid host");
+        return async_failed_future("AsyncSocket: invalid host");
+    }
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
@@ -280,8 +307,10 @@ static void async_send_worker(void *arg) {
 ///          resolved synchronously as Err and the held references are
 ///          dropped before returning.
 void *rt_async_send(void *tcp, void *data) {
-    if (!tcp || !data)
+    if (!tcp || !data) {
         rt_trap("AsyncSocket: NULL arg");
+        return async_failed_future("AsyncSocket: NULL arg");
+    }
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);

@@ -77,22 +77,33 @@ static void password_secure_zero(void *ptr, size_t len) {
 /// @brief Extract a raw byte pointer and byte count from an rt_string password.
 ///        Traps on NULL or invalid string handles. A real empty password is valid.
 static const uint8_t *password_string_bytes(rt_string password, size_t *len) {
-    if (!len)
+    if (!len) {
         rt_trap("Password: internal length pointer is null");
-    if (!password)
+        return (const uint8_t *)"";
+    }
+    if (!password) {
         rt_trap("Password: password is null");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
 
     int64_t len64 = rt_str_len(password);
-    if (len64 < 0)
+    if (len64 < 0) {
         rt_trap("Password: invalid password length");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
     if (len64 == 0) {
         *len = 0;
         return (const uint8_t *)"";
     }
 
     const char *pwd = rt_string_cstr(password);
-    if (!pwd)
+    if (!pwd) {
         rt_trap("Password: password data is null");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
 
     *len = (size_t)len64;
     return (const uint8_t *)pwd;
@@ -351,15 +362,21 @@ rt_string rt_password_hash(rt_string password) {
 ///          continues to accept this format alongside SCRYPT$ for
 ///          backward compatibility with old hashes.
 rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations) {
-    if (iterations < MIN_ITERATIONS)
+    if (iterations < MIN_ITERATIONS) {
         rt_trap("Password.HashIters: iterations must be at least 100000");
-    if (iterations > MAX_ITERATIONS)
+        return rt_const_cstr("");
+    }
+    if (iterations > MAX_ITERATIONS) {
         rt_trap("Password.HashIters: iterations must not exceed 10000000");
+        return rt_const_cstr("");
+    }
 
     size_t pwd_len;
     const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-    if (!pwd)
+    if (!pwd) {
         rt_trap("Password.HashIters: password is null");
+        return rt_const_cstr("");
+    }
 
     uint8_t salt[SALT_LENGTH];
     rt_crypto_random_bytes(salt, SALT_LENGTH);
@@ -384,8 +401,10 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
 ///          brute-force on commodity hardware while staying fast enough
 ///          for an interactive login flow).
 rt_string rt_password_hash_scrypt(rt_string password) {
-    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT)) {
         rt_trap("Password.HashScrypt is disabled in approved mode");
+        return rt_const_cstr("");
+    }
     return rt_password_hash_scrypt_params(password,
                                           (int64_t)(UINT64_C(1) << PASSWORD_SCRYPT_N_LOG2),
                                           PASSWORD_SCRYPT_R,
@@ -403,25 +422,37 @@ rt_string rt_password_hash_scrypt_params(rt_string password,
                                          int64_t n64,
                                          int64_t r64,
                                          int64_t p64) {
-    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT)) {
         rt_trap("Password.HashScryptParams is disabled in approved mode");
-    if (n64 < 2 || r64 < 1 || p64 < 1 || r64 > RT_SCRYPT_MAX_R || p64 > RT_SCRYPT_MAX_P)
+        return rt_const_cstr("");
+    }
+    if (n64 < 2 || r64 < 1 || p64 < 1 || r64 > RT_SCRYPT_MAX_R || p64 > RT_SCRYPT_MAX_P) {
         rt_trap("Password.HashScrypt: invalid scrypt parameters");
+        return rt_const_cstr("");
+    }
     uint64_t n = (uint64_t)n64;
     uint32_t r = (uint32_t)r64;
     uint32_t p = (uint32_t)p64;
     int log2n = scrypt_log2_from_n(n);
-    if (log2n < 1 || (uint32_t)log2n > RT_SCRYPT_MAX_N_LOG2)
+    if (log2n < 1 || (uint32_t)log2n > RT_SCRYPT_MAX_N_LOG2) {
         rt_trap("Password.HashScrypt: N must be a supported power of two");
-    if (!rt_keyderive_scrypt_params_supported(n, r, p, HASH_LENGTH))
+        return rt_const_cstr("");
+    }
+    if (!rt_keyderive_scrypt_params_supported(n, r, p, HASH_LENGTH)) {
         rt_trap("Password.HashScrypt: invalid or unsupported scrypt parameters");
-    if (!password_scrypt_params_strong_enough(log2n, r, p))
+        return rt_const_cstr("");
+    }
+    if (!password_scrypt_params_strong_enough(log2n, r, p)) {
         rt_trap("Password.HashScrypt: scrypt parameters are below the password policy minimum");
+        return rt_const_cstr("");
+    }
 
     size_t pwd_len;
     const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-    if (!pwd)
+    if (!pwd) {
         rt_trap("Password.HashScrypt: password is null");
+        return rt_const_cstr("");
+    }
 
     uint8_t salt[SALT_LENGTH];
     rt_crypto_random_bytes(salt, SALT_LENGTH);

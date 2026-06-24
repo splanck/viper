@@ -1373,13 +1373,17 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
     int timeout_int = 0;
     if (!ws_string_bytes(url, &url_cstr, &url_len, "WebSocket: NULL URL"))
         return NULL;
-    if (url_len == 0 || ws_has_embedded_nul(url_cstr, url_len))
+    if (url_len == 0 || ws_has_embedded_nul(url_cstr, url_len)) {
         rt_trap("WebSocket: invalid URL");
+        return NULL;
+    }
     if (subprotocol &&
         !ws_string_bytes(subprotocol, &protocol_cstr, &protocol_len, "WebSocket: NULL subprotocol"))
         return NULL;
-    if (protocol_cstr && ws_has_embedded_nul(protocol_cstr, protocol_len))
+    if (protocol_cstr && ws_has_embedded_nul(protocol_cstr, protocol_len)) {
         rt_trap("WebSocket: invalid subprotocol");
+        return NULL;
+    }
     if (!ws_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("WebSocket: invalid timeout");
         return NULL;

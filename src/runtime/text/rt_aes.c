@@ -109,46 +109,66 @@ static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *n
     return (const uint8_t *)cstr;
 }
 
-/// @brief Concatenate the AES-auth magic header with caller-supplied AAD into a single buffer.
-/// @details The GCM tag must authenticate the magic header (so an attacker
-///          can't strip it and feed the ciphertext to plain-AES decryption)
-///          AND the application's AAD. We splice them: returned buffer is
-///          [header || user_aad]; @p aad_out points at it; @p aad_len_out is
-///          header_len + user_len. When user_len == 0, returns the header
-///          directly without allocating. Caller frees the returned buffer
-///          (NULL when no allocation was needed).
-/// @param header        Magic header bytes (typically AES_AUTH_HEADER).
-/// @param header_len    Header length (typically AES_AUTH_HEADER_LEN = 16).
-/// @param aad_obj       Optional rt_bytes carrying user AAD; may be NULL.
-/// @param aad_out       Out: pointer to the combined buffer.
-/// @param aad_len_out   Out: total length of the combined buffer.
-/// @return Heap-allocated buffer to free, or NULL when no allocation occurred.
-static uint8_t *aes_combine_aad(const uint8_t *header,
-                                size_t header_len,
-                                void *aad_obj,
-                                const uint8_t **aad_out,
-                                size_t *aad_len_out) {
+/// @brief Build the authenticated-data span for AES-GCM framed payloads.
+/// @details The GCM tag authenticates both the Viper magic header and the
+///          caller-provided AAD. When no user AAD is present, @p aad_out points
+///          directly at @p header and @p alloc_out is NULL. When user AAD is
+///          present, this helper allocates `[header || user_aad]`, stores it in
+///          @p alloc_out, and points @p aad_out at that allocation. Returning a
+///          status keeps allocation failure distinct from the normal
+///          no-allocation path.
+/// @param header      Magic header bytes to authenticate.
+/// @param header_len  Number of bytes in @p header.
+/// @param aad_obj     Optional rt_bytes object containing user AAD.
+/// @param aad_out     Out: authenticated-data pointer for the AES-GCM call.
+/// @param aad_len_out Out: byte length of @p aad_out.
+/// @param alloc_out   Out: heap allocation to free after use, or NULL.
+/// @return Non-zero on success; zero after reporting an invalid input or
+///         allocation failure.
+static int aes_combine_aad(const uint8_t *header,
+                           size_t header_len,
+                           void *aad_obj,
+                           const uint8_t **aad_out,
+                           size_t *aad_len_out,
+                           uint8_t **alloc_out) {
+    if (aad_out)
+        *aad_out = NULL;
+    if (aad_len_out)
+        *aad_len_out = 0;
+    if (alloc_out)
+        *alloc_out = NULL;
+    if (!aad_out || !aad_len_out || !alloc_out) {
+        rt_trap("AES: invalid AAD output pointer");
+        return 0;
+    }
     int64_t user_len64 = aad_obj ? rt_bytes_len(aad_obj) : 0;
-    if (user_len64 < 0)
+    if (user_len64 < 0) {
         rt_trap("AES: invalid AAD length");
+        return 0;
+    }
     size_t user_len = (size_t)user_len64;
     const uint8_t *user = user_len > 0 ? rt_bytes_data_const(aad_obj) : NULL;
     if (user_len == 0) {
         *aad_out = header_len > 0 ? header : NULL;
         *aad_len_out = header_len;
-        return NULL;
+        return 1;
     }
-    if (header_len > SIZE_MAX - user_len)
+    if (header_len > SIZE_MAX - user_len) {
         rt_trap("AES: AAD too large");
+        return 0;
+    }
     uint8_t *combined = (uint8_t *)malloc(header_len + user_len);
-    if (!combined)
+    if (!combined) {
         rt_trap("AES: memory allocation failed");
+        return 0;
+    }
     if (header_len > 0)
         memcpy(combined, header, header_len);
     memcpy(combined + header_len, user, user_len);
     *aad_out = combined;
     *aad_len_out = header_len + user_len;
-    return combined;
+    *alloc_out = combined;
+    return 1;
 }
 
 //=============================================================================
@@ -1056,7 +1076,15 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
 
     const uint8_t *aad_data;
     size_t aad_len;
-    uint8_t *aad_alloc = aes_combine_aad(out, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
+    uint8_t *aad_alloc;
+    if (!aes_combine_aad(out, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len, &aad_alloc)) {
+        free(data_raw);
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        aes_secure_zero(out, total_len);
+        free(out);
+        return NULL;
+    }
     size_t encrypted_len = key_len == 16
                                ? rt_aes128_gcm_encrypt(key_raw,
                                                        out + 4,
@@ -1107,10 +1135,14 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
 /// @return New bytes object with the decrypted plaintext, or NULL on any
 ///         authentication failure.
 void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
-    if (!data)
+    if (!data) {
         rt_trap("AES.Auth: ciphertext is null");
-    if (!key)
+        return NULL;
+    }
+    if (!key) {
         rt_trap("AES.Auth: key is null");
+        return NULL;
+    }
     size_t data_len, key_len;
     uint8_t *encoded = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -1139,11 +1171,19 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
         aes_secure_zero(key_raw, key_len);
         free(key_raw);
         rt_trap("AES.Auth: memory allocation failed");
+        return NULL;
     }
 
     const uint8_t *aad_data;
     size_t aad_len;
-    uint8_t *aad_alloc = aes_combine_aad(encoded, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
+    uint8_t *aad_alloc;
+    if (!aes_combine_aad(encoded, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len, &aad_alloc)) {
+        free(plain);
+        free(encoded);
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        return NULL;
+    }
     long plain_len = key_len == 16 ? rt_aes128_gcm_decrypt(key_raw,
                                                            encoded + 4,
                                                            aad_data,
@@ -1290,8 +1330,10 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     uint8_t *out;
     void *result;
 
-    if (pass_len == 0)
+    if (pass_len == 0) {
         rt_trap("AES: password is empty");
+        return NULL;
+    }
 
     generate_random_bytes(salt, sizeof(salt));
     generate_random_bytes(nonce, sizeof(nonce));

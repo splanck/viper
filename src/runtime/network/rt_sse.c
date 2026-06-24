@@ -942,8 +942,10 @@ static int sse_try_reconnect(rt_sse_impl *sse) {
 
 void *rt_sse_connect(rt_string url) {
     const char *url_str = rt_string_cstr(url);
-    if (!url_str)
+    if (!url_str) {
         rt_trap("SSE: NULL URL");
+        return NULL;
+    }
 
     rt_sse_impl *sse = (rt_sse_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sse_impl));
     if (!sse) {

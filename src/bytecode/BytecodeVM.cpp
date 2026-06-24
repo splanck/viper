@@ -28,7 +28,10 @@
 #include "rt_http_server.h"
 #include "rt_https_server.h"
 #include "rt_object.h"
+#include "rt_parallel.h"
 #include "rt_platform.h"
+#include "rt_seq.h"
+#include "rt_threadpool.h"
 #include "rt_threads.h"
 #include "support/small_vector.hpp"
 #include "viper/runtime/rt.h"
@@ -147,6 +150,17 @@ UnifiedRuntimeHandler gPriorGame3DRunFixedHandler = nullptr;
 UnifiedRuntimeHandler gPriorGame3DRunFixedWithOverlayHandler = nullptr;
 UnifiedRuntimeHandler gPriorGame3DRunFramesHandler = nullptr;
 UnifiedRuntimeHandler gPriorGame3DDrawOverlayHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelForHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelForPoolHandler = nullptr;
+UnifiedRuntimeHandler gPriorPoolSubmitHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelInvokeHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelInvokePoolHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelForEachHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelForEachPoolHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelMapHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelMapPoolHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelReduceHandler = nullptr;
+UnifiedRuntimeHandler gPriorParallelReducePoolHandler = nullptr;
 
 } // namespace
 
@@ -5862,6 +5876,305 @@ static void unified_async_run_handler(void **args, void *result) {
     publishAsyncFutureResult(result, future);
 }
 
+/// @brief Run an index-range callback sequentially on the active BytecodeVM.
+/// @details Parallel.For iterations are independent, so sequential reentrant execution yields the
+///          same result as the native parallel path while keeping the bytecode function value
+///          (a tagged module-function index, not native code) runnable. The callback must be
+///          `(Integer) -> Unit`. A trapped iteration stops the loop.
+static void runBytecodeParallelForRange(BytecodeVM &vm,
+                                        const BytecodeModule &module,
+                                        int64_t start,
+                                        int64_t end,
+                                        void *func,
+                                        const char *api) {
+    const BytecodeFunction *fn = resolveBytecodeEntry(&module, func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return;
+    }
+    if (fn->hasReturn || fn->numParams != 1) {
+        rt_trap((std::string(api) + ": callback must be (Integer) -> Unit").c_str());
+        return;
+    }
+    for (int64_t i = start; i < end; ++i) {
+        std::vector<BCSlot> callArgs{BCSlot(i)};
+        if (!vm.invokeVoidReentrant(fn, callArgs))
+            return; // Trap recorded on the VM; stop the range.
+    }
+}
+
+/// @brief Run a pool task callback synchronously on the active BytecodeVM.
+/// @details The bytecode VM cannot dispatch its tagged function values onto native pool threads,
+///          so the task runs immediately on the calling thread. The callback must be
+///          `(Ptr) -> Unit` or take no parameters.
+static void runBytecodePoolTask(BytecodeVM &vm,
+                                const BytecodeModule &module,
+                                void *callback,
+                                void *arg,
+                                const char *api) {
+    const BytecodeFunction *fn = resolveBytecodeEntry(&module, callback);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return;
+    }
+    if (fn->hasReturn || fn->numParams > 1) {
+        rt_trap((std::string(api) + ": callback must be (Ptr) -> Unit").c_str());
+        return;
+    }
+    std::vector<BCSlot> taskArgs;
+    if (fn->numParams == 1) {
+        BCSlot s;
+        s.ptr = arg;
+        taskArgs.push_back(s);
+    }
+    vm.invokeVoidReentrant(fn, taskArgs);
+}
+
+/// @brief Invoke a sequence of zero-argument callbacks sequentially on the active BytecodeVM.
+/// @details Each sequence element is a tagged bytecode function value; the actions run in order on
+///          the calling thread. Callbacks must be `() -> Unit`. A trapped action stops the run.
+static void runBytecodeInvoke(BytecodeVM &vm,
+                              const BytecodeModule &module,
+                              void *funcs,
+                              const char *api) {
+    if (!funcs)
+        return;
+    const int64_t count = rt_seq_len(funcs);
+    if (count < 0) {
+        rt_trap((std::string(api) + ": negative sequence length").c_str());
+        return;
+    }
+    for (int64_t i = 0; i < count; ++i) {
+        const BytecodeFunction *fn = resolveBytecodeEntry(&module, rt_seq_get(funcs, i));
+        if (!fn) {
+            rt_trap((std::string(api) + ": invalid callback function").c_str());
+            return;
+        }
+        if (fn->hasReturn || fn->numParams != 0) {
+            rt_trap((std::string(api) + ": callbacks must be () -> Unit").c_str());
+            return;
+        }
+        std::vector<BCSlot> noArgs;
+        if (!vm.invokeVoidReentrant(fn, noArgs))
+            return;
+    }
+}
+
+/// Handler for Viper.Threads.Parallel.For — bridges the callback for the BytecodeVM; otherwise
+/// chains to the prior handler (tree-walker VM runs inline, native fans out across the pool).
+static void unified_parallel_for_handler(void **args, void *result) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            int64_t start = args && args[0] ? *reinterpret_cast<int64_t *>(args[0]) : 0;
+            int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
+            void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+            runBytecodeParallelForRange(*bcVm, *bcModule, start, end, func, "Parallel.For");
+            return;
+        }
+    }
+    if (gPriorParallelForHandler) {
+        gPriorParallelForHandler(args, result);
+        return;
+    }
+    int64_t start = args && args[0] ? *reinterpret_cast<int64_t *>(args[0]) : 0;
+    int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
+    void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    rt_parallel_for(start, end, func);
+}
+
+/// Handler for Viper.Threads.Parallel.ForPool — the pool is a native concurrency hint the bytecode
+/// VM ignores (the range runs sequentially); otherwise chains to the prior handler.
+static void unified_parallel_for_pool_handler(void **args, void *result) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            int64_t start = args && args[0] ? *reinterpret_cast<int64_t *>(args[0]) : 0;
+            int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
+            void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+            runBytecodeParallelForRange(*bcVm, *bcModule, start, end, func, "Parallel.ForPool");
+            return;
+        }
+    }
+    if (gPriorParallelForPoolHandler) {
+        gPriorParallelForPoolHandler(args, result);
+        return;
+    }
+    int64_t start = args && args[0] ? *reinterpret_cast<int64_t *>(args[0]) : 0;
+    int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
+    void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *pool = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
+    rt_parallel_for_pool(start, end, func, pool);
+}
+
+/// Handler for Viper.Threads.Pool.Submit — runs the task synchronously on the BytecodeVM and
+/// reports success; otherwise chains to the prior handler.
+static void unified_pool_submit_handler(void **args, void *result) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+            runBytecodePoolTask(*bcVm, *bcModule, callback, arg, "Pool.Submit");
+            if (result)
+                *reinterpret_cast<int8_t *>(result) = 1;
+            return;
+        }
+    }
+    if (gPriorPoolSubmitHandler) {
+        gPriorPoolSubmitHandler(args, result);
+        return;
+    }
+    void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    int8_t submitted = rt_threadpool_submit(pool, callback, arg);
+    if (result)
+        *reinterpret_cast<int8_t *>(result) = submitted;
+}
+
+/// Handler for Viper.Threads.Parallel.Invoke — runs each action sequentially on the BytecodeVM;
+/// otherwise chains to the prior handler.
+static void unified_parallel_invoke_handler(void **args, void *result) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            runBytecodeInvoke(*bcVm, *bcModule, funcs, "Parallel.Invoke");
+            return;
+        }
+    }
+    if (gPriorParallelInvokeHandler) {
+        gPriorParallelInvokeHandler(args, result);
+        return;
+    }
+    void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    rt_parallel_invoke(funcs);
+}
+
+/// Handler for Viper.Threads.Parallel.InvokePool — pool ignored on the BytecodeVM (actions run
+/// sequentially); otherwise chains to the prior handler.
+static void unified_parallel_invoke_pool_handler(void **args, void *result) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            runBytecodeInvoke(*bcVm, *bcModule, funcs, "Parallel.InvokePool");
+            return;
+        }
+    }
+    if (gPriorParallelInvokePoolHandler) {
+        gPriorParallelInvokePoolHandler(args, result);
+        return;
+    }
+    void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *pool = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    rt_parallel_invoke_pool(funcs, pool);
+}
+
+/// @brief Trap (on the BytecodeVM) for a sequence-callback parallel op that isn't bridged yet.
+/// @details ForEach/Map/Reduce iterate a runtime seq and need per-element-type BCSlot bridging
+///          plus result-seq construction, which the interpreted backends do not yet build.
+///          On the BytecodeVM the native path would dispatch a tagged bytecode function value as a
+///          native pointer (SIGSEGV), so trap with an explicit message instead of crashing. Returns
+///          true when it trapped (i.e. the BytecodeVM is the active backend).
+static bool bytecodeSeqCallbackUnsupported(const char *api) {
+    if (activeBytecodeVMInstance()) {
+        rt_trap((std::string(api) + ": sequence-callback execution is not yet supported on the "
+                                    "bytecode VM; compile to native to run it")
+                    .c_str());
+        return true;
+    }
+    return false;
+}
+
+/// Handler for Viper.Threads.Parallel.ForEach — traps on the BytecodeVM (not bridged); otherwise
+/// chains to the prior handler (tree-walker traps too; native fans out across the pool).
+static void unified_parallel_foreach_handler(void **args, void *result) {
+    if (bytecodeSeqCallbackUnsupported("Parallel.ForEach"))
+        return;
+    if (gPriorParallelForEachHandler) {
+        gPriorParallelForEachHandler(args, result);
+        return;
+    }
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    rt_parallel_foreach(seq, func);
+}
+
+/// Handler for Viper.Threads.Parallel.ForEachPool — see @ref unified_parallel_foreach_handler.
+static void unified_parallel_foreach_pool_handler(void **args, void *result) {
+    if (bytecodeSeqCallbackUnsupported("Parallel.ForEachPool"))
+        return;
+    if (gPriorParallelForEachPoolHandler) {
+        gPriorParallelForEachPoolHandler(args, result);
+        return;
+    }
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    rt_parallel_foreach_pool(seq, func, pool);
+}
+
+/// Handler for Viper.Threads.Parallel.Map — traps on the BytecodeVM (not bridged); otherwise chains.
+static void unified_parallel_map_handler(void **args, void *result) {
+    if (bytecodeSeqCallbackUnsupported("Parallel.Map"))
+        return;
+    if (gPriorParallelMapHandler) {
+        gPriorParallelMapHandler(args, result);
+        return;
+    }
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *mapped = rt_parallel_map(seq, func);
+    if (result)
+        *reinterpret_cast<void **>(result) = mapped;
+}
+
+/// Handler for Viper.Threads.Parallel.MapPool — see @ref unified_parallel_map_handler.
+static void unified_parallel_map_pool_handler(void **args, void *result) {
+    if (bytecodeSeqCallbackUnsupported("Parallel.MapPool"))
+        return;
+    if (gPriorParallelMapPoolHandler) {
+        gPriorParallelMapPoolHandler(args, result);
+        return;
+    }
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *mapped = rt_parallel_map_pool(seq, func, pool);
+    if (result)
+        *reinterpret_cast<void **>(result) = mapped;
+}
+
+/// Handler for Viper.Threads.Parallel.Reduce — traps on the BytecodeVM (not bridged); else chains.
+static void unified_parallel_reduce_handler(void **args, void *result) {
+    if (bytecodeSeqCallbackUnsupported("Parallel.Reduce"))
+        return;
+    if (gPriorParallelReduceHandler) {
+        gPriorParallelReduceHandler(args, result);
+        return;
+    }
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *reduced = rt_parallel_reduce(seq, func, identity);
+    if (result)
+        *reinterpret_cast<void **>(result) = reduced;
+}
+
+/// Handler for Viper.Threads.Parallel.ReducePool — see @ref unified_parallel_reduce_handler.
+static void unified_parallel_reduce_pool_handler(void **args, void *result) {
+    if (bytecodeSeqCallbackUnsupported("Parallel.ReducePool"))
+        return;
+    if (gPriorParallelReducePoolHandler) {
+        gPriorParallelReducePoolHandler(args, result);
+        return;
+    }
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *pool = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
+    void *reduced = rt_parallel_reduce_pool(seq, func, identity, pool);
+    if (result)
+        *reinterpret_cast<void **>(result) = reduced;
+}
+
 /// @brief Install the dual-engine runtime handlers for callback-taking runtime APIs.
 /// @details Chains to any previously registered Thread/Async/Network/Game3D handlers.
 ///          Idempotent via std::call_once; invoked from load()/exec() so bytecode
@@ -5919,6 +6232,39 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Game3D.World3D.drawOverlay",
                             reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler),
                             gPriorGame3DDrawOverlayHandler);
+        capturePriorHandler("Viper.Threads.Parallel.For",
+                            reinterpret_cast<void *>(&unified_parallel_for_handler),
+                            gPriorParallelForHandler);
+        capturePriorHandler("Viper.Threads.Parallel.ForPool",
+                            reinterpret_cast<void *>(&unified_parallel_for_pool_handler),
+                            gPriorParallelForPoolHandler);
+        capturePriorHandler("Viper.Threads.Pool.Submit",
+                            reinterpret_cast<void *>(&unified_pool_submit_handler),
+                            gPriorPoolSubmitHandler);
+        capturePriorHandler("Viper.Threads.Parallel.Invoke",
+                            reinterpret_cast<void *>(&unified_parallel_invoke_handler),
+                            gPriorParallelInvokeHandler);
+        capturePriorHandler("Viper.Threads.Parallel.InvokePool",
+                            reinterpret_cast<void *>(&unified_parallel_invoke_pool_handler),
+                            gPriorParallelInvokePoolHandler);
+        capturePriorHandler("Viper.Threads.Parallel.ForEach",
+                            reinterpret_cast<void *>(&unified_parallel_foreach_handler),
+                            gPriorParallelForEachHandler);
+        capturePriorHandler("Viper.Threads.Parallel.ForEachPool",
+                            reinterpret_cast<void *>(&unified_parallel_foreach_pool_handler),
+                            gPriorParallelForEachPoolHandler);
+        capturePriorHandler("Viper.Threads.Parallel.Map",
+                            reinterpret_cast<void *>(&unified_parallel_map_handler),
+                            gPriorParallelMapHandler);
+        capturePriorHandler("Viper.Threads.Parallel.MapPool",
+                            reinterpret_cast<void *>(&unified_parallel_map_pool_handler),
+                            gPriorParallelMapPoolHandler);
+        capturePriorHandler("Viper.Threads.Parallel.Reduce",
+                            reinterpret_cast<void *>(&unified_parallel_reduce_handler),
+                            gPriorParallelReduceHandler);
+        capturePriorHandler("Viper.Threads.Parallel.ReducePool",
+                            reinterpret_cast<void *>(&unified_parallel_reduce_pool_handler),
+                            gPriorParallelReducePoolHandler);
     });
 
     using il::runtime::signatures::make_signature;
@@ -6015,6 +6361,88 @@ void registerUnifiedVmRuntimeHandlers() {
         ext.name = "Viper.Game3D.World3D.drawOverlay";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.For";
+        ext.signature = make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_for_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ForPool";
+        ext.signature =
+            make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_for_pool_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Pool.Submit";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
+        ext.fn = reinterpret_cast<void *>(&unified_pool_submit_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.Invoke";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_invoke_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.InvokePool";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_invoke_pool_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ForEach";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_foreach_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ForEachPool";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_foreach_pool_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.Map";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_map_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.MapPool";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_map_pool_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.Reduce";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_reduce_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ReducePool";
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_parallel_reduce_pool_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
 }

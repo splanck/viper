@@ -47,6 +47,21 @@
 RT_ARR_DEFINE_HDR_FN(rt_arr_str_hdr, rt_string)
 RT_ARR_DEFINE_ASSERT_HEADER_FN(rt_arr_str_assert_header, RT_ELEM_STR)
 
+/// @brief Validate that a heap header describes a string array.
+/// @details The generated assertion helper raises the existing diagnostic, but
+///          has a void return. This wrapper exposes a boolean result so callers
+///          can stop when a recoverable trap hook returns control.
+/// @param hdr Heap header to validate.
+/// @return Non-zero for a valid string-array header, zero after reporting a
+///         header validation failure.
+static int rt_arr_str_header_valid(rt_heap_hdr_t *hdr) {
+    if (!hdr || hdr->kind != RT_HEAP_ARRAY || hdr->elem_kind != RT_ELEM_STR) {
+        rt_trap("rt_array: corrupted header");
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Allocate a new array of string handles.
 /// @details Allocates an array with @p len slots for string pointers, all
 ///          initialized to NULL. The array itself is reference-counted via
@@ -72,6 +87,8 @@ void rt_arr_str_release(rt_string *arr, size_t size) {
         return;
 
     rt_heap_hdr_t *hdr = rt_arr_str_hdr(arr);
+    if (!rt_arr_str_header_valid(hdr))
+        return;
     rt_arr_str_assert_header(hdr);
 
     // Release each string element
@@ -93,12 +110,18 @@ void rt_arr_str_release(rt_string *arr, size_t size) {
 rt_string rt_arr_str_get(rt_string *arr, size_t idx) {
     if (!arr)
         rt_trap("rt_arr_str_get: null array");
+    if (!arr)
+        return NULL;
 
     rt_heap_hdr_t *hdr = rt_arr_str_hdr(arr);
+    if (!rt_arr_str_header_valid(hdr))
+        return NULL;
     rt_arr_str_assert_header(hdr);
 
     if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
+    if (idx >= hdr->len)
+        return NULL;
 
     rt_string value = arr[idx];
 
@@ -117,12 +140,18 @@ rt_string rt_arr_str_get(rt_string *arr, size_t idx) {
 void rt_arr_str_put(rt_string *arr, size_t idx, rt_string value) {
     if (!arr)
         rt_trap("rt_arr_str_put: null array");
+    if (!arr)
+        return;
 
     rt_heap_hdr_t *hdr = rt_arr_str_hdr(arr);
+    if (!rt_arr_str_header_valid(hdr))
+        return;
     rt_arr_str_assert_header(hdr);
 
     if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
+    if (idx >= hdr->len)
+        return;
 
     // Retain new value first (in case value == arr[idx])
     rt_str_retain_maybe(value);
@@ -143,6 +172,8 @@ size_t rt_arr_str_len(rt_string *arr) {
         return 0;
 
     rt_heap_hdr_t *hdr = rt_arr_str_hdr(arr);
+    if (!rt_arr_str_header_valid(hdr))
+        return 0;
     rt_arr_str_assert_header(hdr);
 
     return hdr->len;

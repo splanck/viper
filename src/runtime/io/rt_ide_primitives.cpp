@@ -15,8 +15,10 @@
 #include "rt_box.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 #include "rt_watcher.h"
 
 #include <algorithm>
@@ -29,6 +31,7 @@
 #include <limits>
 #include <map>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -40,8 +43,14 @@
 
 #ifdef _WIN32
 #include <sys/stat.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #else
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -75,14 +84,17 @@ std::mutex &gitignoreCacheMutex() {
     if (mutex)
         return *mutex;
 
-    std::mutex *created = new std::mutex();
+    std::mutex *created = new (std::nothrow) std::mutex();
+    if (!created) {
+        rt_trap("Workspace.FileIndex: gitignore cache mutex allocation failed");
+        std::abort();
+    }
     std::mutex *expected = nullptr;
     if (g_gitignoreCacheMutex.compare_exchange_strong(
             expected, created, std::memory_order_release, std::memory_order_acquire)) {
         return *created;
     }
-    // A racing initializer won; keep the losing allocation live to avoid
-    // introducing static-destruction imports in runtime archives.
+    delete created;
     return *expected;
 }
 
@@ -407,7 +419,9 @@ std::vector<std::string> cachedGitignorePatterns(const fs::path &root) {
         }
     }
 
-    auto *entry = new GitignoreCacheEntry();
+    auto *entry = new (std::nothrow) GitignoreCacheEntry();
+    if (!entry)
+        return patterns;
     entry->key = key;
     entry->modified = modified;
     entry->patterns = patterns;
@@ -857,288 +871,331 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
                                         rt_string extensions_csv,
                                         rt_string excludes_csv,
                                         int8_t include_dirs) {
-    void *out = rt_seq_new_owned();
-    fs::path root = toStd(root_s);
-    if (root.empty())
-        return out;
-    std::error_code ec;
-    root = fs::absolute(root, ec).lexically_normal();
-    if (ec || !fs::is_directory(root, ec))
-        return out;
+    try {
+        void *out = rt_seq_new_owned();
+        fs::path root = toStd(root_s);
+        if (root.empty())
+            return out;
+        std::error_code ec;
+        root = fs::absolute(root, ec).lexically_normal();
+        if (ec || !fs::is_directory(root, ec))
+            return out;
 
-    std::set<std::string> extensions;
-    for (std::string ext : splitList(toStd(extensions_csv))) {
-        if (!ext.empty() && ext[0] != '.')
-            ext.insert(ext.begin(), '.');
-        extensions.insert(lower(ext));
-    }
-    const auto extraPatterns = splitList(toStd(excludes_csv));
-
-    fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
-    fs::recursive_directory_iterator end;
-    int64_t emitted = 0;
-    for (; !ec && it != end; it.increment(ec)) {
-        std::error_code relEc;
-        std::string rel = normalizeSlashes(fs::relative(it->path(), root, relEc).generic_string());
-        if (relEc || rel.empty() || rel == ".")
-            continue;
-        bool isDir = it->is_directory(ec);
-        const auto gitignorePatterns = gitignorePatternsForPath(root, rel);
-        if (shouldIgnorePathWithPatterns(rel, isDir, extraPatterns, gitignorePatterns)) {
-            if (isDir)
-                it.disable_recursion_pending();
-            continue;
+        std::set<std::string> extensions;
+        for (std::string ext : splitList(toStd(extensions_csv))) {
+            if (!ext.empty() && ext[0] != '.')
+                ext.insert(ext.begin(), '.');
+            extensions.insert(lower(ext));
         }
-        if (isDir && !include_dirs)
-            continue;
-        if (!isDir && !extensions.empty()) {
-            std::string ext = lower(it->path().extension().generic_string());
-            if (!extensions.count(ext))
+        const auto extraPatterns = splitList(toStd(excludes_csv));
+
+        fs::recursive_directory_iterator it(
+            root, fs::directory_options::skip_permission_denied, ec);
+        fs::recursive_directory_iterator end;
+        int64_t emitted = 0;
+        for (; !ec && it != end; it.increment(ec)) {
+            std::error_code relEc;
+            std::string rel =
+                normalizeSlashes(fs::relative(it->path(), root, relEc).generic_string());
+            if (relEc || rel.empty() || rel == ".")
                 continue;
-        }
-        if (emitted >= kWorkspaceFileIndexMaxEntries)
-            break;
+            bool isDir = it->is_directory(ec);
+            const auto gitignorePatterns = gitignorePatternsForPath(root, rel);
+            if (shouldIgnorePathWithPatterns(rel, isDir, extraPatterns, gitignorePatterns)) {
+                if (isDir)
+                    it.disable_recursion_pending();
+                continue;
+            }
+            if (isDir && !include_dirs)
+                continue;
+            if (!isDir && !extensions.empty()) {
+                std::string ext = lower(it->path().extension().generic_string());
+                if (!extensions.count(ext))
+                    continue;
+            }
+            if (emitted >= kWorkspaceFileIndexMaxEntries)
+                break;
 
-        void *entry = rt_map_new();
-        const std::string path = fs::absolute(it->path(), ec).lexically_normal().string();
-        mapSetStr(entry, "path", path);
-        mapSetStr(entry, "relativePath", rel);
-        mapSetStr(entry, "name", it->path().filename().generic_string());
-        mapSetStr(entry, "extension", it->path().extension().generic_string());
-        mapSetStr(entry, "kind", isDir ? "directory" : "file");
-        rt_map_set_bool(entry, rt_const_cstr("isDirectory"), isDir ? 1 : 0);
-        rt_map_set_int(entry, rt_const_cstr("id"), stablePathId(normalizeSlashes(path)));
-        int64_t file_size = 0;
-        if (!isDir) {
-            std::error_code sizeEc;
-            uintmax_t raw_size = it->file_size(sizeEc);
-            if (!sizeEc && raw_size <= static_cast<uintmax_t>(INT64_MAX))
-                file_size = static_cast<int64_t>(raw_size);
+            void *entry = rt_map_new();
+            const std::string path = fs::absolute(it->path(), ec).lexically_normal().string();
+            mapSetStr(entry, "path", path);
+            mapSetStr(entry, "relativePath", rel);
+            mapSetStr(entry, "name", it->path().filename().generic_string());
+            mapSetStr(entry, "extension", it->path().extension().generic_string());
+            mapSetStr(entry, "kind", isDir ? "directory" : "file");
+            rt_map_set_bool(entry, rt_const_cstr("isDirectory"), isDir ? 1 : 0);
+            rt_map_set_int(entry, rt_const_cstr("id"), stablePathId(normalizeSlashes(path)));
+            int64_t file_size = 0;
+            if (!isDir) {
+                std::error_code sizeEc;
+                uintmax_t raw_size = it->file_size(sizeEc);
+                if (!sizeEc && raw_size <= static_cast<uintmax_t>(INT64_MAX))
+                    file_size = static_cast<int64_t>(raw_size);
+            }
+            rt_map_set_int(entry, rt_const_cstr("size"), file_size);
+            rt_map_set_int(entry, rt_const_cstr("modified"), fileTimeSeconds(it->path()));
+            seqPushOwned(out, entry);
+            emitted++;
         }
-        rt_map_set_int(entry, rt_const_cstr("size"), file_size);
-        rt_map_set_int(entry, rt_const_cstr("modified"), fileTimeSeconds(it->path()));
-        seqPushOwned(out, entry);
-        emitted++;
+        return out;
+    } catch (...) {
+        return rt_seq_new_owned();
     }
-    return out;
 }
 
 int8_t rt_workspace_file_index_should_ignore(rt_string root_s,
                                              rt_string relative_path,
                                              rt_string patterns) {
-    fs::path root = toStd(root_s);
-    if (root.empty())
-        root = ".";
-    std::string rel = toStd(relative_path);
-    bool isDir = !rel.empty() && (rel.back() == '/' || rel.back() == '\\');
-    return shouldIgnorePath(root, rel, isDir, splitList(toStd(patterns)), true) ? 1 : 0;
+    try {
+        fs::path root = toStd(root_s);
+        if (root.empty())
+            root = ".";
+        std::string rel = toStd(relative_path);
+        bool isDir = !rel.empty() && (rel.back() == '/' || rel.back() == '\\');
+        return shouldIgnorePath(root, rel, isDir, splitList(toStd(patterns)), true) ? 1 : 0;
+    } catch (...) {
+        return 0;
+    }
 }
 
 void *rt_workspace_watcher_poll_batch(void *watcher, int64_t max_events) {
-    void *events = rt_seq_new_owned();
-    if (!watcher)
+    try {
+        void *events = rt_seq_new_owned();
+        if (!watcher)
+            return events;
+        if (max_events <= 0)
+            max_events = 64;
+        for (int64_t i = 0; i < max_events; i++) {
+            int64_t type = rt_watcher_poll(watcher);
+            if (type == RT_WATCH_EVENT_NONE)
+                break;
+            void *event = rt_map_new();
+            rt_string path = rt_watcher_event_path(watcher);
+            mapSetStr(event, "path", toStd(path));
+            mapSetStr(event, "typeName", eventTypeName(type));
+            rt_map_set_int(event, rt_const_cstr("type"), type);
+            rt_map_set_int(
+                event,
+                rt_const_cstr("overflowCount"),
+                type == RT_WATCH_EVENT_OVERFLOW ? rt_watcher_event_overflow_count(watcher) : 0);
+            rt_map_set_bool(
+                event, rt_const_cstr("requiresRescan"), type == RT_WATCH_EVENT_OVERFLOW ? 1 : 0);
+            seqPushOwned(events, event);
+        }
         return events;
-    if (max_events <= 0)
-        max_events = 64;
-    for (int64_t i = 0; i < max_events; i++) {
-        int64_t type = rt_watcher_poll(watcher);
-        if (type == RT_WATCH_EVENT_NONE)
-            break;
-        void *event = rt_map_new();
-        rt_string path = rt_watcher_event_path(watcher);
-        mapSetStr(event, "path", toStd(path));
-        mapSetStr(event, "typeName", eventTypeName(type));
-        rt_map_set_int(event, rt_const_cstr("type"), type);
-        rt_map_set_int(event,
-                       rt_const_cstr("overflowCount"),
-                       type == RT_WATCH_EVENT_OVERFLOW ? rt_watcher_event_overflow_count(watcher)
-                                                       : 0);
-        rt_map_set_bool(
-            event, rt_const_cstr("requiresRescan"), type == RT_WATCH_EVENT_OVERFLOW ? 1 : 0);
-        seqPushOwned(events, event);
+    } catch (...) {
+        return rt_seq_new_owned();
     }
-    return events;
 }
 
 void *rt_asset_resolver_resolve(rt_string scene_path_s,
                                 rt_string project_root_s,
                                 rt_string asset_roots_csv,
                                 rt_string asset_path_s) {
-    void *result = rt_map_new();
-    const std::string assetPath = toStd(asset_path_s);
-    fs::path scenePath = toStd(scene_path_s);
-    fs::path projectRoot = toStd(project_root_s);
-    if (projectRoot.empty())
-        projectRoot = ".";
-    projectRoot = fs::absolute(projectRoot).lexically_normal();
+    try {
+        void *result = rt_map_new();
+        const std::string assetPath = toStd(asset_path_s);
+        fs::path scenePath = toStd(scene_path_s);
+        fs::path projectRoot = toStd(project_root_s);
+        if (projectRoot.empty())
+            projectRoot = ".";
+        projectRoot = fs::absolute(projectRoot).lexically_normal();
 
-    mapSetStr(result, "path", "");
-    mapSetStr(result, "displayPath", assetPath);
-    mapSetStr(result, "source", "missing");
-    mapSetStr(result, "diagnostic", "");
-    rt_map_set_bool(result, rt_const_cstr("exists"), 0);
-    rt_map_set_bool(result, rt_const_cstr("found"), 0);
+        mapSetStr(result, "path", "");
+        mapSetStr(result, "displayPath", assetPath);
+        mapSetStr(result, "source", "missing");
+        mapSetStr(result, "diagnostic", "");
+        rt_map_set_bool(result, rt_const_cstr("exists"), 0);
+        rt_map_set_bool(result, rt_const_cstr("found"), 0);
 
-    std::vector<std::pair<std::string, fs::path>> candidates;
-    fs::path asset(assetPath);
-    if (asset.is_absolute())
-        candidates.push_back({"absolute", asset});
-    if (!scenePath.empty())
-        candidates.push_back({"scene", scenePath.parent_path() / asset});
-    candidates.push_back({"project", projectRoot / asset});
-    for (const auto &root : splitList(toStd(asset_roots_csv))) {
-        fs::path assetRoot(root);
-        if (assetRoot.is_relative())
-            assetRoot = projectRoot / assetRoot;
-        candidates.push_back({"assetRoot", assetRoot / asset});
-    }
+        std::vector<std::pair<std::string, fs::path>> candidates;
+        fs::path asset(assetPath);
+        if (asset.is_absolute())
+            candidates.push_back({"absolute", asset});
+        if (!scenePath.empty())
+            candidates.push_back({"scene", scenePath.parent_path() / asset});
+        candidates.push_back({"project", projectRoot / asset});
+        for (const auto &root : splitList(toStd(asset_roots_csv))) {
+            fs::path assetRoot(root);
+            if (assetRoot.is_relative())
+                assetRoot = projectRoot / assetRoot;
+            candidates.push_back({"assetRoot", assetRoot / asset});
+        }
 
-    std::error_code ec;
-    for (auto &[source, candidate] : candidates) {
-        candidate = candidate.lexically_normal();
-        if (fs::exists(candidate, ec)) {
-            const std::string resolved = fs::absolute(candidate, ec).lexically_normal().string();
-            mapSetStr(result, "path", resolved);
-            mapSetStr(
-                result, "displayPath", fs::relative(candidate, projectRoot, ec).generic_string());
-            mapSetStr(result, "source", source);
+        std::error_code ec;
+        for (auto &[source, candidate] : candidates) {
+            candidate = candidate.lexically_normal();
+            if (fs::exists(candidate, ec)) {
+                const std::string resolved =
+                    fs::absolute(candidate, ec).lexically_normal().string();
+                mapSetStr(result, "path", resolved);
+                mapSetStr(result,
+                          "displayPath",
+                          fs::relative(candidate, projectRoot, ec).generic_string());
+                mapSetStr(result, "source", source);
+                rt_map_set_bool(result, rt_const_cstr("exists"), 1);
+                rt_map_set_bool(result, rt_const_cstr("found"), 1);
+                return result;
+            }
+        }
+
+        rt_string assetName = makeString(assetPath);
+        if (rt_asset_exists(assetName)) {
+            mapSetStr(result, "path", assetPath);
+            mapSetStr(result, "displayPath", assetPath);
+            mapSetStr(result, "source", "mounted");
             rt_map_set_bool(result, rt_const_cstr("exists"), 1);
             rt_map_set_bool(result, rt_const_cstr("found"), 1);
+            rt_string_unref(assetName);
             return result;
         }
-    }
-
-    rt_string assetName = makeString(assetPath);
-    if (rt_asset_exists(assetName)) {
-        mapSetStr(result, "path", assetPath);
-        mapSetStr(result, "displayPath", assetPath);
-        mapSetStr(result, "source", "mounted");
-        rt_map_set_bool(result, rt_const_cstr("exists"), 1);
-        rt_map_set_bool(result, rt_const_cstr("found"), 1);
         rt_string_unref(assetName);
+
+        mapSetStr(result, "diagnostic", "asset not found: " + assetPath);
+        return result;
+    } catch (...) {
+        void *result = rt_map_new();
+        mapSetStr(result, "path", "");
+        mapSetStr(result, "displayPath", "");
+        mapSetStr(result, "source", "missing");
+        mapSetStr(result, "diagnostic", "asset resolver failed");
+        rt_map_set_bool(result, rt_const_cstr("exists"), 0);
+        rt_map_set_bool(result, rt_const_cstr("found"), 0);
         return result;
     }
-    rt_string_unref(assetName);
-
-    mapSetStr(result, "diagnostic", "asset not found: " + assetPath);
-    return result;
 }
 
 void *rt_project_manifest_parse_text(rt_string text_s) {
-    void *manifest = newManifestMap();
-    void *diagnostics = rt_map_get(manifest, rt_const_cstr("diagnostics"));
-    std::string section;
-    void *sectionMap = nullptr;
-    std::string sectionKind;
-
-    int64_t lineNo = 0;
-    for (std::string line : readLines(toStd(text_s))) {
-        lineNo++;
-        if (lineNo == 1 && line.rfind("\xEF\xBB\xBF", 0) == 0)
-            line.erase(0, 3);
-        std::string stripped = trim(line);
-        if (stripped.empty() || stripped[0] == '#')
-            continue;
-        if (stripped.rfind("//", 0) == 0)
-            continue;
-        if (stripped.front() == '[' && stripped.back() == ']') {
-            section = stripped.substr(1, stripped.size() - 2);
-            sectionMap = rt_map_new();
-            mapSetStr(sectionMap, "name", section);
-            sectionKind.clear();
-            if (section.rfind("run.", 0) == 0) {
-                sectionKind = "runConfigs";
-                mapSetStr(sectionMap, "name", section.substr(4));
-            } else if (section.rfind("build.", 0) == 0) {
-                sectionKind = "buildConfigs";
-                mapSetStr(sectionMap, "name", section.substr(6));
-            } else {
-                pushDiagnostic(diagnostics,
-                               "unknown manifest section '" + section + "'",
-                               "",
-                               lineNo,
-                               "manifest.section");
-                releaseObject(sectionMap);
-                sectionMap = nullptr;
-            }
-            if (sectionMap)
-                appendConfigMap(manifest, sectionKind.c_str(), sectionMap);
-            continue;
-        }
-
-        auto [key, value] = splitDirectiveLine(stripped);
-        if (key.empty() || value.empty()) {
-            pushDiagnostic(
-                diagnostics, "manifest directive missing value", "", lineNo, "manifest.value");
-            continue;
-        }
-        const std::string canonical = manifestKey(key);
-        if (sectionMap) {
-            if (canonical == "args" || canonical == "env")
-                replaceStringSeq(sectionMap, key.c_str(), splitList(value));
-            else
-                mapSetStr(sectionMap, key.c_str(), value);
-            continue;
-        }
-        if (canonical == "project" || canonical == "name")
-            mapSetStr(manifest, "name", value);
-        else if (canonical == "version")
-            mapSetStr(manifest, "version", value);
-        else if (canonical == "lang" || canonical == "language")
-            mapSetStr(manifest, "language", lower(value));
-        else if (canonical == "entry" || canonical == "main")
-            mapSetStr(manifest, "entry", value);
-        else if (canonical == "sources" || canonical == "sourceglobs")
-            appendToStringSeqField(manifest, "sourceGlobs", value);
-        else if (canonical == "exclude" || canonical == "excludes")
-            appendToStringSeqField(manifest, "excludes", value);
-        else if (canonical == "assetroot" || canonical == "assetroots")
-            appendToStringSeqField(manifest, "assetRoots", value);
-        else if (canonical == "sceneroot" || canonical == "sceneroots")
-            appendToStringSeqField(manifest, "sceneRoots", value);
-        else if (canonical == "defaultscene")
-            mapSetStr(manifest, "defaultScene", value);
-        else if (canonical == "run") {
-            void *run = rt_map_new();
-            mapSetStr(run, "name", value);
-            appendConfigMap(manifest, "runConfigs", run);
-        } else {
-            pushDiagnostic(diagnostics,
-                           "unknown manifest directive '" + key + "'",
-                           "",
-                           lineNo,
-                           "manifest.directive");
-        }
-    }
-
-    rt_map_set_bool(manifest, rt_const_cstr("valid"), rt_seq_len(diagnostics) == 0 ? 1 : 0);
-    if (mapGetString(manifest, "name").empty())
-        mapSetStr(manifest, "name", "ViperProject");
-    return manifest;
-}
-
-void *rt_project_manifest_parse_file(rt_string path_s) {
-    const std::string path = toStd(path_s);
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
+    try {
         void *manifest = newManifestMap();
         void *diagnostics = rt_map_get(manifest, rt_const_cstr("diagnostics"));
-        pushDiagnostic(diagnostics, "cannot open manifest", path, 0, "manifest.open");
+        std::string section;
+        void *sectionMap = nullptr;
+        std::string sectionKind;
+
+        int64_t lineNo = 0;
+        for (std::string line : readLines(toStd(text_s))) {
+            lineNo++;
+            if (lineNo == 1 && line.rfind("\xEF\xBB\xBF", 0) == 0)
+                line.erase(0, 3);
+            std::string stripped = trim(line);
+            if (stripped.empty() || stripped[0] == '#')
+                continue;
+            if (stripped.rfind("//", 0) == 0)
+                continue;
+            if (stripped.front() == '[' && stripped.back() == ']') {
+                section = stripped.substr(1, stripped.size() - 2);
+                sectionMap = rt_map_new();
+                mapSetStr(sectionMap, "name", section);
+                sectionKind.clear();
+                if (section.rfind("run.", 0) == 0) {
+                    sectionKind = "runConfigs";
+                    mapSetStr(sectionMap, "name", section.substr(4));
+                } else if (section.rfind("build.", 0) == 0) {
+                    sectionKind = "buildConfigs";
+                    mapSetStr(sectionMap, "name", section.substr(6));
+                } else {
+                    pushDiagnostic(diagnostics,
+                                   "unknown manifest section '" + section + "'",
+                                   "",
+                                   lineNo,
+                                   "manifest.section");
+                    releaseObject(sectionMap);
+                    sectionMap = nullptr;
+                }
+                if (sectionMap)
+                    appendConfigMap(manifest, sectionKind.c_str(), sectionMap);
+                continue;
+            }
+
+            auto [key, value] = splitDirectiveLine(stripped);
+            if (key.empty() || value.empty()) {
+                pushDiagnostic(
+                    diagnostics, "manifest directive missing value", "", lineNo, "manifest.value");
+                continue;
+            }
+            const std::string canonical = manifestKey(key);
+            if (sectionMap) {
+                if (canonical == "args" || canonical == "env")
+                    replaceStringSeq(sectionMap, key.c_str(), splitList(value));
+                else
+                    mapSetStr(sectionMap, key.c_str(), value);
+                continue;
+            }
+            if (canonical == "project" || canonical == "name")
+                mapSetStr(manifest, "name", value);
+            else if (canonical == "version")
+                mapSetStr(manifest, "version", value);
+            else if (canonical == "lang" || canonical == "language")
+                mapSetStr(manifest, "language", lower(value));
+            else if (canonical == "entry" || canonical == "main")
+                mapSetStr(manifest, "entry", value);
+            else if (canonical == "sources" || canonical == "sourceglobs")
+                appendToStringSeqField(manifest, "sourceGlobs", value);
+            else if (canonical == "exclude" || canonical == "excludes")
+                appendToStringSeqField(manifest, "excludes", value);
+            else if (canonical == "assetroot" || canonical == "assetroots")
+                appendToStringSeqField(manifest, "assetRoots", value);
+            else if (canonical == "sceneroot" || canonical == "sceneroots")
+                appendToStringSeqField(manifest, "sceneRoots", value);
+            else if (canonical == "defaultscene")
+                mapSetStr(manifest, "defaultScene", value);
+            else if (canonical == "run") {
+                void *run = rt_map_new();
+                mapSetStr(run, "name", value);
+                appendConfigMap(manifest, "runConfigs", run);
+            } else {
+                pushDiagnostic(diagnostics,
+                               "unknown manifest directive '" + key + "'",
+                               "",
+                               lineNo,
+                               "manifest.directive");
+            }
+        }
+
+        rt_map_set_bool(manifest, rt_const_cstr("valid"), rt_seq_len(diagnostics) == 0 ? 1 : 0);
+        if (mapGetString(manifest, "name").empty())
+            mapSetStr(manifest, "name", "ViperProject");
+        return manifest;
+    } catch (...) {
+        void *manifest = newManifestMap();
+        void *diagnostics = rt_map_get(manifest, rt_const_cstr("diagnostics"));
+        pushDiagnostic(diagnostics, "manifest parse failed", "", 0, "manifest.exception");
         rt_map_set_bool(manifest, rt_const_cstr("valid"), 0);
         return manifest;
     }
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    rt_string text = makeString(buffer.str());
-    void *manifest = rt_project_manifest_parse_text(text);
-    rt_string_unref(text);
-    if (mapGetString(manifest, "name") == "ViperProject") {
-        fs::path p(path);
-        if (!p.parent_path().empty())
-            mapSetStr(manifest, "name", p.parent_path().filename().generic_string());
+}
+
+void *rt_project_manifest_parse_file(rt_string path_s) {
+    try {
+        const std::string path = toStd(path_s);
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            void *manifest = newManifestMap();
+            void *diagnostics = rt_map_get(manifest, rt_const_cstr("diagnostics"));
+            pushDiagnostic(diagnostics, "cannot open manifest", path, 0, "manifest.open");
+            rt_map_set_bool(manifest, rt_const_cstr("valid"), 0);
+            return manifest;
+        }
+        std::ostringstream buffer;
+        buffer << in.rdbuf();
+        rt_string text = makeString(buffer.str());
+        void *manifest = rt_project_manifest_parse_text(text);
+        rt_string_unref(text);
+        if (mapGetString(manifest, "name") == "ViperProject") {
+            fs::path p(path);
+            if (!p.parent_path().empty())
+                mapSetStr(manifest, "name", p.parent_path().filename().generic_string());
+        }
+        mapSetStr(manifest, "path", path);
+        return manifest;
+    } catch (...) {
+        void *manifest = newManifestMap();
+        void *diagnostics = rt_map_get(manifest, rt_const_cstr("diagnostics"));
+        pushDiagnostic(diagnostics, "manifest read failed", "", 0, "manifest.exception");
+        rt_map_set_bool(manifest, rt_const_cstr("valid"), 0);
+        return manifest;
     }
-    mapSetStr(manifest, "path", path);
-    return manifest;
 }
 
 } // extern "C"
@@ -1210,29 +1267,61 @@ static fs::path workspaceEditTempPath(const fs::path &file, const char *suffix) 
     return dir / leaf;
 }
 
-/// @brief Write a string to a new temporary file and verify the stream state.
-/// @details Splits very large strings into streamsize-sized chunks so the cast
-///          passed to `std::ostream::write` is always representable. The file is
-///          opened with truncation because the generated temp path is unique to
-///          the current apply attempt.
+/// @brief Write a string to a newly created temporary file.
+/// @details Opens @p path with exclusive-create semantics so an existing file,
+///          symlink, or racing creator cannot be overwritten. The write loop
+///          chunks large strings to platform API limits before flushing and
+///          closing the handle.
 /// @param path Temporary file path to write.
 /// @param text Complete replacement file contents.
 /// @return `true` when the file was written and flushed successfully.
 static bool writeWorkspaceEditTemp(const fs::path &path, const std::string &text) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
+#if RT_PLATFORM_WINDOWS
+    HANDLE handle = CreateFileW(path.wstring().c_str(),
+                                GENERIC_WRITE,
+                                0,
+                                NULL,
+                                CREATE_NEW,
+                                FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+                                NULL);
+    if (handle == INVALID_HANDLE_VALUE)
         return false;
     size_t pos = 0;
-    const size_t chunk_max = static_cast<size_t>(std::numeric_limits<std::streamsize>::max());
+    const size_t chunk_max = static_cast<size_t>(DWORD_MAX);
     while (pos < text.size()) {
         size_t chunk = std::min(chunk_max, text.size() - pos);
-        out.write(text.data() + pos, static_cast<std::streamsize>(chunk));
-        if (!out)
+        DWORD written = 0;
+        if (!WriteFile(handle, text.data() + pos, (DWORD)chunk, &written, NULL) ||
+            written != (DWORD)chunk) {
+            CloseHandle(handle);
             return false;
+        }
         pos += chunk;
     }
-    out.flush();
-    return out.good();
+    bool ok = FlushFileBuffers(handle) != 0;
+    ok = CloseHandle(handle) != 0 && ok;
+    return ok;
+#else
+    int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    int fd = open(path.c_str(), flags, S_IRUSR | S_IWUSR);
+    if (fd < 0)
+        return false;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        ssize_t written = write(fd, text.data() + pos, text.size() - pos);
+        if (written <= 0) {
+            close(fd);
+            return false;
+        }
+        pos += (size_t)written;
+    }
+    bool ok = fsync(fd) == 0;
+    ok = close(fd) == 0 && ok;
+    return ok;
+#endif
 }
 
 /// @brief Remove staged temp files and restore backups after an apply failure.
@@ -1354,33 +1443,53 @@ static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
 extern "C" {
 
 void *rt_workspace_edit_validate(void *edits) {
-    return workspace_edit_validate_impl(edits, nullptr);
-}
-
-void *rt_workspace_edit_validate_in_root(void *edits, rt_string root) {
-    void *diagnostics = rt_seq_new_owned();
-    fs::path resolvedRoot;
-    if (!workspaceEditRootFromString(root, diagnostics, resolvedRoot)) {
+    try {
+        return workspace_edit_validate_impl(edits, nullptr);
+    } catch (...) {
         void *result = rt_map_new();
+        void *diagnostics = rt_seq_new_owned();
+        pushDiagnostic(diagnostics, "workspace edit validation failed", "", 0, "edit.exception");
         rt_map_set_bool(result, rt_const_cstr("success"), 0);
         rt_map_set_int(result, rt_const_cstr("editCount"), 0);
         rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
         releaseObject(diagnostics);
         return result;
     }
-    releaseObject(diagnostics);
-    return workspace_edit_validate_impl(edits, &resolvedRoot);
+}
+
+void *rt_workspace_edit_validate_in_root(void *edits, rt_string root) {
+    try {
+        void *diagnostics = rt_seq_new_owned();
+        fs::path resolvedRoot;
+        if (!workspaceEditRootFromString(root, diagnostics, resolvedRoot)) {
+            void *result = rt_map_new();
+            rt_map_set_bool(result, rt_const_cstr("success"), 0);
+            rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+            rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+            releaseObject(diagnostics);
+            return result;
+        }
+        releaseObject(diagnostics);
+        return workspace_edit_validate_impl(edits, &resolvedRoot);
+    } catch (...) {
+        void *result = rt_map_new();
+        void *diagnostics = rt_seq_new_owned();
+        pushDiagnostic(diagnostics, "workspace edit validation failed", "", 0, "edit.exception");
+        rt_map_set_bool(result, rt_const_cstr("success"), 0);
+        rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+        rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+        releaseObject(diagnostics);
+        return result;
+    }
 }
 
 void *rt_workspace_edit_apply(void *edits) {
-    return workspace_edit_apply_impl(edits, nullptr);
-}
-
-void *rt_workspace_edit_apply_in_root(void *edits, rt_string root) {
-    void *diagnostics = rt_seq_new_owned();
-    fs::path resolvedRoot;
-    if (!workspaceEditRootFromString(root, diagnostics, resolvedRoot)) {
+    try {
+        return workspace_edit_apply_impl(edits, nullptr);
+    } catch (...) {
         void *result = rt_map_new();
+        void *diagnostics = rt_seq_new_owned();
+        pushDiagnostic(diagnostics, "workspace edit apply failed", "", 0, "edit.exception");
         rt_map_set_bool(result, rt_const_cstr("success"), 0);
         rt_map_set_int(result, rt_const_cstr("editCount"), 0);
         rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
@@ -1388,8 +1497,34 @@ void *rt_workspace_edit_apply_in_root(void *edits, rt_string root) {
         releaseObject(diagnostics);
         return result;
     }
-    releaseObject(diagnostics);
-    return workspace_edit_apply_impl(edits, &resolvedRoot);
+}
+
+void *rt_workspace_edit_apply_in_root(void *edits, rt_string root) {
+    try {
+        void *diagnostics = rt_seq_new_owned();
+        fs::path resolvedRoot;
+        if (!workspaceEditRootFromString(root, diagnostics, resolvedRoot)) {
+            void *result = rt_map_new();
+            rt_map_set_bool(result, rt_const_cstr("success"), 0);
+            rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+            rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+            rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+            releaseObject(diagnostics);
+            return result;
+        }
+        releaseObject(diagnostics);
+        return workspace_edit_apply_impl(edits, &resolvedRoot);
+    } catch (...) {
+        void *result = rt_map_new();
+        void *diagnostics = rt_seq_new_owned();
+        pushDiagnostic(diagnostics, "workspace edit apply failed", "", 0, "edit.exception");
+        rt_map_set_bool(result, rt_const_cstr("success"), 0);
+        rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+        rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+        rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+        releaseObject(diagnostics);
+        return result;
+    }
 }
 
 } // extern "C"

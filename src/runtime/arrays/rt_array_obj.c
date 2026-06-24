@@ -53,12 +53,30 @@ static rt_heap_hdr_t *rt_arr_obj_hdr(void **payload) {
     return payload ? rt_heap_hdr((void *)payload) : NULL;
 }
 
+/// @brief Validate that a heap header describes an object array.
+/// @details Raises the standard object-array corruption trap when @p hdr is
+///          missing or names a different heap allocation kind. The return
+///          value lets callers stop immediately when a trap hook recovers
+///          instead of continuing to read the corrupted header.
+/// @param hdr Heap header to validate.
+/// @return Non-zero when @p hdr is a valid object-array header; zero after
+///         reporting a validation failure.
+static int rt_arr_obj_header_valid(rt_heap_hdr_t *hdr) {
+    if (!hdr || hdr->kind != RT_HEAP_ARRAY || hdr->elem_kind != RT_ELEM_OBJ) {
+        rt_trap("rt_array_obj: corrupted header");
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Assert that a heap header describes an object array.
-/// @details Verifies allocation kind and element kind to catch misuse early.
-/// @param hdr Heap header to validate (must be non-NULL).
+/// @details Keeps debug assertions local to this module while using the
+///          recoverable validator first, so release builds and trap-recovery
+///          tests share the same safety behavior.
+/// @param hdr Heap header to validate.
 static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr) {
     if (!hdr || hdr->kind != RT_HEAP_ARRAY || hdr->elem_kind != RT_ELEM_OBJ)
-        rt_trap("rt_array_obj: corrupted header");
+        return;
     assert(hdr);
     assert(hdr->kind == RT_HEAP_ARRAY);
     assert(hdr->elem_kind == RT_ELEM_OBJ);
@@ -93,6 +111,8 @@ size_t rt_arr_obj_len(void **arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
+    if (!rt_arr_obj_header_valid(hdr))
+        return 0;
     rt_arr_obj_assert_header(hdr);
     return hdr->len;
 }
@@ -107,10 +127,16 @@ size_t rt_arr_obj_len(void **arr) {
 void *rt_arr_obj_get(void **arr, size_t idx) {
     if (!arr)
         rt_trap("rt_arr_obj_get: null array");
+    if (!arr)
+        return NULL;
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
+    if (!rt_arr_obj_header_valid(hdr))
+        return NULL;
     rt_arr_obj_assert_header(hdr);
     if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
+    if (idx >= hdr->len)
+        return NULL;
     void *p = arr[idx];
     rt_obj_retain_maybe(p);
     return p;
@@ -127,10 +153,16 @@ void *rt_arr_obj_get(void **arr, size_t idx) {
 void rt_arr_obj_put(void **arr, size_t idx, void *obj) {
     if (!arr)
         rt_trap("rt_arr_obj_put: null array");
+    if (!arr)
+        return;
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
+    if (!rt_arr_obj_header_valid(hdr))
+        return;
     rt_arr_obj_assert_header(hdr);
     if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
+    if (idx >= hdr->len)
+        return;
 
     // Retain new first to handle self-assignment safely
     rt_obj_retain_maybe(obj);
@@ -156,6 +188,8 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
         return rt_arr_obj_new(len);
 
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
+    if (!rt_arr_obj_header_valid(hdr))
+        return NULL;
     rt_arr_obj_assert_header(hdr);
 
     size_t old_len = hdr->len;
@@ -218,6 +252,8 @@ void rt_arr_obj_release(void **arr) {
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
+    if (!rt_arr_obj_header_valid(hdr))
+        return;
     rt_arr_obj_assert_header(hdr);
 
     size_t n = hdr->len;

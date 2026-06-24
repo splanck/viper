@@ -580,6 +580,47 @@ static void test_navagent_getters_sanitize_corrupt_private_state() {
                 "NavAgent3D.AvoidanceEnabled getter normalizes corrupt nonzero flags");
 }
 
+static void test_navagent_invalid_handle_numeric_getters_return_sentinel() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    void *agent = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *not_an_agent = rt_scene_node3d_new();
+
+    // Invalid handles (null and wrong-class) return the -1 sentinel, distinguishable from a
+    // legitimate 0 (e.g. "no path" / "at goal"), which the lenient getters used to be confused
+    // with.
+    EXPECT_NEAR(rt_navagent3d_get_remaining_distance(nullptr),
+                -1.0,
+                0.0,
+                "NavAgent3D.RemainingDistance returns -1 for a null handle");
+    EXPECT_NEAR(rt_navagent3d_get_stopping_distance(nullptr),
+                -1.0,
+                0.0,
+                "NavAgent3D.StoppingDistance returns -1 for a null handle");
+    EXPECT_NEAR(rt_navagent3d_get_desired_speed(nullptr),
+                -1.0,
+                0.0,
+                "NavAgent3D.DesiredSpeed returns -1 for a null handle");
+    EXPECT_NEAR(rt_navagent3d_get_avoidance_radius(nullptr),
+                -1.0,
+                0.0,
+                "NavAgent3D.AvoidanceRadius returns -1 for a null handle");
+    EXPECT_NEAR(rt_navagent3d_get_remaining_distance(not_an_agent),
+                -1.0,
+                0.0,
+                "NavAgent3D.RemainingDistance returns -1 for a wrong-class handle");
+
+    // A valid agent never returns the sentinel; every numeric getter stays >= 0.
+    EXPECT_TRUE(rt_navagent3d_get_remaining_distance(agent) >= 0.0,
+                "NavAgent3D.RemainingDistance is non-negative for a valid agent");
+    EXPECT_TRUE(rt_navagent3d_get_stopping_distance(agent) >= 0.0,
+                "NavAgent3D.StoppingDistance is non-negative for a valid agent");
+    EXPECT_TRUE(rt_navagent3d_get_desired_speed(agent) >= 0.0,
+                "NavAgent3D.DesiredSpeed is non-negative for a valid agent");
+    EXPECT_TRUE(rt_navagent3d_get_avoidance_radius(agent) >= 0.0,
+                "NavAgent3D.AvoidanceRadius is non-negative for a valid agent");
+}
+
 int main() {
     test_navagent_bound_node_reaches_target_in_world_space();
     test_navagent_bound_character_moves_controller();
@@ -594,6 +635,7 @@ int main() {
     test_navagent_rejects_wrong_handle_types();
     test_navagent_repairs_wrong_class_private_bindings();
     test_navagent_getters_sanitize_corrupt_private_state();
+    test_navagent_invalid_handle_numeric_getters_return_sentinel();
 
     std::printf("NavAgent3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

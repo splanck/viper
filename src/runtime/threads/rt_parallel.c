@@ -46,9 +46,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_parallel.h"
-#include "rt_parallel_internal.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_parallel_internal.h"
 #include "rt_seq.h"
 #include "rt_threadpool.h"
 
@@ -68,6 +68,7 @@ LONG *parallel_win_remaining_new(int64_t count) {
     *remaining = (LONG)count;
     return remaining;
 }
+
 void parallel_win_complete_one(LONG *remaining, HANDLE event) {
     if (remaining && event && InterlockedDecrement(remaining) == 0)
         SetEvent(event);
@@ -102,10 +103,18 @@ parallel_sync *parallel_sync_new(int initial) {
     if (!s)
         return NULL;
     s->remaining = initial;
-    pthread_mutex_init(&s->mutex, NULL);
-    pthread_cond_init(&s->cond, NULL);
+    if (pthread_mutex_init(&s->mutex, NULL) != 0) {
+        free(s);
+        return NULL;
+    }
+    if (pthread_cond_init(&s->cond, NULL) != 0) {
+        pthread_mutex_destroy(&s->mutex);
+        free(s);
+        return NULL;
+    }
     return s;
 }
+
 /// @brief Block until every task in the batch has called `parallel_sync_complete`, then free.
 /// @details Spurious wake-ups are tolerated by the `while (remaining > 0)` loop. After the last
 ///          task signals, the mutex/cond are destroyed and the heap block freed in one step —
@@ -233,6 +242,41 @@ void parallel_release_default_pool(void *requested_pool, void *actual_pool) {
         return;
     if (rt_obj_release_check0(actual_pool))
         rt_obj_free(actual_pool);
+}
+
+/// @brief Shut down and drain the shared default thread pool, joining its worker threads.
+/// @details See the header for the rationale (per-run context teardown must join the pool's
+///          workers before the context they bound is freed). The slot is read under the pool
+///          lock and retained, then shut down *outside* the lock — `rt_threadpool_shutdown`
+///          blocks on thread joins and a worker's exit path may take other runtime locks, so
+///          holding `g_pool_lock` across it risks a deadlock. Worker handles are taken (and
+///          nulled) exactly once inside shutdown, so the later atexit finalizer sweep will not
+///          double-join. `g_default_pool` is intentionally left pointing at the now-shutdown
+///          pool; the next `rt_parallel_default_pool()` recreates it via its is_shutdown branch.
+void rt_parallel_shutdown_default_pool(void) {
+#if RT_PLATFORM_WINDOWS
+    InitOnceExecuteOnce(&g_pool_lock_once, pool_lock_init_callback, NULL, NULL);
+    EnterCriticalSection(&g_pool_lock);
+#else
+    pthread_mutex_lock(&g_pool_lock);
+#endif
+
+    void *pool = g_default_pool;
+    if (pool)
+        rt_obj_retain_maybe(pool); // Keep alive across the unlocked shutdown/join.
+
+#if RT_PLATFORM_WINDOWS
+    LeaveCriticalSection(&g_pool_lock);
+#else
+    pthread_mutex_unlock(&g_pool_lock);
+#endif
+
+    if (!pool)
+        return;
+
+    rt_threadpool_shutdown(pool); // Joins workers; each unbinds its inherited context here.
+    if (rt_obj_release_check0(pool))
+        rt_obj_free(pool);
 }
 
 /// @brief Resolve the effective worker count for a parallel-for invocation.

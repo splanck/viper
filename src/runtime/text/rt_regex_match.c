@@ -114,14 +114,20 @@ static int collect_quant_positions(
 static int *alloc_match_positions(int text_len, int pos, int *capacity_out) {
     if (capacity_out)
         *capacity_out = 0;
-    if (pos < 0 || pos > text_len)
+    if (pos < 0 || pos > text_len) {
         rt_trap("Pattern: invalid match position");
+        return NULL;
+    }
     size_t capacity = (size_t)(text_len - pos) + 2;
-    if (capacity > (size_t)INT_MAX || capacity > SIZE_MAX / sizeof(int))
+    if (capacity > (size_t)INT_MAX || capacity > SIZE_MAX / sizeof(int)) {
         rt_trap("Pattern: position allocation overflow");
+        return NULL;
+    }
     int *positions = (int *)malloc(sizeof(int) * capacity);
-    if (!positions)
+    if (!positions) {
         rt_trap("Pattern: memory allocation failed");
+        return NULL;
+    }
     if (capacity_out)
         *capacity_out = (int)capacity;
     return positions;

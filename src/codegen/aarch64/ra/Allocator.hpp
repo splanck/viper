@@ -20,6 +20,16 @@
 //   - Constructed per-function; borrows MFunction and TargetInfo references.
 //   - Must not outlive the MFunction it modifies.
 //
+// Design note (spill organization):
+//   Spill decisions are intentionally interleaved with the linear-scan loop here rather than
+//   factored into a standalone "Spiller" stage like the x86-64 backend (codegen/x86_64/ra/
+//   Spiller). Victim selection reads live per-instruction allocator state (next-use distance,
+//   live-out, dirty flags, register pools) and inserts reload/store code in place, so coupling
+//   avoids threading that mutable state across a stage boundary. The two backends deliberately
+//   differ; spill correctness here is covered by the AArch64 spill/pressure tests
+//   (Arm64SpillFPR.*, Arm64CrossBlockPhi.*, test_aarch64_frame_spill_reuse) and the VM<->native
+//   differential gate, so this is not a missing stage to be "completed".
+//
 // Links: codegen/aarch64/ra/Allocator.cpp,
 //        codegen/aarch64/RegAllocLinear.hpp,
 //        codegen/aarch64/ra/Liveness.hpp,

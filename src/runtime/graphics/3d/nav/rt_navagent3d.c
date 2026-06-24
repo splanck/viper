@@ -110,6 +110,10 @@ static int64_t g_navagent3d_registry_count = 0;
 #define NAVAGENT_HEIGHT_MAX 1000000.0
 #define NAVAGENT_DT_MAX 0.25
 #define NAVAGENT_DISTANCE_MAX 1000000000000000000.0
+/* Sentinel returned by the numeric getters for an invalid agent handle. Every valid result is
+ * clamped to >= 0, so a negative value is an unambiguous "invalid query" signal that callers can
+ * distinguish from a legitimate zero (e.g. "no path" / "at goal"). */
+#define NAVAGENT_INVALID_QUERY (-1.0)
 static rt_navagent3d *g_navagent3d_grid[NAVAGENT_GRID_BUCKETS];
 /* Monotonic max of (effective avoidance radius + desired speed) across agents; bounds the cell
  * neighborhood a query must cover so the grid never misses a contributing peer. */
@@ -1426,20 +1430,22 @@ int8_t rt_navagent3d_get_has_path(void *obj) {
 }
 
 /// @brief World-space distance from the agent's current position along the path to the goal.
-/// Updated each `_update` tick. 0 when no path exists or stopping distance has been reached.
+/// Updated each `_update` tick. Returns 0 when the agent has no path or is within stopping
+/// distance (use `_get_has_path` to tell those apart), and -1 for an invalid agent handle.
 double rt_navagent3d_get_remaining_distance(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
     return agent ? navagent_nonnegative_capped_or(
                        agent->remaining_distance, 0.0, NAVAGENT_DISTANCE_MAX)
-                 : 0.0;
+                 : NAVAGENT_INVALID_QUERY;
 }
 
-/// @brief Distance from the goal at which the agent stops moving (default = radius).
+/// @brief Distance from the goal at which the agent stops moving (default = radius). Returns -1
+/// for an invalid agent handle.
 double rt_navagent3d_get_stopping_distance(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
     return agent ? navagent_nonnegative_capped_or(
                        agent->stopping_distance, 0.0, NAVAGENT_DISTANCE_MAX)
-                 : 0.0;
+                 : NAVAGENT_INVALID_QUERY;
 }
 
 /// @brief Set the stopping distance (clamped to ≥ 0). Larger values cause the agent to halt
@@ -1451,11 +1457,12 @@ void rt_navagent3d_set_stopping_distance(void *obj, double distance) {
     agent->stopping_distance = navagent_nonnegative_capped_or(distance, 0.0, NAVAGENT_DISTANCE_MAX);
 }
 
-/// @brief Maximum movement speed in world units per second (default 4).
+/// @brief Maximum movement speed in world units per second (default 4). Returns -1 for an
+/// invalid agent handle.
 double rt_navagent3d_get_desired_speed(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
     return agent ? navagent_nonnegative_capped_or(agent->desired_speed, 0.0, NAVAGENT_SPEED_MAX)
-                 : 0.0;
+                 : NAVAGENT_INVALID_QUERY;
 }
 
 /// @brief Set max movement speed (clamped to ≥ 0). Updates take effect on the next `_update`.
@@ -1499,10 +1506,11 @@ void rt_navagent3d_set_avoidance_enabled(void *obj, int8_t enabled) {
 }
 
 /// @brief Radius used by local avoidance neighbor separation (defaults to the agent radius).
+/// Returns -1 for an invalid agent handle.
 double rt_navagent3d_get_avoidance_radius(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
     return agent ? navagent_nonnegative_capped_or(agent->avoidance_radius, 0.0, NAVAGENT_RADIUS_MAX)
-                 : 0.0;
+                 : NAVAGENT_INVALID_QUERY;
 }
 
 /// @brief Set local avoidance radius (clamped to >= 0). A zero radius disables separation force.

@@ -82,5 +82,55 @@ int main() {
     // Output should match expected format
     assert(formatMatches && "Output should match BENCH format");
 
+    // --- Watchdog: a non-terminating IL program must abort on the step budget and skip the
+    //     remaining strategies instead of hanging. A small explicit cap keeps the test fast. ---
+    {
+        static const char kInfiniteSource[] = R"(il 0.2.0
+
+func @main() -> i64 {
+entry:
+  br loop
+
+loop:
+  br loop
+}
+)";
+        const auto stamp2 = std::chrono::steady_clock::now().time_since_epoch().count();
+        fs::path loopPath =
+            fs::temp_directory_path() / ("viper-bench-loop-" + std::to_string(stamp2) + ".il");
+        {
+            std::ofstream ofs(loopPath);
+            ofs << kInfiniteSource;
+        }
+        const std::string loopStr = loopPath.string();
+        // Default strategies (table, switch, threaded); the cap bounds the run.
+        std::vector<std::string> wargs = {loopStr, "-n", "1", "--max-steps", "1000"};
+        std::vector<char *> wargv;
+        for (auto &a : wargs)
+            wargv.push_back(a.data());
+
+        std::ostringstream wOut;
+        std::ostringstream wErr;
+        auto *savedOut = std::cout.rdbuf(wOut.rdbuf());
+        auto *savedErr = std::cerr.rdbuf(wErr.rdbuf());
+        (void)cmdBench(static_cast<int>(wargv.size()), wargv.data());
+        std::cout.flush();
+        std::cerr.flush();
+        std::cout.rdbuf(savedOut);
+        std::cerr.rdbuf(savedErr);
+        fs::remove(loopPath);
+
+        const std::string wText = wOut.str() + wErr.str();
+        assert(wText.find("step budget") != std::string::npos &&
+               "bench watchdog should report the step budget on a non-terminating program");
+
+        size_t benchCount = 0;
+        for (size_t pos = wText.find("BENCH "); pos != std::string::npos;
+             pos = wText.find("BENCH ", pos + 1))
+            ++benchCount;
+        assert(benchCount == 1 &&
+               "bench should skip remaining strategies once the step budget is hit");
+    }
+
     return 0;
 }

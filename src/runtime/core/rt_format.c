@@ -157,11 +157,16 @@ static int rt_format_f64_bits_equal(double a, double b) {
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
 static void rt_format_write(const char *text, char *buffer, size_t capacity) {
-    if (!buffer || capacity == 0)
+    if (!buffer || capacity == 0) {
         rt_trap("rt_format_f64: invalid buffer");
+        return;
+    }
     size_t len = strlen(text);
-    if (len + 1 > capacity)
+    if (len + 1 > capacity) {
         rt_trap("rt_format_f64: truncated");
+        buffer[0] = '\0';
+        return;
+    }
     memcpy(buffer, text, len + 1);
 }
 
@@ -199,17 +204,25 @@ static int rt_format_f64_write_special(double value, char *buffer, size_t capaci
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
 void rt_format_f64(double value, char *buffer, size_t capacity) {
-    if (!buffer || capacity == 0)
+    if (!buffer || capacity == 0) {
         rt_trap("rt_format_f64: invalid buffer");
+        return;
+    }
 
     if (rt_format_f64_write_special(value, buffer, capacity))
         return;
 
     int written = rt_format_snprintf_c_locale(buffer, capacity, "%.15g", value);
-    if (written < 0)
+    if (written < 0) {
         rt_trap("rt_format_f64: format error");
-    if ((size_t)written >= capacity)
+        buffer[0] = '\0';
+        return;
+    }
+    if ((size_t)written >= capacity) {
         rt_trap("rt_format_f64: truncated");
+        buffer[0] = '\0';
+        return;
+    }
 }
 
 /// @brief Compare two candidate round-trip strings and decide whether to replace the current best.
@@ -242,8 +255,10 @@ static int rt_format_should_replace_roundtrip(const char *candidate, const char 
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
 void rt_format_f64_roundtrip(double value, char *buffer, size_t capacity) {
-    if (!buffer || capacity == 0)
+    if (!buffer || capacity == 0) {
         rt_trap("rt_format_f64_roundtrip: invalid buffer");
+        return;
+    }
 
     if (rt_format_f64_write_special(value, buffer, capacity))
         return;
@@ -269,8 +284,11 @@ void rt_format_f64_roundtrip(double value, char *buffer, size_t capacity) {
     }
 
     int written = rt_format_snprintf_c_locale(candidate, sizeof(candidate), "%.17g", value);
-    if (written < 0 || (size_t)written >= sizeof(candidate))
+    if (written < 0 || (size_t)written >= sizeof(candidate)) {
         rt_trap("rt_format_f64_roundtrip: format error");
+        buffer[0] = '\0';
+        return;
+    }
     rt_format_write(candidate, buffer, capacity);
 }
 

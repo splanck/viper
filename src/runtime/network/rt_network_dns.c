@@ -90,8 +90,10 @@ rt_string rt_dns_resolve(rt_string hostname) {
 
     const char *host_ptr = NULL;
     size_t host_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid hostname");
+        return rt_str_empty();
+    }
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_UNSPEC;
@@ -130,8 +132,10 @@ void *rt_dns_resolve_all(rt_string hostname) {
 
     const char *host_ptr = NULL;
     size_t host_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid hostname");
+        return rt_seq_new();
+    }
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_UNSPEC; // Both IPv4 and IPv6
@@ -143,6 +147,7 @@ void *rt_dns_resolve_all(rt_string hostname) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: hostname not found", Err_DnsError);
+        return rt_seq_new();
     }
 
     void *seq = rt_seq_new();
@@ -177,8 +182,10 @@ rt_string rt_dns_resolve4(rt_string hostname) {
 
     const char *host_ptr = NULL;
     size_t host_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid hostname");
+        return rt_str_empty();
+    }
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_INET; // IPv4 only
@@ -207,8 +214,10 @@ rt_string rt_dns_resolve6(rt_string hostname) {
 
     const char *host_ptr = NULL;
     size_t host_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid hostname");
+        return rt_str_empty();
+    }
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_INET6; // IPv6 only
@@ -239,8 +248,10 @@ rt_string rt_dns_reverse(rt_string ip_address) {
 
     const char *addr_ptr = NULL;
     size_t addr_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(ip_address, &addr_ptr, &addr_len) || addr_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(ip_address, &addr_ptr, &addr_len) || addr_len == 0) {
         rt_trap("Network: invalid address");
+        return rt_str_empty();
+    }
 
     // Try IPv4 first
     struct sockaddr_in sa4;
@@ -262,12 +273,14 @@ rt_string rt_dns_reverse(rt_string ip_address) {
         sa_len = sizeof(sa6);
     } else {
         rt_trap_net("Network: invalid IP address", Err_InvalidUrl);
+        return rt_str_empty();
     }
 
     char host[NI_MAXHOST];
     int ret = getnameinfo(sa, sa_len, host, sizeof(host), NULL, 0, NI_NAMEREQD);
     if (ret != 0) {
         rt_trap_net("Network: reverse lookup failed", Err_DnsError);
+        return rt_str_empty();
     }
 
     return rt_string_from_bytes(host, strlen(host));

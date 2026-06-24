@@ -530,25 +530,35 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end) {
 ///
 /// @see rt_bytes_slice For extracting bytes as a new object
 void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64_t count) {
-    if (!dst)
+    if (!dst) {
         rt_bytes_trap_invalid_operation("Bytes.Copy: null destination");
-    if (!src)
+        return;
+    }
+    if (!src) {
         rt_bytes_trap_invalid_operation("Bytes.Copy: null source");
+        return;
+    }
 
     rt_bytes_impl *dst_bytes = rt_bytes_require(dst, "Bytes.Copy: invalid destination");
     rt_bytes_impl *src_bytes = rt_bytes_require(src, "Bytes.Copy: invalid source");
 
-    if (count < 0)
+    if (count < 0) {
         rt_bytes_trap_domain("Bytes.Copy: count cannot be negative");
+        return;
+    }
 
     if (count == 0)
         return;
 
-    if (src_idx < 0 || count > src_bytes->len || src_idx > src_bytes->len - count)
+    if (src_idx < 0 || count > src_bytes->len || src_idx > src_bytes->len - count) {
         rt_bytes_trap_bounds("Bytes.Copy: source range out of bounds");
+        return;
+    }
 
-    if (dst_idx < 0 || count > dst_bytes->len || dst_idx > dst_bytes->len - count)
+    if (dst_idx < 0 || count > dst_bytes->len || dst_idx > dst_bytes->len - count) {
         rt_bytes_trap_bounds("Bytes.Copy: destination range out of bounds");
+        return;
+    }
 
     memmove(dst_bytes->data + dst_idx, src_bytes->data + src_idx, (size_t)count);
 }
