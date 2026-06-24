@@ -314,6 +314,73 @@ static int decompose_latin(uint32_t cp, char *base_out, uint16_t *sec_out) {
     return 1;
 }
 
+typedef struct {
+    uint32_t cp;
+    char base;
+    uint16_t secondary;
+} latin_ext_a_decomp_t;
+
+static const latin_ext_a_decomp_t k_latin_ext_a_decomp[] = {
+    {0x0100, 'a', 9},  {0x0101, 'a', 9},  {0x0102, 'a', 10}, {0x0103, 'a', 10}, {0x0104, 'a', 11},
+    {0x0105, 'a', 11}, {0x0106, 'c', 2},  {0x0107, 'c', 2},  {0x0108, 'c', 3},  {0x0109, 'c', 3},
+    {0x010A, 'c', 14}, {0x010B, 'c', 14}, {0x010C, 'c', 12}, {0x010D, 'c', 12}, {0x010E, 'd', 12},
+    {0x010F, 'd', 12}, {0x0110, 'd', 13}, {0x0111, 'd', 13}, {0x0112, 'e', 9},  {0x0113, 'e', 9},
+    {0x0114, 'e', 10}, {0x0115, 'e', 10}, {0x0116, 'e', 14}, {0x0117, 'e', 14}, {0x0118, 'e', 11},
+    {0x0119, 'e', 11}, {0x011A, 'e', 12}, {0x011B, 'e', 12}, {0x011C, 'g', 3},  {0x011D, 'g', 3},
+    {0x011E, 'g', 10}, {0x011F, 'g', 10}, {0x0120, 'g', 14}, {0x0121, 'g', 14}, {0x0122, 'g', 7},
+    {0x0123, 'g', 7},  {0x0124, 'h', 3},  {0x0125, 'h', 3},  {0x0126, 'h', 13}, {0x0127, 'h', 13},
+    {0x0128, 'i', 4},  {0x0129, 'i', 4},  {0x012A, 'i', 9},  {0x012B, 'i', 9},  {0x012C, 'i', 10},
+    {0x012D, 'i', 10}, {0x012E, 'i', 11}, {0x012F, 'i', 11}, {0x0130, 'i', 14}, {0x0131, 'i', 0},
+    {0x0132, 'i', 16}, {0x0133, 'i', 16}, {0x0134, 'j', 3},  {0x0135, 'j', 3},  {0x0136, 'k', 7},
+    {0x0137, 'k', 7},  {0x0138, 'k', 16}, {0x0139, 'l', 2},  {0x013A, 'l', 2},  {0x013B, 'l', 7},
+    {0x013C, 'l', 7},  {0x013D, 'l', 12}, {0x013E, 'l', 12}, {0x013F, 'l', 14}, {0x0140, 'l', 14},
+    {0x0141, 'l', 13}, {0x0142, 'l', 13}, {0x0143, 'n', 2},  {0x0144, 'n', 2},  {0x0145, 'n', 7},
+    {0x0146, 'n', 7},  {0x0147, 'n', 12}, {0x0148, 'n', 12}, {0x0149, 'n', 16}, {0x014A, 'n', 16},
+    {0x014B, 'n', 16}, {0x014C, 'o', 9},  {0x014D, 'o', 9},  {0x014E, 'o', 10}, {0x014F, 'o', 10},
+    {0x0150, 'o', 15}, {0x0151, 'o', 15}, {0x0152, 'o', 16}, {0x0153, 'o', 16}, {0x0154, 'r', 2},
+    {0x0155, 'r', 2},  {0x0156, 'r', 7},  {0x0157, 'r', 7},  {0x0158, 'r', 12}, {0x0159, 'r', 12},
+    {0x015A, 's', 2},  {0x015B, 's', 2},  {0x015C, 's', 3},  {0x015D, 's', 3},  {0x015E, 's', 7},
+    {0x015F, 's', 7},  {0x0160, 's', 12}, {0x0161, 's', 12}, {0x0162, 't', 7},  {0x0163, 't', 7},
+    {0x0164, 't', 12}, {0x0165, 't', 12}, {0x0166, 't', 13}, {0x0167, 't', 13}, {0x0168, 'u', 4},
+    {0x0169, 'u', 4},  {0x016A, 'u', 9},  {0x016B, 'u', 9},  {0x016C, 'u', 10}, {0x016D, 'u', 10},
+    {0x016E, 'u', 6},  {0x016F, 'u', 6},  {0x0170, 'u', 15}, {0x0171, 'u', 15}, {0x0172, 'u', 11},
+    {0x0173, 'u', 11}, {0x0174, 'w', 3},  {0x0175, 'w', 3},  {0x0176, 'y', 3},  {0x0177, 'y', 3},
+    {0x0178, 'y', 5},  {0x0179, 'z', 2},  {0x017A, 'z', 2},  {0x017B, 'z', 14}, {0x017C, 'z', 14},
+    {0x017D, 'z', 12}, {0x017E, 'z', 12}, {0x017F, 's', 0},
+};
+
+/// @brief Decompose a Latin Extended-A codepoint into base letter and secondary weight.
+/// @details The table covers U+0100..U+017F letters with common macron, breve,
+///          ogonek, caron, stroke, dot, double-acute, and ligature-style weights.
+/// @param cp Unicode codepoint in Latin Extended-A.
+/// @param base_out Receives lowercase ASCII base letter.
+/// @param sec_out Receives accent/variant secondary weight.
+/// @return 1 when @p cp is covered; otherwise 0.
+static int decompose_latin_extended_a(uint32_t cp, char *base_out, uint16_t *sec_out) {
+    for (size_t i = 0; i < sizeof(k_latin_ext_a_decomp) / sizeof(k_latin_ext_a_decomp[0]); i++) {
+        if (k_latin_ext_a_decomp[i].cp == cp) {
+            if (base_out)
+                *base_out = k_latin_ext_a_decomp[i].base;
+            if (sec_out)
+                *sec_out = k_latin_ext_a_decomp[i].secondary;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Return whether a Latin Extended-A codepoint is uppercase for tertiary ordering.
+/// @details Most Extended-A letters are encoded as uppercase/lowercase pairs with the uppercase
+///          value first. This helper handles singleton and ligature exceptions explicitly.
+static int latin_extended_a_is_upper(uint32_t cp) {
+    if (cp == 0x0130 || cp == 0x0132 || cp == 0x014A || cp == 0x0178)
+        return 1;
+    if (cp == 0x0131 || cp == 0x0133 || cp == 0x0138 || cp == 0x0149 || cp == 0x014B ||
+        cp == 0x017F)
+        return 0;
+    return (cp & 1u) == 0;
+}
+
 int rt_collator_codepoint_weights(uint32_t cp,
                                   uint32_t *primary,
                                   uint16_t *secondary,
@@ -368,78 +435,14 @@ int rt_collator_codepoint_weights(uint32_t cp,
             p = 0x8000u + cp;
         }
     }
-    // Latin Extended-A (simplified: treat as fallback to keep the table
-    // compact; adding full coverage is a Phase-6+ improvement).
+    // Latin Extended-A composites and special Latin letters.
     else if (cp >= 0x0100 && cp <= 0x017F) {
-        // Best-effort: attempt base-letter recovery for common pairs.
-        if (cp <= 0x0105) {
-            p = PRI_LETTER0 + 0;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x010D) {
-            p = PRI_LETTER0 + 2;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0111) {
-            p = PRI_LETTER0 + 3;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x011B) {
-            p = PRI_LETTER0 + 4;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0123) {
-            p = PRI_LETTER0 + 6;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0127) {
-            p = PRI_LETTER0 + 7;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0131) {
-            p = PRI_LETTER0 + 8;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0139 && cp <= 0x0142) {
-            p = PRI_LETTER0 + 11;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0148) {
-            p = PRI_LETTER0 + 13;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x014C && cp <= 0x0151) {
-            p = PRI_LETTER0 + 14;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0154 && cp <= 0x0159) {
-            p = PRI_LETTER0 + 17;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0161) {
-            p = PRI_LETTER0 + 18;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0167) {
-            p = PRI_LETTER0 + 19;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0173) {
-            p = PRI_LETTER0 + 20;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0175) {
-            p = PRI_LETTER0 + 22;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x0178) {
-            p = PRI_LETTER0 + 24;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
-        } else if (cp <= 0x017E) {
-            p = PRI_LETTER0 + 25;
-            s = 9;
-            t = (cp & 1) ? 0 : 1;
+        char base = 0;
+        uint16_t sec = 0;
+        if (decompose_latin_extended_a(cp, &base, &sec)) {
+            p = PRI_LETTER0 + (uint32_t)(base - 'a');
+            s = sec;
+            t = latin_extended_a_is_upper(cp) ? 1 : 0;
         } else {
             p = 0x8000u + cp;
         }

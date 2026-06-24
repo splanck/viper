@@ -31,6 +31,7 @@
 #include "rt_bitmapfont.h"
 #include "rt_graphics.h"
 #include "rt_internal.h"
+#include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 
@@ -90,6 +91,20 @@ typedef struct {
     int8_t show_header;
     int8_t show_borders;
 } rt_uitable_impl;
+
+/// @brief Parse a table cell as a finite C-locale number for numeric sorting.
+/// @details Invalid or non-finite text is reported separately so the comparator
+///          does not accidentally treat malformed values as 0.0.
+/// @param text Cell text to parse.
+/// @param out_value Receives the parsed double on success.
+/// @return 1 for a valid finite number; otherwise 0.
+static int table_parse_sort_number(const char *text, double *out_value) {
+    if (!text || !out_value)
+        return 0;
+    if (rt_parse_double(text, out_value) != (int32_t)Err_None)
+        return 0;
+    return isfinite(*out_value) ? 1 : 0;
+}
 
 /// @brief Safe-cast a handle to the UITable impl, trapping @p api on a
 ///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
@@ -392,9 +407,16 @@ static int table_compare_rows(rt_uitable_impl *table,
         sb = "";
     int cmp = 0;
     if (table->columns[col].sort_numeric) {
-        double da = strtod(sa, NULL);
-        double db = strtod(sb, NULL);
-        cmp = da < db ? -1 : (da > db ? 1 : 0);
+        double da = 0.0;
+        double db = 0.0;
+        int a_valid = table_parse_sort_number(sa, &da);
+        int b_valid = table_parse_sort_number(sb, &db);
+        if (a_valid && b_valid)
+            cmp = da < db ? -1 : (da > db ? 1 : 0);
+        else if (a_valid != b_valid)
+            cmp = a_valid ? -1 : 1;
+        else
+            cmp = strcmp(sa, sb);
     } else {
         cmp = strcmp(sa, sb);
     }

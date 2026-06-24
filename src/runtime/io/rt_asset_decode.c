@@ -34,6 +34,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,6 +71,10 @@ extern void *rt_sound_load_mem(const void *data, int64_t size);
 
 // Runtime string helpers
 extern rt_string rt_string_from_bytes(const char *data, size_t len);
+extern void rt_trap(const char *msg);
+extern void rt_trap_set_recovery(jmp_buf *buf);
+extern void rt_trap_clear_recovery(void);
+extern const char *rt_trap_get_error(void);
 
 static const char *asset_temp_suffix(const char *ext) {
     if (!ext || ext[0] != '.')
@@ -122,6 +127,25 @@ static void asset_remove_temp_dir(const char *path) {
 #else
     rmdir(path);
 #endif
+}
+
+/// @brief Remove and free a temporary asset file and its private directory.
+/// @details The file is removed before the directory. Pointers are nulled after
+///          free so callers can safely use this helper from normal and trap
+///          recovery paths without double cleanup.
+/// @param tmppath In/out heap path to the temporary file.
+/// @param tmpdir_path In/out heap path to the temporary directory.
+static void asset_cleanup_tempfile(char **tmppath, char **tmpdir_path) {
+    if (tmppath && *tmppath) {
+        asset_remove_temp_path(*tmppath);
+        free(*tmppath);
+        *tmppath = NULL;
+    }
+    if (tmpdir_path && *tmpdir_path) {
+        asset_remove_temp_dir(*tmpdir_path);
+        free(*tmpdir_path);
+        *tmpdir_path = NULL;
+    }
 }
 
 static char *asset_join_temp_path(const char *dir, const char *leaf) {
@@ -371,14 +395,28 @@ static void *load_via_tempfile(const uint8_t *data,
         free(tmpdir_path);
         return NULL;
     }
-    void *result = loader((void *)path_str);
+    void *result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Asset.Decode: file-based loader failed");
+        rt_trap_clear_recovery();
+        rt_string_unref(path_str);
+        asset_cleanup_tempfile(&tmppath, &tmpdir_path);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = loader((void *)path_str);
+    rt_trap_clear_recovery();
     rt_string_unref(path_str);
 
     // Cleanup
-    asset_remove_temp_path(tmppath);
-    asset_remove_temp_dir(tmpdir_path);
-    free(tmppath);
-    free(tmpdir_path);
+    asset_cleanup_tempfile(&tmppath, &tmpdir_path);
     return result;
 }
 

@@ -7,12 +7,12 @@
 
 #include "rt_retry.h"
 
+#include "rt_crypto.h"
 #include "rt_internal.h"
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 // --- Internal structure ---
 
@@ -32,19 +32,15 @@ static void retry_finalizer(void *obj) {
 /// @brief Build a non-zero per-thread seed for retry jitter.
 ///
 /// Retry jitter is not cryptographic, but it should avoid identical sequences
-/// across threads that construct retry policies at the same time. The seed mixes
-/// stack/thread-local addresses with wall/CPU time and caller-provided state so
-/// coordinated retries diverge without relying on global `rand()`.
+/// across threads and processes that construct retry policies at the same time.
+/// The seed is sourced from the OS CSPRNG via the runtime crypto helper, then
+/// mixed with caller-provided state so distinct policy settings diverge.
 ///
 /// @param salt Additional caller state, usually delay/attempt data.
 /// @return Non-zero xorshift-compatible seed.
 static uint64_t retry_jitter_seed(uint64_t salt) {
-    uint64_t seed = UINT64_C(0x9E3779B97F4A7C15);
-    uintptr_t stack_addr = (uintptr_t)&seed;
-    seed ^= (uint64_t)stack_addr;
-    seed ^= ((uint64_t)(uintptr_t)&salt) << 17;
-    seed ^= (uint64_t)time(NULL) * UINT64_C(0xBF58476D1CE4E5B9);
-    seed ^= (uint64_t)clock() * UINT64_C(0x94D049BB133111EB);
+    uint64_t seed = 0;
+    rt_crypto_random_bytes((uint8_t *)&seed, sizeof(seed));
     seed ^= salt + UINT64_C(0xD1B54A32D192ED03);
     if (seed == 0)
         seed = UINT64_C(0xA0761D6478BD642F);

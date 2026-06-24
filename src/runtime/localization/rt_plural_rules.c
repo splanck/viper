@@ -20,8 +20,8 @@
 //   - Operand variables (n, i, v, f, t) are computed according to CLDR
 //     Unicode Technical Standard #35 Section 5 conventions: n is the
 //     absolute value; i is the integer part; v / f / t encode visible
-//     fraction digits. For inputs presented as fixed-precision decimals
-//     via snprintf("%g"), we extract the fraction to six digits.
+//     fraction digits. For real-valued inputs we render a C-locale decimal
+//     with 15 significant digits before deriving the fractional operands.
 //
 // Ownership/Lifetime:
 //   - PluralRules handles are rt_obj_new_i64-allocated; GC manages them.
@@ -137,11 +137,10 @@ static plural_operands_t operands_from_int(int64_t n) {
 }
 
 /// @brief Compute plural operands from a real-valued input.
-/// @details Formats via snprintf("%g", n) with the default 6-significant-digit
-///          precision (matching `printf` default), then extracts the integer
-///          and fractional parts for operand derivation. This matches the
-///          common case where a user displays "1.5" and expects the plural
-///          category to reflect the visible form.
+/// @details Formats via C-locale `snprintf("%.15g", n)`, then extracts the
+///          integer and fractional parts for operand derivation. This avoids
+///          the default `%g` six-significant-digit truncation while still
+///          stripping insignificant trailing zeros for common user inputs.
 static plural_operands_t operands_from_double(double n) {
     double abs_n = n < 0 ? -n : n;
     plural_operands_t op;

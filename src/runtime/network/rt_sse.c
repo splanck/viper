@@ -975,18 +975,24 @@ void *rt_sse_connect(rt_string url) {
 }
 
 /// @brief Ensure the SSE event payload buffer can hold a pending append.
-/// @details Grows the receive buffer geometrically using a temporary `realloc`
-///          result so the previous event data remains valid if allocation
-///          fails. The requested size is the payload length excluding the final
-///          NUL terminator; this helper reserves one extra byte for callers
-///          that want to materialize the buffer as a C string. Requests beyond
-///          @c SSE_MAX_EVENT_DATA trap and fail closed.
-/// @param buf In/out heap buffer pointer.
+/// @details The receive path starts with a caller-owned stack buffer for the
+///          common small-event case. When an event grows beyond that buffer,
+///          this helper allocates a heap buffer, copies the already-accumulated
+///          payload, and then uses checked geometric `realloc` growth for later
+///          appends. The requested size is the payload length excluding the
+///          final NUL terminator; this helper reserves one extra byte for
+///          callers that want to materialize the buffer as a C string. Requests
+///          beyond @c SSE_MAX_EVENT_DATA trap and fail closed.
+/// @param buf In/out event buffer pointer; initially points at @p stack_buf.
 /// @param cap In/out capacity of `*buf` in bytes.
+/// @param stack_buf Original caller-owned stack buffer.
+/// @param stack_cap Capacity of @p stack_buf in bytes.
+/// @param used_len Bytes already written into `*buf`.
 /// @param needed Non-NUL payload bytes required after the append.
 /// @return `true` when `*buf` can hold `needed + 1` bytes; `false` after trap on overflow/OOM.
-static bool sse_reserve_event_data(char **buf, size_t *cap, size_t needed) {
-    if (!buf || !cap || needed == SIZE_MAX) {
+static bool sse_reserve_event_data(
+    char **buf, size_t *cap, char *stack_buf, size_t stack_cap, size_t used_len, size_t needed) {
+    if (!buf || !cap || !stack_buf || stack_cap == 0 || needed == SIZE_MAX || used_len > needed) {
         rt_trap("SSE.Recv: event data length overflow");
         return false;
     }
@@ -999,7 +1005,14 @@ static bool sse_reserve_event_data(char **buf, size_t *cap, size_t needed) {
         size_t next_cap = *cap ? (*cap * 2u) : 4096u;
         if (next_cap <= *cap || next_cap < required)
             next_cap = required;
-        char *grown = (char *)realloc(*buf, next_cap);
+        char *grown;
+        if (*buf == stack_buf) {
+            grown = (char *)malloc(next_cap);
+            if (grown && used_len > 0)
+                memcpy(grown, stack_buf, used_len);
+        } else {
+            grown = (char *)realloc(*buf, next_cap);
+        }
         if (!grown) {
             rt_trap("SSE.Recv: memory allocation failed");
             return false;
@@ -1022,16 +1035,18 @@ rt_string rt_sse_recv(void *obj) {
     if (!sse->is_open || (sse->socket_fd == INVALID_SOCK && !sse->tls))
         return rt_str_empty();
 
-    // Accumulate "data:" lines until a blank line (event boundary)
-    size_t cap = 4096, len = 0;
-    char *data_buf = (char *)malloc(cap);
-    if (!data_buf)
-        return rt_str_empty();
+    // Accumulate "data:" lines until a blank line (event boundary).
+    char stack_buf[4096];
+    char *data_buf = stack_buf;
+    size_t cap = sizeof(stack_buf);
+    size_t len = 0;
+    int saw_data = 0;
 
     while (sse->is_open) {
         rt_string line = sse_payload_recv_line(sse);
         if (!line) {
             len = 0; // Drop partial event fragments across reconnects.
+            saw_data = 0;
             if (sse_try_reconnect(sse))
                 continue;
             sse->is_open = false;
@@ -1047,7 +1062,7 @@ rt_string rt_sse_recv(void *obj) {
         if (*l == '\0') {
             // Blank line = event boundary; deliver accumulated data
             rt_string_unref(line);
-            if (len > 0)
+            if (saw_data)
                 break;
             continue;
         }
@@ -1059,15 +1074,18 @@ rt_string rt_sse_recv(void *obj) {
             size_t vlen = strlen(val);
             size_t separator = len > 0 ? 1u : 0u;
             if (vlen > SIZE_MAX - len - separator ||
-                !sse_reserve_event_data(&data_buf, &cap, len + separator + vlen)) {
+                !sse_reserve_event_data(
+                    &data_buf, &cap, stack_buf, sizeof(stack_buf), len, len + separator + vlen)) {
                 rt_string_unref(line);
                 len = 0;
+                saw_data = 0;
                 break;
             }
             if (len > 0)
                 data_buf[len++] = '\n'; // Multi-line data separated by \n
             memcpy(data_buf + len, val, vlen);
             len += vlen;
+            saw_data = 1;
         } else if (strncmp(l, "event:", 6) == 0) {
             const char *val = l + 6;
             if (*val == ' ')
@@ -1112,7 +1130,8 @@ rt_string rt_sse_recv(void *obj) {
     }
 
     rt_string result = rt_string_from_bytes(data_buf, len);
-    free(data_buf);
+    if (data_buf != stack_buf)
+        free(data_buf);
     return result;
 }
 

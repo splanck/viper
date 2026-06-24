@@ -1216,10 +1216,17 @@ void rt_http_server_stop(void *obj) {
 
     if (had_thread) {
 #ifdef _WIN32
-        WaitForSingleObject(accept_thread, INFINITE);
+        DWORD accept_thread_id = accept_thread ? GetThreadId(accept_thread) : 0;
+        int stopping_from_accept_thread =
+            accept_thread_id != 0 && accept_thread_id == GetCurrentThreadId();
+        if (!stopping_from_accept_thread)
+            WaitForSingleObject(accept_thread, INFINITE);
         CloseHandle(accept_thread);
 #else
-        pthread_join(accept_thread, NULL);
+        if (pthread_equal(pthread_self(), accept_thread) != 0)
+            pthread_detach(accept_thread);
+        else
+            pthread_join(accept_thread, NULL);
 #endif
     }
 
@@ -1233,7 +1240,7 @@ void rt_http_server_stop(void *obj) {
     if (listener && rt_obj_release_check0(listener))
         rt_obj_free(listener);
 
-    if (server->worker_pool)
+    if (server->worker_pool && rt_threadpool_current_worker_pool() != server->worker_pool)
         rt_threadpool_wait(server->worker_pool);
 }
 

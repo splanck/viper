@@ -54,6 +54,7 @@ extern void rt_obj_free(void *obj);
 #define POSTFX3D_PARAM_MAX 64.0f
 #define POSTFX3D_RADIUS_MAX 1000000.0f
 #define POSTFX3D_FOCUS_MAX 1000000.0f
+#define POSTFX3D_GAMMA_LUT_SIZE 1024u
 
 /*==========================================================================
  * Effect types
@@ -128,6 +129,13 @@ typedef struct {
     int32_t effect_capacity;
     int8_t enabled;
 } rt_postfx3d;
+
+typedef struct {
+    float *primary;
+    size_t primary_bytes;
+    float *secondary;
+    size_t secondary_bytes;
+} postfx_scratch_t;
 
 /// @brief Validate @p obj as a PostFX3D handle and return its typed pointer (NULL on mismatch).
 static rt_postfx3d *postfx3d_checked(void *obj) {
@@ -260,6 +268,74 @@ static int postfx_rgb_float_layout(
     if (out_bytes)
         *out_bytes = floats * sizeof(float);
     return 1;
+}
+
+/// @brief Reserve a reusable float scratch buffer for a CPU post-processing pass.
+/// @details Scratch buffers are retained for the duration of one effect-chain application and
+///          reused by bloom and FXAA instead of allocating/freeing fresh buffers for each effect.
+///          When @p clear is non-zero, the reserved byte range is zeroed before return.
+/// @param slot In/out scratch pointer.
+/// @param capacity_bytes In/out scratch capacity.
+/// @param needed_bytes Required byte count.
+/// @param clear Whether to zero the first @p needed_bytes bytes before returning.
+/// @return Buffer pointer on success; NULL on overflow or allocation failure.
+static float *postfx_scratch_reserve(float **slot,
+                                     size_t *capacity_bytes,
+                                     size_t needed_bytes,
+                                     int clear) {
+    if (!slot || !capacity_bytes || needed_bytes == 0)
+        return NULL;
+    if (needed_bytes > *capacity_bytes) {
+        float *grown = (float *)realloc(*slot, needed_bytes);
+        if (!grown)
+            return NULL;
+        *slot = grown;
+        *capacity_bytes = needed_bytes;
+    }
+    if (clear)
+        memset(*slot, 0, needed_bytes);
+    return *slot;
+}
+
+/// @brief Release all heap storage owned by a per-apply postfx scratch context.
+/// @details Scratch buffers contain transient framebuffer colors only; no ownership escapes the
+///          effect-chain call. Safe to call on a zero-initialized context.
+/// @param scratch Scratch context to release.
+static void postfx_scratch_release(postfx_scratch_t *scratch) {
+    if (!scratch)
+        return;
+    free(scratch->primary);
+    free(scratch->secondary);
+    memset(scratch, 0, sizeof(*scratch));
+}
+
+/// @brief Populate a small lookup table for linear-to-display gamma correction.
+/// @details The tonemap pass clamps channels into [0, 1] before gamma. Building one table per
+///          tonemap invocation replaces three `powf` calls per pixel with linear interpolation
+///          over @c POSTFX3D_GAMMA_LUT_SIZE samples while preserving smooth output.
+/// @param lut Output array with @c POSTFX3D_GAMMA_LUT_SIZE + 1 entries.
+static void postfx_build_gamma_lut(float lut[POSTFX3D_GAMMA_LUT_SIZE + 1u]) {
+    for (uint32_t i = 0; i <= POSTFX3D_GAMMA_LUT_SIZE; i++) {
+        float x = (float)i / (float)POSTFX3D_GAMMA_LUT_SIZE;
+        lut[i] = powf(x, 1.0f / 2.2f);
+    }
+}
+
+/// @brief Sample a gamma lookup table with linear interpolation.
+/// @param lut Gamma table built by `postfx_build_gamma_lut`.
+/// @param value Linear channel in approximately [0, 1].
+/// @return Gamma-corrected channel clamped to [0, 1].
+static float postfx_gamma_lut_sample(const float lut[POSTFX3D_GAMMA_LUT_SIZE + 1u], float value) {
+    float scaled;
+    uint32_t index;
+    float t;
+    value = clampf(isfinite(value) ? value : 0.0f, 0.0f, 1.0f);
+    scaled = value * (float)POSTFX3D_GAMMA_LUT_SIZE;
+    index = (uint32_t)scaled;
+    if (index >= POSTFX3D_GAMMA_LUT_SIZE)
+        return lut[POSTFX3D_GAMMA_LUT_SIZE];
+    t = scaled - (float)index;
+    return lut[index] + (lut[index + 1u] - lut[index]) * t;
 }
 
 /// @brief Reserve and zero one more `postfx_entry_t` slot in the chain, growing the heap
@@ -447,8 +523,13 @@ int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
 /// during the composite. Uses a 5-tap symmetric Gaussian kernel (0.0625, 0.25, 0.375,
 /// 0.25, 0.0625) in each axis, re-applied `blur_passes` times; more passes = wider halo.
 /// Returns early on half-res degenerate dimensions or calloc failure.
-static void apply_bloom(
-    float *buf, int32_t w, int32_t h, float threshold, float intensity, int32_t blur_passes) {
+static void apply_bloom(float *buf,
+                        int32_t w,
+                        int32_t h,
+                        float threshold,
+                        float intensity,
+                        int32_t blur_passes,
+                        postfx_scratch_t *scratch) {
     int32_t hw = w / 2, hh = h / 2;
     size_t scratch_bytes;
     if (hw < 1 || hh < 1)
@@ -457,7 +538,10 @@ static void apply_bloom(
         return;
 
     /* Extract bright pixels to half-res buffer */
-    float *bloom = (float *)calloc(1, scratch_bytes);
+    float *bloom =
+        scratch
+            ? postfx_scratch_reserve(&scratch->primary, &scratch->primary_bytes, scratch_bytes, 1)
+            : NULL;
     if (!bloom)
         return;
 
@@ -477,11 +561,11 @@ static void apply_bloom(
         }
 
     /* Separable Gaussian blur (simplified 5-tap kernel) */
-    float *tmp = (float *)calloc(1, scratch_bytes);
-    if (!tmp) {
-        free(bloom);
+    float *tmp = scratch ? postfx_scratch_reserve(
+                               &scratch->secondary, &scratch->secondary_bytes, scratch_bytes, 1)
+                         : NULL;
+    if (!tmp)
         return;
-    }
 
     static const float kernel[5] = {0.0625f, 0.25f, 0.375f, 0.25f, 0.0625f};
 
@@ -529,8 +613,6 @@ static void apply_bloom(
                 bloom[di + 2] = b;
             }
     }
-    free(tmp);
-
     /* Composite: add bloom back to scene (upsampled bilinear) */
     for (int32_t y = 0; y < h; y++)
         for (int32_t x = 0; x < w; x++) {
@@ -569,8 +651,6 @@ static void apply_bloom(
                 buf[si + c] += (top + (bottom - top) * ty) * intensity;
             }
         }
-
-    free(bloom);
 }
 
 /// @brief Apply HDR → LDR tone mapping in linear RGB. `mode = 1` selects simple
@@ -582,10 +662,12 @@ static void apply_bloom(
 /// is linear).
 static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float exposure) {
     size_t count;
+    float gamma_lut[POSTFX3D_GAMMA_LUT_SIZE + 1u];
     if (mode != 1 && mode != 2)
         return;
     if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
         return;
+    postfx_build_gamma_lut(gamma_lut);
 
     for (size_t i = 0; i < count; i++) {
         float *p = &buf[i * 3u];
@@ -611,9 +693,9 @@ static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float 
         r = clampf(isfinite(r) ? r : 0.0f, 0.0f, 1.0f);
         g = clampf(isfinite(g) ? g : 0.0f, 0.0f, 1.0f);
         b = clampf(isfinite(b) ? b : 0.0f, 0.0f, 1.0f);
-        p[0] = powf(r, 1.0f / 2.2f);
-        p[1] = powf(g, 1.0f / 2.2f);
-        p[2] = powf(b, 1.0f / 2.2f);
+        p[0] = postfx_gamma_lut_sample(gamma_lut, r);
+        p[1] = postfx_gamma_lut_sample(gamma_lut, g);
+        p[2] = postfx_gamma_lut_sample(gamma_lut, b);
     }
 }
 
@@ -623,11 +705,18 @@ static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float 
 /// pixel with a 3×3 box average. Writes into a scratch buffer and memcpys back, so
 /// the pass is order-independent within a single invocation. Cheaper than real FXAA
 /// 3.11 but good enough for jagged-edge cleanup over the software pipeline's output.
-static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, float min_thresh) {
+static void apply_fxaa(float *buf,
+                       int32_t w,
+                       int32_t h,
+                       float edge_thresh,
+                       float min_thresh,
+                       postfx_scratch_t *scratch) {
     size_t bytes;
     if (!postfx_rgb_float_layout(w, h, NULL, NULL, &bytes))
         return;
-    float *out = (float *)malloc(bytes);
+    float *out = scratch
+                     ? postfx_scratch_reserve(&scratch->primary, &scratch->primary_bytes, bytes, 0)
+                     : NULL;
     if (!out)
         return;
     memcpy(out, buf, bytes);
@@ -688,7 +777,6 @@ static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, floa
         }
 
     memcpy(buf, out, bytes);
-    free(out);
 }
 
 /// @brief Apply colour grading in a single pass — contrast scales each channel around
@@ -781,8 +869,10 @@ static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
 ///          integer framebuffer.
 static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h) {
     int32_t effect_count = postfx3d_safe_effect_count(fx);
+    postfx_scratch_t scratch;
     if (!fx || !fx->enabled || effect_count == 0 || !fbuf)
         return;
+    memset(&scratch, 0, sizeof(scratch));
 
     for (int32_t i = 0; i < effect_count; i++) {
         postfx_entry_t *e = &fx->effects[i];
@@ -791,14 +881,19 @@ static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, 
 
         switch (e->type) {
             case POSTFX_BLOOM:
-                apply_bloom(
-                    fbuf, w, h, e->p.bloom.threshold, e->p.bloom.intensity, e->p.bloom.blur_passes);
+                apply_bloom(fbuf,
+                            w,
+                            h,
+                            e->p.bloom.threshold,
+                            e->p.bloom.intensity,
+                            e->p.bloom.blur_passes,
+                            &scratch);
                 break;
             case POSTFX_TONEMAP:
                 apply_tonemap(fbuf, w, h, e->p.tonemap.mode, e->p.tonemap.exposure);
                 break;
             case POSTFX_FXAA:
-                apply_fxaa(fbuf, w, h, e->p.fxaa.edge_threshold, e->p.fxaa.min_threshold);
+                apply_fxaa(fbuf, w, h, e->p.fxaa.edge_threshold, e->p.fxaa.min_threshold, &scratch);
                 break;
             case POSTFX_COLOR_GRADE:
                 apply_color_grade(fbuf,
@@ -817,6 +912,7 @@ static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, 
                 break;
         }
     }
+    postfx_scratch_release(&scratch);
 }
 
 /// @brief Run the CPU-supported effect chain over a framebuffer.

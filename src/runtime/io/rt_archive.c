@@ -43,6 +43,7 @@
 #include "rt_io_class_ids.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -660,18 +661,122 @@ static void archive_map_set_boxed(void *map, const char *key_cstr, void *boxed) 
     rt_string_unref(key);
 }
 
-/// @brief Produce DOS time/date words for the local-header timestamp.
+/// @brief Encode a UTC broken-down time as DOS time/date words.
+/// @details ZIP timestamps use FAT/DOS fields: date bits 0-4 day, 5-8 month,
+///          9-15 year-since-1980; time bits 0-4 sec/2, 5-10 minute, 11-15 hour.
+///          Years outside DOS' representable [1980, 2107] range are clamped.
+/// @param tm UTC calendar time to encode.
+/// @param dos_time Out DOS time word.
+/// @param dos_date Out DOS date word.
+static void archive_tm_to_dos_datetime(const struct tm *tm,
+                                       uint16_t *dos_time,
+                                       uint16_t *dos_date) {
+    int year = tm ? tm->tm_year + 1900 : 2001;
+    int month = tm ? tm->tm_mon + 1 : 1;
+    int day = tm ? tm->tm_mday : 1;
+    int hour = tm ? tm->tm_hour : 0;
+    int minute = tm ? tm->tm_min : 0;
+    int second = tm ? tm->tm_sec : 0;
+
+    if (year < 1980) {
+        year = 1980;
+        month = 1;
+        day = 1;
+        hour = minute = second = 0;
+    } else if (year > 2107) {
+        year = 2107;
+        month = 12;
+        day = 31;
+        hour = 23;
+        minute = 59;
+        second = 58;
+    }
+    if (month < 1)
+        month = 1;
+    if (month > 12)
+        month = 12;
+    if (day < 1)
+        day = 1;
+    if (day > 31)
+        day = 31;
+    if (hour < 0)
+        hour = 0;
+    if (hour > 23)
+        hour = 23;
+    if (minute < 0)
+        minute = 0;
+    if (minute > 59)
+        minute = 59;
+    if (second < 0)
+        second = 0;
+    if (second > 59)
+        second = 59;
+
+    *dos_time = (uint16_t)(((hour & 0x1F) << 11) | ((minute & 0x3F) << 5) | ((second / 2) & 0x1F));
+    *dos_date = (uint16_t)((((year - 1980) & 0x7F) << 9) | ((month & 0x0F) << 5) | (day & 0x1F));
+}
+
+/// @brief Convert Unix epoch seconds to UTC broken-down time.
+/// @details Routes through @ref rt_gmtime_r so the platform-specific Windows,
+///          POSIX, and ViperDOS conversion details stay in the runtime platform
+///          adapter instead of this archive writer.
+/// @param epoch Seconds since the Unix epoch.
+/// @param out_tm Output calendar time.
+/// @return 1 on success, 0 if the epoch cannot be represented by the C runtime.
+static int archive_gmtime_utc(time_t epoch, struct tm *out_tm) {
+    if (!out_tm)
+        return 0;
+    return rt_gmtime_r(&epoch, out_tm) != NULL;
+}
+
+/// @brief Parse an environment-provided non-negative epoch seconds value.
+/// @details Accepts only a complete base-10 integer and rejects overflow both in `strtoll`
+///          and in the target platform's `time_t` representation.
+/// @param text Environment variable text.
+/// @param out_epoch Parsed epoch seconds.
+/// @return 1 on success, 0 on invalid or out-of-range input.
+static int archive_parse_epoch_seconds(const char *text, time_t *out_epoch) {
+    char *end = NULL;
+    long long parsed;
+    time_t narrowed;
+    if (!text || !*text || !out_epoch)
+        return 0;
+    errno = 0;
+    parsed = strtoll(text, &end, 10);
+    if (errno == ERANGE || end == text || (end && *end != '\0') || parsed < 0)
+        return 0;
+    narrowed = (time_t)parsed;
+    if ((long long)narrowed != parsed)
+        return 0;
+    *out_epoch = narrowed;
+    return 1;
+}
+
+/// @brief Produce DOS time/date words for a new ZIP entry.
 ///
-/// Currently emits a fixed `2001-01-01 00:00:00` so that archives are
-/// reproducible (byte-for-byte identical given the same inputs). If
-/// per-file modification timestamps are ever needed, this is the spot
-/// to switch to `time(NULL)` + the DOS encoding (date: bits 0-4 day,
-/// 5-8 month, 9-15 year-since-1980; time: bits 0-4 sec/2, 5-10 min,
-/// 11-15 hour).
-static void get_dos_time(uint16_t *time, uint16_t *date) {
-    // Use a fixed time for reproducibility (could use actual time)
-    *time = 0;                        // 00:00:00
-    *date = (21 << 9) | (1 << 5) | 1; // 2001-01-01
+/// Defaults to a fixed `2001-01-01 00:00:00` timestamp so archives remain
+/// byte-for-byte reproducible for identical inputs. `SOURCE_DATE_EPOCH` is honored when set for
+/// reproducible-build integrations; `VIPER_ARCHIVE_TIMESTAMP=now` opts into the current UTC time.
+static void get_dos_time(uint16_t *dos_time, uint16_t *dos_date) {
+    const char *mode = getenv("VIPER_ARCHIVE_TIMESTAMP");
+    const char *source_date_epoch = getenv("SOURCE_DATE_EPOCH");
+    time_t epoch = (time_t)0;
+    struct tm tm_value;
+
+    if (mode && strcmp(mode, "now") == 0) {
+        epoch = time(NULL);
+        if (archive_gmtime_utc(epoch, &tm_value)) {
+            archive_tm_to_dos_datetime(&tm_value, dos_time, dos_date);
+            return;
+        }
+    } else if (archive_parse_epoch_seconds(source_date_epoch, &epoch) &&
+               archive_gmtime_utc(epoch, &tm_value)) {
+        archive_tm_to_dos_datetime(&tm_value, dos_time, dos_date);
+        return;
+    }
+
+    *dos_time = 0;                        // 00:00:00
+    *dos_date = (21 << 9) | (1 << 5) | 1; // 2001-01-01
 }
 
 /// @brief Compute a proleptic Gregorian day number from a civil (year, month, day) triple.

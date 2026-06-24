@@ -68,7 +68,32 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 #endif
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <unistd.h>
+
+/// @brief Return a cached `/dev/urandom` descriptor for Unix fallback reads.
+/// @details The descriptor is opened once with close-on-exec where supported and
+///          retained for process lifetime. A mutex protects first-use creation so
+///          concurrent random calls neither race on the static descriptor nor leak
+///          duplicate opens.
+/// @return Non-negative file descriptor on success; -1 when opening failed.
+static int rand_urandom_fd(void) {
+    static int fd = -1;
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    if (fd >= 0)
+        return fd;
+    pthread_mutex_lock(&lock);
+    if (fd < 0) {
+#ifdef O_CLOEXEC
+        fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+#else
+        fd = open("/dev/urandom", O_RDONLY);
+#endif
+    }
+    int result = fd;
+    pthread_mutex_unlock(&lock);
+    return result;
+}
 #endif
 
 static void rand_secure_zero(void *ptr, size_t len) {
@@ -148,15 +173,20 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
     if (bytes_read == len)
         return 0;
 #endif
-    // Unix and ViperDOS: use /dev/urandom
+    // Unix and ViperDOS: use /dev/urandom.
+#if defined(__viperdos__)
 #ifdef O_CLOEXEC
     int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
 #else
     int fd = open("/dev/urandom", O_RDONLY);
 #endif
-    if (fd < 0) {
+    int close_after_read = 1;
+#else
+    int fd = rand_urandom_fd();
+    int close_after_read = 0;
+#endif
+    if (fd < 0)
         return -1;
-    }
 
     size_t urandom_bytes_read = 0;
     while (urandom_bytes_read < len) {
@@ -164,18 +194,21 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
         if (result < 0) {
             if (errno == EINTR)
                 continue; // Interrupted, retry
-            close(fd);
+            if (close_after_read)
+                close(fd);
             return -1;
         }
         if (result == 0) {
             // EOF on /dev/urandom shouldn't happen, but handle it
-            close(fd);
+            if (close_after_read)
+                close(fd);
             return -1;
         }
         urandom_bytes_read += (size_t)result;
     }
 
-    close(fd);
+    if (close_after_read)
+        close(fd);
     return 0;
 #endif
 }

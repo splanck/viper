@@ -384,10 +384,21 @@ static inline int rt_atomic_compare_exchange_ptr(
     return 0;
 }
 
+/// @brief Interpret a `double` storage address as the 64-bit slot required by Win32 atomics.
+/// @details The Windows fallback for GCC-style `__atomic_load` / `__atomic_store` handles
+///          floating-point values by atomically moving their IEEE-754 bit pattern through
+///          `Interlocked*64`. All runtime call sites provide naturally aligned 8-byte
+///          `double` storage; this helper centralizes the representation cast and keeps the
+///          load/store helpers themselves free of repeated type-punning.
+static inline volatile long long *rt_atomic_f64_bits_ptr(volatile double *ptr) {
+    return (volatile long long *)(volatile void *)ptr;
+}
+
 // Atomic load/store for double values used with GCC's non-_n builtins.
 static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, int order) {
     (void)order;
-    long long bits = _InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
+    long long bits =
+        _InterlockedCompareExchange64(rt_atomic_f64_bits_ptr((volatile double *)ptr), 0, 0);
     memcpy(out, &bits, sizeof(*out));
 }
 
@@ -395,7 +406,7 @@ static inline void rt_atomic_store_f64(volatile double *ptr, const double *value
     (void)order;
     long long bits;
     memcpy(&bits, value, sizeof(bits));
-    _InterlockedExchange64((volatile long long *)ptr, bits);
+    _InterlockedExchange64(rt_atomic_f64_bits_ptr(ptr), bits);
 }
 
 // Map GCC-style atomic builtins to our functions

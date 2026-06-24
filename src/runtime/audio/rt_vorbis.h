@@ -66,6 +66,11 @@ int vorbis_get_sample_rate(const vorbis_decoder_t *dec);
 /// @brief Get the number of channels from the identification header.
 int vorbis_get_channels(const vorbis_decoder_t *dec);
 
+/// @brief Return the last decoder error message.
+/// @details The pointer is owned by @p dec and remains valid until the next decoder call or
+///          `vorbis_decoder_free`. Returns an empty string when no detailed error is available.
+const char *vorbis_last_error(const vorbis_decoder_t *dec);
+
 #ifdef __cplusplus
 }
 #endif

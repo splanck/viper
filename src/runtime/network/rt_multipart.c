@@ -37,7 +37,8 @@
 // Internal Structures
 //=============================================================================
 
-#define MAX_PARTS 128
+#define MULTIPART_INITIAL_PART_CAPACITY 16
+#define MULTIPART_MAX_PARSED_BODY_BYTES (64u * 1024u * 1024u)
 
 typedef struct {
     char *name;
@@ -49,8 +50,9 @@ typedef struct {
 
 typedef struct {
     char boundary[64];
-    multipart_part_t parts[MAX_PARTS];
+    multipart_part_t *parts;
     int part_count;
+    int part_capacity;
 } rt_multipart_impl;
 
 //=============================================================================
@@ -106,6 +108,40 @@ static int multipart_string_has_embedded_nul(rt_string value) {
     if (!cstr || len64 <= 0)
         return 0;
     return memchr(cstr, '\0', (size_t)len64) != NULL;
+}
+
+/// @brief Ensure a multipart object can hold at least @p needed parts.
+/// @details Builder and parser objects use the same append-only part storage.
+///          The array grows geometrically with overflow checks so ordinary
+///          forms avoid repeated reallocations while large forms are no longer
+///          capped by a compile-time 128-part table.
+/// @param mp Multipart implementation object.
+/// @param needed Minimum required part count.
+/// @return 1 when capacity is available; 0 on overflow or allocation failure.
+static int multipart_reserve_parts(rt_multipart_impl *mp, int needed) {
+    if (!mp || needed < 0)
+        return 0;
+    if (needed <= mp->part_capacity)
+        return 1;
+
+    int new_capacity = mp->part_capacity > 0 ? mp->part_capacity : MULTIPART_INITIAL_PART_CAPACITY;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > (uint64_t)SIZE_MAX / sizeof(*mp->parts))
+        return 0;
+
+    multipart_part_t *grown =
+        (multipart_part_t *)realloc(mp->parts, (size_t)new_capacity * sizeof(*grown));
+    if (!grown)
+        return 0;
+    memset(
+        grown + mp->part_capacity, 0, (size_t)(new_capacity - mp->part_capacity) * sizeof(*grown));
+    mp->parts = grown;
+    mp->part_capacity = new_capacity;
+    return 1;
 }
 
 /// @brief Validate a parsed multipart Content-Disposition parameter value.
@@ -342,11 +378,12 @@ static int multipart_extract_param_value(const char *text,
 
         if ((size_t)(name_end - name_start) == target_len &&
             multipart_ascii_ieq_n(name_start, target_name, target_len)) {
+            size_t value_len = 0;
             if (*p == '"')
-                multipart_copy_unescaped_quoted(&p, out, out_cap);
+                value_len = multipart_copy_unescaped_quoted(&p, out, out_cap);
             else
-                multipart_copy_token_value(&p, out, out_cap);
-            return 1;
+                value_len = multipart_copy_token_value(&p, out, out_cap);
+            return out_cap == 0 || value_len < out_cap;
         }
 
         if (*p == '"')
@@ -388,7 +425,7 @@ static int multipart_extract_header_value(const char *headers,
                 memcpy(out, value, write_len);
                 out[write_len] = '\0';
             }
-            return 1;
+            return out_cap == 0 || value_len < out_cap;
         }
         if (!line_end)
             break;
@@ -411,6 +448,10 @@ static void rt_multipart_finalize(void *obj) {
         free(mp->parts[i].filename);
         free(mp->parts[i].data);
     }
+    free(mp->parts);
+    mp->parts = NULL;
+    mp->part_count = 0;
+    mp->part_capacity = 0;
 }
 
 //=============================================================================
@@ -434,16 +475,17 @@ void *rt_multipart_new(void) {
     return mp;
 }
 
-/// @brief Append a text field (`Content-Disposition: form-data; name="..."`). Returns the
-/// builder for fluent chaining. Traps on null input or pool overflow (MAX_PARTS=128).
+/// @brief Append a text field (`Content-Disposition: form-data; name="..."`).
+/// @details Returns the builder for fluent chaining. Part storage grows on demand and traps on
+///          null input, invalid names, integer overflow, or allocation failure.
 void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
     if (!obj) {
         rt_trap("Multipart: NULL object");
         return NULL;
     }
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    if (mp->part_count >= MAX_PARTS) {
-        rt_trap("Multipart: too many parts (max 128)");
+    if (!multipart_reserve_parts(mp, mp->part_count + 1)) {
+        rt_trap("Multipart: part storage allocation failed");
         return obj;
     }
 
@@ -490,8 +532,8 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
         return NULL;
     }
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    if (mp->part_count >= MAX_PARTS) {
-        rt_trap("Multipart: too many parts (max 128)");
+    if (!multipart_reserve_parts(mp, mp->part_count + 1)) {
+        rt_trap("Multipart: part storage allocation failed");
         return obj;
     }
 
@@ -678,11 +720,13 @@ int64_t rt_multipart_count(void *obj) {
 // Public API — Parser
 //=============================================================================
 
-/// @brief Parse a received multipart body into a navigable Multipart object. Extracts the boundary
-/// from `content_type` (handles both quoted `"..."` and bare forms), then walks the body finding
-/// `--boundary` delimiters and per-part `Content-Disposition` headers. Captures `name=` and
-/// optional `filename=` attributes; presence of the latter flags the part as a file. Returns an
-/// empty Multipart on missing boundary or empty body — never traps.
+/// @brief Parse a received multipart body into a navigable Multipart object.
+/// @details Extracts the boundary from `content_type` (handles both quoted `"..."` and bare
+///          forms), then walks the body finding `--boundary` delimiters and per-part
+///          `Content-Disposition` headers. Captures `name=` and optional `filename=` attributes;
+///          presence of the latter flags the part as a file. The parser rejects bodies larger
+///          than @c MULTIPART_MAX_PARSED_BODY_BYTES to bound memory amplification. Missing,
+///          invalid, or oversized inputs return an empty Multipart object.
 void *rt_multipart_parse(rt_string content_type, void *body) {
     if (!body)
         return rt_multipart_new();
@@ -713,7 +757,8 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     const uint8_t *data = bytes_data(body);
     if (!data || body_len <= 0)
         return mp;
-    if ((uint64_t)body_len > (uint64_t)SIZE_MAX)
+    if ((uint64_t)body_len > (uint64_t)SIZE_MAX ||
+        (uint64_t)body_len > (uint64_t)MULTIPART_MAX_PARSED_BODY_BYTES)
         return mp;
 
     char delim[140];
@@ -733,7 +778,7 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     if (!p)
         return mp;
 
-    while (p && p < s_end && mp->part_count < MAX_PARTS) {
+    while (p && p < s_end) {
         p += dlen;
         if (p + 1 < s_end && p[0] == '-' && p[1] == '-')
             break; // End boundary
@@ -752,6 +797,7 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         // Parse name from Content-Disposition
         char part_name[256] = {0};
         char part_filename[256] = {0};
+        int has_name = 0;
         int is_file = 0;
         size_t header_len = (size_t)(headers_end - p);
         char *header_text = (char *)malloc(header_len + 1);
@@ -767,7 +813,8 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         char disposition[512] = {0};
         if (multipart_extract_header_value(
                 header_text, "Content-Disposition", disposition, sizeof(disposition))) {
-            multipart_extract_param_value(disposition, "name", part_name, sizeof(part_name));
+            has_name =
+                multipart_extract_param_value(disposition, "name", part_name, sizeof(part_name));
             if (multipart_extract_param_value(
                     disposition, "filename", part_filename, sizeof(part_filename))) {
                 is_file = 1;
@@ -787,11 +834,13 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
             next = s_end;
 
         size_t data_size = (size_t)(next - data_start);
-        if (!part_name[0] || !multipart_header_param_is_valid(part_name) ||
+        if (!has_name || !part_name[0] || !multipart_header_param_is_valid(part_name) ||
             (is_file && !multipart_header_param_is_valid(part_filename))) {
             p = next;
             continue;
         }
+        if (!multipart_reserve_parts(mp, mp->part_count + 1))
+            break;
 
         char *name_copy = strdup(part_name);
         char *filename_copy = is_file ? strdup(part_filename) : NULL;

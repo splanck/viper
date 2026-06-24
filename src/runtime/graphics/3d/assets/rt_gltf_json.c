@@ -22,9 +22,9 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_gltf_json.h"
+#include "rt_numeric.h"
 
 #include <ctype.h>
-#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
@@ -749,7 +749,7 @@ int gltf_json_array_item_range(const char *json,
     return 0;
 }
 
-/// @brief Read the @p item_index-th array element as a double via strtod (@p fallback otherwise).
+/// @brief Read the @p item_index-th array element as a C-locale double (@p fallback otherwise).
 /// @details Rejects string/object/array elements and non-finite results, returning @p fallback.
 double gltf_json_array_get_number(const char *json,
                                   size_t len,
@@ -761,7 +761,6 @@ double gltf_json_array_get_number(const char *json,
     size_t value_end;
     size_t text_len;
     char *text;
-    char *endptr;
     double value;
     if (!gltf_json_array_item_range(
             json, len, array_start, array_end, item_index, &value_start, &value_end))
@@ -778,12 +777,7 @@ double gltf_json_array_get_number(const char *json,
         return fallback;
     memcpy(text, json + value_start, text_len);
     text[text_len] = '\0';
-    endptr = NULL;
-    errno = 0;
-    value = strtod(text, &endptr);
-    while (endptr && *endptr && isspace((unsigned char)*endptr))
-        endptr++;
-    if (endptr == text || (endptr && *endptr != '\0') || errno == ERANGE || !isfinite(value))
+    if (rt_parse_double(text, &value) != (int32_t)Err_None || !isfinite(value))
         value = fallback;
     free(text);
     return value;

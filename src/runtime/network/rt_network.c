@@ -54,6 +54,28 @@ typedef struct rt_tcp_server {
     bool is_listening; // Server state
 } rt_tcp_server_t;
 
+/// @brief Parse a numeric TCP service string returned by `getnameinfo`.
+/// @details The accept path requests `NI_NUMERICSERV`, so successful calls
+///          should return only decimal digits. This helper validates every
+///          byte, rejects overflow, and falls back to 0 for malformed values
+///          rather than accepting `atoi`'s partial parses.
+/// @param service NUL-terminated numeric service string.
+/// @return Port number in the inclusive range [0, 65535], or 0 on invalid input.
+static int parse_numeric_service_port(const char *service) {
+    unsigned int port = 0;
+    if (!service || !*service)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)service; *p; ++p) {
+        if (*p < '0' || *p > '9')
+            return 0;
+        unsigned int digit = (unsigned int)(*p - '0');
+        if (port > (65535u - digit) / 10u)
+            return 0;
+        port = port * 10u + digit;
+    }
+    return (int)port;
+}
+
 int rt_net_cstr_no_embedded_nul(rt_string value, const char **out, size_t *len_out) {
     if (!out || !len_out)
         return 0;
@@ -1118,7 +1140,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
 
     tcp->sock = client_sock;
     tcp->host = host_cstr;
-    tcp->port = atoi(service_buf);
+    tcp->port = parse_numeric_service_port(service_buf);
     tcp->local_port = get_local_port(client_sock);
     tcp->is_open = true;
     tcp->recv_timeout_ms = 0;

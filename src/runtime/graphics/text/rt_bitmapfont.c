@@ -32,6 +32,7 @@
 #include "rt_pixels_internal.h"
 #include "rt_string.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -79,6 +80,52 @@ static rt_bitmapfont_impl *bitmapfont_checked(void *font_ptr) {
 /// @brief Bytes per row for a given pixel width (ceil(width/8)).
 static inline int bf_row_bytes(int width) {
     return (width + 7) / 8;
+}
+
+/// @brief Parse one signed integer token from a BDF metadata field.
+/// @details Uses `strtol` with full-token validation and explicit int-range checks so malformed
+///          fields such as `12px` or overflowing values cannot be partially accepted.
+/// @param text Input cursor; leading spaces and tabs are skipped.
+/// @param out_value Receives the parsed integer on success.
+/// @param out_end Receives the cursor after the parsed token when non-NULL.
+/// @return 1 on success; 0 on malformed input or overflow.
+static int bf_parse_int_token(const char *text, int *out_value, const char **out_end) {
+    if (!text || !out_value)
+        return 0;
+    while (*text == ' ' || *text == '\t')
+        text++;
+    if (*text == '\0')
+        return 0;
+    errno = 0;
+    char *end = NULL;
+    long parsed = strtol(text, &end, 10);
+    if (end == text || errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX)
+        return 0;
+    *out_value = (int)parsed;
+    if (out_end)
+        *out_end = end;
+    return 1;
+}
+
+/// @brief Parse exactly @p count integer fields from a BDF directive payload.
+/// @details After the expected values, only horizontal whitespace is allowed.
+///          This catches truncated directives and extra garbage that `sscanf`
+///          would otherwise ignore.
+/// @param text Directive payload immediately after the keyword.
+/// @param values Output array of at least @p count integers.
+/// @param count Number of integer tokens required.
+/// @return 1 when exactly @p count integers were consumed; otherwise 0.
+static int bf_parse_int_fields(const char *text, int *values, int count) {
+    const char *cursor = text;
+    if (!values || count <= 0)
+        return 0;
+    for (int i = 0; i < count; i++) {
+        if (!bf_parse_int_token(cursor, &values[i], &cursor))
+            return 0;
+    }
+    while (*cursor == ' ' || *cursor == '\t')
+        cursor++;
+    return *cursor == '\0';
 }
 
 static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, int *codepoint_out);
@@ -492,22 +539,58 @@ static void *bitmapfont_load_bdf_as(rt_string path, int64_t class_id) {
         }
 
         if (strncmp(line, "ENCODING ", 9) == 0) {
-            encoding = atoi(line + 9);
+            if (!bf_parse_int_token(line + 9, &encoding, NULL)) {
+                parse_failed = 1;
+                break;
+            }
         } else if (strncmp(line, "BBX ", 4) == 0) {
-            if (sscanf(line + 4, "%d %d %d %d", &bbx_w, &bbx_h, &bbx_xoff, &bbx_yoff) != 4)
-                continue;
+            int values[4];
+            if (!bf_parse_int_fields(line + 4, values, 4)) {
+                parse_failed = 1;
+                break;
+            }
+            bbx_w = values[0];
+            bbx_h = values[1];
+            bbx_xoff = values[2];
+            bbx_yoff = values[3];
         } else if (strncmp(line, "FONTBOUNDINGBOX ", 16) == 0) {
-            sscanf(line + 16, "%d %d", &default_bbx_w, &default_bbx_h);
+            int values[4];
+            if (!bf_parse_int_fields(line + 16, values, 4)) {
+                parse_failed = 1;
+                break;
+            }
+            default_bbx_w = values[0];
+            default_bbx_h = values[1];
+            if (default_bbx_h < INT16_MIN || default_bbx_h > INT16_MAX) {
+                parse_failed = 1;
+                break;
+            }
             if (font->line_height == 0)
                 font->line_height = (int16_t)default_bbx_h;
         } else if (strncmp(line, "FONT_ASCENT ", 12) == 0) {
-            font_ascent = atoi(line + 12);
+            if (!bf_parse_int_token(line + 12, &font_ascent, NULL) || font_ascent < INT16_MIN ||
+                font_ascent > INT16_MAX) {
+                parse_failed = 1;
+                break;
+            }
             font->ascent = (int16_t)font_ascent;
         } else if (strncmp(line, "FONT_DESCENT ", 13) == 0) {
-            int descent = atoi(line + 13);
-            font->line_height = (int16_t)(font_ascent + descent);
+            int descent = 0;
+            if (!bf_parse_int_token(line + 13, &descent, NULL)) {
+                parse_failed = 1;
+                break;
+            }
+            long line_height = (long)font_ascent + (long)descent;
+            if (line_height < INT16_MIN || line_height > INT16_MAX) {
+                parse_failed = 1;
+                break;
+            }
+            font->line_height = (int16_t)line_height;
         } else if (strncmp(line, "DWIDTH ", 7) == 0) {
-            dwidth = atoi(line + 7);
+            if (!bf_parse_int_token(line + 7, &dwidth, NULL)) {
+                parse_failed = 1;
+                break;
+            }
         } else if (strncmp(line, "BITMAP", 6) == 0 && (line[6] == '\0' || line[6] == '\r')) {
             if (bbx_w <= 0)
                 bbx_w = default_bbx_w;

@@ -40,6 +40,7 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -76,6 +77,44 @@ static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
 
     *len = (size_t)len64;
     return (const uint8_t *)pwd_cstr;
+}
+
+/// @brief Borrow a non-empty salt buffer from a Bytes object.
+/// @details KDF wrappers only need read-only salt bytes for the duration of the
+///          call. Borrowing avoids copying potentially large salts while still
+///          validating that the input is present, non-empty, and representable
+///          as a `size_t` span.
+/// @param salt Bytes object containing salt bytes.
+/// @param len Receives salt length on success; set to zero on failure.
+/// @param context Prefix used in trap messages, e.g. "PBKDF2" or "scrypt".
+/// @return Borrowed salt byte pointer, or a stable empty pointer after reporting a trap.
+static const uint8_t *keyderive_salt_bytes(void *salt, size_t *len, const char *context) {
+    if (len)
+        *len = 0;
+    const char *name = context ? context : "KeyDerive";
+    int64_t len64 = salt ? rt_bytes_len(salt) : 0;
+    if (len64 <= 0) {
+        char msg[96];
+        snprintf(msg, sizeof(msg), "%s: salt must not be empty", name);
+        rt_trap(msg);
+        return (const uint8_t *)"";
+    }
+    if ((uint64_t)len64 > (uint64_t)SIZE_MAX) {
+        char msg[96];
+        snprintf(msg, sizeof(msg), "%s: salt length overflow", name);
+        rt_trap(msg);
+        return (const uint8_t *)"";
+    }
+    const uint8_t *data = rt_bytes_data_const(salt);
+    if (!data) {
+        char msg[96];
+        snprintf(msg, sizeof(msg), "%s: salt data is null", name);
+        rt_trap(msg);
+        return (const uint8_t *)"";
+    }
+    if (len)
+        *len = (size_t)len64;
+    return data;
 }
 
 /// SHA256 output size in bytes.
@@ -481,7 +520,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
                                  int64_t key_len) {
     // Validate iterations
     size_t salt_len;
-    uint8_t *salt_data;
+    const uint8_t *salt_data;
 
     if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations are below the policy minimum");
@@ -503,25 +542,18 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
     size_t pwd_len;
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
 
-    salt_data = rt_bytes_extract_raw(salt, &salt_len);
-    if (!salt_data || salt_len == 0) {
-        free(salt_data);
-        rt_trap("PBKDF2: salt must not be empty");
+    salt_data = keyderive_salt_bytes(salt, &salt_len, "PBKDF2");
+    if (!salt_data || salt_len == 0)
         return NULL;
-    }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
-        free(salt_data);
         rt_trap("PBKDF2: memory allocation failed");
         return NULL;
     }
 
     rt_keyderive_pbkdf2_sha256_raw(
         pwd, pwd_len, salt_data, salt_len, (uint32_t)iterations, derived_key, (size_t)key_len);
-
-    if (salt_data)
-        free(salt_data);
 
     // Create Bytes object from derived key
     void *result = rt_bytes_from_raw(derived_key, (size_t)key_len);
@@ -545,7 +577,7 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
                                          int64_t key_len) {
     // Validate iterations
     size_t salt_len;
-    uint8_t *salt_data;
+    const uint8_t *salt_data;
 
     if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations are below the policy minimum");
@@ -567,25 +599,18 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     size_t pwd_len;
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
 
-    salt_data = rt_bytes_extract_raw(salt, &salt_len);
-    if (!salt_data || salt_len == 0) {
-        free(salt_data);
-        rt_trap("PBKDF2: salt must not be empty");
+    salt_data = keyderive_salt_bytes(salt, &salt_len, "PBKDF2");
+    if (!salt_data || salt_len == 0)
         return rt_str_empty();
-    }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
-        free(salt_data);
         rt_trap("PBKDF2: memory allocation failed");
         return rt_str_empty();
     }
 
     rt_keyderive_pbkdf2_sha256_raw(
         pwd, pwd_len, salt_data, salt_len, (uint32_t)iterations, derived_key, (size_t)key_len);
-
-    if (salt_data)
-        free(salt_data);
 
     // Convert to hex string using shared codec utility
     rt_string result = rt_codec_hex_enc_bytes(derived_key, (size_t)key_len);
@@ -655,16 +680,12 @@ void *rt_keyderive_scrypt_sha256(
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
 
     size_t salt_len;
-    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
-    if (!salt_data || salt_len == 0) {
-        free(salt_data);
-        rt_trap("scrypt: salt must not be empty");
+    const uint8_t *salt_data = keyderive_salt_bytes(salt, &salt_len, "scrypt");
+    if (!salt_data || salt_len == 0)
         return NULL;
-    }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
-        free(salt_data);
         rt_trap("scrypt: memory allocation failed");
         return NULL;
     }
@@ -672,7 +693,6 @@ void *rt_keyderive_scrypt_sha256(
     rt_keyderive_scrypt_sha256_raw(
         pwd, pwd_len, salt_data, salt_len, n, r, p, derived_key, (size_t)key_len);
 
-    free(salt_data);
     void *result = rt_bytes_from_raw(derived_key, (size_t)key_len);
     keyderive_secure_zero(derived_key, (size_t)key_len);
     free(derived_key);
@@ -702,16 +722,12 @@ rt_string rt_keyderive_scrypt_sha256_str(
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
 
     size_t salt_len;
-    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
-    if (!salt_data || salt_len == 0) {
-        free(salt_data);
-        rt_trap("scrypt: salt must not be empty");
+    const uint8_t *salt_data = keyderive_salt_bytes(salt, &salt_len, "scrypt");
+    if (!salt_data || salt_len == 0)
         return rt_str_empty();
-    }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
-        free(salt_data);
         rt_trap("scrypt: memory allocation failed");
         return rt_str_empty();
     }
@@ -719,7 +735,6 @@ rt_string rt_keyderive_scrypt_sha256_str(
     rt_keyderive_scrypt_sha256_raw(
         pwd, pwd_len, salt_data, salt_len, n, r, p, derived_key, (size_t)key_len);
 
-    free(salt_data);
     rt_string result = rt_codec_hex_enc_bytes(derived_key, (size_t)key_len);
     keyderive_secure_zero(derived_key, (size_t)key_len);
     free(derived_key);

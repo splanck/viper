@@ -363,7 +363,35 @@ struct vorbis_decoder {
     // Output PCM buffer
     int16_t *pcm_out;
     int pcm_out_cap;
+    char last_error[128];
 };
+
+/// @brief Clear the decoder's last error message.
+/// @param dec Decoder whose diagnostic string should be reset.
+static void vorbis_clear_error(vorbis_decoder_t *dec) {
+    if (dec)
+        dec->last_error[0] = '\0';
+}
+
+/// @brief Store a stable decoder failure reason and return the conventional error code.
+/// @details The Vorbis public decode functions historically return only `-1` on failure.
+///          Keeping a side-channel message lets callers distinguish malformed packets from
+///          unsupported-but-valid Vorbis features without changing those return codes.
+/// @param dec Decoder receiving the diagnostic message.
+/// @param message NUL-terminated static or borrowed message text.
+/// @return Always -1.
+static int vorbis_fail(vorbis_decoder_t *dec, const char *message) {
+    if (dec) {
+        if (!message)
+            message = "Vorbis: decode failed";
+        size_t len = strlen(message);
+        if (len >= sizeof(dec->last_error))
+            len = sizeof(dec->last_error) - 1u;
+        memcpy(dec->last_error, message, len);
+        dec->last_error[len] = '\0';
+    }
+    return -1;
+}
 
 //===----------------------------------------------------------------------===//
 // Window functions
@@ -587,21 +615,23 @@ static int decode_identification(vorbis_decoder_t *dec, const uint8_t *data, siz
     dec->blocksize_1 = 1 << ((blocksizes >> 4) & 0x0F);
 
     if (dec->channels < 1 || dec->channels > VORBIS_MAX_CHANNELS)
-        return -1;
+        return vorbis_fail(dec, "Vorbis: unsupported channel count");
     if (dec->sample_rate <= 0)
-        return -1;
+        return vorbis_fail(dec, "Vorbis: invalid sample rate");
     if (dec->blocksize_0 < 64 || dec->blocksize_1 < dec->blocksize_0)
-        return -1;
+        return vorbis_fail(dec, "Vorbis: unsupported block size");
 
     // Precompute windows
     dec->window_short = make_window(dec->blocksize_0);
     dec->window_long = make_window(dec->blocksize_1);
+    if (!dec->window_short || !dec->window_long)
+        return vorbis_fail(dec, "Vorbis: window allocation failed");
 
     // Allocate overlap buffers
     for (int i = 0; i < dec->channels; i++) {
         dec->overlap[i] = (float *)calloc((size_t)dec->blocksize_1 / 2, sizeof(float));
         if (!dec->overlap[i])
-            return -1;
+            return vorbis_fail(dec, "Vorbis: overlap allocation failed");
     }
 
     return 0;
@@ -771,7 +801,7 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
     for (int i = 0; i < dec->floor_count; i++) {
         int floor_type = (int)bits_read(&bits, 16);
         if (floor_type != 1)
-            return -1; // Only floor type 1 supported
+            return vorbis_fail(dec, "Vorbis: unsupported floor type");
 
         vorbis_floor1_t *fl = &dec->floors[i];
         fl->partitions = (int)bits_read(&bits, 5);
@@ -818,7 +848,7 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
         vorbis_residue_t *res = &dec->residues[i];
         res->type = (int)bits_read(&bits, 16);
         if (res->type > 2)
-            return -1;
+            return vorbis_fail(dec, "Vorbis: unsupported residue type");
         res->begin = (int)bits_read(&bits, 24);
         res->end = (int)bits_read(&bits, 24);
         res->partition_size = (int)bits_read(&bits, 24) + 1;
@@ -855,7 +885,7 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
         vorbis_mapping_t *map = &dec->mappings[i];
         int mapping_type = (int)bits_read(&bits, 16);
         if (mapping_type != 0)
-            return -1;
+            return vorbis_fail(dec, "Vorbis: unsupported mapping type");
 
         map->submaps = 1;
         if (bits_read1(&bits))
@@ -904,9 +934,10 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
         dec->modes[i].windowtype = (int)bits_read(&bits, 16);
         dec->modes[i].transformtype = (int)bits_read(&bits, 16);
         dec->modes[i].mapping = (int)bits_read(&bits, 8);
-        if (dec->modes[i].windowtype != 0 || dec->modes[i].transformtype != 0 ||
-            dec->modes[i].mapping < 0 || dec->modes[i].mapping >= dec->mapping_count)
-            return -1;
+        if (dec->modes[i].windowtype != 0 || dec->modes[i].transformtype != 0)
+            return vorbis_fail(dec, "Vorbis: unsupported mode transform");
+        if (dec->modes[i].mapping < 0 || dec->modes[i].mapping >= dec->mapping_count)
+            return vorbis_fail(dec, "Vorbis: invalid mode mapping");
     }
 
     // Framing bit
@@ -923,6 +954,7 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
 int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len, int packet_num) {
     if (!dec || !data)
         return -1;
+    vorbis_clear_error(dec);
 
     int rc;
     switch (packet_num) {
@@ -995,6 +1027,7 @@ int vorbis_decode_packet(
     vorbis_decoder_t *dec, const uint8_t *data, size_t len, int16_t **out_pcm, int *out_samples) {
     if (!dec || !data || dec->headers_done != 7)
         return -1;
+    vorbis_clear_error(dec);
 
     vorbis_bits_t bits;
     bits_init(&bits, data, len);
@@ -1419,4 +1452,9 @@ int vorbis_get_sample_rate(const vorbis_decoder_t *dec) {
 /// @brief Get the number of audio channels from the Vorbis identification header.
 int vorbis_get_channels(const vorbis_decoder_t *dec) {
     return dec ? dec->channels : 0;
+}
+
+/// @brief Return the most recent decoder diagnostic message.
+const char *vorbis_last_error(const vorbis_decoder_t *dec) {
+    return dec && dec->last_error[0] ? dec->last_error : "";
 }

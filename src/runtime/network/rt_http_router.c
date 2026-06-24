@@ -41,8 +41,8 @@
 // Internal Structures
 //=============================================================================
 
-#define MAX_ROUTE_SEGMENTS 32
-#define MAX_ROUTES 256
+#define INITIAL_ROUTE_CAPACITY 16
+#define INITIAL_ROUTE_SEGMENT_CAPACITY 8
 
 typedef enum {
     SEG_LITERAL, // Exact match: "users"
@@ -58,13 +58,14 @@ typedef struct {
 typedef struct {
     char *method;  // "GET", "POST", etc.
     char *pattern; // Original pattern string
-    segment_t segments[MAX_ROUTE_SEGMENTS];
+    segment_t *segments;
     int segment_count;
 } route_t;
 
 typedef struct {
-    route_t routes[MAX_ROUTES];
+    route_t *routes;
     int route_count;
+    int route_capacity;
 } rt_http_router_impl;
 
 typedef struct {
@@ -76,6 +77,72 @@ typedef struct {
 //=============================================================================
 // Parsing
 //=============================================================================
+
+/// @brief Ensure a route segment array can hold at least @p needed entries.
+/// @details Route patterns are user-facing input, so this helper grows parsed
+///          segment storage geometrically with overflow checks instead of
+///          imposing an arbitrary fixed segment ceiling. Existing segment
+///          contents remain valid if allocation fails.
+/// @param segments In/out segment array pointer.
+/// @param capacity In/out segment capacity in entries.
+/// @param needed Minimum required entry count.
+/// @return 1 when capacity is available; 0 on overflow or OOM.
+static int reserve_route_segments(segment_t **segments, int *capacity, int needed) {
+    if (!segments || !capacity || needed < 0)
+        return 0;
+    if (needed <= *capacity)
+        return 1;
+
+    int new_capacity = *capacity > 0 ? *capacity : INITIAL_ROUTE_SEGMENT_CAPACITY;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > (uint64_t)SIZE_MAX / sizeof(**segments))
+        return 0;
+
+    segment_t *grown = (segment_t *)realloc(*segments, (size_t)new_capacity * sizeof(**segments));
+    if (!grown)
+        return 0;
+    memset(grown + *capacity, 0, (size_t)(new_capacity - *capacity) * sizeof(*grown));
+    *segments = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Ensure the router can hold at least @p needed registered routes.
+/// @details Keeps route registration append-only and first-match order stable
+///          while removing the previous fixed 256-route table. Reallocation
+///          failure leaves the router unchanged so callers can trap cleanly.
+/// @param router Router implementation object.
+/// @param needed Minimum required route count.
+/// @return 1 when capacity is available; 0 on overflow or OOM.
+static int reserve_routes(rt_http_router_impl *router, int needed) {
+    if (!router || needed < 0)
+        return 0;
+    if (needed <= router->route_capacity)
+        return 1;
+
+    int new_capacity = router->route_capacity > 0 ? router->route_capacity : INITIAL_ROUTE_CAPACITY;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((uint64_t)new_capacity > (uint64_t)SIZE_MAX / sizeof(*router->routes))
+        return 0;
+
+    route_t *grown = (route_t *)realloc(router->routes, (size_t)new_capacity * sizeof(*grown));
+    if (!grown)
+        return 0;
+    memset(grown + router->route_capacity,
+           0,
+           (size_t)(new_capacity - router->route_capacity) * sizeof(*grown));
+    router->routes = grown;
+    router->route_capacity = new_capacity;
+    return 1;
+}
 
 /// @brief Parse a URL pattern into typed segments for route matching.
 /// @details Splits `pattern` at each `/` and classifies each non-empty
@@ -94,18 +161,16 @@ typedef struct {
 ///
 ///          A leading `/` is skipped before parsing. Empty segments
 ///          (consecutive slashes like `/users//profile`) are ignored.
-///          The parser stops once `max_segments` is reached; subsequent
-///          path components are not parsed and the caller's segment array
-///          is the truncated view. On malloc failure the segment's
-///          `value` stays NULL but parsing continues — the matcher treats
-///          NULL values as a no-match for that segment.
+///          Segment storage is allocated and grown on demand; on failure all
+///          partially parsed segment values are freed and no truncated route is
+///          registered.
 /// @param pattern Source URL pattern (with or without leading `/`).
-/// @param segments Output array of `max_segments` segments.
-/// @param max_segments Capacity of `segments`.
+/// @param segments_out Output segment array; caller owns and frees via `free_route`.
 /// @return Number of segments parsed (0 if pattern is empty), or -1 on invalid input/OOM.
-static int parse_pattern(const char *pattern, segment_t *segments, int max_segments) {
-    if (!pattern || !segments || max_segments <= 0)
+static int parse_pattern(const char *pattern, segment_t **segments_out) {
+    if (!pattern || !segments_out)
         return -1;
+    *segments_out = NULL;
     if (*pattern == '\0')
         return 0;
 
@@ -114,6 +179,8 @@ static int parse_pattern(const char *pattern, segment_t *segments, int max_segme
         p++; // Skip leading /
 
     int count = 0;
+    int capacity = 0;
+    segment_t *segments = NULL;
     while (*p) {
         const char *end = strchr(p, '/');
         size_t len = end ? (size_t)(end - p) : strlen(p);
@@ -123,45 +190,49 @@ static int parse_pattern(const char *pattern, segment_t *segments, int max_segme
             continue;
         }
 
-        if (count >= max_segments)
+        if (!reserve_route_segments(&segments, &capacity, count + 1))
             goto fail;
 
+        segment_t *segment = &segments[count];
+        memset(segment, 0, sizeof(*segment));
         if (*p == ':' && len > 1) {
-            segments[count].type = SEG_PARAM;
-            segments[count].value = (char *)malloc(len);
-            if (!segments[count].value)
+            segment->type = SEG_PARAM;
+            segment->value = (char *)malloc(len);
+            if (!segment->value)
                 goto fail;
-            memcpy(segments[count].value, p + 1, len - 1);
-            segments[count].value[len - 1] = '\0';
+            memcpy(segment->value, p + 1, len - 1);
+            segment->value[len - 1] = '\0';
         } else if (*p == '*' && len > 1) {
-            segments[count].type = SEG_WILDCARD;
-            segments[count].value = (char *)malloc(len);
-            if (!segments[count].value)
+            segment->type = SEG_WILDCARD;
+            segment->value = (char *)malloc(len);
+            if (!segment->value)
                 goto fail;
-            memcpy(segments[count].value, p + 1, len - 1);
-            segments[count].value[len - 1] = '\0';
+            memcpy(segment->value, p + 1, len - 1);
+            segment->value[len - 1] = '\0';
         } else {
-            segments[count].type = SEG_LITERAL;
+            segment->type = SEG_LITERAL;
             if (len == SIZE_MAX)
                 goto fail;
-            segments[count].value = (char *)malloc(len + 1);
-            if (!segments[count].value)
+            segment->value = (char *)malloc(len + 1);
+            if (!segment->value)
                 goto fail;
-            memcpy(segments[count].value, p, len);
-            segments[count].value[len] = '\0';
+            memcpy(segment->value, p, len);
+            segment->value[len] = '\0';
         }
 
         count++;
         p = end ? end + 1 : p + strlen(p);
     }
 
+    *segments_out = segments;
     return count;
 
 fail:
-    for (int i = 0; i <= count && i < max_segments; i++) {
+    for (int i = 0; i <= count && i < capacity; i++) {
         free(segments[i].value);
         segments[i].value = NULL;
     }
+    free(segments);
     return -1;
 }
 
@@ -271,6 +342,7 @@ static void free_route(route_t *route) {
     free(route->pattern);
     for (int i = 0; i < route->segment_count; i++)
         free(route->segments[i].value);
+    free(route->segments);
     memset(route, 0, sizeof(*route));
 }
 
@@ -281,6 +353,10 @@ static void rt_http_router_finalize(void *obj) {
     rt_http_router_impl *router = (rt_http_router_impl *)obj;
     for (int i = 0; i < router->route_count; i++)
         free_route(&router->routes[i]);
+    free(router->routes);
+    router->routes = NULL;
+    router->route_count = 0;
+    router->route_capacity = 0;
 }
 
 /// @brief GC finalizer for a route-match: free the pattern string and release the params Map.
@@ -299,9 +375,10 @@ static void rt_route_match_finalize(void *obj) {
 // Public API
 //=============================================================================
 
-/// @brief Construct an empty HTTP router. Capacity is fixed at MAX_ROUTES (256); routes are
-/// matched in registration order so register more-specific patterns first. Returns a GC-managed
-/// handle.
+/// @brief Construct an empty HTTP router with growable route storage.
+/// @details Routes are matched in registration order, so register more-specific
+///          patterns first. The route and per-route segment arrays grow as
+///          routes are added and are released by the GC finalizer.
 void *rt_http_router_new(void) {
     rt_http_router_impl *router =
         (rt_http_router_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_router_impl));
@@ -316,7 +393,7 @@ void *rt_http_router_new(void) {
 
 /// @brief Internal: register a `(method, pattern)` route. Parses the pattern into segments
 /// (literal/param/wildcard), allocates per-segment storage, and appends to the routes array.
-/// Traps on null input or pool overflow.
+/// Traps on null input, invalid pattern, or allocation failure.
 static void *add_route(void *obj, const char *method, const char *pattern) {
     if (!obj) {
         rt_trap("HttpRouter: NULL router");
@@ -328,8 +405,8 @@ static void *add_route(void *obj, const char *method, const char *pattern) {
     }
 
     rt_http_router_impl *router = (rt_http_router_impl *)obj;
-    if (router->route_count >= MAX_ROUTES) {
-        rt_trap("HttpRouter: too many routes (max 256)");
+    if (!reserve_routes(router, router->route_count + 1)) {
+        rt_trap("HttpRouter: route storage allocation failed");
         return obj;
     }
 
@@ -342,10 +419,10 @@ static void *add_route(void *obj, const char *method, const char *pattern) {
         rt_trap("HttpRouter: memory allocation failed");
         return obj;
     }
-    route->segment_count = parse_pattern(pattern, route->segments, MAX_ROUTE_SEGMENTS);
+    route->segment_count = parse_pattern(pattern, &route->segments);
     if (route->segment_count < 0) {
         free_route(route);
-        rt_trap("HttpRouter: invalid or too-deep route pattern");
+        rt_trap("HttpRouter: invalid route pattern");
         return obj;
     }
 

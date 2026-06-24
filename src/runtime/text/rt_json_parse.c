@@ -35,11 +35,11 @@
 #include "rt_internal.h"
 #include "rt_json_internal.h"
 #include "rt_map.h"
+#include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
-#include <errno.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -405,10 +405,8 @@ static void *parse_number(json_parser *p) {
     memcpy(num_str, p->input + start, num_len);
     num_str[num_len] = '\0';
 
-    errno = 0;
-    char *endptr = NULL;
-    double value = strtod(num_str, &endptr);
-    if (endptr != num_str + num_len || errno == ERANGE || !isfinite(value)) {
+    double value = 0.0;
+    if (rt_parse_double(num_str, &value) != (int32_t)Err_None || !isfinite(value)) {
         free(num_str);
         parser_error(p, "number out of range");
         return rt_box_f64(0.0);

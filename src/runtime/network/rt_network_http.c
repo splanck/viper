@@ -26,6 +26,7 @@
 #include "rt_compress.h"
 #include "rt_error.h"
 #include "rt_map.h"
+#include "rt_time.h"
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -33,7 +34,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #if RT_PLATFORM_WINDOWS
 #define strcasecmp _stricmp
@@ -315,7 +315,7 @@ static void http_conn_close(http_conn_t *conn) {
 typedef struct http_conn_pool_entry {
     http_conn_t conn;
     char *key;
-    time_t last_used;
+    int64_t last_used_ms;
     int in_use;
 } http_conn_pool_entry_t;
 
@@ -326,6 +326,15 @@ typedef struct http_conn_pool {
     http_pool_mutex_t lock;
     int lock_initialized;
 } http_conn_pool_t;
+
+/// @brief Read the monotonic millisecond clock used by HTTP connection pools.
+/// @details Keep-alive idle eviction is based on elapsed time, not civil time,
+///          so clock corrections cannot prematurely evict or indefinitely retain
+///          sockets.
+/// @return Monotonic milliseconds from the runtime clock's unspecified epoch.
+static int64_t http_pool_now_ms(void) {
+    return rt_clock_ticks_us() / 1000;
+}
 
 static int http_make_pool_key(
     const char *host, int port, int use_tls, int tls_verify, char *buf, size_t buf_len) {
@@ -382,7 +391,7 @@ static void http_conn_pool_entry_reset(http_conn_pool_entry_t *entry) {
     http_conn_close(&entry->conn);
     free(entry->key);
     entry->key = NULL;
-    entry->last_used = 0;
+    entry->last_used_ms = 0;
     entry->in_use = 0;
     memset(&entry->conn, 0, sizeof(entry->conn));
     entry->conn.socket_fd = INVALID_SOCK;
@@ -443,12 +452,16 @@ void rt_http_conn_pool_clear(void *obj) {
     HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
 }
 
-static void http_conn_pool_evict_idle_locked(http_conn_pool_t *pool, time_t now) {
+/// @brief Evict idle HTTP keep-alive entries whose elapsed monotonic age exceeds the limit.
+/// @param pool Locked pool to sweep.
+/// @param now_ms Current monotonic milliseconds.
+static void http_conn_pool_evict_idle_locked(http_conn_pool_t *pool, int64_t now_ms) {
     for (int i = 0; i < pool->count; i++) {
         http_conn_pool_entry_t *entry = &pool->entries[i];
         if (entry->in_use)
             continue;
-        if (difftime(now, entry->last_used) <= HTTP_CONN_POOL_IDLE_TIMEOUT_SEC)
+        int64_t age_ms = now_ms >= entry->last_used_ms ? now_ms - entry->last_used_ms : 0;
+        if (age_ms <= (int64_t)HTTP_CONN_POOL_IDLE_TIMEOUT_SEC * 1000)
             continue;
         http_conn_pool_entry_reset(entry);
     }
@@ -466,7 +479,7 @@ static int http_conn_pool_acquire(
         return 0;
 
     HTTP_POOL_MUTEX_LOCK(&pool->lock);
-    http_conn_pool_evict_idle_locked(pool, time(NULL));
+    http_conn_pool_evict_idle_locked(pool, http_pool_now_ms());
 
     for (int i = 0; i < pool->count; i++) {
         http_conn_pool_entry_t *entry = &pool->entries[i];
@@ -521,7 +534,7 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
             if (entry->in_use) {
                 free(entry->key);
                 entry->key = NULL;
-                entry->last_used = 0;
+                entry->last_used_ms = 0;
                 entry->in_use = 0;
                 memset(&entry->conn, 0, sizeof(entry->conn));
                 entry->conn.socket_fd = INVALID_SOCK;
@@ -543,7 +556,19 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
         http_conn_pool_entry_t *entry = &pool->entries[conn->pool_slot];
         entry->conn = *conn;
         entry->key = entry->key ? entry->key : strdup(conn->pool_key);
-        entry->last_used = time(NULL);
+        if (!entry->key) {
+            http_conn_close(&entry->conn);
+            memset(entry, 0, sizeof(*entry));
+            entry->conn.socket_fd = INVALID_SOCK;
+            entry->conn.pool_slot = -1;
+            http_conn_pool_trim_locked(pool);
+            HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+            memset(conn, 0, sizeof(*conn));
+            conn->socket_fd = INVALID_SOCK;
+            conn->pool_slot = -1;
+            return;
+        }
+        entry->last_used_ms = http_pool_now_ms();
         entry->in_use = 0;
         entry->conn.pool = NULL;
         entry->conn.pool_slot = -1;
@@ -562,7 +587,7 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
             memset(entry, 0, sizeof(*entry));
             entry->conn = *conn;
             entry->key = strdup(conn->pool_key);
-            entry->last_used = time(NULL);
+            entry->last_used_ms = http_pool_now_ms();
             entry->in_use = 0;
             entry->conn.pool = NULL;
             entry->conn.pool_slot = -1;
@@ -1890,19 +1915,39 @@ static int append_response_header_value(void *headers_map, const char *name, con
             size_t existing_len = existing_cstr ? strlen(existing_cstr) : 0;
             size_t value_len = value_cstr ? strlen(value_cstr) : 0;
             size_t sep_len = strlen(sep);
-            char *joined = (char *)malloc(existing_len + sep_len + value_len + 1);
-            if (joined) {
-                memcpy(joined, existing_cstr ? existing_cstr : "", existing_len);
-                memcpy(joined + existing_len, sep, sep_len);
-                memcpy(joined + existing_len + sep_len, value_cstr ? value_cstr : "", value_len);
-                joined[existing_len + sep_len + value_len] = '\0';
-                rt_string merged = rt_string_from_bytes(joined, existing_len + sep_len + value_len);
-                if (merged) {
-                    rt_string_unref(value_str);
-                    value_str = merged;
-                }
-                free(joined);
+            if (existing_len > SIZE_MAX - sep_len ||
+                existing_len + sep_len > SIZE_MAX - value_len ||
+                existing_len + sep_len + value_len == SIZE_MAX) {
+                rt_string_unref(existing_str);
+                free(lower_name);
+                rt_string_unref(name_str);
+                rt_string_unref(value_str);
+                return 0;
             }
+            size_t joined_len = existing_len + sep_len + value_len;
+            char *joined = (char *)malloc(joined_len + 1);
+            if (!joined) {
+                rt_string_unref(existing_str);
+                free(lower_name);
+                rt_string_unref(name_str);
+                rt_string_unref(value_str);
+                return 0;
+            }
+            memcpy(joined, existing_cstr ? existing_cstr : "", existing_len);
+            memcpy(joined + existing_len, sep, sep_len);
+            memcpy(joined + existing_len + sep_len, value_cstr ? value_cstr : "", value_len);
+            joined[joined_len] = '\0';
+            rt_string merged = rt_string_from_bytes(joined, joined_len);
+            free(joined);
+            if (!merged) {
+                rt_string_unref(existing_str);
+                free(lower_name);
+                rt_string_unref(name_str);
+                rt_string_unref(value_str);
+                return 0;
+            }
+            rt_string_unref(value_str);
+            value_str = merged;
             rt_string_unref(existing_str);
         }
     }
@@ -2072,8 +2117,12 @@ static uint8_t *read_body_content_length_conn(http_conn_t *conn,
         *out_len = 0;
         return NULL;
     }
+    if (content_length == 0) {
+        *out_len = 0;
+        return NULL;
+    }
 
-    uint8_t *body = (uint8_t *)malloc(content_length > 0 ? content_length : 1);
+    uint8_t *body = (uint8_t *)malloc(content_length);
     if (!body)
         return NULL;
 
@@ -2250,27 +2299,59 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
         free(chunk_end);
     }
 
+    if (body_len == 0) {
+        free(body);
+        *out_len = 0;
+        return NULL;
+    }
+
     *out_len = body_len;
     return body;
 }
 
+typedef enum http_body_read_status {
+    HTTP_BODY_READ_OK = 0,
+    HTTP_BODY_READ_OOM,
+    HTTP_BODY_READ_TOO_LARGE,
+    HTTP_BODY_READ_IO
+} http_body_read_status_t;
+
 /// @brief Read response body until connection closes.
-static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len) {
+/// @details EOF is a successful delimiter for this HTTP/1.0-style body mode.
+///          `status_out` distinguishes EOF success from allocation, size-limit,
+///          and transport failures.
+static uint8_t *read_body_until_close_conn(http_conn_t *conn,
+                                           size_t *out_len,
+                                           http_body_read_status_t *status_out) {
+    if (status_out)
+        *status_out = HTTP_BODY_READ_OK;
     size_t body_cap = HTTP_BUFFER_SIZE;
     size_t body_len = 0;
     uint8_t *body = (uint8_t *)malloc(body_cap);
-    if (!body)
+    if (!body) {
+        if (status_out)
+            *status_out = HTTP_BODY_READ_OOM;
         return NULL;
+    }
 
     while (1) {
         size_t to_read = HTTP_BUFFER_SIZE;
         if (body_len == HTTP_MAX_BODY_SIZE) {
             uint8_t extra = 0;
             long extra_len = http_conn_recv(conn, &extra, 1);
-            if (extra_len <= 0)
+            if (extra_len == 0)
                 break;
+            if (extra_len < 0) {
+                free(body);
+                *out_len = 0;
+                if (status_out)
+                    *status_out = HTTP_BODY_READ_IO;
+                return NULL;
+            }
             free(body);
             *out_len = 0;
+            if (status_out)
+                *status_out = HTTP_BODY_READ_TOO_LARGE;
             return NULL;
         }
         if (to_read > HTTP_MAX_BODY_SIZE - body_len)
@@ -2285,19 +2366,31 @@ static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len) {
             if (body_cap < body_len + to_read) {
                 free(body);
                 *out_len = 0;
+                if (status_out)
+                    *status_out = HTTP_BODY_READ_TOO_LARGE;
                 return NULL;
             }
             uint8_t *new_body = (uint8_t *)realloc(body, body_cap);
             if (!new_body) {
                 free(body);
+                *out_len = 0;
+                if (status_out)
+                    *status_out = HTTP_BODY_READ_OOM;
                 return NULL;
             }
             body = new_body;
         }
 
         long len = http_conn_recv(conn, body + body_len, to_read);
-        if (len <= 0)
+        if (len == 0)
             break;
+        if (len < 0) {
+            free(body);
+            *out_len = 0;
+            if (status_out)
+                *status_out = HTTP_BODY_READ_IO;
+            return NULL;
+        }
 
         body_len += (size_t)len;
 
@@ -2306,6 +2399,8 @@ static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len) {
         if (body_len > HTTP_MAX_BODY_SIZE) {
             free(body);
             *out_len = 0;
+            if (status_out)
+                *status_out = HTTP_BODY_READ_TOO_LARGE;
             return NULL;
         }
     }
@@ -2893,6 +2988,8 @@ open_connection:
     // Determine how to read body
     size_t body_len = 0;
     uint8_t *body = NULL;
+    int body_read_failed = 0;
+    const char *body_error_msg = "HTTP: incomplete response body";
 
     // Check for Content-Length
     rt_string content_length_key = rt_const_cstr("content-length");
@@ -2946,6 +3043,10 @@ open_connection:
         return NULL;
     } else if (chunked_transfer) {
         body = read_body_chunked_conn(&conn, &body_len);
+        if (!body) {
+            body_read_failed = 1;
+            body_error_msg = "HTTP: invalid chunked response body";
+        }
     } else if (content_length_val) {
         size_t content_len = 0;
         if (parse_content_length_strict(rt_string_cstr(content_length_val), &content_len) != 0) {
@@ -2962,13 +3063,32 @@ open_connection:
             rt_trap_net("HTTP: invalid Content-Length", Err_ProtocolError);
             return NULL;
         }
-        body = read_body_content_length_conn(&conn, content_len, &body_len);
+        if (content_len == 0) {
+            body = NULL;
+            body_len = 0;
+        } else {
+            body = read_body_content_length_conn(&conn, content_len, &body_len);
+            if (!body) {
+                body_read_failed = 1;
+                body_error_msg = "HTTP: incomplete Content-Length response body";
+            }
+        }
     } else {
         // Read until connection closes
-        body = read_body_until_close_conn(&conn, &body_len);
+        http_body_read_status_t close_status = HTTP_BODY_READ_OK;
+        body = read_body_until_close_conn(&conn, &body_len, &close_status);
+        if (close_status != HTTP_BODY_READ_OK) {
+            body_read_failed = 1;
+            if (close_status == HTTP_BODY_READ_TOO_LARGE)
+                body_error_msg = "HTTP: close-delimited response body too large";
+            else if (close_status == HTTP_BODY_READ_OOM)
+                body_error_msg = "HTTP: response body allocation failed";
+            else
+                body_error_msg = "HTTP: close-delimited response read failed";
+        }
     }
 
-    if (!no_body && !body) {
+    if (!no_body && body_read_failed) {
         http_conn_pool_release(&conn, 0);
         if (connection_val)
             rt_string_unref(connection_val);
@@ -2979,7 +3099,7 @@ open_connection:
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
         free(status_text);
-        rt_trap_net("HTTP: incomplete response body", Err_ProtocolError);
+        rt_trap_net(body_error_msg, Err_ProtocolError);
         return NULL;
     }
 

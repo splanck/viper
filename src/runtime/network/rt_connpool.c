@@ -23,13 +23,13 @@
 #include "rt_network.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_time.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -66,13 +66,13 @@ extern int wait_socket(conn_socket_t sock, int timeout_ms, bool for_write);
 //=============================================================================
 
 #define POOL_MAX_ENTRIES 128
-#define POOL_IDLE_TIMEOUT_SEC 60
+#define POOL_IDLE_TIMEOUT_MS (60LL * 1000LL)
 
 typedef struct {
-    void *tcp;        // TCP connection object
-    char *key;        // "host:port" key
-    time_t last_used; // When connection was returned to pool
-    bool in_use;      // Currently checked out
+    void *tcp;            // TCP connection object
+    char *key;            // "host:port" key
+    int64_t last_used_ms; // Monotonic ms tick when connection was returned
+    bool in_use;          // Currently checked out
 } pooled_entry_t;
 
 typedef struct {
@@ -96,6 +96,28 @@ static size_t connpool_host_len_or_zero(rt_string host) {
     if (len <= 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
         return 0;
     return (size_t)len;
+}
+
+/// @brief Read the monotonic millisecond clock used for idle-age bookkeeping.
+/// @details Connection reuse decisions must not depend on wall-clock time:
+///          NTP adjustments, daylight-saving changes, or manual clock edits
+///          should not make idle sockets live forever or expire immediately.
+/// @return Monotonic milliseconds from the runtime clock's unspecified epoch.
+static int64_t connpool_now_ms(void) {
+    return rt_clock_ticks_us() / 1000;
+}
+
+/// @brief Return whether an idle entry has exceeded the pool timeout.
+/// @details Backward clock deltas are clamped to zero defensively even though
+///          the source is monotonic.
+/// @param entry Entry being considered for eviction.
+/// @param now_ms Current monotonic tick in milliseconds.
+/// @return True when the entry is idle long enough to close.
+static bool connpool_entry_is_idle_expired(const pooled_entry_t *entry, int64_t now_ms) {
+    if (!entry || entry->in_use)
+        return false;
+    int64_t age_ms = now_ms >= entry->last_used_ms ? now_ms - entry->last_used_ms : 0;
+    return age_ms > POOL_IDLE_TIMEOUT_MS;
 }
 
 /// @brief Format a "host:port" cache key, bracketing bare IPv6 literals.
@@ -162,7 +184,7 @@ static void remove_entry_at(rt_connpool_impl *pool, int index) {
 ///          stack-allocated.
 /// @return True when the entry was appended; false on capacity or OOM.
 static bool track_connection(
-    rt_connpool_impl *pool, void *tcp, const char *key, bool in_use, time_t last_used) {
+    rt_connpool_impl *pool, void *tcp, const char *key, bool in_use, int64_t last_used_ms) {
     if (!pool || !tcp || !key || pool->count >= pool->max_size)
         return false;
 
@@ -174,7 +196,7 @@ static bool track_connection(
     memset(entry, 0, sizeof(*entry));
     entry->tcp = tcp;
     entry->key = key_copy;
-    entry->last_used = last_used;
+    entry->last_used_ms = last_used_ms;
     entry->in_use = in_use;
     return true;
 }
@@ -270,7 +292,7 @@ void *rt_connpool_new(int64_t max_size) {
 }
 
 /// @brief Acquire a TCP connection to `(host, port)`. Walk-the-pool flow:
-///   1. Evict expired idle entries (`POOL_IDLE_TIMEOUT_SEC` since last_used).
+///   1. Evict expired idle entries (`POOL_IDLE_TIMEOUT_MS` since last_used_ms).
 ///   2. Find an idle entry whose key matches; if its TCP is still healthy, reuse it.
 ///   3. If unhealthy, close + remove and keep searching.
 ///   4. If nothing matches, open a fresh TCP connection and immediately track
@@ -294,10 +316,9 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     POOL_MUTEX_LOCK(&pool->lock);
 
     // Evict expired idle connections
-    time_t now = time(NULL);
+    int64_t now_ms = connpool_now_ms();
     for (int i = 0; i < pool->count; i++) {
-        if (!pool->entries[i].in_use &&
-            difftime(now, pool->entries[i].last_used) > POOL_IDLE_TIMEOUT_SEC) {
+        if (connpool_entry_is_idle_expired(&pool->entries[i], now_ms)) {
             remove_entry_at(pool, i);
             i--;
         }
@@ -334,7 +355,7 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
 /// @brief Return a single connection to the pool, or close it.
 /// @details Locates the entry by pointer identity under the pool mutex.
 ///          - Tracked + healthy: cleared `in_use` and stamped with the
-///            current time so the idle-timeout sweep can later reclaim it.
+///            monotonic clock so the idle-timeout sweep can later reclaim it.
 ///          - Tracked + unhealthy: removed via @ref remove_entry_at so
 ///            the slot doesn't keep a dead fd around.
 ///          - Untracked + healthy: adopted into a free slot if any.
@@ -356,7 +377,7 @@ void rt_connpool_release(void *obj, void *conn) {
                 return;
             }
             pool->entries[i].in_use = false;
-            pool->entries[i].last_used = time(NULL);
+            pool->entries[i].last_used_ms = connpool_now_ms();
             POOL_MUTEX_UNLOCK(&pool->lock);
             return;
         }
@@ -379,7 +400,7 @@ void rt_connpool_release(void *obj, void *conn) {
         bool valid_key = host_str && host_len > 0 &&
                          !connpool_has_embedded_nul(host_str, host_len) && p >= 1 && p <= 65535 &&
                          make_key(host_str, (int)p, key, sizeof(key));
-        if (valid_key && track_connection(pool, conn, key, false, time(NULL))) {
+        if (valid_key && track_connection(pool, conn, key, false, connpool_now_ms())) {
             rt_string_unref(h);
             POOL_MUTEX_UNLOCK(&pool->lock);
             return;

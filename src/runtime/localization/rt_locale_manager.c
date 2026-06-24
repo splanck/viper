@@ -45,6 +45,7 @@
 #include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_locale_data.h"
+#include "rt_locale_manager_internal.h"
 #include "rt_locale_platform.h"
 #include "rt_map.h"
 #include "rt_object.h"
@@ -53,7 +54,6 @@
 #include "rt_string.h"
 #include "rt_threads.h"
 #include "rt_trap.h"
-#include "rt_locale_manager_internal.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -77,7 +77,6 @@ typedef struct loc_registry_entry {
     const rt_locale_data_t *data; ///< borrowed; arena-owned for loaded records
     int is_baked;                 ///< 1 for en-US; 0 for JSON/VPA (freed on unload)
 } loc_registry_entry_t;
-
 
 static struct {
     void *lock;
@@ -480,7 +479,6 @@ static int valid_category_name(const char *s) {
     return s && (strcmp(s, "zero") == 0 || strcmp(s, "one") == 0 || strcmp(s, "two") == 0 ||
                  strcmp(s, "few") == 0 || strcmp(s, "many") == 0 || strcmp(s, "other") == 0);
 }
-
 
 /// @brief Load a fixed-length JSON string array into the arena, falling back to a default.
 /// @details When the field is absent, @p *out is set to @p fallback (no allocation).
@@ -1723,7 +1721,7 @@ rt_string rt_locale_manager_search_path(void) {
 
 /// @brief Append a directory path to the locale JSON search list.
 /// @details Copies the path string so the caller's storage can be freed immediately.
-///          Traps on OOM. Duplicate paths are allowed (not deduplicated).
+///          Traps on OOM or embedded NUL bytes. Duplicate paths are ignored.
 ///          The paths are searched in insertion order by `rt_locale_manager_load`.
 /// @param path rt_string directory path to append; empty or NULL is silently ignored.
 void rt_locale_manager_add_search_path(rt_string path) {
@@ -1732,34 +1730,49 @@ void rt_locale_manager_add_search_path(rt_string path) {
     int64_t len = path ? rt_str_len(path) : 0;
     if (!bytes || len <= 0)
         return;
-    char *copy = (char *)malloc((size_t)len + 1);
-    if (!copy) {
-        rt_trap("Viper.Localization.LocaleManager: search path allocation failed");
+    if ((uint64_t)len > (uint64_t)SIZE_MAX) {
+        rt_trap("Viper.Localization.LocaleManager: search path length overflow");
         return;
     }
-    memcpy(copy, bytes, (size_t)len);
-    copy[len] = '\0';
+    size_t path_len = (size_t)len;
+    if (memchr(bytes, '\0', path_len)) {
+        rt_trap("Viper.Localization.LocaleManager: search path contains embedded NUL");
+        return;
+    }
 
     rt_rwlock_write_enter(g_mgr.lock);
+    for (size_t i = 0; i < g_mgr.search_count; ++i) {
+        if (strlen(g_mgr.search_paths[i]) == path_len &&
+            memcmp(g_mgr.search_paths[i], bytes, path_len) == 0) {
+            rt_rwlock_write_exit(g_mgr.lock);
+            return;
+        }
+    }
     if (g_mgr.search_count == g_mgr.search_capacity) {
         size_t new_cap = g_mgr.search_capacity == 0 ? 4 : g_mgr.search_capacity * 2;
         if (g_mgr.search_capacity > SIZE_MAX / 2 ||
             new_cap > SIZE_MAX / sizeof(*g_mgr.search_paths)) {
             rt_rwlock_write_exit(g_mgr.lock);
-            free(copy);
             rt_trap("Viper.Localization.LocaleManager: search path capacity overflow");
             return;
         }
         char **new_paths = (char **)realloc(g_mgr.search_paths, new_cap * sizeof(*new_paths));
         if (!new_paths) {
             rt_rwlock_write_exit(g_mgr.lock);
-            free(copy);
             rt_trap("Viper.Localization.LocaleManager: search path grow failed");
             return;
         }
         g_mgr.search_paths = new_paths;
         g_mgr.search_capacity = new_cap;
     }
+    char *copy = (char *)malloc(path_len + 1);
+    if (!copy) {
+        rt_rwlock_write_exit(g_mgr.lock);
+        rt_trap("Viper.Localization.LocaleManager: search path allocation failed");
+        return;
+    }
+    memcpy(copy, bytes, path_len);
+    copy[path_len] = '\0';
     g_mgr.search_paths[g_mgr.search_count++] = copy;
     rt_rwlock_write_exit(g_mgr.lock);
 }

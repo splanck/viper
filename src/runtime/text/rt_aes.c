@@ -24,8 +24,8 @@
 //     the GCM AAD, so altering it invalidates the tag.
 //   - aes_combine_aad composes the application-provided AAD with the magic
 //     header so the GCM tag authenticates both.
-//   - This implementation is NOT hardened against cache-timing attacks; do not
-//     use in contexts requiring constant-time cryptographic guarantees.
+//   - AES S-box substitutions use a constant-access scan helper instead of
+//     indexing lookup tables by secret data.
 //
 // Ownership/Lifetime:
 //   - Returned ciphertext and plaintext rt_bytes are fresh allocations owned
@@ -225,6 +225,29 @@ static const uint8_t rcon[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40,
 // AES Helper Functions
 //=============================================================================
 
+/// @brief Return 0xFF when @p a equals @p b, otherwise 0x00, without branching.
+/// @details Used by constant-access S-box lookup so secret state/key bytes do
+///          not select a cache line directly.
+static uint8_t aes_ct_mask_eq_u8(uint8_t a, uint8_t b) {
+    uint8_t x = (uint8_t)(a ^ b);
+    x |= (uint8_t)(x >> 4);
+    x |= (uint8_t)(x >> 2);
+    x |= (uint8_t)(x >> 1);
+    return (uint8_t)(0u - (uint8_t)((x ^ 1u) & 1u));
+}
+
+/// @brief Constant-access lookup into a 256-byte AES substitution table.
+/// @details Scans every table entry and masks in only the requested byte. This
+///          avoids a data-dependent table index for key expansion, SubBytes, and
+///          inverse SubBytes at the cost of extra work per substituted byte.
+static uint8_t aes_ct_table_lookup(const uint8_t table[256], uint8_t index) {
+    const volatile uint8_t *vtable = (const volatile uint8_t *)table;
+    uint8_t out = 0;
+    for (uint16_t i = 0; i < 256; i++)
+        out |= (uint8_t)(vtable[i] & aes_ct_mask_eq_u8((uint8_t)i, index));
+    return out;
+}
+
 /// @brief Multiply by 2 in GF(2⁸) using AES's irreducible polynomial `x⁸ + x⁴ + x³ + x + 1`.
 /// @details Left-shift by 1, then conditionally XOR with `0x1b` (the
 ///          low byte of the polynomial) when the high bit was set —
@@ -409,16 +432,16 @@ static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr) {
         if (i % nk == 0) {
             // RotWord + SubWord + Rcon
             uint8_t t = temp[0];
-            temp[0] = sbox[temp[1]] ^ rcon[i / nk];
-            temp[1] = sbox[temp[2]];
-            temp[2] = sbox[temp[3]];
-            temp[3] = sbox[t];
+            temp[0] = aes_ct_table_lookup(sbox, temp[1]) ^ rcon[i / nk];
+            temp[1] = aes_ct_table_lookup(sbox, temp[2]);
+            temp[2] = aes_ct_table_lookup(sbox, temp[3]);
+            temp[3] = aes_ct_table_lookup(sbox, t);
         } else if (nk > 6 && i % nk == 4) {
             // Extra SubWord for AES-256
-            temp[0] = sbox[temp[0]];
-            temp[1] = sbox[temp[1]];
-            temp[2] = sbox[temp[2]];
-            temp[3] = sbox[temp[3]];
+            temp[0] = aes_ct_table_lookup(sbox, temp[0]);
+            temp[1] = aes_ct_table_lookup(sbox, temp[1]);
+            temp[2] = aes_ct_table_lookup(sbox, temp[2]);
+            temp[3] = aes_ct_table_lookup(sbox, temp[3]);
         }
 
         w[4 * i + 0] = w[4 * (i - nk) + 0] ^ temp[0];
@@ -440,7 +463,7 @@ static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr) {
 ///          differential cryptanalysis.
 static void sub_bytes(uint8_t *state) {
     for (int i = 0; i < 16; i++)
-        state[i] = sbox[state[i]];
+        state[i] = aes_ct_table_lookup(sbox, state[i]);
 }
 
 /// @brief Inverse of `SubBytes` — replace every byte via the inverse S-box.
@@ -448,7 +471,7 @@ static void sub_bytes(uint8_t *state) {
 ///          is the same number of operations as encryption.
 static void inv_sub_bytes(uint8_t *state) {
     for (int i = 0; i < 16; i++)
-        state[i] = inv_sbox[state[i]];
+        state[i] = aes_ct_table_lookup(inv_sbox, state[i]);
 }
 
 /// @brief AES `ShiftRows` step — cyclically rotate each row of the 4×4 state.

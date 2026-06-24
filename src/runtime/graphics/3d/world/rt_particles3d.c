@@ -1018,6 +1018,66 @@ static int particle3d_sort_key_desc(const void *a, const void *b) {
     return 0;
 }
 
+/// @brief Return true when sort keys are already in back-to-front draw order.
+/// @details Particle systems often move coherently frame-to-frame, so the previous draw order
+///          remains sorted for small camera/particle deltas. Detecting that case avoids a full
+///          `qsort` call and keeps deterministic tie ordering by comparing index values too.
+/// @param keys Sort-key array to inspect.
+/// @param count Number of keys in @p keys.
+/// @return 1 when the array is already descending by depth with ascending index ties.
+static int particles3d_sort_keys_already_descending(const particle3d_sort_key *keys,
+                                                    int32_t count) {
+    if (!keys || count <= 1)
+        return 1;
+    for (int32_t i = 1; i < count; i++) {
+        const particle3d_sort_key *prev = &keys[i - 1];
+        const particle3d_sort_key *cur = &keys[i];
+        if (prev->view_depth < cur->view_depth)
+            return 0;
+        if (prev->view_depth == cur->view_depth && prev->index > cur->index)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Sort a small particle key array with insertion sort.
+/// @details For the common case of a few dozen transparent particles, insertion sort avoids the
+///          indirect comparator overhead of `qsort` and performs well on nearly sorted input.
+/// @param keys Sort-key array to reorder in place.
+/// @param count Number of keys in @p keys.
+static void particles3d_insertion_sort_keys_desc(particle3d_sort_key *keys, int32_t count) {
+    if (!keys || count <= 1)
+        return;
+    for (int32_t i = 1; i < count; i++) {
+        particle3d_sort_key key = keys[i];
+        int32_t j = i - 1;
+        while (j >= 0) {
+            int after = keys[j].view_depth < key.view_depth ||
+                        (keys[j].view_depth == key.view_depth && keys[j].index > key.index);
+            if (!after)
+                break;
+            keys[j + 1] = keys[j];
+            j--;
+        }
+        keys[j + 1] = key;
+    }
+}
+
+/// @brief Sort particle keys back-to-front using the cheapest appropriate strategy.
+/// @details Skips work when keys are already ordered, uses insertion sort for small batches, and
+///          falls back to `qsort` for larger unordered alpha-blended emitters.
+/// @param keys Sort-key array to reorder in place.
+/// @param count Number of keys in @p keys.
+static void particles3d_sort_keys_back_to_front(particle3d_sort_key *keys, int32_t count) {
+    if (!keys || count <= 1 || particles3d_sort_keys_already_descending(keys, count))
+        return;
+    if (count <= 32) {
+        particles3d_insertion_sort_keys_desc(keys, count);
+        return;
+    }
+    qsort(keys, (size_t)count, sizeof(*keys), particle3d_sort_key_desc);
+}
+
 /// @brief Ensure the persistent particle-sort scratch buffer holds @p count keys.
 /// @details Returning failure aborts alpha particle rendering for the frame instead of silently
 ///   falling back to unsorted transparent quads, because that fallback causes obvious flicker.
@@ -1280,7 +1340,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                 if (!isfinite(sort_keys[i].view_depth))
                     sort_keys[i].view_depth = 0.0;
             }
-            qsort(sort_keys, (size_t)ps->count, sizeof(*sort_keys), particle3d_sort_key_desc);
+            particles3d_sort_keys_back_to_front(sort_keys, ps->count);
         }
     }
 

@@ -1206,6 +1206,7 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
 /// @details Content and I/O failures set asset diagnostics and return NULL. Allocation failure
 ///          still traps because it is a runtime resource failure, not bad content.
 static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
+    uint64_t max_file_bytes = fbx_max_file_bytes();
     FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "FBX.Load: '%s' not found", cpath);
@@ -1232,7 +1233,7 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
         rt_asset_error_setf(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: '%s' is too small", cpath);
         return NULL;
     }
-    if ((uint64_t)fsize > RT_FBX_MAX_FILE_BYTES || (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
+    if ((uint64_t)fsize > max_file_bytes || (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
         fclose(f);
         rt_asset_error_setf(RT_ASSET_ERROR_TOO_LARGE, "FBX.Load: '%s' is too large", cpath);
         return NULL;
@@ -1565,6 +1566,7 @@ void *rt_fbx_load(rt_string path) {
 /// @param out_size Receives the number of bytes read when the function succeeds.
 /// @return Heap buffer containing the file bytes plus a trailing NUL, or NULL.
 static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
+    uint64_t max_file_bytes = fbx_max_file_bytes();
     if (out_size)
         *out_size = 0;
     if (!path || !out_size)
@@ -1584,11 +1586,10 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
         return NULL;
     }
     int64_t fsize = rt_file_stdio_tell64(f);
-    if (fsize < 27 || (uint64_t)fsize > RT_FBX_MAX_FILE_BYTES ||
-        (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
+    if (fsize < 27 || (uint64_t)fsize > max_file_bytes || (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
         fclose(f);
-        rt_asset_error_setf(fsize > (int64_t)RT_FBX_MAX_FILE_BYTES ? RT_ASSET_ERROR_TOO_LARGE
-                                                                   : RT_ASSET_ERROR_BAD_MAGIC,
+        rt_asset_error_setf((uint64_t)fsize > max_file_bytes ? RT_ASSET_ERROR_TOO_LARGE
+                                                             : RT_ASSET_ERROR_BAD_MAGIC,
                             "FBX.Load: '%s' is not a supported FBX",
                             cpath);
         return NULL;

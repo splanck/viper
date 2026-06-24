@@ -111,6 +111,43 @@ static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
     return (const uint8_t *)cstr;
 }
 
+/// @brief Borrow the immutable payload and length from a Bytes object.
+/// @details NULL is treated as an empty byte array for compatibility with the
+///          public Bytes hash APIs. Non-empty Bytes objects must expose a
+///          non-NULL backing pointer. Invalid lengths or missing backing data
+///          trap with @p context and return an empty buffer if trap recovery is
+///          active.
+/// @param bytes Candidate Bytes object, or NULL for empty input.
+/// @param len Receives the byte length on success, or zero on failure.
+/// @param context Public API name used in trap messages.
+/// @return Borrowed immutable byte pointer valid for the duration of the call.
+static const uint8_t *hash_bytes_data(void *bytes, size_t *len, const char *context) {
+    const char *api = context ? context : "Hash.Bytes";
+    if (!len) {
+        rt_trap("Hash.Bytes: internal length pointer is null");
+        return (const uint8_t *)"";
+    }
+
+    int64_t len64 = bytes ? rt_bytes_len(bytes) : 0;
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
+        rt_trap(api);
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+
+    *len = (size_t)len64;
+    if (*len == 0)
+        return (const uint8_t *)"";
+
+    const uint8_t *data = rt_bytes_data_const(bytes);
+    if (!data) {
+        rt_trap(api);
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+    return data;
+}
+
 //=============================================================================
 // MD5 Implementation (RFC 1321)
 //=============================================================================
@@ -697,7 +734,7 @@ rt_string rt_hash_md5(rt_string str) {
 /// @return A 32-character lowercase hex string representing the MD5 hash.
 ///
 /// @note O(n) time complexity where n is the byte array length.
-/// @note Creates a temporary copy of the data for hashing.
+/// @note Borrows the Bytes backing buffer for hashing; no temporary data copy is made.
 ///
 /// @see rt_hash_md5 For hashing strings
 /// @see rt_hash_sha256_bytes For a secure alternative
@@ -705,10 +742,9 @@ rt_string rt_hash_md5_bytes(void *bytes) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.MD5Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t len;
-    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
+    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.MD5Bytes: invalid Bytes object");
     uint8_t digest[16];
-    compute_md5(data ? data : (const uint8_t *)"", len, digest);
-    free(data);
+    compute_md5(data, len, digest);
     return rt_codec_hex_enc_bytes(digest, 16);
 }
 
@@ -785,7 +821,7 @@ rt_string rt_hash_sha1(rt_string str) {
 /// @return A 40-character lowercase hex string representing the SHA-1 hash.
 ///
 /// @note O(n) time complexity where n is the byte array length.
-/// @note Creates a temporary copy of the data for hashing.
+/// @note Borrows the Bytes backing buffer for hashing; no temporary data copy is made.
 ///
 /// @see rt_hash_sha1 For hashing strings
 /// @see rt_hash_sha256_bytes For a secure alternative
@@ -794,10 +830,9 @@ rt_string rt_hash_sha1_bytes(void *bytes) {
                               "Hash.SHA1Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t len;
-    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
+    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.SHA1Bytes: invalid Bytes object");
     uint8_t digest[20];
-    compute_sha1(data ? data : (const uint8_t *)"", len, digest);
-    free(data);
+    compute_sha1(data, len, digest);
     return rt_codec_hex_enc_bytes(digest, 20);
 }
 
@@ -851,7 +886,8 @@ rt_string rt_hash_sha1_bytes(void *bytes) {
 ///
 /// @note O(n) time complexity where n is input length.
 /// @note Always returns exactly 64 characters.
-/// @note Suitable for all security applications.
+/// @note Suitable for integrity checks and as a digest primitive; use HMAC/KDF APIs for MACs,
+///       passwords, and key derivation.
 ///
 /// @see rt_hash_sha256_bytes For hashing Bytes objects
 /// @see rt_hash_md5 For legacy/checksum uses (NOT secure)
@@ -894,17 +930,17 @@ rt_string rt_hash_sha256(rt_string str) {
 /// @return A 64-character lowercase hex string representing the SHA-256 hash.
 ///
 /// @note O(n) time complexity where n is the byte array length.
-/// @note Creates a temporary copy of the data for hashing.
-/// @note Suitable for all security applications.
+/// @note Borrows the Bytes backing buffer for hashing; no temporary data copy is made.
+/// @note Suitable for integrity checks and as a digest primitive; use HMAC/KDF APIs for MACs,
+///       passwords, and key derivation.
 ///
 /// @see rt_hash_sha256 For hashing strings
 /// @see rt_hash_md5_bytes For legacy/checksum uses (NOT secure)
 rt_string rt_hash_sha256_bytes(void *bytes) {
     size_t len;
-    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
+    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.SHA256Bytes: invalid Bytes object");
     uint8_t hash[32];
-    compute_sha256(data ? data : (const uint8_t *)"", len, hash);
-    free(data);
+    compute_sha256(data, len, hash);
     return rt_codec_hex_enc_bytes(hash, 32);
 }
 
@@ -1005,7 +1041,7 @@ int64_t rt_hash_crc32(rt_string str) {
 ///
 /// @note O(n) time complexity where n is the byte array length.
 /// @note Very fast compared to cryptographic hashes.
-/// @note Creates a temporary copy of the data for processing.
+/// @note Borrows the Bytes backing buffer for checksum calculation; no temporary data copy is made.
 ///
 /// @see rt_hash_crc32 For computing CRC32 of strings
 /// @see rt_hash_sha256_bytes For security-sensitive applications
@@ -1014,9 +1050,8 @@ int64_t rt_hash_crc32_bytes(void *bytes) {
                               "Hash.CRC32Bytes is disabled in approved mode"))
         return 0;
     size_t len;
-    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
-    uint32_t result = rt_crc32_compute(data ? data : (const uint8_t *)"", len);
-    free(data);
+    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.CRC32Bytes: invalid Bytes object");
+    uint32_t result = rt_crc32_compute(data, len);
     return (int64_t)result;
 }
 
@@ -1233,22 +1268,13 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data) {
                               "Hash.HmacMD5Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t key_len, data_len;
-    uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
-    uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
+    const uint8_t *key_data =
+        hash_bytes_data(key, &key_len, "Hash.HmacMD5Bytes: invalid key Bytes object");
+    const uint8_t *msg_data =
+        hash_bytes_data(data, &data_len, "Hash.HmacMD5Bytes: invalid data Bytes object");
 
     uint8_t digest[16];
-    hmac_md5_raw(key_data ? key_data : (const uint8_t *)"",
-                 key_len,
-                 msg_data ? msg_data : (const uint8_t *)"",
-                 data_len,
-                 digest);
-
-    if (key_data) {
-        hash_secure_zero(key_data, key_len);
-        free(key_data);
-    }
-    if (msg_data)
-        free(msg_data);
+    hmac_md5_raw(key_data, key_len, msg_data, data_len, digest);
 
     return rt_codec_hex_enc_bytes(digest, 16);
 }
@@ -1272,22 +1298,13 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data) {
                               "Hash.HmacSHA1Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t key_len, data_len;
-    uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
-    uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
+    const uint8_t *key_data =
+        hash_bytes_data(key, &key_len, "Hash.HmacSHA1Bytes: invalid key Bytes object");
+    const uint8_t *msg_data =
+        hash_bytes_data(data, &data_len, "Hash.HmacSHA1Bytes: invalid data Bytes object");
 
     uint8_t digest[20];
-    hmac_sha1_raw(key_data ? key_data : (const uint8_t *)"",
-                  key_len,
-                  msg_data ? msg_data : (const uint8_t *)"",
-                  data_len,
-                  digest);
-
-    if (key_data) {
-        hash_secure_zero(key_data, key_len);
-        free(key_data);
-    }
-    if (msg_data)
-        free(msg_data);
+    hmac_sha1_raw(key_data, key_len, msg_data, data_len, digest);
 
     return rt_codec_hex_enc_bytes(digest, 20);
 }
@@ -1306,22 +1323,13 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data) {
 /// @brief Compute HMAC-SHA256 of Bytes data with Bytes key.
 rt_string rt_hash_hmac_sha256_bytes(void *key, void *data) {
     size_t key_len, data_len;
-    uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
-    uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
+    const uint8_t *key_data =
+        hash_bytes_data(key, &key_len, "Hash.HmacSHA256Bytes: invalid key Bytes object");
+    const uint8_t *msg_data =
+        hash_bytes_data(data, &data_len, "Hash.HmacSHA256Bytes: invalid data Bytes object");
 
     uint8_t digest[32];
-    rt_hash_hmac_sha256_raw(key_data ? key_data : (const uint8_t *)"",
-                            key_len,
-                            msg_data ? msg_data : (const uint8_t *)"",
-                            data_len,
-                            digest);
-
-    if (key_data) {
-        hash_secure_zero(key_data, key_len);
-        free(key_data);
-    }
-    if (msg_data)
-        free(msg_data);
+    rt_hash_hmac_sha256_raw(key_data, key_len, msg_data, data_len, digest);
 
     return rt_codec_hex_enc_bytes(digest, 32);
 }
@@ -1363,21 +1371,16 @@ int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
 
 /// @brief Public Viper.Crypto.Hash.ConstantTimeEqualsBytes — branch-free byte-array equality.
 /// @details Same semantics as rt_hash_constant_time_equals but for raw byte
-///          arrays. NULL data with non-NULL length is normalized to an empty
-///          buffer so the comparison still produces a sensible result. A
-///          negative length on either side returns 0.
+///          arrays. NULL is treated as an empty byte array; invalid non-empty
+///          Bytes objects trap instead of being silently compared as empty.
 /// @return 1 if the buffers are byte-for-byte equal, 0 otherwise.
 int8_t rt_hash_constant_time_equals_bytes(void *a, void *b) {
-    int64_t a_len64 = rt_bytes_len(a);
-    int64_t b_len64 = rt_bytes_len(b);
-    if (a_len64 < 0 || b_len64 < 0)
-        return 0;
-    const uint8_t *a_data = rt_bytes_data_const(a);
-    const uint8_t *b_data = rt_bytes_data_const(b);
-    return fixed_time_eq(a_data ? a_data : (const uint8_t *)"",
-                         (size_t)a_len64,
-                         b_data ? b_data : (const uint8_t *)"",
-                         (size_t)b_len64);
+    size_t a_len, b_len;
+    const uint8_t *a_data =
+        hash_bytes_data(a, &a_len, "Hash.ConstantTimeEqualsBytes: invalid first Bytes object");
+    const uint8_t *b_data =
+        hash_bytes_data(b, &b_len, "Hash.ConstantTimeEqualsBytes: invalid second Bytes object");
+    return fixed_time_eq(a_data, a_len, b_data, b_len);
 }
 
 //=============================================================================
@@ -1404,16 +1407,11 @@ int64_t rt_hash_fast_bytes(void *bytes) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_SIPHASH,
                               "Hash.FastBytes is disabled in approved mode"))
         return 0;
-    if (!bytes)
-        return (int64_t)rt_fnv1a("", 0);
     size_t len;
-    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
-    if (!data || len == 0) {
-        free(data);
+    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.FastBytes: invalid Bytes object");
+    if (len == 0)
         return (int64_t)rt_fnv1a("", 0);
-    }
     int64_t result = (int64_t)rt_fnv1a(data, len);
-    free(data);
     return result;
 }
 

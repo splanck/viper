@@ -1362,8 +1362,17 @@ void rt_https_server_start(void *obj) {
         return;
     }
     server->port = rt_tcp_server_port(server->tcp_server);
-    if (!server->worker_pool)
+    if (!server->worker_pool) {
         server->worker_pool = rt_threadpool_new(8);
+        if (!server->worker_pool) {
+            rt_tcp_server_close(server->tcp_server);
+            if (rt_obj_release_check0(server->tcp_server))
+                rt_obj_free(server->tcp_server);
+            server->tcp_server = NULL;
+            rt_trap("HttpsServer: worker pool allocation failed");
+            return;
+        }
+    }
     https_server_state_lock(server);
     server->running = true;
     https_server_state_unlock(server);
@@ -1434,10 +1443,17 @@ void rt_https_server_stop(void *obj) {
 
     if (had_thread) {
 #ifdef _WIN32
-        WaitForSingleObject(accept_thread, INFINITE);
+        DWORD accept_thread_id = accept_thread ? GetThreadId(accept_thread) : 0;
+        int stopping_from_accept_thread =
+            accept_thread_id != 0 && accept_thread_id == GetCurrentThreadId();
+        if (!stopping_from_accept_thread)
+            WaitForSingleObject(accept_thread, INFINITE);
         CloseHandle(accept_thread);
 #else
-        pthread_join(accept_thread, NULL);
+        if (pthread_equal(pthread_self(), accept_thread) != 0)
+            pthread_detach(accept_thread);
+        else
+            pthread_join(accept_thread, NULL);
 #endif
     }
 
@@ -1451,7 +1467,7 @@ void rt_https_server_stop(void *obj) {
     if (listener && rt_obj_release_check0(listener))
         rt_obj_free(listener);
 
-    if (server->worker_pool)
+    if (server->worker_pool && rt_threadpool_current_worker_pool() != server->worker_pool)
         rt_threadpool_wait(server->worker_pool);
 }
 

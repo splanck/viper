@@ -33,6 +33,7 @@
 #include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_map.h"
+#include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -397,12 +398,11 @@ void *parse_scalar(const char *str, size_t len) {
             return rt_string_from_bytes(str, (int64_t)len);
         }
 
-        // Try numeric floats. Gate strtod so C-only tokens like `inf`/`nan`
+        // Try numeric floats. Gate the C-locale parser so C-only tokens like `inf`/`nan`
         // are not accepted as YAML scalars; YAML special floats are handled below.
         if (looks_like_decimal_float(buf, len)) {
-            errno = 0;
-            double fval = strtod(buf, &end);
-            if (*end == '\0' && errno != ERANGE) {
+            double fval = 0.0;
+            if (rt_parse_double(buf, &fval) == (int32_t)Err_None && isfinite(fval)) {
                 free(buf);
                 return rt_box_f64(fval);
             }

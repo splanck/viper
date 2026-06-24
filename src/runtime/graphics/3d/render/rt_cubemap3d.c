@@ -558,11 +558,13 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
 }
 
 /// @brief Roughness-aware cubemap sample that fakes a prefiltered environment map.
-/// @details Blurs the reflection by taking nine weighted taps around the base
+/// @details Blurs the reflection by taking weighted taps around the base
 ///   direction in the local tangent plane — center tap plus four axis-aligned
-///   and four diagonal taps, weights biased toward the center. The `spread`
+///   taps, with four diagonal taps added for medium/high roughness. The `spread`
 ///   angle grows with `roughness`, widening the taps so rougher surfaces
-///   receive a softer, more integrated reflection. For `roughness <= 0.001`
+///   receive a softer, more integrated reflection. Low roughness uses the
+///   cheaper five-tap path because the diagonal taps converge closely to the
+///   sharp sample. For `roughness <= 0.001`
 ///   we short-circuit to the sharp `rt_cubemap_sample` path. This is a CPU
 ///   approximation of the split-sum / prefiltered environment map trick used
 ///   by physically-based renderers and avoids the need to precompute per-mip
@@ -600,6 +602,7 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
     float accum_b = 0.0f;
     float total_w = 0.0f;
     float spread;
+    int tap_count;
 
     if (!out_r || !out_g || !out_b) {
         return;
@@ -645,7 +648,8 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
     bz = dx * ty - dy * tx;
 
     spread = roughness * roughness * 1.25f;
-    for (int i = 0; i < 9; i++) {
+    tap_count = roughness < 0.35f ? 5 : 9;
+    for (int i = 0; i < tap_count; i++) {
         float sample_dx = dx + tx * k_offsets[i][0] * spread + bx * k_offsets[i][1] * spread;
         float sample_dy = dy + ty * k_offsets[i][0] * spread + by * k_offsets[i][1] * spread;
         float sample_dz = dz + tz * k_offsets[i][0] * spread + bz * k_offsets[i][1] * spread;

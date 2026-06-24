@@ -58,11 +58,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(_WIN32)
 #include <locale.h>
-#else
-#include <locale.h>
-#endif
 
 //===----------------------------------------------------------------------===//
 // Rounding modes
@@ -118,6 +114,28 @@ static rounding_mode_t rounding_mode_parse(const char *s) {
     return ROUND_HALF_EVEN;
 }
 
+/// @brief Return a cached process-wide C numeric locale object.
+/// @details The locale object is immutable after creation and intentionally
+///          retained for process lifetime. A benign first-use race can allocate
+///          more than once on heavily concurrent startup, but all callers receive
+///          equivalent C-locale semantics and steady-state calls avoid allocation.
+/// @return Platform C-locale object, or NULL / zero when allocation failed.
+#if defined(_WIN32)
+static _locale_t loc_cached_c_locale(void) {
+    static _locale_t c_locale = NULL;
+    if (!c_locale)
+        c_locale = _create_locale(LC_NUMERIC, "C");
+    return c_locale;
+}
+#else
+static locale_t loc_cached_c_locale(void) {
+    static locale_t c_locale = (locale_t)0;
+    if (!c_locale)
+        c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    return c_locale;
+}
+#endif
+
 /// @brief vsnprintf forced through the "C" LC_NUMERIC locale so the decimal
 ///        separator is always '.' regardless of the process/thread locale.
 /// @details This is the foundation of deterministic numeric formatting: digits
@@ -132,12 +150,10 @@ static int loc_vsnprintf_c(char *out, size_t cap, const char *fmt, va_list args)
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
 #endif
 #if defined(_WIN32)
-    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    _locale_t c_locale = loc_cached_c_locale();
     int n = c_locale ? _vsnprintf_l(out, cap, fmt, c_locale, args) : vsnprintf(out, cap, fmt, args);
-    if (c_locale)
-        _free_locale(c_locale);
 #else
-    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    locale_t c_locale = loc_cached_c_locale();
     int n;
     if (!c_locale) {
         n = vsnprintf(out, cap, fmt, args);
@@ -149,7 +165,6 @@ static int loc_vsnprintf_c(char *out, size_t cap, const char *fmt, va_list args)
             n = vsnprintf(out, cap, fmt, args);
             uselocale(old);
         }
-        freelocale(c_locale);
     }
 #endif
 #if defined(__clang__)
@@ -204,24 +219,21 @@ static char *loc_sprintf_alloc_c(size_t *out_len, const char *fmt, ...) {
 ///        locale object cannot be created.
 static double loc_strtod_c(const char *input, char **endptr) {
 #if defined(_WIN32)
-    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    _locale_t c_locale = loc_cached_c_locale();
     if (!c_locale)
         return strtod(input, endptr);
     double v = _strtod_l(input, endptr, c_locale);
-    _free_locale(c_locale);
     return v;
 #else
-    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    locale_t c_locale = loc_cached_c_locale();
     if (!c_locale)
         return strtod(input, endptr);
     locale_t old = uselocale(c_locale);
     if (!old) {
-        freelocale(c_locale);
         return strtod(input, endptr);
     }
     double v = strtod(input, endptr);
     uselocale(old);
-    freelocale(c_locale);
     return v;
 #endif
 }

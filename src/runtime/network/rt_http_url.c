@@ -206,6 +206,16 @@ typedef struct rt_url {
     char *fragment; // Fragment (without leading #)
 } rt_url_t;
 
+/// @brief Borrowed path segment span used by URL normalization.
+/// @details The span points into the original path string and is valid only for
+///          the duration of `normalize_path`. Keeping borrowed spans avoids a
+///          heap allocation per path segment while still preserving exact bytes
+///          when the normalized path is materialized.
+typedef struct {
+    const char *start;
+    size_t len;
+} rt_url_path_segment_span_t;
+
 /// @brief Get default port for a scheme.
 /// @return Default port or 0 if unknown.
 static int64_t default_port_for_scheme(const char *scheme) {
@@ -547,20 +557,20 @@ static void rt_url_replace_field(char **slot, rt_string value, const char *conte
 
 /// @brief Resolve `.` and `..` segments and collapse double-slashes per RFC 3986 §5.2.4.
 ///
-/// Walks the segments left-to-right, pushing onto a stack;
-/// `..` pops the previous segment, `.` is dropped, others
-/// accumulate. The result is a freshly-allocated path string
-/// (caller `free`s).
+/// Walks the segments left-to-right, pushing borrowed input spans onto a stack;
+/// `..` pops the previous segment, `.` is dropped, others accumulate. The result is a
+/// freshly-allocated path string (caller `free`s).
 static char *normalize_path(const char *path) {
     if (!path || *path == '\0')
         return rt_url_strdup_or_trap_cleanup(NULL, "/", "URL.NormalizePath: allocation failed");
 
     size_t input_len = strlen(path);
-    if (input_len == SIZE_MAX || input_len + 1 > SIZE_MAX / sizeof(char *)) {
+    if (input_len == SIZE_MAX || input_len + 1 > SIZE_MAX / sizeof(rt_url_path_segment_span_t)) {
         rt_url_trap_runtime("URL.NormalizePath: length overflow");
         return NULL;
     }
-    char **segments = (char **)calloc(input_len + 1, sizeof(char *));
+    rt_url_path_segment_span_t *segments =
+        (rt_url_path_segment_span_t *)calloc(input_len + 1, sizeof(*segments));
     if (!segments) {
         rt_url_trap_runtime("URL.NormalizePath: segment allocation failed");
         return NULL;
@@ -581,20 +591,15 @@ static char *normalize_path(const char *path) {
         if (segment_len == SIZE_MAX)
             goto fail;
 
-        char *segment = (char *)malloc(segment_len + 1);
-        if (!segment)
-            goto fail;
-        memcpy(segment, cursor, segment_len);
-        segment[segment_len] = '\0';
-
-        if (strcmp(segment, ".") == 0) {
-            free(segment);
-        } else if (strcmp(segment, "..") == 0) {
-            free(segment);
+        if (segment_len == 1 && cursor[0] == '.') {
+            /* Drop ".". */
+        } else if (segment_len == 2 && cursor[0] == '.' && cursor[1] == '.') {
             if (segment_count > 0)
-                free(segments[--segment_count]);
+                segment_count--;
         } else {
-            segments[segment_count++] = segment;
+            segments[segment_count].start = cursor;
+            segments[segment_count].len = segment_len;
+            segment_count++;
         }
 
         cursor = segment_end;
@@ -602,7 +607,7 @@ static char *normalize_path(const char *path) {
 
     size_t out_len = absolute ? 1 : 0;
     for (size_t i = 0; i < segment_count; i++) {
-        size_t seg_len = strlen(segments[i]);
+        size_t seg_len = segments[i].len;
         if (out_len > SIZE_MAX - seg_len - 1)
             goto fail;
         out_len += seg_len + 1;
@@ -620,8 +625,8 @@ static char *normalize_path(const char *path) {
     if (absolute)
         out[pos++] = '/';
     for (size_t i = 0; i < segment_count; i++) {
-        size_t seg_len = strlen(segments[i]);
-        memcpy(out + pos, segments[i], seg_len);
+        size_t seg_len = segments[i].len;
+        memcpy(out + pos, segments[i].start, seg_len);
         pos += seg_len;
         if (i + 1 < segment_count)
             out[pos++] = '/';
@@ -630,14 +635,10 @@ static char *normalize_path(const char *path) {
         out[pos++] = '/';
     out[pos] = '\0';
 
-    for (size_t i = 0; i < segment_count; i++)
-        free(segments[i]);
     free(segments);
     return out;
 
 fail:
-    for (size_t i = 0; i < segment_count; i++)
-        free(segments[i]);
     free(segments);
     rt_url_trap_runtime("URL.NormalizePath: allocation failed");
     return NULL;

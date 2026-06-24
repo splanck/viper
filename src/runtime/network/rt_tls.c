@@ -31,6 +31,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_crypto.h"
+#include "rt_crypto_internal.h"
 #include "rt_crypto_module.h"
 #include "rt_ecdsa_p256.h"
 #include "rt_internal.h"
@@ -985,6 +986,24 @@ static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12]) {
     }
 }
 
+/// @brief Allocate a heap scratch buffer for TLS record processing.
+/// @details TLS record buffers can be larger than 16 KiB. Keeping them on the heap avoids
+///          exhausting small platform thread stacks while preserving the existing per-call
+///          ownership model. On allocation failure this helper stores @p error_msg on the
+///          session so callers can return a normal TLS error code.
+/// @param session TLS session whose `error` field should receive allocation failures.
+/// @param size Requested byte count; zero is rounded up to one byte for portable `malloc`.
+/// @param error_msg Stable error string stored in @p session on failure.
+/// @return Heap-owned buffer, or NULL on allocation failure.
+static uint8_t *tls_alloc_record_scratch(rt_tls_session_t *session,
+                                         size_t size,
+                                         const char *error_msg) {
+    uint8_t *buffer = (uint8_t *)malloc(size > 0 ? size : 1);
+    if (!buffer && session)
+        session->error = error_msg;
+    return buffer;
+}
+
 /// @brief Frame, optionally encrypt, and transmit a single TLS record.
 ///
 /// Behaviour depends on `session->keys_established`:
@@ -1006,18 +1025,28 @@ static int send_record(rt_tls_session_t *session,
                        uint8_t content_type,
                        const uint8_t *data,
                        size_t len) {
-    // ~32KB stack allocation (TLS_MAX_CIPHERTEXT). Consider heap allocation
-    // if stack depth is a concern in deeply nested call chains.
-    uint8_t record[5 + TLS_MAX_CIPHERTEXT];
+    uint8_t *record = NULL;
+    uint8_t *plaintext = NULL;
     size_t record_len;
+    int rc = RT_TLS_OK;
     if (len > TLS_MAX_RECORD_SIZE || (!data && len > 0)) {
         session->error = "TLS: record payload too large";
         return RT_TLS_ERROR;
     }
 
+    record = tls_alloc_record_scratch(
+        session, 5u + (size_t)TLS_MAX_CIPHERTEXT, "TLS: record allocation failed");
+    if (!record)
+        return RT_TLS_ERROR;
+
     if (session->keys_established) {
         // Encrypted record
-        uint8_t plaintext[TLS_MAX_RECORD_SIZE + 1];
+        plaintext = tls_alloc_record_scratch(
+            session, (size_t)TLS_MAX_RECORD_SIZE + 1u, "TLS: plaintext allocation failed");
+        if (!plaintext) {
+            rc = RT_TLS_ERROR;
+            goto done;
+        }
         if (len > 0)
             memcpy(plaintext, data, len);
         plaintext[len] = content_type; // Inner content type
@@ -1041,7 +1070,8 @@ static int send_record(rt_tls_session_t *session,
                 session->write_keys.key, nonce, aad, 5, plaintext, len + 1, record + 5);
         if (ciphertext_len == 0) {
             session->error = "TLS: record encryption failed";
-            return RT_TLS_ERROR;
+            rc = RT_TLS_ERROR;
+            goto done;
         }
         write_u16(record + 3, (uint16_t)ciphertext_len);
         record_len = 5 + ciphertext_len;
@@ -1050,7 +1080,8 @@ static int send_record(rt_tls_session_t *session,
         if (++session->write_keys.seq_num == 0) {
             session->error =
                 "TLS: write sequence number overflow; connection must be re-established";
-            return RT_TLS_ERROR;
+            rc = RT_TLS_ERROR;
+            goto done;
         }
     } else {
         // Plaintext record
@@ -1077,19 +1108,31 @@ static int send_record(rt_tls_session_t *session,
                 if (ready > 0)
                     continue;
                 session->error = ready == 0 ? "TLS: send timeout" : "send failed";
-                return RT_TLS_ERROR_SOCKET;
+                rc = RT_TLS_ERROR_SOCKET;
+                goto done;
             }
             session->error = "send failed";
-            return RT_TLS_ERROR_SOCKET;
+            rc = RT_TLS_ERROR_SOCKET;
+            goto done;
         }
         if (n == 0) {
             session->error = "send returned zero";
-            return RT_TLS_ERROR_SOCKET;
+            rc = RT_TLS_ERROR_SOCKET;
+            goto done;
         }
         sent += n;
     }
 
-    return RT_TLS_OK;
+done:
+    if (plaintext) {
+        rt_secure_zero(plaintext, (size_t)TLS_MAX_RECORD_SIZE + 1u);
+        free(plaintext);
+    }
+    if (record) {
+        rt_secure_zero(record, 5u + (size_t)TLS_MAX_CIPHERTEXT);
+        free(record);
+    }
+    return rc;
 }
 
 static int send_record_fragmented(rt_tls_session_t *session,
@@ -1133,6 +1176,8 @@ static int recv_record(rt_tls_session_t *session,
     // Read header
     uint8_t header[5];
     size_t pos = 0;
+    uint8_t *payload = NULL;
+    int rc = RT_TLS_OK;
     while (pos < 5) {
         int n = recv(session->socket_fd, (char *)(header + pos), (int)(5 - pos), 0);
         if (n < 0) {
@@ -1165,7 +1210,9 @@ static int recv_record(rt_tls_session_t *session,
     }
 
     // Read payload
-    uint8_t payload[TLS_MAX_CIPHERTEXT];
+    payload = tls_alloc_record_scratch(session, length, "TLS: payload allocation failed");
+    if (!payload)
+        return RT_TLS_ERROR;
     pos = 0;
     while (pos < length) {
         int n = recv(session->socket_fd, (char *)(payload + pos), (int)(length - pos), 0);
@@ -1178,14 +1225,17 @@ static int recv_record(rt_tls_session_t *session,
                 if (ready > 0)
                     continue;
                 session->error = ready == 0 ? "TLS: recv timeout" : "recv payload failed";
-                return RT_TLS_ERROR_SOCKET;
+                rc = RT_TLS_ERROR_SOCKET;
+                goto done;
             }
             session->error = "recv payload failed";
-            return RT_TLS_ERROR_SOCKET;
+            rc = RT_TLS_ERROR_SOCKET;
+            goto done;
         }
         if (n == 0) {
             session->error = "connection closed";
-            return RT_TLS_ERROR_CLOSED;
+            rc = RT_TLS_ERROR_CLOSED;
+            goto done;
         }
         pos += n;
     }
@@ -1207,14 +1257,16 @@ static int recv_record(rt_tls_session_t *session,
                 session->read_keys.key, nonce, aad, 5, payload, length, data);
         if (plaintext_len < 0) {
             session->error = "decryption failed";
-            return RT_TLS_ERROR;
+            rc = RT_TLS_ERROR;
+            goto done;
         }
 
         // H-8: RFC 8446 §5.5 — close before sequence number wraps (nonce uniqueness)
         if (++session->read_keys.seq_num == 0) {
             session->error =
                 "TLS: read sequence number overflow; connection must be re-established";
-            return RT_TLS_ERROR;
+            rc = RT_TLS_ERROR;
+            goto done;
         }
 
         // Remove padding and get inner content type
@@ -1222,7 +1274,8 @@ static int recv_record(rt_tls_session_t *session,
             plaintext_len--;
         if (plaintext_len == 0) {
             session->error = "empty inner record";
-            return RT_TLS_ERROR;
+            rc = RT_TLS_ERROR;
+            goto done;
         }
         *content_type = data[plaintext_len - 1];
         *data_len = plaintext_len - 1;
@@ -1233,7 +1286,12 @@ static int recv_record(rt_tls_session_t *session,
         *data_len = length;
     }
 
-    return RT_TLS_OK;
+done:
+    if (payload) {
+        rt_secure_zero(payload, length);
+        free(payload);
+    }
+    return rc;
 }
 
 /// @brief Construct and transmit a TLS 1.3 ClientHello message.

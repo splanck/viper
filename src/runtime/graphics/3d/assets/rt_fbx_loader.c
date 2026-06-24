@@ -64,7 +64,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define RT_FBX_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
+#define RT_FBX_HARD_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
+#define RT_FBX_DEFAULT_MAX_FILE_BYTES RT_FBX_HARD_MAX_FILE_BYTES
 #define RT_FBX_MAX_TEXTURE_PATH_BYTES (1024u * 1024u)
 
 #if defined(_MSC_VER)
@@ -146,6 +147,55 @@ typedef struct {
 #define FBX_ANIM_TIME_SECONDS_MAX 100000000.0
 #define FBX_ANIM_CURVE_KEYS_MAX 1000000u
 #define FBX_MAX_SKELETON_BONES 256
+
+/// @brief Parse an unsigned decimal byte limit without adding libc conversion dependencies.
+/// @details Accepts only ASCII digits, rejects zero, and validates the entire input. Values above
+///          @ref RT_FBX_HARD_MAX_FILE_BYTES are reported as that hard cap so administrators can
+///          safely provide oversized values without raising the audited maximum.
+/// @param text Environment variable text.
+/// @param out_limit Receives the parsed and clamped byte limit.
+/// @return 1 when @p text is a valid decimal limit, otherwise 0.
+static int fbx_parse_file_byte_limit(const char *text, uint64_t *out_limit) {
+    if (!text || !*text || !out_limit)
+        return 0;
+
+    uint64_t value = 0;
+    int clamped = 0;
+    for (const char *p = text; *p; p++) {
+        if (*p < '0' || *p > '9')
+            return 0;
+        uint64_t digit = (uint64_t)(*p - '0');
+        if (!clamped) {
+            if (value > (RT_FBX_HARD_MAX_FILE_BYTES - digit) / 10u) {
+                value = RT_FBX_HARD_MAX_FILE_BYTES;
+                clamped = 1;
+            } else {
+                value = value * 10u + digit;
+            }
+        }
+    }
+
+    if (value == 0)
+        return 0;
+    *out_limit = value > RT_FBX_HARD_MAX_FILE_BYTES ? RT_FBX_HARD_MAX_FILE_BYTES : value;
+    return 1;
+}
+
+/// @brief Return the process-configured FBX file-size ceiling in bytes.
+/// @details `VIPER_FBX_MAX_FILE_BYTES` may lower the default ceiling for hosts that process
+///          untrusted assets under tighter memory budgets. The hard upper bound remains
+///          @c RT_FBX_HARD_MAX_FILE_BYTES so a misconfigured environment cannot raise the
+///          loader above its audited allocation limit.
+/// @return Maximum readable FBX file size in bytes.
+static uint64_t fbx_max_file_bytes(void) {
+    const char *env = getenv("VIPER_FBX_MAX_FILE_BYTES");
+    uint64_t parsed = 0;
+    if (!env || !*env)
+        return RT_FBX_DEFAULT_MAX_FILE_BYTES;
+    if (!fbx_parse_file_byte_limit(env, &parsed))
+        return RT_FBX_DEFAULT_MAX_FILE_BYTES;
+    return parsed;
+}
 
 static void fbx_release_ref(void **slot);
 

@@ -35,11 +35,13 @@
 #include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_map.h"
+#include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +66,45 @@ static void release_local_obj(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Parse an exact signed 64-bit integer from a non-NUL-terminated span.
+/// @details JSONPath array indices may be long or negative. This helper consumes
+///          every byte in the span, rejects non-digits, and checks overflow so
+///          an overlong selector cannot be truncated into a different index.
+/// @param text Span start.
+/// @param len Span length in bytes.
+/// @param out_index Receives the parsed integer on success.
+/// @return 1 on success; 0 if the span is not exactly a valid i64 literal.
+static int jsonpath_parse_i64_span(const char *text, int64_t len, int64_t *out_index) {
+    if (out_index)
+        *out_index = 0;
+    if (!text || !out_index || len <= 0)
+        return 0;
+
+    int negative = text[0] == '-';
+    int64_t pos = negative ? 1 : 0;
+    if (pos >= len)
+        return 0;
+
+    uint64_t limit = negative ? ((uint64_t)INT64_MAX + 1u) : (uint64_t)INT64_MAX;
+    uint64_t value = 0;
+    for (; pos < len; pos++) {
+        unsigned char c = (unsigned char)text[pos];
+        if (c < '0' || c > '9')
+            return 0;
+        uint64_t digit = (uint64_t)(c - '0');
+        if (value > (limit - digit) / 10u)
+            return 0;
+        value = value * 10u + digit;
+    }
+
+    if (negative) {
+        *out_index = value == limit ? INT64_MIN : -(int64_t)value;
+    } else {
+        *out_index = (int64_t)value;
+    }
+    return 1;
+}
+
 // --- Helper: navigate one segment ---
 
 static void *navigate_segment(void *current, const char *seg, int64_t len) {
@@ -72,11 +113,9 @@ static void *navigate_segment(void *current, const char *seg, int64_t len) {
 
     // Array index: numeric segment
     if (isdigit((unsigned char)seg[0]) || (seg[0] == '-' && len > 1)) {
-        char buf[32];
-        int64_t copy_len = len < 31 ? len : 31;
-        memcpy(buf, seg, (size_t)copy_len);
-        buf[copy_len] = '\0';
-        int64_t idx = strtoll(buf, NULL, 10);
+        int64_t idx = 0;
+        if (!jsonpath_parse_i64_span(seg, len, &idx))
+            return NULL;
 
         if (is_seq_obj(current)) {
             int64_t slen = rt_seq_len(current);
@@ -383,16 +422,16 @@ int64_t rt_jsonpath_get_int(void *root, rt_string path) {
         result = rt_unbox_i1(val);
     if (tag == RT_BOX_STR) {
         rt_string s = rt_unbox_str(val);
-        const char *cs = rt_string_cstr(s);
-        result = cs ? strtoll(cs, NULL, 10) : 0;
+        if (rt_parse_int64_str(s, &result) != (int32_t)Err_None)
+            result = 0;
         rt_string_unref(s);
         release_local_obj(val);
         return result;
     }
     // If it's a raw string, parse it
     if (rt_string_is_handle(val)) {
-        const char *s = rt_string_cstr((rt_string)val);
-        result = s ? strtoll(s, NULL, 10) : 0;
+        if (rt_parse_int64_str((rt_string)val, &result) != (int32_t)Err_None)
+            result = 0;
     }
     release_local_obj(val);
     return result;

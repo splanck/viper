@@ -47,6 +47,7 @@
 #include "rt_bytes.h"
 #include "rt_crypto.h"
 #include "rt_crypto_module.h"
+#include "rt_internal.h"
 #include "rt_keyderive_internal.h"
 #include "rt_object.h"
 #include "rt_platform.h"
@@ -100,6 +101,27 @@ static void *cipher_bytes_new_or_trap(int64_t len, const char *op) {
     if (!bytes)
         rt_trap(op);
     return bytes;
+}
+
+/// @brief Allocate a temporary plaintext buffer before wrapping it as Bytes.
+/// @details AEAD decryptors verify tags before writing plaintext, but callers
+///          should still avoid creating a runtime Bytes object until after
+///          authentication succeeds. This helper allocates a plain heap buffer
+///          sized for @p len, using one byte for zero-length plaintext so the
+///          pointer remains non-NULL for APIs that permit empty output.
+/// @param len Plaintext length in bytes.
+/// @param trap_msg Allocation failure trap message.
+/// @return Heap buffer to free with `free`, or NULL after reporting a trap.
+static uint8_t *cipher_plain_temp_alloc(int64_t len, const char *trap_msg) {
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
+        rt_trap("Cipher.Decrypt: invalid plaintext length");
+        return NULL;
+    }
+    size_t alloc_len = len > 0 ? (size_t)len : 1u;
+    uint8_t *buf = (uint8_t *)malloc(alloc_len);
+    if (!buf)
+        rt_trap(trap_msg ? trap_msg : "Cipher.Decrypt: allocation failed");
+    return buf;
 }
 
 //=============================================================================
@@ -526,15 +548,19 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
                                        key,
                                        CIPHER_KEY_SIZE);
 
-        void *result = cipher_bytes_new_or_trap(plain_len, "Cipher.Decrypt: allocation failed");
-        uint8_t *plain_data = bytes_data(result);
+        uint8_t *plain_data =
+            cipher_plain_temp_alloc(plain_len, "Cipher.Decrypt: allocation failed");
+        if (!plain_data) {
+            cipher_secure_zero(key, sizeof(key));
+            return NULL;
+        }
         const uint8_t *aad_data;
         size_t aad_len;
         uint8_t *aad_alloc = combine_aad(ct_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
         if (aad_len == SIZE_MAX) {
             cipher_secure_zero(key, sizeof(key));
-            if (result && rt_obj_release_check0(result))
-                rt_obj_free(result);
+            cipher_secure_zero(plain_data, plain_len > 0 ? (size_t)plain_len : 1u);
+            free(plain_data);
             return NULL;
         }
 
@@ -550,10 +576,13 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         if (decrypt_result < 0 || decrypt_result != plain_len) {
             if (plain_len > 0)
                 cipher_secure_zero(plain_data, (size_t)plain_len);
-            if (result && rt_obj_release_check0(result))
-                rt_obj_free(result);
+            free(plain_data);
             return NULL;
         }
+        void *result = rt_bytes_from_raw(plain_data, (size_t)plain_len);
+        if (plain_len > 0)
+            cipher_secure_zero(plain_data, (size_t)plain_len);
+        free(plain_data);
         return result;
     }
 
@@ -583,8 +612,9 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     const uint8_t *encrypted = ct_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE;
     int64_t encrypted_len = ct_len - CIPHER_SALT_SIZE - CIPHER_NONCE_SIZE;
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
-    void *result = cipher_bytes_new_or_trap(plain_len, "Cipher.Decrypt: allocation failed");
-    uint8_t *plain_data = bytes_data(result);
+    uint8_t *plain_data = cipher_plain_temp_alloc(plain_len, "Cipher.Decrypt: allocation failed");
+    if (!plain_data)
+        return NULL;
 
     uint8_t key[CIPHER_KEY_SIZE];
     derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
@@ -601,12 +631,15 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
             cipher_secure_zero(key, sizeof(key));
             if (plain_len > 0)
                 cipher_secure_zero(plain_data, (size_t)plain_len);
-            if (result && rt_obj_release_check0(result))
-                rt_obj_free(result);
+            free(plain_data);
             return NULL;
         }
     }
     cipher_secure_zero(key, sizeof(key));
+    void *result = rt_bytes_from_raw(plain_data, (size_t)plain_len);
+    if (plain_len > 0)
+        cipher_secure_zero(plain_data, (size_t)plain_len);
+    free(plain_data);
     return result;
 }
 
@@ -776,8 +809,10 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     int64_t encrypted_len = ct_len - header_len;
 
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
-    void *result = cipher_bytes_new_or_trap(plain_len, "Cipher.DecryptWithKey: allocation failed");
-    uint8_t *plain_data = bytes_data(result);
+    uint8_t *plain_data =
+        cipher_plain_temp_alloc(plain_len, "Cipher.DecryptWithKey: allocation failed");
+    if (!plain_data)
+        return NULL;
 
     const uint8_t *aad_data = NULL;
     size_t aad_len = 0;
@@ -785,8 +820,8 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     if (versioned)
         aad_alloc = combine_aad(ct_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
     if (aad_len == SIZE_MAX) {
-        if (result && rt_obj_release_check0(result))
-            rt_obj_free(result);
+        cipher_secure_zero(plain_data, plain_len > 0 ? (size_t)plain_len : 1u);
+        free(plain_data);
         return NULL;
     }
 
@@ -802,11 +837,14 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     if (decrypt_result < 0 || decrypt_result != plain_len) {
         if (plain_len > 0)
             cipher_secure_zero(plain_data, (size_t)plain_len);
-        if (result && rt_obj_release_check0(result))
-            rt_obj_free(result);
+        free(plain_data);
         return NULL;
     }
 
+    void *result = rt_bytes_from_raw(plain_data, (size_t)plain_len);
+    if (plain_len > 0)
+        cipher_secure_zero(plain_data, (size_t)plain_len);
+    free(plain_data);
     return result;
 }
 

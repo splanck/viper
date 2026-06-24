@@ -32,11 +32,11 @@
 #include "rt_json_stream.h"
 
 #include "rt_internal.h"
+#include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
 #include <ctype.h>
-#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
@@ -320,8 +320,8 @@ static int parse_string_content(rt_json_stream_impl *s) {
 /// @details Accepts the JSON grammar: optional `-`, integer part
 ///          (`0` or `1-9` followed by digits), optional fraction
 ///          (`. digits`), optional exponent (`[eE] [+-]? digits`).
-///          The matched span is then handed to `strtod` for the
-///          actual conversion. Sets an error and returns 0 on
+///          The matched span is then handed to the runtime C-locale double
+///          parser for conversion. Sets an error and returns 0 on
 ///          malformed input, including leading zeroes, missing fraction digits,
 ///          and missing exponent digits.
 static int parse_number(rt_json_stream_impl *s) {
@@ -376,10 +376,7 @@ static int parse_number(rt_json_stream_impl *s) {
     }
     memcpy(buf, s->input + start, nlen);
     buf[nlen] = '\0';
-    errno = 0;
-    char *endptr = NULL;
-    s->num_value = strtod(buf, &endptr);
-    if (errno == ERANGE || !endptr || *endptr != '\0' || !isfinite(s->num_value)) {
+    if (rt_parse_double(buf, &s->num_value) != (int32_t)Err_None || !isfinite(s->num_value)) {
         free(buf);
         set_error(s, "invalid number");
         return 0;

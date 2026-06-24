@@ -254,8 +254,11 @@ static char *cookie_strdup_manual_domain(const char *text) {
     size_t len;
     if (!out)
         return NULL;
-    while (*out == '.' || *out == ' ' || *out == '\t')
-        memmove(out, out + 1, strlen(out));
+    char *trimmed = out;
+    while (*trimmed == '.' || *trimmed == ' ' || *trimmed == '\t')
+        trimmed++;
+    if (trimmed != out)
+        memmove(out, trimmed, strlen(trimmed) + 1);
     len = strlen(out);
     while (len > 0 && (out[len - 1] == ' ' || out[len - 1] == '\t' || out[len - 1] == '.' ||
                        out[len - 1] == '/')) {
@@ -368,10 +371,8 @@ static int cookie_domain_is_valid(const char *domain) {
 /// @return 1 if the domain should be treated as public-suffix-like; otherwise 0.
 static int cookie_domain_is_public_suffix_like(const char *domain) {
     static const char *const public_suffixes[] = {
-        "ac.uk", "co.jp", "co.uk", "com", "com.au", "com.br", "com.cn", "com.mx",
-        "com.sg", "de",    "edu",   "fr",    "gov", "io",     "jp",     "net",
-        "org",   "ru",    "uk",    "us"
-    };
+        "ac.uk", "co.jp", "co.uk", "com", "com.au", "com.br", "com.cn", "com.mx", "com.sg", "de",
+        "edu",   "fr",    "gov",   "io",  "jp",     "net",    "org",    "ru",     "uk",     "us"};
     if (!domain || !strchr(domain, '.'))
         return 1;
     for (size_t i = 0; i < sizeof(public_suffixes) / sizeof(public_suffixes[0]); i++) {
@@ -1037,8 +1038,10 @@ void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
     if (!name || !value || http_client_string_has_embedded_nul(name) ||
-        http_client_string_has_embedded_nul(value))
+        http_client_string_has_embedded_nul(value)) {
+        rt_trap("HttpClient: invalid default header");
         return;
+    }
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     rt_map_set(c->default_headers, name, (void *)value);
