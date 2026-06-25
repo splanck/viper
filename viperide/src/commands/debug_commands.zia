@@ -11,6 +11,8 @@ bind "../commands/file_commands";
 
 bind Viper.GUI;
 bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
+bind Str = Viper.String;
 
 func handleToggleBreakpoint(shell: app_shell.AppShell,
                             docMgr: document_manager.DocumentManager,
@@ -218,6 +220,23 @@ func Publish(shell: app_shell.AppShell,
     }
 }
 
+/// @brief True if two paths denote the same source file, tolerating form
+///        differences the debug adapter introduces. The adapter reports the
+///        canonical path (symlinks resolved, `./` collapsed), which may differ
+///        in spelling from the path the editor opened the file with. Compare on
+///        the lexically-normalised form, then accept a path-suffix match so a
+///        symlinked/prefixed root (e.g. macOS `/var` -> `/private/var`) still
+///        maps the stop onto the already-open document instead of duplicating it.
+func SamePath(a: String, b: String) -> Boolean {
+    if a == b { return true; }
+    if a == "" or b == "" { return false; }
+    var na = Path.Norm(a);
+    var nb = Path.Norm(b);
+    if na == nb { return true; }
+    if Str.EndsWith(na, nb) or Str.EndsWith(nb, na) { return true; }
+    return false;
+}
+
 func OpenStopLocation(shell: app_shell.AppShell,
                       docMgr: document_manager.DocumentManager,
                       engine: editor_engine.EditorEngine,
@@ -230,7 +249,7 @@ func OpenStopLocation(shell: app_shell.AppShell,
         needsOpen = true;
     } else {
         var active = maybeActive!;
-        if active.filePath != session.activePath {
+        if SamePath(active.filePath, session.activePath) == false {
             needsOpen = true;
         }
     }

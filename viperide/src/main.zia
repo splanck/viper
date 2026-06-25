@@ -20,6 +20,7 @@ bind "editor/completion";
 bind "editor/diagnostics";
 bind "editor/hover";
 bind "editor/symbols";
+bind "editor/semantic_tokens";
 bind "editor/inlay_hints";
 bind "services/file_utils";
 bind "services/locations";
@@ -128,6 +129,7 @@ func main() {
     // Real-time diagnostics (errors-as-you-type)
     var liveDiag = new diagnostics.LiveDiagnostics();
     liveDiag.SetScheduler(editorScheduler);
+    var semHighlighter = new semantic_tokens.SemanticHighlighter();
 
     // Hover tooltips (type info on mouse dwell)
     var hoverCtrl = new hover.HoverController();
@@ -277,6 +279,8 @@ func main() {
         completer.SetEnabled(activeService.canComplete);
         liveDiag.setSourcePath(activeToolPath);
         liveDiag.enabled = appSettings.autoCheckOnSave and activeService.canDiagnose;
+        semHighlighter.setSourcePath(activeToolPath);
+        semHighlighter.enabled = activeService.name == language_service.LANGUAGE_ZIA;
         hoverCtrl.setSourcePath(activeToolPath);
         hoverCtrl.setEnabled(activeService.canHover);
         sigCtrl.setSourcePath(activeToolPath);
@@ -336,6 +340,7 @@ func main() {
         perfMon.AddCompletion(perfSpan);
         perfSpan = perfMon.StartSpan();
         liveDiag.update(engine, shell, locStore);
+        semHighlighter.update(engine);
         perfMon.AddDiagnostics(perfSpan);
         perfSpan = perfMon.StartSpan();
         build_commands.UpdateJob(shell, buildSys, locStore);

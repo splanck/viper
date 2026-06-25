@@ -95,16 +95,17 @@ static int server_string_has_embedded_nul(rt_string s, const char **data_out, si
 
 /// @brief Compute the internal worker-pool size for HTTP server instances.
 /// @details Uses the runtime machine adapter to query logical CPU count, then
-///          clamps the result to the range accepted by @ref rt_threadpool_new.
+///          clamps the result to a practical default so large machines do not
+///          create hundreds of idle server workers by default.
 ///          The helper is deliberately local to the server implementation so
 ///          worker sizing can improve without expanding the runtime C ABI.
-/// @return Worker count in the inclusive range 1..1024.
+/// @return Worker count in the inclusive range 1..64.
 static int64_t http_server_default_worker_count(void) {
     int64_t cores = rt_machine_cores();
     if (cores < 1)
         cores = 1;
-    if (cores > 1024)
-        cores = 1024;
+    if (cores > 64)
+        cores = 64;
     return cores;
 }
 
@@ -835,6 +836,8 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
         char *resp = build_response(&res, keep_alive, &resp_len);
         if (resp) {
             rt_tcp_send_all_raw(tcp, resp, (int64_t)resp_len);
+            if (!rt_tcp_is_open(tcp))
+                keep_alive = 0;
             free(resp);
         } else {
             keep_alive = 0;
@@ -954,9 +957,9 @@ static void *accept_loop(void *arg)
 /// not actually opened until `Start`; this constructor only validates
 /// inputs and reserves resources.
 ///
-/// Traps on invalid port (`<1` or `>65535`) or allocation failure.
+/// Traps on invalid port (`<0` or `>65535`) or allocation failure.
 ///
-/// @param port TCP port number, 1..65535.
+/// @param port TCP port number, 0..65535. Port 0 asks the OS for an ephemeral port.
 /// @return GC-managed `HttpServer` handle.
 void *rt_http_server_new(int64_t port) {
     if (port < 0 || port > 65535) {
@@ -1026,8 +1029,10 @@ static void add_route_binding(void *obj,
         return;
     }
 
-    const char *tag = rt_string_cstr(handler_tag);
-    if (!tag || !append_route_entry(server, tag)) {
+    const char *tag = NULL;
+    size_t tag_len = 0;
+    if (server_string_has_embedded_nul(handler_tag, &tag, &tag_len) || !tag || tag_len == 0 ||
+        !append_route_entry(server, tag)) {
         rt_trap("HttpServer: failed to register route");
         return;
     }
@@ -1078,8 +1083,9 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
         return;
     }
 
-    const char *tag = rt_string_cstr(handler_tag);
-    if (!tag)
+    const char *tag = NULL;
+    size_t tag_len = 0;
+    if (server_string_has_embedded_nul(handler_tag, &tag, &tag_len) || !tag || tag_len == 0)
         return;
 
     if (!set_handler_binding(
@@ -1113,8 +1119,9 @@ void rt_http_server_bind_handler_dispatch(
         return;
     }
 
-    const char *tag = rt_string_cstr(handler_tag);
-    if (!tag)
+    const char *tag = NULL;
+    size_t tag_len = 0;
+    if (server_string_has_embedded_nul(handler_tag, &tag, &tag_len) || !tag || tag_len == 0)
         return;
 
     if (!set_handler_binding((rt_http_server_impl *)obj,
@@ -1519,8 +1526,8 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
     size_t value_len = 0;
     if (server_string_has_embedded_nul(name, &name_cstr, &name_len) ||
         server_string_has_embedded_nul(value, &value_cstr, &value_len) || !name_cstr ||
-        !value_cstr || name_len == 0 || contains_crlf(name_cstr) || contains_crlf(value_cstr) ||
-        is_server_managed_header_name(name_cstr))
+        !value_cstr || !server_header_name_valid(name_cstr, name_len) ||
+        contains_crlf(value_cstr) || is_server_managed_header_name(name_cstr))
         return obj;
     if (!res->headers) {
         res->headers = rt_map_new();

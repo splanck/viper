@@ -34,6 +34,7 @@
 
 #include "rt_box.h"
 #include "rt_bytes.h"
+#include "rt_entropy_platform.h"
 #include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_map.h"
@@ -42,11 +43,18 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#if RT_PLATFORM_WINDOWS
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 static size_t g_http_download_temp_counter = 0;
 
@@ -61,18 +69,87 @@ static char *http_download_temp_path(const char *dest, const char *kind) {
     if (!dest || !kind)
         return NULL;
     size_t id = __atomic_fetch_add(&g_http_download_temp_counter, 1u, __ATOMIC_RELAXED) + 1u;
+    uint64_t random_id = 0;
+    if (rt_entropy_platform_random_u64(&random_id) != 0)
+        return NULL;
     size_t dest_len = strlen(dest);
     size_t kind_len = strlen(kind);
     const char *marker = ".viper-download-";
     size_t marker_len = strlen(marker);
-    if (dest_len > SIZE_MAX - marker_len - kind_len - 32u)
+    if (dest_len > SIZE_MAX - marker_len - kind_len - 64u)
         return NULL;
-    size_t cap = dest_len + marker_len + kind_len + 32u;
+    size_t cap = dest_len + marker_len + kind_len + 64u;
     char *path = (char *)malloc(cap);
     if (!path)
         return NULL;
-    snprintf(path, cap, "%s%s%zu.%s", dest, marker, id, kind);
+    snprintf(path,
+             cap,
+             "%s%s%016llx-%zu.%s",
+             dest,
+             marker,
+             (unsigned long long)random_id,
+             id,
+             kind);
     return path;
+}
+
+/// @brief Open a path for binary writing with exclusive creation.
+/// @details Uses file-descriptor APIs instead of C `fopen("xb")` because that
+///          mode is not accepted by every supported C library. The returned
+///          stream owns the descriptor and closes it through `fclose`.
+/// @param path Filesystem path to create.
+/// @return Writable binary stream, or NULL when the file exists or creation fails.
+static FILE *http_download_fopen_exclusive(const char *path) {
+#if RT_PLATFORM_WINDOWS
+    int fd = _open(path, _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+#else
+    int fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0600);
+#endif
+    if (fd < 0)
+        return NULL;
+#if RT_PLATFORM_WINDOWS
+    FILE *f = _fdopen(fd, "wb");
+#else
+    FILE *f = fdopen(fd, "wb");
+#endif
+    if (!f) {
+#if RT_PLATFORM_WINDOWS
+        _close(fd);
+#else
+        close(fd);
+#endif
+        return NULL;
+    }
+    return f;
+}
+
+/// @brief Open a same-directory HTTP download temp file with exclusive creation.
+/// @details Retries random sibling names so a pre-existing file or symlink cannot
+///          be followed by `fopen("wb")`. The file remains beside the final
+///          destination so the completed download can be installed with rename.
+/// @param dest Final destination path.
+/// @param temp_path_out Receives the allocated temp path on success.
+/// @return Writable FILE on success; NULL on allocation, entropy, or create failure.
+static FILE *http_download_open_unique_temp(const char *dest, char **temp_path_out) {
+    if (temp_path_out)
+        *temp_path_out = NULL;
+    if (!dest || !temp_path_out)
+        return NULL;
+    for (int attempt = 0; attempt < 128; attempt++) {
+        char *candidate = http_download_temp_path(dest, "tmp");
+        if (!candidate)
+            return NULL;
+        FILE *f = http_download_fopen_exclusive(candidate);
+        if (f) {
+            *temp_path_out = candidate;
+            return f;
+        }
+        int saved_errno = errno;
+        free(candidate);
+        if (saved_errno != EEXIST)
+            return NULL;
+    }
+    return NULL;
 }
 
 /// @brief Replace a download destination with a completed temp file.
@@ -100,6 +177,31 @@ static int http_download_replace_file(const char *temp_path,
     if (had_backup)
         (void)remove(backup_path);
     return 1;
+}
+
+/// @brief Copy an HTTP response body into a fresh Bytes object.
+/// @details Centralizes the allocation check used by all `Http.*Bytes`
+///          convenience APIs. Returning NULL after trapping prevents a
+///          recoverable allocation failure from being followed by
+///          `bytes_data(NULL)` and a secondary crash.
+/// @param body Borrowed response body bytes; may be NULL when `body_len` is 0.
+/// @param body_len Number of bytes to copy.
+/// @param context Trap message for allocation failure.
+/// @return Owned Bytes object, or NULL if allocation failed.
+static void *http_copy_body_to_bytes(const uint8_t *body, size_t body_len, const char *context) {
+    if (body_len > (size_t)INT64_MAX) {
+        rt_trap(context ? context : "HTTP: response body too large");
+        return NULL;
+    }
+    void *result = rt_bytes_new((int64_t)body_len);
+    if (!result) {
+        rt_trap(context ? context : "HTTP: memory allocation failed");
+        return NULL;
+    }
+    uint8_t *result_ptr = bytes_data(result);
+    if (body && body_len > 0 && result_ptr)
+        memcpy(result_ptr, body, body_len);
+    return result;
 }
 
 /// @brief GC finalizer for an HttpReq object. Safe on a partially-built request
@@ -231,10 +333,8 @@ void *rt_http_get_bytes(rt_string url) {
         return NULL;
     }
 
-    void *result = rt_bytes_new((int64_t)res->body_len);
-    uint8_t *result_ptr = bytes_data(result);
-    if (res->body && res->body_len > 0)
-        memcpy(result_ptr, res->body, res->body_len);
+    void *result =
+        http_copy_body_to_bytes(res->body, res->body_len, "HTTP: response body allocation failed");
 
     if (rt_obj_release_check0(res))
         rt_obj_free(res);
@@ -347,10 +447,8 @@ void *rt_http_post_bytes(rt_string url, void *body) {
         return NULL;
     }
 
-    void *result = rt_bytes_new((int64_t)res->body_len);
-    uint8_t *result_ptr = bytes_data(result);
-    if (res->body && res->body_len > 0)
-        memcpy(result_ptr, res->body, res->body_len);
+    void *result =
+        http_copy_body_to_bytes(res->body, res->body_len, "HTTP: response body allocation failed");
 
     if (rt_obj_release_check0(res))
         rt_obj_free(res);
@@ -392,17 +490,17 @@ int8_t rt_http_download(rt_string url, rt_string dest_path) {
         return 0;
     }
 
-    char *temp_path = http_download_temp_path(path_str, "tmp");
+    char *temp_path = NULL;
     char *backup_path = http_download_temp_path(path_str, "bak");
-    if (!temp_path || !backup_path) {
-        free(temp_path);
+    FILE *f = NULL;
+    if (!backup_path) {
         free(backup_path);
         free(req.method);
         free_parsed_url(&req.url);
         return 0;
     }
 
-    FILE *f = fopen(temp_path, "wb");
+    f = http_download_open_unique_temp(path_str, &temp_path);
     if (!f) {
         free(temp_path);
         free(backup_path);
@@ -679,10 +777,8 @@ void *rt_http_put_bytes(rt_string url, void *body) {
         return NULL;
     }
 
-    void *result = rt_bytes_new((int64_t)res->body_len);
-    uint8_t *result_ptr = bytes_data(result);
-    if (res->body && res->body_len > 0)
-        memcpy(result_ptr, res->body, res->body_len);
+    void *result =
+        http_copy_body_to_bytes(res->body, res->body_len, "HTTP: response body allocation failed");
 
     if (rt_obj_release_check0(res))
         rt_obj_free(res);
@@ -764,10 +860,8 @@ void *rt_http_delete_bytes(rt_string url) {
         return NULL;
     }
 
-    void *result = rt_bytes_new((int64_t)res->body_len);
-    uint8_t *result_ptr = bytes_data(result);
-    if (res->body && res->body_len > 0)
-        memcpy(result_ptr, res->body, res->body_len);
+    void *result =
+        http_copy_body_to_bytes(res->body, res->body_len, "HTTP: response body allocation failed");
 
     if (rt_obj_release_check0(res))
         rt_obj_free(res);
@@ -848,9 +942,20 @@ void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
     const char *name_str = name ? rt_string_cstr(name) : NULL;
     const char *value_str = value ? rt_string_cstr(value) : NULL;
 
-    if (name_str && value_str && !http_rt_string_has_embedded_nul(name) &&
-        !http_rt_string_has_embedded_nul(value))
-        add_header(req, name_str, value_str);
+    if (!name_str || !value_str)
+        return obj;
+    if (http_rt_string_has_embedded_nul(name) || http_rt_string_has_embedded_nul(value) ||
+        !http_method_is_token(name_str)) {
+        rt_trap("HTTP: invalid header");
+        return obj;
+    }
+    for (const char *p = value_str; *p; ++p) {
+        if (*p == '\r' || *p == '\n') {
+            rt_trap("HTTP: invalid header");
+            return obj;
+        }
+    }
+    add_header(req, name_str, value_str);
 
     return obj;
 }
@@ -1138,12 +1243,8 @@ void *rt_http_res_body(void *obj) {
         return rt_bytes_new(0);
 
     rt_http_res_t *res = (rt_http_res_t *)obj;
-    void *bytes = rt_bytes_new((int64_t)res->body_len);
-    if (res->body && res->body_len > 0) {
-        uint8_t *ptr = bytes_data(bytes);
-        memcpy(ptr, res->body, res->body_len);
-    }
-    return bytes;
+    return http_copy_body_to_bytes(
+        res->body, res->body_len, "HTTP: response body allocation failed");
 }
 
 /// @brief Return the response body decoded as a UTF-8 string.

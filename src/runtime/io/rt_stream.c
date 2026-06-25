@@ -409,6 +409,10 @@ void *rt_stream_read(void *stream, int64_t count) {
 
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         void *bytes = rt_bytes_new(count);
+        if (!bytes) {
+            rt_trap("Stream.Read: memory allocation failed");
+            return rt_bytes_new(0);
+        }
         int64_t read = rt_binfile_read(s->wrapped, bytes, 0, count);
         if (read < 0) {
             stream_dispose_bytes(bytes);
@@ -449,6 +453,10 @@ void *rt_stream_read_all(void *stream) {
             return rt_bytes_new(0);
 
         void *bytes = rt_bytes_new(remaining);
+        if (!bytes) {
+            rt_trap("Stream.ReadAll: memory allocation failed");
+            return rt_bytes_new(0);
+        }
         int64_t read = rt_binfile_read(s->wrapped, bytes, 0, remaining);
         if (read < 0) {
             stream_dispose_bytes(bytes);

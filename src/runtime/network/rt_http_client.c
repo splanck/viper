@@ -57,6 +57,11 @@ typedef pthread_mutex_t http_client_mutex_t;
 
 #include "rt_trap.h"
 
+/// @brief Internal separator accepted when the lower-level HTTP parser joins Set-Cookie headers.
+/// @details Kept in sync with rt_network_http.c. Newline is still accepted below for compatibility
+///          with response objects created before the parser switched away from a newline separator.
+#define HTTP_SET_COOKIE_JOIN_SEPARATOR '\037'
+
 //=============================================================================
 // Internal Structure
 //=============================================================================
@@ -111,6 +116,26 @@ static int http_client_string_has_embedded_nul(rt_string value) {
     if (!cstr || len64 <= 0)
         return 0;
     return memchr(cstr, '\0', (size_t)len64) != NULL;
+}
+
+/// @brief Return true when a runtime string contains CR or LF bytes.
+/// @details Header values must not contain raw line breaks because they would
+///          split the HTTP header block. This helper scans the full runtime
+///          string length instead of trusting C-string termination.
+/// @param value Runtime string to inspect.
+/// @return Nonzero when CR or LF is present.
+static int http_client_string_has_crlf(rt_string value) {
+    if (!value)
+        return 0;
+    const char *cstr = rt_string_cstr(value);
+    int64_t len64 = rt_str_len(value);
+    if (!cstr || len64 <= 0)
+        return 0;
+    for (int64_t i = 0; i < len64; i++) {
+        if (cstr[i] == '\r' || cstr[i] == '\n')
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Release a retained runtime object and free it when the reference count reaches zero.
@@ -430,8 +455,12 @@ static int cookie_domain_is_valid(const char *domain) {
 /// @return 1 if the domain should be treated as public-suffix-like; otherwise 0.
 static int cookie_domain_is_public_suffix_like(const char *domain) {
     static const char *const public_suffixes[] = {
-        "ac.uk", "co.jp", "co.uk", "com", "com.au", "com.br", "com.cn", "com.mx", "com.sg", "de",
-        "edu",   "fr",    "gov",   "io",  "jp",     "net",    "org",    "ru",     "uk",     "us"};
+        "ac.uk",         "appspot.com",    "blogspot.com",  "cloudfront.net", "co.jp",
+        "co.uk",         "com",            "com.au",        "com.br",         "com.cn",
+        "com.mx",        "com.sg",         "de",            "edu",            "fr",
+        "github.io",     "gov",            "herokuapp.com", "io",             "jp",
+        "net",           "org",            "pages.dev",     "ru",             "s3.amazonaws.com",
+        "uk",            "us",             "vercel.app"};
     if (!domain || !strchr(domain, '.'))
         return 1;
     for (size_t i = 0; i < sizeof(public_suffixes) / sizeof(public_suffixes[0]); i++) {
@@ -439,6 +468,26 @@ static int cookie_domain_is_public_suffix_like(const char *domain) {
             return 1;
     }
     return 0;
+}
+
+/// @brief Return whether a civil year is a leap year in the Gregorian calendar.
+/// @param year Four-digit year.
+/// @return Nonzero for leap years.
+static int cookie_is_leap_year(int year) {
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+/// @brief Return the valid day count for a cookie expiry month.
+/// @param year Four-digit year used for February leap-year handling.
+/// @param month_index Zero-based month index, where 0 is January.
+/// @return Days in the month, or 0 for an invalid index.
+static int cookie_days_in_month(int year, int month_index) {
+    static const int days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month_index < 0 || month_index >= 12)
+        return 0;
+    if (month_index == 1 && cookie_is_leap_year(year))
+        return 29;
+    return days[month_index];
 }
 
 /// @brief Parse a SameSite attribute value into the cookie jar enum.
@@ -516,8 +565,8 @@ static int parse_cookie_expires(const char *text, int64_t *out_epoch) {
     if (month_index < 0)
         return -1;
 
-    if (day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 ||
-        second > 60 || year < 1601)
+    if (day < 1 || day > cookie_days_in_month(year, month_index) || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59 || second < 0 || second > 60 || year < 1601)
         return -1;
 
     *out_epoch =
@@ -710,14 +759,19 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
             index++;
         }
 
-        rt_string header_str = rt_string_from_bytes(cookie_header, strlen(cookie_header));
-        rt_http_req_set_header(req, rt_const_cstr("Cookie"), header_str);
-        rt_string_unref(header_str);
-        free(cookie_header);
     }
 
 cookie_header_done:
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+
+    if (cookie_header) {
+        rt_string header_str = rt_string_from_bytes(cookie_header, strlen(cookie_header));
+        if (header_str) {
+            rt_http_req_set_header(req, rt_const_cstr("Cookie"), header_str);
+            rt_string_unref(header_str);
+        }
+        free(cookie_header);
+    }
 
     rt_string_unref(scheme);
     rt_string_unref(path);
@@ -902,26 +956,32 @@ static void store_response_cookies(rt_http_client_impl *c, void *res, rt_string 
     cookies = rt_string_cstr(cookie_header);
     if (cookies && *cookies) {
         const char *line = cookies;
+        HTTP_CLIENT_MUTEX_LOCK(&c->lock);
         while (*line) {
-            const char *end = strchr(line, '\n');
+            const char *end_lf = strchr(line, '\n');
+            const char *end_sep = strchr(line, HTTP_SET_COOKIE_JOIN_SEPARATOR);
+            const char *end = NULL;
+            if (end_lf && end_sep)
+                end = end_lf < end_sep ? end_lf : end_sep;
+            else
+                end = end_lf ? end_lf : end_sep;
             size_t len = end ? (size_t)(end - line) : strlen(line);
             char *entry = (char *)malloc(len + 1);
             if (!entry)
                 break;
             memcpy(entry, line, len);
             entry[len] = '\0';
-            HTTP_CLIENT_MUTEX_LOCK(&c->lock);
             store_cookie_line_locked(c,
                                      host_cstr,
                                      path_cstr && *path_cstr ? path_cstr : "/",
                                      scheme_cstr && strcasecmp(scheme_cstr, "https") == 0,
                                      entry);
-            HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
             free(entry);
             if (!end)
                 break;
             line = end + 1;
         }
+        HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
     }
 
     rt_string_unref(cookie_header);
@@ -936,22 +996,32 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
     int8_t follow_redirects = 0;
     int64_t redirects_left = 0;
     const char *url_cstr = url ? rt_string_cstr(url) : NULL;
-    if (!url_cstr || http_client_string_has_embedded_nul(url))
+    if (!url_cstr || http_client_string_has_embedded_nul(url)) {
         rt_trap("HttpClient: invalid URL");
+        return NULL;
+    }
     rt_string current_url =
         rt_string_from_bytes(url_cstr ? url_cstr : "", url_cstr ? strlen(url_cstr) : 0);
-    if (!current_url)
+    if (!current_url) {
         rt_trap("HttpClient: memory allocation failed");
+        return NULL;
+    }
     const char *current_method = method;
     rt_string current_body = NULL;
     if (body) {
         const char *body_cstr = rt_string_cstr(body);
         int64_t body_len64 = rt_str_len(body);
-        if (!body_cstr || body_len64 < 0 || (uint64_t)body_len64 > (uint64_t)SIZE_MAX)
+        if (!body_cstr || body_len64 < 0 || (uint64_t)body_len64 > (uint64_t)SIZE_MAX) {
             rt_trap("HttpClient: invalid body");
+            rt_string_unref(current_url);
+            return NULL;
+        }
         current_body = rt_string_from_bytes(body_cstr, (size_t)body_len64);
-        if (!current_body)
+        if (!current_body) {
             rt_trap("HttpClient: memory allocation failed");
+            rt_string_unref(current_url);
+            return NULL;
+        }
     }
 
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
@@ -966,6 +1036,12 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
         rt_string method_str = rt_string_from_bytes(current_method, strlen(current_method));
         void *req = rt_http_req_new(method_str, current_url);
         rt_string_unref(method_str);
+        if (!req) {
+            rt_string_unref(current_url);
+            rt_string_unref(current_body);
+            rt_trap_net("HttpClient: request creation failed", Err_InvalidUrl);
+            return NULL;
+        }
 
         apply_defaults(c, req, allow_sensitive_defaults);
         apply_cookie_header(c, req, current_url);
@@ -978,6 +1054,12 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
         final_res = rt_http_req_send(req);
         if (req && rt_obj_release_check0(req))
             rt_obj_free(req);
+        if (!final_res) {
+            rt_string_unref(current_url);
+            rt_string_unref(current_body);
+            rt_trap_net("HttpClient: request failed", Err_NetworkError);
+            return NULL;
+        }
         store_response_cookies(c, final_res, current_url);
 
         int64_t status = rt_http_res_status(final_res);
@@ -995,6 +1077,14 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
 
         rt_string next_url = rt_http_resolve_redirect_url(current_url, location);
         rt_string_unref(location);
+        if (!next_url) {
+            rt_string_unref(current_url);
+            rt_string_unref(current_body);
+            if (final_res && rt_obj_release_check0(final_res))
+                rt_obj_free(final_res);
+            rt_trap_net("HttpClient: invalid redirect URL", Err_InvalidUrl);
+            return NULL;
+        }
         if (!rt_http_url_has_same_origin(current_url, next_url))
             allow_sensitive_defaults = 0;
         rt_string_unref(current_url);
@@ -1096,8 +1186,10 @@ void *rt_http_client_delete(void *obj, rt_string url) {
 void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
-    if (!name || !value || http_client_string_has_embedded_nul(name) ||
-        http_client_string_has_embedded_nul(value)) {
+    const char *name_cstr = name ? rt_string_cstr(name) : NULL;
+    if (!name || !value || !name_cstr || !http_method_is_token(name_cstr) ||
+        http_client_string_has_embedded_nul(name) || http_client_string_has_embedded_nul(value) ||
+        http_client_string_has_crlf(value)) {
         rt_trap("HttpClient: invalid default header");
         return;
     }
@@ -1113,8 +1205,10 @@ void rt_http_client_set_timeout(void *obj, int64_t timeout_ms) {
         return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     int timeout_int = 0;
-    if (!http_client_timeout_ms_to_int(timeout_ms, &timeout_int))
+    if (!http_client_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("HttpClient: invalid timeout");
+        return;
+    }
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     c->timeout_ms = timeout_int;
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
@@ -1161,6 +1255,10 @@ void rt_http_client_set_pool_size(void *obj, int64_t max_size) {
     if (max_size <= 0)
         max_size = 1;
     new_pool = rt_http_conn_pool_new(max_size);
+    if (!new_pool) {
+        rt_trap("HttpClient: connection pool allocation failed");
+        return;
+    }
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     c->pool_size = max_size;
     old_pool = c->connection_pool;

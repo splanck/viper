@@ -642,7 +642,17 @@ retry:
     status = -1;
 
     url = rt_string_from_bytes(current_url, strlen(current_url));
+    if (!url) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: OOM");
+        goto fail;
+    }
     url_obj = rt_url_parse(url);
+    if (!url_obj) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: invalid URL");
+        goto fail;
+    }
     scheme = rt_url_scheme(url_obj);
     host = rt_url_host(url_obj);
     path = rt_url_path(url_obj);
@@ -738,8 +748,19 @@ retry:
     if (last_event_id && !sse_header_value_is_valid(last_event_id))
         last_event_id = NULL;
 
-    request_cap = strlen(target) + strlen(host_header) + 256 +
-                  (last_event_id ? strlen(last_event_id) + 32 : 0);
+    {
+        size_t event_id_len = last_event_id ? strlen(last_event_id) : 0;
+        size_t target_size = strlen(target);
+        size_t host_size = strlen(host_header);
+        if (target_size > SIZE_MAX - host_size || target_size + host_size > SIZE_MAX - 256 ||
+            (last_event_id && event_id_len > SIZE_MAX - 32) ||
+            (last_event_id && target_size + host_size + 256 > SIZE_MAX - event_id_len - 32)) {
+            if (err_msg && err_msg_cap > 0)
+                snprintf(err_msg, err_msg_cap, "SSE: request too large");
+            goto fail;
+        }
+        request_cap = target_size + host_size + 256 + (last_event_id ? event_id_len + 32 : 0);
+    }
     request = (char *)malloc(request_cap);
     if (!request) {
         if (err_msg && err_msg_cap > 0)

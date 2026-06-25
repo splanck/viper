@@ -122,6 +122,7 @@ typedef struct rt_ws_impl {
     size_t recv_buffer_size; ///< Size of receive buffer.
     size_t recv_buffer_len;  ///< Bytes currently in buffer.
     size_t recv_buffer_pos;  ///< Read cursor within recv_buffer.
+    int timeout_ms;          ///< Configured socket/TLS timeout used for retries.
 } rt_ws_impl;
 
 /// @brief True if `host` is an IPv6 literal that must be wrapped in `[…]` for URL/Host.
@@ -492,8 +493,9 @@ static int ws_send_all(rt_ws_impl *ws, const void *data, size_t len) {
     size_t total = 0;
     while (total < len) {
         long sent = ws_send_partial(ws, ptr + total, len - total);
-        if (sent < 0 && !ws->tls && ws_send_should_retry()) {
-            if (ws_wait_socket(ws->socket_fd, 1000, 1) > 0)
+        if (sent < 0 && (ws->tls || ws_send_should_retry())) {
+            int timeout_ms = ws->timeout_ms > 0 ? ws->timeout_ms : 30000;
+            if (ws_wait_socket(ws->socket_fd, timeout_ms, 1) > 0)
                 continue;
             return 0;
         }
@@ -1462,6 +1464,7 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
     ws->recv_buffer_size = 0;
     ws->recv_buffer_len = 0;
     ws->recv_buffer_pos = 0;
+    ws->timeout_ms = timeout_int;
 
     rt_obj_set_finalizer(ws, rt_ws_finalize);
 

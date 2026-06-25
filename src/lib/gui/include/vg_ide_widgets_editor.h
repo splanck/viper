@@ -274,6 +274,18 @@ typedef struct vg_codeeditor {
     int highlight_span_cap;      ///< Allocated capacity
     bool highlight_spans_sorted; ///< True when highlight_spans is ordered by start line/column.
 
+    // Semantic token overlay: per-identifier foreground colors supplied by the
+    // compiler (Phase 5), applied on top of the lexical highlighter inside
+    // highlight_line(). See docs/adr/0007-codeeditor-syntax-surface-expansion.md.
+    struct vg_semantic_token {
+        int line;       ///< 0-based line.
+        int start_col;  ///< 0-based start column (inclusive).
+        int end_col;    ///< 0-based end column (exclusive).
+        uint32_t color; ///< Resolved ARGB foreground color.
+    } *semantic_tokens;             ///< Owned array; NULL when unused.
+    int semantic_token_count;       ///< Active token count.
+    int semantic_token_cap;         ///< Allocated capacity.
+
     // Per-line highlight index built from highlight_spans for paint.
     bool highlight_line_index_valid;
     int highlight_line_index_line_count;

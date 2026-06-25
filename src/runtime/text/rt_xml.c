@@ -68,6 +68,67 @@ static void *parse_document(const char *input, size_t len);
 
 #include "rt_trap.h"
 
+static void set_error(const char *msg);
+
+/// @brief Safely expose a runtime XML input string as a byte span.
+/// @details Public XML entry points use `size_t` lengths internally. This
+///          helper rejects malformed handles that report negative lengths before
+///          a cast can turn them into very large spans.
+/// @param text Runtime string handle to inspect.
+/// @param empty_error Error message to set when the input is NULL or empty.
+/// @param out_cstr Receives the borrowed UTF-8 byte pointer.
+/// @param out_len Receives the non-negative byte length.
+/// @return 1 when a non-empty byte span is available; otherwise 0.
+static int xml_string_view_nonempty(rt_string text,
+                                    const char *empty_error,
+                                    const char **out_cstr,
+                                    size_t *out_len) {
+    if (!text) {
+        set_error(empty_error);
+        return 0;
+    }
+    int64_t raw_len = rt_str_len(text);
+    if (raw_len <= 0) {
+        set_error(raw_len == 0 ? empty_error : "Invalid XML string length");
+        return 0;
+    }
+    const char *cstr = rt_string_cstr(text);
+    if (!cstr) {
+        set_error("Invalid XML string");
+        return 0;
+    }
+    *out_cstr = cstr;
+    *out_len = (size_t)raw_len;
+    return 1;
+}
+
+/// @brief Safely expose an optional runtime XML content string as a byte span.
+/// @details Unlike `xml_string_view_nonempty`, NULL is accepted and maps to an
+///          empty span for constructors such as `Xml.Comment` and `Xml.Cdata`.
+/// @param text Optional runtime string handle.
+/// @param out_cstr Receives the borrowed byte pointer or NULL for no content.
+/// @param out_len Receives the non-negative byte length.
+/// @return 1 when the handle is valid; otherwise 0 and `xml_last_error` is set.
+static int xml_optional_string_view(rt_string text, const char **out_cstr, size_t *out_len) {
+    *out_cstr = NULL;
+    *out_len = 0;
+    if (!text)
+        return 1;
+    int64_t raw_len = rt_str_len(text);
+    if (raw_len < 0) {
+        set_error("Invalid XML string length");
+        return 0;
+    }
+    const char *cstr = rt_string_cstr(text);
+    if (!cstr && raw_len > 0) {
+        set_error("Invalid XML string");
+        return 0;
+    }
+    *out_cstr = cstr;
+    *out_len = (size_t)raw_len;
+    return 1;
+}
+
 /// @brief Stash a parse-error message in the thread-local error buffer.
 ///
 /// Truncates to fit within the 256-byte buffer with a null terminator.
@@ -85,6 +146,56 @@ static void set_error(const char *msg) {
 /// clear `rt_xml_error()` output.
 static void clear_error(void) {
     xml_last_error[0] = '\0';
+}
+
+/// @brief Append an XML child to an owned Seq and verify that it was added.
+/// @details `rt_seq_push` traps on allocation failure and returns `void`. When
+///          a trap recovery handler resumes execution, checking the length
+///          change lets XML parsing stop cleanly instead of reporting success
+///          with a missing child.
+/// @param seq Owned child sequence.
+/// @param child Child node to append.
+/// @param error_msg Diagnostic stored in `rt_xml_error()` on failure.
+/// @return 1 when the child was appended; 0 when parsing should fail.
+static int xml_seq_push_checked(void *seq, void *child, const char *error_msg) {
+    int64_t before = rt_seq_len(seq);
+    rt_seq_push(seq, child);
+    if (rt_seq_len(seq) != before + 1) {
+        set_error(error_msg ? error_msg : "XML sequence append failed");
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Push a borrowed XML node pointer onto an explicit traversal stack.
+/// @details Used by text-content collection to avoid recursive traversal of
+///          programmatically-built trees. The stack stores borrowed references;
+///          ownership remains with the XML node tree.
+/// @param stack_io Stack allocation pointer, grown with `realloc` as needed.
+/// @param count_io Number of entries currently stored.
+/// @param cap_io Current stack capacity.
+/// @param node Borrowed XML node pointer to push.
+/// @return 1 on success; 0 on allocation overflow/OOM.
+static int xml_traversal_stack_push(void ***stack_io,
+                                    size_t *count_io,
+                                    size_t *cap_io,
+                                    void *node) {
+    if (*count_io == *cap_io) {
+        size_t new_cap = *cap_io ? *cap_io * 2u : 32u;
+        if (new_cap < *cap_io || new_cap > SIZE_MAX / sizeof(void *)) {
+            set_error("XML traversal stack overflow");
+            return 0;
+        }
+        void **new_stack = (void **)realloc(*stack_io, new_cap * sizeof(void *));
+        if (!new_stack) {
+            set_error("XML traversal allocation failed");
+            return 0;
+        }
+        *stack_io = new_stack;
+        *cap_io = new_cap;
+    }
+    (*stack_io)[(*count_io)++] = node;
+    return 1;
 }
 
 /// @brief Return true if the thread-local error buffer is currently non-empty.
@@ -248,6 +359,7 @@ static void *xml_node_new(rt_xml_node_type_t type) {
 
 /* S-17: Maximum element nesting depth */
 #define XML_MAX_DEPTH 200
+#define XML_MAX_ENTITY_REF_LEN 32
 
 typedef struct {
     const char *input;
@@ -335,24 +447,24 @@ static bool parser_lookahead(xml_parser *p, const char *str) {
 // Parsing Helpers
 //=============================================================================
 
-/// @brief Whether `c` may begin an XML name (letter, '_', or ':').
+/// @brief Whether `c` may begin an XML name.
 ///
-/// XML 1.0 allows a much broader set (including most Unicode letters)
-/// but we restrict to ASCII for simplicity — sufficient for typical
-/// configuration / data XML; will be revisited if non-ASCII tags
-/// become a real requirement.
+/// ASCII names follow XML's letter / underscore / colon rule; non-ASCII bytes
+/// are accepted as part of UTF-8 names so documents using Unicode element and
+/// attribute names are not rejected by the byte-oriented parser.
 static bool is_name_start_char(char c) {
-    return isalpha((unsigned char)c) || c == '_' || c == ':';
+    unsigned char ch = (unsigned char)c;
+    return ch >= 0x80 || isalpha(ch) || c == '_' || c == ':';
 }
 
-/// @brief Whether `c` may continue an XML name (alnum, '_', ':', '-', '.').
+/// @brief Whether `c` may continue an XML name.
 static bool is_name_char(char c) {
-    return isalnum((unsigned char)c) || c == '_' || c == ':' || c == '-' || c == '.';
+    unsigned char ch = (unsigned char)c;
+    return ch >= 0x80 || isalnum(ch) || c == '_' || c == ':' || c == '-' || c == '.';
 }
 
 /// @brief Return true if the null-terminated string `s` is a valid XML 1.0 name.
-///        We restrict to ASCII: letter/underscore/colon start, alnum/underscore/colon/hyphen/dot
-///        continue.
+///        ASCII syntax is checked byte-for-byte; UTF-8 non-ASCII bytes are allowed.
 static bool is_valid_xml_name_cstr(const char *s) {
     if (!s || !is_name_start_char(*s))
         return false;
@@ -402,7 +514,10 @@ bool contains_invalid_xml_chars(const char *s, size_t len) {
 static bool is_valid_xml_string(rt_string text) {
     if (!text)
         return true;
-    return !contains_invalid_xml_chars(rt_string_cstr(text), (size_t)rt_str_len(text));
+    int64_t len = rt_str_len(text);
+    if (len < 0)
+        return false;
+    return !contains_invalid_xml_chars(rt_string_cstr(text), (size_t)len);
 }
 
 /// @brief Return true if `codepoint` is a legal XML 1.0 character (per XML 1.0 §2.2).
@@ -451,11 +566,11 @@ int decode_entity(const char *str, size_t len, char *out, size_t *consumed) {
     if (len < 2 || str[0] != '&')
         return 0;
 
-    // Find semicolon
+    // Find semicolon within a bounded entity reference length.
     size_t end = 1;
-    while (end < len && str[end] != ';')
+    while (end < len && end <= XML_MAX_ENTITY_REF_LEN && str[end] != ';')
         end++;
-    if (end >= len)
+    if (end >= len || end > XML_MAX_ENTITY_REF_LEN)
         return 0;
 
     *consumed = end + 1;
@@ -1022,7 +1137,15 @@ static void *parse_element(xml_parser *p) {
         if (child) {
             xml_node *child_node = (xml_node *)child;
             child_node->parent = elem;
-            rt_seq_push(elem->children, child);
+            if (!xml_seq_push_checked(elem->children, child, "XML child append failed")) {
+                child_node->parent = NULL;
+                if (rt_obj_release_check0(child))
+                    rt_obj_free(child);
+                p->depth--;
+                if (rt_obj_release_check0(node))
+                    rt_obj_free(node);
+                return NULL;
+            }
             // Ownership transferred to elem; its finalizer will release child
         } else if (xml_last_error[0] != '\0') {
             // Parse error occurred
@@ -1197,15 +1320,12 @@ static void *parse_document(const char *input, size_t len) {
 /// @return Owned document node, or NULL on failure.
 void *rt_xml_parse(rt_string text) {
     clear_error();
-    if (!text || rt_str_len(text) == 0) {
-        set_error("Empty XML input");
+    const char *cstr = NULL;
+    size_t len = 0;
+    if (!xml_string_view_nonempty(text, "Empty XML input", &cstr, &len))
         return NULL;
-    }
 
-    const char *cstr = rt_string_cstr(text);
-    int64_t len = rt_str_len(text);
-
-    return parse_document(cstr, (size_t)len);
+    return parse_document(cstr, len);
 }
 
 /// @brief `Xml.Error()` — return the last parse error message on this thread.
@@ -1303,9 +1423,11 @@ void *rt_xml_text(rt_string content) {
 /// @return Owned comment node.
 void *rt_xml_comment(rt_string content) {
     clear_error();
+    const char *s = NULL;
+    size_t len = 0;
+    if (!xml_optional_string_view(content, &s, &len))
+        return NULL;
     if (content) {
-        const char *s = rt_string_cstr(content);
-        size_t len = (size_t)rt_str_len(content);
         if (contains_bytes_n(s, len, "--") || (len > 0 && s[len - 1] == '-')) {
             set_error("Invalid XML comment content");
             return NULL;
@@ -1337,9 +1459,11 @@ void *rt_xml_comment(rt_string content) {
 /// @return Owned CDATA node.
 void *rt_xml_cdata(rt_string content) {
     clear_error();
+    const char *s = NULL;
+    size_t len = 0;
+    if (!xml_optional_string_view(content, &s, &len))
+        return NULL;
     if (content) {
-        const char *s = rt_string_cstr(content);
-        size_t len = (size_t)rt_str_len(content);
         if (contains_bytes_n(s, len, "]]>")) {
             set_error("Invalid CDATA content");
             return NULL;
@@ -1415,30 +1539,43 @@ static int collect_text_content(void *node, rt_string_builder *sb) {
     if (!rt_xml_is_node(node))
         return 1;
 
-    xml_node *n = (xml_node *)node;
+    void **stack = NULL;
+    size_t stack_count = 0;
+    size_t stack_cap = 0;
+    if (!xml_traversal_stack_push(&stack, &stack_count, &stack_cap, node))
+        return 0;
 
-    if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA) {
-        if (n->content) {
-            const char *cstr = rt_string_cstr(n->content);
-            if (cstr && rt_sb_append_cstr(sb, cstr) != RT_SB_OK)
-                return 0;
+    while (stack_count > 0) {
+        void *current = stack[--stack_count];
+        if (!rt_xml_is_node(current))
+            continue;
+
+        xml_node *n = (xml_node *)current;
+        if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA) {
+            if (n->content) {
+                const char *cstr = rt_string_cstr(n->content);
+                if (cstr && rt_sb_append_cstr(sb, cstr) != RT_SB_OK) {
+                    free(stack);
+                    return 0;
+                }
+            }
+            continue;
         }
-        return 1;
+
+        if ((n->type != XML_NODE_ELEMENT && n->type != XML_NODE_DOCUMENT) || !n->children)
+            continue;
+
+        int64_t child_count = rt_seq_len(n->children);
+        for (int64_t i = child_count; i > 0; i--) {
+            void *child = rt_seq_get(n->children, i - 1);
+            if (!xml_traversal_stack_push(&stack, &stack_count, &stack_cap, child)) {
+                free(stack);
+                return 0;
+            }
+            // rt_seq_get returns a borrowed reference — do not release
+        }
     }
-
-    if (n->type != XML_NODE_ELEMENT && n->type != XML_NODE_DOCUMENT)
-        return 1;
-
-    if (!n->children)
-        return 1;
-
-    int64_t count = rt_seq_len(n->children);
-    for (int64_t i = 0; i < count; i++) {
-        void *child = rt_seq_get(n->children, i);
-        if (!collect_text_content(child, sb))
-            return 0;
-        // rt_seq_get returns a borrowed reference — do not release
-    }
+    free(stack);
     return 1;
 }
 
@@ -1590,6 +1727,10 @@ void *rt_xml_attr_names(void *node) {
 /// children it contains; release the seq when finished.
 void *rt_xml_children(void *node) {
     void *copy = rt_seq_new();
+    if (!copy) {
+        set_error("XML children allocation failed");
+        return NULL;
+    }
     rt_seq_set_owns_elements(copy, 1);
     if (!rt_xml_is_node(node))
         return copy;
@@ -1602,7 +1743,8 @@ void *rt_xml_children(void *node) {
     int64_t count = rt_seq_len(n->children);
     for (int64_t i = 0; i < count; i++) {
         void *child = rt_seq_get(n->children, i);
-        rt_seq_push(copy, child);
+        if (!xml_seq_push_checked(copy, child, "XML children copy failed"))
+            return copy;
     }
     return copy;
 }

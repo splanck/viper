@@ -332,6 +332,7 @@ enum class SemanticJobKind : int64_t {
     HoverInfo = 3,
     Symbols = 4,
     Diagnostics = 5,
+    Tokens = 6,
 };
 
 struct IndexedSource {
@@ -368,6 +369,7 @@ struct SemanticJob {
     std::string hoverDisplay;
     std::string hoverDocumentation;
     std::string symbols;
+    std::string tokens;
     std::vector<DiagnosticRecord> diagnostics;
 };
 
@@ -1617,6 +1619,37 @@ std::string hoverForSource(const std::string &source,
     return {};
 }
 
+// Classify every identifier occurrence by its resolved symbol kind for the
+// editor's semantic-highlight overlay. Runs on a worker thread (pure compiler
+// work — no runtime/GC). Emits tab-separated `line<TAB>start<TAB>end<TAB>kind`
+// rows in 0-based editor coordinates (end column exclusive). Unresolved
+// identifiers are omitted so the lexical highlighter's color stands.
+std::string tokensForSource(const std::string &source, const std::string &path) {
+    il::support::SourceManager sm;
+    CompilerInput input{.source = source, .path = path};
+    CompilerOptions opts{};
+    uint32_t fileId = sm.addFile(path);
+    input.fileId = fileId;
+
+    auto result = parseAndAnalyze(input, opts, sm);
+    if (!result || !result->sema)
+        return {};
+
+    std::ostringstream out;
+    for (const auto &token : lexIdentifierTokens(source, result->fileId)) {
+        const ScopedSymbol *scoped = result->sema->findSymbolAtPosition(
+            token.text, result->fileId, token.loc.line, token.loc.column);
+        if (!scoped)
+            continue;
+        std::string kind = symbolKindName(scoped->symbol.kind);
+        int line0 = token.loc.line > 0 ? static_cast<int>(token.loc.line) - 1 : 0;
+        int start0 = token.loc.column > 0 ? static_cast<int>(token.loc.column) - 1 : 0;
+        int end0 = token.endColumn > 0 ? static_cast<int>(token.endColumn) - 1 : 0;
+        out << line0 << '\t' << start0 << '\t' << end0 << '\t' << kind << '\n';
+    }
+    return out.str();
+}
+
 std::string symbolsForSource(const std::string &source, const std::string &path) {
     il::support::SourceManager sm;
     CompilerInput input{.source = source, .path = path};
@@ -1733,6 +1766,7 @@ void *rt_zia_completion_begin_hover_info_for_file(rt_string source,
                                                   int64_t line,
                                                   int64_t col);
 void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path);
+void *rt_zia_completion_begin_tokens_for_file(rt_string source, rt_string file_path);
 void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path);
 int8_t rt_zia_semantic_job_is_done(void *handle);
 int8_t rt_zia_semantic_job_is_error(void *handle);
@@ -1743,6 +1777,7 @@ void *rt_zia_semantic_job_completion_items(void *handle);
 void *rt_zia_semantic_job_signature_info(void *handle);
 void *rt_zia_semantic_job_hover_info(void *handle);
 rt_string rt_zia_semantic_job_symbols(void *handle);
+rt_string rt_zia_semantic_job_tokens(void *handle);
 void *rt_zia_semantic_job_diagnostics(void *handle);
 void *rt_zia_project_index_new(rt_string root);
 int8_t rt_zia_project_index_is_valid(void *handle);
@@ -2080,6 +2115,19 @@ void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_
         });
 }
 
+void *rt_zia_completion_begin_tokens_for_file(rt_string source, rt_string file_path) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+    return startSemanticJob(
+        SemanticJobKind::Tokens,
+        [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr)](SemanticJob &job) {
+            std::string tokens = tokensForSource(sourceStr, pathStr);
+            std::lock_guard<std::mutex> lock(job.mutex);
+            if (!job.cancelled.load(std::memory_order_acquire))
+                job.tokens = std::move(tokens);
+        });
+}
+
 void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path) {
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
@@ -2171,6 +2219,16 @@ rt_string rt_zia_semantic_job_symbols(void *handle) {
     if (!job->error.empty())
         return rt_str_empty();
     return toRtString(job->symbols);
+}
+
+rt_string rt_zia_semantic_job_tokens(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job || !job->done.load(std::memory_order_acquire) || job->kind != SemanticJobKind::Tokens)
+        return rt_str_empty();
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (!job->error.empty())
+        return rt_str_empty();
+    return toRtString(job->tokens);
 }
 
 void *rt_zia_semantic_job_diagnostics(void *handle) {

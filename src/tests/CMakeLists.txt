@@ -1127,6 +1127,31 @@ set_tests_properties(zia_viperide_syntax_render PROPERTIES
         LABELS "zia;viperide;syntax;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_viperide_formatting
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/formatting_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_formatting PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;format"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_debug
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/debug_probe.zia" -- --viper-bin $<TARGET_FILE:viper>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_debug PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;debug"
+        RUN_SERIAL TRUE
+        TIMEOUT 120)
+
+add_test(NAME zia_viperide_semantic_tokens
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/semantic_tokens_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_semantic_tokens PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;semantic;requires_display"
+        TIMEOUT 60)
+
 add_test(NAME zia_viperide_console_search
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/console_search_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")

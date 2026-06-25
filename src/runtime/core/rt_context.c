@@ -46,6 +46,7 @@
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,6 +100,7 @@ static RtContext g_legacy_ctx;
 /// @brief Initialization state for the legacy context.
 ///
 /// State machine:
+/// - -1: Initialization failed (waiters should trap instead of spinning)
 /// - 0: Uninitialized (initial state)
 /// - 1: Initializing (one thread is running rt_context_init)
 /// - 2: Initialized (ready for use)
@@ -254,7 +256,7 @@ void rt_assert_main_thread_(const char *file, int line) {
                  file ? file : "<unknown>",
                  line);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, line, buffer);
-        abort();
+        return;
     }
 }
 
@@ -284,23 +286,38 @@ static void rt_legacy_ensure_init(void) {
     int state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE);
     if (state == 2)
         return;
+    if (state == -1) {
+        rt_trap("Runtime context initialization failed");
+        return;
+    }
 
     int expected = 0;
     if (__atomic_compare_exchange_n(
             &g_legacy_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            rt_trap_clear_recovery();
+            __atomic_store_n(&g_legacy_state, -1, __ATOMIC_RELEASE);
+            rt_trap("Runtime context initialization failed");
+            return;
+        }
         rt_context_init(&g_legacy_ctx);
+        rt_trap_clear_recovery();
         __atomic_store_n(&g_legacy_state, 2, __ATOMIC_RELEASE);
         return;
     }
 
     // Another thread is initializing; yield while waiting.
-    while (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2) {
+    while ((state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE)) == 1) {
 #if RT_PLATFORM_WINDOWS
         SwitchToThread();
 #elif !RT_PLATFORM_VIPERDOS
         sched_yield();
 #endif
     }
+    if (state == -1)
+        rt_trap("Runtime context initialization failed");
 }
 
 /// @brief Initialize a runtime context with default values.

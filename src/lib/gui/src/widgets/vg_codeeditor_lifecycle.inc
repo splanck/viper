@@ -212,6 +212,11 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     codeeditor_clear_highlight_spans(editor);
     codeeditor_free_inlay_hint_storage(editor);
 
+    free(editor->semantic_tokens);
+    editor->semantic_tokens = NULL;
+    editor->semantic_token_count = 0;
+    editor->semantic_token_cap = 0;
+
     if (editor->gutter_icons) {
         for (int i = 0; i < editor->gutter_icon_count; i++)
             vg_icon_destroy(&editor->gutter_icons[i].image);

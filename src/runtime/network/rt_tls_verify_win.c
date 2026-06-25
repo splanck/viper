@@ -264,22 +264,22 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
 ///        added as additional store hints.
 /// @return RT_TLS_OK on success, RT_TLS_ERROR_HANDSHAKE on validation failure.
 int tls_verify_chain(rt_tls_session_t *session) {
-    if (!session->server_cert_der_len) {
+    const uint8_t *server_cert_der = tls_session_server_cert_der(session);
+    if (!server_cert_der) {
         session->error = "TLS: no certificate to validate";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (cert_has_unsupported_critical_extension(session->server_cert_der,
-                                                session->server_cert_der_len)) {
+    if (cert_has_unsupported_critical_extension(server_cert_der, session->server_cert_der_len)) {
         session->error = "TLS: certificate contains unsupported critical extension";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (!cert_allows_tls_server_auth(session->server_cert_der, session->server_cert_der_len)) {
+    if (!cert_allows_tls_server_auth(server_cert_der, session->server_cert_der_len)) {
         session->error = "TLS: certificate is not valid for TLS server authentication";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-                                                           session->server_cert_der,
+                                                           server_cert_der,
                                                            (DWORD)session->server_cert_der_len);
 
     if (!cert_ctx) {
@@ -543,6 +543,12 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
     uint8_t content_hash[64];
     size_t hash_len = 0;
+    const uint8_t *server_cert_der = tls_session_server_cert_der(session);
+
+    if (!server_cert_der) {
+        session->error = "TLS: CertVerify: no certificate stored";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     memset(content_hash, 0, sizeof(content_hash));
     if (!build_cert_verify_hash_for_scheme_win(
             sig_scheme, session->cert_transcript_hash, content_hash, &hash_len)) {
@@ -551,7 +557,7 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     }
 
     PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-                                                           session->server_cert_der,
+                                                           server_cert_der,
                                                            (DWORD)session->server_cert_der_len);
 
     if (!cert_ctx) {

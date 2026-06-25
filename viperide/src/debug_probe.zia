@@ -1,0 +1,174 @@
+module debug_probe;
+
+// Phase 4 — first automated debugger probe. Drives the IDE's own DebugSession
+// client against the real out-of-process adapter (`viper run --debug-adapter`),
+// exactly as the running IDE does: launch → run to a breakpoint → inspect
+// locals → step over → continue to exit. Requires `--viper-bin <path>`.
+
+bind "build/debug_session";
+bind "build/breakpoints";
+
+bind Env = Viper.System.Environment;
+bind Time = Viper.Time;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+bind Str = Viper.String;
+bind Terminal = Viper.Terminal;
+
+func argValue(name: String) -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() - 1 {
+        if Env.GetArgument(i) == name { return Env.GetArgument(i + 1); }
+        i = i + 1;
+    }
+    return "";
+}
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Poll the session until it stops or terminates, or the budget elapses.
+func pollUntilSettled(session: debug_session.DebugSession, budgetMs: Integer) {
+    var waited = 0;
+    while session.IsActive() and session.stopped == false and waited < budgetMs {
+        session.Poll();
+        if session.stopped or session.terminated { return; }
+        Time.SleepMs(5);
+        waited = waited + 5;
+    }
+    session.Poll();
+}
+
+func main() {
+    var viperBin = argValue("--viper-bin");
+    if viperBin == "" {
+        fail("no --viper-bin argument");
+        return;
+    }
+
+    var dir = TempFile.CreateDirWithPrefix("viperide_debug_");
+    var prog = Path.Join(dir, "dbg.zia");
+    File.WriteAllText(prog,
+        "bind Terminal = Viper.Terminal;\n"        // line 1
+        + "func main() -> Integer {\n"             // line 2
+        + "    var a = 10;\n"                       // line 3
+        + "    var b = 20;\n"                       // line 4
+        + "    var c = a + b;\n"                     // line 5  <- breakpoint
+        + "    Terminal.Say(\"c=\" + c);\n"          // line 6
+        + "    return c;\n"                          // line 7
+        + "}\n");                                    // line 8
+
+    var store = new breakpoints.BreakpointStore();
+    store.Toggle(prog, 5);
+
+    var session = new debug_session.DebugSession();
+    if session.Launch(viperBin, prog, store) == false {
+        fail("DebugSession.Launch returned false");
+        return;
+    }
+
+    // 1) Run to the breakpoint on line 5; locals a/b must be populated.
+    pollUntilSettled(session, 8000);
+    if session.stopped == false {
+        fail("did not stop at breakpoint (terminated=" + session.terminated
+            + ", reason=" + session.lastReason + ")");
+        return;
+    }
+    if session.lastReason != "breakpoint" {
+        fail("stop reason was '" + session.lastReason + "'");
+        return;
+    }
+    if session.lastLine != 5 {
+        fail("stopped at wrong line: " + session.lastLine);
+        return;
+    }
+    // The adapter reports the canonical source path (symlinks resolved), which
+    // may differ in form from `prog` — assert it identifies the same file.
+    if Str.EndsWith(session.activePath, "dbg.zia") == false {
+        fail("stop path is not our file: " + session.activePath);
+        return;
+    }
+    if Str.IndexOf(session.consoleText, "a = 10") == 0 {
+        fail("locals missing 'a = 10' in console: " + session.consoleText);
+        return;
+    }
+    if Str.IndexOf(session.consoleText, "b = 20") == 0 {
+        fail("locals missing 'b = 20'");
+        return;
+    }
+
+    // 2) Step over → advance to the next source line (6).
+    if session.StepOver() == false {
+        fail("StepOver rejected while stopped");
+        return;
+    }
+    pollUntilSettled(session, 8000);
+    if session.stopped == false {
+        fail("did not stop after StepOver (terminated=" + session.terminated + ")");
+        return;
+    }
+    if session.lastLine != 6 {
+        fail("StepOver landed on line " + session.lastLine + " (expected 6)");
+        return;
+    }
+
+    // 3) Continue → run to completion; main returns 30, program prints c=30.
+    if session.Continue() == false {
+        fail("Continue rejected while stopped");
+        return;
+    }
+    pollUntilSettled(session, 8000);
+    if session.terminated == false {
+        fail("did not terminate after Continue");
+        return;
+    }
+    if session.exitCode != 30 {
+        fail("exit code was " + session.exitCode + " (expected 30)");
+        return;
+    }
+    if Str.IndexOf(session.programOutput, "c=30") == 0 {
+        fail("program output missing 'c=30': " + session.programOutput);
+        return;
+    }
+
+    // ===== BASIC: source-line breakpoints work for the second frontend =====
+    var bprog = Path.Join(dir, "dbg.bas");
+    File.WriteAllText(bprog,
+        "PRINT \"start\"\n"      // line 1
+        + "LET x = 7\n"           // line 2  <- breakpoint
+        + "PRINT x\n"             // line 3
+        + "PRINT \"end\"\n");     // line 4
+    var bstore = new breakpoints.BreakpointStore();
+    bstore.Toggle(bprog, 2);
+    var bsession = new debug_session.DebugSession();
+    if bsession.Launch(viperBin, bprog, bstore) == false {
+        fail("BASIC DebugSession.Launch returned false");
+        return;
+    }
+    pollUntilSettled(bsession, 8000);
+    if bsession.stopped == false {
+        fail("BASIC did not stop at breakpoint (terminated=" + bsession.terminated + ")");
+        return;
+    }
+    if bsession.lastLine != 2 {
+        fail("BASIC stopped at line " + bsession.lastLine + " (expected 2)");
+        return;
+    }
+    if Str.EndsWith(bsession.activePath, "dbg.bas") == false {
+        fail("BASIC stop path is not our file: " + bsession.activePath);
+        return;
+    }
+    if bsession.Continue() == false {
+        fail("BASIC Continue rejected while stopped");
+        return;
+    }
+    pollUntilSettled(bsession, 8000);
+    if bsession.terminated == false {
+        fail("BASIC did not terminate after Continue");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

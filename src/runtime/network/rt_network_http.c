@@ -56,6 +56,13 @@ typedef pthread_mutex_t http_pool_mutex_t;
 
 #include "rt_trap.h"
 
+/// @brief Internal response-map separator for repeated Set-Cookie headers.
+/// @details The public response header map stores string values, but Set-Cookie cannot be safely
+///          folded with comma or semicolon separators. Use an HTTP-invalid control byte instead of
+///          CR/LF so cookie storage can recover individual fields without exposing header-splitting
+///          syntax through the parsed response value.
+#define HTTP_SET_COOKIE_JOIN_SEPARATOR "\037"
+
 /// @brief True if `host` is an IPv6 literal that needs `[…]` wrapping in a URL/Host header.
 ///
 /// Detects bare IPv6 addresses (containing ':' but no leading '[')
@@ -168,6 +175,7 @@ typedef struct http_conn {
     int pool_slot;          // Slot reserved inside @p pool while the lease is checked out
     int tls_verify;         // Verification mode used to establish this connection
     int reused_from_pool;   // 1 when this request is reusing an already-open pooled connection
+    int timeout_ms;         // Request I/O timeout used for retry readiness waits
     char pool_key[320];     // Stable host/port/TLS key for reuse
 } http_conn_t;
 
@@ -179,6 +187,7 @@ static void http_conn_init_tcp(http_conn_t *conn, socket_t socket_fd) {
     conn->http2 = NULL;
     conn->use_tls = 0;
     conn->pool_slot = -1;
+    conn->timeout_ms = 0;
 }
 
 /// @brief Initialize HTTP connection for TLS.
@@ -189,6 +198,7 @@ static void http_conn_init_tls(http_conn_t *conn, rt_tls_session_t *tls) {
     conn->http2 = NULL;
     conn->use_tls = 1;
     conn->pool_slot = -1;
+    conn->timeout_ms = 0;
 }
 
 static long http2_tls_read(void *ctx, uint8_t *buf, size_t len) {
@@ -224,7 +234,18 @@ static int http_conn_send(http_conn_t *conn, const uint8_t *data, size_t len) {
                             (const char *)(data + total_sent),
                             (int)(len - total_sent > INT_MAX ? INT_MAX : len - total_sent),
                             SEND_FLAGS);
-            if (sent <= 0)
+            if (sent < 0) {
+                int err = rt_socket_last_error();
+                if (rt_socket_error_is_interrupted(err))
+                    continue;
+                if (rt_socket_error_is_would_block(err)) {
+                    int ready = wait_socket(conn->socket_fd, conn->timeout_ms, true);
+                    if (ready > 0)
+                        continue;
+                }
+                return -1;
+            }
+            if (sent == 0)
                 return -1;
             total_sent += (size_t)sent;
         }
@@ -258,7 +279,7 @@ static long http_conn_recv(http_conn_t *conn, uint8_t *buf, size_t len) {
                      (char *)(buf + total),
                      (int)(len - total > INT_MAX ? INT_MAX : len - total),
                      0);
-        } while (n < 0 && errno == EINTR);
+        } while (n < 0 && rt_socket_error_is_interrupted(rt_socket_last_error()));
         if (n > 0)
             total += (size_t)n;
         else if (total == 0 && n < 0)
@@ -284,7 +305,21 @@ static int http_conn_recv_byte(http_conn_t *conn, uint8_t *byte) {
         conn->read_buf_len = (size_t)n;
         conn->read_buf_pos = 0;
     } else {
-        int n = recv(conn->socket_fd, (char *)conn->read_buf, (int)sizeof(conn->read_buf), 0);
+        int n;
+        while (1) {
+            n = recv(conn->socket_fd, (char *)conn->read_buf, (int)sizeof(conn->read_buf), 0);
+            if (n >= 0)
+                break;
+            int err = rt_socket_last_error();
+            if (rt_socket_error_is_interrupted(err))
+                continue;
+            if (rt_socket_error_is_would_block(err)) {
+                int ready = wait_socket(conn->socket_fd, conn->timeout_ms, false);
+                if (ready > 0)
+                    continue;
+            }
+            return 0;
+        }
         if (n <= 0)
             return 0;
         conn->read_buf_len = (size_t)n;
@@ -390,7 +425,10 @@ static int http_conn_is_healthy(http_conn_t *conn) {
             return 0;
     }
 
-    return WOULD_BLOCK ? 1 : 0;
+    {
+        int err = rt_socket_last_error();
+        return rt_socket_error_is_interrupted(err) || rt_socket_error_is_would_block(err);
+    }
 }
 
 static void http_conn_pool_entry_reset(http_conn_pool_entry_t *entry) {
@@ -656,6 +694,7 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
     conn->pool_slot = -1;
     conn->tls_verify = req->tls_verify ? 1 : 0;
     conn->reused_from_pool = 0;
+    conn->timeout_ms = req->timeout_ms;
     if (!http_make_pool_key(req->url.host,
                             req->url.port,
                             req->url.use_tls,
@@ -674,6 +713,7 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
             set_socket_timeout(conn->socket_fd, req->timeout_ms, true);
             set_socket_timeout(conn->socket_fd, req->timeout_ms, false);
         }
+        conn->timeout_ms = req->timeout_ms;
         return 1;
     }
 
@@ -715,6 +755,7 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
             return 0;
         }
         http_conn_init_tls(conn, tls);
+        conn->timeout_ms = req->timeout_ms;
         if (strcmp(rt_tls_get_negotiated_alpn(tls), "h2") == 0) {
             rt_http2_io_t io;
             io.ctx = tls;
@@ -746,6 +787,7 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
             set_socket_timeout(sock, req->timeout_ms, false);
         }
         http_conn_init_tcp(conn, sock);
+        conn->timeout_ms = req->timeout_ms;
         conn->tls_verify = req->tls_verify ? 1 : 0;
     }
 
@@ -772,6 +814,10 @@ void free_parsed_url(parsed_url_t *url) {
 }
 
 /// @brief Parse URL into components.
+/// @details Accepts explicit `http://` and `https://` URLs. For compatibility
+///          with earlier Viper programs, a URL without any `://` scheme is
+///          treated as an HTTP URL on port 80; unknown explicit schemes are
+///          rejected.
 /// @return 0 on success, -1 on error.
 int parse_url(const char *url_str, parsed_url_t *result) {
     memset(result, 0, sizeof(*result));
@@ -1011,14 +1057,18 @@ static socket_t http_create_tcp_socket(const char *host, int port, int timeout_m
 
     socket_t sock = INVALID_SOCK;
     int last_err = 0;
+    int per_address_timeout = timeout_ms;
     for (rp = res; rp != NULL; rp = rp->ai_next) {
         socket_t candidate = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (candidate == INVALID_SOCK)
             continue;
 
         suppress_sigpipe(candidate);
-        if (http_connect_socket_with_timeout(
-                candidate, rp->ai_addr, (socklen_t)rp->ai_addrlen, timeout_ms, &last_err)) {
+        if (http_connect_socket_with_timeout(candidate,
+                                             rp->ai_addr,
+                                             (socklen_t)rp->ai_addrlen,
+                                             per_address_timeout,
+                                             &last_err)) {
             sock = candidate;
             break;
         }
@@ -1538,6 +1588,159 @@ static void strip_redirect_body_headers(rt_http_req_t *req) {
     remove_header_if(req, is_body_specific_header);
 }
 
+/// @brief Free the owned fields of a stack-local redirected request clone.
+/// @details Redirect clones borrow only the connection pool pointer; every other
+///          pointer field is allocated specifically for the clone and must be
+///          released after the recursive redirect request completes.
+/// @param req Stack-local request clone to clean up. Safe for zeroed structs.
+static void http_request_clone_cleanup(rt_http_req_t *req) {
+    if (!req)
+        return;
+    free(req->method);
+    req->method = NULL;
+    free_parsed_url(&req->url);
+    free_headers(req->headers);
+    req->headers = NULL;
+    free(req->body);
+    req->body = NULL;
+    req->body_len = 0;
+    req->connection_pool = NULL;
+}
+
+/// @brief Duplicate a parsed URL into clone-owned storage.
+/// @param dst Destination parsed URL, overwritten on success.
+/// @param src Source parsed URL.
+/// @return 1 on success; 0 on allocation failure.
+static int http_clone_parsed_url(parsed_url_t *dst, const parsed_url_t *src) {
+    memset(dst, 0, sizeof(*dst));
+    if (src->host) {
+        dst->host = strdup(src->host);
+        if (!dst->host)
+            return 0;
+    }
+    if (src->path) {
+        dst->path = strdup(src->path);
+        if (!dst->path) {
+            free_parsed_url(dst);
+            return 0;
+        }
+    }
+    dst->port = src->port;
+    dst->use_tls = src->use_tls;
+    return 1;
+}
+
+/// @brief Duplicate a linked list of request headers preserving list order.
+/// @param dst_head Receives the cloned header list.
+/// @param src Source request header list.
+/// @return 1 on success; 0 on allocation failure.
+static int http_clone_headers(http_header_t **dst_head, const http_header_t *src) {
+    http_header_t **tail = dst_head;
+    *dst_head = NULL;
+    for (const http_header_t *h = src; h; h = h->next) {
+        http_header_t *copy = (http_header_t *)calloc(1, sizeof(*copy));
+        if (!copy)
+            return 0;
+        copy->name = h->name ? strdup(h->name) : NULL;
+        copy->value = h->value ? strdup(h->value) : NULL;
+        if ((h->name && !copy->name) || (h->value && !copy->value)) {
+            free(copy->name);
+            free(copy->value);
+            free(copy);
+            return 0;
+        }
+        *tail = copy;
+        tail = &copy->next;
+    }
+    return 1;
+}
+
+/// @brief Clone a request into owned storage for redirect follow-up.
+/// @details The source request can be a public builder object or a one-shot
+///          stack request whose body points into caller-owned Bytes. This helper
+///          copies method, URL, headers, and body so redirect rewriting never
+///          mutates or frees source-owned memory.
+/// @param dst Destination request clone, zeroed by this function.
+/// @param src Source request to clone.
+/// @return 1 on success; 0 after trapping on allocation failure.
+static int http_clone_request_for_redirect(rt_http_req_t *dst, const rt_http_req_t *src) {
+    memset(dst, 0, sizeof(*dst));
+    dst->timeout_ms = src->timeout_ms;
+    dst->tls_verify = src->tls_verify;
+    dst->follow_redirects = src->follow_redirects;
+    dst->max_redirects = src->max_redirects;
+    dst->accept_gzip = src->accept_gzip;
+    dst->decode_gzip = src->decode_gzip;
+    dst->keep_alive = src->keep_alive;
+    dst->connection_pool = src->connection_pool;
+    dst->force_http1 = src->force_http1;
+
+    dst->method = src->method ? strdup(src->method) : NULL;
+    if (src->method && !dst->method)
+        goto oom;
+    if (!http_clone_parsed_url(&dst->url, &src->url))
+        goto oom;
+    if (!http_clone_headers(&dst->headers, src->headers))
+        goto oom;
+    if (src->body && src->body_len > 0) {
+        dst->body = (uint8_t *)malloc(src->body_len);
+        if (!dst->body)
+            goto oom;
+        memcpy(dst->body, src->body, src->body_len);
+        dst->body_len = src->body_len;
+    }
+    return 1;
+
+oom:
+    http_request_clone_cleanup(dst);
+    rt_trap("HTTP: memory allocation failed");
+    return 0;
+}
+
+/// @brief Build the request object used for one redirect hop.
+/// @details Applies cross-origin header stripping, RFC 7231 method/body rewrite
+///          rules, and Location resolution to a clone so the original request
+///          object remains reusable after `Send()`.
+/// @param dst Destination request clone.
+/// @param src Source request that received the redirect.
+/// @param status Redirect status code.
+/// @param cross_origin Nonzero when sensitive headers must be stripped.
+/// @param location Raw Location header value.
+/// @return 1 on success; 0 after trapping on allocation or URL errors.
+static int http_prepare_redirect_request(rt_http_req_t *dst,
+                                         const rt_http_req_t *src,
+                                         int status,
+                                         int cross_origin,
+                                         const char *location) {
+    if (!http_clone_request_for_redirect(dst, src))
+        return 0;
+    if (cross_origin)
+        strip_sensitive_redirect_headers(dst);
+
+    if (status == 303 ||
+        ((status == 301 || status == 302) && dst->method && strcmp(dst->method, "POST") == 0)) {
+        char *get_method = strdup("GET");
+        if (!get_method) {
+            http_request_clone_cleanup(dst);
+            rt_trap("HTTP: memory allocation failed");
+            return 0;
+        }
+        free(dst->method);
+        dst->method = get_method;
+        free(dst->body);
+        dst->body = NULL;
+        dst->body_len = 0;
+        strip_redirect_body_headers(dst);
+    }
+
+    if (resolve_redirect_target(&dst->url, location) != 0) {
+        http_request_clone_cleanup(dst);
+        rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Fetch a boxed string header value from the lowercase response header map.
 static rt_string get_header_value(void *headers_map, const char *name) {
     rt_string key = rt_const_cstr(name);
@@ -1607,6 +1810,11 @@ static int maybe_decode_gzip_body(const rt_http_req_t *req,
         return 0;
 
     decoded_len = (size_t)bytes_len(decoded);
+    if (decoded_len > HTTP_MAX_BODY_SIZE) {
+        if (decoded && rt_obj_release_check0(decoded))
+            rt_obj_free(decoded);
+        return 0;
+    }
     decoded_body = (uint8_t *)malloc(decoded_len > 0 ? decoded_len : 1);
     if (!decoded_body) {
         if (decoded && rt_obj_release_check0(decoded))
@@ -1639,11 +1847,14 @@ static char *build_request(rt_http_req_t *req) {
 
     // Calculate total size
     size_t size = 0;
+    char *host_header = NULL;
 #define HTTP_REQUEST_ADD_SIZE(amount_)                                                             \
     do {                                                                                           \
         size_t http_request_amount_ = (amount_);                                                   \
-        if (http_request_amount_ > SIZE_MAX - size)                                                \
+        if (http_request_amount_ > SIZE_MAX - size) {                                              \
+            free(host_header);                                                                     \
             return NULL;                                                                           \
+        }                                                                                          \
         size += http_request_amount_;                                                              \
     } while (0)
 
@@ -1653,18 +1864,34 @@ static char *build_request(rt_http_req_t *req) {
     HTTP_REQUEST_ADD_SIZE(11); // " HTTP/1.1\r\n"
 
     // Host header
-    char host_header[300];
-    if (req->url.port != 80 && req->url.port != 443)
-        snprintf(host_header,
-                 sizeof(host_header),
-                 host_needs_brackets(req->url.host) ? "Host: [%s]:%d\r\n" : "Host: %s:%d\r\n",
-                 req->url.host,
-                 req->url.port);
-    else
-        snprintf(host_header,
-                 sizeof(host_header),
-                 host_needs_brackets(req->url.host) ? "Host: [%s]\r\n" : "Host: %s\r\n",
-                 req->url.host);
+    {
+        int needed = 0;
+        int with_port = req->url.port != 80 && req->url.port != 443;
+        int bracketed = host_needs_brackets(req->url.host);
+        if (with_port && bracketed)
+            needed = snprintf(NULL, 0, "Host: [%s]:%d\r\n", req->url.host, req->url.port);
+        else if (with_port)
+            needed = snprintf(NULL, 0, "Host: %s:%d\r\n", req->url.host, req->url.port);
+        else if (bracketed)
+            needed = snprintf(NULL, 0, "Host: [%s]\r\n", req->url.host);
+        else
+            needed = snprintf(NULL, 0, "Host: %s\r\n", req->url.host);
+        if (needed < 0)
+            return NULL;
+        host_header = (char *)malloc((size_t)needed + 1);
+        if (!host_header)
+            return NULL;
+        if (with_port && bracketed)
+            snprintf(
+                host_header, (size_t)needed + 1, "Host: [%s]:%d\r\n", req->url.host, req->url.port);
+        else if (with_port)
+            snprintf(
+                host_header, (size_t)needed + 1, "Host: %s:%d\r\n", req->url.host, req->url.port);
+        else if (bracketed)
+            snprintf(host_header, (size_t)needed + 1, "Host: [%s]\r\n", req->url.host);
+        else
+            snprintf(host_header, (size_t)needed + 1, "Host: %s\r\n", req->url.host);
+    }
     HTTP_REQUEST_ADD_SIZE(strlen(host_header));
 
     // Content-Length if body
@@ -1696,8 +1923,10 @@ static char *build_request(rt_http_req_t *req) {
 #undef HTTP_REQUEST_ADD_SIZE
 
     char *request = (char *)malloc(size);
-    if (!request)
+    if (!request) {
+        free(host_header);
         return NULL;
+    }
 
     char *p = request;
     size_t remaining = size;
@@ -1707,6 +1936,7 @@ static char *build_request(rt_http_req_t *req) {
     do {                                                                                           \
         written = snprintf(p, remaining, fmt, __VA_ARGS__);                                        \
         if (written < 0 || (size_t)written >= remaining) {                                         \
+            free(host_header);                                                                     \
             free(request);                                                                         \
             return NULL;                                                                           \
         }                                                                                          \
@@ -1736,10 +1966,12 @@ static char *build_request(rt_http_req_t *req) {
 #undef SNPRINTF_OR_FAIL
 
     if (remaining == 0) {
+        free(host_header);
         free(request);
         return NULL;
     }
     *p = '\0';
+    free(host_header);
     return request;
 }
 
@@ -1843,12 +2075,14 @@ static int parse_status_line(const char *line, int *http_minor_out, char **statu
         return -1;
     p++;
 
-    // Parse status code
-    int status = 0;
-    while (*p >= '0' && *p <= '9') {
-        status = status * 10 + (*p - '0');
-        p++;
-    }
+    // Parse exactly three status-code digits followed by SP or end-of-line.
+    if (!(p[0] >= '0' && p[0] <= '9') || !(p[1] >= '0' && p[1] <= '9') ||
+        !(p[2] >= '0' && p[2] <= '9'))
+        return -1;
+    int status = (p[0] - '0') * 100 + (p[1] - '0') * 10 + (p[2] - '0');
+    p += 3;
+    if (*p != '\0' && *p != ' ')
+        return -1;
 
     if (status < 100 || status > 599)
         return -1;
@@ -1919,7 +2153,8 @@ static int append_response_header_value(void *headers_map, const char *name, con
             rt_string existing_str = rt_unbox_str(existing);
             const char *existing_cstr = rt_string_cstr(existing_str);
             const char *value_cstr = rt_string_cstr(value_str);
-            const char *sep = strcmp(lower_name, "set-cookie") == 0 ? "\n" : ", ";
+            const char *sep =
+                strcmp(lower_name, "set-cookie") == 0 ? HTTP_SET_COOKIE_JOIN_SEPARATOR : ", ";
             size_t existing_len = existing_cstr ? strlen(existing_cstr) : 0;
             size_t value_len = value_cstr ? strlen(value_cstr) : 0;
             size_t sep_len = strlen(sep);
@@ -2071,7 +2306,7 @@ static int read_response_head(http_conn_t *conn,
 
             if (strncasecmp(line, "location:", 9) == 0 && !redirect_location) {
                 const char *loc = line + 9;
-                while (*loc == ' ')
+                while (*loc == ' ' || *loc == '\t')
                     loc++;
                 redirect_location = strdup(loc);
                 if (!redirect_location) {
@@ -2310,7 +2545,10 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
     if (body_len == 0) {
         free(body);
         *out_len = 0;
-        return NULL;
+        body = (uint8_t *)malloc(1);
+        if (body)
+            body[0] = 0;
+        return body;
     }
 
     *out_len = body_len;
@@ -2806,29 +3044,15 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
-        if (cross_origin)
-            strip_sensitive_redirect_headers(req);
-        if (status == 303 ||
-            ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
-            free(req->method);
-            req->method = strdup("GET");
-            free(req->body);
-            req->body = NULL;
-            req->body_len = 0;
-            strip_redirect_body_headers(req);
-            if (!req->method) {
-                free(redirect_location);
-                rt_trap("HTTP: memory allocation failed");
-                return NULL;
-            }
-        }
-        if (resolve_redirect_target(&req->url, redirect_location) != 0) {
+        rt_http_req_t next_req;
+        if (!http_prepare_redirect_request(&next_req, req, status, cross_origin, redirect_location)) {
             free(redirect_location);
-            rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
             return NULL;
         }
         free(redirect_location);
-        return do_http_request(req, redirects_remaining - 1);
+        rt_http_res_t *redirected = do_http_request(&next_req, redirects_remaining - 1);
+        http_request_clone_cleanup(&next_req);
+        return redirected;
     }
     free(redirect_location);
 
@@ -2965,35 +3189,17 @@ open_connection:
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
-        if (cross_origin)
-            strip_sensitive_redirect_headers(req);
-
-        // RFC 7231 / browser de-facto behavior: 303 always switches to GET; 301/302 switch POST to
-        // GET.
-        if (status == 303 ||
-            ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
-            free(req->method);
-            req->method = strdup("GET");
-            free(req->body);
-            req->body = NULL;
-            req->body_len = 0;
-            strip_redirect_body_headers(req);
-            if (!req->method) {
-                free(redirect_location);
-                rt_trap("HTTP: memory allocation failed");
-                return NULL;
-            }
-        }
-
-        if (resolve_redirect_target(&req->url, redirect_location) != 0) {
+        rt_http_req_t next_req;
+        if (!http_prepare_redirect_request(&next_req, req, status, cross_origin, redirect_location)) {
             free(redirect_location);
-            rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
             return NULL;
         }
         free(redirect_location);
 
         // Follow redirect
-        return do_http_request(req, redirects_remaining - 1);
+        rt_http_res_t *redirected = do_http_request(&next_req, redirects_remaining - 1);
+        http_request_clone_cleanup(&next_req);
+        return redirected;
     }
     free(redirect_location);
 
@@ -3085,6 +3291,9 @@ open_connection:
                 body_error_msg = "HTTP: incomplete Content-Length response body";
             }
         }
+    } else if (response_keepalive && !response_closes && http_minor >= 1) {
+        body_read_failed = 1;
+        body_error_msg = "HTTP: close-delimited keep-alive response lacks length";
     } else {
         // Read until connection closes
         http_body_read_status_t close_status = HTTP_BODY_READ_OK;
@@ -3229,23 +3438,9 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
 
         cross_origin = redirect_cross_origin_or_unknown(&req->url, redirect_location);
         http_conn_close(&conn);
-        if (cross_origin)
-            strip_sensitive_redirect_headers(req);
-        if (status == 303 ||
-            ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
-            free(req->method);
-            req->method = strdup("GET");
-            free(req->body);
-            req->body = NULL;
-            req->body_len = 0;
-            strip_redirect_body_headers(req);
-            if (!req->method) {
-                goto cleanup;
-            }
-        }
-        if (resolve_redirect_target(&req->url, redirect_location) != 0) {
+        rt_http_req_t next_req;
+        if (!http_prepare_redirect_request(&next_req, req, status, cross_origin, redirect_location))
             goto cleanup;
-        }
 
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
@@ -3258,7 +3453,9 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
         request_buf = NULL;
         free(request_str);
         request_str = NULL;
-        return do_http_download_request(req, redirects_remaining - 1, out);
+        int redirected_ok = do_http_download_request(&next_req, redirects_remaining - 1, out);
+        http_request_clone_cleanup(&next_req);
+        return redirected_ok;
     }
 
     if (status < 200 || status >= 300)

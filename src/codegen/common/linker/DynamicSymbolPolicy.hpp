@@ -136,10 +136,10 @@ inline bool isKnownCompilerRuntimeDynamicSymbol(const std::string &name, LinkPla
     const std::string stripped = stripDynamicSymbolLeadingUnderscores(name);
 
     static const char *const kCompilerRuntimeExact[] = {
-        "addtf3",  "divtf3",     "eqtf2",      "extenddftf2", "fixtfdi",
-        "fixtfsi", "fixunstfdi", "floatditf",  "floatsitf",   "floatunditf",
-        "floatunsitf", "getf2",   "gttf2",      "letf2",       "lttf2",
-        "multf3",  "netf2",      "subtf3",     "trunctfdf2",  nullptr,
+        "addtf3",      "divtf3",     "eqtf2",     "extenddftf2", "fixtfdi",
+        "fixtfsi",     "fixunstfdi", "floatditf", "floatsitf",   "floatunditf",
+        "floatunsitf", "getf2",      "gttf2",     "letf2",       "lttf2",
+        "multf3",      "netf2",      "subtf3",    "trunctfdf2",  nullptr,
     };
     for (const char *const *p = kCompilerRuntimeExact; p && *p; ++p) {
         if (stripped == *p)
@@ -416,12 +416,18 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "popen",
         "pclose",
         "posix_spawn",
+        "posix_spawnp",
+        "posix_spawn_file_actions_addchdir",
+        "posix_spawn_file_actions_addchdir_np",
         "posix_spawn_file_actions_addclose",
         "posix_spawn_file_actions_adddup2",
         "posix_spawn_file_actions_destroy",
         "posix_spawn_file_actions_init",
         "sysconf",
         "getpid",
+        "geteuid",
+        "getgid",
+        "getegid",
         "getuid",
         "kill",
         "signal",

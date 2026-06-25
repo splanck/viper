@@ -1030,6 +1030,80 @@ void rt_codeeditor_refresh_highlights(void *editor) {
     ce->base.needs_paint = true;
 }
 
+/// @brief Default foreground color for a semantic token type (mirrors the
+///        lexical palette so semantic and lexical coloring stay consistent).
+static uint32_t semantic_default_color(int token_type) {
+    switch (token_type) {
+        case VG_SYN_TOKEN_KEYWORD:
+            return SYN_COLOR_KEYWORD;
+        case VG_SYN_TOKEN_TYPE:
+            return SYN_COLOR_TYPE;
+        case VG_SYN_TOKEN_FUNCTION:
+            return SYN_COLOR_FUNCTION;
+        case VG_SYN_TOKEN_OPERATOR:
+            return SYN_COLOR_OPERATOR;
+        case VG_SYN_TOKEN_BRACKET:
+            return SYN_COLOR_BRACKET;
+        case VG_SYN_TOKEN_PARAMETER:
+            return SYN_COLOR_PARAMETER;
+        case VG_SYN_TOKEN_PROPERTY:
+            return SYN_COLOR_PROPERTY;
+        case VG_SYN_TOKEN_CONSTANT:
+            return SYN_COLOR_CONSTANT;
+        case VG_SYN_TOKEN_DECORATOR:
+            return SYN_COLOR_DECORATOR;
+        default:
+            return SYN_COLOR_DEFAULT;
+    }
+}
+
+/// @brief `CodeEditor.AddSemanticToken(line, start, end, tokenType)` — overlay a
+///        compiler-classified color on an identifier (0-based, end exclusive).
+///
+/// The color honors any per-editor SetTokenColor override, else the lexical
+/// default for the type. Applied on top of the lexical highlighter in
+/// highlight_line(). Geometric growth (cap doubles from 16); no-ops on OOM.
+void rt_codeeditor_add_semantic_token(
+    void *editor, int64_t line, int64_t start, int64_t end, int64_t token_type) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    int32_t l = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    int32_t s = rt_gui_clamp_i64_to_i32(start, 0, INT32_MAX);
+    int32_t e = rt_gui_clamp_i64_to_i32(end, 0, INT32_MAX);
+    if (e <= s)
+        return;
+    if (ce->semantic_token_count >= ce->semantic_token_cap) {
+        if (ce->semantic_token_cap > INT_MAX / 2)
+            return;
+        int new_cap = ce->semantic_token_cap ? ce->semantic_token_cap * 2 : 16;
+        void *p = realloc(ce->semantic_tokens, (size_t)new_cap * sizeof(*ce->semantic_tokens));
+        if (!p)
+            return;
+        ce->semantic_tokens = p;
+        ce->semantic_token_cap = new_cap;
+    }
+    struct vg_semantic_token *st = &ce->semantic_tokens[ce->semantic_token_count++];
+    st->line = l;
+    st->start_col = s;
+    st->end_col = e;
+    st->color = syn_color(ce, (int)token_type, semantic_default_color((int)token_type));
+    // Invalidate this line's cached colors so the overlay is reapplied on paint.
+    if (l < ce->line_count)
+        ce->lines[l].highlight_generation = 0;
+    ce->base.needs_paint = true;
+}
+
+/// @brief `CodeEditor.ClearSemanticTokens()` — drop the semantic overlay and
+///        re-highlight so lexical colors are restored.
+void rt_codeeditor_clear_semantic_tokens(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    ce->semantic_token_count = 0;
+    rt_codeeditor_invalidate_syntax_cache(ce);
+}
+
 /// @brief `CodeEditor.AddInlayHint(line, col, text, color)` — add ghost annotation text.
 void rt_codeeditor_add_inlay_hint(
     void *editor, int64_t line, int64_t col, rt_string text, int64_t color) {
@@ -1106,6 +1180,21 @@ void rt_codeeditor_add_highlight(void *editor,
 
 /// @brief Stub: `CodeEditor.RefreshHighlights` is a no-op without graphics.
 void rt_codeeditor_refresh_highlights(void *editor) {
+    (void)editor;
+}
+
+/// @brief Stub: `CodeEditor.AddSemanticToken` is a no-op without graphics.
+void rt_codeeditor_add_semantic_token(
+    void *editor, int64_t line, int64_t start, int64_t end, int64_t token_type) {
+    (void)editor;
+    (void)line;
+    (void)start;
+    (void)end;
+    (void)token_type;
+}
+
+/// @brief Stub: `CodeEditor.ClearSemanticTokens` is a no-op without graphics.
+void rt_codeeditor_clear_semantic_tokens(void *editor) {
     (void)editor;
 }
 

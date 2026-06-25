@@ -1643,16 +1643,18 @@ expose func ProjectFileDefinesIdentifier(source: String,
     if source == "" or identifier == "" { return false; }
     var lines = Str.Split(source, "\n");
     var depth = 0;
+    var commentDepth = 0;
     var i = 0;
     while i < Seq.get_Length(lines) {
         var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
         var trimmed = Str.Trim(line);
-        if depth == 0 {
+        if depth == 0 and commentDepth == 0 {
             var name = TopLevelZiaDeclarationName(trimmed);
             if name == identifier { return true; }
         }
-        depth = depth + ZiaBraceDelta(line);
+        depth = depth + ZiaBraceDelta(line, commentDepth);
         if depth < 0 { depth = 0; }
+        commentDepth = ZiaCommentDepthAfter(line, commentDepth);
         i = i + 1;
     }
     return false;
@@ -1910,7 +1912,11 @@ expose func FormatDocumentText(language: String,
     if language == "zia" {
         return FormatZiaText(source, tabSize, insertSpaces);
     }
-    if language == "text" {
+    if language == "basic" {
+        return FormatBasicText(source, tabSize, insertSpaces);
+    }
+    if language == "text" or language == "viper" {
+        // IL has no canonical re-indenter yet; trimming is the safe baseline.
         return TrimTrailingWhitespaceText(source);
     }
     return "";
@@ -2142,6 +2148,7 @@ func ExtractFunctionSelectionIsSafe(lines: Any,
     }
 
     var braceDelta = 0;
+    var commentDepth = ZiaCommentDepthBeforeLine(lines, startLine);
     i = startLine;
     while i <= endLine {
         var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
@@ -2162,7 +2169,8 @@ func ExtractFunctionSelectionIsSafe(lines: Any,
         if declName != "" and StringListContains(selectedDecls, declName) == false {
             selectedDecls.add(declName);
         }
-        braceDelta = braceDelta + ZiaBraceDelta(line);
+        braceDelta = braceDelta + ZiaBraceDelta(line, commentDepth);
+        commentDepth = ZiaCommentDepthAfter(line, commentDepth);
         i = i + 1;
     }
     if braceDelta != 0 { return false; }
@@ -2377,7 +2385,10 @@ expose func FormatDocumentRangeText(language: String,
     if language == "zia" {
         return FormatZiaRangeText(source, startLine, endLine, tabSize, insertSpaces);
     }
-    if language == "text" {
+    if language == "basic" {
+        return FormatBasicRangeText(source, startLine, endLine, tabSize, insertSpaces);
+    }
+    if language == "text" or language == "viper" {
         return TrimTrailingWhitespaceRangeText(source, startLine, endLine);
     }
     return "";
@@ -2405,6 +2416,7 @@ expose func FormatZiaRangeText(source: String,
     if rangeEnd < rangeStart { return source; }
 
     var indentLevel = ZiaIndentBeforeLine(lines, rangeStart);
+    var commentDepth = ZiaCommentDepthBeforeLine(lines, rangeStart);
     var output = new List();
     var i = 0;
     while i < count {
@@ -2413,10 +2425,15 @@ expose func FormatZiaRangeText(source: String,
             line = Str.Left(line, Str.Length(line) - 1);
         }
         if i >= rangeStart and i <= rangeEnd {
-            var formatted = FormatZiaLine(line, indentLevel, tabSize, insertSpaces);
-            output.add(formatted);
-            indentLevel = indentLevel + ZiaBraceDelta(line);
+            if commentDepth > 0 {
+                // Line begins inside a block comment — preserve it verbatim.
+                output.add(line);
+            } else {
+                output.add(FormatZiaLine(line, indentLevel, tabSize, insertSpaces));
+            }
+            indentLevel = indentLevel + ZiaBraceDelta(line, commentDepth);
             if indentLevel < 0 { indentLevel = 0; }
+            commentDepth = ZiaCommentDepthAfter(line, commentDepth);
         } else {
             output.add(line);
         }
@@ -2474,14 +2491,16 @@ func FormatZiaLine(line: String,
 func ZiaIndentBeforeLine(lines: Any,
                          targetLine: Integer) -> Integer {
     var indent = 0;
+    var depth = 0;
     var i = 0;
     while i < targetLine and i < Seq.get_Length(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         if Str.EndsWith(line, "\r") {
             line = Str.Left(line, Str.Length(line) - 1);
         }
-        indent = indent + ZiaBraceDelta(line);
+        indent = indent + ZiaBraceDelta(line, depth);
         if indent < 0 { indent = 0; }
+        depth = ZiaCommentDepthAfter(line, depth);
         i = i + 1;
     }
     return indent;
@@ -2497,16 +2516,36 @@ func LeadingCloseBraceCount(trimmed: String) -> Integer {
     return count;
 }
 
-func ZiaBraceDelta(line: String) -> Integer {
+/// @brief Net `{`/`}` change on a line, ignoring braces in strings and in line
+///        (`//`) or block (`/* */`) comments. `commentDepth` is the open block-
+///        comment nesting on entry to the line (0 = not in a comment).
+func ZiaBraceDelta(line: String, commentDepth: Integer) -> Integer {
     var delta = 0;
     var inString = false;
     var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
     var i = 1;
-    while i <= Str.Length(line) {
+    while i <= n {
         var ch = Str.MidLen(line, i, 1);
         var next = "";
-        if i < Str.Length(line) {
+        if i < n {
             next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
         }
 
         if inString {
@@ -2524,6 +2563,11 @@ func ZiaBraceDelta(line: String) -> Integer {
         if ch == "/" and next == "/" {
             break;
         }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
         if ch == "\"" {
             inString = true;
         } else if ch == "{" {
@@ -2534,6 +2578,270 @@ func ZiaBraceDelta(line: String) -> Integer {
         i = i + 1;
     }
     return delta;
+}
+
+/// @brief Open block-comment nesting depth at the END of a line, given the
+///        depth on entry. Used to carry `/* */` state across lines so brace
+///        counting stays correct in multi-line comments.
+func ZiaCommentDepthAfter(line: String, commentDepth: Integer) -> Integer {
+    var inString = false;
+    var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < n {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            return depth;
+        }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
+        if ch == "\"" {
+            inString = true;
+        }
+        i = i + 1;
+    }
+    return depth;
+}
+
+/// @brief Open block-comment nesting depth at the start of `targetLine`.
+func ZiaCommentDepthBeforeLine(lines: Any,
+                               targetLine: Integer) -> Integer {
+    var depth = 0;
+    var i = 0;
+    while i < targetLine and i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.Length(line) - 1);
+        }
+        depth = ZiaCommentDepthAfter(line, depth);
+        i = i + 1;
+    }
+    return depth;
+}
+
+// ── Viper BASIC formatter ──────────────────────────────────────────────────
+// Keyword-driven indentation (BASIC has no braces). Block openers (FOR, WHILE,
+// DO, SUB, FUNCTION, SELECT, TYPE, multi-line IF…THEN) add a level; closers
+// (NEXT, WEND, LOOP, ENDIF, END SUB/FUNCTION/IF/SELECT/WHILE/TYPE) remove one.
+// ELSE / ELSEIF dedent themselves but keep the body level. Comments (' and REM)
+// and string contents are ignored when detecting a trailing THEN.
+
+expose func FormatBasicText(source: String,
+                            tabSize: Integer,
+                            insertSpaces: Boolean) -> String {
+    var lines = Str.Split(source, "\n");
+    return FormatBasicRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
+}
+
+expose func FormatBasicRangeText(source: String,
+                                 startLine: Integer,
+                                 endLine: Integer,
+                                 tabSize: Integer,
+                                 insertSpaces: Boolean) -> String {
+    var lines = Str.Split(source, "\n");
+    var count = Seq.get_Length(lines);
+    if count == 0 { return source; }
+    var rangeStart = startLine;
+    var rangeEnd = endLine;
+    if rangeStart < 0 { rangeStart = 0; }
+    if rangeEnd >= count { rangeEnd = count - 1; }
+    if rangeEnd < rangeStart { return source; }
+
+    var indentLevel = BasicIndentBeforeLine(lines, rangeStart);
+    var output = new List();
+    var i = 0;
+    while i < count {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.Length(line) - 1);
+        }
+        if i >= rangeStart and i <= rangeEnd {
+            output.add(FormatBasicLine(line, indentLevel, tabSize, insertSpaces));
+            indentLevel = indentLevel + BasicLineDelta(line);
+            if indentLevel < 0 { indentLevel = 0; }
+        } else {
+            output.add(line);
+        }
+        i = i + 1;
+    }
+
+    var eol = "\n";
+    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
+    return JoinStringList(output, eol);
+}
+
+func FormatBasicLine(line: String,
+                     indentLevel: Integer,
+                     tabSize: Integer,
+                     insertSpaces: Boolean) -> String {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" { return ""; }
+    var outIndent = indentLevel - BasicLineDedent(trimmed);
+    if outIndent < 0 { outIndent = 0; }
+    return IndentText(outIndent, tabSize, insertSpaces) + trimmed;
+}
+
+func BasicIndentBeforeLine(lines: Any,
+                           targetLine: Integer) -> Integer {
+    var indent = 0;
+    var i = 0;
+    while i < targetLine and i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        if Str.EndsWith(line, "\r") {
+            line = Str.Left(line, Str.Length(line) - 1);
+        }
+        indent = indent + BasicLineDelta(line);
+        if indent < 0 { indent = 0; }
+        i = i + 1;
+    }
+    return indent;
+}
+
+/// @brief Uppercased first whitespace-delimited word of a line.
+func BasicFirstWord(trimmed: String) -> String {
+    var n = Str.Length(trimmed);
+    var i = 1;
+    while i <= n and (Str.MidLen(trimmed, i, 1) == " " or Str.MidLen(trimmed, i, 1) == "\t") {
+        i = i + 1;
+    }
+    var start = i;
+    while i <= n and Str.MidLen(trimmed, i, 1) != " " and Str.MidLen(trimmed, i, 1) != "\t" {
+        i = i + 1;
+    }
+    if i <= start { return ""; }
+    return Str.ToUpper(Str.MidLen(trimmed, start, i - start));
+}
+
+/// @brief Uppercased second whitespace-delimited word (e.g. "SUB" in "END SUB").
+func BasicSecondWord(trimmed: String) -> String {
+    var n = Str.Length(trimmed);
+    var i = 1;
+    while i <= n and Str.MidLen(trimmed, i, 1) != " " and Str.MidLen(trimmed, i, 1) != "\t" {
+        i = i + 1;
+    }
+    while i <= n and (Str.MidLen(trimmed, i, 1) == " " or Str.MidLen(trimmed, i, 1) == "\t") {
+        i = i + 1;
+    }
+    var start = i;
+    while i <= n and Str.MidLen(trimmed, i, 1) != " " and Str.MidLen(trimmed, i, 1) != "\t" {
+        i = i + 1;
+    }
+    if i <= start { return ""; }
+    return Str.ToUpper(Str.MidLen(trimmed, start, i - start));
+}
+
+/// @brief Strip a trailing `'` comment, respecting double-quoted strings.
+func BasicCodeOnly(line: String) -> String {
+    var inString = false;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        if inString {
+            if ch == "\"" { inString = false; }
+        } else {
+            if ch == "\"" {
+                inString = true;
+            } else if ch == "'" {
+                return Str.Left(line, i - 1);
+            }
+        }
+        i = i + 1;
+    }
+    return line;
+}
+
+/// @brief True if the line's code (comment stripped) ends with the THEN keyword,
+///        marking a multi-line IF block (vs. a single-line `IF x THEN stmt`).
+func BasicEndsWithThen(trimmed: String) -> Boolean {
+    var up = Str.ToUpper(Str.Trim(BasicCodeOnly(trimmed)));
+    if up == "THEN" { return true; }
+    return Str.EndsWith(up, " THEN");
+}
+
+/// @brief 1 if the line should be dedented one level before printing (closers,
+///        ELSE/ELSEIF), else 0.
+func BasicLineDedent(trimmed: String) -> Integer {
+    var w = BasicFirstWord(trimmed);
+    if w == "NEXT" or w == "WEND" or w == "LOOP" or w == "ENDIF"
+       or w == "ELSE" or w == "ELSEIF" {
+        return 1;
+    }
+    if w == "END" {
+        var s = BasicSecondWord(trimmed);
+        if s == "IF" or s == "SUB" or s == "FUNCTION" or s == "SELECT"
+           or s == "WHILE" or s == "TYPE" {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Net indentation change a line applies to the lines that follow it.
+func BasicLineDelta(line: String) -> Integer {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" { return 0; }
+    var w = BasicFirstWord(trimmed);
+
+    if w == "NEXT" or w == "WEND" or w == "LOOP" or w == "ENDIF" {
+        return -1;
+    }
+    if w == "END" {
+        var s = BasicSecondWord(trimmed);
+        if s == "IF" or s == "SUB" or s == "FUNCTION" or s == "SELECT"
+           or s == "WHILE" or s == "TYPE" {
+            return -1;
+        }
+        return 0;
+    }
+    if w == "ELSE" or w == "ELSEIF" {
+        return 0;
+    }
+    if w == "FOR" or w == "WHILE" or w == "DO" or w == "SUB"
+       or w == "FUNCTION" or w == "SELECT" or w == "TYPE" {
+        return 1;
+    }
+    if w == "IF" {
+        if BasicEndsWithThen(trimmed) { return 1; }
+        return 0;
+    }
+    return 0;
 }
 
 func IndentText(level: Integer,

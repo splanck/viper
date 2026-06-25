@@ -1024,7 +1024,8 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
         size_t resp_len = 0;
         char *resp = build_response(&res, keep_alive, &resp_len);
         if (resp) {
-            https_conn_send_all(tls, resp, resp_len);
+            if (!https_conn_send_all(tls, resp, resp_len))
+                keep_alive = 0;
             free(resp);
         } else {
             keep_alive = 0;

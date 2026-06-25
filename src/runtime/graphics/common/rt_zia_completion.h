@@ -192,6 +192,9 @@ rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 /// @brief Start path-aware document symbol extraction on a background worker.
 void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path);
 
+/// @brief Start path-aware semantic-token classification on a background worker.
+void *rt_zia_completion_begin_tokens_for_file(rt_string source, rt_string file_path);
+
 /// @brief Return whether a semantic background job has completed.
 int8_t rt_zia_semantic_job_is_done(void *handle);
 
@@ -218,6 +221,9 @@ void *rt_zia_semantic_job_hover_info(void *handle);
 
 /// @brief Materialize a symbols job result as serialized symbol rows.
 rt_string rt_zia_semantic_job_symbols(void *handle);
+
+/// @brief Materialize a tokens job result as serialized semantic-token rows.
+rt_string rt_zia_semantic_job_tokens(void *handle);
 
 /// @brief Materialize a diagnostics job result as Seq<Map>.
 void *rt_zia_semantic_job_diagnostics(void *handle);

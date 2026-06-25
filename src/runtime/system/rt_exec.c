@@ -40,22 +40,26 @@
 #include "rt_string.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
+#include "rt_file_path.h"
 #include <process.h>
 #include <windows.h>
 #define popen _popen
 #define pclose _pclose
 #elif defined(__viperdos__)
 // ViperDOS provides POSIX-compatible process APIs via libc.
+#include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 extern char **environ;
 #else
+#include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -71,6 +75,63 @@ extern char **environ;
 /// @brief Thread-local exit code from the most recent rt_exec_shell_full() call.
 static _Thread_local int64_t tl_last_exit_code = -1;
 
+/// @brief Extract a runtime string as a C-string-safe byte view.
+/// @details Execution APIs eventually cross OS interfaces that treat NUL bytes
+///          as terminators. This helper rejects embedded NUL bytes before a
+///          path, command, or argument can be silently truncated by libc or
+///          Win32 process creation. Empty strings are allowed here; callers
+///          decide whether emptiness is valid for their specific parameter.
+/// @param value Runtime string to inspect.
+/// @param out_text Receives the borrowed NUL-terminated byte pointer.
+/// @param out_len Receives the byte length excluding the terminator.
+/// @return 1 when @p value is a valid C-string-safe runtime string, 0 otherwise.
+static int exec_string_cstr_view(rt_string value, const char **out_text, size_t *out_len) {
+    const char *text = value ? rt_string_cstr(value) : NULL;
+    int64_t len64 = value ? rt_str_len(value) : -1;
+    if (out_text)
+        *out_text = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!text || len64 < 0 || (uint64_t)len64 > SIZE_MAX)
+        return 0;
+    size_t len = (size_t)len64;
+    if (len > 0 && memchr(text, '\0', len))
+        return 0;
+    if (out_text)
+        *out_text = text;
+    if (out_len)
+        *out_len = len;
+    return 1;
+}
+
+/// @brief Validate every direct-execution argument for C-string safety.
+/// @details Args are intentionally passed as an argv vector rather than through
+///          a shell, but the OS argv ABI still cannot represent embedded NUL
+///          bytes. Rejecting them up front avoids a confused-deputy situation
+///          where validation sees one string and the child receives a prefix.
+/// @param args Runtime sequence of argument strings; may be NULL.
+/// @param trap_msg Trap text used when an invalid argument is found.
+/// @return 1 when all arguments are valid, 0 when a trap was raised.
+static int exec_validate_args_no_nul(void *args, const char *trap_msg) {
+    int64_t count = args ? rt_seq_len(args) : 0;
+    if (count < 0)
+        return 1;
+    for (int64_t i = 0; i < count; i++) {
+        rt_string arg = rt_seq_get_str(args, i);
+        const char *text = NULL;
+        size_t len = 0;
+        int ok = exec_string_cstr_view(arg, &text, &len);
+        (void)text;
+        (void)len;
+        rt_str_release_maybe(arg);
+        if (!ok) {
+            rt_trap(trap_msg);
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /// @brief Store a shell process exit status in the thread-local Exec state.
 /// @details Handles platform differences and treats pclose/_pclose failure
 ///          (`status == -1`) as an execution failure instead of interpreting it
@@ -85,6 +146,25 @@ static void exec_set_last_exit_from_status(int status) {
     tl_last_exit_code = (int64_t)status;
 #else
     tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
+#endif
+}
+
+/// @brief Decode a status value returned by `system()`.
+/// @details POSIX `system()` returns a wait status while Windows returns the
+///          command processor's result directly. This helper presents the public
+///          `Exec.Shell` API with the same normalized "command exit code or -1"
+///          contract used by `Exec.ShellFull`.
+/// @param status Raw status returned by `system()`.
+/// @return Normalized process exit code, or -1 for launch/signalled failure.
+static int64_t exec_decode_system_status(int status) {
+    if (status == -1)
+        return -1;
+#if RT_PLATFORM_WINDOWS
+    return (int64_t)status;
+#else
+    if (WIFEXITED(status))
+        return (int64_t)WEXITSTATUS(status);
+    return -1;
 #endif
 }
 
@@ -155,6 +235,47 @@ static char *read_pipe_output(FILE *fp, size_t *out_len, int *out_truncated, int
 
 #if !defined(_WIN32)
 
+/// @brief Create a close-on-exec pipe for POSIX capture.
+/// @details Sets `FD_CLOEXEC` on both descriptors. The capture child explicitly
+///          duplicates the write end to stdout via posix_spawn file actions, so
+///          only descriptors that must survive exec are made inheritable.
+/// @param pipefd Receives read/write descriptors on success.
+/// @return 0 on success, -1 on failure with errno set by the platform call.
+static int exec_pipe_cloexec(int pipefd[2]) {
+    if (pipe(pipefd) != 0)
+        return -1;
+#if defined(FD_CLOEXEC)
+    for (int i = 0; i < 2; i++) {
+        int flags = fcntl(pipefd[i], F_GETFD, 0);
+        if (flags < 0 || fcntl(pipefd[i], F_SETFD, flags | FD_CLOEXEC) < 0) {
+            close(pipefd[0]);
+            close(pipefd[1]);
+            pipefd[0] = -1;
+            pipefd[1] = -1;
+            return -1;
+        }
+    }
+#endif
+    return 0;
+}
+
+/// @brief Wait for one child process, retrying interruptions.
+/// @param pid Child process id returned by posix_spawn/posix_spawnp.
+/// @param status_out Receives the wait status on success.
+/// @return 0 on success, -1 on wait failure.
+static int exec_wait_child(pid_t pid, int *status_out) {
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited != pid)
+        return -1;
+    if (status_out)
+        *status_out = status;
+    return 0;
+}
+
 /// @brief Build argv array from program and Seq of arguments.
 /// Caller must free the returned array and release owned argument strings.
 static char **build_argv(const char *program,
@@ -217,7 +338,7 @@ static int64_t exec_spawn(const char *program, void *args) {
     }
 
     pid_t pid;
-    int status = posix_spawn(&pid, program, NULL, NULL, argv, environ);
+    int status = posix_spawnp(&pid, program, NULL, NULL, argv, environ);
 
     if (status != 0) {
         free_argv(argv, owned_args, argc);
@@ -227,7 +348,7 @@ static int64_t exec_spawn(const char *program, void *args) {
 
     // Wait for child to finish
     int exit_status;
-    if (waitpid(pid, &exit_status, 0) == -1) {
+    if (exec_wait_child(pid, &exit_status) == -1) {
         free_argv(argv, owned_args, argc);
         return -1;
     }
@@ -254,20 +375,31 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
 
     // Create pipe for stdout
     int pipefd[2];
-    if (pipe(pipefd) == -1) {
+    if (exec_pipe_cloexec(pipefd) == -1) {
         free_argv(argv, owned_args, argc);
         rt_trap("Exec: pipe creation failed");
         return rt_string_from_bytes("", 0);
     }
 
     posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_addclose(&actions, pipefd[0]);               // Close read end in child
-    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO); // Redirect stdout to pipe
-    posix_spawn_file_actions_addclose(&actions, pipefd[1]); // Close original write end
+    int action_status = posix_spawn_file_actions_init(&actions);
+    if (action_status == 0)
+        action_status = posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+    if (action_status == 0)
+        action_status = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    if (action_status == 0)
+        action_status = posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+    if (action_status != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        free_argv(argv, owned_args, argc);
+        rt_trap("Exec: spawn file action setup failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     pid_t pid;
-    int status = posix_spawn(&pid, program, &actions, NULL, argv, environ);
+    int status = posix_spawnp(&pid, program, &actions, NULL, argv, environ);
     posix_spawn_file_actions_destroy(&actions);
 
     if (status != 0) {
@@ -284,7 +416,7 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     FILE *fp = fdopen(pipefd[0], "r");
     if (!fp) {
         close(pipefd[0]);
-        waitpid(pid, NULL, 0);
+        exec_wait_child(pid, NULL);
         free_argv(argv, owned_args, argc);
         return rt_string_from_bytes("", 0);
     }
@@ -296,7 +428,7 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     fclose(fp);
 
     // Wait for child
-    waitpid(pid, NULL, 0);
+    exec_wait_child(pid, NULL);
     free_argv(argv, owned_args, argc);
 
     if (!output) {
@@ -323,44 +455,52 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
    - N backslashes followed by non-'"': emit N backslashes unchanged      */
 static size_t cmdline_quoted_len(const char *s) {
     size_t n = 2; /* outer quotes */
-    int bs = 0;
+    size_t bs = 0;
     for (; *s; s++) {
         if (*s == '\\') {
+            if (bs == SIZE_MAX)
+                return SIZE_MAX;
             bs++;
         } else if (*s == '"') {
+            if (bs > (SIZE_MAX - n - 2) / 2)
+                return SIZE_MAX;
             n += (size_t)bs * 2 + 2; /* 2×bs + '\' + '"' */
             bs = 0;
         } else {
+            if (bs > SIZE_MAX - n - 1)
+                return SIZE_MAX;
             n += (size_t)bs + 1;
             bs = 0;
         }
     }
+    if (bs > (SIZE_MAX - n) / 2)
+        return SIZE_MAX;
     n += (size_t)bs * 2; /* trailing backslashes before closing '"' */
     return n;
 }
 
 static char *cmdline_append_quoted(char *p, const char *s) {
     *p++ = '"';
-    int bs = 0;
+    size_t bs = 0;
     for (; *s; s++) {
         if (*s == '\\') {
             bs++;
         } else if (*s == '"') {
-            int i;
+            size_t i;
             for (i = 0; i < bs * 2; i++)
                 *p++ = '\\';
             *p++ = '\\';
             *p++ = '"';
             bs = 0;
         } else {
-            int i;
+            size_t i;
             for (i = 0; i < bs; i++)
                 *p++ = '\\';
             *p++ = *s;
             bs = 0;
         }
     }
-    int i;
+    size_t i;
     for (i = 0; i < bs * 2; i++)
         *p++ = '\\';
     *p++ = '"';
@@ -373,11 +513,13 @@ static char *build_cmdline(const char *program, void *args) {
 
     /* Calculate worst-case length using proper quoting rules */
     size_t len = cmdline_quoted_len(program);
+    if (len == SIZE_MAX)
+        return NULL;
     for (int64_t i = 0; i < nargs; i++) {
         rt_string arg_str = rt_seq_get_str(args, i);
         size_t quoted_len = cmdline_quoted_len(rt_string_cstr(arg_str));
         rt_str_release_maybe(arg_str);
-        if (quoted_len > SIZE_MAX - len - 1)
+        if (quoted_len == SIZE_MAX || quoted_len > SIZE_MAX - len - 1)
             return NULL;
         len += 1 + quoted_len; /* space + quoted */
     }
@@ -402,6 +544,97 @@ static char *build_cmdline(const char *program, void *args) {
     return cmdline;
 }
 
+/// @brief Manage a Windows STARTUPINFOEX handle allow-list.
+/// @details When standard handles must be inherited, CreateProcess still needs
+///          `bInheritHandles=TRUE`. The extended attribute list constrains
+///          inheritance to the handles explicitly passed here so unrelated
+///          inheritable parent handles are not leaked into the child process.
+typedef struct exec_win_startup_info {
+    STARTUPINFOEXW startup;
+    LPPROC_THREAD_ATTRIBUTE_LIST attrs;
+} exec_win_startup_info;
+
+/// @brief Initialize STARTUPINFOEXW with a process handle inheritance allow-list.
+/// @param info Startup container to initialize.
+/// @param handles Handles that the child process is allowed to inherit.
+/// @param handle_count Number of entries in @p handles.
+/// @return 1 when the allow-list was installed, 0 on allocation/API failure.
+static int exec_win_startup_init(exec_win_startup_info *info, HANDLE *handles, DWORD handle_count) {
+    SIZE_T attr_size = 0;
+    if (!info)
+        return 0;
+    ZeroMemory(info, sizeof(*info));
+    info->startup.StartupInfo.cb = sizeof(info->startup);
+    if (!handles || handle_count == 0)
+        return 1;
+    (void)InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
+    info->attrs = (LPPROC_THREAD_ATTRIBUTE_LIST)malloc(attr_size);
+    if (!info->attrs)
+        return 0;
+    if (!InitializeProcThreadAttributeList(info->attrs, 1, 0, &attr_size)) {
+        free(info->attrs);
+        info->attrs = NULL;
+        return 0;
+    }
+    info->startup.lpAttributeList = info->attrs;
+    if (!UpdateProcThreadAttribute(info->attrs,
+                                   0,
+                                   PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                   handles,
+                                   sizeof(HANDLE) * handle_count,
+                                   NULL,
+                                   NULL)) {
+        DeleteProcThreadAttributeList(info->attrs);
+        free(info->attrs);
+        info->attrs = NULL;
+        info->startup.lpAttributeList = NULL;
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Release resources allocated for a Windows extended startup block.
+/// @param info Startup container previously initialized by exec_win_startup_init.
+static void exec_win_startup_destroy(exec_win_startup_info *info) {
+    if (!info || !info->attrs)
+        return;
+    DeleteProcThreadAttributeList(info->attrs);
+    free(info->attrs);
+    info->attrs = NULL;
+    info->startup.lpAttributeList = NULL;
+}
+
+/// @brief Convert a UTF-8 command line and application path to Win32 wide strings.
+/// @details CreateProcessW mutates the command-line buffer, so both returned
+///          strings are heap-allocated and writable. The caller frees them with
+///          free().
+/// @param program UTF-8 program path or lookup name.
+/// @param cmdline UTF-8 quoted command line.
+/// @param out_program Receives allocated wide program string.
+/// @param out_cmdline Receives allocated wide command line string.
+/// @return 1 on successful conversion, 0 on UTF-8 conversion failure.
+static int exec_build_wide_process_strings(const char *program,
+                                           const char *cmdline,
+                                           wchar_t **out_program,
+                                           wchar_t **out_cmdline) {
+    if (out_program)
+        *out_program = NULL;
+    if (out_cmdline)
+        *out_cmdline = NULL;
+    if (!program || !cmdline || !out_program || !out_cmdline)
+        return 0;
+    *out_program = rt_file_path_utf8_to_wide(program);
+    *out_cmdline = rt_file_path_utf8_to_wide(cmdline);
+    if (!*out_program || !*out_cmdline) {
+        free(*out_program);
+        free(*out_cmdline);
+        *out_program = NULL;
+        *out_cmdline = NULL;
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Execute program using CreateProcess on Windows.
 static int64_t exec_spawn(const char *program, void *args) {
     char *cmdline = build_cmdline(program, args);
@@ -410,14 +643,23 @@ static int64_t exec_spawn(const char *program, void *args) {
         return -1;
     }
 
-    STARTUPINFOA si;
+    wchar_t *wprogram = NULL;
+    wchar_t *wcmdline = NULL;
+    if (!exec_build_wide_process_strings(program, cmdline, &wprogram, &wcmdline)) {
+        free(cmdline);
+        return -1;
+    }
+
+    STARTUPINFOW si;
     PROCESS_INFORMATION pi;
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    BOOL success = CreateProcessA(program, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+    BOOL success = CreateProcessW(wprogram, wcmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
 
+    free(wprogram);
+    free(wcmdline);
     free(cmdline);
 
     if (!success) {
@@ -442,6 +684,12 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
         rt_trap("Exec: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
+    wchar_t *wprogram = NULL;
+    wchar_t *wcmdline = NULL;
+    if (!exec_build_wide_process_strings(program, cmdline, &wprogram, &wcmdline)) {
+        free(cmdline);
+        return rt_string_from_bytes("", 0);
+    }
 
     // Create pipe for stdout
     SECURITY_ATTRIBUTES sa;
@@ -451,6 +699,8 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
 
     HANDLE hReadPipe, hWritePipe;
     if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+        free(wprogram);
+        free(wcmdline);
         free(cmdline);
         return rt_string_from_bytes("", 0);
     }
@@ -458,27 +708,47 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     // Ensure read handle is not inherited
     SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
 
-    STARTUPINFOA si;
+    HANDLE inherited[3];
+    DWORD inherited_count = 0;
+    inherited[inherited_count++] = hWritePipe;
+    HANDLE std_in = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE std_err = GetStdHandle(STD_ERROR_HANDLE);
+    if (std_in && std_in != INVALID_HANDLE_VALUE)
+        inherited[inherited_count++] = std_in;
+    if (std_err && std_err != INVALID_HANDLE_VALUE)
+        inherited[inherited_count++] = std_err;
+
+    exec_win_startup_info si;
     PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdOutput = hWritePipe;
-    si.hStdError = hWritePipe;
-    si.hStdInput = NULL;
+    if (!exec_win_startup_init(&si, inherited, inherited_count)) {
+        free(wprogram);
+        free(wcmdline);
+        free(cmdline);
+        CloseHandle(hReadPipe);
+        CloseHandle(hWritePipe);
+        return rt_string_from_bytes("", 0);
+    }
+    si.startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    si.startup.StartupInfo.hStdOutput = hWritePipe;
+    si.startup.StartupInfo.hStdError =
+        (std_err && std_err != INVALID_HANDLE_VALUE) ? std_err : NULL;
+    si.startup.StartupInfo.hStdInput = (std_in && std_in != INVALID_HANDLE_VALUE) ? std_in : NULL;
     ZeroMemory(&pi, sizeof(pi));
 
-    BOOL success = CreateProcessA(program,
-                                  cmdline,
+    BOOL success = CreateProcessW(wprogram,
+                                  wcmdline,
                                   NULL,
                                   NULL,
-                                  TRUE, // Inherit handles
-                                  0,
+                                  TRUE,
+                                  EXTENDED_STARTUPINFO_PRESENT,
                                   NULL,
                                   NULL,
-                                  &si,
+                                  &si.startup.StartupInfo,
                                   &pi);
 
+    exec_win_startup_destroy(&si);
+    free(wprogram);
+    free(wcmdline);
     free(cmdline);
     CloseHandle(hWritePipe);
 
@@ -581,8 +851,13 @@ int64_t rt_exec_run(rt_string program) {
         return -1;
     }
 
-    const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0) {
+    const char *prog_str = NULL;
+    size_t prog_len = 0;
+    if (!exec_string_cstr_view(program, &prog_str, &prog_len)) {
+        rt_trap("Exec.Run: program contains embedded NUL");
+        return -1;
+    }
+    if (prog_len == 0) {
         rt_trap("Exec.Run: empty program");
         return -1;
     }
@@ -633,8 +908,13 @@ rt_string rt_exec_capture(rt_string program) {
         return rt_string_from_bytes("", 0);
     }
 
-    const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0) {
+    const char *prog_str = NULL;
+    size_t prog_len = 0;
+    if (!exec_string_cstr_view(program, &prog_str, &prog_len)) {
+        rt_trap("Exec.Capture: program contains embedded NUL");
+        return rt_string_from_bytes("", 0);
+    }
+    if (prog_len == 0) {
         rt_trap("Exec.Capture: empty program");
         return rt_string_from_bytes("", 0);
     }
@@ -691,11 +971,18 @@ int64_t rt_exec_run_args(rt_string program, void *args) {
         return -1;
     }
 
-    const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0) {
+    const char *prog_str = NULL;
+    size_t prog_len = 0;
+    if (!exec_string_cstr_view(program, &prog_str, &prog_len)) {
+        rt_trap("Exec.RunArgs: program contains embedded NUL");
+        return -1;
+    }
+    if (prog_len == 0) {
         rt_trap("Exec.RunArgs: empty program");
         return -1;
     }
+    if (!exec_validate_args_no_nul(args, "Exec.RunArgs: argument contains embedded NUL"))
+        return -1;
 
     return exec_spawn(prog_str, args);
 }
@@ -739,11 +1026,18 @@ rt_string rt_exec_capture_args(rt_string program, void *args) {
         return rt_string_from_bytes("", 0);
     }
 
-    const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0) {
+    const char *prog_str = NULL;
+    size_t prog_len = 0;
+    if (!exec_string_cstr_view(program, &prog_str, &prog_len)) {
+        rt_trap("Exec.CaptureArgs: program contains embedded NUL");
+        return rt_string_from_bytes("", 0);
+    }
+    if (prog_len == 0) {
         rt_trap("Exec.CaptureArgs: empty program");
         return rt_string_from_bytes("", 0);
     }
+    if (!exec_validate_args_no_nul(args, "Exec.CaptureArgs: argument contains embedded NUL"))
+        return rt_string_from_bytes("", 0);
 
     return exec_capture_spawn(prog_str, args);
 }
@@ -799,31 +1093,21 @@ int64_t rt_exec_shell(rt_string command) {
         return -1;
     }
 
-    const char *cmd_str = rt_string_cstr(command);
-    if (!cmd_str) {
+    const char *cmd_str = NULL;
+    size_t cmd_len = 0;
+    if (!exec_string_cstr_view(command, &cmd_str, &cmd_len)) {
+        rt_trap("Exec.Shell: command contains embedded NUL");
         return -1;
     }
 
     // Empty command is valid (returns immediately)
-    if (rt_str_len(command) == 0) {
+    if (cmd_len == 0) {
         return 0;
     }
 
-#ifdef _WIN32
-    // On Windows, system() uses cmd.exe
+    // system() uses the platform shell: cmd.exe on Windows and /bin/sh on POSIX.
     int result = system(cmd_str);
-    return (int64_t)result;
-#else
-    // On POSIX/ViperDOS, system() uses the shell
-    int result = system(cmd_str);
-    if (result == -1) {
-        return -1;
-    }
-    if (WIFEXITED(result)) {
-        return WEXITSTATUS(result);
-    }
-    return -1;
-#endif
+    return exec_decode_system_status(result);
 }
 
 /// @brief Execute a shell command and capture its output.
@@ -875,13 +1159,15 @@ rt_string rt_exec_shell_capture(rt_string command) {
         return rt_string_from_bytes("", 0);
     }
 
-    const char *cmd_str = rt_string_cstr(command);
-    if (!cmd_str) {
+    const char *cmd_str = NULL;
+    size_t cmd_len = 0;
+    if (!exec_string_cstr_view(command, &cmd_str, &cmd_len)) {
+        rt_trap("Exec.ShellCapture: command contains embedded NUL");
         return rt_string_from_bytes("", 0);
     }
 
     // Empty command returns empty string
-    if (rt_str_len(command) == 0) {
+    if (cmd_len == 0) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -920,8 +1206,14 @@ rt_string rt_exec_shell_full(rt_string command) {
         return rt_string_from_bytes("", 0);
     }
 
-    const char *cmd_str = rt_string_cstr(command);
-    if (!cmd_str || rt_str_len(command) == 0) {
+    const char *cmd_str = NULL;
+    size_t cmd_len = 0;
+    if (!exec_string_cstr_view(command, &cmd_str, &cmd_len)) {
+        rt_trap("Exec.ShellFull: command contains embedded NUL");
+        tl_last_exit_code = -1;
+        return rt_string_from_bytes("", 0);
+    }
+    if (cmd_len == 0) {
         tl_last_exit_code = 0;
         return rt_string_from_bytes("", 0);
     }

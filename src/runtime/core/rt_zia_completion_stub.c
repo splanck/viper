@@ -491,6 +491,13 @@ RT_WEAK void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_stri
     return NULL;
 }
 
+/// @brief Weak stub: async semantic tokens unavailable; return null job.
+RT_WEAK void *rt_zia_completion_begin_tokens_for_file(rt_string source, rt_string file_path) {
+    (void)source;
+    (void)file_path;
+    return NULL;
+}
+
 /// @brief Weak stub: null async jobs are treated as already done.
 RT_WEAK int8_t rt_zia_semantic_job_is_done(void *handle) {
     (void)handle;
@@ -540,6 +547,12 @@ RT_WEAK void *rt_zia_semantic_job_hover_info(void *handle) {
 
 /// @brief Weak stub: empty symbol result.
 RT_WEAK rt_string rt_zia_semantic_job_symbols(void *handle) {
+    (void)handle;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: empty semantic-token result.
+RT_WEAK rt_string rt_zia_semantic_job_tokens(void *handle) {
     (void)handle;
     return rt_str_empty();
 }

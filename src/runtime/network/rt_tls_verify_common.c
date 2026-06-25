@@ -151,17 +151,22 @@ int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, si
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    if (leaf_len > sizeof(session->server_cert_der)) {
-        session->error = "TLS: Certificate DER too large for validation buffer";
-        return RT_TLS_ERROR_HANDSHAKE;
-    }
-
     uint8_t *list_copy = (uint8_t *)malloc(list_len);
     if (!list_copy) {
         session->error = "TLS: memory allocation failed for certificate chain";
         return RT_TLS_ERROR_MEMORY;
     }
     memcpy(list_copy, list, list_len);
+    uint8_t *leaf_copy = NULL;
+    if (leaf_len > sizeof(session->server_cert_der)) {
+        leaf_copy = (uint8_t *)malloc(leaf_len);
+        if (!leaf_copy) {
+            free(list_copy);
+            session->error = "TLS: memory allocation failed for leaf certificate";
+            return RT_TLS_ERROR_MEMORY;
+        }
+        memcpy(leaf_copy, leaf_der, leaf_len);
+    }
 
     if (session->server_cert_list) {
         free(session->server_cert_list);
@@ -169,8 +174,18 @@ int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, si
         session->server_cert_list_len = 0;
         session->server_cert_count = 0;
     }
+    if (session->server_cert_der_heap) {
+        free(session->server_cert_der_heap);
+        session->server_cert_der_heap = NULL;
+        session->server_cert_der_len = 0;
+    }
 
-    memcpy(session->server_cert_der, leaf_der, leaf_len);
+    if (leaf_copy) {
+        session->server_cert_der_heap = leaf_copy;
+    } else {
+        memset(session->server_cert_der, 0, sizeof(session->server_cert_der));
+        memcpy(session->server_cert_der, leaf_der, leaf_len);
+    }
     session->server_cert_der_len = leaf_len;
     session->server_cert_list = list_copy;
     session->server_cert_list_len = list_len;
@@ -1110,7 +1125,8 @@ static int tls_cert_has_matching_dns_san(const uint8_t *der,
 /// @param session Active TLS session with `server_cert_der` populated.
 /// @return 0 on match, RT_TLS_ERROR_HANDSHAKE on mismatch or missing data.
 int tls_verify_hostname(rt_tls_session_t *session) {
-    if (!session->server_cert_der_len) {
+    const uint8_t *server_cert_der = tls_session_server_cert_der(session);
+    if (!server_cert_der) {
         session->error = "TLS: no certificate stored for hostname verification";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1126,7 +1142,7 @@ int tls_verify_hostname(rt_tls_session_t *session) {
 
     if (tls_hostname_is_ip_literal(host, ip_literal, &ip_literal_len)) {
         int saw_ip_san = 0;
-        if (tls_cert_has_matching_ip_san(session->server_cert_der,
+        if (tls_cert_has_matching_ip_san(server_cert_der,
                                          session->server_cert_der_len,
                                          ip_literal,
                                          ip_literal_len,
@@ -1146,20 +1162,20 @@ int tls_verify_hostname(rt_tls_session_t *session) {
     // Try SubjectAltName first (RFC 6125 §6.4: SAN takes precedence over CN).
     int saw_dns_san = 0;
     if (tls_cert_has_matching_dns_san(
-            session->server_cert_der, session->server_cert_der_len, host, &saw_dns_san))
+            server_cert_der, session->server_cert_der_len, host, &saw_dns_san))
         return RT_TLS_OK;
     if (saw_dns_san) {
         session->error = "TLS: certificate hostname mismatch (SAN did not match)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (tls_cert_has_san_extension(session->server_cert_der, session->server_cert_der_len)) {
+    if (tls_cert_has_san_extension(server_cert_der, session->server_cert_der_len)) {
         session->error = "TLS: certificate SAN extension does not contain any DNS names";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     // Fall back to CommonName if no SAN
     char cn[256] = {0};
-    if (tls_extract_cn(session->server_cert_der, session->server_cert_der_len, cn)) {
+    if (tls_extract_cn(server_cert_der, session->server_cert_der_len, cn)) {
         if (tls_match_hostname(cn, host))
             return RT_TLS_OK;
         session->error = "TLS: certificate hostname mismatch (CN did not match)";

@@ -69,7 +69,7 @@ typedef struct {
     int32_t prev_count;
     int64_t last_motion_frame;
     int8_t has_prev_snapshot;
-    double *transforms64;    /* authoritative N * 16 double matrices */
+    double *transforms64; /* authoritative N * 16 double matrices */
 } rt_instbatch3d;
 
 /// @brief Compute the next geometric growth capacity for the instance buffer.
@@ -251,10 +251,9 @@ static int instbatch_repair_state(rt_instbatch3d *b) {
     if (!b)
         return 0;
     instbatch_repair_resource_handles(b);
-    if (b->instance_capacity > 0 && b->transforms && b->current_snapshot &&
-        b->prev_transforms && !b->transforms64) {
-        b->transforms64 =
-            (double *)calloc((size_t)b->instance_capacity * 16u, sizeof(double));
+    if (b->instance_capacity > 0 && b->transforms && b->current_snapshot && b->prev_transforms &&
+        !b->transforms64) {
+        b->transforms64 = (double *)calloc((size_t)b->instance_capacity * 16u, sizeof(double));
         if (!b->transforms64)
             return 0;
         for (int32_t i = 0; i < b->instance_count; i++)
@@ -341,8 +340,8 @@ static int instbatch_instance_visible(const vgfx3d_frustum_t *frustum,
 ///   three parallel float-matrix arrays: the live `transforms` mirror, the
 ///   start-of-frame `current_snapshot` captured by motion-vector logic, and
 ///   last frame's `prev_transforms` used as the motion "from" pose. All four
-///   are plain heap allocations with no downstream refs to release. Counters are zeroed post-free so
-///   a lingering post-finalize read sees an empty batch rather than
+///   are plain heap allocations with no downstream refs to release. Counters are zeroed post-free
+///   so a lingering post-finalize read sees an empty batch rather than
 ///   capacity-matches-missing-buffer.
 static void instbatch_finalizer(void *obj) {
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
@@ -585,8 +584,7 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     if (canvas3d_uses_camera_relative_upload(c) && b->transforms64) {
         for (int32_t i = 0; i < b->instance_count; i++) {
             const double *model = &b->transforms64[(size_t)i * 16u];
-            rt_canvas3d_draw_mesh_matrix_keyed(
-                canvas_obj, mesh, model, mat, model, NULL, NULL);
+            rt_canvas3d_draw_mesh_matrix_keyed(canvas_obj, mesh, model, mat, model, NULL, NULL);
         }
         return;
     }
@@ -636,37 +634,40 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
             }
         }
         if (mesh->bsphere_radius > 0.0f && b->instance_count > 0) {
-            /* Per-draw scratch for the frustum-culled subset. These are handed to the canvas
-             * temp-buffer tracker (or freed inline), so their lifetime is bounded to the frame
-             * and they never leak; the remaining cost is malloc/free churn for batches culled
-             * every frame. Pooling belongs in the temp-buffer manager (a frame arena that
-             * resets rather than frees), which would amortise this across all deferred draws. */
-            float *visible_transforms =
-                (float *)malloc((size_t)b->instance_count * 16u * sizeof(float));
-            float *visible_prev =
-                has_prev ? (float *)malloc((size_t)b->instance_count * 16u * sizeof(float)) : NULL;
-            if (visible_transforms && (!has_prev || visible_prev)) {
-                int32_t visible_count = 0;
-                for (int32_t i = 0; i < b->instance_count; i++) {
-                    const float *src = &b->transforms[(size_t)i * 16u];
-                    if (!instbatch_instance_visible(&frustum, mesh_min, mesh_max, src))
-                        continue;
-                    memcpy(
-                        &visible_transforms[(size_t)visible_count * 16u], src, 16u * sizeof(float));
-                    if (visible_prev) {
-                        memcpy(&visible_prev[(size_t)visible_count * 16u],
-                               &submit_prev[(size_t)i * 16u],
-                               16u * sizeof(float));
-                    }
+            int32_t visible_count = 0;
+            for (int32_t i = 0; i < b->instance_count; i++) {
+                const float *src = &b->transforms[(size_t)i * 16u];
+                if (instbatch_instance_visible(&frustum, mesh_min, mesh_max, src))
                     visible_count++;
-                }
-                if (visible_count == 0) {
-                    free(visible_transforms);
-                    free(visible_prev);
-                    free(owned_prev);
-                    return;
-                }
-                if (visible_count < b->instance_count) {
+            }
+            if (visible_count == 0) {
+                free(owned_prev);
+                return;
+            }
+            if (visible_count < b->instance_count) {
+                /* Allocate only when culling actually removes at least one instance. Fully visible
+                 * batches now submit their existing transform arrays without per-frame malloc/free
+                 * churn; partial batches still use tracked frame-lifetime scratch buffers. */
+                float *visible_transforms =
+                    (float *)malloc((size_t)visible_count * 16u * sizeof(float));
+                float *visible_prev =
+                    has_prev ? (float *)malloc((size_t)visible_count * 16u * sizeof(float)) : NULL;
+                if (visible_transforms && (!has_prev || visible_prev)) {
+                    int32_t write_index = 0;
+                    for (int32_t i = 0; i < b->instance_count; i++) {
+                        const float *src = &b->transforms[(size_t)i * 16u];
+                        if (!instbatch_instance_visible(&frustum, mesh_min, mesh_max, src))
+                            continue;
+                        memcpy(&visible_transforms[(size_t)write_index * 16u],
+                               src,
+                               16u * sizeof(float));
+                        if (visible_prev) {
+                            memcpy(&visible_prev[(size_t)write_index * 16u],
+                                   &submit_prev[(size_t)i * 16u],
+                                   16u * sizeof(float));
+                        }
+                        write_index++;
+                    }
                     int visible_tracked =
                         rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
                     int prev_tracked =
@@ -691,9 +692,6 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                     free(visible_transforms);
                     free(visible_prev);
                 }
-            } else {
-                free(visible_transforms);
-                free(visible_prev);
             }
         }
         if (owned_prev && submit_prev == owned_prev)

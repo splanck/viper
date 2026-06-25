@@ -1017,6 +1017,20 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
     codeeditor_perf_add(&editor->perf_stats.line_highlight_calls, 1);
     editor->syntax_highlighter(
         (vg_widget_t *)editor, (int)line_idx, line->text, line->colors, editor->syntax_data);
+
+    // Semantic overlay: the compiler-classified tokens win over the lexical
+    // guess for the identifier columns they cover (see ADR 0007). Only this
+    // line's tokens are applied; unclassified columns keep their lexical color.
+    for (int t = 0; t < editor->semantic_token_count; t++) {
+        const struct vg_semantic_token *st = &editor->semantic_tokens[t];
+        if (st->line != (int)line_idx)
+            continue;
+        int s = st->start_col < 0 ? 0 : st->start_col;
+        int e = st->end_col > (int)line->length ? (int)line->length : st->end_col;
+        for (int c = s; c < e; c++)
+            line->colors[c] = st->color;
+    }
+
     line->highlight_generation = editor->highlight_generation;
 }
 

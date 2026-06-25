@@ -623,6 +623,10 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes) {
 
     // Allocate receive buffer
     void *result = rt_bytes_new(max_bytes);
+    if (!result) {
+        rt_trap("Network: receive allocation failed");
+        return NULL;
+    }
     uint8_t *buf = bytes_data(result);
 
     int received = recv(tcp->sock, (char *)buf, recv_len, 0);
@@ -651,6 +655,12 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes) {
     // Return exact size received (release over-allocated buffer)
     if (received < max_bytes) {
         void *exact = rt_bytes_new(received);
+        if (!exact) {
+            if (rt_obj_release_check0(result))
+                rt_obj_free(result);
+            rt_trap("Network: receive allocation failed");
+            return NULL;
+        }
         memcpy(bytes_data(exact), buf, received);
         if (rt_obj_release_check0(result))
             rt_obj_free(result);

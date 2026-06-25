@@ -39,6 +39,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Maximum text certificate/key file size accepted by TLS loaders.
+/// @details PEM bundles, certificate chains, and private keys should be small.
+///          A fixed cap prevents accidental or maliciously huge files from
+///          forcing unbounded allocations through ftell()/malloc().
+#define TLS_TEXT_FILE_MAX_BYTES (4u * 1024u * 1024u)
+
 char *tls_read_text_file(const char *path, size_t *len_out) {
     FILE *f = NULL;
     char *buf = NULL;
@@ -56,6 +62,8 @@ char *tls_read_text_file(const char *path, size_t *len_out) {
         goto fail;
     len = ftell(f);
     if (len < 0 || fseek(f, 0, SEEK_SET) != 0)
+        goto fail;
+    if ((unsigned long)len > TLS_TEXT_FILE_MAX_BYTES)
         goto fail;
 
     buf = (char *)malloc((size_t)len + 1);
@@ -80,9 +88,9 @@ fail:
 ///        Skips whitespace and stops at '=' padding characters or non-Base64 bytes.
 ///        Returns the number of DER bytes written; returns 0 if out_der overflows max_der.
 size_t tls_pem_base64_decode(const char *pem_b64,
-                                    size_t b64_len,
-                                    uint8_t *out_der,
-                                    size_t max_der) {
+                             size_t b64_len,
+                             uint8_t *out_der,
+                             size_t max_der) {
     static const int8_t b64tab[256] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62,
@@ -107,7 +115,7 @@ size_t tls_pem_base64_decode(const char *pem_b64,
         if (c == '=')
             break;
         if (b64tab[c] < 0)
-            continue;
+            return 0;
         acc = (acc << 6) | (uint32_t)b64tab[c];
         bits += 6;
         if (bits >= 8) {
@@ -125,11 +133,11 @@ size_t tls_pem_base64_decode(const char *pem_b64,
 ///        Sets *next_out to the character after the end marker for chained iteration.
 ///        Returns 1 if a block was found, 0 otherwise.
 int tls_find_pem_block(const char *pem,
-                              const char *begin_marker,
-                              const char *end_marker,
-                              const char **body_out,
-                              size_t *body_len_out,
-                              const char **next_out) {
+                       const char *begin_marker,
+                       const char *end_marker,
+                       const char **body_out,
+                       size_t *body_len_out,
+                       const char **next_out) {
     const char *begin = NULL;
     const char *body = NULL;
     const char *end = NULL;
@@ -198,9 +206,7 @@ int tls_parse_sec1_ec_private_key(const uint8_t *der, size_t der_len, uint8_t ou
 ///        Verifies the AlgorithmIdentifier contains id-ecPublicKey + prime256v1 OIDs before
 ///        delegating the inner SEC 1 ECPrivateKey to tls_parse_sec1_ec_private_key.
 ///        Returns 1 on success, 0 on parse failure or OID mismatch.
-int tls_parse_pkcs8_ec_private_key(const uint8_t *der,
-                                          size_t der_len,
-                                          uint8_t out_priv[32]) {
+int tls_parse_pkcs8_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]) {
     static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
     static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
     uint8_t tag;
@@ -246,9 +252,9 @@ int tls_parse_pkcs8_ec_private_key(const uint8_t *der,
 ///        prime256v1 OIDs, then reads the 04-prefixed 65-byte uncompressed point.
 ///        Returns 1 on success, 0 on parse failure or wrong key type.
 int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
-                                      size_t cert_len,
-                                      uint8_t x_out[32],
-                                      uint8_t y_out[32]) {
+                               size_t cert_len,
+                               uint8_t x_out[32],
+                               uint8_t y_out[32]) {
     static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
     static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
     uint8_t tag;
@@ -323,9 +329,7 @@ int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
 ///        Navigates TBSCertificate → SubjectPublicKeyInfo, verifies the rsaEncryption OID,
 ///        then parses the RSAPublicKey (modulus + exponent) via rt_rsa_key_from_der.
 ///        Returns 1 on success, 0 on parse failure or wrong key type.
-int tls_extract_cert_rsa_pubkey(const uint8_t *cert_der,
-                                       size_t cert_len,
-                                       rt_rsa_key_t *out) {
+int tls_extract_cert_rsa_pubkey(const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out) {
     static const uint8_t OID_RSA_ENCRYPTION[] = {
         0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01};
     uint8_t tag;

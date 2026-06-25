@@ -61,6 +61,85 @@ static void json_discard_value(void *value) {
         json_release_value(value);
 }
 
+static void parser_error(json_parser *p, const char *msg);
+
+/// @brief Validate and expose the byte view for a JSON input string.
+/// @details The parser uses `size_t` cursor arithmetic internally. Runtime
+///          strings should not report negative lengths, but this guard keeps
+///          malformed or partially-constructed handles from turning `-1` into
+///          a huge `size_t` and making the parser walk out of bounds.
+/// @param text Runtime string handle to inspect.
+/// @param context Diagnostic prefix for traps.
+/// @param out_input Receives the borrowed UTF-8 byte pointer.
+/// @param out_len Receives the byte length as `size_t`.
+/// @return 1 when the string is non-empty and valid for parsing; otherwise 0.
+static int json_input_view(rt_string text,
+                           const char *context,
+                           const char **out_input,
+                           size_t *out_len) {
+    int64_t raw_len = rt_str_len(text);
+    if (raw_len < 0) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%s: invalid input length", context);
+        rt_trap(buf);
+        return 0;
+    }
+    if (raw_len == 0) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%s: empty input", context);
+        rt_trap(buf);
+        return 0;
+    }
+
+    *out_input = rt_string_cstr(text);
+    *out_len = (size_t)raw_len;
+    if (!*out_input) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%s: invalid input", context);
+        rt_trap(buf);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Push a parsed JSON array element and verify that it was appended.
+/// @details `rt_seq_push` reports allocation failure via traps and returns
+///          `void`; when a trap recovery handler resumes execution, the caller
+///          needs a second signal that parsing must stop. Comparing the length
+///          before and after the push gives that signal without changing the
+///          public Seq API.
+/// @param p Parser state used for diagnostics.
+/// @param seq Destination array sequence.
+/// @param value Parsed element, including NULL for JSON null.
+/// @return 1 when the value was appended; 0 when the parse should abort.
+static int json_array_push_checked(json_parser *p, void *seq, void *value) {
+    int64_t before = rt_seq_len(seq);
+    rt_seq_push(seq, value);
+    if (rt_seq_len(seq) != before + 1) {
+        parser_error(p, "memory allocation failed");
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Store a parsed JSON object member and verify that it is retrievable.
+/// @details Map insertion also reports allocation failures by trapping. This
+///          helper confirms either insertion or replacement happened before the
+///          parser releases its local references.
+/// @param p Parser state used for diagnostics.
+/// @param map Destination object map.
+/// @param key Object member key.
+/// @param value Parsed member value.
+/// @return 1 when the map contains `key` after the call; otherwise 0.
+static int json_object_set_checked(json_parser *p, void *map, rt_string key, void *value) {
+    rt_map_set(map, key, value);
+    if (!rt_map_has(map, key)) {
+        parser_error(p, "memory allocation failed");
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Trap with a `Json.Parse: …` diagnostic carrying line/column from `p->pos`.
 ///
 /// Computes the location lazily by walking from the start; cheap
@@ -108,6 +187,90 @@ static void *parse_value(json_parser *p);
 // String Parsing
 //=============================================================================
 
+/// @brief Ensure a JSON string decode buffer can append @p extra bytes plus NUL.
+/// @details Grows geometrically with explicit overflow checks instead of raw
+///          `cap *= 2`, so extremely large string inputs fail safely rather
+///          than wrapping the allocation size.
+/// @param buf_io Buffer pointer to grow in place.
+/// @param cap_io Current capacity, updated on success.
+/// @param len Current used length.
+/// @param extra Number of bytes the caller needs to append.
+/// @return 1 on success, 0 on allocation or overflow failure.
+static int json_string_ensure_capacity(char **buf_io, size_t *cap_io, size_t len, size_t extra) {
+    if (!buf_io || !*buf_io || !cap_io)
+        return 0;
+    if (len > SIZE_MAX - 1 || extra > SIZE_MAX - len - 1)
+        return 0;
+    size_t needed = len + extra + 1;
+    if (needed <= *cap_io)
+        return 1;
+    size_t new_cap = *cap_io;
+    while (new_cap < needed) {
+        if (new_cap > SIZE_MAX / 2) {
+            new_cap = needed;
+            break;
+        }
+        new_cap *= 2;
+    }
+    char *tmp = (char *)realloc(*buf_io, new_cap);
+    if (!tmp)
+        return 0;
+    *buf_io = tmp;
+    *cap_io = new_cap;
+    return 1;
+}
+
+/// @brief Validate a raw UTF-8 sequence beginning with @p lead.
+/// @details JSON strings are Unicode text. Escaped codepoints are decoded by
+///          this parser; raw non-ASCII bytes must already be valid UTF-8.
+///          Overlong encodings, surrogate codepoints, and values above
+///          U+10FFFF are rejected.
+/// @param lead First byte already consumed from the parser.
+/// @param rest Remaining unconsumed input bytes.
+/// @param rest_len Number of bytes available in @p rest.
+/// @param extra_out Receives the number of continuation bytes to consume.
+/// @return 1 when the sequence is valid, 0 otherwise.
+static int json_raw_utf8_sequence_valid(unsigned char lead,
+                                        const char *rest,
+                                        size_t rest_len,
+                                        size_t *extra_out) {
+    size_t extra = 0;
+    uint32_t cp = 0;
+    if (extra_out)
+        *extra_out = 0;
+    if (lead < 0x80)
+        return 1;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        extra = 1;
+        cp = lead & 0x1Fu;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+        extra = 2;
+        cp = lead & 0x0Fu;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+        extra = 3;
+        cp = lead & 0x07u;
+    } else {
+        return 0;
+    }
+    if (rest_len < extra)
+        return 0;
+    for (size_t i = 0; i < extra; i++) {
+        unsigned char ch = (unsigned char)rest[i];
+        if ((ch & 0xC0u) != 0x80u)
+            return 0;
+        cp = (cp << 6) | (uint32_t)(ch & 0x3Fu);
+    }
+    if ((extra == 2 && cp < 0x800u) || (extra == 3 && cp < 0x10000u))
+        return 0;
+    if (cp >= 0xD800u && cp <= 0xDFFFu)
+        return 0;
+    if (cp > 0x10FFFFu)
+        return 0;
+    if (extra_out)
+        *extra_out = extra;
+    return 1;
+}
+
 /// @brief Parse a JSON string (starting after the opening quote).
 static rt_string parse_string(json_parser *p) {
     if (parser_consume(p) != '"') {
@@ -131,6 +294,8 @@ static rt_string parse_string(json_parser *p) {
             buf[len] = '\0';
             rt_string result = rt_string_from_bytes(buf, len);
             free(buf);
+            if (!result)
+                parser_error(p, "memory allocation failed");
             return result;
         }
 
@@ -243,55 +408,35 @@ static rt_string parse_string(json_parser *p) {
 
                     // Encode codepoint as UTF-8
                     if (codepoint < 0x80) {
-                        if (len + 1 >= cap) {
-                            cap *= 2;
-                            char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp) {
-                                free(buf);
-                                rt_trap("Json.Parse: memory allocation failed");
-                                return rt_string_from_bytes("", 0);
-                            }
-                            buf = tmp;
+                        if (!json_string_ensure_capacity(&buf, &cap, len, 1)) {
+                            free(buf);
+                            rt_trap("Json.Parse: memory allocation failed");
+                            return rt_string_from_bytes("", 0);
                         }
                         buf[len++] = (char)codepoint;
                     } else if (codepoint < 0x800) {
-                        if (len + 2 >= cap) {
-                            cap *= 2;
-                            char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp) {
-                                free(buf);
-                                rt_trap("Json.Parse: memory allocation failed");
-                                return rt_string_from_bytes("", 0);
-                            }
-                            buf = tmp;
+                        if (!json_string_ensure_capacity(&buf, &cap, len, 2)) {
+                            free(buf);
+                            rt_trap("Json.Parse: memory allocation failed");
+                            return rt_string_from_bytes("", 0);
                         }
                         buf[len++] = (char)(0xC0 | (codepoint >> 6));
                         buf[len++] = (char)(0x80 | (codepoint & 0x3F));
                     } else if (codepoint < 0x10000) {
-                        if (len + 3 >= cap) {
-                            cap *= 2;
-                            char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp) {
-                                free(buf);
-                                rt_trap("Json.Parse: memory allocation failed");
-                                return rt_string_from_bytes("", 0);
-                            }
-                            buf = tmp;
+                        if (!json_string_ensure_capacity(&buf, &cap, len, 3)) {
+                            free(buf);
+                            rt_trap("Json.Parse: memory allocation failed");
+                            return rt_string_from_bytes("", 0);
                         }
                         buf[len++] = (char)(0xE0 | (codepoint >> 12));
                         buf[len++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
                         buf[len++] = (char)(0x80 | (codepoint & 0x3F));
                     } else {
                         // 4-byte UTF-8 for supplementary plane (U+10000 to U+10FFFF)
-                        if (len + 4 >= cap) {
-                            cap *= 2;
-                            char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp) {
-                                free(buf);
-                                rt_trap("Json.Parse: memory allocation failed");
-                                return rt_string_from_bytes("", 0);
-                            }
-                            buf = tmp;
+                        if (!json_string_ensure_capacity(&buf, &cap, len, 4)) {
+                            free(buf);
+                            rt_trap("Json.Parse: memory allocation failed");
+                            return rt_string_from_bytes("", 0);
                         }
                         buf[len++] = (char)(0xF0 | (codepoint >> 18));
                         buf[len++] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
@@ -306,15 +451,10 @@ static rt_string parse_string(json_parser *p) {
                     return rt_string_from_bytes("", 0);
             }
 
-            if (len + 1 >= cap) {
-                cap *= 2;
-                char *tmp = (char *)realloc(buf, cap);
-                if (!tmp) {
-                    free(buf);
-                    rt_trap("Json.Parse: memory allocation failed");
-                    return rt_string_from_bytes("", 0);
-                }
-                buf = tmp;
+            if (!json_string_ensure_capacity(&buf, &cap, len, 1)) {
+                free(buf);
+                rt_trap("Json.Parse: memory allocation failed");
+                return rt_string_from_bytes("", 0);
             }
             buf[len++] = decoded;
         } else if ((unsigned char)c < 0x20) {
@@ -324,17 +464,21 @@ static rt_string parse_string(json_parser *p) {
             return rt_string_from_bytes("", 0);
         } else {
             // Regular character
-            if (len + 1 >= cap) {
-                cap *= 2;
-                char *tmp = (char *)realloc(buf, cap);
-                if (!tmp) {
-                    free(buf);
-                    rt_trap("Json.Parse: memory allocation failed");
-                    return rt_string_from_bytes("", 0);
-                }
-                buf = tmp;
+            size_t extra = 0;
+            if (!json_raw_utf8_sequence_valid(
+                    (unsigned char)c, p->input + p->pos, p->len - p->pos, &extra)) {
+                free(buf);
+                parser_error(p, "invalid UTF-8 in string");
+                return rt_string_from_bytes("", 0);
+            }
+            if (!json_string_ensure_capacity(&buf, &cap, len, 1 + extra)) {
+                free(buf);
+                rt_trap("Json.Parse: memory allocation failed");
+                return rt_string_from_bytes("", 0);
             }
             buf[len++] = c;
+            for (size_t i = 0; i < extra; i++)
+                buf[len++] = parser_consume(p);
         }
     }
 
@@ -443,6 +587,11 @@ static void *parse_array(json_parser *p) {
     }
 
     void *seq = rt_seq_new();
+    if (!seq) {
+        p->depth--;
+        rt_trap("Json.Parse: array allocation failed");
+        return NULL;
+    }
     rt_seq_set_owns_elements(seq, 1);
     parser_skip_whitespace(p);
 
@@ -470,7 +619,11 @@ static void *parse_array(json_parser *p) {
             p->depth--;
             return seq;
         }
-        rt_seq_push(seq, value);
+        if (!json_array_push_checked(p, seq, value)) {
+            json_release_value(value);
+            p->depth--;
+            return seq;
+        }
         json_release_value(value);
 
         parser_skip_whitespace(p);
@@ -519,6 +672,11 @@ static void *parse_object(json_parser *p) {
     }
 
     void *map = rt_map_new();
+    if (!map) {
+        p->depth--;
+        rt_trap("Json.Parse: object allocation failed");
+        return NULL;
+    }
     parser_skip_whitespace(p);
 
     // Empty object
@@ -571,7 +729,12 @@ static void *parse_object(json_parser *p) {
             return map;
         }
 
-        rt_map_set(map, key, value);
+        if (!json_object_set_checked(p, map, key, value)) {
+            rt_str_release_maybe(key);
+            json_release_value(value);
+            p->depth--;
+            return map;
+        }
         json_release_value(value);
         rt_str_release_maybe(key);
 
@@ -708,7 +871,12 @@ void *rt_json_parse(rt_string text) {
         return NULL;
 
     const char *input = rt_string_cstr(text);
-    size_t len = (size_t)rt_str_len(text);
+    int64_t len64 = rt_str_len(text);
+    if (!input || len64 < 0) {
+        rt_trap("Json.Parse: invalid input");
+        return NULL;
+    }
+    size_t len = (size_t)len64;
     if (len == 0) {
         rt_trap("Json.Parse: empty input");
         return NULL;
@@ -755,7 +923,8 @@ int8_t rt_json_try_parse(rt_string text,
     if (out_column)
         *out_column = 0;
 
-    if (!text || rt_str_len(text) == 0) {
+    int64_t len64 = text ? rt_str_len(text) : 0;
+    if (!text || len64 <= 0) {
         if (out_message)
             *out_message = rt_string_from_bytes("empty input", strlen("empty input"));
         if (out_line)
@@ -766,7 +935,16 @@ int8_t rt_json_try_parse(rt_string text,
     }
 
     const char *input = rt_string_cstr(text);
-    size_t len = (size_t)rt_str_len(text);
+    if (!input) {
+        if (out_message)
+            *out_message = rt_string_from_bytes("invalid input", strlen("invalid input"));
+        if (out_line)
+            *out_line = 1;
+        if (out_column)
+            *out_column = 1;
+        return 0;
+    }
+    size_t len = (size_t)len64;
     json_parser p;
     parser_init(&p, input, len);
     p.trap_errors = 0;
@@ -834,12 +1012,10 @@ void *rt_json_parse_object(rt_string text) {
         return NULL;
     }
 
-    const char *input = rt_string_cstr(text);
-    size_t len = (size_t)rt_str_len(text);
-    if (len == 0) {
-        rt_trap("Json.ParseObject: empty input");
+    const char *input = NULL;
+    size_t len = 0;
+    if (!json_input_view(text, "Json.ParseObject", &input, &len))
         return NULL;
-    }
 
     json_parser p;
     parser_init(&p, input, len);
@@ -899,12 +1075,10 @@ void *rt_json_parse_array(rt_string text) {
         return NULL;
     }
 
-    const char *input = rt_string_cstr(text);
-    size_t len = (size_t)rt_str_len(text);
-    if (len == 0) {
-        rt_trap("Json.ParseArray: empty input");
+    const char *input = NULL;
+    size_t len = 0;
+    if (!json_input_view(text, "Json.ParseArray", &input, &len))
         return NULL;
-    }
 
     json_parser p;
     parser_init(&p, input, len);

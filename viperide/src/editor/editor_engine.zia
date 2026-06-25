@@ -67,6 +67,7 @@ class EditorEngine {
         }
         editor.SetText(doc.content);
         editor.ClearModified();
+        editor.ClearSemanticTokens(); // drop the previous document's semantic overlay
         cachedTextSnapshot = doc.content;
         cachedTextRevision = editor.Revision;
 

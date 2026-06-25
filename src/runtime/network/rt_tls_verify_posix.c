@@ -19,6 +19,23 @@
 #if !defined(_WIN32)
 
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+/// @brief Maximum PEM trust bundle size accepted by the POSIX verifier.
+/// @details System trust bundles are expected to be bounded text files. The
+///          cap prevents a configured CA path from driving unbounded allocation
+///          before any certificate parsing has happened.
+#define TLS_TRUST_BUNDLE_MAX_BYTES (8u * 1024u * 1024u)
+
+/// @brief Whether process credentials make environment trust overrides unsafe.
+/// @details If the runtime is executing with elevated effective credentials,
+///          trust roots must not be redirected by untrusted inherited
+///          environment variables.
+/// @return Nonzero when VIPER_TLS_CA_FILE should be ignored.
+static RT_TLS_MAYBE_UNUSED int tls_posix_ignore_env_trust_override(void) {
+    return geteuid() != getuid() || getegid() != getgid();
+}
 
 /// @brief Find a PEM CA bundle file by probing standard OS paths.
 /// @details The VIPER_TLS_CA_FILE environment variable can point at an
@@ -31,7 +48,8 @@ static RT_TLS_MAYBE_UNUSED const char *find_ca_bundle(void) {
                                     "/etc/ssl/ca-bundle.pem",
                                     "/etc/ssl/cert.pem",
                                     NULL};
-    const char *override = getenv("VIPER_TLS_CA_FILE");
+    const char *override =
+        tls_posix_ignore_env_trust_override() ? NULL : getenv("VIPER_TLS_CA_FILE");
     if (override && override[0]) {
         FILE *f = fopen(override, "rb");
         if (f) {
@@ -1185,6 +1203,8 @@ static RT_TLS_MAYBE_UNUSED char *tls_read_file_text(const char *path, size_t *le
     len = ftell(f);
     if (len < 0 || fseek(f, 0, SEEK_SET) != 0)
         goto fail;
+    if ((unsigned long)len > TLS_TRUST_BUNDLE_MAX_BYTES)
+        goto fail;
     buf = (char *)malloc((size_t)len + 1);
     if (!buf)
         goto fail;
@@ -1309,20 +1329,26 @@ int tls_verify_chain(rt_tls_session_t *session) {
     size_t list_pos = 0;
     const uint8_t *current_der = NULL;
     size_t current_len = 0;
+    const uint8_t *server_cert_der = tls_session_server_cert_der(session);
     const char *bundle_path = NULL;
     char *bundle_pem = NULL;
     size_t bundle_len = 0;
 
-    if (!session->server_cert_der_len) {
+    const char *require_revocation = getenv("VIPER_TLS_REQUIRE_REVOCATION");
+    if (require_revocation && require_revocation[0] && strcmp(require_revocation, "0") != 0) {
+        session->error = "TLS: mandatory revocation checking is not supported";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    if (!server_cert_der) {
         session->error = "TLS: no certificate to validate";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (!cert_allows_tls_server_auth(session->server_cert_der, session->server_cert_der_len)) {
+    if (!cert_allows_tls_server_auth(server_cert_der, session->server_cert_der_len)) {
         session->error = "TLS: certificate is not valid for TLS server authentication";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (cert_has_unsupported_critical_extension(session->server_cert_der,
-                                                session->server_cert_der_len)) {
+    if (cert_has_unsupported_critical_extension(server_cert_der, session->server_cert_der_len)) {
         session->error = "TLS: leaf certificate has an unsupported critical extension";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1364,7 +1390,7 @@ int tls_verify_chain(rt_tls_session_t *session) {
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    current_der = session->server_cert_der;
+    current_der = server_cert_der;
     current_len = session->server_cert_der_len;
     for (size_t depth = 0; depth < intermediate_count + 8; depth++) {
         if (cert_check_expiry(current_der, current_len) != 0) {
@@ -1433,9 +1459,14 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     uint8_t cv_message[130];
     uint8_t content_hash[64];
     size_t hash_len = 0;
+    const uint8_t *server_cert_der = tls_session_server_cert_der(session);
 
     if (len < 4) {
         session->error = "TLS: CertificateVerify message too short";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (!server_cert_der) {
+        session->error = "TLS: CertificateVerify: no certificate stored";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -1475,8 +1506,7 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         uint8_t sig_r[32];
         uint8_t sig_s[32];
 
-        if (cert_get_ec_pubkey(
-                session->server_cert_der, session->server_cert_der_len, pub_x, pub_y) != 0) {
+        if (cert_get_ec_pubkey(server_cert_der, session->server_cert_der_len, pub_x, pub_y) != 0) {
             session->error =
                 "TLS: CertificateVerify: certificate does not contain a P-256 public key";
             return RT_TLS_ERROR_HANDSHAKE;
@@ -1493,8 +1523,7 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         rt_rsa_key_t rsa_key;
         int verified = 0;
         rt_rsa_key_init(&rsa_key);
-        if (!cert_get_rsa_pubkey(
-                session->server_cert_der, session->server_cert_der_len, &rsa_key)) {
+        if (!cert_get_rsa_pubkey(server_cert_der, session->server_cert_der_len, &rsa_key)) {
             session->error =
                 "TLS: CertificateVerify: certificate does not contain an RSA public key";
             rt_rsa_key_free(&rsa_key);

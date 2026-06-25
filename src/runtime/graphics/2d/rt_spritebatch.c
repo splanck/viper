@@ -60,6 +60,17 @@
 #define GROWTH_FACTOR 2
 #define MAX_BATCH_CAPACITY 1048576LL
 
+/// @brief Release a temporary Pixels object created during batch color transforms.
+/// @details The original source Pixels object is owned by the batch command; only
+///          clones or tinted variants created inside `apply_batch_color` should be
+///          released by this helper.
+/// @param original Borrowed source Pixels object.
+/// @param candidate Potential temporary object to release.
+static void release_batch_color_temp(void *original, void *candidate) {
+    if (candidate && candidate != original && rt_obj_release_check0(candidate))
+        rt_obj_free(candidate);
+}
+
 typedef enum { BATCH_ITEM_SPRITE, BATCH_ITEM_PIXELS, BATCH_ITEM_REGION } batch_item_type;
 
 typedef struct {
@@ -321,22 +332,29 @@ static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha) 
     if (alpha < 255) {
         if (result == pixels) {
             void *cloned = rt_pixels_clone(result);
-            if (!cloned)
+            if (!cloned) {
+                release_batch_color_temp(pixels, result);
                 return NULL;
+            }
             result = cloned;
         }
 
         rt_pixels_impl *impl = rt_pixels_checked_impl_or_null(result);
         if (impl && impl->data) {
-            uint32_t alpha_u = alpha <= 0 ? 0u : (alpha >= 255 ? 255u : (uint32_t)alpha);
-            if (impl->width <= 0 || impl->height <= 0)
+            uint32_t alpha_u = alpha <= 0 ? 0u : (uint32_t)alpha;
+            if (impl->width <= 0 || impl->height <= 0) {
+                release_batch_color_temp(pixels, result);
                 return NULL;
+            }
             uint64_t width = (uint64_t)impl->width;
             uint64_t height = (uint64_t)impl->height;
-            if (height != 0 && width > UINT64_MAX / height)
+            if (width > UINT64_MAX / height) {
+                release_batch_color_temp(pixels, result);
                 return NULL;
+            }
             uint64_t total = width * height;
             if (total > (uint64_t)SIZE_MAX) {
+                release_batch_color_temp(pixels, result);
                 return NULL;
             }
             size_t pixel_count = (size_t)total;

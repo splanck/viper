@@ -68,26 +68,37 @@
 // Internal Helpers
 //=============================================================================
 
-/// @brief Validate and unwrap a path-fragment string, trapping on NULL, negative length, or illegal
-/// separator characters ('/', '\', ':'). Returns the raw C string pointer on success.
-static const char *tempfile_require_fragment(rt_string fragment, const char *what) {
+/// @brief Validate and unwrap a path-fragment string.
+/// @details Traps on NULL, negative length, embedded NUL, or platform/path
+///          separator characters. Unlike the old helper, failure is reported
+///          explicitly so callers can return immediately when a trap handler
+///          recovers.
+/// @param fragment Runtime string to validate as a filename fragment.
+/// @param what Trap diagnostic.
+/// @param out_cstr Receives the borrowed C string on success.
+/// @return 1 when valid; 0 after trapping.
+static int tempfile_require_fragment(rt_string fragment, const char *what, const char **out_cstr) {
     const char *cstr = rt_string_cstr(fragment);
+    if (out_cstr)
+        *out_cstr = "";
     if (!cstr) {
         rt_trap(what);
-        return "";
+        return 0;
     }
     int64_t len = rt_str_len(fragment);
     if (len < 0) {
         rt_trap(what);
-        return "";
+        return 0;
     }
     for (int64_t i = 0; i < len; ++i) {
         if (cstr[i] == '\0' || cstr[i] == '/' || cstr[i] == '\\' || cstr[i] == ':') {
             rt_trap(what);
-            return "";
+            return 0;
         }
     }
-    return cstr;
+    if (out_cstr)
+        *out_cstr = cstr;
+    return 1;
 }
 
 /// @brief Generate a unique identifier using OS-provided entropy (S-21).
@@ -95,14 +106,20 @@ static const char *tempfile_require_fragment(rt_string fragment, const char *wha
 ///          derived from predictable process IDs, timestamps, stack addresses, or counters.
 /// @return 1 when @p buffer was filled with a hexadecimal identifier, 0 on entropy failure.
 static int generate_unique_id(char *buffer, size_t size) {
-    uint64_t rnd = 0;
+    uint64_t rnd_hi = 0;
+    uint64_t rnd_lo = 0;
 
-    if (rt_entropy_platform_random_u64(&rnd) != 0) {
+    if (rt_entropy_platform_random_u64(&rnd_hi) != 0 ||
+        rt_entropy_platform_random_u64(&rnd_lo) != 0) {
         rt_trap("TempFile: failed to obtain secure randomness");
         return 0;
     }
 
-    snprintf(buffer, size, "%016llx", (unsigned long long)rnd);
+    snprintf(buffer,
+             size,
+             "%016llx%016llx",
+             (unsigned long long)rnd_hi,
+             (unsigned long long)rnd_lo);
     return 1;
 }
 
@@ -278,15 +295,18 @@ rt_string rt_tempfile_path_with_prefix(rt_string prefix) {
 }
 
 /// @brief Path generator with custom prefix AND extension. Format:
-/// `{tempdir}/{prefix}{16-hex-id}{ext}`. The 16-hex random ID gives ~2^64 entropy — collision
-/// chance negligible even after millions of calls.
+/// `{tempdir}/{prefix}{32-hex-id}{ext}`. The 32-hex random ID gives ~2^128 entropy — collision
+/// chance remains negligible even for high-volume temp-path generation.
 rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
     char unique_id[64];
     if (!generate_unique_id(unique_id, sizeof(unique_id)))
         return rt_str_empty();
 
-    const char *prefix_cstr = tempfile_require_fragment(prefix, "TempFile: invalid prefix");
-    const char *ext_cstr = tempfile_require_fragment(extension, "TempFile: invalid extension");
+    const char *prefix_cstr = "";
+    const char *ext_cstr = "";
+    if (!tempfile_require_fragment(prefix, "TempFile: invalid prefix", &prefix_cstr) ||
+        !tempfile_require_fragment(extension, "TempFile: invalid extension", &ext_cstr))
+        return rt_str_empty();
 
     // Build filename: prefix + unique_id + extension
     size_t prefix_len = strlen(prefix_cstr);
@@ -328,7 +348,9 @@ rt_string rt_tempfile_create(void) {
 rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
 #ifndef _WIN32
     /* S-21: Use mkstemp for atomic, exclusive, unpredictable file creation on POSIX */
-    const char *prefix_cstr = tempfile_require_fragment(prefix, "TempFile.Create: invalid prefix");
+    const char *prefix_cstr = "";
+    if (!tempfile_require_fragment(prefix, "TempFile.Create: invalid prefix", &prefix_cstr))
+        return rt_str_empty();
     rt_string temp_dir = rt_tempfile_dir();
     const char *dir_cstr = rt_string_cstr(temp_dir);
 
@@ -389,7 +411,10 @@ rt_string rt_tempdir_create(void) {
 /// @brief Atomic temp-directory creation with custom prefix. Same retry pattern as `_create`
 /// but uses `mkdir`/`_wmkdir` as the atomic primitive.
 rt_string rt_tempdir_create_with_prefix(rt_string prefix) {
-    (void)tempfile_require_fragment(prefix, "TempFile.CreateDir: invalid prefix");
+    const char *prefix_cstr = "";
+    if (!tempfile_require_fragment(prefix, "TempFile.CreateDir: invalid prefix", &prefix_cstr))
+        return rt_const_cstr("");
+    (void)prefix_cstr;
     for (int attempt = 0; attempt < 128; attempt++) {
         rt_string result = rt_tempfile_path_with_ext(prefix, rt_const_cstr(""));
         const char *cpath = rt_string_cstr(result);

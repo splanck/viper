@@ -121,6 +121,8 @@ static void tls_scrub_session_secrets(rt_tls_session_t *session) {
     rt_secure_zero(session->read_buffer, sizeof(session->read_buffer));
     rt_secure_zero(session->app_buffer, sizeof(session->app_buffer));
     rt_secure_zero(session->server_cert_der, sizeof(session->server_cert_der));
+    if (session->server_cert_der_heap)
+        rt_secure_zero(session->server_cert_der_heap, session->server_cert_der_len);
     rt_secure_zero(session->transcript_hash, sizeof(session->transcript_hash));
     rt_secure_zero(&session->transcript_ctx, sizeof(session->transcript_ctx));
     rt_secure_zero(session->client_hello_hash, sizeof(session->client_hello_hash));
@@ -142,6 +144,11 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
         session->server_cert_list = NULL;
         session->server_cert_list_len = 0;
         session->server_cert_count = 0;
+    }
+    if (session->server_cert_der_heap) {
+        tls_secure_free(session->server_cert_der_heap, session->server_cert_der_len);
+        session->server_cert_der_heap = NULL;
+        session->server_cert_der_len = 0;
     }
     if (session->hello_retry_cookie) {
         tls_secure_free(session->hello_retry_cookie, session->hello_retry_cookie_len);
@@ -696,8 +703,10 @@ static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, con
     char cn[256];
     int san_count = 0;
 
-    if (!hostname || !*hostname)
-        return 1;
+    if (!hostname || !*hostname) {
+        const char *require_sni = getenv("VIPER_TLS_REQUIRE_SNI");
+        return (require_sni && require_sni[0] && strcmp(require_sni, "0") != 0) ? 0 : 1;
+    }
     if (!ctx || !ctx->leaf_cert_der || ctx->leaf_cert_der_len == 0)
         return 0;
     if (tls_hostname_is_ip_literal(hostname))

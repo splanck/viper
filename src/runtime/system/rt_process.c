@@ -24,10 +24,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include "rt_process.h"
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -39,13 +44,16 @@
 #include <time.h>
 
 #if defined(_WIN32)
+#include "rt_file_path.h"
 #define WIN32_LEAN_AND_MEAN
+#include <wchar.h>
 #include <windows.h>
 #elif defined(__viperdos__)
 // ViperDOS process handles are intentionally unavailable until async process
 // primitives exist in the target runtime.
 #else
 #include <fcntl.h>
+#include <spawn.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -60,6 +68,7 @@ typedef struct process_buffer {
     char *data;
     size_t len;
     size_t cap;
+    int truncated;
 } process_buffer;
 
 typedef struct process_string_vector {
@@ -104,13 +113,89 @@ static rt_process_impl *process_checked(void *handle) {
     return (rt_process_impl *)handle;
 }
 
+/// @brief Extract a runtime string as a C-string-safe byte view for process APIs.
+/// @details Child-process interfaces cannot represent embedded NUL bytes in
+///          program paths, cwd strings, argv entries, or environment entries.
+///          This helper rejects such values before OS APIs silently truncate
+///          them. Empty strings are considered valid by this helper; callers
+///          enforce required/non-empty fields separately.
+/// @param value Runtime string to inspect.
+/// @param out_text Receives a borrowed C-string pointer on success.
+/// @param out_len Receives the byte length excluding the terminator.
+/// @return 1 for a valid C-string-safe runtime string, 0 otherwise.
+static int process_string_cstr_view(rt_string value, const char **out_text, size_t *out_len) {
+    const char *text = value ? rt_string_cstr(value) : NULL;
+    int64_t len64 = value ? rt_str_len(value) : -1;
+    if (out_text)
+        *out_text = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!text || len64 < 0 || (uint64_t)len64 > SIZE_MAX)
+        return 0;
+    size_t len = (size_t)len64;
+    if (len > 0 && memchr(text, '\0', len))
+        return 0;
+    if (out_text)
+        *out_text = text;
+    if (out_len)
+        *out_len = len;
+    return 1;
+}
+
+/// @brief Validate all entries in a process string sequence for C-string safety.
+/// @details Args and environment values are represented as runtime strings, but
+///          the OS APIs below consume NUL-terminated C strings. This validation
+///          prevents child processes from seeing truncated values.
+/// @param items Runtime sequence of strings; may be NULL.
+/// @param require_env_assignment Non-zero to require NAME=VALUE entries.
+/// @param trap_msg Trap message for invalid input.
+/// @return 1 when every item is valid, 0 when a trap was raised.
+static int process_validate_string_sequence(void *items,
+                                            int require_env_assignment,
+                                            const char *trap_msg) {
+    int64_t count = items ? rt_seq_len(items) : 0;
+    if (count < 0)
+        return 1;
+    for (int64_t i = 0; i < count; i++) {
+        rt_string item = rt_seq_get_str(items, i);
+        const char *text = NULL;
+        size_t len = 0;
+        int ok = process_string_cstr_view(item, &text, &len);
+        if (ok && require_env_assignment) {
+            const char *equals = (const char *)memchr(text, '=', len);
+            ok = equals && equals != text;
+        }
+        rt_str_release_maybe(item);
+        if (!ok) {
+            rt_trap(trap_msg);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Mark a process output buffer as truncated after reaching its cap.
+/// @details The old behavior silently discarded bytes after 16 MiB. The
+///          buffer now records truncation so the next read can surface a trap
+///          while still returning any bytes already captured if trap hooks
+///          choose to continue.
+/// @param buf Output buffer to mark.
+static void buffer_mark_truncated(process_buffer *buf) {
+    if (buf)
+        buf->truncated = 1;
+}
+
 static int buffer_append(process_buffer *buf, const char *data, size_t len) {
     if (!buf || !data || len == 0)
         return 1;
-    if (buf->len >= PROCESS_BUFFER_MAX_SIZE)
+    if (buf->len >= PROCESS_BUFFER_MAX_SIZE) {
+        buffer_mark_truncated(buf);
         return 1;
-    if (len > PROCESS_BUFFER_MAX_SIZE - buf->len)
+    }
+    if (len > PROCESS_BUFFER_MAX_SIZE - buf->len) {
         len = PROCESS_BUFFER_MAX_SIZE - buf->len;
+        buffer_mark_truncated(buf);
+    }
     if (len == 0)
         return 1;
 
@@ -143,6 +228,10 @@ static rt_string buffer_take(process_buffer *buf) {
         return empty_string();
     rt_string out = rt_string_from_bytes(buf->data, buf->len);
     buf->len = 0;
+    if (buf->truncated) {
+        buf->truncated = 0;
+        rt_trap("Process: output truncated");
+    }
     return out;
 }
 
@@ -153,6 +242,7 @@ static void buffer_free(process_buffer *buf) {
     buf->data = NULL;
     buf->len = 0;
     buf->cap = 0;
+    buf->truncated = 0;
 }
 
 static process_string_vector build_string_vector(const char *first,
@@ -233,42 +323,50 @@ static rt_process_impl *process_alloc(void) {
 
 static size_t cmdline_quoted_len(const char *s) {
     size_t len = 2;
-    int backslashes = 0;
+    size_t backslashes = 0;
     for (; *s; s++) {
         if (*s == '\\') {
+            if (backslashes == SIZE_MAX)
+                return SIZE_MAX;
             backslashes++;
         } else if (*s == '"') {
+            if (backslashes > (SIZE_MAX - len - 2) / 2)
+                return SIZE_MAX;
             len += (size_t)backslashes * 2 + 2;
             backslashes = 0;
         } else {
+            if (backslashes > SIZE_MAX - len - 1)
+                return SIZE_MAX;
             len += (size_t)backslashes + 1;
             backslashes = 0;
         }
     }
+    if (backslashes > (SIZE_MAX - len) / 2)
+        return SIZE_MAX;
     len += (size_t)backslashes * 2;
     return len;
 }
 
 static char *cmdline_append_quoted(char *out, const char *s) {
     *out++ = '"';
-    int backslashes = 0;
+    size_t backslashes = 0;
     for (; *s; s++) {
         if (*s == '\\') {
             backslashes++;
         } else if (*s == '"') {
-            for (int i = 0; i < backslashes * 2; i++)
+            for (size_t i = 0; i < backslashes * 2; i++)
                 *out++ = '\\';
             *out++ = '\\';
             *out++ = '"';
             backslashes = 0;
         } else {
-            for (int i = 0; i < backslashes; i++)
+            for (size_t i = 0; i < backslashes; i++)
                 *out++ = '\\';
             *out++ = *s;
             backslashes = 0;
         }
     }
-    for (int i = 0; i < backslashes * 2; i++)
+    for (size_t i = 0; i < backslashes * 2; i++)
         *out++ = '\\';
     *out++ = '"';
     return out;
@@ -277,11 +375,13 @@ static char *cmdline_append_quoted(char *out, const char *s) {
 static char *build_cmdline(const char *program, void *args) {
     int64_t nargs = args ? rt_seq_len(args) : 0;
     size_t len = cmdline_quoted_len(program);
+    if (len == SIZE_MAX)
+        return NULL;
     for (int64_t i = 0; i < nargs; i++) {
         rt_string arg = rt_seq_get_str(args, i);
         size_t quoted_len = cmdline_quoted_len(arg ? rt_string_cstr(arg) : "");
         rt_str_release_maybe(arg);
-        if (quoted_len > SIZE_MAX - len - 1)
+        if (quoted_len == SIZE_MAX || quoted_len > SIZE_MAX - len - 1)
             return NULL;
         len += 1 + quoted_len;
     }
@@ -302,6 +402,108 @@ static char *build_cmdline(const char *program, void *args) {
     }
     *out = '\0';
     return cmdline;
+}
+
+/// @brief Extended Windows startup state with a constrained handle allow-list.
+/// @details CreateProcessW must use inheritable handles for redirected stdio,
+///          but STARTUPINFOEX lets the runtime inherit only the three pipe ends
+///          that the child actually needs instead of leaking every inheritable
+///          handle in the parent process.
+typedef struct process_win_startup_info {
+    STARTUPINFOEXW startup;
+    LPPROC_THREAD_ATTRIBUTE_LIST attrs;
+} process_win_startup_info;
+
+/// @brief Initialize STARTUPINFOEXW with an inherited-handle allow-list.
+/// @param info Startup container to initialize.
+/// @param handles Handles permitted to cross into the child process.
+/// @param handle_count Number of entries in @p handles.
+/// @return 1 on success, 0 on allocation/API failure.
+static int process_win_startup_init(process_win_startup_info *info,
+                                    HANDLE *handles,
+                                    DWORD handle_count) {
+    SIZE_T attr_size = 0;
+    if (!info)
+        return 0;
+    memset(info, 0, sizeof(*info));
+    info->startup.StartupInfo.cb = sizeof(info->startup);
+    if (!handles || handle_count == 0)
+        return 1;
+    (void)InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
+    info->attrs = (LPPROC_THREAD_ATTRIBUTE_LIST)malloc(attr_size);
+    if (!info->attrs)
+        return 0;
+    if (!InitializeProcThreadAttributeList(info->attrs, 1, 0, &attr_size)) {
+        free(info->attrs);
+        info->attrs = NULL;
+        return 0;
+    }
+    info->startup.lpAttributeList = info->attrs;
+    if (!UpdateProcThreadAttribute(info->attrs,
+                                   0,
+                                   PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                   handles,
+                                   sizeof(HANDLE) * handle_count,
+                                   NULL,
+                                   NULL)) {
+        DeleteProcThreadAttributeList(info->attrs);
+        free(info->attrs);
+        info->attrs = NULL;
+        info->startup.lpAttributeList = NULL;
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Destroy a Windows extended startup handle allow-list.
+/// @param info Startup container previously initialized by process_win_startup_init.
+static void process_win_startup_destroy(process_win_startup_info *info) {
+    if (!info || !info->attrs)
+        return;
+    DeleteProcThreadAttributeList(info->attrs);
+    free(info->attrs);
+    info->attrs = NULL;
+    info->startup.lpAttributeList = NULL;
+}
+
+/// @brief Convert a UTF-8 command line, program path, and cwd to wide strings.
+/// @details CreateProcessW mutates the command-line buffer, so every output is
+///          heap allocated. The cwd output may be NULL when no cwd was supplied.
+/// @param program UTF-8 executable path or lookup name.
+/// @param cmdline UTF-8 quoted command line.
+/// @param cwd Optional UTF-8 working directory.
+/// @param out_program Receives allocated wide program string.
+/// @param out_cmdline Receives allocated wide command-line buffer.
+/// @param out_cwd Receives allocated wide cwd or NULL.
+/// @return 1 on success, 0 on conversion failure.
+static int process_build_wide_start_strings(const char *program,
+                                            const char *cmdline,
+                                            const char *cwd,
+                                            wchar_t **out_program,
+                                            wchar_t **out_cmdline,
+                                            wchar_t **out_cwd) {
+    if (out_program)
+        *out_program = NULL;
+    if (out_cmdline)
+        *out_cmdline = NULL;
+    if (out_cwd)
+        *out_cwd = NULL;
+    if (!program || !cmdline || !out_program || !out_cmdline || !out_cwd)
+        return 0;
+    *out_program = rt_file_path_utf8_to_wide(program);
+    *out_cmdline = rt_file_path_utf8_to_wide(cmdline);
+    if (cwd)
+        *out_cwd = rt_file_path_utf8_to_wide(cwd);
+    if (!*out_program || !*out_cmdline || (cwd && !*out_cwd)) {
+        free(*out_program);
+        free(*out_cmdline);
+        free(*out_cwd);
+        *out_program = NULL;
+        *out_cmdline = NULL;
+        *out_cwd = NULL;
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Validate a Windows environment block entry from a runtime string.
@@ -335,46 +537,65 @@ static int env_item_view(rt_string item, const char **text_out, size_t *len_out)
     return 1;
 }
 
-static char *build_env_block(void *env) {
+/// @brief Build a UTF-16 environment block for CreateProcessW.
+/// @details Converts each validated NAME=VALUE runtime string independently
+///          and concatenates the resulting wide strings with single NUL
+///          separators plus a final extra NUL, as required by CreateProcessW.
+/// @param env Runtime sequence of NAME=VALUE strings; may be NULL.
+/// @return Allocated wide environment block, or NULL for no env / failure.
+static wchar_t *build_env_block_wide(void *env) {
     if (!env)
         return NULL;
 
     int64_t count = rt_seq_len(env);
-    size_t len = 2;
-    for (int64_t i = 0; i < count; i++) {
-        rt_string item = rt_seq_get_str(env, i);
-        const char *text = NULL;
-        size_t item_len = 0;
-        if (!env_item_view(item, &text, &item_len)) {
-            rt_str_release_maybe(item);
-            return NULL;
-        }
-        rt_str_release_maybe(item);
-        if (item_len > SIZE_MAX - len - 1)
-            return NULL;
-        len += item_len + 1;
-    }
-
-    char *block = (char *)calloc(len, 1);
-    if (!block)
+    if (count < 0)
         return NULL;
+    size_t total_wchars = 1;
+    wchar_t **entries = NULL;
+    if (count > 0) {
+        entries = (wchar_t **)calloc((size_t)count, sizeof(wchar_t *));
+        if (!entries)
+            return NULL;
+    }
 
-    char *out = block;
     for (int64_t i = 0; i < count; i++) {
         rt_string item = rt_seq_get_str(env, i);
         const char *text = NULL;
         size_t item_len = 0;
         if (!env_item_view(item, &text, &item_len)) {
             rt_str_release_maybe(item);
-            free(block);
-            return NULL;
+            goto fail;
         }
-        memcpy(out, text, item_len);
-        out += item_len + 1;
+        entries[i] = rt_file_path_utf8_to_wide(text);
         rt_str_release_maybe(item);
+        if (!entries[i])
+            goto fail;
+        size_t wide_len = wcslen(entries[i]);
+        if (wide_len > SIZE_MAX - total_wchars - 1)
+            goto fail;
+        total_wchars += wide_len + 1;
     }
-    *out = '\0';
+
+    wchar_t *block = (wchar_t *)calloc(total_wchars + 1, sizeof(wchar_t));
+    if (!block)
+        goto fail;
+    wchar_t *out = block;
+    for (int64_t i = 0; i < count; i++) {
+        size_t wide_len = wcslen(entries[i]);
+        memcpy(out, entries[i], wide_len * sizeof(wchar_t));
+        out += wide_len + 1;
+        free(entries[i]);
+    }
+    free(entries);
     return block;
+
+fail:
+    if (entries) {
+        for (int64_t i = 0; i < count; i++)
+            free(entries[i]);
+    }
+    free(entries);
+    return NULL;
 }
 
 static int create_child_pipe(HANDLE *read_pipe, HANDLE *write_pipe) {
@@ -490,19 +711,49 @@ static rt_process_impl *process_start_impl(rt_string program,
                                            void *args,
                                            rt_string cwd,
                                            void *env) {
-    if (!program || rt_str_len(program) == 0)
+    const char *program_text = NULL;
+    const char *cwd_text = NULL;
+    size_t program_len = 0;
+    size_t cwd_len = 0;
+    if (!program)
         return NULL;
-
-    const char *program_text = rt_string_cstr(program);
-    const char *cwd_text = cwd && rt_str_len(cwd) > 0 ? rt_string_cstr(cwd) : NULL;
+    if (!process_string_cstr_view(program, &program_text, &program_len) || program_len == 0) {
+        rt_trap("Process.Start: invalid program");
+        return NULL;
+    }
+    if (cwd) {
+        if (!process_string_cstr_view(cwd, &cwd_text, &cwd_len)) {
+            rt_trap("Process.Start: invalid working directory");
+            return NULL;
+        }
+        if (cwd_len == 0)
+            cwd_text = NULL;
+    }
+    if (!process_validate_string_sequence(args, 0, "Process.Start: invalid argument"))
+        return NULL;
+    if (!process_validate_string_sequence(env, 1, "Process.Start: invalid environment entry"))
+        return NULL;
     char *cmdline = build_cmdline(program_text, args);
     if (!cmdline) {
         rt_trap("Process.Start: command line allocation failed");
         return NULL;
     }
 
-    char *env_block = build_env_block(env);
+    wchar_t *wprogram = NULL;
+    wchar_t *wcmdline = NULL;
+    wchar_t *wcwd = NULL;
+    if (!process_build_wide_start_strings(
+            program_text, cmdline, cwd_text, &wprogram, &wcmdline, &wcwd)) {
+        free(cmdline);
+        rt_trap("Process.Start: UTF-8 to UTF-16 conversion failed");
+        return NULL;
+    }
+
+    wchar_t *env_block = build_env_block_wide(env);
     if (env && !env_block) {
+        free(wprogram);
+        free(wcmdline);
+        free(wcwd);
         free(cmdline);
         rt_trap("Process.Start: environment allocation failed");
         return NULL;
@@ -524,27 +775,55 @@ static rt_process_impl *process_start_impl(rt_string program,
         close_handle(&stdin_read);
         close_handle(&stdin_write);
         free(env_block);
+        free(wprogram);
+        free(wcmdline);
+        free(wcwd);
         free(cmdline);
         return NULL;
     }
 
-    STARTUPINFOA si;
+    HANDLE inherited[3] = {stdin_read, stdout_write, stderr_write};
+    process_win_startup_info si;
     PROCESS_INFORMATION pi;
-    memset(&si, 0, sizeof(si));
     memset(&pi, 0, sizeof(pi));
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = stdin_read;
-    si.hStdOutput = stdout_write;
-    si.hStdError = stderr_write;
+    if (!process_win_startup_init(&si, inherited, 3)) {
+        close_handle(&stdout_read);
+        close_handle(&stdout_write);
+        close_handle(&stderr_read);
+        close_handle(&stderr_write);
+        close_handle(&stdin_read);
+        close_handle(&stdin_write);
+        free(env_block);
+        free(wprogram);
+        free(wcmdline);
+        free(wcwd);
+        free(cmdline);
+        return NULL;
+    }
+    si.startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    si.startup.StartupInfo.hStdInput = stdin_read;
+    si.startup.StartupInfo.hStdOutput = stdout_write;
+    si.startup.StartupInfo.hStdError = stderr_write;
 
-    BOOL ok = CreateProcessA(
-        program_text, cmdline, NULL, NULL, TRUE, CREATE_NO_WINDOW, env_block, cwd_text, &si, &pi);
+    BOOL ok = CreateProcessW(wprogram,
+                             wcmdline,
+                             NULL,
+                             NULL,
+                             TRUE,
+                             CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
+                             env_block,
+                             wcwd,
+                             &si.startup.StartupInfo,
+                             &pi);
 
+    process_win_startup_destroy(&si);
     close_handle(&stdout_write);
     close_handle(&stderr_write);
     close_handle(&stdin_read);
     free(env_block);
+    free(wprogram);
+    free(wcmdline);
+    free(wcwd);
     free(cmdline);
 
     if (!ok) {
@@ -646,6 +925,29 @@ static void close_fd(int *fd) {
     }
 }
 
+/// @brief Create a POSIX pipe with close-on-exec set on both descriptors.
+/// @details The child duplicates the pipe ends it needs onto stdin/stdout/stderr
+///          before exec. Setting FD_CLOEXEC on the original descriptors prevents
+///          the parent-side copies and any forgotten pipe ends from surviving
+///          into grandchildren.
+/// @param pipefd Receives read/write descriptors.
+/// @return 0 on success, -1 on failure.
+static int process_pipe_cloexec(int pipefd[2]) {
+    if (pipe(pipefd) != 0)
+        return -1;
+#if defined(FD_CLOEXEC)
+    for (int i = 0; i < 2; i++) {
+        int flags = fcntl(pipefd[i], F_GETFD, 0);
+        if (flags < 0 || fcntl(pipefd[i], F_SETFD, flags | FD_CLOEXEC) < 0) {
+            close_fd(&pipefd[0]);
+            close_fd(&pipefd[1]);
+            return -1;
+        }
+    }
+#endif
+    return 0;
+}
+
 static void set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags >= 0)
@@ -731,15 +1033,57 @@ static void process_poll_internal(rt_process_impl *proc, int wait) {
     }
 }
 
+/// @brief Wait briefly for a POSIX child to exit after SIGTERM.
+/// @details Destruction is still bounded, but the child now gets a short
+///          cleanup window before the runtime escalates to SIGKILL. The loop
+///          drains output while waiting so a child that exits promptly does not
+///          lose buffered stdout/stderr.
+/// @param proc Process handle to poll.
+/// @param grace_ms Maximum grace interval in milliseconds.
+static void process_wait_after_sigterm(rt_process_impl *proc, int grace_ms) {
+    if (!proc || grace_ms <= 0)
+        return;
+    int elapsed = 0;
+    while (proc->running && elapsed < grace_ms) {
+        process_poll_internal(proc, 0);
+        if (!proc->running)
+            break;
+        {
+            struct timespec delay;
+            delay.tv_sec = 0;
+            delay.tv_nsec = 10000000L;
+            (void)nanosleep(&delay, NULL);
+        }
+        elapsed += 10;
+    }
+}
+
 static rt_process_impl *process_start_impl(rt_string program,
                                            void *args,
                                            rt_string cwd,
                                            void *env) {
-    if (!program || rt_str_len(program) == 0)
+    const char *program_text = NULL;
+    const char *cwd_text = NULL;
+    size_t program_len = 0;
+    size_t cwd_len = 0;
+    if (!program)
         return NULL;
-
-    const char *program_text = rt_string_cstr(program);
-    const char *cwd_text = cwd && rt_str_len(cwd) > 0 ? rt_string_cstr(cwd) : NULL;
+    if (!process_string_cstr_view(program, &program_text, &program_len) || program_len == 0) {
+        rt_trap("Process.Start: invalid program");
+        return NULL;
+    }
+    if (cwd) {
+        if (!process_string_cstr_view(cwd, &cwd_text, &cwd_len)) {
+            rt_trap("Process.Start: invalid working directory");
+            return NULL;
+        }
+        if (cwd_len == 0)
+            cwd_text = NULL;
+    }
+    if (!process_validate_string_sequence(args, 0, "Process.Start: invalid argument"))
+        return NULL;
+    if (!process_validate_string_sequence(env, 1, "Process.Start: invalid environment entry"))
+        return NULL;
     process_string_vector argv = build_string_vector(program_text, args, 1);
     if (!argv.values) {
         rt_trap("Process.Start: argv allocation failed");
@@ -759,7 +1103,8 @@ static rt_process_impl *process_start_impl(rt_string program,
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
     int stdin_pipe[2] = {-1, -1};
-    if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0 || pipe(stdin_pipe) != 0) {
+    if (process_pipe_cloexec(stdout_pipe) != 0 || process_pipe_cloexec(stderr_pipe) != 0 ||
+        process_pipe_cloexec(stdin_pipe) != 0) {
         close_fd(&stdout_pipe[0]);
         close_fd(&stdout_pipe[1]);
         close_fd(&stderr_pipe[0]);
@@ -771,8 +1116,8 @@ static rt_process_impl *process_start_impl(rt_string program,
         return NULL;
     }
 
-    pid_t pid = fork();
-    if (pid < 0) {
+    posix_spawn_file_actions_t actions;
+    if (posix_spawn_file_actions_init(&actions) != 0) {
         close_fd(&stdout_pipe[0]);
         close_fd(&stdout_pipe[1]);
         close_fd(&stderr_pipe[0]);
@@ -784,28 +1129,50 @@ static rt_process_impl *process_start_impl(rt_string program,
         return NULL;
     }
 
-    if (pid == 0) {
-        close(stdout_pipe[0]);
-        close(stderr_pipe[0]);
-        close(stdin_pipe[1]);
+    int spawn_setup_rc = 0;
+    spawn_setup_rc |= posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]);
+    spawn_setup_rc |= posix_spawn_file_actions_addclose(&actions, stderr_pipe[0]);
+    spawn_setup_rc |= posix_spawn_file_actions_addclose(&actions, stdin_pipe[1]);
+    spawn_setup_rc |= posix_spawn_file_actions_adddup2(&actions, stdout_pipe[1], STDOUT_FILENO);
+    spawn_setup_rc |= posix_spawn_file_actions_adddup2(&actions, stderr_pipe[1], STDERR_FILENO);
+    spawn_setup_rc |= posix_spawn_file_actions_adddup2(&actions, stdin_pipe[0], STDIN_FILENO);
+    spawn_setup_rc |= posix_spawn_file_actions_addclose(&actions, stdout_pipe[1]);
+    spawn_setup_rc |= posix_spawn_file_actions_addclose(&actions, stderr_pipe[1]);
+    spawn_setup_rc |= posix_spawn_file_actions_addclose(&actions, stdin_pipe[0]);
+    if (cwd_text) {
+#if RT_PLATFORM_MACOS
+        spawn_setup_rc |= posix_spawn_file_actions_addchdir(&actions, cwd_text);
+#else
+        spawn_setup_rc |= posix_spawn_file_actions_addchdir_np(&actions, cwd_text);
+#endif
+    }
+    if (spawn_setup_rc != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        close_fd(&stdout_pipe[0]);
+        close_fd(&stdout_pipe[1]);
+        close_fd(&stderr_pipe[0]);
+        close_fd(&stderr_pipe[1]);
+        close_fd(&stdin_pipe[0]);
+        close_fd(&stdin_pipe[1]);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        return NULL;
+    }
 
-        if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0)
-            _exit(127);
-        if (dup2(stderr_pipe[1], STDERR_FILENO) < 0)
-            _exit(127);
-        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0)
-            _exit(127);
-        close(stdout_pipe[1]);
-        close(stderr_pipe[1]);
-        close(stdin_pipe[0]);
-
-        if (cwd_text) {
-            if (chdir(cwd_text) != 0)
-                _exit(127);
-        }
-
-        execve(program_text, argv.values, envp.values ? envp.values : environ);
-        _exit(errno == ENOENT ? 127 : 126);
+    pid_t pid = -1;
+    int spawn_rc =
+        posix_spawn(&pid, program_text, &actions, NULL, argv.values, envp.values ? envp.values : environ);
+    posix_spawn_file_actions_destroy(&actions);
+    if (spawn_rc != 0) {
+        close_fd(&stdout_pipe[0]);
+        close_fd(&stdout_pipe[1]);
+        close_fd(&stderr_pipe[0]);
+        close_fd(&stderr_pipe[1]);
+        close_fd(&stdin_pipe[0]);
+        close_fd(&stdin_pipe[1]);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        return NULL;
     }
 
     close_fd(&stdout_pipe[1]);
@@ -813,6 +1180,7 @@ static rt_process_impl *process_start_impl(rt_string program,
     close_fd(&stdin_pipe[0]);
     set_nonblocking(stdout_pipe[0]);
     set_nonblocking(stderr_pipe[0]);
+    set_nonblocking(stdin_pipe[1]);
     free_string_vector(&envp);
     free_string_vector(&argv);
 
@@ -858,7 +1226,7 @@ static void process_close(rt_process_impl *proc) {
 #else
     if (proc->running && proc->pid > 0) {
         (void)kill(proc->pid, SIGTERM);
-        process_poll_internal(proc, 0);
+        process_wait_after_sigterm(proc, 500);
         if (proc->running) {
             (void)kill(proc->pid, SIGKILL);
             process_poll_internal(proc, 1);

@@ -1900,6 +1900,19 @@ void rt_codeeditor_add_highlight(void *editor,
 /// @param editor CodeEditor handle.
 void rt_codeeditor_refresh_highlights(void *editor);
 
+/// @brief Overlay a compiler-classified color on an identifier range.
+/// @param editor CodeEditor handle.
+/// @param line 0-based line.
+/// @param start 0-based start column (inclusive).
+/// @param end 0-based end column (exclusive).
+/// @param token_type vg_syntax_token_type value.
+void rt_codeeditor_add_semantic_token(
+    void *editor, int64_t line, int64_t start, int64_t end, int64_t token_type);
+
+/// @brief Drop the semantic-token overlay and restore lexical colors.
+/// @param editor CodeEditor handle.
+void rt_codeeditor_clear_semantic_tokens(void *editor);
+
 /// @brief Add display-only inlay hint text anchored to a source position.
 /// @param editor CodeEditor handle.
 /// @param line Zero-based source line.
@@ -3156,6 +3169,9 @@ rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 /// @brief Start path-aware document symbol extraction on a background worker.
 void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path);
 
+/// @brief Start path-aware semantic-token classification on a background worker.
+void *rt_zia_completion_begin_tokens_for_file(rt_string source, rt_string file_path);
+
 /// @brief Return whether a semantic background job has completed.
 int8_t rt_zia_semantic_job_is_done(void *handle);
 
@@ -3182,6 +3198,9 @@ void *rt_zia_semantic_job_hover_info(void *handle);
 
 /// @brief Materialize a symbols job result as serialized symbol rows.
 rt_string rt_zia_semantic_job_symbols(void *handle);
+
+/// @brief Materialize a tokens job result as serialized semantic-token rows.
+rt_string rt_zia_semantic_job_tokens(void *handle);
 
 /// @brief Materialize a diagnostics job result as Seq<Map>.
 void *rt_zia_semantic_job_diagnostics(void *handle);

@@ -125,6 +125,12 @@ static int http_token_char(unsigned char c) {
     }
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+#define HTTP_SERVER_SHARED_MAYBE_UNUSED __attribute__((unused))
+#else
+#define HTTP_SERVER_SHARED_MAYBE_UNUSED
+#endif
+
 /**
  * @brief Validate a length-bounded HTTP method token.
  *
@@ -263,6 +269,24 @@ static int is_server_managed_header_name(const char *name) {
     return name &&
            (strcasecmp(name, "Content-Length") == 0 || strcasecmp(name, "Connection") == 0 ||
             strcasecmp(name, "Transfer-Encoding") == 0);
+}
+
+/// @brief Validate a handler-supplied response header field name.
+/// @details HTTP header names use the same token grammar as request methods.
+///          The runtime validates against the explicit byte length so embedded
+///          NULs cannot truncate validation; callers still perform their own
+///          runtime-string NUL checks before reaching this helper.
+/// @param name Header name bytes.
+/// @param len Number of bytes in @p name.
+/// @return Nonzero when every byte is a valid HTTP token character.
+static int HTTP_SERVER_SHARED_MAYBE_UNUSED server_header_name_valid(const char *name, size_t len) {
+    if (!name || len == 0)
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        if (!http_token_char((unsigned char)name[i]))
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Compute the byte length of a JSON-escaped C string.

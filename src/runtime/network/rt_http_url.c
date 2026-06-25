@@ -146,6 +146,39 @@ static size_t rt_url_string_len_or_trap(rt_string value, const char *context) {
     return (size_t)len64;
 }
 
+/// @brief Validate raw URL component bytes before storing them through a setter.
+/// @details URL setters accept already-encoded component text. They still must
+///          reject embedded NUL, ASCII controls, spaces, backslashes, and
+///          component delimiter bytes that would produce an ambiguous or
+///          header-smuggling-prone serialized URL.
+/// @param value Runtime string component to inspect; NULL is treated as valid clear.
+/// @param forbidden Additional delimiter bytes forbidden for this component.
+/// @param context Trap context used for invalid length diagnostics.
+/// @return 1 when valid; 0 after raising `Err_InvalidUrl`.
+static int rt_url_component_is_valid(rt_string value, const char *forbidden, const char *context) {
+    const char *str = value ? rt_string_cstr(value) : NULL;
+    size_t len = rt_url_string_len_or_trap(value, context);
+    if (!value)
+        return 1;
+    if (!str && len > 0) {
+        rt_trap_net("URL: invalid component", Err_InvalidUrl);
+        return 0;
+    }
+    if (str && memchr(str, '\0', len)) {
+        rt_trap_net("URL: embedded NUL in component", Err_InvalidUrl);
+        return 0;
+    }
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)str[i];
+        if (c <= 0x20u || c == 0x7Fu || c == '\\' ||
+            (forbidden && strchr(forbidden, (int)c))) {
+            rt_trap_net("URL: invalid component", Err_InvalidUrl);
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /// @brief Duplicate the C-string content of a Viper rt_string into a heap C buffer.
 /// @brief Duplicate an rt_string argument as a heap-owned C string; trap on OOM.
 static char *rt_url_dup_string_arg(rt_string value, const char *context) {
@@ -361,6 +394,8 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
             return -1;
         result->scheme = rt_url_dup_slice_or_trap_cleanup(
             result, p, scheme_len, "URL.Parse: scheme allocation failed");
+        if (!result->scheme)
+            return -1;
 
         // Convert scheme to lowercase
         for (char *s = result->scheme; *s; s++) {
@@ -561,7 +596,12 @@ static void free_url(rt_url_t *url) {
 /// lowercasing if `lowercase != 0`. Used by every `set_*` accessor
 /// that updates a single component.
 static void rt_url_replace_field(char **slot, rt_string value, const char *context, int lowercase) {
-    char *dup = rt_url_dup_string_arg(value, context);
+    char *dup = NULL;
+    if (value) {
+        dup = rt_url_dup_string_arg(value, context);
+        if (!dup)
+            return;
+    }
     free(*slot);
     *slot = dup;
     if (lowercase && *slot) {
@@ -611,8 +651,16 @@ static char *normalize_path(const char *path) {
         if (segment_len == 1 && cursor[0] == '.') {
             /* Drop ".". */
         } else if (segment_len == 2 && cursor[0] == '.' && cursor[1] == '.') {
-            if (segment_count > 0)
+            if (segment_count > 0 &&
+                !(segments[segment_count - 1].len == 2 &&
+                  segments[segment_count - 1].start[0] == '.' &&
+                  segments[segment_count - 1].start[1] == '.')) {
                 segment_count--;
+            } else if (!absolute) {
+                segments[segment_count].start = cursor;
+                segments[segment_count].len = segment_len;
+                segment_count++;
+            }
         } else {
             segments[segment_count].start = cursor;
             segments[segment_count].len = segment_len;
@@ -775,6 +823,8 @@ void rt_url_set_host(void *obj, rt_string host) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Host: null receiver");
     if (!url)
         return;
+    if (!rt_url_component_is_valid(host, "/?#@", "URL.set_Host: invalid length"))
+        return;
     rt_url_replace_field(&url->host, host, "URL.set_Host: allocation failed", 0);
 }
 
@@ -837,6 +887,8 @@ void rt_url_set_path(void *obj, rt_string path) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Path: null receiver");
     if (!url)
         return;
+    if (!rt_url_component_is_valid(path, "?#", "URL.set_Path: invalid length"))
+        return;
     rt_url_replace_field(&url->path, path, "URL.set_Path: allocation failed", 0);
 }
 
@@ -854,6 +906,8 @@ rt_string rt_url_query(void *obj) {
 void rt_url_set_query(void *obj, rt_string query) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Query: null receiver");
     if (!url)
+        return;
+    if (!rt_url_component_is_valid(query, "#", "URL.set_Query: invalid length"))
         return;
     rt_url_replace_field(&url->query, query, "URL.set_Query: allocation failed", 0);
 }
@@ -873,6 +927,8 @@ void rt_url_set_fragment(void *obj, rt_string fragment) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Fragment: null receiver");
     if (!url)
         return;
+    if (!rt_url_component_is_valid(fragment, NULL, "URL.set_Fragment: invalid length"))
+        return;
     rt_url_replace_field(&url->fragment, fragment, "URL.set_Fragment: allocation failed", 0);
 }
 
@@ -891,6 +947,8 @@ void rt_url_set_user(void *obj, rt_string user) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_User: null receiver");
     if (!url)
         return;
+    if (!rt_url_component_is_valid(user, ":/?#@", "URL.set_User: invalid length"))
+        return;
     rt_url_replace_field(&url->user, user, "URL.set_User: allocation failed", 0);
 }
 
@@ -908,6 +966,8 @@ rt_string rt_url_pass(void *obj) {
 void rt_url_set_pass(void *obj, rt_string pass) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Pass: null receiver");
     if (!url)
+        return;
+    if (!rt_url_component_is_valid(pass, "/?#@", "URL.set_Pass: invalid length"))
         return;
     rt_url_replace_field(&url->pass, pass, "URL.set_Pass: allocation failed", 0);
 }

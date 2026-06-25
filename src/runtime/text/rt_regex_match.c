@@ -79,6 +79,9 @@ static bool match_concat_from(
 /// @return Number of end positions written.
 static int collect_quant_positions(
     match_context *ctx, re_node *n, int pos, int *positions, int max_positions) {
+    if (!positions || max_positions <= 0)
+        return 0;
+
     re_node *child = n->data.quant.child;
     re_quant_type qtype = n->data.quant.qtype;
 
@@ -144,6 +147,8 @@ static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos) {
 
     int capacity = 0;
     int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
+    if (!positions)
+        return false;
     int num = collect_quant_positions(ctx, n, pos, positions, capacity);
 
     bool found = false;
@@ -272,9 +277,11 @@ static bool match_concat_from(
     if (child->type == RE_QUANT) {
         bool greedy = child->data.quant.greedy;
 
-        int capacity = 0;
-        int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
-        int num = collect_quant_positions(ctx, child, pos, positions, capacity);
+    int capacity = 0;
+    int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
+    if (!positions)
+        return false;
+    int num = collect_quant_positions(ctx, child, pos, positions, capacity);
 
         bool found = false;
         if (greedy) {
@@ -309,7 +316,7 @@ static bool match_concat_from(
 /// @brief Scan the text for the first match starting at or after `start_from`.
 ///
 /// Walks the cursor forward one byte at a time, attempting `match_node`
-/// at each position. Caps the per-attempt step count via `RE_MAX_STEPS`
+/// at each position. Caps the total search step count via `RE_MAX_STEPS`
 /// (S-11). Returns true on first hit with start/end set.
 static bool find_match(compiled_pattern *cp,
                        const char *text,
@@ -321,7 +328,6 @@ static bool find_match(compiled_pattern *cp,
 
     for (int i = start_from; i <= text_len; i++) {
         ctx.start_pos = i;
-        ctx.steps = 0;
         int end_pos;
         if (match_node(&ctx, cp->root, i, &end_pos)) {
             *match_start = i;
@@ -363,6 +369,8 @@ typedef struct {
     int *group_ends;
     int max_groups;
     int next_group;
+    int steps;
+    int max_steps;
 } match_context_groups;
 
 // Forward declarations for group-capturing versions
@@ -385,6 +393,8 @@ static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, i
 
     int capacity = 0;
     int *match_ends = alloc_match_positions(ctx->text_len, pos, &capacity);
+    if (!match_ends)
+        return false;
 
     int num_matches = 0;
     int cur_pos = pos;
@@ -432,12 +442,15 @@ static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, i
 /// Same dispatch table as the non-group matcher, but the `RE_GROUP`
 /// branch records `[start, end)` into `ctx->group_starts/ends` on
 /// success. If a group fails to match, the `next_group` counter is
-/// decremented so subsequent groups get the right index. No ReDoS
-/// step counter here — typical group-capturing matches are bounded
-/// in practice by the public API only running once per call.
+/// decremented so subsequent groups get the right index. Uses the same
+/// per-attempt ReDoS step cap as the non-capturing matcher.
 static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
     if (!ctx || !end_pos || pos < 0 || pos > ctx->text_len)
         return false;
+    if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps) {
+        *end_pos = pos;
+        return false;
+    }
     if (!n) {
         *end_pos = pos;
         return true;
@@ -548,7 +561,8 @@ static bool find_match_groups(compiled_pattern *cp,
                               int *group_ends,
                               int max_groups,
                               int *num_groups) {
-    match_context_groups ctx = {text, text_len, 0, group_starts, group_ends, max_groups, 0};
+    match_context_groups ctx = {
+        text, text_len, 0, group_starts, group_ends, max_groups, 0, 0, RE_MAX_STEPS};
 
     for (int i = start_from; i <= text_len; i++) {
         ctx.start_pos = i;

@@ -34,6 +34,7 @@ struct rt_tls_server_ctx;
 // Max sizes
 #define TLS_MAX_RECORD_SIZE 16384
 #define TLS_MAX_CIPHERTEXT (TLS_MAX_RECORD_SIZE + 256)
+#define TLS_INLINE_SERVER_CERT_DER_MAX 16384
 
 /// @brief TLS 1.3 client-side handshake state machine positions.
 /// @details RFC 8446 §A.1 client state diagram. The session advances
@@ -124,16 +125,30 @@ struct rt_tls_session {
     size_t app_buffer_pos;
 
     // Certificate validation state (CS-1/CS-2/CS-3)
-    uint8_t server_cert_der[16384];   // End-entity certificate DER bytes
-    size_t server_cert_der_len;       // Bytes stored in server_cert_der
-    uint8_t *server_cert_list;        // Raw TLS certificate_list entries (leaf + intermediates)
-    size_t server_cert_list_len;      // Bytes stored in server_cert_list
-    size_t server_cert_count;         // Number of parsed certificate entries
+    uint8_t server_cert_der[TLS_INLINE_SERVER_CERT_DER_MAX]; // Inline end-entity DER bytes
+    uint8_t *server_cert_der_heap; // Heap end-entity DER bytes when the leaf exceeds inline storage
+    size_t server_cert_der_len;    // Bytes stored in the active inline/heap certificate buffer
+    uint8_t *server_cert_list;     // Raw TLS certificate_list entries (leaf + intermediates)
+    size_t server_cert_list_len;   // Bytes stored in server_cert_list
+    size_t server_cert_count;      // Number of parsed certificate entries
     uint8_t cert_transcript_hash[32]; // Transcript hash saved AFTER Certificate (for CS-3)
 };
 
+/// @brief Return the active end-entity certificate DER buffer for a TLS session.
+/// @details Small certificates live in @ref rt_tls_session::server_cert_der for compatibility with
+///          existing internal tests and stack-allocated session helpers. Large certificates are
+///          stored in @ref rt_tls_session::server_cert_der_heap. Callers should always use this
+///          accessor when reading the parsed leaf certificate.
+/// @param session TLS session whose certificate state is being inspected.
+/// @return Pointer to the active DER bytes, or NULL when no certificate has been stored.
+static inline const uint8_t *tls_session_server_cert_der(const rt_tls_session_t *session) {
+    if (!session || session->server_cert_der_len == 0)
+        return NULL;
+    return session->server_cert_der_heap ? session->server_cert_der_heap : session->server_cert_der;
+}
+
 /// @brief Parse the TLS 1.3 Certificate handshake message and store the
-///        first (end-entity) certificate DER bytes in session->server_cert_der.
+///        first (end-entity) certificate DER bytes in the session certificate buffer.
 int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, size_t len);
 
 /// @brief Verify that session->hostname matches the certificate DER.
@@ -158,12 +173,18 @@ int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len);
 
 // PEM/key parsers shared between rt_tls.c (server config) and rt_tls_certs.c.
 size_t tls_pem_base64_decode(const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der);
-int tls_find_pem_block(const char *pem, const char *begin_marker, const char *end_marker,
-                       const char **body_out, size_t *body_len_out, const char **next_out);
+int tls_find_pem_block(const char *pem,
+                       const char *begin_marker,
+                       const char *end_marker,
+                       const char **body_out,
+                       size_t *body_len_out,
+                       const char **next_out);
 int tls_parse_sec1_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
 int tls_parse_pkcs8_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
-int tls_extract_cert_ec_pubkey(
-    const uint8_t *cert_der, size_t cert_len, uint8_t x_out[32], uint8_t y_out[32]);
+int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
+                               size_t cert_len,
+                               uint8_t x_out[32],
+                               uint8_t y_out[32]);
 int tls_extract_cert_rsa_pubkey(const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out);
 
 // Server key/signature type (shared: cert detection in rt_tls_certs.c sets it,
