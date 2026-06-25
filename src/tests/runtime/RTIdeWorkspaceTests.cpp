@@ -89,6 +89,21 @@ static void test_file_index_and_ignore() {
     rt_string root_s = s(root.string());
     void *entries = rt_workspace_file_index_enumerate(
         root_s, rt_const_cstr(".zia,.png,.tmp"), rt_const_cstr(""), 1);
+    void *status = rt_workspace_file_index_status(
+        root_s, rt_const_cstr(".zia,.png,.tmp"), rt_const_cstr(""), 1);
+    assert(rt_map_get_bool(status, rt_const_cstr("valid")) == 1);
+    assert(rt_map_get_int(status, rt_const_cstr("entryCount")) == rt_seq_len(entries));
+    assert(rt_map_get_bool(status, rt_const_cstr("truncated")) == 0);
+    assert(rt_map_get_int(status, rt_const_cstr("maxEntries")) > 0);
+    assert(rt_seq_len(rt_map_get(status, rt_const_cstr("diagnostics"))) == 0);
+
+    rt_string missing_root = s((root / "missing").string());
+    void *missing_status = rt_workspace_file_index_status(
+        missing_root, rt_const_cstr(".zia"), rt_const_cstr(""), 0);
+    assert(rt_map_get_bool(missing_status, rt_const_cstr("valid")) == 0);
+    assert(rt_seq_len(rt_map_get(missing_status, rt_const_cstr("diagnostics"))) > 0);
+    rt_string_unref(missing_root);
+
     assert(seq_contains_relative(entries, "src/main.zia"));
     assert(seq_contains_relative(entries, "src/keep.gen.zia"));
     assert(!seq_contains_relative(entries, "src/generated.gen.zia"));

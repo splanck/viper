@@ -5,6 +5,7 @@ bind "../core/document";
 
 bind WorkspaceEdit = Viper.Workspace.Edit;
 bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind Str = Viper.String;
@@ -94,7 +95,8 @@ func ApplyRenameEdits(edits: Any,
     }
 
     if Seq.get_Length(closedEdits) > 0 {
-        var diskValidation = WorkspaceEdit.Validate(closedEdits);
+        var editRoot = WorkspaceEditRoot(closedEdits);
+        var diskValidation = WorkspaceEdit.ValidateInRoot(closedEdits, editRoot);
         if Map.GetBool(diskValidation, "success") == false {
             result.message = Map.GetStr(diskValidation, "diagnostics");
             if result.message == "" {
@@ -102,7 +104,7 @@ func ApplyRenameEdits(edits: Any,
             }
             return result;
         }
-        var diskResult = WorkspaceEdit.Apply(closedEdits);
+        var diskResult = WorkspaceEdit.ApplyInRoot(closedEdits, editRoot);
         if Map.GetBool(diskResult, "success") == false {
             result.message = Map.GetStr(diskResult, "diagnostics");
             if result.message == "" {
@@ -136,6 +138,48 @@ func ApplyRenameEdits(edits: Any,
     result.success = true;
     result.message = "Applied edits";
     return result;
+}
+
+/// @brief Compute the narrowest existing directory that contains closed edits.
+/// @details The runtime rooted workspace edit API requires a directory root.
+///          Rename edits can span sibling folders, so this walks upward from the
+///          first target's directory until every edit file is contained.
+/// @param edits Sequence of workspace edit maps.
+/// @return Absolute normalized directory path used as rooted validation/apply scope.
+func WorkspaceEditRoot(edits: Any) -> String {
+    if edits == null or Seq.get_Length(edits) == 0 {
+        return Path.Abs(".");
+    }
+    var first = Seq.Get(edits, 0);
+    var root = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(first, "file"))));
+    var i = 1;
+    while i < Seq.get_Length(edits) {
+        var edit = Seq.Get(edits, i);
+        var editDir = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(edit, "file"))));
+        while root != "" and PathIsInRoot(root, editDir) == false {
+            var parent = Path.Dir(root);
+            if parent == "" or parent == root { break; }
+            root = parent;
+        }
+        i = i + 1;
+    }
+    if root == "" { return Path.Abs("."); }
+    return root;
+}
+
+/// @brief Return whether a path is equal to or nested under a root directory.
+/// @param root Candidate root directory.
+/// @param path Candidate child path.
+/// @return True when @p path is exactly @p root or begins below it.
+func PathIsInRoot(root: String,
+                  path: String) -> Boolean {
+    var nr = Path.Norm(Path.Abs(root));
+    var np = Path.Norm(Path.Abs(path));
+    if nr == np { return true; }
+    if Str.EndsWith(nr, "/") or Str.EndsWith(nr, "\\") {
+        return Str.StartsWith(np, nr);
+    }
+    return Str.StartsWith(np, nr + "/") or Str.StartsWith(np, nr + "\\");
 }
 
 func ApplyEditToDocument(doc: document.Document, edit: Any) -> Boolean {

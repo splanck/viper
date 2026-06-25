@@ -150,6 +150,30 @@ JsonValue terminatedEvent(const char *reason, int exitCode) {
     });
 }
 
+/// @brief Resolve a watch/evaluate expression against the current stop. v1 is a
+///        name lookup over the top frame's locals (side-effect free); an
+///        unresolved name returns ok=false so the IDE can show "not in scope".
+JsonValue evaluatedEvent(const il::vm::DebugStopInfo &info, const std::string &expr) {
+    for (const auto &l : info.locals) {
+        if (l.name == expr) {
+            return JsonValue::object({
+                {"type", JsonValue("evaluated")},
+                {"expr", JsonValue(expr)},
+                {"value", JsonValue(l.value)},
+                {"valueType", JsonValue(l.type)},
+                {"ok", JsonValue(true)},
+            });
+        }
+    }
+    return JsonValue::object({
+        {"type", JsonValue("evaluated")},
+        {"expr", JsonValue(expr)},
+        {"value", JsonValue("")},
+        {"valueType", JsonValue("")},
+        {"ok", JsonValue(false)},
+    });
+}
+
 /// @brief DebugFrontend that serializes each stop and blocks for the IDE's next
 ///        command. The VM thread is paused for the duration of onStop.
 /// @details Implements source-LINE stepping on top of the VM's instruction-level
@@ -190,6 +214,11 @@ class AdapterFrontend : public il::vm::DebugFrontend {
                 return beginStep(StepMode::In, info);
             if (type == "stepOut")
                 return beginStep(StepMode::Out, info);
+            if (type == "evaluate") {
+                // Watch/hover query: report the value and stay stopped.
+                chan_.emit(evaluatedEvent(info, (*cmd)["expr"].asString()));
+                continue;
+            }
             if (type == "terminate") {
                 chan_.emit(terminatedEvent("terminated", 0));
                 std::_Exit(0);

@@ -21,6 +21,29 @@ var confirmDirtyClose = true;
 var trimTrailingWhitespaceOnSave = false;
 var ensureFinalNewlineOnSave = true;
 
+final CLOSE_CHOICE_CANCEL = 0;
+final CLOSE_CHOICE_SAVE = 1;
+final CLOSE_CHOICE_DISCARD = 2;
+
+/// @brief Result object returned by Save All so callers can stop destructive work.
+/// @details Build, debug, close, and project operations need to distinguish a
+///          successful save sweep from a user cancellation or failed disk write.
+///          A plain saved-count cannot express those states.
+class SaveAllResult {
+    expose Boolean success;
+    expose Boolean canceled;
+    expose Integer savedCount;
+    expose String message;
+
+    /// @brief Initialize to a failed/no-op result until a handler marks success.
+    expose func init() {
+        success = false;
+        canceled = false;
+        savedCount = 0;
+        message = "";
+    }
+}
+
 // ============================================================================
 // MODULE: file_commands
 // PURPOSE: File-management command handlers (New, Open, Save, Save As,
@@ -96,16 +119,25 @@ func handleOpenFolder(shell: app_shell.AppShell,
 func handleSave(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
-                tabs: editor_tabs.EditorTabs) {
+                tabs: editor_tabs.EditorTabs) -> Boolean {
     SaveEditorState(docMgr, engine);
     var saveDoc = docMgr.GetActive();
     if saveDoc != null {
+        if saveDoc.isReadOnlyPreview {
+            shell.SetStatusLeft("Read-only preview cannot be saved");
+            GUI.Toast.Warning("Open as text is disabled for this file");
+            return false;
+        }
         if saveDoc.isNew {
-        var savePath = FileDialog.Save(
+            var savePath = FileDialog.Save(
                 "Save File", "", file_utils.SaveDialogFilter(saveDoc.kind, saveDoc.language), saveDoc.fileName);
             if savePath != "" {
                 NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
-                docMgr.SaveAs(savePath);
+                if docMgr.SaveAs(savePath) == false {
+                    shell.SetStatusLeft("Save failed: " + saveDoc.fileName);
+                    GUI.Toast.Error("Save failed");
+                    return false;
+                }
                 tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
                 tabs.SetTooltip(docMgr.activeIndex, saveDoc.filePath);
                 tabs.SetModified(docMgr.activeIndex, false);
@@ -114,33 +146,52 @@ func handleSave(shell: app_shell.AppShell,
                 shell.SetStatusLeft("Saved: " + saveDoc.fileName);
                 shell.SetStatusRight(DocStatusLabel(saveDoc));
                 GUI.Toast.Success("Saved: " + saveDoc.fileName);
+                return true;
             }
+            shell.SetStatusLeft("Save canceled");
+            return false;
         } else {
             if confirmOverwriteExternal(shell, docMgr, docMgr.activeIndex) {
                 NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
-                docMgr.SaveActive();
+                if docMgr.SaveActive() == false {
+                    shell.SetStatusLeft("Save failed: " + saveDoc.fileName);
+                    GUI.Toast.Error("Save failed");
+                    return false;
+                }
                 tabs.SetModified(docMgr.activeIndex, false);
                 engine.ClearModified();
                 shell.SetStatusLeft("Saved: " + saveDoc.fileName);
                 GUI.Toast.Success("Saved: " + saveDoc.fileName);
+                return true;
             }
+            return false;
         }
     }
+    return false;
 }
 
 /// @brief Always prompts for path; saves and updates tab title/tooltip.
 func handleSaveAs(shell: app_shell.AppShell,
                   docMgr: document_manager.DocumentManager,
                   engine: editor_engine.EditorEngine,
-                  tabs: editor_tabs.EditorTabs) {
+                  tabs: editor_tabs.EditorTabs) -> Boolean {
     SaveEditorState(docMgr, engine);
     var saveAsDoc = docMgr.GetActive();
     if saveAsDoc != null {
+        if saveAsDoc.isReadOnlyPreview {
+            shell.SetStatusLeft("Read-only preview cannot be saved");
+            GUI.Toast.Warning("Open a supported text file before saving");
+            return false;
+        }
         var saveAsPath = FileDialog.Save(
             "Save As", "", file_utils.SaveDialogFilter(saveAsDoc.kind, saveAsDoc.language), saveAsDoc.fileName);
         if saveAsPath != "" {
             NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
-            docMgr.SaveAs(saveAsPath);
+            if docMgr.SaveAs(saveAsPath) == false {
+                shell.SetStatusLeft("Save As failed: " + saveAsDoc.fileName);
+                GUI.Toast.Error("Save As failed");
+                return false;
+            }
             tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
             tabs.SetTooltip(docMgr.activeIndex, saveAsDoc.filePath);
             tabs.SetModified(docMgr.activeIndex, false);
@@ -148,15 +199,19 @@ func handleSaveAs(shell: app_shell.AppShell,
             shell.SetBreadcrumbPath(saveAsDoc.filePath);
             shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
             shell.SetStatusRight(DocStatusLabel(saveAsDoc));
+            return true;
         }
+        shell.SetStatusLeft("Save As canceled");
     }
+    return false;
 }
 
 /// @brief Save every modified non-untitled doc; clear their tab markers.
 func handleSaveAll(shell: app_shell.AppShell,
                    docMgr: document_manager.DocumentManager,
                    engine: editor_engine.EditorEngine,
-                   tabs: editor_tabs.EditorTabs) {
+                   tabs: editor_tabs.EditorTabs) -> SaveAllResult {
+    var result = new SaveAllResult();
     SaveEditorState(docMgr, engine);
     var savedCount = 0;
 
@@ -164,7 +219,12 @@ func handleSaveAll(shell: app_shell.AppShell,
     while i < docMgr.GetCount() {
         var doc = docMgr.documents.get(i);
         if doc != null and doc.isModified {
-            if doc.isNew {
+            if doc.isReadOnlyPreview {
+                result.message = "Read-only preview has unsaved changes: " + doc.fileName;
+                shell.SetStatusLeft(result.message);
+                GUI.Toast.Warning(result.message);
+                return result;
+            } else if doc.isNew {
                 var savePath = FileDialog.Save(
                     "Save " + doc.fileName, "", file_utils.SaveDialogFilter(doc.kind, doc.language), doc.fileName);
                 if savePath != "" {
@@ -175,18 +235,37 @@ func handleSaveAll(shell: app_shell.AppShell,
                         tabs.SetModified(i, false);
                         savedCount = savedCount + 1;
                     }
+                } else {
+                    result.canceled = true;
+                    result.message = "Save All canceled";
+                    shell.SetStatusLeft(result.message);
+                    return result;
                 }
             } else if confirmOverwriteExternal(shell, docMgr, i) {
                 NormalizeDocumentForSave(docMgr, engine, i);
                 if docMgr.SaveDocument(i) {
                     tabs.SetModified(i, false);
                     savedCount = savedCount + 1;
+                } else {
+                    result.message = "Save failed: " + doc.fileName;
+                    shell.SetStatusLeft(result.message);
+                    GUI.Toast.Error("Save failed");
+                    return result;
                 }
+            } else {
+                result.canceled = true;
+                result.message = "Save All canceled";
+                shell.SetStatusLeft(result.message);
+                return result;
             }
         }
         i = i + 1;
     }
     shell.SetStatusLeft("Saved " + savedCount + " files");
+    result.success = true;
+    result.savedCount = savedCount;
+    result.message = "Saved " + savedCount + " files";
+    return result;
 }
 
 /// @brief Re-read the active file from disk, discarding in-memory edits.
@@ -198,9 +277,11 @@ func handleReload(shell: app_shell.AppShell,
     if reloadDoc != null {
         var doc = reloadDoc!;
         if doc.isNew == false {
-            doc.content = IO.File.ReadAllText(doc.filePath);
-            doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
-            doc.isModified = false;
+            if docMgr.ReloadDocument(docMgr.activeIndex) == false {
+                shell.SetStatusLeft("Reload failed: " + doc.fileName);
+                GUI.Toast.Warning("Could not reload file");
+                return;
+            }
             engine.LoadDocument(doc);
             engine.ClearModified();
             tabs.SetModified(docMgr.activeIndex, false);
@@ -247,17 +328,30 @@ func handleClose(shell: app_shell.AppShell,
     return true;
 }
 
-/// @brief Close every open document. Iterates high→low so each close does
-///        not shift the indices we have not yet visited.
+/// @brief Close every open document after one batch dirty-file confirmation.
+/// @details The batch prompt prevents a cancellation on one dirty tab from
+///          accidentally continuing through later tabs. After confirmation,
+///          documents are removed high-to-low so indices remain stable.
 func handleCloseAll(shell: app_shell.AppShell,
                     docMgr: document_manager.DocumentManager,
                     engine: editor_engine.EditorEngine,
                     tabs: editor_tabs.EditorTabs) {
-    var i = docMgr.GetCount() - 1;
-    while i >= 0 {
-        handleClose(shell, docMgr, engine, tabs, i);
-        i = i - 1;
+    SaveEditorState(docMgr, engine);
+    if ConfirmCloseDocuments(shell, docMgr, engine, "Close All", -1) == false {
+        return;
     }
+
+    while docMgr.GetCount() > 0 {
+        var idx = docMgr.GetCount() - 1;
+        docMgr.CloseDocument(idx);
+        tabs.RemoveTab(idx);
+    }
+
+    engine.SetText("");
+    engine.ClearModified();
+    shell.SetBreadcrumbPath("");
+    shell.SetStatusRight("No file");
+    shell.SetStatusLeft("All files closed");
 }
 
 /// @brief Close every document except `keepIdx`. Safe to compare against the
@@ -268,13 +362,34 @@ func handleCloseOthers(shell: app_shell.AppShell,
                        engine: editor_engine.EditorEngine,
                        tabs: editor_tabs.EditorTabs,
                        keepIdx: Integer) {
+    SaveEditorState(docMgr, engine);
+    if ConfirmCloseDocumentsExcept(shell, docMgr, engine, "Close Others", keepIdx) == false {
+        return;
+    }
+    var activeKeepIdx = keepIdx;
     var i = docMgr.GetCount() - 1;
     while i >= 0 {
-        if i != keepIdx {
-            handleClose(shell, docMgr, engine, tabs, i);
+        if i != activeKeepIdx {
+            docMgr.CloseDocument(i);
+            tabs.RemoveTab(i);
         }
         i = i - 1;
     }
+    if activeKeepIdx >= docMgr.GetCount() {
+        activeKeepIdx = docMgr.GetCount() - 1;
+    }
+    if activeKeepIdx >= 0 {
+        docMgr.SetActive(activeKeepIdx);
+        tabs.SetActive(docMgr.activeIndex);
+        var keptDoc = docMgr.GetActive();
+        if keptDoc != null {
+            engine.LoadDocument(keptDoc);
+            shell.SelectSurface(keptDoc.kind);
+            shell.SetBreadcrumbPath(keptDoc.filePath);
+            shell.SetStatusRight(DocStatusLabel(keptDoc));
+        }
+    }
+    shell.SetStatusLeft("Closed other files");
 }
 
 /// @brief Close all documents with no unsaved changes (dirty tabs stay open).
@@ -331,6 +446,7 @@ func AutoSaveActive(shell: app_shell.AppShell,
     var doc = docMgr.GetActive();
     if doc == null { return false; }
     if doc.isNew or doc.isModified == false { return false; }
+    if doc.isReadOnlyPreview { return false; }
     if docMgr.HasExternalChange(docMgr.activeIndex) {
         shell.SetStatusLeft("Auto-save paused: file changed on disk");
         return false;
@@ -350,6 +466,7 @@ func NormalizeDocumentForSave(docMgr: document_manager.DocumentManager,
                               index: Integer) {
     if docMgr == null or index < 0 or index >= docMgr.GetCount() { return; }
     var doc = docMgr.documents.get(index);
+    if doc.isReadOnlyPreview { return; }
     var normalized = ApplySaveTextRules(doc.content);
     if normalized != doc.content {
         doc.content = normalized;
@@ -420,7 +537,12 @@ func OpenFileAtPath(shell: app_shell.AppShell,
     shell.SelectSurface(openDoc.kind);
 
     shell.SetBreadcrumbPath(openDoc.filePath);
-    shell.SetStatusLeft("Opened: " + openDoc.fileName);
+    if openDoc.isReadOnlyPreview {
+        shell.SetStatusLeft("Preview: " + openDoc.fileName);
+        GUI.Toast.Info("Opened read-only preview");
+    } else {
+        shell.SetStatusLeft("Opened: " + openDoc.fileName);
+    }
     shell.SetStatusRight(DocStatusLabel(openDoc));
 }
 
@@ -455,9 +577,196 @@ func ConfirmCloseDocuments(shell: app_shell.AppShell,
     if dirtyCount > 5 {
         msg = msg + "\n...and " + (dirtyCount - 5) + " more";
     }
-    msg = msg + "\n\nClose without saving?";
-    var confirmed = GUI.MessageBox.Confirm("Unsaved Changes - " + reason, msg);
-    return confirmed != 0;
+    msg = msg + "\n\nSave changes before continuing?";
+    var choice = DirtyCloseChoice("Unsaved Changes - " + reason, msg);
+    if choice == CLOSE_CHOICE_CANCEL { return false; }
+    if choice == CLOSE_CHOICE_DISCARD { return true; }
+    return SaveDirtyDocumentsForClose(shell, docMgr, engine, targetIndex, -1);
+}
+
+/// @brief Confirm and optionally save dirty documents except one kept tab.
+/// @details Used by Close Others so one cancellation cannot close a partial
+///          subset of tabs. The confirmation covers the whole batch before any
+///          document is removed.
+func ConfirmCloseDocumentsExcept(shell: app_shell.AppShell,
+                                 docMgr: document_manager.DocumentManager,
+                                 engine: editor_engine.EditorEngine,
+                                 reason: String,
+                                 keepIndex: Integer) -> Boolean {
+    if shell == null { return false; }
+    SaveEditorState(docMgr, engine);
+    var dirtyCount = 0;
+    var names = "";
+    var i = 0;
+    while i < docMgr.GetCount() {
+        if i != keepIndex {
+            var doc = docMgr.documents.get(i);
+            if doc.isModified {
+                dirtyCount = dirtyCount + 1;
+                if names == "" {
+                    names = doc.fileName;
+                } else if dirtyCount <= 5 {
+                    names = names + "\n" + doc.fileName;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    if dirtyCount == 0 { return true; }
+    if confirmDirtyClose == false { return true; }
+    if dirtyCount > 5 {
+        names = names + "\n...and " + (dirtyCount - 5) + " more";
+    }
+    var choice = DirtyCloseChoice("Unsaved Changes - " + reason,
+                                  names + "\n\nSave changes before continuing?");
+    if choice == CLOSE_CHOICE_CANCEL { return false; }
+    if choice == CLOSE_CHOICE_DISCARD { return true; }
+    return SaveDirtyDocumentsForClose(shell, docMgr, engine, -1, keepIndex);
+}
+
+/// @brief Confirm and optionally save dirty open documents below a filesystem path.
+/// @details Project tree deletion calls this before touching disk. Returning
+///          false means the delete must be aborted because the user canceled,
+///          a Save As dialog was canceled, or a save failed.
+func ConfirmCloseDocumentsUnderPath(shell: app_shell.AppShell,
+                                    docMgr: document_manager.DocumentManager,
+                                    engine: editor_engine.EditorEngine,
+                                    reason: String,
+                                    path: String) -> Boolean {
+    if shell == null or docMgr == null or path == "" { return false; }
+    SaveEditorState(docMgr, engine);
+    var dirtyCount = 0;
+    var names = "";
+    var i = 0;
+    while i < docMgr.GetCount() {
+        var doc = docMgr.documents.get(i);
+        if DocumentIsUnderPath(doc, path) and doc.isModified {
+            dirtyCount = dirtyCount + 1;
+            if names == "" {
+                names = doc.fileName;
+            } else if dirtyCount <= 5 {
+                names = names + "\n" + doc.fileName;
+            }
+        }
+        i = i + 1;
+    }
+    if dirtyCount == 0 { return true; }
+    if confirmDirtyClose == false { return true; }
+    if dirtyCount > 5 {
+        names = names + "\n...and " + (dirtyCount - 5) + " more";
+    }
+    var choice = DirtyCloseChoice("Unsaved Changes - " + reason,
+                                  names + "\n\nSave changes before deleting?");
+    if choice == CLOSE_CHOICE_CANCEL { return false; }
+    if choice == CLOSE_CHOICE_DISCARD { return true; }
+    return SaveDirtyDocumentsUnderPath(shell, docMgr, engine, path);
+}
+
+/// @brief Show a Save / Discard / Cancel prompt for dirty-close flows.
+/// @details The object-style MessageBox preserves exact custom button IDs, so
+///          callers can branch without inferring intent from localized text.
+func DirtyCloseChoice(title: String, msg: String) -> Integer {
+    var box = GUI.MessageBox.NewQuestion(title, msg);
+    if box == null {
+        return CLOSE_CHOICE_CANCEL;
+    }
+    box.AddButton("Save", CLOSE_CHOICE_SAVE);
+    box.AddButton("Discard", CLOSE_CHOICE_DISCARD);
+    box.AddButton("Cancel", CLOSE_CHOICE_CANCEL);
+    box.SetDefaultButton(CLOSE_CHOICE_SAVE);
+    var choice = box.Show();
+    box.Destroy();
+    return choice;
+}
+
+/// @brief Save dirty documents targeted by a close operation.
+/// @details Untitled files are prompted one by one. Existing files honor the
+///          external-change overwrite prompt and use DocumentManager's atomic
+///          existing-file save path.
+func SaveDirtyDocumentsForClose(shell: app_shell.AppShell,
+                                docMgr: document_manager.DocumentManager,
+                                engine: editor_engine.EditorEngine,
+                                targetIndex: Integer,
+                                skipIndex: Integer) -> Boolean {
+    var i = 0;
+    while i < docMgr.GetCount() {
+        if (targetIndex < 0 or targetIndex == i) and i != skipIndex {
+            var doc = docMgr.documents.get(i);
+            if doc.isModified {
+                if doc.isReadOnlyPreview {
+                    shell.SetStatusLeft("Cannot save read-only preview: " + doc.fileName);
+                    return false;
+                }
+                if doc.isNew {
+                    var savePath = FileDialog.Save(
+                        "Save " + doc.fileName, "", file_utils.SaveDialogFilter(doc.kind, doc.language), doc.fileName);
+                    if savePath == "" {
+                        shell.SetStatusLeft("Close canceled");
+                        return false;
+                    }
+                    NormalizeDocumentForSave(docMgr, engine, i);
+                    if docMgr.SaveDocumentAs(i, savePath) == false {
+                        shell.SetStatusLeft("Save failed: " + doc.fileName);
+                        GUI.Toast.Error("Save failed");
+                        return false;
+                    }
+                } else {
+                    if confirmOverwriteExternal(shell, docMgr, i) == false {
+                        return false;
+                    }
+                    NormalizeDocumentForSave(docMgr, engine, i);
+                    if docMgr.SaveDocument(i) == false {
+                        shell.SetStatusLeft("Save failed: " + doc.fileName);
+                        GUI.Toast.Error("Save failed");
+                        return false;
+                    }
+                }
+                doc.isModified = false;
+            }
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Save all dirty documents whose paths are equal to or below @p path.
+/// @details This mirrors close-save behavior but selects documents by path so
+///          project tree deletes can abort safely before removing files.
+func SaveDirtyDocumentsUnderPath(shell: app_shell.AppShell,
+                                 docMgr: document_manager.DocumentManager,
+                                 engine: editor_engine.EditorEngine,
+                                 path: String) -> Boolean {
+    var i = 0;
+    while i < docMgr.GetCount() {
+        var doc = docMgr.documents.get(i);
+        if DocumentIsUnderPath(doc, path) and doc.isModified {
+            if doc.isReadOnlyPreview {
+                shell.SetStatusLeft("Cannot save read-only preview: " + doc.fileName);
+                return false;
+            }
+            if doc.isNew {
+                var savePath = FileDialog.Save(
+                    "Save " + doc.fileName, "", file_utils.SaveDialogFilter(doc.kind, doc.language), doc.fileName);
+                if savePath == "" { return false; }
+                NormalizeDocumentForSave(docMgr, engine, i);
+                if docMgr.SaveDocumentAs(i, savePath) == false { return false; }
+            } else {
+                if confirmOverwriteExternal(shell, docMgr, i) == false { return false; }
+                NormalizeDocumentForSave(docMgr, engine, i);
+                if docMgr.SaveDocument(i) == false { return false; }
+            }
+            doc.isModified = false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Return true when a document path is the selected file or inside a directory.
+func DocumentIsUnderPath(doc: document.Document, path: String) -> Boolean {
+    if doc == null or path == "" or doc.filePath == "" { return false; }
+    if doc.filePath == path { return true; }
+    return Str.StartsWith(doc.filePath, path + Path.Sep());
 }
 
 func confirmOverwriteExternal(shell: app_shell.AppShell,
@@ -497,9 +806,13 @@ func DocStatusLabel(doc: document.Document) -> String {
     var lang = "Text";
     if doc.language == "zia"   { lang = "Zia"; }
     if doc.language == "basic" { lang = "Basic"; }
+    if doc.language == "scene" { lang = "Scene"; }
 
     var eol = "LF";
     if Str.IndexOf(doc.content, "\r\n") != 0 { eol = "CRLF"; }
 
+    if doc.isReadOnlyPreview {
+        return lang + "  |  Read-only preview";
+    }
     return lang + "  |  " + eol;
 }

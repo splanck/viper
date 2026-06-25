@@ -62,6 +62,8 @@ func main() {
                   "scene kind case-insensitive") == false { return; }
     if assertTrue(file_utils.DetectLanguage("game.BAS") == "basic",
                   "basic language case-insensitive") == false { return; }
+    if assertTrue(file_utils.DetectLanguage("level.scene") == "scene",
+                  "scene language routed explicitly") == false { return; }
 
     var registry = new command_registry.CommandRegistry();
     if assertTrue(registry.NormalizeId("sidebar") == "togglesidebar",
@@ -106,10 +108,18 @@ func main() {
                   and Str.IndexOf(disabledReason, "rename") != 0,
                   "disabled command reason names language capability") == false { return; }
     var serverReason = registry.DisabledReason("symboloutline", basicService);
-    if assertTrue(Str.IndexOf(serverReason, "vbasic-server") != 0
-                  and Str.IndexOf(serverReason, "ViperIDE") != 0
-                  and Str.IndexOf(serverReason, "adapter") != 0,
-                  "disabled command reason distinguishes server support from IDE adapter") == false { return; }
+    if assertTrue(Str.IndexOf(serverReason, "BASIC") != 0
+                  and Str.IndexOf(serverReason, "does not support") != 0,
+                  "disabled command reason labels syntax-only BASIC support") == false { return; }
+
+    var previewPath = Path.Join(TempFile.Dir(), "viperide_preview.png");
+    File.WriteAllText(previewPath, "not actually image data");
+    var previewDocs = new document_manager.DocumentManager();
+    var previewDoc = previewDocs.OpenFile(previewPath);
+    if assertTrue(previewDoc.isReadOnlyPreview
+                  and Str.IndexOf(previewDoc.content, "Binary preview is not available") != 0
+                  and previewDocs.SaveDocument(previewDocs.activeIndex) == false,
+                  "binary files open as read-only previews") == false { return; }
 
     var locs = new locations.LocationStore();
     var id = locs.Add("C:\\tmp\\a file.zia", 3, 4, 3, 8, locations.KIND_SEARCH, "hit");

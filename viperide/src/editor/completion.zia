@@ -23,6 +23,9 @@ final MAX_VISIBLE_COMPLETION_ITEMS = 80;
 final MAX_WORKSPACE_SYMBOL_CACHE_ITEMS = 300;
 final WORKSPACE_SYMBOL_PUMP_INTERVAL_MS = 500;
 final FILTER_PREFIX_UNSET = "<unset>";
+final COMPLETION_POPUP_WIDTH = 360.0;
+final COMPLETION_POPUP_HEIGHT = 240.0;
+final COMPLETION_POPUP_MARGIN = 12.0;
 
 // ============================================================================
 // MODULE: completion
@@ -76,6 +79,7 @@ class CompletionController {
     expose editor_engine.EditorEngine engine;
     expose GUI.FloatingPanel popup;
     expose GUI.ListBox listbox;
+    expose GUI.App appRoot;
 
     expose Boolean isVisible;
     expose Integer selectedIndex;
@@ -198,12 +202,13 @@ class CompletionController {
     ///                above other widgets.
     /// @note ListBox is constructed unattached then reparented via
     ///       AddChild so it lives inside the FloatingPanel.
-    expose func Setup(ed: GUI.CodeEditor, appRoot: GUI.App) {
+    expose func Setup(ed: GUI.CodeEditor, rootApp: GUI.App) {
         editor = ed;
+        appRoot = rootApp;
 
-        // Create floating overlay panel (initially hidden, 300x200 px)
-        popup = GUI.FloatingPanel.New(appRoot);
-        popup.SetSize(300.0, 200.0);
+        // Create floating overlay panel (initially hidden).
+        popup = GUI.FloatingPanel.New(rootApp);
+        popup.SetSize(COMPLETION_POPUP_WIDTH, COMPLETION_POPUP_HEIGHT);
 
         // Embed a ListBox inside the panel for the item list.
         // Create unattached, then reparent it into the FloatingPanel via AddChild.
@@ -400,10 +405,7 @@ class CompletionController {
             return;
         }
 
-        // Position popup just below the cursor caret
-        var px = editor.GetCursorPixelX();
-        var py = editor.GetCursorPixelY();
-        popup.SetPosition(px, py + 20);
+        PositionPopupNearCursor();
 
         // Select first item and show
         selectedIndex = 0;
@@ -480,7 +482,7 @@ class CompletionController {
             var label = Obj.ToString(allLabels.get(i));
             var display = Obj.ToString(allDisplays.get(i));
             var insertText = Obj.ToString(allInsertTexts.get(i));
-            if normalizedPrefix == "" or StartsWith(Str.ToLower(label), normalizedPrefix) {
+            if normalizedPrefix == "" or CompletionMatches(Str.ToLower(label), normalizedPrefix) {
                 listbox.AddItem(display);
                 insertTexts.Push(insertText);
                 replaceStartLines.Push(allReplaceStartLines.get(i));
@@ -828,7 +830,7 @@ class CompletionController {
         }
 
         var limit = maxFiles;
-        if limit <= 0 { limit = WORKSPACE_SYMBOL_FILES_PER_FRAME; }
+        if limit <= 0 { limit = 1; }
 
         var processed = 0;
         if workspacePendingJob != null {
@@ -1086,7 +1088,35 @@ class CompletionController {
 
     hide func WorkspaceSymbolMatchesPrefix(label: String, prefix: String) -> Boolean {
         if prefix == "" { return true; }
-        return StartsWith(Str.ToLower(label), Str.ToLower(prefix));
+        return CompletionMatches(Str.ToLower(label), Str.ToLower(prefix));
+    }
+
+    /// @brief Place the completion popup near the caret while keeping it in-window.
+    /// @details FloatingPanel coordinates are window-relative. The popup prefers
+    ///          below the caret, moves above near the bottom edge, and clamps left
+    ///          and right so long symbol names do not render off-screen.
+    hide func PositionPopupNearCursor() {
+        var px = editor.GetCursorPixelX() + 0.0;
+        var py = editor.GetCursorPixelY() + 20.0;
+        var width = COMPLETION_POPUP_WIDTH;
+        var height = COMPLETION_POPUP_HEIGHT;
+        if appRoot != null {
+            var winW = appRoot.GetWidth();
+            var winH = appRoot.GetHeight();
+            if px + width + COMPLETION_POPUP_MARGIN > winW {
+                px = winW - width - COMPLETION_POPUP_MARGIN;
+            }
+            if px < COMPLETION_POPUP_MARGIN {
+                px = COMPLETION_POPUP_MARGIN;
+            }
+            if py + height + COMPLETION_POPUP_MARGIN > winH {
+                py = editor.GetCursorPixelY() - height - 8.0;
+            }
+            if py < COMPLETION_POPUP_MARGIN {
+                py = COMPLETION_POPUP_MARGIN;
+            }
+        }
+        popup.SetPosition(px, py);
     }
 
     hide func IsMemberAccessCompletion(prefix: String) -> Boolean {
@@ -1108,6 +1138,24 @@ func StartsWith(text: String, prefix: String) -> Boolean {
     if prefix == "" { return true; }
     if Str.Length(text) < Str.Length(prefix) { return false; }
     return Str.Left(text, Str.Length(prefix)) == prefix;
+}
+
+/// @brief Return true for prefix or subsequence completion matches.
+/// @details Prefix matches remain exact, while subsequence matching lets users
+///          type initials or later name segments without adding dependencies or
+///          changing the compiler completion API.
+func CompletionMatches(text: String, query: String) -> Boolean {
+    if query == "" { return true; }
+    if StartsWith(text, query) { return true; }
+    var ti = 1;
+    var qi = 1;
+    while ti <= Str.Length(text) and qi <= Str.Length(query) {
+        if Str.MidLen(text, ti, 1) == Str.MidLen(query, qi, 1) {
+            qi = qi + 1;
+        }
+        ti = ti + 1;
+    }
+    return qi > Str.Length(query);
 }
 
 func ContainsAny(characters: String, typed: String) -> Boolean {

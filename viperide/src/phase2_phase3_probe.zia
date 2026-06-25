@@ -63,15 +63,22 @@ func main() {
     doc.isNew = false;
 
     var cfg = run_config.ForDocument(run_config.ACTION_RUN, doc, null);
-    if assertTrue(cfg.program == "viper" and Seq.get_Length(cfg.args) == 2,
+    if assertTrue(cfg.program == "viper"
+                  and Seq.get_Length(cfg.args) == 3
+                  and Obj.ToString(Seq.Get(cfg.args, 1)) == "--diagnostic-format=json",
                   "default run config uses argument vector") == false { return; }
-    if assertTrue(Obj.ToString(Seq.Get(cfg.args, 1)) == sourcePath,
+    if assertTrue(Obj.ToString(Seq.Get(cfg.args, 2)) == sourcePath,
                   "run config preserves path with spaces as one arg") == false { return; }
 
     var split = run_config.SplitArgs("run \"path with spaces\" {target}");
     if assertTrue(Seq.get_Length(split) == 3
                   and Obj.ToString(Seq.Get(split, 1)) == "path with spaces",
                   "split args preserves quoted token") == false { return; }
+    var splitEscaped = run_config.SplitArgs("run 'single quoted' escaped\\ token");
+    if assertTrue(Seq.get_Length(splitEscaped) == 3
+                  and Obj.ToString(Seq.Get(splitEscaped, 1)) == "single quoted"
+                  and Obj.ToString(Seq.Get(splitEscaped, 2)) == "escaped token",
+                  "split args preserves single quotes and escapes") == false { return; }
 
     var projMgr = new project_manager.ProjectManager();
     projMgr.project = new project.Project();

@@ -23,6 +23,22 @@ void *rt_workspace_file_index_enumerate(rt_string root,
                                         rt_string extensions_csv,
                                         rt_string excludes_csv,
                                         int8_t include_dirs);
+
+/// @brief Return status metadata for a workspace file-index traversal.
+/// @details Applies the same root validation, extension filtering, ignore rules,
+///          and entry cap as @ref rt_workspace_file_index_enumerate without
+///          allocating one map per file. The result map contains `valid`, `root`,
+///          `entryCount`, `maxEntries`, `truncated`, and `diagnostics`.
+/// @param root Directory to enumerate.
+/// @param extensions_csv Comma-separated extension filter, such as ".zia,.png".
+/// @param excludes_csv Comma-separated additional ignore patterns.
+/// @param include_dirs Non-zero to count matching directories as entries.
+/// @return Status map owned by the caller.
+void *rt_workspace_file_index_status(rt_string root,
+                                     rt_string extensions_csv,
+                                     rt_string excludes_csv,
+                                     int8_t include_dirs);
+
 int8_t rt_workspace_file_index_should_ignore(rt_string root,
                                              rt_string relative_path,
                                              rt_string patterns);

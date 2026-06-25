@@ -46,10 +46,12 @@ class Document {
     expose Integer kind;               // file_utils.KIND_* document surface kind.
     expose Boolean isModified;         // Has unsaved changes.
     expose Boolean isNew;              // Never saved to disk.
+    expose Boolean isReadOnlyPreview;  // True for binary/large-file preview tabs.
     expose Integer cursorLine;         // Last known cursor line (1-based).
     expose Integer cursorCol;          // Last known cursor column (1-based).
     expose Integer scrollLine;         // Last known top-of-viewport line.
     expose Integer lastModifiedOnDisk; // Timestamp from Viper.IO.File.Modified.
+    expose Boolean externalChangeNotified; // True after surfacing an on-disk change.
     expose Boolean hasPendingWorkspaceUndo; // Inactive workspace edit can be undone on activation.
     expose String pendingWorkspaceUndoContent; // Snapshot before the pending workspace edit.
     expose String pendingWorkspaceUndoLabel;   // User-facing name of the pending edit.
@@ -63,10 +65,12 @@ class Document {
         kind = file_utils.DOC_KIND_TEXT;
         isModified = false;
         isNew = true;
+        isReadOnlyPreview = false;
         cursorLine = 1;
         cursorCol = 1;
         scrollLine = 1;
         lastModifiedOnDisk = 0;
+        externalChangeNotified = false;
         hasPendingWorkspaceUndo = false;
         pendingWorkspaceUndoContent = "";
         pendingWorkspaceUndoLabel = "";

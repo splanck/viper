@@ -8,6 +8,7 @@ bind Map = Viper.Collections.Map;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
 bind Path = Viper.IO.Path;
+bind Time = Viper.Time;
 
 // ============================================================================
 // DebugSession — drives the out-of-process VM debug adapter.
@@ -23,6 +24,8 @@ bind Path = Viper.IO.Path;
 // ============================================================================
 
 final SENTINEL = "@@VDBG@@ ";
+final MAX_DEBUG_OUTPUT_CHARS = 250000;
+final TERMINATE_GRACE_MS = 120;
 
 class DebugSession {
     expose Process.Handle processHandle;
@@ -36,6 +39,13 @@ class DebugSession {
     expose String consoleText;
     expose String programOutput;
     expose Integer exitCode;
+
+    // Most recent watch/evaluate result (from an `evaluated` event).
+    expose String lastEvalExpr;
+    expose String lastEvalValue;
+    expose String lastEvalType;
+    expose Boolean lastEvalOk;
+    expose Boolean evalJustArrived; // set when a fresh result lands; IDE clears it.
 
     // Accumulator for partial control-channel lines.
     hide String ctrlBuf;
@@ -54,6 +64,11 @@ class DebugSession {
         consoleText = "";
         programOutput = "";
         exitCode = -1;
+        lastEvalExpr = "";
+        lastEvalValue = "";
+        lastEvalType = "";
+        lastEvalOk = false;
+        evalJustArrived = false;
         ctrlBuf = "";
         dirty = false;
     }
@@ -139,10 +154,31 @@ class DebugSession {
         return true;
     }
 
+    /// @brief Request the value of a watch/hover expression at the current stop.
+    ///        The result arrives asynchronously as an `evaluated` event and lands
+    ///        in lastEval* on a later Poll(). Only valid while stopped.
+    expose func Evaluate(expr: String) -> Boolean {
+        if hasSession == false or terminated or processHandle == null { return false; }
+        if stopped == false or expr == "" { return false; }
+        processHandle.WriteStdin("{\"type\":\"evaluate\",\"expr\":\"" + jsonEscape(expr) + "\"}\n");
+        return true;
+    }
+
     expose func Terminate() -> Boolean {
         if processHandle == null { return false; }
         processHandle.WriteStdin("{\"type\":\"terminate\"}\n");
-        processHandle.Kill();
+        var started = Time.GetTickCount();
+        while processHandle.IsRunning()
+              and Time.GetTickCount() - started < TERMINATE_GRACE_MS {
+            drainProcessOutput();
+            Time.SleepMs(5);
+        }
+        drainProcessOutput();
+        if processHandle.IsRunning() {
+            processHandle.Kill();
+        } else {
+            exitCode = processHandle.ExitCode();
+        }
         terminated = true;
         stopped = false;
         hasSession = false;
@@ -160,22 +196,12 @@ class DebugSession {
         if processHandle == null { return false; }
         dirty = false;
 
-        var out = processHandle.ReadStdout();
-        if out != "" {
-            programOutput = programOutput + out;
-            dirty = true;
-        }
-
-        var err = processHandle.ReadStderr();
-        if err != "" {
-            ctrlBuf = ctrlBuf + err;
-            drainControlLines();
-        }
+        drainProcessOutput();
 
         if terminated == false and processHandle.IsRunning() == false {
             // Final drain after the child exited.
             var tailOut = processHandle.ReadStdout();
-            if tailOut != "" { programOutput = programOutput + tailOut; }
+            if tailOut != "" { programOutput = AppendBoundedOutput(programOutput, tailOut); }
             var tailErr = processHandle.ReadStderr();
             if tailErr != "" { ctrlBuf = ctrlBuf + tailErr; drainControlLines(); }
             if terminated == false {
@@ -189,6 +215,24 @@ class DebugSession {
             }
         }
         return dirty;
+    }
+
+    /// @brief Drain stdout and debug-adapter stderr without changing process state.
+    /// @details Used by both the frame pump and the graceful terminate path so
+    ///          shutdown messages are not lost when Stop is clicked.
+    hide func drainProcessOutput() {
+        if processHandle == null { return; }
+        var out = processHandle.ReadStdout();
+        if out != "" {
+            programOutput = AppendBoundedOutput(programOutput, out);
+            dirty = true;
+        }
+
+        var err = processHandle.ReadStderr();
+        if err != "" {
+            ctrlBuf = ctrlBuf + err;
+            drainControlLines();
+        }
     }
 
     hide func drainControlLines() {
@@ -207,9 +251,25 @@ class DebugSession {
             handleEvent(Str.Mid(line, Str.Length(SENTINEL) + 1));
         } else {
             // Raw program stderr or trap text: show it as output.
-            programOutput = programOutput + line + "\n";
+            programOutput = AppendBoundedOutput(programOutput, line + "\n");
             dirty = true;
         }
+    }
+
+    /// @brief Append debug output while preserving a bounded console history.
+    /// @details Debug sessions can run indefinitely and stream unbounded stdout or
+    ///          stderr. Keeping only the newest history avoids quadratic string
+    ///          growth in long IDE sessions while making truncation visible.
+    /// @param existing Existing console buffer.
+    /// @param text Newly read process output.
+    /// @return Combined buffer, trimmed to MAX_DEBUG_OUTPUT_CHARS when needed.
+    hide func AppendBoundedOutput(existing: String, text: String) -> String {
+        var combined = existing + text;
+        if Str.Length(combined) <= MAX_DEBUG_OUTPUT_CHARS {
+            return combined;
+        }
+        return "[debug output truncated]\n"
+            + Str.Mid(combined, Str.Length(combined) - MAX_DEBUG_OUTPUT_CHARS + 1);
     }
 
     hide func handleEvent(jsonText: String) {
@@ -231,6 +291,13 @@ class DebugSession {
             lastType = "terminated";
             lastReason = Json.GetStr(ev, "reason");
             exitCode = Json.GetInt(ev, "exitCode");
+            dirty = true;
+        } else if evType == "evaluated" {
+            lastEvalExpr = Json.GetStr(ev, "expr");
+            lastEvalValue = Json.GetStr(ev, "value");
+            lastEvalType = Json.GetStr(ev, "valueType");
+            lastEvalOk = Json.GetBool(ev, "ok");
+            evalJustArrived = true;
             dirty = true;
         } else if evType == "initialized" {
             dirty = true;

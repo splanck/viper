@@ -46,8 +46,8 @@ func DetectLanguage(path: String) -> String {
     if ext == ".txt"  { return "text"; }
     if ext == ".md"   { return "text"; }
     if ext == ".json" { return "text"; }
-    if ext == ".scene" { return "text"; }
-    if ext == ".level" { return "text"; }
+    if ext == ".scene" { return "scene"; }
+    if ext == ".level" { return "scene"; }
     return "text";
 }
 

@@ -62,7 +62,15 @@ func handleBuild(shell: app_shell.AppShell,
     var buildDoc = docMgr.GetActive();
     if buildDoc != null {
         if buildDoc.isNew == false {
-            file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            var saveResult = file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            if saveResult.success == false {
+                if saveResult.message != "" {
+                    shell.SetStatusLeft("Build canceled: " + saveResult.message);
+                } else {
+                    shell.SetStatusLeft("Build canceled: files were not saved");
+                }
+                return;
+            }
             file_commands.SaveEditorState(docMgr, engine);
             var cfg = run_config.ForDocument(run_config.ACTION_BUILD, buildDoc, projMgr);
             if buildSys.StartConfig(cfg) {
@@ -94,7 +102,15 @@ func handleBuildAndRun(shell: app_shell.AppShell,
     var runDoc = docMgr.GetActive();
     if runDoc != null {
         if runDoc.isNew == false {
-            file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            var saveResult = file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            if saveResult.success == false {
+                if saveResult.message != "" {
+                    shell.SetStatusLeft("Run canceled: " + saveResult.message);
+                } else {
+                    shell.SetStatusLeft("Run canceled: files were not saved");
+                }
+                return;
+            }
             file_commands.SaveEditorState(docMgr, engine);
             var cfg = run_config.ForDocument(run_config.ACTION_RUN, runDoc, projMgr);
             if buildSys.StartConfig(cfg) {
@@ -269,13 +285,29 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
 
 func FormatCommand(cfg: run_config.RunConfig) -> String {
     if cfg == null { return ""; }
-    var text = cfg.program;
+    var text = DisplayArg(cfg.program);
     var i = 0;
     while i < Seq.get_Length(cfg.args) {
-        text = text + " " + Obj.ToString(Seq.Get(cfg.args, i));
+        text = text + " " + DisplayArg(Obj.ToString(Seq.Get(cfg.args, i)));
         i = i + 1;
     }
     return text;
+}
+
+/// @brief Quote one argv item for display in build/output status text.
+/// @details Build execution uses structured argv through Process.StartWithEnv;
+///          this helper is only for human-readable output. It quotes whitespace
+///          and embedded quotes so paths with spaces are not visually misleading.
+/// @param arg Program path or argv element.
+/// @return Display-safe token.
+func DisplayArg(arg: String) -> String {
+    if arg == "" { return "\"\""; }
+    if Str.IndexOf(arg, " ") == 0
+       and Str.IndexOf(arg, "\t") == 0
+       and Str.IndexOf(arg, "\"") == 0 {
+        return arg;
+    }
+    return "\"" + Str.Replace(arg, "\"", "\\\"") + "\"";
 }
 
 /// @brief Pluralize a count for status text ("1 error" / "3 errors").

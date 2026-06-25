@@ -79,11 +79,7 @@ class LanguageServiceManager {
 
         basicService = new LanguageService();
         basicService.name = LANGUAGE_BASIC;
-        basicService.externalServerName = "vbasic-server";
-        basicService.serverCanComplete = true;
-        basicService.serverCanDiagnose = true;
-        basicService.serverCanHover = true;
-        basicService.serverCanDocumentSymbols = true;
+        basicService.externalServerName = "";
 
         textService = new LanguageService();
         textService.name = LANGUAGE_TEXT;

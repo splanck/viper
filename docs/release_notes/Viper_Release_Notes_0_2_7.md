@@ -8,7 +8,7 @@
 
 ### What this release is about
 
-A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability. The new work ends per-frame Graphics3D flicker, adds spot-light shadow maps and a deterministic multi-threaded software rasterizer, plays node animation over a rebuilt glTF/FBX importer, gives ViperIDE a VM-backed debugger, opens a machine-readable agent-facing CLI, and grows the 2D drawing surface and the Zia frontend (integer-keyed maps, header-optional modules). The hardening backbone makes recoverable traps and asset loaders fail closed, promotes IL and codegen invariants to release-mode validation, unifies scalar semantics across the tree-walking VM and both bytecode engines (which now also run threaded `Parallel`/`Pool` callbacks), re-skins the GUI through a shared anti-aliased core, and lands a codegen performance round — while Linux and Windows/MSVC both return to green.
+A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability. The new work ends per-frame Graphics3D flicker, adds spot-light shadow maps and a deterministic multi-threaded software rasterizer, plays node animation over a rebuilt glTF/FBX importer, turns ViperIDE into a highlighted editor with context menus and two-language formatting backed by a VM debugger that evaluates watch expressions, opens a machine-readable agent-facing CLI, and grows the 2D drawing surface and the Zia frontend (integer-keyed maps, header-optional modules). The hardening backbone makes recoverable traps and asset loaders fail closed, promotes IL and codegen invariants to release-mode validation, unifies scalar semantics across the tree-walking VM and both bytecode engines (which now also run threaded `Parallel`/`Pool` callbacks), re-skins the GUI through a shared anti-aliased core, and lands a codegen performance round — while Linux and Windows/MSVC both return to green.
 
 - **Graphics3D flicker stabilized.** Occlusion history with covered-streak gating, depth-fitted shadow cascades, LOD/impostor hysteresis, and terrain-horizon culling end per-frame triangle flicker; every backend validates draw-command index ranges.
 - **Spot-light shadow maps (new).** Shadow-casting spot lights share the directional shadow budget across all four backends, sampling with a perspective divide and cone-angle suppression.
@@ -25,7 +25,7 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 - **Unified scalar semantics (new).** A VM-neutral kernel makes the tree-walking VM and both bytecode engines yield identical values and trap kinds for one IL module; block/instruction storage moves to stable-address containers with interned identifiers.
 - **Interpreted threaded callbacks (new).** `Parallel.For`/`Parallel.Invoke`/`Pool.Submit` run their callbacks on the tree-walking and bytecode VMs — synchronously on the calling thread — while sequence-typed forms trap with explicit VM diagnostics rather than mis-dispatching to native; the shared default pool now drains before runtime-context teardown so a worker can't outlive the context it borrowed.
 - **GUI refined-depth visual pass.** A shared anti-aliased `vg_draw` core and new theme tokens route the whole widget set through one rounded, elevated style; ViperIDE gains vector toolbar icons and a `GUI.GroupBox` settings card.
-- **ViperIDE debugging & build feedback (new).** A VM-backed debug adapter (`viper run --debug-adapter`) replaces v0.2.6's non-executing placeholder with pause/continue/step, breakpoints, call stacks, and locals; the editor adds persistent UI zoom and build-duration/error status.
+- **ViperIDE editor & debugging (new).** The code editor gains Viper/IL syntax highlighting, a compiler-driven semantic-color overlay, indentation guides, and right-click context menus (ADRs 0007–0008), plus Zia and new BASIC formatting; the VM-backed debug adapter (`viper run --debug-adapter`) replaces v0.2.6's non-executing placeholder with pause/continue/step, breakpoints, call stacks, and locals, and now evaluates watch expressions against the stopped frame (ADR 0009) — alongside persistent UI zoom and build-duration/error status.
 - **Agent-facing CLI (new).** `viper check`, `viper eval`, and `viper explain`/`--print-error-codes` over a central diagnostic-code catalog, plus `--dump-runtime-api`/`--dump-opcodes` registry dumps; the LSP/MCP servers now carry the same structured diagnostics.
 - **2D drawing surface (new).** `Pixels` gains bitmap-font text drawing and measurement (plain, scaled, centered/right-aligned) and `Gradient2D` adds normalized `Sample`/`SampleRGBA` with legacy-percent aliases — the runtime backing for a Viper Paint rebuilt around a registry-driven tool set with layers, blend modes, and an HSL picker.
 - **Zia integer maps & header-optional modules (new).** `Map[Integer, T]` lowers to the `IntMap` runtime (string-keyed `Map` unchanged) with declared key-type enforcement; source files may omit the module header (defaulting to `Main`); and the parser, lexer, and semantic checks tighten across precedence, diagnostics, and inheritance-aware visibility.
@@ -36,13 +36,13 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 173 | +173 |
+| Commits | — | 177 | +177 |
 | Source files | 3,096 | 3,391 | +295 |
-| Production SLOC | 669K | 750K | +81K |
+| Production SLOC | 669K | 754K | +85K |
 | Test SLOC | 278K | 304K | +26K |
 | Demo SLOC | 192K | 197K | +5K |
 
-Counts via `scripts/count_sloc.sh` (production 750,255 / test 303,906 / demo 196,622 / source files 3,391); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 754,115 / test 303,913 / demo 196,622 / source files 3,391); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -87,6 +87,7 @@ Counts via `scripts/count_sloc.sh` (production 750,255 / test 303,906 / demo 196
 - BigInt gains checked size arithmetic and full arbitrary-width two's-complement bitwise/shift semantics; heap-header validation is now active in release builds (not just debug), `realloc` routes through a registry-safe move path, heap and pool allocation validate payload headers under the registry lock, and the pool freelist takes a short spinlock so a concurrent pop never reads a stale next pointer.
 - Text-format parsers fail closed and reach further: CSV/JSON preserve parse-failure state through trap recovery, HTML/XML grow traversal stacks under overflow checks, Markdown normalizes entity-obfuscated URL schemes, and TOML extends to escapes, inline tables, and arrays of tables.
 - RSA verification goes constant-time; HTTP/2 framing, empty-body suppression, the WSS accept-vs-`Stop` race, and retry jitter tighten. Temp-file, archive, and savedata names draw their random suffixes from one centralized `rt_entropy_platform_random_u64` (POSIX and Windows) and fail closed when secure entropy is unavailable; runtime-facing randomness is seeded from the RNG and counters rather than object addresses or fixed seeds; and the GIF and Theora/OGV decoders roll back per-frame so a corrupt packet leaves decoder state intact.
+- The sweep continues into output, process, and teardown paths: string-builder append checks across the command-line, path, date/number, relative-time, text-direction, SaveData/action-binding JSON, TOML, and XML formatters return clean sentinels instead of partial output; process launch moves to wide `CreateProcess` on Windows and `posix_spawn` with close-on-exec pipes on POSIX (draining captured output while waiting, never mutating process-wide `SIGPIPE`); TLS handshake/application secrets and AES-GCM scratch are wiped on teardown; and HTTP/HTTPS/WSS worker pools size from the runtime CPU count with thread-pool backpressure and capped active connections.
 
 ### IL, codegen, and the native linker
 
@@ -111,9 +112,12 @@ Counts via `scripts/count_sloc.sh` (production 750,255 / test 303,906 / demo 196
 - A shared anti-aliased `vg_draw` core — rounded rectangles, discs, lines, soft shadows, gradients, deterministic fixed-point coverage — plus new radius/elevation/gradient/focus/motion theme tokens route buttons, inputs, dropdowns, menus, dialogs, tooltips, scrollbars, tabs, lists, and the file tree through one rounded, elevated style.
 - ViperIDE draws vector toolbar icons in place of Unicode glyphs, a titled `GUI.GroupBox` card and `GUI.Label.SetWordWrap` rebuild its settings panel, and gated hover/press/focus motion plus wheel-scrollable dialog content finish the pass.
 
-### ViperIDE — debugging, build feedback, and zoom (new)
+### ViperIDE — editor, debugging, and build feedback (new)
 
-- A debug adapter replaces v0.2.6's non-executing placeholder: `viper run --debug-adapter` drives pause, continue, step in/over/out, source breakpoints, call stacks, and locals over newline-delimited JSON and stops on unhandled traps before they unwind.
+- The code editor gains real syntax highlighting (ADR 0007): widened `CodeEditor` token colors over a stable syntax-token enum, overridable function/operator/bracket classes, and Viper/IL highlighters with `.il` files routed to the Viper one — plus toggleable indentation guides (`CodeEditor.Set/GetShowIndentGuides`) and tab hit-testing (`TabBar.GetTabIndexAt`), all added as registry-only runtime surface.
+- A compiler-driven semantic overlay (ADR 0008) layers classified colors over the lexical pass: a background Zia Tokens job feeds `CodeEditor.AddSemanticToken`/`ClearSemanticTokens`, debounced off the keystroke path and cleared on every document change so stale tokens never linger.
+- Right-click context menus arrive for the editor and the tab bar — close/copy/reveal plus the standard edit commands routed through the existing handlers (`DocumentManager.GetDocument` backs indexed menu actions) — and formatting reaches both languages, with the Zia formatter now ignoring braces inside strings and block comments and a new BASIC formatter handling whole-document and range formatting.
+- A debug adapter replaces v0.2.6's non-executing placeholder: `viper run --debug-adapter` drives pause, continue, step in/over/out, source breakpoints, call stacks, and locals over newline-delimited JSON and stops on unhandled traps before they unwind. A watch/evaluate extension (ADR 0009) resolves a named local against the current stop's frame snapshot — side-effect-free, returning `ok:false` for an unresolved name — so an editor **Evaluate** command can inspect the identifier under the cursor while paused, the foundation for hover-to-inspect.
 - ViperIDE adds persistent UI zoom (`GUI.App.SetUiScale`), millisecond build-duration and error/warning status that auto-opens Problems on failure, and absolute-path resolution of the `viper` compiler before each build.
 
 ### Frontends, language servers, and CLI

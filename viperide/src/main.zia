@@ -44,6 +44,9 @@ bind Input = Viper.Input;
 bind Exec = Viper.System.Exec;
 bind Machine = Viper.System.Machine;
 bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
+bind WorkspaceWatcher = Viper.Workspace.Watcher;
 
 // ============================================================================
 // MODULE: viperide (main entry point)
@@ -87,6 +90,27 @@ final WIN_WIDTH = 1280;
 final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 final AUTO_SAVE_IDLE_MS = 1500;
+final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
+final INDEX_FILES_PER_FRAME = 4;
+final WORKSPACE_SYMBOL_FILES_PER_FRAME = 2;
+final WORKSPACE_WATCHER_MAX_EVENTS = 32;
+
+/// @brief Mutable project-root watcher state owned by the main frame loop.
+/// @details Zia scalar parameters are passed by value, so project watcher
+///          lifecycle state is grouped into this object and updated by
+///          `PumpWorkspaceWatcher`.
+class WorkspaceWatcherState {
+    expose IO.Watcher watcher;
+    expose Boolean watching;
+    expose String rootPath;
+
+    /// @brief Initialize as detached from any workspace root.
+    expose func init() {
+        watcher = null;
+        watching = false;
+        rootPath = "";
+    }
+}
 
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
@@ -187,7 +211,7 @@ func main() {
     var welcomeText = "module Welcome;\n";
     welcomeText = welcomeText + "\n";
     welcomeText = welcomeText + "// Welcome to ViperIDE!\n";
-    welcomeText = welcomeText + "// A full-featured IDE for Zia and Viper Basic\n";
+    welcomeText = welcomeText + "// Zia has full IDE assistance; Viper BASIC can be edited, built, and run.\n";
     welcomeText = welcomeText + "\n";
     welcomeText = welcomeText + "func main() {\n";
     welcomeText = welcomeText + "    Viper.Terminal.Say(\"Hello from ViperIDE!\");\n";
@@ -226,6 +250,7 @@ func main() {
     var hasWatcher = false;
     var fileWatcher = IO.Watcher.New(".");
     var pendingReload = false;
+    var workspaceWatcherState = new WorkspaceWatcherState();
 
     // Cursor tracking for dot-trigger and status bar caching
     var prevCursorLine = 1;
@@ -237,6 +262,8 @@ func main() {
     var lastBreakpointVersion = -1;
     var autoSaveRevision = engine.GetRevision();
     var autoSaveDueMs = 0;
+    var lastOpenDocPollMs = 0;
+    var lastWorkspaceIndexStatus = "";
 
     // ========================================================================
     // Main event loop
@@ -288,12 +315,26 @@ func main() {
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
         symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding
-                                                and activeService.canDocumentSymbols
-                                                and symbolOutline.visible,
+                                                and activeService.canDocumentSymbols,
                                                 engine);
         var typedThisFrame = Input.Keyboard.GetText();
         var perfSpan = perfMon.StartSpan();
         indexer.EnsureProject(projMgr, docMgr);
+        indexer.SyncActiveWhenIdle(docMgr, engine);
+        if indexer.valid and indexer.workspaceIndexComplete == false {
+            if indexer.indexing == false and indexer.pendingIndexFiles == null {
+                indexer.StartIndexWorkspace();
+            }
+            indexer.PumpIndex(4);
+        }
+        if indexer.workspaceIndexStatusMessage != lastWorkspaceIndexStatus {
+            lastWorkspaceIndexStatus = indexer.workspaceIndexStatusMessage;
+            if lastWorkspaceIndexStatus != "" {
+                shell.SetStatusLeft(lastWorkspaceIndexStatus);
+                GUI.Toast.Warning(lastWorkspaceIndexStatus);
+            }
+        }
+        completer.PumpWorkspaceSymbolCache(2);
         perfMon.AddIndex(perfSpan);
         if activeToolDoc != null {
             if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
@@ -571,7 +612,10 @@ func main() {
             var deletePath = CurrentContextPath(projMgr, shell);
             if deletePath != "" {
                 if GUI.MessageBox.Confirm("Delete", "Delete " + Path.Name(deletePath) + "?") != 0 {
-                    if projMgr.DeleteSelected(docMgr) {
+                    if file_commands.ConfirmCloseDocumentsUnderPath(
+                        shell, docMgr, engine, "Delete", deletePath) == false {
+                        shell.SetStatusLeft("Delete canceled");
+                    } else if projMgr.DeleteSelected(docMgr) {
                         indexer.RemoveFile(deletePath);
                         ReindexAfterTreeMove(projMgr, indexer, docMgr);
                         InvalidateWorkspaceLocations(shell, locStore, engine);
@@ -651,6 +695,7 @@ func main() {
         if shell.ecRename.WasClicked() != 0     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
         if shell.ecFormat.WasClicked() != 0     { edit_commands.handleFormatDocument(shell, docMgr, engine); }
         if shell.ecToggleBreakpoint.WasClicked() != 0 { debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore); }
+        if shell.ecEvaluate.WasClicked() != 0 { debug_commands.handleEvaluateAtCursor(shell, engine, dbgSession); }
         if shell.ecPalette.WasClicked() != 0 {
             paletteMode = "commands";
             shell.commandPalette.SetPlaceholder("Type a command...");
@@ -702,6 +747,7 @@ func main() {
         if triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); RecordActiveFile(sessionMgr, docMgr); pendingReload = false; }
         if triggered("openfolder", shell.miOpenFolder, null, cpSelected) {
             if file_commands.ConfirmCloseDocuments(shell, docMgr, engine, "Open Folder", -1) {
+                tabs.RefreshFromDocuments(docMgr);
                 file_commands.handleOpenFolder(shell, projMgr);
                 indexer.Open(projMgr.project.rootPath, docMgr);
             }
@@ -823,7 +869,7 @@ func main() {
 
         // View commands
         if triggered("togglesidebar", shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(shell); }
-        if triggeredMenu("statusbar", shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(shell); }
+        if triggeredMenu("statusbar", shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(shell, appSettings); }
         if triggered("zoomin", shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(shell, engine, appSettings); }
         if triggered("zoomout", shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(shell, engine, appSettings); }
         if triggered("zoomreset", shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(shell, engine, appSettings); }
@@ -831,7 +877,7 @@ func main() {
         if triggered("uizoomout", shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(shell, appSettings); }
         if triggered("uizoomreset", shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(shell, appSettings); }
         if triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(appSettings); }
-        if triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell); }
+        if triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell, appSettings); }
         if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
         if triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
         if triggeredNoMenu("keybindings", cpSelected)                          { view_commands.handleKeybindings(shell, commandRegistry); }
@@ -866,19 +912,25 @@ func main() {
             debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession);
         }
         if triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
-            debug_commands.handleDebugContinue(shell, docMgr, engine, tabs, dbgSession);
+            debug_commands.handleDebugContinue(shell, dbgSession);
         }
         if triggered("debugstepover", shell.miDebugStepOver, shell.tbDebugStep, cpSelected) {
-            debug_commands.handleDebugStepOver(shell, docMgr, engine, tabs, dbgSession);
+            debug_commands.handleDebugStepOver(shell, dbgSession);
+        }
+        if triggered("debugstepin", shell.miDebugStepIn, null, cpSelected) {
+            debug_commands.handleDebugStepIn(shell, dbgSession);
+        }
+        if triggered("debugstepout", shell.miDebugStepOut, null, cpSelected) {
+            debug_commands.handleDebugStepOut(shell, dbgSession);
         }
         if triggered("debugpause", shell.miDebugPause, null, cpSelected) {
-            debug_commands.handleDebugPause(shell, docMgr, engine, tabs, dbgSession);
+            debug_commands.handleDebugPause(shell, dbgSession);
         }
         if triggered("debugrestart", shell.miDebugRestart, null, cpSelected) {
             debug_commands.handleDebugRestart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession);
         }
         if triggered("debugstop", shell.miDebugStop, null, cpSelected) {
-            debug_commands.handleDebugStop(shell, docMgr, engine, tabs, dbgSession);
+            debug_commands.handleDebugStop(shell, dbgSession);
         }
         if triggered("togglebreakpoint", shell.miToggleBreakpoint, null, cpSelected) {
             debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore);
@@ -967,6 +1019,8 @@ func main() {
                     appSettings.tabWidth = overlays.ReadTabWidth();
                     appSettings.theme = overlays.ReadTheme();
                     appSettings.minimapVisible = overlays.ReadMinimapVisible();
+                    appSettings.statusBarVisible = overlays.ReadStatusBarVisible();
+                    appSettings.fullscreen = overlays.ReadFullscreen();
                     appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
                     appSettings.codeFolding = overlays.ReadCodeFolding();
                     appSettings.wordWrap = overlays.ReadWordWrap();
@@ -999,6 +1053,8 @@ func main() {
                 appSettings.tabWidth = overlays.ReadTabWidth();
                 appSettings.theme = overlays.ReadTheme();
                 appSettings.minimapVisible = overlays.ReadMinimapVisible();
+                appSettings.statusBarVisible = overlays.ReadStatusBarVisible();
+                appSettings.fullscreen = overlays.ReadFullscreen();
                 appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
                 appSettings.codeFolding = overlays.ReadCodeFolding();
                 appSettings.wordWrap = overlays.ReadWordWrap();
@@ -1068,7 +1124,10 @@ func main() {
                 var curDoc = docMgr.GetActive();
                 if curDoc != null {
                     var doc = curDoc!;
-                    if doc.isModified == false {
+                    if doc.isReadOnlyPreview {
+                        engine.ClearModified();
+                        tabs.SetModified(docMgr.activeIndex, false);
+                    } else if doc.isModified == false {
                         doc.isModified = true;
                         tabs.SetModified(docMgr.activeIndex, true);
                     }
@@ -1109,16 +1168,17 @@ func main() {
                     hasWatcher = true;
                     pendingReload = false;
                 }
-                if hasWatcher {
-                    var watchEvent = fileWatcher.Poll();
-                    if watchEvent == fileWatcher.EVENT_MODIFIED {
-                        if pendingReload == false {
-                            pendingReload = true;
-                            GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
-                            shell.SetStatusLeft("Warning: external change - " + doc.fileName);
-                        }
-                    }
-                }
+	                if hasWatcher {
+	                    var watchEvent = fileWatcher.Poll();
+	                    if watchEvent == fileWatcher.EVENT_MODIFIED {
+	                        if pendingReload == false {
+	                            pendingReload = true;
+	                            doc.externalChangeNotified = true;
+	                            GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
+	                            shell.SetStatusLeft("Warning: external change - " + doc.fileName);
+	                        }
+	                    }
+	                }
             } else {
                 if hasWatcher {
                     fileWatcher.Stop();
@@ -1134,9 +1194,24 @@ func main() {
                 pendingReload = false;
             }
             watchedPath = "";
-        }
+	        }
 
-        // ====================================================================
+	        var nowForOpenDocPoll = Viper.Time.GetTickCount();
+	        if nowForOpenDocPoll - lastOpenDocPollMs >= OPEN_DOC_EXTERNAL_POLL_MS {
+	            lastOpenDocPollMs = nowForOpenDocPoll;
+	            var changedOpenDocs = PollOpenDocumentExternalChanges(shell, docMgr);
+	            if changedOpenDocs > 0 {
+	                var activeChanged = docMgr.HasExternalChange(docMgr.activeIndex);
+	                if activeChanged {
+	                    pendingReload = true;
+	                }
+	            }
+	        }
+
+        PumpWorkspaceWatcher(shell, projMgr, docMgr, indexer, locStore, engine,
+                             workspaceWatcherState);
+
+	        // ====================================================================
         // Update status bar (only when cursor moves)
         // ====================================================================
         if curCursorLine != prevCursorLine or curCursorCol != prevCursorCol {
@@ -1203,6 +1278,41 @@ func HasIdentifierInput(text: String) -> Boolean {
         i = i + 1;
     }
     return false;
+}
+
+/// @brief Poll all open named documents for external timestamp changes.
+/// @details The active file still uses the platform watcher for immediate
+///          notification. This helper covers inactive open tabs by comparing
+///          their last saved/opened timestamp against the current disk timestamp
+///          and marking each changed document once.
+/// @param shell Workbench shell used for status/toast feedback.
+/// @param docMgr Open document manager to scan.
+/// @return Number of newly detected external changes.
+func PollOpenDocumentExternalChanges(shell: app_shell.AppShell,
+                                     docMgr: document_manager.DocumentManager) -> Integer {
+    if shell == null or docMgr == null { return 0; }
+    var changed = 0;
+    var firstName = "";
+    var i = 0;
+    while i < docMgr.GetCount() {
+        var doc = docMgr.GetDocument(i);
+        if doc != null and doc!.externalChangeNotified == false {
+            if docMgr.HasExternalChange(i) {
+                doc!.externalChangeNotified = true;
+                changed = changed + 1;
+                if firstName == "" { firstName = doc!.fileName; }
+            }
+        }
+        i = i + 1;
+    }
+    if changed == 1 {
+        GUI.Toast.Warning("File changed on disk: " + firstName);
+        shell.SetStatusLeft("Warning: external change - " + firstName);
+    } else if changed > 1 {
+        GUI.Toast.Warning("" + changed + " open files changed on disk");
+        shell.SetStatusLeft("Warning: " + changed + " open files changed on disk");
+    }
+    return changed;
 }
 
 /// @brief Hide any open command palette or context menu so the next one shown
@@ -1387,6 +1497,10 @@ func TreeDelete(shell: app_shell.AppShell,
     if GUI.MessageBox.Confirm("Delete", "Delete " + Path.Name(deletePath) + "?") == 0 {
         return;
     }
+    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Delete", deletePath) == false {
+        shell.SetStatusLeft("Delete canceled");
+        return;
+    }
     if projMgr.DeleteSelected(docMgr) == false {
         GUI.Toast.Warning("Delete failed");
         return;
@@ -1403,6 +1517,107 @@ func TreeDelete(shell: app_shell.AppShell,
         engine.ClearModified();
     }
     shell.SetStatusLeft("Deleted: " + Path.Name(deletePath));
+}
+
+/// @brief Keep a batch workspace watcher aligned to the currently open project.
+/// @details The runtime watcher is non-recursive, so this is used as a cheap
+///          structural signal for the project root while open-document polling
+///          continues to catch individual tab changes. Batch polling prevents a
+///          burst of file events from spending an unbounded amount of one frame.
+func PumpWorkspaceWatcher(shell: app_shell.AppShell,
+                          projMgr: project_manager.ProjectManager,
+                          docMgr: document_manager.DocumentManager,
+                          indexer: project_index.ProjectIndexer,
+                          locStore: locations.LocationStore,
+                          engine: editor_engine.EditorEngine,
+                          state: WorkspaceWatcherState) {
+    var root = "";
+    if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+        root = projMgr.project.rootPath;
+    }
+    if root == "" or Dir.Exists(root) == false {
+        StopWorkspaceWatcher(state);
+        return;
+    }
+
+    if state.rootPath != root or state.watching == false {
+        StopWorkspaceWatcher(state);
+        state.watcher = IO.Watcher.New(root);
+        state.watcher.Start();
+        state.rootPath = root;
+        state.watching = true;
+        return;
+    }
+
+    var events = WorkspaceWatcher.PollBatch(state.watcher, WORKSPACE_WATCHER_MAX_EVENTS);
+    if events == null or Seq.get_Length(events) == 0 { return; }
+    HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
+}
+
+/// @brief Stop and clear project-root watcher state.
+/// @param state Mutable watcher state owned by the main loop.
+func StopWorkspaceWatcher(state: WorkspaceWatcherState) {
+    if state == null { return; }
+    if state.watching and state.watcher != null {
+        state.watcher.Stop();
+    }
+    state.watcher = null;
+    state.watching = false;
+    state.rootPath = "";
+}
+
+/// @brief Apply a batch of project-root watcher events to UI and index state.
+/// @details Structural changes refresh the tree and invalidate cached search
+///          locations. Direct `.zia` file changes update or remove index entries
+///          incrementally; overflow events trigger a full project reindex.
+func HandleWorkspaceWatcherEvents(shell: app_shell.AppShell,
+                                  projMgr: project_manager.ProjectManager,
+                                  docMgr: document_manager.DocumentManager,
+                                  indexer: project_index.ProjectIndexer,
+                                  locStore: locations.LocationStore,
+                                  engine: editor_engine.EditorEngine,
+                                  events: Any) {
+    var refreshTree = false;
+    var fullReindex = false;
+    var touchedIndex = false;
+    var changed = 0;
+    var i = 0;
+    while i < Seq.get_Length(events) {
+        var ev = Seq.Get(events, i);
+        i = i + 1;
+        changed = changed + 1;
+        var eventPath = Map.GetStr(ev, "path");
+        var typeName = Map.GetStr(ev, "typeName");
+        if Map.GetBool(ev, "requiresRescan") {
+            refreshTree = true;
+            fullReindex = true;
+            continue;
+        }
+        if typeName == "created" or typeName == "deleted" or typeName == "renamed" {
+            refreshTree = true;
+        }
+        if eventPath != "" and Str.ToLower(Path.Ext(eventPath)) == ".zia" {
+            if typeName == "deleted" or typeName == "renamed" {
+                indexer.RemoveFile(eventPath);
+            } else {
+                indexer.UpdateFile(eventPath);
+            }
+            touchedIndex = true;
+        }
+    }
+
+    if fullReindex {
+        ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    }
+    if refreshTree and projMgr != null {
+        projMgr.RefreshTree();
+        InvalidateWorkspaceLocations(shell, locStore, engine);
+    } else if touchedIndex and locStore != null {
+        locStore.Clear();
+    }
+    if changed > 0 {
+        shell.SetStatusLeft("Workspace changed: " + changed + " event(s)");
+    }
 }
 
 func ReindexAfterTreeMove(projMgr: project_manager.ProjectManager,

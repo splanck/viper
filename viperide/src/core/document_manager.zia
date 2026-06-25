@@ -7,6 +7,11 @@ bind Obj = Viper.Core.Object;
 bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 bind Str = Viper.String;
+bind Map = Viper.Collections.Map;
+bind Seq = Viper.Collections.Seq;
+bind WorkspaceEdit = Viper.Workspace.Edit;
+
+final MAX_TEXT_OPEN_BYTES = 4000000;
 
 // ============================================================================
 // MODULE: document_manager
@@ -102,14 +107,16 @@ class DocumentManager {
         var doc = new document.Document();
         doc.filePath = path;
         doc.fileName = Path.Name(path);
-        doc.content = IO.File.ReadAllText(path);
         doc.language = file_utils.DetectLanguage(path);
         doc.kind = file_utils.DetectKind(path);
+        doc.isReadOnlyPreview = IsReadOnlyPreviewPath(path, doc.kind);
+        doc.content = OpenableTextForPath(path, doc.kind);
         doc.isNew = false;
         doc.isModified = false;
         if IO.File.Exists(path) {
             doc.lastModifiedOnDisk = IO.File.Modified(path);
         }
+        doc.externalChangeNotified = false;
 
         documents.add(doc);
         activeIndex = documents.count() - 1;
@@ -128,9 +135,13 @@ class DocumentManager {
         if index < 0 or index >= documents.count() { return false; }
         var doc = documents.get(index);
         if doc.isNew { return false; }
-        IO.File.WriteAllText(doc.filePath, doc.content);
+        if doc.isReadOnlyPreview { return false; }
+        if WriteExistingTextAtomically(doc.filePath, doc.content) == false {
+            return false;
+        }
         doc.isModified = false;
         doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+        doc.externalChangeNotified = false;
         return true;
     }
 
@@ -142,14 +153,17 @@ class DocumentManager {
     expose func SaveAs(path: String) -> Boolean {
         if activeIndex < 0 { return false; }
         var doc = documents.get(activeIndex);
+        if doc.isReadOnlyPreview { return false; }
         doc.filePath = path;
         doc.fileName = Path.Name(path);
         doc.language = file_utils.DetectLanguage(path);
         doc.kind = file_utils.DetectKind(path);
+        doc.isReadOnlyPreview = false;
         doc.isNew = false;
         IO.File.WriteAllText(path, doc.content);
         doc.isModified = false;
         doc.lastModifiedOnDisk = IO.File.Modified(path);
+        doc.externalChangeNotified = false;
         return true;
     }
 
@@ -170,15 +184,70 @@ class DocumentManager {
         var i = 0;
         while i < documents.count() {
             var doc = documents.get(i);
-            if doc.isModified and doc.isNew == false {
-                IO.File.WriteAllText(doc.filePath, doc.content);
-                doc.isModified = false;
-                doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
-                count = count + 1;
+            if doc.isModified and doc.isNew == false and doc.isReadOnlyPreview == false {
+                if WriteExistingTextAtomically(doc.filePath, doc.content) {
+                    doc.isModified = false;
+                    doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+                    doc.externalChangeNotified = false;
+                    count = count + 1;
+                }
             }
             i = i + 1;
         }
         return count;
+    }
+
+    /// @brief Replace an existing file through the runtime transactional edit path.
+    /// @details `Viper.Workspace.Edit.ApplyInRoot` validates the current file,
+    ///          stages a same-directory temporary file, commits with rename, and
+    ///          rolls back if a later target fails. DocumentManager uses it for
+    ///          ordinary saves so a failed write does not leave a truncated file.
+    /// @param path Existing file to replace.
+    /// @param content Complete new file contents.
+    /// @return true when the runtime reports a successful replacement.
+    hide func WriteExistingTextAtomically(path: String, content: String) -> Boolean {
+        if path == "" or IO.File.Exists(path) == false { return false; }
+        var root = Path.Dir(path);
+        if root == "" { return false; }
+
+        var edit = Map.New();
+        Map.SetStr(edit, "file", Path.Name(path));
+        Map.SetInt(edit, "startLine", 1);
+        Map.SetInt(edit, "startColumn", 1);
+        Map.SetInt(edit, "endLine", EndLineForWholeFile(path));
+        Map.SetInt(edit, "endColumn", EndColumnForWholeFile(path));
+        Map.SetStr(edit, "newText", content);
+        Map.SetInt(edit, "expectedMtime", IO.File.Modified(path));
+        Map.SetInt(edit, "expectedSize", IO.File.Size(path));
+
+        var edits = Seq.New();
+        Seq.Push(edits, edit);
+        var result = WorkspaceEdit.ApplyInRoot(edits, root);
+        return Map.GetBool(result, "success");
+    }
+
+    /// @brief Compute the last line number of an existing file for full-file replacement.
+    /// @details The runtime workspace edit range is expressed in 1-based line and
+    ///          column coordinates. This helper reads the current on-disk file so
+    ///          external changes are caught by expected size/mtime validation.
+    hide func EndLineForWholeFile(path: String) -> Integer {
+        var text = IO.File.ReadAllText(path);
+        var lines = Str.Split(text, "\n");
+        var count = Seq.get_Length(lines);
+        if count <= 0 { return 1; }
+        return count;
+    }
+
+    /// @brief Compute the exclusive end column of the last line in an existing file.
+    /// @details CRLF files keep the carriage return in the split line, matching
+    ///          the runtime's byte/character scan and preserving correct EOF ranges.
+    hide func EndColumnForWholeFile(path: String) -> Integer {
+        var text = IO.File.ReadAllText(path);
+        var lines = Str.Split(text, "\n");
+        var count = Seq.get_Length(lines);
+        if count <= 0 { return 1; }
+        var last = Obj.ToString(Seq.Get(lines, count - 1));
+        return Str.Length(last) + 1;
     }
 
     expose func HasExternalChange(index: Integer) -> Boolean {
@@ -188,6 +257,64 @@ class DocumentManager {
         if IO.File.Exists(doc.filePath) == false { return false; }
         var current = IO.File.Modified(doc.filePath);
         return doc.lastModifiedOnDisk > 0 and current > doc.lastModifiedOnDisk;
+    }
+
+    /// @brief Reload an existing document through the same safety rules as OpenFile.
+    /// @details Binary and oversized files remain read-only previews on reload
+    ///          instead of bypassing the open guard and reading the full payload.
+    /// @param index Document index to reload from disk.
+    /// @return true when the document was refreshed; false for invalid, new, or missing files.
+    expose func ReloadDocument(index: Integer) -> Boolean {
+        if index < 0 or index >= documents.count() { return false; }
+        var doc = documents.get(index);
+        if doc.isNew { return false; }
+        if IO.File.Exists(doc.filePath) == false { return false; }
+        doc.language = file_utils.DetectLanguage(doc.filePath);
+        doc.kind = file_utils.DetectKind(doc.filePath);
+        doc.isReadOnlyPreview = IsReadOnlyPreviewPath(doc.filePath, doc.kind);
+        doc.content = OpenableTextForPath(doc.filePath, doc.kind);
+        doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+        doc.isModified = false;
+        doc.externalChangeNotified = false;
+        return true;
+    }
+
+    /// @brief Decide whether a file should open as a non-saving preview.
+    /// @details This intentionally checks extension-derived binary kinds and file
+    ///          size before any text load, keeping the editor responsive for
+    ///          unsupported images and unusually large text files.
+    /// @param path Absolute path requested by the file tree or open dialog.
+    /// @param kind Document kind detected from the extension.
+    /// @return true when the editor should show preview text and block saves.
+    hide func IsReadOnlyPreviewPath(path: String, kind: Integer) -> Boolean {
+        if kind == file_utils.DOC_KIND_BINARY_UNSUPPORTED { return true; }
+        return IO.File.Size(path) > MAX_TEXT_OPEN_BYTES;
+    }
+
+    /// @brief Return editor-safe text for a file path without loading unsupported payloads.
+    /// @details Binary image kinds and very large files are represented by a short
+    ///          preview document instead of pushing raw bytes or multi-megabyte
+    ///          text through the CodeEditor. This keeps tree clicks responsive while
+    ///          preserving the open tab, breadcrumb, and file path.
+    /// @param path Absolute path requested by the file tree or open dialog.
+    /// @param kind Document kind detected from the extension.
+    /// @return File text for ordinary files, or a preview explanation for
+    ///         unsupported/oversized files.
+    hide func OpenableTextForPath(path: String, kind: Integer) -> String {
+        if kind == file_utils.DOC_KIND_BINARY_UNSUPPORTED {
+            return "Binary preview is not available for this file.\n\n"
+                + "Path: " + path + "\n";
+        }
+
+        var size = IO.File.Size(path);
+        if size > MAX_TEXT_OPEN_BYTES {
+            return "This file is too large to open in the text editor.\n\n"
+                + "Path: " + path + "\n"
+                + "Size: " + size + " bytes\n"
+                + "Limit: " + MAX_TEXT_OPEN_BYTES + " bytes\n";
+        }
+
+        return IO.File.ReadAllText(path);
     }
 
     expose func UpdatePath(oldPath: String, newPath: String) -> Boolean {
@@ -344,6 +471,7 @@ class DocumentManager {
         if IO.File.Exists(newPath) {
             doc.lastModifiedOnDisk = IO.File.Modified(newPath);
         }
+        doc.externalChangeNotified = false;
     }
 
     hide func UpdateRecentlyClosedPath(oldPath: String, newPath: String) -> Boolean {

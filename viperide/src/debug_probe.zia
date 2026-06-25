@@ -99,6 +99,38 @@ func main() {
         return;
     }
 
+    // 1b) Watch/evaluate a name at the stop (reuses the frame locals).
+    if session.Evaluate("a") == false {
+        fail("Evaluate rejected while stopped");
+        return;
+    }
+    var ew = 0;
+    while ew < 8000 and session.lastEvalExpr != "a" {
+        session.Poll();
+        Time.SleepMs(5);
+        ew = ew + 5;
+    }
+    if session.lastEvalOk == false {
+        fail("evaluate 'a' returned not-ok");
+        return;
+    }
+    if session.lastEvalValue != "10" {
+        fail("evaluate 'a' value was '" + session.lastEvalValue + "' (expected 10)");
+        return;
+    }
+    // An unknown name must resolve to not-ok (and not crash the session).
+    session.Evaluate("not_a_real_local");
+    var ew2 = 0;
+    while ew2 < 8000 and session.lastEvalExpr != "not_a_real_local" {
+        session.Poll();
+        Time.SleepMs(5);
+        ew2 = ew2 + 5;
+    }
+    if session.lastEvalOk {
+        fail("evaluate unknown name should be not-ok");
+        return;
+    }
+
     // 2) Step over → advance to the next source line (6).
     if session.StepOver() == false {
         fail("StepOver rejected while stopped");

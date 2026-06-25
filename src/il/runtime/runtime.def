@@ -3416,6 +3416,7 @@ RT_FUNC(AssetUnmount,   rt_asset_unmount,    "Viper.IO.Assets.Unmount",   "i64(s
 RT_FUNC(AssetResolverResolve, rt_asset_resolver_resolve, "Viper.Assets.Resolver.Resolve", "obj<Viper.Collections.Map>(str,str,str,str)")
 
 RT_FUNC(WorkspaceFileIndexEnumerate, rt_workspace_file_index_enumerate, "Viper.Workspace.FileIndex.Enumerate", "obj<Viper.Collections.Seq>(str,str,str,i1)")
+RT_FUNC(WorkspaceFileIndexStatus, rt_workspace_file_index_status, "Viper.Workspace.FileIndex.Status", "obj<Viper.Collections.Map>(str,str,str,i1)")
 RT_FUNC(WorkspaceFileIndexShouldIgnore, rt_workspace_file_index_should_ignore, "Viper.Workspace.FileIndex.ShouldIgnore", "i1(str,str,str)")
 RT_FUNC(WorkspaceWatcherPollBatch, rt_workspace_watcher_poll_batch, "Viper.Workspace.WorkspaceWatcher.PollBatch", "obj<Viper.Collections.Seq>(obj,i64)")
 RT_ALIAS("Viper.Workspace.Watcher.PollBatch", WorkspaceWatcherPollBatch)
@@ -3448,6 +3449,7 @@ RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.Workspace.FileIndex", WorkspaceFileIndex, "none", none)
     RT_METHOD("Enumerate",    "obj<Viper.Collections.Seq>(str,str,str,i1)", WorkspaceFileIndexEnumerate)
+    RT_METHOD("Status",       "obj<Viper.Collections.Map>(str,str,str,i1)", WorkspaceFileIndexStatus)
     RT_METHOD("ShouldIgnore", "i1(str,str,str)",                            WorkspaceFileIndexShouldIgnore)
 RT_CLASS_END()
 

@@ -19,14 +19,13 @@ final ACTION_RESET_EDITING = 8;
 final ACTION_RESET_INTELLISENSE = 9;
 final ACTION_RESET_STARTUP = 10;
 
-final SETTINGS_DOCK_WIDTH = 420;
-final SETTINGS_DOCK_MAX_WIDTH = 520;
-final SETTINGS_DOCK_MIN_WIDTH = 320;
+final SETTINGS_DOCK_WIDTH = 560;
+final SETTINGS_DOCK_MAX_WIDTH = 720;
+final SETTINGS_DOCK_MIN_WIDTH = 420;
+final SETTINGS_DOCK_SCREEN_PERCENT = 85;
 final ABOUT_PANEL_WIDTH = 520;
 final ABOUT_PANEL_HEIGHT = 270;
-// Narrower label column gives the control column ~24% more room within the
-// dock, easing the previous cramping without changing the tested dock width.
-final FIELD_LABEL_WIDTH = 160;
+final PREFERENCE_CONTROL_WIDTH = 240;
 final PANEL_SCREEN_MARGIN = 28;
 
 /// @brief Docked Preferences surface plus the floating About panel.
@@ -44,6 +43,8 @@ class IdeOverlays {
     expose GUI.Spinner uiZoomSpinner;
     expose GUI.Dropdown themeDropdown;
     expose GUI.Checkbox minimapCheck;
+    expose GUI.Checkbox statusBarCheck;
+    expose GUI.Checkbox fullscreenCheck;
     expose GUI.Checkbox autoCheckCheck;
     expose GUI.Checkbox codeFoldingCheck;
     expose GUI.Checkbox wordWrapCheck;
@@ -149,6 +150,20 @@ class IdeOverlays {
                 minimapCheck.SetChecked(1);
             } else {
                 minimapCheck.SetChecked(0);
+            }
+        }
+        if statusBarCheck != null {
+            if appSettings.statusBarVisible {
+                statusBarCheck.SetChecked(1);
+            } else {
+                statusBarCheck.SetChecked(0);
+            }
+        }
+        if fullscreenCheck != null {
+            if appSettings.fullscreen {
+                fullscreenCheck.SetChecked(1);
+            } else {
+                fullscreenCheck.SetChecked(0);
             }
         }
         if autoCheckCheck != null {
@@ -299,6 +314,16 @@ class IdeOverlays {
         return minimapCheck.IsChecked();
     }
 
+    /// @brief Read the requested status-bar visibility from Preferences.
+    expose func ReadStatusBarVisible() -> Boolean {
+        return statusBarCheck.IsChecked();
+    }
+
+    /// @brief Read whether the app should start in fullscreen from Preferences.
+    expose func ReadFullscreen() -> Boolean {
+        return fullscreenCheck.IsChecked();
+    }
+
     expose func ReadAutoCheck() -> Boolean {
         return autoCheckCheck.IsChecked();
     }
@@ -358,6 +383,8 @@ class IdeOverlays {
         uiZoomSpinner.SetValue(100.0);
         themeDropdown.SetSelected(0);
         minimapCheck.SetChecked(0);
+        statusBarCheck.SetChecked(1);
+        fullscreenCheck.SetChecked(0);
     }
 
     expose func ResetEditingDefaults() {
@@ -418,28 +445,23 @@ class IdeOverlays {
         var appCard = GUI.GroupBox.New(body, "Appearance");
         appCard.SetMargin(2);
 
-        // Editor font — label/description stacked above the control (full width).
-        GUI.Label.New(appCard, "Editor font");
-        var fontPathDesc =
-            GUI.Label.New(appCard, "Optional .ttf or .ttc file for the code editor.");
-        fontPathDesc.SetWordWrap(1);
-        fontPathInput = GUI.TextInput.New(appCard);
+        var fontPathControls =
+            AddPreferenceRow(appCard, "Editor font", "Optional .ttf or .ttc file.");
+        fontPathInput = GUI.TextInput.New(fontPathControls);
         fontPathInput.SetPlaceholder("Built-in editor font");
         var fontPathButtons = GUI.HBox.New();
         fontPathButtons.SetSpacing(10.0);
-        appCard.AddChild(fontPathButtons);
+        fontPathControls.AddChild(fontPathButtons);
         browseFontButton = GUI.Button.New(fontPathButtons, "Choose Font...");
         browseFontButton.SetStyle(2);
         useSystemFontButton = GUI.Button.New(fontPathButtons, "Use Default");
         useSystemFontButton.SetStyle(2);
 
-        // Font size
-        GUI.Label.New(appCard, "Font size");
-        var fontSizeDesc = GUI.Label.New(appCard, "Point size used by labels and editors.");
-        fontSizeDesc.SetWordWrap(1);
+        var fontSizeBox =
+            AddPreferenceRow(appCard, "Font size", "Point size used by the code editor.");
         var fontSizeControls = GUI.HBox.New();
         fontSizeControls.SetSpacing(10.0);
-        appCard.AddChild(fontSizeControls);
+        fontSizeBox.AddChild(fontSizeControls);
         fontSizeSpinner = GUI.Spinner.New(fontSizeControls);
         fontSizeSpinner.SetRange(12.0, 36.0);
         fontSizeSpinner.SetStep(1.0);
@@ -448,14 +470,11 @@ class IdeOverlays {
         resetFontSizeButton = GUI.Button.New(fontSizeControls, "Restore Default");
         resetFontSizeButton.SetStyle(2);
 
-        // Interface zoom
-        GUI.Label.New(appCard, "Interface zoom");
-        var uiZoomDesc =
-            GUI.Label.New(appCard, "Scale the entire UI — menus, panels, and editor. Shortcut: Ctrl+Shift+= / - / 0.");
-        uiZoomDesc.SetWordWrap(1);
+        var uiZoomBox =
+            AddPreferenceRow(appCard, "Interface zoom", "Scales menus, panels, and editor.");
         var uiZoomControls = GUI.HBox.New();
         uiZoomControls.SetSpacing(10.0);
-        appCard.AddChild(uiZoomControls);
+        uiZoomBox.AddChild(uiZoomControls);
         uiZoomSpinner = GUI.Spinner.New(uiZoomControls);
         uiZoomSpinner.SetRange(50.0, 300.0);
         uiZoomSpinner.SetStep(10.0);
@@ -463,34 +482,31 @@ class IdeOverlays {
         uiZoomSpinner.SetSize(110, 0);
         GUI.Label.New(uiZoomControls, "percent");
 
-        // Tab size
-        GUI.Label.New(appCard, "Tab size");
-        var tabWidthDesc = GUI.Label.New(appCard, "How many columns a hard tab should occupy.");
-        tabWidthDesc.SetWordWrap(1);
+        var tabWidthBox =
+            AddPreferenceRow(appCard, "Tab size", "Columns used for a hard tab.");
         var tabWidthControls = GUI.HBox.New();
         tabWidthControls.SetSpacing(10.0);
-        appCard.AddChild(tabWidthControls);
+        tabWidthBox.AddChild(tabWidthControls);
         tabWidthSpinner = GUI.Spinner.New(tabWidthControls);
         tabWidthSpinner.SetRange(2.0, 8.0);
         tabWidthSpinner.SetStep(1.0);
         tabWidthSpinner.SetDecimals(0);
         tabWidthSpinner.SetSize(110, 0);
 
-        // Color theme
-        GUI.Label.New(appCard, "Color theme");
-        var themeDesc =
-            GUI.Label.New(appCard, "Switch the shell between dark and light surfaces.");
-        themeDesc.SetWordWrap(1);
-        themeDropdown = GUI.Dropdown.New(appCard);
+        var themeControls =
+            AddPreferenceRow(appCard, "Color theme", "Switch between dark and light surfaces.");
+        themeDropdown = GUI.Dropdown.New(themeControls);
         themeDropdown.AddItem("Dark");
         themeDropdown.AddItem("Light");
+        minimapCheck = GUI.Checkbox.New(appCard, "Show the minimap");
+        statusBarCheck = GUI.Checkbox.New(appCard, "Show the status bar");
+        fullscreenCheck = GUI.Checkbox.New(appCard, "Start in fullscreen");
         resetAppearanceButton = GUI.Button.New(appCard, "Restore Appearance Defaults");
         resetAppearanceButton.SetStyle(2);
 
         var editCard = GUI.GroupBox.New(body, "Editing");
         editCard.SetMargin(2);
 
-        minimapCheck = GUI.Checkbox.New(editCard, "Show the minimap");
         autoCheckCheck = GUI.Checkbox.New(editCard, "Run diagnostics while typing");
         codeFoldingCheck = GUI.Checkbox.New(editCard, "Enable code folding");
         wordWrapCheck = GUI.Checkbox.New(editCard, "Wrap long lines");
@@ -505,27 +521,22 @@ class IdeOverlays {
         var intelliCard = GUI.GroupBox.New(body, "IntelliSense");
         intelliCard.SetMargin(2);
 
-        // Diagnostics delay
-        GUI.Label.New(intelliCard, "Diagnostics delay");
-        var diagnosticsDelayDesc = GUI.Label.New(intelliCard, "Idle time before live checks run.");
-        diagnosticsDelayDesc.SetWordWrap(1);
+        var diagnosticsDelayBox =
+            AddPreferenceRow(intelliCard, "Diagnostics delay", "Idle time before live checks.");
         var diagnosticsDelayControls = GUI.HBox.New();
         diagnosticsDelayControls.SetSpacing(10.0);
-        intelliCard.AddChild(diagnosticsDelayControls);
+        diagnosticsDelayBox.AddChild(diagnosticsDelayControls);
         diagnosticsDelaySpinner = GUI.Spinner.New(diagnosticsDelayControls);
         diagnosticsDelaySpinner.SetRange(100.0, 5000.0);
         diagnosticsDelaySpinner.SetStep(50.0);
         diagnosticsDelaySpinner.SetDecimals(0);
         diagnosticsDelaySpinner.SetSize(130, 0);
 
-        // Completion delay
-        GUI.Label.New(intelliCard, "Completion delay");
-        var completionDelayDesc =
-            GUI.Label.New(intelliCard, "Debounce time for identifier completions.");
-        completionDelayDesc.SetWordWrap(1);
+        var completionDelayBox =
+            AddPreferenceRow(intelliCard, "Completion delay", "Debounce time for completions.");
         var completionDelayControls = GUI.HBox.New();
         completionDelayControls.SetSpacing(10.0);
-        intelliCard.AddChild(completionDelayControls);
+        completionDelayBox.AddChild(completionDelayControls);
         completionDelaySpinner = GUI.Spinner.New(completionDelayControls);
         completionDelaySpinner.SetRange(0.0, 2000.0);
         completionDelaySpinner.SetStep(25.0);
@@ -555,6 +566,41 @@ class IdeOverlays {
         applySettingsButton.SetStyle(1);
     }
 
+    /// @brief Add a preference row with a flexible text lane and fixed control lane.
+    /// @details The settings dock uses this helper for every label/control pair so
+    ///          long descriptions wrap in their lane instead of colliding with
+    ///          spinners, dropdowns, or buttons. The returned VBox is the control
+    ///          lane; callers attach the actual input widgets to it.
+    hide func AddPreferenceRow(card: GUI.GroupBox,
+                               titleText: String,
+                               descriptionText: String) -> GUI.VBox {
+        var row = GUI.HBox.New();
+        row.SetSpacing(14.0);
+        row.SetPadding(0.0);
+        card.AddChild(row);
+
+        var textCol = GUI.VBox.New();
+        textCol.SetSpacing(3.0);
+        textCol.SetPadding(0.0);
+        textCol.SetFlex(1.0);
+        row.AddChild(textCol);
+
+        var title = GUI.Label.New(textCol, titleText);
+        title.SetMargin(0);
+        if descriptionText != "" {
+            var description = GUI.Label.New(textCol, descriptionText);
+            description.SetWordWrap(1);
+            description.SetMargin(0);
+        }
+
+        var controls = GUI.VBox.New();
+        controls.SetSpacing(8.0);
+        controls.SetPadding(0.0);
+        controls.SetSize(PREFERENCE_CONTROL_WIDTH, 0);
+        row.AddChild(controls);
+        return controls;
+    }
+
     hide func setupAboutPanel(shell: app_shell.AppShell) {
         aboutPanel = GUI.FloatingPanel.New(shell.app);
         aboutPanel.SetSize(ABOUT_PANEL_WIDTH, ABOUT_PANEL_HEIGHT);
@@ -570,11 +616,11 @@ class IdeOverlays {
 
         var aboutLine1 = GUI.Label.New(
             root,
-            "A native IDE for Zia and Viper BASIC with live diagnostics, hover info, project search, and an integrated editor.");
+            "A native IDE for Zia with live diagnostics, hover info, project search, and an integrated editor.");
         aboutLine1.SetWordWrap(1);
         var aboutLine2 = GUI.Label.New(
             root,
-            "This build now uses inline settings controls instead of the old stacked dialog flow.");
+            "Viper BASIC files can be edited, built, and run; advanced language assistance is currently Zia-focused.");
         aboutLine2.SetWordWrap(1);
         var aboutLine3 = GUI.Label.New(
             root,
@@ -597,7 +643,7 @@ class IdeOverlays {
         var panelW = SETTINGS_DOCK_WIDTH;
         if rootW < 760 { panelW = SETTINGS_DOCK_MIN_WIDTH; }
         if rootW > 1320 { panelW = SETTINGS_DOCK_MAX_WIDTH; }
-        var maxW = (rootW * 55) / 100;
+        var maxW = (rootW * SETTINGS_DOCK_SCREEN_PERCENT) / 100;
         if panelW > maxW { panelW = maxW; }
         if maxW >= SETTINGS_DOCK_MIN_WIDTH and panelW < SETTINGS_DOCK_MIN_WIDTH {
             panelW = SETTINGS_DOCK_MIN_WIDTH;

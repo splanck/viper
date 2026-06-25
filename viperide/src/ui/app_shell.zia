@@ -137,6 +137,8 @@ class AppShell {
     expose GUI.MenuItem miDebugStart;
     expose GUI.MenuItem miDebugContinue;
     expose GUI.MenuItem miDebugStepOver;
+    expose GUI.MenuItem miDebugStepIn;
+    expose GUI.MenuItem miDebugStepOut;
     expose GUI.MenuItem miDebugPause;
     expose GUI.MenuItem miDebugRestart;
     expose GUI.MenuItem miDebugStop;
@@ -220,6 +222,7 @@ class AppShell {
     expose GUI.MenuItem ecRename;
     expose GUI.MenuItem ecFormat;
     expose GUI.MenuItem ecToggleBreakpoint;
+    expose GUI.MenuItem ecEvaluate;
     expose GUI.MenuItem ecPalette;
 
     // Tab context menu (right-click on the editor tab strip).
@@ -246,6 +249,8 @@ class AppShell {
     // State
     expose Boolean sidebarVisible;
     expose Integer activeSurfaceKind;
+    expose Integer activeDocumentSurfaceKind;
+    expose Integer activeToolPanelKind;
     expose String contextPath;
     expose String contextDir;
     expose Integer tabContextIndex; // Tab the tab-context-menu acts on (-1 = active).
@@ -266,6 +271,8 @@ class AppShell {
     expose func init() {
         sidebarVisible = true;
         activeSurfaceKind = 0;
+        activeDocumentSurfaceKind = 0;
+        activeToolPanelKind = 0;
         contextPath = "";
         contextDir = "";
         tabContextIndex = -1;
@@ -431,6 +438,10 @@ class AppShell {
         miDebugContinue.SetShortcut("F7");
         miDebugStepOver = buildMenu.AddItem("Step Over");
         miDebugStepOver.SetShortcut("F10");
+        miDebugStepIn = buildMenu.AddItem("Step Into");
+        miDebugStepIn.SetShortcut("Ctrl+F10");
+        miDebugStepOut = buildMenu.AddItem("Step Out");
+        miDebugStepOut.SetShortcut("Ctrl+Shift+F10");
         miDebugPause = buildMenu.AddItem("Pause Debugging");
         miDebugRestart = buildMenu.AddItem("Restart Debugging");
         miDebugRestart.SetShortcut("Ctrl+Shift+F5");
@@ -612,6 +623,7 @@ class AppShell {
         ecFormat.SetShortcut("Shift+Alt+F");
         ecToggleBreakpoint = editorContextMenu.AddItem("Toggle Breakpoint");
         ecToggleBreakpoint.SetShortcut("F9");
+        ecEvaluate = editorContextMenu.AddItem("Evaluate at Cursor");
         editorContextMenu.AddSeparator();
         ecPalette = editorContextMenu.AddItem("Command Palette...");
         ecPalette.SetShortcut("Ctrl+Shift+P");
@@ -875,7 +887,7 @@ class AppShell {
     hide func UseOutputPane() {
         outputPaneMode = true;
         outputListBox.SetVisible(0);
-        if activeSurfaceKind == 2 {
+        if activeToolPanelKind == 2 {
             outputPane.SetVisible(1);
         }
     }
@@ -883,7 +895,7 @@ class AppShell {
     expose func UseOutputRows() {
         outputPaneMode = false;
         outputPane.SetVisible(0);
-        if activeSurfaceKind == 2 {
+        if activeToolPanelKind == 2 {
             outputListBox.SetVisible(1);
         }
     }
@@ -1006,13 +1018,13 @@ class AppShell {
 
     expose func CopySelectedToolRow() -> Boolean {
         var selectedText = outputListBox.GetSelectedText();
-        if activeSurfaceKind == 2 and outputPaneMode {
+        if activeToolPanelKind == 2 and outputPaneMode {
             selectedText = outputPane.GetSelection();
         }
-        if activeSurfaceKind == 1 { selectedText = diagListBox.GetSelectedText(); }
-        if activeSurfaceKind == 3 { selectedText = searchListBox.GetSelectedText(); }
-        if activeSurfaceKind == 4 { selectedText = referencesListBox.GetSelectedText(); }
-        if activeSurfaceKind == 5 { selectedText = debugListBox.GetSelectedText(); }
+        if activeToolPanelKind == 1 { selectedText = diagListBox.GetSelectedText(); }
+        if activeToolPanelKind == 3 { selectedText = searchListBox.GetSelectedText(); }
+        if activeToolPanelKind == 4 { selectedText = referencesListBox.GetSelectedText(); }
+        if activeToolPanelKind == 5 { selectedText = debugListBox.GetSelectedText(); }
         if selectedText == "" { return false; }
         GUI.Clipboard.SetText(selectedText);
         return true;
@@ -1222,7 +1234,7 @@ class AppShell {
     expose func ShowProblemsPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolProblemsTab);
-        activeSurfaceKind = 1;
+        activeToolPanelKind = 1;
         diagListBox.SetVisible(1);
         outputPane.SetVisible(0);
         outputListBox.SetVisible(0);
@@ -1243,13 +1255,14 @@ class AppShell {
             ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
+            activeToolPanelKind = 0;
         }
     }
 
     expose func ShowOutputPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolOutputTab);
-        activeSurfaceKind = 2;
+        activeToolPanelKind = 2;
         if outputPaneMode {
             outputPane.SetVisible(1);
             outputListBox.SetVisible(0);
@@ -1276,13 +1289,14 @@ class AppShell {
             ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
+            activeToolPanelKind = 0;
         }
     }
 
     expose func ShowSearchPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolSearchTab);
-        activeSurfaceKind = 3;
+        activeToolPanelKind = 3;
         searchListBox.SetVisible(1);
         diagListBox.SetVisible(0);
         outputPane.SetVisible(0);
@@ -1303,13 +1317,14 @@ class AppShell {
             ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
+            activeToolPanelKind = 0;
         }
     }
 
     expose func ShowReferencesPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolReferencesTab);
-        activeSurfaceKind = 4;
+        activeToolPanelKind = 4;
         referencesListBox.SetVisible(1);
         diagListBox.SetVisible(0);
         outputPane.SetVisible(0);
@@ -1330,13 +1345,14 @@ class AppShell {
             ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
+            activeToolPanelKind = 0;
         }
     }
 
     expose func ShowDebugPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolDebugTab);
-        activeSurfaceKind = 5;
+        activeToolPanelKind = 5;
         debugListBox.SetVisible(1);
         diagListBox.SetVisible(0);
         outputPane.SetVisible(0);
@@ -1357,6 +1373,7 @@ class AppShell {
             ShowReferencesPanel();
         } else {
             toolTabBar.SetVisible(0);
+            activeToolPanelKind = 0;
         }
     }
 
@@ -1403,6 +1420,7 @@ class AppShell {
 
     expose func SelectSurface(kind: Integer) {
         activeSurfaceKind = kind;
+        activeDocumentSurfaceKind = kind;
         editorRow.SetVisible(1);
     }
 

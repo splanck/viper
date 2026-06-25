@@ -102,8 +102,7 @@ func applyShellFont(shell: app_shell.AppShell) {
 ///          a warning if it fails). Otherwise walks the OS-conventional
 ///          monospace chain (SF Mono / Menlo / Monaco, Consolas /
 ///          Courier, DejaVu Sans Mono).
-func applyEditorFont(shell: app_shell.AppShell,
-                     engine: editor_engine.EditorEngine,
+func applyEditorFont(engine: editor_engine.EditorEngine,
                      appSettings: settings.SettingsManager) {
     appSettings.fontSize = clampFontSize(appSettings.fontSize);
 
@@ -152,7 +151,7 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     if appSettings.tabWidth > 8 { appSettings.tabWidth = 8; }
 
     appSettings.ApplyTheme();
-    applyEditorFont(shell, engine, appSettings);
+    applyEditorFont(engine, appSettings);
     engine.editor.SetTabSize(appSettings.tabWidth);
     if appSettings.insertSpaces {
         engine.editor.SetInsertSpaces(1);
@@ -193,6 +192,12 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     } else {
         shell.minimap.SetVisible(0);
     }
+    if appSettings.statusBarVisible {
+        shell.statusBar.SetVisible(1);
+    } else {
+        shell.statusBar.SetVisible(0);
+    }
+    shell.app.SetFullscreen(appSettings.fullscreen);
 
     applyUiZoom(shell, appSettings);
 }
@@ -202,13 +207,19 @@ func handleToggleSidebar(shell: app_shell.AppShell) {
     shell.ToggleSidebar();
 }
 
-/// @brief Toggle status bar visibility.
-func handleToggleStatusBar(shell: app_shell.AppShell) {
+/// @brief Toggle status bar visibility and persist the new state.
+func handleToggleStatusBar(shell: app_shell.AppShell,
+                           appSettings: settings.SettingsManager) {
     if shell.statusBar.IsVisible() != 0 {
         shell.statusBar.SetVisible(0);
+        appSettings.statusBarVisible = false;
+        shell.SetStatusLeft("Status bar hidden");
     } else {
         shell.statusBar.SetVisible(1);
+        appSettings.statusBarVisible = true;
+        shell.SetStatusLeft("Status bar shown");
     }
+    appSettings.Save();
 }
 
 /// @brief Increase editor font size by 1pt; persist setting.
@@ -216,7 +227,7 @@ func handleZoomIn(shell: app_shell.AppShell,
                   engine: editor_engine.EditorEngine,
                   appSettings: settings.SettingsManager) {
     appSettings.fontSize = clampFontSize(appSettings.fontSize + 1);
-    applyEditorFont(shell, engine, appSettings);
+    applyEditorFont(engine, appSettings);
     appSettings.Save();
     shell.SetStatusLeft("Font size: " + appSettings.fontSize);
 }
@@ -226,7 +237,7 @@ func handleZoomOut(shell: app_shell.AppShell,
                    engine: editor_engine.EditorEngine,
                    appSettings: settings.SettingsManager) {
     appSettings.fontSize = clampFontSize(appSettings.fontSize - 1);
-    applyEditorFont(shell, engine, appSettings);
+    applyEditorFont(engine, appSettings);
     appSettings.Save();
     shell.SetStatusLeft("Font size: " + appSettings.fontSize);
 }
@@ -236,7 +247,7 @@ func handleZoomReset(shell: app_shell.AppShell,
                      engine: editor_engine.EditorEngine,
                      appSettings: settings.SettingsManager) {
     appSettings.fontSize = settings.DEFAULT_FONT_SIZE;
-    applyEditorFont(shell, engine, appSettings);
+    applyEditorFont(engine, appSettings);
     appSettings.Save();
     shell.SetStatusLeft("Font size reset to " + settings.DEFAULT_FONT_SIZE);
 }
@@ -402,13 +413,19 @@ func handleRecentFiles(shell: app_shell.AppShell,
     shell.SetStatusLeft("Recent files");
 }
 
-/// @brief Toggle fullscreen window state.
-func handleFullscreen(shell: app_shell.AppShell) {
+/// @brief Toggle fullscreen window state and persist the new state.
+func handleFullscreen(shell: app_shell.AppShell,
+                      appSettings: settings.SettingsManager) {
     if shell.app.IsFullscreen() {
         shell.app.SetFullscreen(false);
+        appSettings.fullscreen = false;
+        shell.SetStatusLeft("Fullscreen disabled");
     } else {
         shell.app.SetFullscreen(true);
+        appSettings.fullscreen = true;
+        shell.SetStatusLeft("Fullscreen enabled");
     }
+    appSettings.Save();
 }
 
 /// @brief Toggle minimap visibility; persist; return new visibility.
@@ -443,6 +460,8 @@ func handleSettings(shell: app_shell.AppShell,
     settingsInfo = settingsInfo + "Theme: " + appSettings.theme + "\n";
     settingsInfo = settingsInfo + "Tab width: " + appSettings.tabWidth + "\n";
     settingsInfo = settingsInfo + "Code folding: " + appSettings.codeFolding + "\n";
+    settingsInfo = settingsInfo + "Status bar: " + appSettings.statusBarVisible + "\n";
+    settingsInfo = settingsInfo + "Fullscreen: " + appSettings.fullscreen + "\n";
     settingsInfo = settingsInfo + "Auto-check on save: " + appSettings.autoCheckOnSave + "\n";
     settingsInfo = settingsInfo + "\nQuick controls\n";
     settingsInfo = settingsInfo + "Ctrl+= / Ctrl+-  Zoom in or out\n";
@@ -465,7 +484,7 @@ func handleSettings(shell: app_shell.AppShell,
         var requestedSize = Convert.ToInt(sizeText);
         if requestedSize >= 6 and requestedSize <= 72 {
             appSettings.fontSize = requestedSize;
-            applyEditorFont(shell, engine, appSettings);
+            applyEditorFont(engine, appSettings);
             appSettings.Save();
             shell.SetStatusLeft("Font size: " + appSettings.fontSize);
         } else {
@@ -480,12 +499,12 @@ func handleSettings(shell: app_shell.AppShell,
     var fontText = GUI.MessageBox.Prompt("Editor Font Path", fontPrompt);
     if fontText == "default" {
         appSettings.fontPath = "";
-        applyEditorFont(shell, engine, appSettings);
+        applyEditorFont(engine, appSettings);
         appSettings.Save();
         shell.SetStatusLeft("Using default editor font");
     } else if fontText != "" {
         appSettings.fontPath = fontText;
-        applyEditorFont(shell, engine, appSettings);
+        applyEditorFont(engine, appSettings);
         appSettings.Save();
         shell.SetStatusLeft("Using custom editor font");
     }
@@ -495,9 +514,9 @@ func handleSettings(shell: app_shell.AppShell,
 func handleAbout() {
     GUI.MessageBox.Info("About ViperIDE",
         "ViperIDE\n\n"
-        + "A lightweight IDE for Zia and Viper Basic, built on the Viper Runtime.\n\n"
+        + "A lightweight IDE for Zia and Viper BASIC, built on the Viper Runtime.\n\n"
         + "Demo highlights\n"
         + "- Docked panels, toolbars, menus, and dialogs\n"
-        + "- Code editor, project search, diagnostics, and minimap\n"
+        + "- Code editor, project search, Zia diagnostics, and minimap\n"
         + "- Persistent editor settings for fonts, theme, tabs, and visibility");
 }

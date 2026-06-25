@@ -5,12 +5,14 @@ bind "run_config";
 bind Viper.String as Str;
 bind Viper.Core.Convert as Convert;
 bind Viper.Collections.Seq as Seq;
+bind Viper.Collections.Map as Map;
 bind Viper.Core.Object as Obj;
 bind Viper.System.Process as Process;
 bind Viper.System.Environment as Env;
 bind Viper.System.Machine as Machine;
 bind Viper.IO.Path as Path;
 bind Viper.IO as IO;
+bind Json = Viper.Text.Json;
 
 // ============================================================================
 // BuildSystem — compile and run Zia/BASIC programs from the IDE
@@ -20,6 +22,8 @@ bind Viper.IO as IO;
 //
 // Diagnostic format: "file.zia:line:col: error[code]: message"
 // ============================================================================
+
+final MAX_BUILD_OUTPUT_CHARS = 250000;
 
 class BuildSystem {
     // Build state
@@ -252,6 +256,10 @@ class BuildSystem {
     func AppendOutput(text: String) {
         if text == "" { return; }
         buildOutput = buildOutput + text;
+        if Str.Length(buildOutput) > MAX_BUILD_OUTPUT_CHARS {
+            buildOutput = "[output truncated]\n"
+                + Str.Mid(buildOutput, Str.Length(buildOutput) - MAX_BUILD_OUTPUT_CHARS + 1);
+        }
         outputDelta = outputDelta + text;
     }
 
@@ -280,6 +288,9 @@ class BuildSystem {
     // Populates `diagnostics` list. Success is determined by exit code in callers.
     func ParseBuildOutput() {
         diagnostics = [];
+        if ParseJsonDiagnostics(buildOutput) {
+            return;
+        }
         var lines = Str.Split(buildOutput, "\n");
         var i = 0;
         while i < Seq.get_Length(lines) {
@@ -289,6 +300,81 @@ class BuildSystem {
             }
             i = i + 1;
         }
+    }
+
+    /// @brief Parse `--diagnostic-format=json` output from the viper CLI.
+    /// @details The CLI writes a compact object with a `diagnostics` array. This
+    ///          parser accepts that object even when stdout/stderr wrappers add
+    ///          text before or after it, and returns false so callers can fall
+    ///          back to legacy text parsing when JSON is absent.
+    /// @param text Complete captured build output.
+    /// @return true when a JSON diagnostics object was found and consumed.
+    func ParseJsonDiagnostics(text: String) -> Boolean {
+        var start = Str.IndexOf(text, "{\"diagnostics\"");
+        if start == 0 { return false; }
+        var jsonText = Str.Mid(text, start);
+        var endPos = Str.LastIndexOf(jsonText, "}");
+        if endPos <= 0 { return false; }
+        jsonText = Str.Left(jsonText, endPos);
+        if Json.IsValid(jsonText) == false { return false; }
+
+        var root = Json.Parse(jsonText);
+        var records = Map.Get(root, "diagnostics");
+        if records == null { return false; }
+
+        var i = 0;
+        while i < Seq.get_Length(records) {
+            var record = Seq.Get(records, i);
+            var diag = DiagnosticFromJsonRecord(record);
+            if diag != null {
+                diagnostics.add(diag);
+            }
+            i = i + 1;
+        }
+        return true;
+    }
+
+    /// @brief Convert one CLI JSON diagnostic record to the IDE diagnostic model.
+    /// @details Prefer the primary location object, then fall back to the range
+    ///          begin object because some diagnostics only have concrete ranges.
+    func DiagnosticFromJsonRecord(record: Any) -> diagnostic.Diagnostic? {
+        if record == null { return null; }
+        var loc = Map.Get(record, "location");
+        var path = "";
+        var lineNo = 0;
+        var colNo = 0;
+        if loc != null {
+            path = Map.GetStr(loc, "file");
+            lineNo = Map.GetInt(loc, "line");
+            colNo = Map.GetInt(loc, "column");
+        }
+        if path == "" or lineNo <= 0 or colNo <= 0 {
+            var range = Map.Get(record, "range");
+            if range != null {
+                var begin = Map.Get(range, "begin");
+                if begin != null {
+                    path = Map.GetStr(begin, "file");
+                    lineNo = Map.GetInt(begin, "line");
+                    colNo = Map.GetInt(begin, "column");
+                }
+            }
+        }
+        if path == "" or lineNo <= 0 or colNo <= 0 { return null; }
+
+        var diag = new diagnostic.Diagnostic();
+        diag.filePath = path;
+        diag.line = lineNo;
+        diag.column = colNo;
+        var sev = Map.GetStr(record, "severity");
+        diag.severity = diagnostic.SEV_ERROR;
+        if sev == "warning" {
+            diag.severity = diagnostic.SEV_WARNING;
+        } else if sev == "note" or sev == "info" {
+            diag.severity = diagnostic.SEV_INFO;
+        }
+        diag.code = Map.GetStr(record, "code");
+        diag.message = Map.GetStr(record, "message");
+        return diag;
     }
 
     expose func ParseDiagnosticLine(line: String) -> diagnostic.Diagnostic? {

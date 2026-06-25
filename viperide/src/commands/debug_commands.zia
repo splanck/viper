@@ -13,6 +13,8 @@ bind Viper.GUI;
 bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Obj = Viper.Core.Object;
 
 func handleToggleBreakpoint(shell: app_shell.AppShell,
                             docMgr: document_manager.DocumentManager,
@@ -94,7 +96,15 @@ func handleDebugStart(shell: app_shell.AppShell,
         return;
     }
 
-    file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+    var saveResult = file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+    if saveResult.success == false {
+        if saveResult.message != "" {
+            shell.SetStatusLeft("Debug canceled: " + saveResult.message);
+        } else {
+            shell.SetStatusLeft("Debug canceled: files were not saved");
+        }
+        return;
+    }
     file_commands.SaveEditorState(docMgr, engine);
     maybeDoc = docMgr.GetActive();
     if maybeDoc == null { return; }
@@ -145,13 +155,21 @@ func DebugUpdate(shell: app_shell.AppShell,
     if session == null or session.processHandle == null { return; }
     if session.Poll() {
         Publish(shell, docMgr, engine, tabs, session);
+        if session.evalJustArrived {
+            session.evalJustArrived = false;
+            var em = session.lastEvalExpr + " = ";
+            if session.lastEvalOk {
+                em = em + session.lastEvalValue + " : " + session.lastEvalType;
+            } else {
+                em = em + "(not in scope)";
+            }
+            shell.SetStatusLeft(em);
+            GUI.Toast.Info(em);
+        }
     }
 }
 
 func handleDebugContinue(shell: app_shell.AppShell,
-                         docMgr: document_manager.DocumentManager,
-                         engine: editor_engine.EditorEngine,
-                         tabs: editor_tabs.EditorTabs,
                          session: debug_session.DebugSession) {
     if session.Continue() {
         shell.SetStatusLeft("Running...");
@@ -161,9 +179,6 @@ func handleDebugContinue(shell: app_shell.AppShell,
 }
 
 func handleDebugStepOver(shell: app_shell.AppShell,
-                         docMgr: document_manager.DocumentManager,
-                         engine: editor_engine.EditorEngine,
-                         tabs: editor_tabs.EditorTabs,
                          session: debug_session.DebugSession) {
     if session.StepOver() {
         shell.SetStatusLeft("Stepping...");
@@ -172,10 +187,27 @@ func handleDebugStepOver(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Step into the next debuggable call in a paused debug session.
+func handleDebugStepIn(shell: app_shell.AppShell,
+                       session: debug_session.DebugSession) {
+    if session.StepIn() {
+        shell.SetStatusLeft("Stepping into...");
+    } else {
+        shell.SetStatusLeft("Not paused — nothing to step into");
+    }
+}
+
+/// @brief Step out of the current function in a paused debug session.
+func handleDebugStepOut(shell: app_shell.AppShell,
+                        session: debug_session.DebugSession) {
+    if session.StepOut() {
+        shell.SetStatusLeft("Stepping out...");
+    } else {
+        shell.SetStatusLeft("Not paused — nothing to step out of");
+    }
+}
+
 func handleDebugPause(shell: app_shell.AppShell,
-                      docMgr: document_manager.DocumentManager,
-                      engine: editor_engine.EditorEngine,
-                      tabs: editor_tabs.EditorTabs,
                       session: debug_session.DebugSession) {
     if session.Pause() {
         shell.SetStatusLeft("Pausing...");
@@ -185,9 +217,6 @@ func handleDebugPause(shell: app_shell.AppShell,
 }
 
 func handleDebugStop(shell: app_shell.AppShell,
-                     docMgr: document_manager.DocumentManager,
-                     engine: editor_engine.EditorEngine,
-                     tabs: editor_tabs.EditorTabs,
                      session: debug_session.DebugSession) {
     if session.Terminate() {
         shell.SetDebugOutput("[debug] terminated");
@@ -195,6 +224,63 @@ func handleDebugStop(shell: app_shell.AppShell,
         GUI.Toast.Info("Debugging stopped");
     } else {
         shell.SetStatusLeft("No active debug session");
+    }
+}
+
+hide func isIdentChar(ch: String) -> Boolean {
+    return (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z")
+        or (ch >= "0" and ch <= "9") or ch == "_";
+}
+
+/// @brief Extract the identifier spanning 0-based column `col0` of `lineText`.
+hide func identifierAt(lineText: String, col0: Integer) -> String {
+    var n = Str.Length(lineText);
+    var p = col0 + 1; // 1-based for MidLen
+    if p < 1 or p > n { return ""; }
+    if isIdentChar(Str.MidLen(lineText, p, 1)) == false { return ""; }
+    var start = p;
+    while start > 1 and isIdentChar(Str.MidLen(lineText, start - 1, 1)) {
+        start = start - 1;
+    }
+    var endp = p;
+    while endp < n and isIdentChar(Str.MidLen(lineText, endp + 1, 1)) {
+        endp = endp + 1;
+    }
+    return Str.MidLen(lineText, start, endp - start + 1);
+}
+
+/// @brief The identifier under the editor cursor, or "" if none.
+hide func wordAtCursor(engine: editor_engine.EditorEngine) -> String {
+    var idx = engine.GetCursorLine() - 1; // 0-based source line
+    var col0 = engine.GetCursorCol() - 1; // 0-based column
+    var source = engine.GetTextSnapshot();
+    var lines = Str.Split(source, "\n");
+    if idx < 0 or idx >= Seq.get_Length(lines) { return ""; }
+    var lineText = Obj.ToString(Seq.Get(lines, idx));
+    if Str.EndsWith(lineText, "\r") {
+        lineText = Str.Left(lineText, Str.Length(lineText) - 1);
+    }
+    return identifierAt(lineText, col0);
+}
+
+/// @brief Editor context-menu "Evaluate": evaluate the identifier under the
+///        cursor at the current debug stop. The result arrives asynchronously
+///        and is surfaced by DebugUpdate.
+func handleEvaluateAtCursor(shell: app_shell.AppShell,
+                            engine: editor_engine.EditorEngine,
+                            session: debug_session.DebugSession) {
+    if session == null or session.IsActive() == false or session.stopped == false {
+        shell.SetStatusLeft("Evaluate: pause at a breakpoint first");
+        GUI.Toast.Info("Evaluate works while paused at a breakpoint");
+        return;
+    }
+    var word = wordAtCursor(engine);
+    if word == "" {
+        shell.SetStatusLeft("Evaluate: place the cursor on a variable");
+        return;
+    }
+    if session.Evaluate(word) {
+        shell.SetStatusLeft("Evaluating " + word + "...");
     }
 }
 
@@ -220,21 +306,18 @@ func Publish(shell: app_shell.AppShell,
     }
 }
 
-/// @brief True if two paths denote the same source file, tolerating form
-///        differences the debug adapter introduces. The adapter reports the
-///        canonical path (symlinks resolved, `./` collapsed), which may differ
-///        in spelling from the path the editor opened the file with. Compare on
-///        the lexically-normalised form, then accept a path-suffix match so a
-///        symlinked/prefixed root (e.g. macOS `/var` -> `/private/var`) still
-///        maps the stop onto the already-open document instead of duplicating it.
+/// @brief True if two paths denote the same source file after absolute
+///        lexical normalization.
+/// @details Debugger stop paths can differ from editor paths by relative
+///          spelling or `.`/`..` segments. Normalized absolute equality covers
+///          those cases without the false positives caused by suffix matching
+///          similarly named files in different directories.
 func SamePath(a: String, b: String) -> Boolean {
     if a == b { return true; }
     if a == "" or b == "" { return false; }
-    var na = Path.Norm(a);
-    var nb = Path.Norm(b);
-    if na == nb { return true; }
-    if Str.EndsWith(na, nb) or Str.EndsWith(nb, na) { return true; }
-    return false;
+    var na = Path.Norm(Path.Abs(a));
+    var nb = Path.Norm(Path.Abs(b));
+    return na == nb;
 }
 
 func OpenStopLocation(shell: app_shell.AppShell,

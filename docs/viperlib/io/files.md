@@ -801,9 +801,12 @@ Workspace file inventory helper for IDEs and editor tools.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Enumerate(root, extensionsCsv, excludesCsv, includeDirs)` | `Seq(String, String, String, Boolean)` | Recursively enumerate workspace entries under `root` |
+| `Status(root, extensionsCsv, excludesCsv, includeDirs)` | `Map(String, String, String, Boolean)` | Return traversal status without materializing every entry |
 | `ShouldIgnore(root, relativePath, patternsCsv)` | `Boolean(String, String, String)` | Return whether a relative path is ignored by hard excludes, `.gitignore`, or explicit patterns |
 
 `Enumerate` returns a `Seq` of `Map` records. Each record includes `path`, `relativePath`, `name`, `extension`, `kind`, `isDirectory`, `id`, `size`, and `modified`.
+
+`Status` returns a `Map` with `valid`, `root`, `entryCount`, `maxEntries`, `truncated`, and `diagnostics`. It uses the same filters and ignore rules as `Enumerate`, but it is intended for IDE progress/status surfaces and large-workspace guardrails where allocating every entry would be unnecessary.
 
 ### Notes
 

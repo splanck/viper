@@ -70,6 +70,8 @@ class CommandRegistry {
         Add("debugstart", "Start Debugging", "Launch the active file in the debug protocol", "F6", "", true);
         Add("debugcontinue", "Continue Debugging", "Continue a paused debug session", "F7", "", true);
         Add("debugstepover", "Step Over", "Step over the current debug line", "F10", "", true);
+        Add("debugstepin", "Step Into", "Step into the next debuggable call", "Ctrl+F10", "", true);
+        Add("debugstepout", "Step Out", "Run until the current function returns", "Ctrl+Shift+F10", "", true);
         Add("debugpause", "Pause Debugging", "Pause the active debug session", "", "", true);
         Add("debugrestart", "Restart Debugging", "Terminate and relaunch the active debug session", "Ctrl+Shift+F5", "", true);
         Add("debugstop", "Stop Debugging", "Terminate the active debug session", "", "", true);

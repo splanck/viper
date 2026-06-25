@@ -6,6 +6,13 @@
 // File: src/runtime/io/rt_ide_primitives.cpp
 // Purpose: Workspace, asset, manifest, and transactional edit helpers used by
 //          ViperIDE and editor-style tooling.
+// Key invariants:
+//   - Workspace edit targets are validated before any disk mutation is attempted.
+//   - Workspace/file-index helpers never depend on compiler-layer services.
+// Ownership/Lifetime:
+//   - Runtime strings borrowed from lower-level APIs are released after copying.
+//   - Map and sequence results are runtime-owned objects returned to callers.
+// Links: src/runtime/io/rt_ide_primitives.h, src/runtime/io/rt_watcher.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -943,6 +950,109 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
     }
 }
 
+/// @brief Return traversal metadata for a workspace file-index request.
+/// @details Mirrors `rt_workspace_file_index_enumerate` filtering and ignore
+///          behavior, but records only count/cap/diagnostic data so IDEs can
+///          present large-workspace status without allocating every entry map.
+/// @param root_s Runtime string naming the root directory.
+/// @param extensions_csv Comma-separated extension allow-list.
+/// @param excludes_csv Comma-separated additional ignore patterns.
+/// @param include_dirs Non-zero to count directories that pass filters.
+/// @return Runtime map containing valid/root/entryCount/maxEntries/truncated/diagnostics.
+void *rt_workspace_file_index_status(rt_string root_s,
+                                     rt_string extensions_csv,
+                                     rt_string excludes_csv,
+                                     int8_t include_dirs) {
+    void *status = rt_map_new();
+    void *diagnostics = rt_seq_new_owned();
+    rt_map_set_bool(status, rt_const_cstr("valid"), 1);
+    mapSetStr(status, "root", "");
+    rt_map_set_int(status, rt_const_cstr("entryCount"), 0);
+    rt_map_set_int(status, rt_const_cstr("maxEntries"), kWorkspaceFileIndexMaxEntries);
+    rt_map_set_bool(status, rt_const_cstr("truncated"), 0);
+    rt_map_set(status, rt_const_cstr("diagnostics"), diagnostics);
+
+    try {
+        fs::path root = toStd(root_s);
+        if (root.empty()) {
+            rt_map_set_bool(status, rt_const_cstr("valid"), 0);
+            pushDiagnostic(diagnostics, "workspace root is empty", "", 0, "fileindex.root");
+            releaseObject(diagnostics);
+            return status;
+        }
+        std::error_code ec;
+        root = fs::absolute(root, ec).lexically_normal();
+        if (ec || !fs::is_directory(root, ec)) {
+            rt_map_set_bool(status, rt_const_cstr("valid"), 0);
+            pushDiagnostic(
+                diagnostics, "workspace root is not a directory", root.string(), 0, "fileindex.root");
+            releaseObject(diagnostics);
+            return status;
+        }
+        mapSetStr(status, "root", root.string());
+
+        std::set<std::string> extensions;
+        for (std::string ext : splitList(toStd(extensions_csv))) {
+            if (!ext.empty() && ext[0] != '.')
+                ext.insert(ext.begin(), '.');
+            extensions.insert(lower(ext));
+        }
+        const auto extraPatterns = splitList(toStd(excludes_csv));
+
+        fs::recursive_directory_iterator it(
+            root, fs::directory_options::skip_permission_denied, ec);
+        fs::recursive_directory_iterator end;
+        int64_t counted = 0;
+        for (; !ec && it != end; it.increment(ec)) {
+            std::error_code relEc;
+            std::string rel =
+                normalizeSlashes(fs::relative(it->path(), root, relEc).generic_string());
+            if (relEc || rel.empty() || rel == ".")
+                continue;
+            bool isDir = it->is_directory(ec);
+            const auto gitignorePatterns = gitignorePatternsForPath(root, rel);
+            if (shouldIgnorePathWithPatterns(rel, isDir, extraPatterns, gitignorePatterns)) {
+                if (isDir)
+                    it.disable_recursion_pending();
+                continue;
+            }
+            if (isDir && !include_dirs)
+                continue;
+            if (!isDir && !extensions.empty()) {
+                std::string ext = lower(it->path().extension().generic_string());
+                if (!extensions.count(ext))
+                    continue;
+            }
+            if (counted >= kWorkspaceFileIndexMaxEntries) {
+                rt_map_set_bool(status, rt_const_cstr("truncated"), 1);
+                pushDiagnostic(diagnostics,
+                               "workspace file index entry cap reached",
+                               root.string(),
+                               0,
+                               "fileindex.truncated");
+                break;
+            }
+            counted++;
+        }
+        if (ec) {
+            rt_map_set_bool(status, rt_const_cstr("valid"), 0);
+            pushDiagnostic(diagnostics,
+                           "workspace traversal failed: " + ec.message(),
+                           root.string(),
+                           0,
+                           "fileindex.traverse");
+        }
+        rt_map_set_int(status, rt_const_cstr("entryCount"), counted);
+        releaseObject(diagnostics);
+        return status;
+    } catch (...) {
+        rt_map_set_bool(status, rt_const_cstr("valid"), 0);
+        pushDiagnostic(diagnostics, "workspace file index status failed", "", 0, "fileindex.exception");
+        releaseObject(diagnostics);
+        return status;
+    }
+}
+
 int8_t rt_workspace_file_index_should_ignore(rt_string root_s,
                                              rt_string relative_path,
                                              rt_string patterns) {
@@ -972,6 +1082,7 @@ void *rt_workspace_watcher_poll_batch(void *watcher, int64_t max_events) {
             void *event = rt_map_new();
             rt_string path = rt_watcher_event_path(watcher);
             mapSetStr(event, "path", toStd(path));
+            rt_string_unref(path);
             mapSetStr(event, "typeName", eventTypeName(type));
             rt_map_set_int(event, rt_const_cstr("type"), type);
             rt_map_set_int(
@@ -1324,6 +1435,61 @@ static bool writeWorkspaceEditTemp(const fs::path &path, const std::string &text
 #endif
 }
 
+/// @brief Flush the parent directory for a workspace edit target after renames.
+/// @details Atomic rename only becomes crash-durable once the directory entry is
+///          also flushed on platforms that expose directory flushing. This helper
+///          is intentionally best-effort: filesystems that reject directory flushes
+///          still keep the existing temp-file fsync and rename behavior.
+/// @param file Target file whose parent directory should be flushed.
+/// @return true when the directory was flushed, false when the platform or
+///         filesystem rejected the request.
+static bool flushWorkspaceEditDirectory(const fs::path &file) {
+    fs::path dir = file.parent_path();
+    if (dir.empty())
+        dir = ".";
+#if RT_PLATFORM_WINDOWS
+    HANDLE handle = CreateFileW(dir.wstring().c_str(),
+                                FILE_LIST_DIRECTORY,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                NULL,
+                                OPEN_EXISTING,
+                                FILE_FLAG_BACKUP_SEMANTICS,
+                                NULL);
+    if (handle == INVALID_HANDLE_VALUE)
+        return false;
+    bool ok = FlushFileBuffers(handle) != 0;
+    CloseHandle(handle);
+    return ok;
+#else
+    int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+    flags |= O_DIRECTORY;
+#endif
+    int fd = open(dir.c_str(), flags);
+    if (fd < 0)
+        return false;
+    bool ok = fsync(fd) == 0;
+    ok = close(fd) == 0 && ok;
+    return ok;
+#endif
+}
+
+/// @brief Copy basic filesystem permissions from an existing edit target to a temp file.
+/// @details Workspace edits replace files through same-directory temp files. Keeping
+///          original permission bits prevents refactors from stripping executable
+///          or read-only metadata on POSIX-like filesystems. Errors are best-effort
+///          because some platforms virtualize or deny permission updates.
+/// @param source Existing target file whose permissions are authoritative.
+/// @param temp Newly written temporary file that will replace @p source.
+static void preserveWorkspaceEditPermissions(const fs::path &source, const fs::path &temp) {
+    std::error_code ec;
+    auto status = fs::status(source, ec);
+    if (ec)
+        return;
+    ec.clear();
+    fs::permissions(temp, status.permissions(), fs::perm_options::replace, ec);
+}
+
 /// @brief Remove staged temp files and restore backups after an apply failure.
 /// @details Best-effort rollback: any replacement already moved into place is
 ///          removed before its backup is renamed back. Remaining staged temps
@@ -1404,6 +1570,7 @@ static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
             rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
             return result;
         }
+        preserveWorkspaceEditPermissions(target, write.temp);
         writes.push_back(std::move(write));
     }
 
@@ -1428,11 +1595,13 @@ static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
             rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
             return result;
         }
+        flushWorkspaceEditDirectory(write.file);
         applied++;
     }
     for (const auto &write : writes) {
         std::error_code ec;
         fs::remove(write.backup, ec);
+        flushWorkspaceEditDirectory(write.file);
     }
     rt_map_set_int(result, rt_const_cstr("appliedFiles"), applied);
     return result;

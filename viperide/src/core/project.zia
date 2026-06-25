@@ -4,7 +4,9 @@ bind Path = Viper.IO.Path;
 bind Str = Viper.String;
 bind IO = Viper.IO;
 bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
 bind Obj = Viper.Core.Object;
+bind Manifest = Viper.Project.Manifest;
 
 // ============================================================================
 // MODULE: project
@@ -25,11 +27,11 @@ bind Obj = Viper.Core.Object;
 //     defaults for entryFile/lang/version. `hasProjectFile` is the
 //     canonical flag for "did we find one"; the rest of the fields
 //     just reflect the parsed contents (or defaults).
-//   * SIMPLE KEY-VALUE PARSER. `parseProjectFile` does line-by-line
-//     "first whitespace splits key from value" parsing. Handles `#`
-//     comments, trims whitespace, strips wrapping double-quotes from
-//     values. No JSON / TOML — keeps the format diff-friendly and the
-//     parser one screen of code.
+//   * RUNTIME MANIFEST PARSER FIRST. `parseProjectFile` delegates to
+//     `Viper.Project.Manifest.ParseFile` so the IDE consumes the same
+//     manifest contract as the runtime/compiler tools. A legacy
+//     key-value parser remains as fallback for older ViperIDE-only
+//     project files that used build-program/run-args/package-name keys.
 //   * package-name OVERRIDES name. If `package-name` is set in
 //     viper.project, it's used as the display name in preference to
 //     the folder name. This is the "I want my project shown as
@@ -129,16 +131,84 @@ class Project {
         hasProjectFile = false;
     }
 
-    /// @brief Parse a viper.project file (line-oriented key value pairs).
-    /// @details Format:
-    ///     # comment lines start with hash
-    ///     key value with spaces
-    ///     key "quoted value"
-    /// First whitespace separates the key from the value; the value is
-    /// trimmed and unquoted. Recognised keys: project, entry, lang,
-    /// version, package-name. Anything else is silently ignored so the
-    /// format can grow without breaking older parsers.
+    /// @brief Parse a viper.project file through the runtime manifest parser.
+    /// @details The runtime parser owns the canonical manifest shape, including
+    ///          entry, language, source/exclude globs, and named build/run
+    ///          configs. If it rejects an older ViperIDE-only manifest, this
+    ///          method falls back to the historical line-oriented parser so
+    ///          existing projects continue to open with their custom commands.
     hide func parseProjectFile(path: String) {
+        var manifest = Manifest.ParseFile(path);
+        if Map.GetBool(manifest, "valid") {
+            ApplyManifest(manifest);
+            hasProjectFile = true;
+            return;
+        }
+        parseLegacyProjectFile(path);
+    }
+
+    /// @brief Apply canonical runtime manifest fields to the IDE project model.
+    /// @param manifest Map returned by `Viper.Project.Manifest.ParseFile`.
+    hide func ApplyManifest(manifest: Any) {
+        var manifestName = Map.GetStr(manifest, "name");
+        if manifestName != "" { name = manifestName; }
+
+        var manifestVersion = Map.GetStr(manifest, "version");
+        if manifestVersion != "" { version = manifestVersion; }
+
+        var manifestLanguage = Map.GetStr(manifest, "language");
+        if manifestLanguage != "" { lang = manifestLanguage; }
+
+        var manifestEntry = Map.GetStr(manifest, "entry");
+        if manifestEntry != "" { entryFile = manifestEntry; }
+
+        ignorePatterns = JoinStringSeq(Map.Get(manifest, "excludes"), ",");
+        var runConfigs = Map.Get(manifest, "runConfigs");
+        if runConfigs != null and Seq.get_Length(runConfigs) > 0 {
+            var run = Seq.Get(runConfigs, 0);
+            runProgram = Map.GetStr(run, "program");
+            runArgs = JoinStringSeq(Map.Get(run, "args"), " ");
+            workingDirectory = Map.GetStr(run, "cwd");
+        }
+
+        var buildConfigs = Map.Get(manifest, "buildConfigs");
+        if buildConfigs != null and Seq.get_Length(buildConfigs) > 0 {
+            var build = Seq.Get(buildConfigs, 0);
+            buildProgram = Map.GetStr(build, "program");
+            buildArgs = JoinStringSeq(Map.Get(build, "args"), " ");
+            if workingDirectory == "" {
+                workingDirectory = Map.GetStr(build, "cwd");
+            }
+            var matcher = Map.GetStr(build, "problemMatcher");
+            if matcher != "" { problemMatcher = matcher; }
+        }
+    }
+
+    /// @brief Join a runtime string sequence into a single setting string.
+    /// @param items Runtime sequence of strings, or null.
+    /// @param separator Separator inserted between entries.
+    /// @return Concatenated string, or "" for a null/empty sequence.
+    hide func JoinStringSeq(items: Any,
+                            separator: String) -> String {
+        if items == null { return ""; }
+        var out = "";
+        var i = 0;
+        while i < Seq.get_Length(items) {
+            var item = Obj.ToString(Seq.Get(items, i));
+            if item != "" {
+                if out != "" { out = out + separator; }
+                out = out + item;
+            }
+            i = i + 1;
+        }
+        return out;
+    }
+
+    /// @brief Parse legacy line-oriented ViperIDE project files.
+    /// @details First whitespace separates key from value, values may be
+    ///          double-quoted, and unrecognized keys are ignored. This is kept
+    ///          only for compatibility with pre-manifest-parser projects.
+    hide func parseLegacyProjectFile(path: String) {
         var content = IO.File.ReadAllText(path);
         var lines = Str.Split(content, "\n");
         var i = 0;

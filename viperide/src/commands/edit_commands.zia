@@ -1464,57 +1464,51 @@ func handleCreateMissingBind(shell: app_shell.AppShell,
 func DiagnosticFixItAt(records: Any,
                        targetLine: Integer) -> Any {
     if records == null { return null; }
-    var firstFix: Any = null;
     var i = 0;
     while i < Seq.get_Length(records) {
         var record = Seq.Get(records, i);
         i = i + 1;
         if Map.GetBool(record, "hasFixit") {
-            if firstFix == null { firstFix = record; }
             if Map.GetInt(record, "line") == targetLine {
                 return record;
             }
         }
     }
-    return firstFix;
+    return null;
 }
 
 func MissingRuntimeBindIdentifierAt(records: Any,
                                     targetLine: Integer) -> String {
     if records == null { return ""; }
-    var firstName = "";
     var i = 0;
     while i < Seq.get_Length(records) {
         var record = Seq.Get(records, i);
         i = i + 1;
         var name = quick_fixes.MissingRuntimeBindIdentifierForRecord(record);
         if name != "" {
-            if firstName == "" { firstName = name; }
             if Map.GetInt(record, "line") == targetLine {
                 return name;
             }
         }
     }
-    return firstName;
+    return "";
 }
 
 func MissingUndefinedIdentifierAt(records: Any,
                                   targetLine: Integer) -> String {
     if records == null { return ""; }
-    var firstName = "";
     var i = 0;
     while i < Seq.get_Length(records) {
         var record = Seq.Get(records, i);
         i = i + 1;
         var name = quick_fixes.UndefinedIdentifierForRecord(record);
         if name != "" {
-            if firstName == "" { firstName = name; }
             if Map.GetInt(record, "line") == targetLine {
                 return name;
             }
         }
     }
-    return firstName;
+    return "";
 }
 
 expose func CreateMissingRuntimeBindText(source: String,

@@ -30,7 +30,11 @@ class ProjectIndexer {
     expose Any pendingIndexFiles;
     expose Integer pendingIndexPos;
     expose Boolean indexing;
+    expose Boolean workspaceIndexComplete;
     expose Integer indexedFileCount;
+    expose Integer workspaceIndexEntryCount;
+    expose Boolean workspaceIndexTruncated;
+    expose String workspaceIndexStatusMessage;
     expose scheduler.EditorScheduler workScheduler;
     expose List syncedOpenPaths;
     expose List syncedOpenContents;
@@ -50,7 +54,11 @@ class ProjectIndexer {
         pendingIndexFiles = null;
         pendingIndexPos = 0;
         indexing = false;
+        workspaceIndexComplete = false;
         indexedFileCount = 0;
+        workspaceIndexEntryCount = 0;
+        workspaceIndexTruncated = false;
+        workspaceIndexStatusMessage = "";
         syncedOpenPaths = new List();
         syncedOpenContents = new List();
         updateCount = 0;
@@ -107,7 +115,11 @@ class ProjectIndexer {
         pendingIndexFiles = null;
         pendingIndexPos = 0;
         indexing = false;
+        workspaceIndexComplete = false;
         indexedFileCount = 0;
+        workspaceIndexEntryCount = 0;
+        workspaceIndexTruncated = false;
+        workspaceIndexStatusMessage = "";
         syncedOpenPaths = new List();
         syncedOpenContents = new List();
     }
@@ -119,16 +131,28 @@ class ProjectIndexer {
 
     expose func StartIndexWorkspace() {
         if valid == false { return; }
+        if indexing { return; }
+        var status = FileIndex.Status(rootPath, ".zia", "", false);
+        workspaceIndexEntryCount = Map.GetInt(status, "entryCount");
+        workspaceIndexTruncated = Map.GetBool(status, "truncated");
+        workspaceIndexStatusMessage = "";
+        if Map.GetBool(status, "valid") == false {
+            workspaceIndexStatusMessage = "Workspace index unavailable";
+        } else if workspaceIndexTruncated {
+            workspaceIndexStatusMessage = "Workspace index truncated at "
+                + workspaceIndexEntryCount + " file(s)";
+        }
         pendingIndexFiles = FileIndex.Enumerate(rootPath, ".zia", "", false);
         pendingIndexPos = 0;
         indexing = true;
+        workspaceIndexComplete = false;
         indexedFileCount = 0;
     }
 
     expose func PumpIndex(maxFiles: Integer) -> Integer {
         if valid == false or indexing == false or pendingIndexFiles == null { return 0; }
         var limit = maxFiles;
-        if limit <= 0 { limit = INDEX_FILES_PER_FRAME; }
+        if limit <= 0 { limit = 8; }
 
         var processed = 0;
         var total = Seq.get_Length(pendingIndexFiles);
@@ -157,6 +181,7 @@ class ProjectIndexer {
             indexing = false;
             pendingIndexFiles = null;
             pendingIndexPos = 0;
+            workspaceIndexComplete = true;
         }
         return processed;
     }
@@ -289,6 +314,7 @@ class ProjectIndexer {
     expose func RemoveFile(path: String) {
         if valid == false { return; }
         ProjectIndex.RemoveFile(handle, path);
+        workspaceIndexComplete = false;
     }
 
     expose func UpdateFile(path: String) {
@@ -298,6 +324,7 @@ class ProjectIndexer {
             if ShouldIndexContent(content) {
                 ProjectIndex.UpdateFile(handle, path, content);
                 TrackUpdate(content);
+                workspaceIndexComplete = false;
             }
         }
     }
@@ -327,7 +354,7 @@ class ProjectIndexer {
                            col: Integer) -> Any {
         if valid == false { return null; }
         EnsureWorkspaceIndexStarted();
-        PumpIndex(INDEX_FILES_PER_FRAME);
+        PumpIndex(8);
         return ProjectIndex.Definition(handle, path, source, line, col);
     }
 
@@ -337,7 +364,7 @@ class ProjectIndexer {
                            col: Integer) -> Any {
         if valid == false { return null; }
         EnsureWorkspaceIndexStarted();
-        PumpIndex(INDEX_FILES_PER_FRAME);
+        PumpIndex(8);
         return ProjectIndex.References(handle, path, source, line, col);
     }
 
@@ -348,13 +375,13 @@ class ProjectIndexer {
                             newName: String) -> Any {
         if valid == false { return null; }
         EnsureWorkspaceIndexStarted();
-        PumpIndex(INDEX_FILES_PER_FRAME);
+        PumpIndex(8);
         return ProjectIndex.RenameEdits(handle, path, source, line, col, newName);
     }
 
     hide func EnsureWorkspaceIndexStarted() {
         if valid == false { return; }
-        if indexing == false and pendingIndexFiles == null {
+        if workspaceIndexComplete == false and indexing == false and pendingIndexFiles == null {
             StartIndexWorkspace();
         }
     }

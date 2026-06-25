@@ -5,6 +5,7 @@ bind Viper.IO as IO;
 bind Viper.IO.Dir as Dir;
 bind Viper.IO.Path as Path;
 bind Viper.System.Environment as Env;
+bind Machine = Viper.System.Machine;
 bind Viper.Core.Convert as Convert;
 bind Viper.GUI;
 
@@ -60,6 +61,8 @@ class SettingsManager {
     expose Boolean minimapVisible; // Whether the minimap panel is shown.
     expose Boolean autoCheckOnSave;// Whether live diagnostics run on edit.
     expose Boolean codeFolding;    // Whether the editor offers code-folding regions.
+    expose Boolean statusBarVisible; // Whether the status bar is shown.
+    expose Boolean fullscreen;     // Whether the main app starts fullscreen.
     expose Boolean wordWrap;       // Whether editor lines wrap within the viewport.
     expose Boolean lineNumbers;    // Whether the editor gutter shows line numbers.
     expose Boolean insertSpaces;   // Whether Tab inserts spaces instead of a hard tab.
@@ -88,6 +91,8 @@ class SettingsManager {
         minimapVisible = false;
         autoCheckOnSave = true;
         codeFolding    = true;
+        statusBarVisible = true;
+        fullscreen = false;
         wordWrap       = false;
         lineNumbers    = true;
         insertSpaces   = true;
@@ -105,7 +110,12 @@ class SettingsManager {
         settingsPath   = "";
     }
 
-    /// @brief Resolve `settingsDir` and `settingsPath` from $HOME.
+    /// @brief Resolve `settingsDir` and `settingsPath` from platform config roots.
+    /// @details New installs use `%APPDATA%\ViperIDE` on Windows,
+    ///          `~/Library/Application Support/ViperIDE` on macOS, and
+    ///          `$XDG_CONFIG_HOME/viperide` or `~/.config/viperide` on Linux.
+    ///          Existing `~/.viperide/settings.ini` files remain readable by
+    ///          selecting the legacy path when no platform-native file exists.
     /// @note Falls back to "." if HOME is unset (rare; happens in some
     ///       containerised environments). Idempotent.
     expose func SetupPath() {
@@ -113,8 +123,14 @@ class SettingsManager {
         if home == "" {
             home = ".";
         }
-        settingsDir  = Path.Join(home, ".viperide");
+        settingsDir = PreferredSettingsDir(home);
         settingsPath = Path.Join(settingsDir, "settings.ini");
+
+        var legacyPath = Path.Join(Path.Join(home, ".viperide"), "settings.ini");
+        if IO.File.Exists(settingsPath) == false and IO.File.Exists(legacyPath) {
+            settingsDir = Path.Join(home, ".viperide");
+            settingsPath = legacyPath;
+        }
     }
 
     /// @brief Load settings from disk. Missing or invalid values keep
@@ -166,6 +182,16 @@ class SettingsManager {
         var cfStr = Ini.Get(ini, "settings", "codeFolding");
         if cfStr != "" {
             codeFolding = cfStr == "1";
+        }
+
+        var sbStr = Ini.Get(ini, "settings", "statusBarVisible");
+        if sbStr != "" {
+            statusBarVisible = sbStr == "1";
+        }
+
+        var fullStr = Ini.Get(ini, "settings", "fullscreen");
+        if fullStr != "" {
+            fullscreen = fullStr == "1";
         }
 
         var wwStr = Ini.Get(ini, "settings", "wordWrap");
@@ -270,6 +296,16 @@ class SettingsManager {
         } else {
             Ini.Set(ini, "settings", "codeFolding", "0");
         }
+        if statusBarVisible {
+            Ini.Set(ini, "settings", "statusBarVisible", "1");
+        } else {
+            Ini.Set(ini, "settings", "statusBarVisible", "0");
+        }
+        if fullscreen {
+            Ini.Set(ini, "settings", "fullscreen", "1");
+        } else {
+            Ini.Set(ini, "settings", "fullscreen", "0");
+        }
         if wordWrap {
             Ini.Set(ini, "settings", "wordWrap", "1");
         } else {
@@ -331,4 +367,29 @@ class SettingsManager {
             GUI.Theme.SetDark();
         }
     }
+}
+
+/// @brief Return the native per-user configuration directory for ViperIDE.
+/// @details Uses only `Machine.OS` for platform selection so OS-specific policy
+///          stays in an approved adapter-facing layer. The returned directory may
+///          not exist yet; callers create it before saving.
+/// @param home The user home directory, already defaulted by the caller.
+/// @return Directory that should contain `settings.ini` for new installations.
+func PreferredSettingsDir(home: String) -> String {
+    var os = Machine.OS;
+    if os == "windows" {
+        var appData = Env.GetVariable("APPDATA");
+        if appData != "" {
+            return Path.Join(appData, "ViperIDE");
+        }
+        return Path.Join(Path.Join(home, "AppData"), Path.Join("Roaming", "ViperIDE"));
+    }
+    if os == "macos" {
+        return Path.Join(Path.Join(home, "Library"), Path.Join("Application Support", "ViperIDE"));
+    }
+    var xdgConfig = Env.GetVariable("XDG_CONFIG_HOME");
+    if xdgConfig != "" {
+        return Path.Join(xdgConfig, "viperide");
+    }
+    return Path.Join(Path.Join(home, ".config"), "viperide");
 }
