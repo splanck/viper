@@ -1,0 +1,110 @@
+module syntax_render_probe;
+
+// Phase 2 regression probe for the rendering-breadth work:
+//   * every language (zia / basic / viper / il) installs a highlighter that
+//     actually runs during paint (GetSyntaxHighlightCallCount > 0);
+//   * the widened SetTokenColor accepts the new + out-of-range token indices;
+//   * the indent-guide flag round-trips (new editor ABI);
+//   * TabBar.GetTabIndexAt resolves a point to a tab index.
+
+bind "ui/app_shell";
+bind "editor/editor_engine";
+
+bind Viper.GUI as GUI;
+bind Terminal = Viper.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+// Set the language + text, render one frame, and return how many lines the
+// syntax highlighter coloured. A crash in the tokenizer would abort the probe.
+func highlightCalls(shell: app_shell.AppShell,
+                    engine: editor_engine.EditorEngine,
+                    language: String,
+                    text: String) -> Integer {
+    engine.SetText(text);
+    engine.editor.SetLanguage(language);
+    engine.editor.ResetPerfStats();
+    shell.Poll();
+    shell.Render();
+    return engine.editor.GetSyntaxHighlightCallCount();
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Syntax Render Probe", 960, 640);
+    shell.Poll();
+    shell.Render();
+
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.editorRow);
+
+    // --- Test A: every language highlights without crashing -----------------
+    var ilText = "il 0.2.0\nfunc @main() -> i64 {\n  %x = iadd.ovf 1, 2  # note\n  ret %x\n}\n";
+    if highlightCalls(shell, engine, "viper", ilText) <= 0 {
+        fail(shell, "viper highlighter did not run");
+        return;
+    }
+    if highlightCalls(shell, engine, "il", ilText) <= 0 {
+        fail(shell, "il alias highlighter did not run");
+        return;
+    }
+    var ziaText = "func add(a: Integer, b: Integer) -> Integer {\n  return a + b * 2;\n}\n";
+    if highlightCalls(shell, engine, "zia", ziaText) <= 0 {
+        fail(shell, "zia highlighter did not run");
+        return;
+    }
+    var basicText = "FOR I = 1 TO 10\n  PRINT I * 2\nNEXT\n";
+    if highlightCalls(shell, engine, "basic", basicText) <= 0 {
+        fail(shell, "basic highlighter did not run");
+        return;
+    }
+
+    // --- Test B: widened SetTokenColor accepts new + out-of-range indices ----
+    engine.editor.SetTokenColor(0, 0xFFCCCCCC);  // default (original range)
+    engine.editor.SetTokenColor(7, 0xFF00FFFF);  // operator (new)
+    engine.editor.SetTokenColor(12, 0xFFFFFF00); // decorator (new, last valid)
+    engine.editor.SetTokenColor(13, 0xFF000000); // out of range — must be ignored
+    engine.editor.SetTokenColor(-1, 0xFF000000); // out of range — must be ignored
+    // Re-render with overrides applied; tokenizer must still run cleanly.
+    if highlightCalls(shell, engine, "zia", ziaText) <= 0 {
+        fail(shell, "highlighter broke after SetTokenColor");
+        return;
+    }
+
+    // --- Test C: indent-guide flag round-trips ------------------------------
+    if engine.editor.GetShowIndentGuides() != 1 {
+        fail(shell, "indent guides not on by default");
+        return;
+    }
+    engine.editor.SetShowIndentGuides(0);
+    if engine.editor.GetShowIndentGuides() != 0 {
+        fail(shell, "indent guides did not turn off");
+        return;
+    }
+    engine.editor.SetShowIndentGuides(1);
+    if engine.editor.GetShowIndentGuides() != 1 {
+        fail(shell, "indent guides did not turn back on");
+        return;
+    }
+
+    // --- Test D: TabBar point->index hit-test -------------------------------
+    shell.tabBar.AddTab("alpha.zia", 1);
+    shell.tabBar.AddTab("beta.zia", 1);
+    shell.Poll();
+    shell.Render();
+    if shell.tabBar.GetTabIndexAt(-100, -100) != -1 {
+        fail(shell, "tab hit-test should miss far-out point");
+        return;
+    }
+    var firstIdx = shell.tabBar.GetTabIndexAt(shell.tabBar.GetX() + 6, shell.tabBar.GetY() + 6);
+    if firstIdx != 0 {
+        fail(shell, "tab hit-test first tab (got " + firstIdx + ")");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

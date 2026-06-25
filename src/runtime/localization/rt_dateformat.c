@@ -51,6 +51,11 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
                                 const char *pattern,
                                 size_t pattern_len,
                                 const rt_locale_data_t *data);
+int rt_dateformat_emit_pattern_checked(rt_string_builder *sb,
+                                       int64_t timestamp,
+                                       const char *pattern,
+                                       size_t pattern_len,
+                                       const rt_locale_data_t *data);
 
 //===----------------------------------------------------------------------===//
 // Instance struct
@@ -134,7 +139,10 @@ static rt_string render_with_pattern(void *self, int64_t timestamp, const char *
     rt_dateformat_inst_t *fmt = as_fmt(self);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_dateformat_emit_pattern(&sb, timestamp, pattern, strlen(pattern), fmt->data);
+    if (!rt_dateformat_emit_pattern_checked(&sb, timestamp, pattern, strlen(pattern), fmt->data)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -188,17 +196,20 @@ rt_string rt_dateformat_datetime_short(void *self, int64_t ts) {
         return render_with_pattern(self, ts, fmt->data->dates.patterns.datetime_short);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_dateformat_emit_pattern(&sb,
-                               ts,
-                               fmt->data->dates.patterns.short_p,
-                               strlen(fmt->data->dates.patterns.short_p),
-                               fmt->data);
-    (void)rt_sb_append_cstr(&sb, " ");
-    rt_dateformat_emit_pattern(&sb,
-                               ts,
-                               fmt->data->dates.patterns.time_short,
-                               strlen(fmt->data->dates.patterns.time_short),
-                               fmt->data);
+    if (!rt_dateformat_emit_pattern_checked(&sb,
+                                            ts,
+                                            fmt->data->dates.patterns.short_p,
+                                            strlen(fmt->data->dates.patterns.short_p),
+                                            fmt->data) ||
+        rt_sb_append_cstr(&sb, " ") != RT_SB_OK ||
+        !rt_dateformat_emit_pattern_checked(&sb,
+                                            ts,
+                                            fmt->data->dates.patterns.time_short,
+                                            strlen(fmt->data->dates.patterns.time_short),
+                                            fmt->data)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -212,17 +223,20 @@ rt_string rt_dateformat_datetime_medium(void *self, int64_t ts) {
         return render_with_pattern(self, ts, fmt->data->dates.patterns.datetime_medium);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_dateformat_emit_pattern(&sb,
-                               ts,
-                               fmt->data->dates.patterns.medium_p,
-                               strlen(fmt->data->dates.patterns.medium_p),
-                               fmt->data);
-    (void)rt_sb_append_cstr(&sb, " ");
-    rt_dateformat_emit_pattern(&sb,
-                               ts,
-                               fmt->data->dates.patterns.time_medium,
-                               strlen(fmt->data->dates.patterns.time_medium),
-                               fmt->data);
+    if (!rt_dateformat_emit_pattern_checked(&sb,
+                                            ts,
+                                            fmt->data->dates.patterns.medium_p,
+                                            strlen(fmt->data->dates.patterns.medium_p),
+                                            fmt->data) ||
+        rt_sb_append_cstr(&sb, " ") != RT_SB_OK ||
+        !rt_dateformat_emit_pattern_checked(&sb,
+                                            ts,
+                                            fmt->data->dates.patterns.time_medium,
+                                            strlen(fmt->data->dates.patterns.time_medium),
+                                            fmt->data)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -240,7 +254,10 @@ rt_string rt_dateformat_custom(void *self, int64_t ts, rt_string pattern) {
         return rt_string_from_bytes("", 0);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_dateformat_emit_pattern(&sb, ts, cs, (size_t)len, fmt->data);
+    if (!rt_dateformat_emit_pattern_checked(&sb, ts, cs, (size_t)len, fmt->data)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -293,7 +310,10 @@ rt_string rt_dateformat_date_only(void *self, void *dateonly, rt_string style) {
 
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_dateformat_emit_pattern(&sb, ts, pattern, strlen(pattern), fmt->data);
+    if (!rt_dateformat_emit_pattern_checked(&sb, ts, pattern, strlen(pattern), fmt->data)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;

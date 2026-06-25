@@ -1111,6 +1111,22 @@ set_tests_properties(zia_viperide_file_tree PROPERTIES
         LABELS "zia;viperide;file-tree;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_viperide_context_menu
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/context_menu_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_context_menu PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;context-menu;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_syntax_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/syntax_render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_syntax_render PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;syntax;requires_display"
+        TIMEOUT 30)
+
 add_test(NAME zia_viperide_console_search
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/console_search_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")

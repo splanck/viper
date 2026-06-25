@@ -210,6 +210,28 @@ class AppShell {
     expose GUI.MenuItem ctxSetEntry;
     expose GUI.MenuItem ctxRefresh;
 
+    // Editor context menu (right-click inside the code editor surface).
+    expose GUI.ContextMenu editorContextMenu;
+    expose GUI.MenuItem ecCut;
+    expose GUI.MenuItem ecCopy;
+    expose GUI.MenuItem ecPaste;
+    expose GUI.MenuItem ecGotoDef;
+    expose GUI.MenuItem ecFindRefs;
+    expose GUI.MenuItem ecRename;
+    expose GUI.MenuItem ecFormat;
+    expose GUI.MenuItem ecToggleBreakpoint;
+    expose GUI.MenuItem ecPalette;
+
+    // Tab context menu (right-click on the editor tab strip).
+    expose GUI.ContextMenu tabContextMenu;
+    expose GUI.MenuItem tcClose;
+    expose GUI.MenuItem tcCloseOthers;
+    expose GUI.MenuItem tcCloseAll;
+    expose GUI.MenuItem tcCloseSaved;
+    expose GUI.MenuItem tcCopyPath;
+    expose GUI.MenuItem tcCopyRelativePath;
+    expose GUI.MenuItem tcReveal;
+
     // Status bar + items
     expose GUI.StatusBar statusBar;
     expose GUI.StatusBarItem cursorItem;   // clickable Ln/Col display (center zone)
@@ -226,6 +248,7 @@ class AppShell {
     expose Integer activeSurfaceKind;
     expose String contextPath;
     expose String contextDir;
+    expose Integer tabContextIndex; // Tab the tab-context-menu acts on (-1 = active).
     expose String lastBuildOutput;
     expose String outputPartialLine;
     expose Any outputPartialItem;
@@ -245,6 +268,7 @@ class AppShell {
         activeSurfaceKind = 0;
         contextPath = "";
         contextDir = "";
+        tabContextIndex = -1;
         lastBuildOutput = "";
         outputPartialLine = "";
         outputPartialItem = null;
@@ -567,6 +591,41 @@ class AppShell {
         treeContextMenu.AddSeparator();
         ctxRefresh = treeContextMenu.AddItem("Refresh");
         ctxRefresh.SetShortcut("Ctrl+Alt+Shift+R");
+
+        // Context menu for the code editor surface (populated on right-click).
+        editorContextMenu = GUI.ContextMenu.New();
+        ecCut = editorContextMenu.AddItem("Cut");
+        ecCut.SetShortcut("Ctrl+X");
+        ecCopy = editorContextMenu.AddItem("Copy");
+        ecCopy.SetShortcut("Ctrl+C");
+        ecPaste = editorContextMenu.AddItem("Paste");
+        ecPaste.SetShortcut("Ctrl+V");
+        editorContextMenu.AddSeparator();
+        ecGotoDef = editorContextMenu.AddItem("Go to Definition");
+        ecGotoDef.SetShortcut("F12");
+        ecFindRefs = editorContextMenu.AddItem("Find References");
+        ecFindRefs.SetShortcut("Shift+F12");
+        ecRename = editorContextMenu.AddItem("Rename Symbol");
+        ecRename.SetShortcut("F2");
+        editorContextMenu.AddSeparator();
+        ecFormat = editorContextMenu.AddItem("Format Document");
+        ecFormat.SetShortcut("Shift+Alt+F");
+        ecToggleBreakpoint = editorContextMenu.AddItem("Toggle Breakpoint");
+        ecToggleBreakpoint.SetShortcut("F9");
+        editorContextMenu.AddSeparator();
+        ecPalette = editorContextMenu.AddItem("Command Palette...");
+        ecPalette.SetShortcut("Ctrl+Shift+P");
+
+        // Context menu for the editor tab strip (populated on right-click).
+        tabContextMenu = GUI.ContextMenu.New();
+        tcClose = tabContextMenu.AddItem("Close");
+        tcCloseOthers = tabContextMenu.AddItem("Close Others");
+        tcCloseAll = tabContextMenu.AddItem("Close All");
+        tcCloseSaved = tabContextMenu.AddItem("Close Saved");
+        tabContextMenu.AddSeparator();
+        tcCopyPath = tabContextMenu.AddItem("Copy Path");
+        tcCopyRelativePath = tabContextMenu.AddItem("Copy Relative Path");
+        tcReveal = tabContextMenu.AddItem("Reveal in Finder");
 
         // ====================================================================
         // Status Bar

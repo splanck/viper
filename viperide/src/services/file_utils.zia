@@ -33,7 +33,7 @@ final DOC_KIND_BINARY_UNSUPPORTED: Integer = 4;
 //     handles both with the same tokenizer.
 // ============================================================================
 
-/// @brief Map a file path to a language identifier ("zia" / "basic" / "text").
+/// @brief Map a file path to a language identifier ("zia" / "basic" / "viper" / "text").
 /// @param path Filesystem path; only the extension is examined.
 /// @return Language tag suitable for `Document.language` and the
 ///         editor's `SetLanguage` call.
@@ -42,7 +42,7 @@ func DetectLanguage(path: String) -> String {
     if ext == ".zia"  { return "zia"; }
     if ext == ".bas"  { return "basic"; }
     if ext == ".vb"   { return "basic"; }
-    if ext == ".il"   { return "text"; }
+    if ext == ".il"   { return "viper"; }
     if ext == ".txt"  { return "text"; }
     if ext == ".md"   { return "text"; }
     if ext == ".json" { return "text"; }

@@ -98,39 +98,48 @@ static void action_release_json_parser(void *parser) {
 /// `\\r`, `\\t`) and emits `\\u00XX` escapes for the remaining control bytes.
 /// Non-ASCII bytes pass through as-is — the persistence format assumes UTF-8
 /// throughout.
-static void sb_append_json_string(rt_string_builder *sb, const char *str) {
+/// @return 1 on success, 0 when a builder append failed.
+static int sb_append_json_string(rt_string_builder *sb, const char *str) {
     static const char hex[] = "0123456789ABCDEF";
-    rt_sb_append_cstr(sb, "\"");
+    if (rt_sb_append_cstr(sb, "\"") != RT_SB_OK)
+        return 0;
     while (*str) {
         unsigned char c = (unsigned char)*str++;
         switch (c) {
             case '"':
-                rt_sb_append_cstr(sb, "\\\"");
+                if (rt_sb_append_cstr(sb, "\\\"") != RT_SB_OK)
+                    return 0;
                 break;
             case '\\':
-                rt_sb_append_cstr(sb, "\\\\");
+                if (rt_sb_append_cstr(sb, "\\\\") != RT_SB_OK)
+                    return 0;
                 break;
             case '\n':
-                rt_sb_append_cstr(sb, "\\n");
+                if (rt_sb_append_cstr(sb, "\\n") != RT_SB_OK)
+                    return 0;
                 break;
             case '\r':
-                rt_sb_append_cstr(sb, "\\r");
+                if (rt_sb_append_cstr(sb, "\\r") != RT_SB_OK)
+                    return 0;
                 break;
             case '\t':
-                rt_sb_append_cstr(sb, "\\t");
+                if (rt_sb_append_cstr(sb, "\\t") != RT_SB_OK)
+                    return 0;
                 break;
             default:
                 if (c < 0x20u) {
                     char esc[6] = {'\\', 'u', '0', '0', hex[(c >> 4) & 0xFu], hex[c & 0xFu]};
-                    rt_sb_append_bytes(sb, esc, sizeof(esc));
+                    if (rt_sb_append_bytes(sb, esc, sizeof(esc)) != RT_SB_OK)
+                        return 0;
                 } else {
                     char byte = (char)c;
-                    rt_sb_append_bytes(sb, &byte, 1);
+                    if (rt_sb_append_bytes(sb, &byte, 1) != RT_SB_OK)
+                        return 0;
                 }
                 break;
         }
     }
-    rt_sb_append_cstr(sb, "\"");
+    return rt_sb_append_cstr(sb, "\"") == RT_SB_OK;
 }
 
 /// @brief `Action.Save` — serialize all action+binding state to JSON.
@@ -145,66 +154,85 @@ rt_string rt_action_save(void) {
     int8_t first_action;
     rt_sb_init(&sb);
 
-    rt_sb_append_cstr(&sb, "{\"actions\":[");
-
     first_action = 1;
+    if (rt_sb_append_cstr(&sb, "{\"actions\":[") != RT_SB_OK)
+        goto save_error;
+
     {
         Action *a = g_actions;
         while (a) {
             int8_t first_binding;
-            if (!first_action)
-                rt_sb_append_cstr(&sb, ",");
+            if (!first_action) {
+                if (rt_sb_append_cstr(&sb, ",") != RT_SB_OK)
+                    goto save_error;
+            }
             first_action = 0;
 
-            rt_sb_append_cstr(&sb, "{\"name\":");
-            sb_append_json_string(&sb, a->name);
-            rt_sb_append_cstr(&sb, ",\"type\":");
-            rt_sb_append_cstr(&sb, a->is_axis ? "\"axis\"" : "\"button\"");
-            rt_sb_append_cstr(&sb, ",\"bindings\":[");
+            if (rt_sb_append_cstr(&sb, "{\"name\":") != RT_SB_OK ||
+                !sb_append_json_string(&sb, a->name) ||
+                rt_sb_append_cstr(&sb, ",\"type\":") != RT_SB_OK ||
+                rt_sb_append_cstr(&sb, a->is_axis ? "\"axis\"" : "\"button\"") != RT_SB_OK ||
+                rt_sb_append_cstr(&sb, ",\"bindings\":[") != RT_SB_OK)
+                goto save_error;
 
             first_binding = 1;
             {
                 Binding *b = a->bindings;
                 while (b) {
-                    if (!first_binding)
-                        rt_sb_append_cstr(&sb, ",");
+                    if (!first_binding) {
+                        if (rt_sb_append_cstr(&sb, ",") != RT_SB_OK)
+                            goto save_error;
+                    }
                     first_binding = 0;
 
-                    rt_sb_append_cstr(&sb, "{\"type\":");
-                    sb_append_json_string(&sb, binding_type_name(b->type));
-                    rt_sb_append_cstr(&sb, ",\"code\":");
-                    rt_sb_append_int(&sb, b->code);
-                    rt_sb_append_cstr(&sb, ",\"pad\":");
-                    rt_sb_append_int(&sb, b->pad_index);
-                    rt_sb_append_cstr(&sb, ",\"value\":");
-                    rt_sb_append_double(&sb, b->value);
+                    if (rt_sb_append_cstr(&sb, "{\"type\":") != RT_SB_OK ||
+                        !sb_append_json_string(&sb, binding_type_name(b->type)) ||
+                        rt_sb_append_cstr(&sb, ",\"code\":") != RT_SB_OK ||
+                        rt_sb_append_int(&sb, b->code) != RT_SB_OK ||
+                        rt_sb_append_cstr(&sb, ",\"pad\":") != RT_SB_OK ||
+                        rt_sb_append_int(&sb, b->pad_index) != RT_SB_OK ||
+                        rt_sb_append_cstr(&sb, ",\"value\":") != RT_SB_OK ||
+                        rt_sb_append_double(&sb, b->value) != RT_SB_OK)
+                        goto save_error;
                     if (b->type == BIND_CHORD && b->chord_len > 0) {
                         int32_t ci;
-                        rt_sb_append_cstr(&sb, ",\"keys\":[");
+                        if (rt_sb_append_cstr(&sb, ",\"keys\":[") != RT_SB_OK)
+                            goto save_error;
                         for (ci = 0; ci < b->chord_len; ci++) {
-                            if (ci > 0)
-                                rt_sb_append_cstr(&sb, ",");
-                            rt_sb_append_int(&sb, b->chord_keys[ci]);
+                            if (ci > 0) {
+                                if (rt_sb_append_cstr(&sb, ",") != RT_SB_OK)
+                                    goto save_error;
+                            }
+                            if (rt_sb_append_int(&sb, b->chord_keys[ci]) != RT_SB_OK)
+                                goto save_error;
                         }
-                        rt_sb_append_cstr(&sb, "]");
+                        if (rt_sb_append_cstr(&sb, "]") != RT_SB_OK)
+                            goto save_error;
                     }
-                    rt_sb_append_cstr(&sb, "}");
+                    if (rt_sb_append_cstr(&sb, "}") != RT_SB_OK)
+                        goto save_error;
                     b = b->next;
                 }
             }
 
-            rt_sb_append_cstr(&sb, "]}");
+            if (rt_sb_append_cstr(&sb, "]}") != RT_SB_OK)
+                goto save_error;
             a = a->next;
         }
     }
 
-    rt_sb_append_cstr(&sb, "]}");
+    if (rt_sb_append_cstr(&sb, "]}") != RT_SB_OK)
+        goto save_error;
 
     {
         rt_string result = rt_string_from_bytes(sb.data, sb.len);
         rt_sb_free(&sb);
         return result;
     }
+
+save_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 /// @brief `Action.Load(json)` — restore action+binding state from a JSON string.

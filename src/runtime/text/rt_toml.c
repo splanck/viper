@@ -59,6 +59,21 @@ static rt_string make_str(const char *s, int64_t len) {
     return rt_string_from_bytes(s, len);
 }
 
+/// @brief Append bytes during TOML parsing and flag parse failure on error.
+/// @details TOML parsing is intentionally non-trapping; malformed input and
+///          allocation failures both flow through @ref g_toml_had_error so the
+///          public parser can release partial containers and return NULL.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append.
+/// @param len Number of bytes in @p bytes.
+/// @return 1 on success, 0 when the append failed.
+static int toml_parse_append_bytes(rt_string_builder *sb, const char *bytes, size_t len) {
+    if (rt_sb_append_bytes(sb, bytes, len) == RT_SB_OK)
+        return 1;
+    g_toml_had_error = 1;
+    return 0;
+}
+
 // --- Helper: trim whitespace ---
 
 /// @brief Skip horizontal whitespace (`space`, `tab`) — does NOT consume newlines.
@@ -156,7 +171,7 @@ static void toml_append_utf8(rt_string_builder *sb, uint32_t codepoint) {
         g_toml_had_error = 1;
         return;
     }
-    rt_sb_append_bytes(sb, out, len);
+    (void)toml_parse_append_bytes(sb, out, len);
 }
 
 /// @brief Parse a basic/literal TOML string, including multiline variants.
@@ -198,25 +213,25 @@ static rt_string parse_quoted_string(const char **p) {
             (*p)++;
             switch (esc) {
                 case 'b':
-                    rt_sb_append_bytes(&sb, "\b", 1);
+                    (void)toml_parse_append_bytes(&sb, "\b", 1);
                     break;
                 case 't':
-                    rt_sb_append_bytes(&sb, "\t", 1);
+                    (void)toml_parse_append_bytes(&sb, "\t", 1);
                     break;
                 case 'n':
-                    rt_sb_append_bytes(&sb, "\n", 1);
+                    (void)toml_parse_append_bytes(&sb, "\n", 1);
                     break;
                 case 'f':
-                    rt_sb_append_bytes(&sb, "\f", 1);
+                    (void)toml_parse_append_bytes(&sb, "\f", 1);
                     break;
                 case 'r':
-                    rt_sb_append_bytes(&sb, "\r", 1);
+                    (void)toml_parse_append_bytes(&sb, "\r", 1);
                     break;
                 case '"':
-                    rt_sb_append_bytes(&sb, "\"", 1);
+                    (void)toml_parse_append_bytes(&sb, "\"", 1);
                     break;
                 case '\\':
-                    rt_sb_append_bytes(&sb, "\\", 1);
+                    (void)toml_parse_append_bytes(&sb, "\\", 1);
                     break;
                 case 'u':
                 case 'U': {
@@ -244,7 +259,8 @@ static rt_string parse_quoted_string(const char **p) {
                 break;
             continue;
         }
-        rt_sb_append_bytes(&sb, *p, 1);
+        if (!toml_parse_append_bytes(&sb, *p, 1))
+            break;
         (*p)++;
     }
     if (!g_toml_had_error)
@@ -706,108 +722,172 @@ static int is_bare_key_bytes(const char *s, size_t len) {
     return 1;
 }
 
-static void append_quoted_toml_bytes(rt_string_builder *sb, const char *s, size_t len) {
-    rt_sb_append_cstr(sb, "\"");
+/// @brief Append bytes during TOML formatting without touching parser error state.
+/// @details Formatting failures should abort the current format operation, but
+///          must not leak into the thread-local parser validity flag. Formatter
+///          helpers therefore use local integer status propagation.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append.
+/// @param len Number of bytes in @p bytes.
+/// @return 1 on success, 0 when the append failed.
+static int toml_format_append_bytes(rt_string_builder *sb, const char *bytes, size_t len) {
+    return rt_sb_append_bytes(sb, bytes, len) == RT_SB_OK;
+}
+
+/// @brief Append a C string during TOML formatting.
+/// @param sb Destination builder.
+/// @param text NUL-terminated bytes to append.
+/// @return 1 on success, 0 when the append failed.
+static int toml_format_append_cstr(rt_string_builder *sb, const char *text) {
+    return rt_sb_append_cstr(sb, text) == RT_SB_OK;
+}
+
+/// @brief Append TOML basic-string text with required escaping and surrounding quotes.
+/// @details Escapes backslash, quote, common control characters, and remaining
+///          C0 controls as `\u00XX`. The input is treated as already valid
+///          UTF-8 text; non-control bytes are copied through unchanged.
+/// @param sb Destination builder.
+/// @param s Source bytes; NULL is treated as empty.
+/// @param len Number of bytes to read from @p s.
+/// @return 1 on success, 0 when escaping or appending failed.
+static int append_quoted_toml_bytes(rt_string_builder *sb, const char *s, size_t len) {
+    if (!toml_format_append_cstr(sb, "\""))
+        return 0;
     if (s) {
         for (size_t i = 0; i < len; ++i) {
             char ch = s[i];
             switch (ch) {
                 case '\\':
-                    rt_sb_append_cstr(sb, "\\\\");
+                    if (!toml_format_append_cstr(sb, "\\\\"))
+                        return 0;
                     break;
                 case '"':
-                    rt_sb_append_cstr(sb, "\\\"");
+                    if (!toml_format_append_cstr(sb, "\\\""))
+                        return 0;
                     break;
                 case '\n':
-                    rt_sb_append_cstr(sb, "\\n");
+                    if (!toml_format_append_cstr(sb, "\\n"))
+                        return 0;
                     break;
                 case '\r':
-                    rt_sb_append_cstr(sb, "\\r");
+                    if (!toml_format_append_cstr(sb, "\\r"))
+                        return 0;
                     break;
                 case '\t':
-                    rt_sb_append_cstr(sb, "\\t");
+                    if (!toml_format_append_cstr(sb, "\\t"))
+                        return 0;
                     break;
                 case '\b':
-                    rt_sb_append_cstr(sb, "\\b");
+                    if (!toml_format_append_cstr(sb, "\\b"))
+                        return 0;
                     break;
                 case '\f':
-                    rt_sb_append_cstr(sb, "\\f");
+                    if (!toml_format_append_cstr(sb, "\\f"))
+                        return 0;
                     break;
                 default:
                     if ((unsigned char)ch < 0x20) {
                         char esc[7];
-                        snprintf(esc, sizeof(esc), "\\u%04x", (unsigned char)ch);
-                        rt_sb_append_cstr(sb, esc);
+                        int n = snprintf(esc, sizeof(esc), "\\u%04x", (unsigned char)ch);
+                        if (n < 0 || (size_t)n >= sizeof(esc) || !toml_format_append_cstr(sb, esc))
+                            return 0;
                     } else {
-                        rt_sb_append_bytes(sb, &ch, 1);
+                        if (!toml_format_append_bytes(sb, &ch, 1))
+                            return 0;
                     }
                     break;
             }
         }
     }
-    rt_sb_append_cstr(sb, "\"");
+    return toml_format_append_cstr(sb, "\"");
 }
 
-static void append_quoted_toml_string(rt_string_builder *sb, const char *s) {
-    append_quoted_toml_bytes(sb, s, s ? strlen(s) : 0);
+/// @brief Append a NUL-terminated string as a quoted TOML basic string.
+/// @param sb Destination builder.
+/// @param s Source C string; NULL is treated as empty.
+/// @return 1 on success, 0 when escaping or appending failed.
+static int append_quoted_toml_string(rt_string_builder *sb, const char *s) {
+    return append_quoted_toml_bytes(sb, s, s ? strlen(s) : 0);
 }
 
-static void append_toml_key_bytes(rt_string_builder *sb, const char *key, size_t key_len) {
+/// @brief Append a TOML key, using bare-key syntax when legal.
+/// @details Bare keys are emitted directly; all other keys are emitted as
+///          quoted TOML strings with the same escaping rules as values.
+/// @param sb Destination builder.
+/// @param key Key bytes; NULL emits an empty quoted key.
+/// @param key_len Number of bytes in @p key.
+/// @return 1 on success, 0 when appending failed.
+static int append_toml_key_bytes(rt_string_builder *sb, const char *key, size_t key_len) {
     if (is_bare_key_bytes(key, key_len))
-        rt_sb_append_bytes(sb, key, key_len);
-    else
-        append_quoted_toml_bytes(sb, key ? key : "", key ? key_len : 0);
+        return toml_format_append_bytes(sb, key, key_len);
+    return append_quoted_toml_bytes(sb, key ? key : "", key ? key_len : 0);
 }
 
-static void append_toml_value(rt_string_builder *sb, void *val) {
+/// @brief Append one runtime value using TOML value syntax.
+/// @details Supports raw runtime strings, boxed booleans/integers/floats/strings,
+///          and sequence objects. Unsupported values are serialized as an empty
+///          TOML string to preserve the legacy fallback behavior.
+/// @param sb Destination builder.
+/// @param val Runtime value pointer.
+/// @return 1 on success, 0 when appending or numeric formatting failed.
+static int append_toml_value(rt_string_builder *sb, void *val) {
     if (!val) {
-        append_quoted_toml_string(sb, "");
-        return;
+        return append_quoted_toml_string(sb, "");
     }
 
     if (rt_string_is_handle(val)) {
         rt_string s = (rt_string)val;
-        append_quoted_toml_bytes(sb, rt_string_cstr(s), (size_t)rt_str_len(s));
-        return;
+        int64_t len = rt_str_len(s);
+        if (len < 0)
+            return 0;
+        return append_quoted_toml_bytes(sb, rt_string_cstr(s), (size_t)len);
     }
 
     int64_t box_type = rt_box_type(val);
     char buf[96];
     switch (box_type) {
         case RT_BOX_I1:
-            rt_sb_append_cstr(sb, rt_unbox_i1(val) ? "true" : "false");
-            return;
-        case RT_BOX_I64:
-            snprintf(buf, sizeof(buf), "%lld", (long long)rt_unbox_i64(val));
-            rt_sb_append_bytes(sb, buf, strlen(buf));
-            return;
-        case RT_BOX_F64:
-            snprintf(buf, sizeof(buf), "%.17g", rt_unbox_f64(val));
-            rt_sb_append_bytes(sb, buf, strlen(buf));
-            return;
+            return toml_format_append_cstr(sb, rt_unbox_i1(val) ? "true" : "false");
+        case RT_BOX_I64: {
+            int n = snprintf(buf, sizeof(buf), "%lld", (long long)rt_unbox_i64(val));
+            return n >= 0 && (size_t)n < sizeof(buf) &&
+                   toml_format_append_bytes(sb, buf, (size_t)n);
+        }
+        case RT_BOX_F64: {
+            int n = snprintf(buf, sizeof(buf), "%.17g", rt_unbox_f64(val));
+            return n >= 0 && (size_t)n < sizeof(buf) &&
+                   toml_format_append_bytes(sb, buf, (size_t)n);
+        }
         case RT_BOX_STR: {
             rt_string s = rt_unbox_str(val);
-            append_quoted_toml_bytes(sb, rt_string_cstr(s), (size_t)rt_str_len(s));
+            int ok = 0;
+            if (s) {
+                int64_t len = rt_str_len(s);
+                ok = len >= 0 && append_quoted_toml_bytes(sb, rt_string_cstr(s), (size_t)len);
+            } else {
+                ok = append_quoted_toml_string(sb, "");
+            }
             rt_string_unref(s);
-            return;
+            return ok;
         }
         default:
             break;
     }
 
     if (is_seq_obj(val)) {
-        rt_sb_append_cstr(sb, "[");
+        if (!toml_format_append_cstr(sb, "["))
+            return 0;
         int64_t len = rt_seq_len(val);
         for (int64_t i = 0; i < len; i++) {
-            if (i > 0)
-                rt_sb_append_cstr(sb, ", ");
-            append_toml_value(sb, rt_seq_get(val, i));
+            if (i > 0 && !toml_format_append_cstr(sb, ", "))
+                return 0;
+            if (!append_toml_value(sb, rt_seq_get(val, i)))
+                return 0;
         }
-        rt_sb_append_cstr(sb, "]");
-        return;
+        return toml_format_append_cstr(sb, "]");
     }
 
-    append_quoted_toml_string(sb, "");
+    return append_quoted_toml_string(sb, "");
 }
 
 /// @brief Format a Map as a TOML document string.
@@ -821,46 +901,64 @@ rt_string rt_toml_format(void *map) {
     rt_sb_init(&sb);
 
     void *keys = rt_map_keys(map);
+    if (!keys)
+        goto format_error;
     int64_t n = rt_seq_len(keys);
 
     for (int64_t i = 0; i < n; i++) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *val = rt_map_get(map, key);
         const char *key_cstr = rt_string_cstr(key);
-        size_t key_len = (size_t)rt_str_len(key);
+        int64_t raw_key_len = rt_str_len(key);
+        if (raw_key_len < 0)
+            goto format_error;
+        size_t key_len = (size_t)raw_key_len;
 
         if (is_map_obj(val)) {
-            rt_sb_append_cstr(&sb, "[");
-            append_toml_key_bytes(&sb, key_cstr, key_len);
-            rt_sb_append_cstr(&sb, "]\n");
+            if (!toml_format_append_cstr(&sb, "[") ||
+                !append_toml_key_bytes(&sb, key_cstr, key_len) ||
+                !toml_format_append_cstr(&sb, "]\n"))
+                goto format_error;
 
             void *sub_k = rt_map_keys(val);
+            if (!sub_k)
+                goto format_error;
             for (int64_t j = 0; j < rt_seq_len(sub_k); j++) {
                 rt_string sk = (rt_string)rt_seq_get(sub_k, j);
                 void *sv = rt_map_get(val, sk);
                 if (is_map_obj(sv))
                     continue;
                 const char *sk_cstr = rt_string_cstr(sk);
-                append_toml_key_bytes(&sb, sk_cstr, (size_t)rt_str_len(sk));
-                rt_sb_append_cstr(&sb, " = ");
-                append_toml_value(&sb, sv);
-                rt_sb_append_cstr(&sb, "\n");
+                int64_t raw_sk_len = rt_str_len(sk);
+                if (raw_sk_len < 0 || !append_toml_key_bytes(&sb, sk_cstr, (size_t)raw_sk_len) ||
+                    !toml_format_append_cstr(&sb, " = ") || !append_toml_value(&sb, sv) ||
+                    !toml_format_append_cstr(&sb, "\n")) {
+                    release_obj_maybe(sub_k);
+                    goto format_error;
+                }
             }
             release_obj_maybe(sub_k);
-            rt_sb_append_cstr(&sb, "\n");
+            if (!toml_format_append_cstr(&sb, "\n"))
+                goto format_error;
             continue;
         }
 
-        append_toml_key_bytes(&sb, key_cstr, key_len);
-        rt_sb_append_cstr(&sb, " = ");
-        append_toml_value(&sb, val);
-        rt_sb_append_cstr(&sb, "\n");
+        if (!append_toml_key_bytes(&sb, key_cstr, key_len) ||
+            !toml_format_append_cstr(&sb, " = ") || !append_toml_value(&sb, val) ||
+            !toml_format_append_cstr(&sb, "\n"))
+            goto format_error;
     }
 
     release_obj_maybe(keys);
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
+
+format_error:
+    if (keys)
+        release_obj_maybe(keys);
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 /// @brief Get a value from a parsed TOML document by dot-separated key path.

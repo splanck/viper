@@ -1346,7 +1346,7 @@ static void *fbx_load_impl(rt_string path) {
     /* Parse all top-level nodes into a virtual root */
     fbx_node_t root;
     memset(&root, 0, sizeof(root));
-    strcpy(root.name, "_root_");
+    snprintf(root.name, sizeof(root.name), "%s", "_root_");
 
     while (!fbx_eof(&reader)) {
         /* Check for file-level null sentinel */

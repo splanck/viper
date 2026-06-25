@@ -239,6 +239,50 @@ static void codeeditor_paint_inlay_hints_for_segment(vg_codeeditor_t *editor,
     }
 }
 
+/// @brief Draw faint vertical indent guides for one (non-wrapped) line.
+///
+/// One guide per indentation level — columns 0, tab_width, 2*tab_width, … up to
+/// the line's leading-whitespace depth (tabs snap to the next tab stop). The
+/// guide color falls back to a muted dark grey when unset. Wrapped continuation
+/// rows are not handled (the non-wrapped paint path is the only caller).
+static void codeeditor_paint_indent_guides(
+    vg_codeeditor_t *editor, void *canvas, int line, float content_x, float line_y) {
+    if (!editor || line < 0 || line >= editor->line_count)
+        return;
+    const vg_code_line_t *ln = &editor->lines[line];
+    const char *text = ln->text;
+    if (!text)
+        return;
+    int tab_w = editor->tab_width > 0 ? editor->tab_width : 4;
+
+    int cols = 0;
+    for (int k = 0; k < (int)ln->length; k++) {
+        char c = text[k];
+        if (c == ' ')
+            cols++;
+        else if (c == '\t')
+            cols += tab_w - (cols % tab_w);
+        else
+            break;
+    }
+    int levels = cols / tab_w;
+    if (levels <= 0)
+        return;
+
+    uint32_t color = editor->indent_guide_color ? editor->indent_guide_color : 0xFF3C3C3Cu;
+    for (int lvl = 0; lvl < levels; lvl++) {
+        float gx = content_x + (float)(lvl * tab_w) * editor->char_width - editor->scroll_x;
+        if (gx < content_x - 0.5f)
+            continue; // scrolled left of the content area
+        vgfx_fill_rect((vgfx_window_t)canvas,
+                       (int32_t)gx,
+                       (int32_t)line_y,
+                       1,
+                       (int32_t)editor->line_height,
+                       color);
+    }
+}
+
 /// @brief VTable paint: renders background, gutter, current-line highlight, selection,
 /// syntax-coloured text, cursor, and scrollbar.
 static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
@@ -316,6 +360,9 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                (int32_t)editor->line_height,
                                vg_theme_get_current()->colors.accent_primary);
             }
+
+            if (editor->show_indent_guides)
+                codeeditor_paint_indent_guides(editor, canvas, i, content_x, line_y);
 
             codeeditor_paint_highlights_for_line(editor,
                                                  canvas,

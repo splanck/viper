@@ -115,6 +115,18 @@ void *rt_list_format_get_locale(void *self) {
 // Template expansion: {0} and {1} positional placeholders
 //===----------------------------------------------------------------------===//
 
+/// @brief Append bytes to a ListFormat expansion and report builder failure.
+/// @details CLDR list expansion builds nested intermediate strings. If any
+///          builder append fails, callers must stop the current expansion to
+///          avoid returning a partially formatted list.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append.
+/// @param len Number of bytes in @p bytes.
+/// @return 1 on success, 0 when the append failed.
+static int lf_append_bytes_checked(rt_string_builder *sb, const char *bytes, size_t len) {
+    return rt_sb_append_bytes(sb, bytes, len) == RT_SB_OK;
+}
+
 /// @brief Substitute {0}→@p a and {1}→@p b into @p tmpl (default "{0}, {1}").
 /// @return A new string; NULL operands contribute empty text.
 static rt_string expand_pair(const char *tmpl, rt_string a, rt_string b) {
@@ -127,23 +139,30 @@ static rt_string expand_pair(const char *tmpl, rt_string a, rt_string b) {
     const char *b_cs = b ? rt_string_cstr(b) : "";
     int64_t a_len = a ? rt_str_len(a) : 0;
     int64_t b_len = b ? rt_str_len(b) : 0;
+    if (a_len < 0 || b_len < 0)
+        goto expand_error;
     while (*p) {
         if (p[0] == '{' && p[1] == '0' && p[2] == '}') {
-            if (a_cs && a_len > 0)
-                (void)rt_sb_append_bytes(&sb, a_cs, (size_t)a_len);
+            if (a_cs && a_len > 0 && !lf_append_bytes_checked(&sb, a_cs, (size_t)a_len))
+                goto expand_error;
             p += 3;
         } else if (p[0] == '{' && p[1] == '1' && p[2] == '}') {
-            if (b_cs && b_len > 0)
-                (void)rt_sb_append_bytes(&sb, b_cs, (size_t)b_len);
+            if (b_cs && b_len > 0 && !lf_append_bytes_checked(&sb, b_cs, (size_t)b_len))
+                goto expand_error;
             p += 3;
         } else {
-            (void)rt_sb_append_bytes(&sb, p, 1);
+            if (!lf_append_bytes_checked(&sb, p, 1))
+                goto expand_error;
             ++p;
         }
     }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
+
+expand_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 //===----------------------------------------------------------------------===//

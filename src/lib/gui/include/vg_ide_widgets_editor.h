@@ -113,6 +113,28 @@ typedef struct vg_codeeditor_perf_stats {
 typedef void (*vg_syntax_callback_t)(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data);
 
+/// @brief Stable syntax token classification shared by the lexical tokenizers
+///        and (later) the semantic-token overlay. Indices are an ABI contract:
+///        only append, never renumber. The first six match the original
+///        SetTokenColor order, so existing callers are unaffected. See
+///        docs/adr/0007-codeeditor-syntax-surface-expansion.md.
+typedef enum vg_syntax_token_type {
+    VG_SYN_TOKEN_DEFAULT = 0,   ///< Plain text / unclassified.
+    VG_SYN_TOKEN_KEYWORD = 1,   ///< Language keyword.
+    VG_SYN_TOKEN_TYPE = 2,      ///< Type / class name.
+    VG_SYN_TOKEN_STRING = 3,    ///< String literal.
+    VG_SYN_TOKEN_COMMENT = 4,   ///< Comment.
+    VG_SYN_TOKEN_NUMBER = 5,    ///< Numeric literal.
+    VG_SYN_TOKEN_FUNCTION = 6,  ///< Function / method call.
+    VG_SYN_TOKEN_OPERATOR = 7,  ///< Operator punctuation (+ - * / = < > etc.).
+    VG_SYN_TOKEN_BRACKET = 8,   ///< Bracket / delimiter ( ) [ ] { }.
+    VG_SYN_TOKEN_PARAMETER = 9, ///< Parameter binding (semantic).
+    VG_SYN_TOKEN_PROPERTY = 10, ///< Field / property access (semantic).
+    VG_SYN_TOKEN_CONSTANT = 11, ///< Constant / enum member (semantic).
+    VG_SYN_TOKEN_DECORATOR = 12,///< Attribute / decorator (semantic).
+    VG_SYN_TOKEN_COUNT = 13     ///< Number of token types (array sizing).
+} vg_syntax_token_type;
+
 /// @brief CodeEditor widget structure
 typedef struct vg_codeeditor {
     vg_widget_t base;
@@ -159,6 +181,11 @@ typedef struct vg_codeeditor {
     uint32_t selection_color; ///< Selection color
     uint32_t current_line_bg; ///< Current line highlight
 
+    // Display options
+    bool show_indent_guides;     ///< Draw faint vertical guides at indent levels.
+    bool render_whitespace;      ///< Reserved: render space/tab markers (default off).
+    uint32_t indent_guide_color; ///< Indent-guide line color (0 = derive from gutter).
+
     // Syntax highlighting
     vg_syntax_callback_t syntax_highlighter;
     void *syntax_data;
@@ -169,9 +196,10 @@ typedef struct vg_codeeditor {
     // middle of a block comment.
     int zia_block_comment_depth;
 
-    // Token colors (overridable per-editor; indices: 0=default, 1=keyword, 2=type,
-    // 3=string, 4=comment, 5=number). Zero means "use theme default".
-    uint32_t token_colors[6];
+    // Token colors (overridable per-editor; indexed by vg_syntax_token_type).
+    // Zero means "use theme default". The first six indices keep their original
+    // SetTokenColor meaning; FUNCTION and the semantic types are now overridable.
+    uint32_t token_colors[VG_SYN_TOKEN_COUNT];
 
     // Custom keywords (comma-separated list parsed into array; checked after
     // language keywords in the syntax callback). Owned by the editor.

@@ -706,8 +706,10 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
         char error[512];
         int8_t has_error = done ? pool_take_error(pool, error, sizeof(error)) : 0;
         pool_release_object(pool);
-        if (has_error)
+        if (has_error) {
             rt_trap(error[0] ? error : "Pool.Wait: task trapped");
+            return 0;
+        }
         return done;
     }
 
@@ -759,8 +761,10 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
     char error[512];
     int8_t has_error = pool_take_error(pool, error, sizeof(error));
     pool_release_object(pool);
-    if (has_error)
+    if (has_error) {
         rt_trap(error[0] ? error : "Pool.Wait: task trapped");
+        return 0;
+    }
     return 1;
 }
 

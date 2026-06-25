@@ -989,6 +989,23 @@ int64_t rt_codeeditor_get_word_wrap(void *editor) {
     return ce->word_wrap ? 1 : 0;
 }
 
+/// @brief `CodeEditor.SetShowIndentGuides` — toggle faint indentation guides.
+void rt_codeeditor_set_show_indent_guides(void *editor, int64_t enabled) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    ce->show_indent_guides = enabled != 0;
+    ce->base.needs_paint = true;
+}
+
+/// @brief `CodeEditor.GetShowIndentGuides` — return the indent-guide setting.
+int64_t rt_codeeditor_get_show_indent_guides(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    return ce->show_indent_guides ? 1 : 0;
+}
+
 //=============================================================================
 // CodeEditor Completion Helpers
 //=============================================================================
@@ -1905,6 +1922,18 @@ void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
 int64_t rt_codeeditor_get_word_wrap(void *editor) {
     (void)editor;
     return 0;
+}
+
+/// @brief Stub: `CodeEditor.SetShowIndentGuides` is a no-op without graphics.
+void rt_codeeditor_set_show_indent_guides(void *editor, int64_t enabled) {
+    (void)editor;
+    (void)enabled;
+}
+
+/// @brief Stub: returns 1 so headless probes match the editor default (guides on).
+int64_t rt_codeeditor_get_show_indent_guides(void *editor) {
+    (void)editor;
+    return 1;
 }
 
 /// @brief Stub: returns 0 (no pixel cursor position without graphics).

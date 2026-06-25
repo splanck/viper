@@ -441,12 +441,17 @@ func main() {
         }
 
         // ====================================================================
-        // Context menu — right-click on the file tree
+        // Context menus — right-click (mouse button 2) on the file tree, the
+        // tab strip, or the editor surface. The runtime keeps a single active
+        // overlay, so dismiss any open menu/palette before showing a new one.
         // ====================================================================
         var suppressTreeOpen = false;
-        if Input.Mouse.WasClicked(1) {
+        if Input.Mouse.WasClicked(2) {
+            var ctxX = Input.Mouse.X;
+            var ctxY = Input.Mouse.Y;
             if shell.sidebarTree.IsHovered() != 0 {
-                var ctxNode = shell.sidebarTree.GetNodeAt(Input.Mouse.X, Input.Mouse.Y);
+                DismissContextMenus(shell);
+                var ctxNode = shell.sidebarTree.GetNodeAt(ctxX, ctxY);
                 if ctxNode != null {
                     shell.sidebarTree.Select(ctxNode);
                     suppressTreeOpen = true;
@@ -455,7 +460,14 @@ func main() {
                     shell.contextPath = "";
                 }
                 shell.contextDir = ContextDirForPath(projMgr, shell.contextPath);
-                shell.treeContextMenu.Show(Input.Mouse.X, Input.Mouse.Y);
+                shell.treeContextMenu.Show(ctxX, ctxY);
+            } else if shell.tabBar.IsHovered() != 0 {
+                DismissContextMenus(shell);
+                shell.tabContextIndex = shell.tabBar.GetTabIndexAt(ctxX, ctxY);
+                shell.tabContextMenu.Show(ctxX, ctxY);
+            } else if engine.editor.IsHovered() != 0 {
+                DismissContextMenus(shell);
+                shell.editorContextMenu.Show(ctxX, ctxY);
             }
         }
         if shell.ctxOpen.WasClicked() != 0 {
@@ -620,6 +632,60 @@ func main() {
             projMgr.RefreshTree();
             indexer.EnsureProject(projMgr, docMgr);
             shell.SetStatusLeft("Project tree refreshed");
+        }
+
+        // ====================================================================
+        // Editor context-menu items — route to the existing command handlers
+        // (same entry points the menu bar and palette already use).
+        // ====================================================================
+        if shell.ecCut.WasClicked() != 0        { edit_commands.handleCut(engine); }
+        if shell.ecCopy.WasClicked() != 0       { edit_commands.handleCopy(engine); }
+        if shell.ecPaste.WasClicked() != 0      { edit_commands.handlePaste(engine); }
+        if shell.ecGotoDef.WasClicked() != 0    { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
+        if shell.ecFindRefs.WasClicked() != 0   { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
+        if shell.ecRename.WasClicked() != 0     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
+        if shell.ecFormat.WasClicked() != 0     { edit_commands.handleFormatDocument(shell, docMgr, engine); }
+        if shell.ecToggleBreakpoint.WasClicked() != 0 { debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore); }
+        if shell.ecPalette.WasClicked() != 0 {
+            paletteMode = "commands";
+            shell.commandPalette.SetPlaceholder("Type a command...");
+            commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+            shell.commandPalette.Show();
+        }
+
+        // ====================================================================
+        // Tab context-menu items — act on the right-clicked tab, falling back
+        // to the active tab when the click did not land on a specific tab.
+        // ====================================================================
+        var tabTargetIndex = shell.tabContextIndex;
+        if tabTargetIndex < 0 or tabTargetIndex >= docMgr.GetCount() {
+            tabTargetIndex = docMgr.activeIndex;
+        }
+        var tabTargetPath = "";
+        var tabTargetDoc = docMgr.GetDocument(tabTargetIndex);
+        if tabTargetDoc != null {
+            tabTargetPath = tabTargetDoc!.filePath;
+        }
+        if shell.tcClose.WasClicked() != 0        { file_commands.handleClose(shell, docMgr, engine, tabs, tabTargetIndex); pendingReload = false; }
+        if shell.tcCloseOthers.WasClicked() != 0  { file_commands.handleCloseOthers(shell, docMgr, engine, tabs, tabTargetIndex); pendingReload = false; }
+        if shell.tcCloseAll.WasClicked() != 0     { file_commands.handleCloseAll(shell, docMgr, engine, tabs); pendingReload = false; }
+        if shell.tcCloseSaved.WasClicked() != 0   { file_commands.handleCloseSaved(shell, docMgr, engine, tabs); pendingReload = false; }
+        if shell.tcCopyPath.WasClicked() != 0 {
+            if tabTargetPath != "" {
+                GUI.Clipboard.SetText(tabTargetPath);
+                GUI.Toast.Success("Path copied");
+            }
+        }
+        if shell.tcCopyRelativePath.WasClicked() != 0 {
+            if tabTargetPath != "" {
+                GUI.Clipboard.SetText(projMgr.RelativePath(tabTargetPath));
+                GUI.Toast.Success("Relative path copied");
+            }
+        }
+        if shell.tcReveal.WasClicked() != 0 {
+            if tabTargetPath != "" {
+                RevealPath(tabTargetPath);
+            }
         }
 
         // ====================================================================
@@ -1132,6 +1198,23 @@ func HasIdentifierInput(text: String) -> Boolean {
         i = i + 1;
     }
     return false;
+}
+
+/// @brief Hide any open command palette or context menu so the next one shown
+///        is the only active overlay (the runtime tracks a single active menu).
+func DismissContextMenus(shell: app_shell.AppShell) {
+    if shell.commandPalette.IsVisible() != 0 {
+        shell.commandPalette.Hide();
+    }
+    if shell.treeContextMenu.IsVisible() != 0 {
+        shell.treeContextMenu.Hide();
+    }
+    if shell.editorContextMenu.IsVisible() != 0 {
+        shell.editorContextMenu.Hide();
+    }
+    if shell.tabContextMenu.IsVisible() != 0 {
+        shell.tabContextMenu.Hide();
+    }
 }
 
 func CurrentContextPath(projMgr: project_manager.ProjectManager,

@@ -177,7 +177,6 @@ static int ensure_result_capacity(
     return 1;
 }
 
-
 //=============================================================================
 // Memory Management
 //=============================================================================
@@ -358,7 +357,6 @@ void class_add_shorthand(re_class *c, char shorthand) {
     }
 }
 
-
 /// @brief Count `RE_GROUP` nodes in a subtree (excluding the implicit group 0).
 ///
 /// Used after parse to populate `cp->group_count` so callers can size
@@ -423,6 +421,7 @@ static compiled_pattern *compile_pattern(const char *pattern) {
     if (!at_end(&p)) {
         pattern_free(cp);
         parse_error(&p, "unexpected character");
+        return NULL;
     }
 
     // Handle empty pattern
@@ -459,7 +458,6 @@ int re_group_count(re_compiled_pattern *cp) {
     return cp ? cp->group_count : 0;
 }
 
-
 //=============================================================================
 // Pattern Cache (Simple LRU)
 //=============================================================================
@@ -490,6 +488,8 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str) {
 
     pattern_cache_unlock();
     compiled_pattern *cp = compile_pattern(pattern_str);
+    if (!cp)
+        return NULL;
     cp->cache_refs = 1;
     cp->cache_linked = false;
 

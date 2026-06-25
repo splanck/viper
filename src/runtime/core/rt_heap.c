@@ -501,6 +501,12 @@ int8_t rt_heap_contains_range(const void *ptr, size_t bytes) {
     if (!ptr)
         return 0;
 
+    rt_heap_hdr_t *exact_hdr = NULL;
+    if (rt_heap_try_get_header((void *)(uintptr_t)ptr, &exact_hdr) && exact_hdr) {
+        size_t payload_bytes = exact_hdr->alloc_size - sizeof(rt_heap_hdr_t);
+        return bytes <= payload_bytes ? 1 : 0;
+    }
+
     const uintptr_t address = (uintptr_t)ptr;
     int found = 0;
 

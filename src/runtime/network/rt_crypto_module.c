@@ -34,6 +34,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if RT_PLATFORM_WINDOWS
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif !RT_PLATFORM_VIPERDOS
+#include <sched.h>
+#endif
+
 typedef struct rt_hmac_drbg_state {
     uint8_t k[32];
     uint8_t v[32];
@@ -51,12 +60,25 @@ static const char *g_status = "uninitialized";
 static rt_hmac_drbg_state_t g_drbg;
 static volatile int g_module_lock = 0;
 
+/// @brief Yield the processor while waiting for the crypto module lock.
+/// @details Keeps the module spinlock lightweight under no contention while
+///          avoiding a hot busy-wait loop when another thread is performing
+///          DRBG work or mode transitions.
+static void module_lock_yield(void) {
+#if RT_PLATFORM_WINDOWS
+    SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+    (void)sched_yield();
+#endif
+}
+
 /// @brief Spin-acquire the module-wide lock.
-/// @details Test-and-set spinlock — the lock is held only for sub-microsecond
-///          critical sections (mode read/write, DRBG generate) so spinning
-///          is cheaper than a pthread mutex round trip.
+/// @details Test-and-set spinlock with cooperative yielding under contention.
+///          Uncontended acquisition remains a single atomic operation; contended
+///          acquisition avoids monopolizing a CPU core.
 static void module_lock(void) {
     while (__atomic_test_and_set(&g_module_lock, __ATOMIC_ACQUIRE)) {
+        module_lock_yield();
     }
 }
 
@@ -500,16 +522,16 @@ void rt_crypto_module_random_bytes(uint8_t *buf, size_t len) {
         rt_trap(rt_crypto_module_status_cstr());
         rt_abort(rt_crypto_module_status_cstr());
     }
-    module_lock();
     while (len > 0) {
         size_t chunk = len;
         if (chunk > RT_HMAC_DRBG_MAX_REQUEST)
             chunk = RT_HMAC_DRBG_MAX_REQUEST;
+        module_lock();
         drbg_generate(&g_drbg, buf, chunk);
+        module_unlock();
         buf += chunk;
         len -= chunk;
     }
-    module_unlock();
 }
 
 /// @brief Zia-callable: enable APPROVED mode.

@@ -78,6 +78,20 @@ static void reltime_diff(int64_t timestamp, int64_t reference, int *in_future, u
     }
 }
 
+/// @brief Append bytes to a relative-time builder and report append failure.
+/// @details Relative-time formatting is intended to be allocation-light, but
+///          builder growth can still fail for very large or memory-constrained
+///          processes. This helper centralizes status checking so callers never
+///          cast a failed `snprintf` length or ignored builder error into an
+///          invalid output size.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append.
+/// @param len Number of bytes in @p bytes.
+/// @return 1 on success, 0 when the builder rejected the append.
+static int reltime_append_bytes_checked(rt_string_builder *sb, const char *bytes, size_t len) {
+    return rt_sb_append_bytes(sb, bytes, len) == RT_SB_OK;
+}
+
 // ---------------------------------------------------------------------------
 // rt_reltime_format_from
 // ---------------------------------------------------------------------------
@@ -169,37 +183,49 @@ rt_string rt_reltime_format_duration(int64_t duration_ms) {
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    if (negative)
-        rt_sb_append_cstr(&sb, "-");
+    if (negative && rt_sb_append_cstr(&sb, "-") != RT_SB_OK)
+        goto format_error;
 
     int has_prev = 0;
     if (days > 0) {
         char buf[32];
         int len = snprintf(buf, sizeof(buf), "%lldd", (long long)days);
-        rt_sb_append_bytes(&sb, buf, (size_t)len);
+        if (len < 0 || (size_t)len >= sizeof(buf) ||
+            !reltime_append_bytes_checked(&sb, buf, (size_t)len))
+            goto format_error;
         has_prev = 1;
     }
     if (hours > 0) {
         char buf[32];
         int len = snprintf(buf, sizeof(buf), "%s%lldh", has_prev ? " " : "", (long long)hours);
-        rt_sb_append_bytes(&sb, buf, (size_t)len);
+        if (len < 0 || (size_t)len >= sizeof(buf) ||
+            !reltime_append_bytes_checked(&sb, buf, (size_t)len))
+            goto format_error;
         has_prev = 1;
     }
     if (minutes > 0) {
         char buf[32];
         int len = snprintf(buf, sizeof(buf), "%s%lldm", has_prev ? " " : "", (long long)minutes);
-        rt_sb_append_bytes(&sb, buf, (size_t)len);
+        if (len < 0 || (size_t)len >= sizeof(buf) ||
+            !reltime_append_bytes_checked(&sb, buf, (size_t)len))
+            goto format_error;
         has_prev = 1;
     }
     if (seconds > 0 || !has_prev) {
         char buf[32];
         int len = snprintf(buf, sizeof(buf), "%s%llds", has_prev ? " " : "", (long long)seconds);
-        rt_sb_append_bytes(&sb, buf, (size_t)len);
+        if (len < 0 || (size_t)len >= sizeof(buf) ||
+            !reltime_append_bytes_checked(&sb, buf, (size_t)len))
+            goto format_error;
     }
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
+
+format_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 // ---------------------------------------------------------------------------

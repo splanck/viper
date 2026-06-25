@@ -90,70 +90,99 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
     return ds;
 }
 
+/// @brief Convert a string-builder append status into a DateFormat trap.
+/// @details Date-pattern emission is a `void` side-effecting API. This helper
+///          keeps the existing API stable while ensuring allocation, overflow,
+///          and invalid-argument failures stop emission instead of silently
+///          producing a truncated formatted date.
+/// @param status Status returned by a string-builder append operation.
+/// @return 1 when @p status is @ref RT_SB_OK, otherwise traps and returns 0.
+static int dateformat_check_append(rt_sb_status_t status) {
+    if (status == RT_SB_OK)
+        return 1;
+    rt_trap("Viper.Localization.DateFormat: formatting failed");
+    return 0;
+}
+
 /// @brief Append @p len bytes, transliterating ASCII '0'-'9' to the locale's
 ///        native digit glyphs; non-digit bytes are passed through verbatim.
-static void emit_ascii_digits(rt_string_builder *sb,
-                              const rt_locale_data_t *data,
-                              const char *bytes,
-                              size_t len) {
+/// @return 1 on success, 0 when a builder append failed.
+static int emit_ascii_digits(rt_string_builder *sb,
+                             const rt_locale_data_t *data,
+                             const char *bytes,
+                             size_t len) {
     digit_spans_t ds = digit_spans_from_locale(data);
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)bytes[i];
         if (ds.valid && c >= '0' && c <= '9') {
             int d = (int)(c - '0');
-            (void)rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d]);
+            if (!dateformat_check_append(rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d])))
+                return 0;
         } else {
-            (void)rt_sb_append_bytes(sb, bytes + i, 1);
+            if (!dateformat_check_append(rt_sb_append_bytes(sb, bytes + i, 1)))
+                return 0;
         }
     }
+    return 1;
 }
 
 /// @brief Append @p value as a zero-padded decimal of @p width digits.
-static void emit_padded_int(rt_string_builder *sb,
-                            const rt_locale_data_t *data,
-                            int64_t value,
-                            int width) {
+/// @return 1 on success, 0 when formatting or append work failed.
+static int emit_padded_int(rt_string_builder *sb,
+                           const rt_locale_data_t *data,
+                           int64_t value,
+                           int width) {
     char buf[32];
     int n = snprintf(buf, sizeof(buf), "%lld", (long long)value);
     if (n < 0)
-        return;
+        return 0;
+    if ((size_t)n >= sizeof(buf))
+        return 0;
     if (buf[0] == '-') {
-        (void)rt_sb_append_bytes(sb, "-", 1);
+        if (!dateformat_check_append(rt_sb_append_bytes(sb, "-", 1)))
+            return 0;
         memmove(buf, buf + 1, (size_t)n);
         --n;
     }
     if (width > n) {
         digit_spans_t ds = digit_spans_from_locale(data);
         for (int i = n; i < width; ++i) {
-            if (ds.valid)
-                (void)rt_sb_append_bytes(sb, ds.ptr[0], ds.len[0]);
-            else
-                (void)rt_sb_append_bytes(sb, "0", 1);
+            if (ds.valid) {
+                if (!dateformat_check_append(rt_sb_append_bytes(sb, ds.ptr[0], ds.len[0])))
+                    return 0;
+            } else if (!dateformat_check_append(rt_sb_append_bytes(sb, "0", 1))) {
+                return 0;
+            }
         }
     }
-    emit_ascii_digits(sb, data, buf, (size_t)n);
+    return emit_ascii_digits(sb, data, buf, (size_t)n);
 }
 
 /// @brief Append @p value as an unpadded decimal.
-static void emit_int(rt_string_builder *sb, const rt_locale_data_t *data, int64_t value) {
+/// @return 1 on success, 0 when formatting or append work failed.
+static int emit_int(rt_string_builder *sb, const rt_locale_data_t *data, int64_t value) {
     char buf[32];
     int n = snprintf(buf, sizeof(buf), "%lld", (long long)value);
     if (n < 0)
-        return;
-    emit_ascii_digits(sb, data, buf, (size_t)n);
+        return 0;
+    if ((size_t)n >= sizeof(buf))
+        return 0;
+    return emit_ascii_digits(sb, data, buf, (size_t)n);
 }
 
 /// @brief Append a C string (NULL-tolerant).
-static void emit_cstr(rt_string_builder *sb, const char *s) {
+/// @return 1 on success, 0 when a builder append failed.
+static int emit_cstr(rt_string_builder *sb, const char *s) {
     if (!s || !*s)
-        return;
-    (void)rt_sb_append_cstr(sb, s);
+        return 1;
+    return dateformat_check_append(rt_sb_append_cstr(sb, s));
 }
 
 /// @brief Append the single leading UTF-8 codepoint of @p s (narrow form).
-static void emit_narrow(rt_string_builder *sb, const char *s) {
+/// @return 1 on success, 0 when a builder append failed.
+static int emit_narrow(rt_string_builder *sb, const char *s) {
     if (!s || !*s)
-        return;
+        return 1;
     unsigned char c = (unsigned char)s[0];
     size_t len = 1;
     if ((c & 0xE0) == 0xC0 && s[1])
@@ -162,7 +191,7 @@ static void emit_narrow(rt_string_builder *sb, const char *s) {
         len = 3;
     else if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3])
         len = 4;
-    (void)rt_sb_append_bytes(sb, s, len);
+    return dateformat_check_append(rt_sb_append_bytes(sb, s, len));
 }
 
 //===----------------------------------------------------------------------===//
@@ -181,140 +210,141 @@ typedef struct {
 
 /// @brief Emit the year for a CLDR 'y' run: count==2 → 2-digit (year % 100),
 ///        count>=4 → zero-padded to @p count, else the full year unclamped.
-static void emit_year(rt_string_builder *sb,
-                      const dt_components_t *c,
-                      int count,
-                      const rt_locale_data_t *data) {
+static int emit_year(rt_string_builder *sb,
+                     const dt_components_t *c,
+                     int count,
+                     const rt_locale_data_t *data) {
     if (count == 2) {
-        emit_padded_int(sb, data, c->year % 100, 2);
+        return emit_padded_int(sb, data, c->year % 100, 2);
     } else {
         // 1, 3, 4, 5+ all emit the full year (no width clamping).
         int width = count >= 4 ? count : 1;
-        emit_padded_int(sb, data, c->year, width);
+        return emit_padded_int(sb, data, c->year, width);
     }
 }
 
 /// @brief Emit the month for a CLDR 'M' run: 1=numeric, 2=zero-padded,
 ///        3=abbreviated name, 4=wide name, 5+=narrow (first glyph of wide).
 /// @details Traps if the component month is outside 1-12.
-static void emit_month(rt_string_builder *sb,
-                       const dt_components_t *c,
-                       int count,
-                       const rt_locale_data_t *data) {
+static int emit_month(rt_string_builder *sb,
+                      const dt_components_t *c,
+                      int count,
+                      const rt_locale_data_t *data) {
     int idx = (int)(c->month - 1);
     if (idx < 0 || idx > 11) {
         rt_trap("Viper.Localization.DateFormat: month component out of range");
-        return;
+        return 0;
     }
     if (count == 1) {
-        emit_int(sb, data, c->month);
+        return emit_int(sb, data, c->month);
     } else if (count == 2) {
-        emit_padded_int(sb, data, c->month, 2);
+        return emit_padded_int(sb, data, c->month, 2);
     } else if (count == 3) {
-        emit_cstr(sb, data->dates.months_abbr ? data->dates.months_abbr[idx] : NULL);
+        return emit_cstr(sb, data->dates.months_abbr ? data->dates.months_abbr[idx] : NULL);
     } else if (count == 4) {
-        emit_cstr(sb, data->dates.months_wide ? data->dates.months_wide[idx] : NULL);
+        return emit_cstr(sb, data->dates.months_wide ? data->dates.months_wide[idx] : NULL);
     } else {
         // Narrow: one-glyph form; fall back to the wide name's first codepoint.
         const char *wide = data->dates.months_wide ? data->dates.months_wide[idx] : NULL;
-        emit_narrow(sb, wide);
+        return emit_narrow(sb, wide);
     }
 }
 
 /// @brief Emit the day-of-month for a CLDR 'd' run: count>=2 → zero-padded to
 ///        two digits, otherwise the bare number.
-static void emit_day(rt_string_builder *sb,
-                     const dt_components_t *c,
-                     int count,
-                     const rt_locale_data_t *data) {
+static int emit_day(rt_string_builder *sb,
+                    const dt_components_t *c,
+                    int count,
+                    const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, data, c->day, 2);
-    else
-        emit_int(sb, data, c->day);
+        return emit_padded_int(sb, data, c->day, 2);
+    return emit_int(sb, data, c->day);
 }
 
 /// @brief Emit the weekday name for a CLDR 'E' run: count<=3 → abbreviated,
 ///        4 → wide, 5+ → narrow (first glyph of wide).
 /// @details Traps if the component day-of-week is outside 0-6 (Sun..Sat).
-static void emit_dow(rt_string_builder *sb,
-                     const dt_components_t *c,
-                     int count,
-                     const rt_locale_data_t *data) {
+static int emit_dow(rt_string_builder *sb,
+                    const dt_components_t *c,
+                    int count,
+                    const rt_locale_data_t *data) {
     int idx = (int)c->dow;
     if (idx < 0 || idx > 6) {
         rt_trap("Viper.Localization.DateFormat: weekday component out of range");
-        return;
+        return 0;
     }
     if (count <= 3) {
-        emit_cstr(sb, data->dates.days_abbr ? data->dates.days_abbr[idx] : NULL);
+        return emit_cstr(sb, data->dates.days_abbr ? data->dates.days_abbr[idx] : NULL);
     } else if (count == 4) {
-        emit_cstr(sb, data->dates.days_wide ? data->dates.days_wide[idx] : NULL);
+        return emit_cstr(sb, data->dates.days_wide ? data->dates.days_wide[idx] : NULL);
     } else {
         const char *wide = data->dates.days_wide ? data->dates.days_wide[idx] : NULL;
-        emit_narrow(sb, wide);
+        return emit_narrow(sb, wide);
     }
 }
 
 /// @brief Emit the hour on a 24-hour clock (CLDR 'H'); count>=2 → zero-padded.
-static void emit_hour24(rt_string_builder *sb,
-                        const dt_components_t *c,
-                        int count,
-                        const rt_locale_data_t *data) {
+static int emit_hour24(rt_string_builder *sb,
+                       const dt_components_t *c,
+                       int count,
+                       const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, data, c->hour, 2);
-    else
-        emit_int(sb, data, c->hour);
+        return emit_padded_int(sb, data, c->hour, 2);
+    return emit_int(sb, data, c->hour);
 }
 
 /// @brief Emit the hour on a 12-hour clock (CLDR 'h'); 0 maps to 12,
 ///        count>=2 → zero-padded.
-static void emit_hour12(rt_string_builder *sb,
-                        const dt_components_t *c,
-                        int count,
-                        const rt_locale_data_t *data) {
+static int emit_hour12(rt_string_builder *sb,
+                       const dt_components_t *c,
+                       int count,
+                       const rt_locale_data_t *data) {
     int64_t h = c->hour % 12;
     if (h == 0)
         h = 12;
     if (count >= 2)
-        emit_padded_int(sb, data, h, 2);
-    else
-        emit_int(sb, data, h);
+        return emit_padded_int(sb, data, h, 2);
+    return emit_int(sb, data, h);
 }
 
 /// @brief Emit the minute (CLDR 'm'); count>=2 → zero-padded to two digits.
-static void emit_minute(rt_string_builder *sb,
-                        const dt_components_t *c,
-                        int count,
-                        const rt_locale_data_t *data) {
+static int emit_minute(rt_string_builder *sb,
+                       const dt_components_t *c,
+                       int count,
+                       const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, data, c->minute, 2);
-    else
-        emit_int(sb, data, c->minute);
+        return emit_padded_int(sb, data, c->minute, 2);
+    return emit_int(sb, data, c->minute);
 }
 
 /// @brief Emit the second (CLDR 's'); count>=2 → zero-padded to two digits.
-static void emit_second(rt_string_builder *sb,
-                        const dt_components_t *c,
-                        int count,
-                        const rt_locale_data_t *data) {
+static int emit_second(rt_string_builder *sb,
+                       const dt_components_t *c,
+                       int count,
+                       const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, data, c->second, 2);
-    else
-        emit_int(sb, data, c->second);
+        return emit_padded_int(sb, data, c->second, 2);
+    return emit_int(sb, data, c->second);
 }
 
 /// @brief Emit the AM/PM marker (CLDR 'a') using the locale's tokens,
 ///        falling back to literal "AM"/"PM" when the locale omits them.
-static void emit_ampm(rt_string_builder *sb,
-                      const dt_components_t *c,
-                      const rt_locale_data_t *data) {
+static int emit_ampm(rt_string_builder *sb,
+                     const dt_components_t *c,
+                     const rt_locale_data_t *data) {
     const char *token = c->hour < 12 ? data->dates.am : data->dates.pm;
-    emit_cstr(sb, token ? token : (c->hour < 12 ? "AM" : "PM"));
+    return emit_cstr(sb, token ? token : (c->hour < 12 ? "AM" : "PM"));
 }
 
 //===----------------------------------------------------------------------===//
 // Public entry point
 //===----------------------------------------------------------------------===//
+
+int rt_dateformat_emit_pattern_checked(rt_string_builder *sb,
+                                       int64_t timestamp,
+                                       const char *pattern,
+                                       size_t pattern_len,
+                                       const rt_locale_data_t *data);
 
 void rt_dateformat_emit_pattern(rt_string_builder *sb,
                                 int64_t timestamp,
@@ -322,13 +352,31 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
                                 size_t pattern_len,
                                 const rt_locale_data_t *data);
 
+/// @brief Compatibility wrapper for callers that ignore pattern-emission status.
+/// @details New code should prefer @ref rt_dateformat_emit_pattern_checked so
+///          allocation and formatting failures do not silently materialize a
+///          partial date string.
 void rt_dateformat_emit_pattern(rt_string_builder *sb,
                                 int64_t timestamp,
                                 const char *pattern,
                                 size_t pattern_len,
                                 const rt_locale_data_t *data) {
+    (void)rt_dateformat_emit_pattern_checked(sb, timestamp, pattern, pattern_len, data);
+}
+
+/// @brief Emit a CLDR-like date/time pattern into @p sb and report success.
+/// @details Interprets supported date pattern letters, quoted literals, and
+///          locale-specific digits. Any unsupported pattern, invalid component,
+///          or builder append failure traps through the existing DateFormat
+///          error policy and returns 0 after recovery.
+/// @return 1 when the full pattern was emitted, 0 when emission stopped early.
+int rt_dateformat_emit_pattern_checked(rt_string_builder *sb,
+                                       int64_t timestamp,
+                                       const char *pattern,
+                                       size_t pattern_len,
+                                       const rt_locale_data_t *data) {
     if (!sb || !pattern || !data)
-        return;
+        return 0;
 
     dt_components_t c;
     c.year = rt_datetime_year(timestamp);
@@ -343,7 +391,7 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
     // Custom() pattern inputs from users are capped here as well).
     if (pattern_len > 256) {
         rt_trap("Viper.Localization.DateFormat: pattern too long (max 256 chars)");
-        return;
+        return 0;
     }
 
     size_t i = 0;
@@ -355,7 +403,8 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
             ++i;
             // Case: '' at the start => literal '
             if (i < pattern_len && pattern[i] == '\'') {
-                (void)rt_sb_append_bytes(sb, "'", 1);
+                if (!dateformat_check_append(rt_sb_append_bytes(sb, "'", 1)))
+                    return 0;
                 ++i;
                 continue;
             }
@@ -364,7 +413,8 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
                 if (pattern[i] == '\'') {
                     if (i + 1 < pattern_len && pattern[i + 1] == '\'') {
                         // Escaped apostrophe inside the literal.
-                        (void)rt_sb_append_bytes(sb, "'", 1);
+                        if (!dateformat_check_append(rt_sb_append_bytes(sb, "'", 1)))
+                            return 0;
                         i += 2;
                         continue;
                     }
@@ -372,12 +422,13 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
                     closed = 1;
                     break;
                 }
-                (void)rt_sb_append_bytes(sb, pattern + i, 1);
+                if (!dateformat_check_append(rt_sb_append_bytes(sb, pattern + i, 1)))
+                    return 0;
                 ++i;
             }
             if (!closed) {
                 rt_trap("Viper.Localization.DateFormat: unterminated quoted literal");
-                return;
+                return 0;
             }
             continue;
         }
@@ -391,41 +442,52 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
             i = j;
             switch (ch) {
                 case 'y':
-                    emit_year(sb, &c, count, data);
+                    if (!emit_year(sb, &c, count, data))
+                        return 0;
                     break;
                 case 'M':
-                    emit_month(sb, &c, count, data);
+                    if (!emit_month(sb, &c, count, data))
+                        return 0;
                     break;
                 case 'd':
-                    emit_day(sb, &c, count, data);
+                    if (!emit_day(sb, &c, count, data))
+                        return 0;
                     break;
                 case 'E':
-                    emit_dow(sb, &c, count, data);
+                    if (!emit_dow(sb, &c, count, data))
+                        return 0;
                     break;
                 case 'H':
-                    emit_hour24(sb, &c, count, data);
+                    if (!emit_hour24(sb, &c, count, data))
+                        return 0;
                     break;
                 case 'h':
-                    emit_hour12(sb, &c, count, data);
+                    if (!emit_hour12(sb, &c, count, data))
+                        return 0;
                     break;
                 case 'm':
-                    emit_minute(sb, &c, count, data);
+                    if (!emit_minute(sb, &c, count, data))
+                        return 0;
                     break;
                 case 's':
-                    emit_second(sb, &c, count, data);
+                    if (!emit_second(sb, &c, count, data))
+                        return 0;
                     break;
                 case 'a':
-                    emit_ampm(sb, &c, data);
+                    if (!emit_ampm(sb, &c, data))
+                        return 0;
                     break;
                 default:
                     rt_trap("Viper.Localization.DateFormat: unsupported pattern letter");
-                    return;
+                    return 0;
             }
             continue;
         }
 
         // Any other character is emitted verbatim (separators, punctuation).
-        (void)rt_sb_append_bytes(sb, &ch, 1);
+        if (!dateformat_check_append(rt_sb_append_bytes(sb, &ch, 1)))
+            return 0;
         ++i;
     }
+    return 1;
 }

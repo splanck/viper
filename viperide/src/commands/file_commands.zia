@@ -247,6 +247,55 @@ func handleClose(shell: app_shell.AppShell,
     return true;
 }
 
+/// @brief Close every open document. Iterates high→low so each close does
+///        not shift the indices we have not yet visited.
+func handleCloseAll(shell: app_shell.AppShell,
+                    docMgr: document_manager.DocumentManager,
+                    engine: editor_engine.EditorEngine,
+                    tabs: editor_tabs.EditorTabs) {
+    var i = docMgr.GetCount() - 1;
+    while i >= 0 {
+        handleClose(shell, docMgr, engine, tabs, i);
+        i = i - 1;
+    }
+}
+
+/// @brief Close every document except `keepIdx`. Safe to compare against the
+///        loop counter directly: closing a higher index never shifts a lower
+///        one, and we visit `keepIdx` before touching anything beneath it.
+func handleCloseOthers(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       tabs: editor_tabs.EditorTabs,
+                       keepIdx: Integer) {
+    var i = docMgr.GetCount() - 1;
+    while i >= 0 {
+        if i != keepIdx {
+            handleClose(shell, docMgr, engine, tabs, i);
+        }
+        i = i - 1;
+    }
+}
+
+/// @brief Close all documents with no unsaved changes (dirty tabs stay open).
+func handleCloseSaved(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs) {
+    SaveEditorState(docMgr, engine);
+    var i = docMgr.GetCount() - 1;
+    while i >= 0 {
+        var maybeDoc = docMgr.GetDocument(i);
+        if maybeDoc != null {
+            var doc = maybeDoc!;
+            if doc.isModified == false {
+                handleClose(shell, docMgr, engine, tabs, i);
+            }
+        }
+        i = i - 1;
+    }
+}
+
 /// @brief Tear down the AppShell — the main loop's `WindowOpen` check
 ///        then exits.
 func handleExit(shell: app_shell.AppShell,

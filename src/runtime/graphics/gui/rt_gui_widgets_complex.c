@@ -489,6 +489,15 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     return rt_gui_wrap_tab(vg_tabbar_get_tab_at(tb, (int)index));
 }
 
+/// @brief `TabBar.GetTabIndexAt(x, y)` — index of the tab under the point, or -1.
+int64_t rt_tabbar_get_tab_index_at(void *tabbar, int64_t x, int64_t y) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb)
+        return -1;
+    return (int64_t)vg_tabbar_index_at(tb, (int)x, (int)y);
+}
+
 /// @brief Enable or disable automatic tab removal on close-button click.
 void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close) {
     RT_ASSERT_MAIN_THREAD();
@@ -1258,6 +1267,14 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     (void)tabbar;
     (void)index;
     return NULL;
+}
+
+/// @brief Stub: `TabBar.GetTabIndexAt` returns -1 without graphics.
+int64_t rt_tabbar_get_tab_index_at(void *tabbar, int64_t x, int64_t y) {
+    (void)tabbar;
+    (void)x;
+    (void)y;
+    return -1;
 }
 
 /// @brief Enable or disable automatic tab removal on close-button click.

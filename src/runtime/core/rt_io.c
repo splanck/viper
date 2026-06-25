@@ -383,19 +383,16 @@ static void rt_sb_check_status(rt_string_builder *sb, const char *op_name, rt_sb
         return;
 
     const char *msg = op_name;
+    char detail_msg[64];
     if (status == RT_SB_ERROR_ALLOC) {
-        // Use a static buffer to avoid allocation in error path
-        static char alloc_msg[64];
-        snprintf(alloc_msg, sizeof(alloc_msg), "%s: alloc", op_name);
-        msg = alloc_msg;
+        snprintf(detail_msg, sizeof(detail_msg), "%s: alloc", op_name);
+        msg = detail_msg;
     } else if (status == RT_SB_ERROR_OVERFLOW) {
-        static char overflow_msg[64];
-        snprintf(overflow_msg, sizeof(overflow_msg), "%s: overflow", op_name);
-        msg = overflow_msg;
+        snprintf(detail_msg, sizeof(detail_msg), "%s: overflow", op_name);
+        msg = detail_msg;
     } else if (status == RT_SB_ERROR_INVALID) {
-        static char invalid_msg[64];
-        snprintf(invalid_msg, sizeof(invalid_msg), "%s: invalid", op_name);
-        msg = invalid_msg;
+        snprintf(detail_msg, sizeof(detail_msg), "%s: invalid", op_name);
+        msg = detail_msg;
     }
 
     rt_sb_free(sb);

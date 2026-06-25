@@ -128,6 +128,18 @@ static inline const char *rt_string_safe_data(rt_string s) {
     return s->data;
 }
 
+/// @brief Append bytes to a path builder and report construction failure.
+/// @details Path helpers build new runtime strings from multiple slices. This
+///          wrapper makes allocation and overflow failures explicit so callers
+///          can avoid returning partially assembled paths.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append.
+/// @param len Number of bytes in @p bytes.
+/// @return 1 on success, 0 when the append failed.
+static int path_append_bytes_checked(rt_string_builder *sb, const char *bytes, size_t len) {
+    return rt_sb_append_bytes(sb, bytes, len) == RT_SB_OK;
+}
+
 /// @brief Join two path components with the platform separator.
 ///
 /// Combines two path components into a single path, inserting the appropriate
@@ -208,18 +220,26 @@ rt_string rt_path_join(rt_string a, rt_string b) {
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    rt_sb_append_bytes(&sb, a_data, a_len);
+    if (!path_append_bytes_checked(&sb, a_data, a_len))
+        goto join_error;
 
-    if (!a_has_sep && !b_has_sep)
-        rt_sb_append_bytes(&sb, PATH_SEP_STR, 1);
-    else if (a_has_sep && b_has_sep)
+    if (!a_has_sep && !b_has_sep) {
+        if (!path_append_bytes_checked(&sb, PATH_SEP_STR, 1))
+            goto join_error;
+    } else if (a_has_sep && b_has_sep) {
         b_data++, b_len--; // Skip redundant separator in b
+    }
 
-    rt_sb_append_bytes(&sb, b_data, b_len);
+    if (!path_append_bytes_checked(&sb, b_data, b_len))
+        goto join_error;
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
+
+join_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 /// @brief Get the directory portion of a path (parent directory).
@@ -619,13 +639,18 @@ rt_string rt_path_with_ext(rt_string path, rt_string new_ext) {
         rt_string_builder empty_sb;
         rt_sb_init(&empty_sb);
         if (ext_len > 0) {
-            if (ext_data[0] != '.')
-                rt_sb_append_bytes(&empty_sb, ".", 1);
-            rt_sb_append_bytes(&empty_sb, ext_data, ext_len);
+            if (ext_data[0] != '.' && !path_append_bytes_checked(&empty_sb, ".", 1))
+                goto empty_error;
+            if (!path_append_bytes_checked(&empty_sb, ext_data, ext_len))
+                goto empty_error;
         }
         rt_string result = rt_string_from_bytes(empty_sb.data ? empty_sb.data : "", empty_sb.len);
         rt_sb_free(&empty_sb);
         return result;
+
+    empty_error:
+        rt_sb_free(&empty_sb);
+        return rt_string_from_bytes("", 0);
     }
 
     // Find the filename portion
@@ -649,18 +674,24 @@ rt_string rt_path_with_ext(rt_string path, rt_string new_ext) {
     rt_sb_init(&sb);
 
     // Add path up to the extension
-    rt_sb_append_bytes(&sb, path_data, dot_pos);
+    if (!path_append_bytes_checked(&sb, path_data, dot_pos))
+        goto ext_error;
 
     // Add new extension with dot if needed
     if (ext_len > 0) {
-        if (ext_data[0] != '.')
-            rt_sb_append_bytes(&sb, ".", 1);
-        rt_sb_append_bytes(&sb, ext_data, ext_len);
+        if (ext_data[0] != '.' && !path_append_bytes_checked(&sb, ".", 1))
+            goto ext_error;
+        if (!path_append_bytes_checked(&sb, ext_data, ext_len))
+            goto ext_error;
     }
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
+
+ext_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 /// @brief Check if a path is absolute (starts from root).
@@ -1023,7 +1054,8 @@ rt_string rt_path_norm(rt_string path) {
 
     // Add prefix
     if (prefix_len > 0) {
-        rt_sb_append_bytes(&sb, data, prefix_len);
+        if (!path_append_bytes_checked(&sb, data, prefix_len))
+            goto norm_error;
 #ifdef _WIN32
         // Normalize prefix separators on Windows
         for (size_t j = 0; j < sb.len; j++) {
@@ -1035,10 +1067,13 @@ rt_string rt_path_norm(rt_string path) {
 
     // Add components
     for (size_t j = 0; j < comp_count; j++) {
-        if (j > 0 || (prefix_len > 0 && !is_path_sep(data[prefix_len - 1]) && !is_drive_relative))
-            rt_sb_append_bytes(&sb, PATH_SEP_STR, 1);
+        if (j > 0 || (prefix_len > 0 && !is_path_sep(data[prefix_len - 1]) && !is_drive_relative)) {
+            if (!path_append_bytes_checked(&sb, PATH_SEP_STR, 1))
+                goto norm_error;
+        }
 
-        rt_sb_append_bytes(&sb, data + comp_starts[j], comp_ends[j] - comp_starts[j]);
+        if (!path_append_bytes_checked(&sb, data + comp_starts[j], comp_ends[j] - comp_starts[j]))
+            goto norm_error;
     }
 
     // Handle empty result
@@ -1055,6 +1090,12 @@ rt_string rt_path_norm(rt_string path) {
     free(comp_ends);
 
     return result;
+
+norm_error:
+    rt_sb_free(&sb);
+    free(comp_starts);
+    free(comp_ends);
+    return rt_string_from_bytes("", 0);
 }
 
 /// @brief Get the platform-specific path separator character.

@@ -66,6 +66,8 @@ typedef int socklen_t;
 #define SEND_FLAGS 0
 #endif
 
+static int ws_wait_socket(int fd, int timeout_ms, int for_write);
+
 /// @brief Suppress SIGPIPE on writes to a closed peer.
 ///
 /// macOS uses the per-socket `SO_NOSIGPIPE` option; Linux uses
@@ -465,17 +467,36 @@ static long ws_send_partial(rt_ws_impl *ws, const void *data, size_t len) {
     }
 }
 
+/// @brief Return whether the last socket send failed transiently.
+/// @details Plain TCP sends on nonblocking sockets can report interruption or
+///          temporary backpressure. Those conditions should wait for writability
+///          and retry instead of failing the whole WebSocket frame.
+/// @return Non-zero when retrying the send is appropriate.
+static int ws_send_should_retry(void) {
+#ifdef _WIN32
+    int err = WSAGetLastError();
+    return err == WSAEINTR || err == WSAEWOULDBLOCK || err == WSAEINPROGRESS;
+#else
+    return errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK;
+#endif
+}
+
 /// @brief Send `len` bytes, looping on partial sends until done or failed.
 ///
 /// Wraps `ws_send_partial` with a retry loop so callers don't have
-/// to handle short writes from TCP/TLS. A non-positive return from
-/// any partial send aborts the whole transfer.
+/// to handle short writes from TCP/TLS. Transient nonblocking socket
+/// failures wait for writability and retry.
 /// @return 1 if all bytes sent, 0 on failure.
 static int ws_send_all(rt_ws_impl *ws, const void *data, size_t len) {
     const uint8_t *ptr = (const uint8_t *)data;
     size_t total = 0;
     while (total < len) {
         long sent = ws_send_partial(ws, ptr + total, len - total);
+        if (sent < 0 && !ws->tls && ws_send_should_retry()) {
+            if (ws_wait_socket(ws->socket_fd, 1000, 1) > 0)
+                continue;
+            return 0;
+        }
         if (sent <= 0)
             return 0;
         total += (size_t)sent;

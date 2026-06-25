@@ -207,15 +207,13 @@ static inline int rt_hex_digit_value(char c) {
         }                                                                                          \
         rt_heap_hdr_t *hdr = hdr_fn(arr);                                                          \
         assert_header_fn(hdr);                                                                     \
+        if (!hdr || hdr->magic != RT_MAGIC || hdr->kind != RT_HEAP_ARRAY)                          \
+            return -1;                                                                             \
         size_t old_len = hdr->len;                                                                 \
         size_t cap = hdr->cap;                                                                     \
-        if (new_len <= cap) {                                                                      \
-            if (new_len > old_len)                                                                 \
-                memset(arr + old_len, 0, (new_len - old_len) * sizeof(elem_type));                 \
-            rt_heap_set_len(arr, new_len);                                                         \
+        if (new_len == old_len)                                                                    \
             return 0;                                                                              \
-        }                                                                                          \
-        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) > 1) {                                 \
+        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) > 1) {                                 \
             elem_type *fresh = new_fn(new_len);                                                    \
             if (!fresh)                                                                            \
                 return -1;                                                                         \
@@ -223,6 +221,12 @@ static inline int rt_hex_digit_value(char c) {
             copy_fn(fresh, arr, copy_len);                                                         \
             release_fn(arr);                                                                       \
             *a_inout = fresh;                                                                      \
+            return 0;                                                                              \
+        }                                                                                          \
+        if (new_len <= cap) {                                                                      \
+            if (new_len > old_len)                                                                 \
+                memset(arr + old_len, 0, (new_len - old_len) * sizeof(elem_type));                 \
+            rt_heap_set_len(arr, new_len);                                                         \
             return 0;                                                                              \
         }                                                                                          \
         rt_heap_hdr_t *hdr_mut = hdr;                                                              \

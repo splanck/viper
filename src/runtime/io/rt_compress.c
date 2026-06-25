@@ -140,6 +140,8 @@ static void *compress_run_string_bytes(void *bytes, int gzip, const char *fallba
 
     int64_t len = bytes_len((void *)owned_bytes);
     if (len < 0) {
+        rt_trap_clear_recovery();
+        compress_release_temp_object((void *)owned_bytes);
         rt_trap(fallback);
         return NULL;
     }
@@ -569,6 +571,16 @@ static int out_copy(output_buffer_t *out, int distance, int length) {
     if (!out_ensure(out, length))
         return 0;
     size_t src = out->len - distance;
+    if (distance == 1) {
+        memset(out->data + out->len, out->data[src], (size_t)length);
+        out->len += (size_t)length;
+        return 1;
+    }
+    if (distance >= length) {
+        memcpy(out->data + out->len, out->data + src, (size_t)length);
+        out->len += (size_t)length;
+        return 1;
+    }
     for (int i = 0; i < length; i++) {
         out->data[out->len++] = out->data[src++];
     }

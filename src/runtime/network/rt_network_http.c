@@ -29,6 +29,7 @@
 #include "rt_time.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -248,13 +249,20 @@ static long http_conn_recv(http_conn_t *conn, uint8_t *buf, size_t len) {
         long n = rt_tls_recv(conn->tls, buf + total, len - total);
         if (n > 0)
             total += n;
+        else if (total == 0 && n < 0)
+            return n;
     } else {
-        int n = recv(conn->socket_fd,
+        int n;
+        do {
+            n = recv(conn->socket_fd,
                      (char *)(buf + total),
                      (int)(len - total > INT_MAX ? INT_MAX : len - total),
                      0);
+        } while (n < 0 && errno == EINTR);
         if (n > 0)
             total += (size_t)n;
+        else if (total == 0 && n < 0)
+            return -1;
     }
 
     return (long)total;
@@ -2503,8 +2511,12 @@ static int write_body_until_close_conn(http_conn_t *conn, FILE *out, size_t *out
 
     while (1) {
         long len = http_conn_recv(conn, buffer, sizeof(buffer));
-        if (len <= 0)
+        if (len == 0)
             break;
+        if (len < 0) {
+            *out_len = total_written;
+            return 0;
+        }
         if (total_written + (size_t)len > HTTP_MAX_BODY_SIZE) {
             *out_len = total_written;
             return 0;

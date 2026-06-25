@@ -26,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <setjmp.h>
 #include <stdint.h>
 
 #include "rt_string.h"
@@ -41,6 +42,28 @@ extern "C" {
 ///          flow after invoking this function.
 /// @param msg Null-terminated trap message, or NULL for a generic trap.
 void rt_trap(const char *msg);
+
+/// @brief Install a legacy setjmp recovery target for the current thread.
+/// @details Runtime code that must clean up around recoverable traps uses this
+///          to catch the next @ref rt_trap in the current thread. Callers must
+///          pair a successful install with @ref rt_trap_clear_recovery before
+///          returning normally, and must also clear it from the recovery path
+///          before re-raising or handling the trap.
+/// @param buf Jump buffer that remains live until recovery is cleared.
+void rt_trap_set_recovery(jmp_buf *buf);
+
+/// @brief Clear the current thread's top legacy trap recovery target.
+/// @details Removes the most recent recovery frame installed by
+///          @ref rt_trap_set_recovery. Safe cleanup paths call this before
+///          releasing resources or re-raising the saved trap message.
+void rt_trap_clear_recovery(void);
+
+/// @brief Return the last trap message recorded on the current thread.
+/// @details The returned pointer is owned by the runtime's thread-local trap
+///          buffer and remains valid until the next trap on the same thread.
+///          Callers that need to re-raise after cleanup should copy it first.
+/// @return Last trap message, or an empty string if no message is available.
+const char *rt_trap_get_error(void);
 
 /// @brief Terminate the runtime immediately with a diagnostic message.
 /// @details This is the non-recoverable companion to @ref rt_trap. Use it

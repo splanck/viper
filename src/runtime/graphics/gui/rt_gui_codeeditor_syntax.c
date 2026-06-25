@@ -64,13 +64,19 @@ static char *rt_codeeditor_syntax_strdup(const char *text) {
 //=============================================================================
 
 // VS Code dark-theme inspired palette (ARGB 0xAARRGGBB)
-#define SYN_COLOR_DEFAULT 0xFFD4D4D4u  // light grey
-#define SYN_COLOR_KEYWORD 0xFF569CD6u  // blue
-#define SYN_COLOR_TYPE 0xFF4EC9B0u     // teal
-#define SYN_COLOR_STRING 0xFFCE9178u   // orange
-#define SYN_COLOR_COMMENT 0xFF6A9955u  // green
-#define SYN_COLOR_NUMBER 0xFFB5CEA8u   // light green
-#define SYN_COLOR_FUNCTION 0xFFDCDCAAu // yellow — function/method calls
+#define SYN_COLOR_DEFAULT 0xFFD4D4D4u   // light grey
+#define SYN_COLOR_KEYWORD 0xFF569CD6u   // blue
+#define SYN_COLOR_TYPE 0xFF4EC9B0u      // teal
+#define SYN_COLOR_STRING 0xFFCE9178u    // orange
+#define SYN_COLOR_COMMENT 0xFF6A9955u   // green
+#define SYN_COLOR_NUMBER 0xFFB5CEA8u    // light green
+#define SYN_COLOR_FUNCTION 0xFFDCDCAAu  // yellow — function/method calls
+#define SYN_COLOR_OPERATOR 0xFF56B6C2u  // soft cyan — operator punctuation
+#define SYN_COLOR_BRACKET 0xFFE0C878u   // muted gold — brackets / delimiters
+#define SYN_COLOR_PARAMETER 0xFF9CDCFEu // light blue — parameters (semantic)
+#define SYN_COLOR_PROPERTY 0xFF9CDCFEu  // light blue — properties (semantic)
+#define SYN_COLOR_CONSTANT 0xFF4FC1FFu  // bright blue — constants (semantic)
+#define SYN_COLOR_DECORATOR 0xFFDCDCAAu // yellow — attributes / decorators
 
 /// @brief Set `n` adjacent slots in the per-character `colors` array to `color`.
 ///
@@ -87,10 +93,10 @@ static void syn_fill(uint32_t *colors, size_t pos, size_t n, uint32_t color) {
 /// `SetTokenColor`. If no override is set, returns the supplied
 /// `fallback` (which is the VS Code dark-theme default).
 ///
-/// Token type indices: 0=default, 1=keyword, 2=type, 3=string,
-/// 4=comment, 5=number.
+/// `token_type` is a `vg_syntax_token_type` value (0..VG_SYN_TOKEN_COUNT-1).
 static uint32_t syn_color(vg_codeeditor_t *ce, int token_type, uint32_t fallback) {
-    if (ce && token_type >= 0 && token_type < 6 && ce->token_colors[token_type])
+    if (ce && token_type >= 0 && token_type < VG_SYN_TOKEN_COUNT &&
+        ce->token_colors[token_type])
         return ce->token_colors[token_type];
     return fallback;
 }
@@ -253,6 +259,20 @@ static int syn_is_id_cont(char c) {
     return syn_is_id_start(c) || (c >= '0' && c <= '9');
 }
 
+/// @brief True for a bracket / delimiter character: ( ) [ ] { }.
+static int syn_is_bracket(char c) {
+    return c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}';
+}
+
+/// @brief True for an operator punctuation character.
+/// @details Deliberately excludes `.`, `,`, `;` (kept at the default color so
+///          member access and separators do not become visually noisy).
+static int syn_is_operator(char c) {
+    return c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '=' ||
+           c == '<' || c == '>' || c == '!' || c == '&' || c == '|' || c == '^' ||
+           c == '~' || c == '?' || c == ':';
+}
+
 /// @brief Compare `len` chars of `a` and `b` ignoring ASCII case.
 ///
 /// Folds lowercase letters via the bit-flip trick (`a..z` differ from
@@ -411,12 +431,15 @@ static void rt_zia_syntax_cb(
     vg_codeeditor_t *ce = (vg_codeeditor_t *)user_data;
     (void)editor;
 
-    uint32_t c_default = syn_color(ce, 0, SYN_COLOR_DEFAULT);
-    uint32_t c_keyword = syn_color(ce, 1, SYN_COLOR_KEYWORD);
-    uint32_t c_type = syn_color(ce, 2, SYN_COLOR_TYPE);
-    uint32_t c_string = syn_color(ce, 3, SYN_COLOR_STRING);
-    uint32_t c_comment = syn_color(ce, 4, SYN_COLOR_COMMENT);
-    uint32_t c_number = syn_color(ce, 5, SYN_COLOR_NUMBER);
+    uint32_t c_default = syn_color(ce, VG_SYN_TOKEN_DEFAULT, SYN_COLOR_DEFAULT);
+    uint32_t c_keyword = syn_color(ce, VG_SYN_TOKEN_KEYWORD, SYN_COLOR_KEYWORD);
+    uint32_t c_type = syn_color(ce, VG_SYN_TOKEN_TYPE, SYN_COLOR_TYPE);
+    uint32_t c_string = syn_color(ce, VG_SYN_TOKEN_STRING, SYN_COLOR_STRING);
+    uint32_t c_comment = syn_color(ce, VG_SYN_TOKEN_COMMENT, SYN_COLOR_COMMENT);
+    uint32_t c_number = syn_color(ce, VG_SYN_TOKEN_NUMBER, SYN_COLOR_NUMBER);
+    uint32_t c_function = syn_color(ce, VG_SYN_TOKEN_FUNCTION, SYN_COLOR_FUNCTION);
+    uint32_t c_operator = syn_color(ce, VG_SYN_TOKEN_OPERATOR, SYN_COLOR_OPERATOR);
+    uint32_t c_bracket = syn_color(ce, VG_SYN_TOKEN_BRACKET, SYN_COLOR_BRACKET);
 
     /* `len` bounds both the text scan and the colors[] writes. strlen(text) <= the line's stored
      * byte length, and the vg layer sizes colors[] to that stored length, so writes stay in
@@ -535,7 +558,7 @@ static void rt_zia_syntax_cb(
                 while (peek < len && (text[peek] == ' ' || text[peek] == '\t'))
                     peek++;
                 if (peek < len && text[peek] == '(') {
-                    color = SYN_COLOR_FUNCTION;
+                    color = c_function;
                 } else if (wlen > 0 && text[start] >= 'A' && text[start] <= 'Z') {
                     // Identifiers starting with an uppercase letter are
                     // type / class / module names (Foo, MyClass, Math, Viper).
@@ -549,8 +572,14 @@ static void rt_zia_syntax_cb(
             continue;
         }
 
-        // Default (operators, punctuation)
-        colors[i++] = c_default;
+        // Operators / brackets / punctuation
+        if (syn_is_bracket(text[i]))
+            colors[i] = c_bracket;
+        else if (syn_is_operator(text[i]))
+            colors[i] = c_operator;
+        else
+            colors[i] = c_default;
+        i++;
     }
     if (ce) {
         ce->zia_block_comment_depth = block_depth;
@@ -582,11 +611,13 @@ static void rt_basic_syntax_cb(
     vg_codeeditor_t *ce = (vg_codeeditor_t *)user_data;
     (void)editor;
 
-    uint32_t c_default = syn_color(ce, 0, SYN_COLOR_DEFAULT);
-    uint32_t c_keyword = syn_color(ce, 1, SYN_COLOR_KEYWORD);
-    uint32_t c_string = syn_color(ce, 3, SYN_COLOR_STRING);
-    uint32_t c_comment = syn_color(ce, 4, SYN_COLOR_COMMENT);
-    uint32_t c_number = syn_color(ce, 5, SYN_COLOR_NUMBER);
+    uint32_t c_default = syn_color(ce, VG_SYN_TOKEN_DEFAULT, SYN_COLOR_DEFAULT);
+    uint32_t c_keyword = syn_color(ce, VG_SYN_TOKEN_KEYWORD, SYN_COLOR_KEYWORD);
+    uint32_t c_string = syn_color(ce, VG_SYN_TOKEN_STRING, SYN_COLOR_STRING);
+    uint32_t c_comment = syn_color(ce, VG_SYN_TOKEN_COMMENT, SYN_COLOR_COMMENT);
+    uint32_t c_number = syn_color(ce, VG_SYN_TOKEN_NUMBER, SYN_COLOR_NUMBER);
+    uint32_t c_operator = syn_color(ce, VG_SYN_TOKEN_OPERATOR, SYN_COLOR_OPERATOR);
+    uint32_t c_bracket = syn_color(ce, VG_SYN_TOKEN_BRACKET, SYN_COLOR_BRACKET);
 
     size_t len = strlen(text);
     size_t i = 0;
@@ -640,8 +671,150 @@ static void rt_basic_syntax_cb(
             continue;
         }
 
-        // Default
-        colors[i++] = c_default;
+        // Operators / brackets / punctuation
+        if (syn_is_bracket(text[i]))
+            colors[i] = c_bracket;
+        else if (syn_is_operator(text[i]))
+            colors[i] = c_operator;
+        else
+            colors[i] = c_default;
+        i++;
+    }
+}
+
+// ─── Viper IL language tokenizer ──────────────────────────────────────────
+
+// Structural keywords of the IL textual format (header, declarations, blocks).
+static const char *const viper_keywords[] = {"il",    "extern", "global",
+                                             "func",  "const",  "block",
+                                             NULL};
+
+// IL value types.
+static const char *const viper_types[] = {"i1",  "i8",   "i16",  "i32",
+                                          "i64", "f32",  "f64",  "ptr",
+                                          "str", "void", "error", "resume_tok",
+                                          NULL};
+
+// IL opcode mnemonics (kept in sync with `viper --dump-opcodes`). Opcodes embed
+// '.' and '_', so the IL identifier scan treats '.' as a continuation char.
+static const char *const viper_opcodes[] = {
+    "add",        "sub",          "mul",        "iadd.ovf",   "isub.ovf",
+    "imul.ovf",   "sdiv",         "udiv",       "srem",       "urem",
+    "sdiv.chk0",  "udiv.chk0",    "srem.chk0",  "urem.chk0",  "idx.chk",
+    "and",        "or",           "xor",        "shl",        "lshr",
+    "ashr",       "fadd",         "fsub",       "fmul",       "fdiv",
+    "icmp_eq",    "icmp_ne",      "scmp_lt",    "scmp_le",    "scmp_gt",
+    "scmp_ge",    "ucmp_lt",      "ucmp_le",    "ucmp_gt",    "ucmp_ge",
+    "fcmp_eq",    "fcmp_ne",      "fcmp_lt",    "fcmp_le",    "fcmp_gt",
+    "fcmp_ge",    "fcmp_ord",     "fcmp_uno",   "sitofp",     "fptosi",
+    "cast.fp_to_si.rte.chk",      "cast.fp_to_ui.rte.chk",    "cast.si_narrow.chk",
+    "cast.ui_narrow.chk",         "cast.si_to_fp",            "cast.ui_to_fp",
+    "zext1",      "trunc1",       "alloca",     "gep",        "load",
+    "store",      "addr_of",      "const_str",  "gaddr",      "const_null",
+    "const.f64",  "call",         "call.indirect", "switch.i32", "br",
+    "cbr",        "ret",          "trap.kind",  "trap.from_err", "trap.err",
+    "err.get_kind", "err.get_code", "err.get_ip", "err.get_line", "err.get_msg",
+    "eh.push",    "eh.pop",       "resume.same", "resume.next", "resume.label",
+    "eh.entry",   "trap",         NULL};
+
+/// @brief True if `c` continues an IL identifier/opcode token (id chars + '.').
+static int syn_is_il_id_cont(char c) {
+    return syn_is_id_cont(c) || c == '.';
+}
+
+/// @brief Tokenize a Viper IL source line.
+///
+/// IL specifics:
+///   - `#` or `//` introduce a line comment.
+///   - `@name` is a global/function reference (function color); `%name` is an
+///     SSA temp (parameter color).
+///   - Opcode mnemonics may embed `.`/`_` (`iadd.ovf`, `cast.si_to_fp`), so the
+///     identifier scan treats `.` as a continuation character.
+static void rt_viper_syntax_cb(
+    vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data) {
+    (void)line_num;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)user_data;
+    (void)editor;
+
+    uint32_t c_default = syn_color(ce, VG_SYN_TOKEN_DEFAULT, SYN_COLOR_DEFAULT);
+    uint32_t c_keyword = syn_color(ce, VG_SYN_TOKEN_KEYWORD, SYN_COLOR_KEYWORD);
+    uint32_t c_type = syn_color(ce, VG_SYN_TOKEN_TYPE, SYN_COLOR_TYPE);
+    uint32_t c_string = syn_color(ce, VG_SYN_TOKEN_STRING, SYN_COLOR_STRING);
+    uint32_t c_comment = syn_color(ce, VG_SYN_TOKEN_COMMENT, SYN_COLOR_COMMENT);
+    uint32_t c_number = syn_color(ce, VG_SYN_TOKEN_NUMBER, SYN_COLOR_NUMBER);
+    uint32_t c_global = syn_color(ce, VG_SYN_TOKEN_FUNCTION, SYN_COLOR_FUNCTION);
+    uint32_t c_temp = syn_color(ce, VG_SYN_TOKEN_PARAMETER, SYN_COLOR_PARAMETER);
+    uint32_t c_operator = syn_color(ce, VG_SYN_TOKEN_OPERATOR, SYN_COLOR_OPERATOR);
+    uint32_t c_bracket = syn_color(ce, VG_SYN_TOKEN_BRACKET, SYN_COLOR_BRACKET);
+
+    size_t len = strlen(text);
+    size_t i = 0;
+
+    while (i < len) {
+        // Line comment: `#…` or `//…`
+        if (text[i] == '#' || (text[i] == '/' && i + 1 < len && text[i + 1] == '/')) {
+            syn_fill(colors, i, len - i, c_comment);
+            return;
+        }
+
+        // String literal
+        if (text[i] == '"') {
+            size_t start = i++;
+            while (i < len && text[i] != '"') {
+                if (text[i] == '\\' && i + 1 < len)
+                    i++;
+                i++;
+            }
+            if (i < len)
+                i++;
+            syn_fill(colors, start, i - start, c_string);
+            continue;
+        }
+
+        // Global/function (@) or SSA temp (%) reference
+        if (text[i] == '@' || text[i] == '%') {
+            uint32_t sig_color = (text[i] == '@') ? c_global : c_temp;
+            size_t start = i++;
+            while (i < len && syn_is_il_id_cont(text[i]))
+                i++;
+            syn_fill(colors, start, i - start, sig_color);
+            continue;
+        }
+
+        // Number literal
+        if (text[i] >= '0' && text[i] <= '9') {
+            size_t start = i;
+            while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
+                i++;
+            syn_fill(colors, start, i - start, c_number);
+            continue;
+        }
+
+        // Identifier / opcode / keyword / type
+        if (syn_is_id_start(text[i])) {
+            size_t start = i;
+            while (i < len && syn_is_il_id_cont(text[i]))
+                i++;
+            size_t wlen = i - start;
+            uint32_t color = c_default;
+            if (syn_is_keyword(text + start, wlen, viper_keywords))
+                color = c_keyword;
+            else if (syn_is_keyword(text + start, wlen, viper_types))
+                color = c_type;
+            else if (syn_is_keyword(text + start, wlen, viper_opcodes))
+                color = c_keyword;
+            syn_fill(colors, start, wlen, color);
+            continue;
+        }
+
+        // Operators / brackets / punctuation
+        if (syn_is_bracket(text[i]))
+            colors[i] = c_bracket;
+        else if (syn_is_operator(text[i]))
+            colors[i] = c_operator;
+        else
+            colors[i] = c_default;
+        i++;
     }
 }
 
@@ -649,8 +822,8 @@ static void rt_basic_syntax_cb(
 
 /// @brief `CodeEditor.SetLanguage(language)` — install a syntax-highlight callback.
 ///
-/// Recognized values: `"zia"`, `"basic"`. Anything else (including
-/// empty string) installs the no-op highlighter (plain text).
+/// Recognized values: `"zia"`, `"basic"`, `"viper"`/`"il"`. Anything else
+/// (including empty string) installs the no-op highlighter (plain text).
 /// The editor pointer itself is the `user_data` for the callback so
 /// the tokenizer can read the per-editor color overrides + custom
 /// keyword list.
@@ -670,6 +843,8 @@ void rt_codeeditor_set_language(void *editor, rt_string language) {
         vg_codeeditor_set_syntax(ce, rt_zia_syntax_cb, ce);
     else if (strcmp(clang, "basic") == 0)
         vg_codeeditor_set_syntax(ce, rt_basic_syntax_cb, ce);
+    else if (strcmp(clang, "viper") == 0 || strcmp(clang, "il") == 0)
+        vg_codeeditor_set_syntax(ce, rt_viper_syntax_cb, ce);
     else
         vg_codeeditor_set_syntax(ce, NULL, NULL); // plain text
 
@@ -678,15 +853,15 @@ void rt_codeeditor_set_language(void *editor, rt_string language) {
 
 /// @brief `CodeEditor.SetTokenColor(tokenType, color)` — override one theme color.
 ///
-/// `tokenType`: 0=default, 1=keyword, 2=type, 3=string, 4=comment,
-/// 5=number. `color`: ARGB 0xAARRGGBB. Out-of-range types are ignored.
-/// Triggers a repaint.
+/// `tokenType` is a `vg_syntax_token_type` value: 0=default, 1=keyword, 2=type,
+/// 3=string, 4=comment, 5=number, 6=function, 7=operator, 8=bracket,
+/// 9=parameter, 10=property, 11=constant, 12=decorator. `color`: ARGB
+/// 0xAARRGGBB. Out-of-range types are ignored. Triggers a repaint.
 void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t color) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
-    // Token type indices: 0=default, 1=keyword, 2=type, 3=string, 4=comment, 5=number
-    if (token_type >= 0 && token_type < 6) {
+    if (token_type >= 0 && token_type < VG_SYN_TOKEN_COUNT) {
         ce->token_colors[token_type] = (uint32_t)color;
         rt_codeeditor_invalidate_syntax_cache(ce);
     }

@@ -541,6 +541,13 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar);
 /// @return Tab handle, or NULL if out of bounds.
 void *rt_tabbar_get_tab_at(void *tabbar, int64_t index);
 
+/// @brief Get the index of the tab under canvas coordinates (x, y).
+/// @param tabbar TabBar widget handle.
+/// @param x Canvas-pixel X.
+/// @param y Canvas-pixel Y.
+/// @return 0-based tab index, or -1 if no tab is at the point.
+int64_t rt_tabbar_get_tab_index_at(void *tabbar, int64_t x, int64_t y);
+
 /// @brief Set whether tabs auto-close when close button is clicked.
 /// @param tabbar TabBar widget handle.
 /// @param auto_close 1 for auto-close (default), 0 to let Zia code handle removal.
@@ -2184,6 +2191,16 @@ void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled);
 /// @param editor CodeEditor handle.
 /// @return 1 if enabled, 0 otherwise.
 int64_t rt_codeeditor_get_word_wrap(void *editor);
+
+/// @brief Toggle faint vertical indentation guides.
+/// @param editor CodeEditor handle.
+/// @param enabled Non-zero to draw indent guides.
+void rt_codeeditor_set_show_indent_guides(void *editor, int64_t enabled);
+
+/// @brief Check whether indentation guides are drawn.
+/// @param editor CodeEditor handle.
+/// @return 1 if enabled, 0 otherwise.
+int64_t rt_codeeditor_get_show_indent_guides(void *editor);
 
 /// @brief Reset low-level CodeEditor performance counters.
 /// @param editor CodeEditor handle.

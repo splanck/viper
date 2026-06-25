@@ -58,9 +58,9 @@ class EditorEngine {
     }
 
     /// @brief Load `doc.content` into the editor and restore its cursor.
-    /// @note Maps `doc.language` to the widget's syntax-highlighting
-    ///       language tag (only "zia" and "basic" are highlighted —
-    ///       "text" leaves the widget on its default unhighlighted mode).
+    /// @note Maps `doc.language` to the widget's syntax-highlighting language
+    ///       tag ("zia", "basic", "viper"/IL are highlighted; anything else
+    ///       installs the plain-text highlighter, clearing any prior one).
     expose func LoadDocument(doc: document.Document) {
         if doc == null {
             return;
@@ -74,6 +74,11 @@ class EditorEngine {
             editor.SetLanguage("zia");
         } else if doc.language == "basic" {
             editor.SetLanguage("basic");
+        } else if doc.language == "viper" {
+            editor.SetLanguage("viper");
+        } else {
+            // Plain text — clear any highlighter left over from a prior document.
+            editor.SetLanguage("text");
         }
 
         if doc.cursorLine > 0 {

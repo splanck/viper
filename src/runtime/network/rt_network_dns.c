@@ -111,13 +111,22 @@ rt_string rt_dns_resolve(rt_string hostname) {
     char ip_str[INET6_ADDRSTRLEN];
     if (result->ai_family == AF_INET) {
         struct sockaddr_in *addr = (struct sockaddr_in *)result->ai_addr;
-        inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
+        if (!inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str))) {
+            freeaddrinfo(result);
+            rt_trap_net("Network: failed to format DNS address", Err_DnsError);
+            return rt_str_empty();
+        }
     } else if (result->ai_family == AF_INET6) {
         struct sockaddr_in6 *addr = (struct sockaddr_in6 *)result->ai_addr;
-        inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
+        if (!inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str))) {
+            freeaddrinfo(result);
+            rt_trap_net("Network: failed to format DNS address", Err_DnsError);
+            return rt_str_empty();
+        }
     } else {
         freeaddrinfo(result);
         rt_trap_net("Network: hostname not found", Err_DnsError);
+        return rt_str_empty();
     }
 
     freeaddrinfo(result);
@@ -158,10 +167,12 @@ void *rt_dns_resolve_all(rt_string hostname) {
 
         if (rp->ai_family == AF_INET) {
             struct sockaddr_in *addr = (struct sockaddr_in *)rp->ai_addr;
-            inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
+            if (!inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str)))
+                continue;
         } else if (rp->ai_family == AF_INET6) {
             struct sockaddr_in6 *addr = (struct sockaddr_in6 *)rp->ai_addr;
-            inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
+            if (!inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str)))
+                continue;
         } else {
             continue;
         }

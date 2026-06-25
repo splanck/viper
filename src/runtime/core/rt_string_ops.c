@@ -58,9 +58,7 @@
 #include <string.h>
 
 #if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
-#include <execinfo.h>
 #include <sched.h>
-#include <unistd.h>
 #endif
 
 static const size_t kImmortalRefcnt = RT_HEAP_IMMORTAL_REFCNT;
@@ -277,16 +275,25 @@ void rt_string_registry_shutdown(void) {
 }
 
 /// @brief Retrieve the heap header associated with a runtime string.
-/// @details Returns `NULL` for literal strings and embedded (SSO) strings that
-///          are not backed by the shared heap. Asserts that heap-backed strings
-///          carry the expected kind. Callers use this to peek at reference counts
-///          or capacities without duplicating validation logic.
+/// @details Validates the string handle before reading the wrapper fields.
+///          Returns `NULL` for literal strings and embedded (SSO) strings that
+///          are not backed by the shared heap. Corrupt heap-backed strings trap
+///          and return NULL if the trap hook recovers.
 /// @param s Runtime string handle.
 /// @return Heap header describing the allocation, or `NULL` for literals/embedded.
 static rt_heap_hdr_t *rt_string_header(rt_string s) {
-    if (!s || !s->heap || s->heap == RT_SSO_SENTINEL)
+    if (!s)
         return NULL;
-    assert(s->heap->kind == RT_HEAP_STRING);
+    if (!rt_string_is_handle((void *)s)) {
+        rt_trap("rt_string_header: invalid string handle");
+        return NULL;
+    }
+    if (!s->heap || s->heap == RT_SSO_SENTINEL)
+        return NULL;
+    if (s->heap->magic != RT_MAGIC || s->heap->kind != RT_HEAP_STRING) {
+        rt_trap("rt_string_header: corrupted string header");
+        return NULL;
+    }
     return s->heap;
 }
 
@@ -301,16 +308,6 @@ size_t rt_string_len_bytes(rt_string s) {
     if (!s)
         return 0;
     if (!rt_string_is_handle((void *)s)) {
-        const char *debug_bt = getenv("VIPER_DEBUG_INVALID_STRING");
-        if (debug_bt && debug_bt[0] != '\0') {
-            fprintf(stderr, "rt_string_len_bytes: invalid handle %p\n", (void *)s);
-#if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
-            void *frames[32];
-            int frame_count = backtrace(frames, 32);
-            if (frame_count > 0)
-                backtrace_symbols_fd(frames, frame_count, STDERR_FILENO);
-#endif
-        }
         rt_trap("rt_string_len_bytes: invalid string handle");
         return 0;
     }

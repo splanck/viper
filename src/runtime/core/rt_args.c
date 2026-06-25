@@ -498,13 +498,18 @@ rt_string rt_cmdline(void) {
     rt_sb_init(&sb);
     for (size_t i = 0; i < state->size; ++i) {
         const char *cstr = rt_string_cstr(state->items[i]);
-        if (i > 0)
-            (void)rt_sb_append_cstr(&sb, " ");
-        (void)rt_sb_append_cstr(&sb, cstr ? cstr : "");
+        if (i > 0 && rt_sb_append_cstr(&sb, " ") != RT_SB_OK)
+            goto cmdline_error;
+        if (rt_sb_append_cstr(&sb, cstr ? cstr : "") != RT_SB_OK)
+            goto cmdline_error;
     }
     rt_string out = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return out;
+
+cmdline_error:
+    rt_sb_free(&sb);
+    return rt_str_empty();
 }
 
 /// @brief Clean up argument state for a context.

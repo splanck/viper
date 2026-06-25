@@ -69,6 +69,17 @@ static int rt_arr_obj_header_valid(rt_heap_hdr_t *hdr) {
     return 1;
 }
 
+/// @brief Return whether an object-array payload has multiple owners.
+/// @details Shared object arrays must not be mutated in place because each
+///          slot owns one retained element reference on behalf of the shared
+///          backing allocation. Mutating a shared backing would alter aliases
+///          without transferring element references correctly.
+/// @param hdr Valid object-array heap header.
+/// @return Non-zero when the backing allocation has more than one owner.
+static int rt_arr_obj_is_shared(const rt_heap_hdr_t *hdr) {
+    return hdr && __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) > 1;
+}
+
 /// @brief Assert that a heap header describes an object array.
 /// @details Keeps debug assertions local to this module while using the
 ///          recoverable validator first, so release builds and trap-recovery
@@ -89,6 +100,24 @@ static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr) {
 static void rt_arr_obj_release_element(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
+}
+
+/// @brief Copy retained object references into a fresh array.
+/// @details Each non-NULL element copied from @p src is retained before being
+///          stored in @p dst so the destination array owns independent strong
+///          references. If a recovering trap hook returns after a retain error,
+///          the partially-copied destination remains valid and can be released
+///          normally by the caller.
+/// @param dst Destination object-array payload.
+/// @param src Source object-array payload.
+/// @param count Number of elements to copy.
+static void rt_arr_obj_copy_retained(void **dst, void **src, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        void *value = src[i];
+        if (value)
+            rt_obj_retain_maybe(value);
+        dst[i] = value;
+    }
 }
 
 /// @brief Allocate a new object array with logical length @p len.
@@ -159,6 +188,10 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj) {
     if (!rt_arr_obj_header_valid(hdr))
         return;
     rt_arr_obj_assert_header(hdr);
+    if (rt_arr_obj_is_shared(hdr)) {
+        rt_trap("rt_arr_obj_put: cannot mutate shared array");
+        return;
+    }
     if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
     if (idx >= hdr->len)
@@ -194,12 +227,18 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
 
     size_t old_len = hdr->len;
     if (len == 0) {
-        for (size_t i = 0; i < old_len; i++) {
-            rt_arr_obj_release_element(arr[i]);
-            arr[i] = NULL;
-        }
-        rt_heap_release(arr);
+        rt_arr_obj_release(arr);
         return NULL;
+    }
+
+    if (rt_arr_obj_is_shared(hdr)) {
+        void **fresh = rt_arr_obj_new(len);
+        if (!fresh)
+            return NULL;
+        size_t copy_len = old_len < len ? old_len : len;
+        rt_arr_obj_copy_retained(fresh, arr, copy_len);
+        rt_arr_obj_release(arr);
+        return fresh;
     }
 
     void **truncated = NULL;
@@ -257,6 +296,10 @@ void rt_arr_obj_release(void **arr) {
     rt_arr_obj_assert_header(hdr);
 
     size_t n = hdr->len;
+    size_t refs = rt_heap_release_deferred(arr);
+    if (refs != 0)
+        return;
+
     for (size_t i = 0; i < n; ++i) {
         void *p = arr[i];
         if (p) {
@@ -264,5 +307,5 @@ void rt_arr_obj_release(void **arr) {
             arr[i] = NULL;
         }
     }
-    rt_heap_release(arr);
+    rt_heap_free_zero_ref(arr);
 }

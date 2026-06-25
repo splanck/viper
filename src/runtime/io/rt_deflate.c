@@ -14,8 +14,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_compress.h"
 #include "rt_bytes.h"
+#include "rt_compress.h"
+#include "rt_compress_internal.h"
 #include "rt_crc32.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -26,8 +27,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "rt_compress_internal.h"
-
 
 //=============================================================================
 // Bit Stream Writer (for compression)
@@ -490,9 +489,15 @@ static int deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int 
 ///        is up to 4*len bytes, so this bounds its allocation to ~64 MB.
 #define DH_MAX_INPUT (16u * 1024u * 1024u)
 
+/// @brief Preferred dynamic-Huffman token-buffer input cap.
+/// @details Larger inputs still use the fixed-Huffman encoder. This avoids
+///          allocating one token per input byte for multi-megabyte payloads
+///          while preserving compression support.
+#define DH_MAX_DYNAMIC_TOKEN_INPUT (1024u * 1024u)
+
 /// @brief RFC 1951 §3.2.7 code-length-code transmission order.
-static const int dh_cl_order[DH_CODELEN] = {16, 17, 18, 0, 8,  7, 9,  6, 10, 5,
-                                            11, 4,  12, 3, 13, 2, 14, 1, 15};
+static const int dh_cl_order[DH_CODELEN] = {
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 
 /// @brief One collected LZ77 token. `dist == 0` is a literal byte held in `len`;
 ///        `dist > 0` is a (length 3..258, distance 1..32768) back-reference.
@@ -555,16 +560,16 @@ static void dh_build_lengths(const uint32_t *freq, int n, int max_bits, uint8_t 
     do {                                                                                           \
         int p = (start);                                                                           \
         for (;;) {                                                                                 \
-            int c = 2 * p + 1;                                                                      \
-            if (c >= heap_size)                                                                     \
+            int c = 2 * p + 1;                                                                     \
+            if (c >= heap_size)                                                                    \
                 break;                                                                             \
-            if (c + 1 < heap_size && DH_LESS(heap[c + 1], heap[c]))                                 \
+            if (c + 1 < heap_size && DH_LESS(heap[c + 1], heap[c]))                                \
                 c++;                                                                               \
-            if (!DH_LESS(heap[c], heap[p]))                                                         \
+            if (!DH_LESS(heap[c], heap[p]))                                                        \
                 break;                                                                             \
-            int t = heap[p];                                                                        \
-            heap[p] = heap[c];                                                                      \
-            heap[c] = t;                                                                            \
+            int t = heap[p];                                                                       \
+            heap[p] = heap[c];                                                                     \
+            heap[c] = t;                                                                           \
             p = c;                                                                                 \
         }                                                                                          \
     } while (0)
@@ -715,7 +720,7 @@ static void dh_assign_codes(const uint8_t *lengths, int n, uint16_t *codes) {
 /// failure or when the input is too large for the token buffer, so the caller
 /// can fall back to the fixed block.
 static int deflate_dynamic(bit_writer_t *bw, const uint8_t *data, size_t len, int level) {
-    if (len == 0 || len > DH_MAX_INPUT)
+    if (len == 0 || len > DH_MAX_INPUT || len > DH_MAX_DYNAMIC_TOKEN_INPUT)
         return 0;
 
     dh_token *tokens = (dh_token *)malloc(len * sizeof(dh_token));
@@ -797,6 +802,7 @@ static int deflate_dynamic(bit_writer_t *bw, const uint8_t *data, size_t len, in
         cl_seq[cl_n++] = d_len[i];
 
     enum { DH_RLE_CAP = 2 * (DH_LITLEN + DH_DIST) };
+
     uint8_t rle_sym[DH_RLE_CAP], rle_extra[DH_RLE_CAP], rle_xbits[DH_RLE_CAP];
     int rle_n = 0;
     uint32_t cl_freq[DH_CODELEN];
@@ -942,7 +948,8 @@ void *deflate_data(const uint8_t *data, size_t len, int level) {
             if (have_dyn)
                 bw_free(&bw_dyn);
             bw_free(&bw);
-            return rt_bytes_new(0);
+            rt_trap("Deflate: failed to encode fixed Huffman block");
+            return NULL;
         }
         if (have_dyn && bw_dyn.len < bw.len) {
             bw_free(&bw); // dynamic won
@@ -953,7 +960,8 @@ void *deflate_data(const uint8_t *data, size_t len, int level) {
     } else {
         if (!deflate_fixed(&bw, data, len, level)) {
             bw_free(&bw);
-            return rt_bytes_new(0);
+            rt_trap("Deflate: failed to encode fixed Huffman block");
+            return NULL;
         }
     }
 

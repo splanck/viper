@@ -270,6 +270,12 @@ class DocumentManager {
         return documents.get(activeIndex);
     }
 
+    /// @brief Get a document by index, or null if out of range.
+    expose func GetDocument(index: Integer) -> document.Document? {
+        if index < 0 or index >= documents.count() { return null; }
+        return documents.get(index);
+    }
+
     /// @brief Set the active document by index. Out-of-range is a no-op.
     expose func SetActive(index: Integer) {
         if index >= 0 and index < documents.count() {

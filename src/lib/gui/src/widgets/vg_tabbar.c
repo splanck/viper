@@ -234,6 +234,21 @@ static vg_tab_t *find_tab_at_x(vg_tabbar_t *tabbar, float x) {
     return NULL;
 }
 
+/// @brief Returns the 0-based index of the tab under widget coordinates (x, y), or -1.
+/// @details `x`/`y` are in the same canvas-pixel space as the tab strip's bounds
+///          (i.e. the values reported by the input layer). Used for right-click
+///          tab context menus. Scroll offset is handled by find_tab_at_x.
+int vg_tabbar_index_at(vg_tabbar_t *tabbar, int x, int y) {
+    if (!tabbar)
+        return -1;
+    if ((float)y < tabbar->base.y || (float)y >= tabbar->base.y + tabbar->base.height)
+        return -1;
+    vg_tab_t *tab = find_tab_at_x(tabbar, (float)x - tabbar->base.x);
+    if (!tab)
+        return -1;
+    return vg_tabbar_get_tab_index(tabbar, tab);
+}
+
 /// @brief Returns the absolute X offset (before scroll) of @p target's left edge within the tab
 /// strip.
 static float get_tab_x(vg_tabbar_t *tabbar, vg_tab_t *target) {

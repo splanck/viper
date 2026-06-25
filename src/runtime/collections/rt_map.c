@@ -223,16 +223,19 @@ static void rt_map_finalize(void *obj) {
 /// @param map The Map to resize.
 /// @param new_capacity The new number of buckets.
 ///
-/// @note On allocation failure, the old buckets are kept (silent failure).
+/// @return Non-zero when resize succeeds; zero when the old table is preserved
+///         after a recoverable trap or allocation failure.
 /// @note O(n) time complexity where n is the number of entries.
-static void map_resize(rt_map_impl *map, size_t new_capacity) {
+static int map_resize(rt_map_impl *map, size_t new_capacity) {
     if (new_capacity > SIZE_MAX / sizeof(rt_map_entry *)) {
         rt_trap("Map: allocation size overflow");
-        return;
+        return 0;
     }
     rt_map_entry **new_buckets = (rt_map_entry **)calloc(new_capacity, sizeof(rt_map_entry *));
-    if (!new_buckets)
-        return; // Keep old buckets on allocation failure
+    if (!new_buckets) {
+        rt_trap("Map: memory allocation failed");
+        return 0;
+    }
 
     // Rehash all entries
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -250,6 +253,7 @@ static void map_resize(rt_map_impl *map, size_t new_capacity) {
     free(map->buckets);
     map->buckets = new_buckets;
     map->capacity = new_capacity;
+    return 1;
 }
 
 /// @brief Checks if resize is needed and performs it.
@@ -259,14 +263,17 @@ static void map_resize(rt_map_impl *map, size_t new_capacity) {
 /// @param map The Map to potentially resize.
 ///
 /// @note The capacity doubles on each resize.
-static void maybe_resize_for_count(rt_map_impl *map, size_t next_count) {
+static int maybe_resize_for_count(rt_map_impl *map, size_t next_count) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
     if ((long double)next_count * (long double)MAP_LOAD_FACTOR_DEN >
         (long double)map->capacity * (long double)MAP_LOAD_FACTOR_NUM) {
-        if (map->capacity > SIZE_MAX / 2)
-            return;
-        map_resize(map, map->capacity * 2);
+        if (map->capacity > SIZE_MAX / 2) {
+            rt_trap("Map: capacity overflow");
+            return 0;
+        }
+        return map_resize(map, map->capacity * 2);
     }
+    return 1;
 }
 
 /// @brief Creates a new empty Map (string-to-object dictionary).
@@ -420,7 +427,8 @@ void rt_map_set(void *obj, rt_string key, void *value) {
         rt_trap("Map.Set: maximum size reached");
         return;
     }
-    maybe_resize_for_count(map, map->count + 1);
+    if (!maybe_resize_for_count(map, map->count + 1))
+        return;
     idx = hash % map->capacity;
 
     if (value)

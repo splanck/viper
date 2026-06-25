@@ -355,48 +355,64 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
     return ds;
 }
 
-/// @brief Append @p n as decimal digits, transliterated to the locale's
-///        native digit glyphs (ASCII fallback). No grouping separators.
-static void append_localized_int(rt_string_builder *sb, const rt_locale_data_t *data, int64_t n) {
+/// @brief Append @p n as decimal digits, transliterated to locale digit glyphs.
+/// @details Returns a status instead of silently ignoring builder growth
+///          failures so callers can avoid emitting partial relative-time text
+///          under allocation pressure.
+/// @param sb Destination builder.
+/// @param data Locale data supplying native digit glyphs.
+/// @param n Integer count to append.
+/// @return 1 on success, 0 when formatting or append work failed.
+static int append_localized_int(rt_string_builder *sb, const rt_locale_data_t *data, int64_t n) {
     char num[32];
     int k = snprintf(num, sizeof(num), "%lld", (long long)n);
     if (k <= 0)
-        return;
+        return 0;
+    if ((size_t)k >= sizeof(num))
+        return 0;
     digit_spans_t ds = digit_spans_from_locale(data);
     for (int i = 0; i < k; ++i) {
         unsigned char c = (unsigned char)num[i];
         if (ds.valid && c >= '0' && c <= '9') {
             int d = (int)(c - '0');
-            (void)rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d]);
+            if (rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d]) != RT_SB_OK)
+                return 0;
         } else {
-            (void)rt_sb_append_bytes(sb, num + i, 1);
+            if (rt_sb_append_bytes(sb, num + i, 1) != RT_SB_OK)
+                return 0;
         }
     }
+    return 1;
 }
 
 /// @brief Expand a relative-time template into @p sb, substituting "{n}" with
 ///        the localized count and "{unit}" with the resolved unit phrase.
-static void expand_template(rt_string_builder *sb,
-                            const char *tmpl,
-                            const rt_locale_data_t *data,
-                            int64_t n,
-                            const char *unit_form) {
+/// @return 1 on success, 0 if an append operation failed.
+static int expand_template(rt_string_builder *sb,
+                           const char *tmpl,
+                           const rt_locale_data_t *data,
+                           int64_t n,
+                           const char *unit_form) {
     if (!tmpl || !*tmpl)
-        return;
+        return 1;
     const char *p = tmpl;
     while (*p) {
         if (p[0] == '{' && p[1] == 'n' && p[2] == '}') {
-            append_localized_int(sb, data, n);
+            if (!append_localized_int(sb, data, n))
+                return 0;
             p += 3;
         } else if (p[0] == '{' && p[1] == 'u' && p[2] == 'n' && p[3] == 'i' && p[4] == 't' &&
                    p[5] == '}') {
-            (void)rt_sb_append_cstr(sb, unit_form);
+            if (rt_sb_append_cstr(sb, unit_form) != RT_SB_OK)
+                return 0;
             p += 6;
         } else {
-            (void)rt_sb_append_bytes(sb, p, 1);
+            if (rt_sb_append_bytes(sb, p, 1) != RT_SB_OK)
+                return 0;
             ++p;
         }
     }
+    return 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -435,7 +451,10 @@ static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration, rtf_st
 
     rt_string_builder sb;
     rt_sb_init(&sb);
-    expand_template(&sb, tmpl, fmt->data, pick.count, unit_form);
+    if (!expand_template(&sb, tmpl, fmt->data, pick.count, unit_form)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -523,7 +542,10 @@ rt_string rt_reltimefmt_numeric(void *self, int64_t value, rt_string unit) {
 
     rt_string_builder sb;
     rt_sb_init(&sb);
-    expand_template(&sb, tmpl, fmt->data, count, unit_form);
+    if (!expand_template(&sb, tmpl, fmt->data, count, unit_form)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;

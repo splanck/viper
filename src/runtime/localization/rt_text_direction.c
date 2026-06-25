@@ -176,6 +176,24 @@ static cp_dir_t classify(uint32_t cp) {
     return DIR_LTR;
 }
 
+/// @brief Append bytes while preserving text-direction formatting failures.
+/// @details Direction isolation inserts Unicode isolate markers while copying
+///          the original UTF-8 bytes. If the builder cannot grow, returning a
+///          partial bidi-wrapped string is misleading, so this helper traps and
+///          lets the caller return an empty fallback after cleanup.
+/// @param sb Destination builder.
+/// @param bytes Byte span to append.
+/// @param len Number of bytes in @p bytes.
+/// @return Non-zero on success; zero after reporting an append failure.
+static int text_direction_append_checked(rt_string_builder *sb, const char *bytes, size_t len) {
+    rt_sb_status_t status = rt_sb_append_bytes(sb, bytes, len);
+    if (status == RT_SB_OK)
+        return 1;
+    rt_trap(status == RT_SB_ERROR_OVERFLOW ? "Viper.Localization.TextDirection: output overflow"
+                                           : "Viper.Localization.TextDirection: allocation failed");
+    return 0;
+}
+
 //===----------------------------------------------------------------------===//
 // Scanning helpers
 //===----------------------------------------------------------------------===//
@@ -311,17 +329,25 @@ rt_string rt_text_direction_bidi(rt_string s) {
         uint32_t cp = decode_codepoint(cs, (size_t)len, &pos);
         cp_dir_t d = classify(cp);
         if (d == DIR_RTL && !in_rtl_run) {
-            (void)rt_sb_append_bytes(&sb, RLI, 3);
+            if (!text_direction_append_checked(&sb, RLI, 3))
+                goto wrap_error;
             in_rtl_run = 1;
         } else if (d == DIR_LTR && in_rtl_run) {
-            (void)rt_sb_append_bytes(&sb, PDI, 3);
+            if (!text_direction_append_checked(&sb, PDI, 3))
+                goto wrap_error;
             in_rtl_run = 0;
         }
-        (void)rt_sb_append_bytes(&sb, cs + cp_start, pos - cp_start);
+        if (!text_direction_append_checked(&sb, cs + cp_start, pos - cp_start))
+            goto wrap_error;
     }
     if (in_rtl_run)
-        (void)rt_sb_append_bytes(&sb, PDI, 3);
+        if (!text_direction_append_checked(&sb, PDI, 3))
+            goto wrap_error;
     rt_string out = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return out;
+
+wrap_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }

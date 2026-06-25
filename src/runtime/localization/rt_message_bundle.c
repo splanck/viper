@@ -278,12 +278,7 @@ int64_t rt_message_bundle_get_count(void *self) {
 static rt_string bundle_lookup_direct(rt_message_bundle_t *self, rt_string key) {
     if (!self || !key || !rt_map_has(self->entries, key))
         return NULL;
-    // rt_map_get_str returns a borrowed reference; retain it so the caller owns
-    // a proper reference.
-    rt_string v = rt_map_get_str(self->entries, key);
-    if (v)
-        rt_string_ref(v);
-    return v;
+    return rt_map_get_str(self->entries, key);
 }
 
 /// @brief Look up @p key prefixed by each locale fallback tag ("tag:key").
@@ -390,10 +385,31 @@ int8_t rt_message_bundle_has(void *self, rt_string key) {
 // Placeholder interpolation
 //===----------------------------------------------------------------------===//
 
+/// @brief Append bytes to a localization string builder with trap-on-failure.
+/// @details Localization formatting used to ignore @ref rt_sb_append_bytes
+///          status codes, which could return a truncated result after OOM or
+///          overflow. This helper centralizes checked appends and leaves the
+///          builder valid for cleanup when a recoverable trap hook returns.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append; may be NULL only when @p len is zero.
+/// @param len Number of bytes to append.
+/// @return Non-zero on success; zero after reporting an append failure.
+static int bundle_append_bytes_checked(rt_string_builder *sb, const char *bytes, size_t len) {
+    rt_sb_status_t status = rt_sb_append_bytes(sb, bytes, len);
+    if (status == RT_SB_OK)
+        return 1;
+    rt_trap(status == RT_SB_ERROR_OVERFLOW
+                ? "Viper.Localization.MessageBundle: formatted message overflow"
+                : "Viper.Localization.MessageBundle: formatted message allocation failed");
+    return 0;
+}
+
 /// @brief Emit the value for placeholder @p name from @p vars into @p sb.
-/// @details rt_map_get_str returns a borrowed reference — we MUST NOT unref
-///          it. The map retains its entries for its own lifetime; our job
-///          is to read the cstr contents and move on.
+/// @details rt_map_get_str returns an owned reference. This helper releases it
+///          after appending so interpolation does not leak one string per
+///          substituted token.
+/// @return 1 when a value was found and appended, 0 when absent, or -1 on
+///         append failure.
 static int append_value(rt_string_builder *sb, const char *name, size_t name_len, void *vars) {
     if (!vars)
         return 0;
@@ -409,8 +425,9 @@ static int append_value(rt_string_builder *sb, const char *name, size_t name_len
             found = 1;
             const char *cs = rt_string_cstr(value);
             int64_t vlen = rt_str_len(value);
-            if (cs && vlen > 0)
-                (void)rt_sb_append_bytes(sb, cs, (size_t)vlen);
+            if (cs && vlen > 0 && !bundle_append_bytes_checked(sb, cs, (size_t)vlen))
+                found = -1;
+            rt_string_unref(value);
         }
     }
     rt_string_unref(key);
@@ -430,12 +447,14 @@ static rt_string interp_named(rt_string tmpl, void *vars) {
     rt_sb_init(&sb);
     for (int64_t i = 0; i < len;) {
         if (cs[i] == '{' && i + 1 < len && cs[i + 1] == '{') {
-            (void)rt_sb_append_bytes(&sb, "{", 1);
+            if (!bundle_append_bytes_checked(&sb, "{", 1))
+                goto interp_error;
             i += 2;
             continue;
         }
         if (cs[i] == '}' && i + 1 < len && cs[i + 1] == '}') {
-            (void)rt_sb_append_bytes(&sb, "}", 1);
+            if (!bundle_append_bytes_checked(&sb, "}", 1))
+                goto interp_error;
             i += 2;
             continue;
         }
@@ -445,18 +464,26 @@ static rt_string interp_named(rt_string tmpl, void *vars) {
             while (j < len && cs[j] != '}')
                 ++j;
             if (j < len && j > i + 1) {
-                if (!append_value(&sb, cs + i + 1, (size_t)(j - i - 1), vars))
-                    (void)rt_sb_append_bytes(&sb, cs + i, (size_t)(j - i + 1));
+                int appended = append_value(&sb, cs + i + 1, (size_t)(j - i - 1), vars);
+                if (appended < 0)
+                    goto interp_error;
+                if (!appended && !bundle_append_bytes_checked(&sb, cs + i, (size_t)(j - i + 1)))
+                    goto interp_error;
                 i = j + 1;
                 continue;
             }
         }
-        (void)rt_sb_append_bytes(&sb, cs + i, 1);
+        if (!bundle_append_bytes_checked(&sb, cs + i, 1))
+            goto interp_error;
         ++i;
     }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
+
+interp_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 /// @brief Positional substitution: `{N}` where N parses as an integer index.
@@ -473,12 +500,14 @@ static rt_string interp_positional(rt_string tmpl, void *values_list) {
     rt_sb_init(&sb);
     for (int64_t i = 0; i < len;) {
         if (cs[i] == '{' && i + 1 < len && cs[i + 1] == '{') {
-            (void)rt_sb_append_bytes(&sb, "{", 1);
+            if (!bundle_append_bytes_checked(&sb, "{", 1))
+                goto interp_error;
             i += 2;
             continue;
         }
         if (cs[i] == '}' && i + 1 < len && cs[i + 1] == '}') {
-            (void)rt_sb_append_bytes(&sb, "}", 1);
+            if (!bundle_append_bytes_checked(&sb, "}", 1))
+                goto interp_error;
             i += 2;
             continue;
         }
@@ -502,23 +531,32 @@ static rt_string interp_positional(rt_string tmpl, void *values_list) {
                     if (v) {
                         const char *vcs = rt_string_cstr(v);
                         int64_t vlen = rt_str_len(v);
-                        if (vcs && vlen > 0)
-                            (void)rt_sb_append_bytes(&sb, vcs, (size_t)vlen);
+                        if (vcs && vlen > 0 &&
+                            !bundle_append_bytes_checked(&sb, vcs, (size_t)vlen)) {
+                            rt_string_unref(v);
+                            goto interp_error;
+                        }
                         rt_string_unref(v);
                     }
                 } else {
-                    (void)rt_sb_append_bytes(&sb, cs + i, (size_t)(j - i + 1));
+                    if (!bundle_append_bytes_checked(&sb, cs + i, (size_t)(j - i + 1)))
+                        goto interp_error;
                 }
                 i = j + 1;
                 continue;
             }
         }
-        (void)rt_sb_append_bytes(&sb, cs + i, 1);
+        if (!bundle_append_bytes_checked(&sb, cs + i, 1))
+            goto interp_error;
         ++i;
     }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
+
+interp_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 rt_string rt_message_bundle_format(void *self, rt_string key, void *vars) {

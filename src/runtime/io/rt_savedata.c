@@ -28,13 +28,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_savedata.h"
+#include "network/rt_entropy_platform.h"
 #include "rt_dir.h"
 #include "rt_file_path.h"
 #include "rt_io_class_ids.h"
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
-#include "network/rt_entropy_platform.h"
 
 #ifdef _WIN32
 #ifndef _CRT_RAND_S
@@ -919,6 +919,26 @@ static void savedata_free_parser(void *parser) {
         rt_obj_free(parser);
 }
 
+/// @brief Append to the SaveData JSON builder and report append failure.
+/// @details SaveData builds the whole JSON payload before atomically replacing
+///          the file. Any builder error must abort the save before disk I/O so
+///          a truncated JSON document is never written.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append.
+/// @param len Number of bytes in @p bytes.
+/// @return 1 on success, 0 when the append failed.
+static int savedata_json_append_bytes(rt_string_builder *sb, const char *bytes, size_t len) {
+    return rt_sb_append_bytes(sb, bytes, len) == RT_SB_OK;
+}
+
+/// @brief Append a C string to the SaveData JSON builder.
+/// @param sb Destination builder.
+/// @param text NUL-terminated bytes to append.
+/// @return 1 on success, 0 when the append failed.
+static int savedata_json_append_cstr(rt_string_builder *sb, const char *text) {
+    return rt_sb_append_cstr(sb, text) == RT_SB_OK;
+}
+
 /// @brief Append a raw UTF-8 string to the builder with JSON escaping.
 ///
 /// Handles all RFC 8259 short escapes (`"` `\` `\b` `\f` `\n` `\r`
@@ -926,43 +946,54 @@ static void savedata_free_parser(void *parser) {
 /// Non-control bytes pass through unchanged, so valid UTF-8 is
 /// preserved without re-encoding to `\u` escapes — keeping save
 /// files compact and diff-friendly.
-static void json_escape_append(rt_string_builder *sb, const char *str, size_t len) {
+/// @return 1 on success, 0 when a builder append failed.
+static int json_escape_append(rt_string_builder *sb, const char *str, size_t len) {
     static const char hex[] = "0123456789abcdef";
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)str[i];
         switch (c) {
             case '"':
-                rt_sb_append_cstr(sb, "\\\"");
+                if (!savedata_json_append_cstr(sb, "\\\""))
+                    return 0;
                 break;
             case '\\':
-                rt_sb_append_cstr(sb, "\\\\");
+                if (!savedata_json_append_cstr(sb, "\\\\"))
+                    return 0;
                 break;
             case '\b':
-                rt_sb_append_cstr(sb, "\\b");
+                if (!savedata_json_append_cstr(sb, "\\b"))
+                    return 0;
                 break;
             case '\f':
-                rt_sb_append_cstr(sb, "\\f");
+                if (!savedata_json_append_cstr(sb, "\\f"))
+                    return 0;
                 break;
             case '\n':
-                rt_sb_append_cstr(sb, "\\n");
+                if (!savedata_json_append_cstr(sb, "\\n"))
+                    return 0;
                 break;
             case '\r':
-                rt_sb_append_cstr(sb, "\\r");
+                if (!savedata_json_append_cstr(sb, "\\r"))
+                    return 0;
                 break;
             case '\t':
-                rt_sb_append_cstr(sb, "\\t");
+                if (!savedata_json_append_cstr(sb, "\\t"))
+                    return 0;
                 break;
             default:
                 if (c < 0x20) {
                     char escaped[6] = {'\\', 'u', '0', '0', hex[(c >> 4) & 0x0F], hex[c & 0x0F]};
-                    rt_sb_append_bytes(sb, escaped, sizeof(escaped));
+                    if (!savedata_json_append_bytes(sb, escaped, sizeof(escaped)))
+                        return 0;
                 } else {
                     char ch = (char)c;
-                    rt_sb_append_bytes(sb, &ch, 1);
+                    if (!savedata_json_append_bytes(sb, &ch, 1))
+                        return 0;
                 }
                 break;
         }
     }
+    return 1;
 }
 
 /// @brief Atomically write `len` bytes to `path` via temp-file-and-rename.
@@ -1202,37 +1233,51 @@ int8_t rt_savedata_save(void *obj) {
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    rt_sb_append_cstr(&sb, "{\n");
+    if (!savedata_json_append_cstr(&sb, "{\n"))
+        goto build_error;
 
     int first = 1;
     SaveEntry *e = sd->entries;
     while (e) {
-        if (!first)
-            rt_sb_append_cstr(&sb, ",\n");
+        if (!first && !savedata_json_append_cstr(&sb, ",\n"))
+            goto build_error;
         first = 0;
 
-        rt_sb_append_cstr(&sb, "  \"");
-        json_escape_append(&sb, rt_string_cstr(e->key), (size_t)e->key_len);
-        rt_sb_append_cstr(&sb, "\": ");
+        if (!savedata_json_append_cstr(&sb, "  \"") ||
+            !json_escape_append(&sb, rt_string_cstr(e->key), (size_t)e->key_len) ||
+            !savedata_json_append_cstr(&sb, "\": "))
+            goto build_error;
 
         if (e->type == SAVE_INT) {
-            rt_sb_append_int(&sb, e->int_val);
+            if (rt_sb_append_int(&sb, e->int_val) != RT_SB_OK)
+                goto build_error;
         } else {
-            rt_sb_append_cstr(&sb, "\"");
-            if (e->str_val)
-                json_escape_append(&sb, rt_string_cstr(e->str_val), (size_t)rt_str_len(e->str_val));
-            rt_sb_append_cstr(&sb, "\"");
+            if (!savedata_json_append_cstr(&sb, "\""))
+                goto build_error;
+            if (e->str_val) {
+                int64_t raw_len = rt_str_len(e->str_val);
+                if (raw_len < 0 ||
+                    !json_escape_append(&sb, rt_string_cstr(e->str_val), (size_t)raw_len))
+                    goto build_error;
+            }
+            if (!savedata_json_append_cstr(&sb, "\""))
+                goto build_error;
         }
 
         e = e->next;
     }
 
-    rt_sb_append_cstr(&sb, "\n}\n");
+    if (!savedata_json_append_cstr(&sb, "\n}\n"))
+        goto build_error;
 
     int ok = savedata_write_atomic(sd->file_path, sb.data, sb.len);
     rt_sb_free(&sb);
 
     return ok ? 1 : 0;
+
+build_error:
+    rt_sb_free(&sb);
+    return 0;
 }
 
 /// @brief Load existing entries from disk into memory, replacing the current state. Uses the

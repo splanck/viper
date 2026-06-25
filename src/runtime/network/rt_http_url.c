@@ -39,6 +39,11 @@ extern void rt_trap_net(const char *msg, int err_code);
 typedef struct rt_url rt_url_t;
 static void free_url(rt_url_t *url);
 
+/// @brief Runtime class identifier for Url objects.
+/// @details A non-zero class ID lets public accessors reject unrelated runtime
+///          objects before casting the payload to @ref rt_url_t.
+#define RT_URL_CLASS_ID INT64_C(-0x4E5501)
+
 // ---------------------------------------------------------------------------
 // Trap + allocation helpers — these centralize the boilerplate that
 // every URL accessor would otherwise repeat: NULL-check, raise a
@@ -58,14 +63,7 @@ static void rt_url_trap_runtime(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, 0, msg);
 }
 
-/// @brief Cast `obj` to `rt_url_t*`, trapping with `context` if NULL.
-/// @brief Validate + cast a Url handle. Traps with INVALID_OPERATION + the supplied context
-/// message on null input — the message lets callers see which method had the bad receiver.
-static rt_url_t *rt_url_require_obj(void *obj, const char *context) {
-    if (!obj)
-        rt_url_trap_invalid_operation(context);
-    return (rt_url_t *)obj;
-}
+static rt_url_t *rt_url_require_obj(void *obj, const char *context);
 
 /// @brief `malloc(size)` or trap with `context`.
 /// @details Returns NULL if a custom trap handler returns after an allocation failure.
@@ -205,6 +203,25 @@ typedef struct rt_url {
     char *query;    // Query string (without leading ?)
     char *fragment; // Fragment (without leading #)
 } rt_url_t;
+
+/// @brief Validate and cast a Url handle.
+/// @details Traps with INVALID_OPERATION for NULL receivers and unrelated
+///          runtime objects. If a trap hook returns, NULL is returned so callers
+///          can stop before dereferencing an invalid receiver.
+/// @param obj Candidate Url object.
+/// @param context Method-specific trap message for NULL receivers.
+/// @return Valid Url payload on success; NULL after a recoverable trap.
+static rt_url_t *rt_url_require_obj(void *obj, const char *context) {
+    if (!obj) {
+        rt_url_trap_invalid_operation(context);
+        return NULL;
+    }
+    if (!rt_obj_is_instance(obj, RT_URL_CLASS_ID, sizeof(rt_url_t))) {
+        rt_url_trap_invalid_operation("URL: invalid receiver");
+        return NULL;
+    }
+    return (rt_url_t *)obj;
+}
 
 /// @brief Borrowed path segment span used by URL normalization.
 /// @details The span points into the original path string and is valid only for
@@ -673,7 +690,7 @@ void *rt_url_parse(rt_string url_str) {
         return NULL;
     }
 
-    rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
+    rt_url_t *url = (rt_url_t *)rt_obj_new_i64(RT_URL_CLASS_ID, sizeof(rt_url_t));
     if (!url) {
         rt_url_trap_runtime("URL.Parse: memory allocation failed");
         return NULL;
@@ -694,7 +711,7 @@ void *rt_url_parse(rt_string url_str) {
 
 /// @brief Allocate an empty Url with all components NULL.
 void *rt_url_new(void) {
-    rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
+    rt_url_t *url = (rt_url_t *)rt_obj_new_i64(RT_URL_CLASS_ID, sizeof(rt_url_t));
     if (!url) {
         rt_url_trap_runtime("URL.New: memory allocation failed");
         return NULL;
@@ -716,6 +733,8 @@ void *rt_url_new(void) {
 /// @brief Read the URL's scheme component (e.g. "https"). Empty string if unset.
 rt_string rt_url_scheme(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Scheme: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->scheme)
         return rt_str_empty();
 
@@ -725,6 +744,8 @@ rt_string rt_url_scheme(void *obj) {
 
 void rt_url_set_scheme(void *obj, rt_string scheme) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Scheme: null receiver");
+    if (!url)
+        return;
     const char *scheme_str = scheme ? rt_string_cstr(scheme) : NULL;
     size_t scheme_len = rt_url_string_len_or_trap(scheme, "URL.set_Scheme: invalid length");
     if (!scheme_str || scheme_len == 0) {
@@ -741,6 +762,8 @@ void rt_url_set_scheme(void *obj, rt_string scheme) {
 
 rt_string rt_url_host(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Host: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->host)
         return rt_str_empty();
 
@@ -750,15 +773,20 @@ rt_string rt_url_host(void *obj) {
 
 void rt_url_set_host(void *obj, rt_string host) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Host: null receiver");
+    if (!url)
+        return;
     rt_url_replace_field(&url->host, host, "URL.set_Host: allocation failed", 0);
 }
 
 int64_t rt_url_port(void *obj) {
-    return rt_url_require_obj(obj, "URL.Port: null receiver")->port;
+    rt_url_t *url = rt_url_require_obj(obj, "URL.Port: null receiver");
+    return url ? url->port : 0;
 }
 
 void rt_url_set_port(void *obj, int64_t port) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Port: null receiver");
+    if (!url)
+        return;
 
     if (port < 0 || port > 65535) {
         rt_trap_net("URL.set_Port: invalid port", Err_InvalidUrl);
@@ -796,6 +824,8 @@ static char *rt_url_append_formatted_host(char *p, char *end, const char *host) 
 
 rt_string rt_url_path(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Path: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->path)
         return rt_str_empty();
 
@@ -805,11 +835,15 @@ rt_string rt_url_path(void *obj) {
 
 void rt_url_set_path(void *obj, rt_string path) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Path: null receiver");
+    if (!url)
+        return;
     rt_url_replace_field(&url->path, path, "URL.set_Path: allocation failed", 0);
 }
 
 rt_string rt_url_query(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Query: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->query)
         return rt_str_empty();
 
@@ -819,11 +853,15 @@ rt_string rt_url_query(void *obj) {
 
 void rt_url_set_query(void *obj, rt_string query) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Query: null receiver");
+    if (!url)
+        return;
     rt_url_replace_field(&url->query, query, "URL.set_Query: allocation failed", 0);
 }
 
 rt_string rt_url_fragment(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Fragment: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->fragment)
         return rt_str_empty();
 
@@ -833,11 +871,15 @@ rt_string rt_url_fragment(void *obj) {
 
 void rt_url_set_fragment(void *obj, rt_string fragment) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Fragment: null receiver");
+    if (!url)
+        return;
     rt_url_replace_field(&url->fragment, fragment, "URL.set_Fragment: allocation failed", 0);
 }
 
 rt_string rt_url_user(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.User: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->user)
         return rt_str_empty();
 
@@ -847,11 +889,15 @@ rt_string rt_url_user(void *obj) {
 
 void rt_url_set_user(void *obj, rt_string user) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_User: null receiver");
+    if (!url)
+        return;
     rt_url_replace_field(&url->user, user, "URL.set_User: allocation failed", 0);
 }
 
 rt_string rt_url_pass(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Pass: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->pass)
         return rt_str_empty();
 
@@ -861,6 +907,8 @@ rt_string rt_url_pass(void *obj) {
 
 void rt_url_set_pass(void *obj, rt_string pass) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Pass: null receiver");
+    if (!url)
+        return;
     rt_url_replace_field(&url->pass, pass, "URL.set_Pass: allocation failed", 0);
 }
 
@@ -868,6 +916,8 @@ void rt_url_set_pass(void *obj, rt_string pass) {
 /// Each component is included only when set; returned as a fresh rt_string.
 rt_string rt_url_authority(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Authority: null receiver");
+    if (!url)
+        return rt_str_empty();
 
     // Calculate size: user:pass@host:port
     size_t size = 0;
@@ -919,6 +969,8 @@ rt_string rt_url_authority(void *obj) {
 /// (80 for http, 443 for https, etc.) are omitted. Useful for SNI / Host header construction.
 rt_string rt_url_host_port(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.HostPort: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->host)
         return rt_str_empty();
 
@@ -955,6 +1007,8 @@ rt_string rt_url_host_port(void *obj) {
 /// Each component is included only if set; the result round-trips through `rt_url_parse`.
 rt_string rt_url_full(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Full: null receiver");
+    if (!url)
+        return rt_str_empty();
 
     // Calculate total size
     size_t size = 0;
@@ -1030,10 +1084,14 @@ rt_string rt_url_full(void *obj) {
 /// Re-encodes the URL's query string after mutation. Returns `obj` for chaining.
 void *rt_url_set_query_param(void *obj, rt_string name, rt_string value) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.SetQueryParam: null receiver");
+    if (!url)
+        return obj;
     const char *name_str = name ? rt_string_cstr(name) : NULL;
 
-    if (!name_str)
+    if (!name_str) {
         rt_url_trap_invalid_operation("URL.SetQueryParam: null query name");
+        return obj;
+    }
 
     // Parse existing query into map
     rt_string tmp_query =
@@ -1067,6 +1125,8 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value) {
 /// @brief Read the value of one query parameter (URL-decoded). Empty string if missing.
 rt_string rt_url_get_query_param(void *obj, rt_string name) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.GetQueryParam: null receiver");
+    if (!url)
+        return rt_str_empty();
     if (!url->query)
         return rt_str_empty();
 
@@ -1089,6 +1149,8 @@ rt_string rt_url_get_query_param(void *obj, rt_string name) {
 /// @brief Predicate: is the named query parameter present at all?
 int8_t rt_url_has_query_param(void *obj, rt_string name) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.HasQueryParam: null receiver");
+    if (!url)
+        return 0;
     if (!url->query)
         return 0;
 
@@ -1108,6 +1170,8 @@ int8_t rt_url_has_query_param(void *obj, rt_string name) {
 /// @brief Remove a query parameter (no-op if missing). Returns `obj` for chaining.
 void *rt_url_del_query_param(void *obj, rt_string name) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.DelQueryParam: null receiver");
+    if (!url)
+        return obj;
     if (!url->query)
         return obj;
 
@@ -1140,6 +1204,8 @@ void *rt_url_del_query_param(void *obj, rt_string name) {
 /// Repeated keys collapse to the last-occurring value.
 void *rt_url_query_map(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.QueryMap: null receiver");
+    if (!url)
+        return rt_map_new();
     if (!url->query)
         return rt_map_new();
 
@@ -1178,7 +1244,7 @@ void *rt_url_resolve(void *obj, rt_string relative) {
     }
 
     // Create new URL
-    rt_url_t *result = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
+    rt_url_t *result = (rt_url_t *)rt_obj_new_i64(RT_URL_CLASS_ID, sizeof(rt_url_t));
     if (!result) {
         free_url(&rel);
         rt_url_trap_runtime("URL.Resolve: memory allocation failed");
@@ -1307,7 +1373,7 @@ void *rt_url_clone(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Clone: null receiver");
     if (!url)
         return NULL;
-    rt_url_t *clone = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
+    rt_url_t *clone = (rt_url_t *)rt_obj_new_i64(RT_URL_CLASS_ID, sizeof(rt_url_t));
     if (!clone) {
         rt_url_trap_runtime("URL.Clone: memory allocation failed");
         return NULL;

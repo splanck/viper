@@ -485,6 +485,8 @@ rt_string rt_collator_sort_key(void *self, rt_string s) {
         return rt_string_from_bytes("", 0);
     const char *cs = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
+    if (!cs || len < 0)
+        return rt_string_from_bytes("", 0);
 
     size_t key_len = 0;
     uint8_t *key = build_raw_key(as_col(self), cs, (size_t)len, &key_len);
@@ -499,13 +501,19 @@ rt_string rt_collator_sort_key(void *self, rt_string s) {
     static const char hex[] = "0123456789abcdef";
     for (size_t i = 0; i < key_len; ++i) {
         char pair[2] = {hex[(key[i] >> 4) & 0xF], hex[key[i] & 0xF]};
-        (void)rt_sb_append_bytes(&sb, pair, 2);
+        if (rt_sb_append_bytes(&sb, pair, 2) != RT_SB_OK)
+            goto sort_key_error;
     }
     free(key);
 
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
+
+sort_key_error:
+    free(key);
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 //===----------------------------------------------------------------------===//

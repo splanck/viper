@@ -1642,11 +1642,17 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
         }
         int64_t comp_len_i64 = bytes_len(compressed);
         if (comp_len_i64 < 0 || (uint64_t)comp_len_i64 > (uint64_t)SIZE_MAX) {
+            rt_trap_clear_recovery();
+            archive_release_temp_object(compressed);
+            free(norm_name);
             rt_trap("Archive: invalid compressed data length");
             return;
         }
         uint8_t *comp_data = bytes_data(compressed);
         if (comp_len_i64 > 0 && !comp_data) {
+            rt_trap_clear_recovery();
+            archive_release_temp_object(compressed);
+            free(norm_name);
             rt_trap("Archive: invalid compressed data");
             return;
         }

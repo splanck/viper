@@ -134,6 +134,11 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->auto_indent = true;
     editor->word_wrap = false;
 
+    // Display options
+    editor->show_indent_guides = true;
+    editor->render_whitespace = false;
+    editor->indent_guide_color = 0; // 0 = derive a muted default at paint time
+
     // State
     editor->cursor_visible = true;
     editor->cursor_blink_time = 0;

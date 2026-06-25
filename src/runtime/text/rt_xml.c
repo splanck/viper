@@ -1410,33 +1410,36 @@ rt_string rt_xml_content(void *node) {
 /// the O(n²) you'd get with naive `result = result + child.text` chains.
 /// Recurses through element and document nodes; everything else is a
 /// no-op. Borrowed references throughout — children are owned by parents.
-static void collect_text_content(void *node, rt_string_builder *sb) {
+/// @return 1 when collection completed, 0 when a builder append failed.
+static int collect_text_content(void *node, rt_string_builder *sb) {
     if (!rt_xml_is_node(node))
-        return;
+        return 1;
 
     xml_node *n = (xml_node *)node;
 
     if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA) {
         if (n->content) {
             const char *cstr = rt_string_cstr(n->content);
-            if (cstr)
-                rt_sb_append_cstr(sb, cstr);
+            if (cstr && rt_sb_append_cstr(sb, cstr) != RT_SB_OK)
+                return 0;
         }
-        return;
+        return 1;
     }
 
     if (n->type != XML_NODE_ELEMENT && n->type != XML_NODE_DOCUMENT)
-        return;
+        return 1;
 
     if (!n->children)
-        return;
+        return 1;
 
     int64_t count = rt_seq_len(n->children);
     for (int64_t i = 0; i < count; i++) {
         void *child = rt_seq_get(n->children, i);
-        collect_text_content(child, sb);
+        if (!collect_text_content(child, sb))
+            return 0;
         // rt_seq_get returns a borrowed reference — do not release
     }
+    return 1;
 }
 
 /// @brief `XmlNode.TextContent` — concatenated text of this node and descendants.
@@ -1469,7 +1472,10 @@ rt_string rt_xml_text_content(void *node) {
 
     rt_string_builder sb;
     rt_sb_init(&sb);
-    collect_text_content(node, &sb);
+    if (!collect_text_content(node, &sb)) {
+        rt_sb_free(&sb);
+        return rt_str_empty();
+    }
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;

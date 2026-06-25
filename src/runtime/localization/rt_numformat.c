@@ -495,22 +495,47 @@ static digit_spans_t digit_spans_from_locale(const rt_locdata_numbers_t *nums) {
     return ds;
 }
 
+/// @brief Append bytes to a localized number-format builder.
+/// @details Number formatting often builds intermediate grouped and localized
+///          representations. This helper makes allocation and overflow failures
+///          explicit so public formatters can return an empty string instead of
+///          a partially formatted number.
+/// @param sb Destination builder.
+/// @param bytes Bytes to append.
+/// @param len Number of bytes in @p bytes.
+/// @return 1 on success, 0 when the append failed.
+static int nf_append_bytes_checked(rt_string_builder *sb, const char *bytes, size_t len) {
+    return rt_sb_append_bytes(sb, bytes, len) == RT_SB_OK;
+}
+
+/// @brief Append a C string to a localized number-format builder.
+/// @param sb Destination builder.
+/// @param text NUL-terminated bytes to append.
+/// @return 1 on success, 0 when the append failed.
+static int nf_append_cstr_checked(rt_string_builder *sb, const char *text) {
+    return rt_sb_append_cstr(sb, text) == RT_SB_OK;
+}
+
 /// @brief Append @p len bytes, transliterating ASCII '0'-'9' to the numbering
 ///        system's native digit glyphs; non-digit bytes pass through verbatim.
-static void append_localized_bytes(rt_string_builder *sb,
-                                   const rt_locdata_numbers_t *nums,
-                                   const char *bytes,
-                                   size_t len) {
+/// @return 1 on success, 0 when a builder append failed.
+static int append_localized_bytes(rt_string_builder *sb,
+                                  const rt_locdata_numbers_t *nums,
+                                  const char *bytes,
+                                  size_t len) {
     digit_spans_t ds = digit_spans_from_locale(nums);
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)bytes[i];
         if (ds.valid && c >= '0' && c <= '9') {
             int d = (int)(c - '0');
-            (void)rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d]);
+            if (!nf_append_bytes_checked(sb, ds.ptr[d], ds.len[d]))
+                return 0;
         } else {
-            (void)rt_sb_append_bytes(sb, bytes + i, 1);
+            if (!nf_append_bytes_checked(sb, bytes + i, 1))
+                return 0;
         }
     }
+    return 1;
 }
 
 /// @brief Insert locale group separators into an ASCII digit run, honoring
@@ -518,41 +543,61 @@ static void append_localized_bytes(rt_string_builder *sb,
 /// @details When grouping is disabled or no separator is defined the digits
 ///          are appended unchanged; equal primary/secondary delegates to
 ///          @c rt_numfmt_group_digits, otherwise the split is done here.
-static void append_grouped_ascii_number(rt_string_builder *sb,
-                                        const rt_numformat_t *fmt,
-                                        const char *digits,
-                                        int digit_len) {
+/// @return 1 on success, 0 when a builder append failed.
+static int append_grouped_ascii_number(rt_string_builder *sb,
+                                       const rt_numformat_t *fmt,
+                                       const char *digits,
+                                       int digit_len) {
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
     rt_string_builder tmp;
     rt_sb_init(&tmp);
+    int ok = 1;
     if (fmt->grouping && nums->group_sep && nums->group_sep[0] != '\0') {
         int primary = nums->group_size > 0 ? nums->group_size : 3;
         int secondary = nums->secondary_group_size > 0 ? nums->secondary_group_size : primary;
         size_t sep_len = strlen(nums->group_sep);
         if (primary == secondary) {
-            rt_numfmt_group_digits(&tmp, digits, digit_len, nums->group_sep, sep_len, primary);
+            if (digit_len <= 0) {
+                ok = 1;
+            } else if (primary <= 0 || primary >= digit_len) {
+                ok = nf_append_bytes_checked(&tmp, digits, (size_t)digit_len);
+            } else {
+                int first = digit_len % primary;
+                if (first == 0)
+                    first = primary;
+                ok = nf_append_bytes_checked(&tmp, digits, (size_t)first);
+                int pos = first;
+                while (ok && pos < digit_len) {
+                    ok = nf_append_bytes_checked(&tmp, nums->group_sep, sep_len) &&
+                         nf_append_bytes_checked(&tmp, digits + pos, (size_t)primary);
+                    pos += primary;
+                }
+            }
         } else if (digit_len <= primary || primary <= 0 || secondary <= 0) {
-            (void)rt_sb_append_bytes(&tmp, digits, (size_t)digit_len);
+            ok = nf_append_bytes_checked(&tmp, digits, (size_t)digit_len);
         } else {
             int prefix_len = digit_len - primary;
             int first = prefix_len % secondary;
             if (first == 0)
                 first = secondary;
-            (void)rt_sb_append_bytes(&tmp, digits, (size_t)first);
+            ok = nf_append_bytes_checked(&tmp, digits, (size_t)first);
             int pos = first;
-            while (pos < prefix_len) {
-                (void)rt_sb_append_bytes(&tmp, nums->group_sep, sep_len);
-                (void)rt_sb_append_bytes(&tmp, digits + pos, (size_t)secondary);
+            while (ok && pos < prefix_len) {
+                ok = nf_append_bytes_checked(&tmp, nums->group_sep, sep_len) &&
+                     nf_append_bytes_checked(&tmp, digits + pos, (size_t)secondary);
                 pos += secondary;
             }
-            (void)rt_sb_append_bytes(&tmp, nums->group_sep, sep_len);
-            (void)rt_sb_append_bytes(&tmp, digits + prefix_len, (size_t)primary);
+            if (ok)
+                ok = nf_append_bytes_checked(&tmp, nums->group_sep, sep_len) &&
+                     nf_append_bytes_checked(&tmp, digits + prefix_len, (size_t)primary);
         }
     } else {
-        (void)rt_sb_append_bytes(&tmp, digits, (size_t)digit_len);
+        ok = nf_append_bytes_checked(&tmp, digits, (size_t)digit_len);
     }
-    append_localized_bytes(sb, nums, tmp.data, tmp.len);
+    if (ok)
+        ok = append_localized_bytes(sb, nums, tmp.data, tmp.len);
     rt_sb_free(&tmp);
+    return ok;
 }
 
 /// @brief Emit @p value into @p sb using locale numeric conventions and
@@ -562,26 +607,25 @@ static void append_grouped_ascii_number(rt_string_builder *sb,
 /// @param value      real-valued input
 /// @param override_digits    >= 0 to force exactly this many fraction digits
 ///                           (used by DecimalN); -1 to use min/max
-static void fmt_render_number(rt_string_builder *sb,
-                              const rt_numformat_t *fmt,
-                              double value,
-                              int override_digits) {
+static int fmt_render_number(rt_string_builder *sb,
+                             const rt_numformat_t *fmt,
+                             double value,
+                             int override_digits) {
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
 
     if (!isfinite(value)) {
         if (isnan(value)) {
             const char *s = nums->nan ? nums->nan : "NaN";
-            (void)rt_sb_append_cstr(sb, s);
-            return;
+            return nf_append_cstr_checked(sb, s);
         }
         // Infinity: handle sign via the locale's minus/plus (rarely used).
         const char *inf = nums->infinity ? nums->infinity : "\xE2\x88\x9E";
         if (value < 0) {
             const char *minus = nums->minus ? nums->minus : "-";
-            (void)rt_sb_append_cstr(sb, minus);
+            if (!nf_append_cstr_checked(sb, minus))
+                return 0;
         }
-        (void)rt_sb_append_cstr(sb, inf);
-        return;
+        return nf_append_cstr_checked(sb, inf);
     }
 
     int digits_used;
@@ -609,8 +653,7 @@ static void fmt_render_number(rt_string_builder *sb,
     size_t full_size = 0;
     char *full = loc_sprintf_alloc_c(&full_size, "%.*f", digits_used, abs_val);
     if (!full) {
-        (void)rt_sb_append_cstr(sb, nums->nan ? nums->nan : "NaN");
-        return;
+        return nf_append_cstr_checked(sb, nums->nan ? nums->nan : "NaN");
     }
     int full_len = full_size > (size_t)INT_MAX ? INT_MAX : (int)full_size;
 
@@ -628,12 +671,14 @@ static void fmt_render_number(rt_string_builder *sb,
     // Emit sign.
     if (negative) {
         const char *minus = nums->minus ? nums->minus : "-";
-        (void)rt_sb_append_cstr(sb, minus);
+        if (!nf_append_cstr_checked(sb, minus))
+            goto render_error;
     }
 
     // Emit integer part with optional grouping.
     int whole_len = frac_ptr ? (int)((frac_ptr - full) - 1) : full_len;
-    append_grouped_ascii_number(sb, fmt, full, whole_len);
+    if (!append_grouped_ascii_number(sb, fmt, full, whole_len))
+        goto render_error;
 
     // Determine how many fraction digits to emit: clamp to [min_frac, digits_used]
     // and strip trailing zeros past min_frac.
@@ -649,24 +694,31 @@ static void fmt_render_number(rt_string_builder *sb,
     }
     if (emit_digits > 0 && frac_ptr) {
         const char *dec_sep = nums->decimal_sep ? nums->decimal_sep : ".";
-        (void)rt_sb_append_cstr(sb, dec_sep);
-        append_localized_bytes(sb, nums, frac_ptr, (size_t)emit_digits);
+        if (!nf_append_cstr_checked(sb, dec_sep) ||
+            !append_localized_bytes(sb, nums, frac_ptr, (size_t)emit_digits))
+            goto render_error;
     }
     free(full);
+    return 1;
+
+render_error:
+    free(full);
+    return 0;
 }
 
 /// @brief Render a 64-bit integer with locale sign + grouping, no float path.
 /// @details Avoids @c double so every magnitude (incl. INT64_MIN) is exact;
 ///          builds digits right-to-left into a stack buffer, negates via the
 ///          @c -(v+1)+1 trick so INT64_MIN doesn't overflow, then groups.
-static void fmt_render_integer_exact(rt_string_builder *sb,
-                                     const rt_numformat_t *fmt,
-                                     int64_t value) {
+static int fmt_render_integer_exact(rt_string_builder *sb,
+                                    const rt_numformat_t *fmt,
+                                    int64_t value) {
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
     uint64_t mag;
     if (value < 0) {
         const char *minus = nums->minus ? nums->minus : "-";
-        (void)rt_sb_append_cstr(sb, minus);
+        if (!nf_append_cstr_checked(sb, minus))
+            return 0;
         mag = (uint64_t)(-(value + 1)) + 1u;
     } else {
         mag = (uint64_t)value;
@@ -683,7 +735,7 @@ static void fmt_render_integer_exact(rt_string_builder *sb,
             mag /= 10u;
         }
     }
-    append_grouped_ascii_number(sb, fmt, digits + pos, (int)(sizeof(digits) - pos - 1));
+    return append_grouped_ascii_number(sb, fmt, digits + pos, (int)(sizeof(digits) - pos - 1));
 }
 
 //===----------------------------------------------------------------------===//
@@ -696,7 +748,10 @@ rt_string rt_numformat_decimal(void *self, double value) {
     rt_numformat_t *fmt = as_fmt(self);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    fmt_render_number(&sb, fmt, value, /*override_digits=*/-1);
+    if (!fmt_render_number(&sb, fmt, value, /*override_digits=*/-1)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -712,7 +767,10 @@ rt_string rt_numformat_decimal_n(void *self, double value, int64_t digits) {
         digits = 20;
     rt_string_builder sb;
     rt_sb_init(&sb);
-    fmt_render_number(&sb, fmt, value, (int)digits);
+    if (!fmt_render_number(&sb, fmt, value, (int)digits)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -723,7 +781,10 @@ rt_string rt_numformat_integer(void *self, int64_t value) {
         return rt_string_from_bytes("", 0);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    fmt_render_integer_exact(&sb, as_fmt(self), value);
+    if (!fmt_render_integer_exact(&sb, as_fmt(self), value)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -735,37 +796,51 @@ rt_string rt_numformat_percent(void *self, double value) {
     rt_numformat_t *fmt = as_fmt(self);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    fmt_render_number(&sb, fmt, value * 100.0, /*override_digits=*/-1);
+    if (!fmt_render_number(&sb, fmt, value * 100.0, /*override_digits=*/-1)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     const char *pct = fmt->data->numbers.percent ? fmt->data->numbers.percent : "%";
-    (void)rt_sb_append_cstr(&sb, pct);
+    if (!nf_append_cstr_checked(&sb, pct)) {
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
 }
 
 /// @brief Expand a currency pattern ("{s}{n}" or similar) into @p sb.
-static void expand_currency(rt_string_builder *sb,
-                            const char *pattern,
-                            const char *symbol,
-                            rt_string number) {
+/// @return 1 on success, 0 when a builder append failed or @p number is invalid.
+static int expand_currency(rt_string_builder *sb,
+                           const char *pattern,
+                           const char *symbol,
+                           rt_string number) {
     if (!pattern)
         pattern = "{s}{n}";
     const char *p = pattern;
     while (*p) {
         if (p[0] == '{' && p[1] == 's' && p[2] == '}') {
-            (void)rt_sb_append_cstr(sb, symbol ? symbol : "$");
+            if (!nf_append_cstr_checked(sb, symbol ? symbol : "$"))
+                return 0;
             p += 3;
         } else if (p[0] == '{' && p[1] == 'n' && p[2] == '}') {
+            if (!number)
+                return 0;
             const char *cs = rt_string_cstr(number);
             int64_t len = rt_str_len(number);
-            if (cs && len > 0)
-                (void)rt_sb_append_bytes(sb, cs, (size_t)len);
+            if (len < 0)
+                return 0;
+            if (cs && len > 0 && !nf_append_bytes_checked(sb, cs, (size_t)len))
+                return 0;
             p += 3;
         } else {
             char c = *p++;
-            (void)rt_sb_append_bytes(sb, &c, 1);
+            if (!nf_append_bytes_checked(sb, &c, 1))
+                return 0;
         }
     }
+    return 1;
 }
 
 rt_string rt_numformat_currency(void *self, double value) {
@@ -778,14 +853,23 @@ rt_string rt_numformat_currency(void *self, double value) {
     int digits = cur->fraction_digits >= 0 ? cur->fraction_digits : 2;
     rt_string_builder num_sb;
     rt_sb_init(&num_sb);
-    fmt_render_number(&num_sb, fmt, value < 0 ? -value : value, digits);
+    if (!fmt_render_number(&num_sb, fmt, value < 0 ? -value : value, digits)) {
+        rt_sb_free(&num_sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string num = rt_string_from_bytes(num_sb.data, num_sb.len);
     rt_sb_free(&num_sb);
+    if (!num)
+        return rt_string_from_bytes("", 0);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
     const char *pattern = value < 0 ? cur->pattern_negative : cur->pattern_positive;
-    expand_currency(&sb, pattern, cur->symbol, num);
+    if (!expand_currency(&sb, pattern, cur->symbol, num)) {
+        rt_string_unref(num);
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string_unref(num);
 
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
@@ -822,9 +906,14 @@ rt_string rt_numformat_currency_of(void *self, double value, rt_string code) {
     int digits = cur->fraction_digits >= 0 ? cur->fraction_digits : 2;
     rt_string_builder num_sb;
     rt_sb_init(&num_sb);
-    fmt_render_number(&num_sb, fmt, value < 0 ? -value : value, digits);
+    if (!fmt_render_number(&num_sb, fmt, value < 0 ? -value : value, digits)) {
+        rt_sb_free(&num_sb);
+        return rt_string_from_bytes("", 0);
+    }
     rt_string num = rt_string_from_bytes(num_sb.data, num_sb.len);
     rt_sb_free(&num_sb);
+    if (!num)
+        return rt_string_from_bytes("", 0);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -835,17 +924,21 @@ rt_string rt_numformat_currency_of(void *self, double value, rt_string code) {
     const char *p = pattern;
     while (*p) {
         if (p[0] == '{' && p[1] == 's' && p[2] == '}') {
-            (void)rt_sb_append_cstr(&sb, sym);
+            if (!nf_append_cstr_checked(&sb, sym))
+                goto currency_of_error;
             p += 3;
         } else if (p[0] == '{' && p[1] == 'n' && p[2] == '}') {
             const char *cs = rt_string_cstr(num);
             int64_t len = rt_str_len(num);
-            if (cs && len > 0)
-                (void)rt_sb_append_bytes(&sb, cs, (size_t)len);
+            if (len < 0)
+                goto currency_of_error;
+            if (cs && len > 0 && !nf_append_bytes_checked(&sb, cs, (size_t)len))
+                goto currency_of_error;
             p += 3;
         } else {
             char c = *p++;
-            (void)rt_sb_append_bytes(&sb, &c, 1);
+            if (!nf_append_bytes_checked(&sb, &c, 1))
+                goto currency_of_error;
         }
     }
     rt_string_unref(num);
@@ -853,6 +946,11 @@ rt_string rt_numformat_currency_of(void *self, double value, rt_string code) {
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
+
+currency_of_error:
+    rt_string_unref(num);
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
@@ -880,16 +978,23 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
     rt_sb_init(&sb);
     for (int i = 0; i < len; ++i) {
         if (buf[i] == '.' && dec_sep && strcmp(dec_sep, ".") != 0) {
-            (void)rt_sb_append_cstr(&sb, dec_sep);
+            if (!nf_append_cstr_checked(&sb, dec_sep))
+                goto scientific_error;
         } else if ((buf[i] == 'e' || buf[i] == 'E') && exp_char) {
-            (void)rt_sb_append_cstr(&sb, exp_char);
+            if (!nf_append_cstr_checked(&sb, exp_char))
+                goto scientific_error;
         } else {
-            append_localized_bytes(&sb, &fmt->data->numbers, buf + i, 1);
+            if (!append_localized_bytes(&sb, &fmt->data->numbers, buf + i, 1))
+                goto scientific_error;
         }
     }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
+
+scientific_error:
+    rt_sb_free(&sb);
+    return rt_string_from_bytes("", 0);
 }
 
 rt_string rt_numformat_ordinal(void *self, int64_t value) {
@@ -1026,7 +1131,8 @@ static void scan_number_parts(scan_number_t *sn,
         int digit = match_locale_digit(input + i, input_len - i, nums, &consumed);
         if (digit >= 0) {
             char c = (char)('0' + digit);
-            (void)rt_sb_append_bytes(&sn->digits, &c, 1);
+            if (!nf_append_bytes_checked(&sn->digits, &c, 1))
+                return;
             digit_count++;
             i += consumed;
             ++group_run;
@@ -1064,7 +1170,8 @@ static void scan_number_parts(scan_number_t *sn,
             int digit = match_locale_digit(input + i, input_len - i, nums, &consumed);
             if (digit >= 0) {
                 char c = (char)('0' + digit);
-                (void)rt_sb_append_bytes(&sn->frac, &c, 1);
+                if (!nf_append_bytes_checked(&sn->frac, &c, 1))
+                    return;
                 frac_count++;
                 i += consumed;
             } else {
@@ -1103,17 +1210,21 @@ static parse_result_t parse_decimal(const char *input,
     // Build a canonical "." decimal string and strtod it.
     rt_string_builder canonical;
     rt_sb_init(&canonical);
-    if (sn.negative)
-        (void)rt_sb_append_bytes(&canonical, "-", 1);
-    if (sn.digits.len == 0)
-        (void)rt_sb_append_bytes(&canonical, "0", 1);
-    else
-        (void)rt_sb_append_bytes(&canonical, sn.digits.data, sn.digits.len);
-    if (sn.had_frac) {
-        (void)rt_sb_append_bytes(&canonical, ".", 1);
-        (void)rt_sb_append_bytes(&canonical, sn.frac.data, sn.frac.len);
+    if (sn.negative && !nf_append_bytes_checked(&canonical, "-", 1))
+        goto parse_fail;
+    if (sn.digits.len == 0) {
+        if (!nf_append_bytes_checked(&canonical, "0", 1))
+            goto parse_fail;
+    } else if (!nf_append_bytes_checked(&canonical, sn.digits.data, sn.digits.len)) {
+        goto parse_fail;
     }
-    (void)rt_sb_append_bytes(&canonical, "\0", 1);
+    if (sn.had_frac) {
+        if (!nf_append_bytes_checked(&canonical, ".", 1) ||
+            !nf_append_bytes_checked(&canonical, sn.frac.data, sn.frac.len))
+            goto parse_fail;
+    }
+    if (!nf_append_bytes_checked(&canonical, "\0", 1))
+        goto parse_fail;
 
     char *end = NULL;
     errno = 0;
@@ -1128,6 +1239,11 @@ static parse_result_t parse_decimal(const char *input,
     pr.had_sign = sn.had_sign;
     pr.negative = sn.negative;
     pr.success = 1;
+    rt_sb_free(&canonical);
+    scan_number_free(&sn);
+    return pr;
+
+parse_fail:
     rt_sb_free(&canonical);
     scan_number_free(&sn);
     return pr;
@@ -1325,13 +1441,14 @@ static int expand_currency_pattern_affix(rt_string_builder *sb,
                                          const char *symbol) {
     for (size_t i = 0; i < len;) {
         if (i + 3 <= len && p[i] == '{' && p[i + 1] == 's' && p[i + 2] == '}') {
-            if (symbol)
-                (void)rt_sb_append_cstr(sb, symbol);
+            if (symbol && !nf_append_cstr_checked(sb, symbol))
+                return 0;
             i += 3;
         } else if (i + 3 <= len && p[i] == '{' && p[i + 1] == 'n' && p[i + 2] == '}') {
             return 0;
         } else {
-            (void)rt_sb_append_bytes(sb, p + i, 1);
+            if (!nf_append_bytes_checked(sb, p + i, 1))
+                return 0;
             ++i;
         }
     }

@@ -261,11 +261,13 @@ BytecodeVM::~BytecodeVM() {
     resetExecutionState();
     releaseOwnedGlobals();
     clearTrapRecord();
-    // Release all cached rt_string objects
-    for (rt_string s : stringCache_) {
-        if (s) {
+    // Release all cached rt_string objects. Teardown is allowed to observe an
+    // already-invalid handle after earlier unwinding, so only unref live
+    // registry entries and always clear the slot.
+    for (rt_string &s : stringCache_) {
+        if (s && rt_string_is_handle(s))
             rt_string_unref(s);
-        }
+        s = nullptr;
     }
     stringCache_.clear();
 }
@@ -277,10 +279,10 @@ BytecodeVM::~BytecodeVM() {
 /// literals they actually execute.
 void BytecodeVM::initStringCache() {
     // Release any existing cache
-    for (rt_string s : stringCache_) {
-        if (s) {
+    for (rt_string &s : stringCache_) {
+        if (s && rt_string_is_handle(s))
             rt_string_unref(s);
-        }
+        s = nullptr;
     }
     stringCache_.clear();
 
@@ -5907,11 +5909,8 @@ static void runBytecodeParallelForRange(BytecodeVM &vm,
 /// @details The bytecode VM cannot dispatch its tagged function values onto native pool threads,
 ///          so the task runs immediately on the calling thread. The callback must be
 ///          `(Ptr) -> Unit` or take no parameters.
-static void runBytecodePoolTask(BytecodeVM &vm,
-                                const BytecodeModule &module,
-                                void *callback,
-                                void *arg,
-                                const char *api) {
+static void runBytecodePoolTask(
+    BytecodeVM &vm, const BytecodeModule &module, void *callback, void *arg, const char *api) {
     const BytecodeFunction *fn = resolveBytecodeEntry(&module, callback);
     if (!fn) {
         rt_trap((std::string(api) + ": invalid callback function").c_str());
@@ -6111,7 +6110,8 @@ static void unified_parallel_foreach_pool_handler(void **args, void *result) {
     rt_parallel_foreach_pool(seq, func, pool);
 }
 
-/// Handler for Viper.Threads.Parallel.Map — traps on the BytecodeVM (not bridged); otherwise chains.
+/// Handler for Viper.Threads.Parallel.Map — traps on the BytecodeVM (not bridged); otherwise
+/// chains.
 static void unified_parallel_map_handler(void **args, void *result) {
     if (bytecodeSeqCallbackUnsupported("Parallel.Map"))
         return;
@@ -6424,24 +6424,25 @@ void registerUnifiedVmRuntimeHandlers() {
     {
         il::vm::ExternDesc ext;
         ext.name = "Viper.Threads.Parallel.MapPool";
-        ext.signature =
-            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_map_pool_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
         ext.name = "Viper.Threads.Parallel.Reduce";
-        ext.signature =
-            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_reduce_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
         ext.name = "Viper.Threads.Parallel.ReducePool";
-        ext.signature = make_signature(
-            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.signature = make_signature(ext.name,
+                                       {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr},
+                                       {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_reduce_pool_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }

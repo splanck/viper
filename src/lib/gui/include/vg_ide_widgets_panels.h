@@ -158,6 +158,13 @@ int vg_tabbar_get_tab_index(vg_tabbar_t *tabbar, vg_tab_t *tab);
 /// @return Tab at @p index, or NULL if the index is out of range.
 vg_tab_t *vg_tabbar_get_tab_at(vg_tabbar_t *tabbar, int index);
 
+/// @brief Get the zero-based index of the tab under canvas coordinates (x, y).
+/// @param tabbar Tab bar widget.
+/// @param x      Canvas-pixel X (input-layer coordinate space).
+/// @param y      Canvas-pixel Y.
+/// @return Tab index at the point, or -1 if none.
+int vg_tabbar_index_at(vg_tabbar_t *tabbar, int x, int y);
+
 /// @brief Set the label text on an existing tab.
 /// @param tab   Tab to modify.
 /// @param title New title string (copied internally).

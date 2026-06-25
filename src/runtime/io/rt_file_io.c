@@ -289,6 +289,44 @@ static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtE
     return true;
 }
 
+/// @brief Append a byte span to the in-progress line buffer.
+/// @details Enforces @ref RT_FILE_MAX_LINE_BYTES, grows the buffer until the
+///          requested span plus a trailing terminator fits, and copies the
+///          bytes into place. Used by both the seekable chunked path and the
+///          byte-at-a-time fallback.
+/// @param buffer Pointer to the line buffer pointer.
+/// @param cap Current buffer capacity.
+/// @param len Current logical byte length; updated on success.
+/// @param data Bytes to append.
+/// @param data_len Number of bytes in @p data.
+/// @param out_err Receives structured error details on failure.
+/// @return `true` when the bytes were appended; otherwise `false`.
+static bool rt_file_line_append(
+    char **buffer, size_t *cap, size_t *len, const char *data, size_t data_len, RtError *out_err) {
+    if (data_len == 0)
+        return true;
+    if (!buffer || !*buffer || !cap || !len || !data) {
+        rt_file_set_error(out_err, Err_InvalidOperation, 0);
+        return false;
+    }
+    if (data_len > RT_FILE_MAX_LINE_BYTES || *len > RT_FILE_MAX_LINE_BYTES - data_len) {
+        rt_file_set_error(out_err, Err_RuntimeError, EOVERFLOW);
+        return false;
+    }
+    if (data_len > SIZE_MAX - *len - 1) {
+        rt_file_set_error(out_err, Err_RuntimeError, ERANGE);
+        return false;
+    }
+    size_t needed = *len + data_len + 1;
+    while (needed > *cap) {
+        if (!rt_file_line_buffer_grow(buffer, cap, *len, out_err))
+            return false;
+    }
+    memcpy(*buffer + *len, data, data_len);
+    *len += data_len;
+    return true;
+}
+
 /// @brief Test hook exposing the line buffer growth guard for regression coverage.
 /// @param buffer Buffer pointer owned by the caller.
 /// @param cap Current capacity in bytes.
@@ -325,6 +363,10 @@ void rt_file_init(RtFile *file) {
 int8_t rt_file_open(
     RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err) {
     if (!file || !path || !mode) {
+        rt_file_set_error(out_err, Err_InvalidOperation, 0);
+        return 0;
+    }
+    if (file->fd >= 0) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return 0;
     }
@@ -392,7 +434,6 @@ int8_t rt_file_close(RtFile *file, RtError *out_err) {
     if (rc < 0) {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
-        file->fd = -1;
         return 0;
     }
 
@@ -469,37 +510,87 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err) {
     bool ok = false;
     rt_string s = NULL;
 
-    for (;;) {
-        char ch = 0;
-        errno = 0;
-        ssize_t n = read(file->fd, &ch, 1);
-        if (n == 1) {
-            if (ch == '\n')
-                break;
-            if (len >= RT_FILE_MAX_LINE_BYTES) {
-                rt_file_set_error(out_err, Err_RuntimeError, EOVERFLOW);
-                goto cleanup;
-            }
-            if (len == SIZE_MAX || len + 1 >= cap) {
-                if (!rt_file_line_buffer_grow(&buffer, &cap, len, out_err))
+    int64_t seek_pos = lseek(file->fd, 0, SEEK_CUR);
+    if (seek_pos >= 0) {
+        for (;;) {
+            char chunk[4096];
+            errno = 0;
+            ssize_t n = read(file->fd, chunk, sizeof(chunk));
+            if (n > 0) {
+                size_t bytes_read = (size_t)n;
+                size_t append_len = bytes_read;
+                int found_newline = 0;
+                for (size_t i = 0; i < bytes_read; ++i) {
+                    if (chunk[i] == '\n') {
+                        append_len = i;
+                        found_newline = 1;
+                        break;
+                    }
+                }
+                if (!rt_file_line_append(&buffer, &cap, &len, chunk, append_len, out_err))
                     goto cleanup;
+                if (found_newline) {
+                    size_t consumed = append_len + 1;
+                    if (seek_pos > INT64_MAX - (int64_t)consumed) {
+                        rt_file_set_error(out_err, Err_RuntimeError, EOVERFLOW);
+                        goto cleanup;
+                    }
+                    int64_t target = seek_pos + (int64_t)consumed;
+                    errno = 0;
+                    if (lseek(file->fd, target, SEEK_SET) < 0) {
+                        int err = errno ? errno : EIO;
+                        rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
+                        goto cleanup;
+                    }
+                    break;
+                }
+                if (seek_pos > INT64_MAX - (int64_t)bytes_read) {
+                    rt_file_set_error(out_err, Err_RuntimeError, EOVERFLOW);
+                    goto cleanup;
+                }
+                seek_pos += (int64_t)bytes_read;
+                continue;
             }
-            buffer[len++] = ch;
-            continue;
-        }
-        if (n == 0) {
-            if (len == 0) {
-                rt_file_set_error(out_err, Err_EOF, 0);
-                goto cleanup;
+            if (n == 0) {
+                if (len == 0) {
+                    rt_file_set_error(out_err, Err_EOF, 0);
+                    goto cleanup;
+                }
+                break;
             }
-            break;
-        }
-        if (n < 0 && errno == EINTR)
-            continue;
+            if (n < 0 && errno == EINTR)
+                continue;
 
-        int err = errno ? errno : EIO;
-        rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
-        goto cleanup;
+            int err = errno ? errno : EIO;
+            rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
+            goto cleanup;
+        }
+    } else {
+        for (;;) {
+            char ch = 0;
+            errno = 0;
+            ssize_t n = read(file->fd, &ch, 1);
+            if (n == 1) {
+                if (ch == '\n')
+                    break;
+                if (!rt_file_line_append(&buffer, &cap, &len, &ch, 1, out_err))
+                    goto cleanup;
+                continue;
+            }
+            if (n == 0) {
+                if (len == 0) {
+                    rt_file_set_error(out_err, Err_EOF, 0);
+                    goto cleanup;
+                }
+                break;
+            }
+            if (n < 0 && errno == EINTR)
+                continue;
+
+            int err = errno ? errno : EIO;
+            rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
+            goto cleanup;
+        }
     }
 
     if (len > 0 && buffer[len - 1] == '\r')

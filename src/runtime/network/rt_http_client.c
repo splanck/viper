@@ -122,6 +122,40 @@ static void http_client_release_obj(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Release retained default-header snapshot entries.
+/// @details Header snapshots retain each key/value while the client mutex is
+///          held, then apply those headers after unlocking. This helper is used
+///          by both normal and trap-recovery paths so partially populated
+///          snapshots do not leak.
+/// @param headers Snapshot array, or NULL.
+/// @param header_count Number of initialized entries in @p headers.
+static void http_client_release_header_snapshot(void *headers, int64_t header_count) {
+    typedef struct {
+        rt_string key;
+        rt_string value;
+    } header_snapshot;
+
+    header_snapshot *items = (header_snapshot *)headers;
+    for (int64_t i = 0; i < header_count; i++) {
+        if (items[i].value)
+            rt_string_unref(items[i].value);
+        if (items[i].key)
+            rt_string_unref(items[i].key);
+    }
+}
+
+/// @brief Copy the current thread's trap message into a fixed buffer.
+/// @details Trap recovery stores the latest message in runtime TLS. Cleanup
+///          paths copy it before clearing recovery and releasing resources so
+///          they can re-raise the original error after the mutex is unlocked.
+/// @param buffer Destination buffer.
+/// @param buffer_size Size of @p buffer.
+/// @param fallback Message used when the trap did not provide one.
+static void http_client_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
 static void free_cookie_list(rt_http_cookie *cookie) {
     while (cookie) {
         rt_http_cookie *next = cookie->next;
@@ -157,13 +191,33 @@ static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitiv
 
     int64_t timeout_ms = 0;
     int8_t keep_alive = 0;
-    void *connection_pool = NULL;
-    header_snapshot *headers = NULL;
-    int64_t header_count = 0;
+    void *volatile keys = NULL;
+    void *volatile connection_pool = NULL;
+    header_snapshot *volatile headers = NULL;
+    volatile int64_t header_count = 0;
     int snapshot_failed = 0;
+    volatile int mutex_locked = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        http_client_save_trap_error(
+            saved_error, sizeof(saved_error), "HttpClient: failed to apply defaults");
+        rt_trap_clear_recovery();
+        if (mutex_locked)
+            HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+        http_client_release_obj((void *)keys);
+        http_client_release_header_snapshot((void *)headers, (int64_t)header_count);
+        free((void *)headers);
+        http_client_release_obj((void *)connection_pool);
+        rt_trap(saved_error);
+        return;
+    }
 
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
-    void *keys = rt_map_keys(c->default_headers);
+    mutex_locked = 1;
+    keys = rt_map_keys(c->default_headers);
     int64_t count = rt_seq_len(keys);
     if (count > 0) {
         if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(*headers)) {
@@ -182,12 +236,13 @@ static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitiv
              !rt_http_header_is_sensitive_for_cross_origin_redirect(rt_string_cstr(key)))) {
             rt_string_ref(key);
             rt_string_ref((rt_string)val);
-            headers[header_count].key = key;
-            headers[header_count].value = (rt_string)val;
+            headers[(int64_t)header_count].key = key;
+            headers[(int64_t)header_count].value = (rt_string)val;
             header_count++;
         }
     }
-    http_client_release_obj(keys);
+    http_client_release_obj((void *)keys);
+    keys = NULL;
 
     timeout_ms = c->timeout_ms;
     keep_alive = c->keep_alive;
@@ -195,25 +250,29 @@ static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitiv
     if (connection_pool)
         rt_obj_retain_maybe(connection_pool);
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+    mutex_locked = 0;
+    rt_trap_clear_recovery();
 
     if (snapshot_failed) {
-        http_client_release_obj(connection_pool);
+        http_client_release_obj((void *)connection_pool);
+        http_client_release_header_snapshot((void *)headers, (int64_t)header_count);
+        free((void *)headers);
         rt_trap("HttpClient: memory allocation failed");
+        return;
     }
 
-    for (int64_t i = 0; i < header_count; i++) {
+    for (int64_t i = 0; i < (int64_t)header_count; i++) {
         rt_http_req_set_header(req, headers[i].key, headers[i].value);
-        rt_string_unref(headers[i].value);
-        rt_string_unref(headers[i].key);
     }
-    free(headers);
+    http_client_release_header_snapshot((void *)headers, (int64_t)header_count);
+    free((void *)headers);
 
     if (timeout_ms > 0)
         rt_http_req_set_timeout(req, timeout_ms);
     rt_http_req_set_follow_redirects(req, 0);
     rt_http_req_set_keep_alive(req, keep_alive);
-    rt_http_req_set_connection_pool(req, connection_pool);
-    http_client_release_obj(connection_pool);
+    rt_http_req_set_connection_pool(req, (void *)connection_pool);
+    http_client_release_obj((void *)connection_pool);
 }
 
 static int64_t cookie_now_seconds(void) {

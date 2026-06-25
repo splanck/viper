@@ -352,9 +352,17 @@ static void *xml_to_generic_value(void *node) {
     rt_sb_init(&text);
 
     void *map = rt_map_new();
+    if (!map) {
+        release_obj(attrs);
+        release_obj(children);
+        rt_sb_free(&text);
+        return NULL;
+    }
 
     if (attr_count > 0) {
         void *attr_map = rt_map_new();
+        if (!attr_map)
+            goto convert_error;
         for (int64_t i = 0; i < attr_count; i++) {
             rt_string name = (rt_string)rt_seq_get(attrs, i);
             rt_string val = rt_xml_attr(node, name);
@@ -377,7 +385,13 @@ static void *xml_to_generic_value(void *node) {
             rt_string_unref(tag);
         } else if (child_type == XML_NODE_TEXT || child_type == XML_NODE_CDATA) {
             rt_string content = rt_xml_content(child);
-            rt_sb_append_bytes(&text, rt_string_cstr(content), (size_t)rt_str_len(content));
+            int64_t content_len = content ? rt_str_len(content) : 0;
+            const char *content_data = content ? rt_string_cstr(content) : NULL;
+            if (content_len < 0 ||
+                rt_sb_append_bytes(&text, content_data, (size_t)content_len) != RT_SB_OK) {
+                rt_string_unref(content);
+                goto convert_error;
+            }
             rt_string_unref(content);
         }
     }
@@ -399,6 +413,13 @@ static void *xml_to_generic_value(void *node) {
     }
     rt_sb_free(&text);
     return map;
+
+convert_error:
+    release_obj(attrs);
+    release_obj(children);
+    release_obj(map);
+    rt_sb_free(&text);
+    return NULL;
 }
 
 /// @brief Serialize `obj` as TOML. Non-map objects are wrapped in a synthetic map
