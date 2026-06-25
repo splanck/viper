@@ -47,6 +47,7 @@ bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind WorkspaceWatcher = Viper.Workspace.Watcher;
+bind FileIndex = Viper.Workspace.FileIndex;
 
 // ============================================================================
 // MODULE: viperide (main entry point)
@@ -91,9 +92,11 @@ final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 final AUTO_SAVE_IDLE_MS = 1500;
 final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
-final INDEX_FILES_PER_FRAME = 4;
-final WORKSPACE_SYMBOL_FILES_PER_FRAME = 2;
+final MAIN_INDEX_FILES_PER_FRAME = 4;
+final MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME = 2;
 final WORKSPACE_WATCHER_MAX_EVENTS = 32;
+final WORKSPACE_WATCHER_RESCAN_MS = 3000;
+final FRAME_BACKGROUND_BUDGET_MS = 10;
 
 /// @brief Mutable project-root watcher state owned by the main frame loop.
 /// @details Zia scalar parameters are passed by value, so project watcher
@@ -103,12 +106,18 @@ class WorkspaceWatcherState {
     expose IO.Watcher watcher;
     expose Boolean watching;
     expose String rootPath;
+    expose Integer lastRescanMs;
+    expose Integer lastEntryCount;
+    expose Integer lastFingerprint;
 
     /// @brief Initialize as detached from any workspace root.
     expose func init() {
         watcher = null;
         watching = false;
         rootPath = "";
+        lastRescanMs = 0;
+        lastEntryCount = -1;
+        lastFingerprint = 0;
     }
 }
 
@@ -255,6 +264,9 @@ func main() {
     // Cursor tracking for dot-trigger and status bar caching
     var prevCursorLine = 1;
     var prevCursorCol  = 1;
+    var prevStatusRevision = engine.GetRevision();
+    var prevStatusLineCount = engine.GetLineCount();
+    var prevStatusCursorCount = engine.editor.GetCursorCount();
     var minimapVisible = appSettings.minimapVisible;
     var lastServiceName = "";
     var paletteMode = "commands";
@@ -276,6 +288,9 @@ func main() {
             breakpointStore.Save();
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
+                CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, fileWatcher,
+                           hasWatcher, workspaceWatcherState, indexer, breakpointStore,
+                           sessionMgr);
                 return;
             }
         }
@@ -300,6 +315,7 @@ func main() {
                 commandRegistry.PopulatePalette(shell.commandPalette, activeService);
             }
             commandRegistry.ApplyCapabilities(activeService);
+            shell.ApplyLanguageCommandState(activeService);
             lastServiceName = activeService.name;
         }
         completer.SetSourcePath(activeToolPath);
@@ -318,6 +334,7 @@ func main() {
                                                 and activeService.canDocumentSymbols,
                                                 engine);
         var typedThisFrame = Input.Keyboard.GetText();
+        var frameWorkStartMs = Viper.Time.GetTickCount();
         var perfSpan = perfMon.StartSpan();
         indexer.EnsureProject(projMgr, docMgr);
         indexer.SyncActiveWhenIdle(docMgr, engine);
@@ -325,7 +342,7 @@ func main() {
             if indexer.indexing == false and indexer.pendingIndexFiles == null {
                 indexer.StartIndexWorkspace();
             }
-            indexer.PumpIndex(4);
+            indexer.PumpIndex(MAIN_INDEX_FILES_PER_FRAME);
         }
         if indexer.workspaceIndexStatusMessage != lastWorkspaceIndexStatus {
             lastWorkspaceIndexStatus = indexer.workspaceIndexStatusMessage;
@@ -334,7 +351,7 @@ func main() {
                 GUI.Toast.Warning(lastWorkspaceIndexStatus);
             }
         }
-        completer.PumpWorkspaceSymbolCache(2);
+        completer.PumpWorkspaceSymbolCache(MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME);
         perfMon.AddIndex(perfSpan);
         if activeToolDoc != null {
             if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
@@ -387,21 +404,31 @@ func main() {
         build_commands.UpdateJob(shell, buildSys, locStore);
         debug_commands.DebugUpdate(shell, docMgr, engine, tabs, dbgSession);
         perfMon.AddBuild(perfSpan);
-        perfSpan = perfMon.StartSpan();
-        searcher.Pump(shell, docMgr, locStore);
-        perfMon.AddSearch(perfSpan);
-        perfSpan = perfMon.StartSpan();
-        hoverCtrl.update(engine);
-        perfMon.AddHover(perfSpan);
-        perfSpan = perfMon.StartSpan();
-        sigCtrl.update(engine);
-        perfMon.AddSignature(perfSpan);
-        perfSpan = perfMon.StartSpan();
-        inlayCtrl.update(engine);
-        perfMon.AddInlay(perfSpan);
-        perfSpan = perfMon.StartSpan();
-        symbolOutline.update(engine);
-        perfMon.AddSymbols(perfSpan);
+        if FrameBudgetAllows(frameWorkStartMs) {
+            perfSpan = perfMon.StartSpan();
+            searcher.Pump(shell, docMgr, locStore);
+            perfMon.AddSearch(perfSpan);
+        }
+        if FrameBudgetAllows(frameWorkStartMs) {
+            perfSpan = perfMon.StartSpan();
+            hoverCtrl.update(engine);
+            perfMon.AddHover(perfSpan);
+        }
+        if FrameBudgetAllows(frameWorkStartMs) {
+            perfSpan = perfMon.StartSpan();
+            sigCtrl.update(engine);
+            perfMon.AddSignature(perfSpan);
+        }
+        if FrameBudgetAllows(frameWorkStartMs) {
+            perfSpan = perfMon.StartSpan();
+            inlayCtrl.update(engine);
+            perfMon.AddInlay(perfSpan);
+        }
+        if FrameBudgetAllows(frameWorkStartMs) {
+            perfSpan = perfMon.StartSpan();
+            symbolOutline.update(engine);
+            perfMon.AddSymbols(perfSpan);
+        }
         symbolOutline.handleClicks(engine);
         if Shortcuts.WasTriggered("completion_trigger") != 0 {
             perfSpan = perfMon.StartSpan();
@@ -555,6 +582,12 @@ func main() {
             if IO.File.Exists(dupPath) != false {
                 var dupName = GUI.MessageBox.Prompt("Duplicate File", "New file name:");
                 if dupName != "" {
+                    if IsSafeChildName(dupName) == false {
+                        GUI.Toast.Warning("Use a plain file name, not a path");
+                        dupName = "";
+                    }
+                }
+                if dupName != "" {
                     var dupTarget = Path.Join(Path.Dir(dupPath), dupName);
                     if IO.File.Exists(dupTarget) or Dir.Exists(dupTarget) {
                         GUI.Toast.Warning("Target already exists");
@@ -637,6 +670,12 @@ func main() {
             if ctxDir != "" {
                 var newName = GUI.MessageBox.Prompt("New File", "Enter file name:");
                 if newName != "" {
+                    if IsSafeChildName(newName) == false {
+                        GUI.Toast.Warning("Use a plain file name, not a path");
+                        newName = "";
+                    }
+                }
+                if newName != "" {
                     var newFilePath = Path.Join(ctxDir, newName);
                     IO.File.Touch(newFilePath);
                     projMgr.RefreshTree();
@@ -648,6 +687,12 @@ func main() {
             var ctxDir = shell.contextDir;
             if ctxDir != "" {
                 var folderName = GUI.MessageBox.Prompt("New Folder", "Enter folder name:");
+                if folderName != "" {
+                    if IsSafeChildName(folderName) == false {
+                        GUI.Toast.Warning("Use a plain folder name, not a path");
+                        folderName = "";
+                    }
+                }
                 if folderName != "" {
                     var newFolderPath = Path.Join(ctxDir, folderName);
                     Dir.Make(newFolderPath);
@@ -665,7 +710,8 @@ func main() {
             if IO.File.Exists(runPath) != false {
                 OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, runPath);
                 pendingReload = false;
-                build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore);
+                build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore,
+                                         appSettings.saveAllBeforeBuild);
             }
         }
         if shell.ctxSetEntry.WasClicked() != 0 {
@@ -777,6 +823,9 @@ func main() {
             breakpointStore.Save();
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
+                CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, fileWatcher,
+                           hasWatcher, workspaceWatcherState, indexer, breakpointStore,
+                           sessionMgr);
                 return;
             }
         }
@@ -904,12 +953,12 @@ func main() {
         if triggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items
-        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
-        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected)  { build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
-        if triggered("run", shell.miRun, null, cpSelected)                      { build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
+        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild); }
+        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected)  { build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild); }
+        if triggered("run", shell.miRun, null, cpSelected)                      { build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild); }
         if triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
         if triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
-            debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession);
+            debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession, appSettings.saveAllBeforeBuild);
         }
         if triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
             debug_commands.handleDebugContinue(shell, dbgSession);
@@ -927,7 +976,9 @@ func main() {
             debug_commands.handleDebugPause(shell, dbgSession);
         }
         if triggered("debugrestart", shell.miDebugRestart, null, cpSelected) {
-            debug_commands.handleDebugRestart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession);
+            debug_commands.handleDebugRestart(shell, docMgr, engine, tabs, buildSys,
+                                             breakpointStore, dbgSession,
+                                             appSettings.saveAllBeforeBuild);
         }
         if triggered("debugstop", shell.miDebugStop, null, cpSelected) {
             debug_commands.handleDebugStop(shell, dbgSession);
@@ -1029,6 +1080,7 @@ func main() {
                     appSettings.trimTrailingWhitespace = overlays.ReadTrimTrailingWhitespace();
                     appSettings.ensureFinalNewline = overlays.ReadEnsureFinalNewline();
                     appSettings.autoSave = overlays.ReadAutoSave();
+                    appSettings.saveAllBeforeBuild = overlays.ReadSaveAllBeforeBuild();
                     appSettings.diagnosticsDelayMs = overlays.ReadDiagnosticsDelayMs();
                     appSettings.completionDelayMs = overlays.ReadCompletionDelayMs();
                     appSettings.uiZoomPercent = overlays.ReadUiZoom();
@@ -1063,6 +1115,7 @@ func main() {
                 appSettings.trimTrailingWhitespace = overlays.ReadTrimTrailingWhitespace();
                 appSettings.ensureFinalNewline = overlays.ReadEnsureFinalNewline();
                 appSettings.autoSave = overlays.ReadAutoSave();
+                appSettings.saveAllBeforeBuild = overlays.ReadSaveAllBeforeBuild();
                 appSettings.diagnosticsDelayMs = overlays.ReadDiagnosticsDelayMs();
                 appSettings.completionDelayMs = overlays.ReadCompletionDelayMs();
                 appSettings.uiZoomPercent = overlays.ReadUiZoom();
@@ -1214,15 +1267,24 @@ func main() {
 	        // ====================================================================
         // Update status bar (only when cursor moves)
         // ====================================================================
-        if curCursorLine != prevCursorLine or curCursorCol != prevCursorCol {
-            var cursorText = "Ln " + curCursorLine + ", Col " + curCursorCol + "  |  Lines: " + engine.GetLineCount();
-            if engine.editor.GetCursorCount() > 1 {
-                cursorText = cursorText + "  |  Cursors: " + engine.editor.GetCursorCount();
+        var statusRevision = engine.GetRevision();
+        var statusLineCount = engine.GetLineCount();
+        var statusCursorCount = engine.editor.GetCursorCount();
+        if curCursorLine != prevCursorLine or curCursorCol != prevCursorCol
+           or statusRevision != prevStatusRevision
+           or statusLineCount != prevStatusLineCount
+           or statusCursorCount != prevStatusCursorCount {
+            var cursorText = "Ln " + curCursorLine + ", Col " + curCursorCol + "  |  Lines: " + statusLineCount;
+            if statusCursorCount > 1 {
+                cursorText = cursorText + "  |  Cursors: " + statusCursorCount;
             }
             shell.SetStatusCenter(cursorText);
         }
         prevCursorLine = curCursorLine;
         prevCursorCol  = curCursorCol;
+        prevStatusRevision = statusRevision;
+        prevStatusLineCount = statusLineCount;
+        prevStatusCursorCount = statusCursorCount;
 
         perfSpan = perfMon.StartSpan();
         shell.Render();
@@ -1233,11 +1295,61 @@ func main() {
     // ========================================================================
     // Cleanup
     // ========================================================================
+    CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, fileWatcher,
+               hasWatcher, workspaceWatcherState, indexer, breakpointStore, sessionMgr);
+}
+
+/// @brief Stop all long-lived IDE services and persist final state before exit.
+/// @details Used for normal loop termination, File > Exit, and window-manager
+///          close requests so no path can bypass build/debug cancellation,
+///          watcher shutdown, indexer cleanup, or shell destruction.
+/// @param shell Workbench shell to persist and destroy.
+/// @param docMgr Open document manager whose active editor state is saved.
+/// @param projMgr Project manager persisted with the session.
+/// @param engine Editor engine used to capture cursor, scroll, and buffer state.
+/// @param buildSys Active build/run process controller.
+/// @param dbgSession Active debug-adapter process controller.
+/// @param fileWatcher Single-file external-change watcher.
+/// @param hasWatcher Whether @p fileWatcher is currently started.
+/// @param workspaceWatcherState Project-root watcher state.
+/// @param indexer Semantic workspace indexer to destroy.
+/// @param breakpointStore Breakpoint persistence store.
+/// @param sessionMgr Session persistence store.
+func CleanupIde(shell: app_shell.AppShell,
+                docMgr: document_manager.DocumentManager,
+                projMgr: project_manager.ProjectManager,
+                engine: editor_engine.EditorEngine,
+                buildSys: build_system.BuildSystem,
+                dbgSession: debug_session.DebugSession,
+                fileWatcher: IO.Watcher,
+                hasWatcher: Boolean,
+                workspaceWatcherState: WorkspaceWatcherState,
+                indexer: project_index.ProjectIndexer,
+                breakpointStore: breakpoints.BreakpointStore,
+                sessionMgr: session.SessionManager) {
     if shell != null {
         file_commands.SaveEditorState(docMgr, engine);
+    }
+    if breakpointStore != null {
         breakpointStore.Save();
+    }
+    if sessionMgr != null {
         sessionMgr.Save(docMgr, projMgr);
+    }
+    if buildSys != null and buildSys.IsActive() {
+        buildSys.Stop();
+    }
+    if dbgSession != null and dbgSession.IsActive() {
+        dbgSession.Terminate();
+    }
+    if hasWatcher and fileWatcher != null {
+        fileWatcher.Stop();
+    }
+    StopWorkspaceWatcher(workspaceWatcherState);
+    if indexer != null {
         indexer.Destroy();
+    }
+    if shell != null {
         shell.Destroy();
     }
 }
@@ -1278,6 +1390,18 @@ func HasIdentifierInput(text: String) -> Boolean {
         i = i + 1;
     }
     return false;
+}
+
+/// @brief Check whether lower-priority background controllers may run this frame.
+/// @details Build/debug polling, input handling, completion, and diagnostics are
+///          allowed to run before this budget gate. Hover, signature, inlay,
+///          symbol, and search refreshes can wait one frame when earlier work
+///          has already consumed the soft controller budget.
+/// @param frameWorkStartMs Tick captured near the start of controller updates.
+/// @return True while elapsed controller work is below `FRAME_BACKGROUND_BUDGET_MS`.
+func FrameBudgetAllows(frameWorkStartMs: Integer) -> Boolean {
+    if frameWorkStartMs <= 0 { return true; }
+    return Viper.Time.GetTickCount() - frameWorkStartMs < FRAME_BACKGROUND_BUDGET_MS;
 }
 
 /// @brief Poll all open named documents for external timestamp changes.
@@ -1357,20 +1481,38 @@ func RevealPath(path: String) {
     if path == "" { return; }
     var os = Machine.OS;
     if os == "macos" {
-        Exec.Shell("open -R " + ShellQuote(path));
+        var macArgs = Seq.New();
+        Seq.Push(macArgs, "-R");
+        Seq.Push(macArgs, path);
+        Exec.RunArgs("open", macArgs);
     } else if os == "windows" {
-        Exec.Shell("explorer /select," + ShellQuote(path));
+        var winArgs = Seq.New();
+        Seq.Push(winArgs, "/select," + path);
+        Exec.RunArgs("explorer.exe", winArgs);
     } else {
         var dir = path;
         if IO.File.Exists(path) != false {
             dir = Path.Dir(path);
         }
-        Exec.Shell("xdg-open " + ShellQuote(dir));
+        var linuxArgs = Seq.New();
+        Seq.Push(linuxArgs, dir);
+        Exec.RunArgs("xdg-open", linuxArgs);
     }
 }
 
-func ShellQuote(path: String) -> String {
-    return "\"" + Str.Replace(path, "\"", "\\\"") + "\"";
+/// @brief Validate a user-entered child name for create/duplicate commands.
+/// @details Explorer actions take a name relative to the selected directory.
+///          Rejecting separators, drive separators, and dot directory aliases
+///          prevents accidental path traversal while keeping the feature itself.
+/// @param name Prompt text supplied by the user.
+/// @return True when @p name is a single file-system entry name.
+func IsSafeChildName(name: String) -> Boolean {
+    if name == "" or name == "." or name == ".." { return false; }
+    if Str.IndexOf(name, Path.Sep()) != 0 { return false; }
+    if Str.IndexOf(name, "/") != 0 { return false; }
+    if Str.IndexOf(name, "\\") != 0 { return false; }
+    if Str.IndexOf(name, ":") != 0 { return false; }
+    return true;
 }
 
 func RecordActiveFile(sessionMgr: session.SessionManager,
@@ -1417,6 +1559,10 @@ func TreeNewFile(shell: app_shell.AppShell,
     if dir == "" { return; }
     var newName = GUI.MessageBox.Prompt("New File", "Enter file name:");
     if newName == "" { return; }
+    if IsSafeChildName(newName) == false {
+        GUI.Toast.Warning("Use a plain file name, not a path");
+        return;
+    }
     var newPath = Path.Join(dir, newName);
     if IO.File.Exists(newPath) or Dir.Exists(newPath) {
         GUI.Toast.Warning("Target already exists");
@@ -1433,6 +1579,10 @@ func TreeNewFolder(shell: app_shell.AppShell,
     if dir == "" { return; }
     var folderName = GUI.MessageBox.Prompt("New Folder", "Enter folder name:");
     if folderName == "" { return; }
+    if IsSafeChildName(folderName) == false {
+        GUI.Toast.Warning("Use a plain folder name, not a path");
+        return;
+    }
     var newPath = Path.Join(dir, folderName);
     if IO.File.Exists(newPath) or Dir.Exists(newPath) {
         GUI.Toast.Warning("Target already exists");
@@ -1546,12 +1696,17 @@ func PumpWorkspaceWatcher(shell: app_shell.AppShell,
         state.watcher.Start();
         state.rootPath = root;
         state.watching = true;
+        PrimeWorkspaceWatcherRescanState(state, root);
         return;
     }
 
     var events = WorkspaceWatcher.PollBatch(state.watcher, WORKSPACE_WATCHER_MAX_EVENTS);
-    if events == null or Seq.get_Length(events) == 0 { return; }
-    HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
+    if events != null and Seq.get_Length(events) > 0 {
+        HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
+        PrimeWorkspaceWatcherRescanState(state, root);
+        return;
+    }
+    PumpWorkspaceWatcherFallbackScan(shell, projMgr, docMgr, indexer, locStore, engine, state);
 }
 
 /// @brief Stop and clear project-root watcher state.
@@ -1564,6 +1719,69 @@ func StopWorkspaceWatcher(state: WorkspaceWatcherState) {
     state.watcher = null;
     state.watching = false;
     state.rootPath = "";
+    state.lastRescanMs = 0;
+    state.lastEntryCount = -1;
+    state.lastFingerprint = 0;
+}
+
+/// @brief Initialize fallback rescan counters for a workspace root.
+/// @details The platform watcher currently reports direct root changes only.
+///          This cheap snapshot gives the periodic fallback scan a baseline for
+///          detecting nested create/delete events that root polling misses.
+/// @param state Mutable watcher state owned by the frame loop.
+/// @param root Workspace root path.
+func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState,
+                                      root: String) {
+    if state == null or root == "" { return; }
+    var status = FileIndex.Status(root, "", "", false);
+    state.lastEntryCount = Map.GetInt(status, "entryCount");
+    state.lastFingerprint = Map.GetInt(status, "fingerprint");
+    state.lastRescanMs = Viper.Time.GetTickCount();
+}
+
+/// @brief Periodically rescan workspace structure when native watcher is quiet.
+/// @details This is a conservative fallback for non-recursive watchers. It does
+///          not replace event polling; it compares both entry count and the
+///          runtime file-index fingerprint so nested modifications, renames, and
+///          same-count structural changes can refresh the project/index state.
+/// @param shell Workbench shell for user-visible status.
+/// @param projMgr Project tree manager to refresh.
+/// @param docMgr Document manager whose open documents are re-synced.
+/// @param indexer Semantic project index to rebuild.
+/// @param locStore Stored locations invalidated by tree/index rebuilds.
+/// @param engine Editor engine used by location invalidation.
+/// @param state Watcher state carrying the last fallback snapshot.
+func PumpWorkspaceWatcherFallbackScan(shell: app_shell.AppShell,
+                                      projMgr: project_manager.ProjectManager,
+                                      docMgr: document_manager.DocumentManager,
+                                      indexer: project_index.ProjectIndexer,
+                                      locStore: locations.LocationStore,
+                                      engine: editor_engine.EditorEngine,
+                                      state: WorkspaceWatcherState) {
+    if state == null or state.rootPath == "" { return; }
+    var now = Viper.Time.GetTickCount();
+    if state.lastRescanMs > 0 and now - state.lastRescanMs < WORKSPACE_WATCHER_RESCAN_MS {
+        return;
+    }
+    state.lastRescanMs = now;
+    var status = FileIndex.Status(state.rootPath, "", "", false);
+    var count = Map.GetInt(status, "entryCount");
+    var fingerprint = Map.GetInt(status, "fingerprint");
+    if state.lastEntryCount < 0 {
+        state.lastEntryCount = count;
+        state.lastFingerprint = fingerprint;
+        return;
+    }
+    if count != state.lastEntryCount or fingerprint != state.lastFingerprint {
+        state.lastEntryCount = count;
+        state.lastFingerprint = fingerprint;
+        if projMgr != null {
+            projMgr.RefreshTree();
+        }
+        ReindexAfterTreeMove(projMgr, indexer, docMgr);
+        InvalidateWorkspaceLocations(shell, locStore, engine);
+        shell.SetStatusLeft("Workspace changed: refreshed nested files");
+    }
 }
 
 /// @brief Apply a batch of project-root watcher events to UI and index state.

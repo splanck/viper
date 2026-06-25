@@ -21,6 +21,7 @@ final WORKSPACE_SYMBOL_FILES_PER_FRAME = 1;
 final MAX_WORKSPACE_COMPLETION_ITEMS = 80;
 final MAX_VISIBLE_COMPLETION_ITEMS = 80;
 final MAX_WORKSPACE_SYMBOL_CACHE_ITEMS = 300;
+final MAX_WORKSPACE_SYMBOL_SOURCE_BYTES = 200000;
 final WORKSPACE_SYMBOL_PUMP_INTERVAL_MS = 500;
 final FILTER_PREFIX_UNSET = "<unset>";
 final COMPLETION_POPUP_WIDTH = 360.0;
@@ -643,11 +644,48 @@ class CompletionController {
             return false;
         }
         var chars = Obj.ToString(commitCharacters.get(activeIndex));
-        if ContainsAny(chars, typed) == false {
+        var commit = FirstMatchingCharacter(chars, typed);
+        if commit == "" {
             return false;
         }
-        AcceptSelected();
+        AcceptCommitCharacterInternal(activeIndex, commit);
         return true;
+    }
+
+    /// @brief Accept a completion item after the editor has inserted a commit character.
+    /// @details Native text input runs before this controller sees `typed`. For
+    ///          function commits such as `(`, the CodeEditor may already have
+    ///          inserted `()` and placed the cursor between the pair. This method
+    ///          extends the replacement range through the typed commit character
+    ///          and inserts `completionText + commit`, preserving the native
+    ///          closing delimiter and leaving the cursor after the commit.
+    hide func AcceptCommitCharacterInternal(activeIndex: Integer,
+                                            commit: String) {
+        selectedIndex = activeIndex;
+        if activeIndex < 0 or activeIndex >= itemCount {
+            Hide();
+            return;
+        }
+        var ins = Obj.ToString(insertTexts.get(activeIndex));
+        var startLine = ListIntAt(replaceStartLines, activeIndex, editor.CursorLine);
+        var startCol = ListIntAt(replaceStartCols, activeIndex, editor.CursorCol);
+        var endLine = ListIntAt(replaceEndLines, activeIndex, editor.CursorLine);
+        var endCol = ListIntAt(replaceEndCols, activeIndex, editor.CursorCol);
+        if startLine >= 0 and endLine >= startLine {
+            if editor.CursorLine == endLine and editor.CursorCol > endCol {
+                endCol = editor.CursorCol;
+                editor.SetCursorSelection(0, startLine, startCol, endLine, endCol);
+                editor.InsertAtCursor(ins + commit);
+            } else {
+                editor.SetCursorSelection(0, startLine, startCol, endLine, endCol);
+                editor.InsertAtCursor(ins);
+                editor.InsertAtCursor(commit);
+            }
+        } else {
+            editor.ReplaceWordAtCursor(ins);
+            editor.InsertAtCursor(commit);
+        }
+        Hide();
     }
 
     expose func SelectedCommitCharacters() -> String {
@@ -915,6 +953,9 @@ class CompletionController {
             }
         }
         if IO.File.Exists(filePath) {
+            if IO.File.Size(filePath) > MAX_WORKSPACE_SYMBOL_SOURCE_BYTES {
+                return "";
+            }
             return IO.File.ReadAllText(filePath);
         }
         return "";
@@ -1169,6 +1210,22 @@ func ContainsAny(characters: String, typed: String) -> Boolean {
         i = i + 1;
     }
     return false;
+}
+
+/// @brief Return the first typed character that appears in a candidate set.
+/// @details Completion commit handling needs the actual character, not only a
+///          boolean, so it can preserve the user's typed delimiter in the edit.
+func FirstMatchingCharacter(characters: String, typed: String) -> String {
+    if characters == "" or typed == "" { return ""; }
+    var i = 1;
+    while i <= Str.Length(typed) {
+        var ch = Str.MidLen(typed, i, 1);
+        if Str.IndexOf(characters, ch) != 0 {
+            return ch;
+        }
+        i = i + 1;
+    }
+    return "";
 }
 
 func IsOnlyIndentWhitespace(text: String) -> Boolean {

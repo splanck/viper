@@ -31,13 +31,13 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <limits>
 #include <map>
-#include <mutex>
 #include <new>
 #include <optional>
 #include <set>
@@ -48,7 +48,7 @@
 #include <unordered_map>
 #include <vector>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <sys/stat.h>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -66,6 +66,8 @@ namespace {
 
 constexpr size_t kGitignoreCacheMaxEntries = 64;
 constexpr int64_t kWorkspaceFileIndexMaxEntries = 100000;
+constexpr uint64_t kWorkspaceFingerprintOffset = 14695981039346656037ull;
+constexpr uint64_t kWorkspaceFingerprintPrime = 1099511628211ull;
 
 // Keep the cache root trivially initialized: native-linked tools may call this
 // runtime object before C++ global constructors from archive members have run.
@@ -77,33 +79,42 @@ struct GitignoreCacheEntry {
 };
 
 GitignoreCacheEntry *g_gitignoreCacheHead = nullptr;
-std::atomic<std::mutex *> g_gitignoreCacheMutex{nullptr};
+std::atomic_flag g_gitignoreCacheLock = ATOMIC_FLAG_INIT;
 std::atomic<uint64_t> g_workspaceEditTempCounter{0};
 
-/// @brief Return the process-wide mutex protecting the gitignore cache list.
-/// @details The cache root intentionally remains a raw pointer for trivial
-///          initialization. The mutex is lazily allocated and intentionally
-///          kept for process lifetime so native-linked runtime archives do not
-///          need C++ static destructor registration for this translation unit.
-/// @return Mutex guarding `g_gitignoreCacheHead` and all linked entries.
-std::mutex &gitignoreCacheMutex() {
-    std::mutex *mutex = g_gitignoreCacheMutex.load(std::memory_order_acquire);
-    if (mutex)
-        return *mutex;
+/// @brief Scope guard for the process-wide gitignore cache spin lock.
+/// @details The file-index runtime archive is linked into native programs, so
+///          this lock deliberately avoids heap allocation and C++ static
+///          destructor registration. Gitignore cache critical sections are
+///          short and only protect an in-memory linked list, making an atomic
+///          spin lock preferable here to a lazily allocated `std::mutex`.
+struct GitignoreCacheLockGuard {
+    /// @brief Acquire exclusive access to the gitignore cache list.
+    /// @details Uses acquire ordering so subsequent cache reads observe writes
+    ///          from the previous holder before traversing `g_gitignoreCacheHead`.
+    GitignoreCacheLockGuard() {
+        while (g_gitignoreCacheLock.test_and_set(std::memory_order_acquire)) {
+        }
+    }
 
-    std::mutex *created = new (std::nothrow) std::mutex();
-    if (!created) {
-        rt_trap("Workspace.FileIndex: gitignore cache mutex allocation failed");
-        std::abort();
+    /// @brief Release exclusive access to the gitignore cache list.
+    /// @details Uses release ordering so newly inserted or evicted cache nodes
+    ///          are visible to the next thread that acquires the guard.
+    ~GitignoreCacheLockGuard() {
+        g_gitignoreCacheLock.clear(std::memory_order_release);
     }
-    std::mutex *expected = nullptr;
-    if (g_gitignoreCacheMutex.compare_exchange_strong(
-            expected, created, std::memory_order_release, std::memory_order_acquire)) {
-        return *created;
-    }
-    delete created;
-    return *expected;
-}
+
+    /// @brief Prevent accidental copies of the active lock guard.
+    /// @details Copying a guard would make ownership ambiguous and could clear
+    ///          the process-wide spin lock while the original guard is still
+    ///          in scope.
+    GitignoreCacheLockGuard(const GitignoreCacheLockGuard &) = delete;
+
+    /// @brief Prevent assigning one active lock guard to another.
+    /// @details Assignment would have the same ownership ambiguity as copying
+    ///          and is not meaningful for a scope-bound cache lock.
+    GitignoreCacheLockGuard &operator=(const GitignoreCacheLockGuard &) = delete;
+};
 
 std::string toStd(rt_string s) {
     if (!s)
@@ -388,7 +399,7 @@ static void pruneGitignoreCacheLocked() {
 }
 
 int64_t fileTimeSeconds(const fs::path &path) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     struct _stat64i32 st{};
     const std::wstring wide = path.wstring();
     if (_wstat64i32(wide.c_str(), &st) != 0)
@@ -401,6 +412,64 @@ int64_t fileTimeSeconds(const fs::path &path) {
     return static_cast<int64_t>(st.st_mtime);
 }
 
+/// @brief Mix one byte into a workspace file-index fingerprint.
+/// @details Uses FNV-1a because the status helper needs a deterministic,
+///          allocation-free summary rather than a cryptographic hash. The
+///          fingerprint is only used to notice that the project tree changed
+///          between fallback watcher scans.
+/// @param hash Current fingerprint accumulator.
+/// @param byte Byte to fold into @p hash.
+/// @return Updated fingerprint accumulator.
+uint64_t workspaceFingerprintByte(uint64_t hash, unsigned char byte) {
+    hash ^= static_cast<uint64_t>(byte);
+    return hash * kWorkspaceFingerprintPrime;
+}
+
+/// @brief Mix a string field into a workspace file-index fingerprint.
+/// @details A trailing NUL separator prevents adjacent fields from producing
+///          the same byte stream after concatenation.
+/// @param hash Current fingerprint accumulator.
+/// @param text Field text to fold into @p hash.
+/// @return Updated fingerprint accumulator.
+uint64_t workspaceFingerprintString(uint64_t hash, std::string_view text) {
+    for (unsigned char ch : text)
+        hash = workspaceFingerprintByte(hash, ch);
+    return workspaceFingerprintByte(hash, 0);
+}
+
+/// @brief Mix an integer field into a workspace file-index fingerprint.
+/// @details Integers are folded as eight little-endian bytes so size and mtime
+///          changes influence the same stable fingerprint as path changes.
+/// @param hash Current fingerprint accumulator.
+/// @param value Integer field value to fold into @p hash.
+/// @return Updated fingerprint accumulator.
+uint64_t workspaceFingerprintInt(uint64_t hash, int64_t value) {
+    uint64_t raw = static_cast<uint64_t>(value);
+    for (int i = 0; i < 8; i++) {
+        hash = workspaceFingerprintByte(hash, static_cast<unsigned char>((raw >> (i * 8)) & 0xffu));
+    }
+    return hash;
+}
+
+/// @brief Mix one emitted file-index entry into a workspace fingerprint.
+/// @details Includes the normalized relative path, directory flag, file size,
+///          and modified timestamp. This is intentionally metadata-only so the
+///          fallback watcher scan stays cheap on large workspaces.
+/// @param hash Current fingerprint accumulator.
+/// @param relativePath Normalized project-relative path.
+/// @param isDir True when the entry is a directory.
+/// @param size File size in bytes, or 0 for directories.
+/// @param modified Last modification time in seconds when available.
+/// @return Updated fingerprint accumulator.
+uint64_t workspaceFingerprintEntry(
+    uint64_t hash, std::string_view relativePath, bool isDir, int64_t size, int64_t modified) {
+    hash = workspaceFingerprintString(hash, relativePath);
+    hash = workspaceFingerprintInt(hash, isDir ? 1 : 0);
+    hash = workspaceFingerprintInt(hash, size);
+    hash = workspaceFingerprintInt(hash, modified);
+    return hash;
+}
+
 std::vector<std::string> cachedGitignorePatterns(const fs::path &root) {
     std::error_code ec;
     std::string key = normalizeSlashes(fs::absolute(root, ec).lexically_normal().string());
@@ -408,7 +477,7 @@ std::vector<std::string> cachedGitignorePatterns(const fs::path &root) {
         key = normalizeSlashes(root.lexically_normal().string());
 
     const int64_t modified = fileTimeSeconds(root / ".gitignore");
-    std::lock_guard<std::mutex> lock(gitignoreCacheMutex());
+    GitignoreCacheLockGuard lock;
     for (GitignoreCacheEntry *entry = g_gitignoreCacheHead; entry; entry = entry->next) {
         if (entry->key == key && entry->modified == modified)
             return entry->patterns;
@@ -958,7 +1027,8 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
 /// @param extensions_csv Comma-separated extension allow-list.
 /// @param excludes_csv Comma-separated additional ignore patterns.
 /// @param include_dirs Non-zero to count directories that pass filters.
-/// @return Runtime map containing valid/root/entryCount/maxEntries/truncated/diagnostics.
+/// @return Runtime map containing
+/// valid/root/entryCount/maxEntries/truncated/fingerprint/diagnostics.
 void *rt_workspace_file_index_status(rt_string root_s,
                                      rt_string extensions_csv,
                                      rt_string excludes_csv,
@@ -969,6 +1039,7 @@ void *rt_workspace_file_index_status(rt_string root_s,
     mapSetStr(status, "root", "");
     rt_map_set_int(status, rt_const_cstr("entryCount"), 0);
     rt_map_set_int(status, rt_const_cstr("maxEntries"), kWorkspaceFileIndexMaxEntries);
+    rt_map_set_int(status, rt_const_cstr("fingerprint"), 0);
     rt_map_set_bool(status, rt_const_cstr("truncated"), 0);
     rt_map_set(status, rt_const_cstr("diagnostics"), diagnostics);
 
@@ -984,8 +1055,11 @@ void *rt_workspace_file_index_status(rt_string root_s,
         root = fs::absolute(root, ec).lexically_normal();
         if (ec || !fs::is_directory(root, ec)) {
             rt_map_set_bool(status, rt_const_cstr("valid"), 0);
-            pushDiagnostic(
-                diagnostics, "workspace root is not a directory", root.string(), 0, "fileindex.root");
+            pushDiagnostic(diagnostics,
+                           "workspace root is not a directory",
+                           root.string(),
+                           0,
+                           "fileindex.root");
             releaseObject(diagnostics);
             return status;
         }
@@ -1003,6 +1077,7 @@ void *rt_workspace_file_index_status(rt_string root_s,
             root, fs::directory_options::skip_permission_denied, ec);
         fs::recursive_directory_iterator end;
         int64_t counted = 0;
+        uint64_t fingerprint = kWorkspaceFingerprintOffset;
         for (; !ec && it != end; it.increment(ec)) {
             std::error_code relEc;
             std::string rel =
@@ -1032,6 +1107,14 @@ void *rt_workspace_file_index_status(rt_string root_s,
                                "fileindex.truncated");
                 break;
             }
+            int64_t fileSize = 0;
+            if (!isDir) {
+                std::error_code sizeEc;
+                auto rawSize = it->file_size(sizeEc);
+                fileSize = sizeEc ? -1 : static_cast<int64_t>(rawSize);
+            }
+            fingerprint = workspaceFingerprintEntry(
+                fingerprint, rel, isDir, fileSize, fileTimeSeconds(it->path()));
             counted++;
         }
         if (ec) {
@@ -1043,11 +1126,13 @@ void *rt_workspace_file_index_status(rt_string root_s,
                            "fileindex.traverse");
         }
         rt_map_set_int(status, rt_const_cstr("entryCount"), counted);
+        rt_map_set_int(status, rt_const_cstr("fingerprint"), static_cast<int64_t>(fingerprint));
         releaseObject(diagnostics);
         return status;
     } catch (...) {
         rt_map_set_bool(status, rt_const_cstr("valid"), 0);
-        pushDiagnostic(diagnostics, "workspace file index status failed", "", 0, "fileindex.exception");
+        pushDiagnostic(
+            diagnostics, "workspace file index status failed", "", 0, "fileindex.exception");
         releaseObject(diagnostics);
         return status;
     }

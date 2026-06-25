@@ -65,7 +65,7 @@ class CommandRegistry {
         Add("goto", "Go To Line", "Jump to a specific line number", "Ctrl+G", "", true);
         Add("build", "Build", "Compile the current file or project", "Ctrl+Shift+B", "", true);
         Add("buildrun", "Build and Run", "Build and run the current file or project", "F5", "", true);
-        Add("run", "Run without Build", "Run without compiling first", "Ctrl+F5", "", true);
+        Add("run", "Run", "Run the current file or project through the Viper toolchain", "Ctrl+F5", "", true);
         Add("stopjob", "Stop Running Job", "Terminate the active build or run process", "Shift+F5", "", true);
         Add("debugstart", "Start Debugging", "Launch the active file in the debug protocol", "F6", "", true);
         Add("debugcontinue", "Continue Debugging", "Continue a paused debug session", "F7", "", true);

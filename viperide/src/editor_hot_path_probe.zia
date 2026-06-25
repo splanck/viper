@@ -307,8 +307,8 @@ func main() {
         Clock.Sleep(1);
         hiddenFoldTicks = hiddenFoldTicks + 1;
     }
-    if hiddenOutline.foldedPath != "" {
-        fail(shell, "hidden semantic folding ran while outline hidden");
+    if hiddenOutline.foldedPath != "fold_perf.zia" {
+        fail(shell, "hidden semantic folding skipped while outline hidden");
         return;
     }
 

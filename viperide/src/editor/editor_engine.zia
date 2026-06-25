@@ -67,6 +67,11 @@ class EditorEngine {
         }
         editor.SetText(doc.content);
         editor.ClearModified();
+        if doc.isReadOnlyPreview {
+            editor.SetReadOnly(1);
+        } else {
+            editor.SetReadOnly(0);
+        }
         editor.ClearSemanticTokens(); // drop the previous document's semantic overlay
         cachedTextSnapshot = doc.content;
         cachedTextRevision = editor.Revision;

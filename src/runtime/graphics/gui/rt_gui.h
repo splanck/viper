@@ -1973,6 +1973,11 @@ void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot);
 /// @return 1 if clicked, 0 otherwise.
 int64_t rt_codeeditor_was_gutter_clicked(void *editor);
 
+/// @brief Atomically consume a pending gutter click.
+/// @param editor CodeEditor handle.
+/// @return Map with `clicked`, `line`, and `slot` fields.
+void *rt_codeeditor_take_gutter_click(void *editor);
+
 /// @brief Get the line where gutter was clicked.
 /// @param editor CodeEditor handle.
 /// @return Line number (0-based), or -1 if no click.
@@ -2214,6 +2219,16 @@ void rt_codeeditor_set_show_indent_guides(void *editor, int64_t enabled);
 /// @param editor CodeEditor handle.
 /// @return 1 if enabled, 0 otherwise.
 int64_t rt_codeeditor_get_show_indent_guides(void *editor);
+
+/// @brief Enable or disable read-only editing mode.
+/// @param editor CodeEditor handle.
+/// @param enabled Non-zero to reject text mutations while preserving navigation.
+void rt_codeeditor_set_read_only(void *editor, int64_t enabled);
+
+/// @brief Check whether read-only editing mode is enabled.
+/// @param editor CodeEditor handle.
+/// @return 1 if read-only, 0 otherwise.
+int64_t rt_codeeditor_get_read_only(void *editor);
 
 /// @brief Reset low-level CodeEditor performance counters.
 /// @param editor CodeEditor handle.

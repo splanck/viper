@@ -109,6 +109,8 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->line_number_width_override = 0.0f;
     editor->gutter_bg = theme->colors.bg_secondary;
     editor->line_number_color = theme->colors.fg_tertiary;
+    editor->gutter_clicked = false;
+    editor->gutter_click_read = false;
     editor->gutter_clicked_line = -1;
     editor->gutter_clicked_slot = -1;
 
@@ -156,6 +158,12 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->layout_cache_total_height = 0.0f;
     editor->layout_cache_prefix_rows = NULL;
     editor->layout_cache_capacity = 0;
+    editor->runtime_content_width_cache_valid = false;
+    editor->runtime_content_width_generation = 0;
+    editor->runtime_content_width_base_width = 0.0f;
+    editor->runtime_content_width_viewport_height = 0.0f;
+    editor->runtime_content_width_word_wrap = false;
+    editor->runtime_content_width = 0.0f;
     editor->highlight_spans_sorted = true;
     editor->highlight_line_index_valid = false;
     editor->highlight_line_index_line_count = 0;
@@ -216,6 +224,7 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     editor->semantic_tokens = NULL;
     editor->semantic_token_count = 0;
     editor->semantic_token_cap = 0;
+    editor->semantic_tokens_sorted = true;
 
     if (editor->gutter_icons) {
         for (int i = 0; i < editor->gutter_icon_count; i++)

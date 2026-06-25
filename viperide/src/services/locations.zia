@@ -9,6 +9,7 @@ bind "../ui/app_shell";
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
 bind Str = Viper.String;
+bind Path = Viper.IO.Path;
 
 final KIND_SEARCH = 1;
 final KIND_DIAGNOSTIC = 2;
@@ -107,7 +108,7 @@ func OpenResolvedLocation(shell: app_shell.AppShell,
     if loc == null { return false; }
     if loc.filePath != "" {
         var activeDoc = docMgr.GetActive();
-        if activeDoc == null or activeDoc.filePath != loc.filePath {
+        if activeDoc == null or SameLocationPath(activeDoc.filePath, loc.filePath) == false {
             file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, loc.filePath);
         }
     }
@@ -118,6 +119,19 @@ func OpenResolvedLocation(shell: app_shell.AppShell,
         }
     }
     return true;
+}
+
+/// @brief Compare two location paths after absolute lexical normalization.
+/// @details Stored locations can originate from compiler diagnostics, search,
+///          and project index results; each source can spell the same file
+///          differently. Normalized comparison prevents duplicate tab opens.
+/// @param a First path.
+/// @param b Second path.
+/// @return True when both paths normalize to the same file spelling.
+func SameLocationPath(a: String, b: String) -> Boolean {
+    if a == b { return true; }
+    if a == "" or b == "" { return false; }
+    return Path.Norm(Path.Abs(a)) == Path.Norm(Path.Abs(b));
 }
 
 func IsLocationData(data: String) -> Boolean {

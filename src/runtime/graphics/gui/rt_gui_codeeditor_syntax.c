@@ -95,8 +95,7 @@ static void syn_fill(uint32_t *colors, size_t pos, size_t n, uint32_t color) {
 ///
 /// `token_type` is a `vg_syntax_token_type` value (0..VG_SYN_TOKEN_COUNT-1).
 static uint32_t syn_color(vg_codeeditor_t *ce, int token_type, uint32_t fallback) {
-    if (ce && token_type >= 0 && token_type < VG_SYN_TOKEN_COUNT &&
-        ce->token_colors[token_type])
+    if (ce && token_type >= 0 && token_type < VG_SYN_TOKEN_COUNT && ce->token_colors[token_type])
         return ce->token_colors[token_type];
     return fallback;
 }
@@ -268,9 +267,9 @@ static int syn_is_bracket(char c) {
 /// @details Deliberately excludes `.`, `,`, `;` (kept at the default color so
 ///          member access and separators do not become visually noisy).
 static int syn_is_operator(char c) {
-    return c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '=' ||
-           c == '<' || c == '>' || c == '!' || c == '&' || c == '|' || c == '^' ||
-           c == '~' || c == '?' || c == ':';
+    return c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '=' || c == '<' ||
+           c == '>' || c == '!' || c == '&' || c == '|' || c == '^' || c == '~' || c == '?' ||
+           c == ':';
 }
 
 /// @brief Compare `len` chars of `a` and `b` ignoring ASCII case.
@@ -685,37 +684,110 @@ static void rt_basic_syntax_cb(
 // ─── Viper IL language tokenizer ──────────────────────────────────────────
 
 // Structural keywords of the IL textual format (header, declarations, blocks).
-static const char *const viper_keywords[] = {"il",    "extern", "global",
-                                             "func",  "const",  "block",
-                                             NULL};
+static const char *const viper_keywords[] = {
+    "il", "extern", "global", "func", "const", "block", NULL};
 
 // IL value types.
-static const char *const viper_types[] = {"i1",  "i8",   "i16",  "i32",
-                                          "i64", "f32",  "f64",  "ptr",
-                                          "str", "void", "error", "resume_tok",
+static const char *const viper_types[] = {"i1",
+                                          "i8",
+                                          "i16",
+                                          "i32",
+                                          "i64",
+                                          "f32",
+                                          "f64",
+                                          "ptr",
+                                          "str",
+                                          "void",
+                                          "error",
+                                          "resume_tok",
                                           NULL};
 
 // IL opcode mnemonics (kept in sync with `viper --dump-opcodes`). Opcodes embed
 // '.' and '_', so the IL identifier scan treats '.' as a continuation char.
-static const char *const viper_opcodes[] = {
-    "add",        "sub",          "mul",        "iadd.ovf",   "isub.ovf",
-    "imul.ovf",   "sdiv",         "udiv",       "srem",       "urem",
-    "sdiv.chk0",  "udiv.chk0",    "srem.chk0",  "urem.chk0",  "idx.chk",
-    "and",        "or",           "xor",        "shl",        "lshr",
-    "ashr",       "fadd",         "fsub",       "fmul",       "fdiv",
-    "icmp_eq",    "icmp_ne",      "scmp_lt",    "scmp_le",    "scmp_gt",
-    "scmp_ge",    "ucmp_lt",      "ucmp_le",    "ucmp_gt",    "ucmp_ge",
-    "fcmp_eq",    "fcmp_ne",      "fcmp_lt",    "fcmp_le",    "fcmp_gt",
-    "fcmp_ge",    "fcmp_ord",     "fcmp_uno",   "sitofp",     "fptosi",
-    "cast.fp_to_si.rte.chk",      "cast.fp_to_ui.rte.chk",    "cast.si_narrow.chk",
-    "cast.ui_narrow.chk",         "cast.si_to_fp",            "cast.ui_to_fp",
-    "zext1",      "trunc1",       "alloca",     "gep",        "load",
-    "store",      "addr_of",      "const_str",  "gaddr",      "const_null",
-    "const.f64",  "call",         "call.indirect", "switch.i32", "br",
-    "cbr",        "ret",          "trap.kind",  "trap.from_err", "trap.err",
-    "err.get_kind", "err.get_code", "err.get_ip", "err.get_line", "err.get_msg",
-    "eh.push",    "eh.pop",       "resume.same", "resume.next", "resume.label",
-    "eh.entry",   "trap",         NULL};
+static const char *const viper_opcodes[] = {"add",
+                                            "sub",
+                                            "mul",
+                                            "iadd.ovf",
+                                            "isub.ovf",
+                                            "imul.ovf",
+                                            "sdiv",
+                                            "udiv",
+                                            "srem",
+                                            "urem",
+                                            "sdiv.chk0",
+                                            "udiv.chk0",
+                                            "srem.chk0",
+                                            "urem.chk0",
+                                            "idx.chk",
+                                            "and",
+                                            "or",
+                                            "xor",
+                                            "shl",
+                                            "lshr",
+                                            "ashr",
+                                            "fadd",
+                                            "fsub",
+                                            "fmul",
+                                            "fdiv",
+                                            "icmp_eq",
+                                            "icmp_ne",
+                                            "scmp_lt",
+                                            "scmp_le",
+                                            "scmp_gt",
+                                            "scmp_ge",
+                                            "ucmp_lt",
+                                            "ucmp_le",
+                                            "ucmp_gt",
+                                            "ucmp_ge",
+                                            "fcmp_eq",
+                                            "fcmp_ne",
+                                            "fcmp_lt",
+                                            "fcmp_le",
+                                            "fcmp_gt",
+                                            "fcmp_ge",
+                                            "fcmp_ord",
+                                            "fcmp_uno",
+                                            "sitofp",
+                                            "fptosi",
+                                            "cast.fp_to_si.rte.chk",
+                                            "cast.fp_to_ui.rte.chk",
+                                            "cast.si_narrow.chk",
+                                            "cast.ui_narrow.chk",
+                                            "cast.si_to_fp",
+                                            "cast.ui_to_fp",
+                                            "zext1",
+                                            "trunc1",
+                                            "alloca",
+                                            "gep",
+                                            "load",
+                                            "store",
+                                            "addr_of",
+                                            "const_str",
+                                            "gaddr",
+                                            "const_null",
+                                            "const.f64",
+                                            "call",
+                                            "call.indirect",
+                                            "switch.i32",
+                                            "br",
+                                            "cbr",
+                                            "ret",
+                                            "trap.kind",
+                                            "trap.from_err",
+                                            "trap.err",
+                                            "err.get_kind",
+                                            "err.get_code",
+                                            "err.get_ip",
+                                            "err.get_line",
+                                            "err.get_msg",
+                                            "eh.push",
+                                            "eh.pop",
+                                            "resume.same",
+                                            "resume.next",
+                                            "resume.label",
+                                            "eh.entry",
+                                            "trap",
+                                            NULL};
 
 /// @brief True if `c` continues an IL identifier/opcode token (id chars + '.').
 static int syn_is_il_id_cont(char c) {
@@ -1088,6 +1160,7 @@ void rt_codeeditor_add_semantic_token(
     st->start_col = s;
     st->end_col = e;
     st->color = syn_color(ce, (int)token_type, semantic_default_color((int)token_type));
+    ce->semantic_tokens_sorted = false;
     // Invalidate this line's cached colors so the overlay is reapplied on paint.
     if (l < ce->line_count)
         ce->lines[l].highlight_generation = 0;
@@ -1101,6 +1174,7 @@ void rt_codeeditor_clear_semantic_tokens(void *editor) {
     if (!ce)
         return;
     ce->semantic_token_count = 0;
+    ce->semantic_tokens_sorted = true;
     rt_codeeditor_invalidate_syntax_cache(ce);
 }
 

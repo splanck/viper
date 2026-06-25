@@ -9,6 +9,7 @@ bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
 bind Viper.String as Str;
 bind FileIndex = Viper.Workspace.FileIndex;
+bind Map = Viper.Collections.Map;
 bind "../core/document_manager";
 
 // ============================================================================
@@ -34,13 +35,13 @@ bind "../core/document_manager";
 //   * EXCLUDE PATTERNS. `ShouldExcludePath` delegates to
 //     Viper.Workspace.FileIndex, which applies hard excludes, `.gitignore`,
 //     and optional ignore/exclude patterns from `viper.project`.
-//   * RECURSIVE TREE BUILD. `BuildTree` is depth-first: directories
-//     first (so they sort to the top), then files. No lazy expansion —
-//     the entire tree is built at open time. Fine for projects
-//     totalling thousands of files.
+//   * DEMAND-LOADED TREE. `PopulateTree` adds only the project root's
+//     immediate children. Clicking a folder populates that folder once.
+//     Quick Open still uses the full FileIndex-backed file cache, so
+//     responsiveness no longer depends on building every visible node.
 //
 // HOW-TO-READ: Setup (wire up the widget) -> OpenFolder (entry point) ->
-//   PopulateTree -> BuildTree (recursion) -> HandleTreeClicks (poll
+//   PopulateTree -> PopulateTreeChildren -> HandleTreeClicks (poll
 //   for selection) -> ShouldExclude / ShouldExcludeFile (filters).
 // ============================================================================
 
@@ -56,6 +57,8 @@ class ProjectManager {
     expose Boolean fileWasSelected;
     /// Project file paths collected while building the tree, reused by Quick Open.
     expose List fileCache;
+    /// Absolute directory paths whose TreeView children have been populated.
+    expose List loadedTreeDirs;
     /// Number of Zia file-bind paths rewritten by the most recent rename.
     expose Integer lastBindRewriteCount;
 
@@ -64,6 +67,7 @@ class ProjectManager {
         selectedFilePath = "";
         fileWasSelected = false;
         fileCache = new List();
+        loadedTreeDirs = new List();
         lastBindRewriteCount = 0;
     }
 
@@ -95,6 +99,7 @@ class ProjectManager {
         project.Close();
         treeView.Clear();
         fileCache = new List();
+        loadedTreeDirs = new List();
         selectedFilePath = "";
     }
 
@@ -108,27 +113,41 @@ class ProjectManager {
             return;
         }
 
+        fileCache = BuildProjectFileCache();
+        loadedTreeDirs = new List();
+
         var rootNode = treeView.AddNode(null, project.name);
         GUI.TreeView.Node.SetData(rootNode, project.rootPath);
 
-        BuildTree(project.rootPath, rootNode);
+        PopulateTreeChildren(project.rootPath, rootNode);
 
         treeView.Expand(rootNode);
     }
 
-    /// @brief Recursively populate `parentNode` with `dirPath`'s children.
-    /// @details Directories first (so they sort to the top of each
-    ///          level), then files. Each child node is given an
-    ///          absolute path via `SetData` so click handling can read
-    ///          the full path back without re-walking the tree.
-    func BuildTree(dirPath: String, parentNode: GUI.TreeNode) {
+    /// @brief Populate one TreeView directory node with its immediate children.
+    /// @details Directories are added first, then files. The method records each
+    ///          loaded directory so repeated clicks do not duplicate child nodes.
+    ///          Full Quick Open population is handled separately by
+    ///          `BuildProjectFileCache`, so this work stays bounded to one
+    ///          directory at a time.
+    /// @param dirPath Absolute directory path represented by @p parentNode.
+    /// @param parentNode Tree node object that receives child nodes.
+    /// @return true when children were added during this call.
+    func PopulateTreeChildren(dirPath: String,
+                              parentNode: Any) -> Boolean {
+        if dirPath == "" or parentNode == null { return false; }
+        if Dir.Exists(dirPath) == false { return false; }
+        var normalizedDir = NormalizeAbsPath(dirPath);
+        if ListContains(loadedTreeDirs, normalizedDir) {
+            return false;
+        }
+        loadedTreeDirs.Push(normalizedDir);
+
         for dirName in Dir.DirsSeq(dirPath) {
             var fullPath = Path.Join(dirPath, dirName);
             if ShouldExcludePath(fullPath, true) == false {
                 var folderNode = treeView.AddNode(parentNode, dirName);
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
-
-                BuildTree(fullPath, folderNode);
             }
         }
 
@@ -137,9 +156,37 @@ class ProjectManager {
             if ShouldExcludePath(fullPath, false) == false {
                 var fileNode = treeView.AddNode(parentNode, fileName);
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
-                fileCache.Push(fullPath);
+                if ListContains(fileCache, fullPath) == false {
+                    fileCache.Push(fullPath);
+                }
             }
         }
+        return true;
+    }
+
+    /// @brief Build the project-wide file cache without constructing GUI nodes.
+    /// @details Uses the runtime workspace file index, which applies the same
+    ///          hard excludes, `.gitignore`, and project ignore patterns as the
+    ///          tree. If the runtime index is unavailable, returns an empty cache;
+    ///          clicked tree folders still add their files opportunistically.
+    /// @return List of absolute file paths for Quick Open and command palette use.
+    func BuildProjectFileCache() -> List {
+        var cache = new List();
+        if project == null or project.isOpen == false { return cache; }
+        var entries = FileIndex.Enumerate(project.rootPath, "", project.ignorePatterns, false);
+        if entries == null { return cache; }
+        var i = 0;
+        while i < Seq.get_Length(entries) {
+            var entry = Seq.Get(entries, i);
+            if Map.GetBool(entry, "isDirectory") == false {
+                var path = Map.GetStr(entry, "path");
+                if path != "" and ListContains(cache, path) == false {
+                    cache.Push(path);
+                }
+            }
+            i = i + 1;
+        }
+        return cache;
     }
 
     expose func CachedFileCount() -> Integer {
@@ -173,6 +220,12 @@ class ProjectManager {
                     selectedFilePath = path;
                     fileWasSelected = true;
                     return path;
+                }
+                if Dir.Exists(path) != false {
+                    PopulateTreeChildren(path, selected);
+                    treeView.Expand(selected);
+                    selectedFilePath = "";
+                    return "";
                 }
             }
         }

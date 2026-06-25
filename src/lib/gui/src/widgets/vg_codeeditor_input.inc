@@ -116,6 +116,138 @@ static bool codeeditor_opener_adds_indent(char ch) {
     return ch == '{' || ch == '(' || ch == '[';
 }
 
+static char codeeditor_closing_for_opener(char opener);
+
+/// @brief Return true when @p ch is an ASCII identifier character.
+/// @details Used by pair insertion heuristics to avoid inserting quotes in the
+///          middle of words and to avoid adding paired punctuation immediately
+///          before identifiers.
+static bool codeeditor_is_identifier_byte(char ch) {
+    unsigned char c = (unsigned char)ch;
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+           c == '_';
+}
+
+/// @brief Return the indentation text that should be added for one nesting level.
+/// @details The returned text is stored in @p out and is always NUL-terminated.
+///          It respects the editor's soft-tab setting and clamps extreme tab
+///          widths to the same range as the rest of the editor input code.
+static void codeeditor_make_extra_indent(const vg_codeeditor_t *editor,
+                                         char *out,
+                                         size_t out_cap,
+                                         int *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!out || out_cap == 0)
+        return;
+    out[0] = '\0';
+    if (!editor)
+        return;
+
+    int extra_len = editor->use_spaces ? editor->tab_width : 1;
+    if (extra_len < 1)
+        extra_len = 1;
+    if (extra_len > 16)
+        extra_len = 16;
+
+    if (editor->use_spaces) {
+        size_t count = (size_t)extra_len;
+        if (count >= out_cap)
+            count = out_cap - 1;
+        memset(out, ' ', count);
+        out[count] = '\0';
+        if (out_len)
+            *out_len = (int)count;
+    } else {
+        out[0] = '\t';
+        out[1 < out_cap ? 1 : 0] = '\0';
+        if (out_len)
+            *out_len = 1;
+    }
+}
+
+/// @brief Return true when @p opener and @p closer form one of the editor's
+///        automatic insertion pairs.
+static bool codeeditor_chars_are_pair(char opener, char closer) {
+    return codeeditor_closing_for_opener(opener) == closer;
+}
+
+/// @brief Return true when the cursor is directly between an automatic pair.
+/// @details This is the condition needed to split `{|}` into a three-line block
+///          on Enter. The helper is intentionally byte-based because all pair
+///          characters are single-byte ASCII.
+static bool codeeditor_cursor_between_pair(vg_codeeditor_t *editor, char *out_opener) {
+    if (out_opener)
+        *out_opener = '\0';
+    if (!editor || editor->cursor_line < 0 || editor->cursor_line >= editor->line_count)
+        return false;
+    vg_code_line_t *line = &editor->lines[editor->cursor_line];
+    int col = editor->cursor_col;
+    if (col <= 0 || col >= (int)line->length)
+        return false;
+    char opener = line->text[col - 1];
+    char closer = line->text[col];
+    if (!codeeditor_chars_are_pair(opener, closer))
+        return false;
+    if (out_opener)
+        *out_opener = opener;
+    return true;
+}
+
+/// @brief Insert a split block when Enter is pressed between an automatic pair.
+/// @details For `{|}` this inserts "\n<indent+level>\n<indent>" and restores the
+///          cursor to the indented middle line. The underlying insertion remains
+///          a single undo step; the latest history cursor is adjusted to the
+///          user-visible final cursor position.
+static bool codeeditor_try_split_pair_on_enter(vg_codeeditor_t *editor) {
+    char opener = '\0';
+    if (!codeeditor_cursor_between_pair(editor, &opener))
+        return false;
+    if (!codeeditor_opener_adds_indent(opener))
+        return false;
+
+    vg_code_line_t *line = &editor->lines[editor->cursor_line];
+    int base_indent_len = codeeditor_leading_indent_len(line->text, line->length);
+    char extra_indent[32];
+    int extra_indent_len = 0;
+    codeeditor_make_extra_indent(editor, extra_indent, sizeof(extra_indent), &extra_indent_len);
+
+    size_t insert_len = 2u + (size_t)base_indent_len * 2u + (size_t)extra_indent_len;
+    char *insert = malloc(insert_len + 1u);
+    if (!insert)
+        return false;
+
+    char *p = insert;
+    *p++ = '\n';
+    if (base_indent_len > 0) {
+        memcpy(p, line->text, (size_t)base_indent_len);
+        p += base_indent_len;
+    }
+    if (extra_indent_len > 0) {
+        memcpy(p, extra_indent, (size_t)extra_indent_len);
+        p += extra_indent_len;
+    }
+    *p++ = '\n';
+    if (base_indent_len > 0) {
+        memcpy(p, line->text, (size_t)base_indent_len);
+        p += base_indent_len;
+    }
+    *p = '\0';
+
+    int cursor_line_after = editor->cursor_line + 1;
+    int cursor_col_after = base_indent_len + extra_indent_len;
+    vg_codeeditor_insert_text(editor, insert);
+    editor->cursor_line = cursor_line_after;
+    editor->cursor_col = cursor_col_after;
+    edit_history_update_latest_cursor_after(
+        editor->history, editor->cursor_line, editor->cursor_col);
+    ensure_cursor_visible(editor);
+    editor->cursor_visible = true;
+    editor->base.needs_paint = true;
+    free(insert);
+    return true;
+}
+
 static void codeeditor_insert_newline_with_indent(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -124,6 +256,9 @@ static void codeeditor_insert_newline_with_indent(vg_codeeditor_t *editor) {
         vg_codeeditor_insert_text(editor, "\n");
         return;
     }
+
+    if (codeeditor_try_split_pair_on_enter(editor))
+        return;
 
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
     int line_len = line->length > (size_t)INT_MAX ? INT_MAX : (int)line->length;
@@ -136,13 +271,10 @@ static void codeeditor_insert_newline_with_indent(vg_codeeditor_t *editor) {
     int indent_len = codeeditor_leading_indent_len(line->text, line->length);
     int extra_indent_len = 0;
     int last_nonspace = codeeditor_last_nonspace_before(line->text, col);
-    if (last_nonspace >= 0 && codeeditor_opener_adds_indent(line->text[last_nonspace])) {
-        extra_indent_len = editor->use_spaces ? editor->tab_width : 1;
-        if (extra_indent_len < 1)
-            extra_indent_len = 1;
-        if (extra_indent_len > 16)
-            extra_indent_len = 16;
-    }
+    char extra_indent[32];
+    codeeditor_make_extra_indent(editor, extra_indent, sizeof(extra_indent), &extra_indent_len);
+    if (last_nonspace < 0 || !codeeditor_opener_adds_indent(line->text[last_nonspace]))
+        extra_indent_len = 0;
 
     size_t insert_len = 1u + (size_t)indent_len + (size_t)extra_indent_len;
     char *insert = malloc(insert_len + 1u);
@@ -158,12 +290,8 @@ static void codeeditor_insert_newline_with_indent(vg_codeeditor_t *editor) {
         p += indent_len;
     }
     if (extra_indent_len > 0) {
-        if (editor->use_spaces) {
-            memset(p, ' ', (size_t)extra_indent_len);
-            p += extra_indent_len;
-        } else {
-            *p++ = '\t';
-        }
+        memcpy(p, extra_indent, (size_t)extra_indent_len);
+        p += extra_indent_len;
     }
     *p = '\0';
 
@@ -218,31 +346,53 @@ static bool codeeditor_try_format_closing_brace(vg_codeeditor_t *editor) {
     if (!codeeditor_is_whitespace_span(line->text, 0, col))
         return false;
 
-    int remove_start = col;
-    if (remove_start > 0 && line->text[remove_start - 1] == '\t') {
-        remove_start--;
-    } else {
-        int spaces_to_remove = editor->tab_width;
-        if (spaces_to_remove < 1)
-            spaces_to_remove = 1;
-        if (spaces_to_remove > 16)
-            spaces_to_remove = 16;
-        int removed = 0;
-        while (remove_start > 0 && removed < spaces_to_remove &&
-               line->text[remove_start - 1] == ' ') {
-            remove_start--;
-            removed++;
-        }
-    }
-    if (remove_start == col)
-        return false;
-
     int replace_end = col;
     if (replace_end < line_len && line->text[replace_end] == '}')
         replace_end++;
     if (!codeeditor_is_whitespace_span(line->text, replace_end, line_len))
         return false;
     replace_end = line_len;
+
+    int opener_line = -1;
+    int opener_col = -1;
+    int target_indent_len = 0;
+    if (codeeditor_find_unmatched_opener_before(
+            editor, editor->cursor_line, editor->cursor_col, '{', '}', &opener_line, &opener_col) &&
+        opener_line >= 0 && opener_line < editor->line_count) {
+        target_indent_len =
+            codeeditor_leading_indent_len(editor->lines[opener_line].text,
+                                          editor->lines[opener_line].length);
+    } else {
+        target_indent_len = col;
+        if (target_indent_len > 0 && line->text[target_indent_len - 1] == '\t') {
+            target_indent_len--;
+        } else {
+            int spaces_to_remove = editor->tab_width;
+            if (spaces_to_remove < 1)
+                spaces_to_remove = 1;
+            if (spaces_to_remove > 16)
+                spaces_to_remove = 16;
+            int removed = 0;
+            while (target_indent_len > 0 && removed < spaces_to_remove &&
+                   line->text[target_indent_len - 1] == ' ') {
+                target_indent_len--;
+                removed++;
+            }
+        }
+    }
+    if (target_indent_len < 0)
+        target_indent_len = 0;
+    if (target_indent_len > line_len)
+        target_indent_len = line_len;
+
+    size_t replacement_len = (size_t)target_indent_len + 1u;
+    char *replacement = malloc(replacement_len + 1u);
+    if (!replacement)
+        return false;
+    if (target_indent_len > 0)
+        memcpy(replacement, line->text, (size_t)target_indent_len);
+    replacement[target_indent_len] = '}';
+    replacement[target_indent_len + 1] = '\0';
 
     vg_edit_target_t target = {0};
     int target_count = 0;
@@ -252,10 +402,11 @@ static bool codeeditor_try_format_closing_brace(vg_codeeditor_t *editor) {
                     editor->cursor_line,
                     editor->cursor_col,
                     editor->cursor_line,
-                    remove_start,
+                    0,
                     editor->cursor_line,
                     replace_end);
-    apply_edit_targets(editor, &target, target_count, "}");
+    apply_edit_targets(editor, &target, target_count, replacement);
+    free(replacement);
     return true;
 }
 
@@ -277,25 +428,200 @@ static bool codeeditor_try_skip_pair_closer(vg_codeeditor_t *editor, char ch) {
     return true;
 }
 
+/// @brief Decide whether auto-pair insertion is appropriate at one caret.
+/// @details The check intentionally stays conservative: it refuses to insert a
+///          pair inside comments/strings, before identifiers, or for quotes in
+///          the middle of identifier text. Returning false lets the caller fall
+///          back to inserting the literal opener.
+static bool codeeditor_should_insert_pair_at(vg_codeeditor_t *editor,
+                                             int line_index,
+                                             int col,
+                                             char opener) {
+    if (!editor || line_index < 0 || line_index >= editor->line_count)
+        return false;
+    char closer = codeeditor_closing_for_opener(opener);
+    if (closer == '\0')
+        return false;
+    if (!codeeditor_position_is_code_context(editor, line_index, col))
+        return false;
+
+    vg_code_line_t *line = &editor->lines[line_index];
+    char prev = col > 0 && col <= (int)line->length ? line->text[col - 1] : '\0';
+    char next = col >= 0 && col < (int)line->length ? line->text[col] : '\0';
+    if (next != '\0' && codeeditor_is_identifier_byte(next))
+        return false;
+    if ((opener == '"' || opener == '\'') && codeeditor_is_identifier_byte(prev))
+        return false;
+    return true;
+}
+
+/// @brief Return whether an edit target covers selected text rather than a caret.
+static bool codeeditor_edit_target_has_range(const vg_edit_target_t *target) {
+    return target && compare_positions(
+                         target->start_line, target->start_col, target->end_line, target->end_col) != 0;
+}
+
+/// @brief Build the replacement text for one pair operation.
+/// @details Selection targets are wrapped as `<opener><selected><closer>`.
+///          Caret targets insert either the opener/closer pair or the literal
+///          opener depending on @p use_pair. The returned string is heap-owned.
+static char *codeeditor_pair_replacement_for_target(vg_codeeditor_t *editor,
+                                                    const vg_edit_target_t *target,
+                                                    char opener,
+                                                    char closer,
+                                                    bool use_pair) {
+    if (!target)
+        return NULL;
+    if (codeeditor_edit_target_has_range(target)) {
+        size_t selected_len = 0;
+        char *selected = copy_text_range_len(editor,
+                                             target->start_line,
+                                             target->start_col,
+                                             target->end_line,
+                                             target->end_col,
+                                             &selected_len);
+        if (!selected)
+            return NULL;
+        if (selected_len > SIZE_MAX - 3u) {
+            free(selected);
+            return NULL;
+        }
+        char *replacement = malloc(selected_len + 3u);
+        if (!replacement) {
+            free(selected);
+            return NULL;
+        }
+        replacement[0] = opener;
+        memcpy(replacement + 1, selected, selected_len);
+        replacement[selected_len + 1u] = closer;
+        replacement[selected_len + 2u] = '\0';
+        free(selected);
+        return replacement;
+    }
+
+    char *replacement = malloc(use_pair ? 3u : 2u);
+    if (!replacement)
+        return NULL;
+    replacement[0] = opener;
+    if (use_pair) {
+        replacement[1] = closer;
+        replacement[2] = '\0';
+    } else {
+        replacement[1] = '\0';
+    }
+    return replacement;
+}
+
+/// @brief Insert or wrap an automatic pair for every active cursor.
+/// @details Supports mixed selections and carets. At carets that pass the
+///          context check, the cursor is restored between the inserted pair.
+///          At selection targets, the selected text is wrapped and the cursor
+///          lands after the closing delimiter.
 static bool codeeditor_try_insert_pair(vg_codeeditor_t *editor, char opener) {
-    if (!editor || editor->has_selection || editor->extra_cursor_count > 0)
+    if (!editor)
         return false;
     char closer = codeeditor_closing_for_opener(opener);
     if (closer == '\0')
         return false;
 
-    char pair[3] = {opener, closer, '\0'};
-    int line_before = editor->cursor_line;
-    int col_before = editor->cursor_col;
-    vg_codeeditor_insert_text(editor, pair);
+    const int max_targets = 1 + editor->extra_cursor_count;
+    vg_edit_target_t *targets = calloc((size_t)max_targets, sizeof(vg_edit_target_t));
+    if (!targets) {
+        free(targets);
+        return false;
+    }
 
-    editor->cursor_line = line_before;
-    editor->cursor_col = col_before + 1;
-    edit_history_update_latest_cursor_after(
-        editor->history, editor->cursor_line, editor->cursor_col);
+    int target_count = 0;
+    bool should_handle = false;
+    if (editor->has_selection) {
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->selection.start_line,
+                        editor->selection.start_col,
+                        editor->selection.end_line,
+                        editor->selection.end_col);
+        should_handle = true;
+    } else {
+        bool use_pair =
+            codeeditor_should_insert_pair_at(editor, editor->cursor_line, editor->cursor_col, opener);
+        add_edit_target(targets,
+                        &target_count,
+                        0,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->cursor_line,
+                        editor->cursor_col,
+                        editor->cursor_line,
+                        editor->cursor_col);
+        should_handle = should_handle || use_pair;
+    }
+
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        struct vg_extra_cursor *cursor = &editor->extra_cursors[i];
+        if (cursor->has_selection) {
+            add_edit_target(targets,
+                            &target_count,
+                            i + 1,
+                            cursor->line,
+                            cursor->col,
+                            cursor->selection.start_line,
+                            cursor->selection.start_col,
+                            cursor->selection.end_line,
+                            cursor->selection.end_col);
+            should_handle = true;
+        } else {
+            bool use_pair = codeeditor_should_insert_pair_at(editor, cursor->line, cursor->col, opener);
+            add_edit_target(targets,
+                            &target_count,
+                            i + 1,
+                            cursor->line,
+                            cursor->col,
+                            cursor->line,
+                            cursor->col,
+                            cursor->line,
+                            cursor->col);
+            should_handle = should_handle || use_pair;
+        }
+    }
+
+    if (!should_handle || target_count <= 0) {
+        free(targets);
+        return false;
+    }
+
+    qsort(targets, (size_t)target_count, sizeof(*targets), edit_target_compare_desc);
+    bool history_group_open = false;
+    if (editor->history && target_count > 1) {
+        edit_history_begin_group(editor->history);
+        history_group_open = true;
+    }
+    for (int i = 0; i < target_count; i++) {
+        bool has_range = codeeditor_edit_target_has_range(&targets[i]);
+        bool use_pair = has_range || codeeditor_should_insert_pair_at(
+                                       editor, targets[i].start_line, targets[i].start_col, opener);
+        char *replacement =
+            codeeditor_pair_replacement_for_target(editor, &targets[i], opener, closer, use_pair);
+        if (!replacement)
+            continue;
+        apply_edit_targets(editor, &targets[i], 1, replacement);
+        if (!has_range && use_pair) {
+            set_cursor_position_by_id(
+                editor, targets[i].cursor_id, targets[i].start_line, targets[i].start_col + 1);
+            edit_history_update_latest_cursor_after(
+                editor->history, targets[i].start_line, targets[i].start_col + 1);
+        }
+        free(replacement);
+    }
+    if (history_group_open)
+        edit_history_end_group(editor->history);
+
     ensure_cursor_visible(editor);
     editor->cursor_visible = true;
     editor->base.needs_paint = true;
+    free(targets);
     return true;
 }
 
@@ -488,8 +814,41 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
     }
 }
 
-/// @brief Performs a Backspace deletion across all cursors: deletes selections or removes the
-/// preceding character/newline.
+/// @brief Find the two-character delete range for Backspace between an automatic pair.
+/// @details When the caret is between an automatic ASCII pair, the range spans
+///          both delimiters so a single Backspace removes the pair together.
+static bool codeeditor_backspace_pair_range(vg_codeeditor_t *editor,
+                                            int line_index,
+                                            int col,
+                                            int *out_start_col,
+                                            int *out_end_col) {
+    if (out_start_col)
+        *out_start_col = col;
+    if (out_end_col)
+        *out_end_col = col;
+    if (!editor || line_index < 0 || line_index >= editor->line_count || col <= 0)
+        return false;
+    vg_code_line_t *line = &editor->lines[line_index];
+    if (col >= (int)line->length)
+        return false;
+    int prev_col = codeeditor_prev_byte_boundary(editor, line_index, col);
+    if (prev_col < 0 || prev_col >= col)
+        return false;
+    char opener = line->text[prev_col];
+    char closer = line->text[col];
+    if (!codeeditor_chars_are_pair(opener, closer))
+        return false;
+    if (out_start_col)
+        *out_start_col = prev_col;
+    if (out_end_col)
+        *out_end_col = col + 1;
+    return true;
+}
+
+/// @brief Performs a Backspace deletion across all cursors.
+/// @details Deletes selections, removes paired delimiters when the caret is
+///          between them, removes the previous UTF-8 codepoint otherwise, or
+///          joins with the previous line at column zero.
 static void delete_backspace_targets(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -511,17 +870,26 @@ static void delete_backspace_targets(vg_codeeditor_t *editor) {
                         editor->selection.end_line,
                         editor->selection.end_col);
     } else if (editor->cursor_col > 0) {
-        int prev_col =
-            codeeditor_prev_byte_boundary(editor, editor->cursor_line, editor->cursor_col);
+        int delete_start = 0;
+        int delete_end = 0;
+        if (!codeeditor_backspace_pair_range(editor,
+                                             editor->cursor_line,
+                                             editor->cursor_col,
+                                             &delete_start,
+                                             &delete_end)) {
+            delete_start =
+                codeeditor_prev_byte_boundary(editor, editor->cursor_line, editor->cursor_col);
+            delete_end = editor->cursor_col;
+        }
         add_edit_target(targets,
                         &target_count,
                         0,
                         editor->cursor_line,
                         editor->cursor_col,
                         editor->cursor_line,
-                        prev_col,
+                        delete_start,
                         editor->cursor_line,
-                        editor->cursor_col);
+                        delete_end);
     } else if (editor->cursor_line > 0) {
         add_edit_target(targets,
                         &target_count,
@@ -547,16 +915,22 @@ static void delete_backspace_targets(vg_codeeditor_t *editor) {
                             cursor->selection.end_line,
                             cursor->selection.end_col);
         } else if (cursor->col > 0) {
-            int prev_col = codeeditor_prev_byte_boundary(editor, cursor->line, cursor->col);
+            int delete_start = 0;
+            int delete_end = 0;
+            if (!codeeditor_backspace_pair_range(
+                    editor, cursor->line, cursor->col, &delete_start, &delete_end)) {
+                delete_start = codeeditor_prev_byte_boundary(editor, cursor->line, cursor->col);
+                delete_end = cursor->col;
+            }
             add_edit_target(targets,
                             &target_count,
                             i + 1,
                             cursor->line,
                             cursor->col,
                             cursor->line,
-                            prev_col,
+                            delete_start,
                             cursor->line,
-                            cursor->col);
+                            delete_end);
         } else if (cursor->line > 0) {
             add_edit_target(targets,
                             &target_count,
@@ -714,6 +1088,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     }
                 }
                 editor->gutter_clicked = true;
+                editor->gutter_click_read = false;
                 editor->gutter_clicked_line = line;
                 editor->gutter_clicked_slot = slot;
                 widget->needs_paint = true;

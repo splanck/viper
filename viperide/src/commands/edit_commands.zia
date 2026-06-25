@@ -21,6 +21,8 @@ bind Obj = Viper.Core.Object;
 bind Map = Viper.Collections.Map;
 bind ZiaToolchain = Viper.Zia.Toolchain;
 
+final SEMANTIC_QUERY_PUMP_FILES = 32;
+
 // ============================================================================
 // MODULE: edit_commands
 // PURPOSE: Standard editor commands (undo/redo/cut/copy/paste/select-all)
@@ -158,6 +160,7 @@ func handleGoToDefinition(shell: app_shell.AppShell,
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
     indexer.SyncOpenDocuments(docMgr);
+    if PrepareSemanticQuery(shell, indexer, "Go to definition") == false { return; }
     var curLine = engine.editor.CursorLine + 1;
     var curCol  = engine.editor.CursorCol;
     var def = indexer.Definition(activeDoc.filePath, activeDoc.content, curLine, curCol);
@@ -196,6 +199,7 @@ func handleFindReferences(shell: app_shell.AppShell,
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
     indexer.SyncOpenDocuments(docMgr);
+    if PrepareSemanticQuery(shell, indexer, "Find references") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
     shell.referencesListBox.Clear();
     if refs == null or Seq.get_Length(refs) == 0 {
@@ -255,6 +259,7 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
     indexer.SyncOpenDocuments(docMgr);
+    if PrepareSemanticQuery(shell, indexer, "Incoming calls") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
     shell.referencesListBox.Clear();
     if refs == null or Seq.get_Length(refs) == 0 {
@@ -331,6 +336,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
     indexer.SyncOpenDocuments(docMgr);
+    if PrepareSemanticQuery(shell, indexer, "Outgoing calls") == false { return; }
 
     var cursorLine = engine.editor.CursorLine + 1;
     var startLine = EnclosingZiaFunctionStartLine(activeDoc.content, cursorLine);
@@ -651,6 +657,7 @@ func handleRenameSymbol(shell: app_shell.AppShell,
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
     indexer.SyncOpenDocuments(docMgr);
+    if PrepareSemanticQuery(shell, indexer, "Rename") == false { return; }
     var rename = indexer.RenameEdits(activeDoc.filePath, activeDoc.content,
                                      engine.editor.CursorLine + 1,
                                      engine.editor.CursorCol,
@@ -676,6 +683,31 @@ func handleRenameSymbol(shell: app_shell.AppShell,
     indexer.SyncActiveNow(docMgr, engine);
     shell.SetStatusLeft("Renamed to " + newName);
     GUI.Toast.Success("Rename complete");
+}
+
+/// @brief Pump a bounded amount of workspace indexing before a semantic query.
+/// @details Go-to-definition, references, call hierarchy, and rename require a
+///          complete workspace index for trustworthy results. This helper keeps
+///          those commands responsive by advancing a small batch, reporting
+///          progress, and asking the user to retry when the index is not ready.
+/// @param shell Workbench shell used for status and toast feedback.
+/// @param indexer Project index owner.
+/// @param label User-facing command name for the status message.
+/// @return True when the workspace index is complete enough for the query.
+func PrepareSemanticQuery(shell: app_shell.AppShell,
+                          indexer: project_index.ProjectIndexer,
+                          label: String) -> Boolean {
+    if indexer == null { return false; }
+    if indexer.PrepareWorkspaceQuery(SEMANTIC_QUERY_PUMP_FILES) {
+        return true;
+    }
+    var msg = label + " will be available after indexing finishes ("
+              + indexer.WorkspaceIndexProgressText() + ")";
+    if shell != null {
+        shell.SetStatusLeft(msg);
+    }
+    GUI.Toast.Info(msg);
+    return false;
 }
 
 expose func ApplyActiveDocumentContentToEditor(docMgr: document_manager.DocumentManager,

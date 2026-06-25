@@ -147,8 +147,9 @@ and search exclusions on top of hard excludes and `.gitignore`.
   severity-colored diagnostics, status-bar project/language/job/diagnostics
   state, and lightweight
   Problems/Output/Search/References/Debug Console tabs
-- Debug UI controls with persisted breakpoints and a dedicated Debug Console tab
-  wired to the current non-executing `Viper.Debug.Protocol` placeholder
+- Debug UI controls with persisted breakpoints, current-line gutter markers,
+  expression evaluation, and a dedicated Debug Console tab wired to
+  `viper run --debug-adapter`
 - Categorized command palette for keyboard-driven workflow, with unsupported
   language-service commands kept discoverable through unavailable markers and
   status/toast reasons
@@ -183,7 +184,7 @@ The editor performance probe is registered as `zia_viperide_editor_hot_path`.
 It verifies that `Viper.GUI.CodeEditor.Revision` changes on content edits and
 undo/redo, remains stable for cursor-only movement, avoids repeated open-document
 index syncs, asserts project-index update counters stay quiet for unchanged
-buffers, verifies hidden semantic folding does not recompute on every edit, and
+buffers, verifies semantic folding still runs when the outline is hidden, and
 enforces large-buffer cursor-movement copy/timing budgets. The
 opt-in `VIPERIDE_PERF_LOG` output includes frame/controller timing, editor
 counters, and `projectIndexUpdates` / `projectIndexBytes` so dogfood sessions can
@@ -222,8 +223,8 @@ persisted breakpoints, the current placeholder debug protocol's
 stop/step/locals/terminate/crash event shape, and `Viper.Game.Scene`
 load/save/mutator/diagnostic/tilemap contracts.
 
-The current debug protocol used by ViperIDE is a source-text placeholder. It
-does not execute compiled code, evaluate expressions, or produce real VM stack
-frames. It exists to wire breakpoint persistence, command routing, and debug UI
-state before a crash-isolated subprocess debugger or hosted VM debugger is
-available.
+The current debug protocol used by ViperIDE runs out of process through
+`viper run --debug-adapter`. It supports breakpoint launch, stop/step events,
+locals, expression evaluation, termination, and debug console output. Remaining
+debug polish is tracked in the IDE layer: richer watch expressions, call-stack
+navigation, and more visible execution-state affordances.

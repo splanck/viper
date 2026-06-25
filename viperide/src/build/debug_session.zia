@@ -51,6 +51,8 @@ class DebugSession {
     hide String ctrlBuf;
     // True when Poll observed a state change worth refreshing the UI for.
     expose Boolean dirty;
+    expose Boolean terminateRequested;
+    expose Integer terminateRequestedMs;
 
     expose func init() {
         processHandle = null;
@@ -71,6 +73,8 @@ class DebugSession {
         evalJustArrived = false;
         ctrlBuf = "";
         dirty = false;
+        terminateRequested = false;
+        terminateRequestedMs = 0;
     }
 
     /// @brief Launch the adapter for @p path and install its breakpoints.
@@ -101,9 +105,30 @@ class DebugSession {
         exitCode = -1;
         ctrlBuf = "";
         dirty = true;
+        terminateRequested = false;
+        terminateRequestedMs = 0;
 
         processHandle.WriteStdin(buildSetBreakpoints(path, store) + "\n");
         processHandle.WriteStdin("{\"type\":\"launch\"}\n");
+        return true;
+    }
+
+    /// @brief Ask the debug adapter to terminate without blocking the UI frame.
+    /// @details The request is written to stdin and Poll() completes the shutdown
+    ///          asynchronously. If the child keeps running beyond
+    ///          TERMINATE_GRACE_MS, Poll() kills it on a later frame.
+    /// @return True when a terminate request was sent or was already pending.
+    expose func RequestTerminate() -> Boolean {
+        if processHandle == null { return false; }
+        if terminated { return false; }
+        if terminateRequested {
+            return true;
+        }
+        processHandle.WriteStdin("{\"type\":\"terminate\"}\n");
+        terminateRequested = true;
+        terminateRequestedMs = Time.GetTickCount();
+        lastType = "terminating";
+        dirty = true;
         return true;
     }
 
@@ -166,7 +191,7 @@ class DebugSession {
 
     expose func Terminate() -> Boolean {
         if processHandle == null { return false; }
-        processHandle.WriteStdin("{\"type\":\"terminate\"}\n");
+        RequestTerminate();
         var started = Time.GetTickCount();
         while processHandle.IsRunning()
               and Time.GetTickCount() - started < TERMINATE_GRACE_MS {
@@ -182,6 +207,7 @@ class DebugSession {
         terminated = true;
         stopped = false;
         hasSession = false;
+        terminateRequested = false;
         lastType = "terminated";
         dirty = true;
         return true;
@@ -197,6 +223,11 @@ class DebugSession {
         dirty = false;
 
         drainProcessOutput();
+        if terminateRequested and terminated == false and processHandle.IsRunning()
+           and Time.GetTickCount() - terminateRequestedMs >= TERMINATE_GRACE_MS {
+            processHandle.Kill();
+            dirty = true;
+        }
 
         if terminated == false and processHandle.IsRunning() == false {
             // Final drain after the child exited.
@@ -209,6 +240,7 @@ class DebugSession {
                 terminated = true;
                 stopped = false;
                 hasSession = false;
+                terminateRequested = false;
                 lastType = "terminated";
                 if lastReason == "" { lastReason = "exit"; }
                 dirty = true;

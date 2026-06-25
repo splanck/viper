@@ -11,6 +11,7 @@ final HINT_DEBOUNCE_MS = 300;
 final MAX_INLAY_SCAN_LINES = 1000;
 final MAX_INLAY_HINTS = 160;
 final MAX_INLAY_FUNCTIONS = 256;
+final HEURISTIC_HINT_PREFIX = "  ? ";
 
 class InlayHintController {
     expose Boolean enabled;
@@ -79,14 +80,14 @@ class InlayHintController {
             if trimmed != "" and Str.StartsWith(trimmed, "//") == false {
                 var inferred = InferredVarHint(line, funcs);
                 if inferred != "" {
-                    engine.editor.AddInlayHint(i, Str.Length(line), "  " + inferred, HINT_COLOR);
+                    engine.editor.AddInlayHint(i, Str.Length(line), HEURISTIC_HINT_PREFIX + inferred, HINT_COLOR);
                     count = count + 1;
                 }
 
                 if count < MAX_INLAY_HINTS {
                     var params = ParameterHintText(line, funcs);
                     if params != "" {
-                        engine.editor.AddInlayHint(i, Str.Length(line), "  " + params, HINT_COLOR);
+                        engine.editor.AddInlayHint(i, Str.Length(line), HEURISTIC_HINT_PREFIX + params, HINT_COLOR);
                         count = count + 1;
                     }
                 }

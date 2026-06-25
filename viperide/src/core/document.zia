@@ -6,8 +6,8 @@ bind "../services/file_utils";
 // MODULE: document
 // PURPOSE: Plain-data record representing a single open file in the IDE.
 //          One Document per editor tab. Owns the buffer text, file
-//          metadata, last-known cursor/scroll position, and a disk
-//          modification timestamp for external-change detection.
+//          metadata, last-known cursor/scroll position, and disk
+//          modification metadata for external-change detection.
 //
 // WHERE-THIS-FITS: Leaf data type. Owned by `document_manager.DocumentManager`,
 //          which holds a `List[Document]` and synchronises tab state with
@@ -28,10 +28,10 @@ bind "../services/file_utils";
 //         filePath="", isNew=false  -> impossible (would be a bug)
 //         filePath=X,  isNew=true   -> impossible (would be a bug)
 //         filePath=X,  isNew=false  -> opened from disk
-//   * lastModifiedOnDisk FOR EXTERNAL CHANGE DETECTION. Stored as the
-//     timestamp returned by `Viper.IO.File.Modified` at load/save time.
-//     The IDE polls and compares: if the on-disk timestamp drifts ahead,
-//     the file changed externally and the user is prompted to reload.
+//   * lastModifiedOnDisk / lastSizeOnDisk FOR EXTERNAL CHANGE DETECTION.
+//     Stored from `Viper.IO.File.Modified` / `Viper.IO.File.Size` at load
+//     and save time. The IDE polls and compares both values so a checkout,
+//     fast rewrite, or timestamp-preserving tool can still be detected.
 //   * REMEMBERED CURSOR. `cursorLine`, `cursorCol`, `scrollLine` let the
 //     editor restore the user's view when switching back to a tab. Saved
 //     when leaving a tab; restored when activating it.
@@ -51,6 +51,7 @@ class Document {
     expose Integer cursorCol;          // Last known cursor column (1-based).
     expose Integer scrollLine;         // Last known top-of-viewport line.
     expose Integer lastModifiedOnDisk; // Timestamp from Viper.IO.File.Modified.
+    expose Integer lastSizeOnDisk;     // Size from Viper.IO.File.Size.
     expose Boolean externalChangeNotified; // True after surfacing an on-disk change.
     expose Boolean hasPendingWorkspaceUndo; // Inactive workspace edit can be undone on activation.
     expose String pendingWorkspaceUndoContent; // Snapshot before the pending workspace edit.
@@ -70,6 +71,7 @@ class Document {
         cursorCol = 1;
         scrollLine = 1;
         lastModifiedOnDisk = 0;
+        lastSizeOnDisk = 0;
         externalChangeNotified = false;
         hasPendingWorkspaceUndo = false;
         pendingWorkspaceUndoContent = "";

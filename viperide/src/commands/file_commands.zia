@@ -268,6 +268,48 @@ func handleSaveAll(shell: app_shell.AppShell,
     return result;
 }
 
+/// @brief Save documents before a build, run, or debug launch.
+/// @details The default IDE policy saves every modified file so project builds
+///          see fresh dependencies. Users can switch to active-file-only saves
+///          to avoid prompts from unrelated dirty tabs; this helper keeps both
+///          paths returning the same `SaveAllResult` shape for callers.
+/// @param shell Workbench shell for status/toast updates.
+/// @param docMgr Document manager containing open files.
+/// @param engine Editor whose active text must be flushed first.
+/// @param tabs Tab strip whose modified markers may be cleared.
+/// @param saveAll True to save every modified document, false for active only.
+/// @return Save result with success/cancel/message fields populated.
+func handleSaveForExecution(shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine,
+                            tabs: editor_tabs.EditorTabs,
+                            saveAll: Boolean) -> SaveAllResult {
+    if saveAll {
+        return handleSaveAll(shell, docMgr, engine, tabs);
+    }
+
+    var result = new SaveAllResult();
+    SaveEditorState(docMgr, engine);
+    var doc = docMgr.GetActive();
+    if doc == null {
+        result.success = true;
+        return result;
+    }
+    if doc.isModified == false {
+        result.success = true;
+        return result;
+    }
+    if handleSave(shell, docMgr, engine, tabs) {
+        result.success = true;
+        result.savedCount = 1;
+        result.message = "Saved active file";
+        return result;
+    }
+    result.canceled = true;
+    result.message = "Active file was not saved";
+    return result;
+}
+
 /// @brief Re-read the active file from disk, discarding in-memory edits.
 func handleReload(shell: app_shell.AppShell,
                   docMgr: document_manager.DocumentManager,
@@ -411,15 +453,15 @@ func handleCloseSaved(shell: app_shell.AppShell,
     }
 }
 
-/// @brief Tear down the AppShell — the main loop's `WindowOpen` check
-///        then exits.
+/// @brief Confirm that the IDE can exit.
+/// @details Main owns process teardown so build jobs, debug sessions, watchers,
+///          indexers, and the shell are stopped in one shared cleanup path.
 func handleExit(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine) -> Boolean {
     if ConfirmCloseDocuments(shell, docMgr, engine, "Exit", -1) == false {
         return false;
     }
-    shell.Destroy();
     return true;
 }
 
@@ -472,7 +514,16 @@ func NormalizeDocumentForSave(docMgr: document_manager.DocumentManager,
         doc.content = normalized;
         doc.isModified = true;
         if index == docMgr.activeIndex and engine != null and engine.editor != null {
+            var cursorLine = engine.GetCursorLine();
+            var cursorCol = engine.GetCursorCol();
+            var scrollLine = engine.GetScrollLine();
             engine.SetText(normalized);
+            if cursorLine > 0 and cursorCol > 0 {
+                engine.editor.SetCursor(cursorLine - 1, cursorCol - 1);
+            }
+            if scrollLine > 1 {
+                engine.editor.ScrollTopLine = scrollLine - 1;
+            }
         }
     }
 }

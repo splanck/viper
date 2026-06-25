@@ -12,13 +12,6 @@ OUT_DIR="${VIPER_IDE_OUT_DIR:-$IDE_DIR/bin}"
 OUTPUT_FILE="${VIPER_IDE_OUTPUT:-$OUT_DIR/viperide}"
 
 VIPER="$BUILD_DIR/src/tools/viper/viper"
-LINK_CMD="${CXX:-c++}"
-
-RUNTIME_ARCHIVE="$BUILD_DIR/src/runtime/libviper_runtime.a"
-GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
-TEXT_CORE_LIB="$BUILD_DIR/src/common/text/libviper_text_core.a"
-GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
-AUDIO_LIB="$BUILD_DIR/lib/libviperaud.a"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -64,7 +57,7 @@ fi
 
 if [[ ! -x "$VIPER" ]]; then
     echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
-    echo "Run './scripts/build_viper_unix.sh' first"
+    echo "Run './scripts/build_viper_mac.sh' or './scripts/build_viper_linux.sh' first"
     exit 1
 fi
 
@@ -75,38 +68,28 @@ if [[ $CLEAN -eq 1 ]]; then
 fi
 
 TMP_BASE="/tmp/viperide_build_$$"
-IL_FILE="${TMP_BASE}.il"
-OBJ_FILE="${TMP_BASE}.o"
 FRONTEND_ERR="${TMP_BASE}.front.err"
-CODEGEN_OUT="${TMP_BASE}.codegen.out"
-CODEGEN_ERR="${TMP_BASE}.codegen.err"
-LINK_ERR="${TMP_BASE}.link.err"
 
 cleanup() {
-    rm -f "$IL_FILE" "$OBJ_FILE" "$FRONTEND_ERR" "$CODEGEN_OUT" "$CODEGEN_ERR" "$LINK_ERR"
+    rm -f "$FRONTEND_ERR"
 }
 trap cleanup EXIT
 
-build_frontend() {
-    echo -n "  Frontend -> IL... "
-    if ! "$VIPER" build "$IDE_DIR" -o "$IL_FILE" 2>"$FRONTEND_ERR"; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 "$FRONTEND_ERR"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-}
-
 build_macos() {
-    build_frontend
-
-    echo -n "  Codegen (native asm+link)... "
-    if ! "$VIPER" codegen arm64 "$IL_FILE" --native-asm --native-link -O1 -o "$OUTPUT_FILE" 2>"$CODEGEN_ERR"; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 "$CODEGEN_ERR"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
+    local target_arch
+    case "$(uname -m)" in
+        arm64|aarch64)
+            target_arch="arm64"
+            ;;
+        x86_64|amd64)
+            target_arch="x64"
+            ;;
+        *)
+            echo -e "${RED}Error: build_ide.sh currently supports x86_64 and arm64 macOS only${NC}"
+            return 1
+            ;;
+    esac
+    build_native "$target_arch"
 }
 
 build_linux() {
@@ -123,51 +106,15 @@ build_linux() {
             return 1
             ;;
     esac
+    build_native "$target_arch"
+}
 
-    if ! command -v "$LINK_CMD" >/dev/null 2>&1; then
-        echo -e "${RED}Error: C++ linker '$LINK_CMD' not found${NC}"
-        return 1
-    fi
-
-    for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$TEXT_CORE_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
-        if [[ ! -f "$required" ]]; then
-            echo -e "${RED}Error: required library not found: $required${NC}"
-            echo "Run './scripts/build_viper_linux.sh' first"
-            return 1
-        fi
-    done
-
-    build_frontend
-
-    echo -n "  Codegen (native obj)... "
-    local codegen_args=("$target_arch")
-    if [[ "$target_arch" == "x64" ]]; then
-        codegen_args+=("compile")
-    fi
-    codegen_args+=("$IL_FILE" "--native-asm" "-O1" "-o" "$OBJ_FILE")
-    if ! "$VIPER" codegen "${codegen_args[@]}" >"$CODEGEN_OUT" 2>"$CODEGEN_ERR"; then
+build_native() {
+    local target_arch="$1"
+    echo -n "  Viper build (--arch $target_arch)... "
+    if ! "$VIPER" build "$IDE_DIR" --arch "$target_arch" -o "$OUTPUT_FILE" 2>"$FRONTEND_ERR"; then
         echo -e "${RED}FAILED${NC}"
-        head -20 "$CODEGEN_ERR"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-
-    echo -n "  Link (system c++)... "
-    if ! "$LINK_CMD" \
-        "$OBJ_FILE" \
-        "$RUNTIME_ARCHIVE" \
-        "$GUI_LIB" \
-        "$TEXT_CORE_LIB" \
-        "$GFX_LIB" \
-        "$AUDIO_LIB" \
-        -lX11 \
-        -lasound \
-        -pthread \
-        -lm \
-        -ldl \
-        -o "$OUTPUT_FILE" >"$LINK_ERR" 2>&1; then
-        echo -e "${RED}FAILED${NC}"
-        head -40 "$LINK_ERR"
+        head -40 "$FRONTEND_ERR"
         return 1
     fi
     echo -e "${GREEN}OK${NC}"

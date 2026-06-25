@@ -462,7 +462,7 @@ func handleSettings(shell: app_shell.AppShell,
     settingsInfo = settingsInfo + "Code folding: " + appSettings.codeFolding + "\n";
     settingsInfo = settingsInfo + "Status bar: " + appSettings.statusBarVisible + "\n";
     settingsInfo = settingsInfo + "Fullscreen: " + appSettings.fullscreen + "\n";
-    settingsInfo = settingsInfo + "Auto-check on save: " + appSettings.autoCheckOnSave + "\n";
+    settingsInfo = settingsInfo + "Live diagnostics: " + appSettings.autoCheckOnSave + "\n";
     settingsInfo = settingsInfo + "\nQuick controls\n";
     settingsInfo = settingsInfo + "Ctrl+= / Ctrl+-  Zoom in or out\n";
     settingsInfo = settingsInfo + "Ctrl+0           Reset font size\n";

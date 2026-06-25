@@ -29,8 +29,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_error.h"
-#include "rt_gui_internal.h"
 #include "rt_gui_codeeditor_internal.h"
+#include "rt_gui_internal.h"
+#include "rt_map.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
 #include <ctype.h>
@@ -263,31 +264,60 @@ void rt_gui_set_gutter_click(int64_t line, int64_t slot) {
 /// @brief Legacy global clear — currently a no-op (state lives per-editor).
 void rt_gui_clear_gutter_click(void) {
     RT_ASSERT_MAIN_THREAD();
-    // No-op: per-editor state is cleared after read in the getter functions.
+    // No-op: per-editor state is cleared when WasGutterClicked consumes an edge.
 }
 
 /// @brief `CodeEditor.WasGutterClicked` — edge-detect: true once per click.
 ///
-/// Returns the latched click flag and clears it as a side effect, so
-/// subsequent reads return 0 until the next click. Pair with
-/// `GetGutterClickedLine`/`Slot` for the click coordinates.
+/// Returns the latched click flag once and clears the click payload. Callers
+/// that need the click line or slot should read those coordinates before
+/// consuming the edge flag.
 int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return 0;
-    int64_t result = ce->gutter_clicked ? 1 : 0;
-    if (result) {
-        ce->gutter_clicked = false; // Edge-triggered: clear after read
-        ce->gutter_clicked_line = -1;
-        ce->gutter_clicked_slot = -1;
+    if (!ce->gutter_clicked)
+        return 0;
+    ce->gutter_clicked = false;
+    ce->gutter_click_read = true;
+    ce->gutter_clicked_line = -1;
+    ce->gutter_clicked_slot = -1;
+    return 1;
+}
+
+/// @brief `CodeEditor.TakeGutterClick` — atomically consume the pending gutter click.
+/// @details Returns a map with `clicked`, `line`, and `slot` keys. Unlike the
+///          legacy separate getters, this API has no read-order hazard: the
+///          payload is captured before the edge flag is cleared.
+/// @param editor CodeEditor handle.
+/// @return Runtime map describing the click; `clicked=false` uses line/slot -1.
+void *rt_codeeditor_take_gutter_click(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    void *result = rt_map_new();
+    if (!result)
+        return NULL;
+    if (!ce || !ce->gutter_clicked) {
+        rt_map_set_bool(result, rt_const_cstr("clicked"), 0);
+        rt_map_set_int(result, rt_const_cstr("line"), -1);
+        rt_map_set_int(result, rt_const_cstr("slot"), -1);
+        return result;
     }
+    int line = ce->gutter_clicked_line;
+    int slot = ce->gutter_clicked_slot;
+    ce->gutter_clicked = false;
+    ce->gutter_click_read = true;
+    ce->gutter_clicked_line = -1;
+    ce->gutter_clicked_slot = -1;
+    rt_map_set_bool(result, rt_const_cstr("clicked"), 1);
+    rt_map_set_int(result, rt_const_cstr("line"), line);
+    rt_map_set_int(result, rt_const_cstr("slot"), slot);
     return result;
 }
 
 /// @brief `CodeEditor.GetGutterClickedLine` — line number of the most recent click.
 ///
-/// Returns -1 for NULL receiver or no unconsumed click. Read before
-/// `WasGutterClicked`, which consumes the click payload.
+/// Returns -1 for NULL receiver or no pending gutter click. The payload is
+/// available until `WasGutterClicked` consumes the edge flag.
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce || !ce->gutter_clicked || ce->gutter_clicked_line < 0)
@@ -323,7 +353,9 @@ void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) {
 ///
 /// Regions can be folded/unfolded individually via `Fold(line)`/`Unfold(line)`
 /// or in bulk via `FoldAll`/`UnfoldAll`. Initial state is unfolded.
-/// No overlap detection — caller is responsible for sane region layout.
+/// Existing regions with the same start line are updated in place. Overlapping
+/// regions with different starts are ignored so hidden-line and navigation math
+/// never has to reconcile ambiguous fold ownership.
 void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end_line) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
@@ -347,6 +379,8 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
                 ce->base.needs_paint = true;
             return;
         }
+        if (start_i <= ce->fold_regions[i].end_line && end_i >= ce->fold_regions[i].start_line)
+            return;
     }
     if (ce->fold_region_count >= ce->fold_region_cap) {
         if (ce->fold_region_cap > INT_MAX / 2)
@@ -593,14 +627,41 @@ int64_t rt_codeeditor_get_cursor_count(void *editor) {
     return 1 + ce->extra_cursor_count;
 }
 
+/// @brief Check whether a cursor already exists at the given editor position.
+/// @details Multi-cursor commands may discover the same occurrence through
+///          overlapping selections or repeated invocation. Keeping cursor
+///          positions unique prevents duplicate edits from being applied at the
+///          same byte offset.
+/// @param ce Editor whose primary and secondary cursors are inspected.
+/// @param line Zero-based, clamped source line.
+/// @param col Zero-based, clamped byte column.
+/// @return true when the primary cursor or an existing extra cursor matches.
+static bool rt_codeeditor_cursor_exists_at(const vg_codeeditor_t *ce, int line, int col) {
+    if (!ce)
+        return false;
+    if (ce->cursor_line == line && ce->cursor_col == col)
+        return true;
+    for (int i = 0; i < ce->extra_cursor_count; i++) {
+        if (ce->extra_cursors[i].line == line && ce->extra_cursors[i].col == col)
+            return true;
+    }
+    return false;
+}
+
 /// @brief `CodeEditor.AddCursor(line, col)` — add a secondary cursor.
 ///
 /// Index 0 is reserved for the primary cursor; new cursors get
-/// indices 1, 2, … Position is clamped to a valid buffer position.
-/// Geometric growth (cap doubles, starting at 4).
+/// indices 1, 2, … Position is clamped to a valid buffer position and
+/// duplicate cursor positions are ignored. Geometric growth doubles capacity
+/// starting at 4.
 void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
+        return;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    int col_i = rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX);
+    rt_codeeditor_clamp_position(ce, &line_i, &col_i);
+    if (rt_codeeditor_cursor_exists_at(ce, line_i, col_i))
         return;
     if (ce->extra_cursor_count >= ce->extra_cursor_cap) {
         if (ce->extra_cursor_cap > INT_MAX / 2)
@@ -613,9 +674,8 @@ void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
         ce->extra_cursor_cap = new_cap;
     }
     struct vg_extra_cursor *c = &ce->extra_cursors[ce->extra_cursor_count++];
-    c->line = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
-    c->col = rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX);
-    rt_codeeditor_clamp_position(ce, &c->line, &c->col);
+    c->line = line_i;
+    c->col = col_i;
     memset(&c->selection, 0, sizeof(c->selection));
     c->has_selection = false;
     ce->base.needs_paint = true;
@@ -1006,6 +1066,31 @@ int64_t rt_codeeditor_get_show_indent_guides(void *editor) {
     return ce->show_indent_guides ? 1 : 0;
 }
 
+/// @brief `CodeEditor.SetReadOnly` — toggle text mutation for the editor.
+/// @details Read-only mode keeps navigation, selection, copy, scrolling, and
+///          highlighting active, but the widget rejects text insertion,
+///          deletion, paste, cut, undo, and redo paths that would mutate text.
+/// @param editor CodeEditor handle.
+/// @param enabled Non-zero to make the buffer read-only.
+void rt_codeeditor_set_read_only(void *editor, int64_t enabled) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    ce->read_only = enabled != 0;
+    ce->cursor_visible = !ce->read_only;
+    ce->base.needs_paint = true;
+}
+
+/// @brief `CodeEditor.GetReadOnly` — return whether text mutation is disabled.
+/// @param editor CodeEditor handle.
+/// @return 1 when read-only, 0 otherwise.
+int64_t rt_codeeditor_get_read_only(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    return ce->read_only ? 1 : 0;
+}
+
 //=============================================================================
 // CodeEditor Completion Helpers
 //=============================================================================
@@ -1138,20 +1223,33 @@ static int rt_codeeditor_visual_rows_for_line(const vg_codeeditor_t *ce,
 ///          line height makes the test oscillate; bounded iteration is
 ///          better than risking an infinite loop in the paint path.
 /// @return Pixel width available for text after gutter and (if needed) scrollbar.
-/// @note Recomputed on each cursor-pixel / hit-test query (O(line_count), bounded by the 3-pass
-///       cap). The per-query cost is therefore bounded, but for very large buffers with frequent
-///       per-frame cursor queries the converged width could be cached and invalidated per layout
-///       generation. That cache would live on the vg_codeeditor_t (the lib layer), so it is
-///       intentionally out of scope for this runtime wrapper.
-static float rt_codeeditor_content_draw_width(const vg_codeeditor_t *ce) {
+/// @note The converged width is cached on the editor and invalidated by layout
+///       generation, widget width/height, and word-wrap state. This avoids
+///       repeated full-buffer row scans from hover and cursor hit-tests in the
+///       same visual layout.
+static float rt_codeeditor_content_draw_width(vg_codeeditor_t *ce) {
     if (!ce)
         return 0.0f;
 
     float base_width = ce->base.width - ce->gutter_width;
     if (base_width < 0.0f)
         base_width = 0.0f;
-    if (!ce->word_wrap)
+    if (ce->runtime_content_width_cache_valid &&
+        ce->runtime_content_width_generation == ce->layout_generation &&
+        ce->runtime_content_width_base_width == base_width &&
+        ce->runtime_content_width_viewport_height == ce->base.height &&
+        ce->runtime_content_width_word_wrap == ce->word_wrap)
+        return ce->runtime_content_width;
+
+    if (!ce->word_wrap) {
+        ce->runtime_content_width_cache_valid = true;
+        ce->runtime_content_width_generation = ce->layout_generation;
+        ce->runtime_content_width_base_width = base_width;
+        ce->runtime_content_width_viewport_height = ce->base.height;
+        ce->runtime_content_width_word_wrap = ce->word_wrap;
+        ce->runtime_content_width = base_width;
         return base_width;
+    }
 
     float content_width = base_width;
     for (int pass = 0; pass < 3; pass++) {
@@ -1169,6 +1267,12 @@ static float rt_codeeditor_content_draw_width(const vg_codeeditor_t *ce) {
             break;
         content_width = next_width;
     }
+    ce->runtime_content_width_cache_valid = true;
+    ce->runtime_content_width_generation = ce->layout_generation;
+    ce->runtime_content_width_base_width = base_width;
+    ce->runtime_content_width_viewport_height = ce->base.height;
+    ce->runtime_content_width_word_wrap = ce->word_wrap;
+    ce->runtime_content_width = content_width;
     return content_width;
 }
 
@@ -1646,6 +1750,18 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     return 0;
 }
 
+/// @brief Stub: return an empty atomic gutter-click snapshot without graphics.
+void *rt_codeeditor_take_gutter_click(void *editor) {
+    (void)editor;
+    void *result = rt_map_new();
+    if (!result)
+        return NULL;
+    rt_map_set_bool(result, rt_const_cstr("clicked"), 0);
+    rt_map_set_int(result, rt_const_cstr("line"), -1);
+    rt_map_set_int(result, rt_const_cstr("slot"), -1);
+    return result;
+}
+
 /// @brief Stub: returns -1 (no gutter click available in headless builds).
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
     (void)editor;
@@ -1934,6 +2050,18 @@ void rt_codeeditor_set_show_indent_guides(void *editor, int64_t enabled) {
 int64_t rt_codeeditor_get_show_indent_guides(void *editor) {
     (void)editor;
     return 1;
+}
+
+/// @brief Stub: `CodeEditor.SetReadOnly` is a no-op without graphics.
+void rt_codeeditor_set_read_only(void *editor, int64_t enabled) {
+    (void)editor;
+    (void)enabled;
+}
+
+/// @brief Stub: returns 0 (headless CodeEditor storage is not editable anyway).
+int64_t rt_codeeditor_get_read_only(void *editor) {
+    (void)editor;
+    return 0;
 }
 
 /// @brief Stub: returns 0 (no pixel cursor position without graphics).

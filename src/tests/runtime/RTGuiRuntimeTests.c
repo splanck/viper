@@ -12,7 +12,9 @@
 
 #include "../../runtime/graphics/gui/rt_gui_internal.h"
 #include "rt_gui.h"
+#include "rt_map.h"
 #include "rt_pixels.h"
+#include "rt_string.h"
 
 #include <assert.h>
 #include <math.h>
@@ -2743,6 +2745,18 @@ static void test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fres
     editor->gutter_clicked = true;
     editor->gutter_clicked_line = 7;
     editor->gutter_clicked_slot = 2;
+    void *click = rt_codeeditor_take_gutter_click(editor);
+    assert(click);
+    assert(rt_map_get_bool(click, rt_const_cstr("clicked")) == 1);
+    assert(rt_map_get_int(click, rt_const_cstr("line")) == 7);
+    assert(rt_map_get_int(click, rt_const_cstr("slot")) == 2);
+    assert(rt_codeeditor_was_gutter_clicked(editor) == 0);
+    assert(rt_codeeditor_get_gutter_clicked_line(editor) == -1);
+    assert(rt_codeeditor_get_gutter_clicked_slot(editor) == -1);
+
+    editor->gutter_clicked = true;
+    editor->gutter_clicked_line = 7;
+    editor->gutter_clicked_slot = 2;
     assert(rt_codeeditor_get_gutter_clicked_line(editor) == 7);
     assert(rt_codeeditor_get_gutter_clicked_slot(editor) == 2);
     assert(rt_codeeditor_was_gutter_clicked(editor) == 1);
@@ -2752,6 +2766,40 @@ static void test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fres
 
     cleanup_fake_app(&app);
     printf("test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh: PASSED\n");
+}
+
+/// @brief Verify the runtime read-only flag blocks text mutation APIs.
+/// @details ViperIDE uses read-only CodeEditor instances for unsupported binary
+///          or preview documents. This test ensures the public runtime flag
+///          round-trips and `InsertAtCursor` respects it.
+static void test_codeeditor_runtime_read_only_blocks_insertions(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_codeeditor_t *editor = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    assert(editor);
+    rt_codeeditor_set_text(editor, rt_const_cstr("abc"));
+    rt_codeeditor_set_cursor_position_at(editor, 0, 0, 3);
+    assert(rt_codeeditor_get_read_only(editor) == 0);
+
+    rt_codeeditor_set_read_only(editor, 1);
+    assert(rt_codeeditor_get_read_only(editor) == 1);
+    rt_codeeditor_insert_at_cursor(editor, rt_const_cstr("X"));
+    rt_string text = rt_codeeditor_get_text(editor);
+    assert(strcmp(rt_string_cstr(text), "abc") == 0);
+
+    rt_codeeditor_set_read_only(editor, 0);
+    assert(rt_codeeditor_get_read_only(editor) == 0);
+    rt_codeeditor_insert_at_cursor(editor, rt_const_cstr("X"));
+    rt_string text_after = rt_codeeditor_get_text(editor);
+    assert(strcmp(rt_string_cstr(text_after), "abcX") == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_codeeditor_runtime_read_only_blocks_insertions: PASSED\n");
 }
 
 int main(void) {
@@ -2847,6 +2895,7 @@ int main(void) {
     test_runtime_subobject_handles_are_inert_after_owner_destroy();
     test_codeeditor_add_highlight_rejects_empty_and_inverted_spans();
     test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh();
+    test_codeeditor_runtime_read_only_blocks_insertions();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

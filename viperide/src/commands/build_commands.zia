@@ -56,13 +56,15 @@ func handleBuild(shell: app_shell.AppShell,
                  engine: editor_engine.EditorEngine,
                  tabs: editor_tabs.EditorTabs,
                  buildSys: build_system.BuildSystem,
-                 locStore: locations.LocationStore) {
+                 locStore: locations.LocationStore,
+                 saveAllBeforeBuild: Boolean) {
     if EnsureNoActiveJob(shell, buildSys, "start a new build") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var buildDoc = docMgr.GetActive();
     if buildDoc != null {
         if buildDoc.isNew == false {
-            var saveResult = file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                                  saveAllBeforeBuild);
             if saveResult.success == false {
                 if saveResult.message != "" {
                     shell.SetStatusLeft("Build canceled: " + saveResult.message);
@@ -96,13 +98,15 @@ func handleBuildAndRun(shell: app_shell.AppShell,
                        engine: editor_engine.EditorEngine,
                        tabs: editor_tabs.EditorTabs,
                        buildSys: build_system.BuildSystem,
-                       locStore: locations.LocationStore) {
+                       locStore: locations.LocationStore,
+                       saveAllBeforeBuild: Boolean) {
     if EnsureNoActiveJob(shell, buildSys, "start a new run") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var runDoc = docMgr.GetActive();
     if runDoc != null {
         if runDoc.isNew == false {
-            var saveResult = file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+            var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                                  saveAllBeforeBuild);
             if saveResult.success == false {
                 if saveResult.message != "" {
                     shell.SetStatusLeft("Run canceled: " + saveResult.message);
@@ -129,18 +133,20 @@ func handleBuildAndRun(shell: app_shell.AppShell,
     }
 }
 
-/// @brief Run the active file. Currently equivalent to BuildAndRun
-///        because Zia compiles + runs in one step. Kept as a distinct
-///        entry point so a future "build native binary then run"
-///        workflow can diverge without renaming call sites.
+/// @brief Run the active file through the configured Viper run pipeline.
+/// @details The Viper toolchain compiles before execution, so this command is
+///          intentionally equivalent to Build and Run while keeping a separate
+///          shortcut and call site for future cached-artifact workflows.
 func handleRun(shell: app_shell.AppShell,
                docMgr: document_manager.DocumentManager,
                projMgr: project_manager.ProjectManager,
                engine: editor_engine.EditorEngine,
                tabs: editor_tabs.EditorTabs,
                buildSys: build_system.BuildSystem,
-               locStore: locations.LocationStore) {
-    handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore);
+               locStore: locations.LocationStore,
+               saveAllBeforeBuild: Boolean) {
+    handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore,
+                      saveAllBeforeBuild);
 }
 
 func handleStop(shell: app_shell.AppShell,
@@ -223,10 +229,19 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
                 sevLabel = "info";
                 markerColor = INFO_MARKER_COLOR;
             }
+            var action = "No quick fix";
+            if diag.fixitCount > 0 {
+                action = diag.fixitMessage;
+                if action == "" { action = "Quick fix available"; }
+            }
             var item = shell.AddProblem(sevLabel, "build", diag.filePath, diag.line, diag.column,
-                                        diag.code, diag.message, "No quick fix");
+                                        diag.code, diag.message, action);
+            var endLine = diag.endLine;
+            var endColumn = diag.endColumn;
+            if endLine <= 0 { endLine = diag.line; }
+            if endColumn <= 0 { endColumn = diag.column + 1; }
             var locId = locStore.Add(diag.filePath, diag.line, diag.column,
-                                     diag.line, diag.column + 1,
+                                     endLine, endColumn,
                                      locations.KIND_BUILD, diag.message);
             GUI.ListBox.ItemSetData(item, locId);
             shell.minimap.AddMarker(diag.line, 1, markerColor);

@@ -79,7 +79,8 @@ class LanguageServiceManager {
 
         basicService = new LanguageService();
         basicService.name = LANGUAGE_BASIC;
-        basicService.externalServerName = "";
+        basicService.externalServerName = "vbasic-server";
+        basicService.serverCanDiagnose = true;
 
         textService = new LanguageService();
         textService.name = LANGUAGE_TEXT;

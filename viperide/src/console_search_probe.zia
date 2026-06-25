@@ -205,8 +205,9 @@ func main() {
     var problemText = GUI.ListBox.ItemGetText(shell.diagListBox.Selected);
     if Str.IndexOf(problemText, "ERROR") == 0
        or Str.IndexOf(problemText, "V-ZIA") == 0
-       or Str.IndexOf(problemText, "No quick fix") == 0 {
-        fail(shell, "problems code action placeholder");
+       or Str.IndexOf(problemText, "-") == 0
+       or Str.IndexOf(problemText, "No quick fix") != 0 {
+        fail(shell, "problems compact code action placeholder");
         return;
     }
     if diagnostics.ProblemActionForDiagnostic(1, "W000") != "Suppress Warning" {
@@ -256,12 +257,13 @@ func main() {
     }
     overlays.ResetEditingDefaults();
     if overlays.ReadTabWidth() != 4
-       or overlays.ReadWordWrap()
-       or overlays.ReadInsertSpaces() == false
-       or overlays.ReadAutoSave() {
-        fail(shell, "preferences editing defaults");
-        return;
-    }
+	       or overlays.ReadWordWrap()
+	       or overlays.ReadInsertSpaces() == false
+	       or overlays.ReadAutoSave()
+	       or overlays.ReadSaveAllBeforeBuild() == false {
+	        fail(shell, "preferences editing defaults");
+	        return;
+	    }
     overlays.ResetIntelliSenseDefaults();
     if overlays.ReadDiagnosticsDelayMs() != 500 or overlays.ReadCompletionDelayMs() != 180 {
         fail(shell, "preferences intellisense defaults");

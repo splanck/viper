@@ -53,6 +53,7 @@ class IdeOverlays {
     expose GUI.Checkbox trimWhitespaceCheck;
     expose GUI.Checkbox finalNewlineCheck;
     expose GUI.Checkbox autoSaveCheck;
+    expose GUI.Checkbox saveAllBeforeBuildCheck;
     expose GUI.Checkbox restoreSessionCheck;
     expose GUI.Checkbox restoreLastProjectCheck;
     expose GUI.Checkbox confirmCloseCheck;
@@ -222,6 +223,13 @@ class IdeOverlays {
                 autoSaveCheck.SetChecked(0);
             }
         }
+        if saveAllBeforeBuildCheck != null {
+            if appSettings.saveAllBeforeBuild {
+                saveAllBeforeBuildCheck.SetChecked(1);
+            } else {
+                saveAllBeforeBuildCheck.SetChecked(0);
+            }
+        }
         if restoreSessionCheck != null {
             if appSettings.restoreSession {
                 restoreSessionCheck.SetChecked(1);
@@ -356,6 +364,13 @@ class IdeOverlays {
         return autoSaveCheck.IsChecked();
     }
 
+    /// @brief Read whether build/debug commands should save every modified file.
+    /// @details When false, build and debug commands save only the active file.
+    ///          The default remains true so project builds see fresh dependencies.
+    expose func ReadSaveAllBeforeBuild() -> Boolean {
+        return saveAllBeforeBuildCheck.IsChecked();
+    }
+
     expose func ReadRestoreSession() -> Boolean {
         return restoreSessionCheck.IsChecked();
     }
@@ -397,6 +412,7 @@ class IdeOverlays {
         trimWhitespaceCheck.SetChecked(0);
         finalNewlineCheck.SetChecked(1);
         autoSaveCheck.SetChecked(0);
+        saveAllBeforeBuildCheck.SetChecked(1);
     }
 
     expose func ResetIntelliSenseDefaults() {
@@ -515,6 +531,7 @@ class IdeOverlays {
         trimWhitespaceCheck = GUI.Checkbox.New(editCard, "Trim trailing whitespace on save");
         finalNewlineCheck = GUI.Checkbox.New(editCard, "Ensure final newline on save");
         autoSaveCheck = GUI.Checkbox.New(editCard, "Auto-save named files after idle");
+        saveAllBeforeBuildCheck = GUI.Checkbox.New(editCard, "Save all modified files before build/debug");
         resetEditingButton = GUI.Button.New(editCard, "Restore Editing Defaults");
         resetEditingButton.SetStyle(2);
 

@@ -166,6 +166,7 @@ func main() {
     if assertTrue(defaultSettings.insertSpaces
                   and defaultSettings.ensureFinalNewline
                   and defaultSettings.autoSave == false
+                  and defaultSettings.saveAllBeforeBuild
                   and defaultSettings.trimTrailingWhitespace == false,
                   "editor save settings have stable defaults") == false { return; }
     if assertTrue(defaultSettings.uiZoomPercent == 100,
@@ -211,7 +212,7 @@ func main() {
     var viewSettingsPath = Path.Join(root, "view-settings.ini");
     File.WriteAllText(viewSettingsPath,
         "[settings]\nwordWrap=1\nlineNumbers=0\ninsertSpaces=0\n"
-        + "trimTrailingWhitespace=1\nensureFinalNewline=0\nautoSave=1\n"
+        + "trimTrailingWhitespace=1\nensureFinalNewline=0\nautoSave=1\nsaveAllBeforeBuild=0\n"
         + "diagnosticsDelayMs=750\ncompletionDelayMs=90\nuiZoomPercent=125\n");
     var viewSettings = new settings.SettingsManager();
     viewSettings.settingsDir = root;
@@ -222,6 +223,7 @@ func main() {
                   and viewSettings.trimTrailingWhitespace
                   and viewSettings.ensureFinalNewline == false
                   and viewSettings.autoSave
+                  and viewSettings.saveAllBeforeBuild == false
                   and viewSettings.diagnosticsDelayMs == 750
                   and viewSettings.completionDelayMs == 90
                   and viewSettings.uiZoomPercent == 125,
@@ -244,6 +246,7 @@ func main() {
                   and Ini.Get(viewSettingsIni, "settings", "trimTrailingWhitespace") == "1"
                   and Ini.Get(viewSettingsIni, "settings", "ensureFinalNewline") == "0"
                   and Ini.Get(viewSettingsIni, "settings", "autoSave") == "1"
+                  and Ini.Get(viewSettingsIni, "settings", "saveAllBeforeBuild") == "0"
                   and Ini.Get(viewSettingsIni, "settings", "diagnosticsDelayMs") == "750"
                   and Ini.Get(viewSettingsIni, "settings", "completionDelayMs") == "90",
                   "editor behavior settings save to persistent preferences") == false { return; }

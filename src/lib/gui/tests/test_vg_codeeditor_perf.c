@@ -671,6 +671,39 @@ static void test_auto_indent_newline_is_single_undo_step(void) {
     vg_widget_destroy(&editor->base);
 }
 
+/// @brief Enter between an auto-inserted brace pair splits the pair vertically.
+/// @details This covers the IDE-visible case where typing `{` creates `{}` and
+///          pressing Enter should leave the cursor on an indented blank line with
+///          the closing brace below it.
+static void test_enter_between_braces_splits_pair(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    vg_codeeditor_set_text(editor, "");
+
+    send_key_char(editor, '{');
+    char *text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{}") == 0);
+    free(text);
+    assert(editor->cursor_line == 0);
+    assert(editor->cursor_col == 1);
+
+    send_key_down(editor, VG_KEY_ENTER);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n    \n}") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 4);
+
+    vg_codeeditor_undo(editor);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{}") == 0);
+    free(text);
+    assert(editor->cursor_line == 0);
+    assert(editor->cursor_col == 1);
+
+    vg_widget_destroy(&editor->base);
+}
+
 static void test_pair_autoclose_skip_and_undo(void) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -732,6 +765,95 @@ static void test_pair_autoclose_skip_and_undo(void) {
     vg_widget_destroy(&editor->base);
 }
 
+/// @brief Quote auto-pairing places and skips the cursor like bracket pairs.
+static void test_quote_autoclose_places_cursor_between_quotes(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    vg_codeeditor_set_text(editor, "");
+
+    send_key_char(editor, '"');
+    char *text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "\"\"") == 0);
+    free(text);
+    assert(editor->cursor_line == 0);
+    assert(editor->cursor_col == 1);
+
+    uint64_t revision_before_skip = editor->revision;
+    send_key_char(editor, '"');
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "\"\"") == 0);
+    free(text);
+    assert(editor->cursor_col == 2);
+    assert(editor->revision == revision_before_skip);
+
+    vg_codeeditor_undo(editor);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+/// @brief Backspace between an empty pair removes both generated characters.
+static void test_backspace_between_pair_deletes_both_sides(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    vg_codeeditor_set_text(editor, "");
+
+    send_key_char(editor, '(');
+    char *text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "()") == 0);
+    free(text);
+    assert(editor->cursor_col == 1);
+
+    send_key_down(editor, VG_KEY_BACKSPACE);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "") == 0);
+    free(text);
+    assert(editor->cursor_line == 0);
+    assert(editor->cursor_col == 0);
+
+    vg_widget_destroy(&editor->base);
+}
+
+/// @brief Auto-pair insertion wraps the current selection.
+static void test_pair_insertion_wraps_selection(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    vg_codeeditor_set_text(editor, "value");
+    vg_codeeditor_set_selection(editor, 0, 0, 0, 5);
+
+    send_key_char(editor, '"');
+    char *text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "\"value\"") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+/// @brief Delimiter handling ignores comments and strings.
+static void test_pair_matching_and_insertion_ignore_non_code_text(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    editor->base.width = 900.0f;
+    editor->base.height = 240.0f;
+    editor->base.state |= VG_STATE_FOCUSED;
+
+    vg_codeeditor_set_text(editor, "// ");
+    vg_codeeditor_set_cursor(editor, 0, 3);
+    send_key_char(editor, '{');
+    char *text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "// {") == 0);
+    free(text);
+
+    vg_codeeditor_set_text(editor, "// {\n}");
+    vg_codeeditor_set_cursor(editor, 1, 0);
+    editor->base.vtable->paint(&editor->base, NULL);
+    assert(!editor->pair_match_active);
+
+    vg_widget_destroy(&editor->base);
+}
+
 static void test_closing_brace_formats_indent_on_type(void) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -740,10 +862,10 @@ static void test_closing_brace_formats_indent_on_type(void) {
     vg_codeeditor_set_cursor(editor, 1, 8);
     send_key_char(editor, '}');
     char *text = vg_codeeditor_get_text(editor);
-    assert(strcmp(text, "{\n    }") == 0);
+    assert(strcmp(text, "{\n}") == 0);
     free(text);
     assert(editor->cursor_line == 1);
-    assert(editor->cursor_col == 5);
+    assert(editor->cursor_col == 1);
 
     vg_codeeditor_undo(editor);
     text = vg_codeeditor_get_text(editor);
@@ -785,7 +907,12 @@ int main(void) {
     test_pointer_selection_drag_wall_clock_budget();
     test_minimap_wall_clock_budget();
     test_auto_indent_newline_is_single_undo_step();
+    test_enter_between_braces_splits_pair();
     test_pair_autoclose_skip_and_undo();
+    test_quote_autoclose_places_cursor_between_quotes();
+    test_backspace_between_pair_deletes_both_sides();
+    test_pair_insertion_wraps_selection();
+    test_pair_matching_and_insertion_ignore_non_code_text();
     test_closing_brace_formats_indent_on_type();
     printf("test_vg_codeeditor_perf: PASSED\n");
     return 0;

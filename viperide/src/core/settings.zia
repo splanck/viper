@@ -6,7 +6,7 @@ bind Viper.IO.Dir as Dir;
 bind Viper.IO.Path as Path;
 bind Viper.System.Environment as Env;
 bind Machine = Viper.System.Machine;
-bind Viper.Core.Convert as Convert;
+bind Parse = Viper.Core.Parse;
 bind Viper.GUI;
 
 // ============================================================================
@@ -59,7 +59,7 @@ class SettingsManager {
     expose String  fontPath;       // Optional custom .ttf/.ttc path; "" = default fallback chain.
     expose String  theme;          // "dark" or "light".
     expose Boolean minimapVisible; // Whether the minimap panel is shown.
-    expose Boolean autoCheckOnSave;// Whether live diagnostics run on edit.
+    expose Boolean autoCheckOnSave;// Legacy key: whether live diagnostics run on edit.
     expose Boolean codeFolding;    // Whether the editor offers code-folding regions.
     expose Boolean statusBarVisible; // Whether the status bar is shown.
     expose Boolean fullscreen;     // Whether the main app starts fullscreen.
@@ -69,6 +69,7 @@ class SettingsManager {
     expose Boolean trimTrailingWhitespace; // Trim trailing spaces/tabs when saving.
     expose Boolean ensureFinalNewline; // Ensure saved text ends with a newline.
     expose Boolean autoSave;      // Save modified named files after editor idle.
+    expose Boolean saveAllBeforeBuild; // Save all modified files before build/debug.
     expose Boolean restoreSession; // Restore open tabs and cursor state on startup.
     expose Boolean restoreLastProject; // Restore last project tree on startup.
     expose Boolean confirmOnExitWithUnsavedChanges; // Guard destructive close paths.
@@ -99,6 +100,7 @@ class SettingsManager {
         trimTrailingWhitespace = false;
         ensureFinalNewline = true;
         autoSave = false;
+        saveAllBeforeBuild = true;
         restoreSession = true;
         restoreLastProject = true;
         confirmOnExitWithUnsavedChanges = true;
@@ -150,7 +152,7 @@ class SettingsManager {
         // fontSize: migrate old tiny values to the current comfortable default.
         var sizeStr = Ini.Get(ini, "settings", "fontSize");
         if sizeStr != "" {
-            var sz = Convert.ToInt(sizeStr);
+            var sz = Parse.IntOr(sizeStr, fontSize);
             if sz >= MIN_COMFORTABLE_FONT_SIZE {
                 fontSize = sz;
             } else if sz >= 6 {
@@ -224,6 +226,11 @@ class SettingsManager {
             autoSave = autoSaveStr == "1";
         }
 
+        var saveAllBuildStr = Ini.Get(ini, "settings", "saveAllBeforeBuild");
+        if saveAllBuildStr != "" {
+            saveAllBeforeBuild = saveAllBuildStr == "1";
+        }
+
         var rsStr = Ini.Get(ini, "settings", "restoreSession");
         if rsStr != "" {
             restoreSession = rsStr == "1";
@@ -241,25 +248,25 @@ class SettingsManager {
 
         var twStr = Ini.Get(ini, "settings", "tabWidth");
         if twStr != "" {
-            var tw = Convert.ToInt(twStr);
+            var tw = Parse.IntOr(twStr, tabWidth);
             if tw >= 2 and tw <= 8 { tabWidth = tw; }
         }
 
         var diagDelayStr = Ini.Get(ini, "settings", "diagnosticsDelayMs");
         if diagDelayStr != "" {
-            var diagDelay = Convert.ToInt(diagDelayStr);
+            var diagDelay = Parse.IntOr(diagDelayStr, diagnosticsDelayMs);
             if diagDelay >= 100 and diagDelay <= 5000 { diagnosticsDelayMs = diagDelay; }
         }
 
         var completionDelayStr = Ini.Get(ini, "settings", "completionDelayMs");
         if completionDelayStr != "" {
-            var completionDelay = Convert.ToInt(completionDelayStr);
+            var completionDelay = Parse.IntOr(completionDelayStr, completionDelayMs);
             if completionDelay >= 0 and completionDelay <= 2000 { completionDelayMs = completionDelay; }
         }
 
         var uiZoomStr = Ini.Get(ini, "settings", "uiZoomPercent");
         if uiZoomStr != "" {
-            var uiZoom = Convert.ToInt(uiZoomStr);
+            var uiZoom = Parse.IntOr(uiZoomStr, uiZoomPercent);
             if uiZoom >= 50 and uiZoom <= 300 { uiZoomPercent = uiZoom; }
         }
     }
@@ -335,6 +342,11 @@ class SettingsManager {
             Ini.Set(ini, "settings", "autoSave", "1");
         } else {
             Ini.Set(ini, "settings", "autoSave", "0");
+        }
+        if saveAllBeforeBuild {
+            Ini.Set(ini, "settings", "saveAllBeforeBuild", "1");
+        } else {
+            Ini.Set(ini, "settings", "saveAllBeforeBuild", "0");
         }
         if restoreSession {
             Ini.Set(ini, "settings", "restoreSession", "1");

@@ -98,18 +98,14 @@ func ApplyRenameEdits(edits: Any,
         var editRoot = WorkspaceEditRoot(closedEdits);
         var diskValidation = WorkspaceEdit.ValidateInRoot(closedEdits, editRoot);
         if Map.GetBool(diskValidation, "success") == false {
-            result.message = Map.GetStr(diskValidation, "diagnostics");
-            if result.message == "" {
-                result.message = "Workspace edit validation failed";
-            }
+            result.message = FormatWorkspaceEditDiagnostics(
+                Map.Get(diskValidation, "diagnostics"), "Workspace edit validation failed");
             return result;
         }
         var diskResult = WorkspaceEdit.ApplyInRoot(closedEdits, editRoot);
         if Map.GetBool(diskResult, "success") == false {
-            result.message = Map.GetStr(diskResult, "diagnostics");
-            if result.message == "" {
-                result.message = "Workspace edit failed";
-            }
+            result.message = FormatWorkspaceEditDiagnostics(
+                Map.Get(diskResult, "diagnostics"), "Workspace edit failed");
             return result;
         }
     }
@@ -147,8 +143,9 @@ func ApplyRenameEdits(edits: Any,
 /// @param edits Sequence of workspace edit maps.
 /// @return Absolute normalized directory path used as rooted validation/apply scope.
 func WorkspaceEditRoot(edits: Any) -> String {
+    var safetyRoot = Path.Norm(Path.Abs("."));
     if edits == null or Seq.get_Length(edits) == 0 {
-        return Path.Abs(".");
+        return safetyRoot;
     }
     var first = Seq.Get(edits, 0);
     var root = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(first, "file"))));
@@ -157,13 +154,19 @@ func WorkspaceEditRoot(edits: Any) -> String {
         var edit = Seq.Get(edits, i);
         var editDir = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(edit, "file"))));
         while root != "" and PathIsInRoot(root, editDir) == false {
+            if root == safetyRoot or PathIsInRoot(safetyRoot, root) == false {
+                return safetyRoot;
+            }
             var parent = Path.Dir(root);
             if parent == "" or parent == root { break; }
             root = parent;
         }
         i = i + 1;
     }
-    if root == "" { return Path.Abs("."); }
+    if root == "" { return safetyRoot; }
+    if PathIsInRoot(safetyRoot, root) == false {
+        return safetyRoot;
+    }
     return root;
 }
 
@@ -173,13 +176,50 @@ func WorkspaceEditRoot(edits: Any) -> String {
 /// @return True when @p path is exactly @p root or begins below it.
 func PathIsInRoot(root: String,
                   path: String) -> Boolean {
-    var nr = Path.Norm(Path.Abs(root));
-    var np = Path.Norm(Path.Abs(path));
+    var nr = Str.ToLower(Path.Norm(Path.Abs(root)));
+    var np = Str.ToLower(Path.Norm(Path.Abs(path)));
     if nr == np { return true; }
     if Str.EndsWith(nr, "/") or Str.EndsWith(nr, "\\") {
         return Str.StartsWith(np, nr);
     }
     return Str.StartsWith(np, nr + "/") or Str.StartsWith(np, nr + "\\");
+}
+
+/// @brief Format runtime workspace-edit diagnostics into a user-facing message.
+/// @details The C runtime returns diagnostics as a sequence of maps, not as a
+///          string. This helper keeps the actionable message, optional code,
+///          file, and line number instead of replacing everything with a generic
+///          failure label.
+/// @param diagnostics Runtime diagnostics sequence from Validate/Apply.
+/// @param fallback Message used when the sequence is empty or unavailable.
+/// @return Newline-delimited diagnostic summary.
+func FormatWorkspaceEditDiagnostics(diagnostics: Any,
+                                    fallback: String) -> String {
+    if diagnostics == null or Seq.get_Length(diagnostics) == 0 {
+        return fallback;
+    }
+    var result = "";
+    var i = 0;
+    while i < Seq.get_Length(diagnostics) {
+        var diag = Seq.Get(diagnostics, i);
+        var message = Map.GetStr(diag, "message");
+        var code = Map.GetStr(diag, "code");
+        var file = Map.GetStr(diag, "file");
+        var line = Map.GetInt(diag, "line");
+        var item = message;
+        if item == "" { item = fallback; }
+        if code != "" { item = item + " [" + code + "]"; }
+        if file != "" {
+            item = item + " (" + file;
+            if line > 0 { item = item + ":" + line; }
+            item = item + ")";
+        }
+        if result != "" { result = result + "\n"; }
+        result = result + item;
+        i = i + 1;
+    }
+    if result == "" { return fallback; }
+    return result;
 }
 
 func ApplyEditToDocument(doc: document.Document, edit: Any) -> Boolean {
@@ -253,21 +293,28 @@ func EditsOverlap(a: Any, b: Any) -> Boolean {
     if Map.GetStr(a, "file") != Map.GetStr(b, "file") {
         return false;
     }
-    var aStartLine = Map.GetInt(a, "startLine");
-    var aEndLine = Map.GetInt(a, "endLine");
-    var bStartLine = Map.GetInt(b, "startLine");
-    var bEndLine = Map.GetInt(b, "endLine");
-    if aStartLine != aEndLine or bStartLine != bEndLine {
-        return true;
-    }
-    if aStartLine != bStartLine {
-        return false;
-    }
-    var aStart = Map.GetInt(a, "startColumn");
-    var aEnd = Map.GetInt(a, "endColumn");
-    var bStart = Map.GetInt(b, "startColumn");
-    var bEnd = Map.GetInt(b, "endColumn");
-    return aStart < bEnd and bStart < aEnd;
+    return PositionBefore(Map.GetInt(a, "startLine"), Map.GetInt(a, "startColumn"),
+                          Map.GetInt(b, "endLine"), Map.GetInt(b, "endColumn"))
+           and PositionBefore(Map.GetInt(b, "startLine"), Map.GetInt(b, "startColumn"),
+                              Map.GetInt(a, "endLine"), Map.GetInt(a, "endColumn"));
+}
+
+/// @brief Compare two workspace-edit positions using end-exclusive ordering.
+/// @details Workspace edit ranges follow the editor/LSP convention where the
+///          start position is inclusive and the end position is exclusive.
+///          Two ranges overlap when each range starts before the other's end.
+/// @param lineA First position line, one-based.
+/// @param colA First position column, one-based.
+/// @param lineB Second position line, one-based.
+/// @param colB Second position column, one-based.
+/// @return True when position A is strictly before position B.
+func PositionBefore(lineA: Integer,
+                    colA: Integer,
+                    lineB: Integer,
+                    colB: Integer) -> Boolean {
+    if lineA < lineB { return true; }
+    if lineA > lineB { return false; }
+    return colA < colB;
 }
 
 func CanApplyEditToText(content: String, edit: Any) -> Boolean {
@@ -275,44 +322,57 @@ func CanApplyEditToText(content: String, edit: Any) -> Boolean {
     var startCol = Map.GetInt(edit, "startColumn");
     var endLine = Map.GetInt(edit, "endLine");
     var endCol = Map.GetInt(edit, "endColumn");
-    if startLine != endLine { return false; }
-    if startLine < 1 or startCol < 1 or endCol < startCol { return false; }
+    if startLine < 1 or startCol < 1 or endLine < startLine or endCol < 1 { return false; }
+    if startLine == endLine and endCol < startCol { return false; }
 
     var lines = Str.Split(content, "\n");
     if startLine > Seq.get_Length(lines) { return false; }
-    var line = Obj.ToString(Seq.Get(lines, startLine - 1));
-    if startCol > Str.Length(line) + 1 { return false; }
-    if endCol > Str.Length(line) + 1 { return false; }
+    if endLine > Seq.get_Length(lines) { return false; }
+    var startText = Obj.ToString(Seq.Get(lines, startLine - 1));
+    var endText = Obj.ToString(Seq.Get(lines, endLine - 1));
+    if startCol > Str.Length(startText) + 1 { return false; }
+    if endCol > Str.Length(endText) + 1 { return false; }
     return true;
 }
 
 func ApplyEditToText(content: String, edit: Any) -> String {
     var startLine = Map.GetInt(edit, "startLine");
     var startCol = Map.GetInt(edit, "startColumn");
+    var endLine = Map.GetInt(edit, "endLine");
     var endCol = Map.GetInt(edit, "endColumn");
     var newText = Map.GetStr(edit, "newText");
 
     var lines = Str.Split(content, "\n");
-    var line = Obj.ToString(Seq.Get(lines, startLine - 1));
+    var startText = Obj.ToString(Seq.Get(lines, startLine - 1));
+    var endText = Obj.ToString(Seq.Get(lines, endLine - 1));
     var prefix = "";
     if startCol > 1 {
-        prefix = Str.Left(line, startCol - 1);
+        prefix = Str.Left(startText, startCol - 1);
     }
     var suffix = "";
-    if endCol <= Str.Length(line) {
-        suffix = Str.Mid(line, endCol);
+    if endCol <= Str.Length(endText) {
+        suffix = Str.Mid(endText, endCol);
     }
     var replacement = prefix + newText + suffix;
     var rebuilt = "";
+    var firstOutputLine = true;
     var i = 0;
     while i < Seq.get_Length(lines) {
-        if i > 0 {
-            rebuilt = rebuilt + "\n";
+        var emit = false;
+        var text = "";
+        if i < startLine - 1 or i > endLine - 1 {
+            emit = true;
+            text = Obj.ToString(Seq.Get(lines, i));
+        } else if i == startLine - 1 {
+            emit = true;
+            text = replacement;
         }
-        if i == startLine - 1 {
-            rebuilt = rebuilt + replacement;
-        } else {
-            rebuilt = rebuilt + Obj.ToString(Seq.Get(lines, i));
+        if emit {
+            if firstOutputLine == false {
+                rebuilt = rebuilt + "\n";
+            }
+            rebuilt = rebuilt + text;
+            firstOutputLine = false;
         }
         i = i + 1;
     }

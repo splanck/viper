@@ -14,6 +14,7 @@ bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind Viper.GUI;
 bind Str = Viper.String;
+bind Path = Viper.IO.Path;
 
 // ============================================================================
 // MODULE: diagnostics
@@ -268,12 +269,23 @@ class LiveDiagnostics {
             i = i + 1;
 
             var sev = Map.GetInt(record, "severity");
-            var diagLine = Map.GetInt(record, "line") - lineOff;
-            if diagLine < 1 { continue; }  // diagnostic on the synthetic prefix line
+            var rawLine = Map.GetInt(record, "line");
             var diagCol = Map.GetInt(record, "column");
-            var endLine = Map.GetIntOr(record, "endLine", diagLine + lineOff) - lineOff;
-            var endCol = Map.GetIntOr(record, "endColumn", diagCol + 1);
             var diagPath = Map.GetStr(record, "file");
+            var activeDiagnostic = IsActiveDiagnosticPath(diagPath);
+            var diagLine = rawLine;
+            if activeDiagnostic {
+                diagLine = rawLine - lineOff;
+                if diagLine < 1 { continue; }  // diagnostic on the synthetic prefix line
+            } else if diagLine < 1 {
+                continue;
+            }
+            var rawEndLine = Map.GetIntOr(record, "endLine", rawLine);
+            var endLine = rawEndLine;
+            if activeDiagnostic {
+                endLine = rawEndLine - lineOff;
+            }
+            var endCol = Map.GetIntOr(record, "endColumn", diagCol + 1);
             var code = Map.GetStr(record, "code");
             var msg = Map.GetStr(record, "message");
 
@@ -299,16 +311,18 @@ class LiveDiagnostics {
             var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,
                                      locations.KIND_DIAGNOSTIC, msg);
             GUI.ListBox.ItemSetData(item, locId);
-            shell.minimap.AddMarker(diagLine, 1, markerColor);
+            if activeDiagnostic {
+                shell.minimap.AddMarker(diagLine, 1, markerColor);
 
-            // Add inline highlight span (underline the error location)
-            var diagCol0 = diagCol - 1;
-            if diagCol0 < 0 { diagCol0 = 0; }
-            var endLine0 = endLine - 1;
-            if endLine0 < diagLine - 1 { endLine0 = diagLine - 1; }
-            var endCol0 = endCol - 1;
-            if endCol0 <= diagCol0 { endCol0 = diagCol0 + 1; }
-            engine.editor.AddHighlight(diagLine - 1, diagCol0, endLine0, endCol0, markerColor);
+                // Add inline highlight span (underline the error location)
+                var diagCol0 = diagCol - 1;
+                if diagCol0 < 0 { diagCol0 = 0; }
+                var endLine0 = endLine - 1;
+                if endLine0 < diagLine - 1 { endLine0 = diagLine - 1; }
+                var endCol0 = endCol - 1;
+                if endCol0 <= diagCol0 { endCol0 = diagCol0 + 1; }
+                engine.editor.AddHighlight(diagLine - 1, diagCol0, endLine0, endCol0, markerColor);
+            }
         }
 
         shell.FinishProblems(shownCount);
@@ -318,6 +332,30 @@ class LiveDiagnostics {
         lastNoteCount = noteCount;
 
         return errorCount;
+    }
+
+    /// @brief Return whether a diagnostic belongs to the current editor buffer.
+    /// @details Blank diagnostic paths are emitted for the queried source itself,
+    ///          while non-blank paths may identify bound files. Only diagnostics
+    ///          for the active buffer should paint inline highlights or minimap
+    ///          markers; all diagnostics still remain visible in Problems.
+    /// @param diagPath File path from the structured diagnostic record.
+    /// @return True when @p diagPath is blank or normalizes to `sourcePath`.
+    hide func IsActiveDiagnosticPath(diagPath: String) -> Boolean {
+        if diagPath == "" { return true; }
+        if sourcePath == "" { return false; }
+        return NormalizeDiagnosticPath(diagPath) == NormalizeDiagnosticPath(sourcePath);
+    }
+
+    /// @brief Normalize a path for active-file diagnostic comparison.
+    /// @details The compiler and editor may hand back relative, absolute, or
+    ///          differently normalized spellings of the same file. Normalizing
+    ///          both sides avoids duplicate markers caused by path spelling.
+    /// @param path Path text to normalize.
+    /// @return Absolute normalized path, or an empty string for empty input.
+    hide func NormalizeDiagnosticPath(path: String) -> String {
+        if path == "" { return ""; }
+        return Path.Norm(Path.Abs(path));
     }
 
     /// @brief Force an immediate recheck on the next `update` call.

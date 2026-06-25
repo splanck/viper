@@ -466,6 +466,221 @@ static void codeeditor_paint_highlights_for_line(vg_codeeditor_t *editor,
     }
 }
 
+typedef struct codeeditor_syntax_scan_state {
+    bool in_line_comment;
+    bool in_block_comment;
+    bool in_string;
+    bool escaped;
+    char string_quote;
+} codeeditor_syntax_scan_state_t;
+
+/// @brief Return whether the current byte is source-code punctuation and advance syntax state.
+/// @details This lightweight scanner understands line comments (`//`), block
+///          comments (`/* ... */`), single-quoted strings, double-quoted strings,
+///          and backslash escapes. It intentionally does not try to classify
+///          language tokens; it only answers whether delimiter matching should
+///          consider the current byte as code.
+/// @param state Mutable syntax state carried across lines.
+/// @param text Current line text.
+/// @param len Current line byte length.
+/// @param col Current byte column.
+/// @param out_advance Number of bytes the caller should advance.
+/// @return true when the byte is outside comments and strings.
+static bool codeeditor_syntax_scan_byte(codeeditor_syntax_scan_state_t *state,
+                                        const char *text,
+                                        int len,
+                                        int col,
+                                        int *out_advance) {
+    if (out_advance)
+        *out_advance = 1;
+    if (!state || !text || col < 0 || col >= len)
+        return false;
+
+    char ch = text[col];
+    char next = col + 1 < len ? text[col + 1] : '\0';
+
+    if (state->in_line_comment)
+        return false;
+
+    if (state->in_block_comment) {
+        if (ch == '*' && next == '/') {
+            state->in_block_comment = false;
+            if (out_advance)
+                *out_advance = 2;
+        }
+        return false;
+    }
+
+    if (state->in_string) {
+        if (state->escaped) {
+            state->escaped = false;
+        } else if (ch == '\\') {
+            state->escaped = true;
+        } else if (ch == state->string_quote) {
+            state->in_string = false;
+            state->string_quote = '\0';
+        }
+        return false;
+    }
+
+    if (ch == '/' && next == '/') {
+        state->in_line_comment = true;
+        if (out_advance)
+            *out_advance = 2;
+        return false;
+    }
+    if (ch == '/' && next == '*') {
+        state->in_block_comment = true;
+        if (out_advance)
+            *out_advance = 2;
+        return false;
+    }
+    if (ch == '"' || ch == '\'') {
+        state->in_string = true;
+        state->escaped = false;
+        state->string_quote = ch;
+        return false;
+    }
+
+    return true;
+}
+
+/// @brief Reset line-comment state at a physical line boundary.
+/// @details Block comments and strings intentionally survive line boundaries;
+///          `//` comments do not.
+static void codeeditor_syntax_scan_end_line(codeeditor_syntax_scan_state_t *state) {
+    if (state)
+        state->in_line_comment = false;
+}
+
+/// @brief Return true when a byte position is outside comments and strings.
+/// @details Scans once from the start of the document to the requested position,
+///          using the same lightweight rules as delimiter matching. The byte at
+///          @p col is classified from the scanner state before that byte is
+///          consumed.
+static bool codeeditor_position_is_code_context(const vg_codeeditor_t *editor, int line, int col) {
+    if (!editor || line < 0 || line >= editor->line_count)
+        return false;
+    codeeditor_syntax_scan_state_t state = {0};
+    for (int l = 0; l <= line; l++) {
+        const vg_code_line_t *code_line = &editor->lines[l];
+        int len = code_line->length > (size_t)INT_MAX ? INT_MAX : (int)code_line->length;
+        int limit = l == line ? col : len;
+        if (limit < 0)
+            limit = 0;
+        if (limit > len)
+            limit = len;
+        for (int c = 0; c < limit;) {
+            int advance = 1;
+            (void)codeeditor_syntax_scan_byte(&state, code_line->text, len, c, &advance);
+            if (advance < 1)
+                advance = 1;
+            c += advance;
+        }
+        if (l == line)
+            break;
+        codeeditor_syntax_scan_end_line(&state);
+    }
+    return !state.in_line_comment && !state.in_block_comment && !state.in_string;
+}
+
+typedef struct codeeditor_pair_position {
+    int line;
+    int col;
+} codeeditor_pair_position_t;
+
+/// @brief Append one delimiter position to a dynamically-sized stack.
+/// @return true on success, false on allocation failure.
+static bool codeeditor_pair_stack_push(codeeditor_pair_position_t **stack,
+                                       int *count,
+                                       int *cap,
+                                       int line,
+                                       int col) {
+    if (!stack || !count || !cap)
+        return false;
+    if (*count >= *cap) {
+        int new_cap = *cap ? *cap * 2 : 32;
+        if (new_cap < *cap || new_cap > INT_MAX / (int)sizeof(**stack))
+            return false;
+        void *p = realloc(*stack, (size_t)new_cap * sizeof(**stack));
+        if (!p)
+            return false;
+        *stack = p;
+        *cap = new_cap;
+    }
+    (*stack)[*count].line = line;
+    (*stack)[*count].col = col;
+    (*count)++;
+    return true;
+}
+
+/// @brief Find the nearest unmatched opener before an arbitrary insertion point.
+/// @details Scans source text in document order, ignoring comments and strings.
+///          Openers push onto a stack and closers pop; the top of the stack at
+///          @p line:@p col is the opener that should own an inserted closer.
+/// @return true and writes @p out_line/@p out_col when an unmatched opener exists.
+static bool codeeditor_find_unmatched_opener_before(const vg_codeeditor_t *editor,
+                                                    int line,
+                                                    int col,
+                                                    char opener,
+                                                    char closer,
+                                                    int *out_line,
+                                                    int *out_col) {
+    if (out_line)
+        *out_line = -1;
+    if (out_col)
+        *out_col = -1;
+    if (!editor || line < 0 || line >= editor->line_count)
+        return false;
+
+    codeeditor_syntax_scan_state_t state = {0};
+    codeeditor_pair_position_t *stack = NULL;
+    int stack_count = 0;
+    int stack_cap = 0;
+
+    for (int l = 0; l <= line; l++) {
+        const vg_code_line_t *code_line = &editor->lines[l];
+        int len = code_line->length > (size_t)INT_MAX ? INT_MAX : (int)code_line->length;
+        int limit = l == line ? col : len;
+        if (limit < 0)
+            limit = 0;
+        if (limit > len)
+            limit = len;
+        for (int c = 0; c < limit;) {
+            int advance = 1;
+            bool is_code = codeeditor_syntax_scan_byte(&state, code_line->text, len, c, &advance);
+            if (is_code) {
+                char ch = code_line->text[c];
+                if (ch == opener) {
+                    if (!codeeditor_pair_stack_push(&stack, &stack_count, &stack_cap, l, c))
+                        goto cleanup;
+                } else if (ch == closer && stack_count > 0) {
+                    stack_count--;
+                }
+            }
+            if (advance < 1)
+                advance = 1;
+            c += advance;
+        }
+        if (l == line)
+            break;
+        codeeditor_syntax_scan_end_line(&state);
+    }
+
+    if (stack_count <= 0)
+        goto cleanup;
+    if (out_line)
+        *out_line = stack[stack_count - 1].line;
+    if (out_col)
+        *out_col = stack[stack_count - 1].col;
+    free(stack);
+    return true;
+
+cleanup:
+    free(stack);
+    return false;
+}
+
 static bool codeeditor_pair_info(char ch, char *out_match, int *out_direction) {
     char match = '\0';
     int direction = 0;
@@ -524,26 +739,42 @@ static bool codeeditor_find_matching_pair_forward(const vg_codeeditor_t *editor,
                                                   char closer,
                                                   int *out_line,
                                                   int *out_col) {
-    int depth = 1;
-    for (int l = line; l < editor->line_count; l++) {
+    if (!editor)
+        return false;
+    codeeditor_syntax_scan_state_t state = {0};
+    bool active = false;
+    int depth = 0;
+    for (int l = 0; l < editor->line_count; l++) {
         const vg_code_line_t *code_line = &editor->lines[l];
-        int c = l == line ? col + 1 : 0;
-        while (code_line->text && c < (int)code_line->length) {
-            char ch = code_line->text[c];
-            if (ch == opener) {
-                depth++;
-            } else if (ch == closer) {
-                depth--;
-                if (depth == 0) {
-                    if (out_line)
-                        *out_line = l;
-                    if (out_col)
-                        *out_col = c;
-                    return true;
+        int len = code_line->length > (size_t)INT_MAX ? INT_MAX : (int)code_line->length;
+        for (int c = 0; code_line->text && c < len;) {
+            int advance = 1;
+            bool is_code = codeeditor_syntax_scan_byte(&state, code_line->text, len, c, &advance);
+            if (is_code) {
+                char ch = code_line->text[c];
+                if (!active) {
+                    if (l == line && c == col && ch == opener) {
+                        active = true;
+                        depth = 1;
+                    }
+                } else if (ch == opener) {
+                    depth++;
+                } else if (ch == closer) {
+                    depth--;
+                    if (depth == 0) {
+                        if (out_line)
+                            *out_line = l;
+                        if (out_col)
+                            *out_col = c;
+                        return true;
+                    }
                 }
             }
-            c++;
+            if (advance < 1)
+                advance = 1;
+            c += advance;
         }
+        codeeditor_syntax_scan_end_line(&state);
     }
     return false;
 }
@@ -555,28 +786,53 @@ static bool codeeditor_find_matching_pair_backward(const vg_codeeditor_t *editor
                                                    char opener,
                                                    int *out_line,
                                                    int *out_col) {
-    int depth = 1;
-    for (int l = line; l >= 0; l--) {
+    if (!editor)
+        return false;
+    codeeditor_syntax_scan_state_t state = {0};
+    codeeditor_pair_position_t *stack = NULL;
+    int stack_count = 0;
+    int stack_cap = 0;
+    bool found = false;
+
+    for (int l = 0; l <= line && !found; l++) {
         const vg_code_line_t *code_line = &editor->lines[l];
-        int c = l == line ? col - 1 : (int)code_line->length - 1;
-        while (code_line->text && c >= 0) {
-            char ch = code_line->text[c];
-            if (ch == closer) {
-                depth++;
-            } else if (ch == opener) {
-                depth--;
-                if (depth == 0) {
-                    if (out_line)
-                        *out_line = l;
-                    if (out_col)
-                        *out_col = c;
-                    return true;
+        int len = code_line->length > (size_t)INT_MAX ? INT_MAX : (int)code_line->length;
+        int limit = l == line ? col + 1 : len;
+        if (limit > len)
+            limit = len;
+        for (int c = 0; code_line->text && c < limit;) {
+            int advance = 1;
+            bool is_code = codeeditor_syntax_scan_byte(&state, code_line->text, len, c, &advance);
+            if (is_code) {
+                char ch = code_line->text[c];
+                if (ch == opener) {
+                    if (!codeeditor_pair_stack_push(&stack, &stack_count, &stack_cap, l, c))
+                        goto cleanup;
+                } else if (ch == closer) {
+                    if (l == line && c == col) {
+                        if (stack_count > 0) {
+                            if (out_line)
+                                *out_line = stack[stack_count - 1].line;
+                            if (out_col)
+                                *out_col = stack[stack_count - 1].col;
+                            found = true;
+                        }
+                        break;
+                    }
+                    if (stack_count > 0)
+                        stack_count--;
                 }
             }
-            c--;
+            if (advance < 1)
+                advance = 1;
+            c += advance;
         }
+        codeeditor_syntax_scan_end_line(&state);
     }
-    return false;
+
+cleanup:
+    free(stack);
+    return found;
 }
 
 static void codeeditor_update_pair_match_cache(vg_codeeditor_t *editor) {
@@ -979,6 +1235,66 @@ static int codeeditor_first_inlay_hint_for_line(const vg_codeeditor_t *editor, i
     return lo;
 }
 
+/// @brief Compare semantic tokens by line, then start column, then end column.
+/// @details Sorted semantic tokens allow the highlighter to binary-search the
+///          first token for a visible line instead of scanning every project
+///          token for every line being painted.
+/// @param a Pointer to the left semantic-token record.
+/// @param b Pointer to the right semantic-token record.
+/// @return Negative, zero, or positive using qsort ordering semantics.
+static int codeeditor_compare_semantic_tokens(const void *a, const void *b) {
+    const struct vg_semantic_token *lhs = (const struct vg_semantic_token *)a;
+    const struct vg_semantic_token *rhs = (const struct vg_semantic_token *)b;
+    if (lhs->line != rhs->line)
+        return lhs->line < rhs->line ? -1 : 1;
+    if (lhs->start_col != rhs->start_col)
+        return lhs->start_col < rhs->start_col ? -1 : 1;
+    if (lhs->end_col != rhs->end_col)
+        return lhs->end_col < rhs->end_col ? -1 : 1;
+    return 0;
+}
+
+/// @brief Ensure semantic tokens are ordered for per-line lookup.
+/// @details The runtime API accepts tokens one at a time from compiler jobs, so
+///          insertion order is not guaranteed. Sorting lazily keeps token-add
+///          calls cheap and pays the ordering cost once before paint lookup.
+/// @param editor Code editor whose semantic-token array may be sorted in place.
+static void codeeditor_sort_semantic_tokens(vg_codeeditor_t *editor) {
+    if (!editor || editor->semantic_tokens_sorted)
+        return;
+    if (editor->semantic_token_count > 1) {
+        qsort(editor->semantic_tokens,
+              (size_t)editor->semantic_token_count,
+              sizeof(*editor->semantic_tokens),
+              codeeditor_compare_semantic_tokens);
+    }
+    editor->semantic_tokens_sorted = true;
+}
+
+/// @brief Find the first semantic token on a source line.
+/// @details Requires the semantic-token array to be sorted by line. The caller
+///          can then iterate forward until the line changes.
+/// @param editor Code editor containing sorted semantic tokens.
+/// @param line Zero-based source line.
+/// @return First token index for @p line, or -1 when the line has no tokens.
+static int codeeditor_first_semantic_token_for_line(const vg_codeeditor_t *editor, int line) {
+    if (!editor || !editor->semantic_tokens || editor->semantic_token_count <= 0)
+        return -1;
+
+    int lo = 0;
+    int hi = editor->semantic_token_count;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (editor->semantic_tokens[mid].line < line)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    if (lo >= editor->semantic_token_count || editor->semantic_tokens[lo].line != line)
+        return -1;
+    return lo;
+}
+
 /// @brief Ensures the colors buffer for @p line_idx is sized, then invokes the syntax highlighter
 /// callback.
 static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
@@ -1021,10 +1337,12 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
     // Semantic overlay: the compiler-classified tokens win over the lexical
     // guess for the identifier columns they cover (see ADR 0007). Only this
     // line's tokens are applied; unclassified columns keep their lexical color.
-    for (int t = 0; t < editor->semantic_token_count; t++) {
+    codeeditor_sort_semantic_tokens(editor);
+    int first_semantic = codeeditor_first_semantic_token_for_line(editor, (int)line_idx);
+    for (int t = first_semantic; t >= 0 && t < editor->semantic_token_count; t++) {
         const struct vg_semantic_token *st = &editor->semantic_tokens[t];
         if (st->line != (int)line_idx)
-            continue;
+            break;
         int s = st->start_col < 0 ? 0 : st->start_col;
         int e = st->end_col > (int)line->length ? (int)line->length : st->end_col;
         for (int c = s; c < e; c++)
@@ -1034,8 +1352,11 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
     line->highlight_generation = editor->highlight_generation;
 }
 
-/// @brief Draws the substring text[start..start+len] at (x,y) using a stack buffer for short
-/// slices.
+/// @brief Draws the substring text[start..start+len] at (x,y).
+/// @details The font API currently accepts NUL-terminated strings rather than
+///          byte ranges, so the editor must copy each colored run before
+///          drawing it. A 4 KiB stack scratch keeps ordinary long code lines out
+///          of the heap path; only unusually large single-color runs allocate.
 static void codeeditor_draw_text_slice(void *canvas,
                                        vg_font_t *font,
                                        float font_size,
@@ -1048,7 +1369,7 @@ static void codeeditor_draw_text_slice(void *canvas,
     if (!font || !text || len == 0)
         return;
 
-    char stack_buf[256];
+    char stack_buf[4096];
     char *buf = stack_buf;
     size_t copy_len = len;
     if (copy_len >= sizeof(stack_buf)) {

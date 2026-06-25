@@ -1585,6 +1585,17 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 180)
 endif ()
 
+if (VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+    add_test(NAME native_smoke_viperide_completion_x64
+            COMMAND "${CMAKE_COMMAND}" -E env VIPER_NATIVE_TEST_ARCH=x64
+            "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_viperide_completion_x64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link;slow"
+            TIMEOUT 180)
+endif ()
+
 # =============================================================================
 # Graphics3D Zia Integration Tests (headless — no display required)
 # =============================================================================

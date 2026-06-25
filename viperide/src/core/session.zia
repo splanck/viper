@@ -2,6 +2,7 @@ module session;
 
 bind "document_manager";
 bind "project_manager";
+bind "document";
 bind "../editor/editor_tabs";
 bind "../services/file_utils";
 
@@ -12,9 +13,11 @@ bind Path = Viper.IO.Path;
 bind Parse = Viper.Core.Parse;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
+bind Str = Viper.String;
 
 final MAX_RECENT_PROJECTS = 10;
 final MAX_RECENT_FILES = 20;
+final MAX_SESSION_RECOVERY_CHARS = 200000;
 
 class SessionManager {
     expose String settingsPath;
@@ -58,10 +61,16 @@ class SessionManager {
             var doc = docMgr.documents.get(i);
             var section = "session.file." + i;
             Ini.Set(ini, section, "path", doc.filePath);
+            Ini.Set(ini, section, "name", doc.fileName);
             Ini.Set(ini, section, "kind", file_utils.KindName(doc.kind));
             Ini.Set(ini, section, "cursorLine", "" + doc.cursorLine);
             Ini.Set(ini, section, "cursorCol", "" + doc.cursorCol);
             Ini.Set(ini, section, "scrollLine", "" + doc.scrollLine);
+            if doc.isNew and doc.isModified and Str.Length(doc.content) <= MAX_SESSION_RECOVERY_CHARS {
+                Ini.Set(ini, section, "recovery", doc.content);
+            } else {
+                Ini.Set(ini, section, "recovery", "");
+            }
             i = i + 1;
         }
 
@@ -131,6 +140,24 @@ class SessionManager {
                 tabs.AddTab(doc.fileName, 1);
                 tabs.SetTooltip(docMgr.activeIndex, doc.filePath);
                 restored = restored + 1;
+            } else if path == "" {
+                var recovery = Ini.Get(ini, section, "recovery");
+                if recovery != "" {
+                    var draft = docMgr.NewDocument();
+                    var savedName = Ini.Get(ini, section, "name");
+                    if savedName != "" { draft.fileName = savedName; }
+                    draft.content = recovery;
+                    draft.kind = file_utils.DOC_KIND_CODE;
+                    draft.language = "zia";
+                    draft.isNew = true;
+                    draft.isModified = true;
+                    draft.cursorLine = Parse.IntOr(Ini.Get(ini, section, "cursorLine"), 1);
+                    draft.cursorCol = Parse.IntOr(Ini.Get(ini, section, "cursorCol"), 1);
+                    draft.scrollLine = Parse.IntOr(Ini.Get(ini, section, "scrollLine"), 1);
+                    tabs.AddTab(draft.fileName, 1);
+                    tabs.SetModified(docMgr.activeIndex, true);
+                    restored = restored + 1;
+                }
             }
             i = i + 1;
         }

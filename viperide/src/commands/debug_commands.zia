@@ -14,7 +14,12 @@ bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
 bind Obj = Viper.Core.Object;
+bind Pixels = Viper.Graphics.Pixels;
+
+final DEBUG_STOP_SLOT = 1;
+final DEBUG_STOP_COLOR = 1031952639; // 0x3D7DFFFF
 
 func handleToggleBreakpoint(shell: app_shell.AppShell,
                             docMgr: document_manager.DocumentManager,
@@ -47,8 +52,9 @@ func PumpGutter(shell: app_shell.AppShell,
                 engine: editor_engine.EditorEngine,
                 store: breakpoints.BreakpointStore) {
     if engine == null or engine.editor == null { return; }
-    var clickedLine0 = engine.editor.GetGutterClickLine();
-    if engine.editor.WasGutterClicked() == 0 { return; }
+    var click = engine.editor.TakeGutterClick();
+    if Map.GetBool(click, "clicked") == false { return; }
+    var clickedLine0 = Map.GetInt(click, "line");
     if clickedLine0 < 0 { return; }
 
     var maybeDoc = docMgr.GetActive();
@@ -76,10 +82,11 @@ func PumpGutter(shell: app_shell.AppShell,
 func handleDebugStart(shell: app_shell.AppShell,
                       docMgr: document_manager.DocumentManager,
                       engine: editor_engine.EditorEngine,
-                      tabs: editor_tabs.EditorTabs,
-                      buildSys: build_system.BuildSystem,
-                      store: breakpoints.BreakpointStore,
-                      session: debug_session.DebugSession) {
+	                      tabs: editor_tabs.EditorTabs,
+	                      buildSys: build_system.BuildSystem,
+	                      store: breakpoints.BreakpointStore,
+	                      session: debug_session.DebugSession,
+	                      saveAllBeforeBuild: Boolean) {
     if session.IsActive() {
         shell.SetStatusLeft("A debug session is already running");
         return;
@@ -96,7 +103,8 @@ func handleDebugStart(shell: app_shell.AppShell,
         return;
     }
 
-    var saveResult = file_commands.handleSaveAll(shell, docMgr, engine, tabs);
+    var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                          saveAllBeforeBuild);
     if saveResult.success == false {
         if saveResult.message != "" {
             shell.SetStatusLeft("Debug canceled: " + saveResult.message);
@@ -139,11 +147,13 @@ func handleDebugRestart(shell: app_shell.AppShell,
                         tabs: editor_tabs.EditorTabs,
                         buildSys: build_system.BuildSystem,
                         store: breakpoints.BreakpointStore,
-                        session: debug_session.DebugSession) {
+                        session: debug_session.DebugSession,
+                        saveAllBeforeBuild: Boolean) {
     if session.IsActive() {
         session.Terminate();
     }
-    handleDebugStart(shell, docMgr, engine, tabs, buildSys, store, session);
+    handleDebugStart(shell, docMgr, engine, tabs, buildSys, store, session,
+                     saveAllBeforeBuild);
 }
 
 /// @brief Per-frame pump: drain adapter events and refresh the UI on change.
@@ -218,10 +228,10 @@ func handleDebugPause(shell: app_shell.AppShell,
 
 func handleDebugStop(shell: app_shell.AppShell,
                      session: debug_session.DebugSession) {
-    if session.Terminate() {
-        shell.SetDebugOutput("[debug] terminated");
-        shell.SetStatusLeft("Debugging stopped");
-        GUI.Toast.Info("Debugging stopped");
+    if session.RequestTerminate() {
+        shell.SetDebugOutput("[debug] stopping...");
+        shell.SetStatusLeft("Stopping debugger...");
+        GUI.Toast.Info("Stopping debugger");
     } else {
         shell.SetStatusLeft("No active debug session");
     }
@@ -274,14 +284,29 @@ func handleEvaluateAtCursor(shell: app_shell.AppShell,
         GUI.Toast.Info("Evaluate works while paused at a breakpoint");
         return;
     }
-    var word = wordAtCursor(engine);
-    if word == "" {
-        shell.SetStatusLeft("Evaluate: place the cursor on a variable");
+    var expr = DebugExpressionFromEditor(engine);
+    if expr == "" {
+        shell.SetStatusLeft("Evaluate: select an expression or place the cursor on a variable");
         return;
     }
-    if session.Evaluate(word) {
-        shell.SetStatusLeft("Evaluating " + word + "...");
+    if session.Evaluate(expr) {
+        shell.SetStatusLeft("Evaluating " + expr + "...");
     }
+}
+
+/// @brief Choose the expression to send to the debug adapter evaluator.
+/// @details A non-empty primary selection wins so users can evaluate compound
+///          expressions. With no selection, the command falls back to the
+///          identifier under the cursor for quick variable inspection.
+/// @param engine Active editor engine.
+/// @return Trimmed selected text or cursor identifier, empty if unavailable.
+func DebugExpressionFromEditor(engine: editor_engine.EditorEngine) -> String {
+    if engine == null or engine.editor == null { return ""; }
+    if engine.editor.CursorHasSelection(0) != 0 {
+        var selected = Str.Trim(engine.editor.GetSelectedText());
+        if selected != "" { return selected; }
+    }
+    return wordAtCursor(engine);
 }
 
 func Publish(shell: app_shell.AppShell,
@@ -301,6 +326,7 @@ func Publish(shell: app_shell.AppShell,
             + " (" + session.lastReason + ")");
         OpenStopLocation(shell, docMgr, engine, tabs, session);
     } else if session.lastType == "terminated" {
+        ClearDebugStopMarker(engine);
         shell.SetStatusLeft("Program exited (" + session.lastReason + ", code "
             + session.exitCode + ")");
     }
@@ -342,4 +368,50 @@ func OpenStopLocation(shell: app_shell.AppShell,
         }
     }
     engine.GoToLine(session.lastLine);
+    MarkDebugStopLine(engine, session.lastLine);
+}
+
+/// @brief Draw the current debug stop line in the secondary gutter slot.
+/// @details Breakpoints use slot 0, so this marker can be cleared/repainted
+///          independently as the VM stops on different lines.
+/// @param engine Editor containing the stopped source file.
+/// @param line One-based source line reported by the debug adapter.
+func MarkDebugStopLine(engine: editor_engine.EditorEngine,
+                       line: Integer) {
+    if engine == null or engine.editor == null or line <= 0 { return; }
+    engine.editor.ClearGutterIcons(DEBUG_STOP_SLOT);
+    engine.editor.SetGutterIcon(line - 1, DebugStopIcon(), DEBUG_STOP_SLOT);
+}
+
+/// @brief Clear the current debug stop marker from the editor gutter.
+/// @param engine Editor whose secondary gutter slot should be cleared.
+func ClearDebugStopMarker(engine: editor_engine.EditorEngine) {
+    if engine == null or engine.editor == null { return; }
+    engine.editor.ClearGutterIcons(DEBUG_STOP_SLOT);
+}
+
+/// @brief Build a compact arrow marker for the current debug execution line.
+/// @details The icon is generated at runtime to keep ViperIDE dependency-free
+///          and avoid adding platform-specific image assets.
+/// @return Pixels object suitable for CodeEditor.SetGutterIcon.
+func DebugStopIcon() -> Any {
+    var px = Pixels.New(8, 8);
+    px.Clear();
+    px.SetRGBA(2, 1, DEBUG_STOP_COLOR);
+    px.SetRGBA(2, 2, DEBUG_STOP_COLOR);
+    px.SetRGBA(3, 2, DEBUG_STOP_COLOR);
+    px.SetRGBA(2, 3, DEBUG_STOP_COLOR);
+    px.SetRGBA(3, 3, DEBUG_STOP_COLOR);
+    px.SetRGBA(4, 3, DEBUG_STOP_COLOR);
+    px.SetRGBA(2, 4, DEBUG_STOP_COLOR);
+    px.SetRGBA(3, 4, DEBUG_STOP_COLOR);
+    px.SetRGBA(4, 4, DEBUG_STOP_COLOR);
+    px.SetRGBA(5, 4, DEBUG_STOP_COLOR);
+    px.SetRGBA(2, 5, DEBUG_STOP_COLOR);
+    px.SetRGBA(3, 5, DEBUG_STOP_COLOR);
+    px.SetRGBA(4, 5, DEBUG_STOP_COLOR);
+    px.SetRGBA(2, 6, DEBUG_STOP_COLOR);
+    px.SetRGBA(3, 6, DEBUG_STOP_COLOR);
+    px.SetRGBA(2, 7, DEBUG_STOP_COLOR);
+    return px;
 }

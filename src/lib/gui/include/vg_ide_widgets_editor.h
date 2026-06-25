@@ -119,20 +119,20 @@ typedef void (*vg_syntax_callback_t)(
 ///        SetTokenColor order, so existing callers are unaffected. See
 ///        docs/adr/0007-codeeditor-syntax-surface-expansion.md.
 typedef enum vg_syntax_token_type {
-    VG_SYN_TOKEN_DEFAULT = 0,   ///< Plain text / unclassified.
-    VG_SYN_TOKEN_KEYWORD = 1,   ///< Language keyword.
-    VG_SYN_TOKEN_TYPE = 2,      ///< Type / class name.
-    VG_SYN_TOKEN_STRING = 3,    ///< String literal.
-    VG_SYN_TOKEN_COMMENT = 4,   ///< Comment.
-    VG_SYN_TOKEN_NUMBER = 5,    ///< Numeric literal.
-    VG_SYN_TOKEN_FUNCTION = 6,  ///< Function / method call.
-    VG_SYN_TOKEN_OPERATOR = 7,  ///< Operator punctuation (+ - * / = < > etc.).
-    VG_SYN_TOKEN_BRACKET = 8,   ///< Bracket / delimiter ( ) [ ] { }.
-    VG_SYN_TOKEN_PARAMETER = 9, ///< Parameter binding (semantic).
-    VG_SYN_TOKEN_PROPERTY = 10, ///< Field / property access (semantic).
-    VG_SYN_TOKEN_CONSTANT = 11, ///< Constant / enum member (semantic).
-    VG_SYN_TOKEN_DECORATOR = 12,///< Attribute / decorator (semantic).
-    VG_SYN_TOKEN_COUNT = 13     ///< Number of token types (array sizing).
+    VG_SYN_TOKEN_DEFAULT = 0,    ///< Plain text / unclassified.
+    VG_SYN_TOKEN_KEYWORD = 1,    ///< Language keyword.
+    VG_SYN_TOKEN_TYPE = 2,       ///< Type / class name.
+    VG_SYN_TOKEN_STRING = 3,     ///< String literal.
+    VG_SYN_TOKEN_COMMENT = 4,    ///< Comment.
+    VG_SYN_TOKEN_NUMBER = 5,     ///< Numeric literal.
+    VG_SYN_TOKEN_FUNCTION = 6,   ///< Function / method call.
+    VG_SYN_TOKEN_OPERATOR = 7,   ///< Operator punctuation (+ - * / = < > etc.).
+    VG_SYN_TOKEN_BRACKET = 8,    ///< Bracket / delimiter ( ) [ ] { }.
+    VG_SYN_TOKEN_PARAMETER = 9,  ///< Parameter binding (semantic).
+    VG_SYN_TOKEN_PROPERTY = 10,  ///< Field / property access (semantic).
+    VG_SYN_TOKEN_CONSTANT = 11,  ///< Constant / enum member (semantic).
+    VG_SYN_TOKEN_DECORATOR = 12, ///< Attribute / decorator (semantic).
+    VG_SYN_TOKEN_COUNT = 13      ///< Number of token types (array sizing).
 } vg_syntax_token_type;
 
 /// @brief CodeEditor widget structure
@@ -238,6 +238,14 @@ typedef struct vg_codeeditor {
     int *layout_cache_prefix_rows; ///< line_count + 1 row-prefix entries.
     int layout_cache_capacity;     ///< Allocated prefix entry count.
 
+    // Runtime-wrapper content-width cache used by hit-testing and cursor pixel queries.
+    bool runtime_content_width_cache_valid;      ///< True when the runtime width cache is usable.
+    uint64_t runtime_content_width_generation;   ///< Layout generation captured with the cache.
+    float runtime_content_width_base_width;      ///< Base text width key used for the cache.
+    float runtime_content_width_viewport_height; ///< Viewport height key used for the cache.
+    bool runtime_content_width_word_wrap;        ///< Word-wrap state captured with the cache.
+    float runtime_content_width;                 ///< Cached converged text width in pixels.
+
     // Undo/redo history
     vg_edit_history_t *history; ///< Edit history for undo/redo
 
@@ -282,9 +290,11 @@ typedef struct vg_codeeditor {
         int start_col;  ///< 0-based start column (inclusive).
         int end_col;    ///< 0-based end column (exclusive).
         uint32_t color; ///< Resolved ARGB foreground color.
-    } *semantic_tokens;             ///< Owned array; NULL when unused.
-    int semantic_token_count;       ///< Active token count.
-    int semantic_token_cap;         ///< Allocated capacity.
+    } *semantic_tokens; ///< Owned array; NULL when unused.
+
+    int semantic_token_count;    ///< Active token count.
+    int semantic_token_cap;      ///< Allocated capacity.
+    bool semantic_tokens_sorted; ///< True when tokens are ordered by line/start/end.
 
     // Per-line highlight index built from highlight_spans for paint.
     bool highlight_line_index_valid;
@@ -321,10 +331,11 @@ typedef struct vg_codeeditor {
     int gutter_icon_count; ///< Active icon count
     int gutter_icon_cap;   ///< Allocated capacity
 
-    // Per-editor gutter click state (edge-triggered, cleared after read)
-    bool gutter_clicked;     ///< A gutter click occurred this frame
-    int gutter_clicked_line; ///< Line that was clicked (-1 if none)
-    int gutter_clicked_slot; ///< Slot that was clicked (-1 if none)
+    // Per-editor gutter click state (edge-triggered; payload is cleared after read)
+    bool gutter_clicked;     ///< A gutter click is latched for this editor.
+    bool gutter_click_read;  ///< True after the current click edge is consumed.
+    int gutter_clicked_line; ///< Line that was clicked (-1 if none).
+    int gutter_clicked_slot; ///< Slot that was clicked (-1 if none).
 
     // Fold gutter & regions
     bool show_fold_gutter; ///< Show fold indicators in gutter

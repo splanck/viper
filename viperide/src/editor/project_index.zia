@@ -16,6 +16,8 @@ bind Str = Viper.String;
 final INDEX_IDLE_MS = 350;
 final INDEX_FILES_PER_FRAME = 8;
 final INDEX_MAX_SOURCE_BYTES = 200000;
+final INDEX_MAX_BYTES_PER_FRAME = 500000;
+final INDEX_ENUM_CAP = 100000;
 
 class ProjectIndexer {
     expose Any handle;
@@ -132,17 +134,25 @@ class ProjectIndexer {
     expose func StartIndexWorkspace() {
         if valid == false { return; }
         if indexing { return; }
-        var status = FileIndex.Status(rootPath, ".zia", "", false);
-        workspaceIndexEntryCount = Map.GetInt(status, "entryCount");
-        workspaceIndexTruncated = Map.GetBool(status, "truncated");
+        pendingIndexFiles = FileIndex.Enumerate(rootPath, ".zia", "", false);
+        workspaceIndexEntryCount = 0;
+        if pendingIndexFiles != null {
+            workspaceIndexEntryCount = Seq.get_Length(pendingIndexFiles);
+        }
+        workspaceIndexTruncated = workspaceIndexEntryCount >= INDEX_ENUM_CAP;
         workspaceIndexStatusMessage = "";
-        if Map.GetBool(status, "valid") == false {
+        if pendingIndexFiles == null {
             workspaceIndexStatusMessage = "Workspace index unavailable";
         } else if workspaceIndexTruncated {
             workspaceIndexStatusMessage = "Workspace index truncated at "
                 + workspaceIndexEntryCount + " file(s)";
         }
-        pendingIndexFiles = FileIndex.Enumerate(rootPath, ".zia", "", false);
+        if pendingIndexFiles == null {
+            pendingIndexPos = 0;
+            indexing = false;
+            workspaceIndexComplete = true;
+            return;
+        }
         pendingIndexPos = 0;
         indexing = true;
         workspaceIndexComplete = false;
@@ -155,16 +165,24 @@ class ProjectIndexer {
         if limit <= 0 { limit = 8; }
 
         var processed = 0;
+        var bytesThisFrame = 0;
         var total = Seq.get_Length(pendingIndexFiles);
         while pendingIndexPos < total and processed < limit {
             var entry = Seq.Get(pendingIndexFiles, pendingIndexPos);
-            pendingIndexPos = pendingIndexPos + 1;
-            processed = processed + 1;
             var path = Map.GetStr(entry, "path");
             var size = Map.GetInt(entry, "size");
             if size > INDEX_MAX_SOURCE_BYTES {
+                pendingIndexPos = pendingIndexPos + 1;
+                processed = processed + 1;
                 continue;
             }
+            if processed > 0 and size > 0
+               and bytesThisFrame + size > INDEX_MAX_BYTES_PER_FRAME {
+                break;
+            }
+            pendingIndexPos = pendingIndexPos + 1;
+            processed = processed + 1;
+            if size > 0 { bytesThisFrame = bytesThisFrame + size; }
             if FindSyncedOpenPath(path) >= 0 {
                 continue;
             }
@@ -192,8 +210,48 @@ class ProjectIndexer {
             StartIndexWorkspace();
         }
         while indexing {
-            PumpIndex(128);
+            var processed = PumpIndex(128);
+            if processed <= 0 {
+                indexing = false;
+                pendingIndexFiles = null;
+                pendingIndexPos = 0;
+                workspaceIndexComplete = true;
+            }
         }
+    }
+
+    /// @brief Advance workspace indexing without blocking the UI.
+    /// @details Semantic commands call this before definition/reference/rename
+    ///          queries. It starts indexing if needed, pumps at most @p maxFiles
+    ///          files, and reports whether the workspace index is complete. This
+    ///          keeps command handlers responsive on large projects while the
+    ///          existing per-frame pump continues the remaining work.
+    /// @param maxFiles Maximum pending files to index during this command.
+    /// @return True when workspace-level queries can use a complete index.
+    expose func PrepareWorkspaceQuery(maxFiles: Integer) -> Boolean {
+        if valid == false { return false; }
+        EnsureWorkspaceIndexStarted();
+        if workspaceIndexComplete { return true; }
+        PumpIndex(maxFiles);
+        return workspaceIndexComplete;
+    }
+
+    /// @brief Human-readable workspace indexing progress for status surfaces.
+    /// @details The message intentionally stays short because it appears in the
+    ///          status bar and toast notifications when a semantic command is
+    ///          deferred rather than blocking the frame loop.
+    /// @return Progress text such as "Workspace index 24/120".
+    expose func WorkspaceIndexProgressText() -> String {
+        if valid == false { return "Workspace index unavailable"; }
+        if workspaceIndexComplete { return "Workspace index ready"; }
+        var total = workspaceIndexEntryCount;
+        if total <= 0 and pendingIndexFiles != null {
+            total = Seq.get_Length(pendingIndexFiles);
+        }
+        if total > 0 {
+            return "Workspace index " + pendingIndexPos + "/" + total;
+        }
+        return "Workspace index starting";
     }
 
     expose func IndexWorkspace() {
@@ -354,7 +412,7 @@ class ProjectIndexer {
                            col: Integer) -> Any {
         if valid == false { return null; }
         EnsureWorkspaceIndexStarted();
-        PumpIndex(8);
+        if workspaceIndexComplete == false { PumpIndex(INDEX_FILES_PER_FRAME); }
         return ProjectIndex.Definition(handle, path, source, line, col);
     }
 
@@ -364,7 +422,7 @@ class ProjectIndexer {
                            col: Integer) -> Any {
         if valid == false { return null; }
         EnsureWorkspaceIndexStarted();
-        PumpIndex(8);
+        if workspaceIndexComplete == false { PumpIndex(INDEX_FILES_PER_FRAME); }
         return ProjectIndex.References(handle, path, source, line, col);
     }
 
@@ -375,7 +433,7 @@ class ProjectIndexer {
                             newName: String) -> Any {
         if valid == false { return null; }
         EnsureWorkspaceIndexStarted();
-        PumpIndex(8);
+        if workspaceIndexComplete == false { PumpIndex(INDEX_FILES_PER_FRAME); }
         return ProjectIndex.RenameEdits(handle, path, source, line, col, newName);
     }
 

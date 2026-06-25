@@ -1,5 +1,7 @@
 module app_shell;
 
+bind "../editor/language_service";
+
 bind Viper.GUI as GUI;
 bind Viper.Collections.Seq as Seq;
 bind Obj = Viper.Core.Object;
@@ -15,6 +17,10 @@ final TOOL_SOURCE_COL = 10;
 final TOOL_LOCATION_COL = 24;
 final TOOL_CODE_COL = 10;
 final TOOL_ACTION_COL = 18;
+final MAX_BUILD_OUTPUT_CACHE_CHARS = 250000;
+final MAX_OUTPUT_ROW_COUNT = 5000;
+final OUTPUT_CACHE_TRUNCATED_PREFIX = "[output truncated]\n";
+final OUTPUT_ROWS_TRUNCATED_MARKER = "[older output rows hidden]";
 
 // ============================================================================
 // MODULE: app_shell
@@ -456,8 +462,9 @@ class AppShell {
         miAbout = helpMenu.AddItem("About ViperIDE");
 
         // ====================================================================
-        // Toolbar — BMP-only Unicode glyphs (Geometric Shapes + Arrows blocks)
-        // rendered as button text via the system font.
+        // Toolbar — BMP-only Unicode glyphs rendered as button text via the
+        // system font. The symbols stay conservative so they render on the
+        // default cross-platform font stack without adding image assets.
         // NOTE: AddButton(icon, tooltip) treats arg 1 as a FILE PATH
         // (rt_gui_icon_from_path_cstr), so we pass "" for icon and put the
         // glyph in the text slot via AddButtonWithText. Standard system fonts
@@ -467,18 +474,18 @@ class AppShell {
         // ====================================================================
         toolbar = GUI.Toolbar.New(mainVBox);
         tbNew     = toolbar.AddButtonWithText("", "+",  "New File (Ctrl+N)");
-        tbOpen    = toolbar.AddButtonWithText("", "▤",  "Open File (Ctrl+O)");
-        tbSave    = toolbar.AddButtonWithText("", "▼",  "Save File (Ctrl+S)");
+        tbOpen    = toolbar.AddButtonWithText("", "↗",  "Open File (Ctrl+O)");
+        tbSave    = toolbar.AddButtonWithText("", "↓",  "Save File (Ctrl+S)");
         tbSaveAll = toolbar.AddButtonWithText("", "⇓",  "Save All Files (Ctrl+Alt+Shift+S)");
         toolbar.AddSeparator();
-        tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
+        tbBuild   = toolbar.AddButtonWithText("", "⚒",  "Build (Ctrl+Shift+B)");
         tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
         tbStop    = toolbar.AddButtonWithText("", "■",  "Stop Running Job (Shift+F5)");
         tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debugging (F6)");
         tbDebugContinue = toolbar.AddButtonWithText("", "▷", "Continue Debugging (F7)");
-        tbDebugStep = toolbar.AddButtonWithText("", "→", "Step Over (F10)");
+        tbDebugStep = toolbar.AddButtonWithText("", "↷", "Step Over (F10)");
         toolbar.AddSeparator();
-        tbFind    = toolbar.AddButtonWithText("", "?",  "Find (Ctrl+F)");
+        tbFind    = toolbar.AddButtonWithText("", "⌕",  "Find (Ctrl+F)");
         SetBuildJobActive(false, "");
 
         // ====================================================================
@@ -779,6 +786,52 @@ class AppShell {
         }
     }
 
+    /// @brief Apply active-language capability state to menus and editor context actions.
+    /// @details The command registry already disables shortcuts and filters command
+    ///          palette execution. This UI pass keeps visible menu surfaces honest
+    ///          by greying out semantic actions that the active language service
+    ///          cannot currently satisfy, without unregistering or deleting them.
+    /// @param service Capability record selected for the active document.
+    expose func ApplyLanguageCommandState(service: language_service.LanguageService) {
+        var canDefinition = false;
+        var canReferences = false;
+        var canRename = false;
+        var canSymbols = false;
+        var canSignature = false;
+        if service != null {
+            canDefinition = service.canGoToDefinition;
+            canReferences = service.canFindReferences;
+            canRename = service.canRename;
+            canSymbols = service.canDocumentSymbols;
+            canSignature = service.canSignatureHelp;
+        }
+
+        SetMenuEnabled(miGoToDefinition, canDefinition);
+        SetMenuEnabled(miFindReferences, canReferences);
+        SetMenuEnabled(miIncomingCalls, canReferences);
+        SetMenuEnabled(miOutgoingCalls, canDefinition);
+        SetMenuEnabled(miRenameSymbol, canRename);
+        SetMenuEnabled(miWorkspaceSymbols, canSymbols);
+        SetMenuEnabled(miSymbolOutline, canSymbols);
+        SetMenuEnabled(miSignatureHelp, canSignature);
+
+        SetMenuEnabled(ecGotoDef, canDefinition);
+        SetMenuEnabled(ecFindRefs, canReferences);
+        SetMenuEnabled(ecRename, canRename);
+    }
+
+    /// @brief Enable or disable one menu item when the handle exists.
+    /// @param item Menu item handle that may be null during partial setup.
+    /// @param enabled True to enable, false to grey the item out.
+    hide func SetMenuEnabled(item: GUI.MenuItem, enabled: Boolean) {
+        if item == null { return; }
+        if enabled {
+            item.SetEnabled(1);
+        } else {
+            item.SetEnabled(0);
+        }
+    }
+
     /// @brief Set the breadcrumb path; auto-hides when path is empty.
     expose func SetBreadcrumbPath(path: String) {
         if path == "" {
@@ -814,21 +867,32 @@ class AppShell {
             return;
         }
 
-        lastBuildOutput = output;
+        lastBuildOutput = BoundOutputCache("", output);
         if UsesRawOutputPane() {
-            RenderOutputPane(output);
+            RenderOutputPane(lastBuildOutput);
         } else {
-            RenderOutputRows(output);
+            RenderOutputRows(lastBuildOutput);
         }
         ShowOutputPanel();
     }
 
+    /// @brief Append incremental process output to the active output surface.
+    /// @details The raw text pane is used when no filter or wrapping transform is
+    ///          active. Otherwise output is split into rows while preserving a
+    ///          partial trailing line until the next append supplies a newline.
+    /// @param output Newly captured stdout/stderr text.
     expose func AppendBuildOutput(output: String) {
         if output == "" { return; }
+        var previousLen = Str.Length(lastBuildOutput);
+        lastBuildOutput = BoundOutputCache(lastBuildOutput, output);
+        var trimmed = previousLen + Str.Length(output) > MAX_BUILD_OUTPUT_CACHE_CHARS;
         if UsesRawOutputPane() {
             UseOutputPane();
-            outputPane.Append(output);
-            lastBuildOutput = lastBuildOutput + output;
+            if trimmed {
+                RenderOutputPane(lastBuildOutput);
+            } else {
+                outputPane.Append(output);
+            }
             ShowOutputPanel();
             return;
         }
@@ -859,14 +923,38 @@ class AppShell {
             i = i + 1;
         }
 
-        lastBuildOutput = lastBuildOutput + output;
+        if trimmed {
+            RenderOutputRows(lastBuildOutput);
+        }
         ShowOutputPanel();
     }
 
+    /// @brief Append to the cached build output while preserving a bounded tail.
+    /// @details The visible raw pane and row renderer both use this cache for
+    ///          filtering, copying, and repainting. Bounding it keeps long-running
+    ///          jobs from accumulating unbounded UI-side strings even when the
+    ///          BuildSystem has already trimmed its own model.
+    /// @param existing Current cached output.
+    /// @param text New output text.
+    /// @return Combined output, trimmed from the front when too large.
+    hide func BoundOutputCache(existing: String,
+                               text: String) -> String {
+        var combined = existing + text;
+        if Str.Length(combined) <= MAX_BUILD_OUTPUT_CACHE_CHARS {
+            return combined;
+        }
+        return OUTPUT_CACHE_TRUNCATED_PREFIX
+            + Str.Mid(combined, Str.Length(combined) - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
+    }
+
+    /// @brief Return whether build output can be rendered as raw appended text.
+    /// @return True when no row-level filtering or wrapping is active.
     hide func UsesRawOutputPane() -> Boolean {
         return outputFilterText == "" and outputWrapLines == false;
     }
 
+    /// @brief Render complete build output into the raw multiline text pane.
+    /// @param output Complete captured build output text.
     hide func RenderOutputPane(output: String) {
         UseOutputPane();
         outputPane.Clear();
@@ -876,6 +964,8 @@ class AppShell {
         outputPane.Append(output);
     }
 
+    /// @brief Render complete build output into the filterable row list.
+    /// @param output Complete captured build output text.
     hide func RenderOutputRows(output: String) {
         UseOutputRows();
         outputListBox.Clear();
@@ -884,6 +974,7 @@ class AppShell {
         AddBuildOutputLines(output);
     }
 
+    /// @brief Switch the output panel to the raw multiline text widget.
     hide func UseOutputPane() {
         outputPaneMode = true;
         outputListBox.SetVisible(0);
@@ -892,6 +983,7 @@ class AppShell {
         }
     }
 
+    /// @brief Switch the output panel to row-list mode.
     expose func UseOutputRows() {
         outputPaneMode = false;
         outputPane.SetVisible(0);
@@ -900,6 +992,7 @@ class AppShell {
         }
     }
 
+    /// @brief Clear output rows and prepare for row-by-row population.
     expose func BeginOutputRows() {
         UseOutputRows();
         outputListBox.Clear();
@@ -907,6 +1000,8 @@ class AppShell {
         outputPartialItem = null;
     }
 
+    /// @brief Return whether either output surface currently contains content.
+    /// @return True when raw text, rendered rows, or cached output text exist.
     hide func HasOutputContent() -> Boolean {
         if lastBuildOutput != "" { return true; }
         if outputPaneMode and outputPane.LineCount > 0 { return true; }
@@ -1034,7 +1129,9 @@ class AppShell {
         if outputFilterText != "" and Str.IndexOf(Str.ToLower(line), outputFilterText) == 0 {
             return null;
         }
-        if outputWrapLines == false or Str.Length(line) <= 160 {
+        EnsureOutputRowCapacity();
+        var wrapColumn = OutputWrapColumn();
+        if outputWrapLines == false or Str.Length(line) <= wrapColumn {
             var item = outputListBox.AddItem(line);
             ApplyOutputLineColor(item, line);
             if outputAutoScroll {
@@ -1046,16 +1143,46 @@ class AppShell {
         var first: Any = null;
         var start = 1;
         while start <= Str.Length(line) {
-            var chunk = Str.MidLen(line, start, 160);
+            var chunk = Str.MidLen(line, start, wrapColumn);
             var item = outputListBox.AddItem(chunk);
             ApplyOutputLineColor(item, line);
             if first == null { first = item; }
             if outputAutoScroll {
                 outputListBox.ScrollToBottom();
             }
-            start = start + 160;
+            start = start + wrapColumn;
         }
         return first;
+    }
+
+    /// @brief Keep the row-mode output surface bounded.
+    /// @details ListBox rows are heavier than raw text appends. When the row
+    ///          renderer reaches the cap, it drops older rendered rows and keeps a
+    ///          marker row so the user can tell history was condensed. The full
+    ///          bounded text cache remains available for copy/filter repaint.
+    hide func EnsureOutputRowCapacity() {
+        if outputListBox.Count < MAX_OUTPUT_ROW_COUNT {
+            return;
+        }
+        outputListBox.Clear();
+        outputListBox.AddItem(OUTPUT_ROWS_TRUNCATED_MARKER);
+        outputPartialItem = null;
+    }
+
+    /// @brief Compute an approximate output wrap width for the current window.
+    /// @details Output rows are still rendered through ListBox, so the IDE does
+    ///          not have text-measurement per row here. This heuristic tracks the
+    ///          current window width and clamps to readable bounds, avoiding the
+    ///          old fixed 160-character behavior on small and wide layouts.
+    /// @return Character count used for wrapped output chunks.
+    hide func OutputWrapColumn() -> Integer {
+        var col = 160;
+        if app != null {
+            col = app.GetWidth() / 8;
+        }
+        if col < 80 { col = 80; }
+        if col > 220 { col = 220; }
+        return col;
     }
 
     expose func ClearProblemsPanel() {
@@ -1085,7 +1212,7 @@ class AppShell {
         var displayCode = code;
         if displayCode == "" { displayCode = "-"; }
         var displayAction = action;
-        if displayAction == "" { displayAction = "No quick fix"; }
+        if displayAction == "" or displayAction == "No quick fix" { displayAction = "-"; }
         var displaySource = source;
         if displaySource == "" { displaySource = "-"; }
         var location = filePath + ":" + line + ":" + column;
@@ -1245,18 +1372,7 @@ class AppShell {
 
     expose func HideProblemsPanel() {
         diagListBox.SetVisible(0);
-        if HasOutputContent() {
-            ShowOutputPanel();
-        } else if searchListBox.Count > 0 {
-            ShowSearchPanel();
-        } else if referencesListBox.Count > 0 {
-            ShowReferencesPanel();
-        } else if debugListBox.Count > 0 {
-            ShowDebugPanel();
-        } else {
-            toolTabBar.SetVisible(0);
-            activeToolPanelKind = 0;
-        }
+        ShowFallbackToolPanel();
     }
 
     expose func ShowOutputPanel() {
@@ -1279,18 +1395,7 @@ class AppShell {
     expose func HideOutputPanel() {
         outputPane.SetVisible(0);
         outputListBox.SetVisible(0);
-        if diagListBox.Count > 0 {
-            ShowProblemsPanel();
-        } else if searchListBox.Count > 0 {
-            ShowSearchPanel();
-        } else if referencesListBox.Count > 0 {
-            ShowReferencesPanel();
-        } else if debugListBox.Count > 0 {
-            ShowDebugPanel();
-        } else {
-            toolTabBar.SetVisible(0);
-            activeToolPanelKind = 0;
-        }
+        ShowFallbackToolPanel();
     }
 
     expose func ShowSearchPanel() {
@@ -1307,18 +1412,7 @@ class AppShell {
 
     expose func HideSearchPanel() {
         searchListBox.SetVisible(0);
-        if HasOutputContent() {
-            ShowOutputPanel();
-        } else if diagListBox.Count > 0 {
-            ShowProblemsPanel();
-        } else if referencesListBox.Count > 0 {
-            ShowReferencesPanel();
-        } else if debugListBox.Count > 0 {
-            ShowDebugPanel();
-        } else {
-            toolTabBar.SetVisible(0);
-            activeToolPanelKind = 0;
-        }
+        ShowFallbackToolPanel();
     }
 
     expose func ShowReferencesPanel() {
@@ -1335,18 +1429,7 @@ class AppShell {
 
     expose func HideReferencesPanel() {
         referencesListBox.SetVisible(0);
-        if HasOutputContent() {
-            ShowOutputPanel();
-        } else if diagListBox.Count > 0 {
-            ShowProblemsPanel();
-        } else if searchListBox.Count > 0 {
-            ShowSearchPanel();
-        } else if debugListBox.Count > 0 {
-            ShowDebugPanel();
-        } else {
-            toolTabBar.SetVisible(0);
-            activeToolPanelKind = 0;
-        }
+        ShowFallbackToolPanel();
     }
 
     expose func ShowDebugPanel() {
@@ -1363,6 +1446,15 @@ class AppShell {
 
     expose func HideDebugPanel() {
         debugListBox.SetVisible(0);
+        ShowFallbackToolPanel();
+    }
+
+    /// @brief Select the best remaining bottom tool panel after one is hidden.
+    /// @details All Hide*Panel entry points converge here so the fallback order
+    ///          and empty-state handling stay consistent. It preserves existing
+    ///          content instead of deleting rows, and hides the tab strip only
+    ///          when no tool panel has visible content left.
+    hide func ShowFallbackToolPanel() {
         if HasOutputContent() {
             ShowOutputPanel();
         } else if diagListBox.Count > 0 {
@@ -1371,6 +1463,8 @@ class AppShell {
             ShowSearchPanel();
         } else if referencesListBox.Count > 0 {
             ShowReferencesPanel();
+        } else if debugListBox.Count > 0 {
+            ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
             activeToolPanelKind = 0;

@@ -115,6 +115,7 @@ class DocumentManager {
         doc.isModified = false;
         if IO.File.Exists(path) {
             doc.lastModifiedOnDisk = IO.File.Modified(path);
+            doc.lastSizeOnDisk = IO.File.Size(path);
         }
         doc.externalChangeNotified = false;
 
@@ -140,7 +141,7 @@ class DocumentManager {
             return false;
         }
         doc.isModified = false;
-        doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+        RefreshDiskMetadata(doc);
         doc.externalChangeNotified = false;
         return true;
     }
@@ -154,15 +155,17 @@ class DocumentManager {
         if activeIndex < 0 { return false; }
         var doc = documents.get(activeIndex);
         if doc.isReadOnlyPreview { return false; }
+        if WriteTextForSaveAs(path, doc.content) == false {
+            return false;
+        }
         doc.filePath = path;
         doc.fileName = Path.Name(path);
         doc.language = file_utils.DetectLanguage(path);
         doc.kind = file_utils.DetectKind(path);
         doc.isReadOnlyPreview = false;
         doc.isNew = false;
-        IO.File.WriteAllText(path, doc.content);
         doc.isModified = false;
-        doc.lastModifiedOnDisk = IO.File.Modified(path);
+        RefreshDiskMetadata(doc);
         doc.externalChangeNotified = false;
         return true;
     }
@@ -187,7 +190,7 @@ class DocumentManager {
             if doc.isModified and doc.isNew == false and doc.isReadOnlyPreview == false {
                 if WriteExistingTextAtomically(doc.filePath, doc.content) {
                     doc.isModified = false;
-                    doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+                    RefreshDiskMetadata(doc);
                     doc.externalChangeNotified = false;
                     count = count + 1;
                 }
@@ -209,13 +212,14 @@ class DocumentManager {
         if path == "" or IO.File.Exists(path) == false { return false; }
         var root = Path.Dir(path);
         if root == "" { return false; }
+        var existingText = IO.File.ReadAllText(path);
 
         var edit = Map.New();
         Map.SetStr(edit, "file", Path.Name(path));
         Map.SetInt(edit, "startLine", 1);
         Map.SetInt(edit, "startColumn", 1);
-        Map.SetInt(edit, "endLine", EndLineForWholeFile(path));
-        Map.SetInt(edit, "endColumn", EndColumnForWholeFile(path));
+        Map.SetInt(edit, "endLine", EndLineForText(existingText));
+        Map.SetInt(edit, "endColumn", EndColumnForText(existingText));
         Map.SetStr(edit, "newText", content);
         Map.SetInt(edit, "expectedMtime", IO.File.Modified(path));
         Map.SetInt(edit, "expectedSize", IO.File.Size(path));
@@ -226,12 +230,88 @@ class DocumentManager {
         return Map.GetBool(result, "success");
     }
 
+    /// @brief Persist Save As content without mutating document state first.
+    /// @details Existing targets use the same transactional replacement path as
+    ///          ordinary saves. New targets are written through a same-directory
+    ///          temporary file and then moved into place so a failed write does
+    ///          not leave the requested destination partially populated.
+    /// @param path Destination path chosen by the user.
+    /// @param content Complete text to save.
+    /// @return True when the destination now contains @p content.
+    hide func WriteTextForSaveAs(path: String, content: String) -> Boolean {
+        if path == "" { return false; }
+        if IO.File.Exists(path) {
+            return WriteExistingTextAtomically(path, content);
+        }
+        var dir = Path.Dir(path);
+        if dir == "" { return false; }
+        var tempPath = SaveAsTempPath(dir, Path.Name(path));
+        if tempPath == "" { return false; }
+        IO.File.WriteAllText(tempPath, content);
+        if IO.File.Exists(tempPath) == false {
+            return false;
+        }
+        IO.File.Move(tempPath, path);
+        if IO.File.Exists(path) == false {
+            if IO.File.Exists(tempPath) {
+                IO.File.Delete(tempPath);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /// @brief Choose an unused same-directory temporary path for Save As.
+    /// @details The path includes the target basename, current tick, and a
+    ///          bounded numeric suffix. Same-directory placement preserves the
+    ///          eventual move/rename behavior while avoiding deterministic temp
+    ///          collisions when multiple saves start during the same clock tick.
+    /// @param dir Existing destination directory.
+    /// @param name Basename of the user-selected target file.
+    /// @return Temporary path, or an empty string when no free candidate exists.
+    hide func SaveAsTempPath(dir: String, name: String) -> String {
+        if dir == "" or name == "" { return ""; }
+        var base = Path.Join(dir, "." + name + ".viperide-tmp-" + Viper.Time.GetTickCount());
+        var attempt = 0;
+        while attempt < 128 {
+            var candidate = base;
+            if attempt > 0 {
+                candidate = base + "-" + attempt;
+            }
+            if IO.File.Exists(candidate) == false {
+                return candidate;
+            }
+            attempt = attempt + 1;
+        }
+        return "";
+    }
+
+    /// @brief Refresh a document's saved on-disk metadata after load/save.
+    /// @details External-change detection compares both timestamp and size, so
+    ///          every successful disk synchronization must update both fields.
+    /// @param doc Document whose `filePath` points at the synchronized file.
+    hide func RefreshDiskMetadata(doc: document.Document) {
+        if doc == null or doc.filePath == "" or IO.File.Exists(doc.filePath) == false {
+            return;
+        }
+        doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+        doc.lastSizeOnDisk = IO.File.Size(doc.filePath);
+    }
+
     /// @brief Compute the last line number of an existing file for full-file replacement.
     /// @details The runtime workspace edit range is expressed in 1-based line and
     ///          column coordinates. This helper reads the current on-disk file so
     ///          external changes are caught by expected size/mtime validation.
     hide func EndLineForWholeFile(path: String) -> Integer {
-        var text = IO.File.ReadAllText(path);
+        return EndLineForText(IO.File.ReadAllText(path));
+    }
+
+    /// @brief Compute the last 1-based line number for a full-file edit range.
+    /// @details This string-based form lets save operations read the old file
+    ///          once and derive both end coordinates from the same snapshot.
+    /// @param text Current file contents.
+    /// @return Last line number in the runtime workspace-edit coordinate system.
+    hide func EndLineForText(text: String) -> Integer {
         var lines = Str.Split(text, "\n");
         var count = Seq.get_Length(lines);
         if count <= 0 { return 1; }
@@ -242,7 +322,15 @@ class DocumentManager {
     /// @details CRLF files keep the carriage return in the split line, matching
     ///          the runtime's byte/character scan and preserving correct EOF ranges.
     hide func EndColumnForWholeFile(path: String) -> Integer {
-        var text = IO.File.ReadAllText(path);
+        return EndColumnForText(IO.File.ReadAllText(path));
+    }
+
+    /// @brief Compute the exclusive end column for a full-file edit range.
+    /// @details Uses the last line of an already-read file snapshot so callers
+    ///          avoid a second full-file read during ordinary save operations.
+    /// @param text Current file contents.
+    /// @return Exclusive 1-based end column for the final line.
+    hide func EndColumnForText(text: String) -> Integer {
         var lines = Str.Split(text, "\n");
         var count = Seq.get_Length(lines);
         if count <= 0 { return 1; }
@@ -256,7 +344,9 @@ class DocumentManager {
         if doc.isNew { return false; }
         if IO.File.Exists(doc.filePath) == false { return false; }
         var current = IO.File.Modified(doc.filePath);
-        return doc.lastModifiedOnDisk > 0 and current > doc.lastModifiedOnDisk;
+        var currentSize = IO.File.Size(doc.filePath);
+        return doc.lastModifiedOnDisk > 0
+            and (current != doc.lastModifiedOnDisk or currentSize != doc.lastSizeOnDisk);
     }
 
     /// @brief Reload an existing document through the same safety rules as OpenFile.
@@ -273,7 +363,7 @@ class DocumentManager {
         doc.kind = file_utils.DetectKind(doc.filePath);
         doc.isReadOnlyPreview = IsReadOnlyPreviewPath(doc.filePath, doc.kind);
         doc.content = OpenableTextForPath(doc.filePath, doc.kind);
-        doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
+        RefreshDiskMetadata(doc);
         doc.isModified = false;
         doc.externalChangeNotified = false;
         return true;
@@ -413,13 +503,26 @@ class DocumentManager {
     /// @brief Linear search for a document by filePath.
     /// @return Index, or -1 if not found.
     expose func FindByPath(path: String) -> Integer {
+        if path == "" { return -1; }
+        var target = NormalizeDocumentPath(path);
         var i = 0;
         while i < documents.count() {
             var doc = documents.get(i);
-            if doc.filePath == path { return i; }
+            if NormalizeDocumentPath(doc.filePath) == target { return i; }
             i = i + 1;
         }
         return -1;
+    }
+
+    /// @brief Normalize document paths for tab de-duplication and lookup.
+    /// @details The editor receives paths from dialogs, diagnostics, sessions,
+    ///          and project search. Lexical normalization avoids duplicate tabs
+    ///          for equivalent spellings of the same file.
+    /// @param path Path spelling to normalize.
+    /// @return Absolute normalized path or an empty string.
+    hide func NormalizeDocumentPath(path: String) -> String {
+        if path == "" { return ""; }
+        return Path.Norm(Path.Abs(path));
     }
 
     /// @brief Number of open documents.
@@ -468,9 +571,7 @@ class DocumentManager {
         doc.fileName = Path.Name(newPath);
         doc.language = file_utils.DetectLanguage(newPath);
         doc.kind = file_utils.DetectKind(newPath);
-        if IO.File.Exists(newPath) {
-            doc.lastModifiedOnDisk = IO.File.Modified(newPath);
-        }
+        RefreshDiskMetadata(doc);
         doc.externalChangeNotified = false;
     }
 

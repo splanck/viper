@@ -191,6 +191,11 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 - [ADR-0004](adr/0004-graphics3d-runtime-surface-expansion.md) — Graphics3D runtime surface expansion
 - [ADR-0005](adr/0005-resume-token-provenance.md) — Resume-token provenance
 - [ADR-0006](adr/0006-spec-currency-and-adr-triggers.md) — Spec currency and ADR triggers
+- [ADR-0007](adr/0007-codeeditor-syntax-surface-expansion.md) — CodeEditor syntax surface expansion
+- [ADR-0008](adr/0008-semantic-token-overlay.md) — Semantic token overlay
+- [ADR-0009](adr/0009-debug-evaluate-protocol.md) — Debug adapter evaluate protocol
+- [ADR-0010](adr/0010-workspace-file-index-status.md) — Workspace file index status API
+- [ADR-0011](adr/0011-codeeditor-editing-runtime-api.md) — CodeEditor editing runtime API
 
 ---
 
