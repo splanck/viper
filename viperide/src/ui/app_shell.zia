@@ -133,6 +133,7 @@ class AppShell {
     expose GUI.MenuItem miToggleTheme;
     expose GUI.MenuItem miFullscreen;
     expose GUI.MenuItem miToggleMinimap;
+    expose GUI.MenuItem miTerminal;
 
     // Build menu
     expose GUI.Menu buildMenu;
@@ -206,6 +207,13 @@ class AppShell {
     expose GUI.ListBox variablesListBox; // debug: locals at the current stop
     expose GUI.ListBox callStackListBox; // debug: call frames at the current stop
 
+    // Integrated terminal (Phase 5D): panel + ANSI output pane + command line.
+    expose GUI.VBox terminalPanel;
+    expose GUI.OutputPane terminalPane;
+    expose GUI.TextInput terminalInput;
+    expose GUI.Button terminalRun;
+    expose GUI.Button terminalKill;
+
     // Bottom tool surface tabs
     expose GUI.TabBar toolTabBar;
     expose GUI.Tab toolProblemsTab;
@@ -213,6 +221,7 @@ class AppShell {
     expose GUI.Tab toolSearchTab;
     expose GUI.Tab toolReferencesTab;
     expose GUI.Tab toolDebugTab;
+    expose GUI.Tab toolTerminalTab;
     expose GUI.Tab toolVariablesTab;
     expose GUI.Tab toolCallStackTab;
 
@@ -451,6 +460,8 @@ class AppShell {
         miFullscreen.SetShortcut("F11");
         miToggleMinimap = viewMenu.AddItem("Toggle Minimap");
         miToggleMinimap.SetShortcut("Ctrl+Shift+M");
+        viewMenu.AddSeparator();
+        miTerminal = viewMenu.AddItem("Terminal");
 
         // Build menu
         buildMenu = menuBar.AddMenu("Build");
@@ -612,6 +623,7 @@ class AppShell {
         toolVariablesTab = toolTabBar.AddTab("Variables", 0);
         toolCallStackTab = toolTabBar.AddTab("Call Stack", 0);
         toolDebugTab = toolTabBar.AddTab("Debug Console", 0);
+        toolTerminalTab = toolTabBar.AddTab("Terminal", 0);
         toolTabBar.SetVisible(0);
 
         diagListBox = GUI.ListBox.New(editorArea);
@@ -656,6 +668,27 @@ class AppShell {
         callStackListBox.SetMultiSelect(0);
         callStackListBox.SetVisible(0);
         callStackListBox.SetSize(0, 120);
+
+        // Integrated terminal panel (Phase 5D): ANSI output pane + command line.
+        terminalPanel = GUI.VBox.New();
+        terminalPanel.SetSpacing(0.0);
+        terminalPanel.SetPadding(0.0);
+        terminalPanel.SetSize(0, 220);
+        terminalPanel.SetVisible(0);
+        editorArea.AddChild(terminalPanel);
+        terminalPane = GUI.OutputPane.New(terminalPanel);
+        terminalPane.SetMaxLines(10000);
+        terminalPane.SetAutoScroll(1);
+        terminalPane.SetFlex(1.0);
+        var terminalInputRow = GUI.HBox.New();
+        terminalInputRow.SetSpacing(0.0);
+        terminalInputRow.SetPadding(0.0);
+        terminalPanel.AddChild(terminalInputRow);
+        terminalInput = GUI.TextInput.New(terminalInputRow);
+        terminalInput.SetFlex(1.0);
+        terminalInput.SetPlaceholder("Type a command, then Run");
+        terminalRun = GUI.Button.New(terminalInputRow, "Run");
+        terminalKill = GUI.Button.New(terminalInputRow, "Stop");
 
         // Context menu for the file tree (populated on right-click)
         treeContextMenu = GUI.ContextMenu.New();
@@ -1727,6 +1760,7 @@ class AppShell {
         debugListBox.SetVisible(0);
         variablesListBox.SetVisible(0);
         callStackListBox.SetVisible(0);
+        terminalPanel.SetVisible(0);
     }
 
     expose func ShowProblemsPanel() {
@@ -1810,6 +1844,14 @@ class AppShell {
         debugListBox.SetVisible(1);
     }
 
+    expose func ShowTerminalPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolTerminalTab);
+        activeToolPanelKind = 8;
+        HideAllToolPanels();
+        terminalPanel.SetVisible(1);
+    }
+
     expose func HideDebugPanel() {
         debugListBox.SetVisible(0);
         ShowFallbackToolPanel();
@@ -1869,6 +1911,8 @@ class AppShell {
             ShowCallStackPanel();
         } else if idx == 6 {
             ShowDebugPanel();
+        } else if idx == 7 {
+            ShowTerminalPanel();
         } else {
             toolTabBar.SetActive(toolOutputTab);
             if HasOutputContent() {

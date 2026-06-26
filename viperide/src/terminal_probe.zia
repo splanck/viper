@@ -1,0 +1,47 @@
+module terminal_probe;
+
+bind "terminal/terminal_session";
+
+bind Terminal = Viper.Terminal;
+bind Pty = Viper.System.Pty;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+bind Clock = Viper.Time.Clock;
+
+// Headless probe for the integrated terminal session layer (sub-phase 5D). Runs
+// a deterministic command through a PtySession via terminal_session and asserts
+// its output is captured. Skips cleanly when PTYs are unsupported (e.g. older
+// Windows / ViperDOS), so it is green on every backend.
+
+func main() {
+    if Pty.IsSupported() == false {
+        Terminal.Say("RESULT: ok (pty unsupported, skipped)");
+        return;
+    }
+
+    var sess = new terminal_session.TerminalSession();
+    var args = Seq.New();
+    Seq.Push(args, "termprobe456");
+    if sess.Start("/bin/echo", args, "", 80, 24) == false {
+        Terminal.Say("RESULT: fail start");
+        return;
+    }
+
+    var out = "";
+    var i = 0;
+    while i < 400 {
+        out = out + sess.Update();
+        if sess.IsActive() == false { break; }
+        Clock.Sleep(5);
+        i = i + 1;
+    }
+    out = out + sess.Update();
+    sess.Resize(120, 40);
+    sess.Stop();
+
+    if Str.IndexOf(out, "termprobe456") >= 0 {
+        Terminal.Say("RESULT: ok");
+    } else {
+        Terminal.Say("RESULT: fail no-output out=[" + out + "]");
+    }
+}

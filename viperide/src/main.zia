@@ -6,6 +6,7 @@ bind "ui/explorer_actions";
 bind "ui/debug_breakpoint_overlay";
 bind "ui/activity_bar";
 bind "scm/scm_view";
+bind "terminal/terminal_controller";
 bind "core/document";
 bind "core/document_manager";
 bind "core/project";
@@ -140,6 +141,7 @@ func main() {
     var projMgr = new project_manager.ProjectManager();
     var activityBarCtrl = new activity_bar.ActivityBar();
     var scmView = new scm_view.ScmView();
+    var terminalCtrl = new terminal_controller.TerminalController();
     var buildSys = new build_system.BuildSystem();
     var breakpointStore = new breakpoints.BreakpointStore();
     var dbgSession = new debug_session.DebugSession();
@@ -203,6 +205,8 @@ func main() {
     activityBarCtrl.Setup(shell.explorerView, shell.scmViewHost, shell.abExplorer, shell.abSourceControl);
     scmView.Setup(shell.scmViewHost);
     if projMgr.project != null and projMgr.project.isOpen { scmView.SetRepo(projMgr.project.rootPath); }
+    terminalCtrl.Setup(shell.terminalPane, shell.terminalInput, shell.terminalRun, shell.terminalKill);
+    if projMgr.project != null and projMgr.project.isOpen { terminalCtrl.SetCwd(projMgr.project.rootPath); }
 
     commandRegistry.InstallShortcuts();
     Shortcuts.Register("palette", "Ctrl+Shift+P", "Command Palette");
@@ -293,11 +297,16 @@ func main() {
     var lastOpenDocPollMs = 0;
     var lastWorkspaceIndexStatus = "";
 
+    // [TEMP] VIPER_TERM_SELFTEST=1 auto-opens the Terminal panel on startup (diagnostic).
+    var stForceTerminal = Viper.System.Environment.GetVariable("VIPER_TERM_SELFTEST") == "1";
+    var stDone = false;
+
     // ========================================================================
     // Main event loop
     // ========================================================================
     while shell != null and shell.ShouldClose() == false {
         perfMon.BeginFrame();
+        if stForceTerminal and stDone == false { shell.ShowTerminalPanel(); stDone = true; }
         shell.Poll();
 
         // Activity bar — switch the left view (Explorer / Source Control).
@@ -307,6 +316,7 @@ func main() {
             if projMgr.project != null and projMgr.project.isOpen { scmView.SetRepo(projMgr.project.rootPath); }
         }
         scmView.HandleEvents();
+        terminalCtrl.Pump();
         if shell.WasCloseRequested() {
             file_commands.SaveEditorState(docMgr, engine);
             breakpointStore.Save();
@@ -750,6 +760,10 @@ func main() {
         }
         if triggeredNoMenu("addfolder", cpSelected) {
             file_commands.handleAddFolderToWorkspace(shell, projMgr);
+        }
+        if triggered("terminal", shell.miTerminal, null, cpSelected) {
+            if projMgr.project != null and projMgr.project.isOpen { terminalCtrl.SetCwd(projMgr.project.rootPath); }
+            shell.ShowTerminalPanel();
         }
         if triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
         if triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }

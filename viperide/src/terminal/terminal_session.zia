@@ -1,0 +1,90 @@
+module terminal_session;
+
+bind Pty = Viper.System.Pty;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: terminal_session  (Phase 5D — integrated terminal)
+// PURPOSE: Thin wrapper around a Viper.System.Pty PtySession for the IDE
+//          terminal: start a PTY-backed child, drain its merged output each
+//          frame, send input, resize, and stop. No widgets — terminal_controller
+//          owns the UI and pumps this.
+//
+// NOTE: Pty's i1 methods map to Zia Boolean (compare with == false / if x), its
+//       i64 methods (ExitCode/Write) to Integer.
+// ============================================================================
+
+final MAX_TERMINAL_OUTPUT_DELTA = 65536;
+
+/// @brief A running PTY-backed terminal child.
+class TerminalSession {
+    expose Pty.PtySession session;
+    expose Boolean active;    // child is running
+    expose Boolean started;   // a start was attempted (don't auto-restart)
+    expose Integer exitCode;
+
+    expose func init() {
+        session = null;
+        active = false;
+        started = false;
+        exitCode = -1;
+    }
+
+    /// @brief Open a PTY-backed child. @return true when the session is live.
+    expose func Start(program: String, args: Any, cwd: String, cols: Integer, rows: Integer) -> Boolean {
+        started = true;
+        if Pty.IsSupported() == false { return false; }
+        if active { return true; }
+        var a = args;
+        if a == null { a = Seq.New(); }
+        session = Pty.Open(program, a, cwd, null, cols, rows);
+        if session == null { return false; }
+        if session.IsValid() == false { session = null; return false; }
+        active = true;
+        return true;
+    }
+
+    /// @brief Drain available output (bounded); detect exit. @return new bytes.
+    expose func Update() -> String {
+        if session == null or active == false { return ""; }
+        var out = session.Read();
+        if session.IsRunning() == false {
+            out = out + session.Read();
+            exitCode = session.ExitCode();
+            active = false;
+        }
+        if Str.Length(out) > MAX_TERMINAL_OUTPUT_DELTA {
+            out = Str.Left(out, MAX_TERMINAL_OUTPUT_DELTA);
+        }
+        return out;
+    }
+
+    /// @brief Write raw bytes to the terminal input.
+    expose func Send(text: String) {
+        if session == null or active == false { return; }
+        session.Write(text);
+    }
+
+    /// @brief Write a line (appends newline) to the terminal input.
+    expose func SendLine(text: String) {
+        Send(text + "\n");
+    }
+
+    /// @brief Resize the terminal window.
+    expose func Resize(cols: Integer, rows: Integer) {
+        if session == null { return; }
+        session.Resize(cols, rows);
+    }
+
+    /// @brief Terminate the child and release the session.
+    expose func Stop() {
+        if session == null { return; }
+        session.Kill();
+        session.Destroy();
+        session = null;
+        active = false;
+    }
+
+    expose func IsActive() -> Boolean { return active; }
+}

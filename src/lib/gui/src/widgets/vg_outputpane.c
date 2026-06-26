@@ -701,12 +701,30 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
                 segment_start = p + 1;
             }
 
-            if (pane->in_escape && (*p == 'm' || *p == 'H' || *p == 'J' || *p == 'K')) {
-                // End of escape sequence
+            if (pane->in_escape && *p >= '@' && *p <= '~' && *p != '[') {
+                // End of a CSI/escape sequence on its final byte (m, h, l, A-K, ...).
+                // CSI parameter/intermediate bytes are all < 0x40, so the first byte
+                // in 0x40-0x7E (other than the '[' introducer) is the terminator.
+                // Only SGR ("...m") changes color; other finals (e.g. the shell's
+                // ESC[?1034h) are consumed and ignored rather than eating later text.
                 process_ansi_escape(pane);
                 segment_start = p + 1;
             }
             p++;
+        } else if (*p == '\r') {
+            // Carriage return: flush pending text and drop the CR. The line-append
+            // model has no cursor column, so CRLF collapses to one newline and a
+            // bare CR (line-rewrite) is dropped rather than rendered as a stray byte.
+            if (p > segment_start) {
+                (void)outputpane_append_segment_copy(line,
+                                                     segment_start,
+                                                     (size_t)(p - segment_start),
+                                                     pane->current_fg,
+                                                     pane->current_bg,
+                                                     pane->ansi_bold);
+            }
+            p++;
+            segment_start = p;
         } else if (*p == '\n') {
             // Flush pending text
             if (p > segment_start) {

@@ -120,6 +120,7 @@ src/runtime/rt_platform_feature.h 2
 src/runtime/system/rt_exec.c 6
 src/runtime/system/rt_machine.c 31
 src/runtime/system/rt_process.c 7
+src/runtime/system/rt_pty.c 6
 src/runtime/text/rt_hash_util.c 4
 src/runtime/text/rt_hash_util.h 1
 src/runtime/text/rt_json_format.c 2

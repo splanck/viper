@@ -1,0 +1,95 @@
+module terminal_controller;
+
+bind "terminal_session";
+
+bind Viper.GUI as GUI;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Machine = Viper.System.Machine;
+
+// ============================================================================
+// MODULE: terminal_controller  (Phase 5D — integrated terminal)
+// PURPOSE: Drives the bottom-panel terminal: an OutputPane (the already
+//          ANSI-SGR-aware widget) for output, a TextInput command line, and
+//          Run/Stop buttons, all owned by the shell. Spawns a platform shell via
+//          terminal_session (over Viper.System.Pty) on first reveal, drains
+//          output each frame, and sends typed lines.
+//
+// WHERE-THIS-FITS: main.zia constructs it, Setup()s it with the shell widgets,
+//          SetCwd()s it to the active project root, and calls Pump() each frame.
+//          Pump only works when the terminal panel is visible.
+//
+// v1 SCOPE: line input (type + Run/Enter sends a line). Raw per-keystroke input
+//   and full-screen TUI rendering are out of scope (the OutputPane is line-append).
+// ============================================================================
+
+/// @brief Integrated-terminal UI controller.
+class TerminalController {
+    expose terminal_session.TerminalSession sess;
+    expose GUI.OutputPane pane;
+    expose GUI.TextInput input;
+    expose GUI.Button runBtn;
+    expose GUI.Button killBtn;
+    expose Boolean ready;
+    expose String cwd;
+
+    expose func init() {
+        sess = new terminal_session.TerminalSession();
+        ready = false;
+        cwd = "";
+    }
+
+    /// @brief Wire the shell-owned widgets.
+    expose func Setup(paneArg: GUI.OutputPane, inputArg: GUI.TextInput,
+                      runArg: GUI.Button, killArg: GUI.Button) {
+        pane = paneArg;
+        input = inputArg;
+        runBtn = runArg;
+        killBtn = killArg;
+        ready = true;
+    }
+
+    /// @brief Working directory for newly spawned shells (the active project root).
+    expose func SetCwd(dir: String) {
+        cwd = dir;
+    }
+
+    hide func ShellPath() -> String {
+        if Machine.OS == "windows" { return "cmd.exe"; }
+        return "/bin/sh";
+    }
+
+    hide func EnsureStarted() {
+        if sess.IsActive() { return; }
+        if sess.started { return; } // already attempted (or exited) — don't loop
+        var args = Seq.New();
+        if Machine.OS != "windows" { Seq.Push(args, "-i"); } // interactive shell: show a prompt
+        var ok = sess.Start(ShellPath(), args, cwd, 100, 30);
+        if ok == false and pane != null {
+            pane.Append("[integrated terminal is unavailable on this platform]\n");
+        }
+    }
+
+    /// @brief Per-frame pump; no-op unless the terminal panel is visible.
+    expose func Pump() {
+        if ready == false { return; }
+        if pane.IsVisible() == 0 { return; }
+
+        EnsureStarted();
+
+        var delta = sess.Update();
+        if Str.Length(delta) > 0 {
+            pane.Append(delta);
+        }
+
+        if runBtn.WasClicked() != 0 {
+            var line = input.get_Text();
+            sess.SendLine(line);
+            input.SetText("");
+        }
+        if killBtn.WasClicked() != 0 {
+            sess.Stop();
+            pane.Append("\n[stopped]\n");
+        }
+    }
+}

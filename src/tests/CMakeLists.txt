@@ -1135,6 +1135,22 @@ set_tests_properties(zia_viperide_scm PROPERTIES
         LABELS "zia;viperide;scm"
         TIMEOUT 30)
 
+add_test(NAME zia_viperide_terminal
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/terminal_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_terminal PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;terminal"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_terminal_open
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/terminal_open_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_terminal_open PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;terminal;requires_display"
+        TIMEOUT 30)
+
 add_test(NAME zia_viperide_context_menu
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/context_menu_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
@@ -1413,6 +1429,7 @@ set(VIPER_DISPLAY_TESTS
         zia_viperide_file_tree
         zia_viperide_activity_bar
         zia_viperide_multi_root
+        zia_viperide_terminal_open
         zia_viperide_console_search
         zia_smoke_3dbowling
         zia_smoke_3dbowling_aim
