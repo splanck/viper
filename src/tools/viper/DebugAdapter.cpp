@@ -20,6 +20,7 @@
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
 #include "tools/lsp-common/Json.hpp"
+#include "tools/viper/DebugExpr.hpp"
 #include "viper/vm/VM.hpp"
 #include "viper/vm/debug/DebugFrontend.hpp"
 
@@ -33,6 +34,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 namespace il::tools::debug {
 namespace {
@@ -42,6 +44,57 @@ using viper::server::JsonValue;
 /// @brief Sentinel marking a control-protocol line on stderr, keeping it distinct
 ///        from any raw stderr the debuggee writes.
 constexpr const char *kSentinel = "@@VDBG@@ ";
+
+/// @brief Trailing path component, for tolerant file matching (the adapter reports
+///        canonical paths while the IDE sends its own spelling).
+std::string baseNameOf(const std::string &p) {
+    const size_t s = p.find_last_of("/\\");
+    return s == std::string::npos ? p : p.substr(s + 1);
+}
+
+/// @brief Per-breakpoint condition / logpoint message. Plain breakpoints have no
+///        entry; conditional/logpoints are keyed by basename:line.
+struct BpMeta {
+    std::string condition;
+    std::string logMessage;
+};
+using BpMetaMap = std::unordered_map<std::string, BpMeta>;
+
+std::string metaKey(const std::string &path, uint32_t line) {
+    return baseNameOf(path) + ":" + std::to_string(line);
+}
+
+/// @brief Apply a setBreakpoints command's optional `meta` to @p map, replacing any
+///        prior condition/logpoint for the lines it lists (so a cleared condition
+///        drops out). Lines without a meta entry hold no entry (plain breakpoint).
+void applyBpMeta(BpMetaMap &map, const JsonValue &cmd) {
+    const std::string &path = cmd["path"].asString();
+    if (const JsonValue *lines = cmd.get("lines")) {
+        for (const auto &ln : lines->asArray())
+            map.erase(metaKey(path, static_cast<uint32_t>(ln.asInt())));
+    }
+    if (const JsonValue *meta = cmd.get("meta")) {
+        for (const auto &e : meta->asArray()) {
+            const auto line = static_cast<uint32_t>(e["line"].asInt());
+            BpMeta bm;
+            if (const JsonValue *c = e.get("condition"))
+                bm.condition = c->asString();
+            if (const JsonValue *l = e.get("logMessage"))
+                bm.logMessage = l->asString();
+            if (!bm.condition.empty() || !bm.logMessage.empty())
+                map[metaKey(path, line)] = std::move(bm);
+        }
+    }
+}
+
+/// @brief Build a logpoint output event (adapter -> IDE).
+JsonValue logEvent(uint32_t line, const std::string &message) {
+    return JsonValue::object({
+        {"type", JsonValue("log")},
+        {"line", JsonValue(static_cast<int64_t>(line))},
+        {"message", JsonValue(message)},
+    });
+}
 
 /// @brief Newline-delimited JSON control channel: events out on stderr (sentinel
 ///        prefixed), commands in on stdin. A background reader thread parses stdin
@@ -182,9 +235,28 @@ JsonValue evaluatedEvent(const il::vm::DebugStopInfo &info, const std::string &e
 ///          only when the line changes (or a breakpoint intervenes).
 class AdapterFrontend : public il::vm::DebugFrontend {
   public:
-    explicit AdapterFrontend(DebugChannel &chan) : chan_(chan) {}
+    AdapterFrontend(DebugChannel &chan, BpMetaMap meta)
+        : chan_(chan), bpMeta_(std::move(meta)) {}
 
     il::vm::DebugAction onStop(const il::vm::DebugStopInfo &info) override {
+        // Run-to-cursor: keep stepping over until the target line is reached. A
+        // real breakpoint or exception cancels it; the step bound guards against a
+        // target that is never hit (then it behaves like Continue-to-end).
+        if (runToActive_) {
+            const bool hitTarget =
+                info.line == runToLine_ && baseNameOf(info.path) == baseNameOf(runToPath_);
+            const bool interrupted = info.reason == "breakpoint" || info.reason == "exception";
+            if (!hitTarget && !interrupted && info.line != 0 && runToSteps_ < kMaxRunToSteps) {
+                ++runToSteps_;
+                return {il::vm::DebugActionKind::StepOver, 0};
+            }
+            runToActive_ = false;
+            runToSteps_ = 0;
+            mode_ = StepMode::None;
+            autoSteps_ = 0;
+            // fall through to surface the stop at the current location
+        }
+
         // Continue an in-progress line step while still on the origin line. Step-out
         // always surfaces its first pause (it lands in the caller). A breakpoint or
         // an unhandled trap always surfaces, even mid-step.
@@ -200,6 +272,35 @@ class AdapterFrontend : public il::vm::DebugFrontend {
         mode_ = StepMode::None;
         autoSteps_ = 0;
 
+        // Conditional breakpoints / logpoints (breakpoint stops only — stepping onto
+        // such a line always stops). A logpoint emits a message and resumes; a
+        // conditional stop is suppressed when the condition is falsey.
+        if (info.reason == "breakpoint") {
+            auto it = bpMeta_.find(metaKey(info.path, info.line));
+            if (it != bpMeta_.end()) {
+                auto resolve = [&info](const std::string &name, std::string &val,
+                                       std::string &ty) -> bool {
+                    for (const auto &l : info.locals) {
+                        if (l.name == name) {
+                            val = l.value;
+                            ty = l.type;
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (!it->second.logMessage.empty()) {
+                    chan_.emit(logEvent(
+                        info.line, viper::dbgexpr::interpolate(it->second.logMessage, resolve)));
+                    return {il::vm::DebugActionKind::Continue, 0};
+                }
+                if (!it->second.condition.empty() &&
+                    !viper::dbgexpr::conditionHolds(it->second.condition, resolve)) {
+                    return {il::vm::DebugActionKind::Continue, 0};
+                }
+            }
+        }
+
         chan_.emit(stoppedEvent(info));
         for (;;) {
             auto cmd = chan_.readCommand();
@@ -214,6 +315,20 @@ class AdapterFrontend : public il::vm::DebugFrontend {
                 return beginStep(StepMode::In, info);
             if (type == "stepOut")
                 return beginStep(StepMode::Out, info);
+            if (type == "runToLine") {
+                runToActive_ = true;
+                runToPath_ = (*cmd)["path"].asString();
+                runToLine_ = static_cast<uint32_t>((*cmd)["line"].asInt());
+                runToSteps_ = 0;
+                return {il::vm::DebugActionKind::StepOver, 0};
+            }
+            if (type == "setBreakpoints") {
+                // Mid-session edit of conditions/logpoints. The breakpoint line set
+                // itself is fixed at launch; adding/removing lines while running is
+                // future dynamic-breakpoint work.
+                applyBpMeta(bpMeta_, *cmd);
+                continue;
+            }
             if (type == "evaluate") {
                 // Watch/hover query: report the value and stay stopped.
                 chan_.emit(evaluatedEvent(info, (*cmd)["expr"].asString()));
@@ -253,12 +368,24 @@ class AdapterFrontend : public il::vm::DebugFrontend {
 
     /// @brief Safety bound on per-line auto-steps so a degenerate line cannot spin.
     static constexpr int kMaxAutoSteps = 200000;
+    /// @brief Safety bound on run-to-cursor steps (it may cross many lines).
+    static constexpr int kMaxRunToSteps = 5000000;
 
     DebugChannel &chan_;
     StepMode mode_ = StepMode::None;
     uint32_t originLine_ = 0;
     std::string originPath_;
     int autoSteps_ = 0;
+
+    // Run-to-cursor: step over until reaching (runToPath_, runToLine_), or until an
+    // existing breakpoint/exception intervenes, or the step bound is exhausted.
+    bool runToActive_ = false;
+    uint32_t runToLine_ = 0;
+    std::string runToPath_;
+    int runToSteps_ = 0;
+
+    // Conditional-breakpoint / logpoint metadata, keyed by basename:line.
+    BpMetaMap bpMeta_;
 };
 
 } // namespace
@@ -281,6 +408,7 @@ int runDebugAdapter(il::core::Module &module,
 
     // Handshake: accept breakpoints, then wait for an explicit launch so the IDE
     // can install breakpoints before the program runs.
+    BpMetaMap initialMeta;
     bool launched = false;
     while (!launched) {
         auto cmd = chan.readCommand();
@@ -294,6 +422,7 @@ int runDebugAdapter(il::core::Module &module,
                 if (line > 0)
                     runCfg.debug.addBreakSrcLine(path, static_cast<uint32_t>(line));
             }
+            applyBpMeta(initialMeta, *cmd);
         } else if (type == "launch") {
             launched = true;
         } else if (type == "terminate") {
@@ -302,7 +431,7 @@ int runDebugAdapter(il::core::Module &module,
         }
     }
 
-    AdapterFrontend frontend(chan);
+    AdapterFrontend frontend(chan, std::move(initialMeta));
     runCfg.frontend = &frontend;
 
     // While the program runs freely (between stops), poll for an interactive Pause

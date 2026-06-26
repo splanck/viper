@@ -50,27 +50,27 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 8
-  %t1 = alloca 8
-  %t2 = alloca 8
+  %a = alloca 8
+  %b# = alloca 8
+  %s$ = alloca 8
   %t3:str = call @rt_str_empty()
-  store str, %t2, %t3
-  %t4 = alloca 8
-  %t5 = alloca 8
+  store str, %s$, %t3
+  %x# = alloca 8
+  %y# = alloca 8
   br L10
 L10:
   .loc 1 1 4
-  store i64, %t0, 1
+  store i64, %a, 1
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 4
-  store f64, %t1, 2.5
+  store f64, %b#, 2.5
   .loc 1 2 4
   br L30
 L30:
   .loc 1 3 15
-  %t6 = load i64, %t0
+  %t6 = load i64, %a
   .loc 1 3 15
   %t7:i32 = cast.si_narrow.chk %t6
   .loc 1 3 10
@@ -82,7 +82,7 @@ L30:
   .loc 1 3 10
   call @Viper.Terminal.PrintStr(%t9)
   .loc 1 3 24
-  %t10 = load f64, %t1
+  %t10 = load f64, %b#
   .loc 1 3 19
   %t11:str = call @Viper.Core.Convert.ToString_Double(%t10)
   .loc 1 3 19
@@ -99,16 +99,16 @@ L40:
   .loc 1 4 4
   call @rt_str_retain_maybe(%t13)
   .loc 1 4 4
-  %t14 = load str, %t2
+  %t14 = load str, %s$
   .loc 1 4 4
   call @rt_str_release_maybe(%t14)
   .loc 1 4 4
-  store str, %t2, %t13
+  store str, %s$, %t13
   .loc 1 4 4
   br L50
 L50:
   .loc 1 5 14
-  %t15 = load str, %t2
+  %t15 = load str, %s$
   .loc 1 5 14
   %t16:ptr = call @rt_string_cstr(%t15)
   .loc 1 5 14
@@ -121,17 +121,17 @@ L50:
   cbr %t19, val_ok, val_fail
 L60:
   .loc 1 6 4
-  store f64, %t4, 1.8999999999999999
+  store f64, %x#, 1.8999999999999999
   .loc 1 6 4
   br L70
 L70:
   .loc 1 7 4
-  store f64, %t5, -1.8999999999999999
+  store f64, %y#, -1.8999999999999999
   .loc 1 7 4
   br L80
 L80:
   .loc 1 8 14
-  %t24 = load f64, %t4
+  %t24 = load f64, %x#
   .loc 1 8 10
   %t25:f64 = call @rt_int_floor(%t24)
   .loc 1 8 10
@@ -141,7 +141,7 @@ L80:
   .loc 1 8 10
   call @Viper.Terminal.PrintStr(%t26)
   .loc 1 8 23
-  %t27 = load f64, %t5
+  %t27 = load f64, %y#
   .loc 1 8 19
   %t28:f64 = call @rt_int_floor(%t27)
   .loc 1 8 19

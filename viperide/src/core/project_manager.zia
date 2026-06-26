@@ -12,6 +12,10 @@ bind FileIndex = Viper.Workspace.FileIndex;
 bind Map = Viper.Collections.Map;
 bind "../core/document_manager";
 
+final TREE_ROOT_PREFIX = "▦ ";
+final TREE_FOLDER_PREFIX = "▤ ";
+final TREE_FILE_PREFIX = "· ";
+
 // ============================================================================
 // MODULE: project_manager
 // PURPOSE: Owns the file-tree sidebar and the open Project. Translates
@@ -29,9 +33,9 @@ bind "../core/document_manager";
 //     the IDE's frame-driven model and avoids needing a callback
 //     dispatcher.
 //   * NODE DATA = ABSOLUTE PATH. Each tree node stores its absolute
-//     path via `TreeView.Node.SetData`. The label is now just the plain
-//     basename; the path is the source of truth for file-vs-directory
-//     detection.
+//     path via `TreeView.Node.SetData`. Labels may carry lightweight
+//     visual prefixes for polish; the path is the source of truth for
+//     file-vs-directory detection.
 //   * EXCLUDE PATTERNS. `ShouldExcludePath` delegates to
 //     Viper.Workspace.FileIndex, which applies hard excludes, `.gitignore`,
 //     and optional ignore/exclude patterns from `viper.project`.
@@ -116,7 +120,7 @@ class ProjectManager {
         fileCache = BuildProjectFileCache();
         loadedTreeDirs = new List();
 
-        var rootNode = treeView.AddNode(null, project.name);
+        var rootNode = treeView.AddNode(null, TreeRootLabel(project.name));
         GUI.TreeView.Node.SetData(rootNode, project.rootPath);
 
         PopulateTreeChildren(project.rootPath, rootNode);
@@ -146,7 +150,7 @@ class ProjectManager {
         for dirName in Dir.DirsSeq(dirPath) {
             var fullPath = Path.Join(dirPath, dirName);
             if ShouldExcludePath(fullPath, true) == false {
-                var folderNode = treeView.AddNode(parentNode, dirName);
+                var folderNode = treeView.AddNode(parentNode, TreeFolderLabel(dirName));
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
             }
         }
@@ -154,7 +158,7 @@ class ProjectManager {
         for fileName in Dir.FilesSeq(dirPath) {
             var fullPath = Path.Join(dirPath, fileName);
             if ShouldExcludePath(fullPath, false) == false {
-                var fileNode = treeView.AddNode(parentNode, fileName);
+                var fileNode = treeView.AddNode(parentNode, TreeFileLabel(fileName));
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
                 if ListContains(fileCache, fullPath) == false {
                     fileCache.Push(fullPath);
@@ -198,13 +202,38 @@ class ProjectManager {
         return Obj.ToString(fileCache.get(index));
     }
 
+    /// @brief Build the displayed label for the project root tree node.
+    /// @details The returned text includes a compact visual prefix only. All
+    ///          project operations continue to use TreeView node data for the
+    ///          absolute path, so this decoration cannot affect rename, delete,
+    ///          open, or search behavior.
+    /// @param name Project display name.
+    /// @return Decorated root label for the sidebar tree.
+    func TreeRootLabel(name: String) -> String {
+        if name == "" { return TREE_ROOT_PREFIX + "Project"; }
+        return TREE_ROOT_PREFIX + name;
+    }
+
+    /// @brief Build the displayed label for a directory node.
+    /// @param name Directory basename.
+    /// @return Decorated folder label for the sidebar tree.
+    func TreeFolderLabel(name: String) -> String {
+        return TREE_FOLDER_PREFIX + name;
+    }
+
+    /// @brief Build the displayed label for a file node.
+    /// @param name File basename.
+    /// @return Decorated file label for the sidebar tree.
+    func TreeFileLabel(name: String) -> String {
+        return TREE_FILE_PREFIX + name;
+    }
+
     /// @brief Per-frame selection-change poll.
     /// @return Selected file path if the user just clicked a file node,
     ///         else empty string. Sets `fileWasSelected` accordingly.
-    /// @note Distinguishes file from directory nodes by the 4-space
-    ///       label prefix (see BuildTree). Directory nodes and the
-    ///       root node return "" — the main loop uses this to decide
-    ///       whether to OpenFile.
+    /// @note Uses each node's absolute path data to distinguish files from
+    ///       directories. Directory nodes and the root node return "" — the
+    ///       main loop uses this to decide whether to OpenFile.
     expose func HandleTreeClicks() -> String {
         fileWasSelected = false;
 

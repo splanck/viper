@@ -40,9 +40,9 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 1
+  %a = alloca 1
   %t1 = trunc1 0
-  store i1, %t0, %t1
+  store i1, %a, %t1
   br L10
 L10:
   .loc 1 1 4
@@ -51,12 +51,12 @@ L20:
   .loc 1 2 4
   %t2 = trunc1 -1
   .loc 1 2 4
-  store i1, %t0, %t2
+  store i1, %a, %t2
   .loc 1 2 4
   br L30
 L30:
   .loc 1 3 10
-  %t3 = load i1, %t0
+  %t3 = load i1, %a
   .loc 1 3 12
   %t4 = zext1 %t3
   .loc 1 3 12

@@ -45,6 +45,21 @@ func main() {
     if expect(lineAt(zml, 4), "    done();", "zia body after multiline comment") == false { return; }
     if expect(lineAt(zml, 5), "}", "zia close after multiline comment") == false { return; }
 
+    // --- Zia: multi-line call arguments get a hanging continuation indent --
+    var ziaCont = "func f() {\nbar(\na,\nb\n);\n}\n";
+    var zc = edit_commands.FormatZiaText(ziaCont, 4, true);
+    if expect(lineAt(zc, 1), "    bar(", "zia call opener") == false { return; }
+    if expect(lineAt(zc, 2), "        a,", "zia call arg 1 hangs") == false { return; }
+    if expect(lineAt(zc, 3), "        b", "zia call arg 2 hangs") == false { return; }
+    if expect(lineAt(zc, 4), "    );", "zia call closer realigns") == false { return; }
+
+    // --- Zia: leading-dot method chain hangs one level ---------------------
+    var ziaChain = "func g() {\nresult\n.foo()\n.bar();\n}\n";
+    var zch = edit_commands.FormatZiaText(ziaChain, 4, true);
+    if expect(lineAt(zch, 1), "    result", "zia chain receiver") == false { return; }
+    if expect(lineAt(zch, 2), "        .foo()", "zia chain call 1 hangs") == false { return; }
+    if expect(lineAt(zch, 3), "        .bar();", "zia chain call 2 hangs") == false { return; }
+
     // --- BASIC: nested FOR / IF…THEN / ENDIF / NEXT ------------------------
     var bas = "FOR i = 1 TO 10\nIF i > 5 THEN\nPRINT i\nENDIF\nNEXT\n";
     var bf = edit_commands.FormatBasicText(bas, 4, true);

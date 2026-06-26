@@ -975,6 +975,8 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_CLICK: {
+            if (event->mouse.button != VG_MOUSE_LEFT)
+                return false;
             if (tree->suppress_click) {
                 tree->suppress_click = false;
                 return true;
@@ -1003,6 +1005,8 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_DOUBLE_CLICK: {
+            if (event->mouse.button != VG_MOUSE_LEFT)
+                return false;
             if (tree->selected && tree->on_activate) {
                 tree->on_activate(widget, tree->selected, tree->on_activate_data);
             }

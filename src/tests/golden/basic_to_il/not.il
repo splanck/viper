@@ -1,4 +1,4 @@
-il 0.2.0
+il VERSION
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -40,9 +40,9 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 1
+  %x = alloca 1
   %t1 = trunc1 0
-  store i1, %t0, %t1
+  store i1, %x, %t1
   br L10
 L10:
   .loc 1 1 4
@@ -52,7 +52,7 @@ L20:
   br if_test_0
 L30:
   .loc 1 3 16
-  %t8 = load i1, %t0
+  %t8 = load i1, %x
   .loc 1 3 12
   %t9 = zext1 %t8
   .loc 1 3 12
@@ -62,7 +62,7 @@ L30:
   .loc 1 3 4
   %t12 = trunc1 %t11
   .loc 1 3 4
-  store i1, %t0, %t12
+  store i1, %x, %t12
   .loc 1 3 4
   br L40
 L40:
@@ -72,7 +72,7 @@ exit:
   ret 0
 if_test_0:
   .loc 1 2 11
-  %t2 = load i1, %t0
+  %t2 = load i1, %x
   .loc 1 2 7
   %t3 = zext1 %t2
   .loc 1 2 7
@@ -100,7 +100,7 @@ if_exit:
   br L30
 if_test_01:
   .loc 1 4 11
-  %t13 = load i1, %t0
+  %t13 = load i1, %x
   .loc 1 4 7
   %t14 = zext1 %t13
   .loc 1 4 7

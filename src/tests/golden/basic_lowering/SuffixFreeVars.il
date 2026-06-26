@@ -1,4 +1,4 @@
-il VERSION
+il 0.2.0
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -50,12 +50,12 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 8
-  %t1 = alloca 8
+  %count = alloca 8
+  %message = alloca 8
   %t2:str = call @rt_str_empty()
-  store str, %t1, %t2
-  %t3 = alloca 8
-  store ptr, %t3, null
+  store str, %message, %t2
+  %values = alloca 8
+  store ptr, %values, null
   %t4 = alloca 8
   br UL1000000000
 UL1000000000:
@@ -70,11 +70,11 @@ UL999999998:
   .loc 1 3 1
   call @rt_arr_i64_retain(%t5)
   .loc 1 3 1
-  %t6 = load ptr, %t3
+  %t6 = load ptr, %values
   .loc 1 3 1
   call @rt_arr_i64_release(%t6)
   .loc 1 3 1
-  store ptr, %t3, %t5
+  store ptr, %values, %t5
   .loc 1 3 1
   store i64, %t4, 3
   .loc 1 3 1
@@ -85,23 +85,23 @@ UL999999997:
   .loc 1 4 1
   call @rt_str_retain_maybe(%t7)
   .loc 1 4 1
-  %t8 = load str, %t1
+  %t8 = load str, %message
   .loc 1 4 1
   call @rt_str_release_maybe(%t8)
   .loc 1 4 1
-  store str, %t1, %t7
+  store str, %message, %t7
   .loc 1 4 1
   br UL999999996
 UL999999996:
   .loc 1 5 1
-  store i64, %t0, 5
+  store i64, %count, 5
   .loc 1 5 1
   br UL999999995
 UL999999995:
   .loc 1 6 17
-  %t9 = load i64, %t0
+  %t9 = load i64, %count
   .loc 1 6 1
-  %t10 = load ptr, %t3
+  %t10 = load ptr, %values
   .loc 1 6 5
   %t11:i64 = call @rt_arr_i64_len(%t10)
   .loc 1 6 5
@@ -120,7 +120,7 @@ UL999999995:
   cbr %t17, bc_oob0, bc_ok0
 UL999999994:
   .loc 1 7 7
-  %t18 = load str, %t1
+  %t18 = load str, %message
   .loc 1 7 7
   call @rt_str_retain_maybe(%t18)
   .loc 1 7 7
@@ -135,7 +135,7 @@ UL999999994:
   br UL999999993
 UL999999993:
   .loc 1 8 7
-  %t20 = load i64, %t0
+  %t20 = load i64, %count
   .loc 1 8 7
   call @Viper.Terminal.PrintI64(%t20)
   .loc 1 8 7
@@ -146,7 +146,7 @@ UL999999993:
   br UL999999992
 UL999999992:
   .loc 1 9 7
-  %t22 = load ptr, %t3
+  %t22 = load ptr, %values
   .loc 1 9 7
   %t23:i64 = call @rt_arr_i64_len(%t22)
   .loc 1 9 7
@@ -164,9 +164,9 @@ UL999999992:
   .loc 1 9 7
   cbr %t29, bc_oob1, bc_ok1
 exit:
-  %t32 = load ptr, %t3
+  %t32 = load ptr, %values
   call @rt_arr_i64_release(%t32)
-  store ptr, %t3, null
+  store ptr, %values, null
   ret 0
 bc_ok0:
   .loc 1 6 5

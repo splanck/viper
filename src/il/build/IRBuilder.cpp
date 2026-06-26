@@ -811,4 +811,12 @@ unsigned IRBuilder::reserveTempId() {
     return id;
 }
 
+void IRBuilder::setValueName(unsigned id, const std::string &name) {
+    if (!curFunc || name.empty())
+        return;
+    if (curFunc->valueNames.size() <= id)
+        curFunc->valueNames.resize(id + 1);
+    curFunc->valueNames[id] = name;
+}
+
 } // namespace il::build

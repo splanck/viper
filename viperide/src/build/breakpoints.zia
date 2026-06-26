@@ -18,10 +18,14 @@ final BREAKPOINT_HIGHLIGHT = 4294967295; // 0xFFFFFFFF
 class Breakpoint {
     expose String path;
     expose Integer line;
+    expose String condition;  // halt only when this expression is true ("" = always)
+    expose String logMessage; // logpoint: log this (with {expr}) and continue ("" = a real stop)
 
     expose func init() {
         path = "";
         line = 0;
+        condition = "";
+        logMessage = "";
     }
 }
 
@@ -54,8 +58,46 @@ class BreakpointStore {
         return items.get(index).line;
     }
 
+    expose func GetCondition(index: Integer) -> String {
+        if index < 0 or index >= items.count() { return ""; }
+        return items.get(index).condition;
+    }
+
+    expose func GetLogMessage(index: Integer) -> String {
+        if index < 0 or index >= items.count() { return ""; }
+        return items.get(index).logMessage;
+    }
+
+    /// @brief True if any breakpoint carries a condition or a log message — lets
+    ///        callers skip the `meta` array entirely for the common plain case.
+    expose func HasMeta() -> Boolean {
+        var i = 0;
+        while i < items.count() {
+            var bp = items.get(i);
+            if bp.condition != "" or bp.logMessage != "" { return true; }
+            i = i + 1;
+        }
+        return false;
+    }
+
     expose func Has(path: String, line: Integer) -> Boolean {
         return Find(path, line) >= 0;
+    }
+
+    /// @brief Set a breakpoint's condition (creating the breakpoint if absent);
+    ///        "" clears it. A conditional breakpoint halts only when true.
+    expose func SetCondition(path: String, line: Integer, cond: String) {
+        if path == "" or line <= 0 { return; }
+        EnsureAt(path, line).condition = cond;
+        version = version + 1;
+    }
+
+    /// @brief Set a breakpoint's logpoint message (creating it if absent); ""
+    ///        clears it. A logpoint logs (with {expr}) and continues, never halts.
+    expose func SetLogMessage(path: String, line: Integer, msg: String) {
+        if path == "" or line <= 0 { return; }
+        EnsureAt(path, line).logMessage = msg;
+        version = version + 1;
     }
 
     expose func Toggle(path: String, line: Integer) -> Boolean {
@@ -99,6 +141,8 @@ class BreakpointStore {
                 var bp = new Breakpoint();
                 bp.path = path;
                 bp.line = line;
+                bp.condition = Ini.Get(ini, section, "condition");
+                bp.logMessage = Ini.Get(ini, section, "logMessage");
                 items.add(bp);
             }
             i = i + 1;
@@ -122,6 +166,8 @@ class BreakpointStore {
             var section = "breakpoint." + i;
             Ini.Set(ini, section, "path", bp.path);
             Ini.Set(ini, section, "line", "" + bp.line);
+            Ini.Set(ini, section, "condition", bp.condition);
+            Ini.Set(ini, section, "logMessage", bp.logMessage);
             i = i + 1;
         }
         while i < oldCount {
@@ -146,6 +192,17 @@ class BreakpointStore {
             }
             i = i + 1;
         }
+    }
+
+    /// @brief Return the breakpoint at path:line, creating an empty one if absent.
+    hide func EnsureAt(path: String, line: Integer) -> Breakpoint {
+        var idx = Find(path, line);
+        if idx >= 0 { return items.get(idx); }
+        var bp = new Breakpoint();
+        bp.path = path;
+        bp.line = line;
+        items.add(bp);
+        return bp;
     }
 
     hide func Find(path: String, line: Integer) -> Integer {

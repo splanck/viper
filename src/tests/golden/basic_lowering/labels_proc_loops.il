@@ -32,21 +32,21 @@ extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_trap(str) -> void
+extern @rt_trap_string(str) -> void
 func @__mod_init$oop() -> void {
 entry:
   ret
 }
 func @F() -> i64 {
 entry_F:
-  %t0 = alloca 8
+  %i = alloca 8
   br L-1000000000_F
 L-1000000000_F:
   .loc 1 2 1
   br while_head_0_F
 L-999999999_F:
   .loc 1 4 14
-  store i64, %t0, 1
+  store i64, %i, 1
   .loc 1 4 1
   %t2 = scmp_ge 1, 0
   .loc 1 4 1
@@ -69,14 +69,14 @@ while_end_0_F:
   br L-999999999_F
 for_head_pos_0_F:
   .loc 1 4 1
-  %t3 = load i64, %t0
+  %t3 = load i64, %i
   .loc 1 4 1
   %t4 = scmp_le %t3, 1
   .loc 1 4 1
   cbr %t4, for_body_1_F, for_end_1_F
 for_head_neg_0_F:
   .loc 1 4 1
-  %t5 = load i64, %t0
+  %t5 = load i64, %i
   .loc 1 4 1
   %t6 = scmp_ge %t5, 1
   .loc 1 4 1
@@ -86,11 +86,11 @@ for_body_1_F:
   br for_inc_1_F
 for_inc_1_F:
   .loc 1 4 1
-  %t7 = load i64, %t0
+  %t7 = load i64, %i
   .loc 1 4 1
   %t8 = iadd.ovf %t7, 1
   .loc 1 4 1
-  store i64, %t0, %t8
+  store i64, %i, %t8
   .loc 1 4 1
   cbr %t2, for_head_pos_0_F, for_head_neg_0_F
 for_end_1_F:

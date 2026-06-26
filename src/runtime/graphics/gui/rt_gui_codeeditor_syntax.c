@@ -258,6 +258,44 @@ static int syn_is_id_cont(char c) {
     return syn_is_id_start(c) || (c >= '0' && c <= '9');
 }
 
+/// @brief True for a hexadecimal digit (0-9, a-f, A-F).
+static int syn_is_hex_digit(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+/// @brief Scan a numeric literal starting at `start` and return the index just
+///        past it. Handles `0x`/`0X` hex, `0b`/`0B` binary, a decimal fractional
+///        part, digit-group underscores, and an `e`/`E[+/-]` exponent. The caller
+///        guarantees text[start] is a decimal digit.
+static size_t syn_scan_number(const char *text, size_t len, size_t start) {
+    size_t i = start;
+    if (text[i] == '0' && i + 1 < len && (text[i + 1] == 'x' || text[i + 1] == 'X')) {
+        i += 2;
+        while (i < len && (syn_is_hex_digit(text[i]) || text[i] == '_'))
+            i++;
+        return i;
+    }
+    if (text[i] == '0' && i + 1 < len && (text[i + 1] == 'b' || text[i + 1] == 'B')) {
+        i += 2;
+        while (i < len && (text[i] == '0' || text[i] == '1' || text[i] == '_'))
+            i++;
+        return i;
+    }
+    while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.' || text[i] == '_'))
+        i++;
+    if (i < len && (text[i] == 'e' || text[i] == 'E')) {
+        size_t e = i + 1;
+        if (e < len && (text[e] == '+' || text[e] == '-'))
+            e++;
+        if (e < len && text[e] >= '0' && text[e] <= '9') {
+            i = e;
+            while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '_'))
+                i++;
+        }
+    }
+    return i;
+}
+
 /// @brief True for a bracket / delimiter character: ( ) [ ] { }.
 static int syn_is_bracket(char c) {
     return c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}';
@@ -527,11 +565,10 @@ static void rt_zia_syntax_cb(
             continue;
         }
 
-        // Number literal
+        // Number literal (decimal/hex/binary, underscores, exponent).
         if (text[i] >= '0' && text[i] <= '9') {
             size_t start = i;
-            while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
-                i++;
+            i = syn_scan_number(text, len, i);
             syn_fill(colors, start, i - start, c_number);
             continue;
         }
@@ -592,10 +629,20 @@ static void rt_zia_syntax_cb(
 // ─── Viper BASIC language tokenizer ───────────────────────────────────────
 
 static const char *const basic_keywords[] = {
-    "DIM",    "LET",   "IF",    "THEN", "ELSE", "ENDIF", "FOR",      "NEXT",
-    "TO",     "STEP",  "WHILE", "WEND", "DO",   "LOOP",  "UNTIL",    "GOSUB",
-    "RETURN", "PRINT", "INPUT", "GOTO", "SUB",  "END",   "FUNCTION", "CALL",
-    "TRUE",   "FALSE", "AND",   "OR",   "NOT",  "MOD",   NULL};
+    "AND",       "AS",        "CALL",      "CASE",   "CLASS",  "CLOSE",     "CONST",
+    "DECLARE",   "DIM",       "DO",        "EACH",   "ELSE",   "ELSEIF",    "END",
+    "ENDIF",     "ENUM",      "ERASE",     "ERROR",  "EXIT",   "FALSE",     "FOR",
+    "FUNCTION",  "GET",       "GOSUB",     "GOTO",   "IF",     "IMPLEMENTS","IN",
+    "INPUT",     "INHERITS",  "INTERFACE", "LET",    "LINE",   "LOOP",      "MOD",
+    "NAMESPACE", "NEW",       "NEXT",      "NOT",    "ON",     "OPEN",      "OR",
+    "PRINT",     "PRIVATE",   "PROPERTY",  "PUBLIC", "PUT",    "RANDOMIZE", "REDIM",
+    "RESUME",    "RETURN",    "SELECT",    "SHARED", "STATIC", "STEP",      "SUB",
+    "SWAP",      "THEN",      "TO",        "TRUE",   "TYPE",   "UNTIL",     "USING",
+    "WEND",      "WHILE",     "XOR",       NULL};
+
+/// @brief Viper BASIC built-in type names — coloured as types, not keywords.
+static const char *const basic_types[] = {"BOOLEAN", "DOUBLE",  "FLOAT", "INT", "INTEGER",
+                                          "LONG",    "SINGLE",  "STRING", NULL};
 
 /// @brief Tokenize a Viper BASIC source line.
 ///
@@ -603,7 +650,7 @@ static const char *const basic_keywords[] = {
 ///   - Comments use `'` (apostrophe) or the `REM` keyword.
 ///   - Keyword matching is case-insensitive (`PRINT`, `print`, `Print`
 ///     all highlight).
-///   - No type table — BASIC's type system isn't surfaced as keywords.
+///   - Built-in type names (INTEGER, DOUBLE, STRING, …) colour as types.
 static void rt_basic_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data) {
     (void)line_num;
@@ -612,6 +659,7 @@ static void rt_basic_syntax_cb(
 
     uint32_t c_default = syn_color(ce, VG_SYN_TOKEN_DEFAULT, SYN_COLOR_DEFAULT);
     uint32_t c_keyword = syn_color(ce, VG_SYN_TOKEN_KEYWORD, SYN_COLOR_KEYWORD);
+    uint32_t c_type = syn_color(ce, VG_SYN_TOKEN_TYPE, SYN_COLOR_TYPE);
     uint32_t c_string = syn_color(ce, VG_SYN_TOKEN_STRING, SYN_COLOR_STRING);
     uint32_t c_comment = syn_color(ce, VG_SYN_TOKEN_COMMENT, SYN_COLOR_COMMENT);
     uint32_t c_number = syn_color(ce, VG_SYN_TOKEN_NUMBER, SYN_COLOR_NUMBER);
@@ -639,11 +687,10 @@ static void rt_basic_syntax_cb(
             continue;
         }
 
-        // Number literal
+        // Number literal (decimal/hex/binary, underscores, exponent).
         if (text[i] >= '0' && text[i] <= '9') {
             size_t start = i;
-            while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
-                i++;
+            i = syn_scan_number(text, len, i);
             syn_fill(colors, start, i - start, c_number);
             continue;
         }
@@ -664,6 +711,8 @@ static void rt_basic_syntax_cb(
             uint32_t color = c_default;
             if (syn_is_keyword_ci(text + start, wlen, basic_keywords))
                 color = c_keyword;
+            else if (syn_is_keyword_ci(text + start, wlen, basic_types))
+                color = c_type;
             else if (syn_is_custom_keyword(text + start, wlen, ce))
                 color = c_keyword;
             syn_fill(colors, start, wlen, color);
@@ -853,11 +902,10 @@ static void rt_viper_syntax_cb(
             continue;
         }
 
-        // Number literal
+        // Number literal (decimal/hex/binary, underscores, exponent).
         if (text[i] >= '0' && text[i] <= '9') {
             size_t start = i;
-            while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] == '.'))
-                i++;
+            i = syn_scan_number(text, len, i);
             syn_fill(colors, start, i - start, c_number);
             continue;
         }

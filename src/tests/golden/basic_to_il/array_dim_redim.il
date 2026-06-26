@@ -43,8 +43,8 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 8
-  store ptr, %t0, null
+  %a = alloca 8
+  store ptr, %a, null
   %t1 = alloca 8
   br L10
 L10:
@@ -53,11 +53,11 @@ L10:
   .loc 1 1 4
   call @rt_arr_i64_retain(%t2)
   .loc 1 1 4
-  %t3 = load ptr, %t0
+  %t3 = load ptr, %a
   .loc 1 1 4
   call @rt_arr_i64_release(%t3)
   .loc 1 1 4
-  store ptr, %t0, %t2
+  store ptr, %a, %t2
   .loc 1 1 4
   store i64, %t1, 4
   .loc 1 1 4
@@ -73,26 +73,26 @@ L30:
   .loc 1 3 4
   ret 0
 exit:
-  %t10 = load ptr, %t0
+  %t10 = load ptr, %a
   call @rt_arr_i64_release(%t10)
-  store ptr, %t0, null
+  store ptr, %a, null
   ret 0
 redim_len_fail:
   .loc 1 2 4
   trap
 redim_len_cont(%len:i64):
   .loc 1 2 12
-  %t7 = load ptr, %t0
+  %t7 = load ptr, %a
   .loc 1 2 12
   %t8:ptr = call @rt_arr_i64_resize(%t7, %len)
   .loc 1 2 12
   call @rt_arr_i64_retain(%t8)
   .loc 1 2 12
-  %t9 = load ptr, %t0
+  %t9 = load ptr, %a
   .loc 1 2 12
   call @rt_arr_i64_release(%t9)
   .loc 1 2 12
-  store ptr, %t0, %t8
+  store ptr, %a, %t8
   .loc 1 2 12
   store i64, %t1, %len
   .loc 1 2 4

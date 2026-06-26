@@ -288,6 +288,8 @@ typedef struct vg_toolbar {
     vg_contextmenu_t *dropdown_popup; ///< Popup sourced from a dropdown menu item
     vg_toolbar_item_t *dropdown_item; ///< Dropdown item currently showing a popup
     int focused_index;                ///< Keyboard-focused visible item index (-1 if none)
+    char *saved_tooltip_text;         ///< Preserved widget tooltip while an item tooltip is active
+    bool hover_tooltip_active;        ///< True while widget tooltip is overridden by hovered item
 } vg_toolbar_t;
 
 /// @brief Create a new toolbar widget.

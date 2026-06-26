@@ -47,6 +47,68 @@ func handleToggleBreakpoint(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Set or clear a conditional breakpoint at the cursor line. The
+///        breakpoint halts only when the entered expression is true; an empty
+///        entry clears the condition. Re-syncs live if a session is active.
+func handleSetCondition(shell: app_shell.AppShell,
+                        docMgr: document_manager.DocumentManager,
+                        engine: editor_engine.EditorEngine,
+                        store: breakpoints.BreakpointStore,
+                        session: debug_session.DebugSession) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null or maybeDoc!.filePath == "" or maybeDoc!.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    var line = engine.GetCursorLine();
+    var cond = Str.Trim(GUI.MessageBox.Prompt("Conditional Breakpoint",
+        "Stop when (e.g. i == 3); empty to clear:"));
+    store.SetCondition(doc.filePath, line, cond);
+    store.Save();
+    store.ApplyToEditor(engine, doc);
+    if session != null and session.IsActive() {
+        session.SyncBreakpoints(doc.filePath, store);
+    }
+    if cond == "" {
+        shell.SetStatusLeft("Condition cleared at line " + line);
+    } else {
+        shell.SetStatusLeft("Breakpoint at line " + line + " stops when: " + cond);
+    }
+}
+
+/// @brief Set or clear a logpoint at the cursor line. A logpoint logs its message
+///        (with {expr} interpolation) and continues instead of halting; an empty
+///        entry clears it. Re-syncs live if a session is active.
+func handleAddLogpoint(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       store: breakpoints.BreakpointStore,
+                       session: debug_session.DebugSession) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null or maybeDoc!.filePath == "" or maybeDoc!.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    var line = engine.GetCursorLine();
+    var msg = GUI.MessageBox.Prompt("Add Logpoint",
+        "Log message, use {expr} (e.g. i={i}); empty to clear:");
+    store.SetLogMessage(doc.filePath, line, msg);
+    store.Save();
+    store.ApplyToEditor(engine, doc);
+    if session != null and session.IsActive() {
+        session.SyncBreakpoints(doc.filePath, store);
+    }
+    if msg == "" {
+        shell.SetStatusLeft("Logpoint cleared at line " + line);
+    } else {
+        shell.SetStatusLeft("Logpoint set at line " + line);
+    }
+}
+
 func PumpGutter(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
@@ -89,6 +151,11 @@ func handleDebugStart(shell: app_shell.AppShell,
 	                      saveAllBeforeBuild: Boolean) {
     if session.IsActive() {
         shell.SetStatusLeft("A debug session is already running");
+        return;
+    }
+    if buildSys != null and buildSys.IsActive() {
+        shell.SetStatusLeft("Debug disabled while a build or run job is active");
+        GUI.Toast.Info("Wait for the active job to finish before debugging");
         return;
     }
     file_commands.SaveEditorState(docMgr, engine);
@@ -294,6 +361,29 @@ func handleEvaluateAtCursor(shell: app_shell.AppShell,
     }
 }
 
+/// @brief "Run to Cursor": continue execution until it reaches the cursor's line
+///        in the active document, via a one-shot breakpoint. Only valid while
+///        paused at a breakpoint (mirrors Evaluate's gating).
+func handleRunToCursor(shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       session: debug_session.DebugSession) {
+    if session == null or session.IsActive() == false or session.stopped == false {
+        shell.SetStatusLeft("Run to Cursor: pause at a breakpoint first");
+        GUI.Toast.Info("Run to Cursor works while paused at a breakpoint");
+        return;
+    }
+    var doc = docMgr.GetActive();
+    if doc == null {
+        shell.SetStatusLeft("Run to Cursor: no active file");
+        return;
+    }
+    var line = engine.GetCursorLine();
+    if session.RunToLine(doc!.filePath, line) {
+        shell.SetStatusLeft("Running to line " + line + "...");
+    }
+}
+
 /// @brief Choose the expression to send to the debug adapter evaluator.
 /// @details A non-empty primary selection wins so users can evaluate compound
 ///          expressions. With no selection, the command falls back to the
@@ -321,6 +411,7 @@ func Publish(shell: app_shell.AppShell,
         console = console + stopInfo;
     }
     shell.SetDebugOutput(console);
+    PopulateDebugPanels(shell, session);
     if session.lastType == "stopped" {
         shell.SetStatusLeft("Stopped at " + session.activePath + ":" + session.lastLine
             + " (" + session.lastReason + ")");
@@ -329,6 +420,39 @@ func Publish(shell: app_shell.AppShell,
         ClearDebugStopMarker(engine);
         shell.SetStatusLeft("Program exited (" + session.lastReason + ", code "
             + session.exitCode + ")");
+    }
+}
+
+/// @brief Fill the Variables and Call Stack panels from the session's structured
+///        stop snapshot. Cleared when not stopped. Does not change the active tab,
+///        so the user's panel choice (Debug Console etc.) is preserved; the rows
+///        are ready the moment they click Variables or Call Stack.
+func PopulateDebugPanels(shell: app_shell.AppShell,
+                         session: debug_session.DebugSession) {
+    shell.variablesListBox.Clear();
+    shell.callStackListBox.Clear();
+    if session == null or session.stopped == false { return; }
+
+    var lc = session.LocalCount();
+    if lc == 0 {
+        shell.variablesListBox.AddItem("(no locals in scope)");
+    } else {
+        var i = 0;
+        while i < lc {
+            shell.variablesListBox.AddItem(session.LocalLabel(i));
+            i = i + 1;
+        }
+    }
+
+    var fc = session.FrameCount();
+    if fc == 0 {
+        shell.callStackListBox.AddItem("(no frames)");
+    } else {
+        var j = 0;
+        while j < fc {
+            shell.callStackListBox.AddItem("#" + j + "  " + session.FrameLabel(j));
+            j = j + 1;
+        }
     }
 }
 

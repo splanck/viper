@@ -20,8 +20,9 @@
 //   - Key state uses the public VIPER_KEY_* constants. Windowing backends that
 //     emit vgfx key codes must route through rt_keyboard_on_vgfx_key_down/up so
 //     ambiguous special-key values are normalized before they enter state.
-//   - Mouse button indices: 1 = left, 2 = right, 3 = middle (matches SDL/X11
-//     conventions). WasClicked is a shorthand for WasPressed && WasReleased
+//   - Mouse button indices use the public VIPER_MOUSE_BUTTON_* constants:
+//     0 = left, 1 = right, 2 = middle, 3/4 = X1/X2. WasClicked is a shorthand
+//     for WasPressed && WasReleased
 //     in the same frame (single-frame tap detection for quick presses).
 //   - Mouse position (X, Y) is in canvas-pixel coordinates (top-left origin,
 //     +Y downward), already scaled by the HiDPI scale factor so callers always
@@ -1468,8 +1469,8 @@ void rt_mouse_force_delta(int64_t dx, int64_t dy) {
 ///
 /// Out-of-range button indices are silently ignored.
 ///
-/// @param button Mouse button index (typically `1`=left, `2`=right,
-///               `3`=middle, `4`/`5`=X1/X2). Range `0..VIPER_MOUSE_BUTTON_MAX-1`.
+/// @param button Mouse button index (`0`=left, `1`=right, `2`=middle,
+///               `3`/`4`=X1/X2). Range `0..VIPER_MOUSE_BUTTON_MAX-1`.
 void rt_mouse_button_down(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
@@ -1619,7 +1620,7 @@ int64_t rt_mouse_delta_y(void) {
 /// Out-of-range button indices are silently treated as "not down" and
 /// return `0`.
 ///
-/// @param button Mouse button index (1=left, 2=right, 3=middle, etc.).
+/// @param button Mouse button index (`0`=left, `1`=right, `2`=middle, etc.).
 /// @return `1` if the button is currently held, `0` otherwise.
 int8_t rt_mouse_is_down(int64_t button) {
     RT_ASSERT_MAIN_THREAD();

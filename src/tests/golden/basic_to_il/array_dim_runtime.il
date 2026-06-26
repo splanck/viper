@@ -48,10 +48,10 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 8
-  store ptr, %t0, null
-  %t1 = alloca 8
-  %t2 = alloca 8
+  %a = alloca 8
+  store ptr, %a, null
+  %ub = alloca 8
+  %x = alloca 8
   %t3 = alloca 8
   br L10
 L10:
@@ -60,23 +60,23 @@ L10:
   .loc 1 1 4
   call @rt_arr_i64_retain(%t4)
   .loc 1 1 4
-  %t5 = load ptr, %t0
+  %t5 = load ptr, %a
   .loc 1 1 4
   call @rt_arr_i64_release(%t5)
   .loc 1 1 4
-  store ptr, %t0, %t4
+  store ptr, %a, %t4
   .loc 1 1 4
   store i64, %t3, 2
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 4
-  store i64, %t1, 1
+  store i64, %ub, 1
   .loc 1 2 4
   br L30
 L30:
   .loc 1 3 12
-  %t6 = load i64, %t1
+  %t6 = load i64, %ub
   .loc 1 3 15
   %t7 = iadd.ovf %t6, 2
   .loc 1 3 4
@@ -87,9 +87,9 @@ L30:
   cbr %t10, redim_len_fail, redim_len_cont(%t8)
 L40:
   .loc 1 4 4
-  %t14 = load ptr, %t0
+  %t14 = load ptr, %a
   .loc 1 4 10
-  %t15 = load i64, %t1
+  %t15 = load i64, %ub
   .loc 1 4 8
   %t16:i64 = call @rt_arr_i64_len(%t14)
   .loc 1 4 8
@@ -108,9 +108,9 @@ L40:
   cbr %t22, bc_oob0, bc_ok0
 L50:
   .loc 1 5 12
-  %t23 = load ptr, %t0
+  %t23 = load ptr, %a
   .loc 1 5 14
-  %t24 = load i64, %t1
+  %t24 = load i64, %ub
   .loc 1 5 12
   %t25:i64 = call @rt_arr_i64_len(%t23)
   .loc 1 5 12
@@ -129,7 +129,7 @@ L50:
   cbr %t31, bc_oob1, bc_ok1
 L60:
   .loc 1 6 10
-  %t33 = load i64, %t1
+  %t33 = load i64, %ub
   .loc 1 6 10
   call @Viper.Terminal.PrintI64(%t33)
   .loc 1 6 10
@@ -140,7 +140,7 @@ L60:
   br L70
 L70:
   .loc 1 7 10
-  %t35 = load i64, %t2
+  %t35 = load i64, %x
   .loc 1 7 10
   call @Viper.Terminal.PrintI64(%t35)
   .loc 1 7 10
@@ -153,26 +153,26 @@ L80:
   .loc 1 8 4
   ret 0
 exit:
-  %t37 = load ptr, %t0
+  %t37 = load ptr, %a
   call @rt_arr_i64_release(%t37)
-  store ptr, %t0, null
+  store ptr, %a, null
   ret 0
 redim_len_fail:
   .loc 1 3 4
   trap
 redim_len_cont(%len:i64):
   .loc 1 3 15
-  %t11 = load ptr, %t0
+  %t11 = load ptr, %a
   .loc 1 3 15
   %t12:ptr = call @rt_arr_i64_resize(%t11, %len)
   .loc 1 3 15
   call @rt_arr_i64_retain(%t12)
   .loc 1 3 15
-  %t13 = load ptr, %t0
+  %t13 = load ptr, %a
   .loc 1 3 15
   call @rt_arr_i64_release(%t13)
   .loc 1 3 15
-  store ptr, %t0, %t12
+  store ptr, %a, %t12
   .loc 1 3 15
   store i64, %t3, %len
   .loc 1 3 4
@@ -191,7 +191,7 @@ bc_ok1:
   .loc 1 5 12
   %t32:i64 = call @rt_arr_i64_get(%t23, %t24)
   .loc 1 5 4
-  store i64, %t2, %t32
+  store i64, %x, %t32
   .loc 1 5 4
   br L60
 bc_oob1:

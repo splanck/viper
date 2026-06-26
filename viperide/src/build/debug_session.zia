@@ -40,6 +40,12 @@ class DebugSession {
     expose String programOutput;
     expose Integer exitCode;
 
+    // Structured snapshot of the most recent stop, for the Variables and Call
+    // Stack panels. Null when not stopped. Each is a parsed JSON array: frames of
+    // {function,path,line}; locals of {name,value,type}.
+    expose Any stopFrames;
+    expose Any stopLocals;
+
     // Most recent watch/evaluate result (from an `evaluated` event).
     expose String lastEvalExpr;
     expose String lastEvalValue;
@@ -66,6 +72,8 @@ class DebugSession {
         consoleText = "";
         programOutput = "";
         exitCode = -1;
+        stopFrames = null;
+        stopLocals = null;
         lastEvalExpr = "";
         lastEvalValue = "";
         lastEvalType = "";
@@ -135,20 +143,61 @@ class DebugSession {
     hide func buildSetBreakpoints(path: String,
                                   store: breakpoints.BreakpointStore) -> String {
         var lines = "";
-        var count = 0;
+        var lineCount = 0;
+        var meta = "";
+        var metaCount = 0;
         if store != null {
             var i = 0;
             while i < store.Count() {
                 if store.GetPath(i) == path {
-                    if count > 0 { lines = lines + ","; }
-                    lines = lines + store.GetLine(i);
-                    count = count + 1;
+                    var ln = store.GetLine(i);
+                    if lineCount > 0 { lines = lines + ","; }
+                    lines = lines + ln;
+                    lineCount = lineCount + 1;
+                    var cond = store.GetCondition(i);
+                    var log = store.GetLogMessage(i);
+                    if cond != "" or log != "" {
+                        if metaCount > 0 { meta = meta + ","; }
+                        meta = meta + "{\"line\":" + ln;
+                        if cond != "" { meta = meta + ",\"condition\":\"" + jsonEscape(cond) + "\""; }
+                        if log != "" { meta = meta + ",\"logMessage\":\"" + jsonEscape(log) + "\""; }
+                        meta = meta + "}";
+                        metaCount = metaCount + 1;
+                    }
                 }
                 i = i + 1;
             }
         }
-        return "{\"type\":\"setBreakpoints\",\"path\":\"" + jsonEscape(path)
-            + "\",\"lines\":[" + lines + "]}";
+        var out = "{\"type\":\"setBreakpoints\",\"path\":\"" + jsonEscape(path)
+            + "\",\"lines\":[" + lines + "]";
+        if metaCount > 0 {
+            out = out + ",\"meta\":[" + meta + "]";
+        }
+        return out + "}";
+    }
+
+    /// @brief Re-send the breakpoint set (with conditions/logpoints) for @p path so
+    ///        mid-session edits take effect. The adapter applies condition/logpoint
+    ///        changes while stopped; adding/removing lines needs a relaunch.
+    expose func SyncBreakpoints(path: String,
+                                store: breakpoints.BreakpointStore) -> Boolean {
+        if hasSession == false or terminated or processHandle == null { return false; }
+        processHandle.WriteStdin(buildSetBreakpoints(path, store) + "\n");
+        return true;
+    }
+
+    /// @brief Run to a specific line: continue execution until it reaches @p line
+    ///        in @p path. The adapter implements this by stepping over until the
+    ///        line is hit (or an existing breakpoint intervenes). Only valid while
+    ///        stopped. Cursor must be in the current function for a step to reach it.
+    expose func RunToLine(path: String, line: Integer) -> Boolean {
+        if hasSession == false or terminated or processHandle == null { return false; }
+        if stopped == false or path == "" or line <= 0 { return false; }
+        stopped = false;
+        dirty = true;
+        processHandle.WriteStdin("{\"type\":\"runToLine\",\"path\":\"" + jsonEscape(path)
+            + "\",\"line\":" + line + "}\n");
+        return true;
     }
 
     hide func jsonEscape(s: String) -> String {
@@ -314,12 +363,16 @@ class DebugSession {
             lastReason = Json.GetStr(ev, "reason");
             activePath = Json.GetStr(ev, "path");
             lastLine = Json.GetInt(ev, "line");
+            stopFrames = Map.Get(ev, "frames");
+            stopLocals = Map.Get(ev, "locals");
             consoleText = formatStopped(ev);
             dirty = true;
         } else if evType == "terminated" {
             terminated = true;
             stopped = false;
             hasSession = false;
+            stopFrames = null;
+            stopLocals = null;
             lastType = "terminated";
             lastReason = Json.GetStr(ev, "reason");
             exitCode = Json.GetInt(ev, "exitCode");
@@ -331,6 +384,11 @@ class DebugSession {
             lastEvalOk = Json.GetBool(ev, "ok");
             evalJustArrived = true;
             dirty = true;
+        } else if evType == "log" {
+            // Logpoint: surfaced in the debug console; execution never paused.
+            programOutput = AppendBoundedOutput(programOutput,
+                "[logpoint:" + Json.GetInt(ev, "line") + "] " + Json.GetStr(ev, "message") + "\n");
+            dirty = true;
         } else if evType == "initialized" {
             dirty = true;
         }
@@ -340,6 +398,59 @@ class DebugSession {
         if hasSession == false and terminated == false { return ""; }
         if consoleText != "" { return consoleText; }
         return "[debug] " + lastType + " " + lastReason;
+    }
+
+    // ── Structured stop accessors (Variables / Call Stack panels) ───────────
+
+    /// @brief Number of call-stack frames at the current stop (0 if not stopped).
+    expose func FrameCount() -> Integer {
+        if stopFrames == null { return 0; }
+        return Seq.get_Length(stopFrames);
+    }
+
+    /// @brief One-line label for call-stack frame @p i: "function — file:line".
+    expose func FrameLabel(i: Integer) -> String {
+        if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return ""; }
+        var f = Seq.Get(stopFrames, i);
+        var fn = Json.GetStr(f, "function");
+        if fn == "" { fn = "<anonymous>"; }
+        return fn + " — " + baseName(Json.GetStr(f, "path")) + ":" + Json.GetInt(f, "line");
+    }
+
+    /// @brief Source path for frame @p i (for click-to-navigate), or "".
+    expose func FramePath(i: Integer) -> String {
+        if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return ""; }
+        return Json.GetStr(Seq.Get(stopFrames, i), "path");
+    }
+
+    /// @brief One-based source line for frame @p i, or 0.
+    expose func FrameLine(i: Integer) -> Integer {
+        if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return 0; }
+        return Json.GetInt(Seq.Get(stopFrames, i), "line");
+    }
+
+    /// @brief Number of locals visible at the current stop (0 if not stopped).
+    expose func LocalCount() -> Integer {
+        if stopLocals == null { return 0; }
+        return Seq.get_Length(stopLocals);
+    }
+
+    /// @brief "name = value : type" label for local @p i.
+    expose func LocalLabel(i: Integer) -> String {
+        if stopLocals == null or i < 0 or i >= Seq.get_Length(stopLocals) { return ""; }
+        var l = Seq.Get(stopLocals, i);
+        return Json.GetStr(l, "name") + " = " + Json.GetStr(l, "value")
+            + " : " + Json.GetStr(l, "type");
+    }
+
+    /// @brief Trailing path component of @p p (handles both / and \\ separators).
+    hide func baseName(p: String) -> String {
+        var slash = Str.LastIndexOf(p, "/");
+        var back = Str.LastIndexOf(p, "\\");
+        var cut = slash;
+        if back > cut { cut = back; }
+        if cut <= 0 { return p; }
+        return Str.Mid(p, cut + 1);
     }
 
     hide func formatStopped(ev: Any) -> String {

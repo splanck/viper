@@ -184,6 +184,16 @@ class IRBuilder {
     /// @return Newly assigned temporary id.
     unsigned reserveTempId();
 
+    /// @brief Assign a source-level display name to value @p id in the active
+    ///        function, used by the debugger to surface named locals.
+    /// @details No-op when there is no active function or @p name is empty. The
+    ///          name is stored verbatim (no `%` prefix); the serializer prints it
+    ///          as the value's identifier and `collectFrameLocals` treats any
+    ///          non-`%` name as a source variable. Caller ensures uniqueness.
+    /// @param id   Value/SSA id to name (typically an alloca slot result).
+    /// @param name Source variable name to associate with @p id.
+    void setValueName(unsigned id, const std::string &name);
+
     /// @brief Save the current temp ID counter (for lambda context switching).
     unsigned saveTempId() const {
         return nextTemp;

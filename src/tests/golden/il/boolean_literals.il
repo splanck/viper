@@ -43,10 +43,10 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 1
+  %b = alloca 1
   %t1 = trunc1 0
-  store i1, %t0, %t1
-  %t2 = alloca 8
+  store i1, %b, %t1
+  %a = alloca 8
   br L10
 L10:
   .loc 1 1 4
@@ -54,7 +54,7 @@ L10:
   .loc 1 1 4
   %t4:i64 = call @Viper.Core.Convert.ToInt(%t3)
   .loc 1 1 4
-  store i64, %t2, %t4
+  store i64, %a, %t4
   .loc 1 1 4
   call @rt_str_release_maybe(%t3)
   .loc 1 1 4
@@ -64,7 +64,7 @@ L20:
   br L30
 L30:
   .loc 1 3 12
-  %t5 = load i64, %t2
+  %t5 = load i64, %a
   .loc 1 3 14
   %t6 = icmp_ne %t5, 0
   .loc 1 3 14
@@ -74,12 +74,12 @@ L30:
   .loc 1 3 4
   %t9 = trunc1 %t8
   .loc 1 3 4
-  store i1, %t0, %t9
+  store i1, %b, %t9
   .loc 1 3 4
   br L40
 L40:
   .loc 1 4 10
-  %t10 = load i1, %t0
+  %t10 = load i1, %b
   .loc 1 4 12
   %t11 = zext1 %t10
   .loc 1 4 12
@@ -96,7 +96,7 @@ L40:
   br L50
 L50:
   .loc 1 5 20
-  %t15 = load i1, %t0
+  %t15 = load i1, %b
   .loc 1 5 16
   %t16 = zext1 %t15
   .loc 1 5 16

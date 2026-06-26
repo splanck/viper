@@ -1,4 +1,4 @@
-il 0.2.0
+il VERSION
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -40,11 +40,11 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 8
+  %x# = alloca 8
   br L10
 L10:
   .loc 1 1 4
-  store f64, %t0, 3.5
+  store f64, %x#, 3.5
   .loc 1 1 4
   br L20
 L20:
@@ -58,7 +58,7 @@ L20:
   br L30
 L30:
   .loc 1 3 10
-  %t2 = load f64, %t0
+  %t2 = load f64, %x#
   .loc 1 3 10
   call @Viper.Terminal.PrintF64(%t2)
   .loc 1 3 10

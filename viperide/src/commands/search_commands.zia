@@ -364,7 +364,10 @@ class SearchController {
         pendingDirs = new List();
         shell.SetStatusLeft("Search canceled after " + resultCount + " matches");
         if resultCount == 0 {
-            shell.HideSearchPanel();
+            shell.searchListBox.Clear();
+            shell.AddToolInfoRow(shell.searchListBox, "search",
+                                 "Search canceled before any matches were found");
+            shell.ShowSearchPanel();
         }
     }
 
@@ -431,7 +434,10 @@ class SearchController {
                 shell.ShowSearchPanel();
                 shell.SetStatusLeft("Found " + resultCount + " matches for '" + query + "'");
             } else {
-                shell.HideSearchPanel();
+                shell.searchListBox.Clear();
+                shell.AddToolInfoRow(shell.searchListBox, "search",
+                                     "No matches found for '" + query + "'");
+                shell.ShowSearchPanel();
                 GUI.Toast.Info("No matches found for '" + query + "'");
             }
         } else {
@@ -838,7 +844,10 @@ func handleWorkspaceSymbols(shell: app_shell.AppShell,
         shell.ShowSearchPanel();
         shell.SetStatusLeft("Found " + count + " workspace symbols for '" + query + "'");
     } else {
-        shell.HideSearchPanel();
+        shell.searchListBox.Clear();
+        shell.AddToolInfoRow(shell.searchListBox, "symbol",
+                             "No workspace symbols matched '" + query + "'");
+        shell.ShowSearchPanel();
         GUI.Toast.Info("No workspace symbols matched '" + query + "'");
     }
 }
@@ -973,7 +982,10 @@ func RunSearch(shell: app_shell.AppShell,
         shell.ShowSearchPanel();
         shell.SetStatusLeft("Found " + resultCount + " matches for '" + query + "'");
     } else {
-        shell.HideSearchPanel();
+        shell.searchListBox.Clear();
+        shell.AddToolInfoRow(shell.searchListBox, "search",
+                             "No matches found for '" + query + "'");
+        shell.ShowSearchPanel();
         GUI.Toast.Info("No matches found for '" + query + "'");
     }
 }

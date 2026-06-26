@@ -45,9 +45,9 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 8
+  %a$ = alloca 8
   %t1:str = call @rt_str_empty()
-  store str, %t0, %t1
+  store str, %a$, %t1
   br L10
 L10:
   .loc 1 1 13
@@ -55,11 +55,11 @@ L10:
   .loc 1 1 4
   call @rt_str_retain_maybe(%t2)
   .loc 1 1 4
-  %t3 = load str, %t0
+  %t3 = load str, %a$
   .loc 1 1 4
   call @rt_str_release_maybe(%t3)
   .loc 1 1 4
-  store str, %t0, %t2
+  store str, %a$, %t2
   .loc 1 1 4
   br L20
 L20:
@@ -75,7 +75,7 @@ exit:
   ret 0
 if_test_0:
   .loc 1 2 7
-  %t4 = load str, %t0
+  %t4 = load str, %a$
   .loc 1 2 12
   %t5 = const_str @.L0
   .loc 1 2 10
@@ -105,7 +105,7 @@ if_exit:
   br L30
 if_test_01:
   .loc 1 3 7
-  %t11 = load str, %t0
+  %t11 = load str, %a$
   .loc 1 3 13
   %t12 = const_str @.L2
   .loc 1 3 10

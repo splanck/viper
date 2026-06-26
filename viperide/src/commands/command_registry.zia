@@ -75,7 +75,10 @@ class CommandRegistry {
         Add("debugpause", "Pause Debugging", "Pause the active debug session", "", "", true);
         Add("debugrestart", "Restart Debugging", "Terminate and relaunch the active debug session", "Ctrl+Shift+F5", "", true);
         Add("debugstop", "Stop Debugging", "Terminate the active debug session", "", "", true);
+        Add("debugruntocursor", "Run to Cursor", "Continue until execution reaches the cursor line", "Ctrl+F8", "", true);
         Add("togglebreakpoint", "Toggle Breakpoint", "Set or clear a breakpoint at the cursor", "F9", "", true);
+        Add("debugcondition", "Conditional Breakpoint…", "Set a breakpoint that stops only when an expression is true", "", "", true);
+        Add("debuglogpoint", "Add Logpoint…", "Log a message (with {expr}) at a line without stopping", "", "", true);
         Add("togglesidebar", "Toggle Sidebar", "Show or hide the file tree", "Ctrl+B", "", true);
         Add("statusbar", "Toggle Status Bar", "Show or hide the status bar", "", "", true);
         Add("zoomin", "Zoom In", "Increase editor font size", "Ctrl+=", "", true);

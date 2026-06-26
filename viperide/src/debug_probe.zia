@@ -99,6 +99,20 @@ func main() {
         return;
     }
 
+    // Structured accessors that back the Variables / Call Stack panels.
+    if session.LocalCount() < 2 {
+        fail("LocalCount was " + session.LocalCount() + " (expected >= 2)");
+        return;
+    }
+    if session.FrameCount() < 1 {
+        fail("FrameCount was " + session.FrameCount() + " (expected >= 1)");
+        return;
+    }
+    if Str.IndexOf(session.FrameLabel(0), "main") == 0 {
+        fail("FrameLabel(0) missing 'main': " + session.FrameLabel(0));
+        return;
+    }
+
     // 1b) Watch/evaluate a name at the stop (reuses the frame locals).
     if session.Evaluate("a") == false {
         fail("Evaluate rejected while stopped");
@@ -143,6 +157,22 @@ func main() {
     }
     if session.lastLine != 6 {
         fail("StepOver landed on line " + session.lastLine + " (expected 6)");
+        return;
+    }
+
+    // 2b) Run to cursor: a one-shot breakpoint at line 7 (return) is hit, then
+    //     removed so the persistent set is restored for the final continue.
+    if session.RunToLine(prog, 7) == false {
+        fail("RunToLine rejected while stopped");
+        return;
+    }
+    pollUntilSettled(session, 8000);
+    if session.stopped == false {
+        fail("did not stop after RunToLine (terminated=" + session.terminated + ")");
+        return;
+    }
+    if session.lastLine != 7 {
+        fail("RunToLine landed on line " + session.lastLine + " (expected 7)");
         return;
     }
 
@@ -192,6 +222,12 @@ func main() {
         fail("BASIC stop path is not our file: " + bsession.activePath);
         return;
     }
+    // BASIC locals must be populated too — regression guard: the lowerer now
+    // names variable slots so the debugger surfaces them (previously empty).
+    if Str.IndexOf(bsession.consoleText, "x =") == 0 {
+        fail("BASIC locals missing 'x' in console: " + bsession.consoleText);
+        return;
+    }
     if bsession.Continue() == false {
         fail("BASIC Continue rejected while stopped");
         return;
@@ -199,6 +235,72 @@ func main() {
     pollUntilSettled(bsession, 8000);
     if bsession.terminated == false {
         fail("BASIC did not terminate after Continue");
+        return;
+    }
+
+    // ===== Conditional breakpoint: halts only when the condition holds =======
+    var cprog = Path.Join(dir, "loop.zia");
+    File.WriteAllText(cprog,
+        "func main() -> Integer {\n"   // 1
+        + "    var sum = 0;\n"          // 2
+        + "    var i = 0;\n"            // 3
+        + "    while i < 5 {\n"         // 4
+        + "        sum = sum + i;\n"    // 5  <- conditional breakpoint / logpoint
+        + "        i = i + 1;\n"        // 6
+        + "    }\n"                     // 7
+        + "    return sum;\n"           // 8
+        + "}\n");                       // 9
+    var cstore = new breakpoints.BreakpointStore();
+    cstore.SetCondition(cprog, 5, "i == 3");
+    var csession = new debug_session.DebugSession();
+    if csession.Launch(viperBin, cprog, cstore) == false {
+        fail("conditional: Launch returned false");
+        return;
+    }
+    pollUntilSettled(csession, 8000);
+    if csession.stopped == false {
+        fail("conditional: did not stop (terminated=" + csession.terminated + ")");
+        return;
+    }
+    if csession.lastLine != 5 {
+        fail("conditional: stopped at line " + csession.lastLine + " (expected 5)");
+        return;
+    }
+    // The condition must have skipped i=0,1,2 and stopped at i=3.
+    csession.Evaluate("i");
+    var cw = 0;
+    while cw < 8000 and csession.lastEvalExpr != "i" {
+        csession.Poll();
+        Time.SleepMs(5);
+        cw = cw + 5;
+    }
+    if csession.lastEvalValue != "3" {
+        fail("conditional: stopped with i=" + csession.lastEvalValue + " (expected 3)");
+        return;
+    }
+    csession.Terminate();
+
+    // ===== Logpoint: logs each hit and continues, never halts ================
+    var lstore = new breakpoints.BreakpointStore();
+    lstore.SetLogMessage(cprog, 5, "iter i={i}");
+    var lsession = new debug_session.DebugSession();
+    if lsession.Launch(viperBin, cprog, lstore) == false {
+        fail("logpoint: Launch returned false");
+        return;
+    }
+    var lw = 0;
+    while lsession.IsActive() and lw < 8000 {
+        lsession.Poll();
+        if lsession.stopped {
+            fail("logpoint: unexpectedly halted at line " + lsession.lastLine);
+            return;
+        }
+        Time.SleepMs(5);
+        lw = lw + 5;
+    }
+    lsession.Poll();
+    if Str.IndexOf(lsession.programOutput, "[logpoint:5] iter i=3") == 0 {
+        fail("logpoint: missing 'iter i=3' in output: " + lsession.programOutput);
         return;
     }
 

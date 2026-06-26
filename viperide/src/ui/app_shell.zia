@@ -192,6 +192,8 @@ class AppShell {
     expose GUI.ListBox searchListBox;
     expose GUI.ListBox referencesListBox;
     expose GUI.ListBox debugListBox;
+    expose GUI.ListBox variablesListBox; // debug: locals at the current stop
+    expose GUI.ListBox callStackListBox; // debug: call frames at the current stop
 
     // Bottom tool surface tabs
     expose GUI.TabBar toolTabBar;
@@ -200,6 +202,8 @@ class AppShell {
     expose GUI.Tab toolSearchTab;
     expose GUI.Tab toolReferencesTab;
     expose GUI.Tab toolDebugTab;
+    expose GUI.Tab toolVariablesTab;
+    expose GUI.Tab toolCallStackTab;
 
     // Context menu for the file tree
     expose GUI.ContextMenu treeContextMenu;
@@ -245,6 +249,7 @@ class AppShell {
     expose GUI.StatusBar statusBar;
     expose GUI.StatusBarItem cursorItem;   // clickable Ln/Col display (center zone)
     expose GUI.StatusBarItem projectItem;  // right-zone project name
+    expose GUI.StatusBarItem indexItem;    // right-zone workspace index state
     expose GUI.StatusBarItem languageItem; // right-zone active language service
     expose GUI.StatusBarItem jobItem;      // right-zone build/run job state
     expose GUI.StatusBarItem diagnosticsItem; // right-zone diagnostics summary
@@ -267,9 +272,11 @@ class AppShell {
     expose Boolean outputWrapLines;
     expose Boolean outputAutoScroll;
     expose Boolean outputPaneMode;
+    expose Boolean problemsHaveDiagnostics;
     expose String lastDiagnosticsStatus;
     expose Integer lastDiagnosticsColor;
     expose String lastProjectStatus;
+    expose String lastIndexStatus;
     expose String lastLanguageStatus;
     expose String lastBuildJobStatus;
 
@@ -289,9 +296,11 @@ class AppShell {
         outputWrapLines = false;
         outputAutoScroll = true;
         outputPaneMode = true;
+        problemsHaveDiagnostics = false;
         lastDiagnosticsStatus = "Diagnostics: clean";
         lastDiagnosticsColor = TOOL_COLOR_SUCCESS;
         lastProjectStatus = "No project";
+        lastIndexStatus = "Workspace index idle";
         lastLanguageStatus = "Lang: text";
         lastBuildJobStatus = "Job: idle";
     }
@@ -463,8 +472,9 @@ class AppShell {
 
         // ====================================================================
         // Toolbar — BMP-only Unicode glyphs rendered as button text via the
-        // system font. The symbols stay conservative so they render on the
-        // default cross-platform font stack without adding image assets.
+        // system font. The runtime maps these codepoints to crisp vector icons,
+        // giving the IDE consistent cross-platform toolbar art without shipping
+        // external image assets.
         // NOTE: AddButton(icon, tooltip) treats arg 1 as a FILE PATH
         // (rt_gui_icon_from_path_cstr), so we pass "" for icon and put the
         // glyph in the text slot via AddButtonWithText. Standard system fonts
@@ -474,19 +484,20 @@ class AppShell {
         // ====================================================================
         toolbar = GUI.Toolbar.New(mainVBox);
         tbNew     = toolbar.AddButtonWithText("", "+",  "New File (Ctrl+N)");
-        tbOpen    = toolbar.AddButtonWithText("", "↗",  "Open File (Ctrl+O)");
-        tbSave    = toolbar.AddButtonWithText("", "↓",  "Save File (Ctrl+S)");
+        tbOpen    = toolbar.AddButtonWithText("", "▤",  "Open File (Ctrl+O)");
+        tbSave    = toolbar.AddButtonWithText("", "▼",  "Save File (Ctrl+S)");
         tbSaveAll = toolbar.AddButtonWithText("", "⇓",  "Save All Files (Ctrl+Alt+Shift+S)");
         toolbar.AddSeparator();
-        tbBuild   = toolbar.AddButtonWithText("", "⚒",  "Build (Ctrl+Shift+B)");
+        tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
         tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
         tbStop    = toolbar.AddButtonWithText("", "■",  "Stop Running Job (Shift+F5)");
         tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debugging (F6)");
         tbDebugContinue = toolbar.AddButtonWithText("", "▷", "Continue Debugging (F7)");
-        tbDebugStep = toolbar.AddButtonWithText("", "↷", "Step Over (F10)");
+        tbDebugStep = toolbar.AddButtonWithText("", "→", "Step Over (F10)");
         toolbar.AddSeparator();
-        tbFind    = toolbar.AddButtonWithText("", "⌕",  "Find (Ctrl+F)");
+        tbFind    = toolbar.AddButtonWithText("", "?",  "Find (Ctrl+F)");
         SetBuildJobActive(false, "");
+        SetDebugSessionState(false, false, false);
 
         // ====================================================================
         // SplitPane — sidebar (left) + editor area (right)
@@ -549,6 +560,8 @@ class AppShell {
         toolOutputTab = toolTabBar.AddTab("Output", 0);
         toolSearchTab = toolTabBar.AddTab("Search", 0);
         toolReferencesTab = toolTabBar.AddTab("References", 0);
+        toolVariablesTab = toolTabBar.AddTab("Variables", 0);
+        toolCallStackTab = toolTabBar.AddTab("Call Stack", 0);
         toolDebugTab = toolTabBar.AddTab("Debug Console", 0);
         toolTabBar.SetVisible(0);
 
@@ -584,67 +597,77 @@ class AppShell {
         debugListBox.SetVisible(0);
         debugListBox.SetSize(0, 120);
 
+        variablesListBox = GUI.ListBox.New(editorArea);
+        variablesListBox.SetMultiSelect(1);
+        variablesListBox.SetVisible(0);
+        variablesListBox.SetSize(0, 120);
+
+        callStackListBox = GUI.ListBox.New(editorArea);
+        callStackListBox.SetMultiSelect(0);
+        callStackListBox.SetVisible(0);
+        callStackListBox.SetSize(0, 120);
+
         // Context menu for the file tree (populated on right-click)
         treeContextMenu = GUI.ContextMenu.New();
-        ctxOpen = treeContextMenu.AddItem("Open");
-        ctxOpenText = treeContextMenu.AddItem("Open With Text Editor");
+        ctxOpen = treeContextMenu.AddItem("▷ Open");
+        ctxOpenText = treeContextMenu.AddItem("T Open With Text Editor");
         treeContextMenu.AddSeparator();
-        ctxReveal = treeContextMenu.AddItem("Reveal in Finder");
-        ctxCopyPath = treeContextMenu.AddItem("Copy Path");
-        ctxCopyRelativePath = treeContextMenu.AddItem("Copy Relative Path");
-        ctxDuplicate = treeContextMenu.AddItem("Duplicate File...");
+        ctxReveal = treeContextMenu.AddItem("▣ Reveal in Finder");
+        ctxCopyPath = treeContextMenu.AddItem("⧉ Copy Path");
+        ctxCopyRelativePath = treeContextMenu.AddItem("⧉ Copy Relative Path");
+        ctxDuplicate = treeContextMenu.AddItem("◇ Duplicate File...");
         treeContextMenu.AddSeparator();
-        ctxRename = treeContextMenu.AddItem("Rename");
+        ctxRename = treeContextMenu.AddItem("✎ Rename");
         ctxRename.SetShortcut("Ctrl+Alt+R");
-        ctxDelete = treeContextMenu.AddItem("Delete");
+        ctxDelete = treeContextMenu.AddItem("× Delete");
         ctxDelete.SetShortcut("Ctrl+Alt+D");
         treeContextMenu.AddSeparator();
-        ctxNewFile = treeContextMenu.AddItem("New File...");
+        ctxNewFile = treeContextMenu.AddItem("+ New File...");
         ctxNewFile.SetShortcut("Ctrl+Alt+N");
-        ctxNewFolder = treeContextMenu.AddItem("New Folder...");
+        ctxNewFolder = treeContextMenu.AddItem("▤ New Folder...");
         ctxNewFolder.SetShortcut("Ctrl+Alt+Shift+N");
-        ctxSearchFolder = treeContextMenu.AddItem("Search in Folder...");
-        ctxRunFile = treeContextMenu.AddItem("Run This File");
-        ctxSetEntry = treeContextMenu.AddItem("Set as Project Entry");
+        ctxSearchFolder = treeContextMenu.AddItem("? Search in Folder...");
+        ctxRunFile = treeContextMenu.AddItem("▶ Run This File");
+        ctxSetEntry = treeContextMenu.AddItem("◆ Set as Project Entry");
         treeContextMenu.AddSeparator();
-        ctxRefresh = treeContextMenu.AddItem("Refresh");
+        ctxRefresh = treeContextMenu.AddItem("↻ Refresh");
         ctxRefresh.SetShortcut("Ctrl+Alt+Shift+R");
 
         // Context menu for the code editor surface (populated on right-click).
         editorContextMenu = GUI.ContextMenu.New();
-        ecCut = editorContextMenu.AddItem("Cut");
+        ecCut = editorContextMenu.AddItem("✂ Cut");
         ecCut.SetShortcut("Ctrl+X");
-        ecCopy = editorContextMenu.AddItem("Copy");
+        ecCopy = editorContextMenu.AddItem("⧉ Copy");
         ecCopy.SetShortcut("Ctrl+C");
-        ecPaste = editorContextMenu.AddItem("Paste");
+        ecPaste = editorContextMenu.AddItem("▣ Paste");
         ecPaste.SetShortcut("Ctrl+V");
         editorContextMenu.AddSeparator();
-        ecGotoDef = editorContextMenu.AddItem("Go to Definition");
+        ecGotoDef = editorContextMenu.AddItem("→ Go to Definition");
         ecGotoDef.SetShortcut("F12");
-        ecFindRefs = editorContextMenu.AddItem("Find References");
+        ecFindRefs = editorContextMenu.AddItem("? Find References");
         ecFindRefs.SetShortcut("Shift+F12");
-        ecRename = editorContextMenu.AddItem("Rename Symbol");
+        ecRename = editorContextMenu.AddItem("✎ Rename Symbol");
         ecRename.SetShortcut("F2");
         editorContextMenu.AddSeparator();
-        ecFormat = editorContextMenu.AddItem("Format Document");
+        ecFormat = editorContextMenu.AddItem("◇ Format Document");
         ecFormat.SetShortcut("Shift+Alt+F");
-        ecToggleBreakpoint = editorContextMenu.AddItem("Toggle Breakpoint");
+        ecToggleBreakpoint = editorContextMenu.AddItem("● Toggle Breakpoint");
         ecToggleBreakpoint.SetShortcut("F9");
-        ecEvaluate = editorContextMenu.AddItem("Evaluate at Cursor");
+        ecEvaluate = editorContextMenu.AddItem("▸ Evaluate at Cursor");
         editorContextMenu.AddSeparator();
-        ecPalette = editorContextMenu.AddItem("Command Palette...");
+        ecPalette = editorContextMenu.AddItem("◆ Command Palette...");
         ecPalette.SetShortcut("Ctrl+Shift+P");
 
         // Context menu for the editor tab strip (populated on right-click).
         tabContextMenu = GUI.ContextMenu.New();
-        tcClose = tabContextMenu.AddItem("Close");
-        tcCloseOthers = tabContextMenu.AddItem("Close Others");
-        tcCloseAll = tabContextMenu.AddItem("Close All");
-        tcCloseSaved = tabContextMenu.AddItem("Close Saved");
+        tcClose = tabContextMenu.AddItem("× Close");
+        tcCloseOthers = tabContextMenu.AddItem("× Close Others");
+        tcCloseAll = tabContextMenu.AddItem("× Close All");
+        tcCloseSaved = tabContextMenu.AddItem("✓ Close Saved");
         tabContextMenu.AddSeparator();
-        tcCopyPath = tabContextMenu.AddItem("Copy Path");
-        tcCopyRelativePath = tabContextMenu.AddItem("Copy Relative Path");
-        tcReveal = tabContextMenu.AddItem("Reveal in Finder");
+        tcCopyPath = tabContextMenu.AddItem("⧉ Copy Path");
+        tcCopyRelativePath = tabContextMenu.AddItem("⧉ Copy Relative Path");
+        tcReveal = tabContextMenu.AddItem("▣ Reveal in Finder");
 
         // ====================================================================
         // Status Bar
@@ -654,6 +677,8 @@ class AppShell {
         cursorItem = statusBar.AddText("Ln 1, Col 1", 1);   // zone 1 = center
         projectItem = statusBar.AddText("No project", 2);
         projectItem.SetTooltip("Active project");
+        indexItem = statusBar.AddText("Workspace index idle", 2);
+        indexItem.SetTooltip("Workspace index state");
         languageItem = statusBar.AddText("Lang: text", 2);
         languageItem.SetTooltip("Active language service");
         jobItem = statusBar.AddText("Job: idle", 2);
@@ -733,6 +758,23 @@ class AppShell {
         }
     }
 
+    /// @brief Update the workspace-index status-bar item.
+    /// @details Indexing can run for many frames on large projects. Keeping its
+    ///          progress in a dedicated status item makes that background work
+    ///          visible without overwriting command/status messages in the left
+    ///          zone every frame.
+    /// @param status Short index status text.
+    expose func SetIndexStatus(status: String) {
+        var text = status;
+        if text == "" { text = "Workspace index idle"; }
+        if text == lastIndexStatus { return; }
+        lastIndexStatus = text;
+        if indexItem != null {
+            indexItem.SetText(text);
+            indexItem.SetTooltip(text);
+        }
+    }
+
     expose func SetDiagnosticsSummary(errors: Integer,
                                       warnings: Integer,
                                       notes: Integer) {
@@ -763,9 +805,15 @@ class AppShell {
             lastBuildJobStatus = "Job: idle";
         }
 
-        if tbBuild != null { tbBuild.SetEnabled(enabled); }
-        if tbRun != null { tbRun.SetEnabled(enabled); }
-        if tbDebug != null { tbDebug.SetEnabled(enabled); }
+        SetToolbarItemState(tbBuild, enabled,
+                            "Build (Ctrl+Shift+B)",
+                            "Build disabled while " + jobName + " is running");
+        SetToolbarItemState(tbRun, enabled,
+                            "Build & Run (F5)",
+                            "Run disabled while " + jobName + " is running");
+        SetToolbarItemState(tbDebug, enabled,
+                            "Start Debugging (F6)",
+                            "Debug disabled while " + jobName + " is running");
         if tbStop != null {
             tbStop.SetEnabled(stopEnabled);
             if active {
@@ -784,6 +832,101 @@ class AppShell {
             jobItem.SetText(lastBuildJobStatus);
             jobItem.SetTooltip(lastBuildJobStatus);
         }
+    }
+
+    /// @brief Apply enabled state and matching hover text to one toolbar item.
+    /// @details Toolbar tooltips are the primary affordance for compact icon
+    ///          buttons. Keeping disabled-state reasons here prevents the app
+    ///          from presenting inert icons with no explanation while preserving
+    ///          the existing menu/shortcut command routing.
+    /// @param item Toolbar item handle; NULL is ignored during partial setup.
+    /// @param enabled Runtime GUI enabled flag (`1` enabled, `0` disabled).
+    /// @param enabledTooltip Tooltip used when the item can be activated.
+    /// @param disabledTooltip Tooltip used when the item is disabled.
+    hide func SetToolbarItemState(item: GUI.ToolbarItem,
+                                  enabled: Integer,
+                                  enabledTooltip: String,
+                                  disabledTooltip: String) {
+        if item == null { return; }
+        item.SetEnabled(enabled);
+        if enabled != 0 {
+            item.SetTooltip(enabledTooltip);
+        } else {
+            item.SetTooltip(disabledTooltip);
+        }
+    }
+
+    /// @brief Apply running/paused debug-session state to visible controls.
+    /// @details Debug commands are always registered so shortcuts and palette
+    ///          routing remain stable. This method only updates affordances:
+    ///          start is disabled while a session is active, stepping is enabled
+    ///          only while paused, and pause is enabled only while running.
+    /// @param active True while a debug adapter session exists.
+    /// @param stopped True while the debuggee is paused at a stop location.
+    /// @param buildJobActive True while the build/run process controller is busy.
+    expose func SetDebugSessionState(active: Boolean,
+                                     stopped: Boolean,
+                                     buildJobActive: Boolean) {
+        var startEnabled = 1;
+        if active or buildJobActive {
+            startEnabled = 0;
+        }
+        var pausedEnabled = 0;
+        if active and stopped {
+            pausedEnabled = 1;
+        }
+        var runningEnabled = 0;
+        if active and stopped == false {
+            runningEnabled = 1;
+        }
+        var activeEnabled = 0;
+        if active {
+            activeEnabled = 1;
+        }
+
+        if active {
+            SetToolbarItemState(tbBuild, 0,
+                                "Build (Ctrl+Shift+B)",
+                                "Build disabled while debugging");
+            SetToolbarItemState(tbRun, 0,
+                                "Build & Run (F5)",
+                                "Run disabled while debugging");
+            SetMenuEnabled(miBuild, false);
+            SetMenuEnabled(miBuildAndRun, false);
+            SetMenuEnabled(miRun, false);
+        } else if buildJobActive == false {
+            SetToolbarItemState(tbBuild, 1,
+                                "Build (Ctrl+Shift+B)",
+                                "Build disabled while another job is running");
+            SetToolbarItemState(tbRun, 1,
+                                "Build & Run (F5)",
+                                "Run disabled while another job is running");
+            SetMenuEnabled(miBuild, true);
+            SetMenuEnabled(miBuildAndRun, true);
+            SetMenuEnabled(miRun, true);
+        }
+
+        var startDisabled = "Debug disabled while another job is running";
+        if active {
+            startDisabled = "Debug session already running";
+        }
+        SetToolbarItemState(tbDebug, startEnabled,
+                            "Start Debugging (F6)", startDisabled);
+        SetToolbarItemState(tbDebugContinue, pausedEnabled,
+                            "Continue Debugging (F7)",
+                            "Continue is available while paused at a breakpoint");
+        SetToolbarItemState(tbDebugStep, pausedEnabled,
+                            "Step Over (F10)",
+                            "Step is available while paused at a breakpoint");
+
+        SetMenuEnabled(miDebugStart, startEnabled != 0);
+        SetMenuEnabled(miDebugContinue, pausedEnabled != 0);
+        SetMenuEnabled(miDebugStepOver, pausedEnabled != 0);
+        SetMenuEnabled(miDebugStepIn, pausedEnabled != 0);
+        SetMenuEnabled(miDebugStepOut, pausedEnabled != 0);
+        SetMenuEnabled(miDebugPause, runningEnabled != 0);
+        SetMenuEnabled(miDebugRestart, activeEnabled != 0);
+        SetMenuEnabled(miDebugStop, activeEnabled != 0);
     }
 
     /// @brief Apply active-language capability state to menus and editor context actions.
@@ -1013,7 +1156,9 @@ class AppShell {
         debugListBox.Clear();
         var text = output;
         if text == "" {
-            text = "Debug console is idle";
+            AddToolInfoRow(debugListBox, "debug", "Debug console is idle");
+            ShowDebugPanel();
+            return;
         }
         var lines = Str.Split(text, "\n");
         var n = Seq.get_Length(lines);
@@ -1021,11 +1166,43 @@ class AppShell {
         while i < n {
             var line = Obj.ToString(Seq.Get(lines, i));
             if line != "" {
-                debugListBox.AddItem(line);
+                var item = debugListBox.AddItem(line);
+                ApplyDebugLineColor(item, line);
             }
             i = i + 1;
         }
         ShowDebugPanel();
+    }
+
+    /// @brief Apply semantic color to a debug-console row.
+    /// @details Debug output combines adapter status, program stdout/stderr,
+    ///          stop metadata, and termination messages. Coloring known line
+    ///          classes improves scanability while leaving arbitrary program
+    ///          output unchanged.
+    /// @param item Debug ListBox item to color.
+    /// @param line Text displayed in the row.
+    hide func ApplyDebugLineColor(item: Any,
+                                  line: String) {
+        if item == null { return; }
+        var lower = Str.ToLower(line);
+        if Str.IndexOf(lower, "error") != 0
+           or Str.IndexOf(lower, "failed") != 0
+           or Str.IndexOf(lower, "trap") != 0
+           or Str.IndexOf(lower, "not found") != 0 {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_ERROR);
+        } else if Str.IndexOf(lower, "warning") != 0
+                  or Str.IndexOf(lower, "warn") != 0 {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_WARNING);
+        } else if Str.IndexOf(lower, "stopped") != 0
+                  or Str.IndexOf(lower, "breakpoint") != 0 {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_INFO);
+        } else if Str.IndexOf(lower, "terminated") != 0
+                  or Str.IndexOf(lower, "exited") != 0
+                  or Str.IndexOf(lower, "exit") != 0 {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_SUCCESS);
+        } else if Str.StartsWith(lower, "[debug]") {
+            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_MUTED);
+        }
     }
 
     func AddBuildOutputLines(output: String) {
@@ -1187,11 +1364,13 @@ class AppShell {
 
     expose func ClearProblemsPanel() {
         diagListBox.Clear();
+        problemsHaveDiagnostics = false;
         HideProblemsPanel();
     }
 
     expose func BeginProblems() {
         diagListBox.Clear();
+        problemsHaveDiagnostics = false;
         var header = diagListBox.AddItem(PadToolColumn("TYPE", TOOL_KIND_COL)
                                          + "  " + PadToolColumn("SOURCE", TOOL_SOURCE_COL)
                                          + "  " + PadToolColumn("LOCATION", TOOL_LOCATION_COL)
@@ -1209,6 +1388,7 @@ class AppShell {
                            code: String,
                            message: String,
                            action: String) -> Any {
+        problemsHaveDiagnostics = true;
         var displayCode = code;
         if displayCode == "" { displayCode = "-"; }
         var displayAction = action;
@@ -1259,6 +1439,51 @@ class AppShell {
             text = text + "  " + PadToolColumn(action, TOOL_ACTION_COL);
         }
         return listBox.AddItem(text);
+    }
+
+    /// @brief Add a colorized informational row to any bottom tool ListBox.
+    /// @details Tool panels use fixed columns for diagnostics, search results,
+    ///          references, and debug messages. Empty/progress state rows should
+    ///          use the same geometry as actionable rows so the panel does not
+    ///          visually jump between states.
+    /// @param listBox Destination tool ListBox.
+    /// @param kind Short row kind such as INFO or OK.
+    /// @param source Source column text such as search, debug, or build.
+    /// @param message Human-readable row message.
+    /// @param color Text color applied to the row.
+    /// @return Newly-created ListBox item, or null if the list box is null.
+    expose func AddToolStateRow(listBox: GUI.ListBox,
+                                kind: String,
+                                source: String,
+                                message: String,
+                                color: Integer) -> Any {
+        var item = AddToolLocationRow(listBox, kind, source, "-", "-", message, "-");
+        if item != null {
+            GUI.ListBox.ItemSetTextColor(item, color);
+        }
+        return item;
+    }
+
+    /// @brief Add a muted informational state row to a tool panel.
+    /// @param listBox Destination tool ListBox.
+    /// @param source Source column text.
+    /// @param message Human-readable state message.
+    /// @return Newly-created ListBox item, or null if the list box is null.
+    expose func AddToolInfoRow(listBox: GUI.ListBox,
+                               source: String,
+                               message: String) -> Any {
+        return AddToolStateRow(listBox, "INFO", source, message, TOOL_COLOR_MUTED);
+    }
+
+    /// @brief Add a success state row to a tool panel.
+    /// @param listBox Destination tool ListBox.
+    /// @param source Source column text.
+    /// @param message Human-readable state message.
+    /// @return Newly-created ListBox item, or null if the list box is null.
+    expose func AddToolSuccessRow(listBox: GUI.ListBox,
+                                  source: String,
+                                  message: String) -> Any {
+        return AddToolStateRow(listBox, "OK", source, message, TOOL_COLOR_SUCCESS);
     }
 
     expose func ProblemSeverityLabel(severity: String) -> String {
@@ -1352,22 +1577,45 @@ class AppShell {
 
     expose func FinishProblems(problemCount: Integer) {
         if problemCount > 0 {
+            problemsHaveDiagnostics = true;
             ShowProblemsPanel();
         } else {
-            ClearProblemsPanel();
+            problemsHaveDiagnostics = false;
+            AddCleanProblemsRow();
+            HideProblemsPanel();
         }
+    }
+
+    /// @brief Add a compact clean-state row to the Problems list.
+    /// @details `BeginProblems` has already inserted the table header before this
+    ///          method is called. Keeping a clean row in the list lets users
+    ///          revisit the Problems tab and see when the latest check produced
+    ///          no diagnostics, while `FinishProblems` can still hide the panel
+    ///          so it does not consume vertical space after clean builds.
+    hide func AddCleanProblemsRow() {
+        AddToolSuccessRow(diagListBox, "build", "No diagnostics from the latest check");
+    }
+
+    /// @brief Hide every bottom tool panel surface. Each Show*Panel calls this
+    ///        first, then reveals only its own — so adding a panel can never leave
+    ///        two overlapping (the bug class the old per-function hide lists risked).
+    hide func HideAllToolPanels() {
+        diagListBox.SetVisible(0);
+        outputPane.SetVisible(0);
+        outputListBox.SetVisible(0);
+        searchListBox.SetVisible(0);
+        referencesListBox.SetVisible(0);
+        debugListBox.SetVisible(0);
+        variablesListBox.SetVisible(0);
+        callStackListBox.SetVisible(0);
     }
 
     expose func ShowProblemsPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolProblemsTab);
         activeToolPanelKind = 1;
+        HideAllToolPanels();
         diagListBox.SetVisible(1);
-        outputPane.SetVisible(0);
-        outputListBox.SetVisible(0);
-        searchListBox.SetVisible(0);
-        referencesListBox.SetVisible(0);
-        debugListBox.SetVisible(0);
     }
 
     expose func HideProblemsPanel() {
@@ -1379,17 +1627,12 @@ class AppShell {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolOutputTab);
         activeToolPanelKind = 2;
+        HideAllToolPanels();
         if outputPaneMode {
             outputPane.SetVisible(1);
-            outputListBox.SetVisible(0);
         } else {
-            outputPane.SetVisible(0);
             outputListBox.SetVisible(1);
         }
-        diagListBox.SetVisible(0);
-        searchListBox.SetVisible(0);
-        referencesListBox.SetVisible(0);
-        debugListBox.SetVisible(0);
     }
 
     expose func HideOutputPanel() {
@@ -1402,12 +1645,8 @@ class AppShell {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolSearchTab);
         activeToolPanelKind = 3;
+        HideAllToolPanels();
         searchListBox.SetVisible(1);
-        diagListBox.SetVisible(0);
-        outputPane.SetVisible(0);
-        outputListBox.SetVisible(0);
-        referencesListBox.SetVisible(0);
-        debugListBox.SetVisible(0);
     }
 
     expose func HideSearchPanel() {
@@ -1419,12 +1658,8 @@ class AppShell {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolReferencesTab);
         activeToolPanelKind = 4;
+        HideAllToolPanels();
         referencesListBox.SetVisible(1);
-        diagListBox.SetVisible(0);
-        outputPane.SetVisible(0);
-        outputListBox.SetVisible(0);
-        searchListBox.SetVisible(0);
-        debugListBox.SetVisible(0);
     }
 
     expose func HideReferencesPanel() {
@@ -1432,16 +1667,28 @@ class AppShell {
         ShowFallbackToolPanel();
     }
 
+    expose func ShowVariablesPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolVariablesTab);
+        activeToolPanelKind = 6;
+        HideAllToolPanels();
+        variablesListBox.SetVisible(1);
+    }
+
+    expose func ShowCallStackPanel() {
+        toolTabBar.SetVisible(1);
+        toolTabBar.SetActive(toolCallStackTab);
+        activeToolPanelKind = 7;
+        HideAllToolPanels();
+        callStackListBox.SetVisible(1);
+    }
+
     expose func ShowDebugPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolDebugTab);
         activeToolPanelKind = 5;
+        HideAllToolPanels();
         debugListBox.SetVisible(1);
-        diagListBox.SetVisible(0);
-        outputPane.SetVisible(0);
-        outputListBox.SetVisible(0);
-        searchListBox.SetVisible(0);
-        referencesListBox.SetVisible(0);
     }
 
     expose func HideDebugPanel() {
@@ -1457,18 +1704,32 @@ class AppShell {
     hide func ShowFallbackToolPanel() {
         if HasOutputContent() {
             ShowOutputPanel();
-        } else if diagListBox.Count > 0 {
+        } else if HasActiveProblemsContent() {
             ShowProblemsPanel();
         } else if searchListBox.Count > 0 {
             ShowSearchPanel();
         } else if referencesListBox.Count > 0 {
             ShowReferencesPanel();
+        } else if variablesListBox.Count > 0 {
+            ShowVariablesPanel();
+        } else if callStackListBox.Count > 0 {
+            ShowCallStackPanel();
         } else if debugListBox.Count > 0 {
             ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
             activeToolPanelKind = 0;
         }
+    }
+
+    /// @brief Return whether Problems should claim fallback tool-panel space.
+    /// @details The Problems list can intentionally keep a clean-state row after
+    ///          a successful check. Fallback selection should only auto-open the
+    ///          panel for real diagnostics, while explicit tab selection can
+    ///          still display the retained clean row.
+    /// @return True when the Problems list contains active diagnostics.
+    hide func HasActiveProblemsContent() -> Boolean {
+        return problemsHaveDiagnostics and diagListBox.Count > 0;
     }
 
     expose func PumpToolTabs() {
@@ -1484,12 +1745,16 @@ class AppShell {
         } else if idx == 3 {
             ShowReferencesPanel();
         } else if idx == 4 {
+            ShowVariablesPanel();
+        } else if idx == 5 {
+            ShowCallStackPanel();
+        } else if idx == 6 {
             ShowDebugPanel();
         } else {
             toolTabBar.SetActive(toolOutputTab);
             if HasOutputContent() {
                 ShowOutputPanel();
-            } else if diagListBox.Count > 0 {
+            } else if HasActiveProblemsContent() {
                 ShowProblemsPanel();
             } else if searchListBox.Count > 0 {
                 ShowSearchPanel();

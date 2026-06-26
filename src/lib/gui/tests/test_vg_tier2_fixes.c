@@ -1385,6 +1385,29 @@ TEST(treeview_nested_blank_click_selects_instead_of_toggling) {
     vg_widget_destroy(&tree->base);
 }
 
+TEST(treeview_right_click_does_not_select_or_activate) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    ASSERT_NOT_NULL(tree);
+
+    vg_tree_node_t *first = vg_treeview_add_node(tree, NULL, "first");
+    ASSERT_NOT_NULL(first);
+    tree->base.x = 0.0f;
+    tree->base.y = 0.0f;
+    tree->base.width = 200.0f;
+    tree->base.height = 120.0f;
+
+    vg_event_t click = {0};
+    click.type = VG_EVENT_CLICK;
+    click.mouse.button = VG_MOUSE_RIGHT;
+    click.mouse.x = 12.0f;
+    click.mouse.y = tree->row_height * 0.5f;
+    ASSERT_FALSE(tree->base.vtable->handle_event(&tree->base, &click));
+    ASSERT_NULL(tree->selected);
+    ASSERT_EQ(tree->selection_revision, 0u);
+
+    vg_widget_destroy(&tree->base);
+}
+
 TEST(treeview_drag_and_drop_invokes_callback) {
     tree_drop_state_t state = {0};
     vg_treeview_t *tree = vg_treeview_create(NULL);
@@ -1855,7 +1878,8 @@ TEST(toolbar_item_text_change_marks_owner_dirty) {
     vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
     ASSERT_NOT_NULL(tb);
 
-    vg_toolbar_item_t *item = vg_toolbar_add_button(tb, "run", "Run", (vg_icon_t){0}, NULL, NULL);
+    vg_toolbar_item_t *item =
+        vg_toolbar_add_button(tb, "run", "Run", vg_icon_from_glyph('R'), NULL, NULL);
     ASSERT_NOT_NULL(item);
 
     tb->base.needs_layout = false;
@@ -1877,7 +1901,8 @@ TEST(toolbar_item_mutators_skip_unchanged_values) {
     vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
     ASSERT_NOT_NULL(tb);
 
-    vg_toolbar_item_t *item = vg_toolbar_add_button(tb, "run", "Run", (vg_icon_t){0}, NULL, NULL);
+    vg_toolbar_item_t *item =
+        vg_toolbar_add_button(tb, "run", "Run", vg_icon_from_glyph('R'), NULL, NULL);
     ASSERT_NOT_NULL(item);
     vg_toolbar_item_set_tooltip(item, "Run");
 
@@ -1893,6 +1918,52 @@ TEST(toolbar_item_mutators_skip_unchanged_values) {
     ASSERT_FALSE(tb->base.needs_layout);
     ASSERT_FALSE(tb->base.needs_paint);
     ASSERT_FALSE(tb->overflow_popup_dirty);
+
+    vg_widget_destroy(&tb->base);
+}
+
+TEST(toolbar_hover_promotes_item_tooltip_to_widget_tooltip) {
+    vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+    vg_widget_set_tooltip_text(&tb->base, "Toolbar");
+
+    vg_toolbar_item_t *item =
+        vg_toolbar_add_button(tb, "run", "Run", vg_icon_from_glyph('R'), NULL, NULL);
+    ASSERT_NOT_NULL(item);
+    vg_toolbar_item_set_tooltip(item, "Run the active file");
+    vg_widget_arrange(&tb->base, 0.0f, 0.0f, 120.0f, 32.0f);
+
+    vg_event_t move = vg_event_mouse(VG_EVENT_MOUSE_MOVE, 10.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_send(&tb->base, &move));
+    ASSERT_EQ(tb->hovered_item, item);
+    ASSERT_NOT_NULL(tb->base.tooltip_text);
+    ASSERT_EQ(strcmp(tb->base.tooltip_text, "Run the active file"), 0);
+
+    vg_event_t leave = {0};
+    leave.type = VG_EVENT_MOUSE_LEAVE;
+    ASSERT_FALSE(vg_event_send(&tb->base, &leave));
+    ASSERT_NOT_NULL(tb->base.tooltip_text);
+    ASSERT_EQ(strcmp(tb->base.tooltip_text, "Toolbar"), 0);
+
+    vg_widget_destroy(&tb->base);
+}
+
+TEST(toolbar_right_click_does_not_activate_button) {
+    int click_count = 0;
+    vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "run", "Run", (vg_icon_t){0}, toolbar_click_counter, &click_count));
+    vg_widget_arrange(&tb->base, 0.0f, 0.0f, 120.0f, 32.0f);
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 10.0f, 10.0f, VG_MOUSE_RIGHT, 0);
+    ASSERT_FALSE(vg_event_send(&tb->base, &down));
+    ASSERT_NULL(tb->pressed_item);
+
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, 10.0f, 10.0f, VG_MOUSE_RIGHT, 0);
+    ASSERT_FALSE(vg_event_send(&tb->base, &up));
+    ASSERT_EQ(click_count, 0);
 
     vg_widget_destroy(&tb->base);
 }
@@ -2489,6 +2560,7 @@ int main(void) {
     RUN(scrollview_scroll_to_nested_descendant_uses_full_offset);
     RUN(treeview_remove_node_clears_descendant_state);
     RUN(treeview_nested_blank_click_selects_instead_of_toggling);
+    RUN(treeview_right_click_does_not_select_or_activate);
     RUN(treeview_drag_and_drop_invokes_callback);
     RUN(widget_paint_runs_overlay_second_pass);
     RUN(widget_set_focus_null_clears_focus);
@@ -2506,6 +2578,8 @@ int main(void) {
     RUN(toolbar_dropdown_opens_menu_popup_and_triggers_menu_item);
     RUN(toolbar_item_text_change_marks_owner_dirty);
     RUN(toolbar_item_mutators_skip_unchanged_values);
+    RUN(toolbar_hover_promotes_item_tooltip_to_widget_tooltip);
+    RUN(toolbar_right_click_does_not_activate_button);
     RUN(toolbar_keyboard_navigation_activates_focused_item);
     RUN(toolbar_keyboard_end_focuses_overflow_button);
     RUN(statusbar_hit_testing_uses_local_coords);

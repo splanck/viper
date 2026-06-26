@@ -1,4 +1,4 @@
-il VERSION
+il 0.2.0
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -44,9 +44,9 @@ entry:
 func @main() -> i64 {
 entry:
   call @__mod_init$oop()
-  %t0 = alloca 8
+  %a$ = alloca 8
   %t1:str = call @rt_str_empty()
-  store str, %t0, %t1
+  store str, %a$, %t1
   br L10
 L10:
   .loc 1 1 13
@@ -54,16 +54,16 @@ L10:
   .loc 1 1 4
   call @rt_str_retain_maybe(%t2)
   .loc 1 1 4
-  %t3 = load str, %t0
+  %t3 = load str, %a$
   .loc 1 1 4
   call @rt_str_release_maybe(%t3)
   .loc 1 1 4
-  store str, %t0, %t2
+  store str, %a$, %t2
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 14
-  %t4 = load str, %t0
+  %t4 = load str, %a$
   .loc 1 2 10
   %t5:i64 = call @Viper.String.get_Length(%t4)
   .loc 1 2 10
@@ -76,7 +76,7 @@ L20:
   br L30
 L30:
   .loc 1 3 15
-  %t7 = load str, %t0
+  %t7 = load str, %a$
   .loc 1 3 22
   %t8:str = call @rt_str_mid_len(%t7, 2, 3)
   .loc 1 3 22
@@ -89,7 +89,7 @@ L30:
   br L40
 L40:
   .loc 1 4 15
-  %t10 = load str, %t0
+  %t10 = load str, %a$
   .loc 1 4 10
   %t11:str = call @rt_str_mid(%t10, 3)
   .loc 1 4 10

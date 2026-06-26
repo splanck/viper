@@ -444,9 +444,7 @@ void *rt_toolbar_new(void *parent) {
     if (tb) {
         if (app)
             rt_gui_activate_app(app);
-        rt_gui_ensure_default_font();
-        if (app && app->default_font)
-            vg_toolbar_set_font(tb, app->default_font, app->default_font_size);
+        rt_gui_apply_default_font((vg_widget_t *)tb);
     }
     return tb;
 }
@@ -465,9 +463,7 @@ void *rt_toolbar_new_vertical(void *parent) {
     if (tb) {
         if (app)
             rt_gui_activate_app(app);
-        rt_gui_ensure_default_font();
-        if (app && app->default_font)
-            vg_toolbar_set_font(tb, app->default_font, app->default_font_size);
+        rt_gui_apply_default_font((vg_widget_t *)tb);
     }
     return tb;
 }

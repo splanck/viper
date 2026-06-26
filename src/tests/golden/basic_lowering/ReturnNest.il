@@ -32,7 +32,7 @@ extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_trap(str) -> void
+extern @rt_trap_string(str) -> void
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
 entry:

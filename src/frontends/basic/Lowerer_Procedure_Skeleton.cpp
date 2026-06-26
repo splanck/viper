@@ -187,6 +187,7 @@ void Lowerer::allocateBooleanSlots(const std::unordered_set<std::string> &paramN
 
         Value slot = emitAlloca(1);
         info.slotId = slot.id;
+        builder->setValueName(slot.id, name); // surface as a named local to the debugger
         emitStore(ilBoolTy(), slot, emitBoolConst(false));
     }
 }
@@ -215,10 +216,12 @@ void Lowerer::allocateNonBooleanSlots(const std::unordered_set<std::string> &par
         if (slotInfo.isArray) {
             Value slot = emitAlloca(8);
             info.slotId = slot.id;
+            builder->setValueName(slot.id, name); // surface as a named local to the debugger
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
         } else if (!slotInfo.isBoolean) {
             Value slot = emitAlloca(8);
             info.slotId = slot.id;
+            builder->setValueName(slot.id, name); // surface as a named local to the debugger
             if (slotInfo.type.kind == Type::Kind::Str) {
                 Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
                 emitStore(slotInfo.type, slot, empty);

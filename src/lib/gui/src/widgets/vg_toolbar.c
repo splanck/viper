@@ -63,6 +63,7 @@ static void toolbar_paint_overlay(vg_widget_t *widget, void *canvas);
 static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool toolbar_can_focus(vg_widget_t *widget);
 static void toolbar_on_focus(vg_widget_t *widget, bool gained);
+static void toolbar_sync_hover_tooltip(vg_toolbar_t *tb);
 static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 
@@ -276,6 +277,45 @@ static void free_retired_items(vg_toolbar_t *tb) {
         item = next;
     }
     tb->retired_items = NULL;
+}
+
+/// @brief Promote the hovered item's tooltip onto the toolbar widget.
+/// @details Toolbar items are lightweight records rather than standalone
+///          widgets, while the shared tooltip manager only reads
+///          vg_widget_t::tooltip_text. This helper mirrors the TabBar hover
+///          tooltip pattern: it saves the toolbar's original widget tooltip,
+///          replaces it with the hovered item tooltip, and restores the
+///          original text when hover leaves the item.
+/// @param tb Toolbar whose hovered item changed; NULL is ignored.
+static void toolbar_sync_hover_tooltip(vg_toolbar_t *tb) {
+    if (!tb)
+        return;
+
+    const char *hover_tooltip =
+        (tb->hovered_item && tb->hovered_item->tooltip) ? tb->hovered_item->tooltip : NULL;
+    if (hover_tooltip && hover_tooltip[0] == '\0')
+        hover_tooltip = NULL;
+
+    if (hover_tooltip) {
+        if (!tb->hover_tooltip_active) {
+            char *saved_tooltip = tb->base.tooltip_text ? vg_strdup(tb->base.tooltip_text) : NULL;
+            if (tb->base.tooltip_text && !saved_tooltip)
+                return;
+            free(tb->saved_tooltip_text);
+            tb->saved_tooltip_text = saved_tooltip;
+            tb->hover_tooltip_active = true;
+        }
+        if (!tb->base.tooltip_text || strcmp(tb->base.tooltip_text, hover_tooltip) != 0)
+            vg_widget_set_tooltip_text(&tb->base, hover_tooltip);
+        return;
+    }
+
+    if (tb->hover_tooltip_active) {
+        vg_widget_set_tooltip_text(&tb->base, tb->saved_tooltip_text);
+        free(tb->saved_tooltip_text);
+        tb->saved_tooltip_text = NULL;
+        tb->hover_tooltip_active = false;
+    }
 }
 
 /// @brief Allocate and zero-initialise a toolbar item of the given type, duplicating id.
@@ -1132,6 +1172,8 @@ vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t or
     tb->pressed_item = NULL;
     tb->overflow_start_index = -1;
     tb->focused_index = -1;
+    tb->saved_tooltip_text = NULL;
+    tb->hover_tooltip_active = false;
 
     // Add to parent
     if (parent) {
@@ -1157,6 +1199,8 @@ static void toolbar_destroy(vg_widget_t *widget) {
         free_item(tb->items[i]);
     }
     free(tb->items);
+    free(tb->saved_tooltip_text);
+    tb->saved_tooltip_text = NULL;
     free_retired_items(tb);
 }
 
@@ -1282,24 +1326,72 @@ static void toolbar_fill_tri(
     }
 }
 
+/// @brief Pick a semantic color for a known toolbar codepoint.
+/// @details Action icons benefit from quick color recognition in the IDE:
+///          run/continue are green, stop is red, build is amber, debug is
+///          violet, file actions are blue/cyan, and search stays magenta.
+///          Disabled items keep the caller's disabled color so they remain
+///          visually inactive.
+/// @param cp Unicode codepoint used as the toolbar icon key.
+/// @param fallback Theme-provided text color to use for unmapped or disabled icons.
+/// @param enabled True when the toolbar item can currently be activated.
+/// @return RGB color used to draw the vector icon.
+static uint32_t toolbar_vector_icon_color(uint32_t cp, uint32_t fallback, bool enabled) {
+    if (!enabled)
+        return fallback;
+
+    switch (cp) {
+        case 0x2B:   // New
+        case 0x25A4: // Open
+            return 0x2F80EDu;
+        case 0x25BC: // Save
+        case 0x21D3: // Save all
+            return 0x22A6B3u;
+        case 0x25A3: // Build
+            return 0xD99000u;
+        case 0x25B6: // Run
+        case 0x25B7: // Continue
+            return 0x23A55Au;
+        case 0x25A0: // Stop
+            return 0xD64545u;
+        case 0x25C7: // Debug
+            return 0x8A63D2u;
+        case 0x2192: // Step
+            return 0x4E8FD8u;
+        case 0x3F: // Find
+            return 0xC65BCFu;
+        default:
+            return fallback;
+    }
+}
+
 /// @brief Draw a recognisable vector icon for a known toolbar codepoint.
+/// @param win Destination window/framebuffer.
+/// @param cp Unicode codepoint used as the icon key.
+/// @param bx Left edge of the icon box.
+/// @param by Top edge of the icon box.
+/// @param sz Width/height of the square icon box.
+/// @param color Theme fallback color.
+/// @param enabled True when the owning toolbar item is enabled.
 /// @return true if handled (caller skips the font glyph); false to fall back.
 static bool toolbar_draw_vector_icon(
-    vgfx_window_t win, uint32_t cp, float bx, float by, float sz, uint32_t color) {
+    vgfx_window_t win, uint32_t cp, float bx, float by, float sz, uint32_t color, bool enabled) {
     float sw = sz * 0.10f;
     if (sw < 1.4f)
         sw = 1.4f;
+    uint32_t icon_color = toolbar_vector_icon_color(cp, color, enabled);
 #define IX(fx) (bx + (fx) * sz)
 #define IY(fy) (by + (fy) * sz)
-#define ILINE(x0, y0, x1, y1) vg_draw_line_aa(win, IX(x0), IY(y0), IX(x1), IY(y1), sw, color)
-#define IRING(cx, cy, r) vg_draw_circle_stroke(win, IX(cx), IY(cy), (r) * sz, sw, color)
-#define IDISC(cx, cy, r) vg_draw_disc_fill(win, IX(cx), IY(cy), (r) * sz, color)
+#define ILINE(x0, y0, x1, y1)                                                                            \
+    vg_draw_line_aa(win, IX(x0), IY(y0), IX(x1), IY(y1), sw, icon_color)
+#define IRING(cx, cy, r) vg_draw_circle_stroke(win, IX(cx), IY(cy), (r) * sz, sw, icon_color)
+#define IDISC(cx, cy, r) vg_draw_disc_fill(win, IX(cx), IY(cy), (r) * sz, icon_color)
 #define IRRS(x0, y0, w, h, rad)                                                                    \
-    vg_draw_round_rect_stroke(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, sw, color)
+    vg_draw_round_rect_stroke(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, sw, icon_color)
 #define IRRF(x0, y0, w, h, rad)                                                                    \
-    vg_draw_round_rect_fill(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, color)
+    vg_draw_round_rect_fill(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, icon_color)
 #define ITRI(x0, y0, x1, y1, x2, y2)                                                               \
-    toolbar_fill_tri(win, IX(x0), IY(y0), IX(x1), IY(y1), IX(x2), IY(y2), color)
+    toolbar_fill_tri(win, IX(x0), IY(y0), IX(x1), IY(y1), IX(x2), IY(y2), icon_color)
 
     switch (cp) {
         case 0x2B: // New file (document with text lines)
@@ -1512,7 +1604,13 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                         // Prefer a crisp vector icon for known codepoints; fall
                         // back to the font glyph for anything unmapped.
                         if (toolbar_draw_vector_icon(
-                                win, item->icon.data.glyph, icon_x, icon_y, icon_px, txt_color)) {
+                                win,
+                                item->icon.data.glyph,
+                                icon_x,
+                                icon_y,
+                                icon_px,
+                                txt_color,
+                                item->enabled)) {
                             break;
                         }
                         // Draw glyph using font
@@ -1566,7 +1664,7 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                     float centred_x = item_x + (item_width - icon_px) / 2.0f;
                     if (label_cp != 0 &&
                         toolbar_draw_vector_icon(
-                            win, label_cp, centred_x, icon_y, icon_px, txt_color)) {
+                            win, label_cp, centred_x, icon_y, icon_px, txt_color, item->enabled)) {
                         // Drawn as a vector icon — skip the text.
                     } else {
                         float label_x = (item->icon.type == VG_ICON_NONE)
@@ -1765,6 +1863,7 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (item != tb->hovered_item || overflow_hovered != tb->overflow_button_hovered) {
                 tb->hovered_item = item;
                 tb->overflow_button_hovered = overflow_hovered;
+                toolbar_sync_hover_tooltip(tb);
                 widget->needs_paint = true;
             }
             return false;
@@ -1773,6 +1872,7 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_LEAVE:
             if (tb->hovered_item) {
                 tb->hovered_item = NULL;
+                toolbar_sync_hover_tooltip(tb);
                 widget->needs_paint = true;
             }
             if (tb->overflow_button_hovered) {
@@ -1786,6 +1886,8 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_MOUSE_DOWN: {
+            if (event->mouse.button != VG_MOUSE_LEFT)
+                return false;
             if (toolbar_overflow_button_hit(tb, event->mouse.x, event->mouse.y)) {
                 vg_widget_set_focus(widget);
                 tb->focused_index = tb->overflow_start_index;
@@ -1818,6 +1920,8 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_MOUSE_UP: {
+            if (event->mouse.button != VG_MOUSE_LEFT)
+                return false;
             if (toolbar_overflow_button_hit(tb, event->mouse.x, event->mouse.y)) {
                 tb->pressed_item = NULL;
                 return true;
@@ -1842,6 +1946,7 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 if (next != tb->focused_index) {
                     tb->focused_index = next;
                     tb->hovered_item = toolbar_focus_is_overflow(tb, next) ? NULL : tb->items[next];
+                    toolbar_sync_hover_tooltip(tb);
                     widget->needs_paint = true;
                 }
                 return true;
@@ -1852,6 +1957,7 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 if (next != tb->focused_index) {
                     tb->focused_index = next;
                     tb->hovered_item = toolbar_focus_is_overflow(tb, next) ? NULL : tb->items[next];
+                    toolbar_sync_hover_tooltip(tb);
                     widget->needs_paint = true;
                 }
                 return true;
@@ -1862,6 +1968,7 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     toolbar_focus_is_overflow(tb, tb->focused_index)
                         ? NULL
                         : (tb->focused_index >= 0 ? tb->items[tb->focused_index] : NULL);
+                toolbar_sync_hover_tooltip(tb);
                 widget->needs_paint = true;
                 return true;
             }
@@ -1871,6 +1978,7 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     toolbar_focus_is_overflow(tb, tb->focused_index)
                         ? NULL
                         : (tb->focused_index >= 0 ? tb->items[tb->focused_index] : NULL);
+                toolbar_sync_hover_tooltip(tb);
                 widget->needs_paint = true;
                 return true;
             }
@@ -2166,6 +2274,7 @@ static void toolbar_remove_item_at(vg_toolbar_t *tb, size_t index) {
             &tb->items[index + 1],
             (tb->item_count - index - 1) * sizeof(vg_toolbar_item_t *));
     tb->item_count--;
+    toolbar_sync_hover_tooltip(tb);
     tb->base.needs_layout = true;
     tb->overflow_popup_dirty = true;
     toolbar_dismiss_overflow_popup(tb);
@@ -2232,6 +2341,8 @@ void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled) {
     if (item->owner) {
         item->owner->overflow_popup_dirty = true;
         item->owner->base.needs_paint = true;
+        if (item->owner->hovered_item == item)
+            toolbar_sync_hover_tooltip(item->owner);
     }
 }
 
@@ -2249,6 +2360,8 @@ void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked) {
     if (item->owner) {
         item->owner->overflow_popup_dirty = true;
         item->owner->base.needs_paint = true;
+        if (item->owner->hovered_item == item)
+            toolbar_sync_hover_tooltip(item->owner);
     }
 }
 
@@ -2271,6 +2384,8 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
     if (item->owner) {
         item->owner->overflow_popup_dirty = true;
         item->owner->base.needs_paint = true;
+        if (item->owner->hovered_item == item)
+            toolbar_sync_hover_tooltip(item->owner);
     }
 }
 

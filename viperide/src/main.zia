@@ -49,6 +49,8 @@ bind Map = Viper.Collections.Map;
 bind WorkspaceWatcher = Viper.Workspace.Watcher;
 bind FileIndex = Viper.Workspace.FileIndex;
 
+final MOUSE_BUTTON_RIGHT = 1;
+
 // ============================================================================
 // MODULE: viperide (main entry point)
 // PURPOSE: Bootstraps every subsystem and runs the per-frame event loop.
@@ -351,6 +353,11 @@ func main() {
                 GUI.Toast.Warning(lastWorkspaceIndexStatus);
             }
         }
+        if indexer.valid {
+            shell.SetIndexStatus(indexer.WorkspaceIndexProgressText());
+        } else {
+            shell.SetIndexStatus("Workspace index idle");
+        }
         completer.PumpWorkspaceSymbolCache(MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME);
         perfMon.AddIndex(perfSpan);
         if activeToolDoc != null {
@@ -403,6 +410,7 @@ func main() {
         perfSpan = perfMon.StartSpan();
         build_commands.UpdateJob(shell, buildSys, locStore);
         debug_commands.DebugUpdate(shell, docMgr, engine, tabs, dbgSession);
+        shell.SetDebugSessionState(dbgSession.IsActive(), dbgSession.stopped, buildSys.IsActive());
         perfMon.AddBuild(perfSpan);
         if FrameBudgetAllows(frameWorkStartMs) {
             perfSpan = perfMon.StartSpan();
@@ -514,12 +522,12 @@ func main() {
         }
 
         // ====================================================================
-        // Context menus — right-click (mouse button 2) on the file tree, the
+        // Context menus — right-click on the file tree, the
         // tab strip, or the editor surface. The runtime keeps a single active
         // overlay, so dismiss any open menu/palette before showing a new one.
         // ====================================================================
         var suppressTreeOpen = false;
-        if Input.Mouse.WasClicked(2) {
+        if Input.Mouse.WasClicked(MOUSE_BUTTON_RIGHT) {
             var ctxX = Input.Mouse.X;
             var ctxY = Input.Mouse.Y;
             if shell.sidebarTree.IsHovered() != 0 {
@@ -533,6 +541,7 @@ func main() {
                     shell.contextPath = "";
                 }
                 shell.contextDir = ContextDirForPath(projMgr, shell.contextPath);
+                ConfigureTreeContextMenuForPath(shell, projMgr, shell.contextPath, shell.contextDir);
                 shell.treeContextMenu.Show(ctxX, ctxY);
             } else if shell.tabBar.IsHovered() != 0 {
                 DismissContextMenus(shell);
@@ -648,7 +657,7 @@ func main() {
                     if file_commands.ConfirmCloseDocumentsUnderPath(
                         shell, docMgr, engine, "Delete", deletePath) == false {
                         shell.SetStatusLeft("Delete canceled");
-                    } else if projMgr.DeleteSelected(docMgr) {
+                    } else if projMgr.DeletePath(deletePath, docMgr) {
                         indexer.RemoveFile(deletePath);
                         ReindexAfterTreeMove(projMgr, indexer, docMgr);
                         InvalidateWorkspaceLocations(shell, locStore, engine);
@@ -679,6 +688,9 @@ func main() {
                     var newFilePath = Path.Join(ctxDir, newName);
                     IO.File.Touch(newFilePath);
                     projMgr.RefreshTree();
+                    indexer.UpdateFile(newFilePath);
+                    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newFilePath);
+                    pendingReload = false;
                     GUI.Toast.Success("Created: " + newName);
                 }
             }
@@ -953,9 +965,21 @@ func main() {
         if triggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items
-        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild); }
-        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected)  { build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild); }
-        if triggered("run", shell.miRun, null, cpSelected)                      { build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild); }
+        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected) {
+            if CanStartBuildCommand(shell, dbgSession, "Build") {
+                build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+            }
+        }
+        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected) {
+            if CanStartBuildCommand(shell, dbgSession, "Build and Run") {
+                build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+            }
+        }
+        if triggered("run", shell.miRun, null, cpSelected) {
+            if CanStartBuildCommand(shell, dbgSession, "Run") {
+                build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+            }
+        }
         if triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
         if triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
             debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession, appSettings.saveAllBeforeBuild);
@@ -985,6 +1009,15 @@ func main() {
         }
         if triggered("togglebreakpoint", shell.miToggleBreakpoint, null, cpSelected) {
             debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore);
+        }
+        if triggeredNoMenu("debugruntocursor", cpSelected) {
+            debug_commands.handleRunToCursor(shell, docMgr, engine, dbgSession);
+        }
+        if triggeredNoMenu("debugcondition", cpSelected) {
+            debug_commands.handleSetCondition(shell, docMgr, engine, breakpointStore, dbgSession);
+        }
+        if triggeredNoMenu("debuglogpoint", cpSelected) {
+            debug_commands.handleAddLogpoint(shell, docMgr, engine, breakpointStore, dbgSession);
         }
 
         // Diagnostics panel: click to navigate to error line
@@ -1392,6 +1425,27 @@ func HasIdentifierInput(text: String) -> Boolean {
     return false;
 }
 
+/// @brief Return whether a build/run command may start in the current IDE state.
+/// @details Toolbar/menu state can disable visible controls, but keyboard
+///          shortcuts and palette selections still route through the dispatcher.
+///          This guard keeps those non-visual paths from starting a build while
+///          the debugger owns the active process context.
+/// @param shell Workbench shell used for status/toast feedback.
+/// @param dbgSession Debug session controller.
+/// @param commandName Human-readable command name used in the status message.
+/// @return True when the command may continue to its handler.
+func CanStartBuildCommand(shell: app_shell.AppShell,
+                          dbgSession: debug_session.DebugSession,
+                          commandName: String) -> Boolean {
+    if dbgSession != null and dbgSession.IsActive() {
+        var message = commandName + " is disabled while debugging";
+        shell.SetStatusLeft(message);
+        GUI.Toast.Info(message);
+        return false;
+    }
+    return true;
+}
+
 /// @brief Check whether lower-priority background controllers may run this frame.
 /// @details Build/debug polling, input handling, completion, and diagnostics are
 ///          allowed to run before this budget gate. Hover, signature, inlay,
@@ -1475,6 +1529,54 @@ func ContextDirForPath(projMgr: project_manager.ProjectManager,
         }
     }
     return projMgr.project.rootPath;
+}
+
+/// @brief Enable tree context-menu actions that apply to the current target.
+/// @details The explorer uses one persistent menu object. Before showing it,
+///          this helper preserves all existing actions but greys out entries
+///          that do not apply to the right-clicked item, such as Run for
+///          folders or Duplicate for blank tree space.
+/// @param shell Workbench shell that owns the menu item handles.
+/// @param projMgr Project manager used to test project-open state.
+/// @param path Absolute path stored on the clicked tree node, or empty for
+///        blank sidebar space.
+/// @param contextDir Directory where create/search actions should operate.
+func ConfigureTreeContextMenuForPath(shell: app_shell.AppShell,
+                                     projMgr: project_manager.ProjectManager,
+                                     path: String,
+                                     contextDir: String) {
+    var hasPath = path != "";
+    var isFile = hasPath and IO.File.Exists(path) != false;
+    var hasDir = contextDir != "" and Dir.Exists(contextDir) != false;
+    var hasProject = projMgr != null and projMgr.project != null and projMgr.project.isOpen;
+
+    SetContextMenuItemEnabled(shell.ctxOpen, isFile);
+    SetContextMenuItemEnabled(shell.ctxOpenText, isFile);
+    SetContextMenuItemEnabled(shell.ctxReveal, hasPath);
+    SetContextMenuItemEnabled(shell.ctxCopyPath, hasPath);
+    SetContextMenuItemEnabled(shell.ctxCopyRelativePath, hasPath and hasProject);
+    SetContextMenuItemEnabled(shell.ctxDuplicate, isFile);
+    SetContextMenuItemEnabled(shell.ctxRename, hasPath);
+    SetContextMenuItemEnabled(shell.ctxDelete, hasPath);
+    SetContextMenuItemEnabled(shell.ctxNewFile, hasDir);
+    SetContextMenuItemEnabled(shell.ctxNewFolder, hasDir);
+    SetContextMenuItemEnabled(shell.ctxSearchFolder, hasDir);
+    SetContextMenuItemEnabled(shell.ctxRunFile, isFile);
+    SetContextMenuItemEnabled(shell.ctxSetEntry, isFile and hasProject);
+    SetContextMenuItemEnabled(shell.ctxRefresh, hasProject);
+}
+
+/// @brief Set a context-menu item enabled flag when the item exists.
+/// @param item Menu item handle that may be null during partial shell setup.
+/// @param enabled True to enable the action; false to render it disabled.
+func SetContextMenuItemEnabled(item: GUI.MenuItem,
+                               enabled: Boolean) {
+    if item == null { return; }
+    if enabled {
+        item.SetEnabled(1);
+    } else {
+        item.SetEnabled(0);
+    }
 }
 
 func RevealPath(path: String) {

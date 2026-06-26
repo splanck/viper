@@ -274,13 +274,49 @@ static void codeeditor_paint_indent_guides(
         float gx = content_x + (float)(lvl * tab_w) * editor->char_width - editor->scroll_x;
         if (gx < content_x - 0.5f)
             continue; // scrolled left of the content area
-        vgfx_fill_rect((vgfx_window_t)canvas,
-                       (int32_t)gx,
-                       (int32_t)line_y,
-                       1,
-                       (int32_t)editor->line_height,
-                       color);
+        // Anti-aliased hairline (centered on the pixel) instead of a hard 1px
+        // fill — softer, less "ladder"-looking between rows.
+        vg_draw_line_aa((vgfx_window_t)canvas,
+                        gx + 0.5f,
+                        line_y,
+                        gx + 0.5f,
+                        line_y + editor->line_height,
+                        1.0f,
+                        color);
     }
+}
+
+/// @brief Draw a crisp anti-aliased caret with a soft accent glow behind it.
+///
+/// @details Replaces the legacy hard 2px rectangle. The glow is a centred
+///          (dx=dy=0) soft shadow in the caret colour; because vg_draw caches
+///          shadow silhouettes by (w,h,radius,blur) and the caret is a constant
+///          size, the glow is computed once and reused every frame. The crisp
+///          caret is a slightly rounded AA bar painted on top. Cost is O(1).
+static void codeeditor_draw_caret(void *canvas, float x, float y, float h, uint32_t color) {
+    if (!canvas || h <= 0.0f)
+        return;
+    const float caret_w = 2.0f;
+    const float radius = 1.0f;
+    vg_draw_round_rect_shadow(
+        (vgfx_window_t)canvas, x - 1.0f, y, caret_w + 2.0f, h, radius, 3.0f, 0, 0, 110, color);
+    vg_draw_round_rect_fill((vgfx_window_t)canvas, x, y, caret_w, h, radius, color);
+}
+
+/// @brief Paint the active-line highlight as a subtle vertical gradient with a
+///        rounded accent rail on the left edge.
+///
+/// @details Replaces the flat fill + hard 3px bar. The band lightens slightly
+///          toward the top for a gentle sense of depth; the rail is a rounded AA
+///          fill in the accent colour. Drawn once per frame (the cursor's line),
+///          so the gradient cost is trivial.
+static void codeeditor_draw_current_line(
+    void *canvas, float x, float y, float w, float h, uint32_t base_bg, uint32_t accent) {
+    if (!canvas || w <= 0.0f || h <= 0.0f)
+        return;
+    uint32_t top = vg_color_lighten(base_bg, 0.05f);
+    vg_draw_round_rect_gradient_v((vgfx_window_t)canvas, x, y, w, h, 0.0f, top, base_bg);
+    vg_draw_round_rect_fill((vgfx_window_t)canvas, x, y, 3.0f, h, 1.0f, accent);
 }
 
 /// @brief VTable paint: renders background, gutter, current-line highlight, selection,
@@ -346,19 +382,13 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 continue;
 
             if (i == editor->cursor_line && (widget->state & VG_STATE_FOCUSED)) {
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)content_x,
-                               (int32_t)line_y,
-                               (int32_t)content_width,
-                               (int32_t)editor->line_height,
-                               editor->current_line_bg);
-                // Bright accent bar down the left edge of the active line.
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)content_x,
-                               (int32_t)line_y,
-                               3,
-                               (int32_t)editor->line_height,
-                               vg_theme_get_current()->colors.accent_primary);
+                codeeditor_draw_current_line(canvas,
+                                             content_x,
+                                             line_y,
+                                             content_width,
+                                             editor->line_height,
+                                             editor->current_line_bg,
+                                             vg_theme_get_current()->colors.accent_primary);
             }
 
             if (editor->show_indent_guides)
@@ -485,12 +515,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 cursor_y < widget->y + widget->height) {
                 float cursor_x =
                     content_x + editor->cursor_col * editor->char_width - editor->scroll_x;
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)cursor_x,
-                               (int32_t)cursor_y,
-                               2,
-                               (int32_t)editor->line_height,
-                               editor->cursor_color);
+                codeeditor_draw_caret(
+                    canvas, cursor_x, cursor_y, editor->line_height, editor->cursor_color);
             }
 
             for (int c = 0; c < editor->extra_cursor_count; c++) {
@@ -506,12 +532,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 if (extra_cursor_y + editor->line_height <= widget->y ||
                     extra_cursor_y >= widget->y + widget->height)
                     continue;
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)cursor_x,
-                               (int32_t)extra_cursor_y,
-                               2,
-                               (int32_t)editor->line_height,
-                               editor->cursor_color);
+                codeeditor_draw_caret(
+                    canvas, cursor_x, extra_cursor_y, editor->line_height, editor->cursor_color);
             }
         }
     } else {
@@ -541,12 +563,13 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                                 : (int)line_len;
 
                 if (line == editor->cursor_line && (widget->state & VG_STATE_FOCUSED)) {
-                    vgfx_fill_rect((vgfx_window_t)canvas,
-                                   (int32_t)content_x,
-                                   (int32_t)row_y,
-                                   (int32_t)content_width,
-                                   (int32_t)editor->line_height,
-                                   editor->current_line_bg);
+                    codeeditor_draw_current_line(canvas,
+                                                 content_x,
+                                                 row_y,
+                                                 content_width,
+                                                 editor->line_height,
+                                                 editor->current_line_bg,
+                                                 vg_theme_get_current()->colors.accent_primary);
                 }
 
                 codeeditor_paint_highlights_for_line(
@@ -691,12 +714,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
             codeeditor_visual_offset_for_position(
                 editor, content_width, editor->cursor_line, editor->cursor_col, NULL, &col_in_row);
             float cursor_x = content_x + (float)col_in_row * editor->char_width;
-            vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)cursor_x,
-                           (int32_t)cursor_y,
-                           2,
-                           (int32_t)editor->line_height,
-                           editor->cursor_color);
+            codeeditor_draw_caret(
+                canvas, cursor_x, cursor_y, editor->line_height, editor->cursor_color);
 
             for (int c = 0; c < editor->extra_cursor_count; c++) {
                 int extra_visual_row =
@@ -714,12 +733,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                                       NULL,
                                                       &extra_col_in_row);
                 float extra_x = content_x + (float)extra_col_in_row * editor->char_width;
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)extra_x,
-                               (int32_t)extra_y,
-                               2,
-                               (int32_t)editor->line_height,
-                               editor->cursor_color);
+                codeeditor_draw_caret(
+                    canvas, extra_x, extra_y, editor->line_height, editor->cursor_color);
             }
         }
     }
@@ -769,14 +784,11 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                         codeeditor_draw_gutter_icon_image(
                             (vgfx_window_t)canvas, icon, icon_x, icon_y, icon_box, icon_box);
                     } else {
-                        int32_t icon_r = icon_box / 2;
-                        int32_t icon_cx = icon_x + icon_r;
-                        int32_t icon_cy = icon_y + icon_r;
-                        vgfx_fill_circle((vgfx_window_t)canvas,
-                                         icon_cx,
-                                         icon_cy,
-                                         icon_r,
-                                         (vgfx_color_t)icon->color);
+                        float icon_r = (float)icon_box * 0.5f;
+                        float icon_cx = (float)icon_x + icon_r;
+                        float icon_cy = (float)icon_y + icon_r;
+                        vg_draw_disc_fill(
+                            (vgfx_window_t)canvas, icon_cx, icon_cy, icon_r, icon->color);
                     }
                     break;
                 }
@@ -886,13 +898,15 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                        track_color);
         float thumb_y = widget->y + thumb_y_local;
 
-        // Scrollbar thumb
+        // Scrollbar thumb — rounded, anti-aliased pill instead of a hard block.
         uint32_t thumb_color = 0xFF6C6C6C; // Medium gray
-        vgfx_fill_rect((vgfx_window_t)canvas,
-                       (int32_t)(track_x + 2),
-                       (int32_t)thumb_y,
-                       (int32_t)(scrollbar_width - 4),
-                       (int32_t)thumb_height,
-                       thumb_color);
+        float thumb_w = scrollbar_width - 4.0f;
+        vg_draw_round_rect_fill((vgfx_window_t)canvas,
+                                track_x + 2.0f,
+                                thumb_y,
+                                thumb_w,
+                                thumb_height,
+                                thumb_w * 0.5f,
+                                thumb_color);
     }
 }
