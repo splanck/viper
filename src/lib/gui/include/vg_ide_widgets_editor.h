@@ -255,9 +255,12 @@ typedef struct vg_codeeditor {
     float scrollbar_drag_start_scroll; ///< scroll_y value at drag start
 
     // Pointer selection drag state
-    bool selection_dragging;   ///< True while a content-area pointer drag is selecting text
-    int selection_anchor_line; ///< Selection anchor line for pointer drag
-    int selection_anchor_col;  ///< Selection anchor column for pointer drag
+    bool selection_drag_pending; ///< True after mouse-down before movement crosses drag threshold.
+    bool selection_dragging;     ///< True while a content-area pointer drag is selecting text
+    float selection_drag_start_x; ///< Mouse-down X used to distinguish click from drag.
+    float selection_drag_start_y; ///< Mouse-down Y used to distinguish click from drag.
+    int selection_anchor_line;    ///< Selection anchor line for pointer drag
+    int selection_anchor_col;     ///< Selection anchor column for pointer drag
 
     // Matching-pair highlight cache. Columns are byte offsets because the
     // native editor stores cursor positions as UTF-8 byte columns.

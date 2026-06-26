@@ -401,6 +401,8 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_ThreadsChannel,
     RTCLS_ThreadsPool,
     RTCLS_ZiaCompletion,
+    RTCLS_BasicCompletion,
+    RTCLS_BasicToolchain,
     RTCLS_ZiaSemanticJob,
     RTCLS_ZiaSemanticJobHandle,
     RTCLS_ZiaProjectIndex,

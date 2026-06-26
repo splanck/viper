@@ -7,6 +7,7 @@ bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
 bind Viper.Collections.Map as Map;
 bind Viper.Zia.Completion as ZiaCompletion;
+bind Viper.Basic.Completion as BasicCompletion;
 bind Viper.Zia.SemanticJob as SemanticJob;
 bind "../editor/zia_query";
 bind "../editor/editor_engine";
@@ -87,6 +88,7 @@ class CompletionController {
     expose Integer itemCount;
     expose String sourcePath;
     expose Boolean enabled;
+    expose Boolean isBasic;   // route to Viper.Basic.Completion (sync) instead of Zia
 
     // Track cursor position to detect line changes (auto-dismiss)
     expose Integer lastLine;
@@ -146,6 +148,7 @@ class CompletionController {
         itemCount      = 0;
         sourcePath     = "";
         enabled        = true;
+        isBasic        = false;
         lastLine       = -1;
         lastCol        = -1;
         pendingSinceMs = 0;
@@ -310,6 +313,14 @@ class CompletionController {
         var text = editor.Text;
         if engine != null {
             text = engine.GetTextSnapshot();
+        }
+        // BASIC: synchronous in-process completion (no Zia module-wrapping/offset).
+        if isBasic {
+            var bLine = editor.CursorLine + 1; // 1-based
+            var bCol = editor.CursorCol;       // 0-based
+            ApplyCompletionItems(BasicCompletion.ItemsForFile(text, sourcePath, bLine, bCol),
+                                 0, bLine, bCol);
+            return;
         }
         // A buffer with no `module` line yields null Sema; query a synthetic-
         // module-prefixed copy and shift the cursor line by the same amount.

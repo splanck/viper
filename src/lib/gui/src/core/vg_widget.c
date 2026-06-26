@@ -52,6 +52,7 @@ static vg_widget_t *g_hovered_widget = NULL;
 static vg_widget_t *g_last_click_widget = NULL;
 static uint64_t g_last_click_time_ms = 0;
 static int32_t g_last_click_button = -1;
+static int32_t g_last_click_count = 0;
 static float g_last_click_screen_x = 0.0f;
 static float g_last_click_screen_y = 0.0f;
 static vg_widget_t *g_reported_click_widget = NULL;
@@ -596,6 +597,7 @@ static void clear_runtime_references_for_subtree(vg_widget_t *widget, bool notif
         g_last_click_widget = NULL;
         g_last_click_time_ms = 0;
         g_last_click_button = -1;
+        g_last_click_count = 0;
         g_last_click_screen_x = 0.0f;
         g_last_click_screen_y = 0.0f;
     }
@@ -802,6 +804,7 @@ void vg_widget_destroy(vg_widget_t *widget) {
         g_last_click_widget = NULL;
         g_last_click_time_ms = 0;
         g_last_click_button = -1;
+        g_last_click_count = 0;
         g_last_click_screen_x = 0.0f;
         g_last_click_screen_y = 0.0f;
     }
@@ -1311,6 +1314,7 @@ void vg_widget_set_enabled(vg_widget_t *widget, bool enabled) {
             g_last_click_widget = NULL;
             g_last_click_time_ms = 0;
             g_last_click_button = -1;
+            g_last_click_count = 0;
             g_last_click_screen_x = 0.0f;
             g_last_click_screen_y = 0.0f;
         }
@@ -1356,6 +1360,7 @@ void vg_widget_set_visible(vg_widget_t *widget, bool visible) {
             g_last_click_widget = NULL;
             g_last_click_time_ms = 0;
             g_last_click_button = -1;
+            g_last_click_count = 0;
             g_last_click_screen_x = 0.0f;
             g_last_click_screen_y = 0.0f;
         }
@@ -1641,6 +1646,7 @@ void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state) {
     state->last_click_widget_id = g_last_click_widget ? g_last_click_widget->id : 0;
     state->last_click_time_ms = g_last_click_time_ms;
     state->last_click_button = g_last_click_button;
+    state->last_click_count = g_last_click_count;
     state->last_click_screen_x = g_last_click_screen_x;
     state->last_click_screen_y = g_last_click_screen_y;
     state->reported_click_widget = g_reported_click_widget;
@@ -1659,6 +1665,7 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
         g_last_click_widget = NULL;
         g_last_click_time_ms = 0;
         g_last_click_button = -1;
+        g_last_click_count = 0;
         g_last_click_screen_x = 0.0f;
         g_last_click_screen_y = 0.0f;
         g_reported_click_widget = NULL;
@@ -1674,6 +1681,7 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
     g_last_click_widget = runtime_widget_ref(state->last_click_widget, state->last_click_widget_id);
     g_last_click_time_ms = g_last_click_widget ? state->last_click_time_ms : 0;
     g_last_click_button = g_last_click_widget ? state->last_click_button : -1;
+    g_last_click_count = g_last_click_widget ? state->last_click_count : 0;
     g_last_click_screen_x = g_last_click_widget ? state->last_click_screen_x : 0.0f;
     g_last_click_screen_y = g_last_click_widget ? state->last_click_screen_y : 0.0f;
 

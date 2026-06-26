@@ -8,6 +8,7 @@ bind "../services/locations";
 bind "../editor/quick_fixes";
 
 bind ZiaToolchain = Viper.Zia.Toolchain;
+bind BasicToolchain = Viper.Basic.Toolchain;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Seq = Viper.Collections.Seq;
@@ -58,6 +59,7 @@ final INFO_COLOR  = 10066329;  // grey   (0x999999)
 /// @brief Live error/warning checker for the active document.
 class LiveDiagnostics {
     expose Boolean enabled;
+    expose Boolean isBasic;          // route to Viper.Basic.* (sync) instead of Zia
     expose Integer lastEditMs;       // tick of last detected edit
     expose Boolean pending;          // true if a check is scheduled
     expose String  lastCheckedSource; // retained for debugging/inspection; revision gates checks
@@ -80,6 +82,7 @@ class LiveDiagnostics {
     /// @brief Initialize as enabled, with no pending work and empty caches.
     expose func init() {
         enabled = true;
+        isBasic = false;
         lastEditMs = 0;
         pending = false;
         lastCheckedSource = "";
@@ -187,6 +190,16 @@ class LiveDiagnostics {
         pending = false;
         pendingGeneration = 0;
         lastCheckedSource = source;
+
+        // BASIC: synchronous in-process check (no Zia module-wrapping, no line
+        // offset). Fast enough per-keystroke; results share the Zia record shape.
+        if isBasic {
+            CancelPendingJob();
+            var brecords = BasicToolchain.CheckForFile(source, sourcePath);
+            lastCheckedPath = sourcePath;
+            lastCheckedRevision = revision;
+            return ApplyDiagnostics(brecords, 0, shell, locStore, engine);
+        }
 
         // Synthetic-module prefix for buffers lacking a `module` line;
         // diagnostic line numbers come back shifted and are un-shifted below.

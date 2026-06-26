@@ -3224,6 +3224,30 @@ void *rt_zia_semantic_job_diagnostics(void *handle);
 void rt_zia_completion_clear_cache(void);
 
 //=========================================================================
+// Viper BASIC IDE language-service bridge (Phase 4; ADR 0013). Strong impls in
+// fe_basic (rt_basic_completion.cpp), weak stubs in viper_runtime. Result shapes
+// mirror the Viper.Zia.* bridge above. See rt_basic_completion.h.
+//=========================================================================
+
+/// @brief BASIC diagnostics for @p source as Seq<Map> (same shape as Zia toolchain).
+void *rt_basic_toolchain_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief BASIC completion items at 1-based (@p line,@p col) as Seq<Map>.
+void *rt_basic_completion_items_for_file(rt_string source,
+                                         rt_string file_path,
+                                         int64_t line,
+                                         int64_t col);
+
+/// @brief BASIC document symbols as a "name\tkind\ttype\tline\n" string.
+rt_string rt_basic_completion_symbols_for_file(rt_string source, rt_string file_path);
+
+/// @brief BASIC hover info for the identifier at 1-based (@p line,@p col) as a Map.
+void *rt_basic_completion_hover_info_for_file(rt_string source,
+                                              rt_string file_path,
+                                              int64_t line,
+                                              int64_t col);
+
+//=========================================================================
 // FloatingPanel bridge functions
 //=========================================================================
 

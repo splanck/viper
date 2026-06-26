@@ -192,6 +192,15 @@ bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event);
 /// @param size Font size in pixels.
 void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size);
 
+/// @brief Apply theme colors to a context menu and all nested submenus.
+/// @details Copies popup background, hover, text, disabled, border, and
+///          separator colors from @p theme. Font fields are intentionally left
+///          untouched so app-level font inheritance and theme refresh can be
+///          applied independently.
+/// @param menu Context menu root to update; may be NULL.
+/// @param theme Theme to copy colors from; NULL resolves the current theme.
+void vg_contextmenu_apply_theme(vg_contextmenu_t *menu, const vg_theme_t *theme);
+
 //=============================================================================
 // TreeView Widget
 //=============================================================================

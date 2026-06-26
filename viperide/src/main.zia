@@ -322,16 +322,20 @@ func main() {
         }
         completer.SetSourcePath(activeToolPath);
         completer.SetEnabled(activeService.canComplete);
+        completer.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
         liveDiag.setSourcePath(activeToolPath);
         liveDiag.enabled = appSettings.autoCheckOnSave and activeService.canDiagnose;
+        liveDiag.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
         semHighlighter.setSourcePath(activeToolPath);
         semHighlighter.enabled = activeService.name == language_service.LANGUAGE_ZIA;
         hoverCtrl.setSourcePath(activeToolPath);
         hoverCtrl.setEnabled(activeService.canHover);
+        hoverCtrl.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
         sigCtrl.setSourcePath(activeToolPath);
         inlayCtrl.SetEnabled(activeService.name == language_service.LANGUAGE_ZIA);
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
+        symbolOutline.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
         symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding
                                                 and activeService.canDocumentSymbols,
                                                 engine);
@@ -549,6 +553,8 @@ func main() {
                 shell.tabContextMenu.Show(ctxX, ctxY);
             } else if engine.editor.IsHovered() != 0 {
                 DismissContextMenus(shell);
+                MoveEditorCursorForContextMenu(engine, ctxX, ctxY);
+                ConfigureEditorContextMenu(shell, engine, activeService, dbgSession);
                 shell.editorContextMenu.Show(ctxX, ctxY);
             }
         }
@@ -937,7 +943,7 @@ func main() {
         if triggered("uizoomin", shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(shell, appSettings); }
         if triggered("uizoomout", shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(shell, appSettings); }
         if triggered("uizoomreset", shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(shell, appSettings); }
-        if triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(appSettings); }
+        if triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(shell, engine, liveDiag, appSettings); }
         if triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell, appSettings); }
         if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
         if triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
@@ -1060,6 +1066,9 @@ func main() {
                     locStore.OpenLocation(shell, docMgr, engine, tabs, refData);
                 }
             }
+        }
+        if shell.callStackListBox.WasSelectionChanged() != 0 {
+            debug_commands.handleCallStackSelect(shell, docMgr, engine, tabs, dbgSession);
         }
         shell.PumpToolTabs();
 
@@ -1508,6 +1517,101 @@ func DismissContextMenus(shell: app_shell.AppShell) {
     if shell.tabContextMenu.IsVisible() != 0 {
         shell.tabContextMenu.Hide();
     }
+}
+
+/// @brief Compare two editor positions in document order.
+/// @param lhsLine First position line.
+/// @param lhsCol First position column.
+/// @param rhsLine Second position line.
+/// @param rhsCol Second position column.
+/// @return -1 if lhs < rhs, 1 if lhs > rhs, 0 if equal.
+func CompareEditorPositions(lhsLine: Integer,
+                            lhsCol: Integer,
+                            rhsLine: Integer,
+                            rhsCol: Integer) -> Integer {
+    if lhsLine < rhsLine { return -1; }
+    if lhsLine > rhsLine { return 1; }
+    if lhsCol < rhsCol { return -1; }
+    if lhsCol > rhsCol { return 1; }
+    return 0;
+}
+
+/// @brief Return true when an editor coordinate is inside the primary selection.
+/// @details Selection end is treated as exclusive so right-clicking just after
+///          the highlighted text retargets the cursor, while right-clicking
+///          inside the highlighted text preserves the selection for Cut/Copy.
+/// @param engine Editor controller that owns the CodeEditor widget.
+/// @param line Zero-based line at the clicked pixel.
+/// @param col Zero-based column at the clicked pixel.
+func EditorPointInsidePrimarySelection(engine: editor_engine.EditorEngine,
+                                       line: Integer,
+                                       col: Integer) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
+    if engine.editor.CursorHasSelection(0) == 0 { return false; }
+    var startLine = engine.editor.GetSelectionStartLineAt(0);
+    var startCol = engine.editor.GetSelectionStartColAt(0);
+    var endLine = engine.editor.GetSelectionEndLineAt(0);
+    var endCol = engine.editor.GetSelectionEndColAt(0);
+    if CompareEditorPositions(line, col, startLine, startCol) < 0 { return false; }
+    if CompareEditorPositions(line, col, endLine, endCol) >= 0 { return false; }
+    return true;
+}
+
+/// @brief Move the editor cursor to the right-clicked text position when appropriate.
+/// @details Context-menu commands such as Rename, Go to Definition, and
+///          Evaluate operate at the current caret. When a user right-clicks
+///          outside the active selection, retarget the caret to that clicked
+///          word. When the click is inside the selection, preserve it so
+///          Cut/Copy still act on the selected range.
+/// @param engine Editor controller that owns the CodeEditor widget.
+/// @param x Window-space X coordinate of the context-menu click.
+/// @param y Window-space Y coordinate of the context-menu click.
+func MoveEditorCursorForContextMenu(engine: editor_engine.EditorEngine,
+                                    x: Integer,
+                                    y: Integer) {
+    if engine == null or engine.editor == null { return; }
+    var line = engine.editor.GetLineAtPixel(y);
+    var col = engine.editor.GetColAtPixel(x, y);
+    if EditorPointInsidePrimarySelection(engine, line, col) {
+        return;
+    }
+    engine.editor.SetCursor(line, col);
+}
+
+/// @brief Enable editor context-menu commands from the current editor/debug state.
+/// @details The shell owns persistent menu items. This helper updates their
+///          enabled flags before each show so disabled actions render dimmed
+///          instead of appearing broken.
+/// @param shell Workbench shell that owns editor menu item handles.
+/// @param engine Editor controller for selection/read-only state.
+/// @param service Active language service capabilities.
+/// @param session Debug session used to gate Evaluate at Cursor.
+func ConfigureEditorContextMenu(shell: app_shell.AppShell,
+                                engine: editor_engine.EditorEngine,
+                                service: language_service.LanguageService,
+                                session: debug_session.DebugSession) {
+    var hasEditor = engine != null and engine.editor != null;
+    var hasSelection = false;
+    var readOnly = true;
+    if hasEditor {
+        hasSelection = engine.editor.CursorHasSelection(0) != 0;
+        readOnly = engine.editor.GetReadOnly() != 0;
+    }
+    var canDefinition = hasEditor and service != null and service.canGoToDefinition;
+    var canReferences = hasEditor and service != null and service.canFindReferences;
+    var canRename = hasEditor and service != null and service.canRename and readOnly == false;
+    var canEvaluate = hasEditor and session != null and session.IsActive() and session.stopped;
+
+    SetContextMenuItemEnabled(shell.ecCut, hasSelection and readOnly == false);
+    SetContextMenuItemEnabled(shell.ecCopy, hasSelection);
+    SetContextMenuItemEnabled(shell.ecPaste, hasEditor and readOnly == false);
+    SetContextMenuItemEnabled(shell.ecGotoDef, canDefinition);
+    SetContextMenuItemEnabled(shell.ecFindRefs, canReferences);
+    SetContextMenuItemEnabled(shell.ecRename, canRename);
+    SetContextMenuItemEnabled(shell.ecFormat, hasEditor and readOnly == false);
+    SetContextMenuItemEnabled(shell.ecToggleBreakpoint, hasEditor);
+    SetContextMenuItemEnabled(shell.ecEvaluate, canEvaluate);
+    SetContextMenuItemEnabled(shell.ecPalette, true);
 }
 
 func CurrentContextPath(projMgr: project_manager.ProjectManager,

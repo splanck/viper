@@ -27,6 +27,7 @@
 //
 #include "vg_event.h"
 #include "vg_ide_widgets.h"
+#include "vg_theme.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
 // Include the private font cache header for PERF-002 white-box tests
@@ -454,15 +455,23 @@ typedef struct {
     vg_widget_t base;
     int click_count;
     int double_click_count;
+    int triple_click_count;
+    int last_click_payload;
 } test_clickable_t;
 
 static bool test_clickable_handle(vg_widget_t *w, vg_event_t *ev) {
     if (ev->type == VG_EVENT_MOUSE_DOWN || ev->type == VG_EVENT_CLICK) {
         ((test_clickable_t *)w)->click_count++;
+        if (ev->type == VG_EVENT_CLICK)
+            ((test_clickable_t *)w)->last_click_payload = ev->mouse.click_count;
         return true;
     }
     if (ev->type == VG_EVENT_DOUBLE_CLICK) {
         ((test_clickable_t *)w)->double_click_count++;
+        return true;
+    }
+    if (ev->type == VG_EVENT_TRIPLE_CLICK) {
+        ((test_clickable_t *)w)->triple_click_count++;
         return true;
     }
     return false;
@@ -731,6 +740,112 @@ TEST(event_dispatch_synthesizes_double_click_for_widget) {
 
     vg_widget_destroy(root);
     vg_widget_set_runtime_state(&empty);
+}
+
+TEST(event_dispatch_synthesizes_triple_click_for_widget) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 300.0f;
+    root->height = 200.0f;
+
+    test_clickable_t *clickable = calloc(1, sizeof(test_clickable_t));
+    ASSERT_NOT_NULL(clickable);
+    vg_widget_init(&clickable->base, VG_WIDGET_CUSTOM, &s_clickable_vtable);
+    clickable->base.x = 10.0f;
+    clickable->base.y = 10.0f;
+    clickable->base.width = 100.0f;
+    clickable->base.height = 40.0f;
+    clickable->base.visible = true;
+    clickable->base.enabled = true;
+    vg_widget_add_child(root, &clickable->base);
+
+    vg_event_t down1 = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 20.0f, 20.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t up1 = vg_event_mouse(VG_EVENT_MOUSE_UP, 20.0f, 20.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t down2 = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 21.0f, 19.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t up2 = vg_event_mouse(VG_EVENT_MOUSE_UP, 21.0f, 19.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t down3 = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 19.0f, 21.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t up3 = vg_event_mouse(VG_EVENT_MOUSE_UP, 19.0f, 21.0f, VG_MOUSE_LEFT, 0);
+
+    down1.timestamp = 100;
+    up1.timestamp = 120;
+    down2.timestamp = 240;
+    up2.timestamp = 260;
+    down3.timestamp = 360;
+    up3.timestamp = 380;
+
+    ASSERT_TRUE(vg_event_dispatch(root, &down1));
+    ASSERT_TRUE(vg_event_dispatch(root, &up1));
+    ASSERT_TRUE(vg_event_dispatch(root, &down2));
+    ASSERT_TRUE(vg_event_dispatch(root, &up2));
+    ASSERT_TRUE(vg_event_dispatch(root, &down3));
+    ASSERT_TRUE(vg_event_dispatch(root, &up3));
+    ASSERT_EQ(clickable->double_click_count, 1);
+    ASSERT_EQ(clickable->triple_click_count, 1);
+    ASSERT_EQ(clickable->last_click_payload, 3);
+
+    vg_widget_destroy(root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+TEST(codeeditor_double_and_triple_click_select_word_and_line) {
+    vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(ed);
+    vg_codeeditor_set_text(ed, "alpha beta\ngamma\n");
+    ed->base.width = 300.0f;
+    ed->base.height = 120.0f;
+    ed->base.visible = true;
+    ed->base.enabled = true;
+    ed->gutter_width = 0.0f;
+    ed->char_width = 8.0f;
+    ed->line_height = 16.0f;
+
+    vg_event_t dbl = vg_event_mouse(VG_EVENT_DOUBLE_CLICK, 16.0f, 8.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(ed->base.vtable->handle_event(&ed->base, &dbl));
+    ASSERT_TRUE(ed->has_selection);
+    ASSERT_EQ(ed->selection.start_line, 0);
+    ASSERT_EQ(ed->selection.start_col, 0);
+    ASSERT_EQ(ed->selection.end_line, 0);
+    ASSERT_EQ(ed->selection.end_col, 5);
+
+    vg_event_t tri = vg_event_mouse(VG_EVENT_TRIPLE_CLICK, 16.0f, 24.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(ed->base.vtable->handle_event(&ed->base, &tri));
+    ASSERT_TRUE(ed->has_selection);
+    ASSERT_EQ(ed->selection.start_line, 1);
+    ASSERT_EQ(ed->selection.start_col, 0);
+    ASSERT_EQ(ed->selection.end_line, 2);
+    ASSERT_EQ(ed->selection.end_col, 0);
+
+    vg_widget_destroy(&ed->base);
+}
+
+TEST(contextmenu_font_and_theme_apply_to_submenus) {
+    vg_contextmenu_t *menu = vg_contextmenu_create();
+    vg_contextmenu_t *submenu = vg_contextmenu_create();
+    ASSERT_NOT_NULL(menu);
+    ASSERT_NOT_NULL(submenu);
+
+    vg_menu_item_t *subitem = vg_contextmenu_add_submenu(menu, "More", submenu);
+    ASSERT_NOT_NULL(subitem);
+
+    vg_font_t *sentinel_font = (vg_font_t *)(uintptr_t)0x1000;
+    vg_contextmenu_set_font(menu, sentinel_font, 17.0f);
+    ASSERT(menu->font == sentinel_font);
+    ASSERT(submenu->font == sentinel_font);
+    ASSERT_TRUE(menu->font_size > 16.99f && menu->font_size < 17.01f);
+    ASSERT_TRUE(submenu->font_size > 16.99f && submenu->font_size < 17.01f);
+
+    vg_contextmenu_apply_theme(menu, vg_theme_light());
+    ASSERT_EQ(menu->bg_color, vg_theme_light()->colors.bg_primary);
+    ASSERT_EQ(submenu->bg_color, vg_theme_light()->colors.bg_primary);
+    ASSERT_EQ(menu->text_color, vg_theme_light()->colors.fg_primary);
+    ASSERT_EQ(submenu->text_color, vg_theme_light()->colors.fg_primary);
+
+    vg_contextmenu_destroy(menu);
 }
 
 TEST(key_tab_dispatch_moves_focus_when_unhandled) {
@@ -1103,6 +1218,9 @@ int main(void) {
     RUN(filedialog_save_confirm_uses_local_coords_and_default_extension);
     RUN(dialog_embedded_content_keeps_measured_height);
     RUN(event_dispatch_synthesizes_double_click_for_widget);
+    RUN(event_dispatch_synthesizes_triple_click_for_widget);
+    RUN(codeeditor_double_and_triple_click_select_word_and_line);
+    RUN(contextmenu_font_and_theme_apply_to_submenus);
     RUN(contextmenu_show_for_widget_uses_screen_bounds_and_capture);
     RUN(commandpalette_keeps_selected_result_visible);
     RUN(commandpalette_filters_many_long_paths_without_quadratic_scan);

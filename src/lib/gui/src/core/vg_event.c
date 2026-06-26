@@ -48,6 +48,7 @@ static void event_init_empty_runtime_state(vg_widget_runtime_state_t *state) {
         return;
     memset(state, 0, sizeof(*state));
     state->last_click_button = -1;
+    state->last_click_count = 0;
 }
 
 /// @brief Returns true if @p ancestor is equal to or is an ancestor of @p widget in the widget
@@ -88,6 +89,7 @@ static void event_clear_state_widget(vg_widget_runtime_state_t *state, vg_widget
         state->last_click_widget_id = 0;
         state->last_click_time_ms = 0;
         state->last_click_button = -1;
+        state->last_click_count = 0;
         state->last_click_screen_x = 0.0f;
         state->last_click_screen_y = 0.0f;
     }
@@ -137,6 +139,7 @@ static void event_filter_state_to_root(vg_widget_runtime_state_t *state, vg_widg
         state->last_click_widget_id = 0;
         state->last_click_time_ms = 0;
         state->last_click_button = -1;
+        state->last_click_count = 0;
         state->last_click_screen_x = 0.0f;
         state->last_click_screen_y = 0.0f;
     }
@@ -298,7 +301,8 @@ static bool event_has_widget_local_mouse_coords(vg_event_type_t type) {
     // Wheel events carry their own screen coordinates. They do not have
     // widget-local x/y because those slots are the scroll deltas.
     return type == VG_EVENT_MOUSE_MOVE || type == VG_EVENT_MOUSE_DOWN ||
-           type == VG_EVENT_MOUSE_UP || type == VG_EVENT_CLICK || type == VG_EVENT_DOUBLE_CLICK;
+           type == VG_EVENT_MOUSE_UP || type == VG_EVENT_CLICK || type == VG_EVENT_DOUBLE_CLICK ||
+           type == VG_EVENT_TRIPLE_CLICK;
 }
 
 /// @brief Returns the screen-space X coordinate from a mouse or wheel event.
@@ -407,14 +411,20 @@ static void clear_last_click_state(void) {
     state.last_click_widget_id = 0;
     state.last_click_time_ms = 0;
     state.last_click_button = -1;
+    state.last_click_count = 0;
     state.last_click_screen_x = 0.0f;
     state.last_click_screen_y = 0.0f;
     vg_widget_set_runtime_state(&state);
 }
 
-/// @brief Records a click on @p widget in the active root's runtime state for subsequent
-/// double-click detection.
-static void remember_click(vg_widget_t *widget, const vg_event_t *event) {
+/// @brief Records a click on @p widget in the active root's runtime state.
+/// @details Stores the latest click position, time, button, and rapid-click
+///          count so the next mouse-up can synthesize double/triple-click
+///          events without sharing state across root windows.
+/// @param widget Widget that received the click.
+/// @param event Mouse-up event that produced the click.
+/// @param click_count Count to store for the next rapid-click comparison.
+static void remember_click(vg_widget_t *widget, const vg_event_t *event, int click_count) {
     if (!widget || !event)
         return;
 
@@ -424,32 +434,43 @@ static void remember_click(vg_widget_t *widget, const vg_event_t *event) {
     state.last_click_widget_id = widget->id;
     state.last_click_time_ms = event->timestamp;
     state.last_click_button = (int32_t)event->mouse.button;
+    state.last_click_count = click_count;
     state.last_click_screen_x = event->mouse.screen_x;
     state.last_click_screen_y = event->mouse.screen_y;
     vg_widget_set_runtime_state(&state);
 }
 
-/// @brief Returns true if @p event qualifies as a double-click on @p widget — same button, within
-/// time and distance thresholds.
-static bool is_double_click_for_widget(vg_widget_t *widget, const vg_event_t *event) {
+/// @brief Return the rapid-click count represented by this mouse-up event.
+/// @details A click continues the previous sequence only when the same live
+///          widget receives the same button within the configured time and
+///          distance thresholds. Otherwise the new click starts a fresh
+///          sequence at count 1.
+/// @param widget Widget receiving the mouse-up.
+/// @param event Mouse-up event to classify.
+/// @return 1 for a fresh click, 2 for a double-click, or 3 for a triple-click.
+static int click_count_for_widget(vg_widget_t *widget, const vg_event_t *event) {
     if (!widget || !event || event->timestamp == 0)
-        return false;
+        return 1;
 
     vg_widget_runtime_state_t state = {0};
     vg_widget_get_runtime_state(&state);
     if (state.last_click_widget != widget ||
         state.last_click_button != (int32_t)event->mouse.button || state.last_click_time_ms == 0 ||
         event->timestamp < state.last_click_time_ms) {
-        return false;
+        return 1;
     }
 
     if (event->timestamp - state.last_click_time_ms > VG_DOUBLE_CLICK_MAX_INTERVAL_MS)
-        return false;
+        return 1;
 
     float dx = event->mouse.screen_x - state.last_click_screen_x;
     float dy = event->mouse.screen_y - state.last_click_screen_y;
     float max_dist_sq = VG_DOUBLE_CLICK_MAX_DISTANCE_PX * VG_DOUBLE_CLICK_MAX_DISTANCE_PX;
-    return dx * dx + dy * dy <= max_dist_sq;
+    if (dx * dx + dy * dy > max_dist_sq)
+        return 1;
+    if (state.last_click_count >= 2)
+        return 3;
+    return 2;
 }
 
 //=============================================================================
@@ -674,7 +695,8 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
     // Find target widget for mouse events
     if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
         event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
-        event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_MOUSE_WHEEL) {
+        event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_TRIPLE_CLICK ||
+        event->type == VG_EVENT_MOUSE_WHEEL) {
         // Check if a widget has captured input (e.g., open dropdown menu).
         // When capture is active, all mouse events route to the captured widget
         // regardless of hit testing. This allows dropdown menus to receive clicks
@@ -816,7 +838,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
 }
 
 /// @brief Delivers an event to @p widget, bubbles it up the parent chain, and synthesizes
-/// CLICK/DOUBLE_CLICK events on MOUSE_UP.
+/// CLICK/DOUBLE_CLICK/TRIPLE_CLICK events on MOUSE_UP.
 bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event)
         return false;
@@ -831,6 +853,8 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     bool handled = event->handled;
     bool synthesize_click = false;
     bool synthesize_double_click = false;
+    bool synthesize_triple_click = false;
+    int synthesized_click_count = 1;
     vg_event_t click_source = {0};
 
     event_localize_mouse_to_widget(widget, event);
@@ -859,7 +883,9 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
         if (was_pressed &&
             vg_widget_contains_point(widget, event->mouse.screen_x, event->mouse.screen_y)) {
             synthesize_click = true;
-            synthesize_double_click = is_double_click_for_widget(widget, event);
+            synthesized_click_count = click_count_for_widget(widget, event);
+            synthesize_double_click = synthesized_click_count == 2;
+            synthesize_triple_click = synthesized_click_count == 3;
             click_source = *event;
         } else if (was_pressed) {
             clear_last_click_state();
@@ -906,7 +932,7 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
         vg_event_t click_event = click_source;
         click_event.type = VG_EVENT_CLICK;
         click_event.handled = false;
-        click_event.mouse.click_count = 1;
+        click_event.mouse.click_count = synthesized_click_count;
         handled |= vg_event_send(widget, &click_event);
 
         if (synthesize_double_click) {
@@ -915,9 +941,16 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
             double_click_event.handled = false;
             double_click_event.mouse.click_count = 2;
             handled |= vg_event_send(widget, &double_click_event);
+            remember_click(widget, &click_source, 2);
+        } else if (synthesize_triple_click) {
+            vg_event_t triple_click_event = click_source;
+            triple_click_event.type = VG_EVENT_TRIPLE_CLICK;
+            triple_click_event.handled = false;
+            triple_click_event.mouse.click_count = 3;
+            handled |= vg_event_send(widget, &triple_click_event);
             clear_last_click_state();
         } else {
-            remember_click(widget, &click_source);
+            remember_click(widget, &click_source, 1);
         }
     }
 

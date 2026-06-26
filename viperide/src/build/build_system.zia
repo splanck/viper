@@ -95,7 +95,6 @@ class BuildSystem {
             Finish(-1);
             return false;
         }
-        cfg.program = resolved;
         compilerPath = resolved;
 
         if cfg.action == run_config.ACTION_BUILD {
@@ -106,7 +105,7 @@ class BuildSystem {
             isRunning = true;
         }
 
-        processHandle = Process.StartWithEnv(cfg.program, cfg.args, cfg.workingDirectory, cfg.env);
+        processHandle = Process.StartWithEnv(resolved, cfg.args, cfg.workingDirectory, cfg.env);
         if processHandle == null or processHandle.IsValid() == false {
             buildOutput = "Could not start process: " + cfg.program;
             Finish(-1);
@@ -278,10 +277,19 @@ class BuildSystem {
                              prefix: String,
                              maxChars: Integer) -> String {
         var combined = existing + text;
-        if maxChars <= 0 or Str.Length(combined) <= maxChars {
+        if maxChars <= 0 {
             return combined;
         }
-        return prefix + Str.Mid(combined, Str.Length(combined) - maxChars + 1);
+        var textLen = Str.Length(text);
+        if textLen >= maxChars {
+            return prefix + Str.Mid(text, textLen - maxChars + 1);
+        }
+        var existingLen = Str.Length(existing);
+        var keepExisting = maxChars - textLen;
+        if existingLen > keepExisting {
+            return prefix + Str.Mid(existing, existingLen - keepExisting + 1) + text;
+        }
+        return combined;
     }
 
     func Finish(code: Integer) {

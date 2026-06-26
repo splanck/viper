@@ -4,6 +4,7 @@ bind "../editor/editor_engine";
 bind "../editor/scheduler";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind BasicCompletion = Viper.Basic.Completion;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Viper.GUI;
@@ -60,6 +61,7 @@ class HoverController {
     expose Boolean waiting;
     expose String sourcePath;
     expose Boolean enabled;
+    expose Boolean isBasic;   // route to Viper.Basic.Completion (sync) instead of Zia
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
     expose Integer pendingRevision;
@@ -81,6 +83,7 @@ class HoverController {
         waiting = false;
         sourcePath = "";
         enabled = true;
+        isBasic = false;
         workScheduler = null;
         pendingJob = null;
         pendingRevision = -1;
@@ -190,6 +193,14 @@ class HoverController {
         var hoverLine = engine.editor.GetLineAtPixel(my);
         var hoverCol = engine.editor.GetColAtPixel(mx, my);
         if hoverLine < 0 or hoverCol < 0 { return; }
+
+        // BASIC: synchronous in-process hover (raw source, 1-based line, no offset).
+        if isBasic {
+            CancelPendingJob();
+            var binfo = BasicCompletion.HoverInfoForFile(source, sourcePath, hoverLine + 1, hoverCol);
+            ApplyHoverInfo(binfo, mx, my);
+            return;
+        }
 
         // Synthetic-module prefix for buffers without a `module` line; hover
         // returns a type string (no line number) so only the outbound shift.

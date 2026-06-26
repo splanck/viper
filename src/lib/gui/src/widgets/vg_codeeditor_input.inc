@@ -124,8 +124,117 @@ static char codeeditor_closing_for_opener(char opener);
 ///          before identifiers.
 static bool codeeditor_is_identifier_byte(char ch) {
     unsigned char c = (unsigned char)ch;
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-           c == '_';
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+#define CODEEDITOR_DRAG_START_THRESHOLD_PX 3.0f
+
+/// @brief Assign the primary selection and place the caret at its end.
+/// @details Coordinates are byte columns in the editor's internal UTF-8 line
+///          buffers. Callers provide already-valid positions from hit testing
+///          or boundary scanners; this helper normalizes only the selection
+///          active flag and clears secondary cursor selections.
+/// @param editor Editor whose primary selection should be changed.
+/// @param start_line Start line of the range.
+/// @param start_col Start byte column of the range.
+/// @param end_line End line of the range.
+/// @param end_col End byte column of the range; the caret lands here.
+static void codeeditor_select_primary_range(
+    vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col) {
+    if (!editor)
+        return;
+    clamp_editor_position(editor, &start_line, &start_col);
+    clamp_editor_position(editor, &end_line, &end_col);
+    editor->selection.start_line = start_line;
+    editor->selection.start_col = start_col;
+    editor->selection.end_line = end_line;
+    editor->selection.end_col = end_col;
+    editor->cursor_line = end_line;
+    editor->cursor_col = end_col;
+    editor->has_selection = compare_positions(start_line, start_col, end_line, end_col) != 0;
+    clear_extra_cursor_selections(editor);
+    editor->cursor_visible = true;
+    editor->base.needs_paint = true;
+}
+
+/// @brief Select the identifier, whitespace run, or single glyph under a hit-test position.
+/// @details Double-clicking identifiers selects the full word. Double-clicking
+///          whitespace selects the contiguous whitespace run; punctuation and
+///          other bytes select one UTF-8 glyph. This mirrors common editor
+///          behavior while keeping Viper's identifier definition ASCII-based.
+/// @param editor Editor to modify.
+/// @param line_idx Zero-based line index from hit testing.
+/// @param col Byte column from hit testing.
+static void codeeditor_select_word_at(vg_codeeditor_t *editor, int line_idx, int col) {
+    if (!editor || line_idx < 0 || line_idx >= editor->line_count)
+        return;
+    vg_code_line_t *line = &editor->lines[line_idx];
+    int line_len = line->length > (size_t)INT_MAX ? INT_MAX : (int)line->length;
+    if (line_len <= 0) {
+        codeeditor_select_primary_range(editor, line_idx, 0, line_idx, 0);
+        return;
+    }
+    if (col < 0)
+        col = 0;
+    if (col > line_len)
+        col = line_len;
+
+    int probe = col;
+    if (probe == line_len)
+        probe = codeeditor_prev_byte_boundary(editor, line_idx, line_len);
+    if (probe > 0 && probe < line_len && !codeeditor_is_identifier_byte(line->text[probe]) &&
+        codeeditor_is_identifier_byte(line->text[probe - 1])) {
+        probe = codeeditor_prev_byte_boundary(editor, line_idx, probe);
+    }
+    if (probe < 0 || probe >= line_len)
+        probe = 0;
+
+    char target = line->text[probe];
+    int start = probe;
+    int end = codeeditor_next_byte_boundary(editor, line_idx, probe);
+    if (codeeditor_is_identifier_byte(target)) {
+        while (start > 0) {
+            int prev = codeeditor_prev_byte_boundary(editor, line_idx, start);
+            if (prev < 0 || !codeeditor_is_identifier_byte(line->text[prev]))
+                break;
+            start = prev;
+        }
+        while (end < line_len && codeeditor_is_identifier_byte(line->text[end])) {
+            end = codeeditor_next_byte_boundary(editor, line_idx, end);
+        }
+    } else if (target == ' ' || target == '\t') {
+        while (start > 0) {
+            int prev = codeeditor_prev_byte_boundary(editor, line_idx, start);
+            if (prev < 0 || (line->text[prev] != ' ' && line->text[prev] != '\t'))
+                break;
+            start = prev;
+        }
+        while (end < line_len && (line->text[end] == ' ' || line->text[end] == '\t')) {
+            end = codeeditor_next_byte_boundary(editor, line_idx, end);
+        }
+    }
+    codeeditor_select_primary_range(editor, line_idx, start, line_idx, end);
+}
+
+/// @brief Select the full logical line at @p line_idx.
+/// @details Triple-clicking includes the trailing newline when one exists by
+///          selecting from the clicked line's column zero to the next line's
+///          column zero. The final line selects to its text length.
+/// @param editor Editor to modify.
+/// @param line_idx Zero-based line index to select.
+static void codeeditor_select_line_at(vg_codeeditor_t *editor, int line_idx) {
+    if (!editor || editor->line_count <= 0)
+        return;
+    if (line_idx < 0)
+        line_idx = 0;
+    if (line_idx >= editor->line_count)
+        line_idx = editor->line_count - 1;
+    if (line_idx + 1 < editor->line_count) {
+        codeeditor_select_primary_range(editor, line_idx, 0, line_idx + 1, 0);
+    } else {
+        int end_col = (int)editor->lines[line_idx].length;
+        codeeditor_select_primary_range(editor, line_idx, 0, line_idx, end_col);
+    }
 }
 
 /// @brief Return the indentation text that should be added for one nesting level.
@@ -299,6 +408,120 @@ static void codeeditor_insert_newline_with_indent(vg_codeeditor_t *editor) {
     free(insert);
 }
 
+/// @brief Move the primary caret one UTF-8 glyph left, crossing a line boundary if needed.
+/// @param editor Editor whose primary caret should move.
+static void codeeditor_move_cursor_left(vg_codeeditor_t *editor) {
+    if (!editor || editor->line_count <= 0)
+        return;
+    if (editor->cursor_col > 0) {
+        editor->cursor_col =
+            codeeditor_prev_byte_boundary(editor, editor->cursor_line, editor->cursor_col);
+    } else if (editor->cursor_line > 0) {
+        editor->cursor_line--;
+        editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
+    }
+}
+
+/// @brief Move the primary caret one UTF-8 glyph right, crossing a line boundary if needed.
+/// @param editor Editor whose primary caret should move.
+static void codeeditor_move_cursor_right(vg_codeeditor_t *editor) {
+    if (!editor || editor->line_count <= 0)
+        return;
+    if (editor->cursor_col < (int)editor->lines[editor->cursor_line].length) {
+        editor->cursor_col =
+            codeeditor_next_byte_boundary(editor, editor->cursor_line, editor->cursor_col);
+    } else if (editor->cursor_line < editor->line_count - 1) {
+        editor->cursor_line++;
+        editor->cursor_col = 0;
+    }
+}
+
+/// @brief Classify a byte for word-wise editor movement.
+/// @details The editor's word movement follows the same ASCII identifier
+///          definition as double-click selection. Whitespace is treated as a
+///          separable run; punctuation and non-ASCII glyph leading bytes form
+///          compact punctuation runs.
+/// @param ch Byte to classify.
+/// @return 0 for whitespace, 1 for identifier bytes, 2 for punctuation/other.
+static int codeeditor_word_class(char ch) {
+    if (ch == ' ' || ch == '\t')
+        return 0;
+    return codeeditor_is_identifier_byte(ch) ? 1 : 2;
+}
+
+/// @brief Find the previous word boundary from a caret position.
+/// @param editor Editor to inspect.
+/// @param line In/out line index.
+/// @param col In/out byte column.
+static void codeeditor_previous_word_position(vg_codeeditor_t *editor, int *line, int *col) {
+    if (!editor || !line || !col || editor->line_count <= 0)
+        return;
+    clamp_editor_position(editor, line, col);
+    if (*col == 0) {
+        if (*line > 0) {
+            (*line)--;
+            *col = (int)editor->lines[*line].length;
+        }
+        return;
+    }
+
+    vg_code_line_t *text_line = &editor->lines[*line];
+    int pos = codeeditor_prev_byte_boundary(editor, *line, *col);
+    while (pos > 0 && codeeditor_word_class(text_line->text[pos]) == 0)
+        pos = codeeditor_prev_byte_boundary(editor, *line, pos);
+    int klass = codeeditor_word_class(text_line->text[pos]);
+    while (pos > 0) {
+        int prev = codeeditor_prev_byte_boundary(editor, *line, pos);
+        if (prev < 0 || codeeditor_word_class(text_line->text[prev]) != klass)
+            break;
+        pos = prev;
+    }
+    *col = pos;
+}
+
+/// @brief Find the next word boundary from a caret position.
+/// @param editor Editor to inspect.
+/// @param line In/out line index.
+/// @param col In/out byte column.
+static void codeeditor_next_word_position(vg_codeeditor_t *editor, int *line, int *col) {
+    if (!editor || !line || !col || editor->line_count <= 0)
+        return;
+    clamp_editor_position(editor, line, col);
+    int len = (int)editor->lines[*line].length;
+    if (*col >= len) {
+        if (*line < editor->line_count - 1) {
+            (*line)++;
+            *col = 0;
+        }
+        return;
+    }
+
+    vg_code_line_t *text_line = &editor->lines[*line];
+    int pos = *col;
+    int klass = codeeditor_word_class(text_line->text[pos]);
+    while (pos < len && codeeditor_word_class(text_line->text[pos]) == klass)
+        pos = codeeditor_next_byte_boundary(editor, *line, pos);
+    while (pos < len && codeeditor_word_class(text_line->text[pos]) == 0)
+        pos = codeeditor_next_byte_boundary(editor, *line, pos);
+    *col = pos;
+}
+
+/// @brief Move the primary caret to the previous word boundary.
+/// @param editor Editor whose primary caret should move.
+static void codeeditor_move_cursor_word_left(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_previous_word_position(editor, &editor->cursor_line, &editor->cursor_col);
+}
+
+/// @brief Move the primary caret to the next word boundary.
+/// @param editor Editor whose primary caret should move.
+static void codeeditor_move_cursor_word_right(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_next_word_position(editor, &editor->cursor_line, &editor->cursor_col);
+}
+
 static char codeeditor_closing_for_opener(char opener) {
     switch (opener) {
         case '(':
@@ -359,9 +582,8 @@ static bool codeeditor_try_format_closing_brace(vg_codeeditor_t *editor) {
     if (codeeditor_find_unmatched_opener_before(
             editor, editor->cursor_line, editor->cursor_col, '{', '}', &opener_line, &opener_col) &&
         opener_line >= 0 && opener_line < editor->line_count) {
-        target_indent_len =
-            codeeditor_leading_indent_len(editor->lines[opener_line].text,
-                                          editor->lines[opener_line].length);
+        target_indent_len = codeeditor_leading_indent_len(editor->lines[opener_line].text,
+                                                          editor->lines[opener_line].length);
     } else {
         target_indent_len = col;
         if (target_indent_len > 0 && line->text[target_indent_len - 1] == '\t') {
@@ -457,8 +679,9 @@ static bool codeeditor_should_insert_pair_at(vg_codeeditor_t *editor,
 
 /// @brief Return whether an edit target covers selected text rather than a caret.
 static bool codeeditor_edit_target_has_range(const vg_edit_target_t *target) {
-    return target && compare_positions(
-                         target->start_line, target->start_col, target->end_line, target->end_col) != 0;
+    return target &&
+           compare_positions(
+               target->start_line, target->start_col, target->end_line, target->end_col) != 0;
 }
 
 /// @brief Build the replacement text for one pair operation.
@@ -545,8 +768,8 @@ static bool codeeditor_try_insert_pair(vg_codeeditor_t *editor, char opener) {
                         editor->selection.end_col);
         should_handle = true;
     } else {
-        bool use_pair =
-            codeeditor_should_insert_pair_at(editor, editor->cursor_line, editor->cursor_col, opener);
+        bool use_pair = codeeditor_should_insert_pair_at(
+            editor, editor->cursor_line, editor->cursor_col, opener);
         add_edit_target(targets,
                         &target_count,
                         0,
@@ -573,7 +796,8 @@ static bool codeeditor_try_insert_pair(vg_codeeditor_t *editor, char opener) {
                             cursor->selection.end_col);
             should_handle = true;
         } else {
-            bool use_pair = codeeditor_should_insert_pair_at(editor, cursor->line, cursor->col, opener);
+            bool use_pair =
+                codeeditor_should_insert_pair_at(editor, cursor->line, cursor->col, opener);
             add_edit_target(targets,
                             &target_count,
                             i + 1,
@@ -600,8 +824,9 @@ static bool codeeditor_try_insert_pair(vg_codeeditor_t *editor, char opener) {
     }
     for (int i = 0; i < target_count; i++) {
         bool has_range = codeeditor_edit_target_has_range(&targets[i]);
-        bool use_pair = has_range || codeeditor_should_insert_pair_at(
-                                       editor, targets[i].start_line, targets[i].start_col, opener);
+        bool use_pair =
+            has_range || codeeditor_should_insert_pair_at(
+                             editor, targets[i].start_line, targets[i].start_col, opener);
         char *replacement =
             codeeditor_pair_replacement_for_target(editor, &targets[i], opener, closer, use_pair);
         if (!replacement)
@@ -817,11 +1042,8 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
 /// @brief Find the two-character delete range for Backspace between an automatic pair.
 /// @details When the caret is between an automatic ASCII pair, the range spans
 ///          both delimiters so a single Backspace removes the pair together.
-static bool codeeditor_backspace_pair_range(vg_codeeditor_t *editor,
-                                            int line_index,
-                                            int col,
-                                            int *out_start_col,
-                                            int *out_end_col) {
+static bool codeeditor_backspace_pair_range(
+    vg_codeeditor_t *editor, int line_index, int col, int *out_start_col, int *out_end_col) {
     if (out_start_col)
         *out_start_col = col;
     if (out_end_col)
@@ -872,11 +1094,8 @@ static void delete_backspace_targets(vg_codeeditor_t *editor) {
     } else if (editor->cursor_col > 0) {
         int delete_start = 0;
         int delete_end = 0;
-        if (!codeeditor_backspace_pair_range(editor,
-                                             editor->cursor_line,
-                                             editor->cursor_col,
-                                             &delete_start,
-                                             &delete_end)) {
+        if (!codeeditor_backspace_pair_range(
+                editor, editor->cursor_line, editor->cursor_col, &delete_start, &delete_end)) {
             delete_start =
                 codeeditor_prev_byte_boundary(editor, editor->cursor_line, editor->cursor_col);
             delete_end = editor->cursor_col;
@@ -949,6 +1168,247 @@ static void delete_backspace_targets(vg_codeeditor_t *editor) {
     free(targets);
 }
 
+/// @brief Append a forward-delete range for one cursor.
+/// @details Selections are deleted as-is. Carets delete either one glyph, the
+///          next word run, or the newline between the current and next line.
+/// @param editor Editor that owns the cursor.
+/// @param targets Target array to append to.
+/// @param target_count In/out number of populated targets.
+/// @param cursor_id 0 for primary cursor, 1+ for extra cursors.
+/// @param cursor_line Cursor line before deletion.
+/// @param cursor_col Cursor byte column before deletion.
+/// @param has_selection Whether this cursor has a selection range.
+/// @param selection Selection range to delete when @p has_selection is true.
+/// @param by_word True to delete to the next word boundary instead of one glyph.
+static void add_forward_delete_target(vg_codeeditor_t *editor,
+                                      vg_edit_target_t *targets,
+                                      int *target_count,
+                                      int cursor_id,
+                                      int cursor_line,
+                                      int cursor_col,
+                                      bool has_selection,
+                                      vg_selection_t selection,
+                                      bool by_word) {
+    if (!editor || !targets || !target_count)
+        return;
+    if (has_selection) {
+        add_edit_target(targets,
+                        target_count,
+                        cursor_id,
+                        cursor_line,
+                        cursor_col,
+                        selection.start_line,
+                        selection.start_col,
+                        selection.end_line,
+                        selection.end_col);
+        return;
+    }
+
+    int end_line = cursor_line;
+    int end_col = cursor_col;
+    clamp_editor_position(editor, &end_line, &end_col);
+    if (by_word) {
+        codeeditor_next_word_position(editor, &end_line, &end_col);
+    } else if (end_col < (int)editor->lines[end_line].length) {
+        end_col = codeeditor_next_byte_boundary(editor, end_line, end_col);
+    } else if (end_line < editor->line_count - 1) {
+        end_line++;
+        end_col = 0;
+    }
+    if (compare_positions(cursor_line, cursor_col, end_line, end_col) != 0) {
+        add_edit_target(targets,
+                        target_count,
+                        cursor_id,
+                        cursor_line,
+                        cursor_col,
+                        cursor_line,
+                        cursor_col,
+                        end_line,
+                        end_col);
+    }
+}
+
+/// @brief Delete forward across all active cursors.
+/// @param editor Editor to mutate.
+/// @param by_word True to delete to the next word boundary.
+static void delete_forward_targets(vg_codeeditor_t *editor, bool by_word) {
+    if (!editor)
+        return;
+
+    const int max_targets = 1 + editor->extra_cursor_count;
+    vg_edit_target_t *targets = calloc((size_t)max_targets, sizeof(vg_edit_target_t));
+    if (!targets)
+        return;
+
+    int target_count = 0;
+    add_forward_delete_target(editor,
+                              targets,
+                              &target_count,
+                              0,
+                              editor->cursor_line,
+                              editor->cursor_col,
+                              editor->has_selection,
+                              editor->selection,
+                              by_word);
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        struct vg_extra_cursor *cursor = &editor->extra_cursors[i];
+        add_forward_delete_target(editor,
+                                  targets,
+                                  &target_count,
+                                  i + 1,
+                                  cursor->line,
+                                  cursor->col,
+                                  cursor->has_selection,
+                                  cursor->selection,
+                                  by_word);
+    }
+
+    qsort(targets, (size_t)target_count, sizeof(*targets), edit_target_compare_desc);
+    apply_edit_targets(editor, targets, target_count, NULL);
+    free(targets);
+}
+
+/// @brief Append a backward word-delete range for one cursor.
+/// @param editor Editor that owns the cursor.
+/// @param targets Target array to append to.
+/// @param target_count In/out number of populated targets.
+/// @param cursor_id 0 for primary cursor, 1+ for extra cursors.
+/// @param cursor_line Cursor line before deletion.
+/// @param cursor_col Cursor byte column before deletion.
+/// @param has_selection Whether this cursor has a selection range.
+/// @param selection Selection range to delete when @p has_selection is true.
+static void add_backward_word_delete_target(vg_codeeditor_t *editor,
+                                            vg_edit_target_t *targets,
+                                            int *target_count,
+                                            int cursor_id,
+                                            int cursor_line,
+                                            int cursor_col,
+                                            bool has_selection,
+                                            vg_selection_t selection) {
+    if (!editor || !targets || !target_count)
+        return;
+    if (has_selection) {
+        add_edit_target(targets,
+                        target_count,
+                        cursor_id,
+                        cursor_line,
+                        cursor_col,
+                        selection.start_line,
+                        selection.start_col,
+                        selection.end_line,
+                        selection.end_col);
+        return;
+    }
+    int start_line = cursor_line;
+    int start_col = cursor_col;
+    codeeditor_previous_word_position(editor, &start_line, &start_col);
+    if (compare_positions(start_line, start_col, cursor_line, cursor_col) != 0) {
+        add_edit_target(targets,
+                        target_count,
+                        cursor_id,
+                        cursor_line,
+                        cursor_col,
+                        start_line,
+                        start_col,
+                        cursor_line,
+                        cursor_col);
+    }
+}
+
+/// @brief Delete backward to the previous word boundary across all active cursors.
+/// @param editor Editor to mutate.
+static void delete_word_backward_targets(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+
+    const int max_targets = 1 + editor->extra_cursor_count;
+    vg_edit_target_t *targets = calloc((size_t)max_targets, sizeof(vg_edit_target_t));
+    if (!targets)
+        return;
+
+    int target_count = 0;
+    add_backward_word_delete_target(editor,
+                                    targets,
+                                    &target_count,
+                                    0,
+                                    editor->cursor_line,
+                                    editor->cursor_col,
+                                    editor->has_selection,
+                                    editor->selection);
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        struct vg_extra_cursor *cursor = &editor->extra_cursors[i];
+        add_backward_word_delete_target(editor,
+                                        targets,
+                                        &target_count,
+                                        i + 1,
+                                        cursor->line,
+                                        cursor->col,
+                                        cursor->has_selection,
+                                        cursor->selection);
+    }
+
+    qsort(targets, (size_t)target_count, sizeof(*targets), edit_target_compare_desc);
+    apply_edit_targets(editor, targets, target_count, NULL);
+    free(targets);
+}
+
+/// @brief Choose the fixed selection anchor before keyboard navigation.
+/// @details When extending an existing selection, the anchor is the endpoint
+///          opposite the current caret. Without an existing selection, the
+///          current caret becomes the anchor.
+/// @param editor Editor whose primary selection is being extended.
+/// @param out_line Receives the anchor line.
+/// @param out_col Receives the anchor byte column.
+static void codeeditor_keyboard_selection_anchor(vg_codeeditor_t *editor,
+                                                 int *out_line,
+                                                 int *out_col) {
+    if (!editor || !out_line || !out_col)
+        return;
+    *out_line = editor->cursor_line;
+    *out_col = editor->cursor_col;
+    if (!editor->has_selection)
+        return;
+    if (compare_positions(editor->cursor_line,
+                          editor->cursor_col,
+                          editor->selection.start_line,
+                          editor->selection.start_col) == 0) {
+        *out_line = editor->selection.end_line;
+        *out_col = editor->selection.end_col;
+    } else {
+        *out_line = editor->selection.start_line;
+        *out_col = editor->selection.start_col;
+    }
+}
+
+/// @brief Finalize selection state after keyboard navigation.
+/// @details For Shift-modified movement, this creates or extends the primary
+///          selection from @p anchor_line/@p anchor_col to the new caret. For
+///          unmodified movement it clears primary and extra cursor selections.
+/// @param editor Editor to update.
+/// @param selecting True when Shift is held for this navigation command.
+/// @param anchor_line Fixed selection anchor line.
+/// @param anchor_col Fixed selection anchor byte column.
+static void codeeditor_finish_keyboard_navigation(vg_codeeditor_t *editor,
+                                                  bool selecting,
+                                                  int anchor_line,
+                                                  int anchor_col) {
+    if (!editor)
+        return;
+    if (selecting) {
+        editor->selection.start_line = anchor_line;
+        editor->selection.start_col = anchor_col;
+        editor->selection.end_line = editor->cursor_line;
+        editor->selection.end_col = editor->cursor_col;
+        editor->has_selection =
+            compare_positions(anchor_line, anchor_col, editor->cursor_line, editor->cursor_col) !=
+            0;
+        clear_extra_cursor_selections(editor);
+    } else {
+        editor->has_selection = false;
+        clear_extra_cursor_selections(editor);
+    }
+}
+
 /// @brief VTable handle_event: routes mouse (click/drag/scroll/scrollbar) and keyboard events to
 /// the appropriate editor action.
 static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
@@ -973,6 +1433,13 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     vg_widget_release_input_capture();
                 widget->needs_paint = true;
                 return true;
+            }
+            if (editor->selection_drag_pending) {
+                editor->selection_drag_pending = false;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
+                widget->needs_paint = true;
+                return false;
             }
             break;
 
@@ -1000,6 +1467,16 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 codeeditor_clamp_scroll(editor, widget);
                 widget->needs_paint = true;
                 return true;
+            }
+            if (editor->selection_drag_pending) {
+                float dx = event->mouse.x - editor->selection_drag_start_x;
+                float dy = event->mouse.y - editor->selection_drag_start_y;
+                float threshold_sq =
+                    CODEEDITOR_DRAG_START_THRESHOLD_PX * CODEEDITOR_DRAG_START_THRESHOLD_PX;
+                if (dx * dx + dy * dy < threshold_sq)
+                    return true;
+                editor->selection_drag_pending = false;
+                editor->selection_dragging = true;
             }
             if (editor->selection_dragging) {
                 int line = 0;
@@ -1129,7 +1606,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             editor->has_selection = false;
             clear_extra_cursor_selections(editor);
             if (event->mouse.button == VG_MOUSE_LEFT) {
-                editor->selection_dragging = true;
+                editor->selection_drag_pending = true;
+                editor->selection_dragging = false;
+                editor->selection_drag_start_x = event->mouse.x;
+                editor->selection_drag_start_y = event->mouse.y;
                 editor->selection_anchor_line = line;
                 editor->selection_anchor_col = col;
                 vg_widget_set_input_capture(widget);
@@ -1139,10 +1619,38 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return true;
         }
 
+        case VG_EVENT_DOUBLE_CLICK: {
+            if (event->mouse.button != VG_MOUSE_LEFT)
+                return false;
+            int line = 0;
+            int col = 0;
+            codeeditor_local_point_to_position(
+                editor, widget, event->mouse.x, event->mouse.y, &line, &col);
+            codeeditor_select_word_at(editor, line, col);
+            ensure_cursor_visible(editor);
+            widget->needs_paint = true;
+            return true;
+        }
+
+        case VG_EVENT_TRIPLE_CLICK: {
+            if (event->mouse.button != VG_MOUSE_LEFT)
+                return false;
+            int line = 0;
+            int col = 0;
+            codeeditor_local_point_to_position(
+                editor, widget, event->mouse.x, event->mouse.y, &line, &col);
+            (void)col;
+            codeeditor_select_line_at(editor, line);
+            ensure_cursor_visible(editor);
+            widget->needs_paint = true;
+            return true;
+        }
+
         case VG_EVENT_KEY_DOWN: {
             // Check for modifier key shortcuts first
             uint32_t mods = event->modifiers;
             bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0; // Ctrl or Cmd
+            bool has_shift = (mods & VG_MOD_SHIFT) != 0;
 
             // Clipboard and editing shortcuts (Ctrl/Cmd + key)
             if (has_ctrl) {
@@ -1194,6 +1702,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (editor->read_only) {
                 // Navigation only
                 bool handled_key = true;
+                bool navigation_key = true;
+                int anchor_line = 0;
+                int anchor_col = 0;
+                codeeditor_keyboard_selection_anchor(editor, &anchor_line, &anchor_col);
                 switch (event->key.key) {
                     case VG_KEY_UP:
                         codeeditor_move_cursor_vertical(editor, widget, -1);
@@ -1202,14 +1714,49 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         codeeditor_move_cursor_vertical(editor, widget, 1);
                         break;
                     case VG_KEY_LEFT:
-                        if (editor->cursor_col > 0)
-                            editor->cursor_col = codeeditor_prev_byte_boundary(
-                                editor, editor->cursor_line, editor->cursor_col);
+                        if (has_ctrl)
+                            codeeditor_move_cursor_word_left(editor);
+                        else
+                            codeeditor_move_cursor_left(editor);
                         break;
                     case VG_KEY_RIGHT:
-                        if (editor->cursor_col < (int)editor->lines[editor->cursor_line].length)
-                            editor->cursor_col = codeeditor_next_byte_boundary(
-                                editor, editor->cursor_line, editor->cursor_col);
+                        if (has_ctrl)
+                            codeeditor_move_cursor_word_right(editor);
+                        else
+                            codeeditor_move_cursor_right(editor);
+                        break;
+                    case VG_KEY_HOME:
+                        if (has_ctrl) {
+                            editor->cursor_line = 0;
+                            editor->cursor_col = 0;
+                        } else if (editor->cursor_line >= 0 &&
+                                   editor->cursor_line < editor->line_count) {
+                            vg_code_line_t *line = &editor->lines[editor->cursor_line];
+                            int first_text_col =
+                                codeeditor_leading_indent_len(line->text, line->length);
+                            editor->cursor_col =
+                                editor->cursor_col == first_text_col ? 0 : first_text_col;
+                        }
+                        break;
+                    case VG_KEY_END:
+                        if (has_ctrl) {
+                            editor->cursor_line =
+                                editor->line_count > 0 ? editor->line_count - 1 : 0;
+                            editor->cursor_col =
+                                editor->line_count > 0
+                                    ? (int)editor->lines[editor->cursor_line].length
+                                    : 0;
+                        } else if (editor->cursor_line >= 0 &&
+                                   editor->cursor_line < editor->line_count) {
+                            vg_code_line_t *line = &editor->lines[editor->cursor_line];
+                            int end_col = (int)line->length;
+                            int last_text_col = end_col;
+                            while (last_text_col > 0 && (line->text[last_text_col - 1] == ' ' ||
+                                                         line->text[last_text_col - 1] == '\t'))
+                                last_text_col--;
+                            editor->cursor_col =
+                                editor->cursor_col == last_text_col ? end_col : last_text_col;
+                        }
                         break;
                     case VG_KEY_PAGE_UP: {
                         int visible_lines = (int)(widget->height / editor->line_height);
@@ -1227,16 +1774,24 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     }
                     default:
                         handled_key = false;
+                        navigation_key = false;
                         break;
                 }
                 if (!handled_key)
                     return false;
+                if (navigation_key)
+                    codeeditor_finish_keyboard_navigation(
+                        editor, has_shift, anchor_line, anchor_col);
                 ensure_cursor_visible(editor);
                 widget->needs_paint = true;
                 return true;
             }
 
             bool handled_key = true;
+            bool navigation_key = true;
+            int anchor_line = 0;
+            int anchor_col = 0;
+            codeeditor_keyboard_selection_anchor(editor, &anchor_line, &anchor_col);
             switch (event->key.key) {
                 case VG_KEY_UP:
                     codeeditor_move_cursor_vertical(editor, widget, -1);
@@ -1245,25 +1800,23 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     codeeditor_move_cursor_vertical(editor, widget, 1);
                     break;
                 case VG_KEY_LEFT:
-                    if (editor->cursor_col > 0) {
-                        editor->cursor_col = codeeditor_prev_byte_boundary(
-                            editor, editor->cursor_line, editor->cursor_col);
-                    } else if (editor->cursor_line > 0) {
-                        editor->cursor_line--;
-                        editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
-                    }
+                    if (has_ctrl)
+                        codeeditor_move_cursor_word_left(editor);
+                    else
+                        codeeditor_move_cursor_left(editor);
                     break;
                 case VG_KEY_RIGHT:
-                    if (editor->cursor_col < (int)editor->lines[editor->cursor_line].length) {
-                        editor->cursor_col = codeeditor_next_byte_boundary(
-                            editor, editor->cursor_line, editor->cursor_col);
-                    } else if (editor->cursor_line < editor->line_count - 1) {
-                        editor->cursor_line++;
-                        editor->cursor_col = 0;
-                    }
+                    if (has_ctrl)
+                        codeeditor_move_cursor_word_right(editor);
+                    else
+                        codeeditor_move_cursor_right(editor);
                     break;
                 case VG_KEY_HOME:
-                    if (editor->cursor_line >= 0 && editor->cursor_line < editor->line_count) {
+                    if (has_ctrl) {
+                        editor->cursor_line = 0;
+                        editor->cursor_col = 0;
+                    } else if (editor->cursor_line >= 0 &&
+                               editor->cursor_line < editor->line_count) {
                         vg_code_line_t *line = &editor->lines[editor->cursor_line];
                         int first_text_col =
                             codeeditor_leading_indent_len(line->text, line->length);
@@ -1274,7 +1827,13 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     }
                     break;
                 case VG_KEY_END:
-                    if (editor->cursor_line >= 0 && editor->cursor_line < editor->line_count) {
+                    if (has_ctrl) {
+                        editor->cursor_line = editor->line_count > 0 ? editor->line_count - 1 : 0;
+                        editor->cursor_col = editor->line_count > 0
+                                                 ? (int)editor->lines[editor->cursor_line].length
+                                                 : 0;
+                    } else if (editor->cursor_line >= 0 &&
+                               editor->cursor_line < editor->line_count) {
                         vg_code_line_t *line = &editor->lines[editor->cursor_line];
                         int end_col = (int)line->length;
                         int last_text_col = end_col;
@@ -1300,12 +1859,22 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     break;
                 }
                 case VG_KEY_BACKSPACE:
-                    delete_backspace_targets(editor);
+                    navigation_key = false;
+                    if (has_ctrl)
+                        delete_word_backward_targets(editor);
+                    else
+                        delete_backspace_targets(editor);
+                    break;
+                case VG_KEY_DELETE:
+                    navigation_key = false;
+                    delete_forward_targets(editor, has_ctrl);
                     break;
                 case VG_KEY_ENTER:
+                    navigation_key = false;
                     codeeditor_insert_newline_with_indent(editor);
                     break;
                 case VG_KEY_TAB:
+                    navigation_key = false;
                     if (editor->use_spaces) {
                         char spaces[32];
                         int space_count = editor->tab_width;
@@ -1322,6 +1891,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     break;
                 default:
                     handled_key = false;
+                    navigation_key = false;
                     break;
             }
 
@@ -1332,8 +1902,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             ensure_cursor_visible(editor);
 
             editor->cursor_visible = true;
-            editor->has_selection = false;
-            clear_extra_cursor_selections(editor);
+            if (navigation_key)
+                codeeditor_finish_keyboard_navigation(editor, has_shift, anchor_line, anchor_col);
+            else
+                clear_extra_cursor_selections(editor);
             widget->needs_paint = true;
             return true;
         }

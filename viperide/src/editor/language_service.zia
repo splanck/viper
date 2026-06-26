@@ -80,6 +80,13 @@ class LanguageServiceManager {
         basicService = new LanguageService();
         basicService.name = LANGUAGE_BASIC;
         basicService.externalServerName = "vbasic-server";
+        // In-process BASIC language services via the Viper.Basic.* runtime bridge
+        // (ADR 0013): completion, diagnostics, hover, document symbols. Go-to-def /
+        // refs / rename / signature stay off (no project-index / signature engine).
+        basicService.canComplete = true;
+        basicService.canDiagnose = true;
+        basicService.canHover = true;
+        basicService.canDocumentSymbols = true;
         basicService.serverCanDiagnose = true;
 
         textService = new LanguageService();

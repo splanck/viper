@@ -39,10 +39,10 @@ final TREE_FILE_PREFIX = "· ";
 //   * EXCLUDE PATTERNS. `ShouldExcludePath` delegates to
 //     Viper.Workspace.FileIndex, which applies hard excludes, `.gitignore`,
 //     and optional ignore/exclude patterns from `viper.project`.
-//   * DEMAND-LOADED TREE. `PopulateTree` adds only the project root's
-//     immediate children. Clicking a folder populates that folder once.
-//     Quick Open still uses the full FileIndex-backed file cache, so
-//     responsiveness no longer depends on building every visible node.
+//   * DEMAND-LOADED TREE AND QUICK OPEN. `PopulateTree` adds only the
+//     project root's immediate children. Clicking a folder populates that
+//     folder once. Quick Open builds the full FileIndex-backed cache lazily
+//     on first use, so project open stays responsive on large workspaces.
 //
 // HOW-TO-READ: Setup (wire up the widget) -> OpenFolder (entry point) ->
 //   PopulateTree -> PopulateTreeChildren -> HandleTreeClicks (poll
@@ -61,6 +61,8 @@ class ProjectManager {
     expose Boolean fileWasSelected;
     /// Project file paths collected while building the tree, reused by Quick Open.
     expose List fileCache;
+    /// True after `fileCache` has been populated by the full workspace index.
+    expose Boolean fileCacheComplete;
     /// Absolute directory paths whose TreeView children have been populated.
     expose List loadedTreeDirs;
     /// Number of Zia file-bind paths rewritten by the most recent rename.
@@ -71,6 +73,7 @@ class ProjectManager {
         selectedFilePath = "";
         fileWasSelected = false;
         fileCache = new List();
+        fileCacheComplete = false;
         loadedTreeDirs = new List();
         lastBindRewriteCount = 0;
     }
@@ -103,6 +106,7 @@ class ProjectManager {
         project.Close();
         treeView.Clear();
         fileCache = new List();
+        fileCacheComplete = false;
         loadedTreeDirs = new List();
         selectedFilePath = "";
     }
@@ -117,7 +121,8 @@ class ProjectManager {
             return;
         }
 
-        fileCache = BuildProjectFileCache();
+        fileCache = new List();
+        fileCacheComplete = false;
         loadedTreeDirs = new List();
 
         var rootNode = treeView.AddNode(null, TreeRootLabel(project.name));
@@ -147,18 +152,30 @@ class ProjectManager {
         }
         loadedTreeDirs.Push(normalizedDir);
 
+        var dirs = new List();
         for dirName in Dir.DirsSeq(dirPath) {
-            var fullPath = Path.Join(dirPath, dirName);
+            dirs.Push(dirName);
+        }
+        dirs.Sort();
+        for dirName in dirs {
+            var dirNameText = Obj.ToString(dirName);
+            var fullPath = Path.Join(dirPath, dirNameText);
             if ShouldExcludePath(fullPath, true) == false {
-                var folderNode = treeView.AddNode(parentNode, TreeFolderLabel(dirName));
+                var folderNode = treeView.AddNode(parentNode, TreeFolderLabel(dirNameText));
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
             }
         }
 
+        var files = new List();
         for fileName in Dir.FilesSeq(dirPath) {
-            var fullPath = Path.Join(dirPath, fileName);
+            files.Push(fileName);
+        }
+        files.Sort();
+        for fileName in files {
+            var fileNameText = Obj.ToString(fileName);
+            var fullPath = Path.Join(dirPath, fileNameText);
             if ShouldExcludePath(fullPath, false) == false {
-                var fileNode = treeView.AddNode(parentNode, TreeFileLabel(fileName));
+                var fileNode = treeView.AddNode(parentNode, TreeFileLabel(fileNameText));
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
                 if ListContains(fileCache, fullPath) == false {
                     fileCache.Push(fullPath);
@@ -193,11 +210,27 @@ class ProjectManager {
         return cache;
     }
 
+    /// @brief Populate the full Quick Open file cache on first use.
+    /// @details Project open and tree refresh only add visible/opened-folder
+    ///          files so large workspaces do not block the UI immediately.
+    ///          Consumers that need the full project list call this method
+    ///          indirectly through CachedFileCount/CachedFileAt.
+    func EnsureFullFileCache() {
+        if fileCacheComplete { return; }
+        var fullCache = BuildProjectFileCache();
+        if fullCache.count() > 0 {
+            fileCache = fullCache;
+        }
+        fileCacheComplete = true;
+    }
+
     expose func CachedFileCount() -> Integer {
+        EnsureFullFileCache();
         return fileCache.count();
     }
 
     expose func CachedFileAt(index: Integer) -> String {
+        EnsureFullFileCache();
         if index < 0 or index >= fileCache.count() { return ""; }
         return Obj.ToString(fileCache.get(index));
     }

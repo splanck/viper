@@ -67,6 +67,7 @@ typedef struct vg_widget_runtime_state {
     uint64_t last_click_widget_id;
     uint64_t last_click_time_ms;
     int32_t last_click_button;
+    int32_t last_click_count;
     float last_click_screen_x;
     float last_click_screen_y;
     vg_widget_t *reported_click_widget;

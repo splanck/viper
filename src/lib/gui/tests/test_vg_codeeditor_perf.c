@@ -582,6 +582,11 @@ static void test_pointer_selection_drag_wall_clock_budget(void) {
 
     vg_codeeditor_reset_perf_stats(editor);
     send_mouse(editor, VG_EVENT_MOUSE_DOWN, 20.0f, 12.0f);
+    assert(editor->selection_drag_pending);
+    assert(!editor->selection_dragging);
+
+    send_mouse(editor, VG_EVENT_MOUSE_MOVE, 220.0f, 12.0f + editor->line_height);
+    assert(!editor->selection_drag_pending);
     assert(editor->selection_dragging);
 
     double max_ms = 0.0;

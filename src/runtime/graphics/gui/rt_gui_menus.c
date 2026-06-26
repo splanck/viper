@@ -83,6 +83,34 @@ static vg_contextmenu_t *rt_contextmenu_checked(void *menu) {
     return rt_gui_contextmenu_from_handle(menu);
 }
 
+/// @brief Apply the active app font and theme to a standalone context-menu tree.
+/// @details Context menus are not parented into app->root, so the normal
+///          App.SetFont widget-tree walk cannot reach them. This helper mirrors
+///          the app chrome font and current theme into the menu immediately
+///          before it is returned or shown, including any nested submenus.
+/// @param menu Context menu root to style; may be NULL.
+static void rt_contextmenu_apply_app_defaults(vg_contextmenu_t *menu) {
+    if (!menu)
+        return;
+
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    if (!app)
+        app = s_current_app;
+
+    if (app) {
+        rt_gui_activate_app(app);
+        rt_gui_refresh_theme(app);
+        vg_contextmenu_apply_theme(menu, app->theme);
+        if (!app->default_font)
+            rt_gui_ensure_default_font();
+        vg_font_t *font = rt_gui_font_handle_checked(app->default_font);
+        if (font)
+            vg_contextmenu_set_font(menu, font, app->default_font_size);
+    } else {
+        vg_contextmenu_apply_theme(menu, NULL);
+    }
+}
+
 /// @brief Validate a MenuItem handle.
 static vg_menu_item_t *rt_menuitem_checked(void *item) {
     return rt_gui_menu_item_from_handle(item);
@@ -665,7 +693,9 @@ int64_t rt_menuitem_was_clicked(void *item) {
 /// @return Opaque context menu handle, or NULL on failure.
 void *rt_contextmenu_new(void) {
     RT_ASSERT_MAIN_THREAD();
-    return rt_gui_wrap_contextmenu(vg_contextmenu_create());
+    vg_contextmenu_t *cm = vg_contextmenu_create();
+    rt_contextmenu_apply_app_defaults(cm);
+    return rt_gui_wrap_contextmenu(cm);
 }
 
 /// @brief Release resources and destroy the contextmenu.
@@ -734,6 +764,7 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
         free(ctitle);
         return NULL;
     }
+    rt_contextmenu_apply_app_defaults(submenu);
     vg_menu_item_t *item = vg_contextmenu_add_submenu(cm, ctitle, submenu);
     free(ctitle);
     if (!item) {
@@ -758,6 +789,7 @@ void rt_contextmenu_show(void *menu, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
     if (cm) {
+        rt_contextmenu_apply_app_defaults(cm);
         vg_contextmenu_show_at(cm,
                                rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
                                rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));

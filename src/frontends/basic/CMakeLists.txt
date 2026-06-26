@@ -145,6 +145,7 @@ target_sources(fe_basic PRIVATE
         BasicCompiler.cpp
         BasicAnalysis.cpp
         BasicCompletion.cpp
+        rt_basic_completion.cpp
         lower/oop/Lower_OOP_Expr.cpp
         lower/oop/Lower_OOP_Stmt.cpp
         lower/oop/Lower_OOP_Alloc.cpp

@@ -35,6 +35,28 @@
 
 static int rt_gui_widget_tree_uses_font(vg_widget_t *widget, vg_font_t *font);
 
+/// @brief Return non-zero if a context-menu tree references @p font.
+/// @details Context menus are standalone overlays, not children of app->root, so
+///          the generic widget-tree scan cannot discover their font references.
+///          This helper walks the root popup and any submenu popups owned by
+///          menu items.
+/// @param menu Context menu root to inspect; may be NULL.
+/// @param font Font handle to search for; may be NULL.
+/// @return 1 when any menu in the tree uses @p font, otherwise 0.
+static int rt_gui_contextmenu_tree_uses_font(vg_contextmenu_t *menu, vg_font_t *font) {
+    if (!menu || !font)
+        return 0;
+    if (menu->font == font)
+        return 1;
+    for (size_t i = 0; i < menu->item_count; i++) {
+        vg_menu_item_t *item = menu->items[i];
+        if (item && item->submenu &&
+            rt_gui_contextmenu_tree_uses_font((vg_contextmenu_t *)item->submenu, font))
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Keep a font alive until the app is destroyed (prevents use-after-free).
 /// @details When the user calls App.SetFont or Font.Destroy while a GUI object
 ///          still references the font, defer destruction to app teardown.
@@ -90,6 +112,8 @@ static int rt_gui_app_uses_font(rt_gui_app_t *app, vg_font_t *font) {
     if (app->notification_manager && app->notification_manager->font == font)
         return 1;
     if (app->manual_tooltip && app->manual_tooltip->font == font)
+        return 1;
+    if (rt_gui_contextmenu_tree_uses_font(app->active_context_menu, font))
         return 1;
     return 0;
 }
@@ -542,6 +566,11 @@ void rt_gui_reapply_default_font(rt_gui_app_t *app) {
     if (app->manual_tooltip) {
         app->manual_tooltip->font = app->default_font;
         app->manual_tooltip->font_size = app->default_font_size;
+    }
+    if (app->active_context_menu) {
+        if (rt_gui_font_handle_supports_metrics(app->default_font))
+            vg_contextmenu_set_font(
+                app->active_context_menu, app->default_font, app->default_font_size);
     }
     for (int i = 0; i < app->dialog_count; i++) {
         if (app->dialog_stack[i])

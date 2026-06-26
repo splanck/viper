@@ -5,6 +5,7 @@ bind "../editor/scheduler";
 bind "../ui/app_shell";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind BasicCompletion = Viper.Basic.Completion;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Viper.GUI;
@@ -55,6 +56,7 @@ class SymbolOutline {
     expose Integer lastRevision;
     expose Boolean visible;
     expose Boolean enabled;
+    expose Boolean isBasic;   // route to Viper.Basic.Completion (sync) instead of Zia
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
     expose Integer pendingRevision;
@@ -73,6 +75,7 @@ class SymbolOutline {
         lastRevision = -1;
         visible = false;
         enabled = true;
+        isBasic = false;
         workScheduler = null;
         pendingJob = null;
         pendingRevision = -1;
@@ -187,6 +190,14 @@ class SymbolOutline {
 
     hide func StartSymbolJob(engine: editor_engine.EditorEngine, revision: Integer) {
         var source = engine.GetTextSnapshot();
+
+        // BASIC: synchronous in-process symbols (raw source, no Zia module-wrap).
+        if isBasic {
+            CancelPendingJob();
+            var braw = BasicCompletion.SymbolsForFile(source, sourcePath);
+            ApplySymbols(engine, braw, 0, source, sourcePath, revision);
+            return;
+        }
 
         // Synthetic-module prefix for buffers lacking a `module` line; symbol
         // line numbers come back shifted and must be un-shifted below.

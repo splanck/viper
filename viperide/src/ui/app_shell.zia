@@ -1083,6 +1083,17 @@ class AppShell {
     hide func BoundOutputCache(existing: String,
                                text: String) -> String {
         var combined = existing + text;
+        var textLen = Str.Length(text);
+        if textLen >= MAX_BUILD_OUTPUT_CACHE_CHARS {
+            return OUTPUT_CACHE_TRUNCATED_PREFIX
+                + Str.Mid(text, textLen - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
+        }
+        var existingLen = Str.Length(existing);
+        var keepExisting = MAX_BUILD_OUTPUT_CACHE_CHARS - textLen;
+        if existingLen > keepExisting {
+            return OUTPUT_CACHE_TRUNCATED_PREFIX
+                + Str.Mid(existing, existingLen - keepExisting + 1) + text;
+        }
         if Str.Length(combined) <= MAX_BUILD_OUTPUT_CACHE_CHARS {
             return combined;
         }

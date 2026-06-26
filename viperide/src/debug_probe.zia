@@ -112,6 +112,15 @@ func main() {
         fail("FrameLabel(0) missing 'main': " + session.FrameLabel(0));
         return;
     }
+    // FramePath/FrameLine back clickable call-stack navigation.
+    if session.FrameLine(0) != 5 {
+        fail("FrameLine(0) was " + session.FrameLine(0) + " (expected 5)");
+        return;
+    }
+    if Str.EndsWith(session.FramePath(0), "dbg.zia") == false {
+        fail("FramePath(0) not our file: " + session.FramePath(0));
+        return;
+    }
 
     // 1b) Watch/evaluate a name at the stop (reuses the frame locals).
     if session.Evaluate("a") == false {

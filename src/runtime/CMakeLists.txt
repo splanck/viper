@@ -46,6 +46,7 @@ set(RT_BASE_SOURCES
         core/rt_gc.c
         core/rt_zia_completion_stub.c
         core/rt_zia_highlight_stub.c
+        core/rt_basic_completion_stub.c
 )
 
 set(RT_ARRAY_SOURCES

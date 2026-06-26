@@ -297,8 +297,15 @@ func handleUiZoomReset(shell: app_shell.AppShell,
     shell.SetStatusLeft("UI zoom reset to 100%");
 }
 
-/// @brief Switch between dark and light themes; persist setting.
-func handleToggleTheme(appSettings: settings.SettingsManager) {
+/// @brief Switch between dark and light themes, refresh appearance, and persist setting.
+/// @details Theme changes affect long-lived widgets and standalone overlays.
+///          Running the same appearance pass used at startup keeps font sizes,
+///          editor chrome, minimap/status visibility, and theme-derived colors
+///          synchronized after the toggle.
+func handleToggleTheme(shell: app_shell.AppShell,
+                       engine: editor_engine.EditorEngine,
+                       liveDiag: diagnostics.LiveDiagnostics,
+                       appSettings: settings.SettingsManager) {
     if appSettings.theme == "dark" {
         GUI.Theme.SetLight();
         appSettings.theme = "light";
@@ -308,6 +315,8 @@ func handleToggleTheme(appSettings: settings.SettingsManager) {
         appSettings.theme = "dark";
         GUI.Toast.Info("Switched to dark theme");
     }
+    applyShellFont(shell);
+    applyPersistentSettings(shell, engine, liveDiag, appSettings);
     appSettings.Save();
 }
 

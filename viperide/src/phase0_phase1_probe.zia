@@ -87,8 +87,12 @@ func main() {
     var basicDoc = new document.Document();
     basicDoc.language = "basic";
     var basicService = langMgr.ForDocument(basicDoc);
+    // BASIC has in-process completion + diagnostics (Viper.Basic.* bridge, ADR 0013);
+    // go-to-definition / refs / rename remain off (no project-index for BASIC).
+    if assertTrue(basicService.canComplete and basicService.canDiagnose,
+                  "basic completion+diagnostics enabled") == false { return; }
     if assertTrue(basicService.canGoToDefinition == false,
-                  "basic semantic commands disabled") == false { return; }
+                  "basic navigation commands still disabled") == false { return; }
     var ziaDoc = new document.Document();
     ziaDoc.language = "zia";
     ziaDoc.kind = file_utils.DOC_KIND_CODE;
@@ -107,10 +111,12 @@ func main() {
                   and Str.IndexOf(disabledReason, "BASIC") != 0
                   and Str.IndexOf(disabledReason, "rename") != 0,
                   "disabled command reason names language capability") == false { return; }
-    var serverReason = registry.DisabledReason("symboloutline", basicService);
+    // symboloutline is now supported for BASIC; find-references is still gated off,
+    // so it carries the language-limitation reason.
+    var serverReason = registry.DisabledReason("findrefs", basicService);
     if assertTrue(Str.IndexOf(serverReason, "BASIC") != 0
                   and Str.IndexOf(serverReason, "does not support") != 0,
-                  "disabled command reason labels syntax-only BASIC support") == false { return; }
+                  "disabled command reason labels unsupported BASIC capability") == false { return; }
 
     var previewPath = Path.Join(TempFile.Dir(), "viperide_preview.png");
     File.WriteAllText(previewPath, "not actually image data");

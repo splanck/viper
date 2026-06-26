@@ -109,6 +109,33 @@ func handleAddLogpoint(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Navigate the editor to the source of the clicked Call Stack frame.
+/// @details The Call Stack panel lists frames in order (row i == frame i), so the
+///          selected row maps straight to FramePath/FrameLine. Selecting a lower
+///          frame jumps there without moving the execution-stop marker.
+func handleCallStackSelect(shell: app_shell.AppShell,
+                           docMgr: document_manager.DocumentManager,
+                           engine: editor_engine.EditorEngine,
+                           tabs: editor_tabs.EditorTabs,
+                           session: debug_session.DebugSession) {
+    if session == null { return; }
+    var idx = shell.callStackListBox.SelectedIndex;
+    if idx < 0 or idx >= session.FrameCount() { return; }
+    var path = session.FramePath(idx);
+    var line = session.FrameLine(idx);
+    if path == "" or line <= 0 { return; }
+    var maybeActive = docMgr.GetActive();
+    var needsOpen = maybeActive == null;
+    if maybeActive != null and SamePath(maybeActive!.filePath, path) == false {
+        needsOpen = true;
+    }
+    if needsOpen and IO.File.Exists(path) {
+        file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    }
+    engine.GoToLine(line);
+    shell.SetStatusLeft("Frame: " + session.FrameLabel(idx));
+}
+
 func PumpGutter(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,

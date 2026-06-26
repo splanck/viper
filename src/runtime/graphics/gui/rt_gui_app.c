@@ -1778,6 +1778,10 @@ void rt_gui_app_render(void *app_ptr) {
     // dialogs. It is not in app->root, so the overlay tree walk never reaches it;
     // contextmenu_paint clamps its position to the window.
     if (app->active_context_menu && app->active_context_menu->is_visible) {
+        vg_contextmenu_apply_theme(app->active_context_menu, app->theme);
+        vg_font_t *font = rt_gui_font_handle_checked(app->default_font);
+        if (font)
+            vg_contextmenu_set_font(app->active_context_menu, font, app->default_font_size);
         vg_widget_t *menu_widget = &app->active_context_menu->base;
         if (menu_widget->vtable && menu_widget->vtable->paint) {
             menu_widget->vtable->paint(menu_widget, (void *)app->window);

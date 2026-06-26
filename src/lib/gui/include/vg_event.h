@@ -54,6 +54,7 @@ typedef enum vg_event_type {
     VG_EVENT_MOUSE_WHEEL,  ///< Mouse scroll wheel was rotated.
     VG_EVENT_CLICK,        ///< Single click detected (button down + up in same widget).
     VG_EVENT_DOUBLE_CLICK, ///< Double click detected within the system's threshold.
+    VG_EVENT_TRIPLE_CLICK, ///< Triple click detected within the system's threshold.
 
     // Keyboard events
     VG_EVENT_KEY_DOWN, ///< A key was pressed (physical key event).

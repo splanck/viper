@@ -18,6 +18,8 @@ bind "services/workspace_edits";
 bind Viper.GUI;
 bind ZiaCompletion = Viper.Zia.Completion;
 bind ZiaToolchain = Viper.Zia.Toolchain;
+bind BasicCompletion = Viper.Basic.Completion;
+bind BasicToolchain = Viper.Basic.Toolchain;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind Clock = Viper.Time.Clock;
 bind TempFile = Viper.IO.TempFile;
@@ -1558,6 +1560,33 @@ func main() {
     edit_commands.handleFormatDocument(shell, docMgr, engine);
     if engine.GetTextSnapshot() != messyFormat {
         fail(shell, "format unsupported basic");
+        return;
+    }
+
+    // ===== Viper BASIC language services via the Viper.Basic.* bridge (Phase 4) =====
+    // Sync, in-process: a type-mismatch must be flagged, and completion at the cursor
+    // must surface in-scope symbols (keyword TO + the DIM'd TOTAL).
+    var basicBad = "DIM x AS INTEGER\nx = \"hello\"\n";
+    var basicDiags = BasicToolchain.CheckForFile(basicBad, "probe.bas");
+    if Seq.get_Length(basicDiags) == 0 {
+        fail(shell, "basic diagnostics missing type-mismatch error");
+        return;
+    }
+    var basicSrc = "DIM total AS INTEGER\ntotal = 1\nPRINT to";
+    var basicItems = BasicCompletion.ItemsForFile(basicSrc, "probe.bas", 3, 9);
+    if Seq.get_Length(basicItems) == 0 {
+        fail(shell, "basic completion returned no items");
+        return;
+    }
+    // BASIC canonicalizes identifiers to uppercase, so the symbol is "GREET".
+    var basicSyms = BasicCompletion.SymbolsForFile("SUB Greet()\n  PRINT \"hi\"\nEND SUB\n", "probe.bas");
+    if Str.IndexOf(basicSyms, "GREET") == 0 {
+        fail(shell, "basic symbols missing SUB Greet");
+        return;
+    }
+    var basicHover = BasicCompletion.HoverInfoForFile(basicSrc, "probe.bas", 2, 0);
+    if Map.GetBool(basicHover, "available") == false {
+        fail(shell, "basic hover not available for 'total'");
         return;
     }
 

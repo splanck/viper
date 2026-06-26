@@ -1342,7 +1342,47 @@ bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event) {
 void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size) {
     if (!menu)
         return;
-    menu->font = font;
+    if (font)
+        menu->font = font;
     if (size > 0)
         menu->font_size = size;
+    menu->base.needs_layout = true;
+    menu->base.needs_paint = true;
+    for (size_t i = 0; i < menu->item_count; i++) {
+        vg_menu_item_t *item = menu->items[i];
+        if (item && item->submenu)
+            vg_contextmenu_set_font((vg_contextmenu_t *)item->submenu, font, size);
+    }
+}
+
+/// @brief Apply theme colors to a context-menu subtree.
+/// @details Context menus are often standalone overlays created once and shown
+///          many times. Reapplying colors at show/render time keeps long-lived
+///          menus synchronized with light/dark theme changes without requiring
+///          scripts to rebuild their menu models.
+/// @param menu Context menu root to update; may be NULL.
+/// @param theme Theme whose colors should be copied; NULL uses current theme.
+void vg_contextmenu_apply_theme(vg_contextmenu_t *menu, const vg_theme_t *theme) {
+    if (!menu)
+        return;
+    if (!theme)
+        theme = vg_theme_get_current();
+    if (!theme)
+        return;
+
+    menu->bg_color = theme->colors.bg_primary;
+    menu->hover_color = theme->colors.bg_hover;
+    menu->text_color = theme->colors.fg_primary;
+    menu->disabled_color = theme->colors.fg_secondary;
+    menu->border_color = theme->colors.border_primary;
+    menu->separator_color = theme->colors.border_secondary;
+    if (menu->font_size <= 0.0f)
+        menu->font_size = theme->typography.size_normal;
+    menu->base.needs_paint = true;
+
+    for (size_t i = 0; i < menu->item_count; i++) {
+        vg_menu_item_t *item = menu->items[i];
+        if (item && item->submenu)
+            vg_contextmenu_apply_theme((vg_contextmenu_t *)item->submenu, theme);
+    }
 }
