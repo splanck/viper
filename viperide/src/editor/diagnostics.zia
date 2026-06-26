@@ -318,7 +318,11 @@ class LiveDiagnostics {
 
             var displayPath = diagPath;
             if displayPath == "" { displayPath = sourcePath; }
-            var item = shell.AddProblem(sevLabel, "zia", displayPath, diagLine, diagCol,
+            var diagnosticSource = "zia";
+            if isBasic {
+                diagnosticSource = "basic";
+            }
+            var item = shell.AddProblem(sevLabel, diagnosticSource, displayPath, diagLine, diagCol,
                                         code, msg, ProblemActionForDiagnosticRecord(record));
             shownCount = shownCount + 1;
             var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,

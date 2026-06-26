@@ -2,14 +2,18 @@
 
 ViperIDE is the IDE application for Zia and Viper BASIC. It is built in Zia on top of the `Viper.GUI.*` runtime classes.
 
-Current status: the editor-first-class correction gate passed on 2026-05-23.
+Current status: the editor-first-class correction gate passed on 2026-05-23,
+with a follow-up polish pass in progress for explorer actions, debugger
+metadata editing, workspace indexing, and tool-surface responsiveness.
 The release evidence lives in
 [`plans/editor-first-class-plan.md`](plans/editor-first-class-plan.md) and the
 manual dogfood report is
 [`docs/editor-first-class-dogfood-2026-05-23.md`](docs/editor-first-class-dogfood-2026-05-23.md).
-Scene-editor work can resume only from this corrected baseline; the placeholder
-debugger, BASIC semantic language services, split/diff editors, and SCM support
-remain explicit non-goals for this gate.
+Scene-editor work can resume only from this corrected baseline; split/diff
+editors and SCM support remain explicit non-goals for this gate. The debugger is
+now VM-backed for stepping, breakpoints, locals, call stack, evaluate, conditions,
+and logpoints, while BASIC advanced semantic commands remain intentionally
+limited until a project-index-equivalent BASIC service exists.
 
 ## Layout
 

@@ -1111,6 +1111,30 @@ set_tests_properties(zia_viperide_file_tree PROPERTIES
         LABELS "zia;viperide;file-tree;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_viperide_activity_bar
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/activity_bar_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_activity_bar PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;activity-bar;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_multi_root
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/multi_root_file_tree_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_multi_root PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;multi-root;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_viperide_scm
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/scm_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
+set_tests_properties(zia_viperide_scm PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;scm"
+        TIMEOUT 30)
+
 add_test(NAME zia_viperide_context_menu
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/context_menu_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
@@ -1387,6 +1411,8 @@ set(VIPER_DISPLAY_TESTS
         zia_viperide_editor_hot_path
         zia_viperide_intellisense
         zia_viperide_file_tree
+        zia_viperide_activity_bar
+        zia_viperide_multi_root
         zia_viperide_console_search
         zia_smoke_3dbowling
         zia_smoke_3dbowling_aim

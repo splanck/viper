@@ -177,6 +177,14 @@ class AppShell {
     // Sidebar
     expose GUI.TreeView sidebarTree;
 
+    // Activity bar (vertical view switcher, left edge) + swappable left view stack
+    expose GUI.Toolbar activityBar;
+    expose GUI.ToolbarItem abExplorer;
+    expose GUI.ToolbarItem abSourceControl;
+    expose GUI.VBox leftViewStack;
+    expose GUI.VBox explorerView;
+    expose GUI.VBox scmViewHost;
+
     // Find bar (hidden by default; shown by Ctrl+F)
     expose GUI.FindBar findBar;
 
@@ -189,6 +197,9 @@ class AppShell {
     // Build output surfaces (OutputPane for raw streams, ListBox for row tools)
     expose GUI.OutputPane outputPane;
     expose GUI.ListBox outputListBox;
+    expose GUI.VirtualList outputVirtualList;
+    expose List outputRenderedItems;
+    expose Integer outputRenderedRowCount;
     expose GUI.ListBox searchListBox;
     expose GUI.ListBox referencesListBox;
     expose GUI.ListBox debugListBox;
@@ -252,6 +263,7 @@ class AppShell {
     expose GUI.StatusBarItem indexItem;    // right-zone workspace index state
     expose GUI.StatusBarItem languageItem; // right-zone active language service
     expose GUI.StatusBarItem jobItem;      // right-zone build/run job state
+    expose GUI.StatusBarItem taskItem;     // right-zone background editor tasks
     expose GUI.StatusBarItem diagnosticsItem; // right-zone diagnostics summary
 
     // Command palette (Ctrl+Shift+P)
@@ -279,6 +291,7 @@ class AppShell {
     expose String lastIndexStatus;
     expose String lastLanguageStatus;
     expose String lastBuildJobStatus;
+    expose String lastTaskStatus;
 
     /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
@@ -292,6 +305,8 @@ class AppShell {
         lastBuildOutput = "";
         outputPartialLine = "";
         outputPartialItem = null;
+        outputRenderedItems = new List();
+        outputRenderedRowCount = 0;
         outputFilterText = "";
         outputWrapLines = false;
         outputAutoScroll = true;
@@ -303,6 +318,7 @@ class AppShell {
         lastIndexStatus = "Workspace index idle";
         lastLanguageStatus = "Lang: text";
         lastBuildJobStatus = "Job: idle";
+        lastTaskStatus = "Tasks: idle";
     }
 
     /// @brief Construct the full IDE window and every chrome widget.
@@ -500,15 +516,48 @@ class AppShell {
         SetDebugSessionState(false, false, false);
 
         // ====================================================================
-        // SplitPane — sidebar (left) + editor area (right)
+        // Workbench host: always-visible activity bar (left) + a resizable
+        // SplitPane [ left view stack | editor area ]. The activity bar lives
+        // OUTSIDE the SplitPane so dragging the splitter never shrinks it.
         // ====================================================================
-        splitPane = GUI.SplitPane.New(mainVBox, 1);
+        var workbenchHost: GUI.HBox = GUI.HBox.New();
+        workbenchHost.SetSpacing(0.0);
+        workbenchHost.SetPadding(0.0);
+        workbenchHost.SetFlex(1.0);
+        mainVBox.AddChild(workbenchHost);
+
+        // Activity bar — vertical icon strip that switches the left view.
+        activityBar = GUI.Toolbar.NewVertical(workbenchHost);
+        abExplorer = activityBar.AddButtonWithText("", "▦", "Explorer");
+        abSourceControl = activityBar.AddButtonWithText("", "⎇", "Source Control");
+
+        splitPane = GUI.SplitPane.New(workbenchHost, 1);
         splitPane.SetFlex(1.0);
         splitPane.SetPosition(0.24);
 
-        // Sidebar — TreeView in left panel
+        // Left panel — a swappable stack of views. The activity bar toggles
+        // which child is visible; Explorer (the file tree) is the default.
         var leftPanel: GUI.Widget = splitPane.First;
-        sidebarTree = GUI.TreeView.New(leftPanel);
+        leftViewStack = GUI.VBox.New();
+        leftViewStack.SetSpacing(0.0);
+        leftViewStack.SetPadding(0.0);
+        leftViewStack.SetFlex(1.0);
+        leftPanel.AddChild(leftViewStack);
+
+        explorerView = GUI.VBox.New();
+        explorerView.SetSpacing(0.0);
+        explorerView.SetPadding(0.0);
+        explorerView.SetFlex(1.0);
+        leftViewStack.AddChild(explorerView);
+        sidebarTree = GUI.TreeView.New(explorerView);
+
+        // Source Control view host (populated in sub-phase 5C); hidden until selected.
+        scmViewHost = GUI.VBox.New();
+        scmViewHost.SetSpacing(0.0);
+        scmViewHost.SetPadding(0.0);
+        scmViewHost.SetFlex(1.0);
+        scmViewHost.SetVisible(0);
+        leftViewStack.AddChild(scmViewHost);
 
         // Workbench — editor area plus the docked Preferences side panel.
         var rightPanel: GUI.Widget = splitPane.Second;
@@ -581,6 +630,7 @@ class AppShell {
         outputListBox.SetMultiSelect(1);
         outputListBox.SetVisible(0);
         outputListBox.SetSize(0, 100);
+        outputVirtualList = GUI.VirtualList.New(0, 18, 100);
 
         searchListBox = GUI.ListBox.New(editorArea);
         searchListBox.SetMultiSelect(1);
@@ -683,6 +733,8 @@ class AppShell {
         languageItem.SetTooltip("Active language service");
         jobItem = statusBar.AddText("Job: idle", 2);
         jobItem.SetTooltip("Build/run job state");
+        taskItem = statusBar.AddText("Tasks: idle", 2);
+        taskItem.SetTooltip("Background editor tasks");
         diagnosticsItem = statusBar.AddText("Diagnostics: clean", 2);
         diagnosticsItem.SetTextColor(TOOL_COLOR_SUCCESS);
         diagnosticsItem.SetTooltip("Live diagnostics summary");
@@ -831,6 +883,23 @@ class AppShell {
         if jobItem != null {
             jobItem.SetText(lastBuildJobStatus);
             jobItem.SetTooltip(lastBuildJobStatus);
+        }
+    }
+
+    /// @brief Update the background editor-task status item.
+    /// @details The scheduler handles diagnostics, completion, hover, search,
+    ///          symbols, and index sync. Keeping this state visible makes
+    ///          background work diagnosable without mixing it with build/run
+    ///          process status.
+    /// @param status Short display text produced by editor/scheduler.zia.
+    expose func SetSchedulerStatus(status: String) {
+        var text = status;
+        if text == "" { text = "Tasks: idle"; }
+        if text == lastTaskStatus { return; }
+        lastTaskStatus = text;
+        if taskItem != null {
+            taskItem.SetText(text);
+            taskItem.SetTooltip(text);
         }
     }
 
@@ -1113,6 +1182,7 @@ class AppShell {
         UseOutputPane();
         outputPane.Clear();
         outputListBox.Clear();
+        ResetOutputRows();
         outputPartialLine = "";
         outputPartialItem = null;
         outputPane.Append(output);
@@ -1123,6 +1193,7 @@ class AppShell {
     hide func RenderOutputRows(output: String) {
         UseOutputRows();
         outputListBox.Clear();
+        ResetOutputRows();
         outputPartialLine = "";
         outputPartialItem = null;
         AddBuildOutputLines(output);
@@ -1150,6 +1221,7 @@ class AppShell {
     expose func BeginOutputRows() {
         UseOutputRows();
         outputListBox.Clear();
+        ResetOutputRows();
         outputPartialLine = "";
         outputPartialItem = null;
     }
@@ -1283,6 +1355,7 @@ class AppShell {
         outputPane.Clear();
         outputPane.SetVisible(0);
         outputListBox.Clear();
+        ResetOutputRows();
         outputListBox.SetVisible(0);
         lastBuildOutput = "";
         outputPartialLine = "";
@@ -1321,6 +1394,7 @@ class AppShell {
         var wrapColumn = OutputWrapColumn();
         if outputWrapLines == false or Str.Length(line) <= wrapColumn {
             var item = outputListBox.AddItem(line);
+            RegisterOutputRow(item, line);
             ApplyOutputLineColor(item, line);
             if outputAutoScroll {
                 outputListBox.ScrollToBottom();
@@ -1333,6 +1407,7 @@ class AppShell {
         while start <= Str.Length(line) {
             var chunk = Str.MidLen(line, start, wrapColumn);
             var item = outputListBox.AddItem(chunk);
+            RegisterOutputRow(item, chunk);
             ApplyOutputLineColor(item, line);
             if first == null { first = item; }
             if outputAutoScroll {
@@ -1344,17 +1419,50 @@ class AppShell {
     }
 
     /// @brief Keep the row-mode output surface bounded.
-    /// @details ListBox rows are heavier than raw text appends. When the row
-    ///          renderer reaches the cap, it drops older rendered rows and keeps a
-    ///          marker row so the user can tell history was condensed. The full
-    ///          bounded text cache remains available for copy/filter repaint.
+    /// @details ListBox rows are heavier than raw text appends. Older visible
+    ///          rows are removed one at a time so selection, scroll position, and
+    ///          the newest output remain stable. The full bounded text cache
+    ///          remains available for copy/filter repaint.
     hide func EnsureOutputRowCapacity() {
-        if outputListBox.Count < MAX_OUTPUT_ROW_COUNT {
-            return;
+        while outputRenderedItems.count() >= MAX_OUTPUT_ROW_COUNT {
+            var oldest = outputRenderedItems.get(0);
+            outputRenderedItems.removeAt(0);
+            if oldest != null {
+                outputListBox.RemoveItem(oldest);
+            }
         }
-        outputListBox.Clear();
-        outputListBox.AddItem(OUTPUT_ROWS_TRUNCATED_MARKER);
-        outputPartialItem = null;
+        if outputVirtualList != null {
+            outputVirtualList.SetCount(outputRenderedRowCount);
+        }
+    }
+
+    /// @brief Reset row-mode bookkeeping after a full output repaint.
+    /// @details The ListBox owns visible row widgets while outputRenderedItems
+    ///          tracks those widgets in insertion order for bounded removal. The
+    ///          virtual list stores stable ids for the complete rendered stream so
+    ///          future UI work can realize only visible ranges without changing the
+    ///          output data model again.
+    hide func ResetOutputRows() {
+        outputRenderedItems = new List();
+        outputRenderedRowCount = 0;
+        if outputVirtualList != null {
+            outputVirtualList.SetCount(0);
+        }
+    }
+
+    /// @brief Record a newly-created output row in the bounded row model.
+    /// @param item ListBox row handle returned by AddItem.
+    /// @param text Rendered row text, used only to derive a stable virtual-row id.
+    hide func RegisterOutputRow(item: Any,
+                                text: String) {
+        if item == null { return; }
+        outputRenderedRowCount = outputRenderedRowCount + 1;
+        outputRenderedItems.add(item);
+        if outputVirtualList != null {
+            outputVirtualList.SetCount(outputRenderedRowCount);
+            outputVirtualList.SetRowId(outputRenderedRowCount - 1,
+                                       "out:" + outputRenderedRowCount + ":" + Str.Length(text));
+        }
     }
 
     /// @brief Compute an approximate output wrap width for the current window.

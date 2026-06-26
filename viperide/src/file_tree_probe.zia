@@ -187,6 +187,10 @@ func main() {
         fail(shell, "delete recent path");
         return;
     }
+    if projMgr.lastTrashPath == "" or File.Exists(projMgr.lastTrashPath) == false {
+        fail(shell, "delete moved file to project trash");
+        return;
+    }
     if RecentContains(docMgr, deleteRecent) {
         fail(shell, "deleted recent path removed");
         return;

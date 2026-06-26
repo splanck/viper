@@ -6,6 +6,13 @@
 // File: src/runtime/io/rt_ide_primitives.h
 // Purpose: Workspace, asset, manifest, and transactional edit helpers used by
 //          ViperIDE and editor-style tooling.
+// Key invariants:
+//   - Workspace edit targets are validated before any disk mutation is attempted.
+//   - Workspace/file-index helpers never depend on compiler-layer services.
+// Ownership/Lifetime:
+//   - Runtime strings passed to these functions are borrowed from the caller.
+//   - Map and sequence results are runtime-owned objects returned to callers.
+// Links: src/runtime/io/rt_ide_primitives.cpp, src/runtime/io/rt_watcher.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,6 +30,26 @@ void *rt_workspace_file_index_enumerate(rt_string root,
                                         rt_string extensions_csv,
                                         rt_string excludes_csv,
                                         int8_t include_dirs);
+
+/// @brief Return one bounded page of workspace file-index entries.
+/// @details Applies the same validation, extension filtering, ignore rules, and
+///          entry cap as @ref rt_workspace_file_index_enumerate, but emits at
+///          most @p limit entries starting at logical match offset @p offset.
+///          The result map contains `entries`, `offset`, `limit`, `emitted`,
+///          `nextOffset`, `done`, `truncated`, and `diagnostics`.
+/// @param root Directory to enumerate.
+/// @param extensions_csv Comma-separated extension filter, such as ".zia,.png".
+/// @param excludes_csv Comma-separated additional ignore patterns.
+/// @param include_dirs Non-zero to count matching directories as entries.
+/// @param offset Zero-based logical match offset to start returning.
+/// @param limit Maximum entries to emit; values outside 1..4096 are clamped.
+/// @return Page result map owned by the caller.
+void *rt_workspace_file_index_page(rt_string root,
+                                   rt_string extensions_csv,
+                                   rt_string excludes_csv,
+                                   int8_t include_dirs,
+                                   int64_t offset,
+                                   int64_t limit);
 
 /// @brief Return status metadata for a workspace file-index traversal.
 /// @details Applies the same root validation, extension filtering, ignore rules,

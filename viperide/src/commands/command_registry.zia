@@ -54,6 +54,7 @@ class CommandRegistry {
         Add("new", "New File", "Create a new untitled file", "Ctrl+N", "", true);
         Add("open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
         Add("openfolder", "Open Folder...", "Open a project folder", "Ctrl+Alt+O", "", true);
+        Add("addfolder", "Add Folder to Workspace...", "Add another folder as a workspace root", "", "", true);
         Add("save", "Save", "Save the current file", "Ctrl+S", "", true);
         Add("saveas", "Save As...", "Save the current file under a new path", "Ctrl+Shift+S", "", true);
         Add("saveall", "Save All", "Save all open files", "Ctrl+Alt+Shift+S", "", true);

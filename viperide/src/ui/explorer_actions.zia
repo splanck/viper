@@ -1,0 +1,394 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: viperide/src/ui/explorer_actions.zia
+// Purpose: Integrated non-modal explorer action overlays for ViperIDE.
+// Key invariants:
+//   - The overlay captures intent only; filesystem mutations stay in main.zia.
+//   - File-tree actions remain non-modal and styled with IDE chrome.
+// Ownership/Lifetime:
+//   - GUI widgets are owned by the AppShell application root.
+//   - Target paths and entered names are copied as Zia strings.
+// Links: viperide/src/main.zia, viperide/src/ui/app_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
+module explorer_actions;
+
+bind "../ui/app_shell";
+
+bind Viper.GUI as GUI;
+bind Input = Viper.Input;
+bind Path = Viper.IO.Path;
+bind Str = Viper.String;
+
+final EXPLORER_ACTION_NONE: Integer = 0;
+final EXPLORER_ACTION_NEW_FILE: Integer = 1;
+final EXPLORER_ACTION_NEW_FOLDER: Integer = 2;
+final EXPLORER_ACTION_RENAME: Integer = 3;
+final EXPLORER_ACTION_DUPLICATE: Integer = 4;
+final EXPLORER_ACTION_DELETE: Integer = 5;
+final EXPLORER_ACTION_CANCEL: Integer = 6;
+
+final EXPLORER_PANEL_WIDTH: Integer = 430;
+final EXPLORER_PANEL_HEIGHT: Integer = 210;
+final EXPLORER_PANEL_MARGIN: Integer = 24;
+
+/// @brief Non-modal explorer action prompt used by file-tree commands.
+/// @details The file-tree context menu is already native and themed. This
+///          controller keeps follow-up actions in the same IDE chrome instead
+///          of falling back to generic blocking message boxes. The main loop
+///          owns the actual filesystem mutation; this class only captures the
+///          action, target, and user-entered value.
+class ExplorerActionOverlay {
+    expose GUI.FloatingPanel panel;
+    expose GUI.VBox root;
+    expose GUI.Label titleLabel;
+    expose GUI.Label descriptionLabel;
+    expose GUI.TextInput nameInput;
+    expose GUI.Label detailLabel;
+    expose GUI.Button cancelButton;
+    expose GUI.Button applyButton;
+
+    expose Boolean visible;
+    expose Integer pendingAction;
+    expose Integer completedAction;
+    expose String targetPath;
+    expose String targetDir;
+    expose String value;
+    expose String validationMessage;
+    expose String applyLabel;
+
+    /// @brief Initialize as hidden with no pending action.
+    expose func init() {
+        visible = false;
+        pendingAction = EXPLORER_ACTION_NONE;
+        completedAction = EXPLORER_ACTION_NONE;
+        targetPath = "";
+        targetDir = "";
+        value = "";
+        validationMessage = "";
+        applyLabel = "Apply";
+    }
+
+    /// @brief Construct the floating panel and child controls.
+    /// @param shell Workbench shell whose app root owns floating overlays.
+    expose func Setup(shell: app_shell.AppShell) {
+        panel = GUI.FloatingPanel.New(shell.app);
+        panel.SetSize(EXPLORER_PANEL_WIDTH, EXPLORER_PANEL_HEIGHT);
+        panel.SetVisible(0);
+
+        root = GUI.VBox.New();
+        root.SetPadding(16.0);
+        root.SetSpacing(10.0);
+        panel.AddChild(root);
+
+        titleLabel = GUI.Label.New(root, "Explorer Action");
+        titleLabel.SetMargin(0);
+
+        descriptionLabel = GUI.Label.New(root, "");
+        descriptionLabel.SetWordWrap(1);
+        descriptionLabel.SetMargin(0);
+
+        nameInput = GUI.TextInput.New(root);
+        nameInput.SetPlaceholder("Name");
+
+        detailLabel = GUI.Label.New(root, "");
+        detailLabel.SetWordWrap(1);
+        detailLabel.SetMargin(0);
+
+        var footer = GUI.HBox.New();
+        footer.SetSpacing(10.0);
+        root.AddChild(footer);
+        var spacer = GUI.Label.New(footer, "");
+        spacer.SetFlex(1.0);
+        cancelButton = GUI.Button.New(footer, "Cancel");
+        cancelButton.SetStyle(2);
+        applyButton = GUI.Button.New(footer, "Apply");
+        applyButton.SetStyle(1);
+    }
+
+    /// @brief Open the overlay for creating a file inside @p dir.
+    /// @param shell Workbench shell used for current viewport size.
+    /// @param dir Directory that will receive the new file.
+    expose func OpenNewFile(shell: app_shell.AppShell,
+                            dir: String) {
+        OpenNameAction(shell, EXPLORER_ACTION_NEW_FILE, "New File",
+                       "Create a file in " + DisplayPath(dir) + ".",
+                       dir, "", "", "Create");
+    }
+
+    /// @brief Open the overlay for creating a folder inside @p dir.
+    /// @param shell Workbench shell used for current viewport size.
+    /// @param dir Directory that will receive the new folder.
+    expose func OpenNewFolder(shell: app_shell.AppShell,
+                              dir: String) {
+        OpenNameAction(shell, EXPLORER_ACTION_NEW_FOLDER, "New Folder",
+                       "Create a folder in " + DisplayPath(dir) + ".",
+                       dir, "", "", "Create");
+    }
+
+    /// @brief Open the overlay for renaming a file or folder.
+    /// @param shell Workbench shell used for current viewport size.
+    /// @param path Existing file or folder path.
+    expose func OpenRename(shell: app_shell.AppShell,
+                           path: String) {
+        OpenNameAction(shell, EXPLORER_ACTION_RENAME, "Rename",
+                       "Rename " + DisplayPath(path) + ".",
+                       Path.Dir(path), path, Path.Name(path), "Rename");
+    }
+
+    /// @brief Open the overlay for duplicating a file.
+    /// @param shell Workbench shell used for current viewport size.
+    /// @param path Existing file path to duplicate.
+    expose func OpenDuplicate(shell: app_shell.AppShell,
+                              path: String) {
+        OpenNameAction(shell, EXPLORER_ACTION_DUPLICATE, "Duplicate File",
+                       "Create a copy next to " + DisplayPath(path) + ".",
+                       Path.Dir(path), path, CopyName(Path.Name(path)), "Duplicate");
+    }
+
+    /// @brief Open the overlay for moving a file or folder to project trash.
+    /// @param shell Workbench shell used for current viewport size.
+    /// @param path Existing file or folder path.
+    expose func OpenDelete(shell: app_shell.AppShell,
+                           path: String) {
+        pendingAction = EXPLORER_ACTION_DELETE;
+        completedAction = EXPLORER_ACTION_NONE;
+        targetPath = path;
+        targetDir = Path.Dir(path);
+        value = "";
+        validationMessage = "";
+        applyLabel = "Move to Trash";
+        titleLabel.SetText("Move to Trash");
+        descriptionLabel.SetText("Move " + DisplayPath(path) + " to the project trash.");
+        detailLabel.SetText("This keeps the item recoverable under .viperide-trash.");
+        nameInput.SetText("");
+        nameInput.SetVisible(0);
+        applyButton.SetText(applyLabel);
+        Show(shell);
+    }
+
+    /// @brief Hide the overlay and clear pending input.
+    expose func Cancel() {
+        completedAction = EXPLORER_ACTION_CANCEL;
+        Hide();
+    }
+
+    /// @brief Clear a completed action after the caller has applied it.
+    /// @details The overlay keeps target/action state after Enter or Apply so
+    ///          callers can validate the filesystem operation and reopen with an
+    ///          inline error. Call this only after the operation succeeds.
+    expose func Finish() {
+        pendingAction = EXPLORER_ACTION_NONE;
+        completedAction = EXPLORER_ACTION_NONE;
+        targetPath = "";
+        targetDir = "";
+        value = "";
+        validationMessage = "";
+    }
+
+    /// @brief Reopen the overlay with an inline validation message.
+    /// @param shell Workbench shell used for positioning.
+    /// @param message User-facing validation failure.
+    expose func Reject(shell: app_shell.AppShell,
+                       message: String) {
+        validationMessage = message;
+        detailLabel.SetText(message);
+        visible = true;
+        panel.SetVisible(1);
+        Layout(shell);
+        if pendingAction != EXPLORER_ACTION_DELETE {
+            nameInput.SetVisible(1);
+            nameInput.Focus();
+        }
+    }
+
+    /// @brief Poll buttons and keyboard shortcuts for one frame.
+    /// @param shell Workbench shell used to keep the floating panel positioned.
+    /// @return Completed action code, or EXPLORER_ACTION_NONE while the overlay remains open.
+    expose func Pump(shell: app_shell.AppShell) -> Integer {
+        completedAction = EXPLORER_ACTION_NONE;
+        if visible == false { return EXPLORER_ACTION_NONE; }
+        Layout(shell);
+        if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+            Cancel();
+            return EXPLORER_ACTION_CANCEL;
+        }
+        if cancelButton.WasClicked() != 0 {
+            Cancel();
+            return EXPLORER_ACTION_CANCEL;
+        }
+        if applyButton.WasClicked() != 0
+           or Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
+            return Complete();
+        }
+        return EXPLORER_ACTION_NONE;
+    }
+
+    /// @brief Return the text value captured by the overlay.
+    /// @return Trimmed name value for create/rename/duplicate actions.
+    expose func ReadValue() -> String {
+        return value;
+    }
+
+    /// @brief Return the file or folder path captured when the overlay opened.
+    expose func TargetPath() -> String {
+        return targetPath;
+    }
+
+    /// @brief Return the directory captured when the overlay opened.
+    expose func TargetDir() -> String {
+        return targetDir;
+    }
+
+    /// @brief Return true when the overlay currently owns keyboard focus.
+    expose func IsVisible() -> Boolean {
+        return visible;
+    }
+
+    /// @brief Configure and show a name-based explorer action.
+    /// @param shell Workbench shell used for current viewport size.
+    /// @param action Action code returned when the user applies.
+    /// @param title Overlay title.
+    /// @param description Body text shown below the title.
+    /// @param dir Directory associated with the operation.
+    /// @param path Existing file/folder target, if any.
+    /// @param initialValue Initial input text.
+    /// @param buttonLabel Primary button text.
+    hide func OpenNameAction(shell: app_shell.AppShell,
+                             action: Integer,
+                             title: String,
+                             description: String,
+                             dir: String,
+                             path: String,
+                             initialValue: String,
+                             buttonLabel: String) {
+        pendingAction = action;
+        completedAction = EXPLORER_ACTION_NONE;
+        targetPath = path;
+        targetDir = dir;
+        value = "";
+        validationMessage = "";
+        applyLabel = buttonLabel;
+        titleLabel.SetText(title);
+        descriptionLabel.SetText(description);
+        detailLabel.SetText("");
+        nameInput.SetVisible(1);
+        nameInput.SetText(initialValue);
+        nameInput.SetPlaceholder("Name");
+        applyButton.SetText(applyLabel);
+        Show(shell);
+        nameInput.Focus();
+    }
+
+    /// @brief Make the overlay visible and position it in the workbench.
+    /// @param shell Workbench shell used for current viewport size.
+    hide func Show(shell: app_shell.AppShell) {
+        visible = true;
+        panel.SetVisible(1);
+        Layout(shell);
+    }
+
+    /// @brief Hide the floating panel while preserving the last completed state.
+    hide func Hide() {
+        visible = false;
+        pendingAction = EXPLORER_ACTION_NONE;
+        panel.SetVisible(0);
+    }
+
+    /// @brief Complete the current action and return its action code.
+    /// @return Pending action when input is valid, otherwise EXPLORER_ACTION_NONE.
+    hide func Complete() -> Integer {
+        if pendingAction == EXPLORER_ACTION_DELETE {
+            var deleteAction = pendingAction;
+            value = "";
+            visible = false;
+            panel.SetVisible(0);
+            completedAction = deleteAction;
+            return deleteAction;
+        }
+        value = Str.Trim(nameInput.Text);
+        if value == "" {
+            validationMessage = "Enter a name.";
+            detailLabel.SetText(validationMessage);
+            nameInput.Focus();
+            return EXPLORER_ACTION_NONE;
+        }
+        var action = pendingAction;
+        visible = false;
+        panel.SetVisible(0);
+        completedAction = action;
+        return action;
+    }
+
+    /// @brief Position the overlay near the explorer while staying on screen.
+    /// @param shell Workbench shell used for current viewport size.
+    hide func Layout(shell: app_shell.AppShell) {
+        if panel == null or shell == null or shell.app == null { return; }
+        var rootW = PhysicalToLogical(shell.app.GetWidth(), shell.app.GetScale());
+        var rootH = PhysicalToLogical(shell.app.GetHeight(), shell.app.GetScale());
+        if rootW <= 0 { rootW = 1280; }
+        if rootH <= 0 { rootH = 800; }
+        var panelW = EXPLORER_PANEL_WIDTH;
+        var panelH = EXPLORER_PANEL_HEIGHT;
+        if panelW > rootW - (EXPLORER_PANEL_MARGIN * 2) {
+            panelW = rootW - (EXPLORER_PANEL_MARGIN * 2);
+        }
+        if panelH > rootH - (EXPLORER_PANEL_MARGIN * 2) {
+            panelH = rootH - (EXPLORER_PANEL_MARGIN * 2);
+        }
+        if panelW < 280 { panelW = 280; }
+        if panelH < 180 { panelH = 180; }
+        panel.SetSize(panelW, panelH);
+
+        var x = EXPLORER_PANEL_MARGIN;
+        var y = 118;
+        if shell.sidebarVisible == false {
+            x = (rootW - panelW) / 2;
+        }
+        if x + panelW + EXPLORER_PANEL_MARGIN > rootW {
+            x = rootW - panelW - EXPLORER_PANEL_MARGIN;
+        }
+        if y + panelH + EXPLORER_PANEL_MARGIN > rootH {
+            y = rootH - panelH - EXPLORER_PANEL_MARGIN;
+        }
+        if x < EXPLORER_PANEL_MARGIN { x = EXPLORER_PANEL_MARGIN; }
+        if y < EXPLORER_PANEL_MARGIN { y = EXPLORER_PANEL_MARGIN; }
+        panel.SetPosition(x, y);
+    }
+
+    /// @brief Convert physical pixels into logical GUI coordinates.
+    /// @param value Pixel value reported by the app.
+    /// @param scale Current window scale factor.
+    /// @return Logical coordinate value used by floating panels.
+    hide func PhysicalToLogical(value: Integer,
+                                scale: Number) -> Integer {
+        if value <= 0 { return value; }
+        if scale <= 0.0 { return value; }
+        return (value * 100) / (scale * 100);
+    }
+
+    /// @brief Build a short display label for a filesystem path.
+    /// @param path Full path or directory to display.
+    /// @return Basename when available, otherwise the original path.
+    hide func DisplayPath(path: String) -> String {
+        if path == "" { return "the selected location"; }
+        var name = Path.Name(path);
+        if name != "" { return name; }
+        return path;
+    }
+
+    /// @brief Suggest a default duplicate filename.
+    /// @param name Original filename.
+    /// @return Filename with " copy" before the extension when possible.
+    hide func CopyName(name: String) -> String {
+        if name == "" { return ""; }
+        var ext = Path.Ext(name);
+        if ext == "" { return name + " copy"; }
+        var stem = Str.MidLen(name, 1, Str.Length(name) - Str.Length(ext));
+        return stem + " copy" + ext;
+    }
+}

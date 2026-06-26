@@ -141,6 +141,17 @@ func main() {
         fail("evaluate 'a' value was '" + session.lastEvalValue + "' (expected 10)");
         return;
     }
+    session.Evaluate("a + b");
+    var ewExpr = 0;
+    while ewExpr < 8000 and session.lastEvalExpr != "a + b" {
+        session.Poll();
+        Time.SleepMs(5);
+        ewExpr = ewExpr + 5;
+    }
+    if session.lastEvalOk == false or session.lastEvalValue != "30" {
+        fail("evaluate 'a + b' returned value '" + session.lastEvalValue + "'");
+        return;
+    }
     // An unknown name must resolve to not-ok (and not crash the session).
     session.Evaluate("not_a_real_local");
     var ew2 = 0;

@@ -153,8 +153,9 @@ class SearchController {
         if projMgr == null or projMgr.project == null or projMgr.project.isOpen == false {
             return false;
         }
+        projMgr.WarmFileCache(128);
         if projMgr.CachedFileCount() == 0 {
-            GUI.Toast.Info("Project file cache is empty; refresh the project tree");
+            GUI.Toast.Info(projMgr.FileCacheStatusText());
             return false;
         }
         return StartWithCachedFiles(shell, projMgr, projMgr.project.rootPath, searchTitle, docMgr, engine);
@@ -168,6 +169,9 @@ class SearchController {
                             engine: editor_engine.EditorEngine) -> Boolean {
         if folderPath == "" or Dir.Exists(folderPath) == false {
             return false;
+        }
+        if projMgr != null {
+            projMgr.WarmFileCache(64);
         }
         if projMgr != null and projMgr.project != null and projMgr.project.isOpen and
            projMgr.CachedFileCount() > 0 and IsWithinRoot(folderPath, projMgr.project.rootPath) {
@@ -478,8 +482,10 @@ func BuildFileListFromCacheWithFilters(projMgr: project_manager.ProjectManager,
                                        excludeGlobs: String) -> List {
     var result = new List();
     if projMgr == null { return result; }
+    projMgr.WarmFileCache(128);
+    var cachedCount = projMgr.CachedFileCount();
     var i = 0;
-    while i < projMgr.CachedFileCount() {
+    while i < cachedCount {
         var filePath = projMgr.CachedFileAt(i);
         if IsWithinRoot(filePath, scopeRoot)
            and SearchKindMatches(filePath, fileKinds)
@@ -747,8 +753,10 @@ func handleQuickOpen(shell: app_shell.AppShell,
 
     var bestPath = "";
     var bestScore = 999;
+    projMgr.WarmFileCache(256);
+    var cachedCount = projMgr.CachedFileCount();
     var i = 0;
-    while i < projMgr.CachedFileCount() {
+    while i < cachedCount {
         var filePath = projMgr.CachedFileAt(i);
         var score = QuickOpenScore(projMgr.RelativePath(filePath), query);
         if score >= 0 and score < bestScore {
@@ -758,13 +766,17 @@ func handleQuickOpen(shell: app_shell.AppShell,
         i = i + 1;
     }
 
-    if bestPath == "" and projMgr.CachedFileCount() == 0 {
-        GUI.Toast.Info("Project file cache is empty; refresh the project tree");
+    if bestPath == "" and cachedCount == 0 {
+        GUI.Toast.Info(projMgr.FileCacheStatusText());
         return;
     }
 
     if bestPath == "" {
-        GUI.Toast.Info("No project file matched '" + query + "'");
+        var suffix = "";
+        if projMgr.fileCacheComplete == false {
+            suffix = " (still indexing project files)";
+        }
+        GUI.Toast.Info("No project file matched '" + query + "'" + suffix);
         return;
     }
 
@@ -779,8 +791,10 @@ expose func ShowQuickOpenPalette(shell: app_shell.AppShell,
         GUI.Toast.Warning("Open a project folder first");
         return false;
     }
-    if projMgr.CachedFileCount() == 0 {
-        GUI.Toast.Info("Project file cache is empty; refresh the project tree");
+    projMgr.WarmFileCache(256);
+    var cachedCount = projMgr.CachedFileCount();
+    if cachedCount == 0 {
+        GUI.Toast.Info(projMgr.FileCacheStatusText());
         return false;
     }
 
@@ -788,7 +802,7 @@ expose func ShowQuickOpenPalette(shell: app_shell.AppShell,
     shell.commandPalette.SetPlaceholder("Open file by name or path...");
 
     var i = 0;
-    while i < projMgr.CachedFileCount() {
+    while i < cachedCount {
         var filePath = projMgr.CachedFileAt(i);
         shell.commandPalette.AddCommandWithShortcut(QuickOpenCommandId(filePath),
                                                     projMgr.RelativePath(filePath),
@@ -798,7 +812,11 @@ expose func ShowQuickOpenPalette(shell: app_shell.AppShell,
     }
 
     shell.commandPalette.Show();
-    shell.SetStatusLeft("Quick Open: type a file name or path");
+    if projMgr.fileCacheComplete {
+        shell.SetStatusLeft("Quick Open: type a file name or path");
+    } else {
+        shell.SetStatusLeft("Quick Open: partial results while project files index");
+    }
     return true;
 }
 

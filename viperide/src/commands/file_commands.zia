@@ -115,6 +115,17 @@ func handleOpenFolder(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Folder-picker dialog -> ProjectManager.AddFolderToWorkspace, adding
+///        another root to the tree without closing the current project/docs.
+func handleAddFolderToWorkspace(shell: app_shell.AppShell,
+                                projMgr: project_manager.ProjectManager) {
+    var folderPath = FileDialog.SelectFolder("Add Folder to Workspace", "");
+    if folderPath != "" {
+        projMgr.AddFolderToWorkspace(folderPath);
+        shell.SetStatusLeft("Added folder to workspace: " + folderPath);
+    }
+}
+
 /// @brief Save active document. Untitled docs route to a Save As prompt.
 func handleSave(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,

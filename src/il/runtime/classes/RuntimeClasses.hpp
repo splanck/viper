@@ -575,6 +575,8 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_ZiaToolchain,
     RTCLS_Process,
     RTCLS_ProcessHandle,
+    RTCLS_Pty,
+    RTCLS_PtySession,
     RTCLS_Shutdown,
     RTCLS_GuiTestHarness,
     RTCLS_GuiVirtualList,

@@ -24,6 +24,7 @@ bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
 bind Ini = Viper.Text.Ini;
+bind Codec = Viper.Text.Codec;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind Str = Viper.String;
@@ -271,6 +272,11 @@ func main() {
     sessMgr.Setup(settingsPath);
     var sessionDocMgr = new document_manager.DocumentManager();
     sessionDocMgr.OpenFile(filePath);
+    var dirtySessionDoc = sessionDocMgr.GetActive();
+    if dirtySessionDoc != null {
+        dirtySessionDoc!.content = dirtySessionDoc!.content + "// unsaved recovery edit\n";
+        dirtySessionDoc!.isModified = true;
+    }
     var sessionProjMgr = new project_manager.ProjectManager();
     sessionProjMgr.project = new project.Project();
     sessionProjMgr.project.Open(projectRoot);
@@ -289,6 +295,11 @@ func main() {
     if assertTrue(Ini.Get(savedIni, "recentFiles", "count") == "1"
                   and Ini.Get(savedIni, "recentFiles", "path.0") == filePath,
                   "session save records recent file history") == false { return; }
+    if assertTrue(Ini.Get(savedIni, "session.file.0", "recoveryModified") == "1"
+                  and Ini.Get(savedIni, "session.file.0", "recoveryEncoding") == "base64"
+                  and Str.IndexOf(Codec.Base64Dec(Ini.Get(savedIni, "session.file.0", "recovery")),
+                                  "unsaved recovery edit") != 0,
+                  "session save snapshots dirty existing files") == false { return; }
     sessionDocMgr.CloseDocument(0);
     if assertTrue(sessionDocMgr.RecentlyClosedCount() == 1
                   and sessionDocMgr.PopRecentlyClosedPath() == filePath,

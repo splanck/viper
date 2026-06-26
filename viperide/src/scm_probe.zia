@@ -1,0 +1,97 @@
+module scm_probe;
+
+bind "scm/scm_git";
+
+bind Terminal = Viper.Terminal;
+bind Exec = Viper.System.Exec;
+bind Seq = Viper.Collections.Seq;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+bind Str = Viper.String;
+
+// Headless probe for the git command layer (sub-phase 5C). Creates a real temp
+// git repo and exercises status parsing + stage + commit + branch through
+// scm_git.Git. Skips cleanly (RESULT: ok) when `git` is not on PATH, so it is
+// safe in any environment.
+
+func gitConfig(dir: String, key: String, val: String) {
+    var a = Seq.New();
+    Seq.Push(a, "-C");
+    Seq.Push(a, dir);
+    Seq.Push(a, "config");
+    Seq.Push(a, key);
+    Seq.Push(a, val);
+    Exec.CaptureArgs("git", a);
+}
+
+func entryUntracked(st: scm_git.GitStatus, name: String) -> Boolean {
+    var i = 0;
+    while i < st.entries.count() {
+        var e = st.entries.get(i);
+        if Str.EndsWith(e.path, name) and e.untracked { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func entryStaged(st: scm_git.GitStatus, name: String) -> Boolean {
+    var i = 0;
+    while i < st.entries.count() {
+        var e = st.entries.get(i);
+        if Str.EndsWith(e.path, name) and e.staged { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func main() {
+    var dir = TempFile.CreateDirWithPrefix("viperide_scm_");
+
+    // Skip cleanly when git is unavailable. RunArgs returns the real exit code
+    // (Exec.LastExitCode() is unreliable for the Args-style calls).
+    var verArgs = Seq.New();
+    Seq.Push(verArgs, "--version");
+    if Exec.RunArgs("git", verArgs) != 0 {
+        Terminal.Say("RESULT: ok (git unavailable, skipped)");
+        return;
+    }
+    // git init
+    var initArgs = Seq.New();
+    Seq.Push(initArgs, "-C");
+    Seq.Push(initArgs, dir);
+    Seq.Push(initArgs, "init");
+    if Exec.RunArgs("git", initArgs) != 0 {
+        Terminal.Say("RESULT: fail git init");
+        return;
+    }
+    gitConfig(dir, "user.email", "probe@example.com");
+    gitConfig(dir, "user.name", "Probe");
+    gitConfig(dir, "commit.gpgsign", "false");
+
+    var git = new scm_git.Git();
+    git.SetRepo(dir);
+
+    if git.IsRepo() == false { Terminal.Say("RESULT: fail not a repo after init"); return; }
+
+    // A new file shows as untracked.
+    File.WriteAllText(Path.Join(dir, "hello.zia"), "module Hello;\n");
+    var st1 = git.Status();
+    if st1.isRepo == false { Terminal.Say("RESULT: fail status reports not-a-repo"); return; }
+    if entryUntracked(st1, "hello.zia") == false { Terminal.Say("RESULT: fail hello.zia not untracked"); return; }
+
+    // Staging moves it to the index.
+    if git.Stage("hello.zia") == false { Terminal.Say("RESULT: fail git add"); return; }
+    var st2 = git.Status();
+    if entryStaged(st2, "hello.zia") == false { Terminal.Say("RESULT: fail hello.zia not staged after add"); return; }
+
+    // Commit clears the working tree.
+    if git.Commit("initial commit") == false { Terminal.Say("RESULT: fail git commit"); return; }
+    var st3 = git.Status();
+    if st3.entries.count() != 0 { Terminal.Say("RESULT: fail status not clean after commit"); return; }
+
+    // Branch query returns something (master/main).
+    if Str.Length(git.CurrentBranch()) == 0 { Terminal.Say("RESULT: fail empty branch name"); return; }
+
+    Terminal.Say("RESULT: ok");
+}

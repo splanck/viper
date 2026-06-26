@@ -84,6 +84,28 @@ class BreakpointStore {
         return Find(path, line) >= 0;
     }
 
+    /// @brief Return the condition stored for a source-line breakpoint.
+    /// @param path Absolute source path.
+    /// @param line One-based source line.
+    /// @return Condition expression, or empty when absent/cleared.
+    expose func ConditionAt(path: String,
+                            line: Integer) -> String {
+        var idx = Find(path, line);
+        if idx < 0 { return ""; }
+        return items.get(idx).condition;
+    }
+
+    /// @brief Return the logpoint message stored for a source-line breakpoint.
+    /// @param path Absolute source path.
+    /// @param line One-based source line.
+    /// @return Log message, or empty when absent/cleared.
+    expose func LogMessageAt(path: String,
+                             line: Integer) -> String {
+        var idx = Find(path, line);
+        if idx < 0 { return ""; }
+        return items.get(idx).logMessage;
+    }
+
     /// @brief Set a breakpoint's condition (creating the breakpoint if absent);
     ///        "" clears it. A conditional breakpoint halts only when true.
     expose func SetCondition(path: String, line: Integer, cond: String) {

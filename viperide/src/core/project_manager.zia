@@ -8,6 +8,7 @@ bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
 bind Viper.String as Str;
+bind Time = Viper.Time;
 bind FileIndex = Viper.Workspace.FileIndex;
 bind Map = Viper.Collections.Map;
 bind "../core/document_manager";
@@ -51,8 +52,10 @@ final TREE_FILE_PREFIX = "· ";
 
 /// @brief Sidebar TreeView controller plus the open Project.
 class ProjectManager {
-    /// The currently open project (always non-null after Setup).
+    /// The currently open project (always non-null after Setup); the PRIMARY root.
     expose project.Project project;
+    /// Additional workspace roots beyond the primary `project` (multi-root).
+    expose List[project.Project] extraRoots;
     /// The TreeView widget injected at Setup time.
     expose GUI.TreeView treeView;
     /// Path of the most recently selected file (empty if none yet).
@@ -63,6 +66,14 @@ class ProjectManager {
     expose List fileCache;
     /// True after `fileCache` has been populated by the full workspace index.
     expose Boolean fileCacheComplete;
+    /// Directories waiting for incremental project-file cache discovery.
+    expose List pendingFileCacheDirs;
+    /// True while the full project-file cache is being discovered cooperatively.
+    expose Boolean fileCacheRefreshing;
+    /// Number of directories scanned by the current cache refresh.
+    expose Integer fileCacheDirsScanned;
+    /// Destination path for the most recent explorer move-to-trash operation.
+    expose String lastTrashPath;
     /// Absolute directory paths whose TreeView children have been populated.
     expose List loadedTreeDirs;
     /// Number of Zia file-bind paths rewritten by the most recent rename.
@@ -71,9 +82,14 @@ class ProjectManager {
     /// @brief Initialize with no selection. Call `Setup` next.
     expose func init() {
         selectedFilePath = "";
+        extraRoots = [];
         fileWasSelected = false;
         fileCache = new List();
         fileCacheComplete = false;
+        pendingFileCacheDirs = new List();
+        fileCacheRefreshing = false;
+        fileCacheDirsScanned = 0;
+        lastTrashPath = "";
         loadedTreeDirs = new List();
         lastBindRewriteCount = 0;
     }
@@ -101,14 +117,83 @@ class ProjectManager {
         PopulateTree();
     }
 
+    /// @brief Add an additional folder as a workspace root, keeping existing roots.
+    /// @param path Absolute folder path; no-op if it duplicates an open root.
+    /// @note When no project is open yet, this behaves like OpenFolder (the
+    ///       folder becomes the primary root).
+    expose func AddFolderToWorkspace(path: String) {
+        if path == "" { return; }
+        if project == null or project.isOpen == false {
+            OpenFolder(path);
+            return;
+        }
+        var normalized = NormalizeAbsPath(path);
+        if NormalizeAbsPath(project.rootPath) == normalized { return; }
+        var i = 0;
+        while i < extraRoots.count() {
+            var existing = extraRoots.get(i);
+            if existing != null and NormalizeAbsPath(existing.rootPath) == normalized { return; }
+            i = i + 1;
+        }
+        var added = new project.Project();
+        added.Open(path);
+        extraRoots.Push(added);
+        // Rebuild so every root (primary + extras) shows; resets the aggregate cache.
+        PopulateTree();
+    }
+
     /// @brief Close the current project and clear the tree.
     expose func CloseProject() {
         project.Close();
+        var ri = 0;
+        while ri < extraRoots.count() {
+            var r = extraRoots.get(ri);
+            if r != null { r.Close(); }
+            ri = ri + 1;
+        }
+        extraRoots = [];
         treeView.Clear();
         fileCache = new List();
         fileCacheComplete = false;
+        pendingFileCacheDirs = new List();
+        fileCacheRefreshing = false;
+        fileCacheDirsScanned = 0;
+        lastTrashPath = "";
         loadedTreeDirs = new List();
         selectedFilePath = "";
+    }
+
+    /// @brief All open workspace roots: the primary project plus any extra roots.
+    func AllRoots() -> List[project.Project] {
+        var roots: List[project.Project] = [];
+        if project != null and project.isOpen { roots.Push(project); }
+        var i = 0;
+        while i < extraRoots.count() {
+            var r = extraRoots.get(i);
+            if r != null and r.isOpen { roots.Push(r); }
+            i = i + 1;
+        }
+        return roots;
+    }
+
+    /// @brief The workspace root owning @p path (longest rootPath prefix),
+    ///        defaulting to the primary project when nothing matches.
+    func OwningProject(path: String) -> project.Project {
+        var best = project;
+        var bestLen = -1;
+        var all = AllRoots();
+        var i = 0;
+        while i < all.count() {
+            var r = all.get(i);
+            var rp = r.rootPath;
+            var prefix = rp + Path.Sep();
+            if (path == rp or Str.StartsWith(path, prefix)) and Str.Length(rp) > bestLen {
+                best = r;
+                bestLen = Str.Length(rp);
+            }
+            i = i + 1;
+        }
+        return best;
     }
 
     /// @brief Wipe the tree and rebuild it from `project.rootPath`.
@@ -123,14 +208,22 @@ class ProjectManager {
 
         fileCache = new List();
         fileCacheComplete = false;
+        pendingFileCacheDirs = new List();
+        fileCacheRefreshing = false;
+        fileCacheDirsScanned = 0;
         loadedTreeDirs = new List();
 
-        var rootNode = treeView.AddNode(null, TreeRootLabel(project.name));
-        GUI.TreeView.Node.SetData(rootNode, project.rootPath);
-
-        PopulateTreeChildren(project.rootPath, rootNode);
-
-        treeView.Expand(rootNode);
+        // One top-level node per workspace root (primary first, then extras).
+        var all = AllRoots();
+        var i = 0;
+        while i < all.count() {
+            var root = all.get(i);
+            var rootNode = treeView.AddNode(null, TreeRootLabel(root.name));
+            GUI.TreeView.Node.SetData(rootNode, root.rootPath);
+            PopulateTreeChildren(root.rootPath, rootNode);
+            treeView.Expand(rootNode);
+            i = i + 1;
+        }
     }
 
     /// @brief Populate one TreeView directory node with its immediate children.
@@ -177,9 +270,7 @@ class ProjectManager {
             if ShouldExcludePath(fullPath, false) == false {
                 var fileNode = treeView.AddNode(parentNode, TreeFileLabel(fileNameText));
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
-                if ListContains(fileCache, fullPath) == false {
-                    fileCache.Push(fullPath);
-                }
+                AddCachedFile(fullPath);
             }
         }
         return true;
@@ -217,11 +308,111 @@ class ProjectManager {
     ///          indirectly through CachedFileCount/CachedFileAt.
     func EnsureFullFileCache() {
         if fileCacheComplete { return; }
-        var fullCache = BuildProjectFileCache();
-        if fullCache.count() > 0 {
-            fileCache = fullCache;
+        if fileCacheRefreshing == false {
+            StartFileCacheRefresh();
         }
-        fileCacheComplete = true;
+        PumpFileCacheRefresh(32);
+    }
+
+    /// @brief Start a cooperative refresh of the full project file cache.
+    /// @details This replaces the old first-use full workspace enumeration with a
+    ///          directory-sliced scan. Visible tree expansion can still seed
+    ///          `fileCache`, but Quick Open and search no longer have to block on a
+    ///          complete recursive traversal before showing partial results.
+    expose func StartFileCacheRefresh() {
+        if project == null or project.isOpen == false { return; }
+        fileCache = new List();
+        pendingFileCacheDirs = new List();
+        var all = AllRoots();
+        var ri = 0;
+        while ri < all.count() {
+            pendingFileCacheDirs.Push(all.get(ri).rootPath);
+            ri = ri + 1;
+        }
+        fileCacheRefreshing = true;
+        fileCacheComplete = false;
+        fileCacheDirsScanned = 0;
+    }
+
+    /// @brief Pump a bounded number of directories for project file discovery.
+    /// @param maxDirs Maximum directory entries to scan in this call.
+    /// @return Number of directories scanned.
+    expose func PumpFileCacheRefresh(maxDirs: Integer) -> Integer {
+        if project == null or project.isOpen == false { return 0; }
+        if fileCacheRefreshing == false and fileCacheComplete == false {
+            StartFileCacheRefresh();
+        }
+        var limit = maxDirs;
+        if limit <= 0 { limit = 16; }
+
+        var processed = 0;
+        while fileCacheRefreshing and pendingFileCacheDirs.count() > 0 and processed < limit {
+            var dirPath = Obj.ToString(pendingFileCacheDirs.get(0));
+            pendingFileCacheDirs.removeAt(0);
+            processed = processed + 1;
+            fileCacheDirsScanned = fileCacheDirsScanned + 1;
+
+            if Dir.Exists(dirPath) == false { continue; }
+
+            var dirs = new List();
+            for dirName in Dir.DirsSeq(dirPath) {
+                dirs.Push(dirName);
+            }
+            dirs.Sort();
+            for dirName in dirs {
+                var dirNameText = Obj.ToString(dirName);
+                var fullDir = Path.Join(dirPath, dirNameText);
+                if ShouldExcludePath(fullDir, true) == false {
+                    pendingFileCacheDirs.Push(fullDir);
+                }
+            }
+
+            var files = new List();
+            for fileName in Dir.FilesSeq(dirPath) {
+                files.Push(fileName);
+            }
+            files.Sort();
+            for fileName in files {
+                var fileNameText = Obj.ToString(fileName);
+                var fullPath = Path.Join(dirPath, fileNameText);
+                if ShouldExcludePath(fullPath, false) == false {
+                    AddCachedFile(fullPath);
+                }
+            }
+        }
+
+        if pendingFileCacheDirs.count() == 0 {
+            fileCacheRefreshing = false;
+            fileCacheComplete = true;
+        }
+        return processed;
+    }
+
+    /// @brief Advance project-file discovery by a bounded amount for UI commands.
+    /// @param maxDirs Directory budget to scan before returning.
+    /// @return True when the full cache is complete after this pump.
+    expose func WarmFileCache(maxDirs: Integer) -> Boolean {
+        if fileCacheComplete { return true; }
+        PumpFileCacheRefresh(maxDirs);
+        return fileCacheComplete;
+    }
+
+    /// @brief Short status string for Quick Open and project-search surfaces.
+    /// @return Human-readable cache progress.
+    expose func FileCacheStatusText() -> String {
+        if fileCacheComplete { return "Project file cache ready"; }
+        if fileCacheRefreshing {
+            return "Indexing project files: " + fileCache.count() + " found";
+        }
+        return "Project file cache idle";
+    }
+
+    /// @brief Add a file path to the cache if it has not already been recorded.
+    /// @param path Absolute file path discovered from the tree or incremental scan.
+    hide func AddCachedFile(path: String) {
+        if path != "" and ListContains(fileCache, path) == false {
+            fileCache.Push(path);
+        }
     }
 
     expose func CachedFileCount() -> Integer {
@@ -230,7 +421,6 @@ class ProjectManager {
     }
 
     expose func CachedFileAt(index: Integer) -> String {
-        EnsureFullFileCache();
         if index < 0 or index >= fileCache.count() { return ""; }
         return Obj.ToString(fileCache.get(index));
     }
@@ -321,15 +511,16 @@ class ProjectManager {
     }
 
     func ShouldExcludePath(fullPath: String, isDir: Boolean) -> Boolean {
-        if project == null or project.rootPath == "" {
+        var owner = OwningProject(fullPath);
+        if owner == null or owner.rootPath == "" {
             if isDir { return ShouldExclude(Path.Name(fullPath)); }
             return ShouldExcludeFile(Path.Name(fullPath));
         }
-        var rel = RelativePath(fullPath);
+        var rel = RelativePathIn(owner, fullPath);
         if isDir and Str.EndsWith(rel, "/") == false {
             rel = rel + "/";
         }
-        return FileIndex.ShouldIgnore(project.rootPath, rel, project.ignorePatterns);
+        return FileIndex.ShouldIgnore(owner.rootPath, rel, owner.ignorePatterns);
     }
 
     expose func SelectedPath() -> String {
@@ -350,9 +541,7 @@ class ProjectManager {
                            docMgr: document_manager.DocumentManager) -> String {
         lastBindRewriteCount = 0;
         if oldPath == "" or newName == "" { return ""; }
-        if Str.IndexOf(newName, Path.Sep()) != 0
-           or Str.IndexOf(newName, "/") != 0
-           or Str.IndexOf(newName, "\\") != 0 {
+        if IsPlainChildName(newName) == false {
             return "";
         }
         var newPath = Path.Join(Path.Dir(oldPath), newName);
@@ -383,9 +572,7 @@ class ProjectManager {
                                         newName: String,
                                         docMgr: document_manager.DocumentManager) -> Integer {
         if path == "" or newName == "" { return 0; }
-        if Str.IndexOf(newName, Path.Sep()) != 0
-           or Str.IndexOf(newName, "/") != 0
-           or Str.IndexOf(newName, "\\") != 0 {
+        if IsPlainChildName(newName) == false {
             return 0;
         }
         var newPath = Path.Join(Path.Dir(path), newName);
@@ -400,12 +587,16 @@ class ProjectManager {
 
     expose func DeletePath(path: String,
                            docMgr: document_manager.DocumentManager) -> Boolean {
+        lastTrashPath = "";
         if path == "" { return false; }
+        var trashPath = TrashPathFor(path);
+        if trashPath == "" { return false; }
+        Dir.MakeAll(Path.Dir(trashPath));
         if IO.File.Exists(path) {
-            IO.File.Delete(path);
+            IO.File.Move(path, trashPath);
             CloseOpenDocumentsUnder(path, docMgr);
         } else if Dir.Exists(path) {
-            Dir.RemoveAll(path);
+            Dir.Move(path, trashPath);
             CloseOpenDocumentsUnder(path, docMgr);
         } else {
             return false;
@@ -413,8 +604,37 @@ class ProjectManager {
         if docMgr != null {
             docMgr.ForgetPathsUnder(path);
         }
+        lastTrashPath = trashPath;
         RefreshTree();
         return true;
+    }
+
+    /// @brief Return a collision-free project-local trash path for explorer delete.
+    /// @details ViperIDE keeps deletes reversible by moving files and directories to
+    ///          `.viperide-trash` under the project root instead of unlinking them.
+    ///          The path includes the original basename and a monotonic tick suffix,
+    ///          with a small numeric retry loop for same-tick collisions.
+    /// @param sourcePath Absolute file or directory selected in the explorer.
+    /// @return Absolute destination path, or empty string if no project trash is available.
+    hide func TrashPathFor(sourcePath: String) -> String {
+        if project == null or project.rootPath == "" or sourcePath == "" { return ""; }
+        var trashRoot = Path.Join(project.rootPath, ".viperide-trash");
+        var base = Path.Name(sourcePath);
+        if base == "" { return ""; }
+        var stem = base + "." + Time.GetTickCount();
+        var attempt = 0;
+        while attempt < 128 {
+            var name = stem;
+            if attempt > 0 {
+                name = stem + "." + attempt;
+            }
+            var candidate = Path.Join(trashRoot, name);
+            if IO.File.Exists(candidate) == false and Dir.Exists(candidate) == false {
+                return candidate;
+            }
+            attempt = attempt + 1;
+        }
+        return "";
     }
 
     expose func SetEntryFile(filePath: String) -> Boolean {
@@ -473,8 +693,13 @@ class ProjectManager {
     }
 
     expose func RelativePath(fullPath: String) -> String {
-        if project == null or project.rootPath == "" { return fullPath; }
-        var root = project.rootPath;
+        return RelativePathIn(OwningProject(fullPath), fullPath);
+    }
+
+    /// @brief Relative path of @p fullPath within a specific workspace root.
+    func RelativePathIn(owner: project.Project, fullPath: String) -> String {
+        if owner == null or owner.rootPath == "" { return fullPath; }
+        var root = owner.rootPath;
         var prefix = root + Path.Sep();
         if Str.StartsWith(fullPath, prefix) {
             return NormalizeBindSeparators(Str.Mid(fullPath, Str.Length(prefix) + 1));
@@ -523,7 +748,7 @@ class ProjectManager {
                                       applyChanges: Boolean) -> Integer {
         if project == null or project.rootPath == "" { return 0; }
         var files = new List();
-        CollectZiaFiles(project.rootPath, files);
+        AddIndexedZiaFiles(files);
         if docMgr != null {
             var d = 0;
             while d < docMgr.GetCount() {
@@ -566,6 +791,42 @@ class ProjectManager {
             i = i + 1;
         }
         return total;
+    }
+
+    /// @brief Add project Zia files from the runtime workspace index.
+    /// @details Runtime FileIndex owns hard excludes, `.gitignore`, and project
+    ///          ignore patterns. Using it here avoids a second recursive scanner
+    ///          on the UI path and keeps rename bind rewrites aligned with Quick
+    ///          Open, project cache, and workspace indexing.
+    /// @param files Mutable List receiving absolute `.zia` file paths.
+    func AddIndexedZiaFiles(files: List) {
+        if project == null or project.rootPath == "" { return; }
+        var entries = FileIndex.Enumerate(project.rootPath, ".zia", project.ignorePatterns, false);
+        if entries == null { return; }
+        var i = 0;
+        while i < Seq.get_Length(entries) {
+            var entry = Seq.Get(entries, i);
+            var filePath = Map.GetStr(entry, "path");
+            if filePath != "" and ListContains(files, filePath) == false {
+                files.Push(filePath);
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Return true when a name is a safe single filesystem component.
+    /// @details Explorer rename/create actions accept a child name, never a path.
+    ///          Rejecting separators, Windows drive separators, and dot aliases
+    ///          keeps cross-platform behavior consistent before any disk move.
+    /// @param name User-provided file or folder name.
+    /// @return True when @p name can be joined under the selected parent.
+    func IsPlainChildName(name: String) -> Boolean {
+        if name == "" or name == "." or name == ".." { return false; }
+        if Str.IndexOf(name, Path.Sep()) != 0 { return false; }
+        if Str.IndexOf(name, "/") != 0 { return false; }
+        if Str.IndexOf(name, "\\") != 0 { return false; }
+        if Str.IndexOf(name, ":") != 0 { return false; }
+        return true;
     }
 
     func CollectZiaFiles(dirPath: String, files: List) {

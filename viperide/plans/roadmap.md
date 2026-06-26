@@ -23,13 +23,18 @@ project-index-backed Zia definition/reference/rename plumbing, multi-cursor
 commands, basic signature help, transactional workspace edits, configurable
 project search, file-tree rename/delete handling, argument-vector build/run jobs,
 streamed cancellable process output, clickable build diagnostics, persisted
-breakpoints, headless placeholder debug-protocol controls, and a verified
+breakpoints, a VM-backed debug adapter for stepping/breakpoints/locals/evaluate,
+and a verified
 `Viper.Game.Scene` data foundation for future scene editor work. That is
 foundation, not product completion.
 
-The debug protocol currently wired in ViperIDE does not execute real programs or
-inspect real VM state. Phase 4 and later scene items below remain future roadmap
-work and must be re-reviewed after the editor-first plan is complete.
+The debug protocol currently wired in ViperIDE executes real VM programs through
+the external debug adapter, including source-line breakpoints, stepping,
+conditions, logpoints, locals, call stacks, and expression evaluation. Remaining
+debugger work is now mostly product UX: watches, richer variable trees,
+breakpoint editing polish, and clearer session state. Phase 4 and later scene
+items below remain future roadmap work and must be re-reviewed after the
+editor-first plan is complete.
 
 **Phase 4/5 review update:** Scene data/runtime prerequisites are ready, but
 the viewport and editor are not. There is no `Viper.GUI.SceneView` widget, and
@@ -67,12 +72,12 @@ High-risk gaps:
 - The settings and overall shell UX need a polish pass so the app no longer
   feels like a demo.
 - Project loading eagerly walks the tree, has hardcoded excludes, and has no workspace manifest beyond a small `viper.project` parser.
-- BASIC has editor/build support in ViperIDE, while the separate
-  `vbasic-server` diagnostics/completion/hover/document-symbol surface is not
-  yet integrated. BASIC semantic commands stay disabled by design until ViperIDE
-  has a non-blocking BASIC adapter and BASIC has a project-index-equivalent
-  layer for definition/references/rename.
-- The debugger uses the existing headless `Viper.Debug.Protocol` placeholder inside the IDE process. It is useful for UI and command-state wiring, but it does not execute compiled code, evaluate expressions, or expose real VM frames. A crash-isolated external adapter/subprocess debugger or hosted VM debugger is still future work.
+- BASIC has editor/build support plus in-process diagnostics, completion, hover,
+  and document-symbol surfaces. BASIC semantic commands stay disabled by design
+  until BASIC has a project-index-equivalent layer for definition/references/rename.
+- Debugger UX still needs a watch panel, richer variable inspection, and
+  non-modal editors for every breakpoint metadata path. The execution substrate
+  is the external VM-backed adapter, not the older placeholder protocol.
 - Scene editing still needs IDE integration work beyond document-kind routing:
   a real scene surface, `SceneView`, `SceneDocumentState`, asset-resolution UX,
   undo/redo, save/reload/conflict handling, and Play wiring. The underlying

@@ -2,6 +2,10 @@ module viperide;
 
 bind "ui/app_shell";
 bind "ui/ide_overlays";
+bind "ui/explorer_actions";
+bind "ui/debug_breakpoint_overlay";
+bind "ui/activity_bar";
+bind "scm/scm_view";
 bind "core/document";
 bind "core/document_manager";
 bind "core/project";
@@ -12,6 +16,7 @@ bind "editor/editor_engine";
 bind "editor/editor_tabs";
 bind "editor/zia_query";
 bind "editor/language_service";
+bind "editor/workbench_state";
 bind "editor/perf_monitor";
 bind "editor/project_index";
 bind "editor/scheduler";
@@ -133,12 +138,15 @@ func main() {
     var engine = new editor_engine.EditorEngine();
     var tabs = new editor_tabs.EditorTabs();
     var projMgr = new project_manager.ProjectManager();
+    var activityBarCtrl = new activity_bar.ActivityBar();
+    var scmView = new scm_view.ScmView();
     var buildSys = new build_system.BuildSystem();
     var breakpointStore = new breakpoints.BreakpointStore();
     var dbgSession = new debug_session.DebugSession();
     var locStore = new locations.LocationStore();
     var commandRegistry = new command_registry.CommandRegistry();
     var languageServices = new language_service.LanguageServiceManager();
+    var activeWorkbench = new workbench_state.ActiveWorkbenchState();
     var perfMon = new perf_monitor.PerfMonitor();
     var indexer = new project_index.ProjectIndexer();
     var editorScheduler = new scheduler.EditorScheduler();
@@ -151,6 +159,10 @@ func main() {
 
     var overlays = new ide_overlays.IdeOverlays();
     overlays.Setup(shell);
+    var explorerOverlay = new explorer_actions.ExplorerActionOverlay();
+    explorerOverlay.Setup(shell);
+    var debugOverlay = new debug_breakpoint_overlay.DebugBreakpointOverlay();
+    debugOverlay.Setup(shell);
 
     engine.Setup(shell.editorRow);
     engine.editor.Focus();
@@ -188,6 +200,9 @@ func main() {
 
     tabs.Setup(shell.tabBar);
     projMgr.Setup(shell.sidebarTree);
+    activityBarCtrl.Setup(shell.explorerView, shell.scmViewHost, shell.abExplorer, shell.abSourceControl);
+    scmView.Setup(shell.scmViewHost);
+    if projMgr.project != null and projMgr.project.isOpen { scmView.SetRepo(projMgr.project.rootPath); }
 
     commandRegistry.InstallShortcuts();
     Shortcuts.Register("palette", "Ctrl+Shift+P", "Command Palette");
@@ -270,7 +285,6 @@ func main() {
     var prevStatusLineCount = engine.GetLineCount();
     var prevStatusCursorCount = engine.editor.GetCursorCount();
     var minimapVisible = appSettings.minimapVisible;
-    var lastServiceName = "";
     var paletteMode = "commands";
     var lastBreakpointPath = "";
     var lastBreakpointVersion = -1;
@@ -285,6 +299,14 @@ func main() {
     while shell != null and shell.ShouldClose() == false {
         perfMon.BeginFrame();
         shell.Poll();
+
+        // Activity bar — switch the left view (Explorer / Source Control).
+        if shell.abExplorer.WasClicked() != 0 { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
+        if shell.abSourceControl.WasClicked() != 0 {
+            activityBarCtrl.ShowView(activity_bar.VIEW_SCM);
+            if projMgr.project != null and projMgr.project.isOpen { scmView.SetRepo(projMgr.project.rootPath); }
+        }
+        scmView.HandleEvents();
         if shell.WasCloseRequested() {
             file_commands.SaveEditorState(docMgr, engine);
             breakpointStore.Save();
@@ -300,25 +322,18 @@ func main() {
         // ====================================================================
         // Code Completion + IDE Intelligence
         // ====================================================================
-        var activeToolDoc = docMgr.GetActive();
-        var activeToolPath = "";
-        var activeService = languageServices.textService;
-        if activeToolDoc != null {
-            activeToolPath = activeToolDoc.filePath;
-            activeService = languageServices.ForDocument(activeToolDoc);
-        }
-        var activeProjectName = "";
-        if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
-            activeProjectName = projMgr.project.name;
-        }
+        var serviceChanged = activeWorkbench.Refresh(docMgr, projMgr, languageServices);
+        var activeToolDoc = activeWorkbench.activeDocument;
+        var activeToolPath = activeWorkbench.activePath;
+        var activeService = activeWorkbench.activeService;
+        var activeProjectName = activeWorkbench.activeProjectName;
         shell.SetWorkspaceStatus(activeProjectName, activeService.name);
-        if activeService.name != lastServiceName {
+        if serviceChanged {
             if paletteMode == "commands" {
                 commandRegistry.PopulatePalette(shell.commandPalette, activeService);
             }
             commandRegistry.ApplyCapabilities(activeService);
             shell.ApplyLanguageCommandState(activeService);
-            lastServiceName = activeService.name;
         }
         completer.SetSourcePath(activeToolPath);
         completer.SetEnabled(activeService.canComplete);
@@ -362,7 +377,11 @@ func main() {
         } else {
             shell.SetIndexStatus("Workspace index idle");
         }
+        shell.SetSchedulerStatus(editorScheduler.StatusText());
         completer.PumpWorkspaceSymbolCache(MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME);
+        if FrameBudgetAllows(frameWorkStartMs) and projMgr != null and projMgr.fileCacheRefreshing {
+            projMgr.PumpFileCacheRefresh(2);
+        }
         perfMon.AddIndex(perfSpan);
         if activeToolDoc != null {
             if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
@@ -595,24 +614,7 @@ func main() {
         if shell.ctxDuplicate.WasClicked() != 0 {
             var dupPath = CurrentContextPath(projMgr, shell);
             if IO.File.Exists(dupPath) != false {
-                var dupName = GUI.MessageBox.Prompt("Duplicate File", "New file name:");
-                if dupName != "" {
-                    if IsSafeChildName(dupName) == false {
-                        GUI.Toast.Warning("Use a plain file name, not a path");
-                        dupName = "";
-                    }
-                }
-                if dupName != "" {
-                    var dupTarget = Path.Join(Path.Dir(dupPath), dupName);
-                    if IO.File.Exists(dupTarget) or Dir.Exists(dupTarget) {
-                        GUI.Toast.Warning("Target already exists");
-                    } else {
-                        IO.File.Copy(dupPath, dupTarget);
-                        projMgr.RefreshTree();
-                        indexer.UpdateFile(dupTarget);
-                        GUI.Toast.Success("Duplicated: " + dupName);
-                    }
-                }
+                explorerOverlay.OpenDuplicate(shell, dupPath);
             } else if dupPath != "" {
                 GUI.Toast.Info("Duplicate is available for files");
             }
@@ -620,103 +622,25 @@ func main() {
         if shell.ctxRename.WasClicked() != 0 {
             var selectedPath = CurrentContextPath(projMgr, shell);
             if selectedPath != "" {
-                var renameTo = GUI.MessageBox.Prompt("Rename", "New name:");
-                if renameTo != "" {
-                    var rewritePreview = projMgr.PreviewBindRewriteCount(selectedPath, renameTo, docMgr);
-                    if rewritePreview > 0 {
-                        var msg = "Rename will update " + rewritePreview + " Zia bind path";
-                        if rewritePreview != 1 { msg = msg + "s"; }
-                        msg = msg + ".\n\nContinue?";
-                        if GUI.MessageBox.Confirm("Rename Preview", msg) == 0 {
-                            renameTo = "";
-                        }
-                    }
-                    if renameTo != "" {
-                        file_commands.SaveEditorState(docMgr, engine);
-                        var renamedPath = projMgr.RenamePath(selectedPath, renameTo, docMgr);
-                        if renamedPath != "" {
-                            tabs.RefreshFromDocuments(docMgr);
-                            var activeAfterRename = docMgr.GetActive();
-                            if activeAfterRename != null {
-                                engine.LoadDocument(activeAfterRename);
-                                shell.SetBreadcrumbPath(activeAfterRename.filePath);
-                            }
-                            indexer.RemoveFile(selectedPath);
-                            ReindexAfterTreeMove(projMgr, indexer, docMgr);
-                            InvalidateWorkspaceLocations(shell, locStore, engine);
-                            var status = "Renamed: " + Path.Name(renamedPath);
-                            if projMgr.lastBindRewriteCount > 0 {
-                                status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
-                            }
-                            shell.SetStatusLeft(status);
-                        } else {
-                            GUI.Toast.Warning("Rename failed");
-                        }
-                    }
-                }
+                explorerOverlay.OpenRename(shell, selectedPath);
             }
         }
         if shell.ctxDelete.WasClicked() != 0 {
             var deletePath = CurrentContextPath(projMgr, shell);
             if deletePath != "" {
-                if GUI.MessageBox.Confirm("Delete", "Delete " + Path.Name(deletePath) + "?") != 0 {
-                    if file_commands.ConfirmCloseDocumentsUnderPath(
-                        shell, docMgr, engine, "Delete", deletePath) == false {
-                        shell.SetStatusLeft("Delete canceled");
-                    } else if projMgr.DeletePath(deletePath, docMgr) {
-                        indexer.RemoveFile(deletePath);
-                        ReindexAfterTreeMove(projMgr, indexer, docMgr);
-                        InvalidateWorkspaceLocations(shell, locStore, engine);
-                        tabs.RefreshFromDocuments(docMgr);
-                        var activeAfterDelete = docMgr.GetActive();
-                        if activeAfterDelete != null {
-                            engine.LoadDocument(activeAfterDelete);
-                        } else {
-                            engine.SetText("");
-                            engine.ClearModified();
-                        }
-                        shell.SetStatusLeft("Deleted: " + Path.Name(deletePath));
-                    }
-                }
+                explorerOverlay.OpenDelete(shell, deletePath);
             }
         }
         if shell.ctxNewFile.WasClicked() != 0 {
             var ctxDir = shell.contextDir;
             if ctxDir != "" {
-                var newName = GUI.MessageBox.Prompt("New File", "Enter file name:");
-                if newName != "" {
-                    if IsSafeChildName(newName) == false {
-                        GUI.Toast.Warning("Use a plain file name, not a path");
-                        newName = "";
-                    }
-                }
-                if newName != "" {
-                    var newFilePath = Path.Join(ctxDir, newName);
-                    IO.File.Touch(newFilePath);
-                    projMgr.RefreshTree();
-                    indexer.UpdateFile(newFilePath);
-                    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newFilePath);
-                    pendingReload = false;
-                    GUI.Toast.Success("Created: " + newName);
-                }
+                explorerOverlay.OpenNewFile(shell, ctxDir);
             }
         }
         if shell.ctxNewFolder.WasClicked() != 0 {
             var ctxDir = shell.contextDir;
             if ctxDir != "" {
-                var folderName = GUI.MessageBox.Prompt("New Folder", "Enter folder name:");
-                if folderName != "" {
-                    if IsSafeChildName(folderName) == false {
-                        GUI.Toast.Warning("Use a plain folder name, not a path");
-                        folderName = "";
-                    }
-                }
-                if folderName != "" {
-                    var newFolderPath = Path.Join(ctxDir, folderName);
-                    Dir.Make(newFolderPath);
-                    projMgr.RefreshTree();
-                    GUI.Toast.Success("Created folder: " + folderName);
-                }
+                explorerOverlay.OpenNewFolder(shell, ctxDir);
             }
         }
         if shell.ctxSearchFolder.WasClicked() != 0 {
@@ -745,6 +669,14 @@ func main() {
             projMgr.RefreshTree();
             indexer.EnsureProject(projMgr, docMgr);
             shell.SetStatusLeft("Project tree refreshed");
+        }
+        var explorerAction = explorerOverlay.Pump(shell);
+        if explorerAction != explorer_actions.EXPLORER_ACTION_NONE
+           and explorerAction != explorer_actions.EXPLORER_ACTION_CANCEL {
+            if ApplyExplorerAction(shell, explorerOverlay, explorerAction, projMgr, docMgr,
+                                   engine, tabs, sessionMgr, indexer, locStore) {
+                pendingReload = false;
+            }
         }
 
         // ====================================================================
@@ -815,6 +747,9 @@ func main() {
                 file_commands.handleOpenFolder(shell, projMgr);
                 indexer.Open(projMgr.project.rootPath, docMgr);
             }
+        }
+        if triggeredNoMenu("addfolder", cpSelected) {
+            file_commands.handleAddFolderToWorkspace(shell, projMgr);
         }
         if triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
         if triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
@@ -954,10 +889,22 @@ func main() {
         if triggeredNoMenu("filteroutput", cpSelected)                         { view_commands.handleFilterOutput(shell); }
         if triggeredNoMenu("toggleoutputwrap", cpSelected)                     { view_commands.handleToggleOutputWrap(shell); }
         if triggeredNoMenu("toggleoutputautoscroll", cpSelected)               { view_commands.handleToggleOutputAutoScroll(shell); }
-        if triggeredNoMenu("treenewfile", cpSelected)                          { TreeNewFile(shell, projMgr, docMgr, engine, tabs, sessionMgr); }
-        if triggeredNoMenu("treenewfolder", cpSelected)                        { TreeNewFolder(shell, projMgr); }
-        if triggeredNoMenu("treerename", cpSelected)                           { TreeRename(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
-        if triggeredNoMenu("treedelete", cpSelected)                           { TreeDelete(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
+        if triggeredNoMenu("treenewfile", cpSelected) {
+            var overlayNewFileDir = ContextDirForPath(projMgr, projMgr.SelectedPath());
+            if overlayNewFileDir != "" { explorerOverlay.OpenNewFile(shell, overlayNewFileDir); }
+        }
+        if triggeredNoMenu("treenewfolder", cpSelected) {
+            var overlayNewFolderDir = ContextDirForPath(projMgr, projMgr.SelectedPath());
+            if overlayNewFolderDir != "" { explorerOverlay.OpenNewFolder(shell, overlayNewFolderDir); }
+        }
+        if triggeredNoMenu("treerename", cpSelected) {
+            var overlayRenamePath = projMgr.SelectedPath();
+            if overlayRenamePath != "" { explorerOverlay.OpenRename(shell, overlayRenamePath); }
+        }
+        if triggeredNoMenu("treedelete", cpSelected) {
+            var overlayDeletePath = projMgr.SelectedPath();
+            if overlayDeletePath != "" { explorerOverlay.OpenDelete(shell, overlayDeletePath); }
+        }
         if triggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
         if shell.miKeyboardShortcuts.WasClicked() != 0                          { view_commands.handleKeybindings(shell, commandRegistry); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
@@ -1020,10 +967,18 @@ func main() {
             debug_commands.handleRunToCursor(shell, docMgr, engine, dbgSession);
         }
         if triggeredNoMenu("debugcondition", cpSelected) {
-            debug_commands.handleSetCondition(shell, docMgr, engine, breakpointStore, dbgSession);
+            OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+                                       debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION);
         }
         if triggeredNoMenu("debuglogpoint", cpSelected) {
-            debug_commands.handleAddLogpoint(shell, docMgr, engine, breakpointStore, dbgSession);
+            OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+                                       debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT);
+        }
+        var completedDebugOverlayAction = debugOverlay.Pump(shell);
+        if completedDebugOverlayAction == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION
+           or completedDebugOverlayAction == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
+            ApplyDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+                                        dbgSession, completedDebugOverlayAction);
         }
 
         // Diagnostics panel: click to navigate to error line
@@ -1740,89 +1695,172 @@ func OpenFileAndRecord(shell: app_shell.AppShell,
     sessionMgr.RecordRecentFile(path);
 }
 
-func ReopenClosedFile(shell: app_shell.AppShell,
-                      docMgr: document_manager.DocumentManager,
-                      engine: editor_engine.EditorEngine,
-                      tabs: editor_tabs.EditorTabs,
-                      sessionMgr: session.SessionManager) {
-    var path = docMgr.PopRecentlyClosedPath();
-    if path == "" {
-        GUI.Toast.Info("No recently closed file");
-        shell.SetStatusLeft("No recently closed file");
-        return;
+/// @brief Apply a completed non-modal explorer action.
+/// @details The floating explorer overlay gathers user intent while this helper
+///          performs filesystem mutation, document retargeting, project-tree
+///          refresh, semantic-index invalidation, and status updates. Keeping
+///          that orchestration here gives right-click, palette, and shortcut
+///          paths identical behavior.
+/// @param shell Workbench shell for status, toasts, and overlay validation.
+/// @param overlay Completed explorer overlay carrying target and input state.
+/// @param action One of explorer_actions.ACTION_*.
+/// @param projMgr Project/file-tree manager.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param tabs Editor tab controller.
+/// @param sessionMgr Session manager used to record opened files.
+/// @param indexer Semantic project indexer.
+/// @param locStore Stored locations invalidated by tree moves.
+/// @return True when the action opened a file and the caller should suppress a
+///         pending reload prompt for that frame.
+func ApplyExplorerAction(shell: app_shell.AppShell,
+                         overlay: explorer_actions.ExplorerActionOverlay,
+                         action: Integer,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         sessionMgr: session.SessionManager,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) -> Boolean {
+    if action == explorer_actions.EXPLORER_ACTION_NEW_FILE {
+        return ApplyExplorerNewFile(shell, overlay, projMgr, docMgr, engine, tabs, sessionMgr, indexer);
     }
-    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, path);
-    shell.SetStatusLeft("Reopened: " + Path.Name(path));
+    if action == explorer_actions.EXPLORER_ACTION_NEW_FOLDER {
+        ApplyExplorerNewFolder(shell, overlay, projMgr);
+        return false;
+    }
+    if action == explorer_actions.EXPLORER_ACTION_DUPLICATE {
+        ApplyExplorerDuplicate(shell, overlay, projMgr, indexer);
+        return false;
+    }
+    if action == explorer_actions.EXPLORER_ACTION_RENAME {
+        ApplyExplorerRename(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
+        return false;
+    }
+    if action == explorer_actions.EXPLORER_ACTION_DELETE {
+        ApplyExplorerDelete(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
+        return false;
+    }
+    return false;
 }
 
-func TreeNewFile(shell: app_shell.AppShell,
-                 projMgr: project_manager.ProjectManager,
-                 docMgr: document_manager.DocumentManager,
-                 engine: editor_engine.EditorEngine,
-                 tabs: editor_tabs.EditorTabs,
-                 sessionMgr: session.SessionManager) {
-    var dir = ContextDirForPath(projMgr, projMgr.SelectedPath());
-    if dir == "" { return; }
-    var newName = GUI.MessageBox.Prompt("New File", "Enter file name:");
-    if newName == "" { return; }
-    if IsSafeChildName(newName) == false {
-        GUI.Toast.Warning("Use a plain file name, not a path");
-        return;
+/// @brief Create a new file from the explorer overlay.
+/// @return True when the new file was opened in the editor.
+func ApplyExplorerNewFile(shell: app_shell.AppShell,
+                          overlay: explorer_actions.ExplorerActionOverlay,
+                          projMgr: project_manager.ProjectManager,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          tabs: editor_tabs.EditorTabs,
+                          sessionMgr: session.SessionManager,
+                          indexer: project_index.ProjectIndexer) -> Boolean {
+    var name = overlay.ReadValue();
+    var dir = overlay.TargetDir();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return false; }
+    if dir == "" or Dir.Exists(dir) == false {
+        overlay.Reject(shell, "Choose an existing folder.");
+        return false;
     }
-    var newPath = Path.Join(dir, newName);
+    var newPath = Path.Join(dir, name);
     if IO.File.Exists(newPath) or Dir.Exists(newPath) {
-        GUI.Toast.Warning("Target already exists");
-        return;
+        overlay.Reject(shell, "Target already exists.");
+        return false;
     }
     IO.File.Touch(newPath);
     projMgr.RefreshTree();
+    indexer.UpdateFile(newPath);
     OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newPath);
+    GUI.Toast.Success("Created: " + name);
+    overlay.Finish();
+    return true;
 }
 
-func TreeNewFolder(shell: app_shell.AppShell,
-                   projMgr: project_manager.ProjectManager) {
-    var dir = ContextDirForPath(projMgr, projMgr.SelectedPath());
-    if dir == "" { return; }
-    var folderName = GUI.MessageBox.Prompt("New Folder", "Enter folder name:");
-    if folderName == "" { return; }
-    if IsSafeChildName(folderName) == false {
-        GUI.Toast.Warning("Use a plain folder name, not a path");
+/// @brief Create a new folder from the explorer overlay.
+func ApplyExplorerNewFolder(shell: app_shell.AppShell,
+                            overlay: explorer_actions.ExplorerActionOverlay,
+                            projMgr: project_manager.ProjectManager) {
+    var name = overlay.ReadValue();
+    var dir = overlay.TargetDir();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
+    if dir == "" or Dir.Exists(dir) == false {
+        overlay.Reject(shell, "Choose an existing folder.");
         return;
     }
-    var newPath = Path.Join(dir, folderName);
+    var newPath = Path.Join(dir, name);
     if IO.File.Exists(newPath) or Dir.Exists(newPath) {
-        GUI.Toast.Warning("Target already exists");
+        overlay.Reject(shell, "Target already exists.");
         return;
     }
     Dir.Make(newPath);
     projMgr.RefreshTree();
-    shell.SetStatusLeft("Created folder: " + folderName);
+    shell.SetStatusLeft("Created folder: " + name);
+    GUI.Toast.Success("Created folder: " + name);
+    overlay.Finish();
 }
 
-func TreeRename(shell: app_shell.AppShell,
-                projMgr: project_manager.ProjectManager,
-                docMgr: document_manager.DocumentManager,
-                engine: editor_engine.EditorEngine,
-                tabs: editor_tabs.EditorTabs,
-                indexer: project_index.ProjectIndexer,
-                locStore: locations.LocationStore) {
-    var selectedPath = projMgr.SelectedPath();
-    if selectedPath == "" { return; }
-    var renameTo = GUI.MessageBox.Prompt("Rename", "New name:");
-    if renameTo == "" { return; }
-    var rewritePreview = projMgr.PreviewBindRewriteCount(selectedPath, renameTo, docMgr);
+/// @brief Duplicate an existing file from the explorer overlay.
+func ApplyExplorerDuplicate(shell: app_shell.AppShell,
+                            overlay: explorer_actions.ExplorerActionOverlay,
+                            projMgr: project_manager.ProjectManager,
+                            indexer: project_index.ProjectIndexer) {
+    var name = overlay.ReadValue();
+    var sourcePath = overlay.TargetPath();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
+    if sourcePath == "" or IO.File.Exists(sourcePath) == false {
+        overlay.Reject(shell, "Duplicate is available for files.");
+        return;
+    }
+    var targetPath = Path.Join(Path.Dir(sourcePath), name);
+    if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
+        overlay.Reject(shell, "Target already exists.");
+        return;
+    }
+    IO.File.Copy(sourcePath, targetPath);
+    projMgr.RefreshTree();
+    indexer.UpdateFile(targetPath);
+    shell.SetStatusLeft("Duplicated: " + name);
+    GUI.Toast.Success("Duplicated: " + name);
+    overlay.Finish();
+}
+
+/// @brief Rename a file or folder from the explorer overlay.
+func ApplyExplorerRename(shell: app_shell.AppShell,
+                         overlay: explorer_actions.ExplorerActionOverlay,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) {
+    var name = overlay.ReadValue();
+    var selectedPath = overlay.TargetPath();
+    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
+    if selectedPath == "" {
+        overlay.Reject(shell, "Choose a file or folder to rename.");
+        return;
+    }
+    var targetPath = Path.Join(Path.Dir(selectedPath), name);
+    if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
+        overlay.Reject(shell, "Target already exists.");
+        return;
+    }
+
+    var rewritePreview = projMgr.PreviewBindRewriteCount(selectedPath, name, docMgr);
     if rewritePreview > 0 {
-        var msg = "Rename will update " + rewritePreview + " Zia bind path";
-        if rewritePreview != 1 { msg = msg + "s"; }
-        msg = msg + ".\n\nContinue?";
-        if GUI.MessageBox.Confirm("Rename Preview", msg) == 0 {
+        var previewMsg = "Rename will update " + rewritePreview + " Zia bind path";
+        if rewritePreview != 1 { previewMsg = previewMsg + "s"; }
+        previewMsg = previewMsg + " for " + name + ". Press Rename again to continue.";
+        if overlay.validationMessage != previewMsg {
+            overlay.Reject(shell, previewMsg);
             return;
         }
     }
+
     file_commands.SaveEditorState(docMgr, engine);
-    var renamedPath = projMgr.RenameSelected(renameTo, docMgr);
+    var renamedPath = projMgr.RenamePath(selectedPath, name, docMgr);
     if renamedPath == "" {
-        GUI.Toast.Warning("Rename failed");
+        overlay.Reject(shell, "Rename failed.");
         return;
     }
     tabs.RefreshFromDocuments(docMgr);
@@ -1839,26 +1877,32 @@ func TreeRename(shell: app_shell.AppShell,
         status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
     }
     shell.SetStatusLeft(status);
+    GUI.Toast.Success(status);
+    overlay.Finish();
 }
 
-func TreeDelete(shell: app_shell.AppShell,
-                projMgr: project_manager.ProjectManager,
-                docMgr: document_manager.DocumentManager,
-                engine: editor_engine.EditorEngine,
-                tabs: editor_tabs.EditorTabs,
-                indexer: project_index.ProjectIndexer,
-                locStore: locations.LocationStore) {
-    var deletePath = projMgr.SelectedPath();
-    if deletePath == "" { return; }
-    if GUI.MessageBox.Confirm("Delete", "Delete " + Path.Name(deletePath) + "?") == 0 {
+/// @brief Move a file or folder to project trash from the explorer overlay.
+func ApplyExplorerDelete(shell: app_shell.AppShell,
+                         overlay: explorer_actions.ExplorerActionOverlay,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine,
+                         tabs: editor_tabs.EditorTabs,
+                         indexer: project_index.ProjectIndexer,
+                         locStore: locations.LocationStore) {
+    var deletePath = overlay.TargetPath();
+    if deletePath == "" {
+        overlay.Reject(shell, "Choose a file or folder to move to trash.");
         return;
     }
-    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Delete", deletePath) == false {
-        shell.SetStatusLeft("Delete canceled");
+    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Move to Trash",
+                                                    deletePath) == false {
+        shell.SetStatusLeft("Move to trash canceled");
+        overlay.Finish();
         return;
     }
-    if projMgr.DeleteSelected(docMgr) == false {
-        GUI.Toast.Warning("Delete failed");
+    if projMgr.DeletePath(deletePath, docMgr) == false {
+        overlay.Reject(shell, "Move to trash failed.");
         return;
     }
     indexer.RemoveFile(deletePath);
@@ -1872,7 +1916,180 @@ func TreeDelete(shell: app_shell.AppShell,
         engine.SetText("");
         engine.ClearModified();
     }
-    shell.SetStatusLeft("Deleted: " + Path.Name(deletePath));
+    if projMgr.lastTrashPath != "" {
+        shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath)
+                            + " -> " + projMgr.RelativePath(projMgr.lastTrashPath));
+    } else {
+        shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath));
+    }
+    overlay.Finish();
+}
+
+/// @brief Validate a user-entered explorer child name and keep the overlay open on failure.
+/// @return True when the name is safe to use as a single path component.
+func ValidateExplorerChildName(shell: app_shell.AppShell,
+                               overlay: explorer_actions.ExplorerActionOverlay,
+                               name: String) -> Boolean {
+    if IsSafeChildName(name) {
+        return true;
+    }
+    overlay.Reject(shell, "Use a plain name, not a path.");
+    return false;
+}
+
+/// @brief Open the non-modal condition/logpoint editor for the cursor line.
+/// @details The helper validates that the active document has a saved path,
+///          snapshots editor content into the document manager, and preloads
+///          existing breakpoint metadata for the selected line.
+/// @param shell Workbench shell for status text.
+/// @param overlay Debug breakpoint overlay to show.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param store Persistent breakpoint store.
+/// @param action Debug overlay action to open.
+func OpenDebugBreakpointOverlay(shell: app_shell.AppShell,
+                                overlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                                docMgr: document_manager.DocumentManager,
+                                engine: editor_engine.EditorEngine,
+                                store: breakpoints.BreakpointStore,
+                                action: Integer) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var maybeDoc = docMgr.GetActive();
+    if maybeDoc == null or maybeDoc!.filePath == "" or maybeDoc!.isNew {
+        shell.SetStatusLeft("Save file before setting breakpoints");
+        return;
+    }
+    var doc = maybeDoc!;
+    var line = engine.GetCursorLine();
+    if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION {
+        overlay.OpenCondition(shell, doc.filePath, line, store.ConditionAt(doc.filePath, line));
+    } else if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
+        overlay.OpenLogpoint(shell, doc.filePath, line, store.LogMessageAt(doc.filePath, line));
+    }
+}
+
+/// @brief Persist and live-sync a completed breakpoint metadata overlay edit.
+/// @param shell Workbench shell for status text.
+/// @param overlay Completed debug breakpoint overlay.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param store Persistent breakpoint store.
+/// @param session Active debug session, if any.
+/// @param action Completed overlay action.
+func ApplyDebugBreakpointOverlay(shell: app_shell.AppShell,
+                                 overlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                                 docMgr: document_manager.DocumentManager,
+                                 engine: editor_engine.EditorEngine,
+                                 store: breakpoints.BreakpointStore,
+                                 session: debug_session.DebugSession,
+                                 action: Integer) {
+    var path = overlay.TargetPath();
+    var line = overlay.TargetLine();
+    if path == "" or line <= 0 {
+        overlay.Finish();
+        return;
+    }
+    var value = overlay.ReadValue();
+    if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION {
+        store.SetCondition(path, line, value);
+    } else if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
+        store.SetLogMessage(path, line, value);
+    }
+    store.Save();
+    var doc = docMgr.GetActive();
+    if doc != null {
+        store.ApplyToEditor(engine, doc!);
+    }
+    if session != null and session.IsActive() {
+        session.SyncBreakpoints(path, store);
+    }
+    if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION {
+        if value == "" {
+            shell.SetStatusLeft("Condition cleared at line " + line);
+        } else {
+            shell.SetStatusLeft("Breakpoint at line " + line + " stops when: " + value);
+        }
+    } else {
+        if value == "" {
+            shell.SetStatusLeft("Logpoint cleared at line " + line);
+        } else {
+            shell.SetStatusLeft("Logpoint set at line " + line);
+        }
+    }
+    overlay.Finish();
+}
+
+func ReopenClosedFile(shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      tabs: editor_tabs.EditorTabs,
+                      sessionMgr: session.SessionManager) {
+    var path = docMgr.PopRecentlyClosedPath();
+    if path == "" {
+        GUI.Toast.Info("No recently closed file");
+        shell.SetStatusLeft("No recently closed file");
+        return;
+    }
+    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, path);
+    shell.SetStatusLeft("Reopened: " + Path.Name(path));
+}
+
+/// @brief Compatibility entry point that opens the integrated new-file overlay.
+/// @details Older tree command wiring called this helper directly. The active
+///          workbench now routes through ExplorerActionOverlay so file creation
+///          stays visually integrated with the IDE instead of opening a blocking
+///          message box.
+func TreeNewFile(shell: app_shell.AppShell,
+                 overlay: explorer_actions.ExplorerActionOverlay,
+                 projMgr: project_manager.ProjectManager) {
+    var dir = ContextDirForPath(projMgr, projMgr.SelectedPath());
+    if dir == "" {
+        shell.SetStatusLeft("Choose a project folder first");
+        return;
+    }
+    overlay.OpenNewFile(shell, dir);
+}
+
+/// @brief Compatibility entry point that opens the integrated new-folder overlay.
+/// @details Keeps legacy command handlers on the same non-modal explorer action
+///          path used by the file tree context menu and command palette.
+func TreeNewFolder(shell: app_shell.AppShell,
+                   overlay: explorer_actions.ExplorerActionOverlay,
+                   projMgr: project_manager.ProjectManager) {
+    var dir = ContextDirForPath(projMgr, projMgr.SelectedPath());
+    if dir == "" {
+        shell.SetStatusLeft("Choose a project folder first");
+        return;
+    }
+    overlay.OpenNewFolder(shell, dir);
+}
+
+/// @brief Compatibility entry point that opens the integrated rename overlay.
+/// @details Rename confirmation and bind-rewrite preview now stay inside the
+///          explorer overlay so the operation feels like an IDE interaction.
+func TreeRename(shell: app_shell.AppShell,
+                overlay: explorer_actions.ExplorerActionOverlay,
+                projMgr: project_manager.ProjectManager) {
+    var selectedPath = projMgr.SelectedPath();
+    if selectedPath == "" {
+        shell.SetStatusLeft("Choose a file or folder to rename");
+        return;
+    }
+    overlay.OpenRename(shell, selectedPath);
+}
+
+/// @brief Compatibility entry point that opens the integrated move-to-trash overlay.
+/// @details The active deletion path uses an inline confirmation panel and then
+///          delegates to ApplyExplorerDelete after the user confirms.
+func TreeDelete(shell: app_shell.AppShell,
+                overlay: explorer_actions.ExplorerActionOverlay,
+                projMgr: project_manager.ProjectManager) {
+    var deletePath = projMgr.SelectedPath();
+    if deletePath == "" {
+        shell.SetStatusLeft("Choose a file or folder to move to trash");
+        return;
+    }
+    overlay.OpenDelete(shell, deletePath);
 }
 
 /// @brief Keep a batch workspace watcher aligned to the currently open project.

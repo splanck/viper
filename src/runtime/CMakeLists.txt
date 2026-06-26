@@ -216,6 +216,7 @@ set(RT_IO_FS_SOURCES
 set(RT_EXEC_SOURCES
         system/rt_exec.c
         system/rt_process.c
+        system/rt_pty.c
         system/rt_machine.c
         system/rt_shutdown.c
 )

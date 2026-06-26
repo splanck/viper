@@ -218,6 +218,7 @@
 #include "rt_pqueue.h"
 #include "rt_printf_compat.h"
 #include "rt_process.h"
+#include "rt_pty.h"
 #include "rt_quadtree.h"
 #include "rt_quat.h"
 #include "rt_queue.h"

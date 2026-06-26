@@ -1,0 +1,200 @@
+module scm_git;
+
+bind Exec = Viper.System.Exec;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+bind Obj = Viper.Core.Object;
+
+// ============================================================================
+// MODULE: scm_git  (Phase 5C — source control)
+// PURPOSE: Thin git command layer over Viper.System.Exec for the IDE Source
+//          Control view. Every command runs `git -C <repo> ...`.
+//
+// EXEC SEMANTICS (important):
+//   * Exec.CaptureArgs(prog, args) -> stdout string, but does NOT report an
+//     exit code (Exec.LastExitCode() is unreliable, returns -1). Used for READ
+//     commands (status/diff/branch/rev-parse); success is inferred from output.
+//   * Exec.RunArgs(prog, args) -> the exit code (reliable), but lets the child
+//     write to the inherited stdout (output not captured). Used for WRITE
+//     commands (add/restore/commit/push/pull/switch); success is rc == 0.
+//
+// DESIGN:
+//   * SYNC + BLOCKING. status/diff/add/commit are fast; push/pull block the
+//     caller briefly (accepted v1 limitation; an async path can come later).
+//   * `git -C <repo>` instead of a per-call cwd — the layer is stateless apart
+//     from the bound repo root.
+//   * PORCELAIN v1 PARSING: lines are "XY path"; split on newline, slice
+//     columns. Paths with spaces/quotes are an accepted v1 edge case.
+// ============================================================================
+
+/// @brief One changed file in `git status`, with its staged/worktree state.
+class GitEntry {
+    expose String path;        // repo-relative path
+    expose String index;       // porcelain column 1 (staged), " " when none
+    expose String worktree;    // porcelain column 2 (worktree), " " when none
+    expose Boolean staged;     // the index column has a change
+    expose Boolean untracked;  // "??"
+    expose func init() {
+        path = "";
+        index = " ";
+        worktree = " ";
+        staged = false;
+        untracked = false;
+    }
+}
+
+/// @brief Parsed `git status` snapshot for one repo.
+class GitStatus {
+    expose Boolean isRepo;
+    expose String branch;
+    expose List[GitEntry] entries;
+    expose func init() {
+        isRepo = false;
+        branch = "";
+        entries = [];
+    }
+}
+
+/// @brief git command layer bound to one repository root.
+class Git {
+    expose String repo;
+    expose Integer lastExit;   // exit code of the most recent WRITE command
+
+    expose func init() {
+        repo = "";
+        lastExit = 0;
+    }
+
+    expose func SetRepo(path: String) {
+        repo = path;
+    }
+
+    /// @brief Build the full argv: `-C <repo>` followed by @p extra.
+    hide func BuildArgs(extra: Any) -> Any {
+        var args = Seq.New();
+        Seq.Push(args, "-C");
+        Seq.Push(args, repo);
+        var i = 0;
+        var n = Seq.get_Length(extra);
+        while i < n {
+            Seq.Push(args, Obj.ToString(Seq.Get(extra, i)));
+            i = i + 1;
+        }
+        return args;
+    }
+
+    /// @brief READ command: returns captured stdout (no exit code).
+    hide func RunCapture(extra: Any) -> String {
+        if repo == "" { return ""; }
+        return Exec.CaptureArgs("git", BuildArgs(extra));
+    }
+
+    /// @brief WRITE command: returns the exit code (output goes to stdout).
+    hide func RunExit(extra: Any) -> Integer {
+        if repo == "" { lastExit = -1; return -1; }
+        lastExit = Exec.RunArgs("git", BuildArgs(extra));
+        return lastExit;
+    }
+
+    hide func Argv(a: String, b: String, c: String, d: String) -> Any {
+        var s = Seq.New();
+        if a != "" { Seq.Push(s, a); }
+        if b != "" { Seq.Push(s, b); }
+        if c != "" { Seq.Push(s, c); }
+        if d != "" { Seq.Push(s, d); }
+        return s;
+    }
+
+    /// @brief True when `repo` is inside a git work tree.
+    expose func IsRepo() -> Boolean {
+        var out = RunCapture(Argv("rev-parse", "--is-inside-work-tree", "", ""));
+        return Str.StartsWith(Str.Trim(out), "true");
+    }
+
+    /// @brief Current branch name ("" when detached, unborn, or not a repo).
+    /// @note `branch --show-current` is empty (no error) on an unborn/detached
+    ///       HEAD, avoiding the stderr noise `rev-parse HEAD` produces there.
+    expose func CurrentBranch() -> String {
+        return Str.Trim(RunCapture(Argv("branch", "--show-current", "", "")));
+    }
+
+    /// @brief Parse `git status --porcelain` into a GitStatus snapshot.
+    expose func Status() -> GitStatus {
+        var st = new GitStatus();
+        if IsRepo() == false {
+            st.isRepo = false;
+            return st;
+        }
+        st.isRepo = true;
+        st.branch = CurrentBranch();
+
+        var out = RunCapture(Argv("status", "--porcelain", "", ""));
+        var lines = Str.Split(out, "\n");
+        var n = Seq.get_Length(lines);
+        var i = 0;
+        while i < n {
+            var line = Obj.ToString(Seq.Get(lines, i));
+            i = i + 1;
+            if Str.Length(line) < 4 { continue; }
+            var x = Str.Left(line, 1);
+            var y = Str.Left(Str.Mid(line, 2), 1);
+            var path = Str.Mid(line, 4);
+            var e = new GitEntry();
+            e.index = x;
+            e.worktree = y;
+            e.path = path;
+            e.untracked = (x == "?" and y == "?");
+            e.staged = (x != " " and x != "?");
+            st.entries.Push(e);
+        }
+        return st;
+    }
+
+    /// @brief Stage one path (`git add`).
+    expose func Stage(path: String) -> Boolean {
+        return RunExit(Argv("add", "--", path, "")) == 0;
+    }
+
+    /// @brief Stage everything (`git add -A`).
+    expose func StageAll() -> Boolean {
+        return RunExit(Argv("add", "-A", "", "")) == 0;
+    }
+
+    /// @brief Unstage one path (`git restore --staged`).
+    expose func Unstage(path: String) -> Boolean {
+        return RunExit(Argv("restore", "--staged", "--", path)) == 0;
+    }
+
+    /// @brief Commit staged changes with @p message.
+    expose func Commit(message: String) -> Boolean {
+        return RunExit(Argv("commit", "-m", message, "")) == 0;
+    }
+
+    /// @brief Unified diff for @p path (staged or worktree).
+    expose func Diff(path: String, staged: Boolean) -> String {
+        if staged {
+            return RunCapture(Argv("diff", "--cached", "--", path));
+        }
+        return RunCapture(Argv("diff", "--", path, ""));
+    }
+
+    /// @brief Push the current branch (blocks; network).
+    expose func Push() -> Boolean {
+        return RunExit(Argv("push", "", "", "")) == 0;
+    }
+
+    /// @brief Pull the current branch (blocks; network).
+    expose func Pull() -> Boolean {
+        return RunExit(Argv("pull", "", "", "")) == 0;
+    }
+
+    /// @brief Switch to an existing branch.
+    expose func Checkout(branchName: String) -> Boolean {
+        return RunExit(Argv("switch", branchName, "", "")) == 0;
+    }
+
+    /// @brief Newline-separated short branch names.
+    expose func Branches() -> String {
+        return RunCapture(Argv("branch", "--format=%(refname:short)", "", ""));
+    }
+}

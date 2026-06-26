@@ -1,0 +1,179 @@
+module scm_view;
+
+bind "scm_git";
+
+bind Viper.GUI as GUI;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: scm_view  (Phase 5C — source control)
+// PURPOSE: The Source Control panel shown in the activity bar's left view. Wraps
+//          scm_git.Git: lists changed files, stages/unstages, commits, pushes/
+//          pulls, switches diff on selection, and shows the current branch.
+//
+// WHERE-THIS-FITS: Built into the shell's `scmViewHost` (created in 5A). main.zia
+//          calls Setup(host) once, SetRepo(rootPath) when the Source Control view
+//          is shown, and HandleEvents() each frame to poll the buttons + list.
+//
+// DESIGN: All git work is synchronous (scm_git). Refresh re-reads `git status`
+//   and repopulates the list, stashing each row's repo-relative path as item
+//   data. Diff is git's unified text in an OutputPane. push/pull block briefly
+//   (v1 limitation inherited from scm_git).
+// ============================================================================
+
+/// @brief Source Control panel controller.
+class ScmView {
+    expose scm_git.Git git;
+    expose GUI.Label branchLabel;
+    expose GUI.ListBox statusList;
+    expose GUI.TextInput commitInput;
+    expose GUI.Button refreshBtn;
+    expose GUI.Button pushBtn;
+    expose GUI.Button pullBtn;
+    expose GUI.Button stageBtn;
+    expose GUI.Button unstageBtn;
+    expose GUI.Button stageAllBtn;
+    expose GUI.Button commitBtn;
+    expose GUI.OutputPane diffPane;
+    expose Boolean ready;
+    expose String repoPath;
+
+    expose func init() {
+        git = new scm_git.Git();
+        ready = false;
+        repoPath = "";
+    }
+
+    /// @brief Build the Source Control widgets into @p host (the scmViewHost VBox).
+    expose func Setup(host: GUI.VBox) {
+        if host == null { return; }
+
+        branchLabel = GUI.Label.New(host, "Source Control");
+
+        var topRow = GUI.HBox.New();
+        host.AddChild(topRow);
+        refreshBtn = GUI.Button.New(topRow, "Refresh");
+        pushBtn = GUI.Button.New(topRow, "Push");
+        pullBtn = GUI.Button.New(topRow, "Pull");
+
+        statusList = GUI.ListBox.New(host);
+        statusList.SetFlex(1.0);
+
+        var stageRow = GUI.HBox.New();
+        host.AddChild(stageRow);
+        stageBtn = GUI.Button.New(stageRow, "Stage");
+        unstageBtn = GUI.Button.New(stageRow, "Unstage");
+        stageAllBtn = GUI.Button.New(stageRow, "Stage All");
+
+        var commitRow = GUI.HBox.New();
+        host.AddChild(commitRow);
+        commitInput = GUI.TextInput.New(commitRow);
+        commitInput.SetFlex(1.0);
+        commitInput.SetPlaceholder("Commit message");
+        commitBtn = GUI.Button.New(commitRow, "Commit");
+
+        diffPane = GUI.OutputPane.New(host);
+        diffPane.SetFlex(1.0);
+
+        ready = true;
+    }
+
+    /// @brief Point the view at a repository root and refresh.
+    expose func SetRepo(path: String) {
+        repoPath = path;
+        git.SetRepo(path);
+        Refresh();
+    }
+
+    /// @brief Re-read `git status` and repopulate the list + branch label.
+    expose func Refresh() {
+        if ready == false { return; }
+        statusList.Clear();
+        if diffPane != null { diffPane.Clear(); }
+
+        var st = git.Status();
+        if st.isRepo == false {
+            branchLabel.SetText("Not a git repository");
+            return;
+        }
+        if Str.Length(st.branch) > 0 {
+            branchLabel.SetText("Branch: " + st.branch);
+        } else {
+            branchLabel.SetText("Branch: (detached)");
+        }
+
+        var i = 0;
+        while i < st.entries.count() {
+            var e = st.entries.get(i);
+            var marker = StatusMarker(e);
+            var item = statusList.AddItem(marker + " " + e.path);
+            GUI.ListBox.ItemSetData(item, e.path);
+            i = i + 1;
+        }
+    }
+
+    /// @brief Two-char marker for a status entry (staged/worktree/untracked).
+    hide func StatusMarker(e: scm_git.GitEntry) -> String {
+        if e.untracked { return "[?]"; }
+        if e.staged { return "[+]"; }
+        return "[~]";
+    }
+
+    /// @brief Repo-relative path of the selected row ("" when none).
+    hide func SelectedPath() -> String {
+        if ready == false { return ""; }
+        var item = statusList.get_Selected();
+        if item == null { return ""; }
+        return GUI.ListBox.ItemGetData(item);
+    }
+
+    /// @brief Show the diff of @p path (worktree first, else staged).
+    hide func ShowDiff(path: String) {
+        if diffPane == null { return; }
+        diffPane.Clear();
+        if path == "" { return; }
+        var d = git.Diff(path, false);
+        if Str.Length(Str.Trim(d)) == 0 {
+            d = git.Diff(path, true);
+        }
+        if Str.Length(Str.Trim(d)) == 0 {
+            diffPane.Append("(no diff)\n");
+        } else {
+            diffPane.Append(d);
+        }
+    }
+
+    /// @brief Per-frame: poll the buttons and the selection. Safe when hidden.
+    expose func HandleEvents() {
+        if ready == false { return; }
+
+        if refreshBtn.WasClicked() != 0 { Refresh(); }
+
+        if stageAllBtn.WasClicked() != 0 {
+            git.StageAll();
+            Refresh();
+        }
+        if stageBtn.WasClicked() != 0 {
+            var p = SelectedPath();
+            if p != "" { git.Stage(p); Refresh(); }
+        }
+        if unstageBtn.WasClicked() != 0 {
+            var p = SelectedPath();
+            if p != "" { git.Unstage(p); Refresh(); }
+        }
+        if commitBtn.WasClicked() != 0 {
+            var msg = commitInput.get_Text();
+            if Str.Length(Str.Trim(msg)) > 0 {
+                git.Commit(msg);
+                commitInput.SetText("");
+                Refresh();
+            }
+        }
+        if pushBtn.WasClicked() != 0 { git.Push(); Refresh(); }
+        if pullBtn.WasClicked() != 0 { git.Pull(); Refresh(); }
+
+        if statusList.WasSelectionChanged() != 0 {
+            ShowDiff(SelectedPath());
+        }
+    }
+}

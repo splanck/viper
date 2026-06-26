@@ -5,6 +5,13 @@
 //
 // File: src/tests/runtime/RTIdeWorkspaceTests.cpp
 // Purpose: Tests for IDE workspace, asset resolver, manifest, and edit helpers.
+// Key invariants:
+//   - Runtime workspace helpers return structured maps/sequences with stable keys.
+//   - Temporary files are isolated under per-test directories and removed on success.
+// Ownership/Lifetime:
+//   - Runtime strings created by tests are unref'd by the creating test.
+//   - Runtime map/sequence objects are owned by the runtime test process.
+// Links: src/runtime/io/rt_ide_primitives.cpp, src/runtime/io/rt_ide_primitives.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -96,6 +103,32 @@ static void test_file_index_and_ignore() {
     assert(rt_map_get_bool(status, rt_const_cstr("truncated")) == 0);
     assert(rt_map_get_int(status, rt_const_cstr("maxEntries")) > 0);
     assert(rt_seq_len(rt_map_get(status, rt_const_cstr("diagnostics"))) == 0);
+
+    void *first_page = rt_workspace_file_index_page(
+        root_s, rt_const_cstr(".zia,.png,.tmp"), rt_const_cstr(""), 1, 0, 2);
+    assert(rt_map_get_bool(first_page, rt_const_cstr("valid")) == 1);
+    assert(rt_map_get_int(first_page, rt_const_cstr("offset")) == 0);
+    assert(rt_map_get_int(first_page, rt_const_cstr("emitted")) == 2);
+    assert(rt_map_get_bool(first_page, rt_const_cstr("done")) == 0);
+    void *first_entries = rt_map_get(first_page, rt_const_cstr("entries"));
+    assert(rt_seq_len(first_entries) == 2);
+    int64_t next_offset = rt_map_get_int(first_page, rt_const_cstr("nextOffset"));
+    assert(next_offset == 2);
+
+    void *second_page = rt_workspace_file_index_page(
+        root_s, rt_const_cstr(".zia,.png,.tmp"), rt_const_cstr(""), 1, next_offset, 64);
+    assert(rt_map_get_bool(second_page, rt_const_cstr("valid")) == 1);
+    assert(rt_map_get_int(second_page, rt_const_cstr("offset")) == next_offset);
+    assert(rt_map_get_bool(second_page, rt_const_cstr("done")) == 1);
+    void *second_entries = rt_map_get(second_page, rt_const_cstr("entries"));
+    assert(rt_seq_len(first_entries) + rt_seq_len(second_entries) == rt_seq_len(entries));
+
+    rt_string invalid_root = s((root / "missing-page").string());
+    void *invalid_page = rt_workspace_file_index_page(
+        invalid_root, rt_const_cstr(".zia"), rt_const_cstr(""), 0, 0, 10);
+    assert(rt_map_get_bool(invalid_page, rt_const_cstr("valid")) == 0);
+    assert(rt_seq_len(rt_map_get(invalid_page, rt_const_cstr("diagnostics"))) > 0);
+    rt_string_unref(invalid_root);
 
     rt_string missing_root = s((root / "missing").string());
     void *missing_status = rt_workspace_file_index_status(

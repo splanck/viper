@@ -76,6 +76,12 @@ class EditorScheduler {
     expose Integer quickOpenDueMs;
     expose Integer quickOpenGeneration;
 
+    expose Integer queuedTotal;
+    expose Integer completedTotal;
+    expose Integer canceledTotal;
+    expose Integer lastQueuedKind;
+    expose Integer lastCompletedKind;
+
     expose func init() {
         diagnosticsIdleMs = SCHED_DIAGNOSTICS_IDLE_MS;
         completionDebounceMs = SCHED_COMPLETION_DEBOUNCE_MS;
@@ -94,6 +100,11 @@ class EditorScheduler {
         indexQueued = false; indexPath = ""; indexRevision = -1; indexDueMs = 0; indexGeneration = 0;
         searchQueued = false; searchPath = ""; searchRevision = -1; searchDueMs = 0; searchGeneration = 0;
         quickOpenQueued = false; quickOpenPath = ""; quickOpenRevision = -1; quickOpenDueMs = 0; quickOpenGeneration = 0;
+        queuedTotal = 0;
+        completedTotal = 0;
+        canceledTotal = 0;
+        lastQueuedKind = 0;
+        lastCompletedKind = 0;
     }
 
     expose func DefaultDelay(kind: Integer) -> Integer {
@@ -124,6 +135,8 @@ class EditorScheduler {
         var delay = delayMs;
         if delay < 0 { delay = DefaultDelay(kind); }
         var due = Viper.Time.GetTickCount() + delay;
+        queuedTotal = queuedTotal + 1;
+        lastQueuedKind = kind;
 
         if kind == JOB_DIAGNOSTICS {
             diagnosticsQueued = true; diagnosticsPath = path; diagnosticsRevision = revision; diagnosticsDueMs = due; diagnosticsGeneration = diagnosticsGeneration + 1; return diagnosticsGeneration;
@@ -208,6 +221,7 @@ class EditorScheduler {
     }
 
     expose func Cancel(kind: Integer) {
+        canceledTotal = canceledTotal + 1;
         if kind == JOB_DIAGNOSTICS { diagnosticsQueued = false; diagnosticsGeneration = diagnosticsGeneration + 1; return; }
         if kind == JOB_COMPLETION { completionQueued = false; completionGeneration = completionGeneration + 1; return; }
         if kind == JOB_SIGNATURE { signatureQueued = false; signatureGeneration = signatureGeneration + 1; return; }
@@ -219,6 +233,8 @@ class EditorScheduler {
     }
 
     expose func Complete(kind: Integer) {
+        completedTotal = completedTotal + 1;
+        lastCompletedKind = kind;
         if kind == JOB_DIAGNOSTICS { diagnosticsQueued = false; return; }
         if kind == JOB_COMPLETION { completionQueued = false; return; }
         if kind == JOB_SIGNATURE { signatureQueued = false; return; }
@@ -227,5 +243,60 @@ class EditorScheduler {
         if kind == JOB_INDEX_SYNC { indexQueued = false; return; }
         if kind == JOB_SEARCH { searchQueued = false; return; }
         if kind == JOB_QUICK_OPEN_REFRESH { quickOpenQueued = false; return; }
+    }
+
+    /// @brief Count currently queued background work items.
+    /// @return Number of job kinds with a pending debounced task.
+    expose func QueuedCount() -> Integer {
+        var n = 0;
+        if diagnosticsQueued { n = n + 1; }
+        if completionQueued { n = n + 1; }
+        if signatureQueued { n = n + 1; }
+        if hoverQueued { n = n + 1; }
+        if symbolsQueued { n = n + 1; }
+        if indexQueued { n = n + 1; }
+        if searchQueued { n = n + 1; }
+        if quickOpenQueued { n = n + 1; }
+        return n;
+    }
+
+    /// @brief Return a compact name for a scheduler kind.
+    /// @param kind One of JOB_*.
+    /// @return Lowercase display name used in status text.
+    expose func KindName(kind: Integer) -> String {
+        if kind == JOB_DIAGNOSTICS { return "diagnostics"; }
+        if kind == JOB_COMPLETION { return "completion"; }
+        if kind == JOB_SIGNATURE { return "signature"; }
+        if kind == JOB_HOVER { return "hover"; }
+        if kind == JOB_SYMBOLS { return "symbols"; }
+        if kind == JOB_INDEX_SYNC { return "index"; }
+        if kind == JOB_SEARCH { return "search"; }
+        if kind == JOB_QUICK_OPEN_REFRESH { return "quick open"; }
+        return "idle";
+    }
+
+    /// @brief Return the highest-priority queued job kind.
+    /// @details Priorities favor visible editor feedback first, then navigation
+    ///          and indexing. This does not reorder existing debounce behavior
+    ///          yet; it exposes the same priority model to status and future
+    ///          queue-based scheduling work.
+    expose func NextQueuedKind() -> Integer {
+        if completionQueued { return JOB_COMPLETION; }
+        if signatureQueued { return JOB_SIGNATURE; }
+        if diagnosticsQueued { return JOB_DIAGNOSTICS; }
+        if hoverQueued { return JOB_HOVER; }
+        if searchQueued { return JOB_SEARCH; }
+        if quickOpenQueued { return JOB_QUICK_OPEN_REFRESH; }
+        if symbolsQueued { return JOB_SYMBOLS; }
+        if indexQueued { return JOB_INDEX_SYNC; }
+        return 0;
+    }
+
+    /// @brief Human-readable scheduler summary for status surfaces.
+    /// @return Short text such as "Tasks: idle" or "Tasks: 3 queued (completion)".
+    expose func StatusText() -> String {
+        var n = QueuedCount();
+        if n <= 0 { return "Tasks: idle"; }
+        return "Tasks: " + n + " queued (" + KindName(NextQueuedKind()) + ")";
     }
 }

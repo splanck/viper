@@ -801,10 +801,13 @@ Workspace file inventory helper for IDEs and editor tools.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Enumerate(root, extensionsCsv, excludesCsv, includeDirs)` | `Seq(String, String, String, Boolean)` | Recursively enumerate workspace entries under `root` |
+| `Page(root, extensionsCsv, excludesCsv, includeDirs, offset, limit)` | `Map(String, String, String, Boolean, Integer, Integer)` | Return one bounded page of workspace entries |
 | `Status(root, extensionsCsv, excludesCsv, includeDirs)` | `Map(String, String, String, Boolean)` | Return traversal status without materializing every entry |
 | `ShouldIgnore(root, relativePath, patternsCsv)` | `Boolean(String, String, String)` | Return whether a relative path is ignored by hard excludes, `.gitignore`, or explicit patterns |
 
 `Enumerate` returns a `Seq` of `Map` records. Each record includes `path`, `relativePath`, `name`, `extension`, `kind`, `isDirectory`, `id`, `size`, and `modified`.
+
+`Page` returns a `Map` with `entries`, `offset`, `limit`, `emitted`, `nextOffset`, `scanned`, `done`, `truncated`, `maxEntries`, and `diagnostics`. Each entry has the same shape as `Enumerate`. Use `nextOffset` until `done` is true to process large workspaces without allocating every row at once.
 
 `Status` returns a `Map` with `valid`, `root`, `entryCount`, `maxEntries`, `truncated`, and `diagnostics`. It uses the same filters and ignore rules as `Enumerate`, but it is intended for IDE progress/status surfaces and large-workspace guardrails where allocating every entry would be unnecessary.
 

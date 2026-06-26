@@ -1357,6 +1357,21 @@ RT_ALIAS("Viper.System.Process.Handle.Kill",        ProcessKill)
 RT_ALIAS("Viper.System.Process.Handle.Wait",        ProcessWait)
 RT_ALIAS("Viper.System.Process.Handle.Destroy",     ProcessDestroy)
 
+// Viper.System.Pty - PTY-backed child with a merged ANSI output stream + resize.
+// See ADR 0016. Backed by rt_pty.c (POSIX openpt/fork; Windows ConPTY).
+RT_FUNC(PtyOpen,        rt_pty_open,         "Viper.System.Pty.Open",                 "obj<Viper.System.Pty.PtySession>(str,obj,str,obj,i64,i64)")
+RT_FUNC(PtyIsSupported, rt_pty_is_supported, "Viper.System.Pty.IsSupported",          "i1()")
+RT_FUNC(PtyIsValid,     rt_pty_is_valid,     "Viper.System.Pty.PtySession.IsValid",   "i1(obj)")
+RT_FUNC(PtyPoll,        rt_pty_poll,         "Viper.System.Pty.PtySession.Poll",      "i1(obj)")
+RT_FUNC(PtyIsRunning,   rt_pty_is_running,   "Viper.System.Pty.PtySession.IsRunning", "i1(obj)")
+RT_FUNC(PtyRead,        rt_pty_read,         "Viper.System.Pty.PtySession.Read",      "str(obj)")
+RT_FUNC(PtyWrite,       rt_pty_write,        "Viper.System.Pty.PtySession.Write",     "i64(obj,str)")
+RT_FUNC(PtyResize,      rt_pty_resize,       "Viper.System.Pty.PtySession.Resize",    "i1(obj,i64,i64)")
+RT_FUNC(PtyExitCode,    rt_pty_exit_code,    "Viper.System.Pty.PtySession.ExitCode",  "i64(obj)")
+RT_FUNC(PtyKill,        rt_pty_kill,         "Viper.System.Pty.PtySession.Kill",      "i1(obj)")
+RT_FUNC(PtyWait,        rt_pty_wait,         "Viper.System.Pty.PtySession.Wait",      "i64(obj)")
+RT_FUNC(PtyDestroy,     rt_pty_destroy,      "Viper.System.Pty.PtySession.Destroy",   "void(obj)")
+
 RT_FUNC(ShutdownRequest,   rt_shutdown_request,         "Viper.System.Shutdown.Request",       "void(i64)")
 RT_FUNC(ShutdownPoll,      rt_shutdown_poll,            "Viper.System.Shutdown.Poll",          "i64()")
 RT_FUNC(ShutdownPending,   rt_shutdown_pending,         "Viper.System.Shutdown.Pending",       "i1()")
@@ -3433,6 +3448,7 @@ RT_FUNC(AssetUnmount,   rt_asset_unmount,    "Viper.IO.Assets.Unmount",   "i64(s
 RT_FUNC(AssetResolverResolve, rt_asset_resolver_resolve, "Viper.Assets.Resolver.Resolve", "obj<Viper.Collections.Map>(str,str,str,str)")
 
 RT_FUNC(WorkspaceFileIndexEnumerate, rt_workspace_file_index_enumerate, "Viper.Workspace.FileIndex.Enumerate", "obj<Viper.Collections.Seq>(str,str,str,i1)")
+RT_FUNC(WorkspaceFileIndexPage, rt_workspace_file_index_page, "Viper.Workspace.FileIndex.Page", "obj<Viper.Collections.Map>(str,str,str,i1,i64,i64)")
 RT_FUNC(WorkspaceFileIndexStatus, rt_workspace_file_index_status, "Viper.Workspace.FileIndex.Status", "obj<Viper.Collections.Map>(str,str,str,i1)")
 RT_FUNC(WorkspaceFileIndexShouldIgnore, rt_workspace_file_index_should_ignore, "Viper.Workspace.FileIndex.ShouldIgnore", "i1(str,str,str)")
 RT_FUNC(WorkspaceWatcherPollBatch, rt_workspace_watcher_poll_batch, "Viper.Workspace.WorkspaceWatcher.PollBatch", "obj<Viper.Collections.Seq>(obj,i64)")
@@ -3466,6 +3482,7 @@ RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.Workspace.FileIndex", WorkspaceFileIndex, "none", none)
     RT_METHOD("Enumerate",    "obj<Viper.Collections.Seq>(str,str,str,i1)", WorkspaceFileIndexEnumerate)
+    RT_METHOD("Page",         "obj<Viper.Collections.Map>(str,str,str,i1,i64,i64)", WorkspaceFileIndexPage)
     RT_METHOD("Status",       "obj<Viper.Collections.Map>(str,str,str,i1)", WorkspaceFileIndexStatus)
     RT_METHOD("ShouldIgnore", "i1(str,str,str)",                            WorkspaceFileIndexShouldIgnore)
 RT_CLASS_END()
@@ -7931,6 +7948,25 @@ RT_CLASS_BEGIN("Viper.System.Process.ProcessHandle", ProcessHandle, "obj", none)
     RT_METHOD("Kill", "i1()", ProcessKill)
     RT_METHOD("Wait", "i64()", ProcessWait)
     RT_METHOD("Destroy", "void()", ProcessDestroy)
+RT_CLASS_END()
+
+// Viper.System.Pty - factory for PTY-backed interactive child sessions (ADR 0016).
+RT_CLASS_BEGIN("Viper.System.Pty", Pty, "obj", none)
+    RT_METHOD("Open", "obj<Viper.System.Pty.PtySession>(str,obj,str,obj,i64,i64)", PtyOpen)
+    RT_METHOD("IsSupported", "i1()", PtyIsSupported)
+RT_CLASS_END()
+
+RT_CLASS_BEGIN("Viper.System.Pty.PtySession", PtySession, "obj", none)
+    RT_METHOD("IsValid", "i1()", PtyIsValid)
+    RT_METHOD("Poll", "i1()", PtyPoll)
+    RT_METHOD("IsRunning", "i1()", PtyIsRunning)
+    RT_METHOD("Read", "str()", PtyRead)
+    RT_METHOD("Write", "i64(str)", PtyWrite)
+    RT_METHOD("Resize", "i1(i64,i64)", PtyResize)
+    RT_METHOD("ExitCode", "i64()", PtyExitCode)
+    RT_METHOD("Kill", "i1()", PtyKill)
+    RT_METHOD("Wait", "i64()", PtyWait)
+    RT_METHOD("Destroy", "void()", PtyDestroy)
 RT_CLASS_END()
 
 // Viper.System.Shutdown - poll-based graceful shutdown requests

@@ -87,13 +87,17 @@ class LanguageServiceManager {
         basicService.canDiagnose = true;
         basicService.canHover = true;
         basicService.canDocumentSymbols = true;
+        basicService.serverCanComplete = true;
         basicService.serverCanDiagnose = true;
+        basicService.serverCanHover = true;
+        basicService.serverCanDocumentSymbols = true;
 
         textService = new LanguageService();
         textService.name = LANGUAGE_TEXT;
 
         sceneService = new LanguageService();
         sceneService.name = LANGUAGE_SCENE;
+        sceneService.externalServerName = "";
     }
 
     expose func ForDocument(doc: document.Document) -> LanguageService {

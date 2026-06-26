@@ -7,6 +7,7 @@ bind "../editor/editor_tabs";
 bind "../services/file_utils";
 
 bind Ini = Viper.Text.Ini;
+bind Codec = Viper.Text.Codec;
 bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
@@ -66,10 +67,14 @@ class SessionManager {
             Ini.Set(ini, section, "cursorLine", "" + doc.cursorLine);
             Ini.Set(ini, section, "cursorCol", "" + doc.cursorCol);
             Ini.Set(ini, section, "scrollLine", "" + doc.scrollLine);
-            if doc.isNew and doc.isModified and Str.Length(doc.content) <= MAX_SESSION_RECOVERY_CHARS {
-                Ini.Set(ini, section, "recovery", doc.content);
+            if ShouldPersistRecovery(doc) {
+                Ini.Set(ini, section, "recovery", EncodeRecoveryText(doc.content));
+                Ini.Set(ini, section, "recoveryEncoding", "base64");
+                Ini.Set(ini, section, "recoveryModified", "1");
             } else {
                 Ini.Set(ini, section, "recovery", "");
+                Ini.Set(ini, section, "recoveryEncoding", "");
+                Ini.Set(ini, section, "recoveryModified", "0");
             }
             i = i + 1;
         }
@@ -128,9 +133,16 @@ class SessionManager {
         while i < count {
             var section = "session.file." + i;
             var path = Ini.Get(ini, section, "path");
+            var recovery = DecodeRecoveryText(Ini.Get(ini, section, "recovery"),
+                                              Ini.Get(ini, section, "recoveryEncoding"));
+            var recoveryModified = Ini.Get(ini, section, "recoveryModified") == "1";
             if path != "" and IO.File.Exists(path) {
                 var doc = docMgr.OpenFile(path);
                 doc.kind = file_utils.DetectKind(path);
+                if recoveryModified and recovery != "" {
+                    doc.content = recovery;
+                    doc.isModified = true;
+                }
                 doc.cursorLine = Parse.IntOr(Ini.Get(ini, section, "cursorLine"), 1);
                 doc.cursorCol = Parse.IntOr(Ini.Get(ini, section, "cursorCol"), 1);
                 doc.scrollLine = Parse.IntOr(Ini.Get(ini, section, "scrollLine"), 1);
@@ -139,9 +151,11 @@ class SessionManager {
                 if doc.scrollLine <= 0 { doc.scrollLine = 1; }
                 tabs.AddTab(doc.fileName, 1);
                 tabs.SetTooltip(docMgr.activeIndex, doc.filePath);
+                if doc.isModified {
+                    tabs.SetModified(docMgr.activeIndex, true);
+                }
                 restored = restored + 1;
             } else if path == "" {
-                var recovery = Ini.Get(ini, section, "recovery");
                 if recovery != "" {
                     var draft = docMgr.NewDocument();
                     var savedName = Ini.Get(ini, section, "name");
@@ -178,6 +192,46 @@ class SessionManager {
             tabs.SetActive(activeIdx);
         }
         return restored;
+    }
+
+    /// @brief Decide whether a document should carry a crash-recovery snapshot.
+    /// @details Recovery is deliberately limited to modified, editable text buffers
+    ///          under a bounded size cap. Existing files are included as well as
+    ///          untitled drafts so a crash after editing a saved file restores the
+    ///          unsaved buffer instead of silently reopening the older disk version.
+    /// @param doc Open document being written into session state.
+    /// @return True when the complete buffer should be persisted in settings.
+    hide func ShouldPersistRecovery(doc: document.Document) -> Boolean {
+        if doc == null { return false; }
+        if doc.isModified == false { return false; }
+        if doc.isReadOnlyPreview { return false; }
+        return Str.Length(doc.content) <= MAX_SESSION_RECOVERY_CHARS;
+    }
+
+    /// @brief Encode crash-recovery text into an INI-safe scalar value.
+    /// @details The project INI helper writes values verbatim and parses one
+    ///          physical line at a time, so raw document buffers containing
+    ///          newlines cannot be stored directly. Base64 keeps the complete
+    ///          text reversible while staying within the existing runtime API.
+    /// @param text Document buffer to persist.
+    /// @return Base64-encoded representation suitable for `Ini.Set`.
+    hide func EncodeRecoveryText(text: String) -> String {
+        return Codec.Base64Enc(text);
+    }
+
+    /// @brief Decode session recovery text from current or legacy settings.
+    /// @details New entries set `recoveryEncoding=base64`. Older ViperIDE
+    ///          sessions stored raw text under `recovery`; those values are
+    ///          returned unchanged so restore keeps backward compatibility.
+    /// @param encoded Value read from `session.file.N.recovery`.
+    /// @param encoding Encoding marker read from `session.file.N.recoveryEncoding`.
+    /// @return Decoded document buffer, or the raw value for legacy entries.
+    hide func DecodeRecoveryText(encoded: String, encoding: String) -> String {
+        if encoded == "" { return ""; }
+        if encoding == "base64" {
+            return Codec.Base64Dec(encoded);
+        }
+        return encoded;
     }
 
     hide func SaveRecentProjects(ini: Any, projectRoot: String) {

@@ -42,11 +42,11 @@ bind Map = Viper.Collections.Map;
 // ============================================================================
 
 final HOVER_DELAY_MS = 300;    // ms to dwell before showing tooltip
-final HOVER_TOOLTIP_DEFAULT_WIDTH = 520;
+final HOVER_TOOLTIP_DEFAULT_WIDTH = 600;
 final HOVER_TOOLTIP_MIN_WIDTH = 260;
 final HOVER_TOOLTIP_DEFAULT_HEIGHT = 72;
 final HOVER_TOOLTIP_TALL_HEIGHT = 104;
-final HOVER_TOOLTIP_MAX_HEIGHT = 128;
+final HOVER_TOOLTIP_MAX_HEIGHT = 180;
 
 /// @brief Mouse-position hover tooltip controller.
 class HoverController {
@@ -355,7 +355,7 @@ func FormatHoverDisplay(info: Any) -> String {
         display = display + "  [" + source + "]";
     }
 
-    var doc = ShortInlineText(Map.GetStr(info, "documentation"), 160);
+    var doc = ShortInlineText(Map.GetStr(info, "documentation"), 320);
     if doc != "" {
         display = display + "\n" + doc;
     }

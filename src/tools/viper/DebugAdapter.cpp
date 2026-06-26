@@ -203,21 +203,61 @@ JsonValue terminatedEvent(const char *reason, int exitCode) {
     });
 }
 
-/// @brief Resolve a watch/evaluate expression against the current stop. v1 is a
-///        name lookup over the top frame's locals (side-effect free); an
-///        unresolved name returns ok=false so the IDE can show "not in scope".
-JsonValue evaluatedEvent(const il::vm::DebugStopInfo &info, const std::string &expr) {
-    for (const auto &l : info.locals) {
-        if (l.name == expr) {
-            return JsonValue::object({
-                {"type", JsonValue("evaluated")},
-                {"expr", JsonValue(expr)},
-                {"value", JsonValue(l.value)},
-                {"valueType", JsonValue(l.type)},
-                {"ok", JsonValue(true)},
-            });
+/// @brief Build a side-effect-free local resolver for debug expressions.
+/// @details The DebugExpr evaluator is intentionally decoupled from VM storage.
+///          It asks for value/type strings by local name, so this adapter bridge
+///          supplies those pairs from the top-frame stop snapshot without
+///          mutating the debuggee or touching runtime memory.
+/// @param info VM stop information containing the locals visible to the IDE.
+/// @return Resolver callback suitable for condition, logpoint, and watch evaluation.
+viper::dbgexpr::Resolver localResolver(const il::vm::DebugStopInfo &info) {
+    return [&info](const std::string &name, std::string &val, std::string &ty) -> bool {
+        for (const auto &l : info.locals) {
+            if (l.name == name) {
+                val = l.value;
+                ty = l.type;
+                return true;
+            }
         }
+        return false;
+    };
+}
+
+/// @brief Return the debugger display type for an evaluated expression result.
+/// @param value Pure evaluator result.
+/// @return Compact type string used by the IDE Variables/Evaluate surfaces.
+std::string debugValueType(const viper::dbgexpr::Value &value) {
+    switch (value.k) {
+        case viper::dbgexpr::Value::K::Int:
+            return "i64";
+        case viper::dbgexpr::Value::K::Flt:
+            return "f64";
+        case viper::dbgexpr::Value::K::Bool:
+            return "i1";
+        case viper::dbgexpr::Value::K::Str:
+            return "str";
+        default:
+            return "";
     }
+}
+
+/// @brief Resolve a watch/evaluate expression against the current stop.
+/// @details Evaluation is pure and uses only the current stop's local snapshot.
+///          Expressions use the same grammar as conditional breakpoints and
+///          logpoints: literals, locals, arithmetic, comparisons, boolean ops,
+///          and parentheses. Parse/type errors return ok=false so the IDE can
+///          show an unavailable expression instead of a stale value.
+JsonValue evaluatedEvent(const il::vm::DebugStopInfo &info, const std::string &expr) {
+    auto resolve = localResolver(info);
+    viper::dbgexpr::Value value = viper::dbgexpr::Eval(expr, resolve).run();
+    if (!value.isErr())
+        return JsonValue::object({
+            {"type", JsonValue("evaluated")},
+            {"expr", JsonValue(expr)},
+            {"value", JsonValue(value.str())},
+            {"valueType", JsonValue(debugValueType(value))},
+            {"ok", JsonValue(true)},
+        });
     return JsonValue::object({
         {"type", JsonValue("evaluated")},
         {"expr", JsonValue(expr)},
@@ -278,17 +318,7 @@ class AdapterFrontend : public il::vm::DebugFrontend {
         if (info.reason == "breakpoint") {
             auto it = bpMeta_.find(metaKey(info.path, info.line));
             if (it != bpMeta_.end()) {
-                auto resolve = [&info](const std::string &name, std::string &val,
-                                       std::string &ty) -> bool {
-                    for (const auto &l : info.locals) {
-                        if (l.name == name) {
-                            val = l.value;
-                            ty = l.type;
-                            return true;
-                        }
-                    }
-                    return false;
-                };
+                auto resolve = localResolver(info);
                 if (!it->second.logMessage.empty()) {
                     chan_.emit(logEvent(
                         info.line, viper::dbgexpr::interpolate(it->second.logMessage, resolve)));

@@ -1,0 +1,69 @@
+module multi_root_file_tree_probe;
+
+bind "ui/app_shell";
+bind "core/project_manager";
+
+bind Viper.GUI as GUI;
+bind Terminal = Viper.Terminal;
+bind Dir = Viper.IO.Dir;
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind TempFile = Viper.IO.TempFile;
+bind Str = Viper.String;
+
+// Headless probe for multi-root workspaces (sub-phase 5B). Opens one root, then
+// adds a second via AddFolderToWorkspace, and verifies the aggregate Quick-Open
+// cache draws files from BOTH roots (which exercises AllRoots + the root-aware
+// ShouldExcludePath used while scanning each root), plus duplicate-add is a no-op.
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func cacheContains(projMgr: project_manager.ProjectManager, needle: String) -> Boolean {
+    var n = projMgr.CachedFileCount();
+    var i = 0;
+    while i < n {
+        var p = projMgr.CachedFileAt(i);
+        if Str.EndsWith(p, needle) { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Multi-Root Probe", 960, 640);
+
+    var root1 = TempFile.CreateDirWithPrefix("viperide_mroot1_");
+    var root2 = TempFile.CreateDirWithPrefix("viperide_mroot2_");
+    File.WriteAllText(Path.Join(root1, "alpha.zia"), "module Alpha;\n");
+    File.WriteAllText(Path.Join(root2, "beta.zia"), "module Beta;\n");
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.sidebarTree);
+
+    // Single root first.
+    projMgr.OpenFolder(root1);
+    if projMgr.extraRoots.count() != 0 { fail(shell, "extraRoots not empty after OpenFolder"); return; }
+    if cacheContains(projMgr, "alpha.zia") == false { fail(shell, "alpha.zia missing from single-root cache"); return; }
+    if cacheContains(projMgr, "beta.zia") { fail(shell, "beta.zia present before AddFolder"); return; }
+
+    // Add a second root — both roots' files should now be cached.
+    projMgr.AddFolderToWorkspace(root2);
+    if projMgr.extraRoots.count() != 1 { fail(shell, "extraRoots count != 1 after AddFolder"); return; }
+    if cacheContains(projMgr, "alpha.zia") == false { fail(shell, "alpha.zia missing from multi-root cache"); return; }
+    if cacheContains(projMgr, "beta.zia") == false { fail(shell, "beta.zia missing from multi-root cache"); return; }
+
+    // Adding a duplicate root is a no-op.
+    projMgr.AddFolderToWorkspace(root2);
+    if projMgr.extraRoots.count() != 1 { fail(shell, "duplicate AddFolder changed root count"); return; }
+
+    // OwningProject resolves a file to its own root (relative path strips that root).
+    var betaAbs = Path.Join(root2, "beta.zia");
+    if projMgr.RelativePath(betaAbs) != "beta.zia" { fail(shell, "RelativePath not root-aware for second root"); return; }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

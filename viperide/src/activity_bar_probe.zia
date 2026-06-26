@@ -1,0 +1,45 @@
+module activity_bar_probe;
+
+bind "ui/app_shell";
+bind "ui/activity_bar";
+
+bind Viper.GUI as GUI;
+bind Terminal = Viper.Terminal;
+
+// Headless probe for the activity bar (sub-phase 5A). Verifies that the shell
+// builds with the restructured left side (activity bar + swappable view stack)
+// and that the ActivityBar controller switches the visible left view and keeps
+// its activeView state in sync. Mirrors the wiring main.zia performs.
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Activity Bar Probe", 960, 640);
+
+    // Wire the activity-bar controller exactly as main.zia does.
+    var ab = new activity_bar.ActivityBar();
+    ab.Setup(shell.explorerView, shell.scmViewHost, shell.abExplorer, shell.abSourceControl);
+
+    // Default view is Explorer.
+    if ab.activeView != activity_bar.VIEW_EXPLORER { fail(shell, "default view not explorer"); return; }
+    if shell.explorerView.IsVisible() == 0 { fail(shell, "explorer hidden by default"); return; }
+    if shell.scmViewHost.IsVisible() != 0 { fail(shell, "scm visible by default"); return; }
+
+    // Switch to Source Control.
+    ab.ShowView(activity_bar.VIEW_SCM);
+    if ab.activeView != activity_bar.VIEW_SCM { fail(shell, "activeView not scm after switch"); return; }
+    if shell.scmViewHost.IsVisible() == 0 { fail(shell, "scm hidden after switch"); return; }
+    if shell.explorerView.IsVisible() != 0 { fail(shell, "explorer still visible after scm switch"); return; }
+
+    // Switch back to Explorer.
+    ab.ShowView(activity_bar.VIEW_EXPLORER);
+    if shell.explorerView.IsVisible() == 0 { fail(shell, "explorer hidden after switch back"); return; }
+    if shell.scmViewHost.IsVisible() != 0 { fail(shell, "scm still visible after switch back"); return; }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}
