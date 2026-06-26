@@ -2854,7 +2854,7 @@ RT_FUNC(ZiaSemanticJobDiagnostics,    rt_zia_semantic_job_diagnostics,   "Viper.
 //=============================================================================
 // Viper BASIC Language Services (Phase 4 IDE) — sync, in-process bridge over the
 // BASIC frontend engines (parseAndAnalyzeBasic / BasicCompletionEngine). Result
-// shapes mirror Viper.Zia.* so the IDE controllers consume both. See ADR 0013.
+// shapes mirror Viper.Zia.* so the IDE controllers consume both. See ADR 0014.
 //=============================================================================
 
 RT_FUNC(BasicToolchainCheckForFile,  rt_basic_toolchain_check_for_file,  "Viper.Basic.Toolchain.CheckForFile",  "obj<Viper.Collections.Seq>(str,str)")

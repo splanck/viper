@@ -16,7 +16,7 @@
 /// resolve at final link when the binary links both fe_basic and viper_runtime.
 /// Weak stubs in src/runtime/core/rt_basic_completion_stub.c cover binaries that
 /// omit fe_basic. Result shapes are identical to the Zia bridge so the IDE
-/// controllers consume both. See docs/adr/0013-basic-language-service-runtime-bridge.md.
+/// controllers consume both. See docs/adr/0014-basic-language-service-runtime-bridge.md.
 ///
 //===----------------------------------------------------------------------===//
 

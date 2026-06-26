@@ -87,7 +87,7 @@ func main() {
     var basicDoc = new document.Document();
     basicDoc.language = "basic";
     var basicService = langMgr.ForDocument(basicDoc);
-    // BASIC has in-process completion + diagnostics (Viper.Basic.* bridge, ADR 0013);
+    // BASIC has in-process completion + diagnostics (Viper.Basic.* bridge, ADR 0014);
     // go-to-definition / refs / rename remain off (no project-index for BASIC).
     if assertTrue(basicService.canComplete and basicService.canDiagnose,
                   "basic completion+diagnostics enabled") == false { return; }

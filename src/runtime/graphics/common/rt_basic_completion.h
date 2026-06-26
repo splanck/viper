@@ -19,7 +19,7 @@
 //   - Result shapes match the Zia bridge so the IDE controllers consume both.
 // Links: src/frontends/basic/rt_basic_completion.cpp,
 //        src/runtime/graphics/common/rt_zia_completion.h,
-//        docs/adr/0013-basic-language-service-runtime-bridge.md
+//        docs/adr/0014-basic-language-service-runtime-bridge.md
 //
 //===----------------------------------------------------------------------===//
 #ifndef VIPER_RT_BASIC_COMPLETION_H

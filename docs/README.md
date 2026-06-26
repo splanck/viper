@@ -198,6 +198,7 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 - [ADR-0011](adr/0011-codeeditor-editing-runtime-api.md) — CodeEditor editing runtime API
 - [ADR-0012](adr/0012-debug-conditional-breakpoints-logpoints.md) — Debug conditional breakpoints and logpoints
 - [ADR-0013](adr/0013-editor-input-popup-runtime-surface.md) — Editor input and popup runtime surface
+- [ADR-0014](adr/0014-basic-language-service-runtime-bridge.md) — Viper BASIC language-service runtime bridge
 
 ---
 

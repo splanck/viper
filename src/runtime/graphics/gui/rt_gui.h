@@ -3224,7 +3224,7 @@ void *rt_zia_semantic_job_diagnostics(void *handle);
 void rt_zia_completion_clear_cache(void);
 
 //=========================================================================
-// Viper BASIC IDE language-service bridge (Phase 4; ADR 0013). Strong impls in
+// Viper BASIC IDE language-service bridge (Phase 4; ADR 0014). Strong impls in
 // fe_basic (rt_basic_completion.cpp), weak stubs in viper_runtime. Result shapes
 // mirror the Viper.Zia.* bridge above. See rt_basic_completion.h.
 //=========================================================================
