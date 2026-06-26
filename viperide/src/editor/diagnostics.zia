@@ -8,7 +8,7 @@ bind "../services/locations";
 bind "../editor/quick_fixes";
 
 bind ZiaToolchain = Viper.Zia.Toolchain;
-bind BasicToolchain = Viper.Basic.Toolchain;
+bind BasicToolchain = Viper.Basic.LanguageService;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Seq = Viper.Collections.Seq;

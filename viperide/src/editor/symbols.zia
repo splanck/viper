@@ -5,7 +5,7 @@ bind "../editor/scheduler";
 bind "../ui/app_shell";
 
 bind ZiaCompletion = Viper.Zia.Completion;
-bind BasicCompletion = Viper.Basic.Completion;
+bind BasicCompletion = Viper.Basic.LanguageService;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Viper.GUI;
@@ -56,7 +56,7 @@ class SymbolOutline {
     expose Integer lastRevision;
     expose Boolean visible;
     expose Boolean enabled;
-    expose Boolean isBasic;   // route to Viper.Basic.Completion (sync) instead of Zia
+    expose Boolean isBasic;   // route to Viper.Basic.LanguageService (sync) instead of Zia
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
     expose Integer pendingRevision;

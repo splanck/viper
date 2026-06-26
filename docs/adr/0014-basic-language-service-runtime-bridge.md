@@ -22,12 +22,15 @@ symbols for BASIC. Exposing a new `Viper.Basic.*` runtime surface is a cross-lay
 
 ## Decision
 
-Add a `Viper.Basic.*` runtime surface mirroring the Zia one, **synchronous and in-process**:
+Add a single `Viper.Basic.LanguageService` runtime class, **synchronous and in-process**. (One
+class, not the two-class Completion/Toolchain split the Zia bridge uses: `Viper.*` class leaf
+names must be globally unique — enforced by `test_runtime_class_qualified_surface` — and BASIC's
+completion and toolchain are backed by the same sync `parseAndAnalyzeBasic` engine.)
 
-- `Viper.Basic.Toolchain.CheckForFile(str,str) -> obj<Seq>` — diagnostics.
-- `Viper.Basic.Completion.ItemsForFile(str,str,i64,i64) -> obj<Seq>` — completion items.
-- `Viper.Basic.Completion.SymbolsForFile(str,str) -> str` — document symbols.
-- `Viper.Basic.Completion.HoverInfoForFile(str,str,i64,i64) -> obj<Map>` — hover.
+- `Viper.Basic.LanguageService.CheckForFile(str,str) -> obj<Seq>` — diagnostics.
+- `Viper.Basic.LanguageService.ItemsForFile(str,str,i64,i64) -> obj<Seq>` — completion items.
+- `Viper.Basic.LanguageService.SymbolsForFile(str,str) -> str` — document symbols.
+- `Viper.Basic.LanguageService.HoverInfoForFile(str,str,i64,i64) -> obj<Map>` — hover.
 
 Each emits the **same record shapes** the IDE already consumes from the Zia bridge (identical Map
 keys / the `name\tkind\ttype\tline` symbol string), so the IDE controllers reuse their existing

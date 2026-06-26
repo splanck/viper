@@ -4,7 +4,7 @@ bind "../editor/editor_engine";
 bind "../editor/scheduler";
 
 bind ZiaCompletion = Viper.Zia.Completion;
-bind BasicCompletion = Viper.Basic.Completion;
+bind BasicCompletion = Viper.Basic.LanguageService;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Viper.GUI;
@@ -61,7 +61,7 @@ class HoverController {
     expose Boolean waiting;
     expose String sourcePath;
     expose Boolean enabled;
-    expose Boolean isBasic;   // route to Viper.Basic.Completion (sync) instead of Zia
+    expose Boolean isBasic;   // route to Viper.Basic.LanguageService (sync) instead of Zia
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
     expose Integer pendingRevision;
