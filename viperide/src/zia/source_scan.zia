@@ -1,0 +1,846 @@
+module source_scan;
+
+bind "../services/text_utils";
+bind "identifier_utils";
+
+bind Convert = Viper.Core.Convert;
+bind Obj = Viper.Core.Object;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: source_scan
+// PURPOSE: Shared scanners for lightweight Zia source analysis.
+//
+// WHERE-THIS-FITS: Pure source-analysis layer used by selection expansion,
+//          call hierarchy, formatter indentation, and local refactors. It does
+//          not call compiler services; every result is derived from source text.
+//
+// KEY-DESIGN-CHOICES:
+//   * TRIVIA-AWARE, NOT AST-BASED. These helpers intentionally ignore strings,
+//     line comments, and block comments, but they do not try to be a full parser.
+//     Commands use them only for conservative editor assists.
+//   * 1-BASED PUBLIC LINE NUMBERS. Functions that accept/report document lines
+//     use the IDE's line convention. Inline delimiter helpers use 0-based
+//     columns because CodeEditor selection APIs do.
+//   * FAIL CLOSED. When structure is ambiguous, functions return empty/negative
+//     results so callers can leave the source untouched.
+// ============================================================================
+
+/// @brief Return one 1-based source line.
+/// @param source Whole document text.
+/// @param lineNumber 1-based line number.
+/// @return The requested line or empty when out of range.
+expose func SourceLine(source: String,
+                       lineNumber: Integer) -> String {
+    if source == "" { return ""; }
+    var lines = Str.Split(source, "\n");
+    if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
+    return Obj.ToString(Seq.Get(lines, lineNumber - 1));
+}
+
+/// @brief Find the nearest function declaration at or above a line.
+/// @param source Whole Zia document.
+/// @param lineNumber 1-based line near the cursor/selection.
+/// @return 1-based start line of the enclosing function, or 0 when none exists.
+expose func EnclosingZiaFunctionStartLine(source: String,
+                                          lineNumber: Integer) -> Integer {
+    if source == "" { return 0; }
+    var lines = Str.Split(source, "\n");
+    var i = lineNumber;
+    if i > Seq.get_Length(lines) {
+        i = Seq.get_Length(lines);
+    }
+    while i >= 1 {
+        if ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i - 1))) != "" {
+            return i;
+        }
+        i = i - 1;
+    }
+    return 0;
+}
+
+/// @brief Find the enclosing function name for a source line.
+/// @param source Whole Zia document.
+/// @param lineNumber 1-based line inside or below a function declaration.
+/// @return Function name, or empty when no enclosing function is found.
+expose func EnclosingZiaFunctionName(source: String,
+                                     lineNumber: Integer) -> String {
+    return ZiaFunctionNameFromLine(SourceLine(source, EnclosingZiaFunctionStartLine(source, lineNumber)));
+}
+
+/// @brief Extract a function name from a declaration line.
+/// @details Accepts `func name(`, `expose func name(`, and `hide func name(`.
+///          Other leading modifiers are ignored by design because this scanner
+///          is used for conservative editor assistance, not full parsing.
+/// @param line Source line to inspect.
+/// @return Function name, or empty when the line is not a recognized declaration.
+expose func ZiaFunctionNameFromLine(line: String) -> String {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" or Str.StartsWith(trimmed, "//") {
+        return "";
+    }
+    var funcPos = Str.IndexOf(trimmed, "func ");
+    if funcPos == 0 {
+        return "";
+    }
+    if funcPos > 1 {
+        var before = Str.Trim(Str.Left(trimmed, funcPos - 1));
+        if before != "expose" and before != "hide" {
+            return "";
+        }
+    }
+    var nameStart = funcPos + Str.Length("func ");
+    var openParen = Str.IndexOfFrom(trimmed, nameStart, "(");
+    if openParen == 0 or openParen <= nameStart {
+        return "";
+    }
+    return Str.Trim(Str.MidLen(trimmed, nameStart, openParen - nameStart));
+}
+
+/// @brief Find the matching closing line for a function body.
+/// @details Counts braces after the function declaration while ignoring braces
+///          inside strings and `//` comments.
+/// @param source Whole Zia document.
+/// @param startLine 1-based function declaration line.
+/// @return 1-based line where the function body closes, or `startLine` when
+///         no close can be found.
+expose func ZiaFunctionEndLine(source: String,
+                               startLine: Integer) -> Integer {
+    var lines = Str.Split(source, "\n");
+    var startIdx = startLine - 1;
+    if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
+
+    var depth = 0;
+    var seenOpen = false;
+    var i = startIdx;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var pos = 1;
+        var inString = false;
+        while pos <= Str.Length(line) {
+            var ch = Str.MidLen(line, pos, 1);
+            var next = "";
+            if pos < Str.Length(line) {
+                next = Str.MidLen(line, pos + 1, 1);
+            }
+
+            if inString {
+                if ch == "\\" {
+                    pos = pos + 2;
+                    continue;
+                }
+                if ch == "\"" {
+                    inString = false;
+                }
+            } else {
+                if ch == "/" and next == "/" {
+                    break;
+                }
+                if ch == "\"" {
+                    inString = true;
+                } else if ch == "{" {
+                    depth = depth + 1;
+                    seenOpen = true;
+                } else if ch == "}" {
+                    if seenOpen {
+                        depth = depth - 1;
+                        if depth <= 0 {
+                            return i + 1;
+                        }
+                    }
+                }
+            }
+
+            pos = pos + 1;
+        }
+        i = i + 1;
+    }
+
+    return startLine;
+}
+
+/// @brief Collect simple call tokens in a line range.
+/// @details A call token is an identifier followed by `(` outside strings and
+///          comments, excluding function declaration names and keywords.
+/// @param source Whole Zia document.
+/// @param startLine 1-based inclusive start line.
+/// @param endLine 1-based inclusive end line.
+/// @return Sequence of maps with `name`, `line`, and 0-based `column` fields.
+expose func OutgoingZiaCallTokens(source: String,
+                                  startLine: Integer,
+                                  endLine: Integer) -> Any {
+    var tokens = Seq.New();
+    if source == "" { return tokens; }
+    var lines = Str.Split(source, "\n");
+    var fromLine = startLine;
+    var toLine = endLine;
+    if fromLine < 1 { fromLine = 1; }
+    if toLine < fromLine { toLine = fromLine; }
+    if toLine > Seq.get_Length(lines) { toLine = Seq.get_Length(lines); }
+
+    var i = fromLine;
+    while i <= toLine {
+        AddOutgoingCallsFromLine(tokens, Obj.ToString(Seq.Get(lines, i - 1)), i);
+        i = i + 1;
+    }
+    return tokens;
+}
+
+/// @brief Net brace delta for a line.
+/// @details Counts `{` as +1 and `}` as -1, ignoring braces in strings, `//`
+///          comments, and nested block comments. `commentDepth` is the open
+///          block-comment depth on entry to the line.
+/// @param line Source line.
+/// @param commentDepth Open block-comment depth before this line.
+/// @return Net brace delta visible to indentation/structure scanners.
+expose func ZiaBraceDelta(line: String, commentDepth: Integer) -> Integer {
+    var delta = 0;
+    var inString = false;
+    var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < n {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
+        if ch == "\"" {
+            inString = true;
+        } else if ch == "{" {
+            delta = delta + 1;
+        } else if ch == "}" {
+            delta = delta - 1;
+        }
+        i = i + 1;
+    }
+    return delta;
+}
+
+/// @brief Open block-comment depth at the end of a line.
+/// @param line Source line.
+/// @param commentDepth Open block-comment depth before this line.
+/// @return Block-comment depth after scanning the line.
+expose func ZiaCommentDepthAfter(line: String, commentDepth: Integer) -> Integer {
+    var inString = false;
+    var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < n {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            return depth;
+        }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
+        if ch == "\"" {
+            inString = true;
+        }
+        i = i + 1;
+    }
+    return depth;
+}
+
+/// @brief Open block-comment depth at the start of a target line.
+/// @param lines Sequence returned by `Str.Split(source, "\n")`.
+/// @param targetLine 0-based target line index.
+/// @return Block-comment depth before `targetLine`.
+expose func ZiaCommentDepthBeforeLine(lines: Any,
+                                      targetLine: Integer) -> Integer {
+    var depth = 0;
+    var i = 0;
+    while i < targetLine and i < Seq.get_Length(lines) {
+        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        depth = ZiaCommentDepthAfter(line, depth);
+        i = i + 1;
+    }
+    return depth;
+}
+
+/// @brief Net `(`/`[` nesting delta for a line.
+/// @details Mirrors `ZiaBraceDelta` but tracks parentheses/brackets used by
+///          continuation indentation and inline selection expansion.
+/// @param line Source line.
+/// @param commentDepth Open block-comment depth before this line.
+/// @return Net parenthesis/bracket depth change visible outside trivia.
+expose func ZiaParenDelta(line: String, commentDepth: Integer) -> Integer {
+    var delta = 0;
+    var inString = false;
+    var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < n {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
+        if ch == "\"" {
+            inString = true;
+        } else if ch == "(" or ch == "[" {
+            delta = delta + 1;
+        } else if ch == ")" or ch == "]" {
+            delta = delta - 1;
+        }
+        i = i + 1;
+    }
+    return delta;
+}
+
+/// @brief Open `(`/`[` depth at the start of a target line.
+/// @param lines Sequence returned by `Str.Split(source, "\n")`.
+/// @param targetLine 0-based target line index.
+/// @return Parenthesis/bracket depth before `targetLine`.
+expose func ZiaParenDepthBeforeLine(lines: Any,
+                                    targetLine: Integer) -> Integer {
+    var paren = 0;
+    var depth = 0;
+    var i = 0;
+    while i < targetLine and i < Seq.get_Length(lines) {
+        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        paren = paren + ZiaParenDelta(line, depth);
+        if paren < 0 { paren = 0; }
+        depth = ZiaCommentDepthAfter(line, depth);
+        i = i + 1;
+    }
+    return paren;
+}
+
+/// @brief Extra continuation indent for a line.
+/// @param line Source line.
+/// @param parenDepthBefore Parenthesis/bracket depth before the line.
+/// @return 1 for hanging continuation lines, else 0.
+expose func ZiaContinuationIndent(line: String,
+                                  parenDepthBefore: Integer) -> Integer {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" { return 0; }
+    var first = Str.MidLen(trimmed, 1, 1);
+    if first == ")" or first == "]" { return 0; }
+    if parenDepthBefore > 0 { return 1; }
+    if first == "." { return 1; }
+    return 0;
+}
+
+/// @brief Replace identifier occurrences outside strings and line comments.
+/// @param line Source line.
+/// @param name Identifier to replace.
+/// @param replacement Replacement text.
+/// @return Rebuilt line with matching identifier tokens replaced.
+expose func ReplaceIdentifierOutsideTrivia(line: String,
+                                           name: String,
+                                           replacement: String) -> String {
+    var out = "";
+    var pos = 1;
+    var inString = false;
+    var escape = false;
+    while pos <= Str.Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+        if inString {
+            out = out + ch;
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            pos = pos + 1;
+            continue;
+        }
+        if ch == "/" and next == "/" {
+            out = out + Str.Mid(line, pos);
+            return out;
+        }
+        if ch == "\"" {
+            inString = true;
+            out = out + ch;
+            pos = pos + 1;
+            continue;
+        }
+        if identifier_utils.IsIdentStart(ch) {
+            var ident = "";
+            while pos <= Str.Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+                ident = ident + Str.MidLen(line, pos, 1);
+                pos = pos + 1;
+            }
+            if ident == name {
+                out = out + replacement;
+            } else {
+                out = out + ident;
+            }
+            continue;
+        }
+        out = out + ch;
+        pos = pos + 1;
+    }
+    return out;
+}
+
+/// @brief Find the open inline delimiter enclosing a column.
+/// @param line Source line.
+/// @param startCol 0-based column inside the expression.
+/// @return 0-based open delimiter column, or -1 when none is found.
+expose func EnclosingInlineDelimiterOpenCol(line: String,
+                                            startCol: Integer) -> Integer {
+    if line == "" { return -1; }
+    var limit = startCol;
+    if limit < 0 { limit = 0; }
+    var len = Str.Length(line);
+    if limit >= len { limit = len - 1; }
+
+    var openCols = new List();
+    var openChars = new List();
+    var pos = 0;
+    var inString = false;
+    while pos <= limit {
+        var ch = Str.MidLen(line, pos + 1, 1);
+        var next = "";
+        if pos + 1 < len {
+            next = Str.MidLen(line, pos + 2, 1);
+        }
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "/" and next == "/" {
+                break;
+            }
+            if ch == "\"" {
+                inString = true;
+            } else if IsInlineOpenDelimiter(ch) {
+                openCols.add("" + pos);
+                openChars.add(ch);
+            } else if IsInlineCloseDelimiter(ch) {
+                if openChars.count() > 0
+                   and MatchingInlineClose(Obj.ToString(openChars.get(openChars.count() - 1))) == ch {
+                    openCols.removeAt(openCols.count() - 1);
+                    openChars.removeAt(openChars.count() - 1);
+                }
+            }
+        }
+        pos = pos + 1;
+    }
+    if openCols.count() == 0 { return -1; }
+    return Convert.ToInt(Obj.ToString(openCols.get(openCols.count() - 1)));
+}
+
+/// @brief Find the close delimiter matching an inline open delimiter.
+/// @param line Source line.
+/// @param openCol 0-based column containing `(` or `[`.
+/// @return 0-based close delimiter column, or -1 when no match is found.
+expose func MatchingInlineDelimiterCloseCol(line: String,
+                                            openCol: Integer) -> Integer {
+    var len = Str.Length(line);
+    if line == "" or openCol < 0 or openCol >= len { return -1; }
+    var openCh = Str.MidLen(line, openCol + 1, 1);
+    if IsInlineOpenDelimiter(openCh) == false { return -1; }
+    var closeCh = MatchingInlineClose(openCh);
+    var depth = 0;
+    var pos = openCol;
+    var inString = false;
+    while pos < len {
+        var ch = Str.MidLen(line, pos + 1, 1);
+        var next = "";
+        if pos + 1 < len {
+            next = Str.MidLen(line, pos + 2, 1);
+        }
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "/" and next == "/" {
+                break;
+            }
+            if ch == "\"" {
+                inString = true;
+            } else if ch == openCh {
+                depth = depth + 1;
+            } else if ch == closeCh {
+                depth = depth - 1;
+                if depth == 0 {
+                    return pos;
+                }
+            }
+        }
+        pos = pos + 1;
+    }
+    return -1;
+}
+
+/// @brief Find the open brace line enclosing a line.
+/// @param source Whole Zia document.
+/// @param lineIdx 0-based line index near the cursor.
+/// @return 0-based line containing the open brace, or -1.
+expose func EnclosingBraceOpenLine(source: String,
+                                   lineIdx: Integer) -> Integer {
+    if source == "" or lineIdx < 0 { return -1; }
+    var lines = Str.Split(source, "\n");
+    var openLines = new List();
+    var i = 0;
+    while i < Seq.get_Length(lines) and i <= lineIdx {
+        ScanBraceLineForStack(Obj.ToString(Seq.Get(lines, i)), i, openLines);
+        i = i + 1;
+    }
+    if openLines.count() == 0 { return -1; }
+    return Convert.ToInt(Obj.ToString(openLines.get(openLines.count() - 1)));
+}
+
+/// @brief Find the close brace line matching an open brace line.
+/// @param source Whole Zia document.
+/// @param openLine 0-based line containing an open brace.
+/// @return 0-based close brace line, or -1.
+expose func MatchingBraceCloseLine(source: String,
+                                   openLine: Integer) -> Integer {
+    if source == "" or openLine < 0 { return -1; }
+    var lines = Str.Split(source, "\n");
+    if openLine >= Seq.get_Length(lines) { return -1; }
+    var depth = 0;
+    var i = openLine;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var pos = 1;
+        var inString = false;
+        while pos <= Str.Length(line) {
+            var ch = Str.MidLen(line, pos, 1);
+            var next = "";
+            if pos < Str.Length(line) {
+                next = Str.MidLen(line, pos + 1, 1);
+            }
+            if inString {
+                if ch == "\\" {
+                    pos = pos + 2;
+                    continue;
+                }
+                if ch == "\"" {
+                    inString = false;
+                }
+            } else {
+                if ch == "/" and next == "/" {
+                    break;
+                }
+                if ch == "\"" {
+                    inString = true;
+                } else if ch == "{" {
+                    depth = depth + 1;
+                } else if ch == "}" {
+                    depth = depth - 1;
+                    if depth <= 0 {
+                        return i;
+                    }
+                }
+            }
+            pos = pos + 1;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+/// @brief Return the first whole-word occurrence at or after a position.
+/// @param source Whole document text.
+/// @param word Identifier-like text to find.
+/// @param startLine 1-based start line.
+/// @param startCol 1-based start column for the first line.
+/// @return `"line:column"` using 1-based coordinates, or empty when not found.
+expose func FindNextOccurrence(source: String, word: String, startLine: Integer, startCol: Integer) -> String {
+    var lines = Str.Split(source, "\n");
+    var i = startLine - 1;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var fromCol = 1;
+        if i == startLine - 1 {
+            fromCol = startCol;
+            if fromCol < 1 { fromCol = 1; }
+        }
+        var idx = Str.IndexOfFrom(line, fromCol, word);
+        while idx != 0 {
+            if identifier_utils.IsWordBoundaryMatch(line, idx, Str.Length(word)) {
+                return "" + (i + 1) + ":" + idx;
+            }
+            idx = Str.IndexOfFrom(line, idx + 1, word);
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+/// @brief Append call tokens found in one source line.
+/// @param tokens Sequence receiving maps with name, line, and zero-based column.
+/// @param line Source line to scan.
+/// @param lineNumber One-based line number stored in emitted call tokens.
+/// @details Strings and line comments are skipped, and function declaration
+///          names are ignored so call hierarchy only records outgoing calls.
+func AddOutgoingCallsFromLine(tokens: Any,
+                              line: String,
+                              lineNumber: Integer) {
+    var pos = 1;
+    var inString = false;
+    while pos <= Str.Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+            pos = pos + 1;
+            continue;
+        }
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "\"" {
+            inString = true;
+            pos = pos + 1;
+            continue;
+        }
+        if identifier_utils.IsIdentStart(ch) {
+            var start = pos;
+            var name = "";
+            while pos <= Str.Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+                name = name + Str.MidLen(line, pos, 1);
+                pos = pos + 1;
+            }
+            var callParen = SkipWhitespace(line, pos);
+            if callParen <= Str.Length(line)
+               and Str.MidLen(line, callParen, 1) == "("
+               and identifier_utils.IsKeyword(name) == false
+               and IsFunctionDeclarationName(line, start) == false {
+                var token = Map.New();
+                Map.SetStr(token, "name", name);
+                Map.SetInt(token, "line", lineNumber);
+                Map.SetInt(token, "column", start - 1);
+                Seq.Push(tokens, token);
+            }
+            continue;
+        }
+        pos = pos + 1;
+    }
+}
+
+/// @brief Skip spaces and tabs from a 1-based position.
+/// @param line Source line.
+/// @param pos 1-based starting position.
+/// @return First non-whitespace position, or one past end.
+expose func SkipWhitespace(line: String,
+                           pos: Integer) -> Integer {
+    var i = pos;
+    while i <= Str.Length(line) {
+        var ch = Str.MidLen(line, i, 1);
+        if ch != " " and ch != "\t" {
+            return i;
+        }
+        i = i + 1;
+    }
+    return i;
+}
+
+/// @brief Return true when an identifier is the declared function name.
+/// @param line Source line containing the identifier.
+/// @param startCol One-based identifier start column.
+/// @return True when the text immediately before the identifier ends in `func`.
+func IsFunctionDeclarationName(line: String,
+                               startCol: Integer) -> Boolean {
+    if startCol <= 1 { return false; }
+    var before = Str.Trim(Str.Left(line, startCol - 1));
+    return Str.EndsWith(before, "func");
+}
+
+/// @brief Return true for inline delimiters that can nest on one line.
+/// @param ch Single-character string to test.
+/// @return True for `(` or `[`.
+func IsInlineOpenDelimiter(ch: String) -> Boolean {
+    return ch == "(" or ch == "[";
+}
+
+/// @brief Return true for inline closing delimiters that match inline opens.
+/// @param ch Single-character string to test.
+/// @return True for `)` or `]`.
+func IsInlineCloseDelimiter(ch: String) -> Boolean {
+    return ch == ")" or ch == "]";
+}
+
+/// @brief Return the expected closing delimiter for an inline opening delimiter.
+/// @param ch Opening delimiter.
+/// @return `)` for `(`, `]` for `[`, or empty for unsupported input.
+func MatchingInlineClose(ch: String) -> String {
+    if ch == "(" { return ")"; }
+    if ch == "[" { return "]"; }
+    return "";
+}
+
+/// @brief Update an opening-brace stack after scanning one source line.
+/// @param line Source line to scan.
+/// @param lineIdx Zero-based line index associated with any opening brace.
+/// @param openLines Stack of zero-based line indexes for unmatched `{` braces.
+/// @details Strings and line comments are ignored so structural matching follows
+///          code braces, not braces printed inside text.
+func ScanBraceLineForStack(line: String,
+                           lineIdx: Integer,
+                           openLines: List) {
+    var pos = 1;
+    var inString = false;
+    while pos <= Str.Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+        if inString {
+            if ch == "\\" {
+                pos = pos + 2;
+                continue;
+            }
+            if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "/" and next == "/" {
+                break;
+            }
+            if ch == "\"" {
+                inString = true;
+            } else if ch == "{" {
+                openLines.add("" + lineIdx);
+            } else if ch == "}" {
+                if openLines.count() > 0 {
+                    openLines.removeAt(openLines.count() - 1);
+                }
+            }
+        }
+        pos = pos + 1;
+    }
+}

@@ -1,12 +1,12 @@
 module editor_hot_path_probe;
 
-bind "ui/app_shell";
-bind "core/document_manager";
-bind "core/project_manager";
-bind "editor/editor_engine";
-bind "editor/inlay_hints";
-bind "editor/project_index";
-bind "editor/symbols";
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/inlay_hints";
+bind "../editor/project_index";
+bind "../editor/symbols";
 
 bind Viper.Terminal as Terminal;
 bind Str = Viper.String;

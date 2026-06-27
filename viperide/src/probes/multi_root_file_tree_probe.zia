@@ -1,7 +1,7 @@
 module multi_root_file_tree_probe;
 
-bind "ui/app_shell";
-bind "core/project_manager";
+bind "../ui/app_shell";
+bind "../core/project_manager";
 
 bind Viper.GUI as GUI;
 bind Terminal = Viper.Terminal;

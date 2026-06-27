@@ -1,0 +1,57 @@
+module terminal_toggle_diag;
+
+bind "../ui/app_shell";
+
+bind Viper.GUI as GUI;
+bind Terminal = Viper.Terminal;
+
+// [TEMP DIAGNOSTIC] Compares the function the green probe tested
+// (ShowTerminalPanel) against the function the real menu/palette dispatch
+// actually calls (ToggleTerminalPanel), with geometry, interpreted. Decides
+// whether the bug is in the toggle logic vs native codegen vs paint/event.
+
+func cat(label: String, h: Integer) {
+    if h <= 0 { Terminal.Say(label + "=ZERO"); }
+    else if h < 100 { Terminal.Say(label + "=TINY"); }
+    else { Terminal.Say(label + "=OK"); }
+}
+
+func vis(label: String, shell: app_shell.AppShell) {
+    if shell.IsTerminalPanelVisible() { Terminal.Say(label + "=YES"); }
+    else { Terminal.Say(label + "=NO"); }
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Toggle Diag", 1000, 700);
+    shell.Poll();
+    shell.Render();
+
+    // 1) ShowTerminalPanel — exactly what the passing terminal_open_probe tested.
+    shell.ShowTerminalPanel();
+    shell.Poll(); shell.Render();
+    cat("show.panelH", shell.terminalPanel.GetHeight());
+    cat("show.paneH", shell.terminalPane.GetHeight());
+    vis("show.visible", shell);
+
+    // reset to hidden
+    shell.HideTerminalPanel();
+    shell.Poll(); shell.Render();
+    vis("afterhide.visible", shell);
+
+    // 2) ToggleTerminalPanel ONCE — what the real View>Terminal / palette dispatch calls.
+    shell.ToggleTerminalPanel();
+    shell.Poll(); shell.Render();
+    cat("toggle1.panelH", shell.terminalPanel.GetHeight());
+    cat("toggle1.paneH", shell.terminalPane.GetHeight());
+    vis("toggle1.visible", shell);
+
+    // 3) ToggleTerminalPanel TWICE — simulates the dispatch firing on two
+    //    consecutive frames for a single click (even count => net hidden).
+    shell.ToggleTerminalPanel();
+    shell.Poll(); shell.Render();
+    vis("toggle2.visible", shell);
+
+    shell.Destroy();
+    Terminal.Say("RESULT: done");
+}

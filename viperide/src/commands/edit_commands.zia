@@ -8,8 +8,14 @@ bind "../editor/editor_tabs";
 bind "../editor/project_index";
 bind "../services/locations";
 bind "../services/workspace_edits";
+bind "../services/text_utils";
 bind "../commands/file_commands";
 bind "../editor/quick_fixes";
+bind "../zia/bind_utils";
+bind "../zia/formatters";
+bind "../zia/identifier_utils";
+bind "../zia/refactors";
+bind "../zia/source_scan";
 
 bind Viper.GUI;
 bind IO = Viper.IO;
@@ -431,205 +437,37 @@ func SourceForPath(docMgr: document_manager.DocumentManager,
 
 func SourceLine(source: String,
                 lineNumber: Integer) -> String {
-    if source == "" { return ""; }
-    var lines = Str.Split(source, "\n");
-    if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
-    return Obj.ToString(Seq.Get(lines, lineNumber - 1));
+    return source_scan.SourceLine(source, lineNumber);
 }
 
 expose func EnclosingZiaFunctionStartLine(source: String,
                                           lineNumber: Integer) -> Integer {
-    if source == "" { return 0; }
-    var lines = Str.Split(source, "\n");
-    var i = lineNumber;
-    if i > Seq.get_Length(lines) {
-        i = Seq.get_Length(lines);
-    }
-    while i >= 1 {
-        if ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i - 1))) != "" {
-            return i;
-        }
-        i = i - 1;
-    }
-    return 0;
+    return source_scan.EnclosingZiaFunctionStartLine(source, lineNumber);
 }
 
 expose func EnclosingZiaFunctionName(source: String,
                                      lineNumber: Integer) -> String {
-    return ZiaFunctionNameFromLine(SourceLine(source, EnclosingZiaFunctionStartLine(source, lineNumber)));
+    return source_scan.EnclosingZiaFunctionName(source, lineNumber);
 }
 
 expose func ZiaFunctionNameFromLine(line: String) -> String {
-    var trimmed = Str.Trim(line);
-    if trimmed == "" or Str.StartsWith(trimmed, "//") {
-        return "";
-    }
-    var funcPos = Str.IndexOf(trimmed, "func ");
-    if funcPos == 0 {
-        return "";
-    }
-    if funcPos > 1 {
-        var before = Str.Trim(Str.Left(trimmed, funcPos - 1));
-        if before != "expose" and before != "hide" {
-            return "";
-        }
-    }
-    var nameStart = funcPos + Str.Length("func ");
-    var openParen = Str.IndexOfFrom(trimmed, nameStart, "(");
-    if openParen == 0 or openParen <= nameStart {
-        return "";
-    }
-    return Str.Trim(Str.MidLen(trimmed, nameStart, openParen - nameStart));
+    return source_scan.ZiaFunctionNameFromLine(line);
 }
 
 expose func ZiaFunctionEndLine(source: String,
                                startLine: Integer) -> Integer {
-    var lines = Str.Split(source, "\n");
-    var startIdx = startLine - 1;
-    if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
-
-    var depth = 0;
-    var seenOpen = false;
-    var i = startIdx;
-    while i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        var pos = 1;
-        var inString = false;
-        while pos <= Str.Length(line) {
-            var ch = Str.MidLen(line, pos, 1);
-            var next = "";
-            if pos < Str.Length(line) {
-                next = Str.MidLen(line, pos + 1, 1);
-            }
-
-            if inString {
-                if ch == "\\" {
-                    pos = pos + 2;
-                    continue;
-                }
-                if ch == "\"" {
-                    inString = false;
-                }
-            } else {
-                if ch == "/" and next == "/" {
-                    break;
-                }
-                if ch == "\"" {
-                    inString = true;
-                } else if ch == "{" {
-                    depth = depth + 1;
-                    seenOpen = true;
-                } else if ch == "}" {
-                    if seenOpen {
-                        depth = depth - 1;
-                        if depth <= 0 {
-                            return i + 1;
-                        }
-                    }
-                }
-            }
-
-            pos = pos + 1;
-        }
-        i = i + 1;
-    }
-
-    return startLine;
+    return source_scan.ZiaFunctionEndLine(source, startLine);
 }
 
 expose func OutgoingZiaCallTokens(source: String,
                                   startLine: Integer,
                                   endLine: Integer) -> Any {
-    var tokens = Seq.New();
-    if source == "" { return tokens; }
-    var lines = Str.Split(source, "\n");
-    var fromLine = startLine;
-    var toLine = endLine;
-    if fromLine < 1 { fromLine = 1; }
-    if toLine < fromLine { toLine = fromLine; }
-    if toLine > Seq.get_Length(lines) { toLine = Seq.get_Length(lines); }
-
-    var i = fromLine;
-    while i <= toLine {
-        AddOutgoingCallsFromLine(tokens, Obj.ToString(Seq.Get(lines, i - 1)), i);
-        i = i + 1;
-    }
-    return tokens;
-}
-
-func AddOutgoingCallsFromLine(tokens: Any,
-                              line: String,
-                              lineNumber: Integer) {
-    var pos = 1;
-    var inString = false;
-    while pos <= Str.Length(line) {
-        var ch = Str.MidLen(line, pos, 1);
-        var next = "";
-        if pos < Str.Length(line) {
-            next = Str.MidLen(line, pos + 1, 1);
-        }
-
-        if inString {
-            if ch == "\\" {
-                pos = pos + 2;
-                continue;
-            }
-            if ch == "\"" {
-                inString = false;
-            }
-            pos = pos + 1;
-            continue;
-        }
-        if ch == "/" and next == "/" {
-            break;
-        }
-        if ch == "\"" {
-            inString = true;
-            pos = pos + 1;
-            continue;
-        }
-        if IsIdentStart(ch) {
-            var start = pos;
-            var name = "";
-            while pos <= Str.Length(line) and IsIdentPart(Str.MidLen(line, pos, 1)) {
-                name = name + Str.MidLen(line, pos, 1);
-                pos = pos + 1;
-            }
-            var callParen = SkipWhitespace(line, pos);
-            if callParen <= Str.Length(line)
-               and Str.MidLen(line, callParen, 1) == "("
-               and IsKeyword(name) == false
-               and IsFunctionDeclarationName(line, start) == false {
-                var token = Map.New();
-                Map.SetStr(token, "name", name);
-                Map.SetInt(token, "line", lineNumber);
-                Map.SetInt(token, "column", start - 1);
-                Seq.Push(tokens, token);
-            }
-            continue;
-        }
-        pos = pos + 1;
-    }
+    return source_scan.OutgoingZiaCallTokens(source, startLine, endLine);
 }
 
 func SkipWhitespace(line: String,
                     pos: Integer) -> Integer {
-    var i = pos;
-    while i <= Str.Length(line) {
-        var ch = Str.MidLen(line, i, 1);
-        if ch != " " and ch != "\t" {
-            return i;
-        }
-        i = i + 1;
-    }
-    return i;
-}
-
-func IsFunctionDeclarationName(line: String,
-                               startCol: Integer) -> Boolean {
-    if startCol <= 1 { return false; }
-    var before = Str.Trim(Str.Left(line, startCol - 1));
-    return Str.EndsWith(before, "func");
+    return source_scan.SkipWhitespace(line, pos);
 }
 
 func handleRenameSymbol(shell: app_shell.AppShell,
@@ -1560,45 +1398,7 @@ expose func CreateMissingProjectBindText(source: String,
 
 func InsertTopBindLineText(source: String,
                            bindLine: String) -> String {
-    var eol = "\n";
-    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
-    var insertAt = 0;
-    var i = 0;
-    while i < count {
-        var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
-        var trimmed = Str.Trim(line);
-        if Str.StartsWith(trimmed, "module ") {
-            insertAt = i + 1;
-            break;
-        }
-        i = i + 1;
-    }
-
-    while insertAt < count {
-        var existing = StripTrailingCr(Obj.ToString(Seq.Get(lines, insertAt)));
-        var trimmedExisting = Str.Trim(existing);
-        if IsZiaBindLine(trimmedExisting) {
-            insertAt = insertAt + 1;
-            continue;
-        }
-        break;
-    }
-
-    var output = new List();
-    var out = 0;
-    while out < count {
-        if out == insertAt {
-            output.add(bindLine);
-        }
-        output.add(StripTrailingCr(Obj.ToString(Seq.Get(lines, out))));
-        out = out + 1;
-    }
-    if insertAt >= count {
-        output.add(bindLine);
-    }
-    return JoinStringList(output, eol);
+    return bind_utils.InsertTopBindLineText(source, bindLine);
 }
 
 func ProjectBindPathForIdentifier(identifier: String,
@@ -1666,187 +1466,42 @@ func IsProjectBindCandidate(filePath: String,
 
 expose func ProjectFileDefinesIdentifier(source: String,
                                          identifier: String) -> Boolean {
-    if source == "" or identifier == "" { return false; }
-    var lines = Str.Split(source, "\n");
-    var depth = 0;
-    var commentDepth = 0;
-    var i = 0;
-    while i < Seq.get_Length(lines) {
-        var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
-        var trimmed = Str.Trim(line);
-        if depth == 0 and commentDepth == 0 {
-            var name = TopLevelZiaDeclarationName(trimmed);
-            if name == identifier { return true; }
-        }
-        depth = depth + ZiaBraceDelta(line, commentDepth);
-        if depth < 0 { depth = 0; }
-        commentDepth = ZiaCommentDepthAfter(line, commentDepth);
-        i = i + 1;
-    }
-    return false;
+    return bind_utils.ProjectFileDefinesIdentifier(source, identifier);
 }
 
 func TopLevelZiaDeclarationName(trimmed: String) -> String {
-    if trimmed == "" or Str.StartsWith(trimmed, "//") or Str.StartsWith(trimmed, "/*") {
-        return "";
-    }
-    if Str.StartsWith(trimmed, "module ") {
-        return ReadIdentifierAt(trimmed, Str.Length("module ") + 1);
-    }
-
-    var line = trimmed;
-    line = StripLeadingDeclarationModifier(line, "expose");
-    line = StripLeadingDeclarationModifier(line, "async");
-    line = StripLeadingDeclarationModifier(line, "foreign");
-    line = StripLeadingDeclarationModifier(line, "weak");
-
-    if Str.StartsWith(line, "func ") {
-        return ReadIdentifierAt(line, Str.Length("func ") + 1);
-    }
-    if Str.StartsWith(line, "class ") {
-        return ReadIdentifierAt(line, Str.Length("class ") + 1);
-    }
-    if Str.StartsWith(line, "struct ") {
-        return ReadIdentifierAt(line, Str.Length("struct ") + 1);
-    }
-    if Str.StartsWith(line, "interface ") {
-        return ReadIdentifierAt(line, Str.Length("interface ") + 1);
-    }
-    if Str.StartsWith(line, "enum ") {
-        return ReadIdentifierAt(line, Str.Length("enum ") + 1);
-    }
-    if Str.StartsWith(line, "final ") {
-        return ReadIdentifierAt(line, Str.Length("final ") + 1);
-    }
-    if Str.StartsWith(line, "var ") {
-        return ReadIdentifierAt(line, Str.Length("var ") + 1);
-    }
-    return "";
-}
-
-func StripLeadingDeclarationModifier(line: String, modifier: String) -> String {
-    var prefix = modifier + " ";
-    if Str.StartsWith(line, prefix) {
-        return Str.Trim(Str.Mid(line, Str.Length(prefix) + 1));
-    }
-    return line;
+    return bind_utils.TopLevelZiaDeclarationName(trimmed);
 }
 
 func ReadIdentifierAt(text: String, startPos: Integer) -> String {
-    var pos = startPos;
-    var name = "";
-    while pos <= Str.Length(text) {
-        var ch = Str.MidLen(text, pos, 1);
-        if name == "" {
-            if IsIdentStart(ch) == false { return ""; }
-        } else if IsIdentPart(ch) == false {
-            break;
-        }
-        name = name + ch;
-        pos = pos + 1;
-    }
-    return name;
+    return identifier_utils.ReadIdentifierAt(text, startPos);
 }
 
 func RelativeProjectBindPath(importingDir: String,
                              targetPath: String) -> String {
-    var baseParts = ProjectPathParts(ProjectNormalizeAbsPath(importingDir));
-    var targetParts = ProjectPathParts(ProjectNormalizeAbsPath(targetPath));
-    var common = 0;
-    while common < Seq.get_Length(baseParts)
-          and common < Seq.get_Length(targetParts)
-          and Obj.ToString(Seq.Get(baseParts, common)) == Obj.ToString(Seq.Get(targetParts, common)) {
-        common = common + 1;
-    }
-
-    var rel = "";
-    var b = common;
-    while b < Seq.get_Length(baseParts) {
-        rel = AppendProjectPathPart(rel, "..");
-        b = b + 1;
-    }
-    var t = common;
-    while t < Seq.get_Length(targetParts) {
-        rel = AppendProjectPathPart(rel, Obj.ToString(Seq.Get(targetParts, t)));
-        t = t + 1;
-    }
-    if rel == "" {
-        rel = Path.Name(targetPath);
-    }
-    if Str.EndsWith(rel, ".zia") {
-        rel = Str.Left(rel, Str.Length(rel) - 4);
-    }
-    if Str.StartsWith(rel, "../") == false and Str.StartsWith(rel, "./") == false {
-        rel = "./" + rel;
-    }
-    return ProjectNormalizeBindSeparators(rel);
-}
-
-func ProjectPathParts(path: String) -> Any {
-    var parts = Seq.New();
-    var raw = Str.Split(ProjectNormalizeBindSeparators(path), "/");
-    var i = 0;
-    while i < Seq.get_Length(raw) {
-        var part = Obj.ToString(Seq.Get(raw, i));
-        if part != "" and part != "." {
-            Seq.Push(parts, part);
-        }
-        i = i + 1;
-    }
-    return parts;
-}
-
-func AppendProjectPathPart(path: String, part: String) -> String {
-    if path == "" { return part; }
-    return path + "/" + part;
+    return bind_utils.RelativeBindPath(importingDir, targetPath, "./" + Path.Name(targetPath), true);
 }
 
 func ProjectNormalizeAbsPath(path: String) -> String {
-    return Path.Norm(Path.Abs(path));
+    return bind_utils.NormalizeAbsPath(path);
 }
 
 func ProjectNormalizeBindSeparators(path: String) -> String {
-    var normalized = Str.Replace(path, "\\", "/");
-    var sep = Path.Sep();
-    if sep != "/" {
-        normalized = Str.Replace(normalized, sep, "/");
-    }
-    return normalized;
+    return bind_utils.NormalizeBindSeparators(path);
 }
 
 func SourceHasBindAlias(source: String,
                         identifier: String) -> Boolean {
-    var lines = Str.Split(source, "\n");
-    var prefix = "bind " + identifier + " = ";
-    var aliasSuffix = " as " + identifier + ";";
-    var i = 0;
-    while i < Seq.get_Length(lines) {
-        var trimmed = Str.Trim(StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
-        if Str.StartsWith(trimmed, prefix) { return true; }
-        if Str.EndsWith(trimmed, aliasSuffix) { return true; }
-        i = i + 1;
-    }
-    return false;
+    return bind_utils.SourceHasBindAlias(source, identifier);
 }
 
 func SourceHasFileBind(source: String,
                        bindPath: String) -> Boolean {
-    var lines = Str.Split(source, "\n");
-    var expected = "bind \"" + bindPath + "\";";
-    var i = 0;
-    while i < Seq.get_Length(lines) {
-        var trimmed = Str.Trim(StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
-        if trimmed == expected { return true; }
-        i = i + 1;
-    }
-    return false;
+    return bind_utils.SourceHasFileBind(source, bindPath);
 }
 
 func StripTrailingCr(line: String) -> String {
-    if Str.EndsWith(line, "\r") {
-        return Str.Left(line, Str.Length(line) - 1);
-    }
-    return line;
+    return text_utils.StripTrailingCr(line);
 }
 
 func SuppressibleDiagnosticCodeAt(records: Any, targetLine: Integer) -> String {
@@ -1871,134 +1526,23 @@ func IsSuppressibleDiagnosticCode(code: String) -> Boolean {
 }
 
 expose func OrganizeZiaBindsText(source: String) -> String {
-    var lines = Str.Split(source, "\n");
-    var output = new List();
-    var binds = new List();
-    var i = 0;
-    var seenBind = false;
-
-    while i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        var trimmed = Str.Trim(line);
-        if IsZiaBindLine(trimmed) {
-            InsertUniqueSortedBind(binds, line);
-            seenBind = true;
-            i = i + 1;
-            continue;
-        }
-        if seenBind {
-            break;
-        }
-        output.add(line);
-        i = i + 1;
-    }
-
-    if binds.count() == 0 {
-        return source;
-    }
-
-    var b = 0;
-    while b < binds.count() {
-        output.add(Obj.ToString(binds.get(b)));
-        b = b + 1;
-    }
-
-    while i < Seq.get_Length(lines) {
-        output.add(Obj.ToString(Seq.Get(lines, i)));
-        i = i + 1;
-    }
-
-    return JoinStringList(output, "\n");
+    return bind_utils.OrganizeZiaBindsText(source);
 }
 
 expose func TrimTrailingWhitespaceText(source: String) -> String {
-    if source == "" { return ""; }
-    var eol = "\n";
-    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    var lines = Str.Split(source, "\n");
-    var result = "";
-    var i = 0;
-    while i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        line = TrimLineRightWhitespace(line);
-        if i > 0 { result = result + eol; }
-        result = result + line;
-        i = i + 1;
-    }
-    return result;
+    return formatters.TrimTrailingWhitespaceText(source);
 }
 
 expose func FormatDocumentText(language: String,
                                source: String,
                                tabSize: Integer,
                                insertSpaces: Boolean) -> String {
-    if language == "zia" {
-        return FormatZiaText(source, tabSize, insertSpaces);
-    }
-    if language == "basic" {
-        return FormatBasicText(source, tabSize, insertSpaces);
-    }
-    if language == "text" or language == "viper" {
-        // IL has no canonical re-indenter yet; trimming is the safe baseline.
-        return TrimTrailingWhitespaceText(source);
-    }
-    return "";
+    return formatters.FormatDocumentText(language, source, tabSize, insertSpaces);
 }
 
 expose func InlineLocalVariableText(source: String,
                                     declarationLine: Integer) -> String {
-    var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
-    if declarationLine < 0 or declarationLine >= count { return source; }
-
-    var declLine = Obj.ToString(Seq.Get(lines, declarationLine));
-    if Str.EndsWith(declLine, "\r") {
-        declLine = Str.Left(declLine, Str.Length(declLine) - 1);
-    }
-    var name = InlineLocalNameFromLine(declLine);
-    var expr = InlineLocalExpressionFromLine(declLine);
-    if name == "" or expr == "" { return source; }
-
-    var funcStart = EnclosingZiaFunctionStartLine(source, declarationLine + 1);
-    var funcEnd = count;
-    if funcStart > 0 {
-        funcEnd = ZiaFunctionEndLine(source, funcStart);
-    }
-    if funcEnd <= declarationLine + 1 { return source; }
-
-    var replacements = 0;
-    var output = new List();
-    var i = 0;
-    while i < count {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        if i == declarationLine {
-            i = i + 1;
-            continue;
-        }
-        if i > declarationLine and i < funcEnd {
-            if LineAssignsToIdentifier(line, name) {
-                return source;
-            }
-            var replaced = ReplaceIdentifierOutsideTrivia(line, name, "(" + expr + ")");
-            if replaced != line {
-                replacements = replacements + 1;
-                line = replaced;
-            }
-        }
-        output.add(line);
-        i = i + 1;
-    }
-
-    if replacements == 0 { return source; }
-    var eol = "\n";
-    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    return JoinStringList(output, eol);
+    return refactors.InlineLocalVariableText(source, declarationLine);
 }
 
 expose func ExtractLocalVariableText(source: String,
@@ -2007,63 +1551,7 @@ expose func ExtractLocalVariableText(source: String,
                                      endLine: Integer,
                                      endCol: Integer,
                                      name: String) -> String {
-    if IsValidIdentifier(name) == false { return source; }
-    if startLine != endLine { return source; }
-    if startCol < 0 or endCol <= startCol { return source; }
-
-    var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
-    if startLine < 0 or startLine >= count { return source; }
-
-    var funcStart = EnclosingZiaFunctionStartLine(source, startLine + 1);
-    if funcStart <= 0 { return source; }
-    var funcEnd = ZiaFunctionEndLine(source, funcStart);
-    if startLine + 1 <= funcStart or startLine + 1 >= funcEnd { return source; }
-    if ZiaFunctionContainsIdentifier(source, funcStart, funcEnd, name) {
-        return source;
-    }
-
-    var line = Obj.ToString(Seq.Get(lines, startLine));
-    if Str.EndsWith(line, "\r") {
-        line = Str.Left(line, Str.Length(line) - 1);
-    }
-    if endCol > Str.Length(line) { return source; }
-
-    var expr = Str.MidLen(line, startCol + 1, endCol - startCol);
-    var trimmedExpr = Str.Trim(expr);
-    if trimmedExpr == "" { return source; }
-    if Str.IndexOf(trimmedExpr, ";") != 0 { return source; }
-    if Str.IndexOf(trimmedExpr, "//") != 0 { return source; }
-
-    var before = "";
-    if startCol > 0 { before = Str.Left(line, startCol); }
-    var after = Str.Mid(line, endCol + 1);
-    var replacedLine = before + name + after;
-
-    var indentLen = LeadingWhitespaceLength(line);
-    var indent = "";
-    if indentLen > 0 { indent = Str.Left(line, indentLen); }
-    var declaration = indent + "var " + name + " = " + trimmedExpr + ";";
-
-    var output = new List();
-    var i = 0;
-    while i < count {
-        var outLine = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(outLine, "\r") {
-            outLine = Str.Left(outLine, Str.Length(outLine) - 1);
-        }
-        if i == startLine {
-            output.add(declaration);
-            output.add(replacedLine);
-        } else {
-            output.add(outLine);
-        }
-        i = i + 1;
-    }
-
-    var eol = "\n";
-    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    return JoinStringList(output, eol);
+    return refactors.ExtractLocalVariableText(source, startLine, startCol, endLine, endCol, name);
 }
 
 expose func ExtractFunctionText(source: String,
@@ -2072,334 +1560,7 @@ expose func ExtractFunctionText(source: String,
                                 endLine: Integer,
                                 endCol: Integer,
                                 name: String) -> String {
-    if IsValidIdentifier(name) == false { return source; }
-    if source == "" { return source; }
-
-    var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
-    var rangeStart = startLine;
-    var rangeEnd = endLine;
-    if rangeStart < 0 or rangeStart >= count { return source; }
-    if rangeEnd < rangeStart or rangeEnd >= count { return source; }
-
-    if rangeEnd > rangeStart and endCol == 0 {
-        rangeEnd = rangeEnd - 1;
-        if rangeEnd < rangeStart { return source; }
-    }
-
-    var firstLine = StripTrailingCr(Obj.ToString(Seq.Get(lines, rangeStart)));
-    var lastLine = StripTrailingCr(Obj.ToString(Seq.Get(lines, rangeEnd)));
-    if startCol > LeadingWhitespaceLength(firstLine) { return source; }
-    if endCol < Str.Length(lastLine) { return source; }
-
-    var funcStart = EnclosingZiaFunctionStartLine(source, rangeStart + 1);
-    if funcStart <= 0 { return source; }
-    var funcEnd = ZiaFunctionEndLine(source, funcStart);
-    if rangeStart + 1 <= funcStart or rangeEnd + 1 >= funcEnd { return source; }
-    if ZiaFunctionNameExists(source, name) { return source; }
-
-    if ExtractFunctionSelectionIsSafe(lines, funcStart, funcEnd, rangeStart, rangeEnd) == false {
-        return source;
-    }
-
-    var headerLine = StripTrailingCr(Obj.ToString(Seq.Get(lines, funcStart - 1)));
-    var headerIndentLen = LeadingWhitespaceLength(headerLine);
-    var headerIndent = "";
-    if headerIndentLen > 0 { headerIndent = Str.Left(headerLine, headerIndentLen); }
-    var callIndentLen = LeadingWhitespaceLength(firstLine);
-    var callIndent = "";
-    if callIndentLen > 0 { callIndent = Str.Left(firstLine, callIndentLen); }
-    var callLine = callIndent + name + "();";
-
-    var output = new List();
-    var i = 0;
-    while i < count {
-        var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
-        if i == rangeStart {
-            output.add(callLine);
-            i = rangeEnd + 1;
-            continue;
-        }
-        output.add(line);
-        i = i + 1;
-    }
-
-    var insertAt = funcEnd - (rangeEnd - rangeStart);
-    if insertAt > output.count() { insertAt = output.count(); }
-    output.insert(insertAt, "");
-    output.insert(insertAt + 1, headerIndent + "func " + name + "() {");
-    var selected = rangeStart;
-    var insertOffset = 2;
-    while selected <= rangeEnd {
-        output.insert(insertAt + insertOffset,
-                      StripTrailingCr(Obj.ToString(Seq.Get(lines, selected))));
-        insertOffset = insertOffset + 1;
-        selected = selected + 1;
-    }
-    output.insert(insertAt + insertOffset, headerIndent + "}");
-
-    var eol = "\n";
-    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    return JoinStringList(output, eol);
-}
-
-func ZiaFunctionNameExists(source: String,
-                           name: String) -> Boolean {
-    var lines = Str.Split(source, "\n");
-    var i = 0;
-    while i < Seq.get_Length(lines) {
-        if ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i))) == name {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
-}
-
-func ExtractFunctionSelectionIsSafe(lines: Any,
-                                    funcStart: Integer,
-                                    funcEnd: Integer,
-                                    startLine: Integer,
-                                    endLine: Integer) -> Boolean {
-    var selectedDecls = new List();
-    var beforeDecls = new List();
-
-    var i = funcStart;
-    while i < startLine {
-        var beforeName = InlineLocalNameFromLine(StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
-        if beforeName != "" and StringListContains(beforeDecls, beforeName) == false {
-            beforeDecls.add(beforeName);
-        }
-        i = i + 1;
-    }
-
-    var braceDelta = 0;
-    var commentDepth = ZiaCommentDepthBeforeLine(lines, startLine);
-    i = startLine;
-    while i <= endLine {
-        var line = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
-        var trimmed = Str.Trim(line);
-        if trimmed == "" {
-            i = i + 1;
-            continue;
-        }
-        if Str.StartsWith(trimmed, "return")
-           or Str.StartsWith(trimmed, "break")
-           or Str.StartsWith(trimmed, "continue") {
-            return false;
-        }
-        if LineUsesAnyIdentifier(line, beforeDecls) {
-            return false;
-        }
-        var declName = InlineLocalNameFromLine(line);
-        if declName != "" and StringListContains(selectedDecls, declName) == false {
-            selectedDecls.add(declName);
-        }
-        braceDelta = braceDelta + ZiaBraceDelta(line, commentDepth);
-        commentDepth = ZiaCommentDepthAfter(line, commentDepth);
-        i = i + 1;
-    }
-    if braceDelta != 0 { return false; }
-
-    i = endLine + 1;
-    while i < funcEnd - 1 {
-        var afterLine = StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
-        if LineUsesAnyIdentifier(afterLine, selectedDecls) {
-            return false;
-        }
-        i = i + 1;
-    }
-    return true;
-}
-
-func LineUsesAnyIdentifier(line: String,
-                           names: List) -> Boolean {
-    var i = 0;
-    while i < names.count() {
-        var name = Obj.ToString(names.get(i));
-        if name != "" and ReplaceIdentifierOutsideTrivia(line, name, "") != line {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
-}
-
-func StringListContains(items: List,
-                        value: String) -> Boolean {
-    var i = 0;
-    while i < items.count() {
-        if Obj.ToString(items.get(i)) == value {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
-}
-
-func ZiaFunctionContainsIdentifier(source: String,
-                                   startLine: Integer,
-                                   endLine: Integer,
-                                   name: String) -> Boolean {
-    var lines = Str.Split(source, "\n");
-    var i = startLine - 1;
-    if i < 0 { i = 0; }
-    var last = endLine - 1;
-    if last >= Seq.get_Length(lines) { last = Seq.get_Length(lines) - 1; }
-    while i <= last {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if ReplaceIdentifierOutsideTrivia(line, name, "") != line {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
-}
-
-func InlineLocalNameFromLine(line: String) -> String {
-    var trimmed = Str.Trim(line);
-    if Str.StartsWith(trimmed, "var ") == false { return ""; }
-    var eq = Str.IndexOf(trimmed, "=");
-    var semi = Str.IndexOf(trimmed, ";");
-    if eq == 0 or semi == 0 or semi < eq { return ""; }
-    if Str.Trim(Str.Mid(trimmed, semi + 1)) != "" { return ""; }
-    var beforeEq = Str.Trim(Str.MidLen(trimmed, 5, eq - 5));
-    var colon = Str.IndexOf(beforeEq, ":");
-    if colon != 0 {
-        beforeEq = Str.Trim(Str.Left(beforeEq, colon - 1));
-    }
-    if IsValidIdentifier(beforeEq) == false { return ""; }
-    return beforeEq;
-}
-
-func InlineLocalExpressionFromLine(line: String) -> String {
-    var trimmed = Str.Trim(line);
-    var eq = Str.IndexOf(trimmed, "=");
-    var semi = Str.IndexOf(trimmed, ";");
-    if eq == 0 or semi == 0 or semi < eq { return ""; }
-    return Str.Trim(Str.MidLen(trimmed, eq + 1, semi - eq - 1));
-}
-
-func LineAssignsToIdentifier(line: String,
-                             name: String) -> Boolean {
-    var pos = 1;
-    var inString = false;
-    var escape = false;
-    while pos <= Str.Length(line) {
-        var ch = Str.MidLen(line, pos, 1);
-        var next = "";
-        if pos < Str.Length(line) {
-            next = Str.MidLen(line, pos + 1, 1);
-        }
-        if inString {
-            if escape {
-                escape = false;
-            } else if ch == "\\" {
-                escape = true;
-            } else if ch == "\"" {
-                inString = false;
-            }
-            pos = pos + 1;
-            continue;
-        }
-        if ch == "/" and next == "/" { return false; }
-        if ch == "\"" {
-            inString = true;
-            pos = pos + 1;
-            continue;
-        }
-        if IsIdentStart(ch) {
-            var start = pos;
-            var ident = "";
-            while pos <= Str.Length(line) and IsIdentPart(Str.MidLen(line, pos, 1)) {
-                ident = ident + Str.MidLen(line, pos, 1);
-                pos = pos + 1;
-            }
-            if ident == name {
-                var after = SkipWhitespace(line, pos);
-                if InlineLocalAssignmentOperatorAt(line, after) {
-                    return true;
-                }
-            }
-            if pos == start { pos = pos + 1; }
-            continue;
-        }
-        pos = pos + 1;
-    }
-    return false;
-}
-
-func InlineLocalAssignmentOperatorAt(line: String,
-                                     pos: Integer) -> Boolean {
-    if pos > Str.Length(line) { return false; }
-    var op = Str.MidLen(line, pos, 1);
-    var next = "";
-    if pos < Str.Length(line) {
-        next = Str.MidLen(line, pos + 1, 1);
-    }
-    if op == "=" {
-        return next != "=";
-    }
-    if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" {
-        if next == "=" { return true; }
-        if op == "+" and next == "+" { return true; }
-        if op == "-" and next == "-" { return true; }
-    }
-    return false;
-}
-
-func ReplaceIdentifierOutsideTrivia(line: String,
-                                    name: String,
-                                    replacement: String) -> String {
-    var out = "";
-    var pos = 1;
-    var inString = false;
-    var escape = false;
-    while pos <= Str.Length(line) {
-        var ch = Str.MidLen(line, pos, 1);
-        var next = "";
-        if pos < Str.Length(line) {
-            next = Str.MidLen(line, pos + 1, 1);
-        }
-        if inString {
-            out = out + ch;
-            if escape {
-                escape = false;
-            } else if ch == "\\" {
-                escape = true;
-            } else if ch == "\"" {
-                inString = false;
-            }
-            pos = pos + 1;
-            continue;
-        }
-        if ch == "/" and next == "/" {
-            out = out + Str.Mid(line, pos);
-            return out;
-        }
-        if ch == "\"" {
-            inString = true;
-            out = out + ch;
-            pos = pos + 1;
-            continue;
-        }
-        if IsIdentStart(ch) {
-            var ident = "";
-            while pos <= Str.Length(line) and IsIdentPart(Str.MidLen(line, pos, 1)) {
-                ident = ident + Str.MidLen(line, pos, 1);
-                pos = pos + 1;
-            }
-            if ident == name {
-                out = out + replacement;
-            } else {
-                out = out + ident;
-            }
-            continue;
-        }
-        out = out + ch;
-        pos = pos + 1;
-    }
-    return out;
+    return refactors.ExtractFunctionText(source, startLine, startCol, endLine, endCol, name);
 }
 
 expose func FormatDocumentRangeText(language: String,
@@ -2408,23 +1569,13 @@ expose func FormatDocumentRangeText(language: String,
                                     endLine: Integer,
                                     tabSize: Integer,
                                     insertSpaces: Boolean) -> String {
-    if language == "zia" {
-        return FormatZiaRangeText(source, startLine, endLine, tabSize, insertSpaces);
-    }
-    if language == "basic" {
-        return FormatBasicRangeText(source, startLine, endLine, tabSize, insertSpaces);
-    }
-    if language == "text" or language == "viper" {
-        return TrimTrailingWhitespaceRangeText(source, startLine, endLine);
-    }
-    return "";
+    return formatters.FormatDocumentRangeText(language, source, startLine, endLine, tabSize, insertSpaces);
 }
 
 expose func FormatZiaText(source: String,
                           tabSize: Integer,
                           insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
-    return FormatZiaRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
+    return formatters.FormatZiaText(source, tabSize, insertSpaces);
 }
 
 expose func FormatZiaRangeText(source: String,
@@ -2432,374 +1583,13 @@ expose func FormatZiaRangeText(source: String,
                                endLine: Integer,
                                tabSize: Integer,
                                insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
-    if count == 0 { return source; }
-    var rangeStart = startLine;
-    var rangeEnd = endLine;
-    if rangeStart < 0 { rangeStart = 0; }
-    if rangeEnd >= count { rangeEnd = count - 1; }
-    if rangeEnd < rangeStart { return source; }
-
-    var indentLevel = ZiaIndentBeforeLine(lines, rangeStart);
-    var commentDepth = ZiaCommentDepthBeforeLine(lines, rangeStart);
-    var parenDepth = ZiaParenDepthBeforeLine(lines, rangeStart);
-    var output = new List();
-    var i = 0;
-    while i < count {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        if i >= rangeStart and i <= rangeEnd {
-            if commentDepth > 0 {
-                // Line begins inside a block comment — preserve it verbatim.
-                output.add(line);
-            } else {
-                // Hanging indent for lines continuing an unclosed `(`/`[` or a
-                // leading-dot method chain, so multi-line calls and chains keep
-                // their structure instead of collapsing to brace depth.
-                var cont = ZiaContinuationIndent(line, parenDepth);
-                output.add(FormatZiaLine(line, indentLevel + cont, tabSize, insertSpaces));
-            }
-            indentLevel = indentLevel + ZiaBraceDelta(line, commentDepth);
-            if indentLevel < 0 { indentLevel = 0; }
-            parenDepth = parenDepth + ZiaParenDelta(line, commentDepth);
-            if parenDepth < 0 { parenDepth = 0; }
-            commentDepth = ZiaCommentDepthAfter(line, commentDepth);
-        } else {
-            output.add(line);
-        }
-        i = i + 1;
-    }
-
-    var eol = "\n";
-    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    return JoinStringList(output, eol);
+    return formatters.FormatZiaRangeText(source, startLine, endLine, tabSize, insertSpaces);
 }
-
-func TrimTrailingWhitespaceRangeText(source: String,
-                                     startLine: Integer,
-                                     endLine: Integer) -> String {
-    var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
-    if count == 0 { return source; }
-    var rangeStart = startLine;
-    var rangeEnd = endLine;
-    if rangeStart < 0 { rangeStart = 0; }
-    if rangeEnd >= count { rangeEnd = count - 1; }
-    if rangeEnd < rangeStart { return source; }
-
-    var output = new List();
-    var i = 0;
-    while i < count {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        var hadCr = false;
-        if Str.EndsWith(line, "\r") {
-            hadCr = true;
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        if i >= rangeStart and i <= rangeEnd {
-            line = TrimLineRightWhitespace(line);
-        }
-        if hadCr { line = line + "\r"; }
-        output.add(line);
-        i = i + 1;
-    }
-    return JoinStringList(output, "\n");
-}
-
-func FormatZiaLine(line: String,
-                   indentLevel: Integer,
-                   tabSize: Integer,
-                   insertSpaces: Boolean) -> String {
-    var trimmed = Str.Trim(line);
-    if trimmed == "" { return ""; }
-
-    var outIndent = indentLevel - LeadingCloseBraceCount(trimmed);
-    if outIndent < 0 { outIndent = 0; }
-    return IndentText(outIndent, tabSize, insertSpaces) + trimmed;
-}
-
-func ZiaIndentBeforeLine(lines: Any,
-                         targetLine: Integer) -> Integer {
-    var indent = 0;
-    var depth = 0;
-    var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        indent = indent + ZiaBraceDelta(line, depth);
-        if indent < 0 { indent = 0; }
-        depth = ZiaCommentDepthAfter(line, depth);
-        i = i + 1;
-    }
-    return indent;
-}
-
-func LeadingCloseBraceCount(trimmed: String) -> Integer {
-    var count = 0;
-    var i = 1;
-    while i <= Str.Length(trimmed) and Str.MidLen(trimmed, i, 1) == "}" {
-        count = count + 1;
-        i = i + 1;
-    }
-    return count;
-}
-
-/// @brief Net `{`/`}` change on a line, ignoring braces in strings and in line
-///        (`//`) or block (`/* */`) comments. `commentDepth` is the open block-
-///        comment nesting on entry to the line (0 = not in a comment).
-func ZiaBraceDelta(line: String, commentDepth: Integer) -> Integer {
-    var delta = 0;
-    var inString = false;
-    var escape = false;
-    var depth = commentDepth;
-    var n = Str.Length(line);
-    var i = 1;
-    while i <= n {
-        var ch = Str.MidLen(line, i, 1);
-        var next = "";
-        if i < n {
-            next = Str.MidLen(line, i + 1, 1);
-        }
-
-        if depth > 0 {
-            if ch == "/" and next == "*" {
-                depth = depth + 1;
-                i = i + 2;
-                continue;
-            }
-            if ch == "*" and next == "/" {
-                depth = depth - 1;
-                i = i + 2;
-                continue;
-            }
-            i = i + 1;
-            continue;
-        }
-
-        if inString {
-            if escape {
-                escape = false;
-            } else if ch == "\\" {
-                escape = true;
-            } else if ch == "\"" {
-                inString = false;
-            }
-            i = i + 1;
-            continue;
-        }
-
-        if ch == "/" and next == "/" {
-            break;
-        }
-        if ch == "/" and next == "*" {
-            depth = 1;
-            i = i + 2;
-            continue;
-        }
-        if ch == "\"" {
-            inString = true;
-        } else if ch == "{" {
-            delta = delta + 1;
-        } else if ch == "}" {
-            delta = delta - 1;
-        }
-        i = i + 1;
-    }
-    return delta;
-}
-
-/// @brief Open block-comment nesting depth at the END of a line, given the
-///        depth on entry. Used to carry `/* */` state across lines so brace
-///        counting stays correct in multi-line comments.
-func ZiaCommentDepthAfter(line: String, commentDepth: Integer) -> Integer {
-    var inString = false;
-    var escape = false;
-    var depth = commentDepth;
-    var n = Str.Length(line);
-    var i = 1;
-    while i <= n {
-        var ch = Str.MidLen(line, i, 1);
-        var next = "";
-        if i < n {
-            next = Str.MidLen(line, i + 1, 1);
-        }
-
-        if depth > 0 {
-            if ch == "/" and next == "*" {
-                depth = depth + 1;
-                i = i + 2;
-                continue;
-            }
-            if ch == "*" and next == "/" {
-                depth = depth - 1;
-                i = i + 2;
-                continue;
-            }
-            i = i + 1;
-            continue;
-        }
-
-        if inString {
-            if escape {
-                escape = false;
-            } else if ch == "\\" {
-                escape = true;
-            } else if ch == "\"" {
-                inString = false;
-            }
-            i = i + 1;
-            continue;
-        }
-
-        if ch == "/" and next == "/" {
-            return depth;
-        }
-        if ch == "/" and next == "*" {
-            depth = 1;
-            i = i + 2;
-            continue;
-        }
-        if ch == "\"" {
-            inString = true;
-        }
-        i = i + 1;
-    }
-    return depth;
-}
-
-/// @brief Open block-comment nesting depth at the start of `targetLine`.
-func ZiaCommentDepthBeforeLine(lines: Any,
-                               targetLine: Integer) -> Integer {
-    var depth = 0;
-    var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        depth = ZiaCommentDepthAfter(line, depth);
-        i = i + 1;
-    }
-    return depth;
-}
-
-/// @brief Net `(`+`[` minus `)`+`]` on a line, ignoring those inside strings and
-///        line/block comments. `commentDepth` is the open block-comment nesting
-///        on entry (0 = not in a comment). Mirrors ZiaBraceDelta but for the
-///        round/square brackets that drive multi-line continuation indent.
-func ZiaParenDelta(line: String, commentDepth: Integer) -> Integer {
-    var delta = 0;
-    var inString = false;
-    var escape = false;
-    var depth = commentDepth;
-    var n = Str.Length(line);
-    var i = 1;
-    while i <= n {
-        var ch = Str.MidLen(line, i, 1);
-        var next = "";
-        if i < n {
-            next = Str.MidLen(line, i + 1, 1);
-        }
-
-        if depth > 0 {
-            if ch == "/" and next == "*" {
-                depth = depth + 1;
-                i = i + 2;
-                continue;
-            }
-            if ch == "*" and next == "/" {
-                depth = depth - 1;
-                i = i + 2;
-                continue;
-            }
-            i = i + 1;
-            continue;
-        }
-
-        if inString {
-            if escape {
-                escape = false;
-            } else if ch == "\\" {
-                escape = true;
-            } else if ch == "\"" {
-                inString = false;
-            }
-            i = i + 1;
-            continue;
-        }
-
-        if ch == "/" and next == "/" {
-            break;
-        }
-        if ch == "/" and next == "*" {
-            depth = 1;
-            i = i + 2;
-            continue;
-        }
-        if ch == "\"" {
-            inString = true;
-        } else if ch == "(" or ch == "[" {
-            delta = delta + 1;
-        } else if ch == ")" or ch == "]" {
-            delta = delta - 1;
-        }
-        i = i + 1;
-    }
-    return delta;
-}
-
-/// @brief Open `(`/`[` nesting depth at the start of `targetLine`, tracking block
-///        comments so brackets inside `/* */` are not counted.
-func ZiaParenDepthBeforeLine(lines: Any,
-                             targetLine: Integer) -> Integer {
-    var paren = 0;
-    var depth = 0;
-    var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        paren = paren + ZiaParenDelta(line, depth);
-        if paren < 0 { paren = 0; }
-        depth = ZiaCommentDepthAfter(line, depth);
-        i = i + 1;
-    }
-    return paren;
-}
-
-/// @brief Extra continuation indent (in levels) for a line given the open
-///        paren/bracket depth on entry. A leading close `)`/`]` re-aligns to the
-///        opener (0); a line inside an unclosed `(`/`[` hangs one level; a
-///        leading-dot method-chain line also hangs one level.
-func ZiaContinuationIndent(line: String,
-                           parenDepthBefore: Integer) -> Integer {
-    var trimmed = Str.Trim(line);
-    if trimmed == "" { return 0; }
-    var first = Str.MidLen(trimmed, 1, 1);
-    if first == ")" or first == "]" { return 0; }
-    if parenDepthBefore > 0 { return 1; }
-    if first == "." { return 1; }
-    return 0;
-}
-
-// ── Viper BASIC formatter ──────────────────────────────────────────────────
-// Keyword-driven indentation (BASIC has no braces). Block openers (FOR, WHILE,
-// DO, SUB, FUNCTION, SELECT, TYPE, multi-line IF…THEN) add a level; closers
-// (NEXT, WEND, LOOP, ENDIF, END SUB/FUNCTION/IF/SELECT/WHILE/TYPE) remove one.
-// ELSE / ELSEIF dedent themselves but keep the body level. Comments (' and REM)
-// and string contents are ignored when detecting a trailing THEN.
 
 expose func FormatBasicText(source: String,
                             tabSize: Integer,
                             insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
-    return FormatBasicRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
+    return formatters.FormatBasicText(source, tabSize, insertSpaces);
 }
 
 expose func FormatBasicRangeText(source: String,
@@ -2807,211 +1597,23 @@ expose func FormatBasicRangeText(source: String,
                                  endLine: Integer,
                                  tabSize: Integer,
                                  insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
-    if count == 0 { return source; }
-    var rangeStart = startLine;
-    var rangeEnd = endLine;
-    if rangeStart < 0 { rangeStart = 0; }
-    if rangeEnd >= count { rangeEnd = count - 1; }
-    if rangeEnd < rangeStart { return source; }
-
-    var indentLevel = BasicIndentBeforeLine(lines, rangeStart);
-    var output = new List();
-    var i = 0;
-    while i < count {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        if i >= rangeStart and i <= rangeEnd {
-            output.add(FormatBasicLine(line, indentLevel, tabSize, insertSpaces));
-            indentLevel = indentLevel + BasicLineDelta(line);
-            if indentLevel < 0 { indentLevel = 0; }
-        } else {
-            output.add(line);
-        }
-        i = i + 1;
-    }
-
-    var eol = "\n";
-    if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    return JoinStringList(output, eol);
-}
-
-func FormatBasicLine(line: String,
-                     indentLevel: Integer,
-                     tabSize: Integer,
-                     insertSpaces: Boolean) -> String {
-    var trimmed = Str.Trim(line);
-    if trimmed == "" { return ""; }
-    var outIndent = indentLevel - BasicLineDedent(trimmed);
-    if outIndent < 0 { outIndent = 0; }
-    return IndentText(outIndent, tabSize, insertSpaces) + trimmed;
-}
-
-func BasicIndentBeforeLine(lines: Any,
-                           targetLine: Integer) -> Integer {
-    var indent = 0;
-    var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
-        }
-        indent = indent + BasicLineDelta(line);
-        if indent < 0 { indent = 0; }
-        i = i + 1;
-    }
-    return indent;
-}
-
-/// @brief Uppercased first whitespace-delimited word of a line.
-func BasicFirstWord(trimmed: String) -> String {
-    var n = Str.Length(trimmed);
-    var i = 1;
-    while i <= n and (Str.MidLen(trimmed, i, 1) == " " or Str.MidLen(trimmed, i, 1) == "\t") {
-        i = i + 1;
-    }
-    var start = i;
-    while i <= n and Str.MidLen(trimmed, i, 1) != " " and Str.MidLen(trimmed, i, 1) != "\t" {
-        i = i + 1;
-    }
-    if i <= start { return ""; }
-    return Str.ToUpper(Str.MidLen(trimmed, start, i - start));
-}
-
-/// @brief Uppercased second whitespace-delimited word (e.g. "SUB" in "END SUB").
-func BasicSecondWord(trimmed: String) -> String {
-    var n = Str.Length(trimmed);
-    var i = 1;
-    while i <= n and Str.MidLen(trimmed, i, 1) != " " and Str.MidLen(trimmed, i, 1) != "\t" {
-        i = i + 1;
-    }
-    while i <= n and (Str.MidLen(trimmed, i, 1) == " " or Str.MidLen(trimmed, i, 1) == "\t") {
-        i = i + 1;
-    }
-    var start = i;
-    while i <= n and Str.MidLen(trimmed, i, 1) != " " and Str.MidLen(trimmed, i, 1) != "\t" {
-        i = i + 1;
-    }
-    if i <= start { return ""; }
-    return Str.ToUpper(Str.MidLen(trimmed, start, i - start));
-}
-
-/// @brief Strip a trailing `'` comment, respecting double-quoted strings.
-func BasicCodeOnly(line: String) -> String {
-    var inString = false;
-    var n = Str.Length(line);
-    var i = 1;
-    while i <= n {
-        var ch = Str.MidLen(line, i, 1);
-        if inString {
-            if ch == "\"" { inString = false; }
-        } else {
-            if ch == "\"" {
-                inString = true;
-            } else if ch == "'" {
-                return Str.Left(line, i - 1);
-            }
-        }
-        i = i + 1;
-    }
-    return line;
-}
-
-/// @brief True if the line's code (comment stripped) ends with the THEN keyword,
-///        marking a multi-line IF block (vs. a single-line `IF x THEN stmt`).
-func BasicEndsWithThen(trimmed: String) -> Boolean {
-    var up = Str.ToUpper(Str.Trim(BasicCodeOnly(trimmed)));
-    if up == "THEN" { return true; }
-    return Str.EndsWith(up, " THEN");
-}
-
-/// @brief 1 if the line should be dedented one level before printing (closers,
-///        ELSE/ELSEIF), else 0.
-func BasicLineDedent(trimmed: String) -> Integer {
-    var w = BasicFirstWord(trimmed);
-    if w == "NEXT" or w == "WEND" or w == "LOOP" or w == "ENDIF"
-       or w == "ELSE" or w == "ELSEIF" {
-        return 1;
-    }
-    if w == "END" {
-        var s = BasicSecondWord(trimmed);
-        if s == "IF" or s == "SUB" or s == "FUNCTION" or s == "SELECT"
-           or s == "WHILE" or s == "TYPE" {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/// @brief Net indentation change a line applies to the lines that follow it.
-func BasicLineDelta(line: String) -> Integer {
-    var trimmed = Str.Trim(line);
-    if trimmed == "" { return 0; }
-    var w = BasicFirstWord(trimmed);
-
-    if w == "NEXT" or w == "WEND" or w == "LOOP" or w == "ENDIF" {
-        return -1;
-    }
-    if w == "END" {
-        var s = BasicSecondWord(trimmed);
-        if s == "IF" or s == "SUB" or s == "FUNCTION" or s == "SELECT"
-           or s == "WHILE" or s == "TYPE" {
-            return -1;
-        }
-        return 0;
-    }
-    if w == "ELSE" or w == "ELSEIF" {
-        return 0;
-    }
-    if w == "FOR" or w == "WHILE" or w == "DO" or w == "SUB"
-       or w == "FUNCTION" or w == "SELECT" or w == "TYPE" {
-        return 1;
-    }
-    if w == "IF" {
-        if BasicEndsWithThen(trimmed) { return 1; }
-        return 0;
-    }
-    return 0;
-}
-
-func IndentText(level: Integer,
-                tabSize: Integer,
-                insertSpaces: Boolean) -> String {
-    if level <= 0 { return ""; }
-    var width = tabSize;
-    if width < 1 { width = 4; }
-
-    var unit = "\t";
-    if insertSpaces {
-        unit = "";
-        var s = 0;
-        while s < width {
-            unit = unit + " ";
-            s = s + 1;
-        }
-    }
-
-    var text = "";
-    var i = 0;
-    while i < level {
-        text = text + unit;
-        i = i + 1;
-    }
-    return text;
+    return formatters.FormatBasicRangeText(source, startLine, endLine, tabSize, insertSpaces);
 }
 
 func TrimLineRightWhitespace(line: String) -> String {
-    var end = Str.Length(line);
-    while end > 0 {
-        var ch = Str.MidLen(line, end, 1);
-        if ch != " " and ch != "\t" { break; }
-        end = end - 1;
-    }
-    if end <= 0 { return ""; }
-    return Str.Left(line, end);
+    return text_utils.TrimLineRightWhitespace(line);
+}
+
+func JoinStringList(items: List, separator: String) -> String {
+    return text_utils.JoinStringList(items, separator);
+}
+
+func IsZiaBindLine(trimmed: String) -> Boolean {
+    return bind_utils.IsZiaBindLine(trimmed);
+}
+
+func LeadingWhitespaceLength(text: String) -> Integer {
+    return text_utils.LeadingWhitespaceLength(text);
 }
 
 func ReplaceWholeDocument(engine: editor_engine.EditorEngine,
@@ -3023,55 +1625,9 @@ func ReplaceWholeDocument(engine: editor_engine.EditorEngine,
     engine.editor.InsertAtCursor(text);
 }
 
-func IsZiaBindLine(trimmed: String) -> Boolean {
-    return Str.StartsWith(trimmed, "bind ") and Str.EndsWith(trimmed, ";");
-}
-
-func InsertUniqueSortedBind(binds: List, line: String) {
-    var key = Str.ToLower(Str.Trim(line));
-    var i = 0;
-    while i < binds.count() {
-        var existing = Str.ToLower(Str.Trim(Obj.ToString(binds.get(i))));
-        if existing == key {
-            return;
-        }
-        if existing > key {
-            binds.insert(i, line);
-            return;
-        }
-        i = i + 1;
-    }
-    binds.add(line);
-}
-
-func JoinStringList(items: List, separator: String) -> String {
-    var result = "";
-    var i = 0;
-    while i < items.count() {
-        if i > 0 {
-            result = result + separator;
-        }
-        result = result + Obj.ToString(items.get(i));
-        i = i + 1;
-    }
-    return result;
-}
-
 func handleFormatUnavailable(shell: app_shell.AppShell) {
     GUI.Toast.Info("No formatter is available for this language yet");
     shell.SetStatusLeft("Format command unavailable");
-}
-
-func LeadingWhitespaceLength(text: String) -> Integer {
-    var i = 1;
-    while i <= Str.Length(text) {
-        var ch = Str.MidLen(text, i, 1);
-        if ch != " " and ch != "\t" {
-            return i - 1;
-        }
-        i = i + 1;
-    }
-    return Str.Length(text);
 }
 
 func SelectWordAt(engine: editor_engine.EditorEngine,
@@ -3389,89 +1945,25 @@ func IsWholeDocumentSelection(engine: editor_engine.EditorEngine,
 }
 
 func FindNextOccurrence(source: String, word: String, startLine: Integer, startCol: Integer) -> String {
-    var lines = Str.Split(source, "\n");
-    var i = startLine - 1;
-    while i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        var fromCol = 1;
-        if i == startLine - 1 {
-            fromCol = startCol;
-            if fromCol < 1 { fromCol = 1; }
-        }
-        var idx = Str.IndexOfFrom(line, fromCol, word);
-        while idx != 0 {
-            if IsWordBoundaryMatch(line, idx, Str.Length(word)) {
-                return "" + (i + 1) + ":" + idx;
-            }
-            idx = Str.IndexOfFrom(line, idx + 1, word);
-        }
-        i = i + 1;
-    }
-    return "";
+    return source_scan.FindNextOccurrence(source, word, startLine, startCol);
 }
 
-func IsValidIdentifier(name: String) -> Boolean {
-    if Str.Length(name) == 0 { return false; }
-    if IsKeyword(name) { return false; }
-    var first = Str.MidLen(name, 1, 1);
-    if IsIdentStart(first) == false { return false; }
-    var i = 2;
-    while i <= Str.Length(name) {
-        if IsIdentPart(Str.MidLen(name, i, 1)) == false { return false; }
-        i = i + 1;
-    }
-    return true;
+expose func IsValidIdentifier(name: String) -> Boolean {
+    return identifier_utils.IsValidIdentifier(name);
 }
 
 func IsIdentStart(ch: String) -> Boolean {
-    if ch >= "a" and ch <= "z" { return true; }
-    if ch >= "A" and ch <= "Z" { return true; }
-    if ch == "_" { return true; }
-    return false;
+    return identifier_utils.IsIdentStart(ch);
 }
 
 func IsIdentPart(ch: String) -> Boolean {
-    if IsIdentStart(ch) { return true; }
-    if ch >= "0" and ch <= "9" { return true; }
-    return false;
+    return identifier_utils.IsIdentPart(ch);
 }
 
 func IsWordBoundaryMatch(line: String, startCol: Integer, len: Integer) -> Boolean {
-    var beforeOk = true;
-    var afterOk = true;
-    if startCol > 1 {
-        beforeOk = IsIdentPart(Str.MidLen(line, startCol - 1, 1)) == false;
-    }
-    var afterCol = startCol + len;
-    if afterCol <= Str.Length(line) {
-        afterOk = IsIdentPart(Str.MidLen(line, afterCol, 1)) == false;
-    }
-    return beforeOk and afterOk;
+    return identifier_utils.IsWordBoundaryMatch(line, startCol, len);
 }
 
 func IsKeyword(name: String) -> Boolean {
-    if name == "and" { return true; }
-    if name == "bind" { return true; }
-    if name == "break" { return true; }
-    if name == "class" { return true; }
-    if name == "continue" { return true; }
-    if name == "else" { return true; }
-    if name == "expose" { return true; }
-    if name == "false" { return true; }
-    if name == "final" { return true; }
-    if name == "for" { return true; }
-    if name == "func" { return true; }
-    if name == "hide" { return true; }
-    if name == "if" { return true; }
-    if name == "in" { return true; }
-    if name == "module" { return true; }
-    if name == "new" { return true; }
-    if name == "not" { return true; }
-    if name == "null" { return true; }
-    if name == "or" { return true; }
-    if name == "return" { return true; }
-    if name == "true" { return true; }
-    if name == "var" { return true; }
-    if name == "while" { return true; }
-    return false;
+    return identifier_utils.IsKeyword(name);
 }

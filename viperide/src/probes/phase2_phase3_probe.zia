@@ -1,13 +1,13 @@
 module phase2_phase3_probe;
 
-bind "build/build_system";
-bind "build/breakpoints";
-bind "build/debug_session";
-bind "build/run_config";
-bind "core/document";
-bind "core/project";
-bind "core/project_manager";
-bind "services/file_utils";
+bind "../build/build_system";
+bind "../build/breakpoints";
+bind "../build/debug_session";
+bind "../build/run_config";
+bind "../core/document";
+bind "../core/project";
+bind "../core/project_manager";
+bind "../services/file_utils";
 
 bind Terminal = Viper.Terminal;
 bind File = Viper.IO.File;

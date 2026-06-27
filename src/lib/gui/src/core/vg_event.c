@@ -710,12 +710,16 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
 
             // For MOUSE_UP, we need to synthesize a CLICK event because
             // vg_event_send()'s CLICK generation depends on contains_point(),
-            // which fails for dropdown clicks outside the widget bounds.
+            // which fails for clicks landing in a popup rendered outside the
+            // capturing widget's own bounds. This applies to both the combo-box
+            // Dropdown's list popup and the MenuBar's open drop-down menu — both
+            // capture input as themselves while painting an out-of-bounds popup.
             if (event->type == VG_EVENT_MOUSE_UP) {
                 bool handled = vg_event_send(capture, event);
                 if (!vg_widget_is_live(capture))
                     return handled;
-                if (capture->type == VG_WIDGET_DROPDOWN &&
+                if ((capture->type == VG_WIDGET_DROPDOWN ||
+                     capture->type == VG_WIDGET_MENUBAR) &&
                     vg_widget_get_input_capture() == capture &&
                     !vg_widget_contains_point(
                         capture, event_screen_x(event), event_screen_y(event))) {

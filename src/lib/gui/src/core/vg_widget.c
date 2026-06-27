@@ -431,18 +431,38 @@ static void default_arrange(vg_widget_t *self, float x, float y, float width, fl
     self->width = width;
     self->height = height;
 
-    // Position children within content area using a simple vertical flow.
-    // Specialized layout widgets override arrange and handle their own child
-    // placement; this default path is only for plain containers.
+    // Position children within content area using a vertical flow with flex
+    // support. Specialized layout widgets override arrange and handle their own
+    // child placement; this default path is only for plain containers (the app
+    // root and SplitPane panes among them). Fixed children keep their measured
+    // height; flex children share the remaining height so a flex child fills its
+    // plain-container parent instead of the container collapsing to content
+    // height (which would push later siblings off-screen).
     float cx = self->layout.padding_left;
     float cy = self->layout.padding_top;
     float content_w = width - self->layout.padding_left - self->layout.padding_right;
     if (content_w < 0.0f)
         content_w = 0.0f;
+    float content_h = height - self->layout.padding_top - self->layout.padding_bottom;
+    if (content_h < 0.0f)
+        content_h = 0.0f;
+
+    float total_fixed = 0.0f;
+    float total_flex = 0.0f;
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
+        total_fixed += child->layout.margin_top + child->layout.margin_bottom;
+        if (child->layout.flex > 0.0f)
+            total_flex += child->layout.flex;
+        else
+            total_fixed += child->measured_height;
+    }
+    float flex_avail = content_h - total_fixed;
+    float flex_unit = (total_flex > 0.0f && flex_avail > 0.0f) ? flex_avail / total_flex : 0.0f;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         float cw = content_w - child->layout.margin_left - child->layout.margin_right;
-        float ch = child->measured_height;
+        float ch =
+            (child->layout.flex > 0.0f) ? flex_unit * child->layout.flex : child->measured_height;
         if (cw < 0.0f)
             cw = child->measured_width;
         if (ch < 0.0f)

@@ -26,14 +26,16 @@ viperide/
 
     src/
         main.zia               Application entry point and frame loop
-        smoke_probe.zia        CI smoke probe for shell/editor construction
+        probes/                CI probe entry points for IDE behavior
 
+        app/                   Application orchestration helpers
         build/                 Build/run integration and diagnostics model
         commands/              File, edit, view, build, and search commands
         core/                  Documents, projects, settings, and persistence
         editor/                Code editor integration and language services
         services/              Shared utility services
         ui/                    Window shell, menus, toolbar, panels, preferences
+        zia/                   Pure Zia parsing, formatting, and refactor helpers
         tests/                 Local GUI probes and C runtime/menu test source
 
     plans/                     Roadmap, phase plans, and runtime prerequisites
@@ -42,6 +44,9 @@ viperide/
 ```
 
 Root-level files are project metadata or documentation. Zia and C source files live under `src/`.
+
+See [`docs/architecture.md`](docs/architecture.md) for the contributor-facing
+module map, layering rules, comment expectations, and file-size review triggers.
 
 ## Build
 
@@ -57,7 +62,10 @@ On Windows:
 scripts\build_ide_win.cmd
 ```
 
-Both scripts write generated binaries under `viperide/bin/` by default.
+Both scripts write generated binaries under `viperide/bin/` by default. The
+Unix build script also refreshes `build/viperide/viperide` as a compatibility
+copy and writes `viperide.buildinfo` beside each generated binary so Help >
+About can identify the running build.
 
 ## Run
 

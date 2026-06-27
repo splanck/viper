@@ -59,7 +59,7 @@ These additions:
   the compiler, and the lib layer (`vg_codeeditor`) only stores/applies resolved
   colors;
 - are covered by runtime completeness, ABI/surface, and a focused IDE probe
-  (`viperide/src/semantic_tokens_probe.zia`).
+  (`viperide/src/probes/semantic_tokens_probe.zia`).
 
 The overlay is advisory: unresolved identifiers are omitted so the lexical color
 stands, and the editor remains fully functional with no semantic tokens (offline

@@ -1,6 +1,6 @@
 module terminal_probe;
 
-bind "terminal/terminal_session";
+bind "../terminal/terminal_session";
 
 bind Terminal = Viper.Terminal;
 bind Pty = Viper.System.Pty;

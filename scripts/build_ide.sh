@@ -10,6 +10,8 @@ BUILD_DIR="${VIPER_BUILD_DIR:-$ROOT_DIR/build}"
 IDE_DIR="$ROOT_DIR/viperide"
 OUT_DIR="${VIPER_IDE_OUT_DIR:-$IDE_DIR/bin}"
 OUTPUT_FILE="${VIPER_IDE_OUTPUT:-$OUT_DIR/viperide}"
+COMPAT_OUTPUT_FILE="${VIPER_IDE_COMPAT_OUTPUT:-$BUILD_DIR/viperide/viperide}"
+SKIP_COMPAT_COPY="${VIPER_IDE_SKIP_COMPAT_COPY:-0}"
 
 VIPER="$BUILD_DIR/src/tools/viper/viper"
 
@@ -22,6 +24,7 @@ usage() {
     echo "Usage: $0 [--clean] [--output PATH]"
     echo "  --clean        Remove the existing ViperIDE binary before building"
     echo "  --output PATH  Write the binary to PATH (default: viperide/bin/viperide)"
+    echo "  Compatibility copy: build/viperide/viperide unless VIPER_IDE_SKIP_COMPAT_COPY=1"
     exit 1
 }
 
@@ -65,6 +68,11 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 if [[ $CLEAN -eq 1 ]]; then
     rm -f "$OUTPUT_FILE"
+    rm -f "$(dirname "$OUTPUT_FILE")/viperide.buildinfo"
+    if [[ "$OUTPUT_FILE" != "$COMPAT_OUTPUT_FILE" ]]; then
+        rm -f "$COMPAT_OUTPUT_FILE"
+        rm -f "$(dirname "$COMPAT_OUTPUT_FILE")/viperide.buildinfo"
+    fi
 fi
 
 TMP_BASE="/tmp/viperide_build_$$"
@@ -120,6 +128,49 @@ build_native() {
     echo -e "${GREEN}OK${NC}"
 }
 
+build_info_text() {
+    local binary_path="$1"
+    local timestamp
+    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local revision
+    if revision="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null)"; then
+        :
+    else
+        revision="unknown"
+    fi
+    local dirty=""
+    if git -C "$ROOT_DIR" diff --quiet --ignore-submodules -- 2>/dev/null; then
+        dirty=""
+    else
+        dirty=" dirty"
+    fi
+    printf 'Build: %s\nSource: %s%s\nOutput: %s\nViper: %s\n' \
+        "$timestamp" "$revision" "$dirty" "$binary_path" "$VIPER"
+}
+
+write_build_info() {
+    local binary_path="$1"
+    local info_path
+    info_path="$(dirname "$binary_path")/viperide.buildinfo"
+    mkdir -p "$(dirname "$info_path")"
+    build_info_text "$binary_path" >"$info_path"
+}
+
+mirror_compat_output() {
+    if [[ "$SKIP_COMPAT_COPY" == "1" ]]; then
+        return 0
+    fi
+    if [[ "$OUTPUT_FILE" == "$COMPAT_OUTPUT_FILE" ]]; then
+        return 0
+    fi
+    mkdir -p "$(dirname "$COMPAT_OUTPUT_FILE")"
+    cp -p "$OUTPUT_FILE" "$COMPAT_OUTPUT_FILE"
+    write_build_info "$COMPAT_OUTPUT_FILE"
+    local compat_size
+    compat_size=$(ls -lh "$COMPAT_OUTPUT_FILE" | awk '{print $5}')
+    echo -e "${GREEN}Compatibility copy: $COMPAT_OUTPUT_FILE ($compat_size)${NC}"
+}
+
 echo -e "${CYAN}Building ViperIDE${NC}"
 echo "Source: $IDE_DIR"
 echo "Output: $OUTPUT_FILE"
@@ -139,4 +190,7 @@ case "$(uname -s 2>/dev/null)" in
 esac
 
 size=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
+write_build_info "$OUTPUT_FILE"
+mirror_compat_output
 echo -e "${GREEN}Built: $OUTPUT_FILE ($size)${NC}"
+echo "Build info: $(dirname "$OUTPUT_FILE")/viperide.buildinfo"

@@ -31,6 +31,12 @@ if not "%VIPER_IDE_OUTPUT%"=="" (
 ) else (
     set "OUTPUT_FILE=%IDE_BIN_DIR%\viperide.exe"
 )
+if "%VIPER_IDE_COMPAT_OUTPUT%"=="" (
+    set "COMPAT_OUTPUT_FILE=%BUILD_DIR%\viperide\viperide.exe"
+) else (
+    set "COMPAT_OUTPUT_FILE=%VIPER_IDE_COMPAT_OUTPUT%"
+)
+if "%VIPER_IDE_SKIP_COMPAT_COPY%"=="" set "VIPER_IDE_SKIP_COMPAT_COPY=0"
 
 if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
 if "%JOBS%"=="" set "JOBS=%NUMBER_OF_PROCESSORS%"
@@ -78,6 +84,7 @@ echo Usage: %~nx0 [--clean] [--arch arm64^|x64] [--output PATH]
 echo   --clean        Remove the existing ViperIDE binary before building
 echo   --arch         Target architecture ^(default: host, or VIPER_IDE_ARCH^)
 echo   --output PATH  Write the binary to PATH ^(default: viperide\bin\viperide.exe^)
+echo   Compatibility copy: build\viperide\viperide.exe unless VIPER_IDE_SKIP_COMPAT_COPY=1
 exit /b 1
 
 :done_args
@@ -149,6 +156,11 @@ if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 if %CLEAN%==1 (
     echo Cleaning existing ViperIDE binary...
     del /q "%OUTPUT_FILE%" 2>nul
+    del /q "%OUTPUT_DIR%viperide.buildinfo" 2>nul
+    if /I not "%OUTPUT_FILE%"=="%COMPAT_OUTPUT_FILE%" (
+        del /q "%COMPAT_OUTPUT_FILE%" 2>nul
+        for %%I in ("%COMPAT_OUTPUT_FILE%") do del /q "%%~dpIviperide.buildinfo" 2>nul
+    )
 )
 
 echo Compiling...
@@ -156,13 +168,44 @@ echo Compiling...
 if errorlevel 1 goto :build_failed
 
 echo OK
+call :write_build_info "%OUTPUT_FILE%"
+call :mirror_compat_output
 echo Built: %OUTPUT_FILE%
+echo Build info: %OUTPUT_DIR%viperide.buildinfo
 exit /b 0
 
 :build_failed
 echo FAILED
 "%VIPER%" build "%IDE_DIR%" --arch %IDE_ARCH% -o "%OUTPUT_FILE%" 2>&1
 exit /b 1
+
+:write_build_info
+set "BUILD_INFO_BINARY=%~1"
+for %%I in ("%BUILD_INFO_BINARY%") do set "BUILD_INFO_PATH=%%~dpIviperide.buildinfo"
+set "BUILD_REVISION=unknown"
+for /f "usebackq delims=" %%G in (`git -C "%ROOT_DIR%" rev-parse --short HEAD 2^>nul`) do set "BUILD_REVISION=%%G"
+git -C "%ROOT_DIR%" diff --quiet --ignore-submodules -- 2>nul
+if errorlevel 1 (
+    set "BUILD_DIRTY= dirty"
+) else (
+    set "BUILD_DIRTY="
+)
+> "%BUILD_INFO_PATH%" echo Build: %DATE% %TIME%
+>>"%BUILD_INFO_PATH%" echo Source: %BUILD_REVISION%%BUILD_DIRTY%
+>>"%BUILD_INFO_PATH%" echo Output: %BUILD_INFO_BINARY%
+>>"%BUILD_INFO_PATH%" echo Viper: %VIPER%
+exit /b 0
+
+:mirror_compat_output
+if "%VIPER_IDE_SKIP_COMPAT_COPY%"=="1" exit /b 0
+if /I "%OUTPUT_FILE%"=="%COMPAT_OUTPUT_FILE%" exit /b 0
+for %%I in ("%COMPAT_OUTPUT_FILE%") do set "COMPAT_OUTPUT_DIR=%%~dpI"
+if not exist "%COMPAT_OUTPUT_DIR%" mkdir "%COMPAT_OUTPUT_DIR%"
+copy /y "%OUTPUT_FILE%" "%COMPAT_OUTPUT_FILE%" >nul
+if errorlevel 1 exit /b 1
+call :write_build_info "%COMPAT_OUTPUT_FILE%"
+echo Compatibility copy: %COMPAT_OUTPUT_FILE%
+exit /b 0
 
 REM ============================================
 REM Ensure a Viper tool/runtime build exists for the requested IDE arch.

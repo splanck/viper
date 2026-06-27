@@ -2,6 +2,7 @@ module ide_overlays;
 
 bind "../ui/app_shell";
 bind "../core/settings";
+bind "../app/build_info";
 
 bind Viper.GUI as GUI;
 bind Str = Viper.String;
@@ -24,7 +25,7 @@ final SETTINGS_DOCK_MAX_WIDTH = 720;
 final SETTINGS_DOCK_MIN_WIDTH = 420;
 final SETTINGS_DOCK_SCREEN_PERCENT = 85;
 final ABOUT_PANEL_WIDTH = 520;
-final ABOUT_PANEL_HEIGHT = 270;
+final ABOUT_PANEL_HEIGHT = 310;
 final PREFERENCE_CONTROL_WIDTH = 240;
 final PANEL_SCREEN_MARGIN = 28;
 
@@ -34,6 +35,7 @@ final PANEL_SCREEN_MARGIN = 28;
 class IdeOverlays {
     expose GUI.VBox settingsPanel;
     expose GUI.FloatingPanel aboutPanel;
+    expose GUI.Label aboutBuildInfo;
 
     expose GUI.TextInput fontPathInput;
     expose GUI.Spinner fontSizeSpinner;
@@ -106,6 +108,9 @@ class IdeOverlays {
     }
 
     expose func OpenAbout(shell: app_shell.AppShell) {
+        if aboutBuildInfo != null {
+            aboutBuildInfo.SetText(build_info.BuildSummary());
+        }
         layoutAboutPanel(shell);
         aboutPanel.SetVisible(1);
         settingsPanel.SetVisible(0);
@@ -643,6 +648,8 @@ class IdeOverlays {
             root,
             "Shortcuts: Ctrl+B sidebar, Ctrl+Shift+P palette, Ctrl+, settings, F5 build and run.");
         aboutLine3.SetWordWrap(1);
+        aboutBuildInfo = GUI.Label.New(root, build_info.BuildSummary());
+        aboutBuildInfo.SetWordWrap(1);
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);

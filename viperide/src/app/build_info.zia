@@ -1,0 +1,51 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: viperide/src/app/build_info.zia
+// Purpose: Resolve ViperIDE standalone build metadata for user-visible
+//          diagnostics and stale-binary detection.
+//
+//===----------------------------------------------------------------------===//
+
+module build_info;
+
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind Env = Viper.System.Environment;
+bind Str = Viper.String;
+
+final BUILD_INFO_FILENAME = "viperide.buildinfo";
+
+/// @brief Return the expected standalone-build metadata sidecar path.
+/// @details Standalone ViperIDE builds write `viperide.buildinfo` beside the
+///          generated executable. Source-run workflows may have no executable
+///          directory, in which case this returns an empty string.
+/// @return Absolute sidecar path, or an empty string when no executable
+///         directory is available.
+expose func SidecarPath() -> String {
+    var exeDir = Path.ExeDir();
+    if exeDir == "" { return ""; }
+    return Path.Join(exeDir, BUILD_INFO_FILENAME);
+}
+
+/// @brief Return the best available ViperIDE build metadata string.
+/// @details The `VIPER_IDE_BUILD_INFO` environment variable is accepted first
+///          for scripted smoke runs. Otherwise this reads the build-info
+///          sidecar emitted by `scripts/build_ide.sh`. If neither source is
+///          available, the message explicitly identifies a source-run or
+///          unstamped executable so users can spot stale binaries.
+/// @return Human-readable build metadata suitable for the About panel.
+expose func BuildSummary() -> String {
+    var envInfo = Str.Trim(Env.GetVariable("VIPER_IDE_BUILD_INFO"));
+    if envInfo != "" { return envInfo; }
+
+    var sidecar = SidecarPath();
+    if sidecar != "" and File.Exists(sidecar) {
+        var text = Str.Trim(File.ReadAllText(sidecar));
+        if text != "" { return text; }
+    }
+
+    return "Build: source run or unstamped executable";
+}

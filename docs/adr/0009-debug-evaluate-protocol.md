@@ -38,7 +38,7 @@ or VM change accompanies it.
 ## Consequences
 
 Phase 6 closes its gate via this note and the debugger probe
-(`viperide/src/debug_probe.zia`), which sets a breakpoint, stops, evaluates a
+(`viperide/src/probes/debug_probe.zia`), which sets a breakpoint, stops, evaluates a
 known local (asserts value), and evaluates an unknown name (asserts `ok:false`).
 Watch/evaluate works for any stopped frame's named locals across Zia and BASIC.
 

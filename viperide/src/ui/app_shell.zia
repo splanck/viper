@@ -1,6 +1,7 @@
 module app_shell;
 
 bind "../editor/language_service";
+bind "../ui/tool_panel_text";
 
 bind Viper.GUI as GUI;
 bind Viper.Collections.Seq as Seq;
@@ -213,6 +214,7 @@ class AppShell {
     expose GUI.TextInput terminalInput;
     expose GUI.Button terminalRun;
     expose GUI.Button terminalKill;
+    expose GUI.Button terminalRestart;
 
     // Bottom tool surface tabs
     expose GUI.TabBar toolTabBar;
@@ -347,6 +349,7 @@ class AppShell {
         mainVBox = GUI.VBox.New();
         mainVBox.SetSpacing(0.0);
         mainVBox.SetPadding(0.0);
+        mainVBox.SetFlex(1.0);
         var root: GUI.Widget = app.Root;
         root.AddChild(mainVBox);
 
@@ -462,6 +465,7 @@ class AppShell {
         miToggleMinimap.SetShortcut("Ctrl+Shift+M");
         viewMenu.AddSeparator();
         miTerminal = viewMenu.AddItem("Terminal");
+        miTerminal.SetShortcut("Ctrl+`");
 
         // Build menu
         buildMenu = menuBar.AddMenu("Build");
@@ -689,6 +693,7 @@ class AppShell {
         terminalInput.SetPlaceholder("Type a command, then Run");
         terminalRun = GUI.Button.New(terminalInputRow, "Run");
         terminalKill = GUI.Button.New(terminalInputRow, "Stop");
+        terminalRestart = GUI.Button.New(terminalInputRow, "Restart");
 
         // Context menu for the file tree (populated on right-click)
         treeContextMenu = GUI.ContextMenu.New();
@@ -1639,92 +1644,44 @@ class AppShell {
     }
 
     expose func ProblemSeverityLabel(severity: String) -> String {
-        var sev = Str.ToLower(severity);
-        if sev == "error" { return "ERROR"; }
-        if sev == "warning" or sev == "warn" { return "WARN"; }
-        return "INFO";
+        return tool_panel_text.ProblemSeverityLabel(severity);
     }
 
     expose func PadToolColumn(text: String, width: Integer) -> String {
-        var out = TrimToolText(text, width);
-        while Str.Length(out) < width {
-            out = out + " ";
-        }
-        return out;
+        return tool_panel_text.PadToolColumn(text, width);
     }
 
     expose func TrimToolText(text: String, width: Integer) -> String {
-        if width <= 0 { return ""; }
-        if Str.Length(text) <= width { return text; }
-        if width == 1 { return "~"; }
-        return Str.MidLen(text, 1, width - 1) + "~";
+        return tool_panel_text.TrimToolText(text, width);
     }
 
     expose func ApplyProblemSeverityColor(item: Any, severity: String) {
         if item == null { return; }
-        var sev = Str.ToLower(severity);
-        if sev == "error" {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_ERROR);
-        } else if sev == "warning" or sev == "warn" {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_WARNING);
-        } else {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_INFO);
-        }
+        GUI.ListBox.ItemSetTextColor(item, tool_panel_text.ProblemSeverityColor(severity));
     }
 
     expose func ApplyOutputLineColor(item: Any, line: String) {
         if item == null { return; }
-        var lower = Str.ToLower(line);
-        if Str.IndexOf(lower, "error") != 0 or Str.IndexOf(lower, "failed") != 0 {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_ERROR);
-        } else if Str.IndexOf(lower, "warning") != 0 or Str.IndexOf(lower, "warn") != 0 {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_WARNING);
-        } else if Str.IndexOf(lower, "success") != 0 or Str.IndexOf(lower, "passed") != 0 {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_SUCCESS);
+        var color = tool_panel_text.OutputLineColor(line);
+        if color != 0 {
+            GUI.ListBox.ItemSetTextColor(item, color);
         }
     }
 
     expose func FormatDiagnosticsSummary(errors: Integer,
                                          warnings: Integer,
                                          notes: Integer) -> String {
-        if errors <= 0 and warnings <= 0 and notes <= 0 {
-            return "Diagnostics: clean";
-        }
-
-        var text = "Diagnostics:";
-        if errors > 0 {
-            text = text + " " + errors + " error";
-            if errors != 1 { text = text + "s"; }
-        }
-        if warnings > 0 {
-            if text != "Diagnostics:" { text = text + ","; }
-            text = text + " " + warnings + " warning";
-            if warnings != 1 { text = text + "s"; }
-        }
-        if notes > 0 {
-            if text != "Diagnostics:" { text = text + ","; }
-            text = text + " " + notes + " note";
-            if notes != 1 { text = text + "s"; }
-        }
-        return text;
+        return tool_panel_text.FormatDiagnosticsSummary(errors, warnings, notes);
     }
 
     expose func DiagnosticsSummaryColor(errors: Integer,
                                         warnings: Integer,
                                         notes: Integer) -> Integer {
-        if errors > 0 { return TOOL_COLOR_ERROR; }
-        if warnings > 0 { return TOOL_COLOR_WARNING; }
-        if notes > 0 { return TOOL_COLOR_INFO; }
-        return TOOL_COLOR_SUCCESS;
+        return tool_panel_text.DiagnosticsSummaryColor(errors, warnings, notes);
     }
 
     expose func FormatLanguageName(languageName: String) -> String {
-        var lang = Str.ToLower(languageName);
-        if lang == "zia" { return "Zia"; }
-        if lang == "basic" { return "BASIC"; }
-        if lang == "scene" { return "Scene"; }
-        if lang == "" { return "text"; }
-        return lang;
+        return tool_panel_text.FormatLanguageName(languageName);
     }
 
     expose func FinishProblems(problemCount: Integer) {
@@ -1850,6 +1807,32 @@ class AppShell {
         activeToolPanelKind = 8;
         HideAllToolPanels();
         terminalPanel.SetVisible(1);
+        if terminalInput != null { terminalInput.Focus(); }
+    }
+
+    /// @brief Hide the integrated terminal panel without destroying its session.
+    /// @details This powers the command-palette/menu toggle behavior. The PTY
+    ///          remains alive so long-running commands keep producing output and
+    ///          can be resumed by showing the terminal again.
+    expose func HideTerminalPanel() {
+        terminalPanel.SetVisible(0);
+        if activeToolPanelKind == 8 {
+            ShowFallbackToolPanelWithoutTerminal();
+        }
+    }
+
+    /// @brief Toggle the terminal panel's visible state.
+    expose func ToggleTerminalPanel() {
+        if terminalPanel != null and terminalPanel.IsVisible() != 0 {
+            HideTerminalPanel();
+        } else {
+            ShowTerminalPanel();
+        }
+    }
+
+    /// @brief Return true when the terminal panel container is visible.
+    expose func IsTerminalPanelVisible() -> Boolean {
+        return terminalPanel != null and terminalPanel.IsVisible() != 0;
     }
 
     expose func HideDebugPanel() {
@@ -1863,6 +1846,30 @@ class AppShell {
     ///          content instead of deleting rows, and hides the tab strip only
     ///          when no tool panel has visible content left.
     hide func ShowFallbackToolPanel() {
+        if HasOutputContent() {
+            ShowOutputPanel();
+        } else if HasActiveProblemsContent() {
+            ShowProblemsPanel();
+        } else if searchListBox.Count > 0 {
+            ShowSearchPanel();
+        } else if referencesListBox.Count > 0 {
+            ShowReferencesPanel();
+        } else if variablesListBox.Count > 0 {
+            ShowVariablesPanel();
+        } else if callStackListBox.Count > 0 {
+            ShowCallStackPanel();
+        } else if debugListBox.Count > 0 {
+            ShowDebugPanel();
+        } else {
+            toolTabBar.SetVisible(0);
+            activeToolPanelKind = 0;
+        }
+    }
+
+    /// @brief Select the best remaining tool panel after hiding Terminal.
+    /// @details Terminal is intentionally excluded so Toggle Terminal can close
+    ///          the panel instead of immediately selecting it again as fallback.
+    hide func ShowFallbackToolPanelWithoutTerminal() {
         if HasOutputContent() {
             ShowOutputPanel();
         } else if HasActiveProblemsContent() {

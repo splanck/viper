@@ -6,11 +6,11 @@ module context_menu_probe;
 // Assertions are made on DocumentManager state (deterministic, display-light);
 // the menus themselves are GUI overlays that only react inside the frame loop.
 
-bind "ui/app_shell";
-bind "core/document_manager";
-bind "editor/editor_engine";
-bind "editor/editor_tabs";
-bind "commands/file_commands";
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../commands/file_commands";
 
 bind Viper.GUI as GUI;
 bind Terminal = Viper.Terminal;

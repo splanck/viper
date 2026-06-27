@@ -6,7 +6,7 @@ module formatting_probe;
 //   * BASIC: keyword-driven indentation for nested FOR/IF/ELSE, single-line IF
 //     does not open a block, and closers dedent.
 
-bind "commands/edit_commands";
+bind "../commands/edit_commands";
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;

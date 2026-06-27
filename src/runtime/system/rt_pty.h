@@ -38,6 +38,13 @@ void *rt_pty_open(rt_string program, void *args, rt_string cwd, void *env, int64
 ///       (Windows 10 1809+); false on ViperDOS.
 int64_t rt_pty_is_supported(void);
 
+/// @brief Return the most recent PTY startup/support error for this process.
+/// @details This diagnostic string is intended for UI/reporting after
+///          rt_pty_open returns NULL or rt_pty_is_supported returns false.
+///          Successful rt_pty_open calls clear it.
+/// @return Runtime string containing the last PTY error, or empty when none.
+rt_string rt_pty_last_error(void);
+
 /// @brief Return TRUE when @p handle is a live PTY session object.
 int64_t rt_pty_is_valid(void *handle);
 

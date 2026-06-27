@@ -9,7 +9,7 @@ while ViperIDE disables BASIC semantic commands by design.
 ## Problem
 
 BASIC editing in ViperIDE is treated as mostly plain text: a probe
-(`viperide/src/phase0_phase1_probe.zia`) asserts `basicService.canGoToDefinition ==
+(`viperide/src/probes/phase0_phase1_probe.zia`) asserts `basicService.canGoToDefinition ==
 false` and that `rename` is not executable. `language_service.zia` leaves all BASIC
 semantic capability flags false. Meanwhile `vbasic-server` already implements the shared
 compiler bridge for diagnostics/check, completion, hover, document symbols, dumps, and
@@ -92,7 +92,7 @@ is the invariant: never advertise a flag before its feature actually works.
 - `src/tests/vbasic-server/test_basic_compiler_bridge.cpp` and
   `src/tests/vbasic-server/test_basic_server_mcp.cpp` cover the bridge/MCP
   services that remain available outside ViperIDE.
-- `viperide/src/phase0_phase1_probe.zia` verifies BASIC semantic commands are
+- `viperide/src/probes/phase0_phase1_probe.zia` verifies BASIC semantic commands are
   disabled through the IDE language-service capability gate.
 - Later flag flips must update the ViperIDE probe expectations in the same
   patch.

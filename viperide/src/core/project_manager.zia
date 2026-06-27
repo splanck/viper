@@ -12,6 +12,7 @@ bind Time = Viper.Time;
 bind FileIndex = Viper.Workspace.FileIndex;
 bind Map = Viper.Collections.Map;
 bind "../core/document_manager";
+bind "../zia/bind_utils";
 
 final TREE_ROOT_PREFIX = "▦ ";
 final TREE_FOLDER_PREFIX = "▤ ";
@@ -875,24 +876,10 @@ func RewriteZiaBindContent(content: String,
                            oldNorm: String,
                            newNorm: String,
                            oldWasDir: Boolean) -> BindRewriteResult {
+    var shared = bind_utils.RewriteZiaBindContent(content, importingPath, oldNorm, newNorm, oldWasDir);
     var result = new BindRewriteResult();
-    result.text = content;
-    if content == "" { return result; }
-
-    var lines = Str.Split(content, "\n");
-    var rebuilt = "";
-    var i = 0;
-    while i < Seq.get_Length(lines) {
-        var line = Obj.ToString(Seq.Get(lines, i));
-        var rewritten = RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
-        if rewritten != line {
-            result.count = result.count + 1;
-        }
-        if i > 0 { rebuilt = rebuilt + "\n"; }
-        rebuilt = rebuilt + rewritten;
-        i = i + 1;
-    }
-    result.text = rebuilt;
+    result.text = shared.text;
+    result.count = shared.count;
     return result;
 }
 
@@ -901,97 +888,18 @@ func RewriteZiaBindLine(line: String,
                         oldNorm: String,
                         newNorm: String,
                         oldWasDir: Boolean) -> String {
-    var trimmed = Str.Trim(line);
-    if Str.StartsWith(trimmed, "bind ") == false and Str.StartsWith(trimmed, "bind\t") == false {
-        return line;
-    }
-    var firstQuote = Str.IndexOf(line, "\"");
-    if firstQuote == 0 { return line; }
-    var secondQuote = Str.IndexOfFrom(line, firstQuote + 1, "\"");
-    if secondQuote == 0 { return line; }
-
-    var importPath = Str.MidLen(line, firstQuote + 1, secondQuote - firstQuote - 1);
-    var resolved = ResolveBindPath(importPath, importingPath);
-    var mapped = "";
-    if oldWasDir {
-        var prefix = oldNorm + Path.Sep();
-        if Str.StartsWith(resolved, prefix) {
-            var suffix = Str.Mid(resolved, Str.Length(prefix) + 1);
-            mapped = Path.Join(newNorm, suffix);
-        }
-    } else if resolved == oldNorm {
-        mapped = newNorm;
-    }
-    if mapped == "" { return line; }
-
-    var keepNoExt = Path.Ext(importPath) == "";
-    var replacement = RelativeBindPath(Path.Dir(importingPath), mapped, importPath, keepNoExt);
-    var before = "";
-    if firstQuote > 1 {
-        before = Str.Left(line, firstQuote);
-    } else {
-        before = "\"";
-    }
-    var after = Str.Mid(line, secondQuote);
-    return before + replacement + after;
+    return bind_utils.RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
 }
 
 func ResolveBindPath(importPath: String, importingPath: String) -> String {
-    var candidate = importPath;
-    if Path.IsAbs(candidate) == false {
-        candidate = Path.Join(Path.Dir(importingPath), candidate);
-    }
-    if Path.Ext(candidate) == "" {
-        candidate = candidate + ".zia";
-    }
-    return NormalizeAbsPath(candidate);
+    return bind_utils.ResolveBindPath(importPath, importingPath);
 }
 
 func RelativeBindPath(importingDir: String,
                       targetPath: String,
                       oldImportPath: String,
                       keepNoExt: Boolean) -> String {
-    var targetNorm = NormalizeAbsPath(targetPath);
-    if Path.IsAbs(oldImportPath) {
-        return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
-    }
-
-    var baseParts = PathParts(NormalizeAbsPath(importingDir));
-    var targetParts = PathParts(targetNorm);
-    if Seq.get_Length(baseParts) > 0 and Seq.get_Length(targetParts) > 0 {
-        if Obj.ToString(Seq.Get(baseParts, 0)) != Obj.ToString(Seq.Get(targetParts, 0)) {
-            return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
-        }
-    }
-
-    var common = 0;
-    while common < Seq.get_Length(baseParts)
-          and common < Seq.get_Length(targetParts)
-          and Obj.ToString(Seq.Get(baseParts, common)) == Obj.ToString(Seq.Get(targetParts, common)) {
-        common = common + 1;
-    }
-
-    var rel = "";
-    var b = common;
-    while b < Seq.get_Length(baseParts) {
-        rel = AppendPathPart(rel, "..");
-        b = b + 1;
-    }
-    var t = common;
-    while t < Seq.get_Length(targetParts) {
-        rel = AppendPathPart(rel, Obj.ToString(Seq.Get(targetParts, t)));
-        t = t + 1;
-    }
-    if rel == "" {
-        rel = Path.Name(targetNorm);
-    }
-    rel = MaybeStripZiaExtension(rel, keepNoExt);
-    if Str.StartsWith(rel, "../") == false and Str.StartsWith(rel, "./") == false {
-        if Str.StartsWith(oldImportPath, "./") {
-            rel = "./" + rel;
-        }
-    }
-    return rel;
+    return bind_utils.RelativeBindPath(importingDir, targetPath, oldImportPath, keepNoExt);
 }
 
 func MaybeStripZiaExtension(path: String, keepNoExt: Boolean) -> String {
@@ -1022,25 +930,13 @@ func PathParts(path: String) -> Any {
 }
 
 func NormalizeAbsPath(path: String) -> String {
-    return Path.Norm(Path.Abs(path));
+    return bind_utils.NormalizeAbsPath(path);
 }
 
 func NormalizeBindSeparators(path: String) -> String {
-    var normalized = Str.Replace(path, "\\", "/");
-    var sep = Path.Sep();
-    if sep != "/" {
-        normalized = Str.Replace(normalized, sep, "/");
-    }
-    return normalized;
+    return bind_utils.NormalizeBindSeparators(path);
 }
 
 func ListContains(items: List, value: String) -> Boolean {
-    var i = 0;
-    while i < items.count() {
-        if Obj.ToString(items.get(i)) == value {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
+    return bind_utils.ListContains(items, value);
 }

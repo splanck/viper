@@ -1,0 +1,113 @@
+module dispatch_helpers;
+
+bind "../ui/app_shell";
+bind "../build/debug_session";
+
+bind Viper.GUI;
+bind Input = Viper.Input;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: dispatch_helpers
+// PURPOSE: Stateless helpers used by the main frame loop to normalize command
+//          trigger checks, typed-input classification, and soft frame budgets.
+//
+// WHERE-THIS-FITS: main.zia owns orchestration; this module owns the small
+//          command-dispatch rules that would otherwise distract from that flow.
+//
+// TEACHING-NOTE: Keep helpers here pure or nearly pure. If a function starts
+//          mutating documents, tabs, project state, or widgets beyond simple
+//          feedback, it probably belongs in a command module instead.
+// ============================================================================
+
+/// @brief Check menu, toolbar, shortcut, and command-palette sources for a command.
+/// @param name Stable command id registered with the shortcut system.
+/// @param menuItem Optional menu item for the command.
+/// @param toolbarItem Optional toolbar item for the command.
+/// @param cpSelected Current command-palette selection id, or empty.
+/// @return True when any input source triggered the command this frame.
+expose func Triggered(name: String,
+                      menuItem: GUI.MenuItem,
+                      toolbarItem: GUI.ToolbarItem,
+                      cpSelected: String) -> Boolean {
+    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
+    if toolbarItem != null and toolbarItem.WasClicked() != 0 { return true; }
+    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if cpSelected == name { return true; }
+    return false;
+}
+
+/// @brief Check shortcut and command-palette sources for a command with no menu item.
+/// @param name Stable command id registered with the shortcut system.
+/// @param cpSelected Current command-palette selection id, or empty.
+/// @return True when a non-menu source triggered the command this frame.
+expose func TriggeredNoMenu(name: String, cpSelected: String) -> Boolean {
+    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if cpSelected == name { return true; }
+    return false;
+}
+
+/// @brief Check menu, shortcut, and command-palette sources for a command.
+/// @param name Stable command id registered with the shortcut system.
+/// @param menuItem Optional menu item for the command.
+/// @param cpSelected Current command-palette selection id, or empty.
+/// @return True when any non-toolbar source triggered the command this frame.
+expose func TriggeredMenu(name: String,
+                          menuItem: GUI.MenuItem,
+                          cpSelected: String) -> Boolean {
+    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
+    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if cpSelected == name { return true; }
+    return false;
+}
+
+/// @brief Detect whether typed text contains identifier-like characters.
+/// @param text Text reported by the keyboard input queue this frame.
+/// @return True when the text contains an ASCII letter, digit, or underscore.
+/// @details Auto-completion uses this as a cheap trigger before it asks the
+///          completion controller to inspect source context.
+expose func HasIdentifierInput(text: String) -> Boolean {
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch >= "a" and ch <= "z" { return true; }
+        if ch >= "A" and ch <= "Z" { return true; }
+        if ch >= "0" and ch <= "9" { return true; }
+        if ch == "_" { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Check whether lower-priority background controllers may run this frame.
+/// @param frameWorkStartMs Tick captured near the start of controller updates.
+/// @param budgetMs Soft elapsed-time budget for background controller work.
+/// @return True while elapsed controller work is below the supplied budget.
+/// @details Build/debug polling, input handling, completion, and diagnostics run
+///          before this gate. Hover, signature, inlay, symbols, and search can
+///          wait one frame when earlier work has consumed the soft budget.
+expose func FrameBudgetAllows(frameWorkStartMs: Integer, budgetMs: Integer) -> Boolean {
+    if frameWorkStartMs <= 0 { return true; }
+    if budgetMs <= 0 { return true; }
+    return Viper.Time.GetTickCount() - frameWorkStartMs < budgetMs;
+}
+
+/// @brief Return whether a build/run command may start in the current IDE state.
+/// @param shell Workbench shell used for status/toast feedback.
+/// @param session Debug session controller.
+/// @param commandName Human-readable command name used in feedback text.
+/// @return True when the command may continue to its handler.
+/// @details Toolbar/menu state can disable visible controls, but keyboard
+///          shortcuts and palette selections still route through dispatch. This
+///          guard prevents hidden paths from starting a build while debugging.
+expose func CanStartBuildCommand(shell: app_shell.AppShell,
+                                 session: debug_session.DebugSession,
+                                 commandName: String) -> Boolean {
+    if session != null and session.IsActive() {
+        var message = commandName + " is disabled while debugging";
+        shell.SetStatusLeft(message);
+        GUI.Toast.Info(message);
+        return false;
+    }
+    return true;
+}

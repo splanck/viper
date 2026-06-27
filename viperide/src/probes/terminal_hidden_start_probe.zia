@@ -1,0 +1,58 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: viperide/src/probes/terminal_hidden_start_probe.zia
+// Purpose: Regression probe for the integrated terminal's hidden-panel startup
+//          guard.
+//
+//===----------------------------------------------------------------------===//
+
+module terminal_hidden_start_probe;
+
+bind "../ui/app_shell";
+bind "../terminal/terminal_controller";
+
+bind Terminal = Viper.Terminal;
+
+/// @brief Report a probe failure and destroy the shell.
+/// @param shell App shell created by the probe.
+/// @param reason Human-readable failure reason.
+func fail(shell: app_shell.AppShell, reason: String) {
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Verify that hidden terminal panels do not start PTY sessions.
+/// @details `Widget.IsVisible()` reports only the receiver's own flag, so this
+///          probe specifically guards against using the always-visible child
+///          output pane as the pump condition. A start attempt is expected only
+///          after AppShell reveals the terminal panel container.
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Terminal Hidden Start Probe", 1000, 700);
+
+    var ctrl = new terminal_controller.TerminalController();
+    ctrl.Setup(shell.terminalPanel, shell.terminalPane, shell.terminalInput,
+               shell.terminalRun, shell.terminalKill, shell.terminalRestart);
+
+    ctrl.Pump();
+    if ctrl.HasAttemptedStart() {
+        fail(shell, "hidden pump attempted PTY startup");
+        return;
+    }
+
+    shell.ShowTerminalPanel();
+    shell.Poll();
+    shell.Render();
+    ctrl.Pump();
+    if ctrl.HasAttemptedStart() == false {
+        fail(shell, "visible pump did not attempt PTY startup");
+        return;
+    }
+
+    ctrl.Stop();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

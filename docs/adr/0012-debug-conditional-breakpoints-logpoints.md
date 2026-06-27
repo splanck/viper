@@ -63,7 +63,7 @@ the stop only when true, else returns `Continue`.
 The IDE persists `condition`/`logMessage` per breakpoint
 (`viperide/src/build/breakpoints.zia`) and sends them via `setBreakpoints`. Users
 set them through "Conditional Breakpoint…" / "Add Logpoint…" commands. The
-debugger probe (`viperide/src/debug_probe.zia`) gains conditional-stop and
+debugger probe (`viperide/src/probes/debug_probe.zia`) gains conditional-stop and
 logpoint cases. Because the evaluator runs on the locals snapshot, conditions can
 reference only in-scope source locals (the same surface as `evaluate`); dotted
 field access and calls remain out of scope. A future VM-side evaluator could

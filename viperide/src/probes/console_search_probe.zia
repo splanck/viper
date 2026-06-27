@@ -1,13 +1,13 @@
 module console_search_probe;
 
-bind "ui/app_shell";
-bind "ui/ide_overlays";
-bind "commands/search_commands";
-bind "core/document_manager";
-bind "core/project_manager";
-bind "core/settings";
-bind "editor/diagnostics";
-bind "services/locations";
+bind "../ui/app_shell";
+bind "../ui/ide_overlays";
+bind "../commands/search_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/settings";
+bind "../editor/diagnostics";
+bind "../services/locations";
 
 bind GUI = Viper.GUI;
 bind Terminal = Viper.Terminal;

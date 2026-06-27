@@ -1,6 +1,6 @@
 module scm_probe;
 
-bind "scm/scm_git";
+bind "../scm/scm_git";
 
 bind Terminal = Viper.Terminal;
 bind Exec = Viper.System.Exec;

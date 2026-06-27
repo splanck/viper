@@ -3,9 +3,12 @@ module terminal_controller;
 bind "terminal_session";
 
 bind Viper.GUI as GUI;
+bind Viper.Input as Input;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Machine = Viper.System.Machine;
+bind Env = Viper.System.Environment;
+bind IO = Viper.IO;
 
 // ============================================================================
 // MODULE: terminal_controller  (Phase 5D — integrated terminal)
@@ -26,70 +29,229 @@ bind Machine = Viper.System.Machine;
 /// @brief Integrated-terminal UI controller.
 class TerminalController {
     expose terminal_session.TerminalSession sess;
+    expose GUI.VBox panel;
     expose GUI.OutputPane pane;
     expose GUI.TextInput input;
     expose GUI.Button runBtn;
     expose GUI.Button killBtn;
+    expose GUI.Button restartBtn;
     expose Boolean ready;
     expose String cwd;
+    expose Boolean manualStop;
+    expose Integer lastCols;
+    expose Integer lastRows;
 
     expose func init() {
         sess = new terminal_session.TerminalSession();
         ready = false;
         cwd = "";
+        manualStop = false;
+        lastCols = 0;
+        lastRows = 0;
     }
 
     /// @brief Wire the shell-owned widgets.
-    expose func Setup(paneArg: GUI.OutputPane, inputArg: GUI.TextInput,
-                      runArg: GUI.Button, killArg: GUI.Button) {
+    expose func Setup(panelArg: GUI.VBox, paneArg: GUI.OutputPane, inputArg: GUI.TextInput,
+                      runArg: GUI.Button, killArg: GUI.Button, restartArg: GUI.Button) {
+        panel = panelArg;
         pane = paneArg;
         input = inputArg;
         runBtn = runArg;
         killBtn = killArg;
+        restartBtn = restartArg;
         ready = true;
     }
 
-    /// @brief Working directory for newly spawned shells (the active project root).
+    /// @brief Working directory for newly spawned shells.
+    /// @details Existing PTY children keep their process working directory. When
+    ///          the workspace changes while a terminal is active, the controller
+    ///          records the new directory for the next start/restart and appends
+    ///          a visible note instead of silently killing the user's shell.
     expose func SetCwd(dir: String) {
+        if dir == cwd { return; }
+        if cwd != "" and dir != "" and sess.IsActive() and pane != null {
+            pane.Append("\n[workspace changed; restart terminal to use " + dir + "]\n");
+        }
         cwd = dir;
     }
 
+    /// @brief Return true when the terminal panel itself is visible.
+    /// @details Widget `IsVisible` reports the receiver's own flag, not ancestor
+    ///          effective visibility. The controller therefore checks the panel
+    ///          container that AppShell actually hides and shows.
+    expose func IsVisible() -> Boolean {
+        return panel != null and panel.IsVisible() != 0;
+    }
+
+    /// @brief Return true after any PTY start attempt has been made.
+    expose func HasAttemptedStart() -> Boolean {
+        return sess.started;
+    }
+
+    /// @brief Resolve the best platform shell executable.
+    /// @details Windows honors `COMSPEC` when it points at an existing file and
+    ///          falls back to `cmd.exe`. POSIX honors `SHELL` when it points at an
+    ///          existing file and falls back to `/bin/sh`.
+    /// @return Shell executable path or name for PTY startup.
     hide func ShellPath() -> String {
-        if Machine.OS == "windows" { return "cmd.exe"; }
+        if Machine.OS == "windows" {
+            var comspec = Env.GetVariable("COMSPEC");
+            if comspec != "" and IO.File.Exists(comspec) { return comspec; }
+            return "cmd.exe";
+        }
+        var shell = Env.GetVariable("SHELL");
+        if shell != "" and IO.File.Exists(shell) { return shell; }
         return "/bin/sh";
     }
 
-    hide func EnsureStarted() {
-        if sess.IsActive() { return; }
-        if sess.started { return; } // already attempted (or exited) — don't loop
+    /// @brief Build the shell argument sequence for interactive startup.
+    /// @details POSIX shells receive `-i` so prompts and interactive startup
+    ///          behavior are enabled. Windows `cmd.exe`/`COMSPEC` is launched
+    ///          without extra arguments.
+    /// @return Sequence suitable for TerminalSession.Start/Restart.
+    hide func ShellArgs() -> Any {
         var args = Seq.New();
         if Machine.OS != "windows" { Seq.Push(args, "-i"); } // interactive shell: show a prompt
-        var ok = sess.Start(ShellPath(), args, cwd, 100, 30);
+        return args;
+    }
+
+    /// @brief Estimate terminal columns from the current output-pane width.
+    /// @details The OutputPane does not expose font metrics, so this uses a
+    ///          conservative 8-pixel cell approximation and clamps to the PTY
+    ///          runtime's supported range.
+    /// @return Column count for PTY open/resize.
+    hide func TerminalCols() -> Integer {
+        var width = 0;
+        if pane != null { width = pane.GetWidth(); }
+        if width <= 0 and panel != null { width = panel.GetWidth(); }
+        var cols = width / 8;
+        if cols <= 0 { cols = 100; }
+        if cols < 20 { cols = 20; }
+        if cols > 4096 { cols = 4096; }
+        return cols;
+    }
+
+    /// @brief Estimate terminal rows from the current output-pane height.
+    /// @details The OutputPane does not expose font metrics, so this uses an
+    ///          18-pixel line approximation and clamps to the PTY runtime's
+    ///          supported range.
+    /// @return Row count for PTY open/resize.
+    hide func TerminalRows() -> Integer {
+        var height = 0;
+        if pane != null { height = pane.GetHeight(); }
+        if height <= 0 and panel != null { height = panel.GetHeight(); }
+        var rows = height / 18;
+        if rows <= 0 { rows = 30; }
+        if rows < 4 { rows = 4; }
+        if rows > 4096 { rows = 4096; }
+        return rows;
+    }
+
+    /// @brief Start the shell once and report a readable failure in the pane.
+    /// @details The session's `started` latch prevents repeated failed startup
+    ///          attempts from appending the same message every frame.
+    /// @return true when a PTY-backed shell is active.
+    hide func StartSession() -> Boolean {
+        lastCols = TerminalCols();
+        lastRows = TerminalRows();
+        var ok = sess.Start(ShellPath(), ShellArgs(), cwd, lastCols, lastRows);
         if ok == false and pane != null {
-            pane.Append("[integrated terminal is unavailable on this platform]\n");
+            var reason = sess.LastError();
+            if reason == "" { reason = "unknown PTY startup failure"; }
+            pane.Append("[integrated terminal unavailable: " + reason + "]\n");
         }
+        return ok;
+    }
+
+    /// @brief Stop any existing PTY and start a fresh shell.
+    /// @details Used by the Restart button and by Run when the previous shell
+    ///          exited or was manually stopped.
+    /// @return true when the replacement shell is active.
+    hide func RestartSession() -> Boolean {
+        manualStop = false;
+        lastCols = TerminalCols();
+        lastRows = TerminalRows();
+        var ok = sess.Restart(ShellPath(), ShellArgs(), cwd, lastCols, lastRows);
+        if ok == false and pane != null {
+            var reason = sess.LastError();
+            if reason == "" { reason = "unknown PTY startup failure"; }
+            pane.Append("[integrated terminal unavailable: " + reason + "]\n");
+        }
+        return ok;
+    }
+
+    /// @brief Lazily start the terminal when the visible panel is pumped.
+    /// @details Manual Stop suppresses automatic restart until the user presses
+    ///          Run or Restart. Natural process exit also remains latched so the
+    ///          terminal does not respawn unexpectedly every frame.
+    hide func EnsureStarted() {
+        if manualStop { return; }
+        if sess.IsActive() { return; }
+        if sess.started { return; } // already attempted (or exited) — don't loop
+        StartSession();
+    }
+
+    /// @brief Resize the active PTY when the panel dimensions change.
+    /// @details The last sent size is cached to avoid sending redundant resize
+    ///          requests every frame.
+    hide func ResizeIfNeeded() {
+        if sess.IsActive() == false { return; }
+        var cols = TerminalCols();
+        var rows = TerminalRows();
+        if cols == lastCols and rows == lastRows { return; }
+        lastCols = cols;
+        lastRows = rows;
+        sess.Resize(cols, rows);
+    }
+
+    /// @brief Send the current input text to the shell as a line.
+    /// @details If the previous shell exited or was stopped, this first starts a
+    ///          fresh session so the user's typed command has a target.
+    hide func SendInputLine() {
+        var line = input.get_Text();
+        if sess.IsActive() == false {
+            RestartSession();
+        }
+        sess.SendLine(line);
+        input.SetText("");
     }
 
     /// @brief Per-frame pump; no-op unless the terminal panel is visible.
     expose func Pump() {
         if ready == false { return; }
-        if pane.IsVisible() == 0 { return; }
+        if IsVisible() == false { return; }
 
         EnsureStarted();
+        ResizeIfNeeded();
 
         var delta = sess.Update();
         if Str.Length(delta) > 0 {
             pane.Append(delta);
         }
+        if sess.exitedThisUpdate and pane != null {
+            pane.Append("\n[exited " + sess.exitCode + "]\n");
+        }
 
         if runBtn.WasClicked() != 0 {
-            var line = input.get_Text();
-            sess.SendLine(line);
-            input.SetText("");
+            SendInputLine();
         }
         if killBtn.WasClicked() != 0 {
             sess.Stop();
+            manualStop = true;
             pane.Append("\n[stopped]\n");
         }
+        if restartBtn.WasClicked() != 0 {
+            pane.Append("\n[restarting]\n");
+            RestartSession();
+        }
+        if input != null and input.IsFocused() != 0 and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
+            SendInputLine();
+        }
+    }
+
+    /// @brief Explicitly stop the terminal during IDE shutdown.
+    expose func Stop() {
+        sess.Stop();
+        manualStop = true;
     }
 }

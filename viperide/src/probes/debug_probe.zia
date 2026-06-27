@@ -5,8 +5,8 @@ module debug_probe;
 // exactly as the running IDE does: launch → run to a breakpoint → inspect
 // locals → step over → continue to exit. Requires `--viper-bin <path>`.
 
-bind "build/debug_session";
-bind "build/breakpoints";
+bind "../build/debug_session";
+bind "../build/breakpoints";
 
 bind Env = Viper.System.Environment;
 bind Time = Viper.Time;

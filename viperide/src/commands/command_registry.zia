@@ -1,5 +1,6 @@
 module command_registry;
 
+bind "../commands/command_catalog";
 bind "../editor/language_service";
 
 bind Viper.GUI;
@@ -51,103 +52,18 @@ class CommandRegistry {
     }
 
     expose func RegisterDefaults() {
-        Add("new", "New File", "Create a new untitled file", "Ctrl+N", "", true);
-        Add("open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
-        Add("openfolder", "Open Folder...", "Open a project folder", "Ctrl+Alt+O", "", true);
-        Add("addfolder", "Add Folder to Workspace...", "Add another folder as a workspace root", "", "", true);
-        Add("terminal", "Toggle Terminal", "Show the integrated terminal", "", "", true);
-        Add("save", "Save", "Save the current file", "Ctrl+S", "", true);
-        Add("saveas", "Save As...", "Save the current file under a new path", "Ctrl+Shift+S", "", true);
-        Add("saveall", "Save All", "Save all open files", "Ctrl+Alt+Shift+S", "", true);
-        Add("close", "Close File", "Close the current tab", "Ctrl+W", "", true);
-        Add("reload", "Reload File", "Reload file from disk", "Ctrl+Shift+R", "", true);
-        Add("recentfiles", "Recent Files", "Show recently opened files", "Ctrl+K Ctrl+R", "", true);
-        Add("reopenclosed", "Reopen Closed File", "Reopen the most recently closed named file", "Ctrl+Alt+T", "", true);
-        Add("find", "Find / Replace", "Open the find bar", "Ctrl+F", "", true);
-        Add("goto", "Go To Line", "Jump to a specific line number", "Ctrl+G", "", true);
-        Add("build", "Build", "Compile the current file or project", "Ctrl+Shift+B", "", true);
-        Add("buildrun", "Build and Run", "Build and run the current file or project", "F5", "", true);
-        Add("run", "Run", "Run the current file or project through the Viper toolchain", "Ctrl+F5", "", true);
-        Add("stopjob", "Stop Running Job", "Terminate the active build or run process", "Shift+F5", "", true);
-        Add("debugstart", "Start Debugging", "Launch the active file in the debug protocol", "F6", "", true);
-        Add("debugcontinue", "Continue Debugging", "Continue a paused debug session", "F7", "", true);
-        Add("debugstepover", "Step Over", "Step over the current debug line", "F10", "", true);
-        Add("debugstepin", "Step Into", "Step into the next debuggable call", "Ctrl+F10", "", true);
-        Add("debugstepout", "Step Out", "Run until the current function returns", "Ctrl+Shift+F10", "", true);
-        Add("debugpause", "Pause Debugging", "Pause the active debug session", "", "", true);
-        Add("debugrestart", "Restart Debugging", "Terminate and relaunch the active debug session", "Ctrl+Shift+F5", "", true);
-        Add("debugstop", "Stop Debugging", "Terminate the active debug session", "", "", true);
-        Add("debugruntocursor", "Run to Cursor", "Continue until execution reaches the cursor line", "Ctrl+F8", "", true);
-        Add("togglebreakpoint", "Toggle Breakpoint", "Set or clear a breakpoint at the cursor", "F9", "", true);
-        Add("debugcondition", "Conditional Breakpoint…", "Set a breakpoint that stops only when an expression is true", "", "", true);
-        Add("debuglogpoint", "Add Logpoint…", "Log a message (with {expr}) at a line without stopping", "", "", true);
-        Add("togglesidebar", "Toggle Sidebar", "Show or hide the file tree", "Ctrl+B", "", true);
-        Add("statusbar", "Toggle Status Bar", "Show or hide the status bar", "", "", true);
-        Add("zoomin", "Zoom In", "Increase editor font size", "Ctrl+=", "", true);
-        Add("zoomout", "Zoom Out", "Decrease editor font size", "Ctrl+-", "", true);
-        Add("zoomreset", "Reset Zoom", "Reset editor font size to default", "Ctrl+0", "", true);
-        Add("uizoomin", "UI Zoom In", "Enlarge the whole interface", "Ctrl+Shift+=", "", true);
-        Add("uizoomout", "UI Zoom Out", "Shrink the whole interface", "Ctrl+Shift+-", "", true);
-        Add("uizoomreset", "Reset UI Zoom", "Reset the interface scale to 100%", "Ctrl+Shift+0", "", true);
-        Add("toggletheme", "Toggle Theme", "Switch between dark and light theme", "Ctrl+Shift+T", "", true);
-        Add("fullscreen", "Toggle Fullscreen", "Enter or exit fullscreen mode", "F11", "", true);
-        Add("minimap", "Toggle Minimap", "Show or hide the minimap panel", "Ctrl+Shift+M", "", true);
-        Add("settings", "Settings", "View and adjust IDE settings", "Ctrl+,", "", true);
-        Add("keybindings", "Keyboard Shortcuts", "Show active keyboard shortcuts and conflicts", "Ctrl+K Ctrl+S", "", true);
-        Add("copytoolrow", "Copy Tool Row", "Copy the selected row from the active tool panel", "Ctrl+Alt+Y", "", true);
-        Add("copyoutputtext", "Copy Output Text", "Copy the full build output buffer", "Ctrl+Alt+Shift+Y", "", true);
-        Add("clearoutput", "Clear Output", "Clear the build output panel", "Ctrl+Alt+L", "", true);
-        Add("filteroutput", "Filter Output", "Filter build output rows by text", "Ctrl+Alt+F", "", true);
-        Add("toggleoutputwrap", "Toggle Output Wrap", "Wrap long output rows into readable chunks", "Ctrl+Alt+W", "", true);
-        Add("toggleoutputautoscroll", "Toggle Output Auto-Scroll", "Keep new output pinned or preserve the current view", "Ctrl+Alt+S", "", true);
-        Add("treenewfile", "Explorer: New File", "Create a file in the selected project folder", "Ctrl+Alt+N", "", true);
-        Add("treenewfolder", "Explorer: New Folder", "Create a folder in the selected project folder", "Ctrl+Alt+Shift+N", "", true);
-        Add("treerename", "Explorer: Rename", "Rename the selected project tree item", "Ctrl+Alt+R", "", true);
-        Add("treedelete", "Explorer: Delete", "Delete the selected project tree item", "Ctrl+Alt+D", "", true);
-        Add("treerefresh", "Explorer: Refresh", "Refresh the project tree", "Ctrl+Alt+Shift+R", "", true);
-        Add("quickopen", "Quick Open File", "Open a project file by name or path", "Ctrl+P", "", true);
-        Add("undo", "Undo", "Undo last action", "Ctrl+Z", "", true);
-        Add("redo", "Redo", "Redo last undone action", "Ctrl+Y", "", true);
-        Add("cut", "Cut", "Cut selection", "Ctrl+X", "", false);
-        Add("copy", "Copy", "Copy selection", "Ctrl+C", "", false);
-        Add("paste", "Paste", "Paste clipboard", "Ctrl+V", "", false);
-        Add("selectall", "Select All", "Select the full document", "Ctrl+A", "", true);
-        Add("gotodef", "Go To Definition", "Jump to symbol definition", "F12", "definition", true);
-        Add("findrefs", "Find References", "Find semantic references", "Shift+F12", "references", true);
-        Add("incomingcalls", "Incoming Calls", "Show callers of the symbol at the cursor", "Ctrl+Alt+H", "references", true);
-        Add("outgoingcalls", "Outgoing Calls", "Show calls made by the enclosing function", "Ctrl+Alt+Shift+H", "definition", true);
-        Add("rename", "Rename Symbol", "Rename a semantic symbol", "F2", "rename", true);
-        Add("nexterror", "Next Error", "Jump to next diagnostic", "F8", "diagnostics", true);
-        Add("preverror", "Previous Error", "Jump to previous diagnostic", "Shift+F8", "diagnostics", true);
-        Add("checknow", "Run Check Now", "Run diagnostics for the active file now", "Ctrl+Alt+C", "diagnostics", true);
-        Add("searchproject", "Search in Project", "Find text across project files", "Ctrl+Shift+F", "", true);
-        Add("workspacesymbols", "Workspace Symbols", "Find symbols across project files", "Ctrl+T", "symbols", true);
-        Add("symboloutline", "Symbol Outline", "Toggle document symbol list", "Ctrl+Shift+O", "symbols", true);
-        Add("completion_trigger", "Trigger Completion", "Show completion suggestions", "Ctrl+Space", "completion", false);
-        Add("signature_trigger", "Trigger Signature Help", "Show signature help at the cursor", "Ctrl+Shift+Space", "signature", true);
-        Add("signaturenextoverload", "Signature: Next Overload", "Show the next signature overload", "Ctrl+Alt+Down", "signature", true);
-        Add("signatureprevoverload", "Signature: Previous Overload", "Show the previous signature overload", "Ctrl+Alt+Up", "signature", true);
-        Add("addnextoccurrence", "Add Next Occurrence", "Add a cursor at the next matching word", "Ctrl+D", "", true);
-        Add("skipoccurrence", "Skip Occurrence", "Move to the next matching word", "Ctrl+K Ctrl+D", "", true);
-        Add("selectalloccurrences", "Select All Occurrences", "Select every matching word", "Ctrl+Shift+L", "", true);
-        Add("clearcursors", "Clear Extra Cursors", "Remove secondary cursors", "Escape", "", true);
-        Add("expandselection", "Expand Selection", "Grow selection from word to line to document", "Shift+Alt+Right", "", true);
-        Add("shrinkselection", "Shrink Selection", "Shrink selection from document to line to word", "Shift+Alt+Left", "", true);
-        Add("togglelinecomment", "Toggle Line Comment", "Comment or uncomment the active line", "Ctrl+/", "", true);
-        Add("toggleblockcomment", "Toggle Block Comment", "Wrap or unwrap the selection in a block comment", "Shift+Alt+A", "", true);
-        Add("duplicateline", "Duplicate Line", "Duplicate the active line", "Ctrl+Shift+D", "", true);
-        Add("movelineup", "Move Line Up", "Move the active line above the previous line", "Alt+Up", "", true);
-        Add("movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);
-        Add("organizebinds", "Organize Binds", "Sort and deduplicate the leading Zia bind block", "Shift+Alt+O", "diagnostics", true);
-        Add("extractlocal", "Extract Local Variable", "Extract the selected expression into a simple local variable", "", "rename", true);
-        Add("extractfunction", "Extract Function", "Extract selected complete Zia statements into a new function", "", "rename", true);
-        Add("inlinelocal", "Inline Local Variable", "Inline a simple single-assignment local variable", "Ctrl+Alt+I", "rename", true);
-        Add("suppressdiagnostic", "Suppress Warning", "Insert a Zia suppression comment for the warning at the cursor", "", "diagnostics", true);
-        Add("applydiagnosticfix", "Apply Diagnostic Fix-It", "Apply the first language-proposed diagnostic fix at the cursor", "Ctrl+.", "diagnostics", true);
-        Add("createmissingbind", "Create Missing Bind", "Add a safe runtime bind for an undefined Viper namespace alias", "", "diagnostics", true);
-        Add("trimtrailingwhitespace", "Trim Trailing Whitespace", "Remove trailing spaces and tabs from the active document", "Shift+Alt+T", "", true);
-        Add("formatdocument", "Format Document", "Format the active document when a formatter is available", "Shift+Alt+F", "", true);
-        Add("formatselection", "Format Selection", "Format the selected text when a formatter is available", "", "", true);
+        var specs = command_catalog.DefaultCommandSpecs();
+        var i = 0;
+        while i < specs.count() {
+            var spec = specs.get(i);
+            Add(spec.id,
+                spec.label,
+                spec.description,
+                spec.shortcut,
+                spec.capability,
+                spec.showInPalette);
+            i = i + 1;
+        }
     }
 
     expose func InstallShortcuts() {

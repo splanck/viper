@@ -10,6 +10,7 @@ bind Viper.Zia.Completion as ZiaCompletion;
 bind Viper.Basic.LanguageService as BasicCompletion;
 bind Viper.Zia.SemanticJob as SemanticJob;
 bind "../editor/zia_query";
+bind "../editor/completion_filter";
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
 bind "../core/project_manager";
@@ -1187,99 +1188,30 @@ func CurrentPrefixFor(editor: GUI.CodeEditor) -> String {
 }
 
 func StartsWith(text: String, prefix: String) -> Boolean {
-    if prefix == "" { return true; }
-    if Str.Length(text) < Str.Length(prefix) { return false; }
-    return Str.Left(text, Str.Length(prefix)) == prefix;
+    return completion_filter.StartsWith(text, prefix);
 }
 
 /// @brief Return true for prefix or subsequence completion matches.
-/// @details Prefix matches remain exact, while subsequence matching lets users
-///          type initials or later name segments without adding dependencies or
-///          changing the compiler completion API.
+/// @details Kept as a wrapper for existing probes and controller code; the
+///          matching policy lives in completion_filter.zia.
 func CompletionMatches(text: String, query: String) -> Boolean {
-    if query == "" { return true; }
-    if StartsWith(text, query) { return true; }
-    var ti = 1;
-    var qi = 1;
-    while ti <= Str.Length(text) and qi <= Str.Length(query) {
-        if Str.MidLen(text, ti, 1) == Str.MidLen(query, qi, 1) {
-            qi = qi + 1;
-        }
-        ti = ti + 1;
-    }
-    return qi > Str.Length(query);
+    return completion_filter.CompletionMatches(text, query);
 }
 
 func ContainsAny(characters: String, typed: String) -> Boolean {
-    if characters == "" or typed == "" { return false; }
-    var i = 1;
-    while i <= Str.Length(typed) {
-        var ch = Str.MidLen(typed, i, 1);
-        if Str.IndexOf(characters, ch) != 0 {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
+    return completion_filter.ContainsAny(characters, typed);
 }
 
-/// @brief Return the first typed character that appears in a candidate set.
-/// @details Completion commit handling needs the actual character, not only a
-///          boolean, so it can preserve the user's typed delimiter in the edit.
 func FirstMatchingCharacter(characters: String, typed: String) -> String {
-    if characters == "" or typed == "" { return ""; }
-    var i = 1;
-    while i <= Str.Length(typed) {
-        var ch = Str.MidLen(typed, i, 1);
-        if Str.IndexOf(characters, ch) != 0 {
-            return ch;
-        }
-        i = i + 1;
-    }
-    return "";
+    return completion_filter.FirstMatchingCharacter(characters, typed);
 }
 
 func IsOnlyIndentWhitespace(text: String) -> Boolean {
-    if text == "" { return false; }
-    var i = 1;
-    while i <= Str.Length(text) {
-        var ch = Str.MidLen(text, i, 1);
-        if ch != " " and ch != "\t" {
-            return false;
-        }
-        i = i + 1;
-    }
-    return true;
+    return completion_filter.IsOnlyIndentWhitespace(text);
 }
 
 expose func ShouldSuppressAutoCompletionLine(line: String, cursorCol: Integer) -> Boolean {
-    var limit = cursorCol;
-    if limit < 0 { limit = 0; }
-    if limit > Str.Length(line) { limit = Str.Length(line); }
-
-    var inString = false;
-    var escaped = false;
-    var i = 1;
-    while i <= limit {
-        var ch = Str.MidLen(line, i, 1);
-        if inString {
-            if escaped {
-                escaped = false;
-            } else if ch == "\\" {
-                escaped = true;
-            } else if ch == "\"" {
-                inString = false;
-            }
-        } else {
-            if ch == "\"" {
-                inString = true;
-            } else if ch == "/" and i < limit and Str.MidLen(line, i + 1, 1) == "/" {
-                return true;
-            }
-        }
-        i = i + 1;
-    }
-    return inString;
+    return completion_filter.ShouldSuppressAutoCompletionLine(line, cursorCol);
 }
 
 func ListIntAt(values: List, index: Integer, fallback: Integer) -> Integer {
@@ -1294,41 +1226,7 @@ func FormatCompletionDisplay(label: String,
                              detail: String,
                              documentation: String,
                              source: String) -> String {
-    var kindTag = kindLabel(kind);
-    var text = label;
-    if kindTag != "" {
-        text = kindTag + " " + label;
-    }
-    if detail != "" {
-        text = text + "  -  " + ShortInlineText(detail, 72);
-    }
-
-    var meta = "";
-    var doc = ShortInlineText(documentation, 96);
-    if doc != "" {
-        meta = doc;
-    }
-    if source != "" {
-        if meta != "" {
-            meta = meta + "  ";
-        }
-        meta = meta + "[" + source + "]";
-    }
-    if meta != "" {
-        text = text + "  -  " + meta;
-    }
-    return text;
-}
-
-func ShortInlineText(text: String, limit: Integer) -> String {
-    var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
-    if limit <= 0 or Str.Length(cleaned) <= limit {
-        return cleaned;
-    }
-    if limit <= 3 {
-        return Str.Left(cleaned, limit);
-    }
-    return Str.Left(cleaned, limit - 3) + "...";
+    return completion_filter.FormatCompletionDisplay(label, kind, detail, documentation, source);
 }
 
 /// @brief Map a CompletionKind integer to a short bracketed tag.
@@ -1339,20 +1237,7 @@ func ShortInlineText(text: String, limit: Integer) -> String {
 ///          Method=5 Function=6 Entity=7 Value=8 Interface=9 Module=10
 ///          RuntimeClass=11 Property=12.
 func kindLabel(k: Integer) -> String {
-    if k == 0  { return "[K]"; }   // Keyword
-    if k == 1  { return "[S]"; }   // Snippet
-    if k == 2  { return "[V]"; }   // Variable
-    if k == 3  { return "[P]"; }   // Parameter
-    if k == 4  { return "[F]"; }   // Field
-    if k == 5  { return "[M]"; }   // Method
-    if k == 6  { return "[fn]"; }  // Function
-    if k == 7  { return "[C]"; }   // Class/Entity
-    if k == 8  { return "[S]"; }   // Struct/Value
-    if k == 9  { return "[I]"; }   // Interface
-    if k == 10 { return "[mod]"; } // Module
-    if k == 11 { return "[RT]"; }  // Runtime class
-    if k == 12 { return "[P]"; }   // Property
-    return "";
+    return completion_filter.CompletionKindLabel(k);
 }
 
 func WorkspaceKindCode(kind: String) -> Integer {

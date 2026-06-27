@@ -17,6 +17,7 @@ last-verified: 2026-06-20
 - [Viper.System.Shutdown](#vipersystemshutdown)
 - [Viper.System.Exec](#viperexec)
 - [Viper.System.Process](#vipersystemprocess)
+- [Viper.System.Pty](#vipersystempty)
 - [Viper.System.Machine](#vipermachine)
 - [Viper.Memory](#vipermemory)
 - [Viper.Memory.GC](#vipermemory-gc)
@@ -395,6 +396,41 @@ func start() {
 - `Kill()` sends a termination request (`SIGTERM` on POSIX, `TerminateProcess` on Windows). `Destroy()` is idempotent
   and force-cleans a still-running child.
 - Output buffers are capped at 16 MB per stream between reads.
+
+---
+
+## Viper.System.Pty
+
+Pseudo-terminal-backed child-process control for interactive shells and
+terminal-like IDE surfaces.
+
+**Type:** Static factory class plus PTY session handle object
+
+### Static Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Open(program, args, cwd, env, cols, rows)` | `PtySession(String, Object, String, Object, Integer, Integer)` | Open a PTY-backed child |
+| `IsSupported()` | `Boolean()` | Returns `TRUE` when the current platform can create PTYs |
+| `LastError()` | `String()` | Returns the most recent PTY startup/support diagnostic |
+
+### Handle Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `IsValid()` | `Boolean()` | Returns `TRUE` while the handle owns PTY resources |
+| `Poll()` | `Boolean()` | Polls child state; returns `TRUE` while still running |
+| `IsRunning()` | `Boolean()` | Alias for polling the current running state |
+| `Read()` | `String()` | Returns merged stdout/stderr terminal bytes available now |
+| `Write(data)` | `Integer(String)` | Writes bytes to terminal input |
+| `Resize(cols, rows)` | `Boolean(Integer, Integer)` | Updates terminal size |
+| `ExitCode()` | `Integer()` | Returns exit code, or `-1` while running/invalid |
+| `Kill()` | `Boolean()` | Requests child termination |
+| `Wait()` | `Integer()` | Blocks until child exit and returns the exit code |
+| `Destroy()` | `Void()` | Closes PTY resources; terminates a still-running child |
+
+`LastError()` is useful after `IsSupported()` returns `FALSE` or `Open()`
+returns `NULL`. Existing callers can keep checking the nullable `Open()` result.
 
 ---
 

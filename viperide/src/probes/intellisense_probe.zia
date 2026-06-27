@@ -1,19 +1,19 @@
 module intellisense_probe;
 
-bind "ui/app_shell";
-bind "editor/editor_engine";
-bind "editor/completion";
-bind "editor/signature";
-bind "editor/hover";
-bind "editor/symbols";
-bind "editor/diagnostics";
-bind "editor/inlay_hints";
-bind "editor/project_index";
-bind "commands/edit_commands";
-bind "core/document_manager";
-bind "core/project_manager";
-bind "services/locations";
-bind "services/workspace_edits";
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+bind "../editor/completion";
+bind "../editor/signature";
+bind "../editor/hover";
+bind "../editor/symbols";
+bind "../editor/diagnostics";
+bind "../editor/inlay_hints";
+bind "../editor/project_index";
+bind "../commands/edit_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../services/locations";
+bind "../services/workspace_edits";
 
 bind Viper.GUI;
 bind ZiaCompletion = Viper.Zia.Completion;

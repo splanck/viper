@@ -23,36 +23,69 @@ class TerminalSession {
     expose Boolean active;    // child is running
     expose Boolean started;   // a start was attempted (don't auto-restart)
     expose Integer exitCode;
+    expose Boolean exitedThisUpdate;
+    expose String lastError;
 
     expose func init() {
         session = null;
         active = false;
         started = false;
         exitCode = -1;
+        exitedThisUpdate = false;
+        lastError = "";
     }
 
     /// @brief Open a PTY-backed child. @return true when the session is live.
     expose func Start(program: String, args: Any, cwd: String, cols: Integer, rows: Integer) -> Boolean {
+        lastError = "";
+        exitedThisUpdate = false;
         started = true;
-        if Pty.IsSupported() == false { return false; }
+        if Pty.IsSupported() == false {
+            lastError = Pty.LastError();
+            if lastError == "" { lastError = "PTY support is not available on this platform"; }
+            return false;
+        }
         if active { return true; }
         var a = args;
         if a == null { a = Seq.New(); }
         session = Pty.Open(program, a, cwd, null, cols, rows);
-        if session == null { return false; }
-        if session.IsValid() == false { session = null; return false; }
+        if session == null {
+            lastError = Pty.LastError();
+            if lastError == "" { lastError = "PTY session could not be created"; }
+            return false;
+        }
+        if session.IsValid() == false {
+            lastError = Pty.LastError();
+            if lastError == "" { lastError = "PTY session handle was invalid"; }
+            session = null;
+            return false;
+        }
         active = true;
+        exitCode = -1;
         return true;
+    }
+
+    /// @brief Stop any existing child and open a replacement PTY session.
+    /// @details This is used by the IDE's Restart control and by Run when the
+    ///          previous shell exited or was manually stopped. It resets the
+    ///          one-shot `started` latch before delegating to Start.
+    /// @return true when the replacement session is live.
+    expose func Restart(program: String, args: Any, cwd: String, cols: Integer, rows: Integer) -> Boolean {
+        Stop();
+        started = false;
+        return Start(program, args, cwd, cols, rows);
     }
 
     /// @brief Drain available output (bounded); detect exit. @return new bytes.
     expose func Update() -> String {
+        exitedThisUpdate = false;
         if session == null or active == false { return ""; }
         var out = session.Read();
         if session.IsRunning() == false {
             out = out + session.Read();
             exitCode = session.ExitCode();
             active = false;
+            exitedThisUpdate = true;
         }
         if Str.Length(out) > MAX_TERMINAL_OUTPUT_DELTA {
             out = Str.Left(out, MAX_TERMINAL_OUTPUT_DELTA);
@@ -73,18 +106,26 @@ class TerminalSession {
 
     /// @brief Resize the terminal window.
     expose func Resize(cols: Integer, rows: Integer) {
-        if session == null { return; }
+        if session == null or active == false { return; }
         session.Resize(cols, rows);
     }
 
-    /// @brief Terminate the child and release the session.
+    /// @brief Terminate the child, release the session, and clear restart state.
+    /// @details The controller decides whether to auto-start again; clearing the
+    ///          session latch here lets explicit Run/Restart actions create a
+    ///          fresh PTY after Stop.
     expose func Stop() {
         if session == null { return; }
         session.Kill();
         session.Destroy();
         session = null;
         active = false;
+        started = false;
+        exitedThisUpdate = false;
     }
 
     expose func IsActive() -> Boolean { return active; }
+
+    /// @brief Return the most recent PTY startup error, if any.
+    expose func LastError() -> String { return lastError; }
 }

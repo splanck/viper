@@ -6,8 +6,8 @@ module semantic_tokens_probe;
 //   * Test B: the CodeEditor semantic overlay applies and survives out-of-range
 //     input without crashing, and the editor still highlights.
 
-bind "ui/app_shell";
-bind "editor/editor_engine";
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
 
 bind ZiaCompletion = Viper.Zia.Completion;
 bind SemanticJob = Viper.Zia.SemanticJob;

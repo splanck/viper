@@ -5,6 +5,11 @@ bind "ui/ide_overlays";
 bind "ui/explorer_actions";
 bind "ui/debug_breakpoint_overlay";
 bind "ui/activity_bar";
+bind "app/dispatch_helpers";
+bind "app/context_menus";
+bind "app/workspace_watcher";
+bind "app/explorer_action_runner";
+bind "app/settings_applier";
 bind "scm/scm_view";
 bind "terminal/terminal_controller";
 bind "core/document";
@@ -72,7 +77,7 @@ final MOUSE_BUTTON_RIGHT = 1;
 //     uses a frame-driven design: each frame, every controller is
 //     polled. Commands are dispatched by checking which menu item /
 //     toolbar item / shortcut / palette command was hit this frame.
-//   * COMMAND DISPATCH PATTERN. The `triggered(name, menuItem,
+//   * COMMAND DISPATCH PATTERN. The `dispatch_helpers.Triggered(name, menuItem,
 //     toolbarItem, paletteSelection)` helper checks all three input
 //     sources for a single command name and returns true if any of
 //     them fired. This unifies "user clicked menu" / "user clicked
@@ -102,32 +107,7 @@ final AUTO_SAVE_IDLE_MS = 1500;
 final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
 final MAIN_INDEX_FILES_PER_FRAME = 4;
 final MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME = 2;
-final WORKSPACE_WATCHER_MAX_EVENTS = 32;
-final WORKSPACE_WATCHER_RESCAN_MS = 3000;
 final FRAME_BACKGROUND_BUDGET_MS = 10;
-
-/// @brief Mutable project-root watcher state owned by the main frame loop.
-/// @details Zia scalar parameters are passed by value, so project watcher
-///          lifecycle state is grouped into this object and updated by
-///          `PumpWorkspaceWatcher`.
-class WorkspaceWatcherState {
-    expose IO.Watcher watcher;
-    expose Boolean watching;
-    expose String rootPath;
-    expose Integer lastRescanMs;
-    expose Integer lastEntryCount;
-    expose Integer lastFingerprint;
-
-    /// @brief Initialize as detached from any workspace root.
-    expose func init() {
-        watcher = null;
-        watching = false;
-        rootPath = "";
-        lastRescanMs = 0;
-        lastEntryCount = -1;
-        lastFingerprint = 0;
-    }
-}
 
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
@@ -205,7 +185,8 @@ func main() {
     activityBarCtrl.Setup(shell.explorerView, shell.scmViewHost, shell.abExplorer, shell.abSourceControl);
     scmView.Setup(shell.scmViewHost);
     if projMgr.project != null and projMgr.project.isOpen { scmView.SetRepo(projMgr.project.rootPath); }
-    terminalCtrl.Setup(shell.terminalPane, shell.terminalInput, shell.terminalRun, shell.terminalKill);
+    terminalCtrl.Setup(shell.terminalPanel, shell.terminalPane, shell.terminalInput,
+                       shell.terminalRun, shell.terminalKill, shell.terminalRestart);
     if projMgr.project != null and projMgr.project.isOpen { terminalCtrl.SetCwd(projMgr.project.rootPath); }
 
     commandRegistry.InstallShortcuts();
@@ -280,7 +261,7 @@ func main() {
     var hasWatcher = false;
     var fileWatcher = IO.Watcher.New(".");
     var pendingReload = false;
-    var workspaceWatcherState = new WorkspaceWatcherState();
+    var workspaceWatcherState = new workspace_watcher.WorkspaceWatcherState();
 
     // Cursor tracking for dot-trigger and status bar caching
     var prevCursorLine = 1;
@@ -297,16 +278,43 @@ func main() {
     var lastOpenDocPollMs = 0;
     var lastWorkspaceIndexStatus = "";
 
-    // [TEMP] VIPER_TERM_SELFTEST=1 auto-opens the Terminal panel on startup (diagnostic).
+    // [TEMP] VIPER_TERM_SELFTEST=1 drives the REAL terminal dispatch (via injected
+    // cpSelected) and logs the panel's visibility each frame to catch a show-then-hide.
     var stForceTerminal = Viper.System.Environment.GetVariable("VIPER_TERM_SELFTEST") == "1";
-    var stDone = false;
+    var stFrame = 0;
+    var termReportHeight = false;
 
     // ========================================================================
     // Main event loop
     // ========================================================================
     while shell != null and shell.ShouldClose() == false {
         perfMon.BeginFrame();
-        if stForceTerminal and stDone == false { shell.ShowTerminalPanel(); stDone = true; }
+        // [TEMP DIAG] report the terminal panel's actual rendered height one frame
+        // after a toggle (layout has run by now).
+        if termReportHeight {
+            if shell.terminalPanel.GetHeight() > 0 { GUI.Toast.Info("terminal rendered h>0 (OK)"); }
+            else { GUI.Toast.Info("terminal rendered h=0 (collapsed)"); }
+            termReportHeight = false;
+        }
+        if stForceTerminal {
+            stFrame = stFrame + 1;
+            if stFrame == 1 {
+                if Viper.System.Pty.IsSupported() { Viper.Terminal.Say("ST pty supported=YES"); }
+                else { Viper.Terminal.Say("ST pty supported=NO err=" + Viper.System.Pty.LastError()); }
+            }
+            if shell.IsTerminalPanelVisible() {
+                if shell.terminalPanel.GetHeight() > 0 { Viper.Terminal.Say("ST visible=YES panelH>0"); }
+                else { Viper.Terminal.Say("ST visible=YES panelH=ZERO"); }
+            } else { Viper.Terminal.Say("ST visible=NO"); }
+            if stFrame == 18 {
+                Viper.Terminal.Say("GEOM app h=" + shell.app.GetHeight());
+                Viper.Terminal.Say("GEOM editorArea y=" + shell.editorArea.GetY() + " h=" + shell.editorArea.GetHeight());
+                Viper.Terminal.Say("GEOM editorRow y=" + shell.editorRow.GetY() + " h=" + shell.editorRow.GetHeight());
+                Viper.Terminal.Say("GEOM toolTabBar y=" + shell.toolTabBar.GetY() + " h=" + shell.toolTabBar.GetHeight());
+                Viper.Terminal.Say("GEOM termPanel y=" + shell.terminalPanel.GetY() + " h=" + shell.terminalPanel.GetHeight());
+            }
+            if stFrame >= 20 { shell.Destroy(); return; }
+        }
         shell.Poll();
 
         // Activity bar — switch the left view (Explorer / Source Control).
@@ -322,7 +330,7 @@ func main() {
             breakpointStore.Save();
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
-                CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, fileWatcher,
+                CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, terminalCtrl, fileWatcher,
                            hasWatcher, workspaceWatcherState, indexer, breakpointStore,
                            sessionMgr);
                 return;
@@ -389,7 +397,7 @@ func main() {
         }
         shell.SetSchedulerStatus(editorScheduler.StatusText());
         completer.PumpWorkspaceSymbolCache(MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME);
-        if FrameBudgetAllows(frameWorkStartMs) and projMgr != null and projMgr.fileCacheRefreshing {
+        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) and projMgr != null and projMgr.fileCacheRefreshing {
             projMgr.PumpFileCacheRefresh(2);
         }
         perfMon.AddIndex(perfSpan);
@@ -445,27 +453,27 @@ func main() {
         debug_commands.DebugUpdate(shell, docMgr, engine, tabs, dbgSession);
         shell.SetDebugSessionState(dbgSession.IsActive(), dbgSession.stopped, buildSys.IsActive());
         perfMon.AddBuild(perfSpan);
-        if FrameBudgetAllows(frameWorkStartMs) {
+        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
             perfSpan = perfMon.StartSpan();
             searcher.Pump(shell, docMgr, locStore);
             perfMon.AddSearch(perfSpan);
         }
-        if FrameBudgetAllows(frameWorkStartMs) {
+        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
             perfSpan = perfMon.StartSpan();
             hoverCtrl.update(engine);
             perfMon.AddHover(perfSpan);
         }
-        if FrameBudgetAllows(frameWorkStartMs) {
+        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
             perfSpan = perfMon.StartSpan();
             sigCtrl.update(engine);
             perfMon.AddSignature(perfSpan);
         }
-        if FrameBudgetAllows(frameWorkStartMs) {
+        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
             perfSpan = perfMon.StartSpan();
             inlayCtrl.update(engine);
             perfMon.AddInlay(perfSpan);
         }
-        if FrameBudgetAllows(frameWorkStartMs) {
+        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
             perfSpan = perfMon.StartSpan();
             symbolOutline.update(engine);
             perfMon.AddSymbols(perfSpan);
@@ -486,7 +494,7 @@ func main() {
         var curCursorLine = engine.GetCursorLine();
         var curCursorCol  = engine.GetCursorCol();
         var typedDot = Str.IndexOf(typedThisFrame, ".") != 0;
-        var typedIdentifier = HasIdentifierInput(typedThisFrame);
+        var typedIdentifier = dispatch_helpers.HasIdentifierInput(typedThisFrame);
         var suppressAutoCompletion = false;
         if typedDot or typedIdentifier {
             suppressAutoCompletion = completer.ShouldSuppressAutoTrigger();
@@ -564,7 +572,7 @@ func main() {
             var ctxX = Input.Mouse.X;
             var ctxY = Input.Mouse.Y;
             if shell.sidebarTree.IsHovered() != 0 {
-                DismissContextMenus(shell);
+                context_menus.DismissContextMenus(shell);
                 var ctxNode = shell.sidebarTree.GetNodeAt(ctxX, ctxY);
                 if ctxNode != null {
                     shell.sidebarTree.Select(ctxNode);
@@ -573,56 +581,56 @@ func main() {
                 } else {
                     shell.contextPath = "";
                 }
-                shell.contextDir = ContextDirForPath(projMgr, shell.contextPath);
-                ConfigureTreeContextMenuForPath(shell, projMgr, shell.contextPath, shell.contextDir);
+                shell.contextDir = context_menus.ContextDirForPath(projMgr, shell.contextPath);
+                context_menus.ConfigureTreeContextMenuForPath(shell, projMgr, shell.contextPath, shell.contextDir);
                 shell.treeContextMenu.Show(ctxX, ctxY);
             } else if shell.tabBar.IsHovered() != 0 {
-                DismissContextMenus(shell);
+                context_menus.DismissContextMenus(shell);
                 shell.tabContextIndex = shell.tabBar.GetTabIndexAt(ctxX, ctxY);
                 shell.tabContextMenu.Show(ctxX, ctxY);
             } else if engine.editor.IsHovered() != 0 {
-                DismissContextMenus(shell);
-                MoveEditorCursorForContextMenu(engine, ctxX, ctxY);
-                ConfigureEditorContextMenu(shell, engine, activeService, dbgSession);
+                context_menus.DismissContextMenus(shell);
+                context_menus.MoveEditorCursorForContextMenu(engine, ctxX, ctxY);
+                context_menus.ConfigureEditorContextMenu(shell, engine, activeService, dbgSession);
                 shell.editorContextMenu.Show(ctxX, ctxY);
             }
         }
         if shell.ctxOpen.WasClicked() != 0 {
-            var ctxPath = CurrentContextPath(projMgr, shell);
+            var ctxPath = context_menus.CurrentContextPath(projMgr, shell);
             if IO.File.Exists(ctxPath) != false {
-                OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxPath);
+                explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxPath);
                 pendingReload = false;
             }
         }
         if shell.ctxOpenText.WasClicked() != 0 {
-            var ctxTextPath = CurrentContextPath(projMgr, shell);
+            var ctxTextPath = context_menus.CurrentContextPath(projMgr, shell);
             if IO.File.Exists(ctxTextPath) != false {
-                OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxTextPath);
+                explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxTextPath);
                 pendingReload = false;
             }
         }
         if shell.ctxReveal.WasClicked() != 0 {
-            var revealPath = CurrentContextPath(projMgr, shell);
+            var revealPath = context_menus.CurrentContextPath(projMgr, shell);
             if revealPath != "" {
-                RevealPath(revealPath);
+                context_menus.RevealPath(revealPath);
             }
         }
         if shell.ctxCopyPath.WasClicked() != 0 {
-            var copyPath = CurrentContextPath(projMgr, shell);
+            var copyPath = context_menus.CurrentContextPath(projMgr, shell);
             if copyPath != "" {
                 GUI.Clipboard.SetText(copyPath);
                 GUI.Toast.Success("Path copied");
             }
         }
         if shell.ctxCopyRelativePath.WasClicked() != 0 {
-            var copyRelPath = CurrentContextPath(projMgr, shell);
+            var copyRelPath = context_menus.CurrentContextPath(projMgr, shell);
             if copyRelPath != "" {
                 GUI.Clipboard.SetText(projMgr.RelativePath(copyRelPath));
                 GUI.Toast.Success("Relative path copied");
             }
         }
         if shell.ctxDuplicate.WasClicked() != 0 {
-            var dupPath = CurrentContextPath(projMgr, shell);
+            var dupPath = context_menus.CurrentContextPath(projMgr, shell);
             if IO.File.Exists(dupPath) != false {
                 explorerOverlay.OpenDuplicate(shell, dupPath);
             } else if dupPath != "" {
@@ -630,13 +638,13 @@ func main() {
             }
         }
         if shell.ctxRename.WasClicked() != 0 {
-            var selectedPath = CurrentContextPath(projMgr, shell);
+            var selectedPath = context_menus.CurrentContextPath(projMgr, shell);
             if selectedPath != "" {
                 explorerOverlay.OpenRename(shell, selectedPath);
             }
         }
         if shell.ctxDelete.WasClicked() != 0 {
-            var deletePath = CurrentContextPath(projMgr, shell);
+            var deletePath = context_menus.CurrentContextPath(projMgr, shell);
             if deletePath != "" {
                 explorerOverlay.OpenDelete(shell, deletePath);
             }
@@ -658,16 +666,16 @@ func main() {
                                                              docMgr, engine, locStore, searcher);
         }
         if shell.ctxRunFile.WasClicked() != 0 {
-            var runPath = CurrentContextPath(projMgr, shell);
+            var runPath = context_menus.CurrentContextPath(projMgr, shell);
             if IO.File.Exists(runPath) != false {
-                OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, runPath);
+                explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, runPath);
                 pendingReload = false;
                 build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore,
                                          appSettings.saveAllBeforeBuild);
             }
         }
         if shell.ctxSetEntry.WasClicked() != 0 {
-            var entryPath = CurrentContextPath(projMgr, shell);
+            var entryPath = context_menus.CurrentContextPath(projMgr, shell);
             if projMgr.SetEntryFile(entryPath) {
                 shell.SetStatusLeft("Project entry: " + projMgr.RelativePath(entryPath));
                 GUI.Toast.Success("Project entry updated");
@@ -683,7 +691,7 @@ func main() {
         var explorerAction = explorerOverlay.Pump(shell);
         if explorerAction != explorer_actions.EXPLORER_ACTION_NONE
            and explorerAction != explorer_actions.EXPLORER_ACTION_CANCEL {
-            if ApplyExplorerAction(shell, explorerOverlay, explorerAction, projMgr, docMgr,
+            if explorer_action_runner.ApplyExplorerAction(shell, explorerOverlay, explorerAction, projMgr, docMgr,
                                    engine, tabs, sessionMgr, indexer, locStore) {
                 pendingReload = false;
             }
@@ -740,7 +748,7 @@ func main() {
         }
         if shell.tcReveal.WasClicked() != 0 {
             if tabTargetPath != "" {
-                RevealPath(tabTargetPath);
+                context_menus.RevealPath(tabTargetPath);
             }
         }
 
@@ -748,33 +756,52 @@ func main() {
         // Dispatch commands via trigger helper
         // ====================================================================
 
+        // [TEMP] inject a real palette selection for the terminal on frame 3.
+        if stForceTerminal and stFrame == 3 { cpSelected = "terminal"; Viper.Terminal.Say("ST inject cpSelected=terminal frame3"); }
+
         // File commands
-        if triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
-        if triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); RecordActiveFile(sessionMgr, docMgr); pendingReload = false; }
-        if triggered("openfolder", shell.miOpenFolder, null, cpSelected) {
+        if dispatch_helpers.Triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
+        if dispatch_helpers.Triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); explorer_action_runner.RecordActiveFile(sessionMgr, docMgr); pendingReload = false; }
+        if dispatch_helpers.Triggered("openfolder", shell.miOpenFolder, null, cpSelected) {
             if file_commands.ConfirmCloseDocuments(shell, docMgr, engine, "Open Folder", -1) {
                 tabs.RefreshFromDocuments(docMgr);
                 file_commands.handleOpenFolder(shell, projMgr);
                 indexer.Open(projMgr.project.rootPath, docMgr);
+                if projMgr.project != null and projMgr.project.isOpen {
+                    terminalCtrl.SetCwd(projMgr.project.rootPath);
+                }
             }
         }
-        if triggeredNoMenu("addfolder", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("addfolder", cpSelected) {
             file_commands.handleAddFolderToWorkspace(shell, projMgr);
+            if projMgr.project != null and projMgr.project.isOpen {
+                terminalCtrl.SetCwd(projMgr.project.rootPath);
+            }
         }
-        if triggered("terminal", shell.miTerminal, null, cpSelected) {
+        // [TEMP DIAG] explicit per-source detection so we can see (in-IDE) which
+        // real entry point fires for the terminal command.
+        var termMenu = shell.miTerminal != null and shell.miTerminal.WasClicked() != 0;
+        var termShortcut = Shortcuts.WasTriggered("terminal") != 0;
+        var termPalette = cpSelected == "terminal";
+        if termMenu or termShortcut or termPalette {
+            var termSrc = "PALETTE";
+            if termMenu { termSrc = "MENU"; } else if termShortcut { termSrc = "SHORTCUT"; }
             if projMgr.project != null and projMgr.project.isOpen { terminalCtrl.SetCwd(projMgr.project.rootPath); }
-            shell.ShowTerminalPanel();
+            shell.ToggleTerminalPanel();
+            if shell.IsTerminalPanelVisible() { GUI.Toast.Info("terminal via " + termSrc + " -> VISIBLE"); }
+            else { GUI.Toast.Info("terminal via " + termSrc + " -> HIDDEN"); }
+            termReportHeight = true;
         }
-        if triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
-        if triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
-        if triggered("saveall", shell.miSaveAll, shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(shell, docMgr, engine, tabs); }
-        if triggered("reload", shell.miReload, null, cpSelected)       { file_commands.handleReload(shell, docMgr, engine, tabs); pendingReload = false; }
-        if triggeredMenu("recentfiles", shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(shell, sessionMgr); }
-        if triggeredMenu("reopenclosed", shell.miReopenClosed, cpSelected) { ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); pendingReload = false; }
+        if dispatch_helpers.Triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
+        if dispatch_helpers.Triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
+        if dispatch_helpers.Triggered("saveall", shell.miSaveAll, shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(shell, docMgr, engine, tabs); }
+        if dispatch_helpers.Triggered("reload", shell.miReload, null, cpSelected)       { file_commands.handleReload(shell, docMgr, engine, tabs); pendingReload = false; }
+        if dispatch_helpers.TriggeredMenu("recentfiles", shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(shell, sessionMgr); }
+        if dispatch_helpers.TriggeredMenu("reopenclosed", shell.miReopenClosed, cpSelected) { explorer_action_runner.ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); pendingReload = false; }
 
         // Close — also check tab close button
         var closeIdx = -1;
-        if triggered("close", shell.miClose, null, cpSelected) {
+        if dispatch_helpers.Triggered("close", shell.miClose, null, cpSelected) {
             closeIdx = docMgr.activeIndex;
         } else if shell.tabBar.WasCloseClicked() != 0 {
             closeIdx = shell.tabBar.GetCloseClickedIndex();
@@ -790,7 +817,7 @@ func main() {
             breakpointStore.Save();
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
-                CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, fileWatcher,
+                CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, terminalCtrl, fileWatcher,
                            hasWatcher, workspaceWatcherState, indexer, breakpointStore,
                            sessionMgr);
                 return;
@@ -803,54 +830,54 @@ func main() {
             treeSelectedPath = "";
         }
         if treeSelectedPath != "" {
-            OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, treeSelectedPath);
+            explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, treeSelectedPath);
             pendingReload = false;
         }
 
         // Edit commands
-        if triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine, docMgr); }
-        if triggered("redo", shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(engine); }
-        if triggered("cut", shell.miCut, null, cpSelected)             { edit_commands.handleCut(engine); }
-        if triggered("copy", shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(engine); }
-        if triggered("paste", shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(engine); }
-        if triggered("selectall", shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(engine); }
-        if triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
-        if triggeredMenu("goto", shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(shell, engine); }
-        if triggeredMenu("gotodef", shell.miGoToDefinition, cpSelected)  { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
-        if triggeredMenu("findrefs", shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
-        if triggeredMenu("incomingcalls", shell.miIncomingCalls, cpSelected) { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
-        if triggeredMenu("outgoingcalls", shell.miOutgoingCalls, cpSelected) { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
-        if triggeredMenu("rename", shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
-        if triggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(shell, engine); }
-        if triggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
-        if triggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(shell, engine); }
-        if triggeredNoMenu("clearcursors", cpSelected)                   { edit_commands.handleClearCursors(shell, engine); }
-        if triggeredNoMenu("expandselection", cpSelected)                { edit_commands.handleExpandSelection(shell, engine); }
-        if triggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(shell, engine); }
-        if triggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(shell, docMgr, engine); }
-        if triggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(shell, docMgr, engine); }
-        if triggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(shell, engine); }
-        if triggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
-        if triggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
-        if triggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
-        if triggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(shell, docMgr, engine); }
-        if triggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(shell, docMgr, engine); }
-        if triggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(shell, docMgr, engine); }
-        if triggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
-        if triggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine); }
-        if triggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr); }
-        if triggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(shell, docMgr, engine); }
-        if triggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(shell, docMgr, engine); }
-        if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(shell, docMgr, engine); }
+        if dispatch_helpers.Triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine, docMgr); }
+        if dispatch_helpers.Triggered("redo", shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(engine); }
+        if dispatch_helpers.Triggered("cut", shell.miCut, null, cpSelected)             { edit_commands.handleCut(engine); }
+        if dispatch_helpers.Triggered("copy", shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(engine); }
+        if dispatch_helpers.Triggered("paste", shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(engine); }
+        if dispatch_helpers.Triggered("selectall", shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(engine); }
+        if dispatch_helpers.Triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
+        if dispatch_helpers.TriggeredMenu("goto", shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(shell, engine); }
+        if dispatch_helpers.TriggeredMenu("gotodef", shell.miGoToDefinition, cpSelected)  { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
+        if dispatch_helpers.TriggeredMenu("findrefs", shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
+        if dispatch_helpers.TriggeredMenu("incomingcalls", shell.miIncomingCalls, cpSelected) { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
+        if dispatch_helpers.TriggeredMenu("outgoingcalls", shell.miOutgoingCalls, cpSelected) { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
+        if dispatch_helpers.TriggeredMenu("rename", shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
+        if dispatch_helpers.TriggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("clearcursors", cpSelected)                   { edit_commands.handleClearCursors(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("expandselection", cpSelected)                { edit_commands.handleExpandSelection(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
+        if dispatch_helpers.TriggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr); }
+        if dispatch_helpers.TriggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(shell, docMgr, engine); }
+        if dispatch_helpers.TriggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(shell, docMgr, engine); }
 
         // Error navigation (F8 / Shift+F8)
-        if triggeredMenu("nexterror", shell.miNextError, cpSelected) {
+        if dispatch_helpers.TriggeredMenu("nexterror", shell.miNextError, cpSelected) {
             navigateDiagnostic(shell, docMgr, engine, tabs, locStore, 1);
         }
-        if triggeredMenu("preverror", shell.miPreviousError, cpSelected) {
+        if dispatch_helpers.TriggeredMenu("preverror", shell.miPreviousError, cpSelected) {
             navigateDiagnostic(shell, docMgr, engine, tabs, locStore, -1);
         }
-        if triggeredNoMenu("checknow", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("checknow", cpSelected) {
             file_commands.SaveEditorState(docMgr, engine);
             var checkErrors = liveDiag.runNow(engine, shell, locStore);
             if checkErrors > 0 {
@@ -863,10 +890,10 @@ func main() {
            or cpSelected == "signature_trigger" {
             sigCtrl.trigger(engine);
         }
-        if triggeredNoMenu("signaturenextoverload", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("signaturenextoverload", cpSelected) {
             sigCtrl.NextOverload();
         }
-        if triggeredNoMenu("signatureprevoverload", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("signatureprevoverload", cpSelected) {
             sigCtrl.PreviousOverload();
         }
 
@@ -884,107 +911,107 @@ func main() {
         }
 
         // View commands
-        if triggered("togglesidebar", shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(shell); }
-        if triggeredMenu("statusbar", shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(shell, appSettings); }
-        if triggered("zoomin", shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(shell, engine, appSettings); }
-        if triggered("zoomout", shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(shell, engine, appSettings); }
-        if triggered("zoomreset", shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(shell, engine, appSettings); }
-        if triggered("uizoomin", shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(shell, appSettings); }
-        if triggered("uizoomout", shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(shell, appSettings); }
-        if triggered("uizoomreset", shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(shell, appSettings); }
-        if triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(shell, engine, liveDiag, appSettings); }
-        if triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell, appSettings); }
-        if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
-        if triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
-        if triggeredNoMenu("keybindings", cpSelected)                          { view_commands.handleKeybindings(shell, commandRegistry); }
-        if triggeredNoMenu("copytoolrow", cpSelected)                          { view_commands.handleCopyToolSelection(shell); }
-        if triggeredNoMenu("copyoutputtext", cpSelected)                       { view_commands.handleCopyOutputText(shell); }
-        if triggeredNoMenu("clearoutput", cpSelected)                          { view_commands.handleClearOutput(shell); }
-        if triggeredNoMenu("filteroutput", cpSelected)                         { view_commands.handleFilterOutput(shell); }
-        if triggeredNoMenu("toggleoutputwrap", cpSelected)                     { view_commands.handleToggleOutputWrap(shell); }
-        if triggeredNoMenu("toggleoutputautoscroll", cpSelected)               { view_commands.handleToggleOutputAutoScroll(shell); }
-        if triggeredNoMenu("treenewfile", cpSelected) {
-            var overlayNewFileDir = ContextDirForPath(projMgr, projMgr.SelectedPath());
+        if dispatch_helpers.Triggered("togglesidebar", shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(shell); }
+        if dispatch_helpers.TriggeredMenu("statusbar", shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(shell, appSettings); }
+        if dispatch_helpers.Triggered("zoomin", shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(shell, engine, appSettings); }
+        if dispatch_helpers.Triggered("zoomout", shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(shell, engine, appSettings); }
+        if dispatch_helpers.Triggered("zoomreset", shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(shell, engine, appSettings); }
+        if dispatch_helpers.Triggered("uizoomin", shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(shell, appSettings); }
+        if dispatch_helpers.Triggered("uizoomout", shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(shell, appSettings); }
+        if dispatch_helpers.Triggered("uizoomreset", shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(shell, appSettings); }
+        if dispatch_helpers.Triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(shell, engine, liveDiag, appSettings); }
+        if dispatch_helpers.Triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell, appSettings); }
+        if dispatch_helpers.Triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
+        if dispatch_helpers.Triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
+        if dispatch_helpers.TriggeredNoMenu("keybindings", cpSelected)                          { view_commands.handleKeybindings(shell, commandRegistry); }
+        if dispatch_helpers.TriggeredNoMenu("copytoolrow", cpSelected)                          { view_commands.handleCopyToolSelection(shell); }
+        if dispatch_helpers.TriggeredNoMenu("copyoutputtext", cpSelected)                       { view_commands.handleCopyOutputText(shell); }
+        if dispatch_helpers.TriggeredNoMenu("clearoutput", cpSelected)                          { view_commands.handleClearOutput(shell); }
+        if dispatch_helpers.TriggeredNoMenu("filteroutput", cpSelected)                         { view_commands.handleFilterOutput(shell); }
+        if dispatch_helpers.TriggeredNoMenu("toggleoutputwrap", cpSelected)                     { view_commands.handleToggleOutputWrap(shell); }
+        if dispatch_helpers.TriggeredNoMenu("toggleoutputautoscroll", cpSelected)               { view_commands.handleToggleOutputAutoScroll(shell); }
+        if dispatch_helpers.TriggeredNoMenu("treenewfile", cpSelected) {
+            var overlayNewFileDir = context_menus.ContextDirForPath(projMgr, projMgr.SelectedPath());
             if overlayNewFileDir != "" { explorerOverlay.OpenNewFile(shell, overlayNewFileDir); }
         }
-        if triggeredNoMenu("treenewfolder", cpSelected) {
-            var overlayNewFolderDir = ContextDirForPath(projMgr, projMgr.SelectedPath());
+        if dispatch_helpers.TriggeredNoMenu("treenewfolder", cpSelected) {
+            var overlayNewFolderDir = context_menus.ContextDirForPath(projMgr, projMgr.SelectedPath());
             if overlayNewFolderDir != "" { explorerOverlay.OpenNewFolder(shell, overlayNewFolderDir); }
         }
-        if triggeredNoMenu("treerename", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("treerename", cpSelected) {
             var overlayRenamePath = projMgr.SelectedPath();
             if overlayRenamePath != "" { explorerOverlay.OpenRename(shell, overlayRenamePath); }
         }
-        if triggeredNoMenu("treedelete", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("treedelete", cpSelected) {
             var overlayDeletePath = projMgr.SelectedPath();
             if overlayDeletePath != "" { explorerOverlay.OpenDelete(shell, overlayDeletePath); }
         }
-        if triggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
+        if dispatch_helpers.TriggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
         if shell.miKeyboardShortcuts.WasClicked() != 0                          { view_commands.handleKeybindings(shell, commandRegistry); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
-        if triggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
+        if dispatch_helpers.TriggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
             if search_commands.ShowQuickOpenPalette(shell, projMgr) {
                 paletteMode = "quickopen";
             }
         }
-        if triggeredMenu("searchproject", shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
-        if triggeredMenu("workspacesymbols", shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
-        if triggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
+        if dispatch_helpers.TriggeredMenu("searchproject", shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
+        if dispatch_helpers.TriggeredMenu("workspacesymbols", shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
+        if dispatch_helpers.TriggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items
-        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected) {
-            if CanStartBuildCommand(shell, dbgSession, "Build") {
+        if dispatch_helpers.Triggered("build", shell.miBuild, shell.tbBuild, cpSelected) {
+            if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Build") {
                 build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
             }
         }
-        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected) {
-            if CanStartBuildCommand(shell, dbgSession, "Build and Run") {
+        if dispatch_helpers.Triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected) {
+            if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Build and Run") {
                 build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
             }
         }
-        if triggered("run", shell.miRun, null, cpSelected) {
-            if CanStartBuildCommand(shell, dbgSession, "Run") {
+        if dispatch_helpers.Triggered("run", shell.miRun, null, cpSelected) {
+            if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Run") {
                 build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
             }
         }
-        if triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
-        if triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
+        if dispatch_helpers.Triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
+        if dispatch_helpers.Triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
             debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession, appSettings.saveAllBeforeBuild);
         }
-        if triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
+        if dispatch_helpers.Triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
             debug_commands.handleDebugContinue(shell, dbgSession);
         }
-        if triggered("debugstepover", shell.miDebugStepOver, shell.tbDebugStep, cpSelected) {
+        if dispatch_helpers.Triggered("debugstepover", shell.miDebugStepOver, shell.tbDebugStep, cpSelected) {
             debug_commands.handleDebugStepOver(shell, dbgSession);
         }
-        if triggered("debugstepin", shell.miDebugStepIn, null, cpSelected) {
+        if dispatch_helpers.Triggered("debugstepin", shell.miDebugStepIn, null, cpSelected) {
             debug_commands.handleDebugStepIn(shell, dbgSession);
         }
-        if triggered("debugstepout", shell.miDebugStepOut, null, cpSelected) {
+        if dispatch_helpers.Triggered("debugstepout", shell.miDebugStepOut, null, cpSelected) {
             debug_commands.handleDebugStepOut(shell, dbgSession);
         }
-        if triggered("debugpause", shell.miDebugPause, null, cpSelected) {
+        if dispatch_helpers.Triggered("debugpause", shell.miDebugPause, null, cpSelected) {
             debug_commands.handleDebugPause(shell, dbgSession);
         }
-        if triggered("debugrestart", shell.miDebugRestart, null, cpSelected) {
+        if dispatch_helpers.Triggered("debugrestart", shell.miDebugRestart, null, cpSelected) {
             debug_commands.handleDebugRestart(shell, docMgr, engine, tabs, buildSys,
                                              breakpointStore, dbgSession,
                                              appSettings.saveAllBeforeBuild);
         }
-        if triggered("debugstop", shell.miDebugStop, null, cpSelected) {
+        if dispatch_helpers.Triggered("debugstop", shell.miDebugStop, null, cpSelected) {
             debug_commands.handleDebugStop(shell, dbgSession);
         }
-        if triggered("togglebreakpoint", shell.miToggleBreakpoint, null, cpSelected) {
+        if dispatch_helpers.Triggered("togglebreakpoint", shell.miToggleBreakpoint, null, cpSelected) {
             debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore);
         }
-        if triggeredNoMenu("debugruntocursor", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("debugruntocursor", cpSelected) {
             debug_commands.handleRunToCursor(shell, docMgr, engine, dbgSession);
         }
-        if triggeredNoMenu("debugcondition", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("debugcondition", cpSelected) {
             OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
                                        debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION);
         }
-        if triggeredNoMenu("debuglogpoint", cpSelected) {
+        if dispatch_helpers.TriggeredNoMenu("debuglogpoint", cpSelected) {
             OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
                                        debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT);
         }
@@ -1012,7 +1039,7 @@ func main() {
                 } else if Str.StartsWith(data, "file:") {
                     var recentPath = Str.Mid(data, 6);
                     if IO.File.Exists(recentPath) != false {
-                        OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, recentPath);
+                        explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, recentPath);
                         pendingReload = false;
                     }
                 }
@@ -1068,82 +1095,9 @@ func main() {
             shell.SetStatusLeft("Startup defaults restored");
         }
         if overlayAction == ide_overlays.ACTION_APPLY_SETTINGS {
-            var requestedPath = overlays.ReadFontPath();
-            if requestedPath != "" {
-                var previewFont = GUI.Font.Load(requestedPath);
-                if previewFont == null {
-                    GUI.Toast.Warning("Could not load font: " + requestedPath);
-                    shell.SetStatusLeft("Font preview failed");
-                } else {
-                    GUI.Font.Destroy(previewFont);
-                    appSettings.fontPath = requestedPath;
-                    appSettings.fontSize = overlays.ReadFontSize();
-                    appSettings.tabWidth = overlays.ReadTabWidth();
-                    appSettings.theme = overlays.ReadTheme();
-                    appSettings.minimapVisible = overlays.ReadMinimapVisible();
-                    appSettings.statusBarVisible = overlays.ReadStatusBarVisible();
-                    appSettings.fullscreen = overlays.ReadFullscreen();
-                    appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
-                    appSettings.codeFolding = overlays.ReadCodeFolding();
-                    appSettings.wordWrap = overlays.ReadWordWrap();
-                    appSettings.lineNumbers = overlays.ReadLineNumbers();
-                    appSettings.insertSpaces = overlays.ReadInsertSpaces();
-                    appSettings.trimTrailingWhitespace = overlays.ReadTrimTrailingWhitespace();
-                    appSettings.ensureFinalNewline = overlays.ReadEnsureFinalNewline();
-                    appSettings.autoSave = overlays.ReadAutoSave();
-                    appSettings.saveAllBeforeBuild = overlays.ReadSaveAllBeforeBuild();
-                    appSettings.diagnosticsDelayMs = overlays.ReadDiagnosticsDelayMs();
-                    appSettings.completionDelayMs = overlays.ReadCompletionDelayMs();
-                    appSettings.uiZoomPercent = overlays.ReadUiZoom();
-                    appSettings.restoreSession = overlays.ReadRestoreSession();
-                    appSettings.restoreLastProject = overlays.ReadRestoreLastProject();
-                    appSettings.confirmOnExitWithUnsavedChanges = overlays.ReadConfirmClose();
-                    editorScheduler.Configure(appSettings.diagnosticsDelayMs, appSettings.completionDelayMs);
-                    view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
-                    file_commands.SetConfirmDirtyClose(appSettings.confirmOnExitWithUnsavedChanges);
-                    file_commands.SetSaveFormatOptions(appSettings.trimTrailingWhitespace,
-                                                       appSettings.ensureFinalNewline);
-                    appSettings.Save();
-                    liveDiag.invalidate();
-                    minimapVisible = appSettings.minimapVisible;
-                    shell.SetStatusLeft("Settings applied");
-                    GUI.Toast.Success("Settings updated");
-                    overlays.CloseSettings();
-                }
-            } else {
-                appSettings.fontPath = "";
-                appSettings.fontSize = overlays.ReadFontSize();
-                appSettings.tabWidth = overlays.ReadTabWidth();
-                appSettings.theme = overlays.ReadTheme();
-                appSettings.minimapVisible = overlays.ReadMinimapVisible();
-                appSettings.statusBarVisible = overlays.ReadStatusBarVisible();
-                appSettings.fullscreen = overlays.ReadFullscreen();
-                appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
-                appSettings.codeFolding = overlays.ReadCodeFolding();
-                appSettings.wordWrap = overlays.ReadWordWrap();
-                appSettings.lineNumbers = overlays.ReadLineNumbers();
-                appSettings.insertSpaces = overlays.ReadInsertSpaces();
-                appSettings.trimTrailingWhitespace = overlays.ReadTrimTrailingWhitespace();
-                appSettings.ensureFinalNewline = overlays.ReadEnsureFinalNewline();
-                appSettings.autoSave = overlays.ReadAutoSave();
-                appSettings.saveAllBeforeBuild = overlays.ReadSaveAllBeforeBuild();
-                appSettings.diagnosticsDelayMs = overlays.ReadDiagnosticsDelayMs();
-                appSettings.completionDelayMs = overlays.ReadCompletionDelayMs();
-                appSettings.uiZoomPercent = overlays.ReadUiZoom();
-                appSettings.restoreSession = overlays.ReadRestoreSession();
-                appSettings.restoreLastProject = overlays.ReadRestoreLastProject();
-                appSettings.confirmOnExitWithUnsavedChanges = overlays.ReadConfirmClose();
-                editorScheduler.Configure(appSettings.diagnosticsDelayMs, appSettings.completionDelayMs);
-                view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
-                file_commands.SetConfirmDirtyClose(appSettings.confirmOnExitWithUnsavedChanges);
-                file_commands.SetSaveFormatOptions(appSettings.trimTrailingWhitespace,
-                                                   appSettings.ensureFinalNewline);
-                appSettings.Save();
-                liveDiag.invalidate();
+            if settings_applier.ApplySettingsFromOverlay(shell, overlays, appSettings,
+                                                         engine, liveDiag, editorScheduler) {
                 minimapVisible = appSettings.minimapVisible;
-                shell.SetStatusLeft("Settings applied");
-                GUI.Toast.Success("Settings updated");
-                overlays.CloseSettings();
             }
         }
         if overlayAction == ide_overlays.ACTION_CLOSE_SETTINGS {
@@ -1272,7 +1226,7 @@ func main() {
 	            }
 	        }
 
-        PumpWorkspaceWatcher(shell, projMgr, docMgr, indexer, locStore, engine,
+        workspace_watcher.PumpWorkspaceWatcher(shell, projMgr, docMgr, indexer, locStore, engine,
                              workspaceWatcherState);
 
 	        // ====================================================================
@@ -1306,7 +1260,7 @@ func main() {
     // ========================================================================
     // Cleanup
     // ========================================================================
-    CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, fileWatcher,
+    CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, terminalCtrl, fileWatcher,
                hasWatcher, workspaceWatcherState, indexer, breakpointStore, sessionMgr);
 }
 
@@ -1320,6 +1274,7 @@ func main() {
 /// @param engine Editor engine used to capture cursor, scroll, and buffer state.
 /// @param buildSys Active build/run process controller.
 /// @param dbgSession Active debug-adapter process controller.
+/// @param terminalCtrl Integrated-terminal controller whose PTY child is stopped.
 /// @param fileWatcher Single-file external-change watcher.
 /// @param hasWatcher Whether @p fileWatcher is currently started.
 /// @param workspaceWatcherState Project-root watcher state.
@@ -1332,9 +1287,10 @@ func CleanupIde(shell: app_shell.AppShell,
                 engine: editor_engine.EditorEngine,
                 buildSys: build_system.BuildSystem,
                 dbgSession: debug_session.DebugSession,
+                terminalCtrl: terminal_controller.TerminalController,
                 fileWatcher: IO.Watcher,
                 hasWatcher: Boolean,
-                workspaceWatcherState: WorkspaceWatcherState,
+                workspaceWatcherState: workspace_watcher.WorkspaceWatcherState,
                 indexer: project_index.ProjectIndexer,
                 breakpointStore: breakpoints.BreakpointStore,
                 sessionMgr: session.SessionManager) {
@@ -1353,87 +1309,19 @@ func CleanupIde(shell: app_shell.AppShell,
     if dbgSession != null and dbgSession.IsActive() {
         dbgSession.Terminate();
     }
+    if terminalCtrl != null {
+        terminalCtrl.Stop();
+    }
     if hasWatcher and fileWatcher != null {
         fileWatcher.Stop();
     }
-    StopWorkspaceWatcher(workspaceWatcherState);
+    workspace_watcher.StopWorkspaceWatcher(workspaceWatcherState);
     if indexer != null {
         indexer.Destroy();
     }
     if shell != null {
         shell.Destroy();
     }
-}
-
-// ============================================================================
-// Trigger helpers — check menu + toolbar + shortcut + command palette
-// ============================================================================
-
-func triggered(name: String, menuItem: GUI.MenuItem, toolbarItem: GUI.ToolbarItem, cpSelected: String) -> Boolean {
-    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
-    if toolbarItem != null and toolbarItem.WasClicked() != 0 { return true; }
-    if Shortcuts.WasTriggered(name) != 0 { return true; }
-    if cpSelected == name { return true; }
-    return false;
-}
-
-func triggeredNoMenu(name: String, cpSelected: String) -> Boolean {
-    if Shortcuts.WasTriggered(name) != 0 { return true; }
-    if cpSelected == name { return true; }
-    return false;
-}
-
-func triggeredMenu(name: String, menuItem: GUI.MenuItem, cpSelected: String) -> Boolean {
-    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
-    if Shortcuts.WasTriggered(name) != 0 { return true; }
-    if cpSelected == name { return true; }
-    return false;
-}
-
-func HasIdentifierInput(text: String) -> Boolean {
-    var i = 1;
-    while i <= Str.Length(text) {
-        var ch = Str.MidLen(text, i, 1);
-        if ch >= "a" and ch <= "z" { return true; }
-        if ch >= "A" and ch <= "Z" { return true; }
-        if ch >= "0" and ch <= "9" { return true; }
-        if ch == "_" { return true; }
-        i = i + 1;
-    }
-    return false;
-}
-
-/// @brief Return whether a build/run command may start in the current IDE state.
-/// @details Toolbar/menu state can disable visible controls, but keyboard
-///          shortcuts and palette selections still route through the dispatcher.
-///          This guard keeps those non-visual paths from starting a build while
-///          the debugger owns the active process context.
-/// @param shell Workbench shell used for status/toast feedback.
-/// @param dbgSession Debug session controller.
-/// @param commandName Human-readable command name used in the status message.
-/// @return True when the command may continue to its handler.
-func CanStartBuildCommand(shell: app_shell.AppShell,
-                          dbgSession: debug_session.DebugSession,
-                          commandName: String) -> Boolean {
-    if dbgSession != null and dbgSession.IsActive() {
-        var message = commandName + " is disabled while debugging";
-        shell.SetStatusLeft(message);
-        GUI.Toast.Info(message);
-        return false;
-    }
-    return true;
-}
-
-/// @brief Check whether lower-priority background controllers may run this frame.
-/// @details Build/debug polling, input handling, completion, and diagnostics are
-///          allowed to run before this budget gate. Hover, signature, inlay,
-///          symbol, and search refreshes can wait one frame when earlier work
-///          has already consumed the soft controller budget.
-/// @param frameWorkStartMs Tick captured near the start of controller updates.
-/// @return True while elapsed controller work is below `FRAME_BACKGROUND_BUDGET_MS`.
-func FrameBudgetAllows(frameWorkStartMs: Integer) -> Boolean {
-    if frameWorkStartMs <= 0 { return true; }
-    return Viper.Time.GetTickCount() - frameWorkStartMs < FRAME_BACKGROUND_BUDGET_MS;
 }
 
 /// @brief Poll all open named documents for external timestamp changes.
@@ -1469,486 +1357,6 @@ func PollOpenDocumentExternalChanges(shell: app_shell.AppShell,
         shell.SetStatusLeft("Warning: " + changed + " open files changed on disk");
     }
     return changed;
-}
-
-/// @brief Hide any open command palette or context menu so the next one shown
-///        is the only active overlay (the runtime tracks a single active menu).
-func DismissContextMenus(shell: app_shell.AppShell) {
-    if shell.commandPalette.IsVisible() != 0 {
-        shell.commandPalette.Hide();
-    }
-    if shell.treeContextMenu.IsVisible() != 0 {
-        shell.treeContextMenu.Hide();
-    }
-    if shell.editorContextMenu.IsVisible() != 0 {
-        shell.editorContextMenu.Hide();
-    }
-    if shell.tabContextMenu.IsVisible() != 0 {
-        shell.tabContextMenu.Hide();
-    }
-}
-
-/// @brief Compare two editor positions in document order.
-/// @param lhsLine First position line.
-/// @param lhsCol First position column.
-/// @param rhsLine Second position line.
-/// @param rhsCol Second position column.
-/// @return -1 if lhs < rhs, 1 if lhs > rhs, 0 if equal.
-func CompareEditorPositions(lhsLine: Integer,
-                            lhsCol: Integer,
-                            rhsLine: Integer,
-                            rhsCol: Integer) -> Integer {
-    if lhsLine < rhsLine { return -1; }
-    if lhsLine > rhsLine { return 1; }
-    if lhsCol < rhsCol { return -1; }
-    if lhsCol > rhsCol { return 1; }
-    return 0;
-}
-
-/// @brief Return true when an editor coordinate is inside the primary selection.
-/// @details Selection end is treated as exclusive so right-clicking just after
-///          the highlighted text retargets the cursor, while right-clicking
-///          inside the highlighted text preserves the selection for Cut/Copy.
-/// @param engine Editor controller that owns the CodeEditor widget.
-/// @param line Zero-based line at the clicked pixel.
-/// @param col Zero-based column at the clicked pixel.
-func EditorPointInsidePrimarySelection(engine: editor_engine.EditorEngine,
-                                       line: Integer,
-                                       col: Integer) -> Boolean {
-    if engine == null or engine.editor == null { return false; }
-    if engine.editor.CursorHasSelection(0) == 0 { return false; }
-    var startLine = engine.editor.GetSelectionStartLineAt(0);
-    var startCol = engine.editor.GetSelectionStartColAt(0);
-    var endLine = engine.editor.GetSelectionEndLineAt(0);
-    var endCol = engine.editor.GetSelectionEndColAt(0);
-    if CompareEditorPositions(line, col, startLine, startCol) < 0 { return false; }
-    if CompareEditorPositions(line, col, endLine, endCol) >= 0 { return false; }
-    return true;
-}
-
-/// @brief Move the editor cursor to the right-clicked text position when appropriate.
-/// @details Context-menu commands such as Rename, Go to Definition, and
-///          Evaluate operate at the current caret. When a user right-clicks
-///          outside the active selection, retarget the caret to that clicked
-///          word. When the click is inside the selection, preserve it so
-///          Cut/Copy still act on the selected range.
-/// @param engine Editor controller that owns the CodeEditor widget.
-/// @param x Window-space X coordinate of the context-menu click.
-/// @param y Window-space Y coordinate of the context-menu click.
-func MoveEditorCursorForContextMenu(engine: editor_engine.EditorEngine,
-                                    x: Integer,
-                                    y: Integer) {
-    if engine == null or engine.editor == null { return; }
-    var line = engine.editor.GetLineAtPixel(y);
-    var col = engine.editor.GetColAtPixel(x, y);
-    if EditorPointInsidePrimarySelection(engine, line, col) {
-        return;
-    }
-    engine.editor.SetCursor(line, col);
-}
-
-/// @brief Enable editor context-menu commands from the current editor/debug state.
-/// @details The shell owns persistent menu items. This helper updates their
-///          enabled flags before each show so disabled actions render dimmed
-///          instead of appearing broken.
-/// @param shell Workbench shell that owns editor menu item handles.
-/// @param engine Editor controller for selection/read-only state.
-/// @param service Active language service capabilities.
-/// @param session Debug session used to gate Evaluate at Cursor.
-func ConfigureEditorContextMenu(shell: app_shell.AppShell,
-                                engine: editor_engine.EditorEngine,
-                                service: language_service.LanguageService,
-                                session: debug_session.DebugSession) {
-    var hasEditor = engine != null and engine.editor != null;
-    var hasSelection = false;
-    var readOnly = true;
-    if hasEditor {
-        hasSelection = engine.editor.CursorHasSelection(0) != 0;
-        readOnly = engine.editor.GetReadOnly() != 0;
-    }
-    var canDefinition = hasEditor and service != null and service.canGoToDefinition;
-    var canReferences = hasEditor and service != null and service.canFindReferences;
-    var canRename = hasEditor and service != null and service.canRename and readOnly == false;
-    var canEvaluate = hasEditor and session != null and session.IsActive() and session.stopped;
-
-    SetContextMenuItemEnabled(shell.ecCut, hasSelection and readOnly == false);
-    SetContextMenuItemEnabled(shell.ecCopy, hasSelection);
-    SetContextMenuItemEnabled(shell.ecPaste, hasEditor and readOnly == false);
-    SetContextMenuItemEnabled(shell.ecGotoDef, canDefinition);
-    SetContextMenuItemEnabled(shell.ecFindRefs, canReferences);
-    SetContextMenuItemEnabled(shell.ecRename, canRename);
-    SetContextMenuItemEnabled(shell.ecFormat, hasEditor and readOnly == false);
-    SetContextMenuItemEnabled(shell.ecToggleBreakpoint, hasEditor);
-    SetContextMenuItemEnabled(shell.ecEvaluate, canEvaluate);
-    SetContextMenuItemEnabled(shell.ecPalette, true);
-}
-
-func CurrentContextPath(projMgr: project_manager.ProjectManager,
-                        shell: app_shell.AppShell) -> String {
-    if shell.contextPath != "" {
-        return shell.contextPath;
-    }
-    return projMgr.SelectedPath();
-}
-
-func ContextDirForPath(projMgr: project_manager.ProjectManager,
-                       path: String) -> String {
-    if path != "" {
-        if Dir.Exists(path) != false {
-            return path;
-        }
-        if IO.File.Exists(path) != false {
-            return Path.Dir(path);
-        }
-    }
-    return projMgr.project.rootPath;
-}
-
-/// @brief Enable tree context-menu actions that apply to the current target.
-/// @details The explorer uses one persistent menu object. Before showing it,
-///          this helper preserves all existing actions but greys out entries
-///          that do not apply to the right-clicked item, such as Run for
-///          folders or Duplicate for blank tree space.
-/// @param shell Workbench shell that owns the menu item handles.
-/// @param projMgr Project manager used to test project-open state.
-/// @param path Absolute path stored on the clicked tree node, or empty for
-///        blank sidebar space.
-/// @param contextDir Directory where create/search actions should operate.
-func ConfigureTreeContextMenuForPath(shell: app_shell.AppShell,
-                                     projMgr: project_manager.ProjectManager,
-                                     path: String,
-                                     contextDir: String) {
-    var hasPath = path != "";
-    var isFile = hasPath and IO.File.Exists(path) != false;
-    var hasDir = contextDir != "" and Dir.Exists(contextDir) != false;
-    var hasProject = projMgr != null and projMgr.project != null and projMgr.project.isOpen;
-
-    SetContextMenuItemEnabled(shell.ctxOpen, isFile);
-    SetContextMenuItemEnabled(shell.ctxOpenText, isFile);
-    SetContextMenuItemEnabled(shell.ctxReveal, hasPath);
-    SetContextMenuItemEnabled(shell.ctxCopyPath, hasPath);
-    SetContextMenuItemEnabled(shell.ctxCopyRelativePath, hasPath and hasProject);
-    SetContextMenuItemEnabled(shell.ctxDuplicate, isFile);
-    SetContextMenuItemEnabled(shell.ctxRename, hasPath);
-    SetContextMenuItemEnabled(shell.ctxDelete, hasPath);
-    SetContextMenuItemEnabled(shell.ctxNewFile, hasDir);
-    SetContextMenuItemEnabled(shell.ctxNewFolder, hasDir);
-    SetContextMenuItemEnabled(shell.ctxSearchFolder, hasDir);
-    SetContextMenuItemEnabled(shell.ctxRunFile, isFile);
-    SetContextMenuItemEnabled(shell.ctxSetEntry, isFile and hasProject);
-    SetContextMenuItemEnabled(shell.ctxRefresh, hasProject);
-}
-
-/// @brief Set a context-menu item enabled flag when the item exists.
-/// @param item Menu item handle that may be null during partial shell setup.
-/// @param enabled True to enable the action; false to render it disabled.
-func SetContextMenuItemEnabled(item: GUI.MenuItem,
-                               enabled: Boolean) {
-    if item == null { return; }
-    if enabled {
-        item.SetEnabled(1);
-    } else {
-        item.SetEnabled(0);
-    }
-}
-
-func RevealPath(path: String) {
-    if path == "" { return; }
-    var os = Machine.OS;
-    if os == "macos" {
-        var macArgs = Seq.New();
-        Seq.Push(macArgs, "-R");
-        Seq.Push(macArgs, path);
-        Exec.RunArgs("open", macArgs);
-    } else if os == "windows" {
-        var winArgs = Seq.New();
-        Seq.Push(winArgs, "/select," + path);
-        Exec.RunArgs("explorer.exe", winArgs);
-    } else {
-        var dir = path;
-        if IO.File.Exists(path) != false {
-            dir = Path.Dir(path);
-        }
-        var linuxArgs = Seq.New();
-        Seq.Push(linuxArgs, dir);
-        Exec.RunArgs("xdg-open", linuxArgs);
-    }
-}
-
-/// @brief Validate a user-entered child name for create/duplicate commands.
-/// @details Explorer actions take a name relative to the selected directory.
-///          Rejecting separators, drive separators, and dot directory aliases
-///          prevents accidental path traversal while keeping the feature itself.
-/// @param name Prompt text supplied by the user.
-/// @return True when @p name is a single file-system entry name.
-func IsSafeChildName(name: String) -> Boolean {
-    if name == "" or name == "." or name == ".." { return false; }
-    if Str.IndexOf(name, Path.Sep()) != 0 { return false; }
-    if Str.IndexOf(name, "/") != 0 { return false; }
-    if Str.IndexOf(name, "\\") != 0 { return false; }
-    if Str.IndexOf(name, ":") != 0 { return false; }
-    return true;
-}
-
-func RecordActiveFile(sessionMgr: session.SessionManager,
-                      docMgr: document_manager.DocumentManager) {
-    if sessionMgr == null or docMgr == null { return; }
-    var doc = docMgr.GetActive();
-    if doc != null and doc!.filePath != "" and doc!.isNew == false {
-        sessionMgr.RecordRecentFile(doc!.filePath);
-    }
-}
-
-func OpenFileAndRecord(shell: app_shell.AppShell,
-                       docMgr: document_manager.DocumentManager,
-                       engine: editor_engine.EditorEngine,
-                       tabs: editor_tabs.EditorTabs,
-                       sessionMgr: session.SessionManager,
-                       path: String) {
-    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
-    sessionMgr.RecordRecentFile(path);
-}
-
-/// @brief Apply a completed non-modal explorer action.
-/// @details The floating explorer overlay gathers user intent while this helper
-///          performs filesystem mutation, document retargeting, project-tree
-///          refresh, semantic-index invalidation, and status updates. Keeping
-///          that orchestration here gives right-click, palette, and shortcut
-///          paths identical behavior.
-/// @param shell Workbench shell for status, toasts, and overlay validation.
-/// @param overlay Completed explorer overlay carrying target and input state.
-/// @param action One of explorer_actions.ACTION_*.
-/// @param projMgr Project/file-tree manager.
-/// @param docMgr Open document manager.
-/// @param engine Active editor engine.
-/// @param tabs Editor tab controller.
-/// @param sessionMgr Session manager used to record opened files.
-/// @param indexer Semantic project indexer.
-/// @param locStore Stored locations invalidated by tree moves.
-/// @return True when the action opened a file and the caller should suppress a
-///         pending reload prompt for that frame.
-func ApplyExplorerAction(shell: app_shell.AppShell,
-                         overlay: explorer_actions.ExplorerActionOverlay,
-                         action: Integer,
-                         projMgr: project_manager.ProjectManager,
-                         docMgr: document_manager.DocumentManager,
-                         engine: editor_engine.EditorEngine,
-                         tabs: editor_tabs.EditorTabs,
-                         sessionMgr: session.SessionManager,
-                         indexer: project_index.ProjectIndexer,
-                         locStore: locations.LocationStore) -> Boolean {
-    if action == explorer_actions.EXPLORER_ACTION_NEW_FILE {
-        return ApplyExplorerNewFile(shell, overlay, projMgr, docMgr, engine, tabs, sessionMgr, indexer);
-    }
-    if action == explorer_actions.EXPLORER_ACTION_NEW_FOLDER {
-        ApplyExplorerNewFolder(shell, overlay, projMgr);
-        return false;
-    }
-    if action == explorer_actions.EXPLORER_ACTION_DUPLICATE {
-        ApplyExplorerDuplicate(shell, overlay, projMgr, indexer);
-        return false;
-    }
-    if action == explorer_actions.EXPLORER_ACTION_RENAME {
-        ApplyExplorerRename(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
-        return false;
-    }
-    if action == explorer_actions.EXPLORER_ACTION_DELETE {
-        ApplyExplorerDelete(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
-        return false;
-    }
-    return false;
-}
-
-/// @brief Create a new file from the explorer overlay.
-/// @return True when the new file was opened in the editor.
-func ApplyExplorerNewFile(shell: app_shell.AppShell,
-                          overlay: explorer_actions.ExplorerActionOverlay,
-                          projMgr: project_manager.ProjectManager,
-                          docMgr: document_manager.DocumentManager,
-                          engine: editor_engine.EditorEngine,
-                          tabs: editor_tabs.EditorTabs,
-                          sessionMgr: session.SessionManager,
-                          indexer: project_index.ProjectIndexer) -> Boolean {
-    var name = overlay.ReadValue();
-    var dir = overlay.TargetDir();
-    if ValidateExplorerChildName(shell, overlay, name) == false { return false; }
-    if dir == "" or Dir.Exists(dir) == false {
-        overlay.Reject(shell, "Choose an existing folder.");
-        return false;
-    }
-    var newPath = Path.Join(dir, name);
-    if IO.File.Exists(newPath) or Dir.Exists(newPath) {
-        overlay.Reject(shell, "Target already exists.");
-        return false;
-    }
-    IO.File.Touch(newPath);
-    projMgr.RefreshTree();
-    indexer.UpdateFile(newPath);
-    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newPath);
-    GUI.Toast.Success("Created: " + name);
-    overlay.Finish();
-    return true;
-}
-
-/// @brief Create a new folder from the explorer overlay.
-func ApplyExplorerNewFolder(shell: app_shell.AppShell,
-                            overlay: explorer_actions.ExplorerActionOverlay,
-                            projMgr: project_manager.ProjectManager) {
-    var name = overlay.ReadValue();
-    var dir = overlay.TargetDir();
-    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
-    if dir == "" or Dir.Exists(dir) == false {
-        overlay.Reject(shell, "Choose an existing folder.");
-        return;
-    }
-    var newPath = Path.Join(dir, name);
-    if IO.File.Exists(newPath) or Dir.Exists(newPath) {
-        overlay.Reject(shell, "Target already exists.");
-        return;
-    }
-    Dir.Make(newPath);
-    projMgr.RefreshTree();
-    shell.SetStatusLeft("Created folder: " + name);
-    GUI.Toast.Success("Created folder: " + name);
-    overlay.Finish();
-}
-
-/// @brief Duplicate an existing file from the explorer overlay.
-func ApplyExplorerDuplicate(shell: app_shell.AppShell,
-                            overlay: explorer_actions.ExplorerActionOverlay,
-                            projMgr: project_manager.ProjectManager,
-                            indexer: project_index.ProjectIndexer) {
-    var name = overlay.ReadValue();
-    var sourcePath = overlay.TargetPath();
-    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
-    if sourcePath == "" or IO.File.Exists(sourcePath) == false {
-        overlay.Reject(shell, "Duplicate is available for files.");
-        return;
-    }
-    var targetPath = Path.Join(Path.Dir(sourcePath), name);
-    if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
-        overlay.Reject(shell, "Target already exists.");
-        return;
-    }
-    IO.File.Copy(sourcePath, targetPath);
-    projMgr.RefreshTree();
-    indexer.UpdateFile(targetPath);
-    shell.SetStatusLeft("Duplicated: " + name);
-    GUI.Toast.Success("Duplicated: " + name);
-    overlay.Finish();
-}
-
-/// @brief Rename a file or folder from the explorer overlay.
-func ApplyExplorerRename(shell: app_shell.AppShell,
-                         overlay: explorer_actions.ExplorerActionOverlay,
-                         projMgr: project_manager.ProjectManager,
-                         docMgr: document_manager.DocumentManager,
-                         engine: editor_engine.EditorEngine,
-                         tabs: editor_tabs.EditorTabs,
-                         indexer: project_index.ProjectIndexer,
-                         locStore: locations.LocationStore) {
-    var name = overlay.ReadValue();
-    var selectedPath = overlay.TargetPath();
-    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
-    if selectedPath == "" {
-        overlay.Reject(shell, "Choose a file or folder to rename.");
-        return;
-    }
-    var targetPath = Path.Join(Path.Dir(selectedPath), name);
-    if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
-        overlay.Reject(shell, "Target already exists.");
-        return;
-    }
-
-    var rewritePreview = projMgr.PreviewBindRewriteCount(selectedPath, name, docMgr);
-    if rewritePreview > 0 {
-        var previewMsg = "Rename will update " + rewritePreview + " Zia bind path";
-        if rewritePreview != 1 { previewMsg = previewMsg + "s"; }
-        previewMsg = previewMsg + " for " + name + ". Press Rename again to continue.";
-        if overlay.validationMessage != previewMsg {
-            overlay.Reject(shell, previewMsg);
-            return;
-        }
-    }
-
-    file_commands.SaveEditorState(docMgr, engine);
-    var renamedPath = projMgr.RenamePath(selectedPath, name, docMgr);
-    if renamedPath == "" {
-        overlay.Reject(shell, "Rename failed.");
-        return;
-    }
-    tabs.RefreshFromDocuments(docMgr);
-    var activeAfterRename = docMgr.GetActive();
-    if activeAfterRename != null {
-        engine.LoadDocument(activeAfterRename);
-        shell.SetBreadcrumbPath(activeAfterRename.filePath);
-    }
-    indexer.RemoveFile(selectedPath);
-    ReindexAfterTreeMove(projMgr, indexer, docMgr);
-    InvalidateWorkspaceLocations(shell, locStore, engine);
-    var status = "Renamed: " + Path.Name(renamedPath);
-    if projMgr.lastBindRewriteCount > 0 {
-        status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
-    }
-    shell.SetStatusLeft(status);
-    GUI.Toast.Success(status);
-    overlay.Finish();
-}
-
-/// @brief Move a file or folder to project trash from the explorer overlay.
-func ApplyExplorerDelete(shell: app_shell.AppShell,
-                         overlay: explorer_actions.ExplorerActionOverlay,
-                         projMgr: project_manager.ProjectManager,
-                         docMgr: document_manager.DocumentManager,
-                         engine: editor_engine.EditorEngine,
-                         tabs: editor_tabs.EditorTabs,
-                         indexer: project_index.ProjectIndexer,
-                         locStore: locations.LocationStore) {
-    var deletePath = overlay.TargetPath();
-    if deletePath == "" {
-        overlay.Reject(shell, "Choose a file or folder to move to trash.");
-        return;
-    }
-    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Move to Trash",
-                                                    deletePath) == false {
-        shell.SetStatusLeft("Move to trash canceled");
-        overlay.Finish();
-        return;
-    }
-    if projMgr.DeletePath(deletePath, docMgr) == false {
-        overlay.Reject(shell, "Move to trash failed.");
-        return;
-    }
-    indexer.RemoveFile(deletePath);
-    ReindexAfterTreeMove(projMgr, indexer, docMgr);
-    InvalidateWorkspaceLocations(shell, locStore, engine);
-    tabs.RefreshFromDocuments(docMgr);
-    var activeAfterDelete = docMgr.GetActive();
-    if activeAfterDelete != null {
-        engine.LoadDocument(activeAfterDelete);
-    } else {
-        engine.SetText("");
-        engine.ClearModified();
-    }
-    if projMgr.lastTrashPath != "" {
-        shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath)
-                            + " -> " + projMgr.RelativePath(projMgr.lastTrashPath));
-    } else {
-        shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath));
-    }
-    overlay.Finish();
-}
-
-/// @brief Validate a user-entered explorer child name and keep the overlay open on failure.
-/// @return True when the name is safe to use as a single path component.
-func ValidateExplorerChildName(shell: app_shell.AppShell,
-                               overlay: explorer_actions.ExplorerActionOverlay,
-                               name: String) -> Boolean {
-    if IsSafeChildName(name) {
-        return true;
-    }
-    overlay.Reject(shell, "Use a plain name, not a path.");
-    return false;
 }
 
 /// @brief Open the non-modal condition/logpoint editor for the cursor line.
@@ -2031,278 +1439,6 @@ func ApplyDebugBreakpointOverlay(shell: app_shell.AppShell,
         }
     }
     overlay.Finish();
-}
-
-func ReopenClosedFile(shell: app_shell.AppShell,
-                      docMgr: document_manager.DocumentManager,
-                      engine: editor_engine.EditorEngine,
-                      tabs: editor_tabs.EditorTabs,
-                      sessionMgr: session.SessionManager) {
-    var path = docMgr.PopRecentlyClosedPath();
-    if path == "" {
-        GUI.Toast.Info("No recently closed file");
-        shell.SetStatusLeft("No recently closed file");
-        return;
-    }
-    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, path);
-    shell.SetStatusLeft("Reopened: " + Path.Name(path));
-}
-
-/// @brief Compatibility entry point that opens the integrated new-file overlay.
-/// @details Older tree command wiring called this helper directly. The active
-///          workbench now routes through ExplorerActionOverlay so file creation
-///          stays visually integrated with the IDE instead of opening a blocking
-///          message box.
-func TreeNewFile(shell: app_shell.AppShell,
-                 overlay: explorer_actions.ExplorerActionOverlay,
-                 projMgr: project_manager.ProjectManager) {
-    var dir = ContextDirForPath(projMgr, projMgr.SelectedPath());
-    if dir == "" {
-        shell.SetStatusLeft("Choose a project folder first");
-        return;
-    }
-    overlay.OpenNewFile(shell, dir);
-}
-
-/// @brief Compatibility entry point that opens the integrated new-folder overlay.
-/// @details Keeps legacy command handlers on the same non-modal explorer action
-///          path used by the file tree context menu and command palette.
-func TreeNewFolder(shell: app_shell.AppShell,
-                   overlay: explorer_actions.ExplorerActionOverlay,
-                   projMgr: project_manager.ProjectManager) {
-    var dir = ContextDirForPath(projMgr, projMgr.SelectedPath());
-    if dir == "" {
-        shell.SetStatusLeft("Choose a project folder first");
-        return;
-    }
-    overlay.OpenNewFolder(shell, dir);
-}
-
-/// @brief Compatibility entry point that opens the integrated rename overlay.
-/// @details Rename confirmation and bind-rewrite preview now stay inside the
-///          explorer overlay so the operation feels like an IDE interaction.
-func TreeRename(shell: app_shell.AppShell,
-                overlay: explorer_actions.ExplorerActionOverlay,
-                projMgr: project_manager.ProjectManager) {
-    var selectedPath = projMgr.SelectedPath();
-    if selectedPath == "" {
-        shell.SetStatusLeft("Choose a file or folder to rename");
-        return;
-    }
-    overlay.OpenRename(shell, selectedPath);
-}
-
-/// @brief Compatibility entry point that opens the integrated move-to-trash overlay.
-/// @details The active deletion path uses an inline confirmation panel and then
-///          delegates to ApplyExplorerDelete after the user confirms.
-func TreeDelete(shell: app_shell.AppShell,
-                overlay: explorer_actions.ExplorerActionOverlay,
-                projMgr: project_manager.ProjectManager) {
-    var deletePath = projMgr.SelectedPath();
-    if deletePath == "" {
-        shell.SetStatusLeft("Choose a file or folder to move to trash");
-        return;
-    }
-    overlay.OpenDelete(shell, deletePath);
-}
-
-/// @brief Keep a batch workspace watcher aligned to the currently open project.
-/// @details The runtime watcher is non-recursive, so this is used as a cheap
-///          structural signal for the project root while open-document polling
-///          continues to catch individual tab changes. Batch polling prevents a
-///          burst of file events from spending an unbounded amount of one frame.
-func PumpWorkspaceWatcher(shell: app_shell.AppShell,
-                          projMgr: project_manager.ProjectManager,
-                          docMgr: document_manager.DocumentManager,
-                          indexer: project_index.ProjectIndexer,
-                          locStore: locations.LocationStore,
-                          engine: editor_engine.EditorEngine,
-                          state: WorkspaceWatcherState) {
-    var root = "";
-    if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
-        root = projMgr.project.rootPath;
-    }
-    if root == "" or Dir.Exists(root) == false {
-        StopWorkspaceWatcher(state);
-        return;
-    }
-
-    if state.rootPath != root or state.watching == false {
-        StopWorkspaceWatcher(state);
-        state.watcher = IO.Watcher.New(root);
-        state.watcher.Start();
-        state.rootPath = root;
-        state.watching = true;
-        PrimeWorkspaceWatcherRescanState(state, root);
-        return;
-    }
-
-    var events = WorkspaceWatcher.PollBatch(state.watcher, WORKSPACE_WATCHER_MAX_EVENTS);
-    if events != null and Seq.get_Length(events) > 0 {
-        HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
-        PrimeWorkspaceWatcherRescanState(state, root);
-        return;
-    }
-    PumpWorkspaceWatcherFallbackScan(shell, projMgr, docMgr, indexer, locStore, engine, state);
-}
-
-/// @brief Stop and clear project-root watcher state.
-/// @param state Mutable watcher state owned by the main loop.
-func StopWorkspaceWatcher(state: WorkspaceWatcherState) {
-    if state == null { return; }
-    if state.watching and state.watcher != null {
-        state.watcher.Stop();
-    }
-    state.watcher = null;
-    state.watching = false;
-    state.rootPath = "";
-    state.lastRescanMs = 0;
-    state.lastEntryCount = -1;
-    state.lastFingerprint = 0;
-}
-
-/// @brief Initialize fallback rescan counters for a workspace root.
-/// @details The platform watcher currently reports direct root changes only.
-///          This cheap snapshot gives the periodic fallback scan a baseline for
-///          detecting nested create/delete events that root polling misses.
-/// @param state Mutable watcher state owned by the frame loop.
-/// @param root Workspace root path.
-func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState,
-                                      root: String) {
-    if state == null or root == "" { return; }
-    var status = FileIndex.Status(root, "", "", false);
-    state.lastEntryCount = Map.GetInt(status, "entryCount");
-    state.lastFingerprint = Map.GetInt(status, "fingerprint");
-    state.lastRescanMs = Viper.Time.GetTickCount();
-}
-
-/// @brief Periodically rescan workspace structure when native watcher is quiet.
-/// @details This is a conservative fallback for non-recursive watchers. It does
-///          not replace event polling; it compares both entry count and the
-///          runtime file-index fingerprint so nested modifications, renames, and
-///          same-count structural changes can refresh the project/index state.
-/// @param shell Workbench shell for user-visible status.
-/// @param projMgr Project tree manager to refresh.
-/// @param docMgr Document manager whose open documents are re-synced.
-/// @param indexer Semantic project index to rebuild.
-/// @param locStore Stored locations invalidated by tree/index rebuilds.
-/// @param engine Editor engine used by location invalidation.
-/// @param state Watcher state carrying the last fallback snapshot.
-func PumpWorkspaceWatcherFallbackScan(shell: app_shell.AppShell,
-                                      projMgr: project_manager.ProjectManager,
-                                      docMgr: document_manager.DocumentManager,
-                                      indexer: project_index.ProjectIndexer,
-                                      locStore: locations.LocationStore,
-                                      engine: editor_engine.EditorEngine,
-                                      state: WorkspaceWatcherState) {
-    if state == null or state.rootPath == "" { return; }
-    var now = Viper.Time.GetTickCount();
-    if state.lastRescanMs > 0 and now - state.lastRescanMs < WORKSPACE_WATCHER_RESCAN_MS {
-        return;
-    }
-    state.lastRescanMs = now;
-    var status = FileIndex.Status(state.rootPath, "", "", false);
-    var count = Map.GetInt(status, "entryCount");
-    var fingerprint = Map.GetInt(status, "fingerprint");
-    if state.lastEntryCount < 0 {
-        state.lastEntryCount = count;
-        state.lastFingerprint = fingerprint;
-        return;
-    }
-    if count != state.lastEntryCount or fingerprint != state.lastFingerprint {
-        state.lastEntryCount = count;
-        state.lastFingerprint = fingerprint;
-        if projMgr != null {
-            projMgr.RefreshTree();
-        }
-        ReindexAfterTreeMove(projMgr, indexer, docMgr);
-        InvalidateWorkspaceLocations(shell, locStore, engine);
-        shell.SetStatusLeft("Workspace changed: refreshed nested files");
-    }
-}
-
-/// @brief Apply a batch of project-root watcher events to UI and index state.
-/// @details Structural changes refresh the tree and invalidate cached search
-///          locations. Direct `.zia` file changes update or remove index entries
-///          incrementally; overflow events trigger a full project reindex.
-func HandleWorkspaceWatcherEvents(shell: app_shell.AppShell,
-                                  projMgr: project_manager.ProjectManager,
-                                  docMgr: document_manager.DocumentManager,
-                                  indexer: project_index.ProjectIndexer,
-                                  locStore: locations.LocationStore,
-                                  engine: editor_engine.EditorEngine,
-                                  events: Any) {
-    var refreshTree = false;
-    var fullReindex = false;
-    var touchedIndex = false;
-    var changed = 0;
-    var i = 0;
-    while i < Seq.get_Length(events) {
-        var ev = Seq.Get(events, i);
-        i = i + 1;
-        changed = changed + 1;
-        var eventPath = Map.GetStr(ev, "path");
-        var typeName = Map.GetStr(ev, "typeName");
-        if Map.GetBool(ev, "requiresRescan") {
-            refreshTree = true;
-            fullReindex = true;
-            continue;
-        }
-        if typeName == "created" or typeName == "deleted" or typeName == "renamed" {
-            refreshTree = true;
-        }
-        if eventPath != "" and Str.ToLower(Path.Ext(eventPath)) == ".zia" {
-            if typeName == "deleted" or typeName == "renamed" {
-                indexer.RemoveFile(eventPath);
-            } else {
-                indexer.UpdateFile(eventPath);
-            }
-            touchedIndex = true;
-        }
-    }
-
-    if fullReindex {
-        ReindexAfterTreeMove(projMgr, indexer, docMgr);
-    }
-    if refreshTree and projMgr != null {
-        projMgr.RefreshTree();
-        InvalidateWorkspaceLocations(shell, locStore, engine);
-    } else if touchedIndex and locStore != null {
-        locStore.Clear();
-    }
-    if changed > 0 {
-        shell.SetStatusLeft("Workspace changed: " + changed + " event(s)");
-    }
-}
-
-func ReindexAfterTreeMove(projMgr: project_manager.ProjectManager,
-                          indexer: project_index.ProjectIndexer,
-                          docMgr: document_manager.DocumentManager) {
-    if indexer == null { return; }
-    if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
-        indexer.Open(projMgr.project.rootPath, docMgr);
-        return;
-    }
-    indexer.SyncOpenDocuments(docMgr);
-}
-
-func InvalidateWorkspaceLocations(shell: app_shell.AppShell,
-                                  locStore: locations.LocationStore,
-                                  engine: editor_engine.EditorEngine) {
-    if locStore != null {
-        locStore.Clear();
-    }
-    if shell != null {
-        shell.ClearProblemsPanel();
-        shell.searchListBox.Clear();
-        shell.HideSearchPanel();
-        shell.referencesListBox.Clear();
-        shell.HideReferencesPanel();
-        shell.minimap.ClearMarkers();
-    }
-    if engine != null and engine.editor != null {
-        engine.editor.ClearHighlights();
-    }
 }
 
 // Navigate to next/previous diagnostic in the diagnostics panel.

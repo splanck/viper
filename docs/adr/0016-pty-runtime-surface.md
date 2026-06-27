@@ -22,7 +22,7 @@ PTY must be built directly on OS primitives.
 Add a new runtime class pair, distinct from `Process`:
 
 - `Viper.System.Pty` (factory): `Open(program, args, cwd, env, cols, rows) ->
-  PtySession`, `IsSupported() -> i1`.
+  PtySession`, `IsSupported() -> i1`, `LastError() -> str`.
 - `Viper.System.Pty.PtySession` (handle): `IsValid`, `Poll`, `IsRunning`, `Read`
   (one **merged** ANSI-bearing stream), `Write`, `Resize(cols, rows)`,
   `ExitCode`, `Kill`, `Wait`, `Destroy`.
@@ -38,6 +38,11 @@ The handle mirrors `Process`'s proven model: GC-finalized, main-thread-only,
 incremental non-blocking drain on each `Read`/`Poll` (no background reader
 thread), 16 MiB ring buffer with truncation trap, SIGTERM→SIGKILL escalation on
 close.
+
+`LastError()` is a non-throwing diagnostic companion for `Open`/`IsSupported`.
+It preserves the existing nullable `Open` contract while allowing IDE surfaces
+to explain unsupported ConPTY, invalid startup paths, and platform open/fork
+failures without changing the `PtySession` handle shape.
 
 **Backends** (platform `#ifdef`s confined to `rt_pty.c`):
 - **POSIX (macOS/Linux):** `posix_openpt`+`grantpt`+`unlockpt`+`ptsname`, then

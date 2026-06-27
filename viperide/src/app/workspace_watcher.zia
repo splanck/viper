@@ -1,0 +1,267 @@
+module workspace_watcher;
+
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/project_index";
+bind "../services/locations";
+
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
+bind WorkspaceWatcher = Viper.Workspace.Watcher;
+bind FileIndex = Viper.Workspace.FileIndex;
+
+// ============================================================================
+// MODULE: workspace_watcher
+// PURPOSE: Project-root file watching, fallback rescans, workspace index refresh,
+//          and cached-location invalidation for ViperIDE.
+//
+// WHERE-THIS-FITS: main.zia owns the frame loop and calls PumpWorkspaceWatcher
+//          once per frame. This module owns the watcher lifecycle and the exact
+//          refresh work required when files are created, deleted, renamed, or
+//          externally modified inside the open workspace.
+//
+// TEACHING-NOTE: Keep file-system event interpretation here. UI command handlers
+//          should ask this module to reindex/invalidate instead of duplicating
+//          the sequence of tree refresh, semantic index reset, panel clearing,
+//          and editor highlight cleanup.
+// ============================================================================
+
+/// @brief Mutable project-root watcher state owned by the main frame loop.
+/// @details Zia scalar parameters are passed by value, so project watcher
+///          lifecycle state is grouped into this object and updated by
+///          `PumpWorkspaceWatcher`.
+class WorkspaceWatcherState {
+    expose IO.Watcher watcher;
+    expose Boolean watching;
+    expose String rootPath;
+    expose Integer lastRescanMs;
+    expose Integer lastEntryCount;
+    expose Integer lastFingerprint;
+
+    /// @brief Initialize as detached from any workspace root.
+    expose func init() {
+        watcher = null;
+        watching = false;
+        rootPath = "";
+        lastRescanMs = 0;
+        lastEntryCount = -1;
+        lastFingerprint = 0;
+    }
+}
+
+/// @brief Keep a batch workspace watcher aligned to the currently open project.
+/// @details The runtime watcher is non-recursive, so this is used as a cheap
+///          structural signal for the project root while open-document polling
+///          continues to catch individual tab changes. Batch polling prevents a
+///          burst of file events from spending an unbounded amount of one frame.
+expose func PumpWorkspaceWatcher(shell: app_shell.AppShell,
+                          projMgr: project_manager.ProjectManager,
+                          docMgr: document_manager.DocumentManager,
+                          indexer: project_index.ProjectIndexer,
+                          locStore: locations.LocationStore,
+                          engine: editor_engine.EditorEngine,
+                          state: WorkspaceWatcherState) {
+    var root = "";
+    if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+        root = projMgr.project.rootPath;
+    }
+    if root == "" or Dir.Exists(root) == false {
+        StopWorkspaceWatcher(state);
+        return;
+    }
+
+    if state.rootPath != root or state.watching == false {
+        StopWorkspaceWatcher(state);
+        state.watcher = IO.Watcher.New(root);
+        state.watcher.Start();
+        state.rootPath = root;
+        state.watching = true;
+        PrimeWorkspaceWatcherRescanState(state, root);
+        return;
+    }
+
+    var events = WorkspaceWatcher.PollBatch(state.watcher, 32);
+    if events != null and Seq.get_Length(events) > 0 {
+        HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
+        PrimeWorkspaceWatcherRescanState(state, root);
+        return;
+    }
+    PumpWorkspaceWatcherFallbackScan(shell, projMgr, docMgr, indexer, locStore, engine, state);
+}
+
+/// @brief Stop and clear project-root watcher state.
+/// @param state Mutable watcher state owned by the main loop.
+expose func StopWorkspaceWatcher(state: WorkspaceWatcherState) {
+    if state == null { return; }
+    if state.watching and state.watcher != null {
+        state.watcher.Stop();
+    }
+    state.watcher = null;
+    state.watching = false;
+    state.rootPath = "";
+    state.lastRescanMs = 0;
+    state.lastEntryCount = -1;
+    state.lastFingerprint = 0;
+}
+
+/// @brief Initialize fallback rescan counters for a workspace root.
+/// @details The platform watcher currently reports direct root changes only.
+///          This cheap snapshot gives the periodic fallback scan a baseline for
+///          detecting nested create/delete events that root polling misses.
+/// @param state Mutable watcher state owned by the frame loop.
+/// @param root Workspace root path.
+func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState,
+                                      root: String) {
+    if state == null or root == "" { return; }
+    var status = FileIndex.Status(root, "", "", false);
+    state.lastEntryCount = Map.GetInt(status, "entryCount");
+    state.lastFingerprint = Map.GetInt(status, "fingerprint");
+    state.lastRescanMs = Viper.Time.GetTickCount();
+}
+
+/// @brief Periodically rescan workspace structure when native watcher is quiet.
+/// @details This is a conservative fallback for non-recursive watchers. It does
+///          not replace event polling; it compares both entry count and the
+///          runtime file-index fingerprint so nested modifications, renames, and
+///          same-count structural changes can refresh the project/index state.
+/// @param shell Workbench shell for user-visible status.
+/// @param projMgr Project tree manager to refresh.
+/// @param docMgr Document manager whose open documents are re-synced.
+/// @param indexer Semantic project index to rebuild.
+/// @param locStore Stored locations invalidated by tree/index rebuilds.
+/// @param engine Editor engine used by location invalidation.
+/// @param state Watcher state carrying the last fallback snapshot.
+func PumpWorkspaceWatcherFallbackScan(shell: app_shell.AppShell,
+                                      projMgr: project_manager.ProjectManager,
+                                      docMgr: document_manager.DocumentManager,
+                                      indexer: project_index.ProjectIndexer,
+                                      locStore: locations.LocationStore,
+                                      engine: editor_engine.EditorEngine,
+                                      state: WorkspaceWatcherState) {
+    if state == null or state.rootPath == "" { return; }
+    var now = Viper.Time.GetTickCount();
+    if state.lastRescanMs > 0 and now - state.lastRescanMs < 3000 {
+        return;
+    }
+    state.lastRescanMs = now;
+    var status = FileIndex.Status(state.rootPath, "", "", false);
+    var count = Map.GetInt(status, "entryCount");
+    var fingerprint = Map.GetInt(status, "fingerprint");
+    if state.lastEntryCount < 0 {
+        state.lastEntryCount = count;
+        state.lastFingerprint = fingerprint;
+        return;
+    }
+    if count != state.lastEntryCount or fingerprint != state.lastFingerprint {
+        state.lastEntryCount = count;
+        state.lastFingerprint = fingerprint;
+        if projMgr != null {
+            projMgr.RefreshTree();
+        }
+        ReindexAfterTreeMove(projMgr, indexer, docMgr);
+        InvalidateWorkspaceLocations(shell, locStore, engine);
+        shell.SetStatusLeft("Workspace changed: refreshed nested files");
+    }
+}
+
+/// @brief Apply a batch of project-root watcher events to UI and index state.
+/// @details Structural changes refresh the tree and invalidate cached search
+///          locations. Direct `.zia` file changes update or remove index entries
+///          incrementally; overflow events trigger a full project reindex.
+func HandleWorkspaceWatcherEvents(shell: app_shell.AppShell,
+                                  projMgr: project_manager.ProjectManager,
+                                  docMgr: document_manager.DocumentManager,
+                                  indexer: project_index.ProjectIndexer,
+                                  locStore: locations.LocationStore,
+                                  engine: editor_engine.EditorEngine,
+                                  events: Any) {
+    var refreshTree = false;
+    var fullReindex = false;
+    var touchedIndex = false;
+    var changed = 0;
+    var i = 0;
+    while i < Seq.get_Length(events) {
+        var ev = Seq.Get(events, i);
+        i = i + 1;
+        changed = changed + 1;
+        var eventPath = Map.GetStr(ev, "path");
+        var typeName = Map.GetStr(ev, "typeName");
+        if Map.GetBool(ev, "requiresRescan") {
+            refreshTree = true;
+            fullReindex = true;
+            continue;
+        }
+        if typeName == "created" or typeName == "deleted" or typeName == "renamed" {
+            refreshTree = true;
+        }
+        if eventPath != "" and Str.ToLower(Path.Ext(eventPath)) == ".zia" {
+            if typeName == "deleted" or typeName == "renamed" {
+                indexer.RemoveFile(eventPath);
+            } else {
+                indexer.UpdateFile(eventPath);
+            }
+            touchedIndex = true;
+        }
+    }
+
+    if fullReindex {
+        ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    }
+    if refreshTree and projMgr != null {
+        projMgr.RefreshTree();
+        InvalidateWorkspaceLocations(shell, locStore, engine);
+    } else if touchedIndex and locStore != null {
+        locStore.Clear();
+    }
+    if changed > 0 {
+        shell.SetStatusLeft("Workspace changed: " + changed + " event(s)");
+    }
+}
+
+/// @brief Refresh the semantic index after a tree mutation.
+/// @param projMgr Project manager that may own an open project root.
+/// @param indexer Semantic project indexer to update.
+/// @param docMgr Open documents that seed the index when no project is open.
+/// @details Project workspaces are reopened from the root so added/removed files
+///          are reflected. No-project sessions fall back to indexing open tabs.
+expose func ReindexAfterTreeMove(projMgr: project_manager.ProjectManager,
+                          indexer: project_index.ProjectIndexer,
+                          docMgr: document_manager.DocumentManager) {
+    if indexer == null { return; }
+    if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+        indexer.Open(projMgr.project.rootPath, docMgr);
+        return;
+    }
+    indexer.SyncOpenDocuments(docMgr);
+}
+
+/// @brief Clear cached problem/search/reference locations after workspace changes.
+/// @param shell Workbench shell whose panels and minimap markers are cleared.
+/// @param locStore Central location store used by diagnostics and search panels.
+/// @param engine Editor engine whose transient highlights are cleared.
+/// @details File moves and deletes can make old line locations point at the wrong
+///          source. Clearing all derived markers is safer than leaving stale UI.
+expose func InvalidateWorkspaceLocations(shell: app_shell.AppShell,
+                                  locStore: locations.LocationStore,
+                                  engine: editor_engine.EditorEngine) {
+    if locStore != null {
+        locStore.Clear();
+    }
+    if shell != null {
+        shell.ClearProblemsPanel();
+        shell.searchListBox.Clear();
+        shell.HideSearchPanel();
+        shell.referencesListBox.Clear();
+        shell.HideReferencesPanel();
+        shell.minimap.ClearMarkers();
+    }
+    if engine != null and engine.editor != null {
+        engine.editor.ClearHighlights();
+    }
+}

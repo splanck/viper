@@ -1,7 +1,7 @@
 module activity_bar_probe;
 
-bind "ui/app_shell";
-bind "ui/activity_bar";
+bind "../ui/app_shell";
+bind "../ui/activity_bar";
 
 bind Viper.GUI as GUI;
 bind Terminal = Viper.Terminal;

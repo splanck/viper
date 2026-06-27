@@ -55,7 +55,7 @@ These additions:
   rules, VM call/heap/exception behavior, numeric semantics, or native codegen
   lowering;
 - are covered by runtime completeness, ABI/surface, and focused IDE probe tests
-  (`viperide/src/syntax_render_probe.zia`).
+  (`viperide/src/probes/syntax_render_probe.zia`).
 
 Compiler intelligence still reaches the runtime only through the existing
 strong/weak `rt_zia_*` bridge — the GUI runtime never links the compiler.
