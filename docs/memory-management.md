@@ -7,8 +7,7 @@ last-verified: 2026-05-08
 # Viper Memory Management
 
 > **Status**: Active reference. Some aspects (particularly Zia frontend lifetime
-> management) are incomplete — see [Known Unsoundness](#known-unsoundness) and
-> [v1.0 Roadmap](#v10-roadmap).
+> management) are incomplete — see [Known Unsoundness](#known-unsoundness).
 >
 > **Audience**: Runtime developers, language users, future contributors.
 
@@ -621,72 +620,6 @@ handler.
 
 `find_entry()` in `rt_gc.c` is O(N) over the tracked-object array. This will
 degrade with thousands of tracked objects.
-
----
-
-## v1.0 Roadmap
-
-Proposed improvements in priority order. The goal is a coherent, user-transparent
-memory management story where Viper programs don't leak by default.
-
-### P0: Zia Compiler-Inserted Retain/Release
-
-Mirror the BASIC lowerer's `deferReleaseStr`/`deferReleaseObj` pattern in the
-Zia frontend:
-
-- Track all temporaries created during expression evaluation.
-- At statement boundaries, emit `rt_str_release_maybe` / `rt_obj_release_check0`
-  + `rt_obj_free` for each temporary.
-- At function exit, release all local variables holding refcounted types.
-
-This is the single highest-impact change for memory correctness.
-
-### P1: Automatic GC Triggering
-
-Add a configurable allocation-count threshold (e.g., every N allocations to
-tracked objects, run a collection pass). Must be opt-in or have a sensible
-default to avoid latency spikes in real-time programs (games, audio).
-
-Options:
-- Allocation-count threshold (simplest)
-- Byte-pressure threshold (more precise)
-- Periodic timer (least intrusive but less responsive)
-
-### P2: `using` / Dispose Pattern
-
-Add a `using` statement to Zia for deterministic cleanup:
-
-```rust
-using reader = IO.File.OpenReader("data.txt")
-    ' reader is automatically closed at block exit
-end using
-```
-
-Requires:
-- A `Dispose()` interface convention.
-- Compiler support for `using` blocks that emit cleanup code in all exit paths
-  (normal, exception, early return).
-- Apply to: LazySeq, file handles, network connections, database connections.
-
-### P3: Pool Memory Budget
-
-Add a configurable memory budget for the pool allocator. When pool usage exceeds
-the budget, return slabs to the OS. Requires tracking total allocated bytes per
-size class and implementing a slab-return path.
-
-### ~~P4: Shutdown Cleanup~~ — DONE
-
-Implemented via `rt_global_shutdown()` in `rt_heap.c`, registered as an
-`atexit` handler on first heap allocation. The shutdown sequence runs:
-GC finalizer sweep → audio shutdown → legacy context cleanup → string
-intern drain → GC table teardown → pool slab release. Thread pools are
-GC-tracked so the finalizer sweep joins worker threads. See §6 above.
-
-### P5: GC Performance
-
-- Replace the linear `find_entry` with a hash table lookup.
-- Consider lock-free data structures for the tracked-object table.
-- Evaluate concurrent or incremental collection for large tracked-object sets.
 
 ---
 

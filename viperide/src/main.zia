@@ -57,6 +57,7 @@ bind Machine = Viper.System.Machine;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
+bind Threads = Viper.Threads;
 bind WorkspaceWatcher = Viper.Workspace.Watcher;
 bind FileIndex = Viper.Workspace.FileIndex;
 
@@ -185,8 +186,8 @@ func main() {
     activityBarCtrl.Setup(shell.explorerView, shell.scmViewHost, shell.abExplorer, shell.abSourceControl);
     scmView.Setup(shell.scmViewHost);
     if projMgr.project != null and projMgr.project.isOpen { scmView.SetRepo(projMgr.project.rootPath); }
-    terminalCtrl.Setup(shell.terminalPanel, shell.terminalPane, shell.terminalInput,
-                       shell.terminalRun, shell.terminalKill, shell.terminalRestart);
+    terminalCtrl.Setup(shell.terminalPanel, shell.terminalPane,
+                       shell.terminalKill, shell.terminalRestart);
     if projMgr.project != null and projMgr.project.isOpen { terminalCtrl.SetCwd(projMgr.project.rootPath); }
 
     commandRegistry.InstallShortcuts();
@@ -274,47 +275,15 @@ func main() {
     var lastBreakpointPath = "";
     var lastBreakpointVersion = -1;
     var autoSaveRevision = engine.GetRevision();
-    var autoSaveDueMs = 0;
+    var autoSaveDebounce = Threads.Debouncer.New(AUTO_SAVE_IDLE_MS);
     var lastOpenDocPollMs = 0;
     var lastWorkspaceIndexStatus = "";
-
-    // [TEMP] VIPER_TERM_SELFTEST=1 drives the REAL terminal dispatch (via injected
-    // cpSelected) and logs the panel's visibility each frame to catch a show-then-hide.
-    var stForceTerminal = Viper.System.Environment.GetVariable("VIPER_TERM_SELFTEST") == "1";
-    var stFrame = 0;
-    var termReportHeight = false;
 
     // ========================================================================
     // Main event loop
     // ========================================================================
     while shell != null and shell.ShouldClose() == false {
         perfMon.BeginFrame();
-        // [TEMP DIAG] report the terminal panel's actual rendered height one frame
-        // after a toggle (layout has run by now).
-        if termReportHeight {
-            if shell.terminalPanel.GetHeight() > 0 { GUI.Toast.Info("terminal rendered h>0 (OK)"); }
-            else { GUI.Toast.Info("terminal rendered h=0 (collapsed)"); }
-            termReportHeight = false;
-        }
-        if stForceTerminal {
-            stFrame = stFrame + 1;
-            if stFrame == 1 {
-                if Viper.System.Pty.IsSupported() { Viper.Terminal.Say("ST pty supported=YES"); }
-                else { Viper.Terminal.Say("ST pty supported=NO err=" + Viper.System.Pty.LastError()); }
-            }
-            if shell.IsTerminalPanelVisible() {
-                if shell.terminalPanel.GetHeight() > 0 { Viper.Terminal.Say("ST visible=YES panelH>0"); }
-                else { Viper.Terminal.Say("ST visible=YES panelH=ZERO"); }
-            } else { Viper.Terminal.Say("ST visible=NO"); }
-            if stFrame == 18 {
-                Viper.Terminal.Say("GEOM app h=" + shell.app.GetHeight());
-                Viper.Terminal.Say("GEOM editorArea y=" + shell.editorArea.GetY() + " h=" + shell.editorArea.GetHeight());
-                Viper.Terminal.Say("GEOM editorRow y=" + shell.editorRow.GetY() + " h=" + shell.editorRow.GetHeight());
-                Viper.Terminal.Say("GEOM toolTabBar y=" + shell.toolTabBar.GetY() + " h=" + shell.toolTabBar.GetHeight());
-                Viper.Terminal.Say("GEOM termPanel y=" + shell.terminalPanel.GetY() + " h=" + shell.terminalPanel.GetHeight());
-            }
-            if stFrame >= 20 { shell.Destroy(); return; }
-        }
         shell.Poll();
 
         // Activity bar — switch the left view (Explorer / Source Control).
@@ -756,9 +725,6 @@ func main() {
         // Dispatch commands via trigger helper
         // ====================================================================
 
-        // [TEMP] inject a real palette selection for the terminal on frame 3.
-        if stForceTerminal and stFrame == 3 { cpSelected = "terminal"; Viper.Terminal.Say("ST inject cpSelected=terminal frame3"); }
-
         // File commands
         if dispatch_helpers.Triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
         if dispatch_helpers.Triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); explorer_action_runner.RecordActiveFile(sessionMgr, docMgr); pendingReload = false; }
@@ -778,19 +744,9 @@ func main() {
                 terminalCtrl.SetCwd(projMgr.project.rootPath);
             }
         }
-        // [TEMP DIAG] explicit per-source detection so we can see (in-IDE) which
-        // real entry point fires for the terminal command.
-        var termMenu = shell.miTerminal != null and shell.miTerminal.WasClicked() != 0;
-        var termShortcut = Shortcuts.WasTriggered("terminal") != 0;
-        var termPalette = cpSelected == "terminal";
-        if termMenu or termShortcut or termPalette {
-            var termSrc = "PALETTE";
-            if termMenu { termSrc = "MENU"; } else if termShortcut { termSrc = "SHORTCUT"; }
+        if dispatch_helpers.Triggered("terminal", shell.miTerminal, null, cpSelected) {
             if projMgr.project != null and projMgr.project.isOpen { terminalCtrl.SetCwd(projMgr.project.rootPath); }
             shell.ToggleTerminalPanel();
-            if shell.IsTerminalPanelVisible() { GUI.Toast.Info("terminal via " + termSrc + " -> VISIBLE"); }
-            else { GUI.Toast.Info("terminal via " + termSrc + " -> HIDDEN"); }
-            termReportHeight = true;
         }
         if dispatch_helpers.Triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
         if dispatch_helpers.Triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
@@ -1158,17 +1114,17 @@ func main() {
         if appSettings.autoSave and autoDoc != null and autoDoc!.isNew == false {
             if currentRevisionForSave != autoSaveRevision {
                 autoSaveRevision = currentRevisionForSave;
-                autoSaveDueMs = Viper.Time.GetTickCount() + AUTO_SAVE_IDLE_MS;
-            } else if autoSaveDueMs > 0 and Viper.Time.GetTickCount() >= autoSaveDueMs and autoDoc!.isModified {
+                autoSaveDebounce.Signal();
+            } else if autoSaveDebounce.get_IsReady() and autoDoc!.isModified {
                 if file_commands.AutoSaveActive(shell, docMgr, engine, tabs) {
                     autoSaveRevision = engine.GetRevision();
-                    autoSaveDueMs = 0;
+                    autoSaveDebounce.Reset();
                     pendingReload = false;
                 }
             }
         } else {
             autoSaveRevision = currentRevisionForSave;
-            autoSaveDueMs = 0;
+            autoSaveDebounce.Reset();
         }
 
         // ====================================================================

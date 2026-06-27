@@ -910,6 +910,12 @@ int64_t rt_outputpane_get_line_count(void *pane);
 /// @brief Set output pane font.
 void rt_outputpane_set_font(void *pane, void *font, double size);
 
+/// @brief Enable/disable interactive terminal mode (cursor model + keyboard capture).
+void rt_outputpane_set_terminal_mode(void *pane, int64_t enabled);
+
+/// @brief Drain queued terminal keystroke bytes (terminal mode).
+rt_string rt_outputpane_take_input(void *pane);
+
 //=========================================================================
 // RadioButton Widget
 //=========================================================================

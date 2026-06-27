@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-04-09
+last-verified: 2026-06-27
 ---
 
 # How to Extend the Viper Runtime
@@ -46,7 +46,7 @@ Extend the runtime when you need to:
 - Expose platform-specific functionality (file I/O, networking, graphics)
 - Provide high-performance operations implemented in C
 - Add new data structures or algorithms
-- Interface with external C libraries
+- Wrap platform APIs or in-tree C implementations. Viper is zero-dependency, so do not add product dependencies on external libraries.
 
 ### Prerequisites
 
@@ -67,17 +67,17 @@ Extend the runtime when you need to:
 │                                                                              │
 │  1. C Implementation        2. Definition File       3. Code Generation     │
 │  ┌─────────────────┐        ┌─────────────────┐      ┌─────────────────┐    │
-│  │ rt_counter.c    │        │ runtime.def     │      │ rtgen tool      │    │
-│  │ rt_counter.h    │───────▶│ RT_FUNC(...)    │─────▶│ (build time)    │    │
+│  │ core/rt_counter.c│       │ runtime.def     │      │ rtgen tool      │    │
+│  │ core/rt_counter.h│──────▶│ RT_FUNC(...)    │─────▶│ (build time)    │    │
 │  │                 │        │ RT_CLASS_BEGIN  │      │                 │    │
 │  └─────────────────┘        └─────────────────┘      └────────┬────────┘    │
 │                                                                │             │
 │                                                                ▼             │
 │  4. Generated Headers       5. Frontend Integration  6. Usage in Viper      │
 │  ┌─────────────────┐        ┌─────────────────┐      ┌─────────────────┐    │
-│  │ RuntimeNameMap  │        │ RuntimeMethod   │      │ Dim c = Counter │    │
-│  │ RuntimeClasses  │───────▶│ Index (BASIC)   │─────▶│ c.Increment()   │    │
-│  │ RuntimeSigs     │        │ Lowerer (Zia)   │      │ Print c.Value   │    │
+│  │ RuntimeNameMap  │        │ RuntimeRegistry │      │ Dim c = Counter │    │
+│  │ RuntimeClasses  │───────▶│ + frontend      │─────▶│ c.Increment()   │    │
+│  │ RuntimeSigs     │        │ adapters        │      │ Print c.Value   │    │
 │  └─────────────────┘        └─────────────────┘      └─────────────────┘    │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -97,8 +97,8 @@ Extend the runtime when you need to:
 
 | Entity | Convention | Example |
 |--------|------------|---------|
-| C source file | `rt_<module>.c` | `rt_counter.c` |
-| C header file | `rt_<module>.h` | `rt_counter.h` |
+| C source file | `src/runtime/<component>/rt_<module>.c` | `src/runtime/core/rt_counter.c` |
+| C header file | `src/runtime/<component>/rt_<module>.h` | `src/runtime/core/rt_counter.h` |
 | C function | `rt_<module>_<action>` | `rt_counter_new` |
 | Canonical name | `Viper.<Namespace>.<Class>.<Method>` | `Viper.Utils.Counter.New` |
 | Definition ID | PascalCase unique identifier | `CounterNew` |
@@ -111,7 +111,7 @@ Let's add a simple static function: `Viper.Utils.Square` that squares an integer
 
 ### Step 1: Add the C Implementation
 
-Create or edit `src/runtime/rt_math.c` (or a new file):
+Create or edit `src/runtime/core/rt_math.c` (or a new file in the appropriate `src/runtime/<component>/` subdirectory):
 
 ```c
 /// @brief Squares an integer value.
@@ -123,7 +123,7 @@ int64_t rt_math_square(int64_t n)
 }
 ```
 
-Add the declaration to `src/runtime/rt_math.h`:
+Add the declaration to `src/runtime/core/rt_math.h`:
 
 ```c
 /// @brief Squares an integer value.
@@ -153,10 +153,12 @@ The `RT_FUNC` macro parameters are:
 ### Step 3: Regenerate Code
 
 ```bash
-cmake --build build -j
+VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
 ```
 
-The build system automatically runs `rtgen` when `runtime.def` changes.
+Use the platform build script (`build_viper_linux.sh`, `build_viper_mac.sh`, or
+`build_viper_win.cmd`). The build system automatically runs `rtgen` when
+`runtime.def` changes.
 
 ### Step 4: Use in Viper
 
@@ -169,8 +171,13 @@ PRINT result  ' Outputs: 25
 
 **Zia:**
 ```rust
-var result = Viper.Math.Square(5)
-print(result)  // Outputs: 25
+module Main;
+bind Viper.Terminal;
+
+func start() {
+    var result = Viper.Math.Square(5);
+    SayInt(result);  // Outputs: 25
+}
 ```
 
 ---
@@ -203,7 +210,8 @@ typedef struct
 } ViperCounter;
 ```
 
-The struct is allocated via `rt_obj_new_i64()` which handles GC registration.
+The struct is allocated via `rt_obj_new_i64()`, which returns zeroed
+runtime-managed heap storage with reference-count bookkeeping.
 
 ---
 
@@ -285,17 +293,18 @@ RT_METHOD("name", "signature", target_id)
 |--------------|---------|--------|
 | `void` | No return value | `void` |
 | `i1` | Boolean | `int8_t` (0 or 1) |
-| `i8` | 8-bit signed | `int8_t` |
 | `i16` | 16-bit signed | `int16_t` |
 | `i32` | 32-bit signed | `int32_t` |
 | `i64` | 64-bit signed | `int64_t` |
-| `f32` | 32-bit float | `float` |
 | `f64` | 64-bit float | `double` |
 | `str` | String | `rt_string` |
 | `obj` | Object reference | `void*` |
 | `ptr` | Raw pointer | `void*` |
+| `bool` | Boolean alias | `int8_t` (0 or 1) |
+| `string` | String alias | `rt_string` |
+| `resume` / `resume_tok` | Resume token | VM resume token |
 
-`i8`, `i16`, and `i32` are frontend-mapped as integer values. `f32` is frontend-mapped as a number.
+`i16` and `i32` are accepted by the runtime signature parser, but new frontend-visible APIs should normally use `i64` for integer values and `f64` for numbers. `i8` and `f32` are legacy catalog-comment tokens, not accepted by the current `RT_FUNC` signature parser.
 
 Use parameterized signatures whenever the runtime object type is known:
 
@@ -371,7 +380,7 @@ add_custom_command(
 ### Manual Regeneration
 
 ```bash
-./build/src/tools/rtgen/rtgen src/il/runtime/runtime.def build/generated/il/runtime/
+./build/src/rtgen src/il/runtime/runtime.def build/generated/il/runtime/
 ```
 
 ---
@@ -389,22 +398,22 @@ Both BASIC and Zia frontends use the generated runtime metadata to:
 ### BASIC Frontend: RuntimeMethodIndex
 
 The BASIC frontend uses `RuntimeMethodIndex` (`src/frontends/basic/sem/RuntimeMethodIndex.cpp`),
-which delegates to the IL-layer `RuntimeRegistry`:
+which delegates through the shared `RuntimeMethodResolver` to the IL-layer `RuntimeRegistry`:
 
 ```cpp
-// Lookup delegates to the centralized RuntimeRegistry
 std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(
     std::string_view classQName, std::string_view method, std::size_t arity) const
 {
-    const auto &registry = il::runtime::RuntimeRegistry::instance();
-    auto parsed = registry.findMethod(classQName, method, arity);
-    // Convert IL types to BASIC types and return RuntimeMethodInfo
+    auto resolved =
+        il::frontends::common::RuntimeMethodResolver::instance().find(classQName, method, arity);
+    // Convert IL types to BASIC types and return RuntimeMethodInfo.
 }
 ```
 
 ### Zia Frontend: Direct Lowering
 
-Zia resolves runtime calls during lowering (`src/frontends/zia/Lowerer.cpp`):
+Zia imports runtime metadata during semantic analysis (`src/frontends/zia/Sema_Runtime.cpp`)
+and emits extern declarations for used runtime calls during lowering (`src/frontends/zia/Lowerer.cpp`):
 
 ```cpp
 // Emit extern declarations for used runtime functions
@@ -433,14 +442,14 @@ The runtime is organized into component libraries in `src/runtime/CMakeLists.txt
 
 ```cmake
 set(RT_BASE_SOURCES
-    rt_context.c
-    rt_error.c
+    core/rt_context.c
+    core/rt_error.c
     # ... core functions
 )
 
 set(RT_COLLECTIONS_SOURCES
-    rt_map.c
-    rt_list.c
+    collections/rt_map.c
+    collections/rt_list.c
     # ... collection types
 )
 
@@ -468,7 +477,7 @@ add_library(viper_runtime STATIC
 ```cmake
 set(RT_BASE_SOURCES
     # ... existing sources ...
-    rt_counter.c    # Add your new file
+    core/rt_counter.c    # Add your new file
 )
 ```
 
@@ -481,7 +490,7 @@ Add to `RT_PUBLIC_HEADERS`:
 ```cmake
 set(RT_PUBLIC_HEADERS
     # ... existing headers ...
-    ${CMAKE_CURRENT_SOURCE_DIR}/rt_counter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_counter.h
 )
 ```
 
@@ -491,14 +500,15 @@ set(RT_PUBLIC_HEADERS
 
 ### Unit Tests
 
-Create a unit test in `src/tests/unit/`:
+Create a unit test in `src/tests/unit/runtime/` for C runtime behavior, or
+`src/tests/unit/runtime_classes/` for catalog/registry behavior:
 
 ```cpp
 // TestRuntimeCounter.cpp
 #include <gtest/gtest.h>
 
 extern "C" {
-#include "rt_counter.h"
+#include "core/rt_counter.h"
 }
 
 TEST(RuntimeCounter, NewCreatesZeroCounter)
@@ -517,7 +527,9 @@ TEST(RuntimeCounter, IncrementAddsOne)
 
 ### Integration Tests (Golden Tests)
 
-Create a golden test in `src/tests/integration/`:
+Create BASIC runtime golden tests under `src/tests/golden/<suite>/` and register
+them in `src/tests/golden/CMakeLists.txt`. Runtime API programs written in Zia
+live under `tests/runtime/` and are wired from `src/tests/CMakeLists.txt`.
 
 **`counter_test.bas`:**
 ```basic
@@ -538,7 +550,7 @@ PRINT c.Value      ' Expected: 1
 
 ```bash
 # Build and run all tests
-cmake --build build -j && ctest --test-dir build --output-on-failure
+VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
 
 # Run specific test
 ctest --test-dir build -R counter
@@ -557,7 +569,7 @@ Let's implement a complete `Viper.Utils.Counter` class with:
 
 ```c
 //===----------------------------------------------------------------------===//
-// File: src/runtime/rt_counter.h
+// File: src/runtime/core/rt_counter.h
 // Purpose: Simple counter class for demonstration.
 //===----------------------------------------------------------------------===//
 
@@ -615,7 +627,7 @@ extern "C"
 
 ```c
 //===----------------------------------------------------------------------===//
-// File: src/runtime/rt_counter.c
+// File: src/runtime/core/rt_counter.c
 // Purpose: Simple counter class implementation.
 //===----------------------------------------------------------------------===//
 
@@ -731,12 +743,12 @@ Edit `src/runtime/CMakeLists.txt`:
 ```cmake
 set(RT_BASE_SOURCES
     # ... existing sources ...
-    rt_counter.c
+    core/rt_counter.c
 )
 
 set(RT_PUBLIC_HEADERS
     # ... existing headers ...
-    ${CMAKE_CURRENT_SOURCE_DIR}/rt_counter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_counter.h
 )
 ```
 
@@ -744,10 +756,10 @@ set(RT_PUBLIC_HEADERS
 
 ```bash
 # Build
-cmake --build build -j
+VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
 
 # Verify the function is registered
-grep -r "Counter" build/generated/il/runtime/
+rg "Counter" build/generated/il/runtime/
 
 # Run tests
 ctest --test-dir build --output-on-failure
@@ -778,22 +790,27 @@ PRINT "Value: "; c.Value   ' Output: Value: 0
 
 **Zia:**
 ```rust
-// Create a counter
-var c = Counter.New()
+module Main;
+bind Viper.Terminal;
 
-// Use methods
-c.Increment()
-c.Increment()
-print("Value: " + c.Value.ToString())  // Output: Value: 2
+func start() {
+    // Create a counter
+    var c = Viper.Utils.Counter.New();
 
-// Change step
-c.Step = 5
-c.Increment()
-print("Value: " + c.Value.ToString())  // Output: Value: 7
+    // Use methods
+    c.Increment();
+    c.Increment();
+    SayInt(c.Value);  // Output: 2
 
-// Reset
-c.Reset()
-print("Value: " + c.Value.ToString())  // Output: Value: 0
+    // Change step
+    c.Step = 5;
+    c.Increment();
+    SayInt(c.Value);  // Output: 7
+
+    // Reset
+    c.Reset();
+    SayInt(c.Value);  // Output: 0
+}
 ```
 
 ---
@@ -819,13 +836,13 @@ For classes with multiple constructors:
 
 ```c
 // runtime.def
-RT_FUNC(MapNew,      rt_map_new,       "Viper.Collections.Map.New",      "obj()")
-RT_FUNC(MapFromList, rt_map_from_list, "Viper.Collections.Map.FromList", "obj(obj)")
+RT_FUNC(SeqNew,      rt_seq_new_owned, "Viper.Collections.Seq.New",      "obj()")
+RT_FUNC(SeqFromList, rt_list_to_seq,   "Viper.Collections.Seq.FromList", "obj<Viper.Collections.Seq>(obj)")
 
-RT_CLASS_BEGIN("Viper.Collections.Map", Map, "obj", MapNew)
-    // MapNew is the default constructor
-    // MapFromList is a static factory method
-    RT_METHOD("FromList", "obj(obj)", MapFromList)
+RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
+    // SeqNew is the default constructor.
+    // SeqFromList is a static factory method.
+    RT_METHOD("FromList", "obj<Viper.Collections.Seq>(obj)", SeqFromList)
     // ... other methods
 RT_CLASS_END()
 ```
@@ -858,16 +875,20 @@ RT_METHOD("Append", "obj(str)", BuilderAppend)
 
 Usage:
 ```basic
-builder.Append("Hello").Append(" ").Append("World")
+builder = Viper.Text.StringBuilder.Append(builder, "Hello")
+builder = Viper.Text.StringBuilder.Append(builder, " ")
+builder = Viper.Text.StringBuilder.Append(builder, "World")
 ```
 
-### Pattern 6: Optional Parameters with Overloads
+### Pattern 6: Optional Behavior Without Overloads
 
-Create multiple functions with different arities:
+Runtime canonical names must be unique. For optional behavior, expose distinct
+canonical names or implement frontend syntax/lowering that chooses one runtime
+helper:
 
 ```c
-RT_FUNC(SubstrFrom,   rt_substr_from,   "Viper.String.Substr", "str(str,i64)")
-RT_FUNC(SubstrRange,  rt_substr_range,  "Viper.String.Substr", "str(str,i64,i64)")
+RT_FUNC(BytesNew,      rt_bytes_new,      "Viper.Collections.Bytes.New",      "obj(i64)")
+RT_FUNC(BytesFromStr,  rt_bytes_from_str, "Viper.Collections.Bytes.FromStr",  "obj(str)")
 ```
 
 ### Pattern 7: Error Handling with Traps
@@ -878,7 +899,13 @@ void *rt_list_get(void *obj, int64_t index)
     ViperList *list = (ViperList *)obj;
     if (index < 0 || index >= list->count)
     {
-        rt_trap("List index out of bounds: %lld (size: %lld)", index, list->count);
+        char message[128];
+        snprintf(message,
+                 sizeof(message),
+                 "List index out of bounds: %lld (size: %lld)",
+                 (long long)index,
+                 (long long)list->count);
+        rt_trap(message);
         return NULL;  // Unreachable after trap
     }
     return list->items[index];
@@ -902,7 +929,7 @@ void *rt_list_get(void *obj, int64_t index)
 ```bash
 # Force regeneration
 rm -rf build/generated/il/runtime/
-cmake --build build -j
+VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
 ```
 
 ### "Signature mismatch" Error
@@ -973,7 +1000,7 @@ RT_CLASS_END()
 | `src/il/runtime/runtime.def` | Single source of truth for runtime metadata |
 | `src/runtime/CMakeLists.txt` | Runtime build configuration |
 | `src/runtime/rt_internal.h` | Internal runtime utilities |
-| `src/runtime/rt_object.h` | Object allocation (GC integration) |
+| `src/runtime/oop/rt_object.h` | Object allocation and reference-counted lifetime |
 | `src/tools/rtgen/rtgen.cpp` | Code generator implementation |
 
 ### Example Implementations
@@ -982,10 +1009,10 @@ Study these existing implementations as references:
 
 | Class | Location | Complexity |
 |-------|----------|------------|
-| `Viper.Collections.Map` | `src/runtime/rt_map.c` | Complex (data structure) |
-| `Viper.IO.File` | `src/runtime/rt_file.c` | Complex (OS integration) |
-| `Viper.Text.Uuid` | `src/runtime/rt_guid.c` | Simple (static utility) |
-| `Viper.Time.Stopwatch` | `src/runtime/rt_stopwatch.c` | Medium (instance class) |
+| `Viper.Collections.Map` | `src/runtime/collections/rt_map.c` | Complex (data structure) |
+| `Viper.IO.File` | `src/runtime/io/rt_file.c` | Complex (OS integration) |
+| `Viper.Text.Uuid` | `src/runtime/text/rt_guid.c` | Simple (static utility) |
+| `Viper.Time.Stopwatch` | `src/runtime/core/rt_stopwatch.c` | Medium (instance class) |
 
 ---
 
@@ -994,17 +1021,17 @@ Study these existing implementations as references:
 ### Adding a Static Function
 
 ```c
-// 1. Implement in rt_module.c
+// 1. Implement in src/runtime/<component>/rt_module.c
 int64_t rt_module_func(int64_t arg) { ... }
 
-// 2. Declare in rt_module.h
+// 2. Declare in src/runtime/<component>/rt_module.h
 int64_t rt_module_func(int64_t arg);
 
 // 3. Add to runtime.def
 RT_FUNC(ModuleFunc, rt_module_func, "Viper.Module.Func", "i64(i64)")
 
 // 4. Add source to CMakeLists.txt (if new file)
-// 5. Build: cmake --build build -j
+// 5. Build: VIPER_SKIP_CLEAN=1 ./scripts/build_viper_mac.sh
 ```
 
 ### Adding a New Class

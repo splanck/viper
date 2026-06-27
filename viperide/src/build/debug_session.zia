@@ -58,7 +58,7 @@ class DebugSession {
     // True when Poll observed a state change worth refreshing the UI for.
     expose Boolean dirty;
     expose Boolean terminateRequested;
-    expose Integer terminateRequestedMs;
+    expose Time.Countdown terminateCountdown;
 
     expose func init() {
         processHandle = null;
@@ -82,7 +82,7 @@ class DebugSession {
         ctrlBuf = "";
         dirty = false;
         terminateRequested = false;
-        terminateRequestedMs = 0;
+        terminateCountdown = Time.Countdown.New(TERMINATE_GRACE_MS);
     }
 
     /// @brief Launch the adapter for @p path and install its breakpoints.
@@ -114,7 +114,7 @@ class DebugSession {
         ctrlBuf = "";
         dirty = true;
         terminateRequested = false;
-        terminateRequestedMs = 0;
+        terminateCountdown.Reset();
 
         processHandle.WriteStdin(buildSetBreakpoints(path, store) + "\n");
         processHandle.WriteStdin("{\"type\":\"launch\"}\n");
@@ -134,7 +134,7 @@ class DebugSession {
         }
         processHandle.WriteStdin("{\"type\":\"terminate\"}\n");
         terminateRequested = true;
-        terminateRequestedMs = Time.GetTickCount();
+        terminateCountdown.Start();
         lastType = "terminating";
         dirty = true;
         return true;
@@ -257,7 +257,7 @@ class DebugSession {
 
         drainProcessOutput();
         if terminateRequested and terminated == false and processHandle.IsRunning()
-           and Time.GetTickCount() - terminateRequestedMs >= TERMINATE_GRACE_MS {
+           and terminateCountdown.get_Expired() {
             processHandle.Kill();
             dirty = true;
         }

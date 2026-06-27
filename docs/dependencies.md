@@ -478,37 +478,6 @@ The runtime uses C++ for some threading primitives:
 
 ---
 
-## Implementation Priority for ViperDOS
-
-### Phase 1: Minimal Compiler (No Runtime)
-Get vbasic and viper working to compile programs:
-1. Memory: `malloc`, `free`, `calloc`, `realloc`
-2. String: `memcpy`, `memset`, `strlen`, `strcmp`, `strcpy`, `snprintf`
-3. File I/O: `open`, `close`, `read`, `write`
-4. Console: `stdout`, `fwrite`, `fputs`, `fflush`
-5. Exit: `exit`
-6. Error: `errno`
-
-### Phase 2: Basic VM Execution
-Run simple programs without I/O:
-1. Math: Core `<math.h>` functions
-2. Time: `clock_gettime(CLOCK_MONOTONIC)`, `nanosleep`
-3. Heap: Atomic operations for reference counting
-
-### Phase 3: Interactive Programs
-Support terminal I/O:
-1. Terminal: `isatty`, `tcgetattr`, `tcsetattr`, `select`
-2. Time: Date/time functions
-
-### Phase 4: Full Runtime
-Complete functionality:
-1. Threading: Full pthreads support
-2. Files: Directory operations, file metadata
-3. Process: `posix_spawn`, `waitpid`
-4. Environment: `getenv`, `setenv`
-
----
-
 ## Summary Statistics
 
 | Category | Critical | Extended | Total |

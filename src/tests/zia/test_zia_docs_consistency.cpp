@@ -122,10 +122,6 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
          {
              "cache the pointer",
          }},
-        {"docs/GENERICS_IMPLEMENTATION_PLAN.md",
-         {
-             "user-defined generics are parsed but full monomorphization is not yet implemented",
-         }},
         {"docs/bible/appendices/a-zia-reference.md",
          {
              "../../../zia-reference.md",

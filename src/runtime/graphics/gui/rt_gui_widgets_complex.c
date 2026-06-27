@@ -1018,6 +1018,28 @@ void rt_outputpane_set_font(void *pane, void *font, double size) {
     vg_outputpane_set_font(out, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
+/// @brief Enable/disable interactive terminal mode (cursor model + keyboard capture).
+void rt_outputpane_set_terminal_mode(void *pane, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (out)
+        vg_outputpane_set_terminal_mode(out, enabled != 0);
+}
+
+/// @brief Drain queued terminal keystrokes (terminal mode); empty when none pending.
+rt_string rt_outputpane_take_input(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return rt_str_empty();
+    char *input = vg_outputpane_take_input(out);
+    if (!input)
+        return rt_str_empty();
+    rt_string result = rt_string_from_bytes(input, strlen(input));
+    free(input);
+    return result;
+}
+
 //=============================================================================
 // RadioButton Widget
 //=============================================================================
@@ -1544,6 +1566,18 @@ void rt_outputpane_set_font(void *pane, void *font, double size) {
     (void)pane;
     (void)font;
     (void)size;
+}
+
+/// @brief Stub: graphics disabled — no terminal mode.
+void rt_outputpane_set_terminal_mode(void *pane, int64_t enabled) {
+    (void)pane;
+    (void)enabled;
+}
+
+/// @brief Stub: graphics disabled — no terminal input is queued.
+rt_string rt_outputpane_take_input(void *pane) {
+    (void)pane;
+    return rt_str_empty();
 }
 
 /// @brief Stub: graphics disabled — returns NULL; no radio group is created.

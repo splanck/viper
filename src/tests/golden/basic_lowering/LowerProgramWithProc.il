@@ -1,4 +1,4 @@
-il 0.2.0
+il VERSION
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -22,6 +22,7 @@ extern @Viper.String.PadRight(str, i64, str) -> str
 extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Replace(str, str, str) -> str
 extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.Lines(str) -> ptr
 extern @Viper.String.StartsWith(str, str) -> i1
 extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Trim(str) -> str
@@ -32,7 +33,7 @@ extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_trap_string(str) -> void
+extern @Viper.Diagnostics.Trap(str) -> void
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
 entry:

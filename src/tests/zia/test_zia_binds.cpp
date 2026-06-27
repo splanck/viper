@@ -741,6 +741,60 @@ func start() {    var o: Outer = new Outer();
     (void)outerPath;
 }
 
+/// @brief A malformed bind (an incomplete "bind Viper.X." captured mid-edit by
+/// live diagnostics) must not abort resolution of a valid relative bind beside
+/// it, nor fabricate a "<dir>/.zia" import. Regression for the 55-error cascade.
+TEST(ZiaBinds, MalformedBindDoesNotCascade) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "malformed_no_cascade";
+
+    writeFile(dir, "cfg.zia", R"(
+module cfg;
+var WIDTH: Integer = 100;
+)");
+
+    const std::string mainSource = R"(
+module Main;
+bind "./cfg";
+bind Viper.Game3D.
+func start() {    Viper.Terminal.SayInt(cfg.WIDTH);
+}
+)";
+    const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
+    const std::string mainPathStr = mainPath.string();
+
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    int v1000 = 0;
+    int errorCount = 0;
+    bool cfgUnresolved = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.severity != Severity::Error)
+            continue;
+        errorCount++;
+        if (d.message.find("Failed to open imported file") != std::string::npos)
+            v1000++;
+        // The valid "./cfg" bind must still resolve (no unresolved-cfg cascade).
+        if (d.message.find("cfg") != std::string::npos)
+            cfgUnresolved = true;
+    }
+    if (v1000 != 0 || cfgUnresolved || errorCount > 2) {
+        std::cerr << "Diagnostics for MalformedBindDoesNotCascade (errors=" << errorCount << "):\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] " << d.code
+                      << " " << d.message << "\n";
+        }
+    }
+    EXPECT_EQ(v1000, 0);        // no fabricated "<dir>/.zia" import
+    EXPECT_FALSE(cfgUnresolved); // the valid relative bind still resolved
+    EXPECT_LE(errorCount, 2);   // only the local incomplete-bind error, not a cascade
+}
+
 } // namespace
 
 int main() {

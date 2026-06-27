@@ -15,7 +15,7 @@ bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 bind Convert = Viper.Core.Convert;
-bind Time = Viper.Time;
+bind Threads = Viper.Threads;
 
 // Token types — mirror vg_syntax_token_type / CodeEditor.SetTokenColor indices.
 final TOK_DEFAULT = 0;
@@ -51,7 +51,7 @@ class SemanticHighlighter {
 
     hide Boolean pending;
     hide Integer pendingRevision;
-    hide Integer lastEditMs;
+    hide Threads.Debouncer semDebounce;
 
     hide Any pendingJob;
     hide Integer pendingJobRevision;
@@ -65,7 +65,7 @@ class SemanticHighlighter {
         appliedPath = "";
         pending = false;
         pendingRevision = -1;
-        lastEditMs = 0;
+        semDebounce = Threads.Debouncer.New(SEM_DEBOUNCE_MS);
         pendingJob = null;
         pendingJobRevision = -1;
         pendingJobPath = "";
@@ -108,14 +108,13 @@ class SemanticHighlighter {
 
         if revision == appliedRevision and sourcePath == appliedPath { return; }
 
-        var now = Time.GetTickCount();
         if pending == false or revision != pendingRevision {
             pending = true;
             pendingRevision = revision;
-            lastEditMs = now;
+            semDebounce.Signal();
             return;
         }
-        if now - lastEditMs < SEM_DEBOUNCE_MS { return; }
+        if semDebounce.get_IsReady() == false { return; }
 
         StartJob(engine, revision);
     }

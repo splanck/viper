@@ -2,7 +2,8 @@
 
 Date: 2026-05-31
 
-Status: Accepted
+Status: Accepted; verified against source, the live runtime registry, and
+focused tests on 2026-06-27
 
 ## Context
 
@@ -30,15 +31,32 @@ when they meet all of these conditions:
   focused behavior tests for the new API.
 
 Registry-only touchpoints do not need a feature-specific ADR beyond this policy
-note. Any future change that alters IL, VM, or native codegen semantics still
-requires its own ADR and proof note before the 3D roadmap gate can be closed.
+note. Changes that alter IL, VM, verifier, linker, language semantic, or native
+codegen behavior still require their own ADR and proof note.
+
+## Implementation Status
+
+Verified on 2026-06-27:
+
+- `build/install/bin/viper --dump-runtime-api` exposes 55
+  `Viper.Graphics3D.*` classes, 37 `Viper.Game3D.*` classes, and 1322 runtime
+  functions in those namespaces.
+- `src/il/runtime/runtime.def` and
+  `src/il/runtime/RuntimeSurfacePolicy.inc` remain the registry and
+  classification sources for the public surface.
+- The implementation is backed by source under `src/runtime/graphics/3d/` and
+  shared 3D graphics helpers under `src/runtime/graphics/common/`.
+- Focused source/runtime checks pass:
+  `test_runtime_surface_audit`, `test_graphics3d_abi_surface`,
+  `test_runtime_class_qualified_surface`, `g3d_3dnext2_surface_probe`,
+  `test_rt_game3d`, and `test_rt_graphics3d_robustness`.
 
 ## Consequences
 
-The 3dnextlevel3 runtime-surface edits can close GATE-009 by pointing to this
-ADR, the runtime completeness/surface tests, and the NL3 determinism evidence.
-The public API remains visible to interpreted and native execution through the
-same runtime registry, while the IL and VM semantics remain unchanged.
+The 3dnextlevel3 runtime-surface edits are covered by this ADR, the runtime
+surface/ABI tests, and the Game3D/Graphics3D behavior tests listed above. The
+public API remains visible to interpreted and native execution through the same
+runtime registry, while the IL and VM semantics remain unchanged.
 
 ## Spec Impact
 

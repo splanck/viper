@@ -1,58 +1,120 @@
 # ViperIDE
 
-ViperIDE is the IDE application for Zia and Viper BASIC. It is built in Zia on top of the `Viper.GUI.*` runtime classes.
+ViperIDE is the repository IDE application for editing, building, running, and
+debugging Viper projects. It is written in Zia and runs on the `Viper.GUI.*`,
+`Viper.System.*`, `Viper.Workspace.*`, and language-service runtime surfaces.
 
-Current status: the editor-first-class correction gate passed on 2026-05-23,
-with a follow-up polish pass in progress for explorer actions, debugger
-metadata editing, workspace indexing, and tool-surface responsiveness.
-The release evidence lives in
-[`plans/editor-first-class-plan.md`](plans/editor-first-class-plan.md) and the
-manual dogfood report is
-[`docs/editor-first-class-dogfood-2026-05-23.md`](docs/editor-first-class-dogfood-2026-05-23.md).
-Scene-editor work can resume only from this corrected baseline; split/diff
-editors and SCM support remain explicit non-goals for this gate. The debugger is
-now VM-backed for stepping, breakpoints, locals, call stack, evaluate, conditions,
-and logpoints, while BASIC advanced semantic commands remain intentionally
-limited until a project-index-equivalent BASIC service exists.
+This directory is application code, not a design archive. The current
+documentation is:
 
-## Layout
+- [docs/status.md](docs/status.md): current feature status and known gaps.
+- [docs/workflows.md](docs/workflows.md): user and developer workflows.
+- [docs/architecture.md](docs/architecture.md): source layout, ownership, and
+  layering rules.
+- [docs/source-map.md](docs/source-map.md): detailed module-by-module source
+  guide.
+- [docs/runtime-integration.md](docs/runtime-integration.md): runtime APIs used
+  by the IDE and the constraints they impose.
+- [docs/maintenance.md](docs/maintenance.md): how to change ViperIDE safely.
+- [docs/testing.md](docs/testing.md): probes, CTest entries, manual checks, and
+  coverage gaps.
+
+## Current Scope
+
+ViperIDE is currently a project-aware code editor and workbench for Zia and
+Viper BASIC. It includes:
+
+- Multi-tab text editing backed by `Viper.GUI.CodeEditor`.
+- Zia completion, diagnostics, hover, signature help, document symbols,
+  definition, references, rename, and selected refactors.
+- BASIC completion, diagnostics, hover, and document symbols.
+- Project explorer, multi-root workspace support, Quick Open, project search,
+  workspace symbols, and recent files.
+- Build and run jobs through `Viper.System.Process`.
+- VM-backed debug adapter launch through `viper run --debug-adapter`.
+- Integrated PTY terminal through `Viper.System.Pty`.
+- Lightweight Git source-control view.
+- Session restore, settings persistence, external-change detection, and
+  crash-recovery snapshots for small modified text buffers.
+
+The app is not yet a full visual scene editor. `.scene` and `.level` files are
+recognized as scene documents, but they still open in the text editor. There is
+no `Viper.GUI.SceneView`, no scene-specific document state, and no visual tile
+or object-editing surface in ViperIDE today.
+
+## Reading The Documentation
+
+Start with [docs/status.md](docs/status.md) when deciding whether a feature is
+real, partial, or absent. That document is deliberately blunt about limitations
+because ViperIDE has historically had documentation that sounded more complete
+than the implementation.
+
+Use [docs/workflows.md](docs/workflows.md) when you are using the app or trying
+to reproduce a user-visible workflow. It explains how project opening, editing,
+search, build/run, debugging, terminal, Source Control, settings, and recovery
+behave from the user's point of view.
+
+Use [docs/architecture.md](docs/architecture.md) for the high-level ownership
+model and [docs/source-map.md](docs/source-map.md) for the practical module
+tour. The architecture document explains the layering rules; the source map
+names the files that currently implement each subsystem and the reasons to touch
+them.
+
+Use [docs/runtime-integration.md](docs/runtime-integration.md) before changing
+anything that crosses the Zia/C runtime boundary. ViperIDE is unusually
+dependent on runtime APIs for editor widgets, processes, PTYs, workspace edits,
+language services, and future scene work.
+
+Use [docs/maintenance.md](docs/maintenance.md) before adding features. It
+documents the common change paths: adding commands, document kinds, language
+features, panels, runtime APIs, settings, probes, and docs.
+
+## Directory Layout
 
 ```text
 viperide/
-    README.md                  This overview
-    viper.project              Project manifest; entry is src/main.zia
-    CMakeLists.txt             Native test target for the menu/runtime probe
-    bin/                       Generated IDE binaries (ignored)
+    README.md                  This overview.
+    CMakeLists.txt             Native menu/runtime probe target.
+    viper.project              Project manifest; entry point is src/main.zia.
+    bin/                       Generated IDE binaries; ignored by git.
+
+    docs/
+        architecture.md         Contributor-facing source map.
+        runtime-integration.md  Runtime API boundary.
+        status.md               Current feature matrix and known gaps.
+        testing.md              Automated and manual verification.
+        workflows.md            Build, run, edit, debug, terminal, and SCM use.
+        editor-first-class-...  Archived performance dogfood report.
 
     src/
-        main.zia               Application entry point and frame loop
-        probes/                CI probe entry points for IDE behavior
-
-        app/                   Application orchestration helpers
-        build/                 Build/run integration and diagnostics model
-        commands/              File, edit, view, build, and search commands
-        core/                  Documents, projects, settings, and persistence
-        editor/                Code editor integration and language services
-        services/              Shared utility services
-        ui/                    Window shell, menus, toolbar, panels, preferences
-        zia/                   Pure Zia parsing, formatting, and refactor helpers
-        tests/                 Local GUI probes and C runtime/menu test source
-
-    plans/                     Roadmap, phase plans, and runtime prerequisites
-    docs/
-        plans/                 Historical implementation notes
+        main.zia                App bootstrap, frame loop, and dispatch glue.
+        app/                    Frame-loop helpers and shared app services.
+        build/                  Build/run jobs, diagnostics, breakpoints, debug.
+        commands/               Command catalog, registry, and handlers.
+        core/                   Documents, projects, settings, session state.
+        editor/                 Editor engine, semantic controllers, indexing.
+        probes/                 Focused IDE probe entry points.
+        scm/                    Git command layer and Source Control view.
+        services/               File kinds, locations, text, workspace edits.
+        terminal/               PTY session and integrated-terminal controller.
+        tests/                  Local GUI/runtime probe source.
+        ui/                     App shell, panels, activity bar, overlays.
+        zia/                    Pure Zia formatting, scanning, bind/refactor code.
 ```
-
-Root-level files are project metadata or documentation. Zia and C source files live under `src/`.
-
-See [`docs/architecture.md`](docs/architecture.md) for the contributor-facing
-module map, layering rules, comment expectations, and file-size review triggers.
 
 ## Build
 
-From the repository root:
+Build the full repository first when runtime or compiler changes are involved:
 
-```bash
+```sh
+./scripts/build_viper_mac.sh
+./scripts/build_viper_linux.sh
+scripts\build_viper_win.cmd
+```
+
+Build only the IDE native binary from the repository root:
+
+```sh
 ./scripts/build_ide.sh
 ```
 
@@ -62,27 +124,48 @@ On Windows:
 scripts\build_ide_win.cmd
 ```
 
-Both scripts write generated binaries under `viperide/bin/` by default. The
-Unix build script also refreshes `build/viperide/viperide` as a compatibility
-copy and writes `viperide.buildinfo` beside each generated binary so Help >
-About can identify the running build.
+The IDE build scripts write `viperide/bin/viperide` or
+`viperide\bin\viperide.exe` by default. They also write
+`viperide.buildinfo` beside the generated binary and refresh a compatibility
+copy under `build/viperide/` unless `VIPER_IDE_SKIP_COMPAT_COPY=1` is set.
+
+Useful IDE build variables:
+
+| Variable | Effect |
+| --- | --- |
+| `VIPER_IDE_OUTPUT` | Override the output binary path. |
+| `VIPER_IDE_COMPAT_OUTPUT` | Override the compatibility-copy path. |
+| `VIPER_IDE_SKIP_COMPAT_COPY=1` | Skip the compatibility copy. |
+| `VIPER_BINARY` | Force ViperIDE build/run jobs to use a specific `viper` binary. |
+| `VIPER_BUILD_DIR` | Help ViperIDE locate a developer build tree. |
 
 ## Run
 
-```bash
+Run the app through the repository toolchain:
+
+```sh
 viper run viperide/
 ```
 
-Or from inside this directory:
+Or from inside `viperide/`:
 
-```bash
+```sh
 viper run .
 ```
 
-## Project Run Config
+After `./scripts/build_ide.sh`, run the native binary directly:
 
-`viper.project` can override the default `viper build <project-root>` and
-`viper run <project-root>` commands:
+```sh
+./viperide/bin/viperide
+```
+
+## Project Configuration
+
+ViperIDE reads a small `viper.project` manifest for project metadata, file
+associations, build/run overrides, and ignore rules. The IDE's own manifest is
+`viperide/viper.project`.
+
+Supported build/run override keys:
 
 ```text
 build-program viper
@@ -95,148 +178,45 @@ ignore build-output/
 ignore *.tmp
 ```
 
-Arguments are split into an argument vector; quotes group tokens and `{target}`
-is replaced with the project root or active file path.
-`ignore`, `ignore-patterns`, or `exclude` entries add project-specific file-tree
-and search exclusions on top of hard excludes and `.gitignore`.
+`build-args` and `run-args` are split into an argument vector. Quoted spans are
+preserved, backslash escapes are handled, and `{target}` is replaced with the
+project root or active file path. Commands are not run through a shell.
 
-## Features
+Project ignore keys (`ignore`, `ignore-patterns`, `exclude`) are forwarded to
+the runtime workspace index and apply to the explorer, Quick Open, search, and
+workspace indexing.
 
-- Code editor with syntax highlighting, line numbers, undo/redo, smart Home/End,
-  pointer selection drag, auto-indent, bracket/quote pair insertion, line
-  comment toggle for single lines and selected line ranges, block comment
-  toggle, matching-pair highlight, duplicate line, move line up/down,
-  expand/shrink selection, semantic fold regions for Zia symbols, conservative
-  Zia parameter-name and inferred-type inlay hints,
-  Organize Binds, Extract Local Variable for selected single-line Zia
-  expressions, Extract Function for complete selected Zia statement lines that
-  do not capture locals, Inline Local Variable for simple single-assignment Zia locals,
-  Trim Trailing Whitespace, Format Document/Selection for Zia and text buffers,
-  word wrap, and minimap
-- Revision-gated editor controllers with background semantic jobs for
-  completion, diagnostics, signature help, hover, and outline refresh, plus
-  lazy project-index sync for explicit navigation/refactor commands
-- Zia IntelliSense using path-aware structured completion/signature/hover APIs,
-  editor-focus-safe popup filtering and Tab/Enter acceptance, dot triggers,
-  identifier debounce, snippet cursor placement metadata, callable commit
-  characters, workspace-symbol
-  completion from an on-demand async project file cache, compact docs/source
-  metadata display from Zia declaration doc comments, generated runtime
-  metadata, and curated prose for common runtime APIs in completion, signature
-  help, and hover, structured signature
-  overload counts with overload navigation commands, stale-result rejection, and
-  explicit `Ctrl+Space` completion / `Ctrl+Shift+Space` signature-help triggers
-- Live diagnostics through structured toolchain records and background checks,
-  plus explicit Run Check Now, Suppress Warning, Apply Diagnostic Fix-It, and
-  Create Missing Bind commands for known runtime aliases and unambiguous
-  project-file binds
-- Hover tooltips for type, signature, docs, and source information, delayed
-  until dwell and resolved through background jobs
-- Project-aware Zia definition, references, incoming/outgoing call lookup, and
-  rename through `Viper.Zia.ProjectIndex`; rename now has a preview/cancel step
-  and pending undo snapshots for inactive affected open documents
-- Dedicated References bottom-panel tab with grouped file/caller headers and
-  preview rows
-- Language-service capability routing so BASIC/text/scene files do not invoke Zia semantic APIs
-- File explorer with recursive tree view, right-click node targeting, Open/Open With Text Editor, duplicate, copy path, copy relative path, search in folder, run file, set project entry, refresh, keyboard commands for common tree actions, project-specific ignore patterns, and OS-aware reveal
-- File-tree rename/delete operations that update open documents and recent-file
-  history; rename previews and rewrites affected quoted Zia file binds
-- Tabbed editing with modified indicators and close buttons
-- Find/replace bar with match count and navigation
-- Project search and folder-scoped search with grouped file headers,
-  cooperative file discovery/content scanning, cached project file state when
-  available, literal/regex content matching, case/whole-word and include/exclude
-  path filters, and structured location ids instead of `path:line` parsing
-- Non-modal Quick Open by project file name/path fragment (`Ctrl+P`), plus
-  long-path command-palette filtering coverage, recent-file and recently
-  closed-tab reopen workflows
-- Workspace symbol search by project symbol fragment (`Ctrl+T`) with structured
-  result locations and dirty-open-document awareness
-- Project-aware build/run configurations using argument-vector process jobs
-- Streamed build/run output with cancellable jobs, append-preserving output
-  updates, filter/wrap/copy/clear commands, selected-row/range copy,
-  selection-free auto-scroll lock, structured Problems/Search/References rows,
-  severity-colored diagnostics, status-bar project/language/job/diagnostics
-  state, and lightweight
-  Problems/Output/Search/References/Debug Console tabs
-- Debug UI controls with persisted breakpoints, current-line gutter markers,
-  expression evaluation, and a dedicated Debug Console tab wired to
-  `viper run --debug-adapter`
-- Categorized command palette for keyboard-driven workflow, with unsupported
-  language-service commands kept discoverable through unavailable markers and
-  status/toast reasons
-- Menu shortcuts for File, Search, Navigate, Build, View, and Explorer context
-  actions, including visible Save As/Save All distinction and menu entries for
-  Quick Open, project search, workspace symbols, call hierarchy, diagnostics
-  navigation, and signature help
-- Persistent settings in `~/.viperide/settings.ini`, with editor behavior
-  controls, auto-save, save-time whitespace controls, IntelliSense delay
-  controls, configurable editor font size, docked Preferences, per-section
-  default resets, and legacy tiny font-size migration
-- Keyboard-shortcuts view with duplicate shortcut detection
-- Session restore for open files, active tab, cursor/scroll state, and last project
-- File watcher for external changes
-- Dark and light themes
+## Settings And Session Files
 
-## Architecture
+Settings are stored in a platform config directory:
 
-ViperIDE is organized as a small layered app:
+- Windows: `%APPDATA%\ViperIDE\settings.ini`
+- macOS: `~/Library/Application Support/ViperIDE/settings.ini`
+- Linux: `$XDG_CONFIG_HOME/viperide/settings.ini` or
+  `~/.config/viperide/settings.ini`
 
-- `src/core/` owns domain state such as documents, projects, and settings.
-- `src/editor/` adapts `Viper.GUI.CodeEditor` into IDE-level editing features.
-- `src/build/` invokes compiler/run commands and parses diagnostics.
-- `src/ui/` constructs the shell widgets, panels, and docked Preferences surface.
-- `src/commands/` contains user-facing command handlers.
-- `src/services/` contains shared file-kind, location, and workspace-edit helpers.
-- `src/main.zia` wires the layers together and runs the frame loop.
+If no platform-native settings file exists, existing legacy
+`~/.viperide/settings.ini` files are still read.
 
-## Phase Test Gates
+The same INI file stores:
 
-The editor performance probe is registered as `zia_viperide_editor_hot_path`.
-It verifies that `Viper.GUI.CodeEditor.Revision` changes on content edits and
-undo/redo, remains stable for cursor-only movement, avoids repeated open-document
-index syncs, asserts project-index update counters stay quiet for unchanged
-buffers, verifies semantic folding still runs when the outline is hidden, and
-enforces large-buffer cursor-movement copy/timing budgets. The
-opt-in `VIPERIDE_PERF_LOG` output includes frame/controller timing, editor
-counters, and `projectIndexUpdates` / `projectIndexBytes` so dogfood sessions can
-attribute index churn. Project indexing is lazy for explicit navigation/refactor
-commands, skips oversized sources and hidden workspace/cache trees, and uses
-cached `.gitignore` patterns so project walks do not reread ignore files per
-path.
-Native semantic jobs are capped so stale
-completion/diagnostic/signature/hover/symbol work cannot pile up behind typing.
-The native `test_vg_codeeditor_perf` target also guards 50k-line navigation,
-folded/wrapped layout caches, highlight span indexing, typing bursts, and large
-selection paths against full-buffer copies and layout scans, with wall-clock
-budgets for 5k/20k typing-plus-paint, 50k scroll/paint, pointer selection drag,
-and minimap paint.
+- `[settings]` editor and workbench settings.
+- `[session]` last project, open tabs, active tab, cursor, and scroll state.
+- `[session.file.N]` per-file session entries and bounded crash-recovery text.
+- `[recent]` recent projects.
+- `[recentFiles]` recent files.
 
-The Phase 0/1 regression probe is registered as `zia_viperide_phase0_phase1`.
-It covers document kind detection, command id consistency, structured locations,
-language-service capabilities, command palette categories, search matching,
-signature-call parsing, session/recent-project persistence, active-tab close
-behavior, transactional workspace edits for open and closed files, recent-file
-persistence, recently closed tab tracking, project-index queries, and the
-deliberate BASIC capability gate that keeps semantic commands disabled until
-ViperIDE has a real BASIC server adapter.
+## Verification
 
-The console/search regression probe is registered as
-`zia_viperide_console_search`. It covers raw output rendering through the
-append-only `OutputPane`, row-mode filtering/wrapping/copy/clear helpers,
-partial-line rebuild behavior, whole-word search, regex search mode,
-include/exclude search path filters, and Quick Open ranking.
+The most relevant focused tests are documented in [docs/testing.md](docs/testing.md).
+Common targeted runs after a repository build are:
 
-The Phase 2/3 regression probe is registered as `zia_viperide_phase2_phase3`.
-It covers run-config argument vectors, project command overrides, real
-`viper run <project-root>` entry execution, streamed and cancellable
-`Viper.System.Process` jobs, diagnostic parsing for paths with spaces/colons,
-persisted breakpoints, the current placeholder debug protocol's
-stop/step/locals/terminate/crash event shape, and `Viper.Game.Scene`
-load/save/mutator/diagnostic/tilemap contracts.
+```sh
+ctest --test-dir build -R zia_smoke_viperide_project_compile --output-on-failure
+ctest --test-dir build -L viperide --output-on-failure
+ctest --test-dir build -R zia_viperide_terminal --output-on-failure
+ctest --test-dir build -R zia_viperide_debug --output-on-failure
+```
 
-The current debug protocol used by ViperIDE runs out of process through
-`viper run --debug-adapter`. It supports breakpoint launch, stop/step events,
-locals, expression evaluation, termination, and debug console output. Remaining
-debug polish is tracked in the IDE layer: richer watch expressions, call-stack
-navigation, and more visible execution-state affordances.
+Display-dependent probes are labelled `requires_display`. Run them only in an
+environment with the GUI runtime available.

@@ -7,7 +7,7 @@ Context
 The BASIC frontend maintains builtin metadata in multiple places:
 
 - builtin_registry.inc (descriptors: name, arity, result mask; lowering/scan rules)
-- SemanticAnalyzer.Builtins.cpp (legacy static array of BuiltinSignature with per-arg type specs)
+- SemanticAnalyzer_Builtins.cpp (legacy static array of BuiltinSignature with per-arg type specs)
 
 This duplication led to drift: new builtins (ARGC/ARG$/COMMAND$) had correct descriptors but stale semantic signatures,
 causing bogus arity diagnostics and crashes. We already fixed arity by deriving it from the registry and added a
@@ -15,18 +15,18 @@ fixed-result mapping to reduce drift for result types.
 
 Decision
 
-Unify builtin semantic signatures behind the registry. The registry becomes the single source of truth for:
+Unify builtin semantic signatures behind the registry. The registry is the preferred source for:
 
 - argument arity (min/max),
 - result kind (fixed when unambiguous),
-- per-argument type allowances and optionality (to be added).
+- per-argument type allowances and optionality when a registry-backed semantic view exists.
 
-The semantic analyzer will call a registry accessor to retrieve a BuiltinSignature view for a builtin, instead of
-consulting its own static table. In this commit we implemented:
+The semantic analyzer calls a registry accessor to retrieve a semantic signature view for builtins that have one and
+falls back to its legacy static table for builtins not yet covered by that view. The current implementation includes:
 
 - Arity derived from registry everywhere,
 - Fixed result kind mapping from registry descriptors when unambiguous,
-- Safety overrides for ARGC/ARG$/COMMAND$ primary signatures,
+- Registry-backed semantic signatures and safety overrides for ARGC/ARG$/COMMAND$ primary signatures,
 - Unit tests to guard semantics and lowering.
 
 Consequences
@@ -38,8 +38,9 @@ Pros:
 
 Cons:
 
-- Requires enriching builtin_registry.inc with per-argument type metadata for full parity,
-- Small refactors in SemanticAnalyzer to consume the registry’s signature view.
+- Requires enriching more entries in builtin_registry.inc with per-argument type metadata for full parity,
+- The legacy `kBuiltinSignatures` table in `src/frontends/basic/SemanticAnalyzer_Builtins.cpp` still exists as a
+  fallback for builtins without a registry-backed semantic view.
 
 Alternatives
 
@@ -51,11 +52,15 @@ Spec Impact
 No change to user-visible language semantics. This is an internal refactor that aligns arity and result checking with
 the already-declared registry descriptors.
 
-Migration Plan
+Implementation Status
 
-1. (DONE) Derive arity from registry in SemanticAnalyzer; add fixed-result mapping; patch ARG*/COMMAND$.
-2. (DONE) Extend builtin_registry.inc with per-argument type metadata; add accessor `getBuiltinSemanticSignature` in
-   `src/frontends/basic/BuiltinRegistry.cpp` to expose a complete signature view.
-3. (NEXT) Remove the legacy static signature table once all builtins are covered.
-4. (NEXT) Expand unit tests for common builtins (STR$, VAL, numeric ops) to verify per-arg type checking end-to-end.
+Verified on 2026-06-27:
 
+- `src/frontends/basic/BuiltinRegistry.cpp` exposes `getBuiltinSemanticSignature(...)`.
+- The registry-backed semantic view currently covers ARGC, ARG$, and COMMAND$.
+- `SemanticAnalyzer::validateBuiltinArgs(...)` derives builtin argument-count validation from
+  `getBuiltinArity(...)`.
+- `SemanticAnalyzer::builtinSignature(...)` consumes that view when available and keeps safety overrides for ARGC,
+  ARG$, COMMAND$, and ERR.
+- The legacy static table remains as the fallback for other builtins, so the registry is not yet the sole source for
+  every per-argument type check.

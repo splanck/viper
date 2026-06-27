@@ -2,7 +2,9 @@
 
 Date: 2026-06-20
 
-Context
+Status: Accepted; implemented and verified against source/tests on 2026-06-27
+
+## Context
 
 `docs/specs/errors.md` and `docs/specs/numerics.md` are referenced as
 normative by the IL guide and contributor documentation, but their front matter
@@ -15,7 +17,7 @@ requires an ADR. In practice, routine tests, bug fixes, examples, and
 documentation updates do not need architecture records. The rule needs to be
 specific enough to enforce without weakening spec-first development.
 
-Decision
+## Decision
 
 - Promote `docs/specs/errors.md` and `docs/specs/numerics.md` to active
   normative specs after re-verifying them against the implementation.
@@ -24,14 +26,32 @@ Decision
   referenced implementation or ADR.
 - Require an ADR for changes that alter one of these architecture contracts:
   IL opcodes, IL grammar, IL verifier legality rules, cross-layer dependencies,
-  or runtime C ABI surface.
+  runtime C ABI surface, `docs/il-guide.md#reference`, or
+  `.github/workflows/*`.
 - Do not require an ADR for routine implementation, test, example, or
   non-normative documentation edits that preserve those contracts.
 - Add a CTest guard that compares the trap-kind table in `docs/specs/errors.md`
   against `src/vm/Trap.hpp` and fails if any normative `docs/specs/*.md` file
   remains draft.
 
-Consequences
+## Implementation Status
+
+Verified on 2026-06-27:
+
+- `docs/specs/errors.md`, `docs/specs/numerics.md`, and `docs/il-guide.md` are
+  active and carry `last-verified: 2026-06-20` front matter.
+- `docs/il-guide.md#reference` links `docs/specs/errors.md` and
+  `docs/specs/numerics.md` as normative for front ends and the VM.
+- `AGENTS.md` and `CLAUDE.md` use the narrowed ADR trigger rule for IL opcode,
+  grammar, verifier-rule, cross-layer dependency, runtime C ABI,
+  `docs/il-guide.md#reference`, and workflow changes.
+- `src/tests/tools/TrapKindSpecConsistencyTest.cmake` compares
+  `docs/specs/errors.md` trap-kind rows with `src/vm/Trap.hpp` and fails if any
+  `docs/specs/*.md` file is still marked draft.
+- Focused checks pass: `test_tools_trap_kind_spec_consistency`,
+  `test_zia_docs_consistency`, and `test_vm_trap_kind`.
+
+## Consequences
 
 Pros:
 
@@ -44,26 +64,18 @@ Pros:
 Cons:
 
 - Spec-frontmatter updates now carry process meaning and need deliberate review.
-- Future new `docs/specs/*.md` files must start active only when they are truly
+- New `docs/specs/*.md` files must start active only when they are truly
   normative, or use a different location until promoted.
 
-Alternatives
+## Alternatives
 
 - Keep broad "all changes need ADR" wording. This preserves maximum caution but
   does not match current practice and is too noisy to enforce.
 - Leave the specs as draft. This avoids a metadata change but contradicts the IL
   guide, contributor guide, and runtime behaviour.
 
-Spec Impact
+## Spec Impact
 
 No IL grammar, opcode, verifier, or runtime ABI semantics change in this ADR.
 The error and numeric specs are promoted to active status with content corrected
 to match the current implementation.
-
-Migration Plan
-
-1. Promote `docs/specs/errors.md` and `docs/specs/numerics.md` to active.
-2. Update `docs/il-guide.md` verification metadata after confirming its EH
-   contract matches ADR 0005.
-3. Add the trap-kind/spec-status consistency CTest.
-4. Update contributor-facing ADR trigger wording and the ADR index.

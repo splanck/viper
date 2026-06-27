@@ -343,6 +343,11 @@ rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str);
 /// @return Seq containing string parts.
 void *rt_str_split(rt_string str, rt_string delim);
 
+/// @brief Split a string into logical lines, normalizing CRLF to LF.
+/// @param str Source string.
+/// @return Seq of line strings with trailing carriage returns removed.
+void *rt_str_lines(rt_string str);
+
 /// @brief Join sequence of strings with separator.
 /// @param sep Separator string.
 /// @param seq Sequence of strings to join.

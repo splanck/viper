@@ -388,7 +388,6 @@ class ExplorerActionOverlay {
         if name == "" { return ""; }
         var ext = Path.Ext(name);
         if ext == "" { return name + " copy"; }
-        var stem = Str.MidLen(name, 1, Str.Length(name) - Str.Length(ext));
-        return stem + " copy" + ext;
+        return Path.Stem(name) + " copy" + ext;
     }
 }

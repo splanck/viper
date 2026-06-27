@@ -5,6 +5,7 @@ bind "editor_engine";
 bind Str = Viper.String;
 bind Obj = Viper.Core.Object;
 bind Seq = Viper.Collections.Seq;
+bind Threads = Viper.Threads;
 
 final HINT_COLOR = 9482461; // 0x90A0AD
 final HINT_DEBOUNCE_MS = 300;
@@ -18,14 +19,14 @@ class InlayHintController {
     expose Integer lastRevision;
     expose Integer lastHintCount;
     expose Integer pendingRevision;
-    expose Integer pendingSinceMs;
+    expose Threads.Debouncer hintDebounce;
 
     expose func init() {
         enabled = true;
         lastRevision = -1;
         lastHintCount = 0;
         pendingRevision = -1;
-        pendingSinceMs = 0;
+        hintDebounce = Threads.Debouncer.New(HINT_DEBOUNCE_MS);
     }
 
     expose func SetEnabled(value: Boolean) {
@@ -48,13 +49,14 @@ class InlayHintController {
         if revision == lastRevision and pendingRevision == -1 { return; }
         if revision != pendingRevision {
             pendingRevision = revision;
-            pendingSinceMs = Viper.Time.GetTickCount();
+            hintDebounce.Signal();
             return;
         }
-        if Viper.Time.GetTickCount() - pendingSinceMs < HINT_DEBOUNCE_MS { return; }
+        if hintDebounce.get_IsReady() == false { return; }
         Refresh(engine);
         lastRevision = revision;
         pendingRevision = -1;
+        hintDebounce.Reset();
     }
 
     expose func Refresh(engine: editor_engine.EditorEngine) {

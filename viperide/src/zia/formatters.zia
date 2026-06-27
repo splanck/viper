@@ -80,11 +80,11 @@ expose func TrimTrailingWhitespaceText(source: String) -> String {
     if source == "" { return ""; }
     var eol = "\n";
     if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     var result = "";
     var i = 0;
     while i < Seq.get_Length(lines) {
-        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var line = Obj.ToString(Seq.Get(lines, i));
         line = text_utils.TrimLineRightWhitespace(line);
         if i > 0 { result = result + eol; }
         result = result + line;
@@ -101,7 +101,7 @@ expose func TrimTrailingWhitespaceText(source: String) -> String {
 expose func FormatZiaText(source: String,
                           tabSize: Integer,
                           insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     return FormatZiaRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
 }
 
@@ -120,7 +120,7 @@ expose func FormatZiaRangeText(source: String,
                                endLine: Integer,
                                tabSize: Integer,
                                insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     var count = Seq.get_Length(lines);
     if count == 0 { return source; }
     var rangeStart = startLine;
@@ -135,7 +135,7 @@ expose func FormatZiaRangeText(source: String,
     var output = new List();
     var i = 0;
     while i < count {
-        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var line = Obj.ToString(Seq.Get(lines, i));
         if i >= rangeStart and i <= rangeEnd {
             if commentDepth > 0 {
                 output.add(line);
@@ -167,7 +167,7 @@ expose func FormatZiaRangeText(source: String,
 expose func FormatBasicText(source: String,
                             tabSize: Integer,
                             insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     return FormatBasicRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
 }
 
@@ -186,7 +186,7 @@ expose func FormatBasicRangeText(source: String,
                                  endLine: Integer,
                                  tabSize: Integer,
                                  insertSpaces: Boolean) -> String {
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     var count = Seq.get_Length(lines);
     if count == 0 { return source; }
     var rangeStart = startLine;
@@ -199,7 +199,7 @@ expose func FormatBasicRangeText(source: String,
     var output = new List();
     var i = 0;
     while i < count {
-        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var line = Obj.ToString(Seq.Get(lines, i));
         if i >= rangeStart and i <= rangeEnd {
             output.add(FormatBasicLine(line, indentLevel, tabSize, insertSpaces));
             indentLevel = indentLevel + BasicLineDelta(line);

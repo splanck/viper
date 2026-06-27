@@ -1,29 +1,54 @@
-# ViperIDE Architecture Notes
+# ViperIDE Architecture
 
-This document is the contributor-facing map for ViperIDE's Zia source. Keep it
-updated whenever a new subsystem is added or a large module changes ownership.
+This document describes the current ViperIDE source layout and ownership rules.
+It is a contributor guide, not a roadmap.
+
+For a file-by-file tour, read [source-map.md](source-map.md). For procedural
+change guidance, read [maintenance.md](maintenance.md). This document stays at
+the architecture and ownership level; the other two documents go deeper into
+current modules and common change workflows.
+
+## Runtime Shape
+
+ViperIDE is a frame-driven GUI application written in Zia. `src/main.zia`
+constructs long-lived subsystem objects, creates the shell widgets, restores
+settings/session state, then polls controllers and command triggers each frame.
+Most GUI controls expose polling methods such as "was clicked", "was changed",
+or "take input"; the app uses those instead of callback registration.
+
+The implementation depends on runtime classes supplied by the C runtime and
+registered through `src/il/runtime/runtime.def`. Important runtime families are:
+
+- `Viper.GUI.*` for windows, menus, widgets, `CodeEditor`, `OutputPane`,
+  command palette, and test/virtual-list helpers.
+- `Viper.System.Process` for build, run, and debug-adapter child processes.
+- `Viper.System.Pty` for the integrated terminal.
+- `Viper.System.Exec` for simple blocking Git commands.
+- `Viper.Workspace.FileIndex` for project tree/search enumeration.
+- `Viper.Workspace.Edit` for transactional text replacement.
+- `Viper.Zia.*` and `Viper.Basic.*` for language services.
+- `Viper.Game.Scene` for scene data loading/saving tests and future editor work.
 
 ## Source Layout
 
 ```text
 viperide/src/
-    main.zia        Application bootstrap and frame loop only.
-    app/            Frame-loop helpers, settings apply, watcher, explorer runners.
-    build/          Build/run/debug process state.
-    commands/       User command handlers and declarative command catalog.
-    core/           Documents, projects, settings, and session persistence.
-    editor/         Editor controllers and language-service integration.
-    probes/         CI probe entry points.
-    services/       Shared utilities with no UI ownership.
-    terminal/       Integrated terminal process/session code.
-    ui/             Persistent widgets, overlays, panels, and shell layout.
+    main.zia        Application bootstrap, frame loop, dispatch glue.
+    app/            App-level helpers that do not own widgets.
+    build/          Build/run jobs, diagnostic model, breakpoints, debugger.
+    commands/       Command catalog, registry, and feature handlers.
+    core/           Documents, projects, settings, sessions.
+    editor/         Code editor adapter, semantic controllers, indexing.
+    probes/         Focused IDE probe entry points.
+    scm/            Git command wrapper and Source Control view model.
+    services/       Leaf helpers for file kinds, locations, text, edits.
+    terminal/       PTY session wrapper and integrated-terminal controller.
+    tests/          Local GUI/runtime probe sources.
+    ui/             Shell widgets, panels, activity bar, overlays.
     zia/            Pure Zia parsing, formatting, bind, and refactor helpers.
 ```
 
-## Layering Rules
-
-`main.zia` should wire controllers and dispatch events. It should not grow new
-parsers, file-system mutation flows, formatting rules, or command metadata.
+## Ownership Rules
 
 Prefer this dependency direction:
 
@@ -32,56 +57,207 @@ main -> app -> commands/ui/editor/core/build/services/zia
 commands -> core/editor/services/zia/ui
 editor -> core/services/zia
 ui -> editor/core only when rendering state requires it
-zia/services -> leaf helpers; no AppShell ownership
+services/zia -> leaf helpers with no AppShell ownership
 ```
 
-Avoid introducing cycles. When two modules need the same rule, move that rule to
-`services/` or `zia/` instead of copying it.
+Rules:
 
-## Command Pattern
+- `main.zia` wires subsystems and dispatches events. Do not add parsing rules,
+  filesystem mutation flows, formatting logic, or command metadata there.
+- `commands/command_catalog.zia` owns command ids, labels, shortcuts,
+  capability tags, and command-palette visibility.
+- Command behavior belongs in the feature command modules:
+  `file_commands.zia`, `edit_commands.zia`, `search_commands.zia`,
+  `build_commands.zia`, `debug_commands.zia`, and `view_commands.zia`.
+- Source-to-source transforms belong in `src/zia/`, not in UI or command code.
+- Shared path, location, text, and workspace-edit rules belong in `src/services/`.
+- Widget construction and persistent widget references belong in `src/ui/`.
+- Process state belongs in `src/build/`, `src/terminal/`, or `src/scm/`
+  depending on the feature.
 
-Command metadata belongs in `commands/command_catalog.zia`. Runtime behavior
-belongs in command modules such as `edit_commands.zia`, `file_commands.zia`, and
-`search_commands.zia`. The registry should stay focused on shortcut install,
-palette population, and capability checks.
+Avoid cycles. When two modules need the same rule, move that rule down into
+`services/` or `zia/`.
 
-## Refactor Helpers
+## Main Loop Responsibilities
 
-Pure source-to-source behavior belongs in `src/zia/`:
+`main.zia` currently coordinates:
 
-- `identifier_utils.zia`: identifier and keyword rules.
-- `source_scan.zia`: trivia-aware source scanning and structural lookup.
-- `formatters.zia`: document/range formatting.
-- `bind_utils.zia`: bind normalization and rewrite helpers.
-- `refactors.zia`: extract/inline transformations.
+- App shell creation and settings application.
+- Document, tab, project, session, and recent-file state.
+- Editor-to-document synchronization.
+- File watchers and workspace watchers.
+- Command palette, menu, toolbar, context menu, and shortcut dispatch.
+- Editor controllers: completion, diagnostics, hover, signature help, symbols,
+  inlay hints, semantic tokens, and project indexing.
+- Build/run/debug/terminal/SCM panel updates.
+- Close, save, project switch, and shutdown preflight.
 
-These modules should remain UI-free and easy to exercise from probes.
+This file is intentionally still too large. New behavior should usually be
+introduced behind a subsystem object and called from the loop, not implemented
+inline in the loop.
 
-## Comments
+## Core Data Flow
 
-New Zia modules should start with a short module header that explains purpose,
-ownership, and where the module fits. New functions should use `///` comments
-with `@brief`, parameters for nontrivial signatures, return values where useful,
-and a `@details` note when there is a policy or safety assumption.
+### Documents
 
-Comments should teach intent. Avoid restating the next line of code.
+`core/document_manager.zia` owns the open document list and active index.
+It deduplicates open files, tracks untitled documents, stores recently closed
+paths, detects file kind and language by extension, and routes saves through
+`Viper.Workspace.Edit` when replacing existing files.
+
+`core/document.zia` stores per-buffer state: file path, display name, language,
+document kind, content, modified/new/read-only flags, disk metadata, cursor,
+scroll, and external-change notification state.
+
+Document kinds:
+
+| Kind | Extensions | Current behavior |
+| --- | --- | --- |
+| Code | `.zia`, `.bas`, `.vb` | Full text editor; language-specific services. |
+| Text | `.txt`, `.md`, `.json`, `.il`, unknown | Plain text editing or preview. |
+| Scene | `.scene`, `.level` | Recognized as scene docs but opened as text. |
+| Binary unsupported | common image extensions | Read-only preview placeholder. |
+
+### Projects
+
+`core/project_manager.zia` owns the file tree, primary project root, additional
+workspace roots, incremental tree population, Quick Open cache, and project
+exclusion checks. It delegates ignore matching to `Viper.Workspace.FileIndex`
+and uses absolute paths as tree-node data.
+
+`core/project.zia` parses the small `viper.project` manifest: project name,
+language, entry, run/build overrides, working directory, problem matcher, and
+ignore patterns.
+
+### Sessions And Settings
+
+`core/settings.zia` reads and writes platform-native settings paths and keeps
+legacy `~/.viperide/settings.ini` compatibility. Settings are loaded once on
+startup and updated by workbench commands.
+
+`core/session.zia` stores the last project, open tabs, active tab, cursor/scroll
+state, recent projects, recent files, and bounded base64 crash-recovery text for
+modified editable buffers.
+
+### Language Services
+
+`editor/language_service.zia` routes capability checks by document language:
+
+| Language | Completion | Diagnostics | Hover | Symbols | Definition/Refs/Rename | Signature |
+| --- | --- | --- | --- | --- | --- | --- |
+| Zia | yes | yes | yes | yes | yes | yes |
+| BASIC | yes | yes | yes | yes | no | no |
+| Text | no | no | no | no | no | no |
+| Scene | no | no | no | no | no | no |
+
+Commands with missing capabilities remain visible in the command palette when
+that is useful, but are marked unavailable and report a status/toast reason.
+
+### Editor Controllers
+
+`editor/editor_engine.zia` adapts `Viper.GUI.CodeEditor` to IDE document state.
+It caches full-text snapshots by editor revision so semantic jobs do not copy
+the full buffer every frame.
+
+Controllers under `editor/` own focused features:
+
+- `completion.zia`: completion popup, filtering, commit behavior, workspace
+  symbol completion cache.
+- `diagnostics.zia`: live diagnostics, Problems rows, minimap/inline highlights.
+- `hover.zia`: dwell-triggered hover requests.
+- `signature.zia`: signature help and overload navigation.
+- `symbols.zia`: document symbol outline.
+- `project_index.zia`: lazy Zia workspace indexing for navigation/refactors.
+- `semantic_tokens.zia`: semantic highlighting.
+- `inlay_hints.zia`: conservative Zia hints.
+- `scheduler.zia`: priority model for editor background work.
+- `perf_monitor.zia`: optional frame/controller/editor counters.
+
+### Build, Run, And Debug
+
+`build/build_system.zia` starts argument-vector jobs through
+`Viper.System.Process`, streams stdout/stderr, bounds retained output, parses
+structured JSON diagnostics when available, and falls back to legacy diagnostic
+line parsing.
+
+`build/run_config.zia` builds the command argv from the active document or
+project manifest. It never invokes a shell.
+
+`build/debug_session.zia` launches `viper run --debug-adapter <file>` as an
+external process, sends newline JSON commands on stdin, consumes sentinel-tagged
+newline JSON debug events on stderr, and surfaces program stdout separately.
+
+### Terminal
+
+`terminal/terminal_session.zia` wraps `Viper.System.Pty.PtySession`.
+`terminal/terminal_controller.zia` owns the UI side: lazy start, shell
+resolution, terminal mode on `OutputPane`, raw key forwarding, output append,
+resize approximation, Stop, Restart, and shutdown cleanup.
+
+The terminal is intended for interactive shells and simple commands. Full-screen
+TUI programs requiring alternate-screen/cursor-addressing semantics are out of
+scope for the current OutputPane terminal mode.
+
+### Source Control
+
+`scm/scm_git.zia` is a thin synchronous wrapper around `git -C <repo> ...`.
+Read commands use captured stdout. Write commands use exit codes. `scm_view.zia`
+maintains the Source Control UI state and operations.
+
+The Source Control view is intentionally lightweight. Push and pull are
+blocking. Status parsing uses porcelain v1 and has known path edge cases around
+quoted/renamed paths. Treat it as useful local Git integration, not a complete
+Git client.
+
+## UI Ownership
+
+`ui/app_shell.zia` creates persistent widgets for the menu bar, toolbar,
+activity bar, editor area, bottom tool panels, preferences, overlays, status bar,
+debug panels, terminal, and Source Control view. Other subsystems receive
+references to widgets owned by `AppShell`.
+
+Current tool panels include Problems, Output, Search, References, Debug Console,
+Variables, Call Stack, Debug, and Terminal. Many rows are still implemented with
+ListBox-style widgets plus structured location ids. `Viper.GUI.VirtualList`
+exists as a runtime helper, but most tool surfaces are not true virtualized UI
+widgets yet.
 
 ## File Size Budget
 
-Use these as review triggers, not hard compiler limits:
+Use these as review triggers:
 
 - 300 lines: check whether helpers should move out.
 - 500 lines: require a clear reason the module is cohesive.
-- 1000 lines: split before adding more behavior unless the file is a generated
-  or intentionally exhaustive fixture.
+- 1000 lines: split before adding more behavior unless the file is generated or
+  an intentionally exhaustive fixture.
 
-The goal is for a new Zia developer to understand one ownership area at a time.
+Several current files exceed the budget. When touching them, prefer extracting
+cohesive behavior rather than adding more inline logic.
 
-## Probe Layout
+## Comment Style
 
-ViperIDE probe entry points live in `src/probes/` and are registered in
-`src/tests/CMakeLists.txt`. Keep probe-local binds relative to `src/probes/`,
-usually `bind "../editor/..."` or `bind "../commands/..."`.
+New Zia modules should start with a short module header explaining purpose,
+ownership, and where the module fits. Public or nontrivial functions should use
+`///` comments with `@brief`, parameters, return values where useful, and
+`@details` for policy or safety assumptions.
 
-When adding a new subsystem, add or extend a focused probe rather than relying
-only on the full IDE smoke probe.
+Comments should explain intent and boundaries. Avoid restating the next line of
+code.
+
+## Adding A Feature
+
+1. Add command metadata to `commands/command_catalog.zia` if the feature is
+   user-triggered.
+2. Put behavior in the appropriate command or subsystem module.
+3. Keep shared parsing/path/edit logic in `services/` or `zia/`.
+4. Route UI through `AppShell` or a focused controller instead of constructing
+   widgets ad hoc in `main.zia`.
+5. Add or extend a probe in `src/probes/`.
+6. Register the probe in `src/tests/CMakeLists.txt` when it should be part of
+   CTest.
+7. Update the docs in this directory when the visible behavior or subsystem
+   ownership changes.
+
+For detailed recipes covering commands, language features, document kinds,
+panels, runtime APIs, settings, session recovery, debugger, terminal, and Source
+Control changes, use [maintenance.md](maintenance.md).

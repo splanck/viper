@@ -77,6 +77,7 @@ BindDecl Parser::parseBindDecl() {
     std::string path;
     std::string alias;
     bool isNamespaceBind = false;
+    bool targetErrorReported = false;
 
     auto parseBindTarget = [&](std::string &outPath, bool &outIsNamespaceBind) -> bool {
         if (check(TokenKind::StringLiteral)) {
@@ -95,6 +96,7 @@ BindDecl Parser::parseBindDecl() {
         while (match(TokenKind::Dot)) {
             if (!check(TokenKind::Identifier)) {
                 error("expected identifier in bind path");
+                targetErrorReported = true;
                 return false;
             }
             outPath += ".";
@@ -116,7 +118,8 @@ BindDecl Parser::parseBindDecl() {
             return BindDecl(loc, "");
         }
     } else if (!parseBindTarget(path, isNamespaceBind)) {
-        error("expected bind path (string or identifier)");
+        if (!targetErrorReported)
+            error("expected bind path (string or identifier)");
         return BindDecl(loc, "");
     }
 

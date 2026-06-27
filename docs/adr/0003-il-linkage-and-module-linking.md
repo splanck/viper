@@ -2,17 +2,15 @@
 
 ## Status
 
-Accepted
+Accepted; implemented and verified against source/tests on 2026-06-27.
 
 ## Context
 
 Viper has two frontend languages (Zia and BASIC) that compile to the same IL and
-share the same runtime, but there is no mechanism for cross-language interop.
-Each frontend produces a self-contained IL module, the VM loads exactly one
-module, and there is no IL linker. To support mixed-language projects, the IL
-spec needs linkage annotations and a module-linking algorithm.
+share the same runtime. This ADR records the linkage annotations and module
+linking algorithm used for cross-language interop.
 
-### Current Limitations
+### Pre-Implementation Limitations
 
 - `il::core::Function` has no linkage or visibility metadata
 - Both frontends emit a function named `main`, causing collisions if merged
@@ -47,7 +45,8 @@ Omitting the keyword implies `Internal`.
 
 A new `il::link` subsystem merges multiple IL modules into one:
 - Exactly one module provides `main` (the entry module)
-- Export/Import pairs are resolved by name and signature match
+- Import declarations are resolved by name and signature against matching exports
+  or a definition in the entry module
 - Internal functions from different modules get disambiguating prefixes
 - Externs are deduplicated; signature mismatches are link errors
 - Init functions from all modules are called before user entry code
@@ -73,3 +72,24 @@ IL-level type information). They must have no body (empty blocks vector).
 - The VM and codegen backends require no changes (they see a single merged module)
 - Frontends gain `expose`/`foreign` (Zia) and `EXPORT`/`DECLARE FOREIGN` (BASIC)
 - Mixed-language projects become possible via the project manifest
+
+## Implementation Status
+
+Verified on 2026-06-27:
+
+- `src/il/core/Linkage.hpp` defines `Internal`, `Export`, and `Import`; `Function`
+  and `Global` default to `Internal`.
+- `src/il/io/FunctionParser_Prototype.cpp`, `src/il/io/ModuleParser.cpp`, and
+  `src/il/io/Serializer.cpp` parse and print function/global linkage.
+- `src/il/verify/FunctionVerifier.cpp` and `src/il/verify/GlobalVerifier.cpp`
+  validate import-linkage declarations.
+- `src/il/link/ModuleLinker.cpp` resolves imports, rejects duplicate exports and
+  unresolved imports, prefixes internal collisions, deduplicates externs, rewrites
+  function/global references, and injects non-entry module init calls.
+- `src/il/link/InteropThunks.cpp` generates `i1`/`i64` boolean conversion thunks.
+- `src/tools/viper/cmd_run.cpp` links entry and library project modules for mixed
+  projects before running the optimizer/VM path.
+- Zia lowers `foreign` functions to `Import` and public/exposed functions to
+  `Export`; BASIC lowers `DECLARE FOREIGN` to `Import` and `EXPORT` to `Export`.
+- Focused tests passed: `test_il_linkage_roundtrip`, `test_il_module_linker`,
+  `test_il_interop_integration`, and `test_il_interop_thunks`.

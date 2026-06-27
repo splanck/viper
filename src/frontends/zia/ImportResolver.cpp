@@ -334,6 +334,13 @@ bool ImportResolver::processModule(ModuleDecl &module,
         if (bind.isNamespaceBind)
             continue;
 
+        // An empty or blank bind path is a parse-error artifact (e.g. an
+        // incomplete "bind X." captured mid-edit by live diagnostics). The
+        // parser/sema already report the real error; skip it here so we never
+        // fabricate a "<dir>/.zia" import or abort the rest of the module.
+        if (bind.path.find_first_not_of(" \t\r\n") == std::string::npos)
+            continue;
+
         std::string bindFilePath = resolveImportPath(bind.path, modulePath);
         std::string normalizedBindPath = normalizePath(bindFilePath);
 
@@ -361,7 +368,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
 
         auto boundModule = parseFile(bindFilePath, bind.loc);
         if (!boundModule)
-            return false;
+            continue; // parseFile already reported the error; resolve remaining binds
 
         bind.resolvedFileId = boundModule->loc.file_id;
         bind.resolvedModuleName = boundModule->name;

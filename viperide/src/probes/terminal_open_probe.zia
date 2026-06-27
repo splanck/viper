@@ -23,15 +23,14 @@ func main() {
     if shell.miTerminal == null { fail(shell, "View > Terminal menu item missing"); return; }
     if shell.terminalPanel == null { fail(shell, "terminal panel missing"); return; }
     if shell.terminalPane == null { fail(shell, "terminal output pane missing"); return; }
-    if shell.terminalInput == null { fail(shell, "terminal input missing"); return; }
     if shell.terminalRestart == null { fail(shell, "terminal restart button missing"); return; }
 
     // Hidden until opened.
     if shell.terminalPanel.IsVisible() != 0 { fail(shell, "terminal visible before open"); return; }
 
     var ctrl = new terminal_controller.TerminalController();
-    ctrl.Setup(shell.terminalPanel, shell.terminalPane, shell.terminalInput,
-               shell.terminalRun, shell.terminalKill, shell.terminalRestart);
+    ctrl.Setup(shell.terminalPanel, shell.terminalPane,
+               shell.terminalKill, shell.terminalRestart);
     ctrl.Pump();
     if ctrl.HasAttemptedStart() {
         fail(shell, "terminal session attempted to start while panel hidden");
@@ -42,7 +41,6 @@ func main() {
     shell.ShowTerminalPanel();
     if shell.terminalPanel.IsVisible() == 0 { fail(shell, "terminal not visible after ShowTerminalPanel"); return; }
     if shell.terminalPane.IsVisible() == 0 { fail(shell, "terminal pane own visibility disabled"); return; }
-    if shell.terminalInput.IsVisible() == 0 { fail(shell, "terminal input own visibility disabled"); return; }
 
     shell.Poll();
     shell.Render();
@@ -50,7 +48,6 @@ func main() {
     if shell.terminalPanel.GetHeight() <= 0 { fail(shell, "terminal panel has zero height"); return; }
     if shell.terminalPane.GetWidth() <= 0 { fail(shell, "terminal pane has zero width"); return; }
     if shell.terminalPane.GetHeight() <= 0 { fail(shell, "terminal pane has zero height"); return; }
-    if shell.terminalInput.GetWidth() <= 0 { fail(shell, "terminal input has zero width"); return; }
 
     shell.Destroy();
     Terminal.Say("RESULT: ok");

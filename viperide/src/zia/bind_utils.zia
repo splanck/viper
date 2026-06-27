@@ -81,12 +81,12 @@ expose func InsertTopBindLineText(source: String,
                                   bindLine: String) -> String {
     var eol = "\n";
     if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     var count = Seq.get_Length(lines);
     var insertAt = 0;
     var i = 0;
     while i < count {
-        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var line = Obj.ToString(Seq.Get(lines, i));
         var trimmed = Str.Trim(line);
         if Str.StartsWith(trimmed, "module ") {
             insertAt = i + 1;
@@ -96,7 +96,7 @@ expose func InsertTopBindLineText(source: String,
     }
 
     while insertAt < count {
-        var existing = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, insertAt)));
+        var existing = Obj.ToString(Seq.Get(lines, insertAt));
         var trimmedExisting = Str.Trim(existing);
         if IsZiaBindLine(trimmedExisting) {
             insertAt = insertAt + 1;
@@ -111,7 +111,7 @@ expose func InsertTopBindLineText(source: String,
         if out == insertAt {
             output.add(bindLine);
         }
-        output.add(text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, out))));
+        output.add(Obj.ToString(Seq.Get(lines, out)));
         out = out + 1;
     }
     if insertAt >= count {
@@ -126,12 +126,12 @@ expose func InsertTopBindLineText(source: String,
 /// @return True when a direct alias or `as identifier` bind exists.
 expose func SourceHasBindAlias(source: String,
                                identifier: String) -> Boolean {
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     var prefix = "bind " + identifier + " = ";
     var aliasSuffix = " as " + identifier + ";";
     var i = 0;
     while i < Seq.get_Length(lines) {
-        var trimmed = Str.Trim(text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
+        var trimmed = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
         if Str.StartsWith(trimmed, prefix) { return true; }
         if Str.EndsWith(trimmed, aliasSuffix) { return true; }
         i = i + 1;
@@ -145,11 +145,11 @@ expose func SourceHasBindAlias(source: String,
 /// @return True when `bind "<bindPath>";` appears in the source.
 expose func SourceHasFileBind(source: String,
                               bindPath: String) -> Boolean {
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     var expected = "bind \"" + bindPath + "\";";
     var i = 0;
     while i < Seq.get_Length(lines) {
-        var trimmed = Str.Trim(text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i))));
+        var trimmed = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
         if trimmed == expected { return true; }
         i = i + 1;
     }
@@ -170,12 +170,12 @@ expose func IsZiaBindLine(trimmed: String) -> Boolean {
 expose func ProjectFileDefinesIdentifier(source: String,
                                          identifier: String) -> Boolean {
     if source == "" or identifier == "" { return false; }
-    var lines = Str.Split(source, "\n");
+    var lines = Str.Lines(source);
     var depth = 0;
     var commentDepth = 0;
     var i = 0;
     while i < Seq.get_Length(lines) {
-        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        var line = Obj.ToString(Seq.Get(lines, i));
         var trimmed = Str.Trim(line);
         if depth == 0 and commentDepth == 0 {
             var name = TopLevelZiaDeclarationName(trimmed);

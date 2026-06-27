@@ -2,16 +2,16 @@
 
 Date: 2026-06-25
 
-Status: Accepted
+Status: Accepted; implemented and verified against source, runtime registry, and
+focused tests on 2026-06-27
 
 ## Context
 
-Phase 5 of the ViperIDE overhaul (plan
-`~/.claude/plans/viperide-needs-to-be-sharded-puppy.md`) adds compiler-classified
-("semantic") highlighting on top of the lexical highlighter introduced in
-Phase 2 (ADR 0007). The lexical tokenizers cannot tell a parameter from a local,
-a field from a free identifier, or a lowercase type alias from a value; the Zia
-`Sema` pass can. Two new public runtime surfaces deliver this:
+The ViperIDE semantic-token overlay adds compiler-classified ("semantic")
+highlighting on top of the lexical highlighter introduced in ADR 0007. The
+lexical tokenizers cannot tell a parameter from a local, a field from a free
+identifier, or a lowercase type alias from a value; the Zia `Sema` pass can. Two
+public runtime surfaces deliver this:
 
 1. **A Zia `Tokens` semantic job.** `Viper.Zia.Completion.BeginTokensForFile`
    starts a background `SemanticJobKind::Tokens` worker
@@ -30,14 +30,14 @@ a field from a free identifier, or a lowercase type alias from a value; the Zia
    0007 established, so `SetTokenColor` overrides apply uniformly.
 
 These touch the public runtime registry (`src/il/runtime/runtime.def`) and the
-GUI editor C ABI, so per the spec-currency gate (ADR 0006) and CLAUDE.md Core
-Principle 1 they require ADR coverage even though IL/VM execution is unchanged.
+GUI editor C ABI, so per ADR 0006 and CLAUDE.md Core Principle 1 they require
+ADR coverage even though IL/VM execution is unchanged.
 
 ## Decision
 
-Treat the Phase 5 additions as **registry-only runtime-surface additions**, the
-class established for Graphics3D (ADR 0004) and the CodeEditor lexical surface
-(ADR 0007). Specifically permitted under this note:
+Treat the semantic-token additions as **registry-only runtime-surface
+additions**, the class established for Graphics3D (ADR 0004) and the CodeEditor
+lexical surface (ADR 0007). Specifically permitted under this note:
 
 - `rt_zia_completion_begin_tokens_for_file` / `rt_zia_semantic_job_tokens`
   registered as `Viper.Zia.Completion.BeginTokensForFile` /
@@ -65,13 +65,36 @@ The overlay is advisory: unresolved identifiers are omitted so the lexical color
 stands, and the editor remains fully functional with no semantic tokens (offline
 or non-Zia files).
 
+## Implementation Status
+
+Verified on 2026-06-27:
+
+- `src/frontends/zia/rt_zia_completion.cpp` implements `tokensForSource`,
+  resolves identifier occurrences with `Sema::findSymbolAtPosition`, emits
+  `line<TAB>start<TAB>end<TAB>kind` rows, starts
+  `SemanticJobKind::Tokens` through `rt_zia_completion_begin_tokens_for_file`,
+  and returns rows through `rt_zia_semantic_job_tokens`.
+- `src/runtime/core/rt_zia_completion_stub.c` provides weak no-op stubs for
+  non-frontend builds.
+- `src/runtime/graphics/gui/rt_gui_codeeditor_syntax.c` implements
+  `rt_codeeditor_add_semantic_token` and
+  `rt_codeeditor_clear_semantic_tokens`; `src/lib/gui/src/widgets/vg_codeeditor_core.inc`
+  sorts and applies semantic-token colors on top of lexical colors.
+- `src/il/runtime/runtime.def` registers
+  `Viper.Zia.Completion.BeginTokensForFile`, `Viper.Zia.SemanticJob.Tokens`,
+  `Viper.GUI.CodeEditor.AddSemanticToken`, and
+  `Viper.GUI.CodeEditor.ClearSemanticTokens`.
+- The current built CLI (`build/src/tools/viper/viper --dump-runtime-api`)
+  exposes those four methods.
+- Focused checks pass: `test_rt_gui_runtime`, `test_rt_gui_ide`,
+  `zia_rt_api_test_viperide_primitives`, and `zia_viperide_semantic_tokens`.
+
 ## Consequences
 
-Phase 5 closes its ADR gate via this note, the runtime completeness check, and
-the semantic-token probe. Parameter/field/type/function classification becomes
-visible in interpreted and native execution through the same runtime registry,
-while IL and VM semantics remain unchanged. Any later change that alters IL, VM,
-or native codegen semantics still requires its own ADR.
+Parameter/field/type/function classification is visible in interpreted and
+native execution through the same runtime registry, while IL and VM semantics
+remain unchanged. Changes that alter IL, VM, or native codegen semantics still
+require their own ADR.
 
 ## Spec Impact
 

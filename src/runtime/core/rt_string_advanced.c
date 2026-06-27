@@ -388,6 +388,56 @@ void *rt_str_split(rt_string str, rt_string delim) {
     return result;
 }
 
+/// @brief Split a string into logical lines, normalizing CRLF to LF.
+/// @details Splits on "\n" and drops a single trailing "\r" from each segment,
+///          so CRLF and LF inputs yield identical logical lines. The segment
+///          count is identical to @ref rt_str_split with a "\n" delimiter, which
+///          makes this a drop-in replacement for the common
+///          "split on newline, then strip the carriage return" idiom.
+/// @param str Source string (null yields one empty line).
+/// @return Seq of line strings with no trailing carriage returns.
+void *rt_str_lines(rt_string str) {
+    if (!str) {
+        // Mirror rt_str_split: a null source yields a single empty segment.
+        void *result = rt_seq_with_capacity_owned(1);
+        rt_seq_push(result, (void *)rt_empty_string());
+        return result;
+    }
+
+    size_t str_len = rt_string_len_bytes(str);
+    const char *data = str->data;
+
+    // Pass 1: count newlines so the result has exactly newlines + 1 segments.
+    size_t count = 1;
+    for (size_t i = 0; i < str_len; i++) {
+        if (data[i] == '\n') {
+            if (count == (size_t)INT64_MAX) {
+                rt_trap("String.Lines: result too large");
+                return NULL;
+            }
+            count++;
+        }
+    }
+
+    void *result = rt_seq_with_capacity_owned((int64_t)count);
+
+    // Pass 2: emit each segment, dropping one trailing '\r' (CRLF -> LF).
+    size_t start = 0;
+    for (size_t i = 0; i <= str_len; i++) {
+        if (i == str_len || data[i] == '\n') {
+            size_t seg_len = i - start;
+            if (seg_len > 0 && data[start + seg_len - 1] == '\r')
+                seg_len--;
+            rt_string seg = rt_string_from_bytes(data + start, seg_len);
+            rt_seq_push(result, (void *)seg);
+            rt_string_unref(seg);
+            start = i + 1;
+        }
+    }
+
+    return result;
+}
+
 /// @brief Join sequence of strings with separator.
 /// @param sep Separator string.
 /// @param seq Sequence of strings to join.

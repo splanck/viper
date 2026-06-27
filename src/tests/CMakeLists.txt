@@ -1159,6 +1159,14 @@ set_tests_properties(zia_viperide_terminal_hidden_start PROPERTIES
         LABELS "zia;viperide;terminal;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_viperide_terminal_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/terminal_render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_terminal_render PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;terminal;requires_display"
+        TIMEOUT 30)
+
 add_test(NAME zia_viperide_context_menu
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/context_menu_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")

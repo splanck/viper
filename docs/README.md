@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-06-27
 ---
 
 # Viper Documentation
@@ -32,7 +32,6 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 
 - [Zia Reference](zia-reference.md) — Complete language specification
 - [Feature Parity Matrix](feature-parity.md) — Zia vs BASIC feature comparison
-- [Generics Plan](GENERICS_IMPLEMENTATION_PLAN.md) — Zia generics design
 
 ### BASIC
 
@@ -53,7 +52,7 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 - [IL Guide](il-guide.md) — Comprehensive specification (normative)
 - [IL Quickstart](il-quickstart.md) — Fast introduction for developers
 - [IL Reference](il-reference.md) — Opcode and type reference
-- [IL Passes](il-passes.md) — Optimization pass infrastructure (20 passes)
+- [IL Passes](il-passes.md) — Optimization pass infrastructure
 
 ---
 
@@ -67,21 +66,21 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 
 ### Module Reference
 
-**[Collections](viperlib/collections/README.md)** (29 classes) — [Sequential](viperlib/collections/sequential.md) · [Maps & Sets](viperlib/collections/maps-sets.md) · [Multi-Maps](viperlib/collections/multi-maps.md) · [Specialized](viperlib/collections/specialized.md) · [Functional](viperlib/collections/functional.md)
+**[Collections](viperlib/collections/README.md)** — [Sequential](viperlib/collections/sequential.md) · [Maps & Sets](viperlib/collections/maps-sets.md) · [Multi-Maps](viperlib/collections/multi-maps.md) · [Specialized](viperlib/collections/specialized.md) · [Functional](viperlib/collections/functional.md)
 
-**[Core](viperlib/core.md)** · **[Crypto](viperlib/crypto.md)** · **[Diagnostics](viperlib/diagnostics.md)** · **[Functional](viperlib/functional.md)** (Option, Result, Lazy)
+**[Core](viperlib/core.md)** · **[Crypto](viperlib/crypto.md)** · **[Diagnostics](viperlib/diagnostics.md)** · **[Functional](viperlib/functional.md)**
 
-**[Game](viperlib/game/README.md)** (28 classes) — [Core](viperlib/game/core.md) · [Game Loop](viperlib/game/gameloop.md) · [Animation](viperlib/game/animation.md) · [Effects](viperlib/game/effects.md) · [Pathfinding](viperlib/game/pathfinding.md) · [Physics](viperlib/game/physics.md) · [Persistence](viperlib/game/persistence.md) · [Debug](viperlib/game/debug.md) · [UI](viperlib/game/ui.md)
+**[Game](viperlib/game/README.md)** — [Core](viperlib/game/core.md) · [Game Loop](viperlib/game/gameloop.md) · [Animation](viperlib/game/animation.md) · [Effects](viperlib/game/effects.md) · [Pathfinding](viperlib/game/pathfinding.md) · [Physics](viperlib/game/physics.md) · [Persistence](viperlib/game/persistence.md) · [Debug](viperlib/game/debug.md) · [UI](viperlib/game/ui.md)
 
-**[Graphics](viperlib/graphics/README.md)** (11 classes) — [Canvas](viperlib/graphics/canvas.md) · [Scene](viperlib/graphics/scene.md) · [Pixels](viperlib/graphics/pixels.md) · [Fonts](viperlib/graphics/fonts.md)
+**[Graphics](viperlib/graphics/README.md)** — [Canvas](viperlib/graphics/canvas.md) · [Scene](viperlib/graphics/scene.md) · [Pixels](viperlib/graphics/pixels.md) · [Fonts](viperlib/graphics/fonts.md)
 
 **[Game3D](viperlib/graphics/game3d.md)** — code-first 3D game workflow helpers over `Viper.Graphics3D`
 
-**[Graphics3D](graphics3d-guide.md)** (45 classes) — [Guide](graphics3d-guide.md) · [Architecture](graphics3d-architecture.md)
+**[Graphics3D](graphics3d-guide.md)** — [Guide](graphics3d-guide.md) · [Architecture](graphics3d-architecture.md)
 
-**[GUI](viperlib/gui/README.md)** (46 classes) — [Application](viperlib/gui/application.md) · [Core](viperlib/gui/core.md) · [Widgets](viperlib/gui/widgets.md) · [Containers](viperlib/gui/containers.md) · [Layout](viperlib/gui/layout.md)
+**[GUI](viperlib/gui/README.md)** — [Application](viperlib/gui/application.md) · [Core](viperlib/gui/core.md) · [Widgets](viperlib/gui/widgets.md) · [Containers](viperlib/gui/containers.md) · [Layout](viperlib/gui/layout.md)
 
-**[I/O](viperlib/io/README.md)** (15 classes) — [Files](viperlib/io/files.md) · [Streams](viperlib/io/streams.md) · [Advanced](viperlib/io/advanced.md)
+**[I/O](viperlib/io/README.md)** — [Files](viperlib/io/files.md) · [Streams](viperlib/io/streams.md) · [Advanced](viperlib/io/advanced.md)
 
 **[Input](viperlib/input.md)** · **[Math](viperlib/math.md)** · **[Network](viperlib/network.md)** · **[Sound](viperlib/audio.md)**
 
@@ -98,7 +97,7 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 - [Game Engine Documentation](gameengine/README.md) — Complete guide to the Viper game engine
 - [Getting Started](gameengine/getting-started.md) — Your first game in 15 minutes
 - [Architecture](gameengine/architecture.md) — Engine systems and zero-dependency design
-- [Example Games](gameengine/examples/README.md) — 15 example games from arcade to Metroidvania
+- [Example Games](gameengine/examples/README.md) — Example games from arcade to Metroidvania
 
 ---
 
@@ -120,7 +119,7 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 - [Architecture](architecture.md) — System design: frontends, IL, VM, codegen
 - [Code Map](codemap.md) — Source directory layout and subsystem overview
 - [VM Guide](vm.md) — VM design, dispatch, profiling, and runtime ABI
-- [Bytecode VM Design](BYTECODE_VM_DESIGN.md) — Bytecode format and dispatch internals
+- [Bytecode VM Reference](BYTECODE_VM_DESIGN.md) — Current bytecode format, dispatch, runtime, and test surface
 - [Backend Guide](backend.md) — x86-64 and ARM64 native code generation
 - [Threading and Globals](threading-and-globals.md) — VM threading model
 - [Generated Files](generated-files.md) — Auto-generated C++ sources
@@ -199,6 +198,9 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 - [ADR-0012](adr/0012-debug-conditional-breakpoints-logpoints.md) — Debug conditional breakpoints and logpoints
 - [ADR-0013](adr/0013-editor-input-popup-runtime-surface.md) — Editor input and popup runtime surface
 - [ADR-0014](adr/0014-basic-language-service-runtime-bridge.md) — Viper BASIC language-service runtime bridge
+- [ADR-0015](adr/0015-workspace-file-index-paging.md) — Workspace file index paging
+- [ADR-0016](adr/0016-pty-runtime-surface.md) — PTY runtime surface
+- [ADR-0017](adr/0017-string-lines-runtime-function.md) — String lines runtime function
 
 ---
 

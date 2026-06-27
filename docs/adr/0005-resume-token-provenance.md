@@ -2,9 +2,11 @@
 
 Date: 2026-06-12
 
-Context
+Status: Accepted; implemented and verified against source/tests on 2026-06-27
 
-IL exception handling uses `eh.push`, handler blocks, and opaque `resumetok`
+## Context
+
+IL exception handling uses `eh.push`, handler blocks, and opaque `ResumeTok`
 values to implement resumable traps. The VM validates resume tokens dynamically,
 but the verifier historically tracked only whether some token was active. That
 left malformed IL able to route forged or stale `ResumeTok` values through
@@ -14,9 +16,9 @@ Native EH lowering also rewrites tokens into site identifiers before ordinary
 backend lowering. Without a static provenance invariant, VM and native execution
 can disagree on which handler scope a `resume.*` belongs to.
 
-Decision
+## Decision
 
-Treat `resumetok` as a linear handler-provenance capability:
+Treat `ResumeTok` as a linear handler-provenance capability:
 
 - A token is produced only by EH dispatch into the handler selected from the
   active handler stack.
@@ -28,10 +30,30 @@ Treat `resumetok` as a linear handler-provenance capability:
   block by EH dispatch or verified forwarding.
 - `resume.label` consumes the token before entering its target and therefore
   must not target a handler-shaped block.
-- Resume tokens must not be used as ordinary values in calls, stores, returns,
+- `ResumeTok` values must not be used as ordinary values in calls, stores, returns,
   arithmetic, or other non-control-flow instructions.
 
-Consequences
+## Implementation Status
+
+Verified on 2026-06-27:
+
+- `src/il/verify/EhChecks.cpp` models active tokens with handler-block and
+  `eh.push` site provenance, validates handler-shaped block entry, rejects
+  `resume.label` targets that are handler blocks, and consumes the active token
+  on `resume.*`.
+- `src/il/verify/FunctionVerifier.cpp` rejects `ResumeTok` operands in ordinary
+  value positions and requires `resume.*` to use the handler `%tok` parameter.
+- `src/codegen/common/NativeEHLowering.cpp` lowers handler tokens to site ids
+  and emits validation branches for `resume.label` before transferring control.
+- `src/vm/ops/Op_TrapEh.cpp`, `src/bytecode/BytecodeVM.cpp`, and
+  `src/bytecode/BytecodeVM_threaded.cpp` still dynamically validate active
+  resume tokens at execution time.
+- Focused checks pass: `test_il_invalid_eh`, CTest's
+  `il_verify_invalid_eh_*` cases, `test_vm_errors_eh`,
+  `test_il_exception_handler_analysis`, `test_vm_trap_kind`, and
+  `test_vm_trap_loc`.
+
+## Consequences
 
 Pros:
 
@@ -48,24 +70,15 @@ Cons:
 - Verifier diagnostics become stricter for malformed EH fixtures that previously
   failed only when executed.
 
-Alternatives
+## Alternatives
 
 - Reject every branch into a handler-shaped block. This is simpler, but it would
   remove the existing typed-catch helper-block pattern used by lowering tests.
 - Keep VM-only validation. This preserves legacy permissiveness, but leaves
   native lowering and optimization without a deterministic static contract.
 
-Spec Impact
+## Spec Impact
 
 This ADR updates the IL exception-handling contract in `docs/il-guide.md` and
 `docs/specs/errors.md`. The grammar is unchanged; only verifier legality for
-`resumetok` flow is tightened.
-
-Migration Plan
-
-1. Add verifier diagnostics for missing or mismatched resume-token provenance.
-2. Validate handler-shaped block entry edges against active-token forwarding.
-3. Harden native EH lowering so `resume.label` validates the site token before
-   branching.
-4. Add negative tests for forged tokens, handler entry without dispatch, and
-   handler resume targets.
+`ResumeTok` flow is tightened.

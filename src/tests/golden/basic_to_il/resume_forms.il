@@ -25,6 +25,7 @@ extern @Viper.String.Count(str, str) -> i64
 extern @Viper.String.PadLeft(str, i64, str) -> str
 extern @Viper.String.PadRight(str, i64, str) -> str
 extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.Lines(str) -> ptr
 extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Flip(str) -> str
 extern @Viper.String.Cmp(str, str) -> i64

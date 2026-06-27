@@ -27,39 +27,21 @@ bind Str = Viper.String;
 /// @param line One split line, possibly ending in `\r`.
 /// @return `line` without a final carriage return.
 expose func StripTrailingCr(line: String) -> String {
-    if Str.EndsWith(line, "\r") {
-        return Str.Left(line, Str.Length(line) - 1);
-    }
-    return line;
+    return Str.RemoveSuffix(line, "\r");
 }
 
 /// @brief Count leading spaces and tabs in a line.
 /// @param text Source line to inspect.
 /// @return Number of leading whitespace characters before the first non-space.
 expose func LeadingWhitespaceLength(text: String) -> Integer {
-    var i = 1;
-    while i <= Str.Length(text) {
-        var ch = Str.MidLen(text, i, 1);
-        if ch != " " and ch != "\t" {
-            return i - 1;
-        }
-        i = i + 1;
-    }
-    return Str.Length(text);
+    return Str.Length(text) - Str.Length(Str.TrimStart(text));
 }
 
 /// @brief Remove spaces and tabs from the right side of one line.
 /// @param line Source line with no trailing newline.
 /// @return The same line with trailing spaces/tabs removed.
 expose func TrimLineRightWhitespace(line: String) -> String {
-    var end = Str.Length(line);
-    while end > 0 {
-        var ch = Str.MidLen(line, end, 1);
-        if ch != " " and ch != "\t" { break; }
-        end = end - 1;
-    }
-    if end <= 0 { return ""; }
-    return Str.Left(line, end);
+    return Str.TrimEnd(line);
 }
 
 /// @brief Join a `List` of string-like values with a separator.
@@ -69,6 +51,11 @@ expose func TrimLineRightWhitespace(line: String) -> String {
 /// @param items Ordered values to join.
 /// @param separator Text inserted between adjacent values.
 /// @return Joined string.
+/// @details `Str.Join` targets a `seq<str>` of raw strings (as produced by
+///          `Str.Split`); a Zia `List` holds boxed values, so it cannot be
+///          passed to `Str.Join` directly. This explicit loop normalizes each
+///          boxed element through `Obj.ToString`, which is the correct way to
+///          join a `List`.
 expose func JoinStringList(items: List, separator: String) -> String {
     var result = "";
     var i = 0;
@@ -88,12 +75,5 @@ expose func JoinStringList(items: List, separator: String) -> String {
 /// @return True when any entry's string form equals `value`.
 expose func StringListContains(items: List,
                                value: String) -> Boolean {
-    var i = 0;
-    while i < items.count() {
-        if Obj.ToString(items.get(i)) == value {
-            return true;
-        }
-        i = i + 1;
-    }
-    return false;
+    return items.contains(value);
 }

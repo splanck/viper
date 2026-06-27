@@ -208,11 +208,9 @@ class AppShell {
     expose GUI.ListBox variablesListBox; // debug: locals at the current stop
     expose GUI.ListBox callStackListBox; // debug: call frames at the current stop
 
-    // Integrated terminal (Phase 5D): panel + ANSI output pane + command line.
+    // Integrated terminal (Phase 5E): panel + interactive PTY output pane + controls.
     expose GUI.VBox terminalPanel;
     expose GUI.OutputPane terminalPane;
-    expose GUI.TextInput terminalInput;
-    expose GUI.Button terminalRun;
     expose GUI.Button terminalKill;
     expose GUI.Button terminalRestart;
 
@@ -673,7 +671,9 @@ class AppShell {
         callStackListBox.SetVisible(0);
         callStackListBox.SetSize(0, 120);
 
-        // Integrated terminal panel (Phase 5D): ANSI output pane + command line.
+        // Integrated terminal panel (Phase 5E): interactive PTY terminal. The
+        // OutputPane runs in terminal mode — the user types directly into it; a
+        // thin button row offers Stop/Restart.
         terminalPanel = GUI.VBox.New();
         terminalPanel.SetSpacing(0.0);
         terminalPanel.SetPadding(0.0);
@@ -688,10 +688,6 @@ class AppShell {
         terminalInputRow.SetSpacing(0.0);
         terminalInputRow.SetPadding(0.0);
         terminalPanel.AddChild(terminalInputRow);
-        terminalInput = GUI.TextInput.New(terminalInputRow);
-        terminalInput.SetFlex(1.0);
-        terminalInput.SetPlaceholder("Type a command, then Run");
-        terminalRun = GUI.Button.New(terminalInputRow, "Run");
         terminalKill = GUI.Button.New(terminalInputRow, "Stop");
         terminalRestart = GUI.Button.New(terminalInputRow, "Restart");
 
@@ -1807,7 +1803,7 @@ class AppShell {
         activeToolPanelKind = 8;
         HideAllToolPanels();
         terminalPanel.SetVisible(1);
-        if terminalInput != null { terminalInput.Focus(); }
+        if terminalPane != null { terminalPane.Focus(); }
     }
 
     /// @brief Hide the integrated terminal panel without destroying its session.

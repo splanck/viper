@@ -47,6 +47,8 @@ static void outputpane_measure(vg_widget_t *widget, float available_width, float
 static void outputpane_paint(vg_widget_t *widget, void *canvas);
 static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event);
 static void outputpane_set_font_widget(vg_widget_t *widget, void *font, float size);
+static bool outputpane_can_focus(vg_widget_t *widget);
+static void outputpane_on_focus(vg_widget_t *widget, bool gained);
 
 //=============================================================================
 // OutputPane VTable
@@ -57,8 +59,8 @@ static vg_widget_vtable_t g_outputpane_vtable = {.destroy = outputpane_destroy,
                                                  .arrange = NULL,
                                                  .paint = outputpane_paint,
                                                  .handle_event = outputpane_handle_event,
-                                                 .can_focus = NULL,
-                                                 .on_focus = NULL,
+                                                 .can_focus = outputpane_can_focus,
+                                                 .on_focus = outputpane_on_focus,
                                                  .set_font = outputpane_set_font_widget};
 
 //=============================================================================
@@ -456,6 +458,7 @@ vg_outputpane_t *vg_outputpane_create(void) {
     pane->bg_color = 0xFF1E1E1E;
     pane->default_fg = 0xFFCCCCCC;
     pane->current_fg = pane->default_fg;
+    pane->caret_visible = true;
 
     return pane;
 }
@@ -469,6 +472,8 @@ static void outputpane_destroy(vg_widget_t *widget) {
         free_output_line(&pane->lines[i]);
     }
     free(pane->lines);
+    free(pane->cells);
+    free(pane->pending_input);
 }
 
 /// @brief Destroy the output pane widget, freeing all lines and segment text buffers.
@@ -614,15 +619,107 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
             x += metrics.width;
         }
 
+        // Terminal caret: a blinking block at the cursor column on the current
+        // line. The glyph under it is redrawn in the background color (inverse
+        // video) so it stays readable when editing mid-line.
+        if (pane->terminal_mode && pane->has_focus && pane->caret_visible &&
+            line_idx == (int)pane->line_count - 1) {
+            float caret_x = widget->x + 4.0f + outputpane_prefix_width(pane, line, pane->cursor_col);
+            vg_text_metrics_t cw = {0};
+            vg_font_measure_text(pane->font, pane->font_size, "M", &cw);
+            float caret_w = cw.width > 0.0f ? cw.width : pane->font_size * 0.6f;
+            vgfx_fill_rect(win,
+                           (int32_t)caret_x,
+                           (int32_t)line_top,
+                           (int32_t)caret_w,
+                           (int32_t)pane->line_height,
+                           pane->default_fg);
+            if (pane->cursor_col < pane->cell_count) {
+                const char *glyph = pane->cells[pane->cursor_col].utf8;
+                if (glyph[0] != '\0')
+                    vg_font_draw_text(canvas,
+                                      pane->font,
+                                      pane->font_size,
+                                      caret_x,
+                                      line_top + font_metrics.ascent,
+                                      glyph,
+                                      pane->bg_color);
+            }
+        }
+
         y += pane->line_height;
     }
     vgfx_clear_clip(win);
 }
 
-/// @brief Widget-vtable event hook: handle scrolling, click/drag text
-///        selection, and copy. Returns true if the event was consumed.
+// Defined later in the Interactive Terminal Mode section; declared here for the
+// event hook below.
+static void term_queue_input(vg_outputpane_t *pane, const char *bytes, size_t len);
+static int outputpane_encode_utf8(uint32_t cp, char *out);
+
+/// @brief Widget-vtable can_focus: focusable only in interactive terminal mode.
+static bool outputpane_can_focus(vg_widget_t *widget) {
+    vg_outputpane_t *pane = (vg_outputpane_t *)widget;
+    return pane->terminal_mode && widget->enabled && widget->visible;
+}
+
+/// @brief Widget-vtable on_focus: track focus so the terminal caret can render.
+static void outputpane_on_focus(vg_widget_t *widget, bool gained) {
+    vg_outputpane_t *pane = (vg_outputpane_t *)widget;
+    pane->has_focus = gained;
+    if (gained) {
+        pane->caret_visible = true;
+        pane->caret_blink_time = 0.0f;
+    }
+    widget->needs_paint = true;
+}
+
+/// @brief Widget-vtable event hook: terminal keyboard input + focus (terminal mode),
+///        scrolling, and click/drag text selection. Returns true if consumed.
 static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
+
+    if (pane->terminal_mode) {
+        if (event->type == VG_EVENT_MOUSE_DOWN) {
+            vg_widget_set_focus(widget);
+            return true;
+        }
+        if (event->type == VG_EVENT_KEY_DOWN) {
+            vg_key_t k = event->key.key;
+            uint32_t mods = event->modifiers;
+            // Ctrl + letter -> control byte (Ctrl-C = 0x03, Ctrl-D = 0x04, ...).
+            if ((mods & VG_MOD_CTRL) && ((k >= 'a' && k <= 'z') || (k >= 'A' && k <= 'Z'))) {
+                char up = (char)((k >= 'a' && k <= 'z') ? k - 32 : k);
+                char ctl = (char)(up - 'A' + 1);
+                term_queue_input(pane, &ctl, 1);
+                return true;
+            }
+            switch (k) {
+                case VG_KEY_ENTER: term_queue_input(pane, "\r", 1); return true;
+                case VG_KEY_BACKSPACE: term_queue_input(pane, "\x7f", 1); return true;
+                case VG_KEY_TAB: term_queue_input(pane, "\t", 1); return true;
+                case VG_KEY_ESCAPE: term_queue_input(pane, "\x1b", 1); return true;
+                case VG_KEY_UP: term_queue_input(pane, "\x1b[A", 3); return true;
+                case VG_KEY_DOWN: term_queue_input(pane, "\x1b[B", 3); return true;
+                case VG_KEY_RIGHT: term_queue_input(pane, "\x1b[C", 3); return true;
+                case VG_KEY_LEFT: term_queue_input(pane, "\x1b[D", 3); return true;
+                case VG_KEY_HOME: term_queue_input(pane, "\x1b[H", 3); return true;
+                case VG_KEY_END: term_queue_input(pane, "\x1b[F", 3); return true;
+                case VG_KEY_DELETE: term_queue_input(pane, "\x1b[3~", 4); return true;
+                default: break;
+            }
+            return false; // printable input arrives via VG_EVENT_KEY_CHAR
+        }
+        if (event->type == VG_EVENT_KEY_CHAR) {
+            uint32_t cp = event->key.codepoint;
+            if (cp >= 0x20 && cp != 0x7f) {
+                char u[4];
+                int l = outputpane_encode_utf8(cp, u);
+                term_queue_input(pane, u, (size_t)l);
+            }
+            return true;
+        }
+    }
 
     if (event->type == VG_EVENT_MOUSE_WHEEL) {
         float delta = event->wheel.delta_y * 30; // 30 pixels per scroll unit
@@ -647,6 +744,387 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+//=============================================================================
+// Interactive Terminal Mode
+//=============================================================================
+// A cursor-column overwrite model layered over the same line/segment storage.
+// Only active when pane->terminal_mode is set (the integrated terminal); the
+// build-output pane keeps the simple append-only path below. The current line is
+// held as a cell array (cells[]) so \r/\b/ESC[K/cursor-moves render correctly;
+// the cells are coalesced back into styled segments after each chunk.
+
+/// @brief UTF-8 sequence length implied by a lead byte (1..4; 1 for invalid/continuation).
+static int outputpane_utf8_len(unsigned char c) {
+    if (c < 0x80)
+        return 1;
+    if ((c & 0xE0) == 0xC0)
+        return 2;
+    if ((c & 0xF0) == 0xE0)
+        return 3;
+    if ((c & 0xF8) == 0xF0)
+        return 4;
+    return 1;
+}
+
+/// @brief Encode a Unicode codepoint to UTF-8; returns the byte count (1..4).
+static int outputpane_encode_utf8(uint32_t cp, char *out) {
+    if (cp < 0x80) {
+        out[0] = (char)cp;
+        return 1;
+    }
+    if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = (char)(0xF0 | (cp >> 18));
+    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+}
+
+/// @brief Ensure the terminal cell buffer can hold at least @p need cells.
+static bool term_ensure_cells(vg_outputpane_t *pane, size_t need) {
+    if (pane->cell_capacity >= need)
+        return true;
+    size_t new_cap = pane->cell_capacity ? pane->cell_capacity * 2 : 128;
+    if (new_cap < need)
+        new_cap = need;
+    if (new_cap > SIZE_MAX / sizeof(vg_term_cell_t))
+        return false;
+    vg_term_cell_t *nc = realloc(pane->cells, new_cap * sizeof(vg_term_cell_t));
+    if (!nc)
+        return false;
+    pane->cells = nc;
+    pane->cell_capacity = new_cap;
+    return true;
+}
+
+/// @brief Reset a cell to a blank space with default colors.
+static void term_blank_cell(vg_outputpane_t *pane, vg_term_cell_t *cell) {
+    cell->utf8[0] = '\0';
+    cell->fg = pane->default_fg;
+    cell->bg = 0;
+    cell->bold = false;
+}
+
+/// @brief Write a glyph at the cursor column (overwriting), extending with blanks as needed.
+static void term_put_glyph(vg_outputpane_t *pane, const char *bytes, int len) {
+    if (len < 1)
+        len = 1;
+    if (len > 4)
+        len = 4;
+    size_t col = pane->cursor_col;
+    if (!term_ensure_cells(pane, col + 1))
+        return;
+    while (pane->cell_count <= col) {
+        term_blank_cell(pane, &pane->cells[pane->cell_count]);
+        pane->cell_count++;
+    }
+    vg_term_cell_t *cell = &pane->cells[col];
+    memcpy(cell->utf8, bytes, (size_t)len);
+    cell->utf8[len] = '\0';
+    cell->fg = pane->current_fg;
+    cell->bg = pane->current_bg;
+    cell->bold = pane->ansi_bold;
+    pane->cursor_col = (uint32_t)(col + 1);
+}
+
+/// @brief Rebuild the current (last) line's styled segments from the cell buffer.
+static void term_flush_cells(vg_outputpane_t *pane) {
+    if (pane->line_count == 0) {
+        if (!add_line(pane))
+            return;
+    }
+    vg_output_line_t *line = &pane->lines[pane->line_count - 1];
+    for (size_t s = 0; s < line->segment_count; s++)
+        free(line->segments[s].text);
+    free(line->segments);
+    line->segments = NULL;
+    line->segment_count = 0;
+    line->segment_capacity = 0;
+
+    if (pane->cell_count == 0)
+        return;
+    if (pane->cell_count > (SIZE_MAX - 1) / 4)
+        return;
+    char *run = malloc(pane->cell_count * 4 + 1);
+    if (!run)
+        return;
+    size_t i = 0;
+    while (i < pane->cell_count) {
+        uint32_t fg = pane->cells[i].fg;
+        uint32_t bg = pane->cells[i].bg;
+        bool bold = pane->cells[i].bold;
+        size_t rl = 0;
+        size_t j = i;
+        for (; j < pane->cell_count; j++) {
+            vg_term_cell_t *c = &pane->cells[j];
+            if (c->fg != fg || c->bg != bg || c->bold != bold)
+                break;
+            if (c->utf8[0] == '\0') {
+                run[rl++] = ' ';
+            } else {
+                size_t l = strlen(c->utf8);
+                memcpy(run + rl, c->utf8, l);
+                rl += l;
+            }
+        }
+        (void)outputpane_append_segment_copy(line, run, rl, fg, bg, bold);
+        i = j;
+    }
+    free(run);
+}
+
+/// @brief Finalize the current line and start a fresh one (terminal newline).
+static void term_newline(vg_outputpane_t *pane) {
+    term_flush_cells(pane);
+    if (!add_line(pane))
+        return;
+    pane->cell_count = 0;
+    pane->cursor_col = 0;
+}
+
+/// @brief Dispatch a completed CSI sequence (escape_buf holds the params, no '[').
+static void term_dispatch_csi(vg_outputpane_t *pane, char final) {
+    int params[16];
+    int pc = 0;
+    char *p = pane->escape_buf;
+    while (*p && pc < 16) {
+        if (*p >= '0' && *p <= '9') {
+            params[pc++] = (int)strtol(p, &p, 10);
+            if (*p == ';')
+                p++;
+        } else if (*p == ';') {
+            params[pc++] = 0;
+            p++;
+        } else {
+            p++;
+        }
+    }
+    int p0 = pc > 0 ? params[0] : 0;
+    switch (final) {
+        case 'm':
+            if (pc == 0) {
+                pane->current_fg = pane->default_fg;
+                pane->current_bg = 0;
+                pane->ansi_bold = false;
+            }
+            for (int i = 0; i < pc; i++) {
+                int code = params[i];
+                if (code == 0) {
+                    pane->current_fg = pane->default_fg;
+                    pane->current_bg = 0;
+                    pane->ansi_bold = false;
+                } else if (code == 1) {
+                    pane->ansi_bold = true;
+                } else if (code == 22) {
+                    pane->ansi_bold = false;
+                } else if (code >= 30 && code <= 37) {
+                    pane->current_fg = ansi_code_to_color(code);
+                } else if (code == 39) {
+                    pane->current_fg = pane->default_fg;
+                } else if (code >= 40 && code <= 47) {
+                    pane->current_bg = ansi_code_to_color(code - 10);
+                } else if (code == 49) {
+                    pane->current_bg = 0;
+                } else if (code >= 90 && code <= 97) {
+                    pane->current_fg = ansi_code_to_color(code);
+                } else if (code >= 100 && code <= 107) {
+                    pane->current_bg = ansi_code_to_color(code - 10);
+                }
+            }
+            break;
+        case 'K': // erase in line
+            if (p0 == 0) {
+                if (pane->cursor_col < pane->cell_count)
+                    pane->cell_count = pane->cursor_col;
+            } else if (p0 == 1) {
+                for (size_t i = 0; i <= pane->cursor_col && i < pane->cell_count; i++)
+                    term_blank_cell(pane, &pane->cells[i]);
+            } else if (p0 == 2) {
+                pane->cell_count = 0;
+            }
+            break;
+        case 'C': { // cursor forward
+            int n = p0 > 0 ? p0 : 1;
+            pane->cursor_col += (uint32_t)n;
+            break;
+        }
+        case 'D': { // cursor back
+            int n = p0 > 0 ? p0 : 1;
+            if ((uint32_t)n > pane->cursor_col)
+                pane->cursor_col = 0;
+            else
+                pane->cursor_col -= (uint32_t)n;
+            break;
+        }
+        case 'G': // cursor to column
+            pane->cursor_col = p0 > 0 ? (uint32_t)(p0 - 1) : 0;
+            break;
+        case 'H':
+        case 'f': { // cursor position (row ignored — single-line model)
+            int col = pc >= 2 ? params[1] : 1;
+            pane->cursor_col = col > 0 ? (uint32_t)(col - 1) : 0;
+            break;
+        }
+        default:
+            break; // J (erase display), others — ignored for the line model
+    }
+}
+
+/// @brief Terminal-mode append: full escape state machine + cursor-column overwrite.
+static void outputpane_append_terminal(vg_outputpane_t *pane, const char *text) {
+    const unsigned char *p = (const unsigned char *)text;
+    while (*p) {
+        unsigned char c = *p;
+        switch (pane->esc_state) {
+            case 0: // normal
+                if (c == 0x1b) {
+                    pane->esc_state = 1;
+                    p++;
+                } else if (c == '\n') {
+                    term_newline(pane);
+                    p++;
+                } else if (c == '\r') {
+                    pane->cursor_col = 0;
+                    p++;
+                } else if (c == '\b') {
+                    if (pane->cursor_col > 0)
+                        pane->cursor_col--;
+                    p++;
+                } else if (c == '\t') {
+                    uint32_t next = (pane->cursor_col / 8 + 1) * 8;
+                    while (pane->cursor_col < next)
+                        term_put_glyph(pane, " ", 1);
+                    p++;
+                } else if (c < 0x20 || c == 0x7f) {
+                    p++; // BEL and other C0 controls: ignore
+                } else {
+                    int l = outputpane_utf8_len(c);
+                    int avail = 0;
+                    while (avail < l && p[avail])
+                        avail++;
+                    if (avail < l)
+                        l = avail > 0 ? avail : 1;
+                    term_put_glyph(pane, (const char *)p, l);
+                    p += l;
+                }
+                break;
+            case 1: // after ESC
+                if (c == '[') {
+                    pane->esc_state = 2;
+                    pane->escape_len = 0;
+                    pane->escape_buf[0] = '\0';
+                } else if (c == ']') {
+                    pane->esc_state = 3; // OSC
+                } else if (c == '(' || c == ')' || c == '*' || c == '+') {
+                    pane->esc_state = 4; // charset designator (consume next byte)
+                } else {
+                    pane->esc_state = 0; // ESC 7/8/=/>/D/E/M/c/... — swallowed
+                }
+                p++;
+                break;
+            case 2: // CSI
+                if (c >= 0x40 && c <= 0x7e) {
+                    term_dispatch_csi(pane, (char)c);
+                    pane->esc_state = 0;
+                } else if (pane->escape_len < (int)sizeof(pane->escape_buf) - 1) {
+                    pane->escape_buf[pane->escape_len++] = (char)c;
+                    pane->escape_buf[pane->escape_len] = '\0';
+                }
+                p++;
+                break;
+            case 3: // OSC — consume until BEL or ST (ESC \)
+                if (c == 0x07)
+                    pane->esc_state = 0;
+                else if (c == 0x1b)
+                    pane->esc_state = 5;
+                p++;
+                break;
+            case 5: // OSC saw ESC, expect '\' (ST)
+                pane->esc_state = 0;
+                p++;
+                break;
+            case 4: // charset designator — consume one byte
+                pane->esc_state = 0;
+                p++;
+                break;
+            default:
+                pane->esc_state = 0;
+                p++;
+                break;
+        }
+    }
+
+    term_flush_cells(pane);
+    if (pane->auto_scroll && !pane->scroll_locked)
+        vg_outputpane_scroll_to_bottom(pane);
+    pane->base.needs_paint = true;
+}
+
+/// @brief Queue raw bytes for the controller to drain to the PTY (terminal keystrokes).
+static void term_queue_input(vg_outputpane_t *pane, const char *bytes, size_t len) {
+    if (len == 0)
+        return;
+    // Keep the caret solid (not mid-blink) while the user is actively typing.
+    pane->caret_visible = true;
+    pane->caret_blink_time = 0.0f;
+    if (pane->pending_len + len + 1 > pane->pending_capacity) {
+        size_t nc = pane->pending_capacity ? pane->pending_capacity * 2 : 64;
+        while (nc < pane->pending_len + len + 1)
+            nc *= 2;
+        char *nb = realloc(pane->pending_input, nc);
+        if (!nb)
+            return;
+        pane->pending_input = nb;
+        pane->pending_capacity = nc;
+    }
+    memcpy(pane->pending_input + pane->pending_len, bytes, len);
+    pane->pending_len += len;
+}
+
+/// @brief Enable/disable interactive terminal mode (see header).
+void vg_outputpane_set_terminal_mode(vg_outputpane_t *pane, bool enabled) {
+    if (!pane)
+        return;
+    pane->terminal_mode = enabled;
+    if (enabled && pane->line_count == 0)
+        (void)add_line(pane);
+}
+
+/// @brief Drain queued keystroke bytes; caller frees. NULL when empty.
+char *vg_outputpane_take_input(vg_outputpane_t *pane) {
+    if (!pane || pane->pending_len == 0)
+        return NULL;
+    char *out = malloc(pane->pending_len + 1);
+    if (!out)
+        return NULL;
+    memcpy(out, pane->pending_input, pane->pending_len);
+    out[pane->pending_len] = '\0';
+    pane->pending_len = 0;
+    return out;
+}
+
+/// @brief Advance the terminal caret blink (no-op unless terminal mode + focused).
+void vg_outputpane_tick(vg_outputpane_t *pane, float dt) {
+    if (!pane || !pane->terminal_mode || !pane->has_focus || dt <= 0.0f)
+        return;
+    pane->caret_blink_time += dt;
+    if (pane->caret_blink_time >= 0.5f) {
+        pane->caret_blink_time -= 0.5f;
+        pane->caret_visible = !pane->caret_visible;
+        pane->base.needs_paint = true;
+    }
+}
+
 /// @brief Append a UTF-8 string to the output pane, interpreting ANSI SGR escape sequences.
 ///
 /// @details Newlines split the current line and begin a new one.  Escape sequences update
@@ -659,6 +1137,10 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
 void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
     if (!pane || !text)
         return;
+    if (pane->terminal_mode) {
+        outputpane_append_terminal(pane, text);
+        return;
+    }
 
     // Get or create current line
     vg_output_line_t *line = NULL;
@@ -852,6 +1334,14 @@ void vg_outputpane_clear(vg_outputpane_t *pane) {
     pane->ansi_bold = false;
     pane->in_escape = false;
     pane->escape_len = 0;
+
+    // Reset terminal-mode cursor / escape / input state.
+    pane->esc_state = 0;
+    pane->cursor_col = 0;
+    pane->cell_count = 0;
+    pane->pending_len = 0;
+    if (pane->terminal_mode)
+        (void)add_line(pane);
 
     // Reset scroll
     pane->scroll_y = 0;

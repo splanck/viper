@@ -11,10 +11,9 @@ last-verified: 2026-05-31
 - AArch64: Validated end‑to‑end on Apple Silicon across all demo games.
 - x86_64: Validated on Windows with full codegen test suite passing. Supports System V AMD64 and Windows x64 ABIs.
 
-Native code generation backends for x86_64 and AArch64. For the roadmap of
-remaining cross-backend unification work (register-based phi copies on
-AArch64, shared scheduler core, shared spill-slot allocator), see
-[backend-consolidation-plan.md](../codegen/backend-consolidation-plan.md).
+Native code generation backends for x86_64 and AArch64. Current backend
+behavior is documented in [backend.md](../backend.md) and the architecture-
+specific references under [codegen/](../codegen/).
 
 ## Common Utilities (`src/codegen/common/`)
 

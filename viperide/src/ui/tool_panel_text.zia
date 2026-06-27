@@ -1,6 +1,7 @@
 module tool_panel_text;
 
 bind Str = Viper.String;
+bind TextWrap = Viper.Text.TextWrapper;
 
 // ============================================================================
 // MODULE: tool_panel_text
@@ -72,11 +73,7 @@ expose func ProblemSeverityLabel(severity: String) -> String {
 /// @param width Target fixed width in characters.
 /// @return Trimmed text padded with spaces to exactly width characters.
 expose func PadToolColumn(text: String, width: Integer) -> String {
-    var out = TrimToolText(text, width);
-    while Str.Length(out) < width {
-        out = out + " ";
-    }
-    return out;
+    return Str.PadRight(TrimToolText(text, width), width, " ");
 }
 
 /// @brief Trim a tool-panel field to fit a fixed-width column.
@@ -85,9 +82,7 @@ expose func PadToolColumn(text: String, width: Integer) -> String {
 /// @return Text that fits width, using a trailing tilde to show truncation.
 expose func TrimToolText(text: String, width: Integer) -> String {
     if width <= 0 { return ""; }
-    if Str.Length(text) <= width { return text; }
-    if width == 1 { return "~"; }
-    return Str.MidLen(text, 1, width - 1) + "~";
+    return TextWrap.TruncateWith(text, width, "~");
 }
 
 /// @brief Choose a color for a diagnostic severity.
@@ -107,13 +102,13 @@ expose func ProblemSeverityColor(severity: String) -> Integer {
 ///          structured schema, so the output panel highlights common words.
 expose func OutputLineColor(line: String) -> Integer {
     var lower = Str.ToLower(line);
-    if Str.IndexOf(lower, "error") != 0 or Str.IndexOf(lower, "failed") != 0 {
+    if Str.Has(lower, "error") or Str.Has(lower, "failed") {
         return ErrorColor();
     }
-    if Str.IndexOf(lower, "warning") != 0 or Str.IndexOf(lower, "warn") != 0 {
+    if Str.Has(lower, "warning") or Str.Has(lower, "warn") {
         return WarningColor();
     }
-    if Str.IndexOf(lower, "success") != 0 or Str.IndexOf(lower, "passed") != 0 {
+    if Str.Has(lower, "success") or Str.Has(lower, "passed") {
         return SuccessColor();
     }
     return 0;

@@ -4,10 +4,11 @@ audience: contributors
 last-verified: 2026-05-16
 ---
 
-# AArch64 (arm64) Backend — Status and Plan
+# AArch64 (arm64) Backend — Status
 
-This document captures the current state of the AArch64 backend, recent bug fixes, missing features needed for real
-programs, and the development roadmap. It is kept developer-focused with concrete source references and test cases.
+This document captures the current state of the AArch64 backend, recent bug
+fixes, and known limitations. It is kept developer-focused with concrete source
+references and test cases.
 
 ## Executive Summary
 
@@ -527,12 +528,12 @@ echo "Exit code: $?"  # Should print 15
 New MIR opcodes added to support these patterns: `Cbnz`, `MAddRRRR`, `Csel`, `LdpRegFpImm`, `StpRegFpImm`,
 `LdpFprFpImm`, `StpFprFpImm`. (`Cbz` was already present in the original opcode set.)
 
-## Remaining Work
+## Known Limitations
 
 ### Unimplemented Peephole Patterns
 
 - **Address mode folding**: Base+offset computations could fold into addressing modes
-- **Additional logical-immediate peepholes**: direct lowering handles logical immediates; post-RA folding from materialized constants into bitmask immediates remains future work
+- **Additional logical-immediate peepholes**: direct lowering handles logical immediates; post-RA folding from materialized constants into bitmask immediates is not implemented
 - **Conditional select (CSEL) pattern matching**: `Csel` opcode exists; pattern matching not yet wired
 - **Compare elimination**: Comparisons whose flags are set by a preceding arithmetic instruction
 - **Shift-add fusion**: Shift followed by add → shifted-register form of ADD

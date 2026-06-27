@@ -22,6 +22,7 @@ extern @Viper.String.PadRight(str, i64, str) -> str
 extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Replace(str, str, str) -> str
 extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.Lines(str) -> ptr
 extern @Viper.String.StartsWith(str, str) -> i1
 extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Trim(str) -> str

@@ -241,6 +241,47 @@ static void test_split_empty_parts() {
     assert(str_eq((rt_string)rt_seq_get(seq, 4), ""));
 }
 
+//===----------------------------------------------------------------------===//
+// Lines tests (CRLF-aware line splitting)
+//===----------------------------------------------------------------------===//
+
+static void test_lines_crlf_normalized() {
+    // Mixed CRLF/LF input yields the same logical lines with CR stripped.
+    rt_string str = make_str("a\r\nb\nc");
+    void *seq = rt_str_lines(str);
+    assert(rt_seq_len(seq) == 3);
+    assert(str_eq((rt_string)rt_seq_get(seq, 0), "a"));
+    assert(str_eq((rt_string)rt_seq_get(seq, 1), "b"));
+    assert(str_eq((rt_string)rt_seq_get(seq, 2), "c"));
+}
+
+static void test_lines_matches_split_count() {
+    // A trailing newline yields a trailing empty segment, exactly like Split.
+    rt_string str = make_str("a\n");
+    void *lines = rt_str_lines(str);
+    void *split = rt_str_split(str, make_str("\n"));
+    assert(rt_seq_len(lines) == rt_seq_len(split));
+    assert(rt_seq_len(lines) == 2);
+    assert(str_eq((rt_string)rt_seq_get(lines, 0), "a"));
+    assert(str_eq((rt_string)rt_seq_get(lines, 1), ""));
+}
+
+static void test_lines_empty() {
+    rt_string str = make_str("");
+    void *seq = rt_str_lines(str);
+    assert(rt_seq_len(seq) == 1);
+    assert(str_eq((rt_string)rt_seq_get(seq, 0), ""));
+}
+
+static void test_lines_embedded_cr_preserved() {
+    // Only a CR acting as the line terminator is dropped; embedded CRs remain.
+    rt_string str = make_str("a\rb\r\nc");
+    void *seq = rt_str_lines(str);
+    assert(rt_seq_len(seq) == 2);
+    assert(str_eq((rt_string)rt_seq_get(seq, 0), "a\rb"));
+    assert(str_eq((rt_string)rt_seq_get(seq, 1), "c"));
+}
+
 static void test_join_basic() {
     void *seq = rt_seq_new();
     rt_seq_push(seq, (void *)make_str("a"));
@@ -560,6 +601,13 @@ int main() {
     test_split_no_delim();
     test_split_delim_longer_than_string();
     test_split_empty_parts();
+
+    // Lines tests
+    test_lines_crlf_normalized();
+    test_lines_matches_split_count();
+    test_lines_empty();
+    test_lines_embedded_cr_preserved();
+
     test_join_basic();
     test_join_empty_sep();
     test_join_empty_seq();

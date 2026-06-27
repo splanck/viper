@@ -15,6 +15,7 @@ bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind WorkspaceWatcher = Viper.Workspace.Watcher;
 bind FileIndex = Viper.Workspace.FileIndex;
+bind Threads = Viper.Threads;
 
 // ============================================================================
 // MODULE: workspace_watcher
@@ -40,7 +41,7 @@ class WorkspaceWatcherState {
     expose IO.Watcher watcher;
     expose Boolean watching;
     expose String rootPath;
-    expose Integer lastRescanMs;
+    expose Threads.Throttler rescanThrottle;
     expose Integer lastEntryCount;
     expose Integer lastFingerprint;
 
@@ -49,7 +50,7 @@ class WorkspaceWatcherState {
         watcher = null;
         watching = false;
         rootPath = "";
-        lastRescanMs = 0;
+        rescanThrottle = Threads.Throttler.New(3000);
         lastEntryCount = -1;
         lastFingerprint = 0;
     }
@@ -105,7 +106,7 @@ expose func StopWorkspaceWatcher(state: WorkspaceWatcherState) {
     state.watcher = null;
     state.watching = false;
     state.rootPath = "";
-    state.lastRescanMs = 0;
+    state.rescanThrottle.Reset();
     state.lastEntryCount = -1;
     state.lastFingerprint = 0;
 }
@@ -122,7 +123,7 @@ func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState,
     var status = FileIndex.Status(root, "", "", false);
     state.lastEntryCount = Map.GetInt(status, "entryCount");
     state.lastFingerprint = Map.GetInt(status, "fingerprint");
-    state.lastRescanMs = Viper.Time.GetTickCount();
+    state.rescanThrottle.Try();
 }
 
 /// @brief Periodically rescan workspace structure when native watcher is quiet.
@@ -145,11 +146,9 @@ func PumpWorkspaceWatcherFallbackScan(shell: app_shell.AppShell,
                                       engine: editor_engine.EditorEngine,
                                       state: WorkspaceWatcherState) {
     if state == null or state.rootPath == "" { return; }
-    var now = Viper.Time.GetTickCount();
-    if state.lastRescanMs > 0 and now - state.lastRescanMs < 3000 {
+    if state.rescanThrottle.Try() == false {
         return;
     }
-    state.lastRescanMs = now;
     var status = FileIndex.Status(state.rootPath, "", "", false);
     var count = Map.GetInt(status, "entryCount");
     var fingerprint = Map.GetInt(status, "fingerprint");

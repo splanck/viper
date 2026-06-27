@@ -3,7 +3,6 @@ module terminal_controller;
 bind "terminal_session";
 
 bind Viper.GUI as GUI;
-bind Viper.Input as Input;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Machine = Viper.System.Machine;
@@ -11,19 +10,21 @@ bind Env = Viper.System.Environment;
 bind IO = Viper.IO;
 
 // ============================================================================
-// MODULE: terminal_controller  (Phase 5D — integrated terminal)
-// PURPOSE: Drives the bottom-panel terminal: an OutputPane (the already
-//          ANSI-SGR-aware widget) for output, a TextInput command line, and
-//          Run/Stop buttons, all owned by the shell. Spawns a platform shell via
-//          terminal_session (over Viper.System.Pty) on first reveal, drains
-//          output each frame, and sends typed lines.
+// MODULE: terminal_controller  (Phase 5E — interactive terminal)
+// PURPOSE: Drives the bottom-panel terminal. The OutputPane runs in interactive
+//          terminal mode (cursor-column rendering + keyboard capture); the user
+//          types directly into it. Each frame the controller drains queued
+//          keystrokes from the pane and writes them raw to a PTY-backed shell
+//          (terminal_session over Viper.System.Pty); the shell's echo + output
+//          stream back into the pane. Stop/Restart buttons control the session.
 //
 // WHERE-THIS-FITS: main.zia constructs it, Setup()s it with the shell widgets,
 //          SetCwd()s it to the active project root, and calls Pump() each frame.
 //          Pump only works when the terminal panel is visible.
 //
-// v1 SCOPE: line input (type + Run/Enter sends a line). Raw per-keystroke input
-//   and full-screen TUI rendering are out of scope (the OutputPane is line-append).
+// SCOPE: a usable interactive shell (typing, colors, prompts, line editing).
+//   Full-screen TUI apps (vim/htop) needing cursor addressing / alt-screen are
+//   out of scope.
 // ============================================================================
 
 /// @brief Integrated-terminal UI controller.
@@ -31,13 +32,12 @@ class TerminalController {
     expose terminal_session.TerminalSession sess;
     expose GUI.VBox panel;
     expose GUI.OutputPane pane;
-    expose GUI.TextInput input;
-    expose GUI.Button runBtn;
     expose GUI.Button killBtn;
     expose GUI.Button restartBtn;
     expose Boolean ready;
     expose String cwd;
     expose Boolean manualStop;
+    expose Boolean didFocus;
     expose Integer lastCols;
     expose Integer lastRows;
 
@@ -46,19 +46,19 @@ class TerminalController {
         ready = false;
         cwd = "";
         manualStop = false;
+        didFocus = false;
         lastCols = 0;
         lastRows = 0;
     }
 
-    /// @brief Wire the shell-owned widgets.
-    expose func Setup(panelArg: GUI.VBox, paneArg: GUI.OutputPane, inputArg: GUI.TextInput,
-                      runArg: GUI.Button, killArg: GUI.Button, restartArg: GUI.Button) {
+    /// @brief Wire the shell-owned widgets and put the pane in interactive terminal mode.
+    expose func Setup(panelArg: GUI.VBox, paneArg: GUI.OutputPane,
+                      killArg: GUI.Button, restartArg: GUI.Button) {
         panel = panelArg;
         pane = paneArg;
-        input = inputArg;
-        runBtn = runArg;
         killBtn = killArg;
         restartBtn = restartArg;
+        if pane != null { pane.SetTerminalMode(1); }
         ready = true;
     }
 
@@ -204,22 +204,13 @@ class TerminalController {
         sess.Resize(cols, rows);
     }
 
-    /// @brief Send the current input text to the shell as a line.
-    /// @details If the previous shell exited or was stopped, this first starts a
-    ///          fresh session so the user's typed command has a target.
-    hide func SendInputLine() {
-        var line = input.get_Text();
-        if sess.IsActive() == false {
-            RestartSession();
-        }
-        sess.SendLine(line);
-        input.SetText("");
-    }
-
     /// @brief Per-frame pump; no-op unless the terminal panel is visible.
     expose func Pump() {
         if ready == false { return; }
-        if IsVisible() == false { return; }
+        if IsVisible() == false { didFocus = false; return; }
+
+        // Focus the pane the first frame it becomes visible so typing lands here.
+        if didFocus == false and pane != null { pane.Focus(); didFocus = true; }
 
         EnsureStarted();
         ResizeIfNeeded();
@@ -232,9 +223,14 @@ class TerminalController {
             pane.Append("\n[exited " + sess.exitCode + "]\n");
         }
 
-        if runBtn.WasClicked() != 0 {
-            SendInputLine();
+        // Drain keystrokes captured by the pane and write them raw to the PTY;
+        // the shell echoes them back through the output stream above.
+        var keys = pane.TakeInput();
+        if Str.Length(keys) > 0 {
+            if sess.IsActive() == false { RestartSession(); }
+            sess.Send(keys);
         }
+
         if killBtn.WasClicked() != 0 {
             sess.Stop();
             manualStop = true;
@@ -243,9 +239,6 @@ class TerminalController {
         if restartBtn.WasClicked() != 0 {
             pane.Append("\n[restarting]\n");
             RestartSession();
-        }
-        if input != null and input.IsFocused() != 0 and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
-            SendInputLine();
         }
     }
 

@@ -331,6 +331,9 @@ static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
             case VG_WIDGET_CODEEDITOR:
                 vg_codeeditor_tick((vg_codeeditor_t *)node, dt);
                 break;
+            case VG_WIDGET_OUTPUTPANE:
+                vg_outputpane_tick((vg_outputpane_t *)node, dt);
+                break;
             default:
                 break;
         }

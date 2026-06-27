@@ -392,6 +392,7 @@ viper package . --dry-run --verbose
 | `--windows-sign-no-verify` | Skip `signtool verify` after signing |
 | `--linux-sign-key <id>` | GPG-sign the generated `.deb`/`.rpm` with `dpkg-sig`/`rpmsign` |
 | `--dry-run` | Validate metadata and print resolved package contents without building |
+| `--keep-failed-artifact` | Preserve generated artifacts after a failed package step for inspection |
 | `--verbose` | Print binary, output, asset, and verification details |
 
 `.app`/`.dmg` build on a macOS host (`.dmg` shells to `hdiutil`), `.deb`/`.AppImage`/`.tar.gz` are emitted directly on any host, and `.rpm` requires `rpmbuild`. `--linux-sign-key` applies only to `--target linux`/`rpm` and requires `dpkg-sig`/`rpmsign`; each path fails with a clear diagnostic when its tool is unavailable.
@@ -442,7 +443,7 @@ Typical workflow:
 
 | Option | Description |
 |--------|-------------|
-| `--target windows|macos|linux-deb|linux-rpm|tarball|all` | Select artifact format(s) |
+| `--target windows|macos|linux-deb|linux-rpm|appimage|tarball|all` | Select artifact format(s) |
 | `--build-dir <dir>` | Stage from an existing build tree via `cmake --install` |
 | `--stage-dir <dir>` | Package an already-staged install tree |
 | `--stage-only` | Validate and print staged metadata without producing artifacts |
@@ -452,6 +453,16 @@ Typical workflow:
 | `--macos-sign-identity <identity>` | Developer ID Installer identity for signing generated macOS `.pkg` artifacts |
 | `--macos-notary-profile <profile>` | `notarytool` keychain profile used to notarize signed macOS `.pkg` artifacts |
 | `--macos-staple` | Staple the notarization ticket after successful macOS package submission |
+| `--macos-notary-timeout <seconds>` | Bound the `notarytool --wait` timeout for macOS package submission |
+| `--macos-dmg` | Also wrap a generated macOS `.pkg` in a styled `.dmg` |
+| `--macos-dmg-background <path>` | PNG background image for the generated toolchain `.dmg` window |
+| `--macos-dmg-icon <path>` | `.icns` volume icon for the generated toolchain `.dmg` |
+| `--macos-pkg-license <path>` | License text shown by the macOS `.pkg` installer |
+| `--macos-pkg-background <path>` | Background image for the macOS `.pkg` installer pane |
+| `--license <spdx>` | Toolchain package license metadata override |
+| `--maintainer <name>` | Toolchain maintainer/packager metadata override |
+| `--maintainer-email <email>` | Debian maintainer email metadata override |
+| `--homepage <url>` | Toolchain package homepage metadata override |
 | `--windows-sign` | Authenticode-sign generated Windows toolchain installers |
 | `--windows-sign-pfx <path>` | PFX certificate for Windows signing; the password comes from `VIPER_WINDOWS_SIGN_PASSWORD` |
 | `--windows-sign-thumbprint <sha1>` | Sign with a certificate-store SHA-1 thumbprint |
@@ -459,6 +470,13 @@ Typical workflow:
 | `--windows-signtool <path>` | `signtool.exe` path override |
 | `--windows-sign-no-verify` | Skip `signtool verify` after signing |
 | `--linux-sign-key <id>` | GPG-sign generated `.deb`/`.rpm` toolchain packages with `dpkg-sig`/`rpmsign` |
+| `--windows-install-scope user|machine` | Select the toolchain installer scope (default `user`) |
+| `--windows-install-dir <name>` | Override the Windows toolchain install-root directory name |
+| `--windows-no-path` | Do not add the installed `bin/` directory to `PATH` |
+| `--windows-file-associations on|off` | Register `.zia`/`.bas`/`.il` file associations (default `off`) |
+| `--windows-shortcuts on|off` | Create Start Menu developer shortcuts (default `on`) |
+| `--allow-debug-toolchain` | Permit Windows packages that reference MSVC debug CRTs |
+| `--skip-build` | With `--build-dir`, run `cmake --install` without rebuilding first |
 | `-o <path>` | Output path, or output directory when building multiple targets |
 | `--keep-stage-dir` | Preserve the auto-generated staging directory |
 | `--no-verify` | Skip post-build structural verification |
@@ -469,7 +487,7 @@ Developer wrappers:
 - `scripts/build_installer.sh`
 - `scripts/build_installer.cmd`
 
-Staged toolchain packaging accepts `x64` and `arm64` architecture names, and also accepts `universal` for detected macOS fat32 and fat64 Mach-O toolchains. It requires a package version from `lib/cmake/Viper/ViperConfigVersion.cmake` or `include/viper/version.hpp`; CMake package path validation is case-insensitive for staged filesystems that vary directory casing. Linux `.deb` output maps architectures to `amd64` and `arm64`; RPM output maps them to `x86_64` and `aarch64`. RPM generation requires `rpmbuild`; Linux `--target all` now includes RPM output and fails with an actionable diagnostic if `rpmbuild` is missing, so release builders do not silently skip an expected artifact. When the staged `viper` binary has a recognizable Mach-O, ELF, or PE header, `install-package` derives both manifest platform and architecture from that binary and rejects a conflicting `--arch` override. `--target all` emits only the staged platform's native package type plus a portable tarball, and an explicitly incompatible target such as `--target windows` for an ELF stage fails before writing an artifact. Portable toolchain tarball top directories use the same filesystem-safe version component as app tarballs. Linux-platform tarballs include `install.sh`, `uninstall.sh`, `README.install`, and `share/viper/install_manifest.txt`; by default the scripts install under `/usr/local`, honor `PREFIX` and `DESTDIR`, preserve staged modes/symlinks through `tar`, remove stale files from the prior tarball manifest before copying the new payload, refresh man/MIME/desktop caches when installing directly on a host, and uninstall only the files listed in the manifest. `-o <path>` is treated as an output directory when it already exists as a directory or when multiple targets are selected; otherwise the parent directory of the requested output file is created before writing.
+Staged toolchain packaging accepts `x64` and `arm64` architecture names, and also accepts `universal` for detected macOS fat32 and fat64 Mach-O toolchains. It requires a package version from `lib/cmake/Viper/ViperConfigVersion.cmake` or `include/viper/version.hpp`; CMake package path validation is case-insensitive for staged filesystems that vary directory casing. Linux `.deb` output maps architectures to `amd64` and `arm64`; RPM output maps them to `x86_64` and `aarch64`. RPM generation requires `rpmbuild`; Linux `--target all` includes `.deb`, `.rpm`, `.AppImage`, and portable tarball output and fails with an actionable diagnostic if `rpmbuild` is missing, so release builders do not silently skip an expected artifact. For Windows and macOS stages, `--target all` emits the staged platform's native package type plus a portable tarball. When the staged `viper` binary has a recognizable Mach-O, ELF, or PE header, `install-package` derives both manifest platform and architecture from that binary and rejects a conflicting `--arch` override. An explicitly incompatible target such as `--target windows` for an ELF stage fails before writing an artifact. Portable toolchain tarball top directories use the same filesystem-safe version component as app tarballs. Linux-platform tarballs include `install.sh`, `uninstall.sh`, `README.install`, and `share/viper/install_manifest.txt`; by default the scripts install under `/usr/local`, honor `PREFIX` and `DESTDIR`, preserve staged modes/symlinks through `tar`, remove stale files from the prior tarball manifest before copying the new payload, refresh man/MIME/desktop caches when installing directly on a host, and uninstall only the files listed in the manifest. `-o <path>` is treated as an output directory when it already exists as a directory or when multiple targets are selected; otherwise the parent directory of the requested output file is created before writing.
 
 Staged toolchain packaging rejects symlinks whose resolved targets leave the staged prefix, including when `--stage-dir` itself is a symlink and CMake's install manifest records paths through that alias. Relative internal symlink targets are preserved as written in tar-based artifacts and in macOS package roots; absolute internal symlinks are converted to archive-relative targets. Linux `.deb`, `.rpm`, and Linux-platform tarball outputs preserve staged Unix permission bits, map root-level docs such as `LICENSE` to `/usr/share/doc/viper/`, include hidden desktop/MIME metadata for the default Viper file associations, and refresh MIME, desktop, and manpage caches from post-removal maintainer hooks. Installed Linux packages open source associations through `/usr/bin/viper run %f` and IL associations through `/usr/bin/viper -run %f`; portable Linux tarballs use `viper run %f` and `viper -run %f` so the entries do not hard-code `/usr/bin`. Debian toolchain packages use a valid maintainer field and declare hard dependencies for libc/C++/libgcc, CMake, `make`, and a C++ compiler, plus X11 or ALSA when the staged support libraries require them. RPM specs declare matching hard `Requires`, including `cmake`, `gcc-c++`, and `make`, so package-manager installs set up the developer workflow instead of leaving compiler/CMake setup as a weak recommendation. RPM `%install` copies the full staged source tree, including top-level dotfiles, and `%files` entries are quoted and escaped for paths that contain spaces, quotes, backslashes, or percent signs. RPM output discovery accepts distribution release suffixes added by `%{?dist}`.
 
@@ -481,7 +499,7 @@ macOS toolchain packages are generated without `pkgbuild` or `productbuild`: Vip
 
 The macOS GUI's Destination Select step chooses the destination volume; the install prefix is fixed at `/usr/local/viper` so the package can set up `/usr/local/bin` commands and `/usr/local/lib/cmake/Viper` discovery consistently. The macOS installer smoke test is intentionally opt-in because it installs into `/usr/local`. Linux `.deb`/`.rpm` installer smoke tests are also opt-in for the privileged install/remove step; their non-privileged artifact and payload checks run when the host package tools are available. Run the platform smoke tests as root with `VIPER_RUN_MACOS_INSTALLER_SMOKE=1` or `VIPER_RUN_LINUX_INSTALLER_SMOKE=1` when validating a developer machine image or release candidate.
 
-`install-package --verify-only` infers formats only from supported extensions: `.exe`, `.pkg`, `.deb`, `.rpm`, `.tar.gz`, and `.tgz`. Unknown extensions fail unless a supported `--target` is provided. Post-build verification for generated Windows, Debian, RPM, macOS, and tarball toolchain artifacts checks every staged manifest path in the emitted payload, including generated Linux desktop/MIME metadata and macOS command, manpage, manifest, file-handler app, uninstall helper, and CMake-wrapper paths. `.pkg` verification is native: it validates product and component XAR headers/TOCs/checksums, inflates gzip payloads, validates CPIO structure, rejects AppleDouble sidecars, requires `Payload`, `PackageInfo`, `Bom`, `Scripts`, `Distribution`, and script entries, then checks the payload paths directly. `.rpm` verification checks the RPM lead, signature header, main header bounds, that a non-empty payload follows the headers, reads RPM file-list tags from the main header, and compares those paths natively without shelling out to `rpm -qpl`.
+`install-package --verify-only` infers formats only from supported extensions: `.exe`, `.pkg`, `.deb`, `.rpm`, `.AppImage`, `.tar.gz`, and `.tgz`. Unknown extensions fail unless a supported `--target` is provided. Post-build verification for generated Windows, Debian, RPM, AppImage, macOS, and tarball toolchain artifacts checks every staged manifest path in the emitted payload where the format exposes a payload listing, including generated Linux desktop/MIME metadata and macOS command, manpage, manifest, file-handler app, uninstall helper, and CMake-wrapper paths. `.pkg` verification is native: it validates product and component XAR headers/TOCs/checksums, inflates gzip payloads, validates CPIO structure, rejects AppleDouble sidecars, requires `Payload`, `PackageInfo`, `Bom`, `Scripts`, `Distribution`, and script entries, then checks the payload paths directly. `.rpm` verification checks the RPM lead, signature header, main header bounds, that a non-empty payload follows the headers, reads RPM file-list tags from the main header, and compares those paths natively without shelling out to `rpm -qpl`.
 
 ---
 

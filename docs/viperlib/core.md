@@ -395,6 +395,7 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `Repeat(count)`                | `String(Integer)`         | Repeats the string count times                                  |
 | `Flip()`                       | `String()`                | Reverses the string (byte-level, ASCII-safe)                    |
 | `Split(delimiter)`             | `Seq(String)`             | Splits string by delimiter into a Seq of strings                |
+| `Lines()`                      | `Seq(String)`             | Splits into logical lines on `\n`, dropping a trailing `\r` (CRLF→LF); segment count matches `Split("\n")` |
 
 **Case Conversion:**
 

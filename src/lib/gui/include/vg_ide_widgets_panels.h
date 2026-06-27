@@ -318,6 +318,14 @@ typedef struct vg_output_line {
     uint64_t timestamp;            ///< When line was added
 } vg_output_line_t;
 
+/// @brief One terminal grid cell (interactive terminal mode): a UTF-8 glyph + style.
+typedef struct vg_term_cell {
+    char utf8[5];  ///< UTF-8 bytes of the glyph (nul-terminated); empty = space
+    uint32_t fg;   ///< Foreground color
+    uint32_t bg;   ///< Background color
+    bool bold;     ///< Bold attribute
+} vg_term_cell_t;
+
 /// @brief OutputPane widget structure
 ///
 /// @details `max_lines` is clamped to at least one line. `append_line` writes
@@ -357,6 +365,23 @@ typedef struct vg_outputpane {
     bool in_escape;
     char escape_buf[32];
     int escape_len;
+
+    // Interactive terminal mode (vg_outputpane_set_terminal_mode). When enabled the
+    // pane uses a cursor-column overwrite model (so \r, \b, ESC[K, cursor moves render),
+    // a full escape state machine (OSC / ESC7-8 / charset are swallowed, not leaked),
+    // and captures keystrokes into pending_input for the controller to drain to a PTY.
+    bool terminal_mode;      ///< Cursor-column overwrite + keyboard capture active
+    bool has_focus;          ///< Pane currently holds keyboard focus (terminal caret)
+    int esc_state;           ///< Terminal escape parser state (0=normal,1=esc,2=csi,3=osc,4=charset,5=osc-esc)
+    uint32_t cursor_col;     ///< Cursor column on the current line (terminal mode)
+    vg_term_cell_t *cells;   ///< Current-line cells (terminal mode)
+    size_t cell_count;       ///< Cells on the current line
+    size_t cell_capacity;    ///< Allocated cell capacity
+    char *pending_input;     ///< Keystroke bytes awaiting drain to the PTY
+    size_t pending_len;      ///< Bytes queued in pending_input
+    size_t pending_capacity; ///< Allocated pending_input capacity
+    float caret_blink_time;  ///< Accumulated time toward the next caret blink toggle
+    bool caret_visible;      ///< Current caret on/off phase (terminal mode)
 
     // Callbacks
     void (*on_line_click)(struct vg_outputpane *pane, int line, int col, void *user_data);
@@ -426,6 +451,20 @@ void vg_outputpane_set_max_lines(vg_outputpane_t *pane, size_t max);
 /// @param font Font handle (should be a monospace face).
 /// @param size Font size in pixels.
 void vg_outputpane_set_font(vg_outputpane_t *pane, vg_font_t *font, float size);
+
+/// @brief Enable/disable interactive terminal mode. When enabled the pane renders with
+///        a cursor-column overwrite model (handles \r, \b, ESC[K, cursor moves), fully
+///        parses (and swallows) non-SGR escape sequences, and captures keyboard focus,
+///        queueing keystrokes for vg_outputpane_take_input. Off = append-only log.
+void vg_outputpane_set_terminal_mode(vg_outputpane_t *pane, bool enabled);
+
+/// @brief Drain queued keystroke bytes (terminal mode). Returns a heap string the caller
+///        must free, or NULL when nothing is queued.
+char *vg_outputpane_take_input(vg_outputpane_t *pane);
+
+/// @brief Advance the terminal caret blink timer by @p dt seconds (terminal mode + focused);
+///        toggles caret visibility and marks the pane for repaint on each phase change.
+void vg_outputpane_tick(vg_outputpane_t *pane, float dt);
 
 //=============================================================================
 // Breadcrumb Widget

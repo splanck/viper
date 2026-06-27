@@ -31,7 +31,6 @@ and source code organization.
 10. [Calling Convention](#calling-convention)
 11. [AArch64 Backend](#aarch64-backend)
 12. [Source Code Guide](#source-code-guide)
-13. [Implementation Phases](#implementation-phases)
 
 ---
 
@@ -55,23 +54,21 @@ Source → Frontend → IL → Backend → Assembly → Executable
 | **Output**        | Text assembly, native relocatable objects, and executables |
 | **Strategy**      | SSA-based with linear scan register allocation           |
 | **Pipeline**      | Multi-pass: Lowering → Selection → Allocation → Emission |
-| **Current Phase** | Phase A (bring-up); x86_64 validated on Windows, AArch64 validated on Apple Silicon |
+| **Validation**    | x86_64 validated on Windows; AArch64 validated on Apple Silicon |
 
 Native builds from `viper build` keep frontend/project IL optimization and backend optimization separate. The driver
 hands the verified, already-optimized IL module directly to the backend, tells the backend to skip its own IL
 optimization pass, and still forwards the selected `O0`/`O1`/`O2` level to MIR/codegen passes such as pre-regalloc
 cleanup, block layout, scheduling, and peephole optimization.
 
-### Phase A Goals
+### Current Implementation Priorities
 
-The current implementation (Phase A) prioritizes:
+The current implementation prioritizes:
 
 1. **Correctness**: Deterministic, verifiable code generation
 2. **Clarity**: Educational implementation demonstrating compiler techniques
 3. **Completeness**: Full IL opcode coverage for basic programs
-4. **Simplicity**: Clean architecture for future optimization phases
-
-Future phases will add optimizations, additional ABIs, and performance tuning.
+4. **Simplicity**: Clean architecture for target-specific maintenance
 
 ---
 
@@ -282,7 +279,7 @@ struct MInstr {
 };
 ```
 
-**Supported opcodes (Phase A):**
+**Supported opcodes:**
 
 - **Moves**: `MOVrr`, `MOVri`, `LEA`, `CMOVNErr`
 - **Arithmetic**: `ADDrr/ri`, `SUBrr`, `IMULrr`, `DIVS64rr`, `REMS64rr`
@@ -1084,68 +1081,6 @@ src/codegen/
 
 - `passes/PassManager.hpp` — Pass orchestration
 - `passes/*Pass.hpp` — Individual pipeline passes
-
----
-
-## Implementation Phases
-
-### Phase A: Bring-Up (Current)
-
-**Goals:**
-
-- ✅ Complete IL opcode coverage
-- ✅ Functional register allocation
-- ✅ Correct code generation
-- ✅ System V ABI compliance
-- ✅ Educational clarity
-
-**Characteristics:**
-
-- Simple linear scan allocation
-- No optimizations beyond basic peephole
-- AT&T syntax only
-- Single-threaded compilation
-- Emphasis on correctness over performance
-
-**Supported Features:**
-
-- Basic exception handling
-- Bitwise operations (and, or, xor, shifts)
-- Comparisons and branches
-- Floating-point arithmetic (fadd, fsub, fmul, fdiv)
-- Function calls (direct)
-- Integer arithmetic (iadd.ovf, isub.ovf, imul.ovf, sdiv.chk0, udiv.chk0, srem.chk0, urem.chk0)
-- Local variables (via stack)
-
-**Limitations:**
-
-- No advanced optimizations (loop opts, inlining, etc.)
-- No debug info generation
-- No indirect calls
-- No position-independent code (PIC)
-- No SIMD instructions
-
-### Future Phases
-
-**Phase B: Optimization**
-
-- Graph coloring register allocator
-- SSA-based optimizations
-- Instruction scheduling
-- Loop optimizations
-
-**Phase C: Advanced Features**
-
-- SIMD instruction generation
-- Position-independent code (PIC)
-- ~~Debug info (DWARF)~~ — **Implemented** (DWARF v5 via native assembler/linker)
-- Link-time optimization (LTO)
-
-**Phase D: Production**
-
-- Profile-guided optimization (PGO)
-- Code size optimization
-- Advanced peephole passes
 
 ---
 
