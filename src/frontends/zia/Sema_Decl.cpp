@@ -57,12 +57,10 @@ std::string forbiddenValueTypeName(TypeRef type) {
 /// @brief True for compatibility alias namespaces that should not be imported
 ///        as child symbols during a broad namespace bind.
 /// @details Explicit binds to these aliases remain valid. Suppressing the broad
-///          child keeps legacy paths such as `Viper.Graphics.Scene.*` from
-///          competing with the canonical `Viper.Game.Scene` class.
+///          child keeps compatibility namespaces from competing with canonical classes.
 bool suppressBroadRuntimeAliasNamespaceImport(std::string_view ns, std::string_view child) {
     const std::string qualified = std::string(ns) + "." + std::string(child);
     static constexpr std::string_view suppressed[] = {
-        "Viper.Graphics.Scene",
         "Viper.Graphics.Lighting2D",
         "Viper.Graphics3D.Sound3D",
         "Viper.Graphics3D.Assets3D",

@@ -340,39 +340,39 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"FromNode\""),
                  "Entity3D.FromNode method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelAsync\""),
-                 "Assets3D.LoadModelAsync must use Game3D PascalCase factory naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAsync\""),
+                 "Assets3D.LoadEntityAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelAssetAsync\""),
-                 "Assets3D.LoadModelAssetAsync must use Game3D PascalCase factory naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAssetAsync\""),
+                 "Assets3D.LoadEntityAssetAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelTemplateAsync\""),
-                 "Assets3D.LoadModelTemplateAsync must use Game3D PascalCase factory naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAsync\""),
+                 "Assets3D.LoadTemplateAsync must use Game3D PascalCase factory naming") &&
          ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelTemplateAssetAsync\""),
-                "Assets3D.LoadModelTemplateAssetAsync must use Game3D PascalCase factory naming") &&
+        require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAssetAsync\""),
+                "Assets3D.LoadTemplateAssetAsync must use Game3D PascalCase factory naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.get_sceneCount\""),
-                 "ModelTemplate.sceneCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.get_sceneCount\""),
+                 "SceneTemplate.sceneCount getter must use Game3D lower/camel naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.getSceneName\""),
-                 "ModelTemplate.getSceneName must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.getSceneName\""),
+                 "SceneTemplate.getSceneName must use Game3D lower/camel naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.getCameraCount\""),
-                 "ModelTemplate.getCameraCount must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.getCameraCount\""),
+                 "SceneTemplate.getCameraCount must use Game3D lower/camel naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.getCamera\""),
-                 "ModelTemplate.getCamera must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.getCamera\""),
+                 "SceneTemplate.getCamera must use Game3D lower/camel naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.instantiateSceneAt\""),
-                 "ModelTemplate.instantiateSceneAt must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.instantiateSceneAt\""),
+                 "SceneTemplate.instantiateSceneAt must use Game3D lower/camel naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"sceneCount\""),
-                 "ModelTemplate.sceneCount property missing") &&
+                 "SceneTemplate.sceneCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"instantiateSceneAt\""),
-                 "ModelTemplate.instantiateSceneAt method missing") &&
+                 "SceneTemplate.instantiateSceneAt method missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget must use Game3D PascalCase method naming") &&
@@ -410,8 +410,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"ready\""),
                  "AssetHandle3D.ready property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"LoadModelAsync\""),
-                 "Assets3D.LoadModelAsync method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"LoadEntityAsync\""),
+                 "Assets3D.LoadEntityAsync method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget method missing") &&
@@ -595,14 +595,14 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_ResidentBytes\""),
                  "Mesh3D.ResidentBytes getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.SetLodResident\""),
-                 "SceneNode3D.SetLodResident must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetLodResident\""),
+                 "SceneNode.SetLodResident must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.GetLodResident\""),
-                 "SceneNode3D.GetLodResident must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.GetLodResident\""),
+                 "SceneNode.GetLodResident must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.GetLodResidentBytes\""),
-                 "SceneNode3D.GetLodResidentBytes must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.GetLodResidentBytes\""),
+                 "SceneNode.GetLodResidentBytes must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"Resident\""),
                  "Mesh3D.Resident property missing") &&
@@ -611,73 +611,73 @@ bool check_runtime_surface_names() {
                  "Mesh3D.ResidentBytes property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetLodResident\""),
-                 "SceneNode3D.SetLodResident method missing") &&
+                 "SceneNode.SetLodResident method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"GetLodResident\""),
-                 "SceneNode3D.GetLodResident method missing") &&
+                 "SceneNode.GetLodResident method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"GetLodResidentBytes\""),
-                 "SceneNode3D.GetLodResidentBytes method missing") &&
+                 "SceneNode.GetLodResidentBytes method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.get_SceneCount\""),
-                 "Model3D.SceneCount getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.get_SceneCount\""),
+                 "SceneAsset.SceneCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.GetCameraCount\""),
-                 "Model3D.GetCameraCount must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetCameraCount\""),
+                 "SceneAsset.GetCameraCount must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.GetCamera\""),
-                 "Model3D.GetCamera must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetCamera\""),
+                 "SceneAsset.GetCamera must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.GetSceneName\""),
-                 "Model3D.GetSceneName must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetSceneName\""),
+                 "SceneAsset.GetSceneName must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.InstantiateSceneAt\""),
-                 "Model3D.InstantiateSceneAt must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.InstantiateSceneAt\""),
+                 "SceneAsset.InstantiateSceneAt must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.get_NodeAnimationCount\""),
-                 "Model3D.NodeAnimationCount getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.get_NodeAnimationCount\""),
+                 "SceneAsset.NodeAnimationCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.GetNodeAnimation\""),
-                 "Model3D.GetNodeAnimation must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetNodeAnimation\""),
+                 "SceneAsset.GetNodeAnimation must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.LoadNodeAnimation\""),
-                 "Model3D.LoadNodeAnimation must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.LoadNodeAnimation\""),
+                 "SceneAsset.LoadNodeAnimation must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SceneCount\""),
-                 "Model3D.SceneCount property missing") &&
+                 "SceneAsset.SceneCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"GetCameraCount\""),
-                 "Model3D.GetCameraCount method missing") &&
+                 "SceneAsset.GetCameraCount method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"GetCamera\""),
-                 "Model3D.GetCamera method missing") &&
+                 "SceneAsset.GetCamera method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"GetSceneName\""),
-                 "Model3D.GetSceneName method missing") &&
+                 "SceneAsset.GetSceneName method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"InstantiateSceneAt\""),
-                 "Model3D.InstantiateSceneAt method missing") &&
+                 "SceneAsset.InstantiateSceneAt method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"NodeAnimationCount\""),
-                 "Model3D.NodeAnimationCount property missing") &&
+                 "SceneAsset.NodeAnimationCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"GetNodeAnimation\""),
-                 "Model3D.GetNodeAnimation method missing") &&
+                 "SceneAsset.GetNodeAnimation method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"LoadNodeAnimation\""),
-                 "Model3D.LoadNodeAnimation method missing") &&
+                 "SceneAsset.LoadNodeAnimation method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.BindNodeAnimator\""),
-                 "SceneNode3D.BindNodeAnimator must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.BindNodeAnimator\""),
+                 "SceneNode.BindNodeAnimator must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.get_NodeAnimator\""),
-                 "SceneNode3D.NodeAnimator getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.get_NodeAnimator\""),
+                 "SceneNode.NodeAnimator getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"NodeAnimator\""),
-                 "SceneNode3D.NodeAnimator property missing") &&
+                 "SceneNode.NodeAnimator property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"BindNodeAnimator\""),
-                 "SceneNode3D.BindNodeAnimator method missing") &&
+                 "SceneNode.BindNodeAnimator method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.NodeAnimation3D\""),
                  "NodeAnimation3D class missing") &&
@@ -1151,35 +1151,35 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"Retarget\""),
                  "Animation3D.Retarget method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.RebaseOrigin\""),
-                 "Scene3D.RebaseOrigin must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.RebaseOrigin\""),
+                 "SceneGraph.RebaseOrigin must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.QueryAABB\""),
-                 "Scene3D.QueryAABB must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.QueryAABB\""),
+                 "SceneGraph.QueryAABB must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.QuerySphere\""),
-                 "Scene3D.QuerySphere must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.QuerySphere\""),
+                 "SceneGraph.QuerySphere must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.RaycastNodes\""),
-                 "Scene3D.RaycastNodes must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.RaycastNodes\""),
+                 "SceneGraph.RaycastNodes must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.get_VisibleNodeCount\""),
-                 "Scene3D.VisibleNodeCount getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.get_VisibleNodeCount\""),
+                 "SceneGraph.VisibleNodeCount getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"RebaseOrigin\""),
-                 "Scene3D.RebaseOrigin method missing") &&
+                 "SceneGraph.RebaseOrigin method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"QueryAABB\""),
-                 "Scene3D.QueryAABB method missing") &&
+                 "SceneGraph.QueryAABB method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"QuerySphere\""),
-                 "Scene3D.QuerySphere method missing") &&
+                 "SceneGraph.QuerySphere method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"RaycastNodes\""),
-                 "Scene3D.RaycastNodes method missing") &&
+                 "SceneGraph.RaycastNodes method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"VisibleNodeCount\""),
-                 "Scene3D.VisibleNodeCount property missing") &&
+                 "SceneGraph.VisibleNodeCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.get_CastsShadows\""),
                  "Light3D.CastsShadows getter must use Graphics3D PascalCase naming") &&
@@ -1306,20 +1306,20 @@ bool check_runtime_surface_names() {
              contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadPendingBytes\""),
              "Canvas3D.TextureUploadPendingBytes getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.AddVisibilityZone\""),
-                 "Scene3D.AddVisibilityZone must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.AddVisibilityZone\""),
+                 "SceneGraph.AddVisibilityZone must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.AddVisibilityPortal\""),
-                 "Scene3D.AddVisibilityPortal must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.AddVisibilityPortal\""),
+                 "SceneGraph.AddVisibilityPortal must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.get_PvsCulledCount\""),
-                 "Scene3D.PvsCulledCount getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.get_PvsCulledCount\""),
+                 "SceneGraph.PvsCulledCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.SetAutoLOD\""),
-                 "SceneNode3D.SetAutoLOD must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetAutoLOD\""),
+                 "SceneNode.SetAutoLOD must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.SetImpostor\""),
-                 "SceneNode3D.SetImpostor must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetImpostor\""),
+                 "SceneNode.SetImpostor must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetClusteredLighting\""),
                  "Canvas3D.SetClusteredLighting method missing") &&
@@ -1364,19 +1364,19 @@ bool check_runtime_surface_names() {
                  "Canvas3D.TextureUploadPendingBytes property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"AddVisibilityZone\""),
-                 "Scene3D.AddVisibilityZone method missing") &&
+                 "SceneGraph.AddVisibilityZone method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"AddVisibilityPortal\""),
-                 "Scene3D.AddVisibilityPortal method missing") &&
+                 "SceneGraph.AddVisibilityPortal method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"PvsCulledCount\""),
-                 "Scene3D.PvsCulledCount property missing") &&
+                 "SceneGraph.PvsCulledCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetAutoLOD\""),
-                 "SceneNode3D.SetAutoLOD method missing") &&
+                 "SceneNode.SetAutoLOD method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetImpostor\""),
-                 "SceneNode3D.SetImpostor method missing") &&
+                 "SceneNode.SetImpostor method missing") &&
          ok;
 
     ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_BroadphaseFallbackCount\""),
@@ -1497,12 +1497,12 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.AnimController3D.SetBlendtree",
         "Viper.Graphics3D.Animation3D.retarget",
         "Viper.Graphics3D.Animation3D.RetargetAnimation",
-        "Viper.Graphics3D.Scene3D.rebaseOrigin",
-        "Viper.Graphics3D.Scene3D.Rebaseorigin",
-        "Viper.Graphics3D.Scene3D.queryAABB",
-        "Viper.Graphics3D.Scene3D.QueryAabb",
-        "Viper.Graphics3D.Scene3D.Raycastnodes",
-        "Viper.Graphics3D.Scene3D.get_visibleNodeCount",
+        "Viper.Graphics3D.SceneGraph.rebaseOrigin",
+        "Viper.Graphics3D.SceneGraph.Rebaseorigin",
+        "Viper.Graphics3D.SceneGraph.queryAABB",
+        "Viper.Graphics3D.SceneGraph.QueryAabb",
+        "Viper.Graphics3D.SceneGraph.Raycastnodes",
+        "Viper.Graphics3D.SceneGraph.get_visibleNodeCount",
         "Viper.Graphics3D.Light3D.get_castsShadows",
         "Viper.Graphics3D.Light3D.set_castsShadows",
         "Viper.Graphics3D.Light3D.SetCastShadows",
@@ -1575,8 +1575,8 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.Canvas3D.get_drawCount",
         "Viper.Graphics3D.Canvas3D.setTextureUploadBudget",
         "Viper.Graphics3D.Canvas3D.get_textureUploadPendingBytes",
-        "Viper.Graphics3D.SceneNode3D.setAutoLOD",
-        "Viper.Graphics3D.SceneNode3D.setImpostor",
+        "Viper.Graphics3D.SceneNode.setAutoLOD",
+        "Viper.Graphics3D.SceneNode.setImpostor",
         "Viper.Graphics3D.Canvas3D.SetShadowCascade\"",
         "Viper.Game3D.ModelHandle",
         "Viper.Graphics3D.SixDOFJoint3D",

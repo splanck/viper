@@ -12,16 +12,16 @@ DIM animNode AS OBJECT
 DIM animPos AS OBJECT
 DIM rootBone AS INTEGER
 
-PRINT "SceneNode3D bindings demo"
+PRINT "SceneNode bindings demo"
 
-scene = Viper.Graphics3D.Scene3D.New()
-parent = Viper.Graphics3D.SceneNode3D.New()
-child = Viper.Graphics3D.SceneNode3D.New()
+scene = Viper.Graphics3D.SceneGraph.New()
+parent = Viper.Graphics3D.SceneNode.New()
+child = Viper.Graphics3D.SceneNode.New()
 body = Viper.Graphics3D.Physics3DBody.NewSphere(0.5, 1.0)
 
-Viper.Graphics3D.SceneNode3D.SetPosition(parent, 5.0, 0.0, 0.0)
-Viper.Graphics3D.SceneNode3D.AddChild(parent, child)
-Viper.Graphics3D.Scene3D.Add(scene, parent)
+Viper.Graphics3D.SceneNode.SetPosition(parent, 5.0, 0.0, 0.0)
+Viper.Graphics3D.SceneNode.AddChild(parent, child)
+Viper.Graphics3D.SceneGraph.Add(scene, parent)
 
 child.BindBody(body)
 child.SyncMode = 0
@@ -48,10 +48,10 @@ Viper.Graphics3D.AnimController3D.SetRootMotionBone(controller, rootBone)
 Viper.Graphics3D.AnimController3D.Play(controller, "walk")
 Viper.Graphics3D.AnimController3D.Update(controller, 0.5)
 
-animNode = Viper.Graphics3D.SceneNode3D.New()
+animNode = Viper.Graphics3D.SceneNode.New()
 animNode.BindAnimator(controller)
 animNode.SyncMode = 2
-Viper.Graphics3D.Scene3D.Add(scene, animNode)
+Viper.Graphics3D.SceneGraph.Add(scene, animNode)
 scene.SyncBindings(0.016)
 
 animPos = animNode.Position

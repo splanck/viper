@@ -27,7 +27,7 @@ registered through `src/il/runtime/runtime.def`. Important runtime families are:
 - `Viper.Workspace.FileIndex` for project tree/search enumeration.
 - `Viper.Workspace.Edit` for transactional text replacement.
 - `Viper.Zia.*` and `Viper.Basic.*` for language services.
-- `Viper.Game.Scene` for scene data loading/saving tests and future editor work.
+- `Viper.Game2D.SceneDocument` for scene data loading/saving tests and future editor work.
 
 ## Source Layout
 

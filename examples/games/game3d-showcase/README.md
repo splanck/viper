@@ -38,7 +38,7 @@ viper run examples/games/game3d-showcase/smoke_probe.zia
 Built on the higher-level `Viper.Game3D` world surface plus direct `Viper.Graphics3D`
 rendering, the scene exercises a broad slice of the 3D API:
 
-- **Imported models** — optional `MapleTree_1.fbx` loaded with `Model3D.Load` when present
+- **Imported models** — optional `MapleTree_1.fbx` loaded with `SceneAsset.Load` when present
   on disk and instanced into a deterministic forest, placed by terrain slope/height
   (avoids cliffs and water)
 - **PBR materials** — stone/metal landmarks use `NewPBR` with procedural albedo + normal maps
@@ -60,7 +60,7 @@ rendering, the scene exercises a broad slice of the 3D API:
   boulder pile settling on a static plinth), **wind-swayed reeds** (`Canvas3D.DrawMeshWind`), a
   **render-to-image minimap** (`Canvas3D.DrawImage2D`), **AnimController3D** idle/move sentinels
   that wander the meadow (skinned via `Canvas3D.DrawMeshSkinned`), bark/canopy split tree
-  materials (`SceneNode3D` traversal), a sprint **FOV kick** with depth-of-field + motion blur,
+  materials (`SceneNode` traversal), a sprint **FOV kick** with depth-of-field + motion blur,
   and a "return home" **Trigger3D** objective
 
 > The forest treats `MapleTree_1.fbx` as an optional local asset. If the file is

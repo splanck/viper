@@ -182,7 +182,7 @@ int main() {
         "Viper.Graphics.Sampler2D",
         "Viper.Graphics.BlendState2D",
         "Viper.Graphics.SpriteRenderer2D",
-        "Viper.Graphics.TilemapRenderer2D",
+        "Viper.Graphics2D.TilemapRenderer2D",
         "Viper.Graphics.TileChunkCache2D",
         "Viper.Graphics.AnimationClip2D",
         "Viper.Graphics.AnimatedSprite2D",

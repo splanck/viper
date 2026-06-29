@@ -1,45 +1,45 @@
-module Model3DDemo;
+module SceneAssetDemo;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal;
 
 func start() {
-    Say("=== Model3D Demo ===");
+    Say("=== SceneAsset Demo ===");
 
-    var path = "model3d_demo.vscn";
-    var scene = Scene3D.New();
-    var parent = SceneNode3D.New();
-    var child = SceneNode3D.New();
+    var path = "scene_asset_demo.vscn";
+    var scene = SceneGraph.New();
+    var parent = SceneNode.New();
+    var child = SceneNode.New();
     var mesh = Mesh3D.NewBox(1.0, 2.0, 3.0);
     var mat = Material3D.NewColor(0.2, 0.4, 0.8);
 
-    SceneNode3D.set_Name(parent, "parent");
-    SceneNode3D.set_Name(child, "child");
-    SceneNode3D.SetPosition(parent, 1.0, 2.0, 3.0);
-    SceneNode3D.SetPosition(child, 0.0, 5.0, 0.0);
-    SceneNode3D.set_Mesh(parent, mesh);
-    SceneNode3D.set_Material(parent, mat);
-    SceneNode3D.set_Mesh(child, mesh);
-    SceneNode3D.set_Material(child, mat);
-    SceneNode3D.AddChild(parent, child);
-    Scene3D.Add(scene, parent);
-    Scene3D.Save(scene, path);
+    SceneNode.set_Name(parent, "parent");
+    SceneNode.set_Name(child, "child");
+    SceneNode.SetPosition(parent, 1.0, 2.0, 3.0);
+    SceneNode.SetPosition(child, 0.0, 5.0, 0.0);
+    SceneNode.set_Mesh(parent, mesh);
+    SceneNode.set_Material(parent, mat);
+    SceneNode.set_Mesh(child, mesh);
+    SceneNode.set_Material(child, mat);
+    SceneNode.AddChild(parent, child);
+    SceneGraph.Add(scene, parent);
+    SceneGraph.Save(scene, path);
 
-    var model = Model3D.Load(path);
-    Say("MeshCount = " + toString(Model3D.get_MeshCount(model)));
-    Say("MaterialCount = " + toString(Model3D.get_MaterialCount(model)));
-    Say("NodeCount = " + toString(Model3D.get_NodeCount(model)));
+    var model = SceneAsset.Load(path);
+    Say("MeshCount = " + toString(SceneAsset.get_MeshCount(model)));
+    Say("MaterialCount = " + toString(SceneAsset.get_MaterialCount(model)));
+    Say("NodeCount = " + toString(SceneAsset.get_NodeCount(model)));
 
-    var templateChild = Model3D.FindNode(model, "child");
-    Say("Template child Y = " + toString(Vec3.get_Y(SceneNode3D.get_Position(templateChild))));
+    var templateChild = SceneAsset.FindNode(model, "child");
+    Say("Template child Y = " + toString(Vec3.get_Y(SceneNode.get_Position(templateChild))));
 
-    var instRoot = Model3D.Instantiate(model);
-    var instChild = SceneNode3D.Find(instRoot, "child");
-    SceneNode3D.SetPosition(instChild, 9.0, 9.0, 9.0);
-    Say("Instance child Y = " + toString(Vec3.get_Y(SceneNode3D.get_Position(instChild))));
-    Say("Template child still Y = " + toString(Vec3.get_Y(SceneNode3D.get_Position(templateChild))));
+    var instRoot = SceneAsset.Instantiate(model);
+    var instChild = SceneNode.Find(instRoot, "child");
+    SceneNode.SetPosition(instChild, 9.0, 9.0, 9.0);
+    Say("Instance child Y = " + toString(Vec3.get_Y(SceneNode.get_Position(instChild))));
+    Say("Template child still Y = " + toString(Vec3.get_Y(SceneNode.get_Position(templateChild))));
 
-    var instScene = Model3D.InstantiateScene(model);
-    Say("Scene node count = " + toString(Scene3D.get_NodeCount(instScene)));
+    var instScene = SceneAsset.InstantiateScene(model);
+    Say("Scene node count = " + toString(SceneGraph.get_NodeCount(instScene)));
 }

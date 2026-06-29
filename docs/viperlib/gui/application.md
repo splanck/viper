@@ -311,6 +311,77 @@ if palette.WasSelected() == 1 {
 
 ---
 
+### Command
+
+A single UI command (action) bound to the surfaces that invoke it — a menu item, a toolbar button, a keyboard shortcut, and a command-palette entry — so they are polled and kept in sync from one place instead of by hand.
+
+`SetShortcut` also registers the chord with the global `Viper.GUI.Shortcuts` registry under the command id, so the shortcut and the command share one identifier (call it after the app/window exists, like `Shortcuts.Register`). A **disabled command never reports invoked**, even via shortcut or palette. A bound widget's click is **consumed on read**, so once a widget is bound to a command, the command owns its click polling — stop calling `WasClicked()` on that widget directly.
+
+Bound `MenuItem` / `ToolbarItem` handles are held as weak references and accessed through the runtime's self-guarding accessors, so a destroyed widget simply stops firing rather than dangling.
+
+**Constructor:** `NEW Viper.GUI.Command(id, title)`
+
+| Method                     | Signature             | Description                                                        |
+|----------------------------|-----------------------|-------------------------------------------------------------------|
+| `GetId()`                  | `String()`            | The command's stable id                                           |
+| `GetTitle()`               | `String()`            | The command's display title                                       |
+| `SetShortcut(keys)`        | `Void(String)`        | Set chord (e.g. `"Ctrl+B"`) and register it with `Shortcuts` under the id |
+| `GetShortcut()`            | `String()`            | The shortcut chord (`""` if none)                                 |
+| `SetEnabled(on)`           | `Void(Boolean)`       | Enable/disable; pushed to bound widgets                           |
+| `IsEnabled()`              | `Boolean()`           | 1 if enabled                                                      |
+| `SetCheckable(on)`         | `Void(Boolean)`       | Mark as a toggle; pushed to a bound menu item                     |
+| `IsCheckable()`            | `Boolean()`           | 1 if checkable                                                    |
+| `SetChecked(on)`           | `Void(Boolean)`       | Set checked/toggled state; pushed to bound widgets                |
+| `IsChecked()`              | `Boolean()`           | 1 if checked                                                      |
+| `BindMenuItem(item)`       | `Void(MenuItem)`      | Bind a menu item to read (clicks) and drive (enabled/checked)     |
+| `BindToolbarItem(item)`    | `Void(ToolbarItem)`   | Bind a toolbar item to read (clicks) and drive (enabled/toggled)  |
+| `Poll()`                   | `Boolean()`           | Standalone poll: read bound widgets + shortcut, push state, return 1 if invoked this frame |
+| `WasInvoked()`             | `Boolean()`           | The invoked flag from the most recent command- or registry-level poll |
+| `Snapshot()`               | `Map()`               | `{id, title, shortcut, enabled, checkable, checked, invoked}`     |
+
+### CommandRegistry
+
+Owns a set of commands and routes the menu item, toolbar button, keyboard shortcut, and palette selection for all of them in a single per-frame `Poll()`. Added commands are retained (the registry co-owns them); `Find` returns the command or `null`; `Poll` returns the id of an invoked command, or `""`.
+
+**Constructor:** `NEW Viper.GUI.CommandRegistry()`
+
+| Method                  | Signature           | Description                                                       |
+|-------------------------|---------------------|-------------------------------------------------------------------|
+| `Add(command)`          | `Void(Command)`     | Register (retain) a command; duplicates are ignored               |
+| `Count()`               | `Integer()`         | Number of registered commands                                     |
+| `Find(id)`              | `Command(String)`   | The command with that id, or `null`                               |
+| `BindPalette(palette)`  | `Void(CommandPalette)` | The palette whose selection routes to registered commands      |
+| `Poll()`                | `String()`          | Poll the palette and every command once; return an invoked command id (`""` if none). Each command's `WasInvoked()` is also updated |
+| `Clear()`               | `Void()`            | Release all commands                                              |
+
+### Example
+
+```rust
+// Zia — bind one action to its menu item, toolbar button, shortcut and palette,
+// then dispatch them all from a single poll.
+var registry = CommandRegistry.New();
+
+var save = Command.New("file.save", "Save");
+save.SetShortcut("Ctrl+S");          // also registers with Viper.GUI.Shortcuts under "file.save"
+save.BindMenuItem(fileSaveItem);     // a Viper.GUI.MenuItem
+save.BindToolbarItem(saveButton);    // a Viper.GUI.ToolbarItem
+registry.Add(save);
+
+var wrap = Command.New("view.wordwrap", "Word Wrap");
+wrap.SetCheckable(true);
+wrap.BindMenuItem(wordWrapItem);
+registry.Add(wrap);
+
+registry.BindPalette(palette);
+
+// Once per frame — routes menu + toolbar + shortcut + palette to the right command.
+var invoked = registry.Poll();
+if invoked == "file.save" { SaveDocument(); }
+if wrap.WasInvoked() { wrap.SetChecked(wrap.IsChecked() == false); }
+```
+
+---
+
 ### Breadcrumb
 
 Breadcrumb navigation widget.

@@ -99,7 +99,7 @@ static void expect_null_pixels_with_error(const char *path, const char *context)
 TEST(AssetLoadErrors, MissingFilesReturnNullAndSetError) {
     std::string model = tmp_path("missing_model.fbx");
     std::remove(model.c_str());
-    expect_null_with_error(rt_model3d_load, model.c_str(), "Model3D.Load missing");
+    expect_null_with_error(rt_model3d_load, model.c_str(), "SceneAsset.Load missing");
 
     std::string fbx = tmp_path("missing_direct.fbx");
     std::remove(fbx.c_str());
@@ -119,7 +119,7 @@ TEST(AssetLoadErrors, MissingFilesReturnNullAndSetError) {
 
     std::string vscn = tmp_path("missing_scene.vscn");
     std::remove(vscn.c_str());
-    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "Scene3D.Load missing");
+    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "SceneGraph.Load missing");
 
     std::string png = tmp_path("missing_pixels.png");
     std::remove(png.c_str());
@@ -131,7 +131,7 @@ TEST(AssetLoadErrors, TruncatedFilesReturnNullAndSetError) {
 
     std::string model = tmp_path("truncated_model.fbx");
     write_text(model.c_str(), "K");
-    expect_null_with_error(rt_model3d_load, model.c_str(), "Model3D.Load truncated");
+    expect_null_with_error(rt_model3d_load, model.c_str(), "SceneAsset.Load truncated");
     std::remove(model.c_str());
 
     std::string fbx = tmp_path("truncated_direct.fbx");
@@ -156,7 +156,7 @@ TEST(AssetLoadErrors, TruncatedFilesReturnNullAndSetError) {
 
     std::string vscn = tmp_path("truncated_scene.vscn");
     write_text(vscn.c_str(), "{");
-    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "Scene3D.Load truncated");
+    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "SceneGraph.Load truncated");
     std::remove(vscn.c_str());
 
     std::string png = tmp_path("truncated_pixels.png");
@@ -168,7 +168,7 @@ TEST(AssetLoadErrors, TruncatedFilesReturnNullAndSetError) {
 TEST(AssetLoadErrors, WrongMagicFilesReturnNullAndSetError) {
     std::string model = tmp_path("wrong_model.fbx");
     write_text(model.c_str(), "not an fbx");
-    expect_null_with_error(rt_model3d_load, model.c_str(), "Model3D.Load wrong magic");
+    expect_null_with_error(rt_model3d_load, model.c_str(), "SceneAsset.Load wrong magic");
     std::remove(model.c_str());
 
     std::string fbx = tmp_path("wrong_direct.fbx");
@@ -193,7 +193,7 @@ TEST(AssetLoadErrors, WrongMagicFilesReturnNullAndSetError) {
 
     std::string vscn = tmp_path("wrong_scene.vscn");
     write_text(vscn.c_str(), "not json");
-    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "Scene3D.Load wrong magic");
+    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "SceneGraph.Load wrong magic");
     std::remove(vscn.c_str());
 
     std::string img = tmp_path("wrong_pixels.img");
@@ -209,7 +209,7 @@ TEST(AssetLoadErrors, UntrustedCountsReturnNullAndSetError) {
                "\"vgfx3d_vertex_le_v2\",\"vertexCount\":2147483648,\"indexCount\":0,"
                "\"boneCount\":0,\"verticesBase64\":\"\",\"indicesBase64\":\"\"}],"
                "\"nodes\":[]}");
-    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "Scene3D.Load huge vertex count");
+    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "SceneGraph.Load huge vertex count");
     std::remove(vscn.c_str());
 
     const uint8_t truncated_glb[] = {'g', 'l', 'T', 'F', 2, 0, 0,   0,   32,  0,

@@ -1,26 +1,26 @@
-module TestModel3DLoadAsset;
+module TestSceneAssetLoadAsset;
 
 bind Viper.Graphics3D;
 bind Viper.Terminal;
 
 func start() {
-    var model = Model3D.LoadAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    var model = SceneAsset.LoadAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
     if (model == null) {
-        Say("FAIL: Model3D.LoadAsset should load glTF assets through filesystem fallback");
+        Say("FAIL: SceneAsset.LoadAsset should load glTF assets through filesystem fallback");
         return;
     }
-    if (Model3D.get_MeshCount(model) != 1) {
-        Say("FAIL: Model3D.LoadAsset should expose imported meshes");
+    if (SceneAsset.get_MeshCount(model) != 1) {
+        Say("FAIL: SceneAsset.LoadAsset should expose imported meshes");
         return;
     }
-    var mesh = Model3D.GetMesh(model, 0);
+    var mesh = SceneAsset.GetMesh(model, 0);
     if (mesh == null) {
-        Say("FAIL: Model3D.GetMesh should return the loaded mesh");
+        Say("FAIL: SceneAsset.GetMesh should return the loaded mesh");
         return;
     }
-    var root = Model3D.Instantiate(model);
-    if (root == null || SceneNode3D.get_ChildCount(root) != 1) {
-        Say("FAIL: Model3D.LoadAsset should instantiate imported glTF templates");
+    var root = SceneAsset.Instantiate(model);
+    if (root == null || SceneNode.get_ChildCount(root) != 1) {
+        Say("FAIL: SceneAsset.LoadAsset should instantiate imported glTF templates");
         return;
     }
     Say("PASS");

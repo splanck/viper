@@ -16,7 +16,7 @@ bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
 bind Env = Viper.System.Environment;
 bind Clock = Viper.Time.Clock;
-bind Scene = Viper.Game.Scene;
+bind SceneDocument = Viper.Game2D.SceneDocument;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind Obj = Viper.Core.Object;
@@ -288,7 +288,7 @@ func main() {
                   and Str.IndexOf(dbg.programOutput, "after-bp") != 0,
                   "debug adapter runs the program and terminates after continue") == false { return; }
 
-    var scene = Scene.New(3, 2, 16, 16);
+    var scene = SceneDocument.New(3, 2, 16, 16);
     scene.SetStr("theme", "cavern");
     scene.SetInt("spawnX", 32);
     var layer = scene.AddLayer("fg");
@@ -298,8 +298,8 @@ func main() {
     scene.ObjectSetInt(obj, "hp", 3);
     scene.ObjectSetBool(obj, "awake", true);
     var scenePath = Path.Join(root, "level.scene");
-    if assertTrue(scene.SaveFile(scenePath), "scene save file") == false { return; }
-    var loaded = Scene.LoadFile(scenePath);
+    if assertTrue(scene.Save(scenePath), "scene save file") == false { return; }
+    var loaded = SceneDocument.Load(scenePath);
     if assertTrue(loaded.HasErrors() == false
                   and loaded.GetTile(1, 1, 1) == 7
                   and loaded.ObjectGetInt(0, "hp", -1) == 3
@@ -307,7 +307,7 @@ func main() {
                   "scene load/save preserves owned edits") == false { return; }
     if assertTrue(loaded.BuildTilemap() != null,
                   "scene builds render tilemap copy") == false { return; }
-    var bad = Scene.LoadJson("{\"version\":1,");
+    var bad = SceneDocument.LoadJson("{\"version\":1,");
     if assertTrue(bad.HasErrors()
                   and Seq.get_Length(bad.DiagnosticRecords()) > 0
                   and bad.LastError() != "",

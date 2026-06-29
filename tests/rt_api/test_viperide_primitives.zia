@@ -1,6 +1,7 @@
 module TestViperIdePrimitives;
 
 bind Viper.Terminal;
+bind Viper.Game2D.SceneDocument as SceneDocument;
 
 func start() {
     SayBool(Viper.Workspace.FileIndex.ShouldIgnore(".", "build/generated.zia", "build/"));
@@ -10,7 +11,7 @@ func start() {
     SayBool(manifest.GetBool("valid"));
     Say(manifest.GetStr("defaultScene"));
 
-    var scene = Viper.Game.Scene.New(2, 2, 16, 16);
+    var scene = SceneDocument.New(2, 2, 16, 16);
     var layer = scene.AddLayer("fg");
     scene.SetTile(layer, 1, 1, 7);
     scene.SetLayerAsset(layer, "tiles.png");

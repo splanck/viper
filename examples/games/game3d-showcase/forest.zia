@@ -35,34 +35,34 @@ class ShowcaseForest {
         Terminal.Say("Forest: planted " + toString(planted) + " maples.");
     }
 
-    hide func treeBad(m: Model3D) -> Boolean {
+    hide func treeBad(m: SceneAsset) -> Boolean {
         if (m == null) { return true; }
-        return Model3D.get_MeshCount(m) <= 0;
+        return SceneAsset.get_MeshCount(m) <= 0;
     }
 
-    hide func loadTreeModel() -> Model3D {
-        var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
+    hide func loadTreeModel() -> SceneAsset {
+        var model = SceneAsset.LoadAsset(config.TREE_MODEL_PATH);
         if (not treeBad(model)) {
             reportTreeLoadSuccess("asset", config.TREE_MODEL_PATH, model);
             return model;
         }
         reportTreeLoadFailure(config.TREE_MODEL_PATH);
 
-        model = Model3D.Load(config.TREE_MODEL_PATH);
+        model = SceneAsset.Load(config.TREE_MODEL_PATH);
         if (not treeBad(model)) {
             reportTreeLoadSuccess("model", config.TREE_MODEL_PATH, model);
             return model;
         }
         reportTreeLoadFailure(config.TREE_MODEL_PATH);
 
-        model = Model3D.Load(config.TREE_MODEL_PATH_ALT);
+        model = SceneAsset.Load(config.TREE_MODEL_PATH_ALT);
         if (not treeBad(model)) {
             reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_ALT, model);
             return model;
         }
         reportTreeLoadFailure(config.TREE_MODEL_PATH_ALT);
 
-        model = Model3D.Load(config.TREE_MODEL_PATH_FROM_BIN);
+        model = SceneAsset.Load(config.TREE_MODEL_PATH_FROM_BIN);
         if (not treeBad(model)) {
             reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_FROM_BIN, model);
             return model;
@@ -71,12 +71,12 @@ class ShowcaseForest {
         return null;
     }
 
-    hide func reportTreeLoadSuccess(kind: String, path: String, model: Model3D) {
+    hide func reportTreeLoadSuccess(kind: String, path: String, model: SceneAsset) {
         Terminal.Say("Forest: loaded tree " + kind + " '" + path + "'"
-            + " meshes=" + toString(Model3D.get_MeshCount(model))
-            + " materials=" + toString(Model3D.get_MaterialCount(model))
-            + " nodes=" + toString(Model3D.get_NodeCount(model))
-            + " scenes=" + toString(Model3D.get_SceneCount(model)) + ".");
+            + " meshes=" + toString(SceneAsset.get_MeshCount(model))
+            + " materials=" + toString(SceneAsset.get_MaterialCount(model))
+            + " nodes=" + toString(SceneAsset.get_NodeCount(model))
+            + " scenes=" + toString(SceneAsset.get_SceneCount(model)) + ".");
     }
 
     hide func reportTreeLoadFailure(path: String) {
@@ -88,7 +88,7 @@ class ShowcaseForest {
         }
     }
 
-    hide func plantHomeGrove(world: World3D, land: Terrain3D, model: Model3D) -> Integer {
+    hide func plantHomeGrove(world: World3D, land: Terrain3D, model: SceneAsset) -> Integer {
         var cx = terrain.terrainWorldMaxX() * 0.5;
         var cz = terrain.terrainWorldMaxZ() * 0.5;
         var planted = 0;
@@ -116,7 +116,7 @@ class ShowcaseForest {
         return planted;
     }
 
-    hide func plantHillForest(world: World3D, land: Terrain3D, model: Model3D) -> Integer {
+    hide func plantHillForest(world: World3D, land: Terrain3D, model: SceneAsset) -> Integer {
         var maxX = terrain.terrainWorldMaxX();
         var maxZ = terrain.terrainWorldMaxZ();
         var cell = config.FOREST_CELL;
@@ -157,7 +157,7 @@ class ShowcaseForest {
         return true;
     }
 
-    hide func plantTreeOrFallback(world: World3D, model: Model3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
+    hide func plantTreeOrFallback(world: World3D, model: SceneAsset, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
         if (treeBad(model)) {
             plantProceduralTree(world, x, z, y, scale, yawDeg);
         } else {
@@ -165,8 +165,8 @@ class ShowcaseForest {
         }
     }
 
-    hide func plantTree(world: World3D, model: Model3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
-        var node = Model3D.Instantiate(model);
+    hide func plantTree(world: World3D, model: SceneAsset, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
+        var node = SceneAsset.Instantiate(model);
         var ent = Entity3D.FromNode(node);
         Entity3D.setName(ent, "maple");
         Entity3D.setLayer(ent, Layers.get_World());
@@ -266,49 +266,49 @@ class ShowcaseForest {
         }
     }
 
-    hide func applyTreeMaterialsRecursive(node: SceneNode3D, canopyMat: Material3D, meshCount: Integer) -> Integer {
+    hide func applyTreeMaterialsRecursive(node: SceneNode, canopyMat: Material3D, meshCount: Integer) -> Integer {
         if (node == null) { return 0; }
         var assigned = 0;
-        if (SceneNode3D.get_Mesh(node) != null) {
+        if (SceneNode.get_Mesh(node) != null) {
             if (isBarkNode(node, meshCount)) {
-                SceneNode3D.set_Material(node, barkMat);
+                SceneNode.set_Material(node, barkMat);
                 assigned = assigned + 1;
             } else {
-                SceneNode3D.set_Material(node, canopyMat);
+                SceneNode.set_Material(node, canopyMat);
                 assigned = assigned + 1;
             }
         }
-        var count = SceneNode3D.get_ChildCount(node);
+        var count = SceneNode.get_ChildCount(node);
         for i in 0..count {
-            assigned = assigned + applyTreeMaterialsRecursive(SceneNode3D.GetChild(node, i), canopyMat, meshCount);
+            assigned = assigned + applyTreeMaterialsRecursive(SceneNode.GetChild(node, i), canopyMat, meshCount);
         }
         return assigned;
     }
 
-    hide func countMeshNodes(node: SceneNode3D) -> Integer {
+    hide func countMeshNodes(node: SceneNode) -> Integer {
         if (node == null) { return 0; }
         var total = 0;
-        if (SceneNode3D.get_Mesh(node) != null) {
+        if (SceneNode.get_Mesh(node) != null) {
             total = 1;
         }
-        var count = SceneNode3D.get_ChildCount(node);
+        var count = SceneNode.get_ChildCount(node);
         for i in 0..count {
-            total = total + countMeshNodes(SceneNode3D.GetChild(node, i));
+            total = total + countMeshNodes(SceneNode.GetChild(node, i));
         }
         return total;
     }
 
-    hide func isBarkNode(node: SceneNode3D, meshCount: Integer) -> Boolean {
-        var name = SceneNode3D.get_Name(node);
+    hide func isBarkNode(node: SceneNode, meshCount: Integer) -> Boolean {
+        var name = SceneNode.get_Name(node);
         if (name == "mesh_0_material_0") { return true; }
         if (name == "mesh_1_material_1") { return false; }
         if (meshCount <= 1) { return false; }
         return isBarkMesh(node);
     }
 
-    hide func isBarkMesh(node: SceneNode3D) -> Boolean {
-        var amin = SceneNode3D.get_AABBMin(node);
-        var amax = SceneNode3D.get_AABBMax(node);
+    hide func isBarkMesh(node: SceneNode) -> Boolean {
+        var amin = SceneNode.get_AABBMin(node);
+        var amax = SceneNode.get_AABBMax(node);
         var dx = Vec3.get_X(amax) - Vec3.get_X(amin);
         var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
         var dz = Vec3.get_Z(amax) - Vec3.get_Z(amin);

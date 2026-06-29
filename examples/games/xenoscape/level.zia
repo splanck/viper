@@ -41,7 +41,7 @@
 //
 // `Tilemap` IS A RUNTIME CLASS
 // ----------------------------
-// `Viper.Game.Tilemap` is the runtime's tile-grid structure
+// `Viper.Graphics2D.Tilemap` is the runtime's tile-grid structure
 // with `Get(x, y)` / `Set(x, y, id)` / bounds checks.  It
 // also serves as the input to
 // `Viper.Game.Raycast.HasLineOfSight` (used by AI and
@@ -84,6 +84,7 @@
 module level;
 
 bind Viper.Graphics;
+bind Viper.Graphics2D.Tilemap as Tilemap;
 bind Viper.Game;
 bind Viper.Math;
 bind "./config";

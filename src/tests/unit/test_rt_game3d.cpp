@@ -153,7 +153,7 @@ typedef struct {
     rt_string path;
     int8_t asset_path;
     void *model;
-} Game3DModelTemplateTestLayout;
+} Game3DSceneTemplateTestLayout;
 
 typedef struct {
     int64_t shape;
@@ -1345,7 +1345,7 @@ static bool test_world_navmesh_bake_hooks() {
 }
 
 static bool test_entity_from_node_wraps_imported_subtree() {
-    TEST("Entity3D.FromNode wraps a raw SceneNode3D subtree");
+    TEST("Entity3D.FromNode wraps a raw SceneNode subtree");
     void *root = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
     void *grandchild = rt_scene_node3d_new();
@@ -1405,8 +1405,8 @@ static bool test_entity_from_node_wraps_imported_subtree() {
                 "despawn detaches the imported raw subtree");
 
     void *not_node = rt_material3d_new_color(1.0, 1.0, 1.0);
-    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_from_node(not_node); }, "SceneNode3D"),
-                "FromNode rejects non-SceneNode3D handles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_from_node(not_node); }, "SceneNode"),
+                "FromNode rejects non-SceneNode handles");
     rt_game3d_world_destroy(world);
     PASS();
 }
@@ -2783,58 +2783,58 @@ static bool test_phase3_world_presets_environment_and_debug() {
 }
 
 static bool test_phase4_assets3d_model_templates() {
-    TEST("Assets3D loads models and caches ModelTemplate objects");
+    TEST("Assets3D loads models and caches SceneTemplate objects");
     rt_string path = test_fixture_path("tests/runtime/assets/gltf/load_asset_triangle.gltf");
 
     rt_game3d_assets_clear_cache();
 
     void *model_entity = rt_game3d_assets_load_model(path);
-    EXPECT_TRUE(model_entity != nullptr, "Assets3D.LoadModel returns an entity");
+    EXPECT_TRUE(model_entity != nullptr, "Assets3D.LoadEntity returns an entity");
     EXPECT_TRUE(rt_game3d_entity_is_group(model_entity) != 0, "loaded model entity is a group");
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(model_entity)),
                   1,
                   "loaded model preserves imported root children");
 
     void *asset_entity = rt_game3d_assets_load_model_asset(path);
-    EXPECT_TRUE(asset_entity != nullptr, "Assets3D.LoadModelAsset returns an entity");
+    EXPECT_TRUE(asset_entity != nullptr, "Assets3D.LoadEntityAsset returns an entity");
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(asset_entity)),
                   1,
                   "asset-loaded model preserves imported root children");
 
     void *tpl1 = rt_game3d_assets_load_model_template(path);
     void *tpl2 = rt_game3d_assets_load_model_template(path);
-    EXPECT_TRUE(tpl1 != nullptr && tpl1 == tpl2, "LoadModelTemplate reuses cached template");
+    EXPECT_TRUE(tpl1 != nullptr && tpl1 == tpl2, "LoadTemplate reuses cached template");
     EXPECT_TRUE(rt_game3d_model_template_get_model(tpl1) != nullptr,
-                "ModelTemplate exposes raw Model3D");
+                "SceneTemplate exposes raw SceneAsset");
     EXPECT_EQ_INT(rt_model3d_get_mesh_count(rt_game3d_model_template_get_model(tpl1)),
                   1,
-                  "ModelTemplate retains imported meshes");
+                  "SceneTemplate retains imported meshes");
     EXPECT_TRUE(rt_game3d_model_template_get_is_asset(tpl1) == 0,
                 "filesystem template reports non-asset path");
 
     void *inst = rt_game3d_model_template_instantiate(tpl1);
-    EXPECT_TRUE(inst != nullptr, "ModelTemplate.instantiate returns an Entity3D");
+    EXPECT_TRUE(inst != nullptr, "SceneTemplate.instantiate returns an Entity3D");
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(inst)),
                   1,
-                  "ModelTemplate.instantiate clones the model root subtree");
+                  "SceneTemplate.instantiate clones the model root subtree");
     EXPECT_EQ_INT(rt_game3d_model_template_get_scene_count(tpl1),
                   1,
-                  "ModelTemplate exposes the synthesized default scene for mesh-only glTF assets");
+                  "SceneTemplate exposes the synthesized default scene for mesh-only glTF assets");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(tpl1, 0)),
                             "default") == 0,
-                "ModelTemplate exposes synthesized default scene names");
+                "SceneTemplate exposes synthesized default scene names");
     EXPECT_EQ_INT(rt_game3d_model_template_get_camera_count(tpl1, 0),
                   0,
-                  "ModelTemplate reports zero cameras for camera-less scenes");
+                  "SceneTemplate reports zero cameras for camera-less scenes");
     EXPECT_TRUE(rt_game3d_model_template_get_camera(tpl1, 0, 0) == nullptr,
-                "ModelTemplate returns null for missing scene cameras");
+                "SceneTemplate returns null for missing scene cameras");
     void *scene_inst = rt_game3d_model_template_instantiate_scene_at(tpl1, 0);
-    EXPECT_TRUE(scene_inst != nullptr, "ModelTemplate.instantiateSceneAt returns an Entity3D");
+    EXPECT_TRUE(scene_inst != nullptr, "SceneTemplate.instantiateSceneAt returns an Entity3D");
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(scene_inst)),
                   1,
-                  "ModelTemplate.instantiateSceneAt clones selected scene roots");
+                  "SceneTemplate.instantiateSceneAt clones selected scene roots");
     EXPECT_TRUE(rt_game3d_model_template_instantiate_scene_at(tpl1, 1) == nullptr,
-                "ModelTemplate.instantiateSceneAt rejects invalid scene indices");
+                "SceneTemplate.instantiateSceneAt rejects invalid scene indices");
 
     const char *camera_template_path = "/tmp/viper_game3d_template_camera_scene.gltf";
     const char *camera_gltf = "{"
@@ -2846,57 +2846,57 @@ static bool test_phase4_assets3d_model_templates() {
                               "\"scene\":0"
                               "}";
     EXPECT_TRUE(write_text_file(camera_template_path, camera_gltf),
-                "camera ModelTemplate fixture can be written");
+                "camera SceneTemplate fixture can be written");
     void *camera_tpl = rt_game3d_assets_load_model_template(rt_const_cstr(camera_template_path));
-    EXPECT_TRUE(camera_tpl != nullptr, "LoadModelTemplate parses camera-only glTF scenes");
+    EXPECT_TRUE(camera_tpl != nullptr, "LoadTemplate parses camera-only glTF scenes");
     EXPECT_EQ_INT(rt_game3d_model_template_get_scene_count(camera_tpl),
                   1,
-                  "ModelTemplate exposes camera-only scene count");
+                  "SceneTemplate exposes camera-only scene count");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(camera_tpl, 0)),
                             "CameraScene") == 0,
-                "ModelTemplate preserves imported camera scene names");
+                "SceneTemplate preserves imported camera scene names");
     EXPECT_EQ_INT(rt_game3d_model_template_get_camera_count(camera_tpl, 0),
                   1,
-                  "ModelTemplate exposes imported scene cameras");
+                  "SceneTemplate exposes imported scene cameras");
     EXPECT_TRUE(rt_game3d_model_template_get_camera(camera_tpl, 0, 0) != nullptr,
-                "ModelTemplate.GetCamera returns imported Camera3D handles");
+                "SceneTemplate.GetCamera returns imported Camera3D handles");
     void *camera_scene_inst = rt_game3d_model_template_instantiate_scene_at(camera_tpl, 0);
     EXPECT_TRUE(camera_scene_inst != nullptr,
-                "ModelTemplate.instantiateSceneAt returns an Entity3D");
+                "SceneTemplate.instantiateSceneAt returns an Entity3D");
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(camera_scene_inst)),
                   1,
-                  "ModelTemplate.instantiateSceneAt clones selected scene roots");
+                  "SceneTemplate.instantiateSceneAt clones selected scene roots");
     {
-        auto *camera_tpl_view = static_cast<Game3DModelTemplateTestLayout *>(camera_tpl);
+        auto *camera_tpl_view = static_cast<Game3DSceneTemplateTestLayout *>(camera_tpl);
         void *saved_model = camera_tpl_view->model;
         void *wrong_model = rt_material3d_new_color(0.3, 0.3, 0.8);
         size_t wrong_model_ref = rt_heap_hdr(wrong_model)->refcnt;
         camera_tpl_view->model = wrong_model;
         EXPECT_TRUE(rt_game3d_model_template_get_model(camera_tpl) == nullptr,
-                    "ModelTemplate.getModel ignores wrong-class private model refs");
+                    "SceneTemplate.getModel ignores wrong-class private model refs");
         EXPECT_EQ_INT(rt_game3d_model_template_get_scene_count(camera_tpl),
                       0,
-                      "ModelTemplate sceneCount ignores wrong-class private model refs");
+                      "SceneTemplate sceneCount ignores wrong-class private model refs");
         EXPECT_TRUE(
             std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(camera_tpl, 0)),
                         "") == 0,
-            "ModelTemplate sceneName falls back without a valid private model");
+            "SceneTemplate sceneName falls back without a valid private model");
         EXPECT_EQ_INT(rt_game3d_model_template_get_camera_count(camera_tpl, 0),
                       0,
-                      "ModelTemplate cameraCount ignores wrong-class private model refs");
+                      "SceneTemplate cameraCount ignores wrong-class private model refs");
         EXPECT_TRUE(rt_game3d_model_template_get_camera(camera_tpl, 0, 0) == nullptr,
-                    "ModelTemplate camera lookup ignores wrong-class private model refs");
+                    "SceneTemplate camera lookup ignores wrong-class private model refs");
         EXPECT_TRUE(rt_game3d_model_template_instantiate(camera_tpl) == nullptr,
-                    "ModelTemplate.instantiate ignores wrong-class private model refs");
+                    "SceneTemplate.instantiate ignores wrong-class private model refs");
         EXPECT_TRUE(rt_game3d_model_template_instantiate_scene_at(camera_tpl, 0) == nullptr,
-                    "ModelTemplate.instantiateSceneAt ignores wrong-class private model refs");
+                    "SceneTemplate.instantiateSceneAt ignores wrong-class private model refs");
         EXPECT_TRUE(rt_heap_hdr(wrong_model)->refcnt == wrong_model_ref,
-                    "ModelTemplate APIs do not release wrong-class private model refs");
+                    "SceneTemplate APIs do not release wrong-class private model refs");
         camera_tpl_view->model = saved_model;
     }
 
     void *asset_tpl = rt_game3d_assets_load_model_template_asset(path);
-    EXPECT_TRUE(asset_tpl != nullptr, "LoadModelTemplateAsset returns a template");
+    EXPECT_TRUE(asset_tpl != nullptr, "LoadTemplateAsset returns a template");
     EXPECT_TRUE(rt_game3d_model_template_get_is_asset(asset_tpl) != 0,
                 "asset template records asset resolver path");
     EXPECT_EQ_INT(rt_model3d_get_mesh_count(rt_game3d_model_template_get_model(asset_tpl)),
@@ -2904,7 +2904,7 @@ static bool test_phase4_assets3d_model_templates() {
                   "asset template retains imported meshes");
 
     void *model_handle = rt_game3d_assets_load_model_async(path);
-    EXPECT_TRUE(model_handle != nullptr, "LoadModelAsync returns an AssetHandle3D");
+    EXPECT_TRUE(model_handle != nullptr, "LoadEntityAsync returns an AssetHandle3D");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(model_handle) == 0,
                 "entity AssetHandle3D schedules work on first ready observation");
     EXPECT_TRUE(wait_asset_ready(model_handle),
@@ -2937,7 +2937,7 @@ static bool test_phase4_assets3d_model_templates() {
                 "cancelling a completed AssetHandle3D leaves the entity result intact");
 
     void *cancelled_handle = rt_game3d_assets_load_model_async(path);
-    EXPECT_TRUE(cancelled_handle != nullptr, "LoadModelAsync returns a cancellable handle");
+    EXPECT_TRUE(cancelled_handle != nullptr, "LoadEntityAsync returns a cancellable handle");
     rt_game3d_asset_handle_cancel(cancelled_handle);
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(cancelled_handle) != 0,
                 "pre-observation cancelled AssetHandle3D becomes terminal");
@@ -2954,7 +2954,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string missing_path_s = rt_string_from_bytes(missing_path, std::strlen(missing_path));
     void *missing_entity_handle = rt_game3d_assets_load_model_async(missing_path_s);
     EXPECT_TRUE(missing_entity_handle != nullptr,
-                "LoadModelAsync returns a handle for a missing filesystem path");
+                "LoadEntityAsync returns a handle for a missing filesystem path");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(missing_entity_handle) == 0,
                 "missing-path AssetHandle3D schedules worker validation");
     EXPECT_TRUE(wait_asset_ready(missing_entity_handle),
@@ -2972,7 +2972,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string missing_asset_s = rt_string_from_bytes("viper/missing/async_model_template.gltf", 39);
     void *missing_asset_handle = rt_game3d_assets_load_model_template_asset_async(missing_asset_s);
     EXPECT_TRUE(missing_asset_handle != nullptr,
-                "LoadModelTemplateAssetAsync returns a handle for a missing asset path");
+                "LoadTemplateAssetAsync returns a handle for a missing asset path");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(missing_asset_handle) == 0,
                 "missing-asset AssetHandle3D schedules worker validation");
     EXPECT_TRUE(wait_asset_ready(missing_asset_handle),
@@ -2990,7 +2990,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string corrupt_path_s = rt_string_from_bytes(corrupt_path, std::strlen(corrupt_path));
     void *corrupt_handle = rt_game3d_assets_load_model_async(corrupt_path_s);
     EXPECT_TRUE(corrupt_handle != nullptr,
-                "LoadModelAsync returns a handle for a corrupt filesystem payload");
+                "LoadEntityAsync returns a handle for a corrupt filesystem payload");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(corrupt_handle) == 0,
                 "corrupt AssetHandle3D schedules worker validation");
     EXPECT_TRUE(wait_asset_ready(corrupt_handle),
@@ -3017,7 +3017,7 @@ static bool test_phase4_assets3d_model_templates() {
         rt_string_from_bytes(corrupt_texture_path, std::strlen(corrupt_texture_path));
     void *corrupt_texture_handle = rt_game3d_assets_load_model_async(corrupt_texture_s);
     EXPECT_TRUE(corrupt_texture_handle != nullptr,
-                "LoadModelAsync returns a handle for a corrupt required texture payload");
+                "LoadEntityAsync returns a handle for a corrupt required texture payload");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(corrupt_texture_handle) == 0,
                 "corrupt texture AssetHandle3D schedules worker validation");
     EXPECT_TRUE(wait_asset_ready(corrupt_texture_handle),
@@ -3038,7 +3038,7 @@ static bool test_phase4_assets3d_model_templates() {
         rt_string_from_bytes(unsupported_path, std::strlen(unsupported_path));
     void *unsupported_handle = rt_game3d_assets_load_model_template_async(unsupported_path_s);
     EXPECT_TRUE(unsupported_handle != nullptr,
-                "LoadModelTemplateAsync returns a handle for an unsupported extension");
+                "LoadTemplateAsync returns a handle for an unsupported extension");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(unsupported_handle) != 0,
                 "unsupported-extension AssetHandle3D becomes terminal on observation");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(unsupported_handle)),
@@ -3055,7 +3055,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string sync_only_path_s = rt_string_from_bytes(sync_only_path, std::strlen(sync_only_path));
     void *sync_only_handle = rt_game3d_assets_load_model_template_async(sync_only_path_s);
     EXPECT_TRUE(sync_only_handle != nullptr,
-                "LoadModelTemplateAsync returns a handle for an OBJ model format");
+                "LoadTemplateAsync returns a handle for an OBJ model format");
     EXPECT_TRUE(wait_asset_ready(sync_only_handle),
                 "OBJ AssetHandle3D completes through the async model path");
     EXPECT_TRUE(
@@ -3094,7 +3094,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string stl_path_s = rt_string_from_bytes(stl_path, std::strlen(stl_path));
     void *stl_handle = rt_game3d_assets_load_model_template_async(stl_path_s);
     EXPECT_TRUE(stl_handle != nullptr,
-                "LoadModelTemplateAsync returns a handle for an STL model format");
+                "LoadTemplateAsync returns a handle for an STL model format");
     EXPECT_TRUE(wait_asset_ready(stl_handle), "STL AssetHandle3D completes through async load");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(stl_handle)), "") == 0,
                 "STL AssetHandle3D has no async format policy error");
@@ -3104,7 +3104,7 @@ static bool test_phase4_assets3d_model_templates() {
     std::remove(stl_path);
 
     void *asset_model_handle = rt_game3d_assets_load_model_asset_async(path);
-    EXPECT_TRUE(asset_model_handle != nullptr, "LoadModelAssetAsync returns an AssetHandle3D");
+    EXPECT_TRUE(asset_model_handle != nullptr, "LoadEntityAssetAsync returns an AssetHandle3D");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(asset_model_handle) == 0,
                 "asset entity AssetHandle3D schedules work on first ready observation");
     EXPECT_TRUE(wait_asset_ready(asset_model_handle),
@@ -3113,19 +3113,19 @@ static bool test_phase4_assets3d_model_templates() {
                 "asset entity AssetHandle3D exposes the loaded entity");
 
     void *template_handle = rt_game3d_assets_load_model_template_async(path);
-    EXPECT_TRUE(template_handle != nullptr, "LoadModelTemplateAsync returns an AssetHandle3D");
+    EXPECT_TRUE(template_handle != nullptr, "LoadTemplateAsync returns an AssetHandle3D");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(template_handle) != 0,
                 "cached template AssetHandle3D completes on first ready observation");
     EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(template_handle) - 1.0) < 0.000001,
                 "template AssetHandle3D reports complete progress");
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(template_handle) == tpl1,
-                "template AssetHandle3D shares the cached ModelTemplate");
+                "template AssetHandle3D shares the cached SceneTemplate");
     EXPECT_TRUE(rt_game3d_asset_handle_get_entity(template_handle) == nullptr,
                 "template AssetHandle3D has no entity result");
 
     void *asset_template_handle = rt_game3d_assets_load_model_template_asset_async(path);
     EXPECT_TRUE(asset_template_handle != nullptr,
-                "LoadModelTemplateAssetAsync returns an AssetHandle3D");
+                "LoadTemplateAssetAsync returns an AssetHandle3D");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(asset_template_handle) != 0,
                 "asset template AssetHandle3D is ready");
     EXPECT_TRUE(rt_game3d_model_template_get_is_asset(
@@ -3141,7 +3141,7 @@ static bool test_phase4_assets3d_model_templates() {
                 "evicting a template handle keeps the handle result alive");
     void *tpl_after_evict = rt_game3d_assets_load_model_template(path);
     EXPECT_TRUE(tpl_after_evict != nullptr && tpl_after_evict != tpl1,
-                "Assets3D.Evict drops the shared cached ModelTemplate entry");
+                "Assets3D.Evict drops the shared cached SceneTemplate entry");
 
     rt_game3d_assets_set_residency_budget(0);
     void *budget_tpl1 = rt_game3d_assets_load_model_template(path);
@@ -3160,11 +3160,11 @@ static bool test_phase4_assets3d_model_templates() {
     }
     void *preloaded_handle = rt_game3d_assets_load_model_template_async(path);
     EXPECT_TRUE(preloaded_handle != nullptr,
-                "LoadModelTemplateAsync returns a handle after Preload");
+                "LoadTemplateAsync returns a handle after Preload");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(preloaded_handle) != 0,
                 "Assets3D.Preload warms the template cache through world commit draining");
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(preloaded_handle) != nullptr,
-                "Assets3D.Preload publishes a cached ModelTemplate");
+                "Assets3D.Preload publishes a cached SceneTemplate");
 
     const char *corrupt_preload_path = "/tmp/viper_game3d_corrupt_preload_model.gltf";
     EXPECT_TRUE(write_text_file(corrupt_preload_path, "not valid json"),
@@ -3188,7 +3188,7 @@ static bool test_phase4_assets3d_model_templates() {
     }
     void *stale_preload_handle = rt_game3d_assets_load_model_template_async(path);
     EXPECT_TRUE(stale_preload_handle != nullptr,
-                "LoadModelTemplateAsync returns a handle after stale preload clear");
+                "LoadTemplateAsync returns a handle after stale preload clear");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(stale_preload_handle) == 0,
                 "Assets3D.ClearCache prevents pre-clear Preload from repopulating cache");
     EXPECT_TRUE(wait_asset_ready(stale_preload_handle),
@@ -3212,7 +3212,7 @@ static bool test_phase4_assets3d_stale_async_publish_revalidates_generation() {
 
     rt_string path_s = rt_string_from_bytes(path, std::strlen(path));
     void *handle = rt_game3d_assets_load_model_template_async(path_s);
-    EXPECT_TRUE(handle != nullptr, "LoadModelTemplateAsync returns a stale-race handle");
+    EXPECT_TRUE(handle != nullptr, "LoadTemplateAsync returns a stale-race handle");
 
     Game3DStaleAsyncPublishHookState hook_state = {path, 0, 0};
     rt_game3d_test_set_async_cache_publish_hook(game3d_test_clear_cache_during_async_publish,
@@ -3270,7 +3270,7 @@ static bool test_phase4_assets3d_resident_bytes_returns_to_baseline() {
                     "async template load is scheduled instead of completed synchronously");
         EXPECT_TRUE(wait_asset_ready(async_handle), "async template load completes during churn");
         EXPECT_TRUE(rt_game3d_asset_handle_get_template(async_handle) != nullptr,
-                    "async template handle exposes a cached ModelTemplate");
+                    "async template handle exposes a cached SceneTemplate");
         EXPECT_TRUE(rt_game3d_assets_get_resident_bytes() > 0,
                     "async template load increments resident byte telemetry");
         rt_game3d_assets_clear_cache();
@@ -3385,7 +3385,7 @@ static bool test_phase4_assets3d_texture_residency_budget() {
     rt_game3d_assets_set_upload_budget(0);
     void *paused_handle = rt_game3d_assets_load_model_template_async(rt_const_cstr(gltf_path));
     EXPECT_TRUE(paused_handle != nullptr,
-                "LoadModelTemplateAsync returns a handle under a paused upload budget");
+                "LoadTemplateAsync returns a handle under a paused upload budget");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(paused_handle) == 0,
                 "paused upload budget schedules textured async work");
     for (int i = 0; i < 40; ++i) {
@@ -3435,7 +3435,7 @@ static bool test_phase4_assets3d_texture_residency_budget() {
 }
 
 static bool test_assets3d_loads_packaged_gltf_hierarchy() {
-    TEST("Assets3D.LoadModelAsset preserves packaged glTF hierarchy");
+    TEST("Assets3D.LoadEntityAsset preserves packaged glTF hierarchy");
     const char *pack_path = "/tmp/viper_game3d_packaged_hierarchy.vpa";
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
@@ -3483,18 +3483,18 @@ static bool test_assets3d_loads_packaged_gltf_hierarchy() {
     void *preloaded_asset_handle = rt_game3d_assets_load_model_template_asset_async(
         rt_const_cstr("assets/models/hierarchy.gltf"));
     EXPECT_TRUE(preloaded_asset_handle != nullptr,
-                "LoadModelTemplateAssetAsync returns a handle after PreloadAsset");
+                "LoadTemplateAssetAsync returns a handle after PreloadAsset");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(preloaded_asset_handle) != 0,
                 "Assets3D.PreloadAsset warms the package-aware template cache");
     void *preloaded_asset_template = rt_game3d_asset_handle_get_template(preloaded_asset_handle);
     EXPECT_TRUE(preloaded_asset_template != nullptr,
-                "PreloadAsset publishes a cached package-aware ModelTemplate");
+                "PreloadAsset publishes a cached package-aware SceneTemplate");
     EXPECT_TRUE(rt_game3d_model_template_get_is_asset(preloaded_asset_template) != 0,
                 "PreloadAsset cache entries preserve asset-path identity");
     rt_game3d_world_destroy(preload_world);
 
     void *entity = rt_game3d_assets_load_model_asset(rt_const_cstr("assets/models/hierarchy.gltf"));
-    EXPECT_TRUE(entity != nullptr, "LoadModelAsset loads a packaged glTF hierarchy");
+    EXPECT_TRUE(entity != nullptr, "LoadEntityAsset loads a packaged glTF hierarchy");
     EXPECT_TRUE(rt_game3d_entity_is_group(entity) != 0, "packaged glTF imports as group entity");
     EXPECT_TRUE(rt_scene_node3d_child_count(rt_game3d_entity_get_node(entity)) > 0,
                 "packaged glTF root keeps imported children");

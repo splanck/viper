@@ -10,7 +10,7 @@ func start() {
     var mesh = Mesh3D.NewPlane(20.0, 20.0);
     var nav = NavMesh3D.Build(mesh, 0.4, 1.8);
     var agent = NavAgent3D.New(nav, 0.4, 1.8);
-    var node = SceneNode3D.New();
+    var node = SceneNode.New();
 
     NavAgent3D.BindNode(agent, node);
     NavAgent3D.set_DesiredSpeed(agent, 5.0);

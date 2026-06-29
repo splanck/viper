@@ -358,14 +358,14 @@ Last updated: 2026-06-20
 
 | File | Purpose |
 |------|---------|
-| `rt_scene3d.c` / `.h` | Scene3D + SceneNode3D hierarchy, frustum culling, LOD, and explicit body / animator binding sync |
+| `rt_scene3d.c` / `.h` | SceneGraph + SceneNode hierarchy, frustum culling, LOD, and explicit body / animator binding sync |
 | `rt_transform3d.c` / `.h` | Transform3D (standalone TRS) |
 | `rt_physics3d.c` / `.h` | Physics3DWorld + Body3D (AABB, sphere, capsule) |
 | `rt_raycast3d.c` / `.h` | Ray3D + RayHit3D intersection tests |
 | `rt_joints3d.c` / `.h` | DistanceJoint3D, SpringJoint3D, HingeJoint3D, RopeJoint3D, SixDofJoint3D |
 | `rt_collider3d.c` / `.h` | Collider3D shapes and compound colliders |
-| `rt_scene3d_internal.h` | Internal Scene3D / SceneNode3D struct definitions |
-| `rt_scene3d_vscn.c` | Scene3D `.vscn` serialization (save/load) |
+| `rt_scene3d_internal.h` | Internal SceneGraph / SceneNode struct definitions |
+| `rt_scene3d_vscn.c` | SceneGraph `.vscn` serialization (save/load) |
 | `vgfx3d_frustum.c` / `.h` | Frustum culling math |
 
 ### Animation
@@ -395,11 +395,11 @@ Last updated: 2026-06-20
 | `rt_rendertarget3d.c` | RenderTarget3D offscreen rendering |
 | `rt_texatlas3d.c` / `.h` | TextureAtlas3D texture arrays |
 | `rt_navmesh3d.c` / `.h` | NavMesh3D A* pathfinding |
-| `rt_navagent3d.c` / `.h` | NavAgent3D steering, path following, and Character3D / SceneNode3D bindings |
+| `rt_navagent3d.c` / `.h` | NavAgent3D steering, path following, and Character3D / SceneNode bindings |
 | `rt_path3d.c` / `.h` | Path3D spline following |
 | `rt_fbx_loader.c` / `.h` | FBX binary format loader |
 | `rt_gltf.c` / `.h` | glTF 2.0 format loader |
-| `rt_model3d.c` / `.h` | Model3D unified imported asset container and instancing helper |
+| `rt_model3d.c` / `.h` | SceneAsset unified imported asset container and instancing helper |
 | `rt_textureasset3d.c` / `.h` | TextureAsset3D (KTX2 / precompressed textures) |
 | `rt_vegetation3d.c` / `.h` | Vegetation3D instanced foliage scattering |
 

@@ -1132,7 +1132,7 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `Contains(I64 px, I64 py) -> I64` — Point-in-sprite test
     - `Move(I64 dx, I64 dy) -> VOID` — Move by delta
 
-**Viper.Graphics.Tilemap** — Tile-based map rendering:
+**Viper.Graphics2D.Tilemap** — Tile-based map rendering:
 - Ctor: `NEW(I64 width, I64 height, I64 tileWidth, I64 tileHeight)` — Create tilemap (size in tiles)
 - Properties:
     - `Width -> I64` (read-only) — Map width in tiles
@@ -1149,8 +1149,8 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `FillRect(I64 x, I64 y, I64 w, I64 h, I64 tileIndex) -> VOID` — Fill region
     - `Draw(CANVAS canvas, I64 offsetX, I64 offsetY) -> VOID` — Draw entire map
     - `DrawRegion(CANVAS c, I64 ox, I64 oy, I64 vx, I64 vy, I64 vw, I64 vh) -> VOID` — Draw visible region
-    - `LoadFromFile(STRING path) -> TILEMAP` — Load JSON tilemap data
-    - `LoadCSV(STRING path, I64 tileWidth, I64 tileHeight) -> TILEMAP` — Load a CSV tile layer
+    - `Load(STRING path) -> TILEMAP` — Load JSON tilemap data
+    - `LoadCsv(STRING path, I64 tileWidth, I64 tileHeight) -> TILEMAP` — Load a CSV tile layer
     - `SetTileAnim(I64 baseTile, I64 startTile, I64 frameCount) -> VOID` — Register sequential tile animation
     - `SetTileAnimFrame(I64 baseTile, I64 frame, I64 tileId) -> VOID` — Override one animation frame
     - `UpdateAnims(I64 deltaMs) -> VOID` — Advance tile animation state

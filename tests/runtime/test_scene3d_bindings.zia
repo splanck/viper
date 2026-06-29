@@ -1,30 +1,30 @@
-module TestScene3DBindings;
+module TestSceneNodeBindings;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal;
 
 func start() {
-    var scene = Scene3D.New();
-    var parent = SceneNode3D.New();
-    var child = SceneNode3D.New();
+    var scene = SceneGraph.New();
+    var parent = SceneNode.New();
+    var child = SceneNode.New();
     var body = Physics3DBody.NewSphere(0.5, 1.0);
 
-    SceneNode3D.SetPosition(parent, 5.0, 0.0, 0.0);
-    SceneNode3D.AddChild(parent, child);
-    Scene3D.Add(scene, parent);
+    SceneNode.SetPosition(parent, 5.0, 0.0, 0.0);
+    SceneNode.AddChild(parent, child);
+    SceneGraph.Add(scene, parent);
 
-    SceneNode3D.BindBody(child, body);
-    SceneNode3D.set_SyncMode(child, 0);
+    SceneNode.BindBody(child, body);
+    SceneNode.set_SyncMode(child, 0);
     Physics3DBody.SetPosition(body, 6.0, 2.0, -3.0);
-    Scene3D.SyncBindings(scene, 0.016);
+    SceneGraph.SyncBindings(scene, 0.016);
 
-    var pos = SceneNode3D.get_Position(child);
+    var pos = SceneNode.get_Position(child);
     if (Vec3.get_X(pos) < 0.99 || Vec3.get_X(pos) > 1.01) {
         Say("FAIL: NodeFromBody should compute child local x");
         return;
     }
-    if (SceneNode3D.get_Body(child) != body) {
+    if (SceneNode.get_Body(child) != body) {
         Say("FAIL: Body property should return the bound body");
         return;
     }
@@ -45,18 +45,18 @@ func start() {
     AnimController3D.Play(controller, "walk");
     AnimController3D.Update(controller, 0.5);
 
-    var animNode = SceneNode3D.New();
-    Scene3D.Add(scene, animNode);
-    SceneNode3D.BindAnimator(animNode, controller);
-    SceneNode3D.set_SyncMode(animNode, 2);
-    Scene3D.SyncBindings(scene, 0.016);
+    var animNode = SceneNode.New();
+    SceneGraph.Add(scene, animNode);
+    SceneNode.BindAnimator(animNode, controller);
+    SceneNode.set_SyncMode(animNode, 2);
+    SceneGraph.SyncBindings(scene, 0.016);
 
-    pos = SceneNode3D.get_Position(animNode);
+    pos = SceneNode.get_Position(animNode);
     if (Vec3.get_X(pos) < 2.9 || Vec3.get_X(pos) > 3.1) {
         Say("FAIL: SyncMode=NodeFromAnimatorRootMotion should consume root motion");
         return;
     }
-    if (SceneNode3D.get_Animator(animNode) != controller) {
+    if (SceneNode.get_Animator(animNode) != controller) {
         Say("FAIL: Animator property should return the bound controller");
         return;
     }

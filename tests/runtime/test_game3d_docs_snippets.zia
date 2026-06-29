@@ -58,7 +58,7 @@ func start() {
     Game3D.Entity3D.attachBody(ball, body);
     Game3D.World3D.spawn(world, ball);
 
-    var imported = Game3D.Assets3D.LoadModelAsset("examples/3d/game3d_starter/assets/models/triangle.gltf");
+    var imported = Game3D.Assets3D.LoadEntityAsset("examples/3d/game3d_starter/assets/models/triangle.gltf");
     if (imported == null) {
         fail("Assets3D docs snippet failed");
         return;

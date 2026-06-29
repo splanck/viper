@@ -16,7 +16,7 @@ class OpenWorldSlice {
     hide Entity3D scoutA;
     hide Entity3D scoutB;
     hide Entity3D beacon;
-    hide ModelTemplate skinnedTemplate;
+    hide SceneTemplate skinnedTemplate;
     hide Entity3D skinnedAgent;
     hide Boolean skinnedIkBound;
     hide Entity3D glbFixtureProp;
@@ -74,7 +74,7 @@ class OpenWorldSlice {
         setupNavAgents();
         setupSkinnedAgent();
         setupFixtureAssets();
-        asyncHandle = Assets3D.LoadModelAssetAsync("assets/models/triangle.gltf");
+        asyncHandle = Assets3D.LoadEntityAssetAsync("assets/models/triangle.gltf");
         asyncSpawned = false;
         completeAsyncAsset();
         sceneTime = 0.0;
@@ -383,9 +383,9 @@ class OpenWorldSlice {
 
     hide func setupSkinnedAgent() {
         skinnedIkBound = false;
-        skinnedTemplate = Assets3D.LoadModelTemplateAsset("assets/models/skinned_agent.gltf");
+        skinnedTemplate = Assets3D.LoadTemplateAsset("assets/models/skinned_agent.gltf");
         if (skinnedTemplate == null) { return; }
-        skinnedAgent = ModelTemplate.instantiate(skinnedTemplate);
+        skinnedAgent = SceneTemplate.instantiate(skinnedTemplate);
         if (skinnedAgent == null) { return; }
         Entity3D.setName(skinnedAgent, "SkinnedAgent");
         Entity3D.setPosition(skinnedAgent, -1099.2, 0.32, -1098.0);
@@ -395,9 +395,9 @@ class OpenWorldSlice {
         var anim = Entity3D.get_anim(skinnedAgent);
         if (anim != null) {
             Animator3D.crossfade(anim, "Wave", 0.08);
-            var model = ModelTemplate.get_model(skinnedTemplate);
+            var model = SceneTemplate.get_model(skinnedTemplate);
             if (model != null) {
-                var skeleton = Model3D.GetSkeleton(model, 0);
+                var skeleton = SceneAsset.GetSkeleton(model, 0);
                 var solver = IKSolver3D.LookAt(skeleton, 0);
                 if (solver != null) {
                     IKSolver3D.SetTarget(solver, Vec3.New(0.35, 0.65, 1.0));
@@ -412,7 +412,7 @@ class OpenWorldSlice {
         glbFixtureLoaded = false;
         audioFixtureLoaded = false;
 
-        glbFixtureProp = Assets3D.LoadModelAsset("assets/models/triangle.glb");
+        glbFixtureProp = Assets3D.LoadEntityAsset("assets/models/triangle.glb");
         if (glbFixtureProp != null) {
             Entity3D.setName(glbFixtureProp, "FixtureGLBTriangle");
             Entity3D.setPosition(glbFixtureProp, -1097.0, 0.12, -1100.6);

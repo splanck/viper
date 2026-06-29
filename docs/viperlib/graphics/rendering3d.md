@@ -47,12 +47,12 @@ Warnings are per outer load, append-only, and capped. Use
 
 | Loader | Content failure behavior | Partial degradation |
 |--------|--------------------------|---------------------|
-| `Model3D.Load(path)` / `Model3D.LoadAsset(path)` | Returns `null` and sets `AssetDiagnostics3D.LastLoadError` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
+| `SceneAsset.Load(path)` / `SceneAsset.LoadAsset(path)` | Returns `null` and sets `AssetDiagnostics3D.LastLoadError` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
 | `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
 | `Mesh3D.FromSTL(path)` | Returns `null` for missing files, unreadable files, wrong magic, truncated binary payloads, malformed ASCII payloads, or oversized files | Degenerate triangles are skipped as before |
-| `Scene3D.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
+| `SceneGraph.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
 | `Pixels.Load(path)` and image loads reached from materials | Return `null` for missing, unreadable, wrong-magic, corrupt, unsupported, or oversized PNG/JPEG/BMP/GIF content | Material loaders catch this and record a warning instead of failing the whole model |
 
 ASCII FBX files with the standard `; FBX` comment header are rejected as
@@ -376,9 +376,9 @@ stateful submission costs; the software backend reports `0`.
 ### Canvas3D Visibility Controls
 
 The current visibility controls are a coarse CPU path: frustum rejection for
-bounded draws, Scene3D BVH candidate selection before Canvas3D draw sorting, and
+bounded draws, SceneGraph BVH candidate selection before Canvas3D draw sorting, and
 a low-resolution screen-space coverage/depth grid for conservative occlusion
-skips. Scene3D also has an authored portal/PVS accelerator for interiors: add
+skips. SceneGraph also has an authored portal/PVS accelerator for interiors: add
 visibility-zone AABBs and portal links, and `Draw` skips drawables inside
 interior zones that are not reachable from the camera's current zone. These
 paths are not GPU occlusion queries or Hi-Z culling.
@@ -401,7 +401,7 @@ are never used as occluders and are not rejected by the coarse coverage grid.
 proxies. `BackendSupports("occlusion")` reports the CPU occlusion baseline; GPU
 query/Hi-Z/portal acceleration can advertise the same capability once added.
 The unit lane includes a dense covered-draw fixture that queues 65 opaque draws,
-submits only the front occluder, and reports 64 occlusion skips. The Scene3D
+submits only the front occluder, and reports 64 occlusion skips. The SceneGraph
 indexed-occlusion fixture indexes 130 drawables, narrows the CPU occlusion grid
 to 2 spatial candidates before Canvas3D sorting, and submits only the front draw.
 The open-world slice adds a named authored dense city/forest fixture in
@@ -409,7 +409,7 @@ The open-world slice adds a named authored dense city/forest fixture in
 169 authored drawables reduced to 49 submitted draws, 120 PVS skips, 50.407%
 fill-proxy reduction, and a final-frame pixel match against the no-PVS render.
 
-Scene3D interior PVS is authored on the scene:
+SceneGraph interior PVS is authored on the scene:
 
 | Method / Property | Signature | Description |
 |-------------------|-----------|-------------|
@@ -425,27 +425,27 @@ The count properties and PVS traversal clamp zone/portal counters to the live
 allocation bounds, and appending zones or portals repairs malformed counters
 before writing the next entry.
 
-### Viper.Graphics3D.Scene3D
+### Viper.Graphics3D.SceneGraph
 
 Hierarchical scene graph with an implicit root node and lazily recomputed world
 transforms.
 
 | Method / Property | Signature | Description |
 |-------------------|-----------|-------------|
-| `Root` | `SceneNode3D` | Implicit scene root |
+| `Root` | `SceneNode` | Implicit scene root |
 | `NodeCount` | `Integer` | Total nodes including root |
 | `VisibleNodeCount` | `Integer` | Drawable mesh nodes submitted by the most recent `Draw` |
 | `Add(node)` / `Remove(node)` | `Void(Object)` | Attach or detach root-level nodes |
 | `TryAdd(node)` | `Boolean(Object)` | Add a node and report validation/allocation failure |
-| `Find(name)` | `SceneNode3D(String)` | Search the scene by node name |
-| `QueryAABB(min, max)` | `Seq(SceneNode3D)(Vec3, Vec3)` | Return visible mesh nodes whose world AABB intersects the box |
-| `QuerySphere(center, radius)` | `Seq(SceneNode3D)(Vec3, Double)` | Return visible mesh nodes whose world AABB intersects the sphere |
-| `RaycastNodes(origin, direction, maxDistance)` | `SceneNode3D(Vec3, Vec3, Double)` | Return the closest visible mesh node hit by the ray |
+| `Find(name)` | `SceneNode(String)` | Search the scene by node name |
+| `QueryAABB(min, max)` | `Seq(SceneNode)(Vec3, Vec3)` | Return visible mesh nodes whose world AABB intersects the box |
+| `QuerySphere(center, radius)` | `Seq(SceneNode)(Vec3, Double)` | Return visible mesh nodes whose world AABB intersects the sphere |
+| `RaycastNodes(origin, direction, maxDistance)` | `SceneNode(Vec3, Vec3, Double)` | Return the closest visible mesh node hit by the ray |
 | `Draw(canvas, camera)` | `Void(Object, Object)` | Draw visible node meshes |
 | `SyncBindings(dt)` | `Void(Double)` | Push physics, animation, and binding transforms |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift every root-level subtree by `-delta` while leaving the root unchanged |
 
-The query methods are backed by the Scene3D BVH spatial index, with the
+The query methods are backed by the SceneGraph BVH spatial index, with the
 deterministic flat walk kept as the internal parity fallback. Transform-only
 dirties refit the existing BVH; hierarchy, visibility, mesh, LOD, and impostor
 changes rebuild it lazily. Results skip hidden subtrees and only return nodes
@@ -463,7 +463,7 @@ origin before vertex upload; generated billboard paths such as standalone
 `Particles3D`, `Sprite3D`, and decal meshes likewise upload camera-relative
 vertices. Caller-provided float instancing data remains limited by the precision
 of the data supplied to Canvas3D. Runtime tests
-keep a generated 10k drawable-node grid in the normal Scene3D ctest lane to
+keep a generated 10k drawable-node grid in the normal SceneGraph ctest lane to
 guard BVH shape, transform refit, isolated-query reduction, and frame-cull
 candidate reduction.
 
@@ -475,14 +475,14 @@ snapshots; run spatial queries again after the between-frame rebase boundary.
 
 `Mesh3D.Resident` and read-only `ResidentBytes` expose mesh-payload residency
 for streaming systems. Nonresident meshes keep their handles and authored data
-but report zero resident bytes and are skipped by Canvas3D/Scene3D draw paths.
-Scene3D `.vscn` save/load persists each mesh's resident flag, so authored
+but report zero resident bytes and are skipped by Canvas3D/SceneGraph draw paths.
+SceneGraph `.vscn` save/load persists each mesh's resident flag, so authored
 streaming state survives scene round trips while older files default to
 resident meshes.
 
-### Viper.Graphics3D.SceneNode3D LOD
+### Viper.Graphics3D.SceneNode LOD
 
-`SceneNode3D` supports authored mesh LODs through `AddLOD(distance, mesh)`.
+`SceneNode` supports authored mesh LODs through `AddLOD(distance, mesh)`.
 Entries remain sorted by distance, duplicate distances replace the previous
 mesh, and `ClearLOD()` restores the base mesh at every distance. LOD selection
 skips nonresident meshes and falls back to the next resident choice.
@@ -757,7 +757,7 @@ Ray queries normalize non-zero directions internally. Zero-length or non-finite 
 
 ## Asset Loading
 
-### Viper.Graphics3D.Model3D
+### Viper.Graphics3D.SceneAsset
 
 High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` assets. OBJ imports preserve safe relative `mtllib`/`usemtl` material groups as separate template nodes; STL imports synthesize one default-material mesh node.
 
@@ -769,9 +769,9 @@ High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`
 | `GetSceneName(model, index)` | `String(Object, Integer)` | Name for a scene index, or `""` when out of range |
 | `GetCameraCount(model, sceneIndex)` | `Integer(Object, Integer)` | Number of imported cameras for a scene |
 | `GetCamera(model, sceneIndex, index)` | `Object(Object, Integer, Integer)` | Imported `Camera3D`, or `null` when absent/out of range |
-| `InstantiateSceneAt(model, index)` | `Object(Object, Integer)` | Clone a scene by index as a fresh `Scene3D` |
+| `InstantiateSceneAt(model, index)` | `Object(Object, Integer)` | Clone a scene by index as a fresh `SceneGraph` |
 
-glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `Model3D` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state. FBX imports preserve authored model hierarchy where available and split polygon material assignments into instantiable material-specific mesh nodes.
+glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `SceneAsset` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state. FBX imports preserve authored model hierarchy where available and split polygon material assignments into instantiable material-specific mesh nodes.
 
 ---
 
@@ -779,7 +779,7 @@ glTF cameras are imported as standalone `Camera3D` handles with the node's world
 
 ### Viper.Graphics3D.Skeleton3D
 
-Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model via `Model3D`.
+Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model via `SceneAsset`.
 
 **Type:** Instance (obj)
 **Constructor:** `Skeleton3D.New()`
@@ -1198,7 +1198,7 @@ the audio-owned spatial listener state.
 | `SetForward(dir)` | `Void(Object)` | Set facing direction from a `Vec3` |
 | `SetUp(up)` | `Void(Object)` | Set up direction from a `Vec3` |
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
-| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `SpatialAudio3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode` position each `SpatialAudio3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove the node binding |
 | `BindCamera(camera)` | `Void(Object)` | Automatically track a `Camera3D` position and forward |
 | `ClearCameraBinding()` | `Void()` | Remove the camera binding |
@@ -1238,7 +1238,7 @@ calculation path for playback-rate-capable backends.
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
 | `Play()` | `Integer()` | Start playback; returns voice ID |
 | `Stop()` | `Void()` | Stop playback |
-| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode3D` each `SpatialAudio3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode` each `SpatialAudio3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove node binding |
 
 ```rust
@@ -1308,7 +1308,7 @@ ambiguous.
 | `SetMaxSlope(degrees)` | `Void(Double)` | Override the maximum walkable slope angle |
 | `DebugDraw(canvas3D)` | `Void(Object)` | Draw the navmesh wireframe for debugging |
 
-`Bake` flattens every `Mesh3D` attached under a `Scene3D` through each node's
+`Bake` flattens every `Mesh3D` attached under a `SceneGraph` through each node's
 world transform and runs the voxel baker. `BakeTiled` keeps retained voxel-cell
 source data for each tile; `RebuildTile(tileX, tileZ)` refreshes only that tile's
 geometry, heights, and blocked state from the retained source without a
@@ -1369,7 +1369,7 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `Update(deltaSeconds)` | `Void(Double)` | Advance agent along the path |
 | `Warp(pos)` | `Void(Object)` | Teleport the agent to a position |
 | `BindCharacter(character3D)` | `Void(Object)` | Drive a `Character3D` from agent velocity |
-| `BindNode(sceneNode)` | `Void(Object)` | Drive a `SceneNode3D` position from agent |
+| `BindNode(sceneNode)` | `Void(Object)` | Drive a `SceneNode` position from agent |
 
 Avoidance is local and opt-in. Agents on the same `NavMesh3D` with `AvoidanceEnabled=true` solve a deterministic reciprocal-velocity-obstacle candidate set over nearby grid peers before the update drives a character or node. The solver predicts collisions over a bounded horizon, prefers the path-following velocity, and has a named 200-agent CTest baseline.
 
@@ -1638,7 +1638,7 @@ Texture atlas for 3D rendering with named-region management.
 
 ## Notes
 
-- `Transform3D` is distinct from `SceneNode3D` — use `Transform3D` for standalone matrix math and non-scene-graph transforms; attach nodes to the scene for scene-managed transform hierarchies.
+- `Transform3D` is distinct from `SceneNode` — use `Transform3D` for standalone matrix math and non-scene-graph transforms; attach nodes to the scene for scene-managed transform hierarchies.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
 - `NavMesh3D` direct meshes are rebuilt by `NavMesh3D.Build`; `BakeTiled`
   retains voxel source data so `RebuildTile` can refresh one tile's geometry,

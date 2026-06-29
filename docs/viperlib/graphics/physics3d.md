@@ -89,7 +89,7 @@ and joint integration.
   receive gravity or force integration.
 - `Add(body)` keeps the historical void API. `TryAdd(body)` returns `false` for invalid handles or allocation failure, returns `true` for already-present bodies, and leaves the body count stable on duplicates.
 - World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists store a bounded nearest/result prefix for predictable allocation behavior, while `PhysicsHitList3D.TotalCount` and `Truncated` expose whether more matches existed.
-- Collision detection uses a body-centric sweep-and-prune broadphase before shape-specific narrow-phase tests. This is intentionally separate from the render-facing `Scene3D` BVH: physics indexes all collider bodies, including non-render bodies, and applies solver filters such as static-static rejection, layer/mask checks, trigger state, and contact-event identity.
+- Collision detection uses a body-centric sweep-and-prune broadphase before shape-specific narrow-phase tests. This is intentionally separate from the render-facing `SceneGraph` BVH: physics indexes all collider bodies, including non-render bodies, and applies solver filters such as static-static rejection, layer/mask checks, trigger state, and contact-event identity.
 - The unit lane includes a sparse 321-body step stress that exercises body
   storage growth, broadphase scratch growth, and dynamic integration without
   producing contacts, plus named island-batch and mesh-BVH body-candidate

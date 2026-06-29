@@ -1,27 +1,27 @@
-module SceneNode3DBindingsDemo;
+module SceneNodeBindingsDemo;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal;
 
 func start() {
-    Say("SceneNode3D bindings demo");
+    Say("SceneNode bindings demo");
 
-    var scene = Scene3D.New();
-    var parent = SceneNode3D.New();
-    var child = SceneNode3D.New();
+    var scene = SceneGraph.New();
+    var parent = SceneNode.New();
+    var child = SceneNode.New();
     var body = Physics3DBody.NewSphere(0.5, 1.0);
 
-    SceneNode3D.SetPosition(parent, 5.0, 0.0, 0.0);
-    SceneNode3D.AddChild(parent, child);
-    Scene3D.Add(scene, parent);
+    SceneNode.SetPosition(parent, 5.0, 0.0, 0.0);
+    SceneNode.AddChild(parent, child);
+    SceneGraph.Add(scene, parent);
 
-    SceneNode3D.BindBody(child, body);
-    SceneNode3D.set_SyncMode(child, 0);
+    SceneNode.BindBody(child, body);
+    SceneNode.set_SyncMode(child, 0);
     Physics3DBody.SetPosition(body, 6.0, 1.5, -2.0);
-    Scene3D.SyncBindings(scene, 0.016);
+    SceneGraph.SyncBindings(scene, 0.016);
 
-    var childPos = SceneNode3D.get_Position(child);
+    var childPos = SceneNode.get_Position(child);
     Say("Child local X from body = " + toString(Vec3.get_X(childPos)));
 
     var skel = Skeleton3D.New();
@@ -41,13 +41,13 @@ func start() {
     AnimController3D.Play(controller, "walk");
     AnimController3D.Update(controller, 0.5);
 
-    var animNode = SceneNode3D.New();
-    SceneNode3D.BindAnimator(animNode, controller);
-    SceneNode3D.set_SyncMode(animNode, 2);
-    Scene3D.Add(scene, animNode);
-    Scene3D.SyncBindings(scene, 0.016);
+    var animNode = SceneNode.New();
+    SceneNode.BindAnimator(animNode, controller);
+    SceneNode.set_SyncMode(animNode, 2);
+    SceneGraph.Add(scene, animNode);
+    SceneGraph.SyncBindings(scene, 0.016);
 
-    var animPos = SceneNode3D.get_Position(animNode);
+    var animPos = SceneNode.get_Position(animNode);
     Say("Animator root motion X = " + toString(Vec3.get_X(animPos)));
-    Say("Sync mode = " + toString(SceneNode3D.get_SyncMode(animNode)));
+    Say("Sync mode = " + toString(SceneNode.get_SyncMode(animNode)));
 }

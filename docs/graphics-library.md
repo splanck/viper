@@ -409,7 +409,7 @@ The build system automatically selects the correct backend:
 The following features have been implemented in the Viper runtime layer (`Viper.Graphics.*`):
 
 - ✅ **Sprites** — `Viper.Graphics.Sprite` class with animation and collision detection
-- ✅ **Tilemaps** — `Viper.Graphics.Tilemap` class for tile-based game rendering
+- ✅ **Tilemaps** — `Viper.Graphics2D.Tilemap` class for tile-based game rendering
 - ✅ **Camera** — `Viper.Graphics.Camera` class for 2D viewport management
 - ✅ **Image processing** — Invert, grayscale, tint, blur, bilinear resize
 - ✅ **Color utilities** — HSL conversion, lerp, brighten/darken

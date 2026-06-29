@@ -60,20 +60,20 @@ func framesMatch(a: Pixels, b: Pixels) -> Boolean {
     return maxDiff <= 12 && avgDiff <= 1;
 }
 
-func addProp(scene: Scene3D, mesh: Mesh3D, mat: Material3D, name: String,
+func addProp(scene: SceneGraph, mesh: Mesh3D, mat: Material3D, name: String,
              x: Float, y: Float, z: Float,
              sx: Float, sy: Float, sz: Float) -> Integer {
-    var node = SceneNode3D.New();
-    SceneNode3D.set_Name(node, name);
-    SceneNode3D.set_Mesh(node, mesh);
-    SceneNode3D.set_Material(node, mat);
-    SceneNode3D.SetPosition(node, x, y, z);
-    SceneNode3D.SetScale(node, sx, sy, sz);
-    Scene3D.Add(scene, node);
+    var node = SceneNode.New();
+    SceneNode.set_Name(node, name);
+    SceneNode.set_Mesh(node, mesh);
+    SceneNode.set_Material(node, mat);
+    SceneNode.SetPosition(node, x, y, z);
+    SceneNode.SetScale(node, sx, sy, sz);
+    SceneGraph.Add(scene, node);
     return 1;
 }
 
-func addDenseForest(scene: Scene3D, trunkMesh: Mesh3D, crownMesh: Mesh3D,
+func addDenseForest(scene: SceneGraph, trunkMesh: Mesh3D, crownMesh: Mesh3D,
                     trunkMat: Material3D, crownMat: Material3D,
                     prefix: String, baseZ: Float) -> Integer {
     var count = 0;
@@ -98,7 +98,7 @@ func addDenseForest(scene: Scene3D, trunkMesh: Mesh3D, crownMesh: Mesh3D,
     return count;
 }
 
-func addCityBlock(scene: Scene3D, mesh: Mesh3D, mat: Material3D,
+func addCityBlock(scene: SceneGraph, mesh: Mesh3D, mat: Material3D,
                   prefix: String, baseZ: Float) -> Integer {
     var count = 0;
     var row = 0;
@@ -118,10 +118,10 @@ func addCityBlock(scene: Scene3D, mesh: Mesh3D, mat: Material3D,
     return count;
 }
 
-func renderFixture(canvas: Canvas3D, scene: Scene3D, camera: Camera3D) -> Pixels {
+func renderFixture(canvas: Canvas3D, scene: SceneGraph, camera: Camera3D) -> Pixels {
     Canvas3D.Clear(canvas, 0.025, 0.03, 0.04);
     Canvas3D.Begin(canvas, camera);
-    Scene3D.Draw(scene, canvas, camera);
+    SceneGraph.Draw(scene, canvas, camera);
     Canvas3D.End(canvas);
     return Canvas3D.ScreenshotFinal(canvas);
 }
@@ -143,7 +143,7 @@ func start() {
         Vec3.New(0.0, 3.0, 0.0),
         Vec3.New(0.0, 1.0, 0.0));
 
-    var scene = Scene3D.New();
+    var scene = SceneGraph.New();
     var boxMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
     var trunkMesh = Mesh3D.NewCylinder(0.18, 1.0, 8);
     var crownMesh = Mesh3D.NewSphere(0.55, 8);
@@ -168,24 +168,24 @@ func start() {
     var baselineSnap = renderFixture(canvas, scene, camera);
     var baselineUs = Clock.TicksUs() - baselineStart;
     var baselineDraws = Canvas3D.get_DrawCount(canvas);
-    var baselineVisible = Scene3D.get_VisibleNodeCount(scene);
+    var baselineVisible = SceneGraph.get_VisibleNodeCount(scene);
 
-    var frontZone = Scene3D.AddVisibilityZone(scene, "city-front",
+    var frontZone = SceneGraph.AddVisibilityZone(scene, "city-front",
         Vec3.New(-10.0, -4.0, 0.8), Vec3.New(10.0, 10.0, 20.0));
-    var alleyZone = Scene3D.AddVisibilityZone(scene, "portal-alley",
+    var alleyZone = SceneGraph.AddVisibilityZone(scene, "portal-alley",
         Vec3.New(-10.0, -4.0, 0.8), Vec3.New(10.0, 10.0, 20.0));
-    Scene3D.AddVisibilityZone(scene, "hidden-forest",
+    SceneGraph.AddVisibilityZone(scene, "hidden-forest",
         Vec3.New(-10.0, -4.0, -11.5), Vec3.New(10.0, 10.0, 0.2));
-    Scene3D.AddVisibilityZone(scene, "hidden-city",
+    SceneGraph.AddVisibilityZone(scene, "hidden-city",
         Vec3.New(-10.0, -4.0, -24.0), Vec3.New(10.0, 10.0, -11.6));
-    Scene3D.AddVisibilityPortal(scene, frontZone, alleyZone, true);
+    SceneGraph.AddVisibilityPortal(scene, frontZone, alleyZone, true);
 
     var optimizedStart = Clock.TicksUs();
     var optimizedSnap = renderFixture(canvas, scene, camera);
     var optimizedUs = Clock.TicksUs() - optimizedStart;
     var optimizedDraws = Canvas3D.get_DrawCount(canvas);
-    var optimizedVisible = Scene3D.get_VisibleNodeCount(scene);
-    var pvsCulled = Scene3D.get_PvsCulledCount(scene);
+    var optimizedVisible = SceneGraph.get_VisibleNodeCount(scene);
+    var pvsCulled = SceneGraph.get_PvsCulledCount(scene);
 
     var baselineFillProxy = wallCount * 12000 +
                             (frontCount + alleyCount + hiddenCityCount) * 360 +
@@ -200,7 +200,7 @@ func start() {
         fail("PVS fixture changed visible pixels");
         return;
     }
-    if (authoredCount + 1 != Scene3D.get_NodeCount(scene)) {
+    if (authoredCount + 1 != SceneGraph.get_NodeCount(scene)) {
         fail("authored dense fixture node count changed unexpectedly");
         return;
     }
@@ -218,8 +218,8 @@ func start() {
         return;
     }
     if (drawSaved <= 0 || fillSaved <= 0 ||
-        Scene3D.get_VisibilityZoneCount(scene) != 4 ||
-        Scene3D.get_VisibilityPortalCount(scene) != 2) {
+        SceneGraph.get_VisibilityZoneCount(scene) != 4 ||
+        SceneGraph.get_VisibilityPortalCount(scene) != 2) {
         fail("visibility telemetry did not record the authored PVS reduction");
         return;
     }
@@ -235,8 +235,8 @@ func start() {
                  " fill_reduction_px=" + Fmt.Int(fillSaved) +
                  " fill_reduction_pct=" + pct(fillSaved, baselineFillProxy) +
                  " pvs_culled=" + Fmt.Int(pvsCulled) +
-                 " zones=" + Fmt.Int(Scene3D.get_VisibilityZoneCount(scene)) +
-                 " portals=" + Fmt.Int(Scene3D.get_VisibilityPortalCount(scene)) +
+                 " zones=" + Fmt.Int(SceneGraph.get_VisibilityZoneCount(scene)) +
+                 " portals=" + Fmt.Int(SceneGraph.get_VisibilityPortalCount(scene)) +
                  " no_missing_geometry=1" +
                  " baseline_us=" + Fmt.Int(baselineUs) +
                  " optimized_us=" + Fmt.Int(optimizedUs));

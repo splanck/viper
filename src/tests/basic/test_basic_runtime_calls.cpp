@@ -396,7 +396,7 @@ PRINT count
 )"));
 }
 
-TEST(BasicRuntimeCalls, Model3DSurface) {
+TEST(BasicRuntimeCalls, SceneAssetSurface) {
     ASSERT_TRUE(compileOk(R"(
 DIM scene AS OBJECT
 DIM parent AS OBJECT
@@ -408,22 +408,22 @@ DIM inst AS OBJECT
 DIM instScene AS OBJECT
 DIM node AS OBJECT
 DIM count AS INTEGER
-scene = Viper.Graphics3D.Scene3D.New()
-parent = Viper.Graphics3D.SceneNode3D.New()
-child = Viper.Graphics3D.SceneNode3D.New()
+scene = Viper.Graphics3D.SceneGraph.New()
+parent = Viper.Graphics3D.SceneNode.New()
+child = Viper.Graphics3D.SceneNode.New()
 mesh = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0)
 mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.4, 0.6)
-Viper.Graphics3D.SceneNode3D.set_Name(parent, "parent")
-Viper.Graphics3D.SceneNode3D.set_Name(child, "child")
-Viper.Graphics3D.SceneNode3D.SetPosition(parent, 1.0, 2.0, 3.0)
+Viper.Graphics3D.SceneNode.set_Name(parent, "parent")
+Viper.Graphics3D.SceneNode.set_Name(child, "child")
+Viper.Graphics3D.SceneNode.SetPosition(parent, 1.0, 2.0, 3.0)
 parent.Mesh = mesh
 parent.Material = mat
 child.Mesh = mesh
 child.Material = mat
-Viper.Graphics3D.SceneNode3D.AddChild(parent, child)
-Viper.Graphics3D.Scene3D.Add(scene, parent)
-count = Viper.Graphics3D.Scene3D.Save(scene, "tests/runtime/_basic_model3d_surface.vscn")
-model = Viper.Graphics3D.Model3D.Load("tests/runtime/_basic_model3d_surface.vscn")
+Viper.Graphics3D.SceneNode.AddChild(parent, child)
+Viper.Graphics3D.SceneGraph.Add(scene, parent)
+count = Viper.Graphics3D.SceneGraph.Save(scene, "tests/runtime/_basic_scene_asset_surface.vscn")
+model = Viper.Graphics3D.SceneAsset.Load("tests/runtime/_basic_scene_asset_surface.vscn")
 count = model.MeshCount
 count = model.MaterialCount
 count = model.SkeletonCount
@@ -497,7 +497,7 @@ PRINT count
 )"));
 }
 
-TEST(BasicRuntimeCalls, Scene3DBindingSurface) {
+TEST(BasicRuntimeCalls, SceneNodeBindingSurface) {
     ASSERT_TRUE(compileOk(R"(
 DIM scene AS OBJECT
 DIM parent AS OBJECT
@@ -513,9 +513,9 @@ DIM scl AS OBJECT
 DIM count AS INTEGER
 DIM mode AS INTEGER
 DIM bound AS OBJECT
-scene = Viper.Graphics3D.Scene3D.New()
-parent = Viper.Graphics3D.SceneNode3D.New()
-node = Viper.Graphics3D.SceneNode3D.New()
+scene = Viper.Graphics3D.SceneGraph.New()
+parent = Viper.Graphics3D.SceneNode.New()
+node = Viper.Graphics3D.SceneNode.New()
 body = Viper.Graphics3D.Physics3DBody.NewSphere(0.5, 1.0)
 skel = Viper.Graphics3D.Skeleton3D.New()
 Viper.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Viper.Math.Mat4.Identity())
@@ -530,8 +530,8 @@ Viper.Graphics3D.Animation3D.AddKeyframe(anim, 0, 1.0, pos1, rot, scl)
 controller = Viper.Graphics3D.AnimController3D.New(skel)
 controller.AddState("walk", anim)
 controller.Play("walk")
-Viper.Graphics3D.SceneNode3D.AddChild(parent, node)
-Viper.Graphics3D.Scene3D.Add(scene, parent)
+Viper.Graphics3D.SceneNode.AddChild(parent, node)
+Viper.Graphics3D.SceneGraph.Add(scene, parent)
 node.BindBody(body)
 bound = node.Body
 node.SyncMode = 1
@@ -563,7 +563,7 @@ nav = Viper.Graphics3D.NavMesh3D.Build(mesh, 0.4, 1.8)
 world = Viper.Graphics3D.Physics3DWorld.New(0.0, -9.8, 0.0)
 character = Viper.Graphics3D.Character3D.New(0.4, 1.8, 80.0)
 character.World = world
-node = Viper.Graphics3D.SceneNode3D.New()
+node = Viper.Graphics3D.SceneNode.New()
 agent = Viper.Graphics3D.NavAgent3D.New(nav, 0.4, 1.8)
 agent.BindCharacter(character)
 agent.BindNode(node)
@@ -600,12 +600,12 @@ DIM voice AS INTEGER
 ok = Viper.Sound.Audio.IsAvailable()
 cam = Viper.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
 Viper.Graphics3D.Camera3D.LookAt(cam, Viper.Math.Vec3.New(0.0, 2.0, 6.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0))
-scene = Viper.Graphics3D.Scene3D.New()
-parent = Viper.Graphics3D.SceneNode3D.New()
-node = Viper.Graphics3D.SceneNode3D.New()
-Viper.Graphics3D.SceneNode3D.SetPosition(parent, 1.0, 0.0, 2.0)
-Viper.Graphics3D.SceneNode3D.AddChild(parent, node)
-Viper.Graphics3D.Scene3D.Add(scene, parent)
+scene = Viper.Graphics3D.SceneGraph.New()
+parent = Viper.Graphics3D.SceneNode.New()
+node = Viper.Graphics3D.SceneNode.New()
+Viper.Graphics3D.SceneNode.SetPosition(parent, 1.0, 0.0, 2.0)
+Viper.Graphics3D.SceneNode.AddChild(parent, node)
+Viper.Graphics3D.SceneGraph.Add(scene, parent)
 listener = Viper.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
@@ -614,7 +614,7 @@ source.BindNode(node)
 source.MaxDistance = 18.0
 source.Volume = 70
 source.Looping = 0
-Viper.Graphics3D.Scene3D.SyncBindings(scene, 0.016)
+Viper.Graphics3D.SceneGraph.SyncBindings(scene, 0.016)
 Viper.Sound.SpatialAudio3D.SyncBindings(0.016)
 pos = listener.Position
 pos = source.Position

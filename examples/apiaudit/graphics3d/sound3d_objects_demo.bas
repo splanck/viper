@@ -12,13 +12,13 @@ DIM voice AS INTEGER
 cam = Viper.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
 Viper.Graphics3D.Camera3D.LookAt(cam, Viper.Math.Vec3.New(0.0, 2.0, 6.0), Viper.Math.Vec3.New(0.0, 1.5, 0.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0))
 
-scene = Viper.Graphics3D.Scene3D.New()
-parent = Viper.Graphics3D.SceneNode3D.New()
-node = Viper.Graphics3D.SceneNode3D.New()
-Viper.Graphics3D.SceneNode3D.SetPosition(parent, 1.0, 0.0, 2.0)
-Viper.Graphics3D.SceneNode3D.SetPosition(node, 3.0, 0.5, -1.0)
-Viper.Graphics3D.SceneNode3D.AddChild(parent, node)
-Viper.Graphics3D.Scene3D.Add(scene, parent)
+scene = Viper.Graphics3D.SceneGraph.New()
+parent = Viper.Graphics3D.SceneNode.New()
+node = Viper.Graphics3D.SceneNode.New()
+Viper.Graphics3D.SceneNode.SetPosition(parent, 1.0, 0.0, 2.0)
+Viper.Graphics3D.SceneNode.SetPosition(node, 3.0, 0.5, -1.0)
+Viper.Graphics3D.SceneNode.AddChild(parent, node)
+Viper.Graphics3D.SceneGraph.Add(scene, parent)
 
 listener = Viper.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
@@ -29,7 +29,7 @@ source.BindNode(node)
 source.MaxDistance = 20.0
 source.Volume = 75
 
-Viper.Graphics3D.Scene3D.SyncBindings(scene, 0.25)
+Viper.Graphics3D.SceneGraph.SyncBindings(scene, 0.25)
 
 pos = listener.Position
 PRINT "Listener Z = "; Viper.Math.Vec3.get_Z(pos)

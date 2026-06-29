@@ -13,27 +13,27 @@ func start() {
     var path = "tests/runtime/assets/gltf/load_asset_triangle.gltf";
     Game3D.Assets3D.ClearCache();
 
-    var entity = Game3D.Assets3D.LoadModel(path);
+    var entity = Game3D.Assets3D.LoadEntity(path);
     if (entity == null || Game3D.Entity3D.isGroup(entity) == false ||
-        G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(entity)) != 1) {
-        fail("LoadModel did not return an imported group entity");
+        G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(entity)) != 1) {
+        fail("LoadEntity did not return an imported group entity");
         return;
     }
 
-    var assetEntity = Game3D.Assets3D.LoadModelAsset(path);
+    var assetEntity = Game3D.Assets3D.LoadEntityAsset(path);
     if (assetEntity == null ||
-        G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(assetEntity)) != 1) {
-        fail("LoadModelAsset did not instantiate through asset resolver");
+        G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(assetEntity)) != 1) {
+        fail("LoadEntityAsset did not instantiate through asset resolver");
         return;
     }
     Game3D.Entity3D.setName(assetEntity, "AssetProbeImport");
     var world = Game3D.World3D.New("Game3D Asset Lifetime Probe", 64, 48);
     var i = 0;
     while (i < 4) {
-        var loopEntity = Game3D.Assets3D.LoadModelAsset(path);
+        var loopEntity = Game3D.Assets3D.LoadEntityAsset(path);
         if (loopEntity == null ||
-            G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(loopEntity)) != 1) {
-            fail("LoadModelAsset did not create a fresh asset group");
+            G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(loopEntity)) != 1) {
+            fail("LoadEntityAsset did not create a fresh asset group");
             return;
         }
         Game3D.Entity3D.setName(loopEntity, "AssetProbeImport");
@@ -53,32 +53,32 @@ func start() {
     }
     Game3D.World3D.destroy(world);
 
-    var tpl1 = Game3D.Assets3D.LoadModelTemplate(path);
-    var tpl2 = Game3D.Assets3D.LoadModelTemplate(path);
+    var tpl1 = Game3D.Assets3D.LoadTemplate(path);
+    var tpl2 = Game3D.Assets3D.LoadTemplate(path);
     if (tpl1 == null || tpl2 == null) {
-        fail("LoadModelTemplate did not return cached templates");
+        fail("LoadTemplate did not return cached templates");
         return;
     }
-    if (G3D.Model3D.get_MeshCount(Game3D.ModelTemplate.get_model(tpl1)) != 1 ||
-        G3D.Model3D.get_MeshCount(Game3D.ModelTemplate.get_model(tpl2)) != 1) {
-        fail("ModelTemplate lost mesh data");
+    if (G3D.SceneAsset.get_MeshCount(Game3D.SceneTemplate.get_model(tpl1)) != 1 ||
+        G3D.SceneAsset.get_MeshCount(Game3D.SceneTemplate.get_model(tpl2)) != 1) {
+        fail("SceneTemplate lost mesh data");
         return;
     }
 
-    var inst = Game3D.ModelTemplate.instantiate(tpl1);
+    var inst = Game3D.SceneTemplate.instantiate(tpl1);
     if (inst == null || Game3D.Entity3D.isGroup(inst) == false ||
-        G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(inst)) != 1) {
-        fail("ModelTemplate.instantiate did not clone the model subtree");
+        G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(inst)) != 1) {
+        fail("SceneTemplate.instantiate did not clone the model subtree");
         return;
     }
 
-    var assetTpl = Game3D.Assets3D.LoadModelTemplateAsset(path);
-    if (assetTpl == null || Game3D.ModelTemplate.get_isAsset(assetTpl) == false) {
-        fail("LoadModelTemplateAsset did not record asset path");
+    var assetTpl = Game3D.Assets3D.LoadTemplateAsset(path);
+    if (assetTpl == null || Game3D.SceneTemplate.get_isAsset(assetTpl) == false) {
+        fail("LoadTemplateAsset did not record asset path");
         return;
     }
 
-    var missing = Game3D.Assets3D.LoadModelTemplateAssetAsync("viper/missing/co3_missing.gltf");
+    var missing = Game3D.Assets3D.LoadTemplateAssetAsync("viper/missing/co3_missing.gltf");
     if (missing == null) {
         fail("missing package asset did not return a diagnostic handle");
         return;
@@ -99,9 +99,9 @@ func start() {
 
     Game3D.Assets3D.Preload(path);
     Game3D.Assets3D.ClearCache();
-    var tpl3 = Game3D.Assets3D.LoadModelTemplate(path);
+    var tpl3 = Game3D.Assets3D.LoadTemplate(path);
     if (tpl3 == null) {
-        fail("LoadModelTemplate failed after ClearCache");
+        fail("LoadTemplate failed after ClearCache");
         return;
     }
     Game3D.Assets3D.ClearCache();

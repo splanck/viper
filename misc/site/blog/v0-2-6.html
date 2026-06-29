@@ -47,7 +47,7 @@
     <ul>
       <li><strong>Build/run loop</strong> &mdash; now a standalone top-level project with an argument-vector build/run loop, streamed cancellable output, clickable diagnostics, gutter breakpoints, Quick Open, and workspace symbols.</li>
       <li><strong>Live language services</strong> &mdash; <code>zia</code> force-loads <code>fe_zia</code>, so completion, diagnostics, hover, signatures, outline, and call hierarchy hit the real semantic engine, content-revision-gated off the keystroke path.</li>
-      <li><strong>Editor runtime</strong> &mdash; a streaming <code>Viper.System.Process</code>, a structured <code>Viper.Zia.Toolchain</code>, a semantic <code>Viper.Zia.ProjectIndex</code>, and an editable <code>Viper.Game.Scene</code> document back the tree, completion, diagnostics, and symbols. (Debugging is still a non-executing placeholder.)</li>
+      <li><strong>Editor runtime</strong> &mdash; a streaming <code>Viper.System.Process</code>, a structured <code>Viper.Zia.Toolchain</code>, a semantic <code>Viper.Zia.ProjectIndex</code>, and an editable <code>Viper.Game2D.SceneDocument</code> document back the tree, completion, diagnostics, and symbols. (Debugging is still a non-executing placeholder.)</li>
       <li><strong>Link-time win</strong> &mdash; a codegen and dead-strip rewrite cut the ViperIDE native x64 build from ~340s to ~35s.</li>
     </ul>
 
@@ -72,7 +72,7 @@
 
     <h2>3D runtime &amp; graphics</h2>
     <ul>
-      <li><strong>Asset pipeline</strong> &mdash; a <code>GLTF</code> class on an allocation-free, DOM-free JSON scanner with validated accessors; FBX embedded-texture decode and n-gon triangulation; multi-material OBJ/STL import into a Model3D node hierarchy; in-memory KTX2 with BC7/ETC2/ASTC software decode.</li>
+      <li><strong>Asset pipeline</strong> &mdash; a <code>GLTF</code> class on an allocation-free, DOM-free JSON scanner with validated accessors; FBX embedded-texture decode and n-gon triangulation; multi-material OBJ/STL import into a SceneAsset node hierarchy; in-memory KTX2 with BC7/ETC2/ASTC software decode.</li>
       <li><strong>Correctness</strong> &mdash; corrected inverse-transpose normal matrices, bone-topology-frozen skeletal animation, and a multi-backend (software/OpenGL/Metal/D3D11) skinning, shadow, and readback round.</li>
       <li><strong>Physics3D</strong> &mdash; a warm-started sequential-impulse solver with sleep islands settles deterministic resting box stacks; shape-accurate SAT/GJK-EPA narrow phase; the implementation split into character/collision/query/solver units.</li>
     </ul>

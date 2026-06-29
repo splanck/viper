@@ -69,12 +69,12 @@ func start() {
         return;
     }
 
-    var beforeNodes = G3D.Scene3D.get_NodeCount(scene);
+    var beforeNodes = G3D.SceneGraph.get_NodeCount(scene);
     var env = Game3D.Environment.Outdoor(world);
     Game3D.EnvHandle.withTerrain(env, 32.0, -0.05);
     Game3D.EnvHandle.withWater(env, 0.02);
     Game3D.EnvHandle.withFog(env, 5.0, 60.0);
-    if (G3D.Scene3D.get_NodeCount(scene) <= beforeNodes + 1 ||
+    if (G3D.SceneGraph.get_NodeCount(scene) <= beforeNodes + 1 ||
         G3D.Physics3DWorld.get_BodyCount(physics) < 1) {
         fail("Environment helpers did not add terrain, water, and physics");
         return;

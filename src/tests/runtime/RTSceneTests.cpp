@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTSceneTests.cpp
-// Purpose: Tests for Viper.Graphics.SceneGraph and SceneNode.
+// Purpose: Tests for Viper.Graphics2D.SceneGraph and SceneNode.
 //
 //===----------------------------------------------------------------------===//
 

@@ -149,7 +149,7 @@ func runScenario(title: String, render: Boolean) -> Float {
     spawnProp(world, "MetalCrate", crateMesh, metalMat, -2.2, 0.55, -1.4, 1.0);
     spawnProp(world, "Beacon", crateMesh, glowMat, 1.8, 0.65, -1.0, 0.35);
 
-    var imported = Game3D.Assets3D.LoadModelAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    var imported = Game3D.Assets3D.LoadEntityAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
     if (imported != null) {
         Game3D.Entity3D.setName(imported, "PackagedTriangle");
         Game3D.Entity3D.setPosition(imported, 2.8, 0.08, 1.5);
@@ -195,7 +195,7 @@ func runScenario(title: String, render: Boolean) -> Float {
     var animEntity = spawnProp(world, "AnimatedMarker", crateMesh, glowMat, -1.5, 0.45, 1.4, 0.28);
     var anim = Game3D.Animator3D.New(makeController(0.8, 0.25));
     Game3D.Entity3D.attachAnimator(animEntity, anim);
-    SceneNode3D.set_SyncMode(Game3D.Entity3D.get_node(animEntity),
+    SceneNode.set_SyncMode(Game3D.Entity3D.get_node(animEntity),
                              Game3D.SyncMode.get_NodeFromAnimRootMotion());
     Game3D.Animator3D.play(anim, "move");
 

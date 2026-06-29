@@ -27,15 +27,15 @@
 ' COVER: Viper.Graphics.Sprite.Draw
 ' COVER: Viper.Graphics.Sprite.Move
 ' COVER: Viper.Graphics.Sprite.Contains
-' COVER: Viper.Graphics.Tilemap.New
-' COVER: Viper.Graphics.Tilemap.Width
-' COVER: Viper.Graphics.Tilemap.Height
-' COVER: Viper.Graphics.Tilemap.TileWidth
-' COVER: Viper.Graphics.Tilemap.TileHeight
-' COVER: Viper.Graphics.Tilemap.SetTile
-' COVER: Viper.Graphics.Tilemap.GetTile
-' COVER: Viper.Graphics.Tilemap.Fill
-' COVER: Viper.Graphics.Tilemap.Clear
+' COVER: Viper.Graphics2D.Tilemap.New
+' COVER: Viper.Graphics2D.Tilemap.Width
+' COVER: Viper.Graphics2D.Tilemap.Height
+' COVER: Viper.Graphics2D.Tilemap.TileWidth
+' COVER: Viper.Graphics2D.Tilemap.TileHeight
+' COVER: Viper.Graphics2D.Tilemap.SetTile
+' COVER: Viper.Graphics2D.Tilemap.GetTile
+' COVER: Viper.Graphics2D.Tilemap.Fill
+' COVER: Viper.Graphics2D.Tilemap.Clear
 ' COVER: Viper.Graphics.Camera.New
 ' COVER: Viper.Graphics.Camera.X
 ' COVER: Viper.Graphics.Camera.Y
@@ -224,8 +224,8 @@ sprite.Draw(canvas)
 '=============================================================================
 ' Test Tilemap Class
 '=============================================================================
-DIM tilemap AS Viper.Graphics.Tilemap
-tilemap = NEW Viper.Graphics.Tilemap(10, 8, 16, 16)
+DIM tilemap AS Viper.Graphics2D.Tilemap
+tilemap = NEW Viper.Graphics2D.Tilemap(10, 8, 16, 16)
 
 Viper.Core.Diagnostics.AssertEq(tilemap.Width, 10, "Tilemap.Width")
 Viper.Core.Diagnostics.AssertEq(tilemap.Height, 8, "Tilemap.Height")

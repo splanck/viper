@@ -12,13 +12,13 @@ func start() {
     Camera3D.LookAt(
         cam, Vec3.New(0.0, 2.0, 6.0), Vec3.New(0.0, 1.5, 0.0), Vec3.New(0.0, 1.0, 0.0));
 
-    var scene = Scene3D.New();
-    var parent = SceneNode3D.New();
-    var node = SceneNode3D.New();
-    SceneNode3D.SetPosition(parent, 1.0, 0.0, 2.0);
-    SceneNode3D.SetPosition(node, 3.0, 0.5, -1.0);
-    SceneNode3D.AddChild(parent, node);
-    Scene3D.Add(scene, parent);
+    var scene = SceneGraph.New();
+    var parent = SceneNode.New();
+    var node = SceneNode.New();
+    SceneNode.SetPosition(parent, 1.0, 0.0, 2.0);
+    SceneNode.SetPosition(node, 3.0, 0.5, -1.0);
+    SceneNode.AddChild(parent, node);
+    SceneGraph.Add(scene, parent);
 
     var listener = SoundListener3D.New();
     listener.BindCamera(cam);
@@ -29,7 +29,7 @@ func start() {
     source.MaxDistance = 20.0;
     source.Volume = 75;
 
-    Scene3D.SyncBindings(scene, 0.25);
+    SceneGraph.SyncBindings(scene, 0.25);
 
     var listenerPos = listener.Position;
     var sourcePos = source.Position;

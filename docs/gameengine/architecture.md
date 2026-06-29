@@ -55,7 +55,7 @@ The engine is organized in layers. Each layer depends only on layers below it:
 ├─────────┴───────────┴───────────┴───────────┴───────────────┤
 │  Canvas    │ SpriteBatch │ Tilemap  │ Camera2D │ BitmapFont │
 │  Pixels    │ TextureAtlas│          │          │            │
-│  Canvas3D  │ Scene3D     │ Mesh3D   │ Camera3D │ Material3D │
+│  Canvas3D  │ SceneGraph     │ Mesh3D   │ Camera3D │ Material3D │
 ├────────────┴─────────────┴──────────┴──────────┴────────────┤
 │  Sound / Music / Synth / SoundBank / Playlist    (Audio)     │
 ├─────────────────────────────────────────────────────────────┤
@@ -88,7 +88,7 @@ Game code never touches this layer directly — it's wrapped by Canvas, Input, a
 
 **2D (Canvas + Pixels):** Software-rendered into a pixel buffer. Canvas provides 40+ drawing primitives (Box, Disc, Line, Text, Gradient, Polygon, Triangle, Arc, Bezier, etc.). Pixels provides direct pixel manipulation plus BMP/PNG save and BMP/PNG/JPEG/GIF load. SpriteBatch records sprite draws with optional depth sorting and shared tint/alpha before flushing them in `End()`.
 
-**3D (Canvas3D + Scene3D):** GPU-accelerated with automatic backend selection. The software rasterizer serves as a universal fallback. Scene3D provides a hierarchical scene graph with transform inheritance, LOD, and AABB culling.
+**3D (Canvas3D + SceneGraph):** GPU-accelerated with automatic backend selection. The software rasterizer serves as a universal fallback. SceneGraph provides a hierarchical scene graph with transform inheritance, LOD, and AABB culling.
 
 ### Audio Layer
 

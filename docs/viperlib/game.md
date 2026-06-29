@@ -13,8 +13,8 @@ last-verified: 2026-05-15
 ## Contents
 
 - [Viper.Game.Camera](#vipergamecamera)
-- [Viper.Game.Scene](#vipergamescene)
-- [Viper.Game.Tilemap](#vipergametilemap)
+- [Viper.Game2D.SceneDocument](#vipergame2dscenedocument)
+- [Viper.Graphics2D.Tilemap](#vipergraphics2dtilemap)
 - [Viper.Game.Physics2D](#vipergamephysics2d)
 - [Viper.Game.Quadtree](#vipergamequadtree)
 - [Viper.Game.ParticleEmitter](#vipergameparticleemitter)
@@ -110,7 +110,7 @@ if cam.IsDirty() {
 
 ---
 
-## Viper.Game.Scene
+## Viper.Game2D.SceneDocument
 
 Editable JSON scene document for IDE scene tools, tile layers, placed objects,
 typed scalar properties, diagnostics, asset references, and render/collision
@@ -118,11 +118,11 @@ Tilemap copies.
 
 **Type:** Instance (obj)
 
-**Constructor:** `Scene.New(width, height, tileWidth, tileHeight)`
+**Constructor:** `SceneDocument.New(width, height, tileWidth, tileHeight)`
 
 **Detailed docs:** [Editable Scene Documents](game/scene.md)
 
-Core methods include `LoadJson`, `LoadFile`, `ToJson`, `SaveFile`,
+Core methods include `LoadJson`, `Load`, `ToJson`, `Save`,
 `HasErrors`, `DiagnosticRecords`, typed scene/object property accessors,
 `AssetDescriptors`, `AssetPaths`, and `BuildTilemap`.
 
@@ -137,21 +137,13 @@ source of truth; a `BuildTilemap()` result is a separate render/collision copy.
 
 ---
 
-## Viper.Game.Tilemap
+## Viper.Graphics2D.Tilemap
 
-A tile-based 2D map renderer. Tiles are indexed from a spritesheet, and the map scrolls with
-a camera.
+Tilemap rendering and collision live in `Viper.Graphics2D.Tilemap`. Game scene
+documents can build isolated Tilemap render/collision copies with
+`SceneDocument.BuildTilemap()`.
 
-**Type:** Instance (obj)
-**Constructor:** `Tilemap.New(cols, rows, tileWidth, tileHeight, spritesheet)`
-
-### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `SetTile(col, row, tileId)` | `none(Integer, Integer, Integer)` | Set tile at grid position |
-| `GetTile(col, row)` | `Integer(Integer, Integer)` | Get tile ID at grid position |
-| `Draw(canvas, camera)` | `none(obj, obj)` | Draw visible tiles using camera viewport |
+**Detailed docs:** [Tilemaps and 2D Rendering](graphics/pixels.md#vipergraphics2dtilemap)
 
 ---
 

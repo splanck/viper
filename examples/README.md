@@ -73,7 +73,7 @@ A [SQL database engine](sqldb-basic/) written entirely in [BASIC](../docs/basic-
 
 ## 🔍 API Audit
 
-The [`apiaudit/`](apiaudit/) directory provides **systematic coverage of Viper runtime classes** across hundreds of source files. Most APIs have both a Zia and BASIC version; `graphics3d` is still more Zia-heavy for rendering demos, but shared runtime surfaces such as `Model3D`, `AnimController3D`, and `SceneNode3D` binding sync now ship with both Zia and BASIC samples.
+The [`apiaudit/`](apiaudit/) directory provides **systematic coverage of Viper runtime classes** across hundreds of source files. Most APIs have both a Zia and BASIC version; `graphics3d` is still more Zia-heavy for rendering demos, but shared runtime surfaces such as `SceneAsset`, `AnimController3D`, and `SceneNode` binding sync now ship with both Zia and BASIC samples.
 
 Organized by namespace:
 

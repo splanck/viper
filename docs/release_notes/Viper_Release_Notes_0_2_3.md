@@ -33,11 +33,11 @@ Lines added / removed: ~279K / ~323K — net removal because ~1,100 stale files 
 
 ### 3D Graphics Engine (new)
 
-- **Core architecture.** Scene graph with frustum culling and node hierarchy (`Scene3D`, `SceneNode3D`), transform system with parent-child propagation (`Transform3D`), material system with PBR properties + environment mapping + emissive surfaces (`Material3D`), camera system with shake / follow / smooth interpolation (`Camera3D`), lights (point / directional / spot, `Light3D`).
+- **Core architecture.** Scene graph with frustum culling and node hierarchy (`SceneGraph`, `SceneNode`), transform system with parent-child propagation (`Transform3D`), material system with PBR properties + environment mapping + emissive surfaces (`Material3D`), camera system with shake / follow / smooth interpolation (`Camera3D`), lights (point / directional / spot, `Light3D`).
 - **Rendering.** Four backends: Metal (macOS), D3D11 (Windows), OpenGL (Linux), software rasterizer (fallback). Multi-pass pipeline with alpha blending + depth sorting. Render-to-texture (`RenderTarget3D`). Post-processing effects (bloom, vignette, color grading, screen-space) in `PostFX3D`. Skybox with cubemap (`CubeMap3D`). Instance batching (`InstanceBatch3D`). Decals (`Decal3D`), terrain (`Terrain3D`), water (`Water3D`).
 - **Animation + physics.** Skeletal animation with bone hierarchies and blend trees (`Skeleton3D`, `Animation3D`, `AnimBlend3D`, `AnimPlayer3D`). Morph targets for facial/mesh deformation (`MorphTarget3D`). `Character3D` combining skeletal animation + physics. 3D physics with rigid bodies and trigger volumes (`Physics3DBody`, `Physics3DWorld`, `Trigger3D`).
 - **Navigation + loading.** `NavMesh3D` for AI pathfinding, `Path3D` waypoint-based movement, FBX loader for meshes + skeletons + animations, `RayHit3D` raycasting, `Particles3D`.
-- **Post-audit hardening.** Canvas3D depth-buffer bounds validation + initialization guards; Mesh3D vertex/index bounds checking on construction; Scene3D node cleanup + dangling-reference prevention; software rasterizer triangle clipping + edge-case guards; Pixels module additional bounds checks for direct pixel operations.
+- **Post-audit hardening.** Canvas3D depth-buffer bounds validation + initialization guards; Mesh3D vertex/index bounds checking on construction; SceneGraph node cleanup + dangling-reference prevention; software rasterizer triangle clipping + edge-case guards; Pixels module additional bounds checks for direct pixel operations.
 
 ### Native toolchain (assembler + linker)
 
@@ -174,7 +174,7 @@ Roughly +90 net tests (18K lines of new coverage). Highlights:
 - **Frontends.** 25 Zia parser-error tests, 62 Zia lexer tests, 75 Zia frontend tests (35 parser + 24 sema + 16 lowerer), 24 Zia/BASIC enum tests, 6 Zia runtime programs (enums, async, properties, deinit, string methods, optional narrowing), 3 async tests, 3 destructor tests, 2 static-property tests, 2 string-method tests.
 - **Native toolchain.** 13 assembler, 6 string-dedup, 13 symbol-resolver, 8 relocation edge-case, 11 DWARF debug-line, 9 DWARF debug-section, 1 ICF, 1 branch-trampoline, 10 ELF exe-writer, 7 linker integration.
 - **Codegen.** 357 x86-64 determinism tests (8 scenarios, 407 compilations verifying byte-identical output — repeated compilation N=100, regalloc pressure N=50, rodata pool N=50, multi-function ordering N=50, complex CFG N=50, separate construction pointer-address independence, ISel patterns N=50, static counter awareness). 9 dataflow-liveness tests, 1 encoding-validation, 1 x86-64 peephole integration, 1 DCE param-compaction, 1 alias-precision, 1 inline round-trip, 3 canonical-pipeline.
-- **Runtime.** 86 REPL (51 Zia + 35 BASIC), 24 rt_map, 11 rt_pool, 5 VM equivalence, 2 crypto (HMAC-SHA256 + HKDF), 3 Pixels, 2 Canvas3D, 2 Scene3D, 1 network integration, 7 AnimStateMachine, 3 TextureAtlas.
+- **Runtime.** 86 REPL (51 Zia + 35 BASIC), 24 rt_map, 11 rt_pool, 5 VM equivalence, 2 crypto (HMAC-SHA256 + HKDF), 3 Pixels, 2 Canvas3D, 2 SceneGraph, 1 network integration, 7 AnimStateMachine, 3 TextureAtlas.
 - **Fuzz.** 2 libFuzzer harnesses for Zia lexer + parser.
 
 ### Demos & docs

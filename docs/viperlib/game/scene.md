@@ -5,11 +5,11 @@ last-verified: 2026-05-22
 ---
 
 # Editable Scene Documents
-> JSON-backed `Viper.Game.Scene` documents for IDE scene tools and game-owned spawn adapters.
+> JSON-backed `Viper.Game2D.SceneDocument` documents for IDE scene tools and game-owned spawn adapters.
 
 **Part of [Game Utilities](README.md)**
 
-`Viper.Game.Scene` is an editable scene document. It owns tile layers, placed
+`Viper.Game2D.SceneDocument` is an editable scene document. It owns tile layers, placed
 objects, typed scalar properties, asset references, diagnostics, and canonical
 JSON save/load. It does not instantiate game classes by string name; game code
 loads a scene and maps objects/properties into game-owned entities.
@@ -18,17 +18,17 @@ loads a scene and maps objects/properties into game-owned entities.
 
 | Method | Signature | Description |
 |---|---|---|
-| `Scene.New(width, height, tileWidth, tileHeight)` | `Scene(i64, i64, i64, i64)` | Create a scene with one base layer. |
-| `Scene.LoadJson(text)` | `Scene(str)` | Load scene JSON without trapping on malformed user input. |
-| `Scene.LoadFile(path)` | `Scene(str)` | Read and load a scene file. |
+| `SceneDocument.New(width, height, tileWidth, tileHeight)` | `SceneDocument(i64, i64, i64, i64)` | Create a scene with one base layer. |
+| `SceneDocument.LoadJson(text)` | `SceneDocument(str)` | Load scene JSON without trapping on malformed user input. |
+| `SceneDocument.Load(path)` | `SceneDocument(str)` | Read and load a scene file. |
 | `ToJson()` | `str()` | Emit canonical schema v1 JSON. |
-| `SaveFile(path)` | `i1(str)` | Save through a same-directory temporary file before replacement. |
+| `Save(path)` | `i1(str)` | Save through a same-directory temporary file before replacement. |
 
 Canonical scene files use the `.scene` extension. The loader also accepts legacy
 unversioned JSON with `layers[].data` and LevelData-shaped scalar properties for
 import compatibility.
 
-`SaveFile` writes a temporary file next to the target and replaces the target
+`Save` writes a temporary file next to the target and replaces the target
 only after that write succeeds. Failed replacement leaves the temporary file
 removed and records an error diagnostic; an existing target is not deleted first.
 
@@ -107,7 +107,7 @@ available for string-oriented callers.
 - `layer`, `object`: owner indexes, or `-1`
 - `key`: source field/property key
 - `section`: rich section name when applicable
-- `source`: scene file path for `LoadFile`, or empty for `LoadJson`
+- `source`: scene file path for `Load`, or empty for `LoadJson`
 
 `AssetPaths()` returns the unique path strings derived from descriptors.
 Descriptors are guaranteed for explicit scene fields such as `tilesetAsset` and
@@ -115,7 +115,7 @@ layer `asset`. String scene/object properties and preserved rich sections are
 also scanned by asset-like key names for compatibility; treat those matches as
 best-effort conventions until the schema grows typed asset properties.
 
-`BuildTilemap()` creates a new `Viper.Graphics.Tilemap` render/collision copy.
+`BuildTilemap()` creates a new `Viper.Graphics2D.Tilemap` render/collision copy.
 Scene layer `0` maps to the Tilemap base layer; additional scene layers are
 added up to the Tilemap layer limit. Mutating the returned Tilemap does not
 change the scene or saved JSON. Asset paths are not resolved or loaded by

@@ -283,7 +283,7 @@ func start() {
     Game3D.Assets3D.ClearCache();
 
     var blockingStart = Clock.TicksUs();
-    var blockingTemplate = Game3D.Assets3D.LoadModelTemplateAsset(path);
+    var blockingTemplate = Game3D.Assets3D.LoadTemplateAsset(path);
     var blockingUs = Clock.TicksUs() - blockingStart;
     if (blockingTemplate == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
@@ -305,7 +305,7 @@ func start() {
 
     Game3D.Assets3D.SetUploadBudget(0);
     var asyncStart = Clock.TicksUs();
-    var asyncHandle = Game3D.Assets3D.LoadModelTemplateAssetAsync(path);
+    var asyncHandle = Game3D.Assets3D.LoadTemplateAssetAsync(path);
     var asyncCreateUs = Clock.TicksUs() - asyncStart;
     if (asyncHandle == null) {
         Game3D.Assets3D.SetUploadBudget(-1);

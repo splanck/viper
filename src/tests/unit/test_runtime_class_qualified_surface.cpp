@@ -13,7 +13,8 @@
 //     expansion, not by text scraping.
 //   - Class-qualified aliases must resolve to a callable class member with the
 //     same public member name.
-//   - Direct runtime class leaf names under Viper.* must not collide.
+//   - Direct runtime class leaf names under Viper.* must not collide unless
+//     they are intentionally reused across 2D/3D namespaces.
 //   - Instance method signatures omit the leading obj receiver from RT_FUNC.
 // Ownership/Lifetime:
 //   - Test tables own copied runtime.def string literals for process lifetime.
@@ -530,8 +531,10 @@ bool check_runtime_class_leaf_names(const RuntimeSurface &surface) {
     }
 
     std::vector<std::string> failures;
+    const std::set<std::string> allowed_dimensional_reuse = {"SceneGraph", "SceneNode"};
+
     for (const auto &entry : owners_by_leaf) {
-        if (entry.second.size() > 1) {
+        if (entry.second.size() > 1 && allowed_dimensional_reuse.count(entry.first) == 0) {
             std::ostringstream line;
             line << entry.first << " is exported by";
             for (const std::string &owner : entry.second)

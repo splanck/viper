@@ -119,5 +119,50 @@ int main() {
     assert(rt_accessibility_meets_contrast(0x777777, 0xffffff, 4.5) == 0);
     assert(rt_map_get_int(rt_accessibility_high_contrast_tokens(), rt_const_cstr("foreground")) ==
            0xffffff);
+
+    // --- Viper.GUI.Command: logical state, snapshot, and the disabled-never-invoked rule.
+    //     (The widget-driven half needs a live windowed app and is covered by ViperIDE probes.)
+    void *build = rt_command_new(rt_const_cstr("build"), rt_const_cstr("Build"));
+    assert(take(rt_command_get_id(build)) == "build");
+    assert(take(rt_command_get_title(build)) == "Build");
+    assert(rt_command_is_enabled(build) == 1); // enabled by default
+    assert(rt_command_is_checkable(build) == 0);
+    assert(rt_command_is_checked(build) == 0);
+    assert(rt_command_was_invoked(build) == 0);
+    rt_command_set_shortcut(build, rt_const_cstr("Ctrl+B")); // stored even with no app to register with
+    assert(take(rt_command_get_shortcut(build)) == "Ctrl+B");
+    rt_command_set_checkable(build, 1);
+    rt_command_set_checked(build, 1);
+    assert(rt_command_is_checkable(build) == 1);
+    assert(rt_command_is_checked(build) == 1);
+    // No bound widgets and no app: polling never reports the command invoked.
+    assert(rt_command_poll(build) == 0);
+    assert(rt_command_was_invoked(build) == 0);
+    rt_command_set_enabled(build, 0);
+    assert(rt_command_is_enabled(build) == 0);
+    void *buildSnap = rt_command_snapshot(build);
+    assert(rt_map_get_bool(buildSnap, rt_const_cstr("enabled")) == 0);
+    assert(rt_map_get_bool(buildSnap, rt_const_cstr("checkable")) == 1);
+    assert(rt_map_get_bool(buildSnap, rt_const_cstr("checked")) == 1);
+    assert(rt_map_get_bool(buildSnap, rt_const_cstr("invoked")) == 0);
+
+    // --- Viper.GUI.CommandRegistry: ownership, dedup, find, and an idle poll.
+    void *registry = rt_command_registry_new();
+    assert(rt_command_registry_count(registry) == 0);
+    rt_command_registry_add(registry, build);
+    assert(rt_command_registry_count(registry) == 1);
+    rt_command_registry_add(registry, build); // duplicate add is ignored (no double-retain)
+    assert(rt_command_registry_count(registry) == 1);
+    void *run = rt_command_new(rt_const_cstr("run"), rt_const_cstr("Run"));
+    rt_command_registry_add(registry, run);
+    assert(rt_command_registry_count(registry) == 2);
+    void *foundRun = rt_command_registry_find(registry, rt_const_cstr("run"));
+    assert(foundRun != NULL);
+    assert(take(rt_command_get_id(foundRun)) == "run");
+    assert(rt_command_registry_find(registry, rt_const_cstr("missing")) == NULL);
+    // No palette bound and nothing invoked: poll returns the empty string.
+    assert(take(rt_command_registry_poll(registry)).empty());
+    rt_command_registry_clear(registry);
+    assert(rt_command_registry_count(registry) == 0);
     return 0;
 }

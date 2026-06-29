@@ -582,6 +582,8 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_GuiVirtualList,
     RTCLS_GuiVirtualTree,
     RTCLS_GuiCommandState,
+    RTCLS_GuiCommand,
+    RTCLS_GuiCommandRegistry,
     RTCLS_GuiAccessibility,
     RTCLS_AssetResolver,
     RTCLS_WorkspaceFileIndex,

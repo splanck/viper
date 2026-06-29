@@ -3,7 +3,7 @@ module tree_material_probe;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D.Material3D as Material3D;
-bind Viper.Graphics3D.SceneNode3D as SceneNode3D;
+bind Viper.Graphics3D.SceneNode as SceneNode;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./game";
@@ -51,8 +51,8 @@ func main() {
         return;
     }
 
-    var canopyMat = SceneNode3D.get_Material(canopyNode);
-    var barkMat = SceneNode3D.get_Material(barkNode);
+    var canopyMat = SceneNode.get_Material(canopyNode);
+    var barkMat = SceneNode.get_Material(barkNode);
     if (matHasSurfaceDetail(canopyMat) == false) {
         fail(game, "canopy material has no albedo/normal texture detail");
         return;

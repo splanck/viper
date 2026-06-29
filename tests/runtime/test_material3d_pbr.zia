@@ -5,8 +5,8 @@ bind Viper.Terminal;
 
 func start() {
     var path = "tests/runtime/_tmp_material3d_pbr.vscn";
-    var scene = Scene3D.New();
-    var node = SceneNode3D.New();
+    var scene = SceneGraph.New();
+    var node = SceneNode.New();
     var mesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
     var mat = Material3D.NewPBR(0.6, 0.4, 0.2);
 
@@ -41,56 +41,56 @@ func start() {
         return;
     }
 
-    SceneNode3D.set_Mesh(node, mesh);
-    SceneNode3D.set_Material(node, mat);
-    Scene3D.Add(scene, node);
-    if (Scene3D.Save(scene, path) != 1) {
-        Say("FAIL: Scene3D.Save should create the PBR fixture asset");
+    SceneNode.set_Mesh(node, mesh);
+    SceneNode.set_Material(node, mat);
+    SceneGraph.Add(scene, node);
+    if (SceneGraph.Save(scene, path) != 1) {
+        Say("FAIL: SceneGraph.Save should create the PBR fixture asset");
         return;
     }
 
-    var model = Model3D.Load(path);
+    var model = SceneAsset.Load(path);
     if (model == null) {
-        Say("FAIL: Model3D.Load should read the saved PBR fixture");
+        Say("FAIL: SceneAsset.Load should read the saved PBR fixture");
         return;
     }
-    if (Model3D.get_MaterialCount(model) != 1) {
-        Say("FAIL: Model3D should preserve one shared material");
+    if (SceneAsset.get_MaterialCount(model) != 1) {
+        Say("FAIL: SceneAsset should preserve one shared material");
         return;
     }
 
-    var loaded = Model3D.GetMaterial(model, 0);
+    var loaded = SceneAsset.GetMaterial(model, 0);
     if (loaded == null) {
-        Say("FAIL: Model3D.GetMaterial should return the saved PBR material");
+        Say("FAIL: SceneAsset.GetMaterial should return the saved PBR material");
         return;
     }
     if (Material3D.get_Metallic(loaded) < 0.69 || Material3D.get_Metallic(loaded) > 0.71) {
-        Say("FAIL: Metallic should round-trip through Scene3D.Save/Model3D.Load");
+        Say("FAIL: Metallic should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
     if (Material3D.get_Roughness(loaded) < 0.29 || Material3D.get_Roughness(loaded) > 0.31) {
-        Say("FAIL: Roughness should round-trip through Scene3D.Save/Model3D.Load");
+        Say("FAIL: Roughness should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
     if (Material3D.get_AO(loaded) < 0.84 || Material3D.get_AO(loaded) > 0.86) {
-        Say("FAIL: AO should round-trip through Scene3D.Save/Model3D.Load");
+        Say("FAIL: AO should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
     if (Material3D.get_EmissiveIntensity(loaded) < 1.49 ||
         Material3D.get_EmissiveIntensity(loaded) > 1.51) {
-        Say("FAIL: EmissiveIntensity should round-trip through Scene3D.Save/Model3D.Load");
+        Say("FAIL: EmissiveIntensity should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
     if (Material3D.get_NormalScale(loaded) < 0.54 || Material3D.get_NormalScale(loaded) > 0.56) {
-        Say("FAIL: NormalScale should round-trip through Scene3D.Save/Model3D.Load");
+        Say("FAIL: NormalScale should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
     if (Material3D.get_AlphaMode(loaded) != 2) {
-        Say("FAIL: AlphaMode should round-trip through Scene3D.Save/Model3D.Load");
+        Say("FAIL: AlphaMode should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
     if (Material3D.get_DoubleSided(loaded) != true) {
-        Say("FAIL: DoubleSided should round-trip through Scene3D.Save/Model3D.Load");
+        Say("FAIL: DoubleSided should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
 

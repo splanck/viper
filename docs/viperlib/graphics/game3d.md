@@ -65,7 +65,7 @@ func start() {
 ```
 
 This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
-`SceneNode3D` transform, and `World3D` owns the normal frame order.
+`SceneNode` transform, and `World3D` owns the normal frame order.
 
 ---
 
@@ -78,7 +78,7 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `LayerMask` | Bitmask helper for collision and gameplay filtering |
 | `BodyDef` | Runtime body recipe used by `Entity3D.attachBody` for common static, dynamic, trigger, and CCD bodies |
 | `Collision3DEvent` | Entity-aware wrapper around raw `Graphics3D.CollisionEvent3D` enter/stay/exit records |
-| `Assets3D` / `ModelTemplate` | Filesystem and package-aware model loading with cached reusable model templates |
+| `Assets3D` / `SceneTemplate` | Filesystem and package-aware model loading with cached reusable model templates |
 | `Animator3D` | Game3D wrapper over `Graphics3D.AnimController3D` for play/crossfade/state-time/events/root-motion attachment |
 | `Input3D` | Named keyboard, mouse, movement-axis, and look-axis helper over the runtime input state |
 | `Sound3D` | World-owned audio helper with camera-follow listener, loading, 2D, positional, and attached-source playback |
@@ -113,7 +113,7 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 |-------|------------------------|
 | `canvas` | `Viper.Graphics3D.Canvas3D` |
 | `camera` | `Viper.Graphics3D.Camera3D` |
-| `scene` | `Viper.Graphics3D.Scene3D` |
+| `scene` | `Viper.Graphics3D.SceneGraph` |
 | `physics` | `Viper.Graphics3D.Physics3DWorld` |
 | `input` | `Viper.Game3D.Input3D` |
 | `audio` | `Viper.Game3D.Sound3D` with a camera-aligned listener |
@@ -186,7 +186,7 @@ Game3D surface.
 `World3D.setOriginRebaseThreshold(meters)` configures the floating-origin
 distance threshold. With `floatingOrigin` enabled, the world recenters around
 the active camera when it crosses that threshold, calls
-`Scene3D.RebaseOrigin()` for scene root subtrees, shifts physics bodies by the
+`SceneGraph.RebaseOrigin()` for scene root subtrees, shifts physics bodies by the
 same delta, shifts the explicit audio listener pose, and rebases world-owned
 effect-registry particles and decals. The absolute offset accumulates in
 `worldOrigin`. `World3D.rebaseOrigin(dx, dy, dz)` exposes the same cross-system
@@ -412,7 +412,7 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_probe`,
 ## Entities, Layers, And Masks
 
 `Entity3D.Of(mesh, material)` creates a spawnable entity with a raw
-`SceneNode3D`. `Entity3D.FromNode(rootNode)` wraps an existing `SceneNode3D`
+`SceneNode`. `Entity3D.FromNode(rootNode)` wraps an existing `SceneNode`
 hierarchy, which is the preferred bridge for imported or procedurally assembled
 subtrees that should move through Game3D spawning without cloning. If the root
 node has a non-empty name, the wrapper entity inherits it so
@@ -424,7 +424,7 @@ an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 
 | Method | Purpose |
 |--------|---------|
-| `FromNode(rootNode)` | Wrap an existing `SceneNode3D` hierarchy as a spawnable group entity |
+| `FromNode(rootNode)` | Wrap an existing `SceneNode` hierarchy as a spawnable group entity |
 | `setPosition(x, y, z)` / `setPositionV(vec3)` | Set node position |
 | `setScale(s)` / `setScaleXYZ(x, y, z)` | Set node scale |
 | `setRotationEuler(xDeg, yDeg, zDeg)` | Set node orientation in degrees |
@@ -476,29 +476,29 @@ the existing physics-world body and body index stable.
 
 ## Assets3D
 
-`Assets3D` loads `Model3D` assets into spawnable Game3D entities without manual
+`Assets3D` loads `SceneAsset` assets into spawnable Game3D entities without manual
 scene-node cloning:
 
 ```zia
-var crate = Game3D.Assets3D.LoadModel("assets/crate.glb");
+var crate = Game3D.Assets3D.LoadEntity("assets/crate.glb");
 Game3D.Entity3D.setPosition(crate, 0.0, 0.5, -3.0);
 Game3D.World3D.spawn(world, crate);
 
-var enemyTemplate = Game3D.Assets3D.LoadModelTemplateAsset("models/enemy.glb");
-var enemy = Game3D.ModelTemplate.instantiate(enemyTemplate);
+var enemyTemplate = Game3D.Assets3D.LoadTemplateAsset("models/enemy.glb");
+var enemy = Game3D.SceneTemplate.instantiate(enemyTemplate);
 Game3D.World3D.spawn(world, enemy);
 ```
 
 | Method | Purpose |
 |--------|---------|
-| `LoadModel(path)` | Load a filesystem/development model and return a group `Entity3D` |
-| `LoadModelAsset(assetPath)` | Load through the asset resolver first, with filesystem fallback for development |
-| `LoadModelTemplate(path)` | Load or reuse a cached filesystem `ModelTemplate` |
-| `LoadModelTemplateAsset(assetPath)` | Load or reuse a cached package-aware `ModelTemplate` |
-| `LoadModelAsync(path)` | Return an `AssetHandle3D` for a filesystem/development model entity |
-| `LoadModelAssetAsync(assetPath)` | Return an `AssetHandle3D` for a package-aware model entity |
-| `LoadModelTemplateAsync(path)` | Return an `AssetHandle3D` for a cached filesystem `ModelTemplate` |
-| `LoadModelTemplateAssetAsync(assetPath)` | Return an `AssetHandle3D` for a cached package-aware `ModelTemplate` |
+| `LoadEntity(path)` | Load a filesystem/development scene asset and return a group `Entity3D` |
+| `LoadEntityAsset(assetPath)` | Load through the asset resolver first, with filesystem fallback for development |
+| `LoadTemplate(path)` | Load or reuse a cached filesystem `SceneTemplate` |
+| `LoadTemplateAsset(assetPath)` | Load or reuse a cached package-aware `SceneTemplate` |
+| `LoadEntityAsync(path)` | Return an `AssetHandle3D` for a filesystem/development entity |
+| `LoadEntityAssetAsync(assetPath)` | Return an `AssetHandle3D` for a package-aware entity |
+| `LoadTemplateAsync(path)` | Return an `AssetHandle3D` for a cached filesystem `SceneTemplate` |
+| `LoadTemplateAssetAsync(assetPath)` | Return an `AssetHandle3D` for a cached package-aware `SceneTemplate` |
 | `SetResidencyBudget(bytes)` | Bound the shared template cache by estimated resident bytes; negative means unlimited |
 | `GetResidentBytes()` | Report estimated resident bytes held by the shared template cache |
 | `SetResidencyHint(template, priority, distance)` | Bias cached-template eviction so higher-priority and nearer templates survive pressure first |
@@ -507,7 +507,7 @@ Game3D.World3D.spawn(world, enemy);
 | `Preload(path)` | Start a background filesystem template-cache warm |
 | `PreloadAsset(assetPath)` | Start a background package-aware template-cache warm |
 | `ClearCache()` | Release cached template entries and prevent older preload jobs from repopulating the cache |
-| `ModelTemplate.instantiate()` | Clone the template root subtree into a group `Entity3D` |
+| `SceneTemplate.instantiate()` | Clone the template root subtree into a group `Entity3D` |
 
 Loaded entities are groups whose backing node is the instantiated model root.
 The raw imported child nodes remain under that root and are not separate
@@ -515,9 +515,9 @@ Game3D child entities. Despawning the group removes the whole subtree from the
 scene. If the imported root has a skeletal animation controller, `entity.anim`
 is populated with a `Game3D.Animator3D` wrapper.
 
-`LoadModelAsset` and `LoadModelTemplateAsset` use the runtime asset resolver, so
+`LoadEntityAsset` and `LoadTemplateAsset` use the runtime asset resolver, so
 mounted packages and `asset://` paths work the same way as lower-level
-`Model3D.LoadAsset`. Relative glTF buffers and textures resolve relative to the
+`SceneAsset.LoadAsset`. Relative glTF buffers and textures resolve relative to the
 model asset.
 
 Filesystem template cache keys are canonicalized to absolute paths when
@@ -546,7 +546,7 @@ failures complete through the worker/commit path with `"failed to load model"` o
 the handle terminal with `error == "cancelled"` and no result. Calling `cancel()`
 on a completed handle is a no-op, which keeps retrieved results stable.
 
-Async handles accept the same model extensions as blocking `Model3D.Load`:
+Async handles accept the same model extensions as blocking `SceneAsset.Load`:
 `.gltf`, `.glb`, `.fbx`, `.obj`, `.stl`, and `.vscn`. glTF/GLB assets use the
 worker preload path described below; the other formats are validated by the
 handle and completed through the main-thread commit path so callers can use one
@@ -567,7 +567,7 @@ delta payloads become attached `MorphTarget3D` objects during commit. The worker
 rejects missing required buffer
 payloads, accessor ranges that overrun their declared bufferViews, and corrupt
 required PNG/BMP/JPEG/GIF texture image payloads before the main-thread commit
-queue builds the `Model3D`/`ModelTemplate`/`Entity3D` result. Blocking glTF
+queue builds the `SceneAsset`/`SceneTemplate`/`Entity3D` result. Blocking glTF
 loads reject the same corrupt required data-URI texture images instead of
 silently dropping the material map.
 External `.bin` buffers can be loaded from the staged bundle even if the source
@@ -610,7 +610,7 @@ fresh cache generation. If another thread is actively publishing cache entries,
 the current cache intact rather than clearing entries while publishers still own
 them.
 
-`SetResidencyBudget(bytes)` applies to the shared `ModelTemplate` cache. The
+`SetResidencyBudget(bytes)` applies to the shared `SceneTemplate` cache. The
 budget uses a conservative CPU/GPU-resource estimate that includes mesh buffers,
 model metadata, and decoded material texture pixels, treats a negative value as
 unlimited, and considers only non-loading entries for eviction. A budget of `0`
@@ -718,7 +718,7 @@ properties (`residentCellCount`,
 resident cell payloads plus manifest-backed terrain tile residency. Loaded VSCN
 cells are measured from their authored scene resources, including base meshes,
 resident LOD meshes, impostor meshes, materials, and resident material textures.
-`Mesh3D.Resident` / `SceneNode3D.SetLodResident` changes are remeasured on
+`Mesh3D.Resident` / `SceneNode.SetLodResident` changes are remeasured on
 subsequent `update(dt)` calls so a cell can shed mesh detail without unloading
 its whole scene subtree; unloaded cells continue to report the manifest `bytes`
 estimate for planning and editor inspection. `update(dt)` advances a
@@ -748,9 +748,9 @@ inspection hooks, checks
 the async `AssetHandle3D` model path, loads RGBA8 and BC7 KTX2
 `TextureAsset3D` fixtures, renders a BC7 texture panel in the main scene,
 loads a synthetic skinned glTF agent through
-`Assets3D.LoadModelAsset`, crossfades its auto-bound animator from `Idle` to
+`Assets3D.LoadEntityAsset`, crossfades its auto-bound animator from `Idle` to
 `Wave`, binds `IKSolver3D.LookAt` through `Animator3D.setIKSolver`, loads a
-committed GLB through `Assets3D.LoadModelAsset`, loads a committed WAV through
+committed GLB through `Assets3D.LoadEntityAsset`, loads a committed WAV through
 `Sound3D.loadAsset`, validates a terrain-sampled `IKSolver3D.TwoBone` foot
 target, renders a visible foot marker/leg pair for that proof, reads the
 `World3D` runtime counters, runs physics/character/nav-agent simulation,
@@ -771,7 +771,7 @@ texture-upload budget telemetry on a capable GPU backend.
 `World3D.bakeTiledNavMesh(tileSize, agentRadius, agentHeight, maxSlope,
 cellSize)` are Game3D editor hooks over the lower-level
 `Viper.Graphics3D.NavMesh3D.Bake*` APIs. They bake from the world's current
-`Scene3D`, including hidden streamed-terrain nav source nodes, preserve
+`SceneGraph`, including hidden streamed-terrain nav source nodes, preserve
 world-space transforms, and return a
 `Viper.Graphics3D.NavMesh3D` for `NavAgent3D` use. The tiled entry uses
 `NavMesh3D.BakeTiled`, which retains tile voxel source data so
@@ -794,7 +794,7 @@ AnimController3D.SetRootMotionBone(controller, rootBone);
 
 var anim = Game3D.Animator3D.New(controller);
 Game3D.Entity3D.attachAnimator(player, anim);
-SceneNode3D.set_SyncMode(Game3D.Entity3D.get_node(player),
+SceneNode.set_SyncMode(Game3D.Entity3D.get_node(player),
                          Game3D.SyncMode.get_NodeFromAnimRootMotion());
 Game3D.Animator3D.play(anim, "run");
 ```
@@ -1070,7 +1070,7 @@ smoothing.
 
 | Symptom | Check |
 |---------|-------|
-| `LoadModelAsset` or `Sound3D.loadAsset` returns `null` | Run from the project root or package the asset path in `viper.project`; source-tree samples use `asset assets assets` or repository-relative fixture paths. |
+| `LoadEntityAsset` or `Sound3D.loadAsset` returns `null` | Run from the project root or package the asset path in `viper.project`; source-tree samples use `asset assets assets` or repository-relative fixture paths. |
 | Final overlay pixels look post-processed | Draw HUD after `World3D.endScene()` with `Canvas3D.BeginOverlay()` / `EndOverlay()`, then call `captureFinalFrame()` or `present()`. |
 | A callback loop traps before the callback runs | Check that the update callback is `(Float) -> Unit`, the overlay callback is `() -> Unit`, and the function reference comes from the active script module. |
 | Software backend disables a requested quality feature | Inspect `Canvas3D.get_QualityActive()` and `get_QualityFallback()`; `Quality.Apply` avoids unsupported shadow/post-FX paths. |
@@ -1085,7 +1085,7 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, stale-entity no-op diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, streamed terrain metadata inspection and LOD seam stitching beyond the single-heightmap cap, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, stale-entity no-op diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadEntityAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, streamed terrain metadata inspection and LOD seam stitching beyond the single-heightmap cap, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, direct `Entity3D.FromNode` subtree wrapping, synthetic `tick`, clamped `stepSimulation`, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_probe` | Interpreted Zia `runFrames` update callback bridge, fixed dt delivery, and frame accounting |

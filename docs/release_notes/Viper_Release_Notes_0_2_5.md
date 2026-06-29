@@ -77,7 +77,7 @@ Seven rounds of widget audits plus an app-registry overhaul.
 - **Software shadow clipper** — Shadow polygon projection now uses a proper Sutherland-Hodgman clipper in homogeneous clip space (6 planes, no per-frame allocation) rather than the previous approximate path.
 - **NavMesh3D** — `SetMaxSlope` applies retroactively without requiring a full rebuild; height projection from mesh triangles is now correctly calculated.
 - **Particle and water stability** — `Particles3D.Burst` clamps to available pool capacity; particle `Update` clamps delta time to 1 second to prevent physics blow-up on long hitches. `Water3D` setters reject wrong-type texture handles without silently dropping the previous valid binding.
-- **Camera, scene, and canvas correctness** — Camera3D shake now derives the up-vector from the actual view matrix rather than a hard-coded axis, so rolled cameras shake in the right direction. `SceneNode3D.SetMesh/SetMaterial/SetLight` and `Scene3D.Remove` validate their arguments. `Canvas3D` delta-time cap is now correctly initialised from the first frame.
+- **Camera, scene, and canvas correctness** — Camera3D shake now derives the up-vector from the actual view matrix rather than a hard-coded axis, so rolled cameras shake in the right direction. `SceneNode.SetMesh/SetMaterial/SetLight` and `SceneGraph.Remove` validate their arguments. `Canvas3D` delta-time cap is now correctly initialised from the first frame.
 - **Earlier correctness fixes** — Animation keyframes are sorted on load; spot-light inner/outer cones are enforced; mid-frame render-target rebinding is rejected; NaN/inf is sanitized on Camera3D, Light3D, and PostFX3D setters.
 
 ### Game runtime
@@ -86,7 +86,7 @@ Seven rounds of widget audits plus an app-registry overhaul.
 - Fixed a use-after-free where worker VM threads could access a `Future` payload after the originating VM had already torn down its stack.
 - Dialogue system rewritten against real font measurement with proper UTF-8 wrap and codepoint boundaries.
 - Random number generation now uses rejection sampling to eliminate modulo bias in `rand.int` and `rand.range`.
-- **2D game runtime handle safety** — All 16 remaining 2D game modules (Behavior, Collision, Config, DebugOverlay, Dialogue, LevelData, Lighting2D, ObjPool, Pathfinder, Raycast2D, SceneManager, ScreenFX, StateMachine, Timer, Typewriter, AnimState) received the same handle-guard treatment previously applied to the 2D graphics and 3D subsystems. Every incoming handle is validated before use; NULL, wrong-type, and stack-local handles return safe defaults or no-ops instead of crashing.
+- **2D game runtime handle safety** — All 16 remaining 2D game modules (Behavior, Collision, Config, DebugOverlay, Dialogue, LevelDocument, Lighting2D, ObjPool, Pathfinder, Raycast2D, SceneManager, ScreenFX, StateMachine, Timer, Typewriter, AnimState) received the same handle-guard treatment previously applied to the 2D graphics and 3D subsystems. Every incoming handle is validated before use; NULL, wrong-type, and stack-local handles return safe defaults or no-ops instead of crashing.
 - **Physics2D robustness** — Physics2D and joint objects received input validation and an expanded API surface.
 
 ### Collections runtime
@@ -218,7 +218,7 @@ Six-pass hardening of the `viper install-package` and `viper package` subsystems
 
 ~23K new lines of test coverage added this cycle.
 
-- **3D handle-safety contracts** — Every major 3D class (Mesh3D, Scene3D, Canvas3D, Camera3D, Collider3D, Light3D, Material3D, Particles3D, Physics3D, Water3D) has contract tests confirming that NULL, wrong-type, and out-of-range handles return safe defaults rather than crashing. STL loader tests verify that NaN/inf vertices and out-of-range floats are rejected in both binary and ASCII formats.
+- **3D handle-safety contracts** — Every major 3D class (Mesh3D, SceneGraph, Canvas3D, Camera3D, Collider3D, Light3D, Material3D, Particles3D, Physics3D, Water3D) has contract tests confirming that NULL, wrong-type, and out-of-range handles return safe defaults rather than crashing. STL loader tests verify that NaN/inf vertices and out-of-range floats are rejected in both binary and ASCII formats.
 - **2D graphics regression suite** — New tests cover wrong-class handle contracts for Sprite/SpriteSheet/SpriteBatch/Camera/Scene, PNG chunk-order and palette validation, sub-byte greyscale transparency, zero-frame GIF rejection, scene transform saturation at int64 limits, tilemap autotile fallback, and tile-animation JSON deduplication.
 - **Game runtime contracts** — All 16 2D game modules have dedicated wrong-class-handle tests aligned with the class-ID guard pass; new suites cover Lighting2D, Typewriter, Physics2D, Collision, ObjPool, ScreenFX, Behavior, Raycast2D, SceneManager, and Pathfinder.
 - **GUI** — 40+ new regression tests covering layout constraints, image loading, widget lifecycle, regex search, modal input routing, TextInput undo, TrueType composite glyph bounds, Grid/Dock metadata cleanup on child removal, RadioButton deselect callbacks, Checkbox indeterminate state, and TextInput single-change paste.

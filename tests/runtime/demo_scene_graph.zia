@@ -35,43 +35,43 @@ func start() {
     Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
 
     // Build scene graph
-    var scene = Scene3D.New();
+    var scene = SceneGraph.New();
 
     // Floor
-    var floor_node = SceneNode3D.New();
-    SceneNode3D.SetPosition(floor_node, 0.0, -2.0, 0.0);
-    SceneNode3D.set_Mesh(floor_node, floor_mesh);
-    SceneNode3D.set_Material(floor_node, floor_mat);
-    Scene3D.Add(scene, floor_node);
+    var floor_node = SceneNode.New();
+    SceneNode.SetPosition(floor_node, 0.0, -2.0, 0.0);
+    SceneNode.set_Mesh(floor_node, floor_mesh);
+    SceneNode.set_Material(floor_node, floor_mat);
+    SceneGraph.Add(scene, floor_node);
 
     // Sun (center, unlit emissive look)
-    var sun_node = SceneNode3D.New();
-    SceneNode3D.SetPosition(sun_node, 0.0, 0.0, 0.0);
-    SceneNode3D.set_Mesh(sun_node, sun_mesh);
-    SceneNode3D.set_Material(sun_node, sun_mat);
-    Scene3D.Add(scene, sun_node);
+    var sun_node = SceneNode.New();
+    SceneNode.SetPosition(sun_node, 0.0, 0.0, 0.0);
+    SceneNode.set_Mesh(sun_node, sun_mesh);
+    SceneNode.set_Material(sun_node, sun_mat);
+    SceneGraph.Add(scene, sun_node);
 
     // Planet orbit arm (invisible transform group — rotated each frame)
-    var planet_arm = SceneNode3D.New();
-    SceneNode3D.AddChild(sun_node, planet_arm);
+    var planet_arm = SceneNode.New();
+    SceneNode.AddChild(sun_node, planet_arm);
 
     // Planet (offset from sun)
-    var planet_node = SceneNode3D.New();
-    SceneNode3D.SetPosition(planet_node, 4.0, 0.0, 0.0);
-    SceneNode3D.set_Mesh(planet_node, planet_mesh);
-    SceneNode3D.set_Material(planet_node, planet_mat);
-    SceneNode3D.AddChild(planet_arm, planet_node);
+    var planet_node = SceneNode.New();
+    SceneNode.SetPosition(planet_node, 4.0, 0.0, 0.0);
+    SceneNode.set_Mesh(planet_node, planet_mesh);
+    SceneNode.set_Material(planet_node, planet_mat);
+    SceneNode.AddChild(planet_arm, planet_node);
 
     // Moon orbit arm (parented to planet)
-    var moon_arm = SceneNode3D.New();
-    SceneNode3D.AddChild(planet_node, moon_arm);
+    var moon_arm = SceneNode.New();
+    SceneNode.AddChild(planet_node, moon_arm);
 
     // Moon (offset from planet)
-    var moon_node = SceneNode3D.New();
-    SceneNode3D.SetPosition(moon_node, 1.0, 0.0, 0.0);
-    SceneNode3D.set_Mesh(moon_node, moon_mesh);
-    SceneNode3D.set_Material(moon_node, moon_mat);
-    SceneNode3D.AddChild(moon_arm, moon_node);
+    var moon_node = SceneNode.New();
+    SceneNode.SetPosition(moon_node, 1.0, 0.0, 0.0);
+    SceneNode.set_Mesh(moon_node, moon_mesh);
+    SceneNode.set_Material(moon_node, moon_mat);
+    SceneNode.AddChild(moon_arm, moon_node);
 
     var time = 0.0;
 
@@ -85,14 +85,14 @@ func start() {
 
         // Animate: rotate planet arm around Y (planet orbits sun)
         var planet_rot = Quat.FromEuler(time * 0.5, 0.0, 0.0);
-        SceneNode3D.set_Rotation(planet_arm, planet_rot);
+        SceneNode.set_Rotation(planet_arm, planet_rot);
 
         // Animate: rotate moon arm around Y (moon orbits planet)
         var moon_rot = Quat.FromEuler(time * 2.0, 0.0, 0.0);
-        SceneNode3D.set_Rotation(moon_arm, moon_rot);
+        SceneNode.set_Rotation(moon_arm, moon_rot);
 
         // Draw entire scene graph
-        Scene3D.Draw(scene, canvas, cam);
+        SceneGraph.Draw(scene, canvas, cam);
 
         Canvas3D.Flip(canvas);
         time = time + 0.016;

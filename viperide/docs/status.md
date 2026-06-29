@@ -167,7 +167,7 @@ language service for these file kinds.
 in open/save/session/file-filter flows, but there is no visual scene document
 surface. Today they open as text.
 
-Runtime scene support exists in `Viper.Game.Scene` and is covered by probes, but
+Runtime scene support exists in `Viper.Game2D.SceneDocument` and is covered by probes, but
 ViperIDE does not yet keep a scene handle per open document, does not have
 scene-specific dirty/save/reload logic, and does not provide tile/object tools.
 

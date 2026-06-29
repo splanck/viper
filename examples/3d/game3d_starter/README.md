@@ -24,5 +24,5 @@ Validate the package manifest and asset layout:
 ```
 
 `viper.project` packages `assets/` back to `assets/`, so
-`Assets3D.LoadModelAsset("assets/models/triangle.gltf")` works in the source
+`Assets3D.LoadEntityAsset("assets/models/triangle.gltf")` works in the source
 tree and in packaged builds.

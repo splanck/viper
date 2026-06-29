@@ -835,7 +835,7 @@ and Doppler metadata before delegating to normal `Sound` voice playback.
 
 `SoundListener3D` and `SoundSource3D` remain in the
 `Viper.Graphics3D` namespace because those object wrappers bind to
-`SceneNode3D` and `Camera3D`. They call into the audio-owned spatial math; the
+`SceneNode` and `Camera3D`. They call into the audio-owned spatial math; the
 graphics side owns only scene/camera binding and lifetime integration.
 
 | Graphics3D type | Description |
@@ -843,7 +843,7 @@ graphics side owns only scene/camera binding and lifetime integration.
 | `SoundListener3D` | Active listener pose, velocity, node/camera binding, and `IsActive` selection |
 | `SoundSource3D` | Positional `Sound` instance with ref/max distance, velocity, looping, and optional node binding |
 
-Scene-driven games usually update transforms, call `Scene3D.SyncBindings(dt)`,
+Scene-driven games usually update transforms, call `SceneGraph.SyncBindings(dt)`,
 then trigger `SoundSource3D.Play()` or `SpatialAudio3D.PlayAt(...)` for the
 frame. Direct spatial callers can skip the object wrappers and call
 `SpatialAudio3D.SetListener`, `PlayAt`, and `UpdateVoice` with `Vec3` handles.

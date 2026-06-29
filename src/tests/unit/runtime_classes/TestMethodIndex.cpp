@@ -296,18 +296,18 @@ TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
     EXPECT_EQ(sheetFromGrid->returnClassQName, std::string("Viper.Graphics.SpriteSheet"));
     EXPECT_FALSE(sheetFromGrid->hasReceiver);
 
-    auto tilemapLoad = runtimeMethodIndex().find("Viper.Graphics.Tilemap", "LoadFromFile", 1);
+    auto tilemapLoad = runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "Load", 1);
     ASSERT_TRUE(tilemapLoad.has_value());
-    EXPECT_EQ(tilemapLoad->returnClassQName, std::string("Viper.Graphics.Tilemap"));
+    EXPECT_EQ(tilemapLoad->returnClassQName, std::string("Viper.Graphics2D.Tilemap"));
     EXPECT_FALSE(tilemapLoad->hasReceiver);
 
-    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Tilemap", "LoadCSV", 3).has_value());
-    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Tilemap", "SetTileAnim", 3).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "LoadCsv", 3).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "SetTileAnim", 3).has_value());
     EXPECT_TRUE(
-        runtimeMethodIndex().find("Viper.Graphics.Tilemap", "SetTileAnimFrame", 3).has_value());
-    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Tilemap", "UpdateAnims", 1).has_value());
+        runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "SetTileAnimFrame", 3).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "UpdateAnims", 1).has_value());
     EXPECT_TRUE(
-        runtimeMethodIndex().find("Viper.Graphics.Tilemap", "ResolveAnimTile", 1).has_value());
+        runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "ResolveAnimTile", 1).has_value());
 
     EXPECT_TRUE(
         runtimeMethodIndex().find("Viper.Graphics.ParticleSystem2D", "Destroy", 0).has_value());

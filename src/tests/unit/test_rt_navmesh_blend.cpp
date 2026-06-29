@@ -550,7 +550,7 @@ static void test_navmesh_bake_scene_flattens_transformed_nodes() {
     EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
                 "NavMesh Bake: pathfinding works across baked scene geometry");
     EXPECT_TRUE(rt_navmesh3d_bake(rt_mesh3d_new_plane(2.0, 2.0), 0.4, 1.8, 45.0, 0.3) == nullptr,
-                "NavMesh Bake: rejects non-Scene3D handles");
+                "NavMesh Bake: rejects non-SceneGraph handles");
 }
 
 static void test_navmesh_bake_tiled_and_rebuild_tile_baseline() {

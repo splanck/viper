@@ -27,8 +27,8 @@ last-verified: 2026-05-15
 | [Entity System](entity.md) | Entity — 2D game object with position, velocity, HP, tilemap collision |
 | [Behavior AI](behavior.md) | Behavior — composable AI presets (patrol, chase, gravity, shoot) |
 | [Raycast](raycast.md) | Raycast2D — line-of-sight and line collision queries |
-| [Level Data](leveldata.md) | LevelData — JSON level loader with tilemap and object spawns |
-| [Editable Scene Documents](scene.md) | Scene — scene-owned tile layers, placed objects, properties, JSON save/load |
+| [Level Documents](leveldata.md) | LevelDocument — JSON level loader with tilemap and object spawns |
+| [Editable Scene Documents](scene.md) | SceneDocument — scene-owned tile layers, placed objects, properties, JSON save/load |
 | [Scene Manager](scenemanager.md) | SceneManager — multi-scene transitions and lifecycle |
 | [Config](config.md) | Config — JSON configuration file loader |
 | [UI Menus](ui-menu.md) | MenuList, GameButton — game menu widgets |

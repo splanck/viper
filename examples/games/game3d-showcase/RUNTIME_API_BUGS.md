@@ -13,20 +13,20 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 > `/usr/local/bin/viper` (equivalently `build/src/tools/viper/viper`). Two findings first
 > attributed to "bugs" were actually this stale binary; they have been retracted below.
 
-## BUG-002 — `Model3D.Load` traps (DomainError) on a missing file instead of returning null
+## BUG-002 — `SceneAsset.Load` traps (DomainError) on a missing file instead of returning null
 - **Date:** 2026-06-03
 - **Severity:** P1 (no graceful failure path)
-- **Area:** `Viper.Graphics3D.Model3D` / FBX loader
+- **Area:** `Viper.Graphics3D.SceneAsset` / FBX loader
 - **Symptom:** When the path cannot be opened, the call raises an uncatchable
   `DomainError (code=0): FBX.Load: cannot open file` trap that aborts execution. The documented
   `if (m == null)` recovery pattern never runs, so a script cannot detect/skip a missing asset.
-- **Repro:** `Model3D.Load("definitely_missing.fbx")` →
+- **Repro:** `SceneAsset.Load("definitely_missing.fbx")` →
   `Trap @main...: DomainError (code=0): FBX.Load: cannot open file` (statements after never run).
 - **Workaround:** Historical: probe with `Viper.IO.File.Exists(path)` before loading. Now obsolete —
   the demo's `spawnForest` relies on the `null` return to try candidate paths
   (`MapleTree_1.fbx`, then `examples/games/game3d-showcase/MapleTree_1.fbx`) and uses whichever loads,
   so the forest resolves whether the demo is run from the repo root or from inside the folder.
-- **Status:** Resolved 2026-06-04. `Model3D.Load` now routes FBX files through a recoverable FBX
+- **Status:** Resolved 2026-06-04. `SceneAsset.Load` now routes FBX files through a recoverable FBX
   loader and returns `null` for missing/unreadable/unrecognized FBX files. Direct `FBX.Load` remains
   strict, and malformed binary FBX data still reports the existing hard parse diagnostic.
 
@@ -84,7 +84,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 ---
 
 ## Retracted (stale-binary artifacts, not real bugs)
-- ~~`Model3D.get_SceneCount` has no bound getter~~ — **false positive.** Works on the current
+- ~~`SceneAsset.get_SceneCount` has no bound getter~~ — **false positive.** Works on the current
   binary (`scenes=1`); the failure was the stale `install-check` binary.
 - ~~Binding `Viper.IO.File as FileSys` breaks `Viper.Game3D`~~ — **false positive.** Both binds
   coexist fine on the current binary; the stale binary simply lacked `Viper.Game3D`.
@@ -127,18 +127,18 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 
 ---
 
-## BUG-005 — `Model3D.LoadAsset` ignored the asset store for FBX (filesystem only)
+## BUG-005 — `SceneAsset.LoadAsset` ignored the asset store for FBX (filesystem only)
 - **Date:** 2026-06-04
 - **Severity:** P1 (embedded/packed FBX models unreachable)
 - **Area:** `src/runtime/graphics/3d/render/rt_model3d.c`
-- **Symptom:** `Model3D.LoadAsset("model.fbx")` returned NULL for an embedded/packed FBX even though
+- **Symptom:** `SceneAsset.LoadAsset("model.fbx")` returned NULL for an embedded/packed FBX even though
   `Assets.Exists("model.fbx") == 1`. The glTF branch honored `load_assets`
   (`rt_gltf_load_asset` → `rt_asset_load_raw`), but `model3d_load_from_fbx` had no `load_assets`
   parameter and always read from the filesystem via `rt_fbx_load_recoverable(path)`.
 - **Fix:** `model3d_load_from_fbx` now takes `load_assets`; when set it pulls bytes from the asset
   store (`rt_asset_load_raw`) and decodes them through a temp-file bridge
   (`model3d_fbx_from_asset_bytes`, mirroring the `rt_asset_decode` image pattern, since the FBX
-  importer is path-based), falling back to the filesystem. Verified: `Model3D.LoadAsset` on an
+  importer is path-based), falling back to the filesystem. Verified: `SceneAsset.LoadAsset` on an
   embedded FBX returns `meshes=3` in both the interpreter and a native binary, from any CWD.
 - **Status:** Fixed 2026-06-04.
 

@@ -4,7 +4,7 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// Tests for Viper.Game.LevelData JSON loading.
+// Tests for Viper.Game2D.LevelDocument JSON loading.
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"

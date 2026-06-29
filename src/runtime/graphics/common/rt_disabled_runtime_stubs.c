@@ -217,6 +217,96 @@ void *rt_command_state_snapshot(void *state) {
     return NULL;
 }
 
+void *rt_command_new(rt_string id, rt_string title) {
+    (void)id;
+    (void)title;
+    return NULL;
+}
+rt_string rt_command_get_id(void *command) {
+    (void)command;
+    return disabled_empty_string();
+}
+rt_string rt_command_get_title(void *command) {
+    (void)command;
+    return disabled_empty_string();
+}
+void rt_command_set_shortcut(void *command, rt_string keys) {
+    (void)command;
+    (void)keys;
+}
+rt_string rt_command_get_shortcut(void *command) {
+    (void)command;
+    return disabled_empty_string();
+}
+void rt_command_set_enabled(void *command, int8_t enabled) {
+    (void)command;
+    (void)enabled;
+}
+int8_t rt_command_is_enabled(void *command) {
+    (void)command;
+    return 0;
+}
+void rt_command_set_checkable(void *command, int8_t checkable) {
+    (void)command;
+    (void)checkable;
+}
+int8_t rt_command_is_checkable(void *command) {
+    (void)command;
+    return 0;
+}
+void rt_command_set_checked(void *command, int8_t checked) {
+    (void)command;
+    (void)checked;
+}
+int8_t rt_command_is_checked(void *command) {
+    (void)command;
+    return 0;
+}
+void rt_command_bind_menu_item(void *command, void *item) {
+    (void)command;
+    (void)item;
+}
+void rt_command_bind_toolbar_item(void *command, void *item) {
+    (void)command;
+    (void)item;
+}
+int8_t rt_command_poll(void *command) {
+    (void)command;
+    return 0;
+}
+int8_t rt_command_was_invoked(void *command) {
+    (void)command;
+    return 0;
+}
+void *rt_command_snapshot(void *command) {
+    (void)command;
+    return NULL;
+}
+
+void *rt_command_registry_new(void) { return NULL; }
+void rt_command_registry_add(void *registry, void *command) {
+    (void)registry;
+    (void)command;
+}
+int64_t rt_command_registry_count(void *registry) {
+    (void)registry;
+    return 0;
+}
+void *rt_command_registry_find(void *registry, rt_string id) {
+    (void)registry;
+    (void)id;
+    return NULL;
+}
+void rt_command_registry_bind_palette(void *registry, void *palette) {
+    (void)registry;
+    (void)palette;
+}
+rt_string rt_command_registry_poll(void *registry) {
+    (void)registry;
+    return disabled_empty_string();
+}
+void rt_command_registry_clear(void *registry) { (void)registry; }
+
 double rt_accessibility_contrast_ratio(int64_t fg_rgb, int64_t bg_rgb) {
     (void)fg_rgb;
     (void)bg_rgb;

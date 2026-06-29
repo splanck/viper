@@ -29,39 +29,39 @@ func start() {
     var floor_mesh = Mesh3D.NewPlane(50.0, 50.0);
 
     // Scene graph with LOD nodes
-    var scene = Scene3D.New();
+    var scene = SceneGraph.New();
 
     // Floor node
-    var floor_node = SceneNode3D.New();
-    SceneNode3D.set_Mesh(floor_node, floor_mesh);
-    SceneNode3D.set_Material(floor_node, floor_mat);
-    SceneNode3D.SetPosition(floor_node, 0.0, -1.0, 0.0);
-    Scene3D.Add(scene, floor_node);
+    var floor_node = SceneNode.New();
+    SceneNode.set_Mesh(floor_node, floor_mesh);
+    SceneNode.set_Material(floor_node, floor_mat);
+    SceneNode.SetPosition(floor_node, 0.0, -1.0, 0.0);
+    SceneGraph.Add(scene, floor_node);
 
     // Create a row of 10 spheres with LOD at different distances
     var i = 0;
     while (i < 10) {
-        var node = SceneNode3D.New();
-        SceneNode3D.set_Mesh(node, sphere_hi); // base mesh = high detail
+        var node = SceneNode.New();
+        SceneNode.set_Mesh(node, sphere_hi); // base mesh = high detail
         if (i % 3 == 0) {
-            SceneNode3D.set_Material(node, mat_red);
+            SceneNode.set_Material(node, mat_red);
         } else {
             if (i % 3 == 1) {
-                SceneNode3D.set_Material(node, mat_green);
+                SceneNode.set_Material(node, mat_green);
             } else {
-                SceneNode3D.set_Material(node, mat_blue);
+                SceneNode.set_Material(node, mat_blue);
             }
         }
 
         // Position in a line along Z axis
         var x = (i - 5) * 4.0;
-        SceneNode3D.SetPosition(node, x, 0.0, 0.0);
+        SceneNode.SetPosition(node, x, 0.0, 0.0);
 
         // Add LOD levels: at 10 units switch to medium, at 25 units switch to low
-        SceneNode3D.AddLOD(node, 10.0, sphere_mid);
-        SceneNode3D.AddLOD(node, 25.0, sphere_lo);
+        SceneNode.AddLOD(node, 10.0, sphere_mid);
+        SceneNode.AddLOD(node, 25.0, sphere_lo);
 
-        Scene3D.Add(scene, node);
+        SceneGraph.Add(scene, node);
         i = i + 1;
     }
 
@@ -81,8 +81,8 @@ func start() {
         var target = new Vec3(0.0, 0.0, 0.0);
         Camera3D.Orbit(cam, target, 8.0 + Sin(time * 0.3) * 20.0, time * 15.0, 15.0);
 
-        // Scene3D.Draw handles LOD selection internally using camera position
-        Scene3D.Draw(scene, canvas, cam);
+        // SceneGraph.Draw handles LOD selection internally using camera position
+        SceneGraph.Draw(scene, canvas, cam);
 
         Canvas3D.Flip(canvas);
         time = time + 0.016;

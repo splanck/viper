@@ -143,7 +143,7 @@ Mesh, skinned, morphed, blended, and instanced draw entry points validate finite
 they reach culling, terrain splat capture, or backend command queues.
 `Camera3D` clamps clip planes, aspect, ortho size, positions, orbit/follow distances, and projection
 narrowing so view/projection matrices and picking rays stay finite; FPS camera motion also bounds
-per-frame movement and wraps yaw before computing direction vectors. `SceneNode3D` and `Transform3D`
+per-frame movement and wraps yaw before computing direction vectors. `SceneNode` and `Transform3D`
 sanitize TRS components, reduce very large Euler/axis rotations before trig, normalize quaternions,
 keep LOD distances non-negative, and lazily refresh child world matrices when a parent's world
 revision changes. Iterative subtree traversals are still used for sync, search, bounds, lights, and
@@ -400,7 +400,7 @@ src/runtime/graphics/
 │   ├── rt_material3d.c            Material3D (legacy + PBR surface state, maps, clone/instance)
 │   └── rt_light3d.c               Light3D (directional, point, ambient)
 ├── Scene Graph
-│   ├── rt_scene3d.c/h             Scene3D + SceneNode3D hierarchy, frustum culling, LOD, binding sync
+│   ├── rt_scene3d.c/h             SceneGraph + SceneNode hierarchy, frustum culling, LOD, binding sync
 │   ├── rt_transform3d.c           Transform3D (standalone TRS transform)
 │   └── vgfx3d_frustum.c/h        Frustum culling math
 ├── Physics
@@ -442,7 +442,7 @@ src/runtime/graphics/
 ├── Asset Loading
 │   ├── rt_fbx_loader.c/h          FBX binary plus minimal ASCII format loader
 │   ├── rt_gltf.c/h                glTF 2.0 format loader
-│   └── rt_model3d.c/h             Model3D unified prefab/import wrapper
+│   └── rt_model3d.c/h             SceneAsset unified prefab/import wrapper
 └── Audio bindings
     └── rt_game3d_audio.c          Game3D facade that calls audio-owned spatial APIs
 ```
@@ -453,7 +453,7 @@ shims that pass node/camera transforms into the audio runtime.
 
 ## Asset Import Hardening
 
-`Model3D.Load` is the production-facing import path. It routes `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` files into one retained asset container and treats resource-list allocation failures as hard load failures instead of returning partially populated models. OBJ imports preserve `mtllib`/`usemtl` material groups as synthesized child nodes, STL imports synthesize one default-material mesh node, and FBX imports can split geometry by `LayerElementMaterial` so polygon material assignments survive instantiation.
+`SceneAsset.Load` is the production-facing import path. It routes `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` files into one retained asset container and treats resource-list allocation failures as hard load failures instead of returning partially populated models. OBJ imports preserve `mtllib`/`usemtl` material groups as synthesized child nodes, STL imports synthesize one default-material mesh node, and FBX imports can split geometry by `LayerElementMaterial` so polygon material assignments survive instantiation.
 
 The glTF loader enforces the following importer contract before renderer-facing objects are created:
 
@@ -468,7 +468,7 @@ The glTF loader enforces the following importer contract before renderer-facing 
 
 glTF material import maps core metallic-roughness PBR plus selected extensions onto `Material3D`. The vertex format carries `TEXCOORD_0` and `TEXCOORD_1`; each material texture slot stores its own `textureInfo.texCoord`, `KHR_texture_transform`, wrap mode, and nearest/linear filter state. Canvas draw commands forward that per-slot metadata to software, Metal, D3D11, and OpenGL. OpenGL uses sampler objects so one uploaded texture can be reused by multiple material slots without sampler-state aliasing.
 
-glTF animation import now covers both skeletal clips and scene-node clips. Bone-targeted transform channels still feed `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` channels are stored as retained node animation clips and bound automatically when a `Model3D` is instantiated. `Scene3D.SyncBindings(dt)` advances those node clips and applies morph weights before draw submission.
+glTF animation import now covers both skeletal clips and scene-node clips. Bone-targeted transform channels still feed `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` channels are stored as retained node animation clips and bound automatically when a `SceneAsset` is instantiated. `SceneGraph.SyncBindings(dt)` advances those node clips and applies morph weights before draw submission.
 
 FBX import supports binary FBX plus a minimal ASCII fallback for simple geometry. The scene adapter preserves `Model` hierarchy, folds common pre/post/geometric transform properties into runtime TRS, creates default materials for unassigned meshes, and splits multi-material polygon ranges into child mesh nodes for display. Texture and external material paths are normalized to relative safe references before the loader opens companion files.
 
@@ -543,7 +543,7 @@ later consumed by the backend.
 
 ## Threading Model
 
-Public Canvas3D, Scene3D, and Game3D handle mutation remains main-thread-only.
+Public Canvas3D, SceneGraph, and Game3D handle mutation remains main-thread-only.
 No concurrent access to Canvas3D, no nested Begin/End, and no scene mutation
 during Draw traversal. Internal workers may use `Viper.Threads.Pool`,
 `Viper.Threads.Parallel`, plain copied data, and retained ordered-map results;
@@ -575,20 +575,20 @@ Canvas3D coexists with the existing 2D Canvas system:
 
 ## Scene Graph and Frustum Culling
 
-`Scene3D.SyncBindings(dt)` is the explicit integration step for node bindings. It applies body-driven transforms, node-driven kinematic pushes, and animator root motion before rendering.
+`SceneGraph.SyncBindings(dt)` is the explicit integration step for node bindings. It applies body-driven transforms, node-driven kinematic pushes, and animator root motion before rendering.
 
 Canvas3D sorts opaque deferred draws front-to-back before submission.
 `Canvas3D.SetFrustumCulling(true)` additionally applies coarse AABB-vs-frustum
 rejection to the deferred canvas draw queue. `SetOcclusionCulling(true)` enables
 that frustum rejection plus a conservative 64 x 64 CPU coverage/depth grid.
-When drawing through Scene3D, the BVH spatial index selects the candidate draw
+When drawing through SceneGraph, the BVH spatial index selects the candidate draw
 set before Canvas3D sorting, so CPU occlusion grid work is bounded by indexed
 spatial candidates. This is not a hardware occlusion-query or Hi-Z visibility
 system.
 
-Scene3D also owns an authored interior PVS layer. `AddVisibilityZone` registers
+SceneGraph also owns an authored interior PVS layer. `AddVisibilityZone` registers
 world-space room/sector AABBs, and `AddVisibilityPortal` registers directed
-visibility links. During `Scene3D.Draw`, the camera's containing zone seeds a
+visibility links. During `SceneGraph.Draw`, the camera's containing zone seeds a
 portal graph walk; drawables intersecting unreachable zones are skipped before
 submission. Drawables outside all authored zones remain visible so outdoor
 geometry can coexist with interior PVS graphs.
@@ -598,7 +598,7 @@ reduces 169 authored drawables to 49 submitted draws, reports 120 PVS skips,
 cuts the authored fill proxy by 50.407%, and verifies the optimized final frame
 matches the no-PVS baseline.
 
-`Scene3D.Draw()` performs depth-first traversal of the scene node tree:
+`SceneGraph.Draw()` performs depth-first traversal of the scene node tree:
 
 1. Extract VP matrix from camera, build frustum planes (Gribb-Hartmann)
 2. For each visible node: recompute world matrix if dirty (lazy TRS propagation)

@@ -296,7 +296,7 @@ TEST(ZiaExpressions, LevelDataObjectTypeComparisonUsesStringEquality) {
     const std::string source = R"(
 module Test;
 
-func start() {    var level = Viper.Game.LevelData.Load("test.json");
+func start() {    var level = Viper.Game2D.LevelDocument.Load("test.json");
     var enemy: Boolean = level.ObjectType(0) == "enemy";
 }
 )";
@@ -329,7 +329,7 @@ func start() {    var level = Viper.Game.LevelData.Load("test.json");
     }
     EXPECT_TRUE(foundEqualsCall);
 
-    const auto *objectTypeExtern = findExtern(result.module, "Viper.Game.LevelData.ObjectType");
+    const auto *objectTypeExtern = findExtern(result.module, "Viper.Game2D.LevelDocument.ObjectType");
     ASSERT_TRUE(objectTypeExtern != nullptr);
     EXPECT_EQ(objectTypeExtern->retType.kind, il::core::Type::Kind::Str);
     ASSERT_EQ(objectTypeExtern->params.size(), 2u);

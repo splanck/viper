@@ -1,4 +1,4 @@
-# Viper.Game.LevelData
+# Viper.Game2D.LevelDocument
 
 JSON-based level loader that parses tilemap data and entity spawn objects from a single file.
 
@@ -27,7 +27,7 @@ JSON-based level loader that parses tilemap data and entity spawn objects from a
 
 ## API
 
-### LevelData.Load(path) -> LevelData?
+### LevelDocument.Load(path) -> LevelDocument?
 Loads a JSON level file, returning `null` for empty files, invalid dimensions, or allocation failure.
 ### Properties
 - `Tilemap` — The parsed Tilemap object
@@ -41,7 +41,7 @@ Loads a JSON level file, returning `null` for empty files, invalid dimensions, o
 
 ## Example
 ```rust
-var level = LevelData.Load("levels/level1.json")
+var level = LevelDocument.Load("levels/level1.json")
 var tilemap = level.get_Tilemap()
 player.set_X(level.get_PlayerStartX() * 100)
 

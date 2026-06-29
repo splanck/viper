@@ -2990,9 +2990,9 @@ static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
     rt_canvas3d_end(&canvas);
 
     EXPECT_TRUE(shadow_begin_calls == 1 && shadow_draw_calls == 1 && shadow_end_calls == 1,
-                "Shadow selection uses queued Scene3D node-light snapshots after Draw returns");
+                "Shadow selection uses queued SceneGraph node-light snapshots after Draw returns");
     EXPECT_TRUE(last_draw_light_count == 1 && last_draw_lights[0].shadow_index == 0,
-                "Queued Scene3D node lights receive shadow indices in the main pass");
+                "Queued SceneGraph node lights receive shadow indices in the main pass");
 
     cleanup_fake_canvas(&canvas);
 }

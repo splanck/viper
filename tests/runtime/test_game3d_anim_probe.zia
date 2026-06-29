@@ -69,7 +69,7 @@ func start() {
     var controller2 = makeController(10.0, 0.25);
     var animator2 = Game3D.Animator3D.New(controller2);
     Game3D.Entity3D.attachAnimator(entity, animator2);
-    SceneNode3D.set_SyncMode(Game3D.Entity3D.get_node(entity),
+    SceneNode.set_SyncMode(Game3D.Entity3D.get_node(entity),
                              Game3D.SyncMode.get_NodeFromAnimRootMotion());
     Game3D.Animator3D.play(animator2, "walk");
     Game3D.World3D.spawn(world, entity);

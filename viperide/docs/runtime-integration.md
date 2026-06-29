@@ -198,8 +198,8 @@ disabled for BASIC documents.
 
 ## Game Scene Runtime
 
-`Viper.Game.Scene` exists in the runtime and is covered by IDE-facing probes for
-scene data behavior. Relevant scene runtime capabilities include loading,
+`Viper.Game2D.SceneDocument` exists in the runtime and is covered by IDE-facing
+probes for scene data behavior. Relevant scene runtime capabilities include loading,
 saving, JSON round-trip, diagnostics, scene-owned mutators, properties, and
 tilemap render-copy creation.
 

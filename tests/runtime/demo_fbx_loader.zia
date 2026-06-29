@@ -34,13 +34,13 @@ func start() {
     Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
 
     // Scene graph
-    var scene = Scene3D.New();
+    var scene = SceneGraph.New();
 
-    var floor_node = SceneNode3D.New();
-    SceneNode3D.SetPosition(floor_node, 0.0, -2.0, 0.0);
-    SceneNode3D.set_Mesh(floor_node, floor_mesh);
-    SceneNode3D.set_Material(floor_node, floor_mat);
-    Scene3D.Add(scene, floor_node);
+    var floor_node = SceneNode.New();
+    SceneNode.SetPosition(floor_node, 0.0, -2.0, 0.0);
+    SceneNode.set_Mesh(floor_node, floor_mesh);
+    SceneNode.set_Material(floor_node, floor_mat);
+    SceneGraph.Add(scene, floor_node);
 
     // Add all meshes from FBX as scene nodes
     var mesh_count = FBX.get_MeshCount(asset);
@@ -50,20 +50,20 @@ func start() {
     while (i < mesh_count) {
         var m = FBX.GetMesh(asset, i);
         if (m != null) {
-            var node = SceneNode3D.New();
-            SceneNode3D.set_Mesh(node, m);
+            var node = SceneNode.New();
+            SceneNode.set_Mesh(node, m);
             // Cycle through material palette
             if (i == 0) {
-                SceneNode3D.set_Material(node, mat0);
+                SceneNode.set_Material(node, mat0);
             }
             if (i == 1) {
-                SceneNode3D.set_Material(node, mat1);
+                SceneNode.set_Material(node, mat1);
             }
             if (i >= 2) {
-                SceneNode3D.set_Material(node, mat2);
+                SceneNode.set_Material(node, mat2);
             }
-            SceneNode3D.SetScale(node, 0.02, 0.02, 0.02);
-            Scene3D.Add(scene, node);
+            SceneNode.SetScale(node, 0.02, 0.02, 0.02);
+            SceneGraph.Add(scene, node);
         }
         i = i + 1;
     }
@@ -77,7 +77,7 @@ func start() {
         var target = new Vec3(0.0, 0.0, 0.0);
         Camera3D.Orbit(cam, target, 8.0, time * 15.0, 20.0);
 
-        Scene3D.Draw(scene, canvas, cam);
+        SceneGraph.Draw(scene, canvas, cam);
         Canvas3D.Flip(canvas);
 
         time = time + 0.016;

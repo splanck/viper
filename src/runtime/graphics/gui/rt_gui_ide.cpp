@@ -11,6 +11,7 @@
 
 #include "rt_gui_ide.h"
 
+#include "rt_gui.h" // self-guarding MenuItem/ToolbarItem/Shortcuts/CommandPalette accessors
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -395,6 +396,131 @@ double channelLuminance(int64_t c) {
 double luminance(int64_t rgb) {
     return 0.2126 * channelLuminance((rgb >> 16) & 0xff) +
            0.7152 * channelLuminance((rgb >> 8) & 0xff) + 0.0722 * channelLuminance(rgb & 0xff);
+}
+
+// --- Command / CommandRegistry: bind one UI action to its menu item, toolbar
+//     button, keyboard shortcut and palette entry, and route them from one poll. ---
+
+struct CommandData {
+    std::string id;
+    std::string title;
+    std::string shortcut;
+    bool enabled{true};
+    bool checkable{false};
+    bool checked{false};
+    bool invoked{false};
+    // Foreign widget handles, stored raw and only ever touched through the public
+    // self-guarding accessors (which validate liveness and no-op on a dead widget).
+    void *menuItem{nullptr};
+    void *toolbarItem{nullptr};
+};
+
+struct CommandHandle {
+    CommandData *state{nullptr};
+};
+
+struct CommandRegistryData {
+    std::vector<void *> commands; // retained Command handles (registry co-owns them)
+    void *palette{nullptr};       // foreign CommandPalette handle, stored raw
+};
+
+struct CommandRegistryHandle {
+    CommandRegistryData *state{nullptr};
+};
+
+/// @brief Trapping accessor for a Viper.GUI.Command handle (public Command methods).
+CommandHandle *requireCommand(void *obj) {
+    if (!obj || rt_obj_class_id(obj) != RT_GUI_COMMAND_CLASS_ID) {
+        rt_trap("GUI.Command: invalid handle");
+        return nullptr;
+    }
+    auto *h = static_cast<CommandHandle *>(obj);
+    if (!h->state) {
+        rt_trap("GUI.Command: destroyed handle");
+        return nullptr;
+    }
+    return h;
+}
+
+/// @brief Non-trapping accessor: returns the command payload, or NULL if @p obj is not a
+///        live Command. Used to validate registry entries without aborting.
+CommandData *commandDataChecked(void *obj) {
+    if (!rt_obj_is_instance(obj, RT_GUI_COMMAND_CLASS_ID, sizeof(CommandHandle)))
+        return nullptr;
+    return static_cast<CommandHandle *>(obj)->state;
+}
+
+CommandRegistryHandle *requireCommandRegistry(void *obj) {
+    if (!obj || rt_obj_class_id(obj) != RT_GUI_COMMAND_REGISTRY_CLASS_ID) {
+        rt_trap("GUI.CommandRegistry: invalid handle");
+        return nullptr;
+    }
+    auto *h = static_cast<CommandRegistryHandle *>(obj);
+    if (!h->state) {
+        rt_trap("GUI.CommandRegistry: destroyed handle");
+        return nullptr;
+    }
+    return h;
+}
+
+void commandFinalizer(void *obj) {
+    auto *h = static_cast<CommandHandle *>(obj);
+    delete h->state; // menuItem/toolbarItem are not owned; nothing else to free
+    h->state = nullptr;
+}
+
+void commandRegistryFinalizer(void *obj) {
+    auto *h = static_cast<CommandRegistryHandle *>(obj);
+    if (h->state) {
+        for (void *cmd : h->state->commands) {
+            if (cmd && rt_obj_release_known_check0(cmd))
+                rt_obj_free(cmd);
+        }
+        delete h->state;
+        h->state = nullptr;
+    }
+}
+
+/// @brief Push the command's enabled/checked state onto its bound widgets.
+/// @details The set_* accessors self-guard, so a NULL or destroyed widget is a no-op.
+void pushCommandState(CommandData &c) {
+    if (c.menuItem) {
+        rt_menuitem_set_enabled(c.menuItem, c.enabled ? 1 : 0);
+        if (c.checkable) {
+            rt_menuitem_set_checkable(c.menuItem, 1);
+            rt_menuitem_set_checked(c.menuItem, c.checked ? 1 : 0);
+        }
+    }
+    if (c.toolbarItem) {
+        rt_toolbaritem_set_enabled(c.toolbarItem, c.enabled ? 1 : 0);
+        if (c.checkable)
+            rt_toolbaritem_set_toggled(c.toolbarItem, c.checked ? 1 : 0);
+    }
+}
+
+/// @brief Push state, then read the command's invocation sources for this frame.
+/// @param paletteSelectedId The palette's selected command id this frame ("" if none).
+/// @return True if the (enabled) command was invoked. Each click source is read exactly once
+///         (menu/toolbar clicks are consumed on read), and the result is cached on the command.
+bool pollCommandInto(CommandData &c, const std::string &paletteSelectedId) {
+    pushCommandState(c);
+    bool clicked = false;
+    if (c.menuItem && rt_menuitem_was_clicked(c.menuItem))
+        clicked = true;
+    if (c.toolbarItem && rt_toolbaritem_was_clicked(c.toolbarItem))
+        clicked = true;
+    if (!c.shortcut.empty() && !c.id.empty()) {
+        rt_string idStr = makeString(c.id);
+        if (idStr) {
+            if (rt_shortcuts_was_triggered(idStr))
+                clicked = true;
+            rt_string_unref(idStr);
+        }
+    }
+    if (!paletteSelectedId.empty() && paletteSelectedId == c.id)
+        clicked = true;
+    c.invoked = clicked && c.enabled; // a disabled command is never invoked
+    return c.invoked;
 }
 
 } // namespace
@@ -919,6 +1045,228 @@ void *rt_accessibility_high_contrast_tokens(void) {
     rt_map_set_int(map, rt_const_cstr("warning"), 0xffd75f);
     rt_map_set_int(map, rt_const_cstr("error"), 0xff5f5f);
     return map;
+}
+
+void *rt_command_new(rt_string id, rt_string title) {
+    auto *h = static_cast<CommandHandle *>(
+        rt_obj_new_i64(RT_GUI_COMMAND_CLASS_ID, sizeof(CommandHandle)));
+    if (!h)
+        return nullptr;
+    h->state = new (std::nothrow) CommandData();
+    if (!h->state) {
+        releaseObject(h);
+        return nullptr;
+    }
+    try {
+        h->state->id = toStd(id);
+        h->state->title = toStd(title);
+    } catch (const std::bad_alloc &) {
+        delete h->state;
+        h->state = nullptr;
+        releaseObject(h);
+        return nullptr;
+    }
+    rt_obj_set_finalizer(h, commandFinalizer);
+    return h;
+}
+
+rt_string rt_command_get_id(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), nullptr);
+    return makeString(h->state->id);
+}
+
+rt_string rt_command_get_title(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), nullptr);
+    return makeString(h->state->title);
+}
+
+void rt_command_set_shortcut(void *command, rt_string keys) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommand(command));
+    try {
+        h->state->shortcut = toStd(keys);
+    } catch (const std::bad_alloc &) {
+        return;
+    }
+    // Best-effort: register the chord with the global Shortcuts registry under the command id,
+    // so Poll() can detect it via rt_shortcuts_was_triggered(id). A no-op until a GUI app exists.
+    if (!h->state->id.empty() && !h->state->shortcut.empty()) {
+        rt_string idStr = makeString(h->state->id);
+        rt_string keysStr = makeString(h->state->shortcut);
+        rt_string titleStr = makeString(h->state->title);
+        if (idStr && keysStr)
+            rt_shortcuts_register(idStr, keysStr, titleStr);
+        if (idStr)
+            rt_string_unref(idStr);
+        if (keysStr)
+            rt_string_unref(keysStr);
+        if (titleStr)
+            rt_string_unref(titleStr);
+    }
+}
+
+rt_string rt_command_get_shortcut(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), nullptr);
+    return makeString(h->state->shortcut);
+}
+
+void rt_command_set_enabled(void *command, int8_t enabled) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommand(command));
+    h->state->enabled = enabled != 0;
+    pushCommandState(*h->state);
+}
+
+int8_t rt_command_is_enabled(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), 0);
+    return h->state->enabled ? 1 : 0;
+}
+
+void rt_command_set_checkable(void *command, int8_t checkable) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommand(command));
+    h->state->checkable = checkable != 0;
+    pushCommandState(*h->state);
+}
+
+int8_t rt_command_is_checkable(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), 0);
+    return h->state->checkable ? 1 : 0;
+}
+
+void rt_command_set_checked(void *command, int8_t checked) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommand(command));
+    h->state->checked = checked != 0;
+    pushCommandState(*h->state);
+}
+
+int8_t rt_command_is_checked(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), 0);
+    return h->state->checked ? 1 : 0;
+}
+
+void rt_command_bind_menu_item(void *command, void *item) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommand(command));
+    h->state->menuItem = item; // raw handle; NULL unbinds
+    pushCommandState(*h->state);
+}
+
+void rt_command_bind_toolbar_item(void *command, void *item) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommand(command));
+    h->state->toolbarItem = item; // raw handle; NULL unbinds
+    pushCommandState(*h->state);
+}
+
+int8_t rt_command_poll(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), 0);
+    return pollCommandInto(*h->state, std::string()) ? 1 : 0;
+}
+
+int8_t rt_command_was_invoked(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), 0);
+    return h->state->invoked ? 1 : 0;
+}
+
+void *rt_command_snapshot(void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommand(command), nullptr);
+    auto *s = h->state;
+    void *map = rt_map_new();
+    if (!map)
+        return nullptr;
+    mapSetStr(map, "id", s->id);
+    mapSetStr(map, "title", s->title);
+    mapSetStr(map, "shortcut", s->shortcut);
+    rt_map_set_bool(map, rt_const_cstr("enabled"), s->enabled ? 1 : 0);
+    rt_map_set_bool(map, rt_const_cstr("checkable"), s->checkable ? 1 : 0);
+    rt_map_set_bool(map, rt_const_cstr("checked"), s->checked ? 1 : 0);
+    rt_map_set_bool(map, rt_const_cstr("invoked"), s->invoked ? 1 : 0);
+    return map;
+}
+
+void *rt_command_registry_new(void) {
+    auto *h = static_cast<CommandRegistryHandle *>(
+        rt_obj_new_i64(RT_GUI_COMMAND_REGISTRY_CLASS_ID, sizeof(CommandRegistryHandle)));
+    if (!h)
+        return nullptr;
+    h->state = new (std::nothrow) CommandRegistryData();
+    if (!h->state) {
+        releaseObject(h);
+        return nullptr;
+    }
+    rt_obj_set_finalizer(h, commandRegistryFinalizer);
+    return h;
+}
+
+void rt_command_registry_add(void *registry, void *command) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommandRegistry(registry));
+    if (!commandDataChecked(command))
+        return; // not a live Command
+    auto &cmds = h->state->commands;
+    if (std::find(cmds.begin(), cmds.end(), command) != cmds.end())
+        return; // already registered; avoid a double-retain
+    try {
+        cmds.push_back(command);
+    } catch (const std::bad_alloc &) {
+        return;
+    }
+    rt_obj_retain_known(command); // registry co-owns the command
+}
+
+int64_t rt_command_registry_count(void *registry) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommandRegistry(registry), 0);
+    size_t n = h->state->commands.size();
+    return n > static_cast<size_t>(INT64_MAX) ? INT64_MAX : static_cast<int64_t>(n);
+}
+
+void *rt_command_registry_find(void *registry, rt_string id) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommandRegistry(registry), nullptr);
+    std::string key;
+    try {
+        key = toStd(id);
+    } catch (const std::bad_alloc &) {
+        return nullptr;
+    }
+    for (void *cmd : h->state->commands) {
+        CommandData *d = commandDataChecked(cmd);
+        if (d && d->id == key) {
+            rt_obj_retain_known(cmd); // return an owned reference
+            return cmd;
+        }
+    }
+    return nullptr;
+}
+
+void rt_command_registry_bind_palette(void *registry, void *palette) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommandRegistry(registry));
+    h->state->palette = palette; // raw handle; NULL unbinds
+}
+
+rt_string rt_command_registry_poll(void *registry) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommandRegistry(registry), makeString(std::string()));
+    // Read the palette's selection once (WasSelected is consumed on read).
+    std::string paletteSel;
+    if (h->state->palette && rt_commandpalette_was_command_selected(h->state->palette)) {
+        rt_string s = rt_commandpalette_get_selected_command(h->state->palette);
+        if (s) {
+            paletteSel = toStd(s);
+            rt_string_unref(s);
+        }
+    }
+    std::string invokedId;
+    for (void *cmd : h->state->commands) {
+        CommandData *d = commandDataChecked(cmd);
+        if (!d)
+            continue;
+        if (pollCommandInto(*d, paletteSel) && invokedId.empty())
+            invokedId = d->id;
+    }
+    return makeString(invokedId);
+}
+
+void rt_command_registry_clear(void *registry) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommandRegistry(registry));
+    for (void *cmd : h->state->commands) {
+        if (cmd && rt_obj_release_known_check0(cmd))
+            rt_obj_free(cmd);
+    }
+    h->state->commands.clear();
 }
 
 } // extern "C"

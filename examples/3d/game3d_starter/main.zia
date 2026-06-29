@@ -35,7 +35,7 @@ class StarterGame {
         Entity3D.attachBody(crate, BodyDef.StaticBox(0.50, 0.40, 0.60));
         World3D.spawn(world, crate);
 
-        var marker = Assets3D.LoadModelAsset("assets/models/triangle.gltf");
+        var marker = Assets3D.LoadEntityAsset("assets/models/triangle.gltf");
         if (marker != null) {
             Entity3D.setName(marker, "PackagedMarker");
             Entity3D.setPosition(marker, 1.4, 0.08, -2.1);

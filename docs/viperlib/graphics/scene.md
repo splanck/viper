@@ -143,7 +143,7 @@ LOOP
 ```basic
 ' Full game rendering pipeline
 DIM camera AS Viper.Graphics.Camera
-DIM map AS Viper.Graphics.Tilemap
+DIM map AS Viper.Graphics2D.Tilemap
 DIM player AS Viper.Graphics.Sprite
 
 ' ... initialize all objects ...
@@ -170,12 +170,12 @@ END SUB
 
 ---
 
-## Viper.Graphics.SceneNode
+## Viper.Graphics2D.SceneNode
 
 Hierarchical scene node for building scene graphs with transform inheritance.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.SceneNode()` (empty node) or `Viper.Graphics.SceneNode.FromSprite(sprite)` (with sprite)
+**Constructor:** `NEW Viper.Graphics2D.SceneNode()` (empty node) or `Viper.Graphics2D.SceneNode.FromSprite(sprite)` (with sprite)
 
 Creates a scene node. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
 Scene nodes validate their receiver and child arguments before mutating hierarchy state. Local/world transform composition uses saturating integer arithmetic, so extreme coordinates clamp instead of wrapping.
@@ -281,10 +281,10 @@ bodySprite = Viper.Graphics.Sprite.FromFile("body.bmp")
 armSprite = Viper.Graphics.Sprite.FromFile("arm.bmp")
 
 ' Create scene nodes
-DIM body AS Viper.Graphics.SceneNode
-DIM arm AS Viper.Graphics.SceneNode
-body = Viper.Graphics.SceneNode.FromSprite(bodySprite)
-arm = Viper.Graphics.SceneNode.FromSprite(armSprite)
+DIM body AS Viper.Graphics2D.SceneNode
+DIM arm AS Viper.Graphics2D.SceneNode
+body = Viper.Graphics2D.SceneNode.FromSprite(bodySprite)
+arm = Viper.Graphics2D.SceneNode.FromSprite(armSprite)
 
 ' Build hierarchy - arm is child of body
 body.AddChild(arm)
@@ -306,7 +306,7 @@ body.Rotation = 45  ' Arm rotates with body
 PRINT "Arm world position: "; arm.WorldX; ", "; arm.WorldY
 
 ' Find a descendant by name
-DIM found AS Viper.Graphics.SceneNode
+DIM found AS Viper.Graphics2D.SceneNode
 found = body.Find("arm")
 
 ' Draw entire hierarchy to canvas
@@ -318,14 +318,14 @@ arm.Detach()
 
 ---
 
-## Viper.Graphics.SceneGraph
+## Viper.Graphics2D.SceneGraph
 
 Root container for a scene graph. Manages rendering order and provides scene-level operations.
 Scene draws are depth-sorted, and nodes with equal depth preserve traversal order.
 Scene APIs validate `SceneGraph`, `SceneNode`, and `Camera` handles before traversal or drawing. Scene-level collection for depth-sorted rendering also uses iterative traversal and preserves depth-first order for equal-depth nodes.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.SceneGraph()`
+**Constructor:** `NEW Viper.Graphics2D.SceneGraph()`
 
 ### Properties
 
@@ -389,17 +389,17 @@ func start() {
 
 ```basic
 ' Create a scene
-DIM scene AS Viper.Graphics.SceneGraph
-scene = NEW Viper.Graphics.SceneGraph()
+DIM scene AS Viper.Graphics2D.SceneGraph
+scene = NEW Viper.Graphics2D.SceneGraph()
 
 ' Create game objects as scene nodes
-DIM background AS Viper.Graphics.SceneNode
-DIM player AS Viper.Graphics.SceneNode
-DIM foreground AS Viper.Graphics.SceneNode
+DIM background AS Viper.Graphics2D.SceneNode
+DIM player AS Viper.Graphics2D.SceneNode
+DIM foreground AS Viper.Graphics2D.SceneNode
 
-background = Viper.Graphics.SceneNode.FromSprite(bgSprite)
-player = Viper.Graphics.SceneNode.FromSprite(playerSprite)
-foreground = Viper.Graphics.SceneNode.FromSprite(fgSprite)
+background = Viper.Graphics2D.SceneNode.FromSprite(bgSprite)
+player = Viper.Graphics2D.SceneNode.FromSprite(playerSprite)
+foreground = Viper.Graphics2D.SceneNode.FromSprite(fgSprite)
 
 ' Set depth (lower = rendered first/behind)
 background.Depth = 0
@@ -434,18 +434,18 @@ LOOP
 
 ```basic
 ' Build a character with multiple parts
-DIM character AS Viper.Graphics.SceneNode
-DIM head AS Viper.Graphics.SceneNode
-DIM body AS Viper.Graphics.SceneNode
-DIM leftArm AS Viper.Graphics.SceneNode
-DIM rightArm AS Viper.Graphics.SceneNode
+DIM character AS Viper.Graphics2D.SceneNode
+DIM head AS Viper.Graphics2D.SceneNode
+DIM body AS Viper.Graphics2D.SceneNode
+DIM leftArm AS Viper.Graphics2D.SceneNode
+DIM rightArm AS Viper.Graphics2D.SceneNode
 
 ' Create nodes
-character = NEW Viper.Graphics.SceneNode()  ' Empty parent node
-body = Viper.Graphics.SceneNode.FromSprite(bodySprite)
-head = Viper.Graphics.SceneNode.FromSprite(headSprite)
-leftArm = Viper.Graphics.SceneNode.FromSprite(armSprite)
-rightArm = Viper.Graphics.SceneNode.FromSprite(armSprite)
+character = NEW Viper.Graphics2D.SceneNode()  ' Empty parent node
+body = Viper.Graphics2D.SceneNode.FromSprite(bodySprite)
+head = Viper.Graphics2D.SceneNode.FromSprite(headSprite)
+leftArm = Viper.Graphics2D.SceneNode.FromSprite(armSprite)
+rightArm = Viper.Graphics2D.SceneNode.FromSprite(armSprite)
 
 ' Build hierarchy
 character.AddChild(body)

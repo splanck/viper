@@ -1,7 +1,7 @@
 module SceneNodeDemo;
 bind Viper.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Graphics.SceneNode ===");
+    Say("=== API Audit: Viper.Graphics2D.SceneNode ===");
     Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
     Say("Constructor: New(name)");
     Say("Properties: get_X, get_Y, get_Visible, get_Tag");

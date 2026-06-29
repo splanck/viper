@@ -26,8 +26,8 @@ implemented in C and exposed through the IL runtime system.
 | [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
-| [Game Utilities](game/README.md)       | `AchievementTracker`, `AnimStateMachine`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween`, `Typewriter`, `WorldToScreenProjection` |
-| [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Renderer2D`, `RenderTarget2D`, `SceneGraph`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `Texture2D`, `TextureAtlas`, `TileLayer2D`, `Tilemap`, production 2D classes |
+| [Game Utilities](game/README.md)       | `AchievementTracker`, `AnimStateMachine`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Viper.Game2D.LevelDocument`, `Viper.Game2D.SceneDocument`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween`, `Typewriter`, `WorldToScreenProjection` |
+| [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Renderer2D`, `RenderTarget2D`, `Viper.Graphics2D.SceneGraph`, `Viper.Graphics2D.SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `Texture2D`, `TextureAtlas`, `TileLayer2D`, `Viper.Graphics2D.Tilemap`, production 2D classes |
 | [Game3D](graphics/game3d.md) | `World3D`, `Entity3D`, `LayerMask`, `Input3D` — code-first 3D game workflow helpers |
 | [Graphics 3D & Physics](graphics/physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 | [GUI](gui/README.md)                   | `App`, `Breadcrumb`, `Button`, `ClipboardText`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
@@ -164,6 +164,13 @@ implemented in C and exposed through the IL runtime system.
 | [`Tween`](game.md#vipergametween)                         | Instance | Animation tweening with 19 easing curves |
 | [`WorldToScreenProjection`](game.md#vipergameworldtoscreenprojection) | Static | Linear, isometric, and perspective world-to-screen helpers |
 
+### Viper.Game2D
+
+| Class | Type | Description |
+|-------|------|-------------|
+| [`LevelDocument`](game/leveldata.md#vipergame2dleveldocument) | Instance | Legacy JSON level loader with tilemap and object spawn data |
+| [`SceneDocument`](game/scene.md#editable-scene-documents) | Instance | Editable JSON scene document with layers, objects, properties, diagnostics, and tilemap-copy export |
+
 ### Viper.Sound
 
 | Class                                         | Type     | Description                      |
@@ -193,8 +200,6 @@ implemented in C and exposed through the IL runtime system.
 | [`PostProcess2D`](graphics/rendering2d.md#classes)         | Instance | CPU image post-processing pass   |
 | [`RenderTarget2D`](graphics/rendering2d.md#render-targets-textures-and-renderer) | Instance | Offscreen alpha-aware render surface |
 | [`Renderer2D`](graphics/rendering2d.md#render-targets-textures-and-renderer) | Instance | Retained 2D draw command stream |
-| [`SceneGraph`](graphics/scene.md#vipergraphicsscenegraph)  | Instance | Scene graph container            |
-| [`SceneNode`](graphics/README.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
 | [`Shader2D`](graphics/rendering2d.md#classes)              | Instance | CPU 2D image effect wrapper      |
 | [`ShapeRenderer2D`](graphics/shapes2d.md#classes)          | Instance | Lines, rectangles, circles, paths |
 | [`SdfFont`](graphics/shapes2d.md#classes)                  | Instance | SDF-ready bitmap font wrapper    |
@@ -206,8 +211,15 @@ implemented in C and exposed through the IL runtime system.
 | [`Texture2D`](graphics/rendering2d.md#classes)             | Instance | Retained texture handle over Pixels |
 | [`TileLayer2D`](graphics/tilemaps2d.md#classes)            | Instance | Dense tile ID layer          |
 | [`TileSet2D`](graphics/tilemaps2d.md#classes)              | Instance | Uniform grid tileset         |
-| [`Tilemap`](graphics/README.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
 | [`Viewport2D`](graphics/game2d.md#viewport-scale)          | Instance | Virtual-to-screen scaling and transforms |
+
+### Viper.Graphics2D
+
+| Class | Type | Description |
+|-------|------|-------------|
+| [`SceneGraph`](graphics/scene.md#vipergraphics2dscenegraph) | Instance | 2D scene graph container |
+| [`SceneNode`](graphics/scene.md#vipergraphics2dscenenode) | Instance | Hierarchical 2D scene graph node |
+| [`Tilemap`](graphics/pixels.md#vipergraphics2dtilemap) | Instance | Tile-based map rendering, collision, JSON save/load, and CSV import |
 
 ### Viper.Graphics3D
 
@@ -219,7 +231,9 @@ implemented in C and exposed through the IL runtime system.
 | [`Collider3D`](graphics/physics3d.md#vipergraphics3dcollider3d) | Instance | Reusable 3D collision shape including compound, mesh, and heightfield variants |
 | [`ContactPoint3D`](graphics/physics3d.md#vipergraphics3dcontactpoint3d) | Instance | Contact manifold point with position, normal, and signed separation |
 | [`DistanceJoint3D`](graphics/physics3d.md#vipergraphics3ddistancejoint3d) | Instance | Fixed-distance constraint between bodies |
-| [`Model3D`](../graphics3d-guide.md#model3d) | Instance | Unified imported asset with shared resources and scene instantiation |
+| [`SceneAsset`](../graphics3d-guide.md#sceneasset) | Instance | Unified imported asset with shared resources and scene instantiation |
+| [`SceneGraph`](../graphics3d-guide.md#scenegraph) | Instance | 3D scene graph with culling, spatial queries, `.vscn` save/load, and binding sync |
+| [`SceneNode`](../graphics3d-guide.md#scenenode) | Instance | Hierarchical 3D scene node with transform, mesh, material, LOD, and bindings |
 | [`Physics3DBody`](graphics/physics3d.md#vipergraphics3dphysics3dbody) | Instance | 3D rigid body with linear/angular motion, sleep, and CCD |
 | [`PhysicsHit3D`](graphics/physics3d.md#vipergraphics3dphysicshit3d) | Instance | World-query hit result with body, collider, point, normal, and fraction |
 | [`PhysicsHitList3D`](graphics/physics3d.md#vipergraphics3dphysicshitlist3d) | Instance | List of `PhysicsHit3D` results returned by overlap and multi-hit queries |

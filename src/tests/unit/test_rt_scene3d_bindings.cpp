@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/test_rt_scene3d_bindings.cpp
-// Purpose: Unit tests for Scene3D / SceneNode3D runtime bindings to physics
+// Purpose: Unit tests for SceneGraph / SceneNode runtime bindings to physics
 //   bodies and animation controllers.
 //
 //===----------------------------------------------------------------------===//
@@ -374,11 +374,11 @@ static void test_scene_draw_uses_bound_animator_palette() {
     rt_scene3d_add(scene, node);
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_submit_count == 1, "Scene3D.Draw submits one animated draw");
+    EXPECT_TRUE(g_submit_count == 1, "SceneGraph.Draw submits one animated draw");
     EXPECT_TRUE(g_last_bone_palette == palette,
-                "Scene3D.Draw uses the bound AnimController3D palette");
+                "SceneGraph.Draw uses the bound AnimController3D palette");
     EXPECT_TRUE(g_last_bone_count == palette_bones,
-                "Scene3D.Draw forwards the animator bone count");
+                "SceneGraph.Draw forwards the animator bone count");
 }
 
 static void test_scene_draw_cpu_skins_bound_animators_for_software_backend() {
@@ -423,11 +423,11 @@ static void test_scene_draw_cpu_skins_bound_animators_for_software_backend() {
     rt_scene3d_add(scene, node);
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_submit_count == 1, "Scene3D.Draw still submits one draw on the software backend");
+    EXPECT_TRUE(g_submit_count == 1, "SceneGraph.Draw still submits one draw on the software backend");
     EXPECT_TRUE(g_last_vertices != ((rt_mesh3d *)mesh)->vertices,
-                "Scene3D.Draw CPU-skins bound animators on the software backend");
+                "SceneGraph.Draw CPU-skins bound animators on the software backend");
     EXPECT_TRUE(g_last_bone_palette == nullptr && g_last_bone_count == 0,
-                "Scene3D.Draw clears GPU skinning payloads after CPU fallback");
+                "SceneGraph.Draw clears GPU skinning payloads after CPU fallback");
 }
 
 static void test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backends() {
@@ -472,9 +472,9 @@ static void test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backe
     rt_scene3d_add(scene, node);
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_submit_count == 1, "Scene3D.Draw still submits one large-rig animated draw");
+    EXPECT_TRUE(g_submit_count == 1, "SceneGraph.Draw still submits one large-rig animated draw");
     EXPECT_TRUE(g_last_bone_palette != nullptr && g_last_bone_count == 200,
-                "Scene3D.Draw preserves expanded animator palettes on GPU backends");
+                "SceneGraph.Draw preserves expanded animator palettes on GPU backends");
 }
 
 static void test_node_animator_rebind_clears_previous_node_owner() {
@@ -527,6 +527,6 @@ int main() {
     test_node_animator_rebind_clears_previous_node_owner();
     test_clear_animator_binding_clears_node_animator();
 
-    std::printf("Scene3D binding tests: %d/%d passed\n", tests_passed, tests_run);
+    std::printf("SceneGraph binding tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

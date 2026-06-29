@@ -51,7 +51,7 @@ VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/bounded_no
 
 `game3d_starter/` is the recommended copyable starting point. It includes a
 `viper.project`, package asset layout, source-tree and packaged
-`Assets3D.LoadModelAsset` path, first-person character movement, and a
+`Assets3D.LoadEntityAsset` path, first-person character movement, and a
 deterministic `test.zia`.
 
 ```sh

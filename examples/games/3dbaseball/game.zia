@@ -13,9 +13,9 @@ bind "./config";
 class BaseballFieldDemo {
     hide Canvas3D canvas;
     hide Camera3D camera;
-    hide Scene3D scene;
-    hide SceneNode3D fieldRoot;
-    hide Model3D fieldModel;
+    hide SceneGraph scene;
+    hide SceneNode fieldRoot;
+    hide SceneAsset fieldModel;
     hide CubeMap3D skybox;
 
     hide Float modelSpanX;
@@ -47,11 +47,11 @@ class BaseballFieldDemo {
         skybox = createSkybox();
         Canvas3D.SetSkybox(canvas, skybox);
 
-        fieldModel = Model3D.Load("model.obj");
-        scene = Scene3D.New();
-        fieldRoot = Model3D.Instantiate(fieldModel);
+        fieldModel = SceneAsset.Load("model.obj");
+        scene = SceneGraph.New();
+        fieldRoot = SceneAsset.Instantiate(fieldModel);
         normalizeFieldRoot();
-        Scene3D.Add(scene, fieldRoot);
+        SceneGraph.Add(scene, fieldRoot);
         applyEnvironmentToImportedMaterials();
 
         buildLights();
@@ -125,15 +125,15 @@ class BaseballFieldDemo {
         Canvas3D.Clear(canvas, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
         Canvas3D.Begin(canvas, camera);
 
-        Scene3D.Draw(scene, canvas, camera);
+        SceneGraph.Draw(scene, canvas, camera);
         Canvas3D.End(canvas);
 
         drawHud();
     }
 
     hide func normalizeFieldRoot() {
-        var minV = SceneNode3D.get_AABBMin(fieldRoot);
-        var maxV = SceneNode3D.get_AABBMax(fieldRoot);
+        var minV = SceneNode.get_AABBMin(fieldRoot);
+        var maxV = SceneNode.get_AABBMax(fieldRoot);
 
         var rawSpanX = Vec3.get_X(maxV) - Vec3.get_X(minV);
         var rawSpanY = Vec3.get_Y(maxV) - Vec3.get_Y(minV);
@@ -149,8 +149,8 @@ class BaseballFieldDemo {
         var centerZ = (Vec3.get_Z(minV) + Vec3.get_Z(maxV)) * 0.5;
         var groundY = Vec3.get_Y(minV);
 
-        SceneNode3D.SetScale(fieldRoot, modelScale, modelScale, modelScale);
-        SceneNode3D.SetPosition(fieldRoot, 0.0 - centerX * modelScale, 0.0 - groundY * modelScale,
+        SceneNode.SetScale(fieldRoot, modelScale, modelScale, modelScale);
+        SceneNode.SetPosition(fieldRoot, 0.0 - centerX * modelScale, 0.0 - groundY * modelScale,
                                 0.0 - centerZ * modelScale);
 
         modelSpanX = rawSpanX * modelScale;
@@ -160,9 +160,9 @@ class BaseballFieldDemo {
     }
 
     hide func applyEnvironmentToImportedMaterials() {
-        var materialCount = Model3D.get_MaterialCount(fieldModel);
+        var materialCount = SceneAsset.get_MaterialCount(fieldModel);
         for (var i: Integer = 0; i < materialCount; i = i + 1) {
-            var mat = Model3D.GetMaterial(fieldModel, i);
+            var mat = SceneAsset.GetMaterial(fieldModel, i);
             Material3D.SetColor(mat, 0.10, 0.34, 0.14);
             Material3D.SetShininess(mat, 18.0);
             Material3D.SetEnvMap(mat, skybox);

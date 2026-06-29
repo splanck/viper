@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_rt_scene3d.cpp
-// Purpose: Unit tests for Viper.Graphics3D.Scene3D and SceneNode3D —
+// Purpose: Unit tests for Viper.Graphics3D.SceneGraph and SceneNode —
 //   hierarchy management, TRS transform propagation, dirty flags, and
 //   search-by-name.
 //
@@ -163,13 +163,13 @@ static bool write_text_file(const char *path, const char *text) {
 
 static void test_create_scene_and_node() {
     void *scene = rt_scene3d_new();
-    EXPECT_TRUE(scene != nullptr, "Scene3D.New returns non-null");
+    EXPECT_TRUE(scene != nullptr, "SceneGraph.New returns non-null");
 
     void *root = rt_scene3d_get_root(scene);
-    EXPECT_TRUE(root != nullptr, "Scene3D.Root is non-null at creation");
+    EXPECT_TRUE(root != nullptr, "SceneGraph.Root is non-null at creation");
 
     void *node = rt_scene_node3d_new();
-    EXPECT_TRUE(node != nullptr, "SceneNode3D.New returns non-null");
+    EXPECT_TRUE(node != nullptr, "SceneNode.New returns non-null");
 
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 1, "Initial node count is 1 (root)");
 }
@@ -195,21 +195,21 @@ static void test_try_add_reports_parenting_success() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
 
-    EXPECT_TRUE(rt_scene3d_try_add(scene, parent) != 0, "Scene3D.TryAdd succeeds for a node");
+    EXPECT_TRUE(rt_scene3d_try_add(scene, parent) != 0, "SceneGraph.TryAdd succeeds for a node");
     EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == rt_scene3d_get_root(scene),
-                "Scene3D.TryAdd parents node under root");
-    EXPECT_TRUE(rt_scene3d_try_add(scene, scene) == 0, "Scene3D.TryAdd rejects non-node handles");
+                "SceneGraph.TryAdd parents node under root");
+    EXPECT_TRUE(rt_scene3d_try_add(scene, scene) == 0, "SceneGraph.TryAdd rejects non-node handles");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
-                "Scene3D.TryAdd failure leaves node count unchanged");
+                "SceneGraph.TryAdd failure leaves node count unchanged");
 
     EXPECT_TRUE(rt_scene_node3d_try_add_child(parent, child) != 0,
-                "SceneNode3D.TryAddChild succeeds for valid child");
+                "SceneNode.TryAddChild succeeds for valid child");
     EXPECT_TRUE(rt_scene_node3d_try_add_child(parent, child) != 0,
-                "SceneNode3D.TryAddChild reports success for existing child");
+                "SceneNode.TryAddChild reports success for existing child");
     EXPECT_TRUE(rt_scene_node3d_child_count(parent) == 1,
-                "SceneNode3D.TryAddChild keeps duplicate child count stable");
+                "SceneNode.TryAddChild keeps duplicate child count stable");
     EXPECT_TRUE(rt_scene_node3d_try_add_child(child, parent) == 0,
-                "SceneNode3D.TryAddChild rejects cycles");
+                "SceneNode.TryAddChild rejects cycles");
     EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == rt_scene3d_get_root(scene),
                 "Cycle rejection leaves existing parent intact");
 }
@@ -226,7 +226,7 @@ static void test_scene_remove_ignores_nodes_from_other_scenes() {
     rt_scene3d_remove(scene_a, node);
 
     EXPECT_TRUE(rt_scene_node3d_get_parent(node) == rt_scene3d_get_root(scene_b),
-                "Scene3D.Remove ignores nodes outside the scene root subtree");
+                "SceneGraph.Remove ignores nodes outside the scene root subtree");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene_a) == 1, "Scene A count remains unchanged");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene_b) == 2, "Scene B keeps its node");
 }
@@ -239,7 +239,7 @@ static void test_scene_rejects_reparenting_implicit_root() {
 
     rt_scene3d_add(scene_b, parent);
     EXPECT_TRUE(rt_scene_node3d_try_add_child(parent, root_a) == 0,
-                "SceneNode3D.TryAddChild rejects another scene's implicit root");
+                "SceneNode.TryAddChild rejects another scene's implicit root");
     EXPECT_TRUE(root_a->parent == nullptr, "Rejected implicit root keeps no parent");
     EXPECT_TRUE(root_a->owner_scene == scene_a, "Rejected implicit root keeps its owner scene");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene_a) == 1, "Source scene root count is unchanged");
@@ -486,36 +486,36 @@ static void test_scene_node_names_reject_wrong_string_handles() {
     rt_string fake_name = reinterpret_cast<rt_string>(wrong_name);
 
     EXPECT_TRUE(rt_scene3d_find(scene, fake_name) == nullptr,
-                "Scene3D.Find rejects wrong-class query string handles");
+                "SceneGraph.Find rejects wrong-class query string handles");
     EXPECT_TRUE(rt_scene_node3d_find(parent, fake_name) == nullptr,
-                "SceneNode3D.Find rejects wrong-class query string handles");
+                "SceneNode.Find rejects wrong-class query string handles");
 
     rt_scene_node3d_set_name(parent, fake_name);
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_scene_node3d_get_name(parent)), "parent") == 0,
-                "SceneNode3D.SetName rejects wrong-class string handles without clearing a valid name");
+                "SceneNode.SetName rejects wrong-class string handles without clearing a valid name");
     EXPECT_TRUE(rt_scene3d_find(scene, parent_name) == parent,
-                "Scene3D.Find still locates a node after a rejected wrong-class name");
+                "SceneGraph.Find still locates a node after a rejected wrong-class name");
 
     auto *parent_view = static_cast<rt_scene_node3d *>(parent);
     rt_string saved_name = parent_view->name;
     parent_view->name = fake_name;
     EXPECT_TRUE(rt_scene3d_find(scene, child_name) == child,
-                "Scene3D.Find skips corrupt stored node names while walking descendants");
+                "SceneGraph.Find skips corrupt stored node names while walking descendants");
     EXPECT_TRUE(parent_view->name == nullptr,
-                "Scene3D.Find repairs corrupt private node name slots");
+                "SceneGraph.Find repairs corrupt private node name slots");
     EXPECT_TRUE(rt_scene3d_find(scene, parent_name) == nullptr,
-                "Scene3D.Find does not match a repaired-away corrupt node name");
+                "SceneGraph.Find does not match a repaired-away corrupt node name");
     parent_view->name = saved_name;
 
     parent_view->name = fake_name;
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_scene_node3d_get_name(parent)), "") == 0,
-                "SceneNode3D.GetName returns empty for corrupt private node name slots");
+                "SceneNode.GetName returns empty for corrupt private node name slots");
     EXPECT_TRUE(parent_view->name == nullptr,
-                "SceneNode3D.GetName repairs corrupt private node name slots");
+                "SceneNode.GetName repairs corrupt private node name slots");
     parent_view->name = saved_name;
 
     EXPECT_TRUE(rt_obj_release_check0(wrong_name) == 0,
-                "SceneNode3D name guards do not release wrong-class handles");
+                "SceneNode name guards do not release wrong-class handles");
     if (rt_obj_release_check0(wrong_name))
         rt_obj_free(wrong_name);
 }
@@ -548,11 +548,11 @@ static void test_node_count_tracks_nested_hierarchy_edits() {
 
     rt_scene_node3d_add_child(parent, child);
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 3,
-                "Scene count reflects nested children added outside Scene3D.Add");
+                "Scene count reflects nested children added outside SceneGraph.Add");
 
     rt_scene_node3d_remove_child(parent, child);
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
-                "Scene count reflects nested children removed outside Scene3D.Remove");
+                "Scene count reflects nested children removed outside SceneGraph.Remove");
 }
 
 static void test_prevent_cycle() {
@@ -635,9 +635,9 @@ static void test_clear() {
         root_view->children[0] = reinterpret_cast<rt_scene_node3d *>(wrong_child_slot);
     rt_scene3d_clear(corrupt_scene);
     EXPECT_TRUE(rt_scene3d_get_node_count(corrupt_scene) == 1,
-                "Scene3D.Clear repairs wrong-class root child slots");
+                "SceneGraph.Clear repairs wrong-class root child slots");
     EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(corrupt_scene)) == 0,
-                "Scene3D.Clear leaves the root empty after child-slot repair");
+                "SceneGraph.Clear leaves the root empty after child-slot repair");
     if (wrong_child_slot && rt_obj_release_check0(wrong_child_slot))
         rt_obj_free(wrong_child_slot);
 }
@@ -746,18 +746,18 @@ static void test_scene_repairs_corrupt_private_counts() {
     EXPECT_TRUE(rt_scene_node3d_get_child(parent, 0) == nullptr,
                 "SceneNode GetChild rejects wrong-class private child slots");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
-                "Scene3D node counting skips wrong-class private child slots");
+                "SceneGraph node counting skips wrong-class private child slots");
     {
         const char *corrupt_save_path = "/tmp/viper_scene_corrupt_child_slot_save.vscn";
         EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(corrupt_save_path)) == 1,
-                    "Scene3D.Save skips wrong-class private child slots");
+                    "SceneGraph.Save skips wrong-class private child slots");
         std::remove(corrupt_save_path);
     }
     parent_view->children[0] = saved_child_slot;
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 3,
-                "Scene3D node counting walks clamped child arrays");
+                "SceneGraph node counting walks clamped child arrays");
     EXPECT_TRUE(rt_scene3d_find(scene, rt_const_cstr("corrupt_anim_target")) == parent,
-                "Scene3D find walks clamped child arrays");
+                "SceneGraph find walks clamped child arrays");
     rt_scene_node3d *saved_parent_slot = parent_view->parent;
     parent_view->parent = reinterpret_cast<rt_scene_node3d *>(material);
     EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == nullptr,
@@ -778,19 +778,19 @@ static void test_scene_repairs_corrupt_private_counts() {
     rt_scene_node3d *saved_scene_root = scene_view->root;
     scene_view->root = reinterpret_cast<rt_scene_node3d *>(material);
     EXPECT_TRUE(rt_scene3d_get_root(scene) == nullptr,
-                "Scene3D.GetRoot rejects wrong-class private root slots");
+                "SceneGraph.GetRoot rejects wrong-class private root slots");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 0,
-                "Scene3D node counting rejects wrong-class private root slots");
+                "SceneGraph node counting rejects wrong-class private root slots");
     EXPECT_TRUE(rt_scene3d_find(scene, rt_const_cstr("corrupt_anim_target")) == nullptr,
-                "Scene3D.Find rejects wrong-class private root slots");
+                "SceneGraph.Find rejects wrong-class private root slots");
     rt_scene3d_clear(scene);
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 0,
-                "Scene3D.Clear ignores wrong-class private root slots");
+                "SceneGraph.Clear ignores wrong-class private root slots");
     scene_view->root = saved_scene_root;
     EXPECT_TRUE(rt_scene3d_get_root(scene) == saved_scene_root,
-                "Scene3D.GetRoot returns restored valid root slots");
+                "SceneGraph.GetRoot returns restored valid root slots");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 3,
-                "Scene3D node counting recovers after restoring the root slot");
+                "SceneGraph node counting recovers after restoring the root slot");
 
     scene_view->last_culled_count = -5;
     scene_view->last_visible_node_count = -6;
@@ -798,24 +798,24 @@ static void test_scene_repairs_corrupt_private_counts() {
     scene_view->visibility_zone_count = -8;
     scene_view->visibility_portal_count = -9;
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0,
-                "Scene3D culled telemetry clamps corrupt negative counters");
+                "SceneGraph culled telemetry clamps corrupt negative counters");
     EXPECT_TRUE(rt_scene3d_get_visible_node_count(scene) == 0,
-                "Scene3D visible telemetry clamps corrupt negative counters");
+                "SceneGraph visible telemetry clamps corrupt negative counters");
     EXPECT_TRUE(rt_scene3d_get_pvs_culled_count(scene) == 0,
-                "Scene3D PVS telemetry clamps corrupt negative counters");
+                "SceneGraph PVS telemetry clamps corrupt negative counters");
     EXPECT_TRUE(rt_scene3d_get_visibility_zone_count(scene) == 0,
-                "Scene3D visibility zone count clamps corrupt negative counters");
+                "SceneGraph visibility zone count clamps corrupt negative counters");
     EXPECT_TRUE(rt_scene3d_get_visibility_portal_count(scene) == 0,
-                "Scene3D visibility portal count clamps corrupt negative counters");
+                "SceneGraph visibility portal count clamps corrupt negative counters");
 
     void *zone_min = rt_vec3_new(-1.0, -1.0, -1.0);
     void *zone_max = rt_vec3_new(1.0, 1.0, 1.0);
     EXPECT_TRUE(rt_scene3d_add_visibility_zone(scene, rt_const_cstr("zone_a"), zone_min, zone_max) == 0,
-                "Scene3D visibility test fixture creates zone A");
+                "SceneGraph visibility test fixture creates zone A");
     EXPECT_TRUE(rt_scene3d_add_visibility_zone(scene, rt_const_cstr("zone_b"), zone_min, zone_max) == 1,
-                "Scene3D visibility test fixture creates zone B");
+                "SceneGraph visibility test fixture creates zone B");
     EXPECT_TRUE(rt_scene3d_add_visibility_portal(scene, 0, 1, 1) == 0,
-                "Scene3D visibility test fixture creates directed portals");
+                "SceneGraph visibility test fixture creates directed portals");
     int32_t saved_zone_count = scene_view->visibility_zone_count;
     int32_t saved_zone_capacity = scene_view->visibility_zone_capacity;
     int32_t saved_portal_count = scene_view->visibility_portal_count;
@@ -823,9 +823,9 @@ static void test_scene_repairs_corrupt_private_counts() {
     scene_view->visibility_zone_count = INT32_MAX;
     scene_view->visibility_portal_count = INT32_MAX;
     EXPECT_TRUE(rt_scene3d_get_visibility_zone_count(scene) == saved_zone_capacity,
-                "Scene3D visibility zone count clamps corrupt counters to capacity");
+                "SceneGraph visibility zone count clamps corrupt counters to capacity");
     EXPECT_TRUE(rt_scene3d_get_visibility_portal_count(scene) == saved_portal_capacity,
-                "Scene3D visibility portal count clamps corrupt counters to capacity");
+                "SceneGraph visibility portal count clamps corrupt counters to capacity");
     scene_view->visibility_zone_count = saved_zone_count;
     scene_view->visibility_zone_capacity = saved_zone_capacity;
     scene_view->visibility_portal_count = saved_portal_count;
@@ -835,15 +835,15 @@ static void test_scene_repairs_corrupt_private_counts() {
     rt_scene_node3d_set_material(parent, material);
     parent_view->mesh = material;
     EXPECT_TRUE(rt_scene_node3d_get_mesh(parent) == nullptr,
-                "SceneNode3D.GetMesh rejects wrong-class private mesh slots");
+                "SceneNode.GetMesh rejects wrong-class private mesh slots");
     EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_aabb_min(parent)),
                 0.0,
                 0.001,
-                "SceneNode3D AABB queries skip wrong-class private mesh slots");
+                "SceneNode AABB queries skip wrong-class private mesh slots");
     parent_view->mesh = mesh;
     parent_view->material = mesh;
     EXPECT_TRUE(rt_scene_node3d_get_material(parent) == nullptr,
-                "SceneNode3D.GetMaterial rejects wrong-class private material slots");
+                "SceneNode.GetMaterial rejects wrong-class private material slots");
     parent_view->material = material;
 
     rt_scene_node3d_add_lod(parent, 8.0, mesh);
@@ -911,14 +911,14 @@ static void test_scene_repairs_corrupt_private_counts() {
     rt_scene3d_sync_bindings(scene, 0.5);
     pos = rt_scene_node3d_get_position(parent);
     EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001,
-                "Scene3D.SyncBindings ignores wrong-class bound node animators");
+                "SceneGraph.SyncBindings ignores wrong-class bound node animators");
 
     parent_view->bound_animator = rt_material3d_new_color(0.4, 0.3, 0.2);
     rt_scene_node3d_set_sync_mode(parent, RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION);
     rt_scene3d_sync_bindings(scene, 0.5);
     pos = rt_scene_node3d_get_position(parent);
     EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001,
-                "Scene3D.SyncBindings ignores wrong-class root-motion animators");
+                "SceneGraph.SyncBindings ignores wrong-class root-motion animators");
 }
 
 static void test_node_body_sync_preserves_negative_scale_handedness() {
@@ -1104,13 +1104,13 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
     void *first_hits =
         rt_scene3d_query_aabb(scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(first_hits) == 1, "Indexed QueryAABB returns the initial node");
-    EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "Scene3D spatial index is valid after query");
+    EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "SceneGraph spatial index is valid after query");
     EXPECT_TRUE(scene_impl->spatial_index.count == 1,
-                "Scene3D spatial index tracks drawable nodes");
+                "SceneGraph spatial index tracks drawable nodes");
     EXPECT_TRUE(scene_impl->spatial_index.root_node >= 0,
-                "Scene3D spatial index builds a BVH root");
+                "SceneGraph spatial index builds a BVH root");
     EXPECT_TRUE(scene_impl->spatial_index.node_count == 1,
-                "Scene3D spatial index uses a single BVH leaf for one drawable");
+                "SceneGraph spatial index uses a single BVH leaf for one drawable");
     uint32_t first_build_count = scene_impl->spatial_index.build_count;
     uint32_t first_refit_count = scene_impl->spatial_index.refit_count;
 
@@ -1118,9 +1118,9 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
         rt_scene3d_query_aabb(scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(second_hits) == 1, "Indexed QueryAABB remains stable across reuse");
     EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
-                "Scene3D spatial index reuses a clean build");
+                "SceneGraph spatial index reuses a clean build");
     EXPECT_TRUE(scene_impl->spatial_index.refit_count == first_refit_count,
-                "Scene3D spatial index does not refit a clean build");
+                "SceneGraph spatial index does not refit a clean build");
 
     rt_scene_node3d_set_position(node, 10.0, 0.0, -4.0);
     void *old_hits =
@@ -1128,9 +1128,9 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
     EXPECT_TRUE(rt_seq_len(old_hits) == 0,
                 "Dirty spatial index drops the moved node from old bounds");
     EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
-                "Scene3D spatial index refits instead of rebuilding after a transform change");
+                "SceneGraph spatial index refits instead of rebuilding after a transform change");
     EXPECT_TRUE(scene_impl->spatial_index.refit_count == first_refit_count + 1,
-                "Scene3D spatial index records the transform-only refit");
+                "SceneGraph spatial index records the transform-only refit");
 
     void *new_hits =
         rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
@@ -1141,7 +1141,7 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
         rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(hidden_hits) == 0, "Topology-dirty spatial index drops hidden nodes");
     EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count + 1,
-                "Scene3D spatial index rebuilds after visibility topology changes");
+                "SceneGraph spatial index rebuilds after visibility topology changes");
 }
 
 static void test_scene_draw_spatial_index_matches_flat_reference() {
@@ -1192,14 +1192,14 @@ static void test_scene_draw_spatial_index_matches_flat_reference() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(indexed_submit_count == g_scene_submit_count,
-                "Indexed Scene3D.Draw submits the same nodes as the flat path");
+                "Indexed SceneGraph.Draw submits the same nodes as the flat path");
     EXPECT_TRUE(indexed_culled_count == rt_scene3d_get_culled_count(scene),
-                "Indexed Scene3D.Draw preserves flat-path culled count");
+                "Indexed SceneGraph.Draw preserves flat-path culled count");
     EXPECT_TRUE(indexed_visible_count == rt_scene3d_get_visible_node_count(scene),
-                "Indexed Scene3D.Draw preserves flat-path visible node count");
-    EXPECT_TRUE(indexed_prefiltered > 0, "Scene3D spatial draw prefilters off-frustum nodes");
+                "Indexed SceneGraph.Draw preserves flat-path visible node count");
+    EXPECT_TRUE(indexed_prefiltered > 0, "SceneGraph spatial draw prefilters off-frustum nodes");
     EXPECT_TRUE(indexed_candidates < indexed_entries,
-                "Scene3D spatial draw yields fewer candidates than indexed drawables");
+                "SceneGraph spatial draw yields fewer candidates than indexed drawables");
 }
 
 static void test_scene_spatial_index_10k_scaling_fixture() {
@@ -1285,11 +1285,11 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(indexed_submit_count == g_scene_submit_count,
-                "10k indexed Scene3D.Draw submits the same nodes as the flat path");
+                "10k indexed SceneGraph.Draw submits the same nodes as the flat path");
     EXPECT_TRUE(indexed_culled_count == rt_scene3d_get_culled_count(scene),
-                "10k indexed Scene3D.Draw preserves flat-path culled count");
+                "10k indexed SceneGraph.Draw preserves flat-path culled count");
     EXPECT_TRUE(indexed_visible_count == rt_scene3d_get_visible_node_count(scene),
-                "10k indexed Scene3D.Draw preserves flat-path visible node count");
+                "10k indexed SceneGraph.Draw preserves flat-path visible node count");
 
     // Indexed-vs-flat cull speedup baseline (AC-003): an isolated point query narrows
     // to one node through the BVH but scans all 10k AABBs on the flat path. Time both
@@ -1373,17 +1373,17 @@ static void test_scene_occlusion_grid_uses_spatial_candidates() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(scene_impl->spatial_index.count == 130,
-                "Scene3D occlusion fixture indexes every drawable node");
+                "SceneGraph occlusion fixture indexes every drawable node");
     EXPECT_TRUE(scene_impl->spatial_index.last_candidate_count == 2,
-                "Scene3D spatial index narrows occlusion-visible draw candidates before sorting");
+                "SceneGraph spatial index narrows occlusion-visible draw candidates before sorting");
     EXPECT_TRUE(scene_impl->spatial_index.last_prefiltered_count >= 128,
-                "Scene3D spatial index prefilters off-frustum occlusion non-candidates");
+                "SceneGraph spatial index prefilters off-frustum occlusion non-candidates");
     EXPECT_TRUE(rt_canvas3d_get_occlusion_candidate_count(&canvas) == 2,
                 "Canvas3D CPU occlusion grid tests only spatial draw candidates");
     EXPECT_TRUE(rt_canvas3d_get_occluded_draw_count(&canvas) >= 129,
                 "Canvas3D visibility telemetry includes spatial prefilter and occlusion skips");
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D indexed occlusion submits only the unoccluded front draw");
+                "SceneGraph indexed occlusion submits only the unoccluded front draw");
 }
 
 static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
@@ -1412,13 +1412,13 @@ static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
     int64_t zone_c = rt_scene3d_add_visibility_zone(
         scene, rt_const_cstr("room-c"), rt_vec3_new(28.0, -5.0, -5.0), rt_vec3_new(36.0, 5.0, 5.0));
     EXPECT_TRUE(zone_a == 0 && zone_b == 1 && zone_c == 2,
-                "Scene3D visibility zones return stable zero-based indexes");
+                "SceneGraph visibility zones return stable zero-based indexes");
     EXPECT_TRUE(rt_scene3d_add_visibility_portal(scene, zone_a, zone_b, 1) == 0,
-                "Scene3D visibility portal links adjacent rooms");
+                "SceneGraph visibility portal links adjacent rooms");
     EXPECT_TRUE(rt_scene3d_get_visibility_zone_count(scene) == 3,
-                "Scene3D reports authored visibility zone count");
+                "SceneGraph reports authored visibility zone count");
     EXPECT_TRUE(rt_scene3d_get_visibility_portal_count(scene) == 2,
-                "Scene3D stores bidirectional portals as directed PVS links");
+                "SceneGraph stores bidirectional portals as directed PVS links");
 
     for (int i = 0; i < 3; ++i) {
         void *node = rt_scene_node3d_new();
@@ -1430,20 +1430,20 @@ static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
 
     reset_scene_capture();
     rt_scene3d_draw(scene, &canvas, camera);
-    EXPECT_TRUE(g_scene_submit_count == 2, "Scene3D portal/PVS culls the unlinked interior room");
+    EXPECT_TRUE(g_scene_submit_count == 2, "SceneGraph portal/PVS culls the unlinked interior room");
     EXPECT_TRUE(rt_scene3d_get_pvs_culled_count(scene) == 1,
-                "Scene3D.PvsCulledCount reports portal/PVS skips");
+                "SceneGraph.PvsCulledCount reports portal/PVS skips");
     EXPECT_TRUE(rt_scene3d_get_visible_node_count(scene) == 2,
-                "Scene3D visible-node telemetry excludes PVS-hidden rooms");
+                "SceneGraph visible-node telemetry excludes PVS-hidden rooms");
 
     EXPECT_TRUE(rt_scene3d_add_visibility_portal(scene, zone_b, zone_c, 1) == 2,
-                "Scene3D can extend the authored PVS graph");
+                "SceneGraph can extend the authored PVS graph");
     reset_scene_capture();
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 3,
-                "Scene3D portal/PVS reveals rooms reachable through authored portals");
+                "SceneGraph portal/PVS reveals rooms reachable through authored portals");
     EXPECT_TRUE(rt_scene3d_get_pvs_culled_count(scene) == 0,
-                "Scene3D.PvsCulledCount clears when all authored zones are visible");
+                "SceneGraph.PvsCulledCount clears when all authored zones are visible");
 }
 
 static void test_scene_spatial_index_preserves_far_origin_precision() {
@@ -1513,13 +1513,13 @@ static void test_scene_draw_reuses_active_frame() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(g_scene_begin_count == 0,
-                "Scene3D.Draw does not nest Begin when a 3D frame is already active");
-    EXPECT_TRUE(g_scene_end_count == 0, "Scene3D.Draw does not end an externally-owned frame");
+                "SceneGraph.Draw does not nest Begin when a 3D frame is already active");
+    EXPECT_TRUE(g_scene_end_count == 0, "SceneGraph.Draw does not end an externally-owned frame");
     EXPECT_TRUE(canvas.draw_count == 1,
-                "Scene3D.Draw queues scene geometry inside an externally-owned frame");
+                "SceneGraph.Draw queues scene geometry inside an externally-owned frame");
     EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D.Draw defers backend submission until the caller ends the frame");
-    EXPECT_TRUE(canvas.in_frame == 1, "Scene3D.Draw leaves the caller-owned frame active");
+                "SceneGraph.Draw defers backend submission until the caller ends the frame");
+    EXPECT_TRUE(canvas.in_frame == 1, "SceneGraph.Draw leaves the caller-owned frame active");
 }
 
 static void test_scene_draw_culling_uses_canvas_output_aspect() {
@@ -1554,7 +1554,7 @@ static void test_scene_draw_culling_uses_canvas_output_aspect() {
 
     EXPECT_TRUE(
         g_scene_submit_count == 1,
-        "Scene3D culling uses the active canvas aspect instead of the camera's stored aspect");
+        "SceneGraph culling uses the active canvas aspect instead of the camera's stored aspect");
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0,
                 "Wide active outputs keep edge-visible nodes from being culled by a stale camera "
                 "projection");
@@ -1570,15 +1570,15 @@ static void test_scene_save_escapes_json_names() {
     rt_scene3d_add(scene, node);
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
-                "Scene3D.Save writes the scene file");
+                "SceneGraph.Save writes the scene file");
 
     std::string text;
-    EXPECT_TRUE(read_text_file(path, text), "Scene3D.Save output can be reopened");
+    EXPECT_TRUE(read_text_file(path, text), "SceneGraph.Save output can be reopened");
     if (text.empty())
         return;
 
     EXPECT_TRUE(text.find("\"name\": \"quote\\\"slash\\\\line\\nbreak\"") != std::string::npos,
-                "Scene3D.Save escapes quotes, backslashes, and newlines in node names");
+                "SceneGraph.Save escapes quotes, backslashes, and newlines in node names");
 }
 
 static void test_scene_save_serializes_visibility_and_lod_metadata() {
@@ -1595,29 +1595,29 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
     rt_scene3d_add(scene, node);
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
-                "Scene3D.Save writes metadata-rich scene files");
+                "SceneGraph.Save writes metadata-rich scene files");
 
     std::string text;
-    EXPECT_TRUE(read_text_file(path, text), "Scene3D.Save metadata output can be reopened");
+    EXPECT_TRUE(read_text_file(path, text), "SceneGraph.Save metadata output can be reopened");
     if (text.empty())
         return;
 
     EXPECT_TRUE(text.find("\"visible\": false") != std::string::npos,
-                "Scene3D.Save serializes node visibility");
+                "SceneGraph.Save serializes node visibility");
     EXPECT_TRUE(text.find("\"hasMesh\": true") != std::string::npos,
-                "Scene3D.Save serializes mesh presence");
+                "SceneGraph.Save serializes mesh presence");
     EXPECT_TRUE(text.find("\"hasMaterial\": true") != std::string::npos,
-                "Scene3D.Save serializes material presence");
+                "SceneGraph.Save serializes material presence");
     EXPECT_TRUE(text.find("\"lod\": [") != std::string::npos,
-                "Scene3D.Save serializes LOD metadata");
+                "SceneGraph.Save serializes LOD metadata");
     EXPECT_TRUE(text.find("\"distance\": 10") != std::string::npos,
-                "Scene3D.Save serializes LOD distances");
+                "SceneGraph.Save serializes LOD distances");
     EXPECT_TRUE(text.find("\"resident\": false") != std::string::npos,
-                "Scene3D.Save serializes nonresident mesh state");
+                "SceneGraph.Save serializes nonresident mesh state");
     EXPECT_TRUE(text.find("\"autoLOD\": {") != std::string::npos,
-                "Scene3D.Save serializes auto-LOD metadata");
+                "SceneGraph.Save serializes auto-LOD metadata");
     EXPECT_TRUE(text.find("\"screenErrorPx\": 12.5") != std::string::npos,
-                "Scene3D.Save serializes auto-LOD screen error");
+                "SceneGraph.Save serializes auto-LOD screen error");
 }
 
 static void test_scene_roundtrip_loads_shared_assets() {
@@ -1730,109 +1730,109 @@ static void test_scene_roundtrip_loads_shared_assets() {
     rt_scene3d_add(scene, parent);
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
-                "Scene3D.Save writes roundtrip scene files");
+                "SceneGraph.Save writes roundtrip scene files");
 
     void *loaded_scene = rt_scene3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(loaded_scene != nullptr, "Scene3D.Load reconstructs saved scenes");
+    EXPECT_TRUE(loaded_scene != nullptr, "SceneGraph.Load reconstructs saved scenes");
     if (!loaded_scene)
         return;
 
     void *loaded_parent = rt_scene3d_find(loaded_scene, rt_const_cstr("parent"));
     void *loaded_child = rt_scene3d_find(loaded_scene, rt_const_cstr("child"));
-    EXPECT_TRUE(loaded_parent != nullptr, "Scene3D.Load restores named parent nodes");
-    EXPECT_TRUE(loaded_child != nullptr, "Scene3D.Load restores named child nodes");
+    EXPECT_TRUE(loaded_parent != nullptr, "SceneGraph.Load restores named parent nodes");
+    EXPECT_TRUE(loaded_child != nullptr, "SceneGraph.Load restores named child nodes");
     if (!loaded_parent || !loaded_child)
         return;
 
     EXPECT_TRUE(rt_scene_node3d_get_parent(loaded_child) == loaded_parent,
-                "Scene3D.Load restores hierarchy links");
+                "SceneGraph.Load restores hierarchy links");
     EXPECT_TRUE(rt_scene_node3d_get_visible(loaded_parent) == 0,
-                "Scene3D.Load restores node visibility");
+                "SceneGraph.Load restores node visibility");
     EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(loaded_parent)),
                 1.0,
                 0.001,
-                "Scene3D.Load restores node position");
+                "SceneGraph.Load restores node position");
     EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_scale(loaded_parent)),
                 2.0,
                 0.001,
-                "Scene3D.Load restores node scale");
+                "SceneGraph.Load restores node scale");
     EXPECT_TRUE(rt_scene_node3d_get_mesh(loaded_parent) == rt_scene_node3d_get_mesh(loaded_child),
-                "Scene3D.Load preserves shared mesh references");
+                "SceneGraph.Load preserves shared mesh references");
     EXPECT_TRUE(rt_scene_node3d_get_material(loaded_parent) ==
                     rt_scene_node3d_get_material(loaded_child),
-                "Scene3D.Load preserves shared material references");
+                "SceneGraph.Load preserves shared material references");
     EXPECT_TRUE(rt_scene_node3d_get_lod_count(loaded_parent) == 1,
-                "Scene3D.Load restores LOD entries");
+                "SceneGraph.Load restores LOD entries");
     EXPECT_NEAR(rt_scene_node3d_get_lod_distance(loaded_parent, 0),
                 10.0,
                 0.001,
-                "Scene3D.Load restores LOD distances");
+                "SceneGraph.Load restores LOD distances");
     EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(loaded_parent, 0) !=
                     rt_scene_node3d_get_mesh(loaded_parent),
-                "Scene3D.Load restores LOD mesh references");
+                "SceneGraph.Load restores LOD mesh references");
     EXPECT_TRUE(rt_scene_node3d_get_lod_resident(loaded_parent, 0) == 0,
-                "Scene3D.Load restores nonresident LOD mesh state");
+                "SceneGraph.Load restores nonresident LOD mesh state");
     EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(loaded_parent, 0) == 0,
-                "Scene3D.Load preserves zero resident bytes for nonresident LODs");
+                "SceneGraph.Load preserves zero resident bytes for nonresident LODs");
     EXPECT_TRUE(((rt_scene_node3d *)loaded_parent)->auto_lod_enabled == 1,
-                "Scene3D.Load restores auto-LOD enable state");
+                "SceneGraph.Load restores auto-LOD enable state");
     EXPECT_NEAR(((rt_scene_node3d *)loaded_parent)->auto_lod_screen_error_px,
                 18.0,
                 0.001,
-                "Scene3D.Load restores auto-LOD screen error");
+                "SceneGraph.Load restores auto-LOD screen error");
 
     rt_mesh3d *loaded_mesh = (rt_mesh3d *)rt_scene_node3d_get_mesh(loaded_parent);
     EXPECT_TRUE(loaded_mesh != nullptr && loaded_mesh->vertex_count == 3 &&
                     loaded_mesh->index_count == 3,
-                "Scene3D.Load restores mesh geometry");
+                "SceneGraph.Load restores mesh geometry");
     if (loaded_mesh) {
         EXPECT_NEAR(
-            loaded_mesh->vertices[1].pos[0], 1.0, 0.001, "Scene3D.Load restores vertex positions");
+            loaded_mesh->vertices[1].pos[0], 1.0, 0.001, "SceneGraph.Load restores vertex positions");
         EXPECT_NEAR(loaded_mesh->vertices[0].tangent[0],
                     1.0,
                     0.001,
-                    "Scene3D.Load restores vertex tangents");
+                    "SceneGraph.Load restores vertex tangents");
         EXPECT_TRUE(loaded_mesh->vertices[0].bone_indices[0] == 3 &&
                         fabs(loaded_mesh->vertices[0].bone_weights[0] - 1.0f) < 0.001f &&
                         loaded_mesh->bone_count == 4,
-                    "Scene3D.Load restores skinning vertex data");
+                    "SceneGraph.Load restores skinning vertex data");
     }
 
     rt_material3d *loaded_material = (rt_material3d *)rt_scene_node3d_get_material(loaded_parent);
-    EXPECT_TRUE(loaded_material != nullptr, "Scene3D.Load restores materials");
+    EXPECT_TRUE(loaded_material != nullptr, "SceneGraph.Load restores materials");
     if (loaded_material) {
         EXPECT_NEAR(loaded_material->diffuse[0],
                     0.25,
                     0.001,
-                    "Scene3D.Load restores material diffuse color");
-        EXPECT_NEAR(loaded_material->alpha, 0.8, 0.001, "Scene3D.Load restores material alpha");
+                    "SceneGraph.Load restores material diffuse color");
+        EXPECT_NEAR(loaded_material->alpha, 0.8, 0.001, "SceneGraph.Load restores material alpha");
         EXPECT_TRUE(loaded_material->workflow == RT_MATERIAL3D_WORKFLOW_PBR,
-                    "Scene3D.Load restores the PBR workflow");
+                    "SceneGraph.Load restores the PBR workflow");
         EXPECT_NEAR(
-            loaded_material->metallic, 0.65, 0.001, "Scene3D.Load restores material metallic");
+            loaded_material->metallic, 0.65, 0.001, "SceneGraph.Load restores material metallic");
         EXPECT_NEAR(
-            loaded_material->roughness, 0.35, 0.001, "Scene3D.Load restores material roughness");
-        EXPECT_NEAR(loaded_material->ao, 0.55, 0.001, "Scene3D.Load restores material AO");
+            loaded_material->roughness, 0.35, 0.001, "SceneGraph.Load restores material roughness");
+        EXPECT_NEAR(loaded_material->ao, 0.55, 0.001, "SceneGraph.Load restores material AO");
         EXPECT_NEAR(loaded_material->emissive_intensity,
                     1.8,
                     0.001,
-                    "Scene3D.Load restores emissive intensity");
+                    "SceneGraph.Load restores emissive intensity");
         EXPECT_NEAR(
-            loaded_material->normal_scale, 0.7, 0.001, "Scene3D.Load restores normal scale");
+            loaded_material->normal_scale, 0.7, 0.001, "SceneGraph.Load restores normal scale");
         EXPECT_TRUE(loaded_material->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND &&
                         std::fabs(loaded_material->alpha_cutoff - 0.42) < 0.001 &&
                         loaded_material->double_sided == 1,
-                    "Scene3D.Load restores alpha-mode and culling flags");
+                    "SceneGraph.Load restores alpha-mode and culling flags");
         EXPECT_NEAR(loaded_material->reflectivity,
                     0.6,
                     0.001,
-                    "Scene3D.Load restores material reflectivity");
+                    "SceneGraph.Load restores material reflectivity");
         EXPECT_TRUE(loaded_material->unlit == 1 && loaded_material->shading_model == 4,
-                    "Scene3D.Load restores material shading flags");
+                    "SceneGraph.Load restores material shading flags");
         EXPECT_NEAR(loaded_material->custom_params[0],
                     3.5,
                     0.001,
-                    "Scene3D.Load restores custom shader params");
+                    "SceneGraph.Load restores custom shader params");
         EXPECT_TRUE(
             loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] == 1 &&
                 loaded_material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
@@ -1841,56 +1841,56 @@ static void test_scene_roundtrip_loads_shared_assets() {
                     RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
                 loaded_material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
                     RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
-            "Scene3D.Load restores base texture slot sampler and UV set");
+            "SceneGraph.Load restores base texture slot sampler and UV set");
         EXPECT_NEAR(
             loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0],
             2.0,
             0.001,
-            "Scene3D.Load restores base texture slot U scale");
+            "SceneGraph.Load restores base texture slot U scale");
         EXPECT_NEAR(
             loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][5],
             0.5,
             0.001,
-            "Scene3D.Load restores base texture slot V offset");
+            "SceneGraph.Load restores base texture slot V offset");
         EXPECT_TRUE(loaded_material->texture_wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
                         loaded_material->texture_wrap_t ==
                             RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
                         loaded_material->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
-                    "Scene3D.Load keeps legacy primary sampler fields in sync");
+                    "SceneGraph.Load keeps legacy primary sampler fields in sync");
         EXPECT_TRUE(loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL] == 1,
-                    "Scene3D.Load restores normal-map texture coordinate set");
+                    "SceneGraph.Load restores normal-map texture coordinate set");
         EXPECT_NEAR(
             loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][4],
             -0.125,
             0.001,
-            "Scene3D.Load restores independent normal-map UV transform");
+            "SceneGraph.Load restores independent normal-map UV transform");
         EXPECT_TRUE(loaded_material->texture != nullptr &&
                         rt_pixels_get(loaded_material->texture, 0, 0) == 0x10203040ll &&
                         rt_pixels_get(loaded_material->texture, 1, 0) == 0x50607080ll,
-                    "Scene3D.Load restores diffuse textures");
+                    "SceneGraph.Load restores diffuse textures");
         EXPECT_TRUE(loaded_material->normal_map != nullptr &&
                         rt_pixels_get(loaded_material->normal_map, 0, 0) == 0x7F7FFFFFll,
-                    "Scene3D.Load restores normal maps");
+                    "SceneGraph.Load restores normal maps");
         EXPECT_TRUE(loaded_material->specular_map != nullptr &&
                         rt_pixels_get(loaded_material->specular_map, 0, 0) == 0x808080FFll,
-                    "Scene3D.Load restores specular maps");
+                    "SceneGraph.Load restores specular maps");
         EXPECT_TRUE(loaded_material->emissive_map != nullptr &&
                         rt_pixels_get(loaded_material->emissive_map, 0, 0) == 0xFF8040FFll,
-                    "Scene3D.Load restores emissive maps");
+                    "SceneGraph.Load restores emissive maps");
         EXPECT_TRUE(loaded_material->metallic_roughness_map != nullptr &&
                         rt_pixels_get(loaded_material->metallic_roughness_map, 0, 0) ==
                             0x2244CCFFll,
-                    "Scene3D.Load restores metallic-roughness maps");
+                    "SceneGraph.Load restores metallic-roughness maps");
         EXPECT_TRUE(loaded_material->ao_map != nullptr &&
                         rt_pixels_get(loaded_material->ao_map, 0, 0) == 0x7F0000FFll,
-                    "Scene3D.Load restores AO maps");
+                    "SceneGraph.Load restores AO maps");
         rt_cubemap3d *env = (rt_cubemap3d *)loaded_material->env_map;
         EXPECT_TRUE(env != nullptr && env->face_size == 1,
-                    "Scene3D.Load restores environment cubemaps");
+                    "SceneGraph.Load restores environment cubemaps");
         if (env) {
             EXPECT_TRUE(rt_pixels_get(env->faces[0], 0, 0) == face_colors[0] &&
                             rt_pixels_get(env->faces[5], 0, 0) == face_colors[5],
-                        "Scene3D.Load restores cubemap face textures");
+                        "SceneGraph.Load restores cubemap face textures");
         }
     }
 }
@@ -1986,7 +1986,7 @@ static void test_node_animator_public_controls_drive_bound_nodes() {
     rt_scene3d_add(scene, node);
     rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
     EXPECT_TRUE(rt_scene_node3d_get_node_animator(rt_scene3d_get_root(scene)) == animator,
-                "SceneNode3D.NodeAnimator returns the bound NodeAnimator3D");
+                "SceneNode.NodeAnimator returns the bound NodeAnimator3D");
 
     rt_scene3d_sync_bindings(scene, 0.25);
     void *pos = rt_scene_node3d_get_position(node);
@@ -1994,7 +1994,7 @@ static void test_node_animator_public_controls_drive_bound_nodes() {
     EXPECT_NEAR(rt_node_animator3d_get_time(animator),
                 0.25,
                 0.001,
-                "NodeAnimator3D.Time advances during Scene3D.SyncBindings");
+                "NodeAnimator3D.Time advances during SceneGraph.SyncBindings");
 
     rt_node_animator3d_set_speed(animator, 2.0);
     rt_scene3d_sync_bindings(scene, 0.25);
@@ -2019,7 +2019,7 @@ static void test_node_animator_public_controls_drive_bound_nodes() {
 
     rt_scene_node3d_clear_node_animator_binding(rt_scene3d_get_root(scene));
     EXPECT_TRUE(rt_scene_node3d_get_node_animator(rt_scene3d_get_root(scene)) == nullptr,
-                "SceneNode3D.ClearNodeAnimatorBinding detaches the NodeAnimator3D");
+                "SceneNode.ClearNodeAnimatorBinding detaches the NodeAnimator3D");
 }
 
 static void test_node_animator_empty_clip_is_noop_but_advances_time() {
@@ -2230,14 +2230,14 @@ static void test_scene_save_skips_invalid_material_asset_refs() {
     material->env_map = rt_vec3_new(7.0, 0.0, 0.0);
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
-                "Scene3D.Save treats wrong-class material asset refs as absent");
+                "SceneGraph.Save treats wrong-class material asset refs as absent");
     void *loaded_scene = rt_scene3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(loaded_scene != nullptr, "Scene3D.Load reads scene saved after asset-ref repair");
+    EXPECT_TRUE(loaded_scene != nullptr, "SceneGraph.Load reads scene saved after asset-ref repair");
     if (loaded_scene) {
         void *loaded_node = rt_scene3d_find(loaded_scene, rt_const_cstr("invalid_material_refs"));
         rt_material3d *loaded_material =
             loaded_node ? (rt_material3d *)rt_scene_node3d_get_material(loaded_node) : nullptr;
-        EXPECT_TRUE(loaded_material != nullptr, "Scene3D.Load preserves the material itself");
+        EXPECT_TRUE(loaded_material != nullptr, "SceneGraph.Load preserves the material itself");
         if (loaded_material) {
             EXPECT_TRUE(loaded_material->texture == nullptr &&
                             loaded_material->normal_map == nullptr &&
@@ -2246,7 +2246,7 @@ static void test_scene_save_skips_invalid_material_asset_refs() {
                             loaded_material->metallic_roughness_map == nullptr &&
                             loaded_material->ao_map == nullptr &&
                             loaded_material->env_map == nullptr,
-                        "Scene3D.Load does not persist invalid material asset refs");
+                        "SceneGraph.Load does not persist invalid material asset refs");
         }
     }
 
@@ -2795,10 +2795,10 @@ static void test_lod_culling_uses_stable_union_mesh_bounds() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D keeps LOD draws visible when the node's stable union bounds intersect");
+                "SceneGraph keeps LOD draws visible when the node's stable union bounds intersect");
     EXPECT_TRUE(
         rt_scene3d_get_culled_count(scene) == 0,
-        "Scene3D does not cull only because the selected LOD mesh bounds are outside the frustum");
+        "SceneGraph does not cull only because the selected LOD mesh bounds are outside the frustum");
     EXPECT_TRUE(rt_canvas3d_get_occluded_draw_count(&canvas) == 0,
                 "Canvas3D.OccludedDrawCount mirrors the latest scene visibility skip count");
 }
@@ -2839,16 +2839,16 @@ static void test_auto_lod_uses_screen_error_selection() {
 
     rt_scene_node3d_set_auto_lod(node, 1, 16.0);
     rt_scene3d_draw(scene, &canvas, camera);
-    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws the auto-LOD fixture");
+    EXPECT_TRUE(g_scene_submit_count == 1, "SceneGraph draws the auto-LOD fixture");
     EXPECT_TRUE(g_scene_last_vertex_count == 3,
-                "SceneNode3D.SetAutoLOD can select a projected small LOD before distance LOD");
+                "SceneNode.SetAutoLOD can select a projected small LOD before distance LOD");
 
     reset_scene_capture();
     rt_scene_node3d_set_auto_lod(node, 0, 16.0);
     rt_scene3d_draw(scene, &canvas, camera);
-    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D redraws after disabling auto LOD");
+    EXPECT_TRUE(g_scene_submit_count == 1, "SceneGraph redraws after disabling auto LOD");
     EXPECT_TRUE(g_scene_last_vertex_count != 3,
-                "SceneNode3D.SetAutoLOD(false) restores authored distance thresholds");
+                "SceneNode.SetAutoLOD(false) restores authored distance thresholds");
 }
 
 static void test_lod_residency_falls_back_and_reports_bytes() {
@@ -2889,31 +2889,31 @@ static void test_lod_residency_falls_back_and_reports_bytes() {
                 "Mesh3D.ResidentBytes reports base mesh payload bytes");
     EXPECT_TRUE(rt_scene_node3d_get_lod_resident(node, 0) == 1, "new LOD meshes start resident");
     EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(node, 0) > 0,
-                "SceneNode3D exposes LOD resident bytes");
+                "SceneNode exposes LOD resident bytes");
 
     rt_scene_node3d_set_lod_resident(node, 0, 0);
     EXPECT_TRUE(rt_scene_node3d_get_lod_resident(node, 0) == 0,
-                "SceneNode3D.SetLodResident marks LOD payload nonresident");
+                "SceneNode.SetLodResident marks LOD payload nonresident");
     EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(node, 0) == 0,
                 "nonresident LOD reports zero resident bytes");
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D falls back to the base mesh when selected LOD is nonresident");
-    EXPECT_TRUE(g_scene_last_vertex_count != 3, "Scene3D did not submit the nonresident LOD mesh");
+                "SceneGraph falls back to the base mesh when selected LOD is nonresident");
+    EXPECT_TRUE(g_scene_last_vertex_count != 3, "SceneGraph did not submit the nonresident LOD mesh");
 
     reset_scene_capture();
     rt_scene_node3d_set_lod_resident(node, 0, 1);
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D redraws after the LOD payload becomes resident");
-    EXPECT_TRUE(g_scene_last_vertex_count == 3, "Scene3D selects the resident LOD mesh");
+                "SceneGraph redraws after the LOD payload becomes resident");
+    EXPECT_TRUE(g_scene_last_vertex_count == 3, "SceneGraph selects the resident LOD mesh");
 
     reset_scene_capture();
     rt_scene_node3d_set_lod_resident(node, 0, 0);
     rt_mesh3d_set_resident(base_mesh, 0);
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D skips drawing when both base and selected LOD payloads are nonresident");
+                "SceneGraph skips drawing when both base and selected LOD payloads are nonresident");
 }
 
 static void test_impostor_proxy_draws_textured_quad() {
@@ -2945,22 +2945,22 @@ static void test_impostor_proxy_draws_textured_quad() {
     rt_scene_node3d_set_impostor(node, 0.0, pixels);
     auto *node_view = static_cast<rt_scene_node3d *>(node);
     EXPECT_TRUE(rt_g3d_has_class(node_view->impostor_mesh, RT_G3D_MESH3D_CLASS_ID),
-                "SceneNode3D.SetImpostor creates a Mesh3D proxy");
+                "SceneNode.SetImpostor creates a Mesh3D proxy");
     EXPECT_TRUE(rt_g3d_has_class(node_view->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID),
-                "SceneNode3D.SetImpostor creates a Material3D proxy");
+                "SceneNode.SetImpostor creates a Material3D proxy");
     EXPECT_TRUE(rt_mesh3d_get_resident(node_view->impostor_mesh) == 1,
-                "SceneNode3D.SetImpostor creates a resident proxy mesh");
+                "SceneNode.SetImpostor creates a resident proxy mesh");
     rt_scene3d_add(scene, node);
     rt_camera3d_look_at(camera, eye, target, up);
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws the impostor fixture");
+    EXPECT_TRUE(g_scene_submit_count == 1, "SceneGraph draws the impostor fixture");
     EXPECT_TRUE(g_scene_last_vertex_count == 4,
-                "SceneNode3D.SetImpostor swaps to a generated quad mesh");
+                "SceneNode.SetImpostor swaps to a generated quad mesh");
     EXPECT_TRUE(g_scene_last_texture == pixels,
-                "SceneNode3D.SetImpostor binds the supplied Pixels texture");
-    EXPECT_TRUE(g_scene_last_unlit == 1, "SceneNode3D.SetImpostor uses an unlit proxy material");
+                "SceneNode.SetImpostor binds the supplied Pixels texture");
+    EXPECT_TRUE(g_scene_last_unlit == 1, "SceneNode.SetImpostor uses an unlit proxy material");
 }
 
 static void test_scene_draw_rejects_corrupt_draw_handles() {
@@ -2995,14 +2995,14 @@ static void test_scene_draw_rejects_corrupt_draw_handles() {
     node_view->mesh = material;
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D.Draw skips wrong-class node mesh slots without submitting");
+                "SceneGraph.Draw skips wrong-class node mesh slots without submitting");
     node_view->mesh = mesh;
 
     reset_scene_capture();
     node_view->material = mesh;
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D.Draw skips wrong-class node material slots without submitting");
+                "SceneGraph.Draw skips wrong-class node material slots without submitting");
     node_view->material = material;
 
     rt_scene_node3d_set_impostor(node, 0.0, pixels);
@@ -3011,9 +3011,9 @@ static void test_scene_draw_rejects_corrupt_draw_handles() {
     node_view->impostor_mesh = material;
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D.Draw falls back to base mesh when impostor mesh is wrong-class");
+                "SceneGraph.Draw falls back to base mesh when impostor mesh is wrong-class");
     EXPECT_TRUE(g_scene_last_vertex_count != 4,
-                "Scene3D.Draw does not submit the generated impostor quad after mesh corruption");
+                "SceneGraph.Draw does not submit the generated impostor quad after mesh corruption");
     node_view->impostor_mesh = nullptr;
     rt_scene_node3d_set_impostor(node, 0.0, pixels);
 
@@ -3021,9 +3021,9 @@ static void test_scene_draw_rejects_corrupt_draw_handles() {
     node_view->impostor_material = mesh;
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D.Draw falls back to base mesh when impostor material is wrong-class");
+                "SceneGraph.Draw falls back to base mesh when impostor material is wrong-class");
     EXPECT_TRUE(g_scene_last_vertex_count != 4,
-                "Scene3D.Draw does not submit the generated impostor quad after material corruption");
+                "SceneGraph.Draw does not submit the generated impostor quad after material corruption");
 }
 
 static void test_dynamic_deformation_uses_conservative_frustum_culling() {
@@ -3056,9 +3056,9 @@ static void test_dynamic_deformation_uses_conservative_frustum_culling() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D culls dynamic meshes using conservative deformation bounds");
+                "SceneGraph culls dynamic meshes using conservative deformation bounds");
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
-                "Scene3D records frustum culls for dynamic-deformation meshes");
+                "SceneGraph records frustum culls for dynamic-deformation meshes");
 }
 
 static void test_morph_delta_bounds_keep_deformed_mesh_visible() {
@@ -3094,7 +3094,7 @@ static void test_morph_delta_bounds_keep_deformed_mesh_visible() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D keeps morph-deformed meshes visible using authored delta bounds");
+                "SceneGraph keeps morph-deformed meshes visible using authored delta bounds");
 }
 
 static void test_raw_morph_delta_bounds_handle_large_finite_values() {
@@ -3107,7 +3107,7 @@ static void test_raw_morph_delta_bounds_handle_large_finite_values() {
 
     double pad = scene3d_mesh_dynamic_bound_pad(mesh_view, NULL, 1.0);
     EXPECT_TRUE(std::isfinite(pad) && std::fabs(pad - SCENE3D_ABS_MAX) < 1.0,
-                "Scene3D raw morph bounds clamp huge finite deltas instead of discarding them");
+                "SceneGraph raw morph bounds clamp huge finite deltas instead of discarding them");
 
     mesh_view->morph_deltas = NULL;
     mesh_view->morph_shape_count = 0;
@@ -3146,9 +3146,9 @@ static void test_dynamic_deformation_rejects_corrupt_morph_delta_span() {
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D does not draw a corrupt raw morph-delta span outside the frustum");
+                "SceneGraph does not draw a corrupt raw morph-delta span outside the frustum");
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
-                "Scene3D culls corrupt morph spans without scanning bogus shape counts");
+                "SceneGraph culls corrupt morph spans without scanning bogus shape counts");
 }
 
 static void test_parent_animator_drives_child_skinned_meshes() {
@@ -3195,17 +3195,17 @@ static void test_parent_animator_drives_child_skinned_meshes() {
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws the child skinned mesh");
+    EXPECT_TRUE(g_scene_submit_count == 1, "SceneGraph draws the child skinned mesh");
     EXPECT_TRUE(g_scene_last_bone_count == 1,
-                "Scene3D inherits a bound parent animator when drawing child meshes");
+                "SceneGraph inherits a bound parent animator when drawing child meshes");
 
     static_cast<rt_scene_node3d *>(parent)->bound_animator = material;
     reset_scene_capture();
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1,
-                "Scene3D still draws child meshes when parent animator binding is wrong-class");
+                "SceneGraph still draws child meshes when parent animator binding is wrong-class");
     EXPECT_TRUE(g_scene_last_bone_count == 0,
-                "Scene3D does not inherit wrong-class parent animator bindings");
+                "SceneGraph does not inherit wrong-class parent animator bindings");
 }
 
 static void test_scene_draw_includes_node_attached_lights() {
@@ -3241,23 +3241,23 @@ static void test_scene_draw_includes_node_attached_lights() {
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws lit scene geometry");
-    EXPECT_TRUE(g_scene_last_light_count == 1, "Scene3D forwards node-attached lights");
+    EXPECT_TRUE(g_scene_submit_count == 1, "SceneGraph draws lit scene geometry");
+    EXPECT_TRUE(g_scene_last_light_count == 1, "SceneGraph forwards node-attached lights");
     if (g_scene_last_light_count > 0) {
         EXPECT_TRUE(g_scene_last_lights[0].type == 1,
-                    "Scene3D preserves node-attached point light type");
+                    "SceneGraph preserves node-attached point light type");
         EXPECT_NEAR(g_scene_last_lights[0].position[0],
                     2.0,
                     0.001,
-                    "Scene3D transforms node-attached light X position");
+                    "SceneGraph transforms node-attached light X position");
         EXPECT_NEAR(g_scene_last_lights[0].position[1],
                     3.0,
                     0.001,
-                    "Scene3D transforms node-attached light Y position");
+                    "SceneGraph transforms node-attached light Y position");
         EXPECT_NEAR(g_scene_last_lights[0].position[2],
                     4.0,
                     0.001,
-                    "Scene3D transforms node-attached light Z position");
+                    "SceneGraph transforms node-attached light Z position");
     }
 }
 
@@ -3277,29 +3277,29 @@ static void test_scene_roundtrip_preserves_node_lights() {
     rt_scene3d_add(scene, node);
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
-                "Scene3D.Save writes node-light fixtures");
+                "SceneGraph.Save writes node-light fixtures");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(loaded != nullptr, "Scene3D.Load reads node-light fixtures");
+    EXPECT_TRUE(loaded != nullptr, "SceneGraph.Load reads node-light fixtures");
     if (!loaded)
         return;
     void *loaded_node = rt_scene3d_find(loaded, rt_const_cstr("lamp"));
     rt_light3d *loaded_light = (rt_light3d *)rt_scene_node3d_get_light(loaded_node);
-    EXPECT_TRUE(loaded_light != nullptr, "Scene3D.Load restores node-attached lights");
+    EXPECT_TRUE(loaded_light != nullptr, "SceneGraph.Load restores node-attached lights");
     if (!loaded_light)
         return;
-    EXPECT_TRUE(loaded_light->type == 3, "Scene3D.Load restores spot-light type");
-    EXPECT_NEAR(loaded_light->color[2], 0.9, 0.001, "Scene3D.Load restores light color");
-    EXPECT_NEAR(loaded_light->intensity, 4.0, 0.001, "Scene3D.Load restores light intensity");
-    EXPECT_NEAR(loaded_light->attenuation, 0.25, 0.001, "Scene3D.Load restores light attenuation");
-    EXPECT_TRUE(loaded_light->casts_shadows == 0, "Scene3D.Load restores light shadow-caster flag");
+    EXPECT_TRUE(loaded_light->type == 3, "SceneGraph.Load restores spot-light type");
+    EXPECT_NEAR(loaded_light->color[2], 0.9, 0.001, "SceneGraph.Load restores light color");
+    EXPECT_NEAR(loaded_light->intensity, 4.0, 0.001, "SceneGraph.Load restores light intensity");
+    EXPECT_NEAR(loaded_light->attenuation, 0.25, 0.001, "SceneGraph.Load restores light attenuation");
+    EXPECT_TRUE(loaded_light->casts_shadows == 0, "SceneGraph.Load restores light shadow-caster flag");
     EXPECT_TRUE(loaded_light->inner_cos > loaded_light->outer_cos,
-                "Scene3D.Load restores spot cone cosines");
+                "SceneGraph.Load restores spot cone cosines");
 }
 
 static void test_scene_save_rejects_wrong_handle() {
     void *node = rt_scene_node3d_new();
     EXPECT_TRUE(rt_scene3d_save(node, rt_const_cstr("/tmp/viper_scene_wrong_handle.vscn")) == 0,
-                "Scene3D.Save rejects non-Scene3D handles");
+                "SceneGraph.Save rejects non-SceneGraph handles");
 }
 
 static void test_scene_load_rejects_malformed_json() {
@@ -3307,7 +3307,7 @@ static void test_scene_load_rejects_malformed_json() {
     EXPECT_TRUE(write_text_file(path, "{\"format\":\"vscn\", \"nodes\": ["),
                 "Malformed VSCN fixture can be written");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(loaded == nullptr, "Scene3D.Load rejects malformed JSON instead of partial maps");
+    EXPECT_TRUE(loaded == nullptr, "SceneGraph.Load rejects malformed JSON instead of partial maps");
 }
 
 static void test_scene_load_rejects_invalid_node_references() {
@@ -3327,7 +3327,7 @@ static void test_scene_load_rejects_invalid_node_references() {
     EXPECT_TRUE(write_text_file(path, json), "Invalid-reference VSCN fixture can be written");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
     EXPECT_TRUE(loaded == nullptr,
-                "Scene3D.Load rejects node mesh references outside the mesh table");
+                "SceneGraph.Load rejects node mesh references outside the mesh table");
 }
 
 static void test_scene_load_rejects_out_of_range_numeric_indices() {
@@ -3348,7 +3348,7 @@ static void test_scene_load_rejects_out_of_range_numeric_indices() {
     EXPECT_TRUE(write_text_file(path, json), "Out-of-range-index VSCN fixture can be written");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
     EXPECT_TRUE(loaded == nullptr,
-                "Scene3D.Load rejects out-of-range numeric indices without unsafe casts");
+                "SceneGraph.Load rejects out-of-range numeric indices without unsafe casts");
 }
 
 static void test_scene_load_rejects_fractional_counts_and_indices() {
@@ -3390,15 +3390,15 @@ static void test_scene_load_rejects_fractional_counts_and_indices() {
     EXPECT_TRUE(write_text_file(texture_path, texture_json),
                 "Fractional texture-size VSCN fixture can be written");
     EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(texture_path)) == nullptr,
-                "Scene3D.Load rejects fractional texture dimensions");
+                "SceneGraph.Load rejects fractional texture dimensions");
     EXPECT_TRUE(write_text_file(mesh_path, mesh_json),
                 "Fractional mesh-count VSCN fixture can be written");
     EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(mesh_path)) == nullptr,
-                "Scene3D.Load rejects fractional mesh counts");
+                "SceneGraph.Load rejects fractional mesh counts");
     EXPECT_TRUE(write_text_file(node_path, node_json),
                 "Fractional node-reference VSCN fixture can be written");
     EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(node_path)) == nullptr,
-                "Scene3D.Load rejects fractional node references");
+                "SceneGraph.Load rejects fractional node references");
 }
 
 static void test_scene_load_rejects_wrong_typed_vscn_fields() {
@@ -3429,11 +3429,11 @@ static void test_scene_load_rejects_wrong_typed_vscn_fields() {
     EXPECT_TRUE(write_text_file(bool_ref_path, bool_ref_json),
                 "Boolean-reference VSCN fixture can be written");
     EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(bool_ref_path)) == nullptr,
-                "Scene3D.Load rejects boolean mesh references");
+                "SceneGraph.Load rejects boolean mesh references");
     EXPECT_TRUE(write_text_file(children_path, children_json),
                 "Wrong-typed children VSCN fixture can be written");
     EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(children_path)) == nullptr,
-                "Scene3D.Load rejects non-array children fields");
+                "SceneGraph.Load rejects non-array children fields");
 }
 
 static void test_scene_load_sanitizes_degenerate_rotation() {
@@ -3453,15 +3453,15 @@ static void test_scene_load_sanitizes_degenerate_rotation() {
     EXPECT_TRUE(write_text_file(path, json), "Degenerate-rotation VSCN fixture can be written");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
     EXPECT_TRUE(loaded != nullptr,
-                "Scene3D.Load accepts valid scene with sanitized transform data");
+                "SceneGraph.Load accepts valid scene with sanitized transform data");
     if (!loaded)
         return;
     void *node = rt_scene3d_find(loaded, rt_const_cstr("rot"));
     void *rotation = rt_scene_node3d_get_rotation(node);
-    EXPECT_NEAR(rt_quat_x(rotation), 0.0, 0.001, "Scene3D.Load resets degenerate rotation X");
-    EXPECT_NEAR(rt_quat_y(rotation), 0.0, 0.001, "Scene3D.Load resets degenerate rotation Y");
-    EXPECT_NEAR(rt_quat_z(rotation), 0.0, 0.001, "Scene3D.Load resets degenerate rotation Z");
-    EXPECT_NEAR(rt_quat_w(rotation), 1.0, 0.001, "Scene3D.Load resets degenerate rotation W");
+    EXPECT_NEAR(rt_quat_x(rotation), 0.0, 0.001, "SceneGraph.Load resets degenerate rotation X");
+    EXPECT_NEAR(rt_quat_y(rotation), 0.0, 0.001, "SceneGraph.Load resets degenerate rotation Y");
+    EXPECT_NEAR(rt_quat_z(rotation), 0.0, 0.001, "SceneGraph.Load resets degenerate rotation Z");
+    EXPECT_NEAR(rt_quat_w(rotation), 1.0, 0.001, "SceneGraph.Load resets degenerate rotation W");
 }
 
 static void test_scene_roundtrip_preserves_high_precision_transform() {
@@ -3474,14 +3474,14 @@ static void test_scene_roundtrip_preserves_high_precision_transform() {
     rt_scene3d_add(scene, node);
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
-                "Scene3D.Save writes high-precision transform scene");
+                "SceneGraph.Save writes high-precision transform scene");
     void *loaded = rt_scene3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(loaded != nullptr, "Scene3D.Load reads high-precision transform scene");
+    EXPECT_TRUE(loaded != nullptr, "SceneGraph.Load reads high-precision transform scene");
     if (!loaded)
         return;
     void *loaded_node = rt_scene3d_find(loaded, rt_const_cstr("precise"));
     void *pos = rt_scene_node3d_get_position(loaded_node);
-    EXPECT_NEAR(rt_vec3_x(pos), x, 1e-12, "Scene3D.Save/Load preserves sub-micro positions");
+    EXPECT_NEAR(rt_vec3_x(pos), x, 1e-12, "SceneGraph.Save/Load preserves sub-micro positions");
 }
 
 static void test_scene_extreme_finite_transforms_and_queries_remain_bounded() {
@@ -3610,6 +3610,6 @@ int main() {
     test_scene_load_sanitizes_degenerate_rotation();
     test_scene_roundtrip_preserves_high_precision_transform();
 
-    printf("Scene3D tests: %d/%d passed\n", tests_passed, tests_run);
+    printf("SceneGraph tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

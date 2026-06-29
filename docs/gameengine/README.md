@@ -75,7 +75,7 @@ LOOP
 | System | Classes | Highlights |
 |--------|---------|------------|
 | **2D Graphics** | Canvas, Pixels, SpriteBatch, TextureAtlas, BitmapFont | 40+ drawing primitives, BMP/PNG save, BMP/PNG/JPEG/GIF load |
-| **3D Graphics** | Canvas3D, Mesh3D, Scene3D, Material3D, Light3D, Skeleton3D | Metal, D3D11, OpenGL 3.3 + software rasterizer |
+| **3D Graphics** | Canvas3D, Mesh3D, SceneGraph, Material3D, Light3D, Skeleton3D | Metal, D3D11, OpenGL 3.3 + software rasterizer |
 | **Sprites & Animation** | SpriteAnimation, AnimStateMachine, SpriteBatch | State machines, frame events, ping-pong, depth sorting |
 | **Tilemap** | Tilemap | Layers, auto-tiling, tile animation, collision, CSV I/O |
 | **Camera** | Camera2D, Camera3D | Smooth follow, deadzone, parallax, bounds clamping |
@@ -83,7 +83,7 @@ LOOP
 | **Physics** | Physics2D, CollisionRect, Quadtree | AABB + circle bodies, joints, collision layers, spatial queries |
 | **Audio** | Sound, Music, Synth, SoundBank, Playlist, MusicGen | WAV/MP3/OGG, 32 voices, procedural synthesis, spatial audio |
 | **Input** | Keyboard, Mouse, Pad, Action, InputManager | 4 gamepads, rumble, rebindable actions, key chords |
-| **Scene Management** | GameBase, IScene, SceneManager, LevelData, Config | JSON levels, scene transitions, typed configuration |
+| **Scene Management** | GameBase, IScene, SceneManager, LevelDocument, Config | JSON levels, scene transitions, typed configuration |
 | **Game UI** | UILabel, UIBar, UIPanel, NineSlice, MenuList, Dialogue | HUD widgets, typewriter text, health bars |
 | **Effects** | ScreenFX, ParticleEmitter, Lighting2D | Shake, fade, wipe, dissolve, particles, dynamic lighting |
 | **Pathfinding** | Pathfinder, Quadtree, Raycast2D | A* grid, spatial partitioning, line-of-sight |
@@ -114,7 +114,7 @@ For a deeper look at how these systems connect, see [Architecture](architecture.
 - Entity System *(planned)* — Entity (position, velocity, health, collision) and composable Behaviors
 - Physics & Collision *(planned)* — Physics2D world, rigid bodies, joints, raycasting, quadtree
 - Pathfinding & AI *(planned)* — A* grid pathfinder, quadtree spatial queries, behavior presets
-- Scene Management *(planned)* — GameBase, IScene lifecycle, SceneManager, LevelData, Config
+- Scene Management *(planned)* — GameBase, IScene lifecycle, SceneManager, LevelDocument, Config
 
 ### Presentation
 
@@ -170,7 +170,7 @@ The topical guides above explain concepts and patterns. For exhaustive method si
 
 - [Game Utilities API](../viperlib/game/README.md) — 28 game classes (Entity, Timer, Tween, Physics2D, etc.)
 - [Graphics API](../viperlib/graphics/README.md) — Canvas, Pixels, Scene, Fonts
-- [3D Graphics API](../graphics3d-guide.md) — 45 classes (Canvas3D, Mesh3D, Scene3D, etc.)
+- [3D Graphics API](../graphics3d-guide.md) — 45 classes (Canvas3D, Mesh3D, SceneGraph, etc.)
 - [Audio API](../viperlib/audio.md) — Sound, Music, Synth, SoundBank, Playlist
 - [Input API](../viperlib/input.md) — Keyboard, Mouse, Pad, Action, InputManager
 - [Math API](../viperlib/math.md) — Vec2/3, Mat3/4, Quaternion, Easing, Noise

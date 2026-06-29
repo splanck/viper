@@ -3,7 +3,7 @@ module tree_fallback_material_probe;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D.Material3D as Material3D;
-bind Viper.Graphics3D.SceneNode3D as SceneNode3D;
+bind Viper.Graphics3D.SceneNode as SceneNode;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./game";
@@ -51,8 +51,8 @@ func main() {
         return;
     }
 
-    var trunkMat = SceneNode3D.get_Material(trunkNode);
-    var canopyMat = SceneNode3D.get_Material(canopyNode);
+    var trunkMat = SceneNode.get_Material(trunkNode);
+    var canopyMat = SceneNode.get_Material(canopyNode);
     if (matHasSurfaceDetail(trunkMat) == false) {
         fail(game, "fallback trunk material has no albedo/normal texture detail");
         return;

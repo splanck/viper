@@ -111,8 +111,8 @@ static void test_navagent_bound_node_reaches_target_in_world_space() {
 
     get_node_world_position(child, world);
     pos = rt_navagent3d_get_position(agent);
-    EXPECT_NEAR(world[0], 4.0, 0.35, "NavAgent3D drives bound SceneNode3D in world X");
-    EXPECT_NEAR(world[2], 4.0, 0.35, "NavAgent3D drives bound SceneNode3D in world Z");
+    EXPECT_NEAR(world[0], 4.0, 0.35, "NavAgent3D drives bound SceneNode in world X");
+    EXPECT_NEAR(world[2], 4.0, 0.35, "NavAgent3D drives bound SceneNode in world Z");
     EXPECT_NEAR(rt_vec3_x(pos), world[0], 0.01, "NavAgent3D position matches bound node world X");
     EXPECT_NEAR(rt_navagent3d_get_remaining_distance(agent),
                 0.0,
@@ -199,11 +199,11 @@ static void test_navagent_character_binding_updates_bound_node() {
     EXPECT_NEAR(world_pos[0],
                 rt_vec3_x(char_pos),
                 0.01,
-                "NavAgent3D mirrors bound Character3D X into the bound SceneNode3D");
+                "NavAgent3D mirrors bound Character3D X into the bound SceneNode");
     EXPECT_NEAR(world_pos[2],
                 rt_vec3_z(char_pos),
                 0.01,
-                "NavAgent3D mirrors bound Character3D Z into the bound SceneNode3D");
+                "NavAgent3D mirrors bound Character3D Z into the bound SceneNode");
 }
 
 static void test_navagent_avoidance_properties() {

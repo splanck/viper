@@ -13,13 +13,13 @@ VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/game3d_sho
 The sample covers:
 
 - `World3D` setup, quality, lighting, post-FX, fog, water, and runtime preset swaps
-- prefabs, `Assets3D.LoadModelAsset`, `BodyDef`, layers, masks, triggers, and collision events
+- prefabs, `Assets3D.LoadEntityAsset`, `BodyDef`, layers, masks, triggers, and collision events
 - first-person, follow, and orbit camera controllers
 - `CharacterController3D` plus a physics-driven ball
 - `Animator3D` events and root-motion sync through a procedural skeleton
 - positional, attached, and 2D audio
 - collision-triggered particles and decals
-- raw escape hatches through direct `Canvas3D`, `SceneNode3D`, and `Sound` calls
+- raw escape hatches through direct `Canvas3D`, `SceneNode`, and `Sound` calls
 - final-overlay HUD pixels and structural scene assertions on the software backend
 
 The software visual baseline is structural rather than a checked-in binary

@@ -67,7 +67,7 @@ recorded in `baselines/perf_macos_apple_m4_max.md` and the Windows D3D11 proof
 is recorded in `baselines/perf_windows_shakylaptop_ryzen7940hs.md`.
 `visibility_dense_probe.zia` builds a named dense city/forest visibility scene:
 front city blocks and a reachable portal alley remain visible, while dense
-forest/city zones behind an opaque blocker are culled by authored Scene3D PVS.
+forest/city zones behind an opaque blocker are culled by authored SceneGraph PVS.
 It emits `VISIBILITY_DENSE:` draw-call and fill-proxy reduction metrics and
 compares software final-frame pixels against the no-PVS baseline to prove no
 visible geometry was removed. The current local reduction proof is recorded in

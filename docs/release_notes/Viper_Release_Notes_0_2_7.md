@@ -57,18 +57,18 @@ Counts via `scripts/count_sloc.sh` (production 759,189 / test 304,086 / demo 196
 
 ### 3D assets, animation, and Canvas3D (new)
 
-- `NodeAnimation3D`/`NodeAnimator3D` play node, object, camera, and morph-weight clips, and `Model3D`/`Assets3D` can pull a single clip from an external file.
+- `NodeAnimation3D`/`NodeAnimator3D` play node, object, camera, and morph-weight clips, and `SceneAsset`/`Assets3D` can pull a single clip from an external file.
 - The FBX importer gains full model transforms (rotation order, pivots, Z-up), cubic curves, PBR texture-slot routing, and async loading; glTF accessor and skin-weight validation tightens.
 - New authoring helpers: `DrawMeshWind` foliage sway, `DrawImage2D` HUD blits, `DrawMeshSkinned` from an `AnimController3D` pose, native `SetFullscreen`/`ToggleFullscreen` (`Game3D.Keys.F11`), and `Material3D` depth-bias/`ShadowMode`.
 - `Canvas3D` adds `BackendName` and `BackendFallback` (true when init fell back to software), and a recoverable texture-fallback diagnostic records when a failed upload substitutes a placeholder, so a degraded frame is observable rather than silent.
 - Content loaders stop trapping on bad content: every 2D image and 3D model/scene loader returns `null` and records a thread-local last-error code/message (`AssetDiagnostics3D.LastLoadError`), reserving traps for null or invalid handles.
-- A shared `rt_untrusted_count` guard validates every element count read from a 3D asset against its backing bytes across the glTF, FBX, OBJ/STL, Scene3D, and Game3D loaders, and new libFuzzer harnesses keep these parsers crash-free; the FBX importer parses ASCII doubles locale-independently, the glTF loader rejects unsafe accessor strides, and compound-collider and mesh-vertex growth became transactional so a failed resize leaves no half-built geometry.
+- A shared `rt_untrusted_count` guard validates every element count read from a 3D asset against its backing bytes across the glTF, FBX, OBJ/STL, SceneGraph, and Game3D loaders, and new libFuzzer harnesses keep these parsers crash-free; the FBX importer parses ASCII doubles locale-independently, the glTF loader rejects unsafe accessor strides, and compound-collider and mesh-vertex growth became transactional so a failed resize leaves no half-built geometry.
 
 ### Open-world streaming, navigation, and 3D safety
 
 - `WorldStream3D` cells load a binary sidecar into a resident-byte budget; `NavMesh3D.Export`/`Import` round-trip versioned `VNAVMSH2` assets while still reading legacy `VNAVMSH1`; compressed `TextureAsset3D` uploads drain large mips across frames.
 - Non-finite interpolation, playback, and bone inputs across the animation stack clamp or revert to the bind pose; scene, transform, raycast, navigation, and physics entry points reject bad handles; stored references are class-checked so a reused slot is nulled rather than dereferenced.
-- Game3D async loads read worker-safe snapshots, drop stale publishes so a cancelled load can't overwrite current state, and finalize screenshot/render-target capture with no present side effect. The Scene3D spatial index records a ~1,800× indexed-vs-flat cull speedup on a 10k-node fixture.
+- Game3D async loads read worker-safe snapshots, drop stale publishes so a cancelled load can't overwrite current state, and finalize screenshot/render-target capture with no present side effect. The SceneGraph spatial index records a ~1,800× indexed-vs-flat cull speedup on a 10k-node fixture.
 - A retained `Entity3D` whose entity was despawned degrades predictably — neutral reads, no-op writes, a counted `StaleEntityCalls` touch — instead of trapping; genuinely invalid handles still trap.
 - Fallbacks that stay correct but shed fidelity are now observable: a process-wide `Viper.Game3D.Diagnostics3D` static exposes saturating counters (brute-force broadphase, clamped CCD, dropped animation events, evicted audio voices, navmesh-grid fallback, stale-entity touches) with a zero-omitting `Summary()`, and `Physics3DWorld` surfaces the same physics counts per world.
 - `Physics3DWorld` adds fixed-step controls (explicit timestep and substep budget) so the simulation advances deterministically and independently of render frame rate.

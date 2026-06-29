@@ -12,7 +12,7 @@ DIM i AS INTEGER
 mesh = Viper.Graphics3D.Mesh3D.NewPlane(20.0, 20.0)
 nav = Viper.Graphics3D.NavMesh3D.Build(mesh, 0.4, 1.8)
 agent = Viper.Graphics3D.NavAgent3D.New(nav, 0.4, 1.8)
-node = Viper.Graphics3D.SceneNode3D.New()
+node = Viper.Graphics3D.SceneNode.New()
 
 agent.BindNode(node)
 agent.DesiredSpeed = 5.0

@@ -1,6 +1,6 @@
-' test_scene.bas - Viper.Game.Scene smoke
+' test_scene.bas - Viper.Game2D.SceneDocument smoke
 DIM scene AS OBJECT
-scene = Viper.Game.Scene.New(3, 2, 16, 16)
+scene = Viper.Game2D.SceneDocument.New(3, 2, 16, 16)
 scene.SetInt("playerStartX", 32)
 scene.SetStr("theme", "cavern")
 scene.SetBool("dark", TRUE)
@@ -26,13 +26,13 @@ json = scene.ToJson()
 PRINT Viper.String.Has(json, """version""")
 
 DIM loaded AS OBJECT
-loaded = Viper.Game.Scene.LoadJson(json)
+loaded = Viper.Game2D.SceneDocument.LoadJson(json)
 PRINT loaded.HasErrors()
 PRINT loaded.GetInt("playerStartX", -1)
 PRINT loaded.ObjectGetInt(0, "hp", -1)
 
 DIM bad AS OBJECT
-bad = Viper.Game.Scene.LoadJson("{""version"":1,")
+bad = Viper.Game2D.SceneDocument.LoadJson("{""version"":1,")
 PRINT bad.HasErrors()
 
 DIM tm AS OBJECT

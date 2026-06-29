@@ -630,12 +630,12 @@ END IF
 
 ---
 
-## Viper.Graphics.Tilemap
+## Viper.Graphics2D.Tilemap
 
 Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.Tilemap(width, height, tileWidth, tileHeight)`
+**Constructor:** `NEW Viper.Graphics2D.Tilemap(width, height, tileWidth, tileHeight)`
 
 ### Properties
 
@@ -662,8 +662,8 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `GetTile(x, y)`                                | `Integer(Integer, Integer)`                  | Get tile index at position                            |
 | `HitTestScaled(pixelX, pixelY, offsetX, offsetY, scalePercent)` | `Map(Integer...)` | Convert a widget-local point through pan/zoom into tile coordinates |
 | `IsSolidAt(pixelX, pixelY)`                    | `Integer(Integer, Integer)`                  | Check if a pixel position is on a solid tile          |
-| `LoadCSV(path, tileWidth, tileHeight)`          | `Tilemap(String, Integer, Integer)`          | Load a CSV tile layer into a new tilemap              |
-| `LoadFromFile(path)`                           | `Tilemap(String)`                            | Load a saved JSON tilemap                             |
+| `LoadCsv(path, tileWidth, tileHeight)`          | `Tilemap(String, Integer, Integer)`          | Load a CSV tile layer into a new tilemap              |
+| `Load(path)`                                   | `Tilemap(String)`                            | Load a saved JSON tilemap                             |
 | `CountDrawnVisibleScaled(canvas, offsetX, offsetY, scalePercent)` | `Integer(Canvas, Integer, Integer, Integer)` | Count drawable visible tiles at zoom without drawing |
 | `ResolveAnimTile(tileId)`                      | `Integer(Integer)`                           | Return the current visible tile for an animated base tile |
 | `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up); tile `0` remains empty |
@@ -677,7 +677,7 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 | `UpdateAnims(deltaMs)`                         | `Void(Integer)`                              | Advance tile animation timers                         |
 
-Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. Tileset assignment requires real `Pixels` handles for both map-level and per-layer tilesets. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. Saves report failure on write or close errors. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, rejects overlong CSV rows instead of truncating them, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
+Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. Tileset assignment requires real `Pixels` handles for both map-level and per-layer tilesets. `Save` / `Load` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. Saves report failure on write or close errors. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, rejects overlong CSV rows instead of truncating them, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
 
 Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Tile ID `0` is reserved for empty space and stays non-solid even if `SetCollision(0, ...)` is called; `SetTileAnim(0, ...)` and negative base tile IDs are ignored so empty space cannot animate into a visible tile. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, scaled tile drawing, file offsets, tile-to-pixel conversion, and scaled hit-test pan/zoom math clip or saturate extreme coordinates rather than wrapping. Tilemap drawing derives the exact visible tile span from the canvas size and scroll offset, including positive offsets and partially visible edge tiles. Scaled draw and hit-test helpers use `scalePercent`; values less than or equal to zero are ignored or return an out-of-bounds hit result.
 
@@ -687,7 +687,7 @@ Animated tiles keep collision from the base tile ID stored in the map. Changing 
 module TilemapDemo;
 
 bind Viper.Terminal;
-bind Viper.Graphics.Tilemap as TM;
+bind Viper.Graphics2D.Tilemap as TM;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -718,8 +718,8 @@ func start() {
 
 ```basic
 ' Create a 100x100 tilemap with 16x16 pixel tiles
-DIM map AS Viper.Graphics.Tilemap
-map = NEW Viper.Graphics.Tilemap(100, 100, 16, 16)
+DIM map AS Viper.Graphics2D.Tilemap
+map = NEW Viper.Graphics2D.Tilemap(100, 100, 16, 16)
 
 ' Load tileset (tiles arranged in a grid)
 DIM tileset AS Viper.Graphics.Pixels

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // File: src/tests/unit/test_rt_model3d.cpp
-// Purpose: Unit tests for Model3D, FBX, and glTF asset import/runtime accessors.
+// Purpose: Unit tests for SceneAsset, FBX, and glTF asset import/runtime accessors.
 // Key invariants:
 //   - Imported asset handles expose stable meshes/materials/animations/scenes.
 //   - Recoverable content failures return NULL with asset diagnostics.
@@ -64,7 +64,7 @@ extern int32_t rt_obj_release_check0(void *p);
 extern void rt_obj_free(void *p);
 }
 
-struct Model3DView {
+struct SceneAssetView {
     void *vptr;
     rt_scene_node3d *template_root;
     void **meshes;
@@ -1770,45 +1770,45 @@ static void test_model3d_roundtrips_vscn_assets() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses .vscn assets");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses .vscn assets");
     if (!model)
         return;
 
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Model3D deduplicates shared meshes");
-    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "Model3D deduplicates shared materials");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "SceneAsset deduplicates shared meshes");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "SceneAsset deduplicates shared materials");
     EXPECT_TRUE(rt_model3d_get_skeleton_count(model) == 0,
-                "Model3D .vscn fixtures start without skeletons");
+                "SceneAsset .vscn fixtures start without skeletons");
     EXPECT_TRUE(rt_model3d_get_animation_count(model) == 0,
-                "Model3D .vscn fixtures start without animations");
-    EXPECT_TRUE(rt_model3d_get_node_count(model) == 2, "Model3D counts imported scene nodes");
+                "SceneAsset .vscn fixtures start without animations");
+    EXPECT_TRUE(rt_model3d_get_node_count(model) == 2, "SceneAsset counts imported scene nodes");
 
     void *template_parent = rt_model3d_find_node(model, rt_const_cstr("parent"));
     void *template_child = rt_model3d_find_node(model, rt_const_cstr("child"));
-    EXPECT_TRUE(template_parent != nullptr, "Model3D.FindNode finds template parent nodes");
-    EXPECT_TRUE(template_child != nullptr, "Model3D.FindNode finds template child nodes");
+    EXPECT_TRUE(template_parent != nullptr, "SceneAsset.FindNode finds template parent nodes");
+    EXPECT_TRUE(template_child != nullptr, "SceneAsset.FindNode finds template child nodes");
     if (!template_parent || !template_child)
         return;
 
     EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(template_parent)),
                 1.0,
                 0.001,
-                "Model3D preserves parent node translation");
+                "SceneAsset preserves parent node translation");
     EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(template_child)),
                 5.0,
                 0.001,
-                "Model3D preserves child node translation");
+                "SceneAsset preserves child node translation");
 
     void *inst_root = rt_model3d_instantiate(model);
-    EXPECT_TRUE(inst_root != nullptr, "Model3D.Instantiate clones a scene-node subtree");
+    EXPECT_TRUE(inst_root != nullptr, "SceneAsset.Instantiate clones a scene-node subtree");
     if (!inst_root)
         return;
 
     EXPECT_TRUE(rt_scene_node3d_child_count(inst_root) == 1,
-                "Model3D.Instantiate returns a synthetic root with top-level children");
+                "SceneAsset.Instantiate returns a synthetic root with top-level children");
     void *inst_parent = rt_scene_node3d_find(inst_root, rt_const_cstr("parent"));
     void *inst_child = rt_scene_node3d_find(inst_root, rt_const_cstr("child"));
-    EXPECT_TRUE(inst_parent != nullptr, "Model3D.Instantiate preserves named parent nodes");
-    EXPECT_TRUE(inst_child != nullptr, "Model3D.Instantiate preserves named child nodes");
+    EXPECT_TRUE(inst_parent != nullptr, "SceneAsset.Instantiate preserves named parent nodes");
+    EXPECT_TRUE(inst_child != nullptr, "SceneAsset.Instantiate preserves named child nodes");
     if (!inst_parent || !inst_child)
         return;
 
@@ -1817,27 +1817,27 @@ static void test_model3d_roundtrips_vscn_assets() {
     EXPECT_NEAR(rt_vec3_x(inst_root_min),
                 0.5,
                 0.001,
-                "Model3D synthetic instance roots expose subtree AABB min X");
+                "SceneAsset synthetic instance roots expose subtree AABB min X");
     EXPECT_NEAR(rt_vec3_y(inst_root_min),
                 1.0,
                 0.001,
-                "Model3D synthetic instance roots expose subtree AABB min Y");
+                "SceneAsset synthetic instance roots expose subtree AABB min Y");
     EXPECT_NEAR(rt_vec3_z(inst_root_min),
                 1.5,
                 0.001,
-                "Model3D synthetic instance roots expose subtree AABB min Z");
+                "SceneAsset synthetic instance roots expose subtree AABB min Z");
     EXPECT_NEAR(rt_vec3_x(inst_root_max),
                 1.5,
                 0.001,
-                "Model3D synthetic instance roots expose subtree AABB max X");
+                "SceneAsset synthetic instance roots expose subtree AABB max X");
     EXPECT_NEAR(rt_vec3_y(inst_root_max),
                 8.0,
                 0.001,
-                "Model3D synthetic instance roots expose subtree AABB max Y");
+                "SceneAsset synthetic instance roots expose subtree AABB max Y");
     EXPECT_NEAR(rt_vec3_z(inst_root_max),
                 4.5,
                 0.001,
-                "Model3D synthetic instance roots expose subtree AABB max Z");
+                "SceneAsset synthetic instance roots expose subtree AABB max Z");
 
     rt_scene_node3d_set_position(inst_child, 9.0, 9.0, 9.0);
     EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(inst_child)),
@@ -1854,12 +1854,12 @@ static void test_model3d_roundtrips_vscn_assets() {
                 "Instantiated nodes reuse shared material objects");
 
     void *inst_scene = rt_model3d_instantiate_scene(model);
-    EXPECT_TRUE(inst_scene != nullptr, "Model3D.InstantiateScene creates a live Scene3D");
+    EXPECT_TRUE(inst_scene != nullptr, "SceneAsset.InstantiateScene creates a live SceneGraph");
     if (!inst_scene)
         return;
 
     EXPECT_TRUE(rt_scene3d_get_node_count(inst_scene) == 3,
-                "Model3D.InstantiateScene attaches imported nodes below the scene root");
+                "SceneAsset.InstantiateScene attaches imported nodes below the scene root");
     EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(inst_scene)) == 1,
                 "InstantiateScene preserves top-level node grouping");
     EXPECT_TRUE(rt_scene3d_find(inst_scene, rt_const_cstr("child")) != nullptr,
@@ -1874,7 +1874,7 @@ static void test_model3d_find_node_rejects_wrong_string_handles() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FindNode corruption fixture");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FindNode corruption fixture");
     if (!model) {
         std::remove(path);
         return;
@@ -1884,7 +1884,7 @@ static void test_model3d_find_node_rejects_wrong_string_handles() {
     rt_obj_retain_maybe(wrong_name);
     rt_string fake_name = reinterpret_cast<rt_string>(wrong_name);
     EXPECT_TRUE(rt_model3d_find_node(model, fake_name) == nullptr,
-                "Model3D.FindNode rejects wrong-class query string handles");
+                "SceneAsset.FindNode rejects wrong-class query string handles");
 
     void *template_parent = rt_model3d_find_node(model, rt_const_cstr("parent"));
     auto *parent_node = static_cast<rt_scene_node3d *>(template_parent);
@@ -1893,14 +1893,14 @@ static void test_model3d_find_node_rejects_wrong_string_handles() {
         rt_string saved_name = parent_node->name;
         parent_node->name = fake_name;
         EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("parent")) == nullptr,
-                    "Model3D.FindNode skips wrong-class stored node names");
+                    "SceneAsset.FindNode skips wrong-class stored node names");
         EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("child")) != nullptr,
-                    "Model3D.FindNode keeps walking past corrupt stored node names");
+                    "SceneAsset.FindNode keeps walking past corrupt stored node names");
         parent_node->name = saved_name;
     }
 
     EXPECT_TRUE(rt_obj_release_check0(wrong_name) == 0,
-                "Model3D.FindNode string guards do not release wrong-class handles");
+                "SceneAsset.FindNode string guards do not release wrong-class handles");
     if (rt_obj_release_check0(wrong_name))
         rt_obj_free(wrong_name);
     std::remove(path);
@@ -1914,40 +1914,40 @@ static void test_model3d_adapts_gltf_scene_graphs() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses glTF assets");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses glTF assets");
     if (!model)
         return;
 
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Model3D exposes glTF meshes");
-    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "Model3D exposes glTF materials");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "SceneAsset exposes glTF meshes");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "SceneAsset exposes glTF materials");
     EXPECT_TRUE(rt_model3d_get_node_count(model) == 3,
-                "Model3D preserves logical glTF scene-node counts");
+                "SceneAsset preserves logical glTF scene-node counts");
     EXPECT_TRUE(rt_model3d_get_scene_count(model) == 2,
-                "Model3D exposes glTF active and secondary immutable scenes");
+                "SceneAsset exposes glTF active and secondary immutable scenes");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 0)), "default") == 0,
-                "Model3D.GetSceneName names the default scene");
+                "SceneAsset.GetSceneName names the default scene");
     EXPECT_TRUE(
         std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 1)), "SecondaryScene") == 0,
-        "Model3D.GetSceneName preserves secondary glTF scene names");
+        "SceneAsset.GetSceneName preserves secondary glTF scene names");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 2)), "") == 0,
-                "Model3D.GetSceneName returns empty for invalid scene indices");
+                "SceneAsset.GetSceneName returns empty for invalid scene indices");
     EXPECT_TRUE(rt_model3d_get_camera_count(model, 0) == 2,
-                "Model3D.GetCameraCount reports active-scene glTF cameras");
+                "SceneAsset.GetCameraCount reports active-scene glTF cameras");
     EXPECT_TRUE(rt_model3d_get_camera_count(model, 1) == 0,
-                "Model3D.GetCameraCount reports no cameras for the secondary scene");
+                "SceneAsset.GetCameraCount reports no cameras for the secondary scene");
     EXPECT_TRUE(rt_model3d_get_camera_count(model, 2) == 0,
-                "Model3D.GetCameraCount returns zero for invalid scene indices");
+                "SceneAsset.GetCameraCount returns zero for invalid scene indices");
     void *perspective_camera = rt_model3d_get_camera(model, 0, 0);
     void *ortho_camera = rt_model3d_get_camera(model, 0, 1);
     EXPECT_TRUE(perspective_camera != nullptr,
-                "Model3D.GetCamera returns glTF perspective cameras");
-    EXPECT_TRUE(ortho_camera != nullptr, "Model3D.GetCamera returns glTF orthographic cameras");
+                "SceneAsset.GetCamera returns glTF perspective cameras");
+    EXPECT_TRUE(ortho_camera != nullptr, "SceneAsset.GetCamera returns glTF orthographic cameras");
     EXPECT_TRUE(rt_model3d_get_camera(model, 0, 2) == nullptr,
-                "Model3D.GetCamera rejects out-of-range camera indices");
+                "SceneAsset.GetCamera rejects out-of-range camera indices");
     EXPECT_TRUE(rt_model3d_get_camera(model, 1, 0) == nullptr,
-                "Model3D.GetCamera returns null for secondary scenes without cameras");
+                "SceneAsset.GetCamera returns null for secondary scenes without cameras");
     EXPECT_TRUE(rt_model3d_get_camera(model, 2, 0) == nullptr,
-                "Model3D.GetCamera rejects invalid scene indices");
+                "SceneAsset.GetCamera rejects invalid scene indices");
     EXPECT_TRUE(rt_camera3d_is_ortho(perspective_camera) == 0,
                 "glTF perspective cameras import as perspective Camera3D handles");
     EXPECT_TRUE(rt_camera3d_is_ortho(ortho_camera) == 1,
@@ -1968,53 +1968,53 @@ static void test_model3d_adapts_gltf_scene_graphs() {
 
     void *parent = rt_model3d_find_node(model, rt_const_cstr("GltfParent"));
     void *child = rt_model3d_find_node(model, rt_const_cstr("GltfChild"));
-    EXPECT_TRUE(parent != nullptr, "Model3D.FindNode finds glTF parent nodes");
-    EXPECT_TRUE(child != nullptr, "Model3D.FindNode finds glTF child nodes");
+    EXPECT_TRUE(parent != nullptr, "SceneAsset.FindNode finds glTF parent nodes");
+    EXPECT_TRUE(child != nullptr, "SceneAsset.FindNode finds glTF child nodes");
     if (!parent || !child)
         return;
 
     EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(parent)),
                 1.0,
                 0.001,
-                "Model3D preserves glTF node translations");
+                "SceneAsset preserves glTF node translations");
     EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_scale(child)),
                 2.0,
                 0.001,
-                "Model3D preserves glTF node scales");
+                "SceneAsset preserves glTF node scales");
 
     void *inst_scene = rt_model3d_instantiate_scene(model);
-    EXPECT_TRUE(inst_scene != nullptr, "Model3D.InstantiateScene works for glTF assets");
+    EXPECT_TRUE(inst_scene != nullptr, "SceneAsset.InstantiateScene works for glTF assets");
     if (!inst_scene)
         return;
 
     EXPECT_TRUE(rt_scene3d_get_node_count(inst_scene) == 4,
-                "glTF-backed Model3D instances attach below a new scene root");
+                "glTF-backed SceneAsset instances attach below a new scene root");
     EXPECT_TRUE(rt_scene3d_find(inst_scene, rt_const_cstr("GltfChild")) != nullptr,
-                "glTF-backed Model3D instances preserve child names");
+                "glTF-backed SceneAsset instances preserve child names");
 
     void *indexed_scene = rt_model3d_instantiate_scene_at(model, 0);
-    EXPECT_TRUE(indexed_scene != nullptr, "Model3D.InstantiateSceneAt clones the default scene");
+    EXPECT_TRUE(indexed_scene != nullptr, "SceneAsset.InstantiateSceneAt clones the default scene");
     void *secondary_scene = rt_model3d_instantiate_scene_at(model, 1);
     EXPECT_TRUE(secondary_scene != nullptr,
-                "Model3D.InstantiateSceneAt clones secondary glTF scenes");
+                "SceneAsset.InstantiateSceneAt clones secondary glTF scenes");
     EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 2) == nullptr,
-                "Model3D.InstantiateSceneAt rejects invalid scene indices");
+                "SceneAsset.InstantiateSceneAt rejects invalid scene indices");
     if (!indexed_scene)
         return;
     EXPECT_TRUE(rt_scene3d_get_node_count(indexed_scene) == 4,
-                "Model3D.InstantiateSceneAt preserves default-scene nodes");
+                "SceneAsset.InstantiateSceneAt preserves default-scene nodes");
     EXPECT_TRUE(rt_scene3d_find(indexed_scene, rt_const_cstr("GltfParent")) != nullptr,
-                "Model3D.InstantiateSceneAt preserves indexed-scene searchability");
+                "SceneAsset.InstantiateSceneAt preserves indexed-scene searchability");
     EXPECT_TRUE(rt_scene3d_find(indexed_scene, rt_const_cstr("GltfSecondary")) == nullptr,
-                "Model3D.InstantiateSceneAt keeps secondary roots out of the default scene");
+                "SceneAsset.InstantiateSceneAt keeps secondary roots out of the default scene");
     if (!secondary_scene)
         return;
     EXPECT_TRUE(rt_scene3d_get_node_count(secondary_scene) == 2,
-                "Model3D.InstantiateSceneAt builds secondary scene roots");
+                "SceneAsset.InstantiateSceneAt builds secondary scene roots");
     EXPECT_TRUE(rt_scene3d_find(secondary_scene, rt_const_cstr("GltfSecondary")) != nullptr,
-                "Model3D.InstantiateSceneAt preserves secondary scene searchability");
+                "SceneAsset.InstantiateSceneAt preserves secondary scene searchability");
     EXPECT_TRUE(rt_scene3d_find(secondary_scene, rt_const_cstr("GltfParent")) == nullptr,
-                "Model3D.InstantiateSceneAt keeps default roots out of the secondary scene");
+                "SceneAsset.InstantiateSceneAt keeps default roots out of the secondary scene");
 }
 
 static void test_model3d_rejects_gltf_accessor_overrun_of_buffer_view() {
@@ -2288,31 +2288,31 @@ static void test_model3d_load_asset_resolves_mounted_gltf_dependencies() {
     writer.addEntry("assets/models/buffers/tri.bin", gltf_buffer.data(), gltf_buffer.size(), false);
     std::string err;
     bool wrote_pack = writer.writeToFile(pack_path, err);
-    EXPECT_TRUE(wrote_pack, "Model3D asset pack can be written");
+    EXPECT_TRUE(wrote_pack, "SceneAsset asset pack can be written");
     if (!wrote_pack)
         return;
     bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
-    EXPECT_TRUE(mounted, "Model3D asset pack can mount");
+    EXPECT_TRUE(mounted, "SceneAsset asset pack can mount");
     if (!mounted)
         return;
 
     void *model = rt_model3d_load_asset(rt_const_cstr("assets/models/model.gltf"));
-    EXPECT_TRUE(model != nullptr, "Model3D.LoadAsset loads a mounted glTF model path");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.LoadAsset loads a mounted glTF model path");
     if (model) {
         EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
-                    "Model3D.LoadAsset exposes meshes loaded from mounted dependencies");
+                    "SceneAsset.LoadAsset exposes meshes loaded from mounted dependencies");
         auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
         EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
-                    "Model3D.LoadAsset imports geometry from a package-relative buffer");
+                    "SceneAsset.LoadAsset imports geometry from a package-relative buffer");
         if (mesh) {
             EXPECT_NEAR(mesh->vertices[1].pos[0],
                         6.0,
                         0.001,
-                        "Model3D.LoadAsset keeps mounted buffer vertex X");
+                        "SceneAsset.LoadAsset keeps mounted buffer vertex X");
             EXPECT_NEAR(mesh->vertices[2].pos[1],
                         7.0,
                         0.001,
-                        "Model3D.LoadAsset keeps mounted buffer vertex Y");
+                        "SceneAsset.LoadAsset keeps mounted buffer vertex Y");
         }
     }
 
@@ -2347,13 +2347,13 @@ static void test_model3d_load_asset_diagnostics_name_missing_dependency() {
         return;
 
     void *model = rt_model3d_load_asset(rt_const_cstr("asset://assets/models/missing_dep.gltf"));
-    EXPECT_TRUE(model == nullptr, "Model3D.LoadAsset returns null for missing glTF dependencies");
+    EXPECT_TRUE(model == nullptr, "SceneAsset.LoadAsset returns null for missing glTF dependencies");
     EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
-                "Model3D.LoadAsset records an error for missing glTF dependencies");
+                "SceneAsset.LoadAsset records an error for missing glTF dependencies");
     EXPECT_TRUE(
         std::strstr(rt_asset_error_get_message(), "assets/models/missing_dep.gltf") != nullptr &&
             std::strstr(rt_asset_error_get_message(), "assets/models/missing.bin") != nullptr,
-        "Model3D.LoadAsset diagnostics name the model and missing dependency");
+        "SceneAsset.LoadAsset diagnostics name the model and missing dependency");
 
     rt_asset_unmount(rt_const_cstr(pack_path));
     std::remove(pack_path);
@@ -2367,50 +2367,50 @@ static void test_model3d_adapts_fbx_scene_graphs() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses generated FBX assets");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses generated FBX assets");
     if (!model)
         return;
 
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Model3D exposes FBX meshes");
-    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "Model3D exposes FBX materials");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "SceneAsset exposes FBX meshes");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "SceneAsset exposes FBX materials");
     EXPECT_TRUE(rt_model3d_get_node_count(model) == 2,
-                "Model3D preserves logical FBX scene-node counts");
+                "SceneAsset preserves logical FBX scene-node counts");
 
     void *parent = rt_model3d_find_node(model, rt_const_cstr("Parent"));
     void *child = rt_model3d_find_node(model, rt_const_cstr("Child"));
-    EXPECT_TRUE(parent != nullptr, "Model3D.FindNode finds FBX parent nodes");
-    EXPECT_TRUE(child != nullptr, "Model3D.FindNode finds FBX child nodes");
+    EXPECT_TRUE(parent != nullptr, "SceneAsset.FindNode finds FBX parent nodes");
+    EXPECT_TRUE(child != nullptr, "SceneAsset.FindNode finds FBX child nodes");
     if (!parent || !child)
         return;
 
     EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(parent)),
                 1.0,
                 0.001,
-                "Model3D preserves FBX parent translations");
+                "SceneAsset preserves FBX parent translations");
     EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(parent)),
                 2.0,
                 0.001,
-                "Model3D preserves FBX parent Y translations");
+                "SceneAsset preserves FBX parent Y translations");
     EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(child)),
                 5.0,
                 0.001,
-                "Model3D preserves FBX child translations");
+                "SceneAsset preserves FBX child translations");
     EXPECT_TRUE(rt_scene_node3d_get_mesh(child) == rt_model3d_get_mesh(model, 0),
                 "FBX scene nodes reuse the extracted mesh object");
     EXPECT_TRUE(rt_scene_node3d_get_material(child) == rt_model3d_get_material(model, 0),
                 "FBX scene nodes reuse the extracted material object");
 
     void *inst_scene = rt_model3d_instantiate_scene(model);
-    EXPECT_TRUE(inst_scene != nullptr, "Model3D.InstantiateScene works for FBX assets");
+    EXPECT_TRUE(inst_scene != nullptr, "SceneAsset.InstantiateScene works for FBX assets");
     if (!inst_scene)
         return;
 
     EXPECT_TRUE(rt_scene3d_get_node_count(inst_scene) == 3,
-                "FBX-backed Model3D instances attach below a new scene root");
+                "FBX-backed SceneAsset instances attach below a new scene root");
     EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(inst_scene)) == 1,
-                "FBX-backed Model3D instances preserve top-level grouping");
+                "FBX-backed SceneAsset instances preserve top-level grouping");
     EXPECT_TRUE(rt_scene3d_find(inst_scene, rt_const_cstr("Child")) != nullptr,
-                "FBX-backed Model3D instances preserve child names");
+                "FBX-backed SceneAsset instances preserve child names");
 }
 
 static void test_model3d_imports_fbx_nodes_with_many_properties() {
@@ -2421,7 +2421,7 @@ static void test_model3d_imports_fbx_nodes_with_many_properties() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load accepts FBX nodes with many direct properties");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load accepts FBX nodes with many direct properties");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
@@ -2447,7 +2447,7 @@ static void test_model3d_loads_preloaded_fbx_bytes() {
     std::memcpy(owned, bytes.data(), bytes.size());
 
     void *model = rt_model3d_load_preloaded_fbx(rt_const_cstr(path), owned, bytes.size(), 0);
-    EXPECT_TRUE(model != nullptr, "Model3D.LoadPreloadedFBX parses staged FBX bytes");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.LoadPreloadedFBX parses staged FBX bytes");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Preloaded FBX byte path imports meshes");
@@ -2477,22 +2477,22 @@ static void test_model3d_loads_obj_as_template_asset() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses OBJ assets");
     if (!model)
         return;
 
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "OBJ-backed Model3D exposes one mesh");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "OBJ-backed SceneAsset exposes one mesh");
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
-                "OBJ-backed Model3D creates a default material");
+                "OBJ-backed SceneAsset creates a default material");
     EXPECT_TRUE(rt_model3d_get_node_count(model) == 1,
-                "OBJ-backed Model3D synthesizes one template node");
+                "OBJ-backed SceneAsset synthesizes one template node");
 
     auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
     EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
-                "OBJ-backed Model3D preserves imported mesh geometry");
+                "OBJ-backed SceneAsset preserves imported mesh geometry");
 
     void *node = rt_model3d_find_node(model, rt_const_cstr("mesh_0"));
-    EXPECT_TRUE(node != nullptr, "OBJ-backed Model3D names the synthesized mesh node");
+    EXPECT_TRUE(node != nullptr, "OBJ-backed SceneAsset names the synthesized mesh node");
     if (node) {
         EXPECT_TRUE(rt_scene_node3d_get_mesh(node) == rt_model3d_get_mesh(model, 0),
                     "OBJ synthesized node reuses the imported mesh");
@@ -2522,7 +2522,7 @@ static void test_model3d_preserves_obj_mtl_material_groups() {
     EXPECT_TRUE(write_text_file(obj_path, obj), "OBJ usemtl fixture can be written");
 
     void *model = rt_model3d_load(rt_const_cstr(obj_path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets with mtllib/usemtl");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses OBJ assets with mtllib/usemtl");
     if (!model)
         return;
 
@@ -2584,7 +2584,7 @@ static void test_model3d_imports_obj_mtl_texture_maps() {
     EXPECT_TRUE(write_text_file(obj_path, obj), "OBJ multi-mtllib texture fixture can be written");
 
     void *model = rt_model3d_load(rt_const_cstr(obj_path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets with texture maps");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses OBJ assets with texture maps");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
@@ -2621,7 +2621,7 @@ static void test_model3d_imports_quoted_obj_mtl_references() {
     EXPECT_TRUE(write_text_file(obj_path, obj), "Quoted OBJ file can be written");
 
     void *model = rt_model3d_load(rt_const_cstr(obj_path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load accepts quoted OBJ/MTL references");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load accepts quoted OBJ/MTL references");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
@@ -2662,7 +2662,7 @@ static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
     EXPECT_TRUE(write_text_file(obj_path, obj), "Sanitized OBJ fixture can be written");
 
     void *model = rt_model3d_load(rt_const_cstr(obj_path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets with clamped MTL values");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses OBJ assets with clamped MTL values");
     if (!model)
         return;
     auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
@@ -2709,19 +2709,19 @@ static void test_model3d_preserves_empty_gltf_scene_without_synth_nodes() {
     EXPECT_TRUE(write_text_file(path, gltf_json), "Empty-scene glTF fixture can be written");
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses glTF assets with an explicit empty scene");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses glTF assets with an explicit empty scene");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
-                "Model3D retains meshes that are outside an empty glTF scene");
+                "SceneAsset retains meshes that are outside an empty glTF scene");
     EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1,
-                "Model3D exposes the explicit empty glTF scene");
+                "SceneAsset exposes the explicit empty glTF scene");
     EXPECT_TRUE(rt_model3d_get_node_count(model) == 0,
-                "Model3D does not synthesize display nodes for an explicit empty glTF scene");
+                "SceneAsset does not synthesize display nodes for an explicit empty glTF scene");
     void *scene = rt_model3d_instantiate_scene_at(model, 0);
-    EXPECT_TRUE(scene != nullptr, "Model3D.InstantiateSceneAt handles explicit empty scenes");
+    EXPECT_TRUE(scene != nullptr, "SceneAsset.InstantiateSceneAt handles explicit empty scenes");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 1,
-                "Model3D empty-scene instantiation contains only the scene root");
+                "SceneAsset empty-scene instantiation contains only the scene root");
 }
 
 static void test_model3d_loads_stl_as_template_asset() {
@@ -2737,16 +2737,16 @@ static void test_model3d_loads_stl_as_template_asset() {
                       "endsolid tri\n";
     EXPECT_TRUE(write_text_file(path, stl), "ASCII STL fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses STL assets");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses STL assets");
     if (!model)
         return;
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "STL-backed Model3D exposes one mesh");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "STL-backed SceneAsset exposes one mesh");
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
-                "STL-backed Model3D creates a default material");
+                "STL-backed SceneAsset creates a default material");
     EXPECT_TRUE(rt_model3d_get_node_count(model) == 1,
-                "STL-backed Model3D synthesizes one template node");
+                "STL-backed SceneAsset synthesizes one template node");
     auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
-    EXPECT_TRUE(mesh && mesh->index_count == 3, "STL-backed Model3D preserves triangle geometry");
+    EXPECT_TRUE(mesh && mesh->index_count == 3, "STL-backed SceneAsset preserves triangle geometry");
 }
 
 static void test_model3d_loads_minimal_ascii_fbx() {
@@ -2760,7 +2760,7 @@ static void test_model3d_loads_minimal_ascii_fbx() {
                       "}\n";
     EXPECT_TRUE(write_text_file(path, fbx), "ASCII FBX fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses minimal ASCII FBX assets");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses minimal ASCII FBX assets");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "ASCII FBX exposes one mesh");
@@ -2773,7 +2773,7 @@ static void test_model3d_splits_fbx_layer_element_materials() {
     const char *path = "/tmp/viper_model3d_multimaterial_fixture.fbx";
     EXPECT_TRUE(write_fbx_multimaterial_fixture(path), "Multi-material FBX fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX LayerElementMaterial fixtures");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX LayerElementMaterial fixtures");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 2, "FBX connected materials are imported");
@@ -2820,7 +2820,7 @@ static void test_model3d_triangulates_large_fbx_ngons() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load triangulates FBX n-gons larger than 32 vertices");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load triangulates FBX n-gons larger than 32 vertices");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Large n-gon FBX fixture imports one mesh");
@@ -2846,7 +2846,7 @@ static void test_model3d_imports_fbx_embedded_textures() {
                 "Embedded-texture FBX fixture can be written");
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with embedded textures");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with embedded textures");
     if (!model)
         return;
 
@@ -2871,7 +2871,7 @@ static void test_model3d_imports_fbx_texture_aliases_and_absolute_basename_fallb
 
     void *model = rt_model3d_load(rt_const_cstr(path));
     EXPECT_TRUE(model != nullptr,
-                "Model3D.Load imports FBX texture aliases with absolute basename fallback");
+                "SceneAsset.Load imports FBX texture aliases with absolute basename fallback");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
@@ -2891,7 +2891,7 @@ static void test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX material aliases");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX material aliases");
     if (!model)
         return;
 
@@ -2930,7 +2930,7 @@ static void test_model3d_imports_fbx_secondary_uvs_and_vertex_colors() {
     EXPECT_TRUE(write_fbx_multilayer_attribute_fixture(path),
                 "FBX multi-layer attribute fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX secondary UV/color layers");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX secondary UV/color layers");
     if (!model)
         return;
     auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
@@ -2952,7 +2952,7 @@ static void test_fbx_cluster_transform_link_drives_bind_pose() {
     EXPECT_TRUE(write_fbx_cluster_transform_link_fixture(path),
                 "FBX TransformLink bind-pose fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX Cluster TransformLink bind poses");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX Cluster TransformLink bind poses");
     if (!model)
         return;
     auto *skeleton = static_cast<rt_skeleton3d *>(rt_model3d_get_skeleton(model, 0));
@@ -2973,7 +2973,7 @@ static void test_fbx_constant_animation_curve_preserves_step() {
     EXPECT_TRUE(write_fbx_constant_animation_fixture(path),
                 "FBX constant animation fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX constant animation curves");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX constant animation curves");
     if (!model)
         return;
     auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
@@ -3026,7 +3026,7 @@ static void test_model3d_loads_ascii_fbx_attributes_and_materials() {
                       "}\n";
     EXPECT_TRUE(write_text_file(path, fbx), "ASCII FBX attribute fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses ASCII FBX attributes/materials");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses ASCII FBX attributes/materials");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("AsciiNamed")) != nullptr,
@@ -3052,7 +3052,7 @@ static void test_model3d_honors_fbx_rotation_order() {
     const char *path = "/tmp/viper_model3d_rotation_order.fbx";
     EXPECT_TRUE(write_fbx_rotation_order_fixture(path), "FBX RotationOrder fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX RotationOrder properties");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX RotationOrder properties");
     if (!model)
         return;
     void *default_node = rt_model3d_find_node(model, rt_const_cstr("DefaultOrder"));
@@ -3078,7 +3078,7 @@ static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses skinned FBX assets");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses skinned FBX assets");
     if (!model)
         return;
 
@@ -3138,17 +3138,17 @@ static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
                 "Grouped FBX animation preserves default scale");
 
     void *instance = rt_model3d_instantiate(model);
-    EXPECT_TRUE(instance != nullptr, "Model3D.Instantiate creates an animated instance root");
+    EXPECT_TRUE(instance != nullptr, "SceneAsset.Instantiate creates an animated instance root");
     void *controller = instance ? rt_scene_node3d_get_animator(instance) : nullptr;
     EXPECT_TRUE(controller != nullptr,
-                "Model3D.Instantiate auto-binds a controller for imported skeleton animations");
+                "SceneAsset.Instantiate auto-binds a controller for imported skeleton animations");
     if (controller) {
         EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 1,
-                    "Auto-bound Model3D controller registers imported clips as states");
+                    "Auto-bound SceneAsset controller registers imported clips as states");
         rt_string state = rt_anim_controller3d_get_current_state(controller);
         const char *state_name = state ? rt_string_cstr(state) : "";
         EXPECT_TRUE(std::strcmp(state_name, "Walk") == 0,
-                    "Auto-bound Model3D controller starts the first imported animation");
+                    "Auto-bound SceneAsset controller starts the first imported animation");
     }
 }
 
@@ -3160,7 +3160,7 @@ static void test_fbx_duplicate_animation_curves_keep_first_component() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with duplicate animation curves");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with duplicate animation curves");
     if (!model)
         return;
 
@@ -3198,7 +3198,7 @@ static void test_fbx_mismatched_animation_curve_key_arrays_are_ignored() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with malformed animation curves");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with malformed animation curves");
     if (!model)
         return;
 
@@ -3236,7 +3236,7 @@ static void test_fbx_bare_animation_curve_component_names_import() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with bare animation components");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with bare animation components");
     if (!model)
         return;
 
@@ -3275,7 +3275,7 @@ static void test_fbx_lowercase_animation_curve_component_names_import() {
 
     void *model = rt_model3d_load(rt_const_cstr(path));
     EXPECT_TRUE(model != nullptr,
-                "Model3D.Load parses FBX assets with lowercase animation components");
+                "SceneAsset.Load parses FBX assets with lowercase animation components");
     if (!model)
         return;
 
@@ -3314,7 +3314,7 @@ static void test_fbx_negative_animation_key_times_normalize_to_clip_start() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with negative animation keys");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with negative animation keys");
     if (!model)
         return;
 
@@ -3360,7 +3360,7 @@ static void test_fbx_animation_layers_beyond_fixed_cap_import() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with many animation layers");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with many animation layers");
     if (!model)
         return;
 
@@ -3393,7 +3393,7 @@ static void test_fbx_animation_curve_nodes_beyond_fixed_cap_import() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with many animation curve nodes");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with many animation curve nodes");
     if (!model)
         return;
 
@@ -3426,7 +3426,7 @@ static void test_fbx_duplicate_bone_names_resolve_by_model_id() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with duplicate bone names");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses FBX assets with duplicate bone names");
     if (!model)
         return;
 
@@ -3626,16 +3626,16 @@ static void test_model3d_rejects_truncated_fbx() {
         return;
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model == nullptr, "Model3D.Load returns null for truncated FBX input");
+    EXPECT_TRUE(model == nullptr, "SceneAsset.Load returns null for truncated FBX input");
     EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
-                "Model3D.Load records an error for truncated FBX input");
+                "SceneAsset.Load records an error for truncated FBX input");
     EXPECT_TRUE(rt_asset_error_get_message() != nullptr &&
                     std::strlen(rt_asset_error_get_message()) > 0,
-                "Model3D.Load exposes a non-empty truncated FBX error");
+                "SceneAsset.Load exposes a non-empty truncated FBX error");
     std::remove(path);
 }
 
-/// @brief Verify missing FBX files are recoverable through the high-level Model3D API.
+/// @brief Verify missing FBX files are recoverable through the high-level SceneAsset API.
 /// @details Content loaders report missing files as NULL plus last-error state so fallback asset
 /// flows can continue without aborting the program.
 static void test_model3d_missing_fbx_returns_null_without_trap() {
@@ -3643,9 +3643,9 @@ static void test_model3d_missing_fbx_returns_null_without_trap() {
     std::remove(path);
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model == nullptr, "Model3D.Load returns null for missing FBX files");
+    EXPECT_TRUE(model == nullptr, "SceneAsset.Load returns null for missing FBX files");
     EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
-                "Model3D.Load records an error for missing FBX files");
+                "SceneAsset.Load records an error for missing FBX files");
 }
 
 static void test_model3d_loads_demo_fbx_textures() {
@@ -3661,7 +3661,7 @@ static void test_model3d_loads_demo_fbx_textures() {
     }
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load parses the 3dbaseball FBX asset");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load parses the 3dbaseball FBX asset");
     if (!model)
         return;
 
@@ -3757,30 +3757,30 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
         "}";
     EXPECT_TRUE(write_text_file(path, gltf_json), "Node-animation glTF fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load imports glTF node animation clips");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load imports glTF node animation clips");
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_node_animation_count(model) == 1,
-                "Model3D.NodeAnimationCount exposes imported glTF node clips");
+                "SceneAsset.NodeAnimationCount exposes imported glTF node clips");
     void *borrowed_clip = rt_model3d_get_node_animation(model, 0);
-    EXPECT_TRUE(borrowed_clip != nullptr, "Model3D.GetNodeAnimation borrows imported node clips");
+    EXPECT_TRUE(borrowed_clip != nullptr, "SceneAsset.GetNodeAnimation borrows imported node clips");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_node_animation_name(model, 0)),
                             "MoveAndSmile") == 0,
-                "Model3D.GetNodeAnimationName exposes imported node clip names");
+                "SceneAsset.GetNodeAnimationName exposes imported node clip names");
     void *loaded_node_clip = rt_model3d_load_node_animation(rt_const_cstr(path), 0);
     EXPECT_TRUE(loaded_node_clip != nullptr,
-                "Model3D.LoadNodeAnimation returns a retained external node clip");
+                "SceneAsset.LoadNodeAnimation returns a retained external node clip");
     if (loaded_node_clip) {
         EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_node_animation3d_get_name(loaded_node_clip)),
                                 "MoveAndSmile") == 0,
-                    "Model3D.LoadNodeAnimation preserves node clip names");
+                    "SceneAsset.LoadNodeAnimation preserves node clip names");
         if (rt_obj_release_check0(loaded_node_clip))
             rt_obj_free(loaded_node_clip);
     }
     EXPECT_TRUE(rt_model3d_load_animation(rt_const_cstr(path), 0) == nullptr,
-                "Model3D.LoadAnimation returns null when a file has no skeletal clips");
+                "SceneAsset.LoadAnimation returns null when a file has no skeletal clips");
     void *scene = rt_model3d_instantiate_scene(model);
-    EXPECT_TRUE(scene != nullptr, "Model3D.InstantiateScene creates a scene for node animation");
+    EXPECT_TRUE(scene != nullptr, "SceneAsset.InstantiateScene creates a scene for node animation");
     if (!scene)
         return;
     rt_scene3d_sync_bindings(scene, 0.5);
@@ -3791,7 +3791,7 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
     EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(node)),
                 1.0,
                 0.001,
-                "Scene3D.SyncBindings advances glTF node translation animation");
+                "SceneGraph.SyncBindings advances glTF node translation animation");
     auto *mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(node));
     EXPECT_TRUE(mesh != nullptr && mesh->morph_targets_ref != nullptr,
                 "Animated glTF node keeps an instance-local morph target");
@@ -3799,7 +3799,7 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
         EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 0),
                     0.5,
                     0.001,
-                    "Scene3D.SyncBindings advances glTF morph weight animation");
+                    "SceneGraph.SyncBindings advances glTF morph weight animation");
     }
     std::remove(path);
 }
@@ -3861,11 +3861,11 @@ static void test_gltf_short_node_weights_clear_morph_tail() {
         "}";
     EXPECT_TRUE(write_text_file(path, gltf_json), "Short node-weights glTF fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load imports glTF with short node weights");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load imports glTF with short node weights");
     if (!model)
         return;
     void *scene = rt_model3d_instantiate_scene(model);
-    EXPECT_TRUE(scene != nullptr, "Model3D.InstantiateScene creates short-weights scene");
+    EXPECT_TRUE(scene != nullptr, "SceneAsset.InstantiateScene creates short-weights scene");
     if (!scene)
         return;
     void *node = rt_scene3d_find(scene, rt_const_cstr("ShortWeights"));
@@ -4023,23 +4023,23 @@ static void test_gltf_rejects_oversized_morph_weight_animation_width() {
 static void test_model3d_rejects_wrong_handle_types() {
     void *node = rt_scene_node3d_new();
     EXPECT_TRUE(rt_model3d_get_mesh_count(node) == 0,
-                "Model3D.GetMeshCount rejects non-Model3D handles");
+                "SceneAsset.GetMeshCount rejects non-SceneAsset handles");
     EXPECT_TRUE(rt_model3d_get_scene_count(node) == 0,
-                "Model3D.SceneCount rejects non-Model3D handles");
+                "SceneAsset.SceneCount rejects non-SceneAsset handles");
     EXPECT_TRUE(rt_model3d_get_camera_count(node, 0) == 0,
-                "Model3D.GetCameraCount rejects non-Model3D handles");
+                "SceneAsset.GetCameraCount rejects non-SceneAsset handles");
     EXPECT_TRUE(rt_model3d_get_camera(node, 0, 0) == nullptr,
-                "Model3D.GetCamera rejects non-Model3D handles");
+                "SceneAsset.GetCamera rejects non-SceneAsset handles");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(node, 0)), "") == 0,
-                "Model3D.GetSceneName rejects non-Model3D handles");
+                "SceneAsset.GetSceneName rejects non-SceneAsset handles");
     EXPECT_TRUE(rt_model3d_get_mesh(node, 0) == nullptr,
-                "Model3D.GetMesh rejects non-Model3D handles");
+                "SceneAsset.GetMesh rejects non-SceneAsset handles");
     EXPECT_TRUE(rt_model3d_instantiate(node) == nullptr,
-                "Model3D.Instantiate rejects non-Model3D handles");
+                "SceneAsset.Instantiate rejects non-SceneAsset handles");
     EXPECT_TRUE(rt_model3d_instantiate_scene(node) == nullptr,
-                "Model3D.InstantiateScene rejects non-Model3D handles");
+                "SceneAsset.InstantiateScene rejects non-SceneAsset handles");
     EXPECT_TRUE(rt_model3d_instantiate_scene_at(node, 0) == nullptr,
-                "Model3D.InstantiateSceneAt rejects non-Model3D handles");
+                "SceneAsset.InstantiateSceneAt rejects non-SceneAsset handles");
 }
 
 static void test_model3d_binds_first_valid_default_skeletal_animator_for_multiple_skeletons() {
@@ -4048,25 +4048,25 @@ static void test_model3d_binds_first_valid_default_skeletal_animator_for_multipl
                       "v 1 0 0\n"
                       "v 0 1 0\n"
                       "f 1 2 3\n";
-    EXPECT_TRUE(write_text_file(path, obj), "Model3D multi-skeleton OBJ fixture is written");
+    EXPECT_TRUE(write_text_file(path, obj), "SceneAsset multi-skeleton OBJ fixture is written");
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load creates fixture for multi-skeleton auto-bind test");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load creates fixture for multi-skeleton auto-bind test");
     if (!model)
         return;
 
-    auto *view = static_cast<Model3DView *>(model);
+    auto *view = static_cast<SceneAssetView *>(model);
     view->skeletons = static_cast<void **>(std::calloc(2, sizeof(void *)));
     view->animations = static_cast<void **>(std::calloc(2, sizeof(void *)));
     EXPECT_TRUE(view->skeletons && view->animations,
-                "Model3D multi-skeleton auto-bind arrays allocate");
+                "SceneAsset multi-skeleton auto-bind arrays allocate");
     if (!view->skeletons || !view->animations)
         return;
 
     view->skeletons[0] = rt_skeleton3d_new();
     view->skeletons[1] = rt_skeleton3d_new();
     EXPECT_TRUE(view->skeletons[0] && view->skeletons[1],
-                "Model3D multi-skeleton auto-bind skeletons allocate");
+                "SceneAsset multi-skeleton auto-bind skeletons allocate");
     if (!view->skeletons[0] || !view->skeletons[1])
         return;
     rt_skeleton3d_add_bone(view->skeletons[0], rt_const_cstr("root_a"), -1, rt_mat4_identity());
@@ -4082,18 +4082,18 @@ static void test_model3d_binds_first_valid_default_skeletal_animator_for_multipl
     view->animation_capacity = 2;
 
     auto *instance = static_cast<rt_scene_node3d *>(rt_model3d_instantiate(model));
-    EXPECT_TRUE(instance != nullptr, "Model3D.Instantiate succeeds for multi-skeleton fixture");
+    EXPECT_TRUE(instance != nullptr, "SceneAsset.Instantiate succeeds for multi-skeleton fixture");
     void *controller = instance ? rt_scene_node3d_get_animator(instance) : nullptr;
     EXPECT_TRUE(controller != nullptr,
-                "Model3D binds a default skeletal animator when multiple skeletons are present");
+                "SceneAsset binds a default skeletal animator when multiple skeletons are present");
     if (controller) {
         EXPECT_TRUE(rt_anim_controller3d_get_skeleton(controller) == view->skeletons[0],
-                    "Model3D default animator uses the first valid imported skeleton");
+                    "SceneAsset default animator uses the first valid imported skeleton");
         EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 2,
-                    "Model3D default animator keeps all imported clips for multi-skeleton assets");
+                    "SceneAsset default animator keeps all imported clips for multi-skeleton assets");
         EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_anim_controller3d_get_current_state(controller)),
                                 "clip_a") == 0,
-                    "Model3D default animator starts the first imported clip");
+                    "SceneAsset default animator starts the first imported clip");
     }
 
     std::remove(path);
@@ -4105,74 +4105,74 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
                       "v 1 0 0\n"
                       "v 0 1 0\n"
                       "f 1 2 3\n";
-    EXPECT_TRUE(write_text_file(path, obj), "Model3D corrupt-count OBJ fixture is written");
+    EXPECT_TRUE(write_text_file(path, obj), "SceneAsset corrupt-count OBJ fixture is written");
 
     void *model = rt_model3d_load(rt_const_cstr(path));
-    EXPECT_TRUE(model != nullptr, "Model3D.Load creates fixture for corrupt-count test");
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load creates fixture for corrupt-count test");
     if (!model)
         return;
 
-    auto *view = static_cast<Model3DView *>(model);
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Model3D fixture starts with one mesh");
+    auto *view = static_cast<SceneAssetView *>(model);
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "SceneAsset fixture starts with one mesh");
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
-                "Model3D fixture starts with one material");
-    EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1, "Model3D fixture starts with one scene");
+                "SceneAsset fixture starts with one material");
+    EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1, "SceneAsset fixture starts with one scene");
 
     view->mesh_count = 50;
     view->mesh_capacity = 1;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
-                "Model3D mesh count clamps to backing capacity");
+                "SceneAsset mesh count clamps to backing capacity");
     EXPECT_TRUE(rt_model3d_get_mesh(model, 0) != nullptr,
-                "Model3D still exposes valid mesh within clamped count");
+                "SceneAsset still exposes valid mesh within clamped count");
     EXPECT_TRUE(rt_model3d_get_mesh(model, 1) == nullptr,
-                "Model3D rejects mesh index beyond clamped count");
+                "SceneAsset rejects mesh index beyond clamped count");
     if (view->meshes && view->materials) {
         void *saved_mesh_entry = view->meshes[0];
         void *saved_material_entry = view->materials[0];
         view->meshes[0] = saved_material_entry;
         EXPECT_TRUE(rt_model3d_get_mesh(model, 0) == nullptr,
-                    "Model3D.GetMesh rejects wrong-class entries in corrupt mesh tables");
+                    "SceneAsset.GetMesh rejects wrong-class entries in corrupt mesh tables");
         view->meshes[0] = saved_mesh_entry;
         view->materials[0] = saved_mesh_entry;
         EXPECT_TRUE(rt_model3d_get_material(model, 0) == nullptr,
-                    "Model3D.GetMaterial rejects wrong-class entries in corrupt material tables");
+                    "SceneAsset.GetMaterial rejects wrong-class entries in corrupt material tables");
         view->materials[0] = saved_material_entry;
     }
 
     view->material_count = -5;
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 0,
-                "Model3D negative material count reads as empty");
+                "SceneAsset negative material count reads as empty");
     EXPECT_TRUE(rt_model3d_get_material(model, 0) == nullptr,
-                "Model3D rejects material access when count is corrupt-negative");
+                "SceneAsset rejects material access when count is corrupt-negative");
 
     view->scene_count = 50;
     view->scene_capacity = 1;
     EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1,
-                "Model3D scene count clamps to backing capacity");
+                "SceneAsset scene count clamps to backing capacity");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 1)), "") == 0,
-                "Model3D rejects scene-name access beyond clamped count");
+                "SceneAsset rejects scene-name access beyond clamped count");
     EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 1) == nullptr,
-                "Model3D rejects scene instantiation beyond clamped count");
+                "SceneAsset rejects scene instantiation beyond clamped count");
 
     if (view->scenes) {
         view->scenes[0].camera_count = 99;
         view->scenes[0].camera_capacity = 0;
         view->scenes[0].cameras = nullptr;
         EXPECT_TRUE(rt_model3d_get_camera_count(model, 0) == 0,
-                    "Model3D camera count clamps to a missing camera array");
+                    "SceneAsset camera count clamps to a missing camera array");
         EXPECT_TRUE(rt_model3d_get_camera(model, 0, 0) == nullptr,
-                    "Model3D rejects camera access when camera array is missing");
+                    "SceneAsset rejects camera access when camera array is missing");
         view->scenes[0].cameras = static_cast<void **>(std::calloc(1, sizeof(void *)));
         EXPECT_TRUE(view->scenes[0].cameras != nullptr,
-                    "Model3D corrupt camera table test array allocates");
+                    "SceneAsset corrupt camera table test array allocates");
         if (view->scenes[0].cameras) {
             view->scenes[0].cameras[0] = rt_material3d_new_color(0.8, 0.2, 0.2);
             view->scenes[0].camera_count = 1;
             view->scenes[0].camera_capacity = 1;
             EXPECT_TRUE(rt_model3d_get_camera_count(model, 0) == 1,
-                        "Model3D camera count exposes corrupt but backed camera table");
+                        "SceneAsset camera count exposes corrupt but backed camera table");
             EXPECT_TRUE(rt_model3d_get_camera(model, 0, 0) == nullptr,
-                        "Model3D.GetCamera rejects wrong-class entries in corrupt camera tables");
+                        "SceneAsset.GetCamera rejects wrong-class entries in corrupt camera tables");
         }
     }
 
@@ -4180,23 +4180,23 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
         view->template_root->child_count = 99;
         view->template_root->child_capacity = 1;
         EXPECT_TRUE(rt_model3d_get_node_count(model) == 1,
-                    "Model3D node counting clamps corrupt root child count");
+                    "SceneAsset node counting clamps corrupt root child count");
         EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("mesh_0")) != nullptr,
-                    "Model3D.FindNode still finds valid children under clamped count");
+                    "SceneAsset.FindNode still finds valid children under clamped count");
         EXPECT_TRUE(rt_model3d_instantiate(model) != nullptr,
-                    "Model3D.Instantiate clamps corrupt root child count while cloning");
+                    "SceneAsset.Instantiate clamps corrupt root child count while cloning");
         EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 0) != nullptr,
-                    "Model3D.InstantiateSceneAt clamps corrupt scene root child count");
+                    "SceneAsset.InstantiateSceneAt clamps corrupt scene root child count");
 
         rt_scene_node3d *saved_child = view->template_root->children[0];
         view->template_root->children[0] = nullptr;
         void *empty_instance = rt_model3d_instantiate(model);
         EXPECT_TRUE(empty_instance != nullptr,
-                    "Model3D.Instantiate skips null child slots in corrupt templates");
+                    "SceneAsset.Instantiate skips null child slots in corrupt templates");
         EXPECT_TRUE(rt_scene_node3d_child_count(empty_instance) == 0,
-                    "Model3D null child slots do not appear in cloned instances");
+                    "SceneAsset null child slots do not appear in cloned instances");
         EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 0) != nullptr,
-                    "Model3D.InstantiateSceneAt skips null child slots in corrupt scenes");
+                    "SceneAsset.InstantiateSceneAt skips null child slots in corrupt scenes");
         view->template_root->children[0] = saved_child;
 
         if (saved_child && view->materials && view->materials[0] && view->meshes &&
@@ -4208,7 +4208,7 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
                                        ? bad_mesh_instance->children[0]
                                        : nullptr;
             EXPECT_TRUE(bad_mesh_child && bad_mesh_child->mesh == nullptr,
-                        "Model3D.Instantiate drops wrong-class template mesh slots");
+                        "SceneAsset.Instantiate drops wrong-class template mesh slots");
             saved_child->mesh = saved_mesh;
 
             rt_scene_node3d_add_lod(saved_child, 4.0, view->meshes[0]);
@@ -4221,7 +4221,7 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
                                           ? bad_lod_instance->children[0]
                                           : nullptr;
                 EXPECT_TRUE(bad_lod_child && rt_scene_node3d_get_lod_count(bad_lod_child) == 0,
-                            "Model3D.Instantiate drops wrong-class template LOD mesh slots");
+                            "SceneAsset.Instantiate drops wrong-class template LOD mesh slots");
                 saved_child->lod_levels[0].mesh = saved_lod_mesh;
             }
         }
@@ -4231,7 +4231,7 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
     view->animations = static_cast<void **>(std::calloc(2, sizeof(void *)));
     view->node_animations = static_cast<void **>(std::calloc(2, sizeof(void *)));
     EXPECT_TRUE(view->skeletons && view->animations && view->node_animations,
-                "Model3D corrupt animation-list test arrays allocate");
+                "SceneAsset corrupt animation-list test arrays allocate");
     if (view->skeletons && view->animations && view->node_animations) {
         view->skeletons[0] = rt_material3d_new_color(0.3, 0.4, 0.5);
         view->skeletons[1] = rt_skeleton3d_new();
@@ -4246,20 +4246,20 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
         view->node_animation_count = 99;
         view->node_animation_capacity = 2;
         EXPECT_TRUE(rt_model3d_get_skeleton(model, 0) == nullptr,
-                    "Model3D.GetSkeleton rejects wrong-class entries in corrupt skeleton tables");
+                    "SceneAsset.GetSkeleton rejects wrong-class entries in corrupt skeleton tables");
         EXPECT_TRUE(rt_model3d_get_skeleton(model, 1) == view->skeletons[1],
-                    "Model3D.GetSkeleton still returns valid clamped skeleton entries");
+                    "SceneAsset.GetSkeleton still returns valid clamped skeleton entries");
         EXPECT_TRUE(rt_model3d_get_animation(model, 0) == nullptr,
-                    "Model3D.GetAnimation rejects wrong-class entries in corrupt animation tables");
+                    "SceneAsset.GetAnimation rejects wrong-class entries in corrupt animation tables");
         EXPECT_TRUE(rt_model3d_get_animation(model, 1) == view->animations[1],
-                    "Model3D.GetAnimation still returns valid clamped animation entries");
+                    "SceneAsset.GetAnimation still returns valid clamped animation entries");
 
         void *animated_instance = rt_model3d_instantiate(model);
         auto *animated_root = static_cast<rt_scene_node3d *>(animated_instance);
         EXPECT_TRUE(animated_root && animated_root->bound_animator,
-                    "Model3D default skeletal animator skips null/corrupt animation slots");
+                    "SceneAsset default skeletal animator skips null/corrupt animation slots");
         EXPECT_TRUE(animated_root && animated_root->bound_node_animator,
-                    "Model3D default node animator compacts null/corrupt clip slots");
+                    "SceneAsset default node animator compacts null/corrupt clip slots");
     }
 
     std::remove(path);
@@ -4315,6 +4315,6 @@ int main() {
     test_gltf_rejects_oversized_morph_weight_animation_width();
     test_model3d_autoplays_gltf_node_and_morph_animation();
     test_gltf_short_node_weights_clear_morph_tail();
-    std::printf("Model3D tests: %d/%d passed\n", tests_passed, tests_run);
+    std::printf("SceneAsset tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

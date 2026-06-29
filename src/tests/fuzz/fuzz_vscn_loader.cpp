@@ -6,14 +6,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/fuzz/fuzz_vscn_loader.cpp
-// Purpose: libFuzzer harness for Scene3D .vscn loading.
+// Purpose: libFuzzer harness for SceneGraph .vscn loading.
 //
 // Key invariants:
 //   - Input size is capped before spilling to a temporary file.
 //   - Malformed scenes must return NULL with diagnostics, never trap.
 //
 // Ownership/Lifetime:
-//   - Temporary files and returned Scene3D handles are released each iteration.
+//   - Temporary files and returned SceneGraph handles are released each iteration.
 //
 // Links: src/runtime/graphics/3d/scene/rt_scene3d.h, fuzz_3d_helpers.hpp
 //

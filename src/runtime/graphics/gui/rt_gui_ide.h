@@ -23,6 +23,8 @@ extern "C" {
 #define RT_GUI_VIRTUAL_LIST_CLASS_ID INT64_C(-0x475549564c495354)
 #define RT_GUI_VIRTUAL_TREE_CLASS_ID INT64_C(-0x4755495654524545)
 #define RT_GUI_COMMAND_STATE_CLASS_ID INT64_C(-0x475549434d445354)
+#define RT_GUI_COMMAND_CLASS_ID INT64_C(-0x475549434f4d4e44)    // tag "GUICOMND"
+#define RT_GUI_COMMAND_REGISTRY_CLASS_ID INT64_C(-0x475549434d445247) // tag "GUICMDRG"
 
 // --- Headless GUI test harness: register synthetic widgets, drive input, and
 //     assert on the result without a real window. ---
@@ -126,6 +128,62 @@ void rt_command_state_set_accessible(void *state, rt_string label, rt_string des
 /// @brief Snapshot the command state as a Map (id, label, accessibleLabel,
 ///        accessibleDescription, enabled, checked).
 void *rt_command_state_snapshot(void *state);
+
+// --- Command: a UI action bound to its menu item, toolbar button, keyboard
+//     shortcut and command-palette entry, polled from one place. ---
+/// @brief Create a command identified by @p id with display @p title (enabled by default).
+void *rt_command_new(rt_string id, rt_string title);
+/// @brief Return the command's stable id.
+rt_string rt_command_get_id(void *command);
+/// @brief Return the command's display title.
+rt_string rt_command_get_title(void *command);
+/// @brief Set the command's keyboard shortcut chord (e.g. "Ctrl+B") and register it with the
+///        global Viper.GUI.Shortcuts registry under the command id (best-effort if no app yet).
+void rt_command_set_shortcut(void *command, rt_string keys);
+/// @brief Return the command's shortcut chord (empty string if none).
+rt_string rt_command_get_shortcut(void *command);
+/// @brief Set whether the command is enabled; pushed to bound widgets.
+void rt_command_set_enabled(void *command, int8_t enabled);
+/// @brief Return 1 if the command is enabled.
+int8_t rt_command_is_enabled(void *command);
+/// @brief Set whether the command is checkable (a toggle); pushed to a bound menu item.
+void rt_command_set_checkable(void *command, int8_t checkable);
+/// @brief Return 1 if the command is checkable.
+int8_t rt_command_is_checkable(void *command);
+/// @brief Set the command's checked (toggled-on) state; pushed to bound widgets.
+void rt_command_set_checked(void *command, int8_t checked);
+/// @brief Return 1 if the command is checked.
+int8_t rt_command_is_checked(void *command);
+/// @brief Bind a Viper.GUI.MenuItem the command should read (clicks) and drive (enabled/checked).
+void rt_command_bind_menu_item(void *command, void *item);
+/// @brief Bind a Viper.GUI.ToolbarItem the command should read (clicks) and drive (enabled/toggled).
+void rt_command_bind_toolbar_item(void *command, void *item);
+/// @brief Poll a standalone command: read bound menu/toolbar/shortcut, push state to bound
+///        widgets, and return 1 if invoked this frame (disabled commands never report invoked).
+int8_t rt_command_poll(void *command);
+/// @brief Return the invoked flag computed by the most recent command- or registry-level poll.
+int8_t rt_command_was_invoked(void *command);
+/// @brief Snapshot the command as a Map (id, title, shortcut, enabled, checkable, checked, invoked).
+void *rt_command_snapshot(void *command);
+
+// --- Command registry: owns a set of commands and routes menu/toolbar/shortcut/palette
+//     to them in a single per-frame poll. ---
+/// @brief Create an empty command registry.
+void *rt_command_registry_new(void);
+/// @brief Add (retain) a command to the registry; ignored if @p command is not a Command or already present.
+void rt_command_registry_add(void *registry, void *command);
+/// @brief Return the number of commands in the registry.
+int64_t rt_command_registry_count(void *registry);
+/// @brief Return the command with id @p id (a retained reference), or NULL if none.
+void *rt_command_registry_find(void *registry, rt_string id);
+/// @brief Bind the Viper.GUI.CommandPalette whose selection routes to registered commands.
+void rt_command_registry_bind_palette(void *registry, void *palette);
+/// @brief Poll the palette once and every command (menu/toolbar/shortcut/palette); push state.
+/// @return The id of a command invoked this frame, or the empty string. Each command's
+///         WasInvoked() flag is updated.
+rt_string rt_command_registry_poll(void *registry);
+/// @brief Release all commands and empty the registry.
+void rt_command_registry_clear(void *registry);
 
 // --- Accessibility: WCAG contrast math and high-contrast theme tokens. ---
 /// @brief Compute the WCAG relative-luminance contrast ratio between two 0xRRGGBB colors.

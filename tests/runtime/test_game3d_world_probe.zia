@@ -64,14 +64,14 @@ func start() {
         return;
     }
 
-    var rawRoot = G3D.SceneNode3D.New();
-    var rawChild = G3D.SceneNode3D.New();
-    G3D.SceneNode3D.set_Name(rawRoot, "ImportedRoot");
-    G3D.SceneNode3D.set_Name(rawChild, "ImportedChild");
-    G3D.SceneNode3D.AddChild(rawRoot, rawChild);
+    var rawRoot = G3D.SceneNode.New();
+    var rawChild = G3D.SceneNode.New();
+    G3D.SceneNode.set_Name(rawRoot, "ImportedRoot");
+    G3D.SceneNode.set_Name(rawChild, "ImportedChild");
+    G3D.SceneNode.AddChild(rawRoot, rawChild);
     var imported = Game3D.Entity3D.FromNode(rawRoot);
     if (imported == null || Game3D.Entity3D.isGroup(imported) == false) {
-        fail("Entity3D.FromNode did not wrap a raw SceneNode3D subtree");
+        fail("Entity3D.FromNode did not wrap a raw SceneNode subtree");
         return;
     }
     Game3D.World3D.spawn(world, imported);

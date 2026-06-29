@@ -8,12 +8,12 @@ func start() {
     var mesh = Mesh3D.NewPlane(20.0, 20.0);
     var nav = NavMesh3D.Build(mesh, 0.4, 1.8);
 
-    var scene = Scene3D.New();
-    var parent = SceneNode3D.New();
-    var child = SceneNode3D.New();
-    SceneNode3D.SetPosition(parent, 2.0, 0.0, 1.0);
-    SceneNode3D.AddChild(parent, child);
-    Scene3D.Add(scene, parent);
+    var scene = SceneGraph.New();
+    var parent = SceneNode.New();
+    var child = SceneNode.New();
+    SceneNode.SetPosition(parent, 2.0, 0.0, 1.0);
+    SceneNode.AddChild(parent, child);
+    SceneGraph.Add(scene, parent);
 
     var agent = NavAgent3D.New(nav, 0.4, 1.8);
     NavAgent3D.BindNode(agent, child);
@@ -28,10 +28,10 @@ func start() {
         i = i + 1;
     }
 
-    var worldPos = Mat4.TransformPoint(SceneNode3D.get_WorldMatrix(child), Vec3.Zero());
+    var worldPos = Mat4.TransformPoint(SceneNode.get_WorldMatrix(child), Vec3.Zero());
     if (Vec3.get_X(worldPos) < 3.65 || Vec3.get_X(worldPos) > 4.35 || Vec3.get_Z(worldPos) < 3.65 ||
         Vec3.get_Z(worldPos) > 4.35) {
-        Say("FAIL: NavAgent3D should drive a bound SceneNode3D to the target in world space");
+        Say("FAIL: NavAgent3D should drive a bound SceneNode to the target in world space");
         return;
     }
     if (NavAgent3D.get_HasPath(agent) != false) {

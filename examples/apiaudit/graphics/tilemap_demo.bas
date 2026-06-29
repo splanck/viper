@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Graphics.Tilemap ==="
+PRINT "=== API Audit: Viper.Graphics2D.Tilemap ==="
 PRINT "NOTE: Graphics classes require a canvas/window. API surface test only."
 PRINT "Constructor: New(width, height, tileW, tileH)"
 PRINT "Properties: get_Width, get_Height, get_TileWidth, get_TileHeight"

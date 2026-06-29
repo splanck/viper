@@ -27,7 +27,7 @@ All examples are in [`examples/games/`](../../../examples/games/). Each game is 
 The flagship game demo showcasing the full Viper game engine. Features 25+ enemy types, 10 JSON-based levels, parallax scrolling, particle effects, lighting, abilities (dash, charge, ground pound), world map, save system, achievement tracking, and 11 WAV sound files.
 
 **Engine features demonstrated:**
-Canvas, Entity, Behavior, AnimStateMachine, PlatformerController, Camera (smooth follow + parallax), Tilemap, SpriteBatch, SoundBank + Synth, ScreenFX (shake, fade, transitions), ParticleEmitter, Lighting2D, StateMachine, SceneManager, LevelData, Config, GameUI, Dialogue, Timer, ObjectPool, AchievementTracker, DebugOverlay
+Canvas, Entity, Behavior, AnimStateMachine, PlatformerController, Camera (smooth follow + parallax), Tilemap, SpriteBatch, SoundBank + Synth, ScreenFX (shake, fade, transitions), ParticleEmitter, Lighting2D, StateMachine, SceneManager, LevelDocument, Config, GameUI, Dialogue, Timer, ObjectPool, AchievementTracker, DebugOverlay
 
 **Source:** [`examples/games/xenoscape/`](../../../examples/games/xenoscape/)
 
@@ -149,7 +149,7 @@ Which example games demonstrate which engine systems:
 | ButtonGroup | | | x | | |
 | GameUI | x | | | | |
 | SceneManager | x | | | | |
-| LevelData | x | | | | |
+| LevelDocument | x | | | | |
 | Config | x | x | x | x | |
 | Lighting2D | x | | | | | |
 | Save System | x | | | | | |
