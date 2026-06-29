@@ -1,0 +1,106 @@
+module search_request;
+
+bind "../services/search_paths";
+
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: search_request
+// PURPOSE: Explicit request object for project-wide text search.
+//
+// WHERE-THIS-FITS: commands/search_commands.zia owns UI prompts, async pumping,
+//          and result rendering. search_matcher owns line matching, and
+//          search_paths owns path filtering. This module owns the normalized
+//          search parameters passed between those layers.
+//
+// TEACHING-NOTE: When a feature accumulates many parameters, give the parameter
+//          set a name. A request object documents which values travel together
+//          and creates one place for defaults and normalization.
+// ============================================================================
+
+/// @brief Default file extensions searched when the user leaves kinds blank.
+/// @return Comma-separated extension allow-list.
+expose func DefaultFileKinds() -> String {
+    return ".zia,.bas,.vb,.json,.md,.scene,.level";
+}
+
+/// @brief Normalized set of options for one search run.
+/// @details `rootPath` is the scope being searched. `ignorePatterns`,
+///          `includeGlobs`, and `excludeGlobs` are normalized comma-separated
+///          lists so downstream search code can compare paths directly.
+class SearchRequest {
+    expose String rootPath;
+    expose String query;
+    expose String fileKinds;
+    expose String ignorePatterns;
+    expose String includeGlobs;
+    expose String excludeGlobs;
+    expose Boolean caseSensitive;
+    expose Boolean wholeWord;
+    expose Boolean regexMode;
+
+    /// @brief Initialize an empty request.
+    expose func init() {
+        rootPath = "";
+        query = "";
+        fileKinds = "";
+        ignorePatterns = "";
+        includeGlobs = "";
+        excludeGlobs = "";
+        caseSensitive = false;
+        wholeWord = false;
+        regexMode = false;
+    }
+}
+
+/// @brief Build and normalize a search request from UI or probe input.
+/// @param rootPath Directory scope for the search.
+/// @param query Literal text or regex pattern to find.
+/// @param requestedKinds Comma-separated extension allow-list; blank uses defaults.
+/// @param requestedCase True for case-sensitive matching.
+/// @param requestedWholeWord True to require whole-word matches.
+/// @param requestedRegexMode True to interpret the query as editor-search regex.
+/// @param requestedIncludeGlobs Raw include glob list from UI/probes.
+/// @param requestedExcludeGlobs Raw exclude glob list from UI/probes.
+/// @param requestedIgnorePatterns Project ignore list to merge with discovery.
+/// @return Normalized request ready for SearchController state.
+expose func Create(rootPath: String,
+                   query: String,
+                   requestedKinds: String,
+                   requestedCase: Boolean,
+                   requestedWholeWord: Boolean,
+                   requestedRegexMode: Boolean,
+                   requestedIncludeGlobs: String,
+                   requestedExcludeGlobs: String,
+                   requestedIgnorePatterns: String) -> SearchRequest {
+    var request = new SearchRequest();
+    request.rootPath = rootPath;
+    request.query = query;
+    request.fileKinds = NormalizeFileKinds(requestedKinds);
+    request.ignorePatterns = search_paths.NormalizeSearchGlobList(requestedIgnorePatterns);
+    request.includeGlobs = search_paths.NormalizeSearchGlobList(requestedIncludeGlobs);
+    request.excludeGlobs = search_paths.NormalizeSearchGlobList(requestedExcludeGlobs);
+    request.caseSensitive = requestedCase;
+    request.wholeWord = requestedWholeWord;
+    request.regexMode = requestedRegexMode;
+    return request;
+}
+
+/// @brief Normalize the file extension allow-list for search discovery.
+/// @param requestedKinds Raw comma-separated extension text.
+/// @return Compact comma-separated extension list, or the default list.
+expose func NormalizeFileKinds(requestedKinds: String) -> String {
+    var kinds = Str.Replace(requestedKinds, " ", "");
+    if kinds == "" {
+        kinds = DefaultFileKinds();
+    }
+    return kinds;
+}
+
+/// @brief Test whether a request has the minimum fields needed to run.
+/// @param request Request to validate.
+/// @return True when both root path and query are present.
+expose func IsRunnable(request: SearchRequest) -> Boolean {
+    if request == null { return false; }
+    return request.rootPath != "" and request.query != "";
+}

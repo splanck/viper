@@ -77,6 +77,12 @@ Contains small helpers for command triggering and disabled-state checks shared
 by the main dispatch loop. This keeps repetitive menu/toolbar/palette checks out
 of individual command modules.
 
+### `app/command_palette_controller.zia`
+
+State machine for command-palette modes. It restores command mode, opens the
+command palette, and tracks when the palette temporarily contains Quick Open
+file rows.
+
 ### `app/explorer_action_runner.zia`
 
 Coordinates explorer actions that need multiple subsystems: document manager,
@@ -86,6 +92,11 @@ between UI action requests and safe document/project mutations.
 This is the right place to keep explorer workflows visible and auditable. File
 creation, rename, duplicate, delete, and "open and record" behavior should stay
 centralized here instead of being spread across the frame loop.
+
+### `app/file_watch_controller.zia`
+
+Owns active-file watcher state and timestamp polling for inactive open tabs.
+`main.zia` calls its `Pump` method instead of carrying watcher variables inline.
 
 ### `app/settings_applier.zia`
 
@@ -277,6 +288,12 @@ project file cache refresh.
 It uses `Viper.Workspace.FileIndex` for exclusion rules. Do not duplicate ignore
 logic elsewhere unless the runtime surface cannot answer the question.
 
+### `core/project_file_ops.zia`
+
+Small filesystem policy helpers for project/explorer flows: safe child names,
+project-root containment checks, `.zia` file classification, and reversible
+delete trash destinations.
+
 ### `core/settings.zia`
 
 Persistent settings manager. It handles defaults, platform-native settings
@@ -339,6 +356,12 @@ cache updates.
 The file is large. Pure filtering helpers have already been split into
 `completion_filter.zia`; new reusable completion-display logic should move
 there or into another helper instead of growing the controller.
+
+### `editor/completion_items.zia`
+
+Typed completion candidate model and constructors. Use this when adding fields
+that must travel together with a completion row, such as insert text, replacement
+range, cursor offset, or commit characters.
 
 ### `editor/completion_filter.zia`
 
@@ -433,6 +456,16 @@ than parsing display text.
 Small deterministic text helpers: trailing CR stripping, leading whitespace,
 right-trim, string-list joining, and string-list membership.
 
+### `services/search_matcher.zia`
+
+Pure project-search line matching. It owns literal matching, whole-word checks,
+and the compact editor-search regex subset used by Search in Project.
+
+### `services/search_paths.zia`
+
+Search path normalization and include/exclude/ignore matching. Use it when a
+feature needs to decide whether a project path belongs in search results.
+
 ### `services/workspace_edits.zia`
 
 Preview, validation, conflict detection, application, and diagnostics formatting
@@ -517,6 +550,11 @@ Formatting constants and helpers for Problems/Output/Search/References rows:
 colors, column widths, severity labels, truncation, diagnostics summary, and
 language display names.
 
+### `ui/tool_panel_model.zia`
+
+Named ids and tab indexes for the bottom tool-panel strip. Use this instead of
+magic integers when adding bottom-panel behavior.
+
 ## `zia/`
 
 Pure Zia source-analysis and rewrite helpers live here. These modules should
@@ -529,9 +567,30 @@ identifier support should start here if added later.
 
 ### `zia/source_scan.zia`
 
-Trivia-aware scanning helpers: function lookup, brace/paren/comment depth,
-outgoing call tokens, identifier replacement outside trivia, inline delimiter
-matching, next occurrence, and related source navigation.
+Compatibility facade for source scanners. Existing callers can keep importing
+`source_scan`, while new code should prefer the focused modules below.
+
+### `zia/function_scan.zia`
+
+Function lookup helpers: source-line access, function-name parsing, enclosing
+function detection, and function end-line matching.
+
+### `zia/trivia_scan.zia`
+
+Trivia-aware line scanning for comment depth, brace/paren depth, continuation
+indent, whitespace skipping, and identifier replacement outside strings/comments.
+
+### `zia/call_scan.zia`
+
+Outgoing call-token collection for simple call hierarchy support.
+
+### `zia/delimiter_scan.zia`
+
+Inline delimiter and block brace matching used by selection expansion.
+
+### `zia/occurrence_scan.zia`
+
+Whole-word next-occurrence search for multi-cursor commands.
 
 ### `zia/formatters.zia`
 
@@ -589,7 +648,9 @@ Use this practical decision table:
 | Explorer tree/cache behavior | `core/project_manager.zia` |
 | Editor widget synchronization | `editor/editor_engine.zia` |
 | Zia semantic query scheduling | appropriate `editor/*` controller |
-| Pure source scanning | `zia/source_scan.zia` |
+| Pure source scanning | focused `zia/*_scan.zia` module; keep `zia/source_scan.zia` as facade |
+| Search matching/path rules | `services/search_matcher.zia`, `services/search_paths.zia` |
+| Completion row data | `editor/completion_items.zia` |
 | Pure source rewrite | `zia/refactors.zia` or `zia/bind_utils.zia` |
 | Text formatting | `zia/formatters.zia` |
 | Build/run process mechanics | `build/build_system.zia` |
@@ -602,6 +663,7 @@ Use this practical decision table:
 | Source Control view state | `scm/scm_view.zia` |
 | Persistent shell widgets | `ui/app_shell.zia` |
 | Shared display row formatting | `ui/tool_panel_text.zia` |
+| Bottom panel ids/tab indexes | `ui/tool_panel_model.zia` |
 | Structured clickable locations | `services/locations.zia` |
 | Transactional workspace edits | `services/workspace_edits.zia` |
 | Runtime API change | C runtime + `runtime.def` + docs/probes |

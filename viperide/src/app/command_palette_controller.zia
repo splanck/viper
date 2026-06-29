@@ -1,0 +1,92 @@
+module command_palette_controller;
+
+bind "../commands/command_registry";
+bind "../editor/language_service";
+bind "../ui/app_shell";
+
+// ============================================================================
+// MODULE: command_palette_controller
+// PURPOSE: Small state machine for command-palette modes.
+//
+// WHERE-THIS-FITS: main.zia owns command dispatch and quick-open execution.
+//          This controller owns the repeated UI transitions: restore command
+//          mode, open command mode, and remember when the palette is temporarily
+//          showing quick-open file results.
+//
+// TEACHING-NOTE: Keep palette state explicit. A string field is sufficient here
+//          because the runtime already stores selected command ids as strings,
+//          and the two modes are intentionally easy to inspect in probes.
+// ============================================================================
+
+final MODE_COMMANDS = "commands";
+final MODE_QUICK_OPEN = "quickopen";
+
+/// @brief Tracks whether the command palette is showing commands or quick-open files.
+class CommandPaletteController {
+    expose String mode;
+
+    /// @brief Initialize the palette controller in normal command mode.
+    expose func init() {
+        mode = MODE_COMMANDS;
+    }
+
+    /// @brief Return whether the palette is currently in command mode.
+    /// @return True when palette selections should be treated as command ids.
+    expose func IsCommands() -> Boolean {
+        return mode == MODE_COMMANDS;
+    }
+
+    /// @brief Return whether the palette is currently in quick-open mode.
+    /// @return True when palette selections should be treated as quick-open ids.
+    expose func IsQuickOpen() -> Boolean {
+        return mode == MODE_QUICK_OPEN;
+    }
+
+    /// @brief Switch the palette to command mode and rebuild command rows.
+    /// @param shell Workbench shell containing the command palette widget.
+    /// @param registry Command registry used to populate the palette.
+    /// @param service Active language service for capability filtering.
+    expose func ResetToCommands(shell: app_shell.AppShell,
+                                registry: command_registry.CommandRegistry,
+                                service: language_service.LanguageService) {
+        mode = MODE_COMMANDS;
+        if shell == null or shell.commandPalette == null { return; }
+        shell.commandPalette.SetPlaceholder("Type a command...");
+        if registry != null {
+            registry.PopulatePalette(shell.commandPalette, service);
+        }
+    }
+
+    /// @brief Show the command palette in command mode.
+    /// @param shell Workbench shell containing the command palette widget.
+    /// @param registry Command registry used to populate the palette.
+    /// @param service Active language service for capability filtering.
+    expose func OpenCommands(shell: app_shell.AppShell,
+                             registry: command_registry.CommandRegistry,
+                             service: language_service.LanguageService) {
+        ResetToCommands(shell, registry, service);
+        if shell != null and shell.commandPalette != null {
+            shell.commandPalette.Show();
+        }
+    }
+
+    /// @brief Mark that the palette now contains quick-open file rows.
+    /// @details search_commands.ShowQuickOpenPalette builds the actual rows; this
+    ///          method records the mode so selection dispatch can interpret ids.
+    expose func BeginQuickOpen() {
+        mode = MODE_QUICK_OPEN;
+    }
+
+    /// @brief Restore command mode if a temporary palette closes without selection.
+    /// @param shell Workbench shell containing the command palette widget.
+    /// @param registry Command registry used to repopulate command rows.
+    /// @param service Active language service for capability filtering.
+    expose func RestoreCommandsWhenClosed(shell: app_shell.AppShell,
+                                          registry: command_registry.CommandRegistry,
+                                          service: language_service.LanguageService) {
+        if mode == MODE_COMMANDS { return; }
+        if shell == null or shell.commandPalette == null { return; }
+        if shell.commandPalette.IsVisible() != 0 { return; }
+        ResetToCommands(shell, registry, service);
+    }
+}

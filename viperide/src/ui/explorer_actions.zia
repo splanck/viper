@@ -6,12 +6,13 @@
 // File: viperide/src/ui/explorer_actions.zia
 // Purpose: Integrated non-modal explorer action overlays for ViperIDE.
 // Key invariants:
-//   - The overlay captures intent only; filesystem mutations stay in main.zia.
+//   - The overlay captures intent only; filesystem mutations stay in app/explorer_action_runner.zia.
 //   - File-tree actions remain non-modal and styled with IDE chrome.
 // Ownership/Lifetime:
 //   - GUI widgets are owned by the AppShell application root.
 //   - Target paths and entered names are copied as Zia strings.
-// Links: viperide/src/main.zia, viperide/src/ui/app_shell.zia
+// Links: viperide/src/main.zia, viperide/src/app/explorer_action_runner.zia,
+//        viperide/src/ui/app_shell.zia
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,6 +24,19 @@ bind Viper.GUI as GUI;
 bind Input = Viper.Input;
 bind Path = Viper.IO.Path;
 bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: explorer_actions
+// PURPOSE: Non-modal overlays for explorer create/rename/duplicate/delete flows.
+//
+// WHERE-THIS-FITS: Context menus and command dispatch open this overlay to
+//          capture user intent. app/explorer_action_runner.zia performs the
+//          filesystem mutation after Pump() returns a completed action.
+//
+// TEACHING-NOTE: UI prompts should collect and validate intent, not mutate disk.
+//          Separating overlay state from action execution keeps cancellation,
+//          validation, and filesystem side effects easy to audit.
+// ============================================================================
 
 final EXPLORER_ACTION_NONE: Integer = 0;
 final EXPLORER_ACTION_NEW_FILE: Integer = 1;
@@ -41,7 +55,8 @@ final EXPLORER_PANEL_MARGIN: Integer = 24;
 ///          controller keeps follow-up actions in the same IDE chrome instead
 ///          of falling back to generic blocking message boxes. The main loop
 ///          owns the actual filesystem mutation; this class only captures the
-///          action, target, and user-entered value.
+///          action, target, and user-entered value. app/explorer_action_runner.zia
+///          applies the completed action after validation.
 class ExplorerActionOverlay {
     expose GUI.FloatingPanel panel;
     expose GUI.VBox root;

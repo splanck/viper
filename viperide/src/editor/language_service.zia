@@ -8,6 +8,22 @@ final LANGUAGE_BASIC = "basic";
 final LANGUAGE_TEXT = "text";
 final LANGUAGE_SCENE = "scene";
 
+// ============================================================================
+// MODULE: language_service
+// PURPOSE: Capability model for each document language ViperIDE can open.
+//
+// WHERE-THIS-FITS: main.zia asks ActiveWorkbenchState for the current
+//          LanguageService each frame. CommandRegistry, AppShell, completion,
+//          diagnostics, hover, signature, symbols, and inlay controllers use
+//          these booleans to enable or disable language-aware features.
+//
+// TEACHING-NOTE: Capabilities describe what the IDE has wired, while
+//          serverCan* fields describe what an external language server claims it
+//          can provide. Keeping both lets the UI explain "the server supports
+//          this, but the adapter is not wired yet" instead of silently enabling
+//          commands that cannot run.
+// ============================================================================
+
 class LanguageService {
     expose String name;
     expose String externalServerName;

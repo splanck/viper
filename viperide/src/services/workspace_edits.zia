@@ -11,6 +11,19 @@ bind Map = Viper.Collections.Map;
 bind Str = Viper.String;
 bind Obj = Viper.Core.Object;
 
+// ============================================================================
+// MODULE: workspace_edits
+// PURPOSE: Validate, preview, and apply multi-file workspace edits.
+//
+// WHERE-THIS-FITS: Rename/refactor commands ask ProjectIndexer or language
+//          services for edit records, then call this module to preview and apply
+//          them safely across open documents and closed files on disk.
+//
+// TEACHING-NOTE: Multi-file edits need two safety layers: validate the whole edit
+//          set before writing anything, then apply edits in reverse source order
+//          inside each file so earlier replacements do not shift later ranges.
+// ============================================================================
+
 class ApplyResult {
     expose Boolean success;
     expose String message;

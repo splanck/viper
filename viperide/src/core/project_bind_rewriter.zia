@@ -1,0 +1,89 @@
+module project_bind_rewriter;
+
+bind "../zia/bind_utils";
+
+// ============================================================================
+// MODULE: project_bind_rewriter
+// PURPOSE: Project-level facade for rewriting Zia `bind` imports after moves.
+//
+// WHERE-THIS-FITS: ProjectManager decides which files are affected by an
+//          explorer rename. The low-level parser and path math live in
+//          zia/bind_utils.zia. This module provides the project-facing names and
+//          result type so the manager does not need to expose bind rewrite
+//          implementation details in its own file.
+//
+// TEACHING-NOTE: A manager should coordinate work, not own every algorithm it
+//          touches. Thin facades like this are useful when a lower-level helper
+//          is shared but the higher-level domain deserves its own vocabulary.
+// ============================================================================
+
+/// @brief Result of rewriting one file's Zia bind block.
+/// @details `text` is the full file content after rewriting. `count` is the
+///          number of bind lines changed, allowing preview and apply paths to
+///          share the same calculation.
+class BindRewriteResult {
+    expose String text;
+    expose Integer count;
+
+    /// @brief Initialize an empty rewrite result.
+    expose func init() {
+        text = "";
+        count = 0;
+    }
+}
+
+/// @brief Rewrite bind paths in one importing file after a rename or move.
+/// @param content Full source text of the importing Zia file.
+/// @param importingPath Absolute path of the importing Zia file.
+/// @param oldNorm Normalized absolute path before rename.
+/// @param newNorm Normalized absolute path after rename.
+/// @param oldWasDir True when the renamed path was a directory.
+/// @return Full rewritten text plus the number of changed bind lines.
+expose func RewriteZiaBindContent(content: String,
+                                  importingPath: String,
+                                  oldNorm: String,
+                                  newNorm: String,
+                                  oldWasDir: Boolean) -> BindRewriteResult {
+    var shared = bind_utils.RewriteZiaBindContent(content, importingPath, oldNorm, newNorm, oldWasDir);
+    var result = new BindRewriteResult();
+    result.text = shared.text;
+    result.count = shared.count;
+    return result;
+}
+
+/// @brief Rewrite one Zia bind line after a rename or move.
+/// @param line One source line that may contain a bind statement.
+/// @param importingPath Absolute path of the importing Zia file.
+/// @param oldNorm Normalized absolute path before rename.
+/// @param newNorm Normalized absolute path after rename.
+/// @param oldWasDir True when the renamed path was a directory.
+/// @return Rewritten line, or the original line when no rewrite applies.
+expose func RewriteZiaBindLine(line: String,
+                               importingPath: String,
+                               oldNorm: String,
+                               newNorm: String,
+                               oldWasDir: Boolean) -> String {
+    return bind_utils.RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
+}
+
+/// @brief Resolve an import path relative to the importing source file.
+/// @param importPath Path text from a Zia bind statement.
+/// @param importingPath Absolute path of the importing Zia file.
+/// @return Normalized absolute path for the import target.
+expose func ResolveBindPath(importPath: String,
+                            importingPath: String) -> String {
+    return bind_utils.ResolveBindPath(importPath, importingPath);
+}
+
+/// @brief Build a relative bind path from one source file to a target file.
+/// @param importingDir Directory of the importing Zia file.
+/// @param targetPath Absolute path of the target file after rename.
+/// @param oldImportPath Original import text, used to preserve extension style.
+/// @param keepNoExt True when the original import omitted `.zia`.
+/// @return Relative bind path using normalized separators.
+expose func RelativeBindPath(importingDir: String,
+                             targetPath: String,
+                             oldImportPath: String,
+                             keepNoExt: Boolean) -> String {
+    return bind_utils.RelativeBindPath(importingDir, targetPath, oldImportPath, keepNoExt);
+}

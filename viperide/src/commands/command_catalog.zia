@@ -1,5 +1,7 @@
 module command_catalog;
 
+bind Str = Viper.String;
+
 // ============================================================================
 // MODULE: command_catalog
 // PURPOSE: Declarative command metadata for ViperIDE. This module owns the
@@ -17,12 +19,14 @@ module command_catalog;
 
 /// @brief Static metadata for a command known to ViperIDE.
 /// @details CommandSpec deliberately contains no runtime state. The registry
-///          copies these fields into CommandEntry objects and derives category
-///          and availability from the command id and language-service capability.
+///          copies these fields into CommandEntry objects and applies runtime
+///          language-service availability checks there. Category is stored here
+///          because it is command metadata, not registry behavior.
 class CommandSpec {
     expose String id;
     expose String label;
     expose String description;
+    expose String category;
     expose String shortcut;
     expose String capability;
     expose Boolean showInPalette;
@@ -34,6 +38,7 @@ class CommandSpec {
         id = "";
         label = "";
         description = "";
+        category = "";
         shortcut = "";
         capability = "";
         showInPalette = true;
@@ -51,6 +56,7 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
     AddSpec(specs, "openfolder", "Open Folder...", "Open a project folder", "Ctrl+Alt+O", "", true);
     AddSpec(specs, "addfolder", "Add Folder to Workspace...", "Add another folder as a workspace root", "", "", true);
+    AddSpec(specs, "palette", "Command Palette", "Open the command palette", "Ctrl+Shift+P", "", false);
     AddSpec(specs, "terminal", "Toggle Terminal", "Show or hide the integrated terminal", "Ctrl+`", "", true);
     AddSpec(specs, "save", "Save", "Save the current file", "Ctrl+S", "", true);
     AddSpec(specs, "saveas", "Save As...", "Save the current file under a new path", "Ctrl+Shift+S", "", true);
@@ -169,8 +175,76 @@ func AddSpec(specs: List[CommandSpec],
     spec.id = id;
     spec.label = label;
     spec.description = description;
+    spec.category = CategoryForCommand(id);
     spec.shortcut = shortcut;
     spec.capability = capability;
     spec.showInPalette = showInPalette;
     specs.add(spec);
+}
+
+/// @brief Return the command-palette category for a command id.
+/// @details Categories are part of the command catalog because they are static
+///          command metadata. Keeping this classifier next to DefaultCommandSpecs
+///          lets developers review ids, labels, shortcuts, capabilities, and
+///          palette grouping in one place before they touch runtime dispatch.
+/// @param id Stable command id from the catalog.
+/// @return Palette category name such as File, Edit, Build, or Debug.
+expose func CategoryForCommand(id: String) -> String {
+    if id == "new" or id == "open" or id == "openfolder"
+       or id == "save" or id == "saveas" or id == "saveall"
+       or id == "close" or id == "reload" or id == "recentfiles"
+       or id == "reopenclosed" {
+        return "File";
+    }
+    if id == "find" or id == "searchproject" {
+        return "Search";
+    }
+    if id == "quickopen" or id == "goto" or id == "gotodef"
+       or id == "findrefs" or id == "incomingcalls" or id == "outgoingcalls"
+       or id == "nexterror" or id == "preverror" or id == "workspacesymbols"
+       or id == "symboloutline" or id == "signature_trigger"
+       or id == "signaturenextoverload" or id == "signatureprevoverload" {
+        return "Navigate";
+    }
+    if id == "rename" or id == "organizebinds" or id == "extractlocal"
+       or id == "extractfunction" or id == "inlinelocal"
+       or id == "suppressdiagnostic" or id == "applydiagnosticfix"
+       or id == "createmissingbind" {
+        return "Refactor";
+    }
+    if id == "build" or id == "buildrun" or id == "run" or id == "stopjob" {
+        return "Build";
+    }
+    if Str.StartsWith(id, "debug") or id == "togglebreakpoint" {
+        return "Debug";
+    }
+    if id == "togglesidebar" or id == "statusbar" or id == "zoomin"
+       or id == "zoomout" or id == "zoomreset" or id == "uizoomin"
+       or id == "uizoomout" or id == "uizoomreset"
+       or id == "toggletheme" or id == "fullscreen" or id == "minimap" {
+        return "View";
+    }
+    if id == "settings" or id == "keybindings" {
+        return "Settings";
+    }
+    if id == "copytoolrow" or id == "copyoutputtext" or id == "clearoutput"
+       or id == "filteroutput" or id == "toggleoutputwrap"
+       or id == "toggleoutputautoscroll" {
+        return "Output";
+    }
+    if Str.StartsWith(id, "tree") {
+        return "Explorer";
+    }
+    if id == "undo" or id == "redo" or id == "cut" or id == "copy"
+       or id == "paste" or id == "selectall" or id == "completion_trigger"
+       or id == "addnextoccurrence" or id == "skipoccurrence"
+       or id == "selectalloccurrences" or id == "clearcursors"
+       or id == "expandselection" or id == "shrinkselection"
+       or id == "togglelinecomment" or id == "toggleblockcomment"
+       or id == "duplicateline" or id == "movelineup" or id == "movelinedown"
+       or id == "trimtrailingwhitespace" or id == "formatdocument"
+       or id == "formatselection" {
+        return "Edit";
+    }
+    return "Command";
 }

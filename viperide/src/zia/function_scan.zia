@@ -1,0 +1,151 @@
+module function_scan;
+
+bind Obj = Viper.Core.Object;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: function_scan
+// PURPOSE: Lightweight Zia function-boundary helpers.
+//
+// WHERE-THIS-FITS: Pure source-analysis layer used by call hierarchy,
+//          formatting, local refactors, and the source_scan compatibility
+//          facade. It recognizes enough function structure for editor assists
+//          while intentionally avoiding a full parser dependency.
+//
+// TEACHING-NOTE: Public functions use 1-based line numbers because the editor
+//          UI, diagnostics, and LocationStore all present lines that way.
+// ============================================================================
+
+/// @brief Return one 1-based source line.
+/// @param source Whole document text.
+/// @param lineNumber 1-based line number.
+/// @return The requested line or empty when out of range.
+expose func SourceLine(source: String,
+                       lineNumber: Integer) -> String {
+    if source == "" { return ""; }
+    var lines = Str.Split(source, "\n");
+    if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
+    return Obj.ToString(Seq.Get(lines, lineNumber - 1));
+}
+
+/// @brief Find the nearest function declaration at or above a line.
+/// @param source Whole Zia document.
+/// @param lineNumber 1-based line near the cursor/selection.
+/// @return 1-based start line of the enclosing function, or 0 when none exists.
+expose func EnclosingZiaFunctionStartLine(source: String,
+                                          lineNumber: Integer) -> Integer {
+    if source == "" { return 0; }
+    var lines = Str.Split(source, "\n");
+    var i = lineNumber;
+    if i > Seq.get_Length(lines) {
+        i = Seq.get_Length(lines);
+    }
+    while i >= 1 {
+        if ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i - 1))) != "" {
+            return i;
+        }
+        i = i - 1;
+    }
+    return 0;
+}
+
+/// @brief Find the enclosing function name for a source line.
+/// @param source Whole Zia document.
+/// @param lineNumber 1-based line inside or below a function declaration.
+/// @return Function name, or empty when no enclosing function is found.
+expose func EnclosingZiaFunctionName(source: String,
+                                     lineNumber: Integer) -> String {
+    return ZiaFunctionNameFromLine(SourceLine(source, EnclosingZiaFunctionStartLine(source, lineNumber)));
+}
+
+/// @brief Extract a function name from a declaration line.
+/// @details Accepts `func name(`, `expose func name(`, and `hide func name(`.
+///          Other leading modifiers are ignored by design because this scanner
+///          is used for conservative editor assistance, not full parsing.
+/// @param line Source line to inspect.
+/// @return Function name, or empty when the line is not a recognized declaration.
+expose func ZiaFunctionNameFromLine(line: String) -> String {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" or Str.StartsWith(trimmed, "//") {
+        return "";
+    }
+    var funcPos = Str.IndexOf(trimmed, "func ");
+    if funcPos == 0 {
+        return "";
+    }
+    if funcPos > 1 {
+        var before = Str.Trim(Str.Left(trimmed, funcPos - 1));
+        if before != "expose" and before != "hide" {
+            return "";
+        }
+    }
+    var nameStart = funcPos + Str.Length("func ");
+    var openParen = Str.IndexOfFrom(trimmed, nameStart, "(");
+    if openParen == 0 or openParen <= nameStart {
+        return "";
+    }
+    return Str.Trim(Str.MidLen(trimmed, nameStart, openParen - nameStart));
+}
+
+/// @brief Find the matching closing line for a function body.
+/// @details Counts braces after the function declaration while ignoring braces
+///          inside strings and `//` comments.
+/// @param source Whole Zia document.
+/// @param startLine 1-based function declaration line.
+/// @return 1-based line where the function body closes, or `startLine` when
+///         no close can be found.
+expose func ZiaFunctionEndLine(source: String,
+                               startLine: Integer) -> Integer {
+    var lines = Str.Split(source, "\n");
+    var startIdx = startLine - 1;
+    if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
+
+    var depth = 0;
+    var seenOpen = false;
+    var i = startIdx;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var pos = 1;
+        var inString = false;
+        while pos <= Str.Length(line) {
+            var ch = Str.MidLen(line, pos, 1);
+            var next = "";
+            if pos < Str.Length(line) {
+                next = Str.MidLen(line, pos + 1, 1);
+            }
+
+            if inString {
+                if ch == "\\" {
+                    pos = pos + 2;
+                    continue;
+                }
+                if ch == "\"" {
+                    inString = false;
+                }
+            } else {
+                if ch == "/" and next == "/" {
+                    break;
+                }
+                if ch == "\"" {
+                    inString = true;
+                } else if ch == "{" {
+                    depth = depth + 1;
+                    seenOpen = true;
+                } else if ch == "}" {
+                    if seenOpen {
+                        depth = depth - 1;
+                        if depth <= 0 {
+                            return i + 1;
+                        }
+                    }
+                }
+            }
+
+            pos = pos + 1;
+        }
+        i = i + 1;
+    }
+
+    return startLine;
+}

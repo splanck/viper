@@ -1,0 +1,62 @@
+module tool_panel_model;
+
+// ============================================================================
+// MODULE: tool_panel_model
+// PURPOSE: Shared identifiers for the bottom tool-panel strip.
+//
+// WHERE-THIS-FITS: ui/app_shell.zia owns the actual widgets. This module owns
+//          the stable numeric ids and tab indexes so AppShell logic reads like
+//          panel state rather than unexplained integers.
+//
+// TEACHING-NOTE: Keep ids and tab indexes separate. The ids are state values
+//          stored in AppShell; the tab indexes mirror GUI.TabBar insertion order.
+// ============================================================================
+
+final PANEL_NONE = 0;
+final PANEL_PROBLEMS = 1;
+final PANEL_OUTPUT = 2;
+final PANEL_SEARCH = 3;
+final PANEL_REFERENCES = 4;
+final PANEL_DEBUG = 5;
+final PANEL_VARIABLES = 6;
+final PANEL_CALL_STACK = 7;
+final PANEL_TERMINAL = 8;
+
+final TAB_PROBLEMS = 0;
+final TAB_OUTPUT = 1;
+final TAB_SEARCH = 2;
+final TAB_REFERENCES = 3;
+final TAB_VARIABLES = 4;
+final TAB_CALL_STACK = 5;
+final TAB_DEBUG = 6;
+final TAB_TERMINAL = 7;
+
+/// @brief Return a human-readable name for a panel id.
+/// @param kind One of the `PANEL_*` constants.
+/// @return Display name for diagnostics, logging, or probes.
+expose func PanelName(kind: Integer) -> String {
+    if kind == PANEL_PROBLEMS { return "Problems"; }
+    if kind == PANEL_OUTPUT { return "Output"; }
+    if kind == PANEL_SEARCH { return "Search"; }
+    if kind == PANEL_REFERENCES { return "References"; }
+    if kind == PANEL_DEBUG { return "Debug Console"; }
+    if kind == PANEL_VARIABLES { return "Variables"; }
+    if kind == PANEL_CALL_STACK { return "Call Stack"; }
+    if kind == PANEL_TERMINAL { return "Terminal"; }
+    return "None";
+}
+
+/// @brief Map a tab-bar index to the corresponding panel id.
+/// @param tabIndex Zero-based GUI.TabBar active index.
+/// @return Matching `PANEL_*` id, or `PANEL_NONE` for unknown indexes.
+expose func PanelKindForTabIndex(tabIndex: Integer) -> Integer {
+    if tabIndex == TAB_PROBLEMS { return PANEL_PROBLEMS; }
+    if tabIndex == TAB_OUTPUT { return PANEL_OUTPUT; }
+    if tabIndex == TAB_SEARCH { return PANEL_SEARCH; }
+    if tabIndex == TAB_REFERENCES { return PANEL_REFERENCES; }
+    if tabIndex == TAB_VARIABLES { return PANEL_VARIABLES; }
+    if tabIndex == TAB_CALL_STACK { return PANEL_CALL_STACK; }
+    if tabIndex == TAB_DEBUG { return PANEL_DEBUG; }
+    if tabIndex == TAB_TERMINAL { return PANEL_TERMINAL; }
+    return PANEL_NONE;
+}

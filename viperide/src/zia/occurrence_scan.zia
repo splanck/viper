@@ -1,0 +1,51 @@
+module occurrence_scan;
+
+bind "identifier_utils";
+
+bind Obj = Viper.Core.Object;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: occurrence_scan
+// PURPOSE: Whole-word occurrence search for editor selection commands.
+//
+// WHERE-THIS-FITS: Leaf text-search helper used by multi-cursor commands through
+//          source_scan. It keeps cursor-oriented occurrence logic separate from
+//          broader project search and regex matching.
+//
+// TEACHING-NOTE: Return values use the compact `"line:column"` form because
+//          existing command code already consumes that stable compatibility
+//          contract. New UI result lists should prefer LocationStore ids.
+// ============================================================================
+
+/// @brief Return the first whole-word occurrence at or after a position.
+/// @param source Whole document text.
+/// @param word Identifier-like text to find.
+/// @param startLine 1-based start line.
+/// @param startCol 1-based start column for the first line.
+/// @return `"line:column"` using 1-based coordinates, or empty when not found.
+expose func FindNextOccurrence(source: String,
+                               word: String,
+                               startLine: Integer,
+                               startCol: Integer) -> String {
+    var lines = Str.Split(source, "\n");
+    var i = startLine - 1;
+    while i < Seq.get_Length(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        var fromCol = 1;
+        if i == startLine - 1 {
+            fromCol = startCol;
+            if fromCol < 1 { fromCol = 1; }
+        }
+        var idx = Str.IndexOfFrom(line, fromCol, word);
+        while idx != 0 {
+            if identifier_utils.IsWordBoundaryMatch(line, idx, Str.Length(word)) {
+                return "" + (i + 1) + ":" + idx;
+            }
+            idx = Str.IndexOfFrom(line, idx + 1, word);
+        }
+        i = i + 1;
+    }
+    return "";
+}

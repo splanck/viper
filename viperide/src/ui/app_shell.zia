@@ -1,6 +1,9 @@
 module app_shell;
 
+bind "../commands/command_registry";
 bind "../editor/language_service";
+bind "../ui/status_bar_model";
+bind "../ui/tool_panel_model";
 bind "../ui/tool_panel_text";
 
 bind Viper.GUI as GUI;
@@ -307,7 +310,7 @@ class AppShell {
         sidebarVisible = true;
         activeSurfaceKind = 0;
         activeDocumentSurfaceKind = 0;
-        activeToolPanelKind = 0;
+        activeToolPanelKind = tool_panel_model.PANEL_NONE;
         contextPath = "";
         contextDir = "";
         tabContextIndex = -1;
@@ -781,6 +784,98 @@ class AppShell {
         commandPalette.SetPlaceholder("Type a command...");
     }
 
+    /// @brief Apply command-catalog shortcuts to visible menu/context items.
+    /// @details Build() creates menu items with sensible defaults so AppShell is
+    ///          usable in isolation. After CommandRegistry loads the central
+    ///          catalog, main.zia calls this method to make the catalog the
+    ///          source of truth for user-visible shortcut labels.
+    /// @param registry Runtime command registry populated from command_catalog.
+    expose func ApplyCommandShortcuts(registry: command_registry.CommandRegistry) {
+        if registry == null { return; }
+        ApplyShortcut(miNew, "new", registry);
+        ApplyShortcut(miOpen, "open", registry);
+        ApplyShortcut(miOpenFolder, "openfolder", registry);
+        ApplyShortcut(miQuickOpen, "quickopen", registry);
+        ApplyShortcut(miSave, "save", registry);
+        ApplyShortcut(miSaveAs, "saveas", registry);
+        ApplyShortcut(miSaveAll, "saveall", registry);
+        ApplyShortcut(miClose, "close", registry);
+        ApplyShortcut(miReload, "reload", registry);
+        ApplyShortcut(miRecentFiles, "recentfiles", registry);
+        ApplyShortcut(miReopenClosed, "reopenclosed", registry);
+        ApplyShortcut(miUndo, "undo", registry);
+        ApplyShortcut(miRedo, "redo", registry);
+        ApplyShortcut(miCut, "cut", registry);
+        ApplyShortcut(miCopy, "copy", registry);
+        ApplyShortcut(miPaste, "paste", registry);
+        ApplyShortcut(miSelectAll, "selectall", registry);
+        ApplyShortcut(miFind, "find", registry);
+        ApplyShortcut(miSearchProject, "searchproject", registry);
+        ApplyShortcut(miGoToLine, "goto", registry);
+        ApplyShortcut(miRenameSymbol, "rename", registry);
+        ApplyShortcut(miPreferences, "settings", registry);
+        ApplyShortcut(miGoToDefinition, "gotodef", registry);
+        ApplyShortcut(miFindReferences, "findrefs", registry);
+        ApplyShortcut(miIncomingCalls, "incomingcalls", registry);
+        ApplyShortcut(miOutgoingCalls, "outgoingcalls", registry);
+        ApplyShortcut(miWorkspaceSymbols, "workspacesymbols", registry);
+        ApplyShortcut(miSymbolOutline, "symboloutline", registry);
+        ApplyShortcut(miNextError, "nexterror", registry);
+        ApplyShortcut(miPreviousError, "preverror", registry);
+        ApplyShortcut(miSignatureHelp, "signature_trigger", registry);
+        ApplyShortcut(miToggleSidebar, "togglesidebar", registry);
+        ApplyShortcut(miToggleStatusBar, "statusbar", registry);
+        ApplyShortcut(miZoomIn, "zoomin", registry);
+        ApplyShortcut(miZoomOut, "zoomout", registry);
+        ApplyShortcut(miZoomReset, "zoomreset", registry);
+        ApplyShortcut(miUiZoomIn, "uizoomin", registry);
+        ApplyShortcut(miUiZoomOut, "uizoomout", registry);
+        ApplyShortcut(miUiZoomReset, "uizoomreset", registry);
+        ApplyShortcut(miToggleTheme, "toggletheme", registry);
+        ApplyShortcut(miFullscreen, "fullscreen", registry);
+        ApplyShortcut(miToggleMinimap, "minimap", registry);
+        ApplyShortcut(miTerminal, "terminal", registry);
+        ApplyShortcut(miBuild, "build", registry);
+        ApplyShortcut(miBuildAndRun, "buildrun", registry);
+        ApplyShortcut(miRun, "run", registry);
+        ApplyShortcut(miStop, "stopjob", registry);
+        ApplyShortcut(miDebugStart, "debugstart", registry);
+        ApplyShortcut(miDebugContinue, "debugcontinue", registry);
+        ApplyShortcut(miDebugStepOver, "debugstepover", registry);
+        ApplyShortcut(miDebugStepIn, "debugstepin", registry);
+        ApplyShortcut(miDebugStepOut, "debugstepout", registry);
+        ApplyShortcut(miDebugRestart, "debugrestart", registry);
+        ApplyShortcut(miToggleBreakpoint, "togglebreakpoint", registry);
+        ApplyShortcut(miKeyboardShortcuts, "keybindings", registry);
+        ApplyShortcut(ctxRename, "treerename", registry);
+        ApplyShortcut(ctxDelete, "treedelete", registry);
+        ApplyShortcut(ctxNewFile, "treenewfile", registry);
+        ApplyShortcut(ctxNewFolder, "treenewfolder", registry);
+        ApplyShortcut(ctxRefresh, "treerefresh", registry);
+        ApplyShortcut(ecCut, "cut", registry);
+        ApplyShortcut(ecCopy, "copy", registry);
+        ApplyShortcut(ecPaste, "paste", registry);
+        ApplyShortcut(ecGotoDef, "gotodef", registry);
+        ApplyShortcut(ecFindRefs, "findrefs", registry);
+        ApplyShortcut(ecRename, "rename", registry);
+        ApplyShortcut(ecFormat, "formatdocument", registry);
+        ApplyShortcut(ecToggleBreakpoint, "togglebreakpoint", registry);
+        ApplyShortcut(ecPalette, "palette", registry);
+    }
+
+    /// @brief Apply one command shortcut to one menu item.
+    /// @param item Menu or context-menu item that displays a shortcut label.
+    /// @param commandId Command id in CommandRegistry.
+    /// @param registry Runtime command registry to query.
+    hide func ApplyShortcut(item: GUI.MenuItem,
+                            commandId: String,
+                            registry: command_registry.CommandRegistry) {
+        if item == null or registry == null { return; }
+        var shortcut = registry.ShortcutFor(commandId);
+        if shortcut == "" { return; }
+        item.SetShortcut(shortcut);
+    }
+
     /// @brief True if the user requested window close (clicked the X).
     expose func ShouldClose() -> Boolean {
         return app.ShouldClose;
@@ -824,11 +919,8 @@ class AppShell {
 
     expose func SetWorkspaceStatus(projectName: String,
                                    languageName: String) {
-        var projectText = "No project";
-        if projectName != "" {
-            projectText = "Project: " + projectName;
-        }
-        var languageText = "Lang: " + FormatLanguageName(languageName);
+        var projectText = status_bar_model.ProjectStatusText(projectName);
+        var languageText = status_bar_model.LanguageStatusText(languageName);
         if projectText == lastProjectStatus and languageText == lastLanguageStatus {
             return;
         }
@@ -852,7 +944,7 @@ class AppShell {
     /// @param status Short index status text.
     expose func SetIndexStatus(status: String) {
         var text = status;
-        if text == "" { text = "Workspace index idle"; }
+        text = status_bar_model.IndexStatusText(text);
         if text == lastIndexStatus { return; }
         lastIndexStatus = text;
         if indexItem != null {
@@ -881,14 +973,13 @@ class AppShell {
     expose func SetBuildJobActive(active: Boolean, name: String) {
         var enabled = 1;
         var stopEnabled = 0;
-        var jobName = name;
-        if jobName == "" { jobName = "job"; }
+        var jobName = status_bar_model.JobDisplayName(name);
         if active {
             enabled = 0;
             stopEnabled = 1;
-            lastBuildJobStatus = "Job: " + jobName;
+            lastBuildJobStatus = status_bar_model.BuildJobStatusText(true, jobName);
         } else {
-            lastBuildJobStatus = "Job: idle";
+            lastBuildJobStatus = status_bar_model.BuildJobStatusText(false, jobName);
         }
 
         SetToolbarItemState(tbBuild, enabled,
@@ -928,7 +1019,7 @@ class AppShell {
     /// @param status Short display text produced by editor/scheduler.zia.
     expose func SetSchedulerStatus(status: String) {
         var text = status;
-        if text == "" { text = "Tasks: idle"; }
+        text = status_bar_model.TaskStatusText(text);
         if text == lastTaskStatus { return; }
         lastTaskStatus = text;
         if taskItem != null {
@@ -1237,7 +1328,7 @@ class AppShell {
     hide func UseOutputPane() {
         outputPaneMode = true;
         outputListBox.SetVisible(0);
-        if activeToolPanelKind == 2 {
+        if activeToolPanelKind == tool_panel_model.PANEL_OUTPUT {
             outputPane.SetVisible(1);
         }
     }
@@ -1246,7 +1337,7 @@ class AppShell {
     expose func UseOutputRows() {
         outputPaneMode = false;
         outputPane.SetVisible(0);
-        if activeToolPanelKind == 2 {
+        if activeToolPanelKind == tool_panel_model.PANEL_OUTPUT {
             outputListBox.SetVisible(1);
         }
     }
@@ -1408,13 +1499,13 @@ class AppShell {
 
     expose func CopySelectedToolRow() -> Boolean {
         var selectedText = outputListBox.GetSelectedText();
-        if activeToolPanelKind == 2 and outputPaneMode {
+        if activeToolPanelKind == tool_panel_model.PANEL_OUTPUT and outputPaneMode {
             selectedText = outputPane.GetSelection();
         }
-        if activeToolPanelKind == 1 { selectedText = diagListBox.GetSelectedText(); }
-        if activeToolPanelKind == 3 { selectedText = searchListBox.GetSelectedText(); }
-        if activeToolPanelKind == 4 { selectedText = referencesListBox.GetSelectedText(); }
-        if activeToolPanelKind == 5 { selectedText = debugListBox.GetSelectedText(); }
+        if activeToolPanelKind == tool_panel_model.PANEL_PROBLEMS { selectedText = diagListBox.GetSelectedText(); }
+        if activeToolPanelKind == tool_panel_model.PANEL_SEARCH { selectedText = searchListBox.GetSelectedText(); }
+        if activeToolPanelKind == tool_panel_model.PANEL_REFERENCES { selectedText = referencesListBox.GetSelectedText(); }
+        if activeToolPanelKind == tool_panel_model.PANEL_DEBUG { selectedText = debugListBox.GetSelectedText(); }
         if selectedText == "" { return false; }
         GUI.Clipboard.SetText(selectedText);
         return true;
@@ -1719,7 +1810,7 @@ class AppShell {
     expose func ShowProblemsPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolProblemsTab);
-        activeToolPanelKind = 1;
+        activeToolPanelKind = tool_panel_model.PANEL_PROBLEMS;
         HideAllToolPanels();
         diagListBox.SetVisible(1);
     }
@@ -1732,7 +1823,7 @@ class AppShell {
     expose func ShowOutputPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolOutputTab);
-        activeToolPanelKind = 2;
+        activeToolPanelKind = tool_panel_model.PANEL_OUTPUT;
         HideAllToolPanels();
         if outputPaneMode {
             outputPane.SetVisible(1);
@@ -1750,7 +1841,7 @@ class AppShell {
     expose func ShowSearchPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolSearchTab);
-        activeToolPanelKind = 3;
+        activeToolPanelKind = tool_panel_model.PANEL_SEARCH;
         HideAllToolPanels();
         searchListBox.SetVisible(1);
     }
@@ -1763,7 +1854,7 @@ class AppShell {
     expose func ShowReferencesPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolReferencesTab);
-        activeToolPanelKind = 4;
+        activeToolPanelKind = tool_panel_model.PANEL_REFERENCES;
         HideAllToolPanels();
         referencesListBox.SetVisible(1);
     }
@@ -1776,7 +1867,7 @@ class AppShell {
     expose func ShowVariablesPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolVariablesTab);
-        activeToolPanelKind = 6;
+        activeToolPanelKind = tool_panel_model.PANEL_VARIABLES;
         HideAllToolPanels();
         variablesListBox.SetVisible(1);
     }
@@ -1784,7 +1875,7 @@ class AppShell {
     expose func ShowCallStackPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolCallStackTab);
-        activeToolPanelKind = 7;
+        activeToolPanelKind = tool_panel_model.PANEL_CALL_STACK;
         HideAllToolPanels();
         callStackListBox.SetVisible(1);
     }
@@ -1792,7 +1883,7 @@ class AppShell {
     expose func ShowDebugPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolDebugTab);
-        activeToolPanelKind = 5;
+        activeToolPanelKind = tool_panel_model.PANEL_DEBUG;
         HideAllToolPanels();
         debugListBox.SetVisible(1);
     }
@@ -1800,7 +1891,7 @@ class AppShell {
     expose func ShowTerminalPanel() {
         toolTabBar.SetVisible(1);
         toolTabBar.SetActive(toolTerminalTab);
-        activeToolPanelKind = 8;
+        activeToolPanelKind = tool_panel_model.PANEL_TERMINAL;
         HideAllToolPanels();
         terminalPanel.SetVisible(1);
         if terminalPane != null { terminalPane.Focus(); }
@@ -1812,7 +1903,7 @@ class AppShell {
     ///          can be resumed by showing the terminal again.
     expose func HideTerminalPanel() {
         terminalPanel.SetVisible(0);
-        if activeToolPanelKind == 8 {
+        if activeToolPanelKind == tool_panel_model.PANEL_TERMINAL {
             ShowFallbackToolPanelWithoutTerminal();
         }
     }
@@ -1858,7 +1949,7 @@ class AppShell {
             ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
-            activeToolPanelKind = 0;
+            activeToolPanelKind = tool_panel_model.PANEL_NONE;
         }
     }
 
@@ -1882,7 +1973,7 @@ class AppShell {
             ShowDebugPanel();
         } else {
             toolTabBar.SetVisible(0);
-            activeToolPanelKind = 0;
+            activeToolPanelKind = tool_panel_model.PANEL_NONE;
         }
     }
 
@@ -1900,21 +1991,21 @@ class AppShell {
         if toolTabBar == null { return; }
         if toolTabBar.WasChanged() == 0 { return; }
         var idx = toolTabBar.GetActiveIndex();
-        if idx == 0 {
+        if idx == tool_panel_model.TAB_PROBLEMS {
             if diagListBox.Count > 0 { ShowProblemsPanel(); }
-        } else if idx == 1 {
+        } else if idx == tool_panel_model.TAB_OUTPUT {
             if HasOutputContent() { ShowOutputPanel(); }
-        } else if idx == 2 {
+        } else if idx == tool_panel_model.TAB_SEARCH {
             ShowSearchPanel();
-        } else if idx == 3 {
+        } else if idx == tool_panel_model.TAB_REFERENCES {
             ShowReferencesPanel();
-        } else if idx == 4 {
+        } else if idx == tool_panel_model.TAB_VARIABLES {
             ShowVariablesPanel();
-        } else if idx == 5 {
+        } else if idx == tool_panel_model.TAB_CALL_STACK {
             ShowCallStackPanel();
-        } else if idx == 6 {
+        } else if idx == tool_panel_model.TAB_DEBUG {
             ShowDebugPanel();
-        } else if idx == 7 {
+        } else if idx == tool_panel_model.TAB_TERMINAL {
             ShowTerminalPanel();
         } else {
             toolTabBar.SetActive(toolOutputTab);

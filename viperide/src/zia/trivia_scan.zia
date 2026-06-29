@@ -1,0 +1,343 @@
+module trivia_scan;
+
+bind "../services/text_utils";
+bind "identifier_utils";
+
+bind Obj = Viper.Core.Object;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: trivia_scan
+// PURPOSE: Low-level, trivia-aware scanners for lightweight Zia source analysis.
+//
+// WHERE-THIS-FITS: Leaf helper used by formatters, refactors, call scanning, and
+//          the source_scan compatibility facade. This module deliberately knows
+//          nothing about GUI widgets, documents, projects, or compiler services.
+//
+// TEACHING-NOTE: "Trivia" means source text that should not affect structural
+//          editor assists: string literals, line comments, and block comments.
+//          These helpers are not a parser; they only provide cheap line-local
+//          policies that higher-level editor features use conservatively.
+// ============================================================================
+
+/// @brief Net brace delta for a line.
+/// @details Counts `{` as +1 and `}` as -1, ignoring braces in strings, `//`
+///          comments, and nested block comments. `commentDepth` is the open
+///          block-comment depth on entry to the line.
+/// @param line Source line.
+/// @param commentDepth Open block-comment depth before this line.
+/// @return Net brace delta visible to indentation/structure scanners.
+expose func ZiaBraceDelta(line: String, commentDepth: Integer) -> Integer {
+    var delta = 0;
+    var inString = false;
+    var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < n {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
+        if ch == "\"" {
+            inString = true;
+        } else if ch == "{" {
+            delta = delta + 1;
+        } else if ch == "}" {
+            delta = delta - 1;
+        }
+        i = i + 1;
+    }
+    return delta;
+}
+
+/// @brief Open block-comment depth at the end of a line.
+/// @param line Source line.
+/// @param commentDepth Open block-comment depth before this line.
+/// @return Block-comment depth after scanning the line.
+expose func ZiaCommentDepthAfter(line: String, commentDepth: Integer) -> Integer {
+    var inString = false;
+    var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < n {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            return depth;
+        }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
+        if ch == "\"" {
+            inString = true;
+        }
+        i = i + 1;
+    }
+    return depth;
+}
+
+/// @brief Open block-comment depth at the start of a target line.
+/// @param lines Sequence returned by `Str.Split(source, "\n")`.
+/// @param targetLine Zero-based target line index.
+/// @return Block-comment depth before `targetLine`.
+expose func ZiaCommentDepthBeforeLine(lines: Any,
+                                      targetLine: Integer) -> Integer {
+    var depth = 0;
+    var i = 0;
+    while i < targetLine and i < Seq.get_Length(lines) {
+        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        depth = ZiaCommentDepthAfter(line, depth);
+        i = i + 1;
+    }
+    return depth;
+}
+
+/// @brief Net `(`/`[` nesting delta for a line.
+/// @details Mirrors `ZiaBraceDelta` but tracks parentheses/brackets used by
+///          continuation indentation and inline selection expansion.
+/// @param line Source line.
+/// @param commentDepth Open block-comment depth before this line.
+/// @return Net parenthesis/bracket depth change visible outside trivia.
+expose func ZiaParenDelta(line: String, commentDepth: Integer) -> Integer {
+    var delta = 0;
+    var inString = false;
+    var escape = false;
+    var depth = commentDepth;
+    var n = Str.Length(line);
+    var i = 1;
+    while i <= n {
+        var ch = Str.MidLen(line, i, 1);
+        var next = "";
+        if i < n {
+            next = Str.MidLen(line, i + 1, 1);
+        }
+
+        if depth > 0 {
+            if ch == "/" and next == "*" {
+                depth = depth + 1;
+                i = i + 2;
+                continue;
+            }
+            if ch == "*" and next == "/" {
+                depth = depth - 1;
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if inString {
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            i = i + 1;
+            continue;
+        }
+
+        if ch == "/" and next == "/" {
+            break;
+        }
+        if ch == "/" and next == "*" {
+            depth = 1;
+            i = i + 2;
+            continue;
+        }
+        if ch == "\"" {
+            inString = true;
+        } else if ch == "(" or ch == "[" {
+            delta = delta + 1;
+        } else if ch == ")" or ch == "]" {
+            delta = delta - 1;
+        }
+        i = i + 1;
+    }
+    return delta;
+}
+
+/// @brief Open `(`/`[` depth at the start of a target line.
+/// @param lines Sequence returned by `Str.Split(source, "\n")`.
+/// @param targetLine Zero-based target line index.
+/// @return Parenthesis/bracket depth before `targetLine`.
+expose func ZiaParenDepthBeforeLine(lines: Any,
+                                    targetLine: Integer) -> Integer {
+    var paren = 0;
+    var depth = 0;
+    var i = 0;
+    while i < targetLine and i < Seq.get_Length(lines) {
+        var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
+        paren = paren + ZiaParenDelta(line, depth);
+        if paren < 0 { paren = 0; }
+        depth = ZiaCommentDepthAfter(line, depth);
+        i = i + 1;
+    }
+    return paren;
+}
+
+/// @brief Extra continuation indent for a line.
+/// @param line Source line.
+/// @param parenDepthBefore Parenthesis/bracket depth before the line.
+/// @return 1 for hanging continuation lines, else 0.
+expose func ZiaContinuationIndent(line: String,
+                                  parenDepthBefore: Integer) -> Integer {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" { return 0; }
+    var first = Str.MidLen(trimmed, 1, 1);
+    if first == ")" or first == "]" { return 0; }
+    if parenDepthBefore > 0 { return 1; }
+    if first == "." { return 1; }
+    return 0;
+}
+
+/// @brief Replace identifier occurrences outside strings and line comments.
+/// @param line Source line.
+/// @param name Identifier to replace.
+/// @param replacement Replacement text.
+/// @return Rebuilt line with matching identifier tokens replaced.
+expose func ReplaceIdentifierOutsideTrivia(line: String,
+                                           name: String,
+                                           replacement: String) -> String {
+    var out = "";
+    var pos = 1;
+    var inString = false;
+    var escape = false;
+    while pos <= Str.Length(line) {
+        var ch = Str.MidLen(line, pos, 1);
+        var next = "";
+        if pos < Str.Length(line) {
+            next = Str.MidLen(line, pos + 1, 1);
+        }
+        if inString {
+            out = out + ch;
+            if escape {
+                escape = false;
+            } else if ch == "\\" {
+                escape = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+            pos = pos + 1;
+            continue;
+        }
+        if ch == "/" and next == "/" {
+            out = out + Str.Mid(line, pos);
+            return out;
+        }
+        if ch == "\"" {
+            inString = true;
+            out = out + ch;
+            pos = pos + 1;
+            continue;
+        }
+        if identifier_utils.IsIdentStart(ch) {
+            var ident = "";
+            while pos <= Str.Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+                ident = ident + Str.MidLen(line, pos, 1);
+                pos = pos + 1;
+            }
+            if ident == name {
+                out = out + replacement;
+            } else {
+                out = out + ident;
+            }
+            continue;
+        }
+        out = out + ch;
+        pos = pos + 1;
+    }
+    return out;
+}
+
+/// @brief Skip spaces and tabs from a 1-based position.
+/// @param line Source line.
+/// @param pos 1-based starting position.
+/// @return First non-whitespace position, or one past end.
+expose func SkipWhitespace(line: String,
+                           pos: Integer) -> Integer {
+    var i = pos;
+    while i <= Str.Length(line) {
+        var ch = Str.MidLen(line, i, 1);
+        if ch != " " and ch != "\t" {
+            return i;
+        }
+        i = i + 1;
+    }
+    return i;
+}

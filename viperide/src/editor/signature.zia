@@ -15,6 +15,20 @@ bind Map = Viper.Collections.Map;
 
 final SIGNATURE_MAX_BACKWARD_LINES = 200;
 
+// ============================================================================
+// MODULE: signature
+// PURPOSE: Signature-help popup controller for function calls.
+//
+// WHERE-THIS-FITS: main.zia triggers signature help from shortcuts and typed
+//          punctuation, then pumps update() each frame. Zia completion services
+//          provide signature data; this controller owns popup positioning,
+//          overload selection, and stale-result checks.
+//
+// TEACHING-NOTE: Signature help is cursor-sensitive async UI. Always keep the
+//          path, revision, line, and column with pending jobs so late results
+//          cannot render for a different editor state.
+// ============================================================================
+
 class SignatureController {
     expose GUI.FloatingPanel panel;
     expose GUI.Label label;

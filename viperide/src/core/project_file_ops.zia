@@ -1,0 +1,82 @@
+module project_file_ops;
+
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
+bind Str = Viper.String;
+bind Time = Viper.Time;
+
+// ============================================================================
+// MODULE: project_file_ops
+// PURPOSE: Filesystem policy helpers used by ProjectManager and explorer flows.
+//
+// WHERE-THIS-FITS: core/project_manager.zia owns tree state and project metadata.
+//          This module owns small filesystem rules that are easier to test and
+//          teach in isolation: safe child names, project-root containment, Zia
+//          file classification, and reversible trash destinations.
+//
+// TEACHING-NOTE: Explorer actions accept names and paths from UI prompts. Keep
+//          validation at the boundary before composing paths or moving files.
+// ============================================================================
+
+/// @brief Return true when a name is a safe single filesystem component.
+/// @param name User-provided file or folder name.
+/// @return True when `name` can be joined under a selected parent directory.
+expose func IsPlainChildName(name: String) -> Boolean {
+    if name == "" or name == "." or name == ".." { return false; }
+    if Str.IndexOf(name, Path.Sep()) != 0 { return false; }
+    if Str.IndexOf(name, "/") != 0 { return false; }
+    if Str.IndexOf(name, "\\") != 0 { return false; }
+    if Str.IndexOf(name, ":") != 0 { return false; }
+    return true;
+}
+
+/// @brief Return whether a path points to a Zia source file by extension.
+/// @param path File path to classify.
+/// @return True when the path extension is `.zia`, case-insensitive.
+expose func IsZiaFile(path: String) -> Boolean {
+    return Str.ToLower(Path.Ext(path)) == ".zia";
+}
+
+/// @brief Test whether a path is inside a workspace root.
+/// @param fullPath Absolute candidate path.
+/// @param rootPath Absolute workspace root.
+/// @return True when `fullPath` equals the root or is below it.
+expose func IsWithinRoot(fullPath: String, rootPath: String) -> Boolean {
+    if fullPath == "" or rootPath == "" { return false; }
+    if fullPath == rootPath { return true; }
+    var prefix = rootPath;
+    if Str.EndsWith(prefix, Path.Sep()) == false {
+        prefix = prefix + Path.Sep();
+    }
+    return Str.StartsWith(fullPath, prefix);
+}
+
+/// @brief Return a collision-free project-local trash path for explorer delete.
+/// @details ViperIDE keeps deletes reversible by moving files and directories to
+///          `.viperide-trash` under the project root instead of unlinking them.
+///          The path includes the original basename and a monotonic tick suffix,
+///          with a small numeric retry loop for same-tick collisions.
+/// @param projectRoot Absolute root of the primary project.
+/// @param sourcePath Absolute file or directory selected in the explorer.
+/// @return Absolute destination path, or empty string if no project trash is available.
+expose func TrashPathFor(projectRoot: String, sourcePath: String) -> String {
+    if projectRoot == "" or sourcePath == "" { return ""; }
+    var trashRoot = Path.Join(projectRoot, ".viperide-trash");
+    var base = Path.Name(sourcePath);
+    if base == "" { return ""; }
+    var stem = base + "." + Time.GetTickCount();
+    var attempt = 0;
+    while attempt < 128 {
+        var name = stem;
+        if attempt > 0 {
+            name = stem + "." + attempt;
+        }
+        var candidate = Path.Join(trashRoot, name);
+        if IO.File.Exists(candidate) == false and Dir.Exists(candidate) == false {
+            return candidate;
+        }
+        attempt = attempt + 1;
+    }
+    return "";
+}

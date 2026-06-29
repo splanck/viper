@@ -11,16 +11,17 @@ bind Path = Viper.IO.Path;
 bind Time = Viper.Time;
 
 // ============================================================================
-// DebugSession — drives the out-of-process VM debug adapter.
-// ============================================================================
-// Spawns `viper run --debug-adapter <file>`, sends breakpoints + commands on the
-// child's stdin as newline JSON, and consumes newline-JSON control events from the
-// child's stderr (each prefixed with the "@@VDBG@@ " sentinel). The debuggee's own
-// stdout flows through normally and is surfaced as program output.
+// MODULE: debug_session
+// PURPOSE: Drive the out-of-process VM debug adapter.
 //
-// Poll() is called every frame (like the build job) so the IDE stays responsive
-// while the program runs to a breakpoint. Stepping/continue are asynchronous: the
-// command is written now and the matching `stopped` event arrives in a later Poll.
+// WHERE-THIS-FITS: debug_commands starts and controls the session. main.zia pumps
+//          DebugUpdate every frame. AppShell renders call stack, variables, debug
+//          console output, and toolbar enablement from this state.
+//
+// TEACHING-NOTE: Debugging is asynchronous. Commands are written to the adapter
+//          stdin as newline JSON, then matching events arrive later on stderr
+//          with the "@@VDBG@@ " sentinel. Polling keeps this explicit and avoids
+//          callback state hidden outside the frame loop.
 // ============================================================================
 
 final SENTINEL = "@@VDBG@@ ";

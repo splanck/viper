@@ -1,0 +1,67 @@
+module status_bar_model;
+
+bind "../ui/tool_panel_text";
+
+// ============================================================================
+// MODULE: status_bar_model
+// PURPOSE: Text policy for AppShell's status-bar items.
+//
+// WHERE-THIS-FITS: ui/app_shell.zia owns GUI.StatusBar widgets and knows when to
+//          update them. This module owns the small formatting decisions for
+//          project, language, index, job, and background-task status strings.
+//
+// TEACHING-NOTE: UI construction and UI text policy age differently. Keeping the
+//          string rules in a leaf helper makes AppShell easier to scan and gives
+//          new contributors a compact model for adding future status items.
+// ============================================================================
+
+/// @brief Format the active project status-bar item.
+/// @param projectName Active workspace/project name, or empty when none.
+/// @return Status-bar text for the project item.
+expose func ProjectStatusText(projectName: String) -> String {
+    if projectName == "" { return "No project"; }
+    return "Project: " + projectName;
+}
+
+/// @brief Format the active language-service status-bar item.
+/// @param languageName Raw language name from the active language service.
+/// @return Status-bar text for the language item.
+expose func LanguageStatusText(languageName: String) -> String {
+    return "Lang: " + tool_panel_text.FormatLanguageName(languageName);
+}
+
+/// @brief Normalize the workspace-index status text.
+/// @param status Raw indexer status text.
+/// @return Nonempty status-bar text for the index item.
+expose func IndexStatusText(status: String) -> String {
+    if status == "" { return "Workspace index idle"; }
+    return status;
+}
+
+/// @brief Normalize the background-task scheduler status text.
+/// @param status Raw scheduler status text.
+/// @return Nonempty status-bar text for the tasks item.
+expose func TaskStatusText(status: String) -> String {
+    if status == "" { return "Tasks: idle"; }
+    return status;
+}
+
+/// @brief Normalize a build/run job name for status and tooltips.
+/// @param name Runtime job name, or empty for a generic job.
+/// @return Nonempty user-facing job name.
+expose func JobDisplayName(name: String) -> String {
+    if name == "" { return "job"; }
+    return name;
+}
+
+/// @brief Format the build/run job status-bar item.
+/// @param active True when a build/run/debug launch job is active.
+/// @param name Runtime job name, or empty for a generic job.
+/// @return Status-bar text for the job item.
+expose func BuildJobStatusText(active: Boolean,
+                               name: String) -> String {
+    if active {
+        return "Job: " + JobDisplayName(name);
+    }
+    return "Job: idle";
+}

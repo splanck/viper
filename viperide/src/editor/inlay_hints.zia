@@ -14,6 +14,19 @@ final MAX_INLAY_HINTS = 160;
 final MAX_INLAY_FUNCTIONS = 256;
 final HEURISTIC_HINT_PREFIX = "  ? ";
 
+// ============================================================================
+// MODULE: inlay_hints
+// PURPOSE: Lightweight inline parameter/type hint rendering for Zia editor text.
+//
+// WHERE-THIS-FITS: main.zia enables this controller for Zia documents and pumps
+//          update() inside the frame budget. EditorEngine owns the CodeEditor
+//          widget that receives rendered hints.
+//
+// TEACHING-NOTE: This controller is intentionally heuristic and bounded. It
+//          debounces by revision and caps scanned lines/functions so hints never
+//          become an unbounded per-frame parser.
+// ============================================================================
+
 class InlayHintController {
     expose Boolean enabled;
     expose Integer lastRevision;

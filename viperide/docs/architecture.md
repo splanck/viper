@@ -48,6 +48,20 @@ viperide/src/
     zia/            Pure Zia parsing, formatting, bind, and refactor helpers.
 ```
 
+The larger feature areas are intentionally split into small teaching modules:
+
+- `app/command_palette_controller.zia` owns command-palette mode transitions.
+- `app/file_watch_controller.zia` owns active-file watch state and open-tab
+  timestamp polling.
+- `services/search_matcher.zia` owns pure literal/regex line matching.
+- `services/search_paths.zia` owns search include/exclude/ignore path rules.
+- `ui/tool_panel_model.zia` names bottom-panel ids and tab indexes.
+- `editor/completion_items.zia` defines typed completion candidates while
+  `editor/completion.zia` owns popup behavior.
+- `zia/function_scan.zia`, `trivia_scan.zia`, `call_scan.zia`,
+  `delimiter_scan.zia`, and `occurrence_scan.zia` hold focused source scanners;
+  `zia/source_scan.zia` remains a compatibility facade for older callers.
+
 ## Ownership Rules
 
 Prefer this dependency direction:
@@ -85,8 +99,8 @@ Avoid cycles. When two modules need the same rule, move that rule down into
 - App shell creation and settings application.
 - Document, tab, project, session, and recent-file state.
 - Editor-to-document synchronization.
-- File watchers and workspace watchers.
-- Command palette, menu, toolbar, context menu, and shortcut dispatch.
+- File-watch and workspace-watch controllers.
+- Command-palette controller, menu, toolbar, context menu, and shortcut dispatch.
 - Editor controllers: completion, diagnostics, hover, signature help, symbols,
   inlay hints, semantic tokens, and project indexing.
 - Build/run/debug/terminal/SCM panel updates.

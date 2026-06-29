@@ -15,12 +15,16 @@ bind Viper.IO as IO;
 bind Json = Viper.Text.Json;
 
 // ============================================================================
-// BuildSystem — compile and run Zia/BASIC programs from the IDE
-// ============================================================================
-// Handles argument-vector build/run jobs, streamed process output, cancellation,
-// and compiler diagnostic parsing.
+// MODULE: build_system
+// PURPOSE: Compile and run Zia/BASIC programs from the IDE.
 //
-// Diagnostic format: "file.zia:line:col: error[code]: message"
+// WHERE-THIS-FITS: Build and debug command handlers create jobs here; main.zia
+//          pumps UpdateJob every frame and AppShell renders the streamed output.
+//
+// TEACHING-NOTE: Build/run processes are long-lived external state. Keep process
+//          handles, output deltas, cancellation, elapsed time, and diagnostic
+//          parsing together so command handlers remain thin request initiators.
+//          Diagnostic format: "file.zia:line:col: error[code]: message".
 // ============================================================================
 
 final MAX_BUILD_OUTPUT_CHARS = 250000;

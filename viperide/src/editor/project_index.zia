@@ -20,6 +20,21 @@ final INDEX_MAX_BYTES_PER_FRAME = 500000;
 final INDEX_ENUM_CAP = 100000;
 final INDEX_FILE_PAGE_SIZE = 512;
 
+// ============================================================================
+// MODULE: project_index
+// PURPOSE: Cooperative semantic index for Zia project navigation and refactors.
+//
+// WHERE-THIS-FITS: main.zia owns frame budgeting and calls EnsureProject,
+//          SyncActiveWhenIdle, and PumpIndex. Command handlers use this index for
+//          go-to-definition, references, call hierarchy, rename, and workspace
+//          symbols once enough files have been indexed.
+//
+// TEACHING-NOTE: The indexer is deliberately incremental. Large workspaces must
+//          not block the frame loop, so this controller tracks pending files,
+//          bytes processed, and open-document overlays while exposing status text
+//          for the UI.
+// ============================================================================
+
 class ProjectIndexer {
     expose Any handle;
     expose String rootPath;

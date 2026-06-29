@@ -1,0 +1,486 @@
+module main_command_dispatcher;
+
+bind "../app/command_palette_controller";
+bind "../app/dispatch_helpers";
+bind "../app/explorer_action_runner";
+bind "../app/file_watch_controller";
+bind "../app/lifecycle_controller";
+bind "../app/workspace_watcher";
+bind "../build/breakpoints";
+bind "../build/build_system";
+bind "../build/debug_session";
+bind "../commands/build_commands";
+bind "../commands/command_registry";
+bind "../commands/debug_commands";
+bind "../commands/edit_commands";
+bind "../commands/file_commands";
+bind "../commands/search_commands";
+bind "../commands/view_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/session";
+bind "../core/settings";
+bind "../editor/diagnostics";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../editor/project_index";
+bind "../editor/signature";
+bind "../editor/symbols";
+bind "../services/locations";
+bind "../terminal/terminal_controller";
+bind "../ui/app_shell";
+bind "../ui/debug_breakpoint_overlay";
+bind "../ui/explorer_actions";
+bind "../ui/ide_overlays";
+
+bind Viper.GUI;
+bind IO = Viper.IO;
+bind Dir = Viper.IO.Dir;
+bind Path = Viper.IO.Path;
+
+// ============================================================================
+// MODULE: main_command_dispatcher
+// PURPOSE: Route menu, toolbar, shortcut, and command-palette triggers.
+//
+// WHERE-THIS-FITS: main.zia owns frame sequencing and gathers the current
+//          command-palette selection. This module owns the large command-routing
+//          table that used to live inline in the entry point.
+//
+// TEACHING-NOTE: A command has three distinct pieces: catalog metadata,
+//          handler implementation, and per-frame trigger routing. Keeping this
+//          router separate makes it obvious where a command is registered,
+//          where it runs, and how UI events reach it.
+// ============================================================================
+
+var currentDiagIdx = -1;
+
+/// @brief Dispatch all command triggers for one frame.
+/// @details Returns true only when the command path completed application
+///          cleanup and the caller should immediately leave main().
+/// @param shell Workbench shell containing menu and toolbar widgets.
+/// @param docMgr Open document manager.
+/// @param projMgr Project/tree manager.
+/// @param engine Active editor engine.
+/// @param tabs Editor tab controller.
+/// @param buildSys Build/run process controller.
+/// @param dbgSession Active debug session.
+/// @param terminalCtrl Integrated terminal controller.
+/// @param fileWatchCtrl File-watch controller.
+/// @param workspaceWatcherState Workspace watcher state passed to cleanup.
+/// @param indexer Semantic project indexer.
+/// @param breakpointStore Persistent breakpoint store.
+/// @param sessionMgr Session persistence and recent-file manager.
+/// @param locStore Structured location store.
+/// @param commandRegistry Runtime command registry.
+/// @param paletteCtrl Command-palette state controller.
+/// @param explorerOverlay Non-modal explorer action overlay.
+/// @param debugOverlay Non-modal breakpoint metadata overlay.
+/// @param overlays Settings/About overlay controller.
+/// @param liveDiag Live diagnostics controller.
+/// @param symbolOutline Document symbol outline controller.
+/// @param sigCtrl Signature help controller.
+/// @param searcher Async project-search controller.
+/// @param appSettings Current user settings.
+/// @param cpSelected Normalized command-palette selection id for this frame.
+/// @param suppressTreeOpen True when a tree right-click should not open a file.
+/// @return True when cleanup has already run and the application should exit.
+expose func DispatchCommands(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             projMgr: project_manager.ProjectManager,
+                             engine: editor_engine.EditorEngine,
+                             tabs: editor_tabs.EditorTabs,
+                             buildSys: build_system.BuildSystem,
+                             dbgSession: debug_session.DebugSession,
+                             terminalCtrl: terminal_controller.TerminalController,
+                             fileWatchCtrl: file_watch_controller.FileWatchController,
+                             workspaceWatcherState: workspace_watcher.WorkspaceWatcherState,
+                             indexer: project_index.ProjectIndexer,
+                             breakpointStore: breakpoints.BreakpointStore,
+                             sessionMgr: session.SessionManager,
+                             locStore: locations.LocationStore,
+                             commandRegistry: command_registry.CommandRegistry,
+                             paletteCtrl: command_palette_controller.CommandPaletteController,
+                             explorerOverlay: explorer_actions.ExplorerActionOverlay,
+                             debugOverlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                             overlays: ide_overlays.IdeOverlays,
+                             liveDiag: diagnostics.LiveDiagnostics,
+                             symbolOutline: symbols.SymbolOutline,
+                             sigCtrl: signature.SignatureController,
+                             searcher: search_commands.SearchController,
+                             appSettings: settings.SettingsManager,
+                             cpSelected: String,
+                             suppressTreeOpen: Boolean) -> Boolean {
+    if DispatchFileCommands(shell, docMgr, projMgr, engine, tabs, terminalCtrl,
+                            fileWatchCtrl, workspaceWatcherState, indexer,
+                            buildSys, dbgSession, breakpointStore, sessionMgr,
+                            cpSelected) {
+        return true;
+    }
+
+    PumpFileTreeOpen(shell, projMgr, docMgr, engine, tabs, sessionMgr,
+                     fileWatchCtrl, suppressTreeOpen);
+    DispatchEditCommands(shell, docMgr, projMgr, engine, tabs, indexer,
+                         locStore, liveDiag, sigCtrl, cpSelected);
+    DispatchViewSearchCommands(shell, projMgr, docMgr, engine,
+                               commandRegistry, paletteCtrl, explorerOverlay,
+                               indexer, locStore, symbolOutline, searcher,
+                               overlays, liveDiag, appSettings, cpSelected);
+    DispatchBuildDebugCommands(shell, docMgr, projMgr, engine, tabs, buildSys,
+                               breakpointStore, dbgSession, debugOverlay,
+                               appSettings, locStore, cpSelected);
+    return false;
+}
+
+/// @brief Dispatch file, project, terminal, close, and exit commands.
+/// @return True when the command path ran application cleanup and should exit.
+hide func DispatchFileCommands(shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               projMgr: project_manager.ProjectManager,
+                               engine: editor_engine.EditorEngine,
+                               tabs: editor_tabs.EditorTabs,
+                               terminalCtrl: terminal_controller.TerminalController,
+                               fileWatchCtrl: file_watch_controller.FileWatchController,
+                               workspaceWatcherState: workspace_watcher.WorkspaceWatcherState,
+                               indexer: project_index.ProjectIndexer,
+                               buildSys: build_system.BuildSystem,
+                               dbgSession: debug_session.DebugSession,
+                               breakpointStore: breakpoints.BreakpointStore,
+                               sessionMgr: session.SessionManager,
+                               cpSelected: String) -> Boolean {
+    if dispatch_helpers.Triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
+    if dispatch_helpers.Triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); explorer_action_runner.RecordActiveFile(sessionMgr, docMgr); fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("openfolder", shell.miOpenFolder, null, cpSelected) {
+        if file_commands.ConfirmCloseDocuments(shell, docMgr, engine, "Open Folder", -1) {
+            tabs.RefreshFromDocuments(docMgr);
+            file_commands.handleOpenFolder(shell, projMgr);
+            indexer.Open(projMgr.RootPath(), docMgr);
+            if projMgr.IsOpen() {
+                terminalCtrl.SetCwd(projMgr.RootPath());
+            }
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("addfolder", cpSelected) {
+        file_commands.handleAddFolderToWorkspace(shell, projMgr);
+        if projMgr.IsOpen() {
+            terminalCtrl.SetCwd(projMgr.RootPath());
+        }
+    }
+    if dispatch_helpers.Triggered("terminal", shell.miTerminal, null, cpSelected) {
+        if projMgr.IsOpen() { terminalCtrl.SetCwd(projMgr.RootPath()); }
+        shell.ToggleTerminalPanel();
+    }
+    if dispatch_helpers.Triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
+    if dispatch_helpers.Triggered("saveall", shell.miSaveAll, shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(shell, docMgr, engine, tabs); }
+    if dispatch_helpers.Triggered("reload", shell.miReload, null, cpSelected)       { file_commands.handleReload(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.TriggeredMenu("recentfiles", shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(shell, sessionMgr); }
+    if dispatch_helpers.TriggeredMenu("reopenclosed", shell.miReopenClosed, cpSelected) { explorer_action_runner.ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); fileWatchCtrl.ResetPendingReload(); }
+
+    var closeIdx = -1;
+    if dispatch_helpers.Triggered("close", shell.miClose, null, cpSelected) {
+        closeIdx = docMgr.activeIndex;
+    } else if shell.tabBar.WasCloseClicked() != 0 {
+        closeIdx = shell.tabBar.GetCloseClickedIndex();
+    }
+    if closeIdx >= 0 {
+        if file_commands.handleClose(shell, docMgr, engine, tabs, closeIdx) {
+            fileWatchCtrl.ResetPendingReload();
+        }
+    }
+
+    if shell.miExit.WasClicked() != 0 {
+        file_commands.SaveEditorState(docMgr, engine);
+        breakpointStore.Save();
+        sessionMgr.Save(docMgr, projMgr);
+        if file_commands.handleExit(shell, docMgr, engine) {
+            lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, terminalCtrl, fileWatchCtrl,
+                                            workspaceWatcherState, indexer, breakpointStore, sessionMgr);
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @brief Open a selected file tree node unless a context menu consumed it.
+/// @param shell Workbench shell.
+/// @param projMgr Project/tree manager.
+/// @param docMgr Document manager.
+/// @param engine Active editor engine.
+/// @param tabs Tab controller.
+/// @param sessionMgr Session manager for recent files.
+/// @param fileWatchCtrl File-watch controller reset after IDE-owned opens.
+/// @param suppressTreeOpen True when a tree context menu owns the selection.
+hide func PumpFileTreeOpen(shell: app_shell.AppShell,
+                           projMgr: project_manager.ProjectManager,
+                           docMgr: document_manager.DocumentManager,
+                           engine: editor_engine.EditorEngine,
+                           tabs: editor_tabs.EditorTabs,
+                           sessionMgr: session.SessionManager,
+                           fileWatchCtrl: file_watch_controller.FileWatchController,
+                           suppressTreeOpen: Boolean) {
+    var treeSelectedPath = projMgr.HandleTreeClicks();
+    if suppressTreeOpen {
+        treeSelectedPath = "";
+    }
+    if treeSelectedPath != "" {
+        explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, treeSelectedPath);
+        fileWatchCtrl.ResetPendingReload();
+    }
+}
+
+/// @brief Dispatch edit, navigation, diagnostics, signature, and format commands.
+hide func DispatchEditCommands(shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               projMgr: project_manager.ProjectManager,
+                               engine: editor_engine.EditorEngine,
+                               tabs: editor_tabs.EditorTabs,
+                               indexer: project_index.ProjectIndexer,
+                               locStore: locations.LocationStore,
+                               liveDiag: diagnostics.LiveDiagnostics,
+                               sigCtrl: signature.SignatureController,
+                               cpSelected: String) {
+    if dispatch_helpers.Triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine, docMgr); }
+    if dispatch_helpers.Triggered("redo", shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(engine); }
+    if dispatch_helpers.Triggered("cut", shell.miCut, null, cpSelected)             { edit_commands.handleCut(engine); }
+    if dispatch_helpers.Triggered("copy", shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(engine); }
+    if dispatch_helpers.Triggered("paste", shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(engine); }
+    if dispatch_helpers.Triggered("selectall", shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(engine); }
+    if dispatch_helpers.Triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
+    if dispatch_helpers.TriggeredMenu("goto", shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(shell, engine); }
+    if dispatch_helpers.TriggeredMenu("gotodef", shell.miGoToDefinition, cpSelected)  { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
+    if dispatch_helpers.TriggeredMenu("findrefs", shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
+    if dispatch_helpers.TriggeredMenu("incomingcalls", shell.miIncomingCalls, cpSelected) { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
+    if dispatch_helpers.TriggeredMenu("outgoingcalls", shell.miOutgoingCalls, cpSelected) { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
+    if dispatch_helpers.TriggeredMenu("rename", shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
+    if dispatch_helpers.TriggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("clearcursors", cpSelected)                   { edit_commands.handleClearCursors(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("expandselection", cpSelected)                { edit_commands.handleExpandSelection(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
+    if dispatch_helpers.TriggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr); }
+    if dispatch_helpers.TriggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(shell, docMgr, engine); }
+    if dispatch_helpers.TriggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(shell, docMgr, engine); }
+
+    if dispatch_helpers.TriggeredMenu("nexterror", shell.miNextError, cpSelected) {
+        NavigateDiagnostic(shell, docMgr, engine, tabs, locStore, 1);
+    }
+    if dispatch_helpers.TriggeredMenu("preverror", shell.miPreviousError, cpSelected) {
+        NavigateDiagnostic(shell, docMgr, engine, tabs, locStore, -1);
+    }
+    if dispatch_helpers.TriggeredNoMenu("checknow", cpSelected) {
+        file_commands.SaveEditorState(docMgr, engine);
+        var checkErrors = liveDiag.runNow(engine, shell, locStore);
+        if checkErrors > 0 {
+            shell.SetStatusLeft("Diagnostics: " + checkErrors + " errors");
+        } else {
+            shell.SetStatusLeft("Diagnostics complete");
+        }
+    }
+    if (shell.miSignatureHelp != null and shell.miSignatureHelp.WasClicked() != 0)
+       or cpSelected == "signature_trigger" {
+        sigCtrl.trigger(engine);
+    }
+    if dispatch_helpers.TriggeredNoMenu("signaturenextoverload", cpSelected) {
+        sigCtrl.NextOverload();
+    }
+    if dispatch_helpers.TriggeredNoMenu("signatureprevoverload", cpSelected) {
+        sigCtrl.PreviousOverload();
+    }
+}
+
+/// @brief Dispatch workbench, output, explorer-palette, quick-open, and search commands.
+hide func DispatchViewSearchCommands(shell: app_shell.AppShell,
+                                     projMgr: project_manager.ProjectManager,
+                                     docMgr: document_manager.DocumentManager,
+                                     engine: editor_engine.EditorEngine,
+                                     commandRegistry: command_registry.CommandRegistry,
+                                     paletteCtrl: command_palette_controller.CommandPaletteController,
+                                     explorerOverlay: explorer_actions.ExplorerActionOverlay,
+                                     indexer: project_index.ProjectIndexer,
+                                     locStore: locations.LocationStore,
+                                     symbolOutline: symbols.SymbolOutline,
+                                     searcher: search_commands.SearchController,
+                                     overlays: ide_overlays.IdeOverlays,
+                                     liveDiag: diagnostics.LiveDiagnostics,
+                                     appSettings: settings.SettingsManager,
+                                     cpSelected: String) {
+    if dispatch_helpers.Triggered("togglesidebar", shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(shell); }
+    if dispatch_helpers.TriggeredMenu("statusbar", shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(shell, appSettings); }
+    if dispatch_helpers.Triggered("zoomin", shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(shell, engine, appSettings); }
+    if dispatch_helpers.Triggered("zoomout", shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(shell, engine, appSettings); }
+    if dispatch_helpers.Triggered("zoomreset", shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(shell, engine, appSettings); }
+    if dispatch_helpers.Triggered("uizoomin", shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(shell, appSettings); }
+    if dispatch_helpers.Triggered("uizoomout", shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(shell, appSettings); }
+    if dispatch_helpers.Triggered("uizoomreset", shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(shell, appSettings); }
+    if dispatch_helpers.Triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(shell, engine, liveDiag, appSettings); }
+    if dispatch_helpers.Triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell, appSettings); }
+    if dispatch_helpers.Triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { view_commands.handleToggleMinimap(shell, appSettings); }
+    if dispatch_helpers.Triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
+    if dispatch_helpers.TriggeredNoMenu("keybindings", cpSelected)                          { view_commands.handleKeybindings(shell, commandRegistry); }
+    if dispatch_helpers.TriggeredNoMenu("copytoolrow", cpSelected)                          { view_commands.handleCopyToolSelection(shell); }
+    if dispatch_helpers.TriggeredNoMenu("copyoutputtext", cpSelected)                       { view_commands.handleCopyOutputText(shell); }
+    if dispatch_helpers.TriggeredNoMenu("clearoutput", cpSelected)                          { view_commands.handleClearOutput(shell); }
+    if dispatch_helpers.TriggeredNoMenu("filteroutput", cpSelected)                         { view_commands.handleFilterOutput(shell); }
+    if dispatch_helpers.TriggeredNoMenu("toggleoutputwrap", cpSelected)                     { view_commands.handleToggleOutputWrap(shell); }
+    if dispatch_helpers.TriggeredNoMenu("toggleoutputautoscroll", cpSelected)               { view_commands.handleToggleOutputAutoScroll(shell); }
+    if dispatch_helpers.TriggeredNoMenu("treenewfile", cpSelected) {
+        var overlayNewFileDir = contextDirForSelectedProjectPath(projMgr);
+        if overlayNewFileDir != "" { explorerOverlay.OpenNewFile(shell, overlayNewFileDir); }
+    }
+    if dispatch_helpers.TriggeredNoMenu("treenewfolder", cpSelected) {
+        var overlayNewFolderDir = contextDirForSelectedProjectPath(projMgr);
+        if overlayNewFolderDir != "" { explorerOverlay.OpenNewFolder(shell, overlayNewFolderDir); }
+    }
+    if dispatch_helpers.TriggeredNoMenu("treerename", cpSelected) {
+        var overlayRenamePath = projMgr.SelectedPath();
+        if overlayRenamePath != "" { explorerOverlay.OpenRename(shell, overlayRenamePath); }
+    }
+    if dispatch_helpers.TriggeredNoMenu("treedelete", cpSelected) {
+        var overlayDeletePath = projMgr.SelectedPath();
+        if overlayDeletePath != "" { explorerOverlay.OpenDelete(shell, overlayDeletePath); }
+    }
+    if dispatch_helpers.TriggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
+    if shell.miKeyboardShortcuts.WasClicked() != 0                          { view_commands.handleKeybindings(shell, commandRegistry); }
+    if shell.miAbout.WasClicked() != 0                                      { overlays.OpenAbout(shell); }
+    if dispatch_helpers.TriggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
+        if search_commands.ShowQuickOpenPalette(shell, projMgr) {
+            paletteCtrl.BeginQuickOpen();
+        }
+    }
+    if dispatch_helpers.TriggeredMenu("searchproject", shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
+    if dispatch_helpers.TriggeredMenu("workspacesymbols", shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
+    if dispatch_helpers.TriggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
+}
+
+/// @brief Dispatch build, run, debug, and breakpoint metadata commands.
+hide func DispatchBuildDebugCommands(shell: app_shell.AppShell,
+                                     docMgr: document_manager.DocumentManager,
+                                     projMgr: project_manager.ProjectManager,
+                                     engine: editor_engine.EditorEngine,
+                                     tabs: editor_tabs.EditorTabs,
+                                     buildSys: build_system.BuildSystem,
+                                     breakpointStore: breakpoints.BreakpointStore,
+                                     dbgSession: debug_session.DebugSession,
+                                     debugOverlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
+                                     appSettings: settings.SettingsManager,
+                                     locStore: locations.LocationStore,
+                                     cpSelected: String) {
+    if dispatch_helpers.Triggered("build", shell.miBuild, shell.tbBuild, cpSelected) {
+        if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Build") {
+            build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+        }
+    }
+    if dispatch_helpers.Triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected) {
+        if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Build and Run") {
+            build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+        }
+    }
+    if dispatch_helpers.Triggered("run", shell.miRun, null, cpSelected) {
+        if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Run") {
+            build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+        }
+    }
+    if dispatch_helpers.Triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
+    if dispatch_helpers.Triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
+        debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession, appSettings.saveAllBeforeBuild);
+    }
+    if dispatch_helpers.Triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
+        debug_commands.handleDebugContinue(shell, dbgSession);
+    }
+    if dispatch_helpers.Triggered("debugstepover", shell.miDebugStepOver, shell.tbDebugStep, cpSelected) {
+        debug_commands.handleDebugStepOver(shell, dbgSession);
+    }
+    if dispatch_helpers.Triggered("debugstepin", shell.miDebugStepIn, null, cpSelected) {
+        debug_commands.handleDebugStepIn(shell, dbgSession);
+    }
+    if dispatch_helpers.Triggered("debugstepout", shell.miDebugStepOut, null, cpSelected) {
+        debug_commands.handleDebugStepOut(shell, dbgSession);
+    }
+    if dispatch_helpers.Triggered("debugpause", shell.miDebugPause, null, cpSelected) {
+        debug_commands.handleDebugPause(shell, dbgSession);
+    }
+    if dispatch_helpers.Triggered("debugrestart", shell.miDebugRestart, null, cpSelected) {
+        debug_commands.handleDebugRestart(shell, docMgr, engine, tabs, buildSys,
+                                         breakpointStore, dbgSession,
+                                         appSettings.saveAllBeforeBuild);
+    }
+    if dispatch_helpers.Triggered("debugstop", shell.miDebugStop, null, cpSelected) {
+        debug_commands.handleDebugStop(shell, dbgSession);
+    }
+    if dispatch_helpers.Triggered("togglebreakpoint", shell.miToggleBreakpoint, null, cpSelected) {
+        debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore);
+    }
+    if dispatch_helpers.TriggeredNoMenu("debugruntocursor", cpSelected) {
+        debug_commands.handleRunToCursor(shell, docMgr, engine, dbgSession);
+    }
+    if dispatch_helpers.TriggeredNoMenu("debugcondition", cpSelected) {
+        lifecycle_controller.OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+                                                        debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION);
+    }
+    if dispatch_helpers.TriggeredNoMenu("debuglogpoint", cpSelected) {
+        lifecycle_controller.OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+                                                        debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT);
+    }
+    var completedDebugOverlayAction = debugOverlay.Pump(shell);
+    if completedDebugOverlayAction == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION
+       or completedDebugOverlayAction == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
+        lifecycle_controller.ApplyDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+                                                         dbgSession, completedDebugOverlayAction);
+    }
+}
+
+/// @brief Navigate to the next or previous diagnostic row.
+/// @details Problems row zero is a header, so navigation wraps between row 1 and
+///          the final row. The LocationStore owns the actual target data.
+/// @param shell Workbench shell containing the Problems list.
+/// @param docMgr Document manager used by LocationStore.
+/// @param engine Active editor engine used by LocationStore.
+/// @param tabs Tab controller used by LocationStore.
+/// @param locStore Structured location store.
+/// @param direction 1 for next, -1 for previous.
+hide func NavigateDiagnostic(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             engine: editor_engine.EditorEngine,
+                             tabs: editor_tabs.EditorTabs,
+                             locStore: locations.LocationStore,
+                             direction: Integer) {
+    var count = shell.diagListBox.Count;
+    if count <= 1 {
+        GUI.Toast.Info("No diagnostics");
+        return;
+    }
+
+    currentDiagIdx = currentDiagIdx + direction;
+    if currentDiagIdx >= count { currentDiagIdx = 1; }
+    if currentDiagIdx < 1 { currentDiagIdx = count - 1; }
+
+    shell.diagListBox.SelectIndex(currentDiagIdx);
+    var selItem = shell.diagListBox.Selected;
+    if selItem != null {
+        locStore.OpenLocation(shell, docMgr, engine, tabs, GUI.ListBox.ItemGetData(selItem));
+    }
+}
+
+/// @brief Return a directory suitable for selected explorer create commands.
+/// @param projMgr Project manager containing the current explorer selection.
+/// @return Selected directory, selected file parent, or empty when unavailable.
+hide func contextDirForSelectedProjectPath(projMgr: project_manager.ProjectManager) -> String {
+    var selected = projMgr.SelectedPath();
+    if selected == "" { return ""; }
+    if Dir.Exists(selected) { return selected; }
+    if IO.File.Exists(selected) { return Path.Dir(selected); }
+    return "";
+}

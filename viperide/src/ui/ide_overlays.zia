@@ -29,6 +29,20 @@ final ABOUT_PANEL_HEIGHT = 310;
 final PREFERENCE_CONTROL_WIDTH = 240;
 final PANEL_SCREEN_MARGIN = 28;
 
+// ============================================================================
+// MODULE: ide_overlays
+// PURPOSE: Docked Settings surface and floating About panel for ViperIDE.
+//
+// WHERE-THIS-FITS: main.zia opens and pumps these overlays, settings_applier
+//          commits edited values, and AppShell provides the dock/floating panel
+//          hosts. This module owns controls, layout, reset buttons, and action
+//          ids returned to the frame loop.
+//
+// TEACHING-NOTE: Overlay modules should return small action ids instead of
+//          directly changing unrelated subsystems. The frame loop can then apply
+//          settings, browse files, or close panels in the right order.
+// ============================================================================
+
 /// @brief Docked Preferences surface plus the floating About panel.
 /// @details Preferences live in the workbench side panel so they can stay open
 ///          while the editor remains visible.

@@ -11,6 +11,8 @@ bind Viper.Basic.LanguageService as BasicCompletion;
 bind Viper.Zia.SemanticJob as SemanticJob;
 bind "../editor/zia_query";
 bind "../editor/completion_filter";
+bind "../editor/completion_items";
+bind "../editor/workspace_completion_index";
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
 bind "../core/project_manager";
@@ -117,6 +119,7 @@ class CompletionController {
     expose List allReplaceEndCols;
     expose List allCursorOffsets;
     expose List allCommitCharacters;
+    expose List[completion_items.CompletionCandidate] allCandidates;
     expose List insertTexts;
     expose List replaceStartLines;
     expose List replaceStartCols;
@@ -124,6 +127,7 @@ class CompletionController {
     expose List replaceEndCols;
     expose List cursorOffsets;
     expose List commitCharacters;
+    expose List[completion_items.CompletionCandidate] visibleCandidates;
     expose project_manager.ProjectManager workspaceProject;
     expose document_manager.DocumentManager workspaceDocs;
     expose String workspaceRoot;
@@ -135,6 +139,7 @@ class CompletionController {
     expose List workspaceTypes;
     expose List workspacePaths;
     expose List workspaceLines;
+    expose workspace_completion_index.WorkspaceCompletionIndex workspaceIndex;
     expose Any workspacePendingJob;
     expose String workspacePendingPath;
     expose Integer workspacePendingLineOffset;
@@ -173,6 +178,7 @@ class CompletionController {
         allReplaceEndCols = new List();
         allCursorOffsets = new List();
         allCommitCharacters = new List();
+        allCandidates = [];
         insertTexts    = new List();
         replaceStartLines = new List();
         replaceStartCols = new List();
@@ -180,6 +186,7 @@ class CompletionController {
         replaceEndCols = new List();
         cursorOffsets = new List();
         commitCharacters = new List();
+        visibleCandidates = [];
         engine          = null;
         workspaceProject = null;
         workspaceDocs = null;
@@ -192,6 +199,7 @@ class CompletionController {
         workspaceTypes = new List();
         workspacePaths = new List();
         workspaceLines = new List();
+        workspaceIndex = new workspace_completion_index.WorkspaceCompletionIndex();
         workspacePendingJob = null;
         workspacePendingPath = "";
         workspacePendingLineOffset = 0;
@@ -367,6 +375,7 @@ class CompletionController {
         allReplaceEndCols = new List();
         allCursorOffsets = new List();
         allCommitCharacters = new List();
+        allCandidates = [];
         insertTexts = new List();
         replaceStartLines = new List();
         replaceStartCols = new List();
@@ -374,6 +383,7 @@ class CompletionController {
         replaceEndCols = new List();
         cursorOffsets = new List();
         commitCharacters = new List();
+        visibleCandidates = [];
         itemCount = 0;
         visiblePrefix = FILTER_PREFIX_UNSET;
 
@@ -383,31 +393,15 @@ class CompletionController {
                 var item = Seq.Get(items, itemIdx);
                 itemIdx = itemIdx + 1;
 
-                var label = Map.GetStr(item, "label");
-                if label == "" { continue; }
-                var ins = Map.GetStr(item, "insertText");
-                if ins == "" { ins = label; }
-
-                var displayText = FormatCompletionDisplay(label,
-                                                           Map.GetInt(item, "kind"),
-                                                           Map.GetStr(item, "detail"),
-                                                           Map.GetStr(item, "documentation"),
-                                                           Map.GetStr(item, "source"));
-
-                allLabels.Push(label);
-                allDisplays.Push(displayText);
-                allInsertTexts.Push(ins);
-                allReplaceStartLines.Push(Map.GetIntOr(item, "replacementStartLine", curLine) - 1 - off);
-                allReplaceStartCols.Push(Map.GetIntOr(item, "replacementStartColumn", curCol));
-                allReplaceEndLines.Push(Map.GetIntOr(item, "replacementEndLine", curLine) - 1 - off);
-                allReplaceEndCols.Push(Map.GetIntOr(item, "replacementEndColumn", curCol));
-                allCursorOffsets.Push(Map.GetIntOr(item, "cursorOffset", -1));
-                allCommitCharacters.Push(Map.GetStr(item, "commitCharacters"));
+                var candidate = completion_items.FromEngineItem(item, off, curLine, curCol);
+                if candidate != null {
+                    AddCandidate(candidate);
+                }
             }
         }
         AddWorkspaceSymbolCompletions(off, curLine, curCol);
 
-        if allLabels.count() == 0 {
+        if allCandidates.count() == 0 {
             Hide();
             return;
         }
@@ -487,23 +481,23 @@ class CompletionController {
         replaceEndCols = new List();
         cursorOffsets = new List();
         commitCharacters = new List();
+        visibleCandidates = [];
         itemCount = 0;
 
         var normalizedPrefix = Str.ToLower(prefix);
         var i = 0;
-        while i < allLabels.count() and itemCount < MAX_VISIBLE_COMPLETION_ITEMS {
-            var label = Obj.ToString(allLabels.get(i));
-            var display = Obj.ToString(allDisplays.get(i));
-            var insertText = Obj.ToString(allInsertTexts.get(i));
-            if normalizedPrefix == "" or CompletionMatches(Str.ToLower(label), normalizedPrefix) {
-                listbox.AddItem(display);
-                insertTexts.Push(insertText);
-                replaceStartLines.Push(allReplaceStartLines.get(i));
-                replaceStartCols.Push(allReplaceStartCols.get(i));
-                replaceEndLines.Push(allReplaceEndLines.get(i));
-                replaceEndCols.Push(allReplaceEndCols.get(i));
-                cursorOffsets.Push(allCursorOffsets.get(i));
-                commitCharacters.Push(allCommitCharacters.get(i));
+        while i < allCandidates.count() and itemCount < MAX_VISIBLE_COMPLETION_ITEMS {
+            var candidate = allCandidates.get(i);
+            if completion_items.MatchesPrefix(candidate, normalizedPrefix) {
+                listbox.AddItem(candidate.display);
+                visibleCandidates.add(candidate);
+                insertTexts.Push(candidate.insertText);
+                replaceStartLines.Push("" + candidate.replaceStartLine);
+                replaceStartCols.Push("" + candidate.replaceStartCol);
+                replaceEndLines.Push("" + candidate.replaceEndLine);
+                replaceEndCols.Push("" + candidate.replaceEndCol);
+                cursorOffsets.Push("" + candidate.cursorOffset);
+                commitCharacters.Push(candidate.commitCharacters);
                 itemCount = itemCount + 1;
             }
             i = i + 1;
@@ -591,8 +585,10 @@ class CompletionController {
             return false;
         }
 
-        var endLine = ListIntAt(replaceEndLines, activeIndex, editor.CursorLine);
-        var endCol = ListIntAt(replaceEndCols, activeIndex, editor.CursorCol);
+        var candidate = VisibleCandidateAt(activeIndex);
+        if candidate == null { return false; }
+        var endLine = candidate.replaceEndLine;
+        var endCol = candidate.replaceEndCol;
         if editor.CursorLine != endLine or editor.CursorCol <= endCol {
             return false;
         }
@@ -622,12 +618,17 @@ class CompletionController {
         }
         selectedIndex = activeIndex;
         if activeIndex >= 0 and activeIndex < itemCount {
-            var ins = Obj.ToString(insertTexts.get(activeIndex));
-            var startLine = ListIntAt(replaceStartLines, activeIndex, editor.CursorLine);
-            var startCol = ListIntAt(replaceStartCols, activeIndex, editor.CursorCol);
-            var endLine = ListIntAt(replaceEndLines, activeIndex, editor.CursorLine);
-            var endCol = ListIntAt(replaceEndCols, activeIndex, editor.CursorCol);
-            var cursorOffset = ListIntAt(cursorOffsets, activeIndex, -1);
+            var candidate = VisibleCandidateAt(activeIndex);
+            if candidate == null {
+                Hide();
+                return;
+            }
+            var ins = candidate.insertText;
+            var startLine = candidate.replaceStartLine;
+            var startCol = candidate.replaceStartCol;
+            var endLine = candidate.replaceEndLine;
+            var endCol = candidate.replaceEndCol;
+            var cursorOffset = candidate.cursorOffset;
             if startLine >= 0 and endLine >= startLine {
                 if extendToCursor and editor.CursorLine == endLine and editor.CursorCol > endCol {
                     endCol = editor.CursorCol;
@@ -655,7 +656,9 @@ class CompletionController {
         if activeIndex < 0 or activeIndex >= itemCount {
             return false;
         }
-        var chars = Obj.ToString(commitCharacters.get(activeIndex));
+        var candidate = VisibleCandidateAt(activeIndex);
+        if candidate == null { return false; }
+        var chars = candidate.commitCharacters;
         var commit = FirstMatchingCharacter(chars, typed);
         if commit == "" {
             return false;
@@ -678,11 +681,16 @@ class CompletionController {
             Hide();
             return;
         }
-        var ins = Obj.ToString(insertTexts.get(activeIndex));
-        var startLine = ListIntAt(replaceStartLines, activeIndex, editor.CursorLine);
-        var startCol = ListIntAt(replaceStartCols, activeIndex, editor.CursorCol);
-        var endLine = ListIntAt(replaceEndLines, activeIndex, editor.CursorLine);
-        var endCol = ListIntAt(replaceEndCols, activeIndex, editor.CursorCol);
+        var candidate = VisibleCandidateAt(activeIndex);
+        if candidate == null {
+            Hide();
+            return;
+        }
+        var ins = candidate.insertText;
+        var startLine = candidate.replaceStartLine;
+        var startCol = candidate.replaceStartCol;
+        var endLine = candidate.replaceEndLine;
+        var endCol = candidate.replaceEndCol;
         if startLine >= 0 and endLine >= startLine {
             if editor.CursorLine == endLine and editor.CursorCol > endCol {
                 endCol = editor.CursorCol;
@@ -708,7 +716,9 @@ class CompletionController {
         if activeIndex < 0 or activeIndex >= itemCount {
             return "";
         }
-        return Obj.ToString(commitCharacters.get(activeIndex));
+        var candidate = VisibleCandidateAt(activeIndex);
+        if candidate == null { return ""; }
+        return candidate.commitCharacters;
     }
 
     hide func PlaceCursorAtInsertedOffset(startLine: Integer,
@@ -868,12 +878,13 @@ class CompletionController {
             workspaceTypes = new List();
             workspacePaths = new List();
             workspaceLines = new List();
+            workspaceIndex = new workspace_completion_index.WorkspaceCompletionIndex();
             CancelWorkspaceSymbolJob();
             workspaceLastPumpMs = 0;
         }
 
         if workspaceCacheReady { return 0; }
-        if workspaceLabels.count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+        if workspaceIndex.Count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
             workspaceCacheReady = true;
             CancelWorkspaceSymbolJob();
             return 0;
@@ -902,7 +913,7 @@ class CompletionController {
         }
 
         while workspaceFileIndex < workspaceFileCount and processed < limit
-              and workspaceLabels.count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+              and workspaceIndex.Count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
             var filePath = workspaceProject.CachedFileAt(workspaceFileIndex);
             workspaceFileIndex = workspaceFileIndex + 1;
             processed = processed + 1;
@@ -927,7 +938,7 @@ class CompletionController {
 
         if workspacePendingJob == null {
             if workspaceFileIndex >= workspaceFileCount
-               or workspaceLabels.count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+               or workspaceIndex.Count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
                 workspaceCacheReady = true;
             }
         }
@@ -945,6 +956,7 @@ class CompletionController {
         workspaceTypes = new List();
         workspacePaths = new List();
         workspaceLines = new List();
+        workspaceIndex = new workspace_completion_index.WorkspaceCompletionIndex();
         workspaceLastPumpMs = 0;
     }
 
@@ -976,49 +988,43 @@ class CompletionController {
     hide func AddRawWorkspaceSymbolsToCache(filePath: String,
                                             raw: String,
                                             lineOff: Integer) {
-        if raw == "" { return; }
-        var rows = Str.Split(raw, "\n");
+        if workspaceIndex == null {
+            workspaceIndex = new workspace_completion_index.WorkspaceCompletionIndex();
+        }
+        workspaceIndex.AddRawSymbols(filePath, raw, lineOff, MAX_WORKSPACE_SYMBOL_CACHE_ITEMS);
+        MirrorWorkspaceIndexToLegacyLists();
+    }
+
+    /// @brief Rebuild legacy workspace symbol lists from the typed index.
+    /// @details New completion code reads workspaceIndex. The exposed parallel
+    ///          lists remain populated for probes and compatibility while this
+    ///          migration is in progress, but they are derived state only.
+    hide func MirrorWorkspaceIndexToLegacyLists() {
+        workspaceLabels = new List();
+        workspaceKinds = new List();
+        workspaceTypes = new List();
+        workspacePaths = new List();
+        workspaceLines = new List();
+        if workspaceIndex == null { return; }
         var i = 0;
-        while i < Seq.get_Length(rows)
-              and workspaceLabels.count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
-            var row = Obj.ToString(Seq.Get(rows, i));
+        while i < workspaceIndex.Count() {
+            var symbol = workspaceIndex.At(i);
+            if symbol != null {
+                workspaceLabels.Push(symbol.label);
+                workspaceKinds.Push(symbol.kind);
+                workspaceTypes.Push(symbol.typeText);
+                workspacePaths.Push(symbol.filePath);
+                workspaceLines.Push("" + symbol.line);
+            }
             i = i + 1;
-            if row == "" { continue; }
-
-            var parts = Str.Split(row, "\t");
-            if Seq.get_Length(parts) < 4 { continue; }
-
-            var name = Obj.ToString(Seq.Get(parts, 0));
-            var kind = Obj.ToString(Seq.Get(parts, 1));
-            var typeText = Obj.ToString(Seq.Get(parts, 2));
-            var lineText = Obj.ToString(Seq.Get(parts, 3));
-            if name == "" or lineText == "0" { continue; }
-
-            var symbolLine = Viper.Core.Convert.ToInt(lineText) - lineOff;
-            if symbolLine < 1 { continue; }
-            if WorkspaceCacheContains(name, filePath, symbolLine) { continue; }
-
-            workspaceLabels.Push(name);
-            workspaceKinds.Push(kind);
-            workspaceTypes.Push(typeText);
-            workspacePaths.Push(filePath);
-            workspaceLines.Push("" + symbolLine);
         }
     }
 
     hide func WorkspaceCacheContains(name: String,
                                      filePath: String,
                                      line: Integer) -> Boolean {
-        var i = 0;
-        while i < workspaceLabels.count() {
-            if Obj.ToString(workspaceLabels.get(i)) == name
-               and Obj.ToString(workspacePaths.get(i)) == filePath
-               and Viper.Core.Convert.ToInt(Obj.ToString(workspaceLines.get(i))) == line {
-                return true;
-            }
-            i = i + 1;
-        }
-        return false;
+        if workspaceIndex == null { return false; }
+        return workspaceIndex.Contains(name, filePath, line);
     }
 
     hide func AddWorkspaceSymbolCompletions(off: Integer,
@@ -1041,15 +1047,17 @@ class CompletionController {
         var added = 0;
 
         var i = 0;
-        while i < workspaceLabels.count() and added < MAX_WORKSPACE_COMPLETION_ITEMS {
-            var label = Obj.ToString(workspaceLabels.get(i));
-            var path = Obj.ToString(workspacePaths.get(i));
-            if path != sourcePath and WorkspaceSymbolMatchesPrefix(label, prefix)
-               and LabelAlreadyListed(label) == false {
-                AddWorkspaceCompletion(label,
-                                       Obj.ToString(workspaceKinds.get(i)),
-                                       Obj.ToString(workspaceTypes.get(i)),
-                                       path,
+        while workspaceIndex != null
+              and i < workspaceIndex.Count()
+              and added < MAX_WORKSPACE_COMPLETION_ITEMS {
+            var symbol = workspaceIndex.At(i);
+            if symbol != null and symbol.filePath != sourcePath
+               and WorkspaceSymbolMatchesPrefix(symbol.label, prefix)
+               and LabelAlreadyListed(symbol.label) == false {
+                AddWorkspaceCompletion(symbol.label,
+                                       symbol.kind,
+                                       symbol.typeText,
+                                       symbol.filePath,
                                        actualLine,
                                        startCol,
                                        curCol);
@@ -1117,26 +1125,57 @@ class CompletionController {
             detail = detail + "  " + workspaceProject.RelativePath(filePath);
         }
 
-        allLabels.Push(label);
-        allDisplays.Push(kindLabel(WorkspaceKindCode(kind)) + " " + label + "  -  " + detail);
-        allInsertTexts.Push(label);
-        allReplaceStartLines.Push(actualLine);
-        allReplaceStartCols.Push(startCol);
-        allReplaceEndLines.Push(actualLine);
-        allReplaceEndCols.Push(curCol);
-        allCursorOffsets.Push(-1);
-        allCommitCharacters.Push("");
+        var candidate = completion_items.NewCandidate(label,
+                                                       kindLabel(WorkspaceKindCode(kind)) + " " + label + "  -  " + detail,
+                                                       label,
+                                                       actualLine,
+                                                       startCol,
+                                                       actualLine,
+                                                       curCol,
+                                                       -1,
+                                                       "");
+        AddCandidate(candidate);
     }
 
     hide func LabelAlreadyListed(label: String) -> Boolean {
         var i = 0;
-        while i < allLabels.count() {
-            if Obj.ToString(allLabels.get(i)) == label {
+        while i < allCandidates.count() {
+            var candidate = allCandidates.get(i);
+            if candidate.label == label {
                 return true;
             }
             i = i + 1;
         }
         return false;
+    }
+
+    /// @brief Add a candidate to the typed list and legacy synchronized lists.
+    /// @details New code should use allCandidates directly. The old lists remain
+    ///          populated during this migration so older helpers and probes keep
+    ///          their existing assumptions.
+    /// @param candidate Candidate to append.
+    hide func AddCandidate(candidate: completion_items.CompletionCandidate) {
+        if candidate == null { return; }
+        allCandidates.add(candidate);
+        allLabels.Push(candidate.label);
+        allDisplays.Push(candidate.display);
+        allInsertTexts.Push(candidate.insertText);
+        allReplaceStartLines.Push("" + candidate.replaceStartLine);
+        allReplaceStartCols.Push("" + candidate.replaceStartCol);
+        allReplaceEndLines.Push("" + candidate.replaceEndLine);
+        allReplaceEndCols.Push("" + candidate.replaceEndCol);
+        allCursorOffsets.Push("" + candidate.cursorOffset);
+        allCommitCharacters.Push(candidate.commitCharacters);
+    }
+
+    /// @brief Return a visible candidate by listbox index.
+    /// @param index Zero-based visible row index.
+    /// @return Candidate at the index, or null when out of range.
+    hide func VisibleCandidateAt(index: Integer) -> completion_items.CompletionCandidate {
+        if index < 0 or index >= visibleCandidates.count() {
+            return null;
+        }
+        return visibleCandidates.get(index);
     }
 
     hide func WorkspaceSymbolMatchesPrefix(label: String, prefix: String) -> Boolean {

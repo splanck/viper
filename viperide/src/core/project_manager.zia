@@ -1,6 +1,8 @@
 module project_manager;
 
 bind "project";
+bind "project_file_ops";
+bind "project_bind_rewriter";
 bind Viper.GUI as GUI;
 bind Obj = Viper.Core.Object;
 bind Seq = Viper.Collections.Seq;
@@ -8,7 +10,6 @@ bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
 bind Viper.String as Str;
-bind Time = Viper.Time;
 bind FileIndex = Viper.Workspace.FileIndex;
 bind Map = Viper.Collections.Map;
 bind "../core/document_manager";
@@ -531,6 +532,38 @@ class ProjectManager {
         return GUI.TreeView.Node.GetData(selected);
     }
 
+    /// @brief Return whether a primary workspace root is currently open.
+    /// @details Prefer this accessor over direct `project.isOpen` reads in new
+    ///          code. It centralizes null checks and gives ProjectManager room to
+    ///          evolve toward a less-exposed project field.
+    /// @return True when the primary project exists and is open.
+    expose func IsOpen() -> Boolean {
+        return project != null and project.isOpen;
+    }
+
+    /// @brief Return the primary workspace root path.
+    /// @details Multi-root helpers still expose all roots through internal
+    ///          methods, but most command surfaces only need the primary root.
+    /// @return Absolute root path, or empty when no project is open.
+    expose func RootPath() -> String {
+        if IsOpen() == false { return ""; }
+        return project.rootPath;
+    }
+
+    /// @brief Return project ignore patterns for workspace enumeration.
+    /// @return Comma-separated ignore pattern list, or empty when unavailable.
+    expose func IgnorePatterns() -> String {
+        if project == null { return ""; }
+        return project.ignorePatterns;
+    }
+
+    /// @brief Return the display name of the active primary project.
+    /// @return Project name, or empty when no project is open.
+    expose func ProjectName() -> String {
+        if IsOpen() == false { return ""; }
+        return project.name;
+    }
+
     expose func RenameSelected(newName: String,
                                docMgr: document_manager.DocumentManager) -> String {
         var oldPath = SelectedPath();
@@ -619,29 +652,13 @@ class ProjectManager {
     /// @return Absolute destination path, or empty string if no project trash is available.
     hide func TrashPathFor(sourcePath: String) -> String {
         if project == null or project.rootPath == "" or sourcePath == "" { return ""; }
-        var trashRoot = Path.Join(project.rootPath, ".viperide-trash");
-        var base = Path.Name(sourcePath);
-        if base == "" { return ""; }
-        var stem = base + "." + Time.GetTickCount();
-        var attempt = 0;
-        while attempt < 128 {
-            var name = stem;
-            if attempt > 0 {
-                name = stem + "." + attempt;
-            }
-            var candidate = Path.Join(trashRoot, name);
-            if IO.File.Exists(candidate) == false and Dir.Exists(candidate) == false {
-                return candidate;
-            }
-            attempt = attempt + 1;
-        }
-        return "";
+        return project_file_ops.TrashPathFor(project.rootPath, sourcePath);
     }
 
     expose func SetEntryFile(filePath: String) -> Boolean {
         if project == null or project.isOpen == false { return false; }
         if filePath == "" or IO.File.Exists(filePath) == false { return false; }
-        if Str.StartsWith(filePath, project.rootPath + Path.Sep()) == false and filePath != project.rootPath {
+        if project_file_ops.IsWithinRoot(filePath, project.rootPath) == false {
             return false;
         }
 
@@ -822,12 +839,7 @@ class ProjectManager {
     /// @param name User-provided file or folder name.
     /// @return True when @p name can be joined under the selected parent.
     func IsPlainChildName(name: String) -> Boolean {
-        if name == "" or name == "." or name == ".." { return false; }
-        if Str.IndexOf(name, Path.Sep()) != 0 { return false; }
-        if Str.IndexOf(name, "/") != 0 { return false; }
-        if Str.IndexOf(name, "\\") != 0 { return false; }
-        if Str.IndexOf(name, ":") != 0 { return false; }
-        return true;
+        return project_file_ops.IsPlainChildName(name);
     }
 
     func CollectZiaFiles(dirPath: String, files: List) {
@@ -848,7 +860,7 @@ class ProjectManager {
     }
 
     func IsZiaFile(path: String) -> Boolean {
-        return Str.ToLower(Path.Ext(path)) == ".zia";
+        return project_file_ops.IsZiaFile(path);
     }
 
     /// @brief Re-read the disk and rebuild the tree.
@@ -861,26 +873,12 @@ class ProjectManager {
     }
 }
 
-class BindRewriteResult {
-    expose String text;
-    expose Integer count;
-
-    expose func init() {
-        text = "";
-        count = 0;
-    }
-}
-
 func RewriteZiaBindContent(content: String,
                            importingPath: String,
                            oldNorm: String,
                            newNorm: String,
-                           oldWasDir: Boolean) -> BindRewriteResult {
-    var shared = bind_utils.RewriteZiaBindContent(content, importingPath, oldNorm, newNorm, oldWasDir);
-    var result = new BindRewriteResult();
-    result.text = shared.text;
-    result.count = shared.count;
-    return result;
+                           oldWasDir: Boolean) -> project_bind_rewriter.BindRewriteResult {
+    return project_bind_rewriter.RewriteZiaBindContent(content, importingPath, oldNorm, newNorm, oldWasDir);
 }
 
 func RewriteZiaBindLine(line: String,
@@ -888,45 +886,18 @@ func RewriteZiaBindLine(line: String,
                         oldNorm: String,
                         newNorm: String,
                         oldWasDir: Boolean) -> String {
-    return bind_utils.RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
+    return project_bind_rewriter.RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
 }
 
 func ResolveBindPath(importPath: String, importingPath: String) -> String {
-    return bind_utils.ResolveBindPath(importPath, importingPath);
+    return project_bind_rewriter.ResolveBindPath(importPath, importingPath);
 }
 
 func RelativeBindPath(importingDir: String,
                       targetPath: String,
                       oldImportPath: String,
                       keepNoExt: Boolean) -> String {
-    return bind_utils.RelativeBindPath(importingDir, targetPath, oldImportPath, keepNoExt);
-}
-
-func MaybeStripZiaExtension(path: String, keepNoExt: Boolean) -> String {
-    if keepNoExt and Str.EndsWith(path, ".zia") {
-        return Str.Left(path, Str.Length(path) - 4);
-    }
-    return path;
-}
-
-func AppendPathPart(path: String, part: String) -> String {
-    if path == "" { return part; }
-    return path + "/" + part;
-}
-
-func PathParts(path: String) -> Any {
-    var parts = Seq.New();
-    var normalized = NormalizeBindSeparators(path);
-    var raw = Str.Split(normalized, "/");
-    var i = 0;
-    while i < Seq.get_Length(raw) {
-        var part = Obj.ToString(Seq.Get(raw, i));
-        if part != "" and part != "." {
-            Seq.Push(parts, part);
-        }
-        i = i + 1;
-    }
-    return parts;
+    return project_bind_rewriter.RelativeBindPath(importingDir, targetPath, oldImportPath, keepNoExt);
 }
 
 func NormalizeAbsPath(path: String) -> String {

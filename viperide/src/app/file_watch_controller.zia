@@ -1,0 +1,178 @@
+module file_watch_controller;
+
+bind "../core/document_manager";
+bind "../ui/app_shell";
+
+bind Viper.GUI;
+bind IO = Viper.IO;
+bind Time = Viper.Time;
+
+// ============================================================================
+// MODULE: file_watch_controller
+// PURPOSE: Active-file watcher and open-document timestamp polling.
+//
+// WHERE-THIS-FITS: main.zia owns the frame loop. This controller owns the
+//          stateful file-watching details so the loop can call one Pump method
+//          instead of carrying watcher variables and timestamp polling inline.
+//
+// TEACHING-NOTE: The active document uses the platform watcher for fast user
+//          feedback. Inactive open tabs are polled by timestamp so the IDE can
+//          still mark changed documents without starting one watcher per tab.
+// ============================================================================
+
+/// @brief Tracks external file changes for active and inactive open documents.
+class FileWatchController {
+    expose String watchedPath;
+    expose Boolean hasWatcher;
+    expose IO.Watcher fileWatcher;
+    expose Boolean pendingReload;
+    expose Integer lastOpenDocPollMs;
+
+    /// @brief Initialize with no active watched path.
+    /// @details A placeholder watcher keeps the field non-null until the first
+    ///          real file is opened. It is not started until StartWatching().
+    expose func init() {
+        watchedPath = "";
+        hasWatcher = false;
+        fileWatcher = IO.Watcher.New(".");
+        pendingReload = false;
+        lastOpenDocPollMs = 0;
+    }
+
+    /// @brief Clear the pending reload flag after a user action resolved it.
+    expose func ResetPendingReload() {
+        pendingReload = false;
+    }
+
+    /// @brief Stop any active watcher before application shutdown.
+    expose func Destroy() {
+        if hasWatcher and fileWatcher != null {
+            fileWatcher.Stop();
+        }
+        hasWatcher = false;
+        watchedPath = "";
+        pendingReload = false;
+    }
+
+    /// @brief Pump active-file watch events and inactive-tab timestamp checks.
+    /// @param shell Workbench shell used for warning toasts and status text.
+    /// @param docMgr Open document manager to inspect.
+    /// @param openDocPollMs Milliseconds between inactive-document timestamp scans.
+    /// @return True when the active document has an unresolved external change.
+    expose func Pump(shell: app_shell.AppShell,
+                     docMgr: document_manager.DocumentManager,
+                     openDocPollMs: Integer) -> Boolean {
+        PumpActiveDocument(shell, docMgr);
+        PumpOpenDocumentTimestamps(shell, docMgr, openDocPollMs);
+        return pendingReload;
+    }
+
+    /// @brief Watch the current active document when it has a saved path.
+    /// @param shell Workbench shell used for warning toasts and status text.
+    /// @param docMgr Open document manager to inspect.
+    hide func PumpActiveDocument(shell: app_shell.AppShell,
+                                 docMgr: document_manager.DocumentManager) {
+        if docMgr == null {
+            StopWatching();
+            return;
+        }
+        var activeDoc = docMgr.GetActive();
+        if activeDoc == null {
+            StopWatching();
+            return;
+        }
+        var doc = activeDoc!;
+        if doc.isNew {
+            StopWatching();
+            return;
+        }
+        if doc.filePath != watchedPath {
+            StartWatching(doc.filePath);
+        }
+        if hasWatcher == false { return; }
+        var watchEvent = fileWatcher.Poll();
+        if watchEvent == fileWatcher.EVENT_MODIFIED {
+            if pendingReload == false {
+                pendingReload = true;
+                doc.externalChangeNotified = true;
+                GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
+                if shell != null {
+                    shell.SetStatusLeft("Warning: external change - " + doc.fileName);
+                }
+            }
+        }
+    }
+
+    /// @brief Start watching a single saved file path.
+    /// @param path File path to watch.
+    hide func StartWatching(path: String) {
+        if hasWatcher {
+            fileWatcher.Stop();
+        }
+        watchedPath = path;
+        fileWatcher = IO.Watcher.New(watchedPath);
+        fileWatcher.Start();
+        hasWatcher = true;
+        pendingReload = false;
+    }
+
+    /// @brief Stop the active file watcher and clear watcher state.
+    hide func StopWatching() {
+        if hasWatcher {
+            fileWatcher.Stop();
+        }
+        hasWatcher = false;
+        watchedPath = "";
+        pendingReload = false;
+    }
+
+    /// @brief Poll inactive open documents for external timestamp changes.
+    /// @param shell Workbench shell used for warning toasts and status text.
+    /// @param docMgr Open document manager to scan.
+    /// @param openDocPollMs Milliseconds between timestamp scans.
+    hide func PumpOpenDocumentTimestamps(shell: app_shell.AppShell,
+                                         docMgr: document_manager.DocumentManager,
+                                         openDocPollMs: Integer) {
+        if docMgr == null { return; }
+        var now = Time.GetTickCount();
+        if now - lastOpenDocPollMs < openDocPollMs { return; }
+        lastOpenDocPollMs = now;
+        var changedOpenDocs = PollOpenDocumentExternalChanges(shell, docMgr);
+        if changedOpenDocs > 0 {
+            if docMgr.HasExternalChange(docMgr.activeIndex) {
+                pendingReload = true;
+            }
+        }
+    }
+
+    /// @brief Poll all open named documents for external timestamp changes.
+    /// @param shell Workbench shell used for status/toast feedback.
+    /// @param docMgr Open document manager to scan.
+    /// @return Number of newly detected external changes.
+    hide func PollOpenDocumentExternalChanges(shell: app_shell.AppShell,
+                                              docMgr: document_manager.DocumentManager) -> Integer {
+        if shell == null or docMgr == null { return 0; }
+        var changed = 0;
+        var firstName = "";
+        var i = 0;
+        while i < docMgr.GetCount() {
+            var doc = docMgr.GetDocument(i);
+            if doc != null and doc!.externalChangeNotified == false {
+                if docMgr.HasExternalChange(i) {
+                    doc!.externalChangeNotified = true;
+                    changed = changed + 1;
+                    if firstName == "" { firstName = doc!.fileName; }
+                }
+            }
+            i = i + 1;
+        }
+        if changed == 1 {
+            GUI.Toast.Warning("File changed on disk: " + firstName);
+            shell.SetStatusLeft("Warning: external change - " + firstName);
+        } else if changed > 1 {
+            GUI.Toast.Warning("" + changed + " open files changed on disk");
+            shell.SetStatusLeft("Warning: " + changed + " open files changed on disk");
+        }
+        return changed;
+    }
+}

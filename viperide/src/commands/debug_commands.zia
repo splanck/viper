@@ -22,6 +22,20 @@ bind Pixels = Viper.Graphics.Pixels;
 final DEBUG_STOP_SLOT = 1;
 final DEBUG_STOP_COLOR = 1031952639; // 0x3D7DFFFF
 
+// ============================================================================
+// MODULE: debug_commands
+// PURPOSE: Command handlers and per-frame UI sync for debugger features.
+//
+// WHERE-THIS-FITS: main_command_dispatcher routes menu, toolbar, shortcut, and
+//          palette triggers here. DebugSession owns adapter process state, while
+//          BreakpointStore owns persistent breakpoints. This module coordinates
+//          those pieces with AppShell and the active editor.
+//
+// TEACHING-NOTE: Keep debugger commands idempotent and state-aware. A command
+//          should validate saved paths, active sessions, stopped state, and
+//          breakpoint sync before touching the adapter.
+// ============================================================================
+
 func handleToggleBreakpoint(shell: app_shell.AppShell,
                             docMgr: document_manager.DocumentManager,
                             engine: editor_engine.EditorEngine,
