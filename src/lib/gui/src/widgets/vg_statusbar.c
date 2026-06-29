@@ -56,6 +56,22 @@ static void statusbar_arrange(vg_widget_t *widget, float x, float y, float width
 static void statusbar_paint(vg_widget_t *widget, void *canvas);
 static bool statusbar_handle_event(vg_widget_t *widget, vg_event_t *event);
 
+typedef struct statusbar_zone_metrics {
+    float natural_width;
+    float fixed_width;
+    size_t visible_count;
+    size_t spacer_count;
+} statusbar_zone_metrics_t;
+
+typedef struct statusbar_layout {
+    float left_start;
+    float left_width;
+    float center_start;
+    float center_width;
+    float right_start;
+    float right_width;
+} statusbar_layout_t;
+
 //=============================================================================
 // StatusBar VTable
 //=============================================================================
@@ -201,6 +217,141 @@ static float measure_item_width(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
     }
 }
 
+/// @brief Back @p len up to a UTF-8 codepoint boundary before copying a prefix.
+static size_t statusbar_utf8_prev_boundary(const char *text, size_t len) {
+    while (len > 0 && (((unsigned char)text[len] & 0xC0u) == 0x80u))
+        len--;
+    return len;
+}
+
+/// @brief Return a heap copy of @p text fitted to @p max_width with "..." if needed.
+static char *statusbar_fit_text(vg_statusbar_t *sb, const char *text, float max_width) {
+    if (!text || !sb->font || max_width <= 0.0f)
+        return vg_strdup("");
+
+    vg_text_metrics_t metrics;
+    vg_font_measure_text(sb->font, sb->font_size, text, &metrics);
+    if (metrics.width <= max_width)
+        return vg_strdup(text);
+
+    vg_text_metrics_t ellipsis_metrics;
+    vg_font_measure_text(sb->font, sb->font_size, "...", &ellipsis_metrics);
+    if (ellipsis_metrics.width > max_width)
+        return vg_strdup("");
+
+    size_t len = strlen(text);
+    char *buf = (char *)malloc(len + 4); /* original text + "...\0" */
+    if (!buf)
+        return NULL;
+
+    while (len > 0) {
+        memcpy(buf, text, len);
+        memcpy(buf + len, "...", 4);
+        vg_font_measure_text(sb->font, sb->font_size, buf, &metrics);
+        if (metrics.width <= max_width)
+            return buf;
+        len--;
+        len = statusbar_utf8_prev_boundary(text, len);
+    }
+
+    memcpy(buf, "...", 4);
+    return buf;
+}
+
+/// @brief Measure visible items in a zone, separating fixed items from flexible spacers.
+static statusbar_zone_metrics_t statusbar_measure_zone(vg_statusbar_t *sb,
+                                                       vg_statusbar_item_t **items,
+                                                       size_t count) {
+    statusbar_zone_metrics_t metrics = {0};
+    for (size_t i = 0; i < count; i++) {
+        vg_statusbar_item_t *item = items[i];
+        if (!item || !item->visible)
+            continue;
+        metrics.visible_count++;
+        if (item->type == VG_STATUSBAR_ITEM_SPACER) {
+            metrics.spacer_count++;
+        } else {
+            metrics.fixed_width += measure_item_width(sb, item);
+        }
+    }
+    metrics.natural_width = metrics.fixed_width;
+    return metrics;
+}
+
+/// @brief Width assigned to each flexible spacer in a zone.
+static float statusbar_spacer_width(statusbar_zone_metrics_t metrics, float zone_width) {
+    if (metrics.spacer_count == 0 || zone_width <= metrics.fixed_width)
+        return 0.0f;
+    return (zone_width - metrics.fixed_width) / (float)metrics.spacer_count;
+}
+
+/// @brief Compute non-overlapping local or screen-space rectangles for all zones.
+static void statusbar_compute_layout(vg_statusbar_t *sb,
+                                     float origin_x,
+                                     float width,
+                                     statusbar_layout_t *layout) {
+    if (!layout)
+        return;
+    memset(layout, 0, sizeof(*layout));
+
+    float inner_start = origin_x + sb->item_padding;
+    float inner_end = origin_x + width - sb->item_padding;
+    if (inner_end < inner_start)
+        inner_end = inner_start;
+    float inner_width = inner_end - inner_start;
+    float gap = sb->item_padding;
+    if (inner_width < gap * 2.0f)
+        gap = 0.0f;
+
+    statusbar_zone_metrics_t center =
+        statusbar_measure_zone(sb, sb->center_items, sb->center_count);
+    statusbar_zone_metrics_t right = statusbar_measure_zone(sb, sb->right_items, sb->right_count);
+
+    float center_width = center.natural_width;
+    if (center_width > inner_width)
+        center_width = inner_width;
+    if (center.visible_count == 0)
+        center_width = 0.0f;
+
+    float center_start = origin_x + width / 2.0f - center_width / 2.0f;
+    if (center_start < inner_start)
+        center_start = inner_start;
+    if (center_start + center_width > inner_end)
+        center_start = inner_end - center_width;
+    if (center_start < inner_start)
+        center_start = inner_start;
+
+    float center_end = center_start + center_width;
+    bool has_center = center_width > 0.0f && center.visible_count > 0;
+
+    float right_available_start = has_center ? center_end + gap : inner_start;
+    if (right_available_start > inner_end)
+        right_available_start = inner_end;
+    float right_available_width = inner_end - right_available_start;
+    if (right_available_width < 0.0f)
+        right_available_width = 0.0f;
+
+    float right_width = right.natural_width;
+    if (right_width > right_available_width)
+        right_width = right_available_width;
+    if (right.visible_count == 0)
+        right_width = 0.0f;
+    float right_start = inner_end - right_width;
+
+    float left_end = has_center ? center_start - gap : right_start - gap;
+    if (left_end < inner_start)
+        left_end = inner_start;
+    if (left_end > inner_end)
+        left_end = inner_end;
+
+    layout->left_start = inner_start;
+    layout->left_width = left_end - inner_start;
+    layout->center_start = center_start;
+    layout->center_width = center_width;
+    layout->right_start = right_start;
+    layout->right_width = right_width;
+}
+
 //=============================================================================
 // StatusBar Implementation
 //=============================================================================
@@ -318,7 +469,8 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
     float wy = sb->base.y, wh = (float)sb->height;
 
     // Draw hover background for buttons
-    if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item) {
+    if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item &&
+        item_width > 2.0f) {
         vg_draw_round_rect_fill(win,
                                 x + 1.0f,
                                 wy + 2.0f,
@@ -333,13 +485,18 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
         case VG_STATUSBAR_ITEM_BUTTON:
             if (item->text) {
                 uint32_t text_color = item->has_text_color ? item->text_color : sb->text_color;
-                vg_font_draw_text(canvas,
-                                  sb->font,
-                                  sb->font_size,
-                                  x + sb->item_padding,
-                                  text_y,
-                                  item->text,
-                                  text_color);
+                float text_width = item_width - sb->item_padding * 2.0f;
+                char *fitted = statusbar_fit_text(sb, item->text, text_width);
+                if (fitted && fitted[0] != '\0') {
+                    vg_font_draw_text(canvas,
+                                      sb->font,
+                                      sb->font_size,
+                                      x + sb->item_padding,
+                                      text_y,
+                                      fitted,
+                                      text_color);
+                }
+                free(fitted);
             }
             break;
 
@@ -351,7 +508,9 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
         }
 
         case VG_STATUSBAR_ITEM_PROGRESS: {
-            float pw = item->min_width > 0 ? (float)item->min_width : 60.0f;
+            float pw = item_width;
+            if (pw <= 0.0f)
+                break;
             float bar_h = 4.0f;
             float bar_y = wy + (wh - bar_h) / 2.0f;
             // Track background
@@ -371,7 +530,73 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
     }
 }
 
-/// @brief vtable paint — fills background, then paints all zone items left-to-right.
+/// @brief Draw a left-to-right zone, truncating later pixels to @p zone_width.
+static void statusbar_draw_zone_forward(vg_statusbar_t *sb,
+                                        vgfx_window_t win,
+                                        vg_statusbar_item_t **items,
+                                        size_t count,
+                                        float zone_start,
+                                        float zone_width,
+                                        float text_y,
+                                        void *canvas) {
+    if (zone_width <= 0.0f)
+        return;
+
+    statusbar_zone_metrics_t metrics = statusbar_measure_zone(sb, items, count);
+    float spacer_width = statusbar_spacer_width(metrics, zone_width);
+    float x = zone_start;
+    float remaining = zone_width;
+
+    for (size_t i = 0; i < count && remaining > 0.0f; i++) {
+        vg_statusbar_item_t *item = items[i];
+        if (!item || !item->visible)
+            continue;
+
+        float item_width =
+            item->type == VG_STATUSBAR_ITEM_SPACER ? spacer_width : measure_item_width(sb, item);
+        if (item_width > remaining)
+            item_width = remaining;
+        if (item_width > 0.0f && item->type != VG_STATUSBAR_ITEM_SPACER)
+            statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
+        x += item_width;
+        remaining -= item_width;
+    }
+}
+
+/// @brief Draw a right-to-left zone so rightmost status items remain visible first.
+static void statusbar_draw_zone_reverse(vg_statusbar_t *sb,
+                                        vgfx_window_t win,
+                                        vg_statusbar_item_t **items,
+                                        size_t count,
+                                        float zone_start,
+                                        float zone_width,
+                                        float text_y,
+                                        void *canvas) {
+    if (zone_width <= 0.0f)
+        return;
+
+    statusbar_zone_metrics_t metrics = statusbar_measure_zone(sb, items, count);
+    float spacer_width = statusbar_spacer_width(metrics, zone_width);
+    float x = zone_start + zone_width;
+    float remaining = zone_width;
+
+    for (size_t i = count; i > 0 && remaining > 0.0f; i--) {
+        vg_statusbar_item_t *item = items[i - 1];
+        if (!item || !item->visible)
+            continue;
+
+        float item_width =
+            item->type == VG_STATUSBAR_ITEM_SPACER ? spacer_width : measure_item_width(sb, item);
+        if (item_width > remaining)
+            item_width = remaining;
+        x -= item_width;
+        if (item_width > 0.0f && item->type != VG_STATUSBAR_ITEM_SPACER)
+            statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
+        remaining -= item_width;
+    }
+}
+
+/// @brief vtable paint — fills background, then paints constrained, non-overlapping zones.
 static void statusbar_paint(vg_widget_t *widget, void *canvas) {
     vg_statusbar_t *sb = (vg_statusbar_t *)widget;
 
@@ -390,118 +615,129 @@ static void statusbar_paint(vg_widget_t *widget, void *canvas) {
     // Draw top border (1px separator line)
     vgfx_fill_rect(win, (int32_t)wx, (int32_t)wy, (int32_t)ww, 1, sb->border_color);
 
-    float left_x = wx + sb->item_padding;
-    float right_x = wx + ww - sb->item_padding;
     float text_y = wy + (wh - font_metrics.line_height) / 2.0f + font_metrics.ascent;
 
-    // Calculate widths for each zone
-    float center_width = 0;
-    for (size_t i = 0; i < sb->center_count; i++) {
-        if (sb->center_items[i]->type != VG_STATUSBAR_ITEM_SPACER)
-            center_width += measure_item_width(sb, sb->center_items[i]);
-    }
+    statusbar_layout_t layout;
+    statusbar_compute_layout(sb, wx, ww, &layout);
 
-    // Draw left zone items
-    float x = left_x;
-    for (size_t i = 0; i < sb->left_count; i++) {
-        vg_statusbar_item_t *item = sb->left_items[i];
-        if (!item->visible)
-            continue;
-
-        float item_width = measure_item_width(sb, item);
-        statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
-        x += item_width;
-    }
-
-    // Draw right zone items (right to left)
-    x = right_x;
-    for (size_t i = sb->right_count; i > 0; i--) {
-        vg_statusbar_item_t *item = sb->right_items[i - 1];
-        if (!item->visible)
-            continue;
-
-        float item_width = measure_item_width(sb, item);
-        x -= item_width;
-        statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
-    }
-
-    // Draw center zone items
-    float center_start = wx + ww / 2.0f - center_width / 2.0f;
-    x = center_start;
-    for (size_t i = 0; i < sb->center_count; i++) {
-        vg_statusbar_item_t *item = sb->center_items[i];
-        if (!item->visible || item->type == VG_STATUSBAR_ITEM_SPACER)
-            continue;
-
-        float item_width = measure_item_width(sb, item);
-        statusbar_draw_item(sb, win, item, x, item_width, text_y, canvas);
-        x += item_width;
-    }
+    statusbar_draw_zone_forward(sb,
+                                win,
+                                sb->left_items,
+                                sb->left_count,
+                                layout.left_start,
+                                layout.left_width,
+                                text_y,
+                                canvas);
+    statusbar_draw_zone_reverse(sb,
+                                win,
+                                sb->right_items,
+                                sb->right_count,
+                                layout.right_start,
+                                layout.right_width,
+                                text_y,
+                                canvas);
+    statusbar_draw_zone_forward(sb,
+                                win,
+                                sb->center_items,
+                                sb->center_count,
+                                layout.center_start,
+                                layout.center_width,
+                                text_y,
+                                canvas);
 }
 
-/// @brief Return the item whose screen rect contains (mouse_x, mouse_y), or NULL.
+/// @brief Hit-test a left-to-right zone using the same constrained widths as paint.
+static vg_statusbar_item_t *statusbar_find_in_zone_forward(vg_statusbar_t *sb,
+                                                          vg_statusbar_item_t **items,
+                                                          size_t count,
+                                                          float zone_start,
+                                                          float zone_width,
+                                                          float mouse_x) {
+    if (zone_width <= 0.0f || mouse_x < zone_start || mouse_x >= zone_start + zone_width)
+        return NULL;
+
+    statusbar_zone_metrics_t metrics = statusbar_measure_zone(sb, items, count);
+    float spacer_width = statusbar_spacer_width(metrics, zone_width);
+    float x = zone_start;
+    float remaining = zone_width;
+
+    for (size_t i = 0; i < count && remaining > 0.0f; i++) {
+        vg_statusbar_item_t *item = items[i];
+        if (!item || !item->visible)
+            continue;
+
+        float item_width =
+            item->type == VG_STATUSBAR_ITEM_SPACER ? spacer_width : measure_item_width(sb, item);
+        if (item_width > remaining)
+            item_width = remaining;
+        if (item_width > 0.0f && item->type == VG_STATUSBAR_ITEM_BUTTON &&
+            mouse_x >= x && mouse_x < x + item_width)
+            return item;
+
+        x += item_width;
+        remaining -= item_width;
+    }
+    return NULL;
+}
+
+/// @brief Hit-test a right-to-left zone so invisible overflow does not steal clicks.
+static vg_statusbar_item_t *statusbar_find_in_zone_reverse(vg_statusbar_t *sb,
+                                                          vg_statusbar_item_t **items,
+                                                          size_t count,
+                                                          float zone_start,
+                                                          float zone_width,
+                                                          float mouse_x) {
+    if (zone_width <= 0.0f || mouse_x < zone_start || mouse_x >= zone_start + zone_width)
+        return NULL;
+
+    statusbar_zone_metrics_t metrics = statusbar_measure_zone(sb, items, count);
+    float spacer_width = statusbar_spacer_width(metrics, zone_width);
+    float x = zone_start + zone_width;
+    float remaining = zone_width;
+
+    for (size_t i = count; i > 0 && remaining > 0.0f; i--) {
+        vg_statusbar_item_t *item = items[i - 1];
+        if (!item || !item->visible)
+            continue;
+
+        float item_width =
+            item->type == VG_STATUSBAR_ITEM_SPACER ? spacer_width : measure_item_width(sb, item);
+        if (item_width > remaining)
+            item_width = remaining;
+        x -= item_width;
+        if (item_width > 0.0f && item->type == VG_STATUSBAR_ITEM_BUTTON &&
+            mouse_x >= x && mouse_x < x + item_width)
+            return item;
+
+        remaining -= item_width;
+    }
+    return NULL;
+}
+
+/// @brief Return the item whose local rect contains (mouse_x, mouse_y), or NULL.
 static vg_statusbar_item_t *find_item_at(vg_statusbar_t *sb, float mouse_x, float mouse_y) {
     if (mouse_y < 0.0f || mouse_y >= sb->base.height)
         return NULL;
 
-    float left_x = sb->item_padding;
-    float right_x = sb->base.width - sb->item_padding;
+    statusbar_layout_t layout;
+    statusbar_compute_layout(sb, 0.0f, sb->base.width, &layout);
 
-    // Check left zone
-    float x = left_x;
-    for (size_t i = 0; i < sb->left_count; i++) {
-        vg_statusbar_item_t *item = sb->left_items[i];
-        if (!item->visible)
-            continue;
+    vg_statusbar_item_t *item = statusbar_find_in_zone_forward(
+        sb, sb->left_items, sb->left_count, layout.left_start, layout.left_width, mouse_x);
+    if (item)
+        return item;
 
-        float item_width = measure_item_width(sb, item);
-        if (mouse_x >= x && mouse_x < x + item_width) {
-            if (item->type == VG_STATUSBAR_ITEM_BUTTON) {
-                return item;
-            }
-        }
-        x += item_width;
-    }
+    item = statusbar_find_in_zone_reverse(
+        sb, sb->right_items, sb->right_count, layout.right_start, layout.right_width, mouse_x);
+    if (item)
+        return item;
 
-    // Check right zone
-    x = right_x;
-    for (size_t i = sb->right_count; i > 0; i--) {
-        vg_statusbar_item_t *item = sb->right_items[i - 1];
-        if (!item->visible)
-            continue;
-
-        float item_width = measure_item_width(sb, item);
-        x -= item_width;
-        if (mouse_x >= x && mouse_x < x + item_width) {
-            if (item->type == VG_STATUSBAR_ITEM_BUTTON) {
-                return item;
-            }
-        }
-    }
-
-    // Check center zone
-    float center_width = 0;
-    for (size_t i = 0; i < sb->center_count; i++) {
-        if (sb->center_items[i]->type != VG_STATUSBAR_ITEM_SPACER) {
-            center_width += measure_item_width(sb, sb->center_items[i]);
-        }
-    }
-    x = sb->base.width / 2.0f - center_width / 2.0f;
-    for (size_t i = 0; i < sb->center_count; i++) {
-        vg_statusbar_item_t *item = sb->center_items[i];
-        if (!item->visible || item->type == VG_STATUSBAR_ITEM_SPACER)
-            continue;
-
-        float item_width = measure_item_width(sb, item);
-        if (mouse_x >= x && mouse_x < x + item_width) {
-            if (item->type == VG_STATUSBAR_ITEM_BUTTON) {
-                return item;
-            }
-        }
-        x += item_width;
-    }
-
-    return NULL;
+    return statusbar_find_in_zone_forward(sb,
+                                          sb->center_items,
+                                          sb->center_count,
+                                          layout.center_start,
+                                          layout.center_width,
+                                          mouse_x);
 }
 
 /// @brief vtable handle_event — tracks hover and fires on_click for button items.

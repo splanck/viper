@@ -7,6 +7,8 @@ bind Viper.Math;
 bind "./config";
 bind "./terrain";
 
+bind Viper.Game3D.Layers;
+
 class ShowcaseCritters {
     hide Mesh3D critterMesh;
     hide Skeleton3D critterSkel;

@@ -2037,6 +2037,53 @@ TEST(statusbar_hit_testing_uses_local_coords) {
     vg_widget_destroy(&sb->base);
 }
 
+TEST(statusbar_hit_testing_uses_constrained_non_overlapping_zones) {
+    int left_clicks = 0;
+    int center_clicks = 0;
+    int right_clicks = 0;
+    vg_statusbar_t *sb = vg_statusbar_create(NULL);
+    ASSERT_NOT_NULL(sb);
+
+    vg_statusbar_item_t *left = vg_statusbar_add_button(
+        sb, VG_STATUSBAR_ZONE_LEFT, "Very long left status", statusbar_click_counter, &left_clicks);
+    vg_statusbar_item_t *center = vg_statusbar_add_button(
+        sb, VG_STATUSBAR_ZONE_CENTER, "Cursor", statusbar_click_counter, &center_clicks);
+    vg_statusbar_item_t *right = vg_statusbar_add_button(
+        sb, VG_STATUSBAR_ZONE_RIGHT, "Diag", statusbar_click_counter, &right_clicks);
+    ASSERT_NOT_NULL(left);
+    ASSERT_NOT_NULL(center);
+    ASSERT_NOT_NULL(right);
+
+    left->min_width = 130.0f;
+    center->min_width = 40.0f;
+    right->min_width = 50.0f;
+    vg_widget_arrange(&sb->base, 200.0f, 50.0f, 160.0f, (float)sb->height);
+
+    vg_event_t center_click = {0};
+    center_click.type = VG_EVENT_CLICK;
+    center_click.mouse.x = 70.0f;
+    center_click.mouse.y = 5.0f;
+    center_click.mouse.screen_x = sb->base.x + center_click.mouse.x;
+    center_click.mouse.screen_y = sb->base.y + center_click.mouse.y;
+    ASSERT_TRUE(vg_event_send(&sb->base, &center_click));
+    ASSERT_EQ(left_clicks, 0);
+    ASSERT_EQ(center_clicks, 1);
+    ASSERT_EQ(right_clicks, 0);
+
+    vg_event_t right_click = {0};
+    right_click.type = VG_EVENT_CLICK;
+    right_click.mouse.x = 130.0f;
+    right_click.mouse.y = 5.0f;
+    right_click.mouse.screen_x = sb->base.x + right_click.mouse.x;
+    right_click.mouse.screen_y = sb->base.y + right_click.mouse.y;
+    ASSERT_TRUE(vg_event_send(&sb->base, &right_click));
+    ASSERT_EQ(left_clicks, 0);
+    ASSERT_EQ(center_clicks, 1);
+    ASSERT_EQ(right_clicks, 1);
+
+    vg_widget_destroy(&sb->base);
+}
+
 TEST(statusbar_item_mutators_invalidate_owner) {
     vg_statusbar_t *sb = vg_statusbar_create(NULL);
     ASSERT_NOT_NULL(sb);
@@ -2583,6 +2630,7 @@ int main(void) {
     RUN(toolbar_keyboard_navigation_activates_focused_item);
     RUN(toolbar_keyboard_end_focuses_overflow_button);
     RUN(statusbar_hit_testing_uses_local_coords);
+    RUN(statusbar_hit_testing_uses_constrained_non_overlapping_zones);
     RUN(statusbar_item_mutators_invalidate_owner);
     RUN(statusbar_item_mutators_skip_unchanged_values);
     RUN(dropdown_mutators_invalidate_and_adjust_indices);
