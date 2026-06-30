@@ -343,8 +343,8 @@ class ExplorerActionOverlay {
     /// @param shell Workbench shell used for current viewport size.
     hide func Layout(shell: app_shell.AppShell) {
         if panel == null or shell == null or shell.app == null { return; }
-        var rootW = PhysicalToLogical(shell.app.GetWidth(), shell.app.GetScale());
-        var rootH = PhysicalToLogical(shell.app.GetHeight(), shell.app.GetScale());
+        var rootW = shell.app.GetLogicalWidth();
+        var rootH = shell.app.GetLogicalHeight();
         if rootW <= 0 { rootW = 1280; }
         if rootH <= 0 { rootH = 800; }
         var panelW = EXPLORER_PANEL_WIDTH;
@@ -373,17 +373,6 @@ class ExplorerActionOverlay {
         if x < EXPLORER_PANEL_MARGIN { x = EXPLORER_PANEL_MARGIN; }
         if y < EXPLORER_PANEL_MARGIN { y = EXPLORER_PANEL_MARGIN; }
         panel.SetPosition(x, y);
-    }
-
-    /// @brief Convert physical pixels into logical GUI coordinates.
-    /// @param value Pixel value reported by the app.
-    /// @param scale Current window scale factor.
-    /// @return Logical coordinate value used by floating panels.
-    hide func PhysicalToLogical(value: Integer,
-                                scale: Number) -> Integer {
-        if value <= 0 { return value; }
-        if scale <= 0.0 { return value; }
-        return (value * 100) / (scale * 100);
     }
 
     /// @brief Build a short display label for a filesystem path.

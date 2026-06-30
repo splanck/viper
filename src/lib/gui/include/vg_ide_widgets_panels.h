@@ -452,6 +452,26 @@ void vg_outputpane_set_max_lines(vg_outputpane_t *pane, size_t max);
 /// @param size Font size in pixels.
 void vg_outputpane_set_font(vg_outputpane_t *pane, vg_font_t *font, float size);
 
+/// @brief Pixel advance of one monospace character cell (the width of "M" in the pane's font).
+/// @return The cell width in pixels, or 0 when no font is set.
+int vg_outputpane_cell_width(const vg_outputpane_t *pane);
+
+/// @brief Pixel height of one line in the pane's font.
+/// @return The line height in pixels, or 0 when no font is set.
+int vg_outputpane_cell_height(const vg_outputpane_t *pane);
+
+/// @brief Pixel width of @p text rendered in the pane's font (sums glyph advances).
+/// @return The text width in pixels, or 0 when no font is set or @p text is NULL/empty.
+int vg_outputpane_measure_text(const vg_outputpane_t *pane, const char *text);
+
+/// @brief Whole character columns that fit across the pane's arranged width.
+/// @return floor(width / cellWidth), or 0 when no font is set.
+int vg_outputpane_columns_for_width(const vg_outputpane_t *pane);
+
+/// @brief Whole rows that fit down the pane's arranged height.
+/// @return floor(height / cellHeight), or 0 when no font is set.
+int vg_outputpane_rows_for_height(const vg_outputpane_t *pane);
+
 /// @brief Enable/disable interactive terminal mode. When enabled the pane renders with
 ///        a cursor-column overwrite model (handles \r, \b, ESC[K, cursor moves), fully
 ///        parses (and swallows) non-SGR escape sequences, and captures keyboard focus,
@@ -579,6 +599,69 @@ void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size);
 /// @param bc  Breadcrumb widget.
 /// @param max Maximum crumb count (0 = unlimited).
 void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max);
+
+//=============================================================================
+// Grid Widget (tabular data with auto-sized columns)
+//=============================================================================
+
+/// @brief Tabular data grid: rows of text cells in columns that auto-size to their widest
+///        cell, with optional column headers. A non-interactive display widget (no selection
+///        or scrolling) intended for property and data panels.
+typedef struct vg_datagrid {
+    vg_widget_t base;
+
+    int col_count;    ///< Number of columns.
+    char **headers;   ///< [col_count] header strings (entries may be NULL).
+    bool has_headers; ///< True once any header is set (a header row is drawn).
+
+    int row_count;    ///< Number of populated rows.
+    int row_capacity; ///< Allocated row capacity.
+    char **cells;     ///< [row_capacity * col_count] cell strings (entries may be NULL).
+
+    vg_font_t *font;    ///< Font for cells and headers.
+    float font_size;    ///< Font size in pixels.
+    float line_height;  ///< Row height in pixels.
+    float cell_padding; ///< Horizontal padding added to each side of a column.
+
+    uint32_t bg_color;     ///< Background fill color.
+    uint32_t fg_color;     ///< Cell text color.
+    uint32_t header_color; ///< Header text color.
+    uint32_t grid_color;   ///< Row/column separator color.
+} vg_datagrid_t;
+
+/// @brief Create a tabular grid widget attached to @p parent (may be NULL).
+vg_datagrid_t *vg_datagrid_create(vg_widget_t *parent);
+
+/// @brief Destroy a grid and free its cell/header storage.
+void vg_datagrid_destroy(vg_datagrid_t *grid);
+
+/// @brief Set the number of columns. Clears all existing headers and cells.
+void vg_datagrid_set_columns(vg_datagrid_t *grid, int count);
+
+/// @brief Set the header text for a column (NULL/empty clears it).
+void vg_datagrid_set_header(vg_datagrid_t *grid, int col, const char *text);
+
+/// @brief Set the text of a cell, growing the row count as needed.
+void vg_datagrid_set_cell(vg_datagrid_t *grid, int row, int col, const char *text);
+
+/// @brief Return a cell's text, or NULL when empty/out of range. Borrowed; do not free.
+const char *vg_datagrid_get_cell(const vg_datagrid_t *grid, int row, int col);
+
+/// @brief Remove all rows (columns and headers are kept).
+void vg_datagrid_clear(vg_datagrid_t *grid);
+
+/// @brief Set the font used for headers and cells.
+void vg_datagrid_set_font(vg_datagrid_t *grid, vg_font_t *font, float size);
+
+/// @brief Auto-sized pixel width of a column: the widest of its header and cells, plus
+///        padding. Returns 0 when no font is set or @p col is out of range.
+int vg_datagrid_column_width(const vg_datagrid_t *grid, int col);
+
+/// @brief Number of populated rows.
+int vg_datagrid_row_count(const vg_datagrid_t *grid);
+
+/// @brief Number of columns.
+int vg_datagrid_column_count(const vg_datagrid_t *grid);
 
 #ifdef __cplusplus
 }

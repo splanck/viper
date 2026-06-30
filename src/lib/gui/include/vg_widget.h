@@ -115,6 +115,8 @@ typedef enum vg_widget_type {
     VG_WIDGET_COLORPALETTE, ///< Grid of color swatches for quick selection.
     VG_WIDGET_COLORPICKER,  ///< Full RGB(A) color picker with sliders.
     VG_WIDGET_GROUPBOX,     ///< Titled "card" container grouping related controls.
+    VG_WIDGET_DATAGRID,     ///< Tabular data grid with auto-sized columns (Viper.GUI.Grid).
+    VG_WIDGET_POPUPLIST,    ///< Caret-anchored filtered popup list (Viper.GUI.PopupList).
     VG_WIDGET_CUSTOM,       ///< Application-defined custom widget.
 } vg_widget_type_t;
 

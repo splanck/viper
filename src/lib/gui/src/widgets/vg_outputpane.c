@@ -1557,3 +1557,43 @@ void vg_outputpane_set_font(vg_outputpane_t *pane, vg_font_t *font, float size) 
     pane->base.needs_layout = true;
     pane->base.needs_paint = true;
 }
+
+int vg_outputpane_cell_width(const vg_outputpane_t *pane) {
+    if (!pane || !pane->font || pane->font_size <= 0.0f)
+        return 0;
+    vg_text_metrics_t metrics = {0};
+    vg_font_measure_text(pane->font, pane->font_size, "M", &metrics);
+    if (metrics.width <= 0.0f)
+        return 0;
+    return (int)(metrics.width + 0.5f);
+}
+
+int vg_outputpane_cell_height(const vg_outputpane_t *pane) {
+    if (!pane || !pane->font || pane->line_height <= 0.0f)
+        return 0;
+    return (int)(pane->line_height + 0.5f);
+}
+
+int vg_outputpane_measure_text(const vg_outputpane_t *pane, const char *text) {
+    if (!pane || !pane->font || pane->font_size <= 0.0f || !text || text[0] == '\0')
+        return 0;
+    vg_text_metrics_t metrics = {0};
+    vg_font_measure_text(pane->font, pane->font_size, text, &metrics);
+    if (metrics.width <= 0.0f)
+        return 0;
+    return (int)(metrics.width + 0.5f);
+}
+
+int vg_outputpane_columns_for_width(const vg_outputpane_t *pane) {
+    int cell = vg_outputpane_cell_width(pane);
+    if (cell <= 0 || pane->base.width <= 0.0f)
+        return 0;
+    return (int)(pane->base.width / (float)cell);
+}
+
+int vg_outputpane_rows_for_height(const vg_outputpane_t *pane) {
+    int cell = vg_outputpane_cell_height(pane);
+    if (cell <= 0 || pane->base.height <= 0.0f)
+        return 0;
+    return (int)(pane->base.height / (float)cell);
+}

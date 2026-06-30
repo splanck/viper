@@ -1520,6 +1520,25 @@ void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {
     free(cstr);
 }
 
+/// @brief Insert text at the primary cursor, then place the caret @p caret_offset characters
+///        into the inserted text. Captures the pre-insert position, inserts, then advances by
+///        the offset (counting newlines) and sets the cursor — so the caret lands inside a
+///        multi-line insertion without the caller walking the text by hand.
+void rt_codeeditor_insert_and_place_cursor(void *editor, rt_string text, int64_t caret_offset) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce || !text)
+        return;
+    int64_t line = rt_codeeditor_get_cursor_line_at(editor, 0);
+    int64_t col = rt_codeeditor_get_cursor_col_at(editor, 0);
+    char *cstr = rt_string_to_gui_cstr(text);
+    if (!cstr)
+        return;
+    vg_codeeditor_insert_text(ce, cstr);
+    rt_codeeditor_advance_position(cstr, caret_offset, &line, &col);
+    free(cstr);
+    rt_codeeditor_set_cursor_position_at(editor, 0, line, col);
+}
+
 static int rt_codeeditor_identifier_byte(unsigned char c) {
     return isalnum(c) || c == '_' || c >= 0x80;
 }
@@ -2095,6 +2114,13 @@ int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
 void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {
     (void)editor;
     (void)text;
+}
+
+/// @brief Stub: graphics disabled — no editor to insert into.
+void rt_codeeditor_insert_and_place_cursor(void *editor, rt_string text, int64_t caret_offset) {
+    (void)editor;
+    (void)text;
+    (void)caret_offset;
 }
 
 /// @brief Stub: returns empty string (no word-at-cursor without graphics).

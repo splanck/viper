@@ -6,6 +6,7 @@ bind "../build/debug_session";
 bind Viper.GUI;
 bind Input = Viper.Input;
 bind Str = Viper.String;
+bind Char = Viper.Text.Char;
 
 // ============================================================================
 // MODULE: dispatch_helpers
@@ -70,10 +71,7 @@ expose func HasIdentifierInput(text: String) -> Boolean {
     var i = 1;
     while i <= Str.Length(text) {
         var ch = Str.MidLen(text, i, 1);
-        if ch >= "a" and ch <= "z" { return true; }
-        if ch >= "A" and ch <= "Z" { return true; }
-        if ch >= "0" and ch <= "9" { return true; }
-        if ch == "_" { return true; }
+        if Char.IsIdentifierPart(ch) { return true; }
         i = i + 1;
     }
     return false;

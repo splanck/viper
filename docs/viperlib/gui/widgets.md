@@ -499,6 +499,47 @@ if fileList.WasSelectionChanged() == 1 {
 
 ---
 
+### OutputPane
+
+Scrollable text surface for build/run logs, search results, and the integrated
+terminal (`SetTerminalMode`). It renders a monospace grid, so its font metrics
+should drive any column/row layout built on top of it.
+
+**Constructor:** `NEW Viper.GUI.OutputPane(parent)`
+
+**Text & cell metrics** — use these instead of hardcoding a pixels-per-character
+guess; they track the pane's actual font and DPI scale:
+
+| Method               | Signature         | Description                                                       |
+|----------------------|-------------------|-------------------------------------------------------------------|
+| `GetCellWidth()`     | `Integer()`       | Pixel advance of one character cell (`"M"`); `0` if no font        |
+| `GetCellHeight()`    | `Integer()`       | Pixel height of one line; `0` if no font                          |
+| `MeasureText(text)`  | `Integer(String)` | Pixel width of `text` in the pane's font; `0` if no font/empty     |
+| `ColumnsForWidth()`  | `Integer()`       | Whole columns that fit across the pane: `floor(width / cellWidth)` |
+| `RowsForHeight()`    | `Integer()`       | Whole rows that fit down the pane: `floor(height / cellHeight)`    |
+
+`ColumnsForWidth() == GetWidth() / GetCellWidth()` and `MeasureText("M") == GetCellWidth()`.
+All five return `0` until a font is set with `SetFont`.
+
+**Content & terminal:** `Append(text)`, `AppendLine(text)`,
+`AppendStyled(text, fg, bg, bold)`, `Clear()`, `ScrollToTop()`, `ScrollToBottom()`,
+`SetAutoScroll(on)`, `SetMaxLines(n)`, `get_LineCount`, `GetSelection()`,
+`SelectAll()`, `SetFont(font, size)`, `SetTerminalMode(on)`, and `TakeInput()`
+(drains captured keystrokes in terminal mode).
+
+### Example
+
+```rust
+// Zia — size a terminal grid from the real font instead of guessing 8x18 px.
+var pane = OutputPane.New(root);
+pane.SetFont(monoFont, 14.0);
+pane.SetTerminalMode(1);
+var cols = pane.ColumnsForWidth();   // was: pane.GetWidth() / 8
+var rows = pane.RowsForHeight();     // was: pane.GetHeight() / 18
+```
+
+---
+
 ### Image
 
 Image display widget.
@@ -543,6 +584,112 @@ preview.LoadFile("photo.png");
 
 The native GUI layer includes `ColorSwatch`, `ColorPalette`, and `ColorPicker` widgets for C applications and demos.
 `ColorPalette` renders its swatch grid directly and selection callbacks fire once per completed click. `ColorPicker.SetColor()`, `SetRGB()`, and `SetAlpha()` synchronize their child sliders and preview swatch before emitting one external change callback, so observers no longer see transient intermediate colors.
+
+---
+
+### Grid
+
+Tabular data grid whose columns **auto-size to their widest cell**, with optional column
+headers. A non-interactive display widget (no selection or scrolling) for property and data
+panels — use it instead of padding monospace strings to fake columns.
+
+**Constructor:** `NEW Viper.GUI.Grid(parent)`
+
+| Method                   | Signature                       | Description                                                  |
+|--------------------------|---------------------------------|--------------------------------------------------------------|
+| `SetColumns(count)`      | `Void(Integer)`                 | Set the column count (clears existing headers and cells)     |
+| `SetHeader(col, text)`   | `Void(Integer, String)`         | Set a column header (drawn as a header row)                  |
+| `SetCell(row, col, text)`| `Void(Integer, Integer, String)`| Set a cell's text, growing the row count as needed           |
+| `GetCell(row, col)`      | `String(Integer, Integer)`      | A cell's text (empty when out of range)                      |
+| `Clear()`                | `Void()`                        | Remove all rows (columns and headers are kept)               |
+| `SetFont(font, size)`    | `Void(Object, Number)`          | Set the header/cell font                                     |
+| `GetColumnWidth(col)`    | `Integer(Integer)`              | Auto-sized pixel width of a column (its widest content + padding); `0` if no font |
+| `RowCount`               | `Integer` (property)            | Number of populated rows                                     |
+| `ColumnCount`            | `Integer` (property)            | Number of columns                                            |
+
+A column's width tracks its widest header or cell, so the table stays aligned no matter the
+content or font size. `GetColumnWidth()` exposes the computed width if you need it for surrounding
+layout. The grid also supports the common `Widget` methods (`SetSize`, `SetVisible`, `Destroy`, …).
+
+### Example
+
+```rust
+// Zia — a property table that sizes its columns to the data.
+var grid = Grid.New(panel);
+grid.SetColumns(2);
+grid.SetHeader(0, "Property");
+grid.SetHeader(1, "Value");
+grid.SetCell(0, 0, "Width");      grid.SetCell(0, 1, "1280");
+grid.SetCell(1, 0, "Color Space"); grid.SetCell(1, 1, "sRGB");
+// Columns 0 and 1 auto-size to "Color Space" and "Property"/"sRGB" respectively.
+```
+
+---
+
+### PopupList
+
+A caret-anchored, filterable, keyboard-navigable popup list rendered above content — the
+reusable core of an autocomplete/quick-pick UI. The **host drives keyboard and visibility** and
+supplies pre-ranked items (language-specific ranking stays in the host); the widget owns the
+popup mechanics (filter, selection, anchor, accept). Created hidden.
+
+**Constructor:** `NEW Viper.GUI.PopupList(root)`
+
+| Method                   | Signature              | Description                                                  |
+|--------------------------|------------------------|--------------------------------------------------------------|
+| `AddItem(text)`          | `Void(String)`         | Append an item (host adds them in its preferred rank order)  |
+| `Clear()`                | `Void()`               | Remove all items and reset the filter/selection              |
+| `SetFilter(text)`        | `Void(String)`         | Keep only items containing `text` (case-insensitive)         |
+| `VisibleCount`           | `Integer` (property)   | Number of items matching the filter                          |
+| `NavigateUp()` / `NavigateDown()` | `Void()`      | Move the selection within the visible items (clamped)        |
+| `SetSelectedIndex(i)`    | `Void(Integer)`        | Set the selection within the visible items                   |
+| `GetSelectedIndex()`     | `Integer()`            | Selection index within the visible items, or `-1` if none    |
+| `GetSelected()`          | `String()`             | Text of the selected visible item (empty if none)            |
+| `AcceptSelected()`       | `Void()`               | Mark the current selection accepted                          |
+| `WasAccepted()`          | `Boolean()`            | Whether `AcceptSelected` was called since the last query (consume-on-read) |
+| `AnchorAt(x, y)`         | `Void(Number, Number)` | Position the popup top-left (e.g. at the caret pixel)        |
+| `SetWidth(w)`            | `Void(Number)`         | Set the popup width                                          |
+| `SetMaxRows(n)`          | `Void(Integer)`        | Maximum visible rows before clamping height                 |
+| `SetFont(font, size)`    | `Void(Object, Number)` | Set the item font                                           |
+| `SetVisible(on)` / `IsVisible()` | `Void(Integer)` / `Boolean()` | Show/hide the popup                       |
+
+The host typically: clears + adds candidates, `SetFilter(typed)`, `AnchorAt(caretX, caretY)`,
+`SetVisible(1)`; then on arrow keys calls `NavigateUp/Down`, on Enter calls `AcceptSelected` and
+reads `WasAccepted` to perform the insertion, and hides the popup on edit or escape.
+
+### Example
+
+```rust
+// Zia — a caret-anchored completion popup.
+var popup = PopupList.New(root);
+popup.AddItem("Console");
+popup.AddItem("Convert");
+popup.AddItem("Canvas");
+popup.SetFilter("con");                 // -> "Console", "Convert"
+popup.AnchorAt(editor.GetCursorPixelX(), editor.GetCursorPixelY() + 20);
+popup.SetVisible(1);
+// On Enter:
+if popup.WasAccepted() { editor.Insert(popup.GetSelected()); popup.SetVisible(0); }
+```
+
+---
+
+### CodeEditor — InsertAndPlaceCursor
+
+`Viper.GUI.CodeEditor` is the syntax-highlighting multi-line editor (insert, cursor, find, and
+selection APIs). One method worth calling out for snippet-style insertion:
+
+| Method                              | Signature                  | Description                                                              |
+|-------------------------------------|----------------------------|--------------------------------------------------------------------------|
+| `InsertAndPlaceCursor(text, caretOffset)` | `Void(String, Integer)` | Insert `text` at the cursor, then place the caret `caretOffset` characters into the inserted text (counting newlines) |
+
+Use it to drop the caret *inside* a multi-line insertion instead of at its end — e.g. inserting
+`"if  {\n\n}"` and placing the caret after `if ` — without walking the inserted text by hand.
+
+```rust
+// Zia — insert a snippet and land the caret between the braces.
+editor.InsertAndPlaceCursor("if () {\n    \n}", 4); // caret after "if ("
+```
 
 ---
 

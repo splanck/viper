@@ -1018,6 +1018,46 @@ void rt_outputpane_set_font(void *pane, void *font, double size) {
     vg_outputpane_set_font(out, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
+/// @brief Pixel advance of one monospace character cell ("M") in the pane's font.
+int64_t rt_outputpane_get_cell_width(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    return out ? (int64_t)vg_outputpane_cell_width(out) : 0;
+}
+
+/// @brief Pixel height of one line in the pane's font.
+int64_t rt_outputpane_get_cell_height(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    return out ? (int64_t)vg_outputpane_cell_height(out) : 0;
+}
+
+/// @brief Pixel width of @p text rendered in the pane's font.
+int64_t rt_outputpane_measure_text(void *pane, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    if (!out)
+        return 0;
+    char *ctext = rt_string_to_gui_cstr(text);
+    int64_t width = (int64_t)vg_outputpane_measure_text(out, ctext);
+    free(ctext);
+    return width;
+}
+
+/// @brief Whole character columns that fit across the pane's arranged width.
+int64_t rt_outputpane_columns_for_width(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    return out ? (int64_t)vg_outputpane_columns_for_width(out) : 0;
+}
+
+/// @brief Whole rows that fit down the pane's arranged height.
+int64_t rt_outputpane_rows_for_height(void *pane) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_outputpane_t *out = rt_outputpane_checked(pane);
+    return out ? (int64_t)vg_outputpane_rows_for_height(out) : 0;
+}
+
 /// @brief Enable/disable interactive terminal mode (cursor model + keyboard capture).
 void rt_outputpane_set_terminal_mode(void *pane, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
@@ -1186,6 +1226,272 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     if (sp) {
         vg_spinner_set_decimals(sp, rt_gui_clamp_i64_to_i32(decimals, 0, 9));
     }
+}
+
+//=============================================================================
+// Grid (tabular data with auto-sized columns) — Viper.GUI.Grid
+//=============================================================================
+
+static vg_datagrid_t *rt_datagrid_checked(void *handle) {
+    return (vg_datagrid_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_DATAGRID);
+}
+
+/// @brief Create a tabular data grid attached to an optional parent.
+void *rt_datagrid_new(void *parent) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return vg_datagrid_create(parent_widget);
+}
+
+/// @brief Set the grid's column count (clears existing headers and cells).
+void rt_datagrid_set_columns(void *grid, int64_t count) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (g)
+        vg_datagrid_set_columns(g, rt_gui_clamp_i64_to_i32(count, 0, 4096));
+}
+
+/// @brief Set a column header.
+void rt_datagrid_set_header(void *grid, int64_t col, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (!g)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_datagrid_set_header(g, rt_gui_clamp_i64_to_i32(col, 0, 4096), ctext);
+    free(ctext);
+}
+
+/// @brief Set a cell's text, growing the row count as needed.
+void rt_datagrid_set_cell(void *grid, int64_t row, int64_t col, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (!g)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_datagrid_set_cell(g,
+                         rt_gui_clamp_i64_to_i32(row, 0, INT32_MAX),
+                         rt_gui_clamp_i64_to_i32(col, 0, 4096),
+                         ctext);
+    free(ctext);
+}
+
+/// @brief Return a cell's text (empty string when out of range).
+rt_string rt_datagrid_get_cell(void *grid, int64_t row, int64_t col) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (!g)
+        return rt_str_empty();
+    const char *cell = vg_datagrid_get_cell(
+        g, rt_gui_clamp_i64_to_i32(row, 0, INT32_MAX), rt_gui_clamp_i64_to_i32(col, 0, 4096));
+    return cell ? rt_string_from_bytes(cell, (int64_t)strlen(cell)) : rt_str_empty();
+}
+
+/// @brief Remove all rows.
+void rt_datagrid_clear(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (g)
+        vg_datagrid_clear(g);
+}
+
+/// @brief Set the grid's header/cell font.
+void rt_datagrid_set_font(void *grid, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (!g)
+        return;
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_datagrid_set_font(g, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+}
+
+/// @brief Auto-sized pixel width of a column.
+int64_t rt_datagrid_get_column_width(void *grid, int64_t col) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (int64_t)vg_datagrid_column_width(g, rt_gui_clamp_i64_to_i32(col, 0, 4096)) : 0;
+}
+
+/// @brief Number of populated rows.
+int64_t rt_datagrid_get_row_count(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (int64_t)vg_datagrid_row_count(g) : 0;
+}
+
+/// @brief Number of columns.
+int64_t rt_datagrid_get_column_count(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (int64_t)vg_datagrid_column_count(g) : 0;
+}
+
+//=============================================================================
+// PopupList (caret-anchored filtered selection list) — Viper.GUI.PopupList
+//=============================================================================
+
+static vg_popuplist_t *rt_popuplist_checked(void *handle) {
+    return (vg_popuplist_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_POPUPLIST);
+}
+
+/// @brief Create a popup list attached to an optional parent (rendered in the overlay pass).
+void *rt_popuplist_new(void *parent) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return vg_popuplist_create(parent_widget);
+}
+
+/// @brief Append an item.
+void rt_popuplist_add_item(void *list, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (!p)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_popuplist_add_item(p, ctext);
+    free(ctext);
+}
+
+/// @brief Remove all items and reset filter/selection.
+void rt_popuplist_clear(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_clear(p);
+}
+
+/// @brief Set the (case-insensitive substring) filter.
+void rt_popuplist_set_filter(void *list, rt_string filter) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (!p)
+        return;
+    char *cfilter = rt_string_to_gui_cstr(filter);
+    vg_popuplist_set_filter(p, cfilter);
+    free(cfilter);
+}
+
+/// @brief Number of items currently visible (matching the filter).
+int64_t rt_popuplist_visible_count(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    return p ? (int64_t)vg_popuplist_visible_count(p) : 0;
+}
+
+/// @brief Move the selection up one visible item.
+void rt_popuplist_navigate_up(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_navigate_up(p);
+}
+
+/// @brief Move the selection down one visible item.
+void rt_popuplist_navigate_down(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_navigate_down(p);
+}
+
+/// @brief Set the selection index within the visible items.
+void rt_popuplist_set_selected_index(void *list, int64_t index) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_set_selected_index(p, rt_gui_clamp_i64_to_i32(index, 0, INT32_MAX));
+}
+
+/// @brief Selection index within the visible items, or -1 when none are visible.
+int64_t rt_popuplist_get_selected_index(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    return p ? (int64_t)vg_popuplist_selected_index(p) : -1;
+}
+
+/// @brief Text of the selected visible item (empty when none).
+rt_string rt_popuplist_get_selected(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (!p)
+        return rt_str_empty();
+    const char *text = vg_popuplist_selected_text(p);
+    return text ? rt_string_from_bytes(text, (int64_t)strlen(text)) : rt_str_empty();
+}
+
+/// @brief Mark the current selection accepted.
+void rt_popuplist_accept_selected(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_accept_selected(p);
+}
+
+/// @brief Whether AcceptSelected was called since the last query (consume-on-read).
+int8_t rt_popuplist_was_accepted(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    return (p && vg_popuplist_was_accepted(p)) ? 1 : 0;
+}
+
+/// @brief Set the popup's anchor (top-left) position.
+void rt_popuplist_anchor_at(void *list, double x, double y) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_anchor_at(p,
+                               (float)rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
+                               (float)rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
+}
+
+/// @brief Set the popup width.
+void rt_popuplist_set_width(void *list, double width) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_set_width(p,
+                               (float)rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE));
+}
+
+/// @brief Set the maximum number of visible rows.
+void rt_popuplist_set_max_rows(void *list, int64_t max_rows) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_set_max_rows(p, rt_gui_clamp_i64_to_i32(max_rows, 1, 4096));
+}
+
+/// @brief Set the item font.
+void rt_popuplist_set_font(void *list, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (!p)
+        return;
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_popuplist_set_font(p, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+}
+
+/// @brief Show or hide the popup.
+void rt_popuplist_set_visible(void *list, int64_t visible) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    if (p)
+        vg_popuplist_set_visible(p, visible != 0);
+}
+
+/// @brief Whether the popup is currently visible.
+int8_t rt_popuplist_is_visible(void *list) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_popuplist_t *p = rt_popuplist_checked(list);
+    return (p && vg_popuplist_is_visible(p)) ? 1 : 0;
 }
 
 //=============================================================================
@@ -1568,6 +1874,37 @@ void rt_outputpane_set_font(void *pane, void *font, double size) {
     (void)size;
 }
 
+/// @brief Stub: graphics disabled — no font metrics.
+int64_t rt_outputpane_get_cell_width(void *pane) {
+    (void)pane;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no font metrics.
+int64_t rt_outputpane_get_cell_height(void *pane) {
+    (void)pane;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no font metrics.
+int64_t rt_outputpane_measure_text(void *pane, rt_string text) {
+    (void)pane;
+    (void)text;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no font metrics.
+int64_t rt_outputpane_columns_for_width(void *pane) {
+    (void)pane;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no font metrics.
+int64_t rt_outputpane_rows_for_height(void *pane) {
+    (void)pane;
+    return 0;
+}
+
 /// @brief Stub: graphics disabled — no terminal mode.
 void rt_outputpane_set_terminal_mode(void *pane, int64_t enabled) {
     (void)pane;
@@ -1645,6 +1982,116 @@ void rt_spinner_set_step(void *spinner, double step) {
 void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     (void)spinner;
     (void)decimals;
+}
+
+// --- Grid stubs: graphics disabled — no data grid exists. ---
+void *rt_datagrid_new(void *parent) {
+    (void)parent;
+    return NULL;
+}
+void rt_datagrid_set_columns(void *grid, int64_t count) {
+    (void)grid;
+    (void)count;
+}
+void rt_datagrid_set_header(void *grid, int64_t col, rt_string text) {
+    (void)grid;
+    (void)col;
+    (void)text;
+}
+void rt_datagrid_set_cell(void *grid, int64_t row, int64_t col, rt_string text) {
+    (void)grid;
+    (void)row;
+    (void)col;
+    (void)text;
+}
+rt_string rt_datagrid_get_cell(void *grid, int64_t row, int64_t col) {
+    (void)grid;
+    (void)row;
+    (void)col;
+    return rt_str_empty();
+}
+void rt_datagrid_clear(void *grid) { (void)grid; }
+void rt_datagrid_set_font(void *grid, void *font, double size) {
+    (void)grid;
+    (void)font;
+    (void)size;
+}
+int64_t rt_datagrid_get_column_width(void *grid, int64_t col) {
+    (void)grid;
+    (void)col;
+    return 0;
+}
+int64_t rt_datagrid_get_row_count(void *grid) {
+    (void)grid;
+    return 0;
+}
+int64_t rt_datagrid_get_column_count(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+// --- PopupList stubs: graphics disabled — no popup list exists. ---
+void *rt_popuplist_new(void *parent) {
+    (void)parent;
+    return NULL;
+}
+void rt_popuplist_add_item(void *list, rt_string text) {
+    (void)list;
+    (void)text;
+}
+void rt_popuplist_clear(void *list) { (void)list; }
+void rt_popuplist_set_filter(void *list, rt_string filter) {
+    (void)list;
+    (void)filter;
+}
+int64_t rt_popuplist_visible_count(void *list) {
+    (void)list;
+    return 0;
+}
+void rt_popuplist_navigate_up(void *list) { (void)list; }
+void rt_popuplist_navigate_down(void *list) { (void)list; }
+void rt_popuplist_set_selected_index(void *list, int64_t index) {
+    (void)list;
+    (void)index;
+}
+int64_t rt_popuplist_get_selected_index(void *list) {
+    (void)list;
+    return -1;
+}
+rt_string rt_popuplist_get_selected(void *list) {
+    (void)list;
+    return rt_str_empty();
+}
+void rt_popuplist_accept_selected(void *list) { (void)list; }
+int8_t rt_popuplist_was_accepted(void *list) {
+    (void)list;
+    return 0;
+}
+void rt_popuplist_anchor_at(void *list, double x, double y) {
+    (void)list;
+    (void)x;
+    (void)y;
+}
+void rt_popuplist_set_width(void *list, double width) {
+    (void)list;
+    (void)width;
+}
+void rt_popuplist_set_max_rows(void *list, int64_t max_rows) {
+    (void)list;
+    (void)max_rows;
+}
+void rt_popuplist_set_font(void *list, void *font, double size) {
+    (void)list;
+    (void)font;
+    (void)size;
+}
+void rt_popuplist_set_visible(void *list, int64_t visible) {
+    (void)list;
+    (void)visible;
+}
+int8_t rt_popuplist_is_visible(void *list) {
+    (void)list;
+    return 0;
 }
 
 

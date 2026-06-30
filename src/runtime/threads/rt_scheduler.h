@@ -40,6 +40,17 @@ void *rt_scheduler_new(void);
 /// @param delay_ms Delay in milliseconds from now.
 void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms);
 
+/// @brief Schedule a named task with a delay and a caller-supplied generation tag.
+/// @details Like rt_scheduler_schedule, but stamps the entry with @p generation so a later
+///          rt_scheduler_is_due_gen / rt_scheduler_generation_of can tell whether the entry that
+///          fired is the one the caller queued or a newer one that superseded it. Re-scheduling a
+///          name replaces both its due time and its generation. (Plain Schedule records generation 0.)
+/// @param sched Scheduler pointer.
+/// @param name Task name (string).
+/// @param delay_ms Delay in milliseconds from now.
+/// @param generation Caller-defined identity for this scheduling (e.g. a document revision).
+void rt_scheduler_schedule_gen(void *sched, rt_string name, int64_t delay_ms, int64_t generation);
+
 /// @brief Cancel a scheduled task by name.
 /// @param sched Scheduler pointer.
 /// @param name Task name to cancel.
@@ -51,6 +62,22 @@ int8_t rt_scheduler_cancel(void *sched, rt_string name);
 /// @param name Task name to check.
 /// @return 1 if due, 0 if not due or not found.
 int8_t rt_scheduler_is_due(void *sched, rt_string name);
+
+/// @brief Check if a named task is due AND still carries the given generation.
+/// @details Equivalent to `rt_scheduler_is_due(sched, name) && rt_scheduler_generation_of(sched,
+///          name) == generation`. Returns 0 when a newer rt_scheduler_schedule_gen replaced the
+///          entry (superseded), so callers can discard stale revision-tagged work in one call.
+/// @param sched Scheduler pointer.
+/// @param name Task name to check.
+/// @param generation The generation the caller expects (e.g. its current revision).
+/// @return 1 if due and the generation matches, 0 otherwise.
+int8_t rt_scheduler_is_due_gen(void *sched, rt_string name, int64_t generation);
+
+/// @brief Return the generation currently scheduled for a named task.
+/// @param sched Scheduler pointer.
+/// @param name Task name to query.
+/// @return The entry's generation, or -1 if @p name is not scheduled.
+int64_t rt_scheduler_generation_of(void *sched, rt_string name);
 
 /// @brief Poll for all due tasks and return their names as a Seq.
 /// @param sched Scheduler pointer.

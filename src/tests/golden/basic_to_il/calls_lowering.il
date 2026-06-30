@@ -1,5 +1,8 @@
 il 0.2.0
 extern @Viper.String.Asc(str) -> i64
+extern @Viper.Text.Char.IsIdentifierStart(str) -> i1
+extern @Viper.Text.Char.IsIdentifierPart(str) -> i1
+extern @Viper.Text.Char.IsAlnum(str) -> i1
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
 extern @Viper.String.IndexOfFrom(str, i64, str) -> i64

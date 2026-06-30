@@ -233,6 +233,14 @@ void rt_floatingpanel_set_position(void *panel, double x, double y) {
                                       rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
+/// @brief Center a floating panel within its parent (root) bounds.
+void rt_floatingpanel_center_in_parent(void *panel) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
+    if (fp)
+        vg_floatingpanel_center_in_parent(fp);
+}
+
 /// @brief Set the width and height of a floating panel.
 void rt_floatingpanel_set_size(void *panel, double w, double h) {
     RT_ASSERT_MAIN_THREAD();
@@ -373,6 +381,9 @@ void rt_floatingpanel_set_position(void *panel, double x, double y) {
     (void)x;
     (void)y;
 }
+
+/// @brief Stub: graphics disabled — no floating panel to center.
+void rt_floatingpanel_center_in_parent(void *panel) { (void)panel; }
 
 /// @brief Set the width and height of a floating panel.
 void rt_floatingpanel_set_size(void *panel, double w, double h) {

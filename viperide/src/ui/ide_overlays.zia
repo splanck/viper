@@ -707,24 +707,14 @@ class IdeOverlays {
             panelH = rootH - (PANEL_SCREEN_MARGIN * 2);
         }
         aboutPanel.SetSize(panelW, panelH);
-        var x = (rootW - panelW) / 2;
-        var y = (rootH - panelH) / 2;
-        if x < PANEL_SCREEN_MARGIN { x = PANEL_SCREEN_MARGIN; }
-        if y < PANEL_SCREEN_MARGIN { y = PANEL_SCREEN_MARGIN; }
-        aboutPanel.SetPosition(x, y);
+        aboutPanel.CenterInParent();
     }
 
     hide func logicalAppWidth(shell: app_shell.AppShell) -> Integer {
-        return physicalToLogical(shell.app.GetWidth(), shell.app.GetScale());
+        return shell.app.GetLogicalWidth();
     }
 
     hide func logicalAppHeight(shell: app_shell.AppShell) -> Integer {
-        return physicalToLogical(shell.app.GetHeight(), shell.app.GetScale());
-    }
-
-    hide func physicalToLogical(value: Integer, scale: Number) -> Integer {
-        if value <= 0 { return value; }
-        if scale <= 1.0 { return value; }
-        return Convert.NumToInt((value / scale) + 0.5);
+        return shell.app.GetLogicalHeight();
     }
 }

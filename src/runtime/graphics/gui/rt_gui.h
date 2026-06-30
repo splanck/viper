@@ -910,6 +910,21 @@ int64_t rt_outputpane_get_line_count(void *pane);
 /// @brief Set output pane font.
 void rt_outputpane_set_font(void *pane, void *font, double size);
 
+/// @brief Pixel advance of one monospace character cell ("M"); 0 when no font/invalid.
+int64_t rt_outputpane_get_cell_width(void *pane);
+
+/// @brief Pixel height of one line; 0 when no font/invalid.
+int64_t rt_outputpane_get_cell_height(void *pane);
+
+/// @brief Pixel width of @p text in the pane's font; 0 when no font/empty/invalid.
+int64_t rt_outputpane_measure_text(void *pane, rt_string text);
+
+/// @brief Whole character columns that fit across the pane's width; 0 when no font/invalid.
+int64_t rt_outputpane_columns_for_width(void *pane);
+
+/// @brief Whole rows that fit down the pane's height; 0 when no font/invalid.
+int64_t rt_outputpane_rows_for_height(void *pane);
+
 /// @brief Enable/disable interactive terminal mode (cursor model + keyboard capture).
 void rt_outputpane_set_terminal_mode(void *pane, int64_t enabled);
 
@@ -979,6 +994,72 @@ void rt_spinner_set_step(void *spinner, double step);
 /// @param spinner Spinner widget handle.
 /// @param decimals Number of decimal places.
 void rt_spinner_set_decimals(void *spinner, int64_t decimals);
+
+//=========================================================================
+// Grid Widget (tabular data with auto-sized columns) — Viper.GUI.Grid
+//=========================================================================
+
+/// @brief Create a tabular data grid attached to an optional parent.
+void *rt_datagrid_new(void *parent);
+/// @brief Set the column count (clears existing headers and cells).
+void rt_datagrid_set_columns(void *grid, int64_t count);
+/// @brief Set a column header.
+void rt_datagrid_set_header(void *grid, int64_t col, rt_string text);
+/// @brief Set a cell's text, growing the row count as needed.
+void rt_datagrid_set_cell(void *grid, int64_t row, int64_t col, rt_string text);
+/// @brief Return a cell's text (empty string when out of range).
+rt_string rt_datagrid_get_cell(void *grid, int64_t row, int64_t col);
+/// @brief Remove all rows (columns and headers are kept).
+void rt_datagrid_clear(void *grid);
+/// @brief Set the header/cell font.
+void rt_datagrid_set_font(void *grid, void *font, double size);
+/// @brief Auto-sized pixel width of a column; 0 when no font/out of range.
+int64_t rt_datagrid_get_column_width(void *grid, int64_t col);
+/// @brief Number of populated rows.
+int64_t rt_datagrid_get_row_count(void *grid);
+/// @brief Number of columns.
+int64_t rt_datagrid_get_column_count(void *grid);
+
+//=========================================================================
+// PopupList Widget (caret-anchored filtered selection list) — Viper.GUI.PopupList
+//=========================================================================
+
+/// @brief Create a caret-anchored filtered popup list attached to an optional parent.
+void *rt_popuplist_new(void *parent);
+/// @brief Append an item (host adds items in its preferred rank order).
+void rt_popuplist_add_item(void *list, rt_string text);
+/// @brief Remove all items and reset filter/selection.
+void rt_popuplist_clear(void *list);
+/// @brief Set the case-insensitive substring filter.
+void rt_popuplist_set_filter(void *list, rt_string filter);
+/// @brief Number of items currently visible (matching the filter).
+int64_t rt_popuplist_visible_count(void *list);
+/// @brief Move the selection up one visible item.
+void rt_popuplist_navigate_up(void *list);
+/// @brief Move the selection down one visible item.
+void rt_popuplist_navigate_down(void *list);
+/// @brief Set the selection index within the visible items.
+void rt_popuplist_set_selected_index(void *list, int64_t index);
+/// @brief Selection index within the visible items, or -1 when none are visible.
+int64_t rt_popuplist_get_selected_index(void *list);
+/// @brief Text of the selected visible item (empty when none).
+rt_string rt_popuplist_get_selected(void *list);
+/// @brief Mark the current selection accepted.
+void rt_popuplist_accept_selected(void *list);
+/// @brief Whether AcceptSelected was called since the last query (consume-on-read).
+int8_t rt_popuplist_was_accepted(void *list);
+/// @brief Set the popup's anchor (top-left) position.
+void rt_popuplist_anchor_at(void *list, double x, double y);
+/// @brief Set the popup width.
+void rt_popuplist_set_width(void *list, double width);
+/// @brief Set the maximum number of visible rows.
+void rt_popuplist_set_max_rows(void *list, int64_t max_rows);
+/// @brief Set the item font.
+void rt_popuplist_set_font(void *list, void *font, double size);
+/// @brief Show or hide the popup.
+void rt_popuplist_set_visible(void *list, int64_t visible);
+/// @brief Whether the popup is currently visible.
+int8_t rt_popuplist_is_visible(void *list);
 
 //=========================================================================
 // Image Widget
@@ -1167,6 +1248,51 @@ int64_t rt_app_get_height(void *app);
 ///         GetWidth/GetHeight report physical pixels; divide by this to recover
 ///         logical (point) dimensions.
 double rt_app_get_scale(void *app);
+
+/// @brief Convert a physical-pixel measurement to logical (point) units for a given scale.
+/// @details Non-positive values and scales <= 1.0 (including NaN) pass through unchanged;
+///          otherwise rounds physical / scale to the nearest integer. Shared by the App
+///          logical-unit methods and reusable for any HiDPI-aware layout math.
+static inline int64_t rt_gui_dpi_to_logical(int64_t physical, double scale) {
+    if (physical <= 0)
+        return physical;
+    if (!(scale > 1.0)) // also rejects NaN
+        return physical;
+    return (int64_t)((double)physical / scale + 0.5);
+}
+
+/// @brief Convert a logical (point) measurement to physical pixels for a given scale.
+/// @details Inverse of rt_gui_dpi_to_logical: non-positive values and scales <= 1.0 (including
+///          NaN) pass through unchanged; otherwise rounds logical * scale to the nearest integer.
+static inline int64_t rt_gui_dpi_to_physical(int64_t logical, double scale) {
+    if (logical <= 0)
+        return logical;
+    if (!(scale > 1.0)) // also rejects NaN
+        return logical;
+    return (int64_t)((double)logical * scale + 0.5);
+}
+
+/// @brief Get the window width in logical (point) units (physical width / scale).
+/// @param app GUI application handle.
+/// @return Logical width; 0 if there is no window.
+int64_t rt_app_get_logical_width(void *app);
+
+/// @brief Get the window height in logical (point) units (physical height / scale).
+/// @param app GUI application handle.
+/// @return Logical height; 0 if there is no window.
+int64_t rt_app_get_logical_height(void *app);
+
+/// @brief Convert a physical-pixel value to logical units using the app's current scale.
+/// @param app      GUI application handle.
+/// @param physical Physical-pixel measurement.
+/// @return Logical value; @p physical unchanged when there is no window (scale 1.0).
+int64_t rt_app_to_logical(void *app, int64_t physical);
+
+/// @brief Convert a logical value to physical pixels using the app's current scale.
+/// @param app     GUI application handle.
+/// @param logical Logical (point) measurement.
+/// @return Physical value; @p logical unchanged when there is no window (scale 1.0).
+int64_t rt_app_to_physical(void *app, int64_t logical);
 
 /// @brief Set a user UI zoom multiplier applied on top of the HiDPI scale.
 /// @param app   GUI application handle.
@@ -3033,6 +3159,33 @@ int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y);
 /// @param text Text to insert.
 void rt_codeeditor_insert_at_cursor(void *editor, rt_string text);
 
+/// @brief Advance an editor cursor (@p line, @p col) by @p offset characters through @p text,
+///        counting newlines (UTF-8 aware: continuation bytes share their leading byte's column).
+/// @details Shared by CodeEditor.InsertAndPlaceCursor and unit-testable on its own.
+static inline void rt_codeeditor_advance_position(const char *text, int64_t offset, int64_t *line,
+                                                  int64_t *col) {
+    if (!text || offset <= 0 || !line || !col)
+        return;
+    int64_t consumed = 0;
+    for (int64_t i = 0; text[i] && consumed < offset; i++) {
+        unsigned char c = (unsigned char)text[i];
+        if ((c & 0xC0) == 0x80)
+            continue; // UTF-8 continuation byte: same codepoint as its leading byte
+        if (c == '\n') {
+            (*line)++;
+            *col = 0;
+        } else {
+            (*col)++;
+        }
+        consumed++;
+    }
+}
+
+/// @brief Insert @p text at the primary cursor, then place the caret @p caret_offset characters
+///        into the inserted text (counting newlines) — replacing the hand-rolled insert-then-walk
+///        idiom for placing the caret inside a multi-line insertion (e.g. a completion snippet).
+void rt_codeeditor_insert_and_place_cursor(void *editor, rt_string text, int64_t caret_offset);
+
 /// @brief Return the identifier word under the primary cursor.
 /// @param editor CodeEditor handle.
 /// @return Word string (may be empty if cursor is not on an identifier).
@@ -3265,6 +3418,9 @@ void rt_floatingpanel_destroy(void *panel);
 
 /// @brief Set absolute screen position.
 void rt_floatingpanel_set_position(void *panel, double x, double y);
+
+/// @brief Center the panel within its parent (root) bounds, clamped to the top-left.
+void rt_floatingpanel_center_in_parent(void *panel);
 
 /// @brief Set panel dimensions.
 void rt_floatingpanel_set_size(void *panel, double w, double h);

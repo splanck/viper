@@ -1248,8 +1248,11 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 | Method                     | Signature                   | Description                                      |
 |----------------------------|-----------------------------|--------------------------------------------------|
 | `Schedule(name, delayMs)`  | `Void(String, Integer)`     | Schedule a named task with delay in milliseconds |
+| `ScheduleGen(name, delayMs, generation)` | `Void(String, Integer, Integer)` | Schedule, tagging the entry with a caller-supplied generation (e.g. a document revision) |
 | `Cancel(name)`             | `Boolean(String)`           | Cancel a scheduled task by name                  |
 | `IsDue(name)`              | `Boolean(String)`           | Check if a named task is due                     |
+| `IsDueGen(name, generation)` | `Boolean(String, Integer)` | Due **and** the entry still carries `generation` (`0`/false if superseded) |
+| `GenerationOf(name)`       | `Integer(String)`           | Generation currently scheduled for `name`, or `-1` if not scheduled |
 | `Poll()`                   | `Seq()`                     | Get all due tasks (removes them from scheduler)  |
 | `Clear()`                  | `Void()`                    | Remove all scheduled tasks                       |
 
@@ -1257,6 +1260,7 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 
 - **Poll-based:** Tasks don't execute automatically. Call `Poll()` or `IsDue()` to check for due tasks.
 - **Named tasks:** Tasks are identified by name. Scheduling a task with the same name as an existing task replaces it.
+- **Revision-aware scheduling:** `ScheduleGen(name, delayMs, generation)` stamps an entry with a caller-defined generation (e.g. a document revision). Because re-scheduling a name replaces its entry, `IsDueGen(name, g)` fires only for the *latest* generation — a newer `ScheduleGen` supersedes an older one, so stale work is discarded in a single call (`GenerationOf(name)` answers "is my revision still the one queued?"). This is the canonical primitive for debounced, edit-superseding background work — live diagnostics, search-as-you-type, incremental indexing — and should be preferred over hand-rolled `Viper.Time.GetTickCount()` timers. Plain `Schedule` records generation `0`.
 - **Full string keys:** Task names compare by byte length and contents, so strings with embedded NUL bytes remain distinct.
 - **Poll ownership:** `Poll()` returns a Seq that owns the returned task-name strings.
 - **Monotonic clock:** Uses monotonic clock for accurate timing unaffected by system clock changes.

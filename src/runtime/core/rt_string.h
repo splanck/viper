@@ -348,6 +348,13 @@ void *rt_str_split(rt_string str, rt_string delim);
 /// @return Seq of line strings with trailing carriage returns removed.
 void *rt_str_lines(rt_string str);
 
+/// @brief 1 if the first character of @p s may start an identifier (ASCII letter or '_').
+int8_t rt_text_char_is_identifier_start(rt_string s);
+/// @brief 1 if the first character of @p s may continue an identifier (ASCII letter, digit, '_').
+int8_t rt_text_char_is_identifier_part(rt_string s);
+/// @brief 1 if the first character of @p s is ASCII alphanumeric (letter or digit).
+int8_t rt_text_char_is_alnum(rt_string s);
+
 /// @brief Join sequence of strings with separator.
 /// @param sep Separator string.
 /// @param seq Sequence of strings to join.

@@ -438,6 +438,58 @@ void *rt_str_lines(rt_string str) {
     return result;
 }
 
+//=============================================================================
+// Viper.Text.Char — ASCII character classification (identifier rules)
+//=============================================================================
+
+/// @brief True for an ASCII letter a-z or A-Z.
+static int rt_char_is_ascii_alpha(unsigned char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+/// @brief True for an ASCII digit 0-9.
+static int rt_char_is_ascii_digit(unsigned char c) {
+    return c >= '0' && c <= '9';
+}
+
+/// @brief First byte of @p s, or -1 when empty/NULL. (Identifier rules are ASCII, so a
+///        multibyte UTF-8 leading byte (>= 0x80) is correctly treated as a non-identifier char.)
+static int rt_char_first_byte(rt_string s) {
+    if (!s)
+        return -1;
+    const char *d = rt_string_cstr(s);
+    int64_t n = rt_str_len(s);
+    if (!d || n <= 0)
+        return -1;
+    return (unsigned char)d[0];
+}
+
+/// @brief 1 if the first character of @p s may start an identifier (ASCII letter or '_').
+int8_t rt_text_char_is_identifier_start(rt_string s) {
+    int c = rt_char_first_byte(s);
+    if (c < 0)
+        return 0;
+    return (rt_char_is_ascii_alpha((unsigned char)c) || c == '_') ? 1 : 0;
+}
+
+/// @brief 1 if the first character of @p s may continue an identifier (ASCII letter, digit, '_').
+int8_t rt_text_char_is_identifier_part(rt_string s) {
+    int c = rt_char_first_byte(s);
+    if (c < 0)
+        return 0;
+    unsigned char ch = (unsigned char)c;
+    return (rt_char_is_ascii_alpha(ch) || rt_char_is_ascii_digit(ch) || c == '_') ? 1 : 0;
+}
+
+/// @brief 1 if the first character of @p s is ASCII alphanumeric (letter or digit).
+int8_t rt_text_char_is_alnum(rt_string s) {
+    int c = rt_char_first_byte(s);
+    if (c < 0)
+        return 0;
+    unsigned char ch = (unsigned char)c;
+    return (rt_char_is_ascii_alpha(ch) || rt_char_is_ascii_digit(ch)) ? 1 : 0;
+}
+
 /// @brief Join sequence of strings with separator.
 /// @param sep Separator string.
 /// @param seq Sequence of strings to join.

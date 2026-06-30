@@ -890,6 +890,10 @@ void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y);
 /// @param h     Height in pixels.
 void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h);
 
+/// @brief Center the panel within its connected root's bounds (clamped to the top-left).
+/// @param panel Floating panel; sized and attached to a root first.
+void vg_floatingpanel_center_in_parent(vg_floatingpanel_t *panel);
+
 /// @brief Show or hide the floating panel.
 /// @param panel   Floating panel.
 /// @param visible Non-zero to show; zero to hide.
@@ -933,6 +937,81 @@ void vg_groupbox_set_title(vg_groupbox_t *gb, const char *title);
 
 /// @brief Add a control as a child of the group box.
 void vg_groupbox_add_child(vg_groupbox_t *gb, vg_widget_t *child);
+
+//=============================================================================
+// PopupList Widget (caret-anchored filtered selection list)
+//=============================================================================
+
+/// @brief A caret-anchored, filterable, keyboard-navigable popup list rendered in the overlay
+///        pass. The host drives keyboard (NavigateUp/Down/AcceptSelected) and visibility;
+///        language-specific ranking stays in the host (it adds pre-ranked items).
+typedef struct vg_popuplist {
+    vg_widget_t base;
+
+    char **items;    ///< All items (heap-owned strings).
+    int item_count;
+    int item_capacity;
+
+    char *filter;        ///< Active filter (case-insensitive substring), or NULL.
+    int *filtered;       ///< Indices into items matching the filter.
+    int filtered_count;
+    int selected;        ///< Selection index into the filtered view [0, filtered_count).
+
+    float anchor_x; ///< Popup top-left X (overlay coordinates).
+    float anchor_y; ///< Popup top-left Y.
+    float width;    ///< Popup width in pixels.
+    int max_rows;   ///< Maximum visible rows before clamping height.
+    bool accepted;  ///< Set by AcceptSelected; consumed by WasAccepted.
+
+    vg_font_t *font;
+    float font_size;
+    float line_height;
+
+    uint32_t bg_color;
+    uint32_t fg_color;
+    uint32_t sel_bg_color;
+    uint32_t sel_fg_color;
+    uint32_t border_color;
+} vg_popuplist_t;
+
+/// @brief Create a popup list attached to @p root (rendered in the overlay pass). Hidden initially.
+vg_popuplist_t *vg_popuplist_create(vg_widget_t *root);
+/// @brief Destroy the popup list and free its item/filter storage.
+void vg_popuplist_destroy(vg_popuplist_t *list);
+/// @brief Append an item (the host adds items in its preferred rank order).
+void vg_popuplist_add_item(vg_popuplist_t *list, const char *text);
+/// @brief Remove all items and reset the filter and selection.
+void vg_popuplist_clear(vg_popuplist_t *list);
+/// @brief Set the filter; only items containing it (case-insensitive substring) stay visible.
+void vg_popuplist_set_filter(vg_popuplist_t *list, const char *filter);
+/// @brief Number of items currently visible (matching the filter).
+int vg_popuplist_visible_count(const vg_popuplist_t *list);
+/// @brief Move the selection up one visible item (clamped to the first).
+void vg_popuplist_navigate_up(vg_popuplist_t *list);
+/// @brief Move the selection down one visible item (clamped to the last).
+void vg_popuplist_navigate_down(vg_popuplist_t *list);
+/// @brief Set the selection index within the visible items (clamped).
+void vg_popuplist_set_selected_index(vg_popuplist_t *list, int index);
+/// @brief Selection index within the visible items, or -1 when none are visible.
+int vg_popuplist_selected_index(const vg_popuplist_t *list);
+/// @brief Text of the selected visible item, or NULL when none. Borrowed; do not free.
+const char *vg_popuplist_selected_text(const vg_popuplist_t *list);
+/// @brief Mark the current selection accepted (consumed by vg_popuplist_was_accepted).
+void vg_popuplist_accept_selected(vg_popuplist_t *list);
+/// @brief Whether AcceptSelected was called since the last query (consume-on-read).
+bool vg_popuplist_was_accepted(vg_popuplist_t *list);
+/// @brief Set the popup's anchor (top-left) position in overlay coordinates.
+void vg_popuplist_anchor_at(vg_popuplist_t *list, float x, float y);
+/// @brief Set the popup width in pixels.
+void vg_popuplist_set_width(vg_popuplist_t *list, float width);
+/// @brief Set the maximum number of visible rows.
+void vg_popuplist_set_max_rows(vg_popuplist_t *list, int max_rows);
+/// @brief Set the item font.
+void vg_popuplist_set_font(vg_popuplist_t *list, vg_font_t *font, float size);
+/// @brief Show or hide the popup.
+void vg_popuplist_set_visible(vg_popuplist_t *list, bool visible);
+/// @brief Whether the popup is currently visible.
+bool vg_popuplist_is_visible(const vg_popuplist_t *list);
 
 #ifdef __cplusplus
 }

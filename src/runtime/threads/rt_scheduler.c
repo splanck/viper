@@ -151,6 +151,7 @@ static int8_t scheduler_name_equals(rt_string a, rt_string b) {
 typedef struct sched_entry {
     rt_string name;           ///< Retained task name string.
     int64_t due_time_ms;      ///< Absolute time when this task is due.
+    int64_t generation;       ///< Caller-supplied identity (0 for plain Schedule).
     struct sched_entry *next; ///< Next entry in linked list.
 } sched_entry;
 
@@ -273,7 +274,9 @@ void *rt_scheduler_new(void) {
 /// @param sched Scheduler pointer.
 /// @param name Task name string. Ignored if NULL.
 /// @param delay_ms Delay in milliseconds from now. Negative values treated as 0.
-void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
+/// @param generation Caller-supplied identity recorded on the entry (0 for plain Schedule).
+static void scheduler_schedule_impl(void *sched, rt_string name, int64_t delay_ms,
+                                    int64_t generation) {
     if (!sched || !name)
         return;
     rt_scheduler_data *data = scheduler_require(sched, 0);
@@ -303,6 +306,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     while (e) {
         if (scheduler_name_equals(e->name, name)) {
             e->due_time_ms = due;
+            e->generation = generation;
             SCHED_UNLOCK(data);
             rt_string_unref(retained_name);
             scheduler_release_object(sched);
@@ -322,11 +326,22 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     }
     entry->name = retained_name;
     entry->due_time_ms = due;
+    entry->generation = generation;
     entry->next = data->head;
     data->head = entry;
     data->count++;
     SCHED_UNLOCK(data);
     scheduler_release_object(sched);
+}
+
+/// @brief Schedules a named task with a delay in milliseconds (generation 0).
+void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
+    scheduler_schedule_impl(sched, name, delay_ms, 0);
+}
+
+/// @brief Schedules a named task with a delay and a caller-supplied generation tag.
+void rt_scheduler_schedule_gen(void *sched, rt_string name, int64_t delay_ms, int64_t generation) {
+    scheduler_schedule_impl(sched, name, delay_ms, generation);
 }
 
 /// @brief Cancels a scheduled task by name.
@@ -394,6 +409,70 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name) {
     SCHED_UNLOCK(data);
     scheduler_release_object(sched);
     return 0;
+}
+
+/// @brief Checks if a named task is due and still carries the given generation.
+///
+/// Returns true only if the named task exists, its due time has passed, and its
+/// stored generation equals @p generation. A newer rt_scheduler_schedule_gen
+/// replaces the entry, so a query for a superseded generation returns 0.
+///
+/// @param sched Scheduler pointer.
+/// @param name Task name to check.
+/// @param generation The generation the caller expects.
+/// @return 1 if due and the generation matches, 0 otherwise.
+int8_t rt_scheduler_is_due_gen(void *sched, rt_string name, int64_t generation) {
+    if (!sched || !name)
+        return 0;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return 0;
+    rt_obj_retain_maybe(sched);
+    int64_t now = current_time_ms();
+
+    SCHED_LOCK(data);
+    sched_entry *e = data->head;
+    while (e) {
+        if (scheduler_name_equals(e->name, name)) {
+            int8_t due = (now >= e->due_time_ms && e->generation == generation) ? 1 : 0;
+            SCHED_UNLOCK(data);
+            scheduler_release_object(sched);
+            return due;
+        }
+        e = e->next;
+    }
+    SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
+    return 0;
+}
+
+/// @brief Returns the generation currently scheduled for a named task.
+///
+/// @param sched Scheduler pointer.
+/// @param name Task name to query.
+/// @return The entry's generation, or -1 if @p name is not scheduled.
+int64_t rt_scheduler_generation_of(void *sched, rt_string name) {
+    if (!sched || !name)
+        return -1;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return -1;
+    rt_obj_retain_maybe(sched);
+
+    SCHED_LOCK(data);
+    sched_entry *e = data->head;
+    while (e) {
+        if (scheduler_name_equals(e->name, name)) {
+            int64_t gen = e->generation;
+            SCHED_UNLOCK(data);
+            scheduler_release_object(sched);
+            return gen;
+        }
+        e = e->next;
+    }
+    SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
+    return -1;
 }
 
 /// @brief Polls for all due tasks.

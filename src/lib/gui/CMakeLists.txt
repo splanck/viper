@@ -59,6 +59,8 @@ set(VG_GUI_IDE_WIDGET_SOURCES
         src/widgets/vg_notification.c
         src/widgets/vg_floatingpanel.c
         src/widgets/vg_groupbox.c
+        src/widgets/vg_datagrid.c
+        src/widgets/vg_popuplist.c
 )
 
 if (WIN32)
@@ -183,6 +185,30 @@ if (VIPER_BUILD_TESTING)
     )
     add_test(NAME test_vg_audit_fixes COMMAND test_vg_audit_fixes)
     set_tests_properties(test_vg_audit_fixes PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
+
+    add_executable(test_vg_outputpane_metrics tests/test_vg_outputpane_metrics.c)
+    target_link_libraries(test_vg_outputpane_metrics vipergui)
+    target_include_directories(test_vg_outputpane_metrics PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_outputpane_metrics COMMAND test_vg_outputpane_metrics)
+    set_tests_properties(test_vg_outputpane_metrics PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
+
+    add_executable(test_vg_datagrid tests/test_vg_datagrid.c)
+    target_link_libraries(test_vg_datagrid vipergui)
+    target_include_directories(test_vg_datagrid PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_datagrid COMMAND test_vg_datagrid)
+    set_tests_properties(test_vg_datagrid PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
+
+    add_executable(test_vg_popuplist tests/test_vg_popuplist.c)
+    target_link_libraries(test_vg_popuplist vipergui)
+    target_include_directories(test_vg_popuplist PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_popuplist COMMAND test_vg_popuplist)
+    set_tests_properties(test_vg_popuplist PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
 
     add_executable(test_vg_font_bounds tests/test_vg_font_bounds.c)
     target_link_libraries(test_vg_font_bounds vipergui)

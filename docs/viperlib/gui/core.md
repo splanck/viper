@@ -138,12 +138,23 @@ handles are ignored.
 | `GetFps()`                | `Number()`        | Get current frames per second                        |
 | `SetFps(fps)`             | `Void(Number)`    | Set target frames per second                         |
 | `GetScale()`              | `Number()`        | Get display scale factor (e.g. 2.0 for HiDPI)        |
+| `GetLogicalWidth()`       | `Integer()`       | Window width in logical (point) units (`GetWidth() / GetScale()`) |
+| `GetLogicalHeight()`      | `Integer()`       | Window height in logical (point) units               |
+| `ToLogical(px)`           | `Integer(Integer)` | Convert a physical-pixel value to logical units using the window scale |
+| `ToPhysical(lu)`          | `Integer(Integer)` | Convert a logical (point) value to physical pixels using the window scale |
 | `GetMonitorWidth()`       | `Integer()`       | Get monitor width in pixels                          |
 | `GetMonitorHeight()`      | `Integer()`       | Get monitor height in pixels                         |
 | `SetWindowSize(w, h)`     | `Void(Integer, Integer)` | Resize the window                           |
 | `GetFontSize()`           | `Number()`        | Get current UI font size                             |
 | `SetFontSize(size)`       | `Void(Number)`    | Set UI font size                                     |
 | `WasCloseRequested()`     | `Integer()`       | Consumes and returns 1 once when the window received a close request |
+
+**Logical vs physical units:** `GetWidth()`/`GetHeight()` report *physical* pixels, but
+floating panels and overlays are positioned and sized in *logical* (point) units. Use
+`GetLogicalWidth()`/`GetLogicalHeight()` — or `ToLogical(px)` / `ToPhysical(lu)` for other
+measurements — instead of dividing by `GetScale()` by hand. They apply consistent rounding and
+pass values through unchanged on standard (1×) displays, so the same layout code is correct on
+both standard and HiDPI screens.
 
 ### Lifecycle And Validation
 

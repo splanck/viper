@@ -651,5 +651,30 @@ int main() {
     test_hamming();
     test_case_conversion_more_than_128_words();
 
+    // --- R7: Viper.Text.Char identifier classification (first character, ASCII rules). ---
+    assert(rt_text_char_is_identifier_start(make_str("a")) == 1);
+    assert(rt_text_char_is_identifier_start(make_str("Z")) == 1);
+    assert(rt_text_char_is_identifier_start(make_str("_")) == 1);
+    assert(rt_text_char_is_identifier_start(make_str("5")) == 0); // a digit cannot start one
+    assert(rt_text_char_is_identifier_start(make_str(".")) == 0);
+    assert(rt_text_char_is_identifier_start(make_str("")) == 0); // empty
+
+    assert(rt_text_char_is_identifier_part(make_str("a")) == 1);
+    assert(rt_text_char_is_identifier_part(make_str("5")) == 1); // a digit can continue one
+    assert(rt_text_char_is_identifier_part(make_str("_")) == 1);
+    assert(rt_text_char_is_identifier_part(make_str("-")) == 0);
+    assert(rt_text_char_is_identifier_part(make_str("")) == 0);
+
+    assert(rt_text_char_is_alnum(make_str("a")) == 1);
+    assert(rt_text_char_is_alnum(make_str("9")) == 1);
+    assert(rt_text_char_is_alnum(make_str("_")) == 0); // '_' is an identifier char, not alnum
+    assert(rt_text_char_is_alnum(make_str(" ")) == 0);
+
+    // Only the first character is classified (matches char-by-char string iteration).
+    assert(rt_text_char_is_identifier_start(make_str("abc")) == 1);
+    assert(rt_text_char_is_identifier_start(make_str("9ab")) == 0);
+    // A non-ASCII (multibyte UTF-8) leading char is not an identifier character.
+    assert(rt_text_char_is_identifier_part(make_str("\xC3\xA9")) == 0); // é
+
     return 0;
 }

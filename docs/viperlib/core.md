@@ -565,6 +565,29 @@ PRINT "ABC".CmpNoCase("abc")           ' Output: 0
 
 ---
 
+## Viper.Text.Char
+
+Static ASCII character-classification helpers for identifier scanning (completion triggers,
+word selection, tokenization). Each takes a string and classifies its **first character**, so it
+drops directly into a char-by-char scan; an empty string or a non-ASCII leading character returns
+`false`.
+
+| Method                     | Signature       | Description                                              |
+|----------------------------|-----------------|---------------------------------------------------------|
+| `IsIdentifierStart(ch)`    | `Boolean(String)` | First character can start an identifier (ASCII letter or `_`) |
+| `IsIdentifierPart(ch)`     | `Boolean(String)` | First character can continue an identifier (ASCII letter, digit, or `_`) |
+| `IsAlnum(ch)`              | `Boolean(String)` | First character is ASCII alphanumeric (letter or digit) |
+
+```rust
+// Zia — scan an identifier instead of hand-writing the character ranges.
+bind Char = Viper.Text.Char;
+if Char.IsIdentifierStart(Str.MidLen(text, 1, 1)) {
+    // ... consume Char.IsIdentifierPart(...) characters
+}
+```
+
+---
+
 ## Viper.Core.MessageBus
 
 In-process publish/subscribe message bus for decoupled communication between components. Subscribers register interest in named topics and receive published data via callbacks.

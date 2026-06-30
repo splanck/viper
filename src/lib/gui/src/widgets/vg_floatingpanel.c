@@ -420,6 +420,30 @@ void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h) {
     panel->base.needs_paint = true;
 }
 
+/// @brief Center the panel within its connected root's bounds, clamped to the top-left.
+///
+/// @details Uses the root widget's arranged size (the same coordinate space the panel's
+///          position lives in) as the reference frame, so a modal/dialog panel can be centered
+///          without the caller re-deriving the window size and offset by hand. If the panel is
+///          larger than the root, it clamps to the (0,0) origin. No-op when the panel has no
+///          parent yet (size the panel and attach it before centering).
+///
+/// @param panel Panel to center; may be NULL (no-op).
+void vg_floatingpanel_center_in_parent(vg_floatingpanel_t *panel) {
+    if (!panel)
+        return;
+    vg_widget_t *root = panel->base.parent;
+    float avail_w = root ? root->width : 0.0f;
+    float avail_h = root ? root->height : 0.0f;
+    float x = (avail_w - panel->abs_w) * 0.5f;
+    float y = (avail_h - panel->abs_h) * 0.5f;
+    if (x < 0.0f)
+        x = 0.0f;
+    if (y < 0.0f)
+        y = 0.0f;
+    vg_floatingpanel_set_position(panel, x, y);
+}
+
 /// @brief Show or hide the panel, clearing the dragging state when hiding.
 ///
 /// @details Hiding while a drag is active releases dragging without releasing input

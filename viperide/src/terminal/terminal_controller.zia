@@ -115,32 +115,28 @@ class TerminalController {
         return args;
     }
 
-    /// @brief Estimate terminal columns from the current output-pane width.
-    /// @details The OutputPane does not expose font metrics, so this uses a
-    ///          conservative 8-pixel cell approximation and clamps to the PTY
-    ///          runtime's supported range.
+    /// @brief Compute terminal columns from the output-pane's font metrics.
+    /// @details The OutputPane reports its own monospace cell width, so this asks
+    ///          it directly for the column count and clamps to the PTY runtime's
+    ///          supported range. Falls back to a default before first layout.
     /// @return Column count for PTY open/resize.
     hide func TerminalCols() -> Integer {
-        var width = 0;
-        if pane != null { width = pane.GetWidth(); }
-        if width <= 0 and panel != null { width = panel.GetWidth(); }
-        var cols = width / 8;
+        var cols = 0;
+        if pane != null { cols = pane.ColumnsForWidth(); }
         if cols <= 0 { cols = 100; }
         if cols < 20 { cols = 20; }
         if cols > 4096 { cols = 4096; }
         return cols;
     }
 
-    /// @brief Estimate terminal rows from the current output-pane height.
-    /// @details The OutputPane does not expose font metrics, so this uses an
-    ///          18-pixel line approximation and clamps to the PTY runtime's
-    ///          supported range.
+    /// @brief Compute terminal rows from the output-pane's font metrics.
+    /// @details The OutputPane reports its own line height, so this asks it
+    ///          directly for the row count and clamps to the PTY runtime's
+    ///          supported range. Falls back to a default before first layout.
     /// @return Row count for PTY open/resize.
     hide func TerminalRows() -> Integer {
-        var height = 0;
-        if pane != null { height = pane.GetHeight(); }
-        if height <= 0 and panel != null { height = panel.GetHeight(); }
-        var rows = height / 18;
+        var rows = 0;
+        if pane != null { rows = pane.RowsForHeight(); }
         if rows <= 0 { rows = 30; }
         if rows < 4 { rows = 4; }
         if rows > 4096 { rows = 4096; }

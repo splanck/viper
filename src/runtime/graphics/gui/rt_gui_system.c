@@ -802,6 +802,46 @@ double rt_app_get_scale(void *app) {
     return (double)rt_app_window_scale(gui_app);
 }
 
+/// @brief Get the window width in logical (point) units (physical width / scale).
+int64_t rt_app_get_logical_width(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app || !gui_app->window)
+        return 0;
+    int32_t w = 0, h = 0;
+    vgfx_get_size(gui_app->window, &w, &h);
+    return rt_gui_dpi_to_logical(w, (double)rt_app_window_scale(gui_app));
+}
+
+/// @brief Get the window height in logical (point) units (physical height / scale).
+int64_t rt_app_get_logical_height(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app || !gui_app->window)
+        return 0;
+    int32_t w = 0, h = 0;
+    vgfx_get_size(gui_app->window, &w, &h);
+    return rt_gui_dpi_to_logical(h, (double)rt_app_window_scale(gui_app));
+}
+
+/// @brief Convert a physical-pixel value to logical units using the app's current scale.
+int64_t rt_app_to_logical(void *app, int64_t physical) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
+        return physical;
+    return rt_gui_dpi_to_logical(physical, (double)rt_app_window_scale(gui_app));
+}
+
+/// @brief Convert a logical value to physical pixels using the app's current scale.
+int64_t rt_app_to_physical(void *app, int64_t logical) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
+        return logical;
+    return rt_gui_dpi_to_physical(logical, (double)rt_app_window_scale(gui_app));
+}
+
 /// @brief Set the user UI zoom multiplier applied on top of the HiDPI scale.
 /// @details Scales typography, spacing, and control metrics together so the whole
 ///          UI grows or shrinks as one. Clamped to a legible range; the next
@@ -1212,6 +1252,30 @@ int64_t rt_app_get_height(void *app) {
 double rt_app_get_scale(void *app) {
     (void)app;
     return 1.0;
+}
+
+/// @brief Stub: graphics disabled — no window.
+int64_t rt_app_get_logical_width(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no window.
+int64_t rt_app_get_logical_height(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — scale 1.0, value passes through.
+int64_t rt_app_to_logical(void *app, int64_t physical) {
+    (void)app;
+    return physical;
+}
+
+/// @brief Stub: graphics disabled — scale 1.0, value passes through.
+int64_t rt_app_to_physical(void *app, int64_t logical) {
+    (void)app;
+    return logical;
 }
 
 /// @brief Stub: graphics disabled — UI zoom has no effect.

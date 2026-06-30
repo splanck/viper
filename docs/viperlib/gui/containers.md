@@ -92,6 +92,7 @@ A floating overlay panel that appears above normal content. Floating panels are 
 | Method                  | Signature                  | Description                                |
 |-------------------------|----------------------------|--------------------------------------------|
 | `SetPosition(x, y)`     | `Void(Integer, Integer)`   | Set panel position in window coordinates   |
+| `CenterInParent()`      | `Void()`                   | Center the panel within the window, clamped to the top-left (size and attach it first) |
 | `SetSize(w, h)`         | `Void(Integer, Integer)`   | Set panel dimensions                       |
 | `SetVisible(flag)`      | `Void(Integer)`            | Show or hide the panel                     |
 | `AddChild(widget)`      | `Void(Object)`             | Add a child widget to the panel            |

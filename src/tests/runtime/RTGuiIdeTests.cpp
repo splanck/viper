@@ -10,12 +10,14 @@
 
 #include "rt_gui_ide.h"
 
+#include "rt_gui.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <cmath>
 #include <string>
 
 extern "C" void vm_trap(const char *msg) {
@@ -164,5 +166,54 @@ int main() {
     assert(take(rt_command_registry_poll(registry)).empty());
     rt_command_registry_clear(registry);
     assert(rt_command_registry_count(registry) == 0);
+
+    // --- R4: HiDPI logical-unit conversion (the math behind App.ToLogical / ToPhysical). ---
+    assert(rt_gui_dpi_to_logical(2000, 2.0) == 1000); // Retina 2x: physical -> logical
+    assert(rt_gui_dpi_to_logical(1000, 1.0) == 1000); // no scaling at 1x
+    assert(rt_gui_dpi_to_logical(1000, 1.5) == 667);  // round(1000 / 1.5)
+    assert(rt_gui_dpi_to_logical(0, 2.0) == 0);       // non-positive passes through
+    assert(rt_gui_dpi_to_logical(-40, 2.0) == -40);   // negative passes through
+    assert(rt_gui_dpi_to_logical(1000, 0.5) == 1000); // scale < 1.0 passes through
+    assert(rt_gui_dpi_to_logical(1000, NAN) == 1000); // NaN passes through
+
+    assert(rt_gui_dpi_to_physical(1000, 2.0) == 2000); // logical -> physical
+    assert(rt_gui_dpi_to_physical(1000, 1.0) == 1000);
+    assert(rt_gui_dpi_to_physical(0, 2.0) == 0);
+    assert(rt_gui_dpi_to_physical(-40, 2.0) == -40);
+    assert(rt_gui_dpi_to_physical(1000, NAN) == 1000);
+    // Exact round-trip at a 2x backing scale.
+    assert(rt_gui_dpi_to_physical(rt_gui_dpi_to_logical(2000, 2.0), 2.0) == 2000);
+
+    // --- R7: CodeEditor.InsertAndPlaceCursor offset->position math. ---
+    {
+        int64_t line = 5, col = 10;
+        rt_codeeditor_advance_position("abc", 2, &line, &col); // no newline: column advances
+        assert(line == 5 && col == 12);
+    }
+    {
+        int64_t line = 0, col = 0;
+        rt_codeeditor_advance_position("a\nbc", 3, &line, &col); // 'a', '\n' (line++, col=0), 'b'
+        assert(line == 1 && col == 1);
+    }
+    {
+        int64_t line = 2, col = 4;
+        rt_codeeditor_advance_position("hello", 0, &line, &col); // offset 0: no change
+        assert(line == 2 && col == 4);
+    }
+    {
+        int64_t line = 0, col = 0;
+        rt_codeeditor_advance_position("ab", 100, &line, &col); // offset past end: stops at end
+        assert(line == 0 && col == 2);
+    }
+    {
+        int64_t line = 0, col = 0;
+        rt_codeeditor_advance_position("\xC3\xA9x", 2, &line, &col); // 'é' is one column, then 'x'
+        assert(line == 0 && col == 2);
+    }
+    {
+        int64_t line = 0, col = 7;
+        rt_codeeditor_advance_position("\n\nX", 3, &line, &col); // each newline resets the column
+        assert(line == 2 && col == 1);
+    }
     return 0;
 }

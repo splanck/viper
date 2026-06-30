@@ -243,6 +243,60 @@ static void test_null_safety() {
     assert(rt_scheduler_pending(NULL) == 0);
     /// @brief Rt_scheduler_clear.
     rt_scheduler_clear(NULL); // should not crash
+    assert(rt_scheduler_generation_of(NULL, NULL) == -1);
+    assert(rt_scheduler_is_due_gen(NULL, NULL, 0) == 0);
+}
+
+static void test_schedule_gen_and_generation_of() {
+    void *s = rt_scheduler_new();
+    rt_string t = rt_string_from_bytes("gen", 3);
+
+    rt_scheduler_schedule_gen(s, t, 5000, 7); // not due for 5s, tagged generation 7
+    assert(rt_scheduler_pending(s) == 1);
+    assert(rt_scheduler_generation_of(s, t) == 7);
+    assert(rt_scheduler_is_due_gen(s, t, 7) == 0); // tagged correctly but not due yet
+
+    rt_string missing = rt_string_from_bytes("nope", 4);
+    assert(rt_scheduler_generation_of(s, missing) == -1); // unscheduled name
+}
+
+static void test_is_due_gen_matches_generation() {
+    void *s = rt_scheduler_new();
+    rt_string t = rt_string_from_bytes("now", 3);
+
+    rt_scheduler_schedule_gen(s, t, 0, 7); // due immediately, generation 7
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    assert(rt_scheduler_is_due(s, t) == 1);        // generation-agnostic
+    assert(rt_scheduler_is_due_gen(s, t, 7) == 1); // matching generation fires
+    assert(rt_scheduler_is_due_gen(s, t, 8) == 0); // due, but wrong generation
+}
+
+static void test_generation_supersession() {
+    void *s = rt_scheduler_new();
+    rt_string t = rt_string_from_bytes("diag", 4);
+
+    rt_scheduler_schedule_gen(s, t, 0, 5); // revision 5
+    rt_scheduler_schedule_gen(s, t, 0, 6); // revision 6 supersedes revision 5
+    assert(rt_scheduler_pending(s) == 1);  // replaced, not duplicated
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    assert(rt_scheduler_generation_of(s, t) == 6);
+    assert(rt_scheduler_is_due_gen(s, t, 5) == 0); // stale revision is discarded
+    assert(rt_scheduler_is_due_gen(s, t, 6) == 1); // current revision fires
+}
+
+static void test_plain_schedule_is_generation_zero() {
+    void *s = rt_scheduler_new();
+    rt_string t = rt_string_from_bytes("plain", 5);
+
+    rt_scheduler_schedule(s, t, 5000);
+    assert(rt_scheduler_generation_of(s, t) == 0); // plain Schedule records generation 0
+
+    // A plain Schedule after a ScheduleGen resets the generation back to 0.
+    rt_scheduler_schedule_gen(s, t, 5000, 9);
+    assert(rt_scheduler_generation_of(s, t) == 9);
+    rt_scheduler_schedule(s, t, 5000);
+    assert(rt_scheduler_generation_of(s, t) == 0);
 }
 
 /// @brief Main.
@@ -260,5 +314,9 @@ int main() {
     test_embedded_nul_poll_preserves_name();
     test_concurrent_schedule_cancel();
     test_null_safety();
+    test_schedule_gen_and_generation_of();
+    test_is_due_gen_matches_generation();
+    test_generation_supersession();
+    test_plain_schedule_is_generation_zero();
     return 0;
 }
