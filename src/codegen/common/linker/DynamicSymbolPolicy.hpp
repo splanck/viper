@@ -713,6 +713,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "_InterlockedIncrement64",
         "_InterlockedOr",
         "TryEnterCriticalSection",
+        "CommandLineToArgvW",
         "CoTaskMemFree",
         "DragQueryFileW",
         "_open_osfhandle",

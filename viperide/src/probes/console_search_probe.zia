@@ -15,10 +15,69 @@ bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
 bind Str = Viper.String;
+bind Clock = Viper.Time.Clock;
+
+final CLIPBOARD_RETRY_ATTEMPTS = 50;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
     Terminal.Say("RESULT: fail " + reason);
+}
+
+func copySelectedClipboardContains(shell: app_shell.AppShell, needle: String) -> Boolean {
+    var attempt = 0;
+    while attempt < CLIPBOARD_RETRY_ATTEMPTS {
+        if shell.CopySelectedToolRow() {
+            if Str.IndexOf(GUI.Clipboard.GetText(), needle) != 0 {
+                return true;
+            }
+        }
+        Clock.Sleep(2);
+        attempt = attempt + 1;
+    }
+    return false;
+}
+
+func copySelectedClipboardEquals(shell: app_shell.AppShell, expected: String) -> Boolean {
+    var attempt = 0;
+    while attempt < CLIPBOARD_RETRY_ATTEMPTS {
+        if shell.CopySelectedToolRow() {
+            if GUI.Clipboard.GetText() == expected {
+                return true;
+            }
+        }
+        Clock.Sleep(2);
+        attempt = attempt + 1;
+    }
+    return false;
+}
+
+func copySelectedClipboardNonEmpty(shell: app_shell.AppShell) -> Boolean {
+    var attempt = 0;
+    while attempt < CLIPBOARD_RETRY_ATTEMPTS {
+        if shell.CopySelectedToolRow() {
+            if GUI.Clipboard.GetText() != "" {
+                return true;
+            }
+        }
+        Clock.Sleep(2);
+        attempt = attempt + 1;
+    }
+    return false;
+}
+
+func copyOutputClipboardContains(shell: app_shell.AppShell, needle: String) -> Boolean {
+    var attempt = 0;
+    while attempt < CLIPBOARD_RETRY_ATTEMPTS {
+        if shell.CopyOutputText() {
+            if Str.IndexOf(GUI.Clipboard.GetText(), needle) != 0 {
+                return true;
+            }
+        }
+        Clock.Sleep(2);
+        attempt = attempt + 1;
+    }
+    return false;
 }
 
 func main() {
@@ -97,7 +156,7 @@ func main() {
         return;
     }
     shell.outputPane.SelectAll();
-    if shell.CopySelectedToolRow() == false or Str.IndexOf(GUI.Clipboard.GetText(), "one two") == 0 {
+    if copySelectedClipboardContains(shell, "one two") == false {
         fail(shell, "copy raw output selection");
         return;
     }
@@ -127,7 +186,7 @@ func main() {
         return;
     }
     shell.outputListBox.SelectIndex(0);
-    if shell.CopySelectedToolRow() == false or GUI.Clipboard.GetText() == "" {
+    if copySelectedClipboardNonEmpty(shell) == false {
         fail(shell, "copy output row");
         return;
     }
@@ -136,11 +195,11 @@ func main() {
     var rangeB = shell.outputListBox.AddItem("range two");
     shell.outputListBox.Select(rangeA);
     shell.outputListBox.Select(rangeB);
-    if shell.CopySelectedToolRow() == false or GUI.Clipboard.GetText() != "range one\nrange two" {
+    if copySelectedClipboardEquals(shell, "range one\nrange two") == false {
         fail(shell, "copy output selected range");
         return;
     }
-    if shell.CopyOutputText() == false or Str.IndexOf(GUI.Clipboard.GetText(), "abcdefghijklmnopqrstuvwxyz") == 0 {
+    if copyOutputClipboardContains(shell, "abcdefghijklmnopqrstuvwxyz") == false {
         fail(shell, "copy full output text");
         return;
     }

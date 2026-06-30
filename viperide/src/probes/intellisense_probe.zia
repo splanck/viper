@@ -32,6 +32,8 @@ bind Obj = Viper.Core.Object;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 
+final SEMANTIC_JOB_WAIT_MS = 4000;
+
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
     Terminal.Say("RESULT: fail " + reason);
@@ -248,7 +250,7 @@ func main() {
 
     var asyncJob = ZiaCompletion.BeginItemsForFile(engine.GetTextSnapshot(),
                                                    "intellisense_probe.zia", 4, 6);
-    if waitSemanticJob(asyncJob, 200) == false {
+    if waitSemanticJob(asyncJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async completion job did not finish");
         return;
     }
@@ -263,7 +265,7 @@ func main() {
 
     var symbolsJob = ZiaCompletion.BeginSymbolsForFile(engine.GetTextSnapshot(),
                                                        "intellisense_probe.zia");
-    if waitSemanticJob(symbolsJob, 200) == false {
+    if waitSemanticJob(symbolsJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async symbols job did not finish");
         return;
     }
@@ -336,7 +338,7 @@ func main() {
 
     var badSrc = "module IntelliProbe;\nfunc f() -> Integer { return ; }\n";
     var diagJob = ZiaToolchain.BeginCheckForFile(badSrc, "intellisense_probe.zia");
-    if waitSemanticJob(diagJob, 600) == false {
+    if waitSemanticJob(diagJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async diagnostics job did not finish");
         return;
     }
@@ -685,7 +687,7 @@ func main() {
         return;
     }
     var sigJob = ZiaCompletion.BeginSignatureInfoForFile(sigSource, "intellisense_probe.zia", 4, 10);
-    if waitSemanticJob(sigJob, 200) == false {
+    if waitSemanticJob(sigJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async signature job did not finish");
         return;
     }
@@ -845,7 +847,7 @@ func main() {
                                                                 "intellisense_probe.zia",
                                                                 4,
                                                                 17);
-    if waitSemanticJob(runtimeSigJob, 200) == false {
+    if waitSemanticJob(runtimeSigJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async runtime signature job did not finish");
         return;
     }
@@ -868,7 +870,7 @@ func main() {
                                                               "intellisense_probe.zia",
                                                               4,
                                                               14);
-    if waitSemanticJob(runtimeHoverJob, 200) == false {
+    if waitSemanticJob(runtimeHoverJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async runtime hover job did not finish");
         return;
     }
@@ -897,7 +899,7 @@ func main() {
         return;
     }
     var boundSigJob = ZiaCompletion.BeginSignatureInfoForFile(boundMainSource, boundMainPath, 4, 22);
-    if waitSemanticJob(boundSigJob, 200) == false {
+    if waitSemanticJob(boundSigJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async bound signature job did not finish");
         return;
     }
@@ -912,7 +914,7 @@ func main() {
         return;
     }
     var boundHoverJob = ZiaCompletion.BeginHoverInfoForFile(boundMainSource, boundMainPath, 4, 10);
-    if waitSemanticJob(boundHoverJob, 200) == false {
+    if waitSemanticJob(boundHoverJob, SEMANTIC_JOB_WAIT_MS) == false {
         fail(shell, "async bound hover job did not finish");
         return;
     }

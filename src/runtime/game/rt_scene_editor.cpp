@@ -1375,7 +1375,8 @@ bool writeSceneJsonTempExclusive(const std::filesystem::path &temp, rt_string js
         return false;
     size_t pos = 0;
     while (pos < len) {
-        DWORD chunk = static_cast<DWORD>(std::min<size_t>(len - pos, DWORD_MAX));
+        DWORD chunk =
+            static_cast<DWORD>(std::min<size_t>(len - pos, std::numeric_limits<DWORD>::max()));
         DWORD written = 0;
         if (!WriteFile(handle, data + pos, chunk, &written, NULL) || written != chunk) {
             CloseHandle(handle);

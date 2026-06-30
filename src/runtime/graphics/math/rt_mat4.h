@@ -130,22 +130,23 @@ void *rt_mat4_rotate_axis(void *axis, double angle);
 /// @brief Create a perspective projection matrix.
 /// @param fov Vertical field of view in radians.
 /// @param aspect Aspect ratio (width / height).
-/// @param near Distance to the near clipping plane (must be positive).
-/// @param far Distance to the far clipping plane (must be > near).
+/// @param near_val Distance to the near clipping plane (must be positive).
+/// @param far_val Distance to the far clipping plane (must be > near_val).
 /// @return A new Mat4 encoding a symmetric perspective projection that
 ///         maps the view frustum to normalized device coordinates.
-void *rt_mat4_perspective(double fov, double aspect, double near, double far);
+void *rt_mat4_perspective(double fov, double aspect, double near_val, double far_val);
 
 /// @brief Create an orthographic projection matrix.
 /// @param left Left boundary of the view volume.
 /// @param right Right boundary of the view volume.
 /// @param bottom Bottom boundary of the view volume.
 /// @param top Top boundary of the view volume.
-/// @param near Near clipping plane distance.
-/// @param far Far clipping plane distance.
+/// @param near_val Near clipping plane distance.
+/// @param far_val Far clipping plane distance.
 /// @return A new Mat4 encoding an orthographic projection that maps
 ///         the specified box to normalized device coordinates.
-void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far);
+void *rt_mat4_ortho(
+    double left, double right, double bottom, double top, double near_val, double far_val);
 
 /// @brief Create a look-at view matrix.
 /// @param eye Camera position (Vec3).

@@ -323,16 +323,17 @@ static void camera_normalize_vec3_or(
 /// in the `[-1, 1]` NDC convention. With Viper's row-major, column-vector transform
 /// path, `m[14] = -1` makes clip.w = -view.z for perspective division. Zeroes the matrix first so
 /// unused slots stay at 0 — callers can assume a fully initialised 4×4.
-static void build_perspective(double *m, double fov_deg, double aspect, double near, double far) {
+static void build_perspective(
+    double *m, double fov_deg, double aspect, double near_val, double far_val) {
     memset(m, 0, 16 * sizeof(double));
     double fov_rad = fov_deg * (M_PI / 180.0);
     double f = 1.0 / tan(fov_rad * 0.5);
-    double nf = 1.0 / (near - far);
+    double nf = 1.0 / (near_val - far_val);
 
     m[0] = f / aspect;
     m[5] = f;
-    m[10] = (far + near) * nf; /* OpenGL NDC: Z in [-1,1] */
-    m[11] = 2.0 * far * near * nf;
+    m[10] = (far_val + near_val) * nf; /* OpenGL NDC: Z in [-1,1] */
+    m[11] = 2.0 * far_val * near_val * nf;
     m[14] = -1.0;
     /* m[15] = 0 */
     camera_finish_matrix(m);

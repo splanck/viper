@@ -204,6 +204,12 @@ class SymbolOutline {
         var qsource = zia_query.WrapForQuery(source);
         var lineOff = zia_query.LineOffset(source);
         CancelPendingJob();
+        if visible == false and semanticFoldingEnabled {
+            var rawSync = ZiaCompletion.SymbolsForFile(qsource, sourcePath);
+            ApplySymbols(engine, rawSync, lineOff, source, sourcePath, revision);
+            return;
+        }
+
         var job = ZiaCompletion.BeginSymbolsForFile(qsource, sourcePath);
         if job != null {
             pendingJob = job;

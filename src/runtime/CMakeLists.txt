@@ -883,6 +883,8 @@ target_link_libraries(viper_rt_localization PUBLIC viper_rt_collections viper_rt
 
 # Windows requires ws2_32 for sockets
 if (WIN32)
+    target_link_libraries(viper_rt_base PUBLIC shell32)
+    target_link_libraries(viper_runtime PUBLIC shell32)
     target_link_libraries(viper_rt_network PUBLIC ws2_32)
     target_link_libraries(viper_runtime PUBLIC ws2_32)
     target_link_libraries(viper_rt_graphics PUBLIC Xinput9_1_0)

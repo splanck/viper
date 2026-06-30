@@ -124,7 +124,9 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
     if (basic_mode == RT_F_BINARY || basic_mode == RT_F_RANDOM)
         flags |= O_CREAT;
 #if defined(_WIN32)
-    if (binary) {
+    const int basic_text_mode =
+        basic_mode == RT_F_INPUT || basic_mode == RT_F_OUTPUT || basic_mode == RT_F_APPEND;
+    if (binary || basic_text_mode) {
 #if defined(O_BINARY)
         flags |= O_BINARY;
 #elif defined(_O_BINARY)

@@ -1107,11 +1107,8 @@ void *rt_workspace_file_index_page(rt_string root_s,
         return result;
     } catch (...) {
         rt_map_set_bool(result, rt_const_cstr("valid"), 0);
-        pushDiagnostic(diagnostics,
-                       "workspace file-index page failed",
-                       "",
-                       0,
-                       "fileindex.exception");
+        pushDiagnostic(
+            diagnostics, "workspace file-index page failed", "", 0, "fileindex.exception");
         releaseObject(entries);
         releaseObject(diagnostics);
         return result;
@@ -1658,7 +1655,7 @@ static bool writeWorkspaceEditTemp(const fs::path &path, const std::string &text
     if (handle == INVALID_HANDLE_VALUE)
         return false;
     size_t pos = 0;
-    const size_t chunk_max = static_cast<size_t>(DWORD_MAX);
+    const size_t chunk_max = static_cast<size_t>(std::numeric_limits<DWORD>::max());
     while (pos < text.size()) {
         size_t chunk = std::min(chunk_max, text.size() - pos);
         DWORD written = 0;

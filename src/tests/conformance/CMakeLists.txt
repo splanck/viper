@@ -42,7 +42,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
     # Memory/aggregate + exception-handling cross-layer conformance.
     _aarch64_add_test_common(test_memory_eh_conformance
             ${_VIPER_CONFORMANCE_DIR}/MemoryEhConformanceTests.cpp
-            "il_codegen_aarch64;viper_cmd_arm64")
+            "il_codegen_aarch64;viper_cmd_arm64;${VIPER_IL_CORE_IO_LIBS};il_api")
     set_tests_properties(test_memory_eh_conformance PROPERTIES
             RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow;conformance")
 else ()
@@ -56,7 +56,8 @@ else ()
     viper_add_test(test_memory_eh_conformance
             ${_VIPER_CONFORMANCE_DIR}/MemoryEhConformanceTests.cpp)
     target_link_libraries(test_memory_eh_conformance PRIVATE
-            il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+            il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common
+            ${VIPER_IL_CORE_IO_LIBS} il_api)
     viper_add_ctest(test_memory_eh_conformance test_memory_eh_conformance)
 endif ()
 

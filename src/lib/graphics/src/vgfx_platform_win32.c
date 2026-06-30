@@ -93,6 +93,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
 static INIT_ONCE g_vgfx_win32_dpi_awareness_once = INIT_ONCE_STATIC_INIT;
 static INIT_ONCE g_vgfx_win32_window_class_once = INIT_ONCE_STATIC_INIT;
+static HWND g_vgfx_win32_clipboard_owner = NULL;
+static char *g_vgfx_win32_clipboard_text = NULL;
 
 /// @brief Allocate an aligned framebuffer buffer with the Win32 CRT allocator.
 /// @details Windows requires `_aligned_malloc` so that the matching
@@ -171,12 +173,50 @@ static int utf16_to_utf8_buffer(const WCHAR *wstr, char *out, size_t out_size) {
 ///          copy/paste operations more reliable without blocking indefinitely.
 /// @return Non-zero when OpenClipboard succeeded.
 static int win32_open_clipboard_retry(void) {
+    HWND owner = (g_vgfx_win32_clipboard_owner && IsWindow(g_vgfx_win32_clipboard_owner))
+                     ? g_vgfx_win32_clipboard_owner
+                     : NULL;
     for (int attempt = 0; attempt < 8; attempt++) {
-        if (OpenClipboard(NULL))
+        if (OpenClipboard(owner))
             return 1;
         Sleep(1);
     }
     return 0;
+}
+
+/// @brief Store a process-local copy of the last text placed on the clipboard.
+/// @details Win32 clipboard writes can be unavailable in headless or locked
+///          desktop sessions.  Keeping a fallback preserves in-process
+///          copy/paste semantics while system clipboard integration remains the
+///          preferred path whenever the OS accepts it.
+static void win32_store_clipboard_text(const char *text) {
+    char *copy = NULL;
+    if (text) {
+        size_t len = strlen(text);
+        if (len < SIZE_MAX) {
+            copy = (char *)malloc(len + 1u);
+            if (copy)
+                memcpy(copy, text, len + 1u);
+        }
+    }
+
+    free(g_vgfx_win32_clipboard_text);
+    g_vgfx_win32_clipboard_text = copy;
+}
+
+/// @brief Return a caller-owned copy of the process-local clipboard fallback.
+static char *win32_dup_clipboard_text(void) {
+    if (!g_vgfx_win32_clipboard_text)
+        return NULL;
+
+    size_t len = strlen(g_vgfx_win32_clipboard_text);
+    if (len >= SIZE_MAX)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, g_vgfx_win32_clipboard_text, len + 1u);
+    return copy;
 }
 
 static void win32_client_to_physical_mouse(
@@ -1101,6 +1141,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Show and update window */
     ShowWindow(w32->hwnd, SW_SHOW);
     UpdateWindow(w32->hwnd);
+    g_vgfx_win32_clipboard_owner = w32->hwnd;
 
     return 1;
 }
@@ -1145,6 +1186,8 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 
     /* Destroy window */
     if (w32->hwnd) {
+        if (g_vgfx_win32_clipboard_owner == w32->hwnd)
+            g_vgfx_win32_clipboard_owner = NULL;
         DestroyWindow(w32->hwnd);
         w32->hwnd = NULL;
     }
@@ -1344,7 +1387,8 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
     switch (format) {
         case VGFX_CLIPBOARD_TEXT:
             return IsClipboardFormatAvailable(CF_UNICODETEXT) ||
-                   IsClipboardFormatAvailable(CF_TEXT);
+                   IsClipboardFormatAvailable(CF_TEXT) ||
+                   (g_vgfx_win32_clipboard_text && g_vgfx_win32_clipboard_text[0] != '\0');
         case VGFX_CLIPBOARD_HTML:
             // HTML format is registered dynamically
             {
@@ -1366,7 +1410,7 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
 /// @return Clipboard text (caller must free), or NULL if not available
 char *vgfx_clipboard_get_text(void) {
     if (!win32_open_clipboard_retry())
-        return NULL;
+        return win32_dup_clipboard_text();
 
     char *result = NULL;
     HANDLE hData = GetClipboardData(CF_UNICODETEXT);
@@ -1393,13 +1437,15 @@ char *vgfx_clipboard_get_text(void) {
     }
 
     CloseClipboard();
-    return result;
+    return result ? result : win32_dup_clipboard_text();
 }
 
 /// @brief Set text to the clipboard.
 /// @details Copies the specified UTF-8 string to the system clipboard.
 /// @param text Text to copy (NULL clears text from clipboard)
 void vgfx_clipboard_set_text(const char *text) {
+    win32_store_clipboard_text(text ? text : "");
+
     if (!win32_open_clipboard_retry())
         return;
 
@@ -1430,6 +1476,8 @@ void vgfx_clipboard_set_text(const char *text) {
 
 /// @brief Clear all clipboard contents.
 void vgfx_clipboard_clear(void) {
+    win32_store_clipboard_text("");
+
     if (win32_open_clipboard_retry()) {
         EmptyClipboard();
         CloseClipboard();

@@ -49,6 +49,7 @@
 
 static int g_passed = 0;
 static int g_failed = 0;
+static bool g_verbose = false;
 
 /// @brief Portable strdup replacement used to set up drag-drop string fields without depending on
 /// POSIX strdup.
@@ -85,12 +86,18 @@ static void test_make_temp_path(char *out, size_t out_size, const char *stem, co
 #define TEST(name) static void test_##name(void)
 #define RUN(name)                                                                                  \
     do {                                                                                           \
-        printf("  %-60s", #name "...");                                                            \
-        fflush(stdout);                                                                            \
+        if (g_verbose) {                                                                           \
+            printf("  %-60s", #name "...");                                                        \
+            fflush(stdout);                                                                        \
+        }                                                                                          \
         int before = g_failed;                                                                     \
         test_##name();                                                                             \
-        if (g_failed == before)                                                                    \
-            printf("OK\n");                                                                        \
+        if (g_failed == before) {                                                                  \
+            if (g_verbose)                                                                         \
+                printf("OK\n");                                                                    \
+        } else if (!g_verbose) {                                                                   \
+            printf("  %s...FAIL\n", #name);                                                        \
+        }                                                                                          \
         g_passed++;                                                                                \
     } while (0)
 
@@ -4320,6 +4327,8 @@ TEST(treeview_and_tabbar_prune_retired_tombstones_when_handles_discarded) {
 
 /// @brief Run all audit-regression tests across Rounds 1–7 and report pass/fail counts.
 int main(void) {
+    g_verbose = getenv("VIPER_GUI_TEST_VERBOSE") != NULL;
+
     printf("\n=== test_vg_audit_fixes — Viper.GUI audit regression suite ===\n");
 
     printf("\nFix #1: Dialog re-entrancy guard\n");

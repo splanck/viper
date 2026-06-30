@@ -34,6 +34,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -137,9 +138,16 @@ bool loadScalarFromAlloca(const Frame &fr, void *ptr, Type::Kind kind, DebugLoca
             return false; // strings/aggregates: not loaded here
     }
     const uint8_t *base = fr.stack.data();
-    const uint8_t *p = static_cast<const uint8_t *>(ptr);
-    if (!base || p < base || p + size > base + fr.stack.size())
+    if (!base || fr.stack.empty())
+        return false;
+    const std::uintptr_t begin = reinterpret_cast<std::uintptr_t>(base);
+    const std::uintptr_t address = reinterpret_cast<std::uintptr_t>(ptr);
+    if (address < begin)
+        return false;
+    const std::uintptr_t offset = address - begin;
+    if (offset > fr.stack.size() || size > fr.stack.size() - offset)
         return false; // not inside this frame's alloca region
+    const uint8_t *p = base + offset;
 
     if (kind == Type::Kind::F64) {
         double d = 0.0;
@@ -277,7 +285,8 @@ void collectFrameLocals(const Frame &fr, std::vector<DebugLocalInfo> &out) {
         } else {
             formatRegScalar(fr, id, kinds[id], local);
         }
-        upsert(local.name, std::move(local), authoritative);
+        std::string displayName = local.name;
+        upsert(std::move(displayName), std::move(local), authoritative);
     }
 
     out.reserve(ordered.size());
@@ -287,8 +296,7 @@ void collectFrameLocals(const Frame &fr, std::vector<DebugLocalInfo> &out) {
 
 } // namespace
 
-DebugStopInfo VM::buildStopInfo(std::string_view reason,
-                                const il::support::SourceLoc &loc) const {
+DebugStopInfo VM::buildStopInfo(std::string_view reason, const il::support::SourceLoc &loc) const {
     DebugStopInfo info;
     info.reason = std::string(reason);
     info.line = loc.line;

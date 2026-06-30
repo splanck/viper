@@ -268,16 +268,17 @@ void *rt_mat4_rotate_axis(void *axis, double angle) {
 /// @brief Build a right-handed perspective projection matrix. `fov` is vertical FOV in radians,
 /// `aspect` = width/height. Maps view-space Z to NDC Z in [-1, 1] (OpenGL convention). Returns
 /// identity for invalid params (fov ≤ 0, aspect ≤ 0, or near ≥ far).
-void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
-    if (!isfinite(fov) || !isfinite(aspect) || !isfinite(near) || !isfinite(far) || fov <= 0.0 ||
-        fov >= 3.14159265358979323846 || aspect <= 0.0 || near <= 0.0 || near >= far)
+void *rt_mat4_perspective(double fov, double aspect, double near_val, double far_val) {
+    if (!isfinite(fov) || !isfinite(aspect) || !isfinite(near_val) || !isfinite(far_val) ||
+        fov <= 0.0 || fov >= 3.14159265358979323846 || aspect <= 0.0 || near_val <= 0.0 ||
+        near_val >= far_val)
         return rt_mat4_identity();
 
     double tanHalfFov = tan(fov / 2.0);
     if (!isfinite(tanHalfFov) || tanHalfFov == 0.0)
         return rt_mat4_identity();
     double f = 1.0 / tanHalfFov;
-    double nf = 1.0 / (near - far);
+    double nf = 1.0 / (near_val - far_val);
 
     return rt_mat4_new(f / aspect,
                        0.0,
@@ -289,8 +290,8 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
                        0.0,
                        0.0,
                        0.0,
-                       (far + near) * nf,
-                       2.0 * far * near * nf,
+                       (far_val + near_val) * nf,
+                       2.0 * far_val * near_val * nf,
                        0.0,
                        0.0,
                        -1.0,
@@ -299,14 +300,16 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
 
 /// @brief Build an orthographic projection matrix mapping the box [(left, bottom, near),
 /// (right, top, far)] to NDC. Returns identity if any axis range is degenerate.
-void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far) {
+void *rt_mat4_ortho(
+    double left, double right, double bottom, double top, double near_val, double far_val) {
     if (!isfinite(left) || !isfinite(right) || !isfinite(bottom) || !isfinite(top) ||
-        !isfinite(near) || !isfinite(far) || right == left || top == bottom || far == near)
+        !isfinite(near_val) || !isfinite(far_val) || right == left || top == bottom ||
+        far_val == near_val)
         return rt_mat4_identity();
 
     double rl = 1.0 / (right - left);
     double tb = 1.0 / (top - bottom);
-    double fn = 1.0 / (far - near);
+    double fn = 1.0 / (far_val - near_val);
 
     return rt_mat4_new(2.0 * rl,
                        0.0,
@@ -319,7 +322,7 @@ void *rt_mat4_ortho(double left, double right, double bottom, double top, double
                        0.0,
                        0.0,
                        -2.0 * fn,
-                       -(far + near) * fn,
+                       -(far_val + near_val) * fn,
                        0.0,
                        0.0,
                        0.0,

@@ -36,6 +36,7 @@
 #include "rt_array.h" // for rt_arr_oob_panic
 #include "rt_heap.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 
 #include <assert.h>
 #include <stddef.h>

@@ -51,8 +51,9 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <shellapi.h>
 #include <windows.h>
+
+LPWSTR *WINAPI CommandLineToArgvW(LPCWSTR lpCmdLine, int *pNumArgs);
 #elif defined(__APPLE__)
 #include <crt_externs.h>
 #endif
