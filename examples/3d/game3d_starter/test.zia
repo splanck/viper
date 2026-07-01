@@ -24,7 +24,7 @@ func runStarterReplay() -> Float {
 
     var canvas = game.getCanvas();
     Canvas3D.SetInputSource(canvas, 1);
-    Canvas3D.PushSyntheticKey(canvas, Keys.get_W(), true);
+    Canvas3D.PushSyntheticKey(canvas, Keys.get_KeyW(), true);
     game.getWorld().Tick();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);

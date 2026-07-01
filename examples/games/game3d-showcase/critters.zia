@@ -6,6 +6,7 @@ bind Viper.Graphics3D;
 bind Viper.Math;
 bind "./config";
 bind "./terrain";
+bind "./mathutil";
 
 bind Viper.Game3D.Layers;
 
@@ -80,24 +81,37 @@ class ShowcaseCritters {
 
     expose func update(dt: Float, playerX: Float, playerZ: Float) {
         if (critterCtrl == null) { return; }
-        for i in 0..critterXs.count() {
-            var dx = critterTX.get(i) - critterXs.get(i);
-            var dz = critterTZ.get(i) - critterZs.get(i);
-            var dist = Sqrt(dx * dx + dz * dz);
-            if (dist < 1.2) {
-                pickCritterTarget(i);
-            } else {
-                var sp = config.CRITTER_SPEED * dt;
-                if (sp > dist) { sp = dist; }
-                critterXs.set(i, critterXs.get(i) + dx / dist * sp);
-                critterZs.set(i, critterZs.get(i) + dz / dist * sp);
-            }
-        }
+        var maxX = terrain.terrainWorldMaxX();
+        var maxZ = terrain.terrainWorldMaxZ();
         var near = false;
         for i in 0..critterXs.count() {
-            var px = playerX - critterXs.get(i);
-            var pz = playerZ - critterZs.get(i);
-            if (px * px + pz * pz < 144.0) { near = true; }
+            var pdx = critterXs.get(i) - playerX;
+            var pdz = critterZs.get(i) - playerZ;
+            var pdist = Sqrt(pdx * pdx + pdz * pdz);
+            if (pdist < config.CRITTER_FLEE_RADIUS && pdist > 0.0001) {
+                // Skittish: bolt directly away from the player, then re-pick a
+                // wander target from the new spot once the player backs off.
+                near = true;
+                var fsp = config.CRITTER_SPEED * config.CRITTER_FLEE_MULT * dt;
+                critterXs.set(i, mathutil.clampFloat(critterXs.get(i) + pdx / pdist * fsp,
+                    config.TERRAIN_MARGIN, maxX - config.TERRAIN_MARGIN));
+                critterZs.set(i, mathutil.clampFloat(critterZs.get(i) + pdz / pdist * fsp,
+                    config.TERRAIN_MARGIN, maxZ - config.TERRAIN_MARGIN));
+                pickCritterTarget(i);
+            } else {
+                var dx = critterTX.get(i) - critterXs.get(i);
+                var dz = critterTZ.get(i) - critterZs.get(i);
+                var dist = Sqrt(dx * dx + dz * dz);
+                if (dist < 1.2) {
+                    pickCritterTarget(i);
+                } else {
+                    var sp = config.CRITTER_SPEED * dt;
+                    if (sp > dist) { sp = dist; }
+                    critterXs.set(i, critterXs.get(i) + dx / dist * sp);
+                    critterZs.set(i, critterZs.get(i) + dz / dist * sp);
+                }
+                if (pdist < 12.0) { near = true; }
+            }
         }
         if (near && crittersActive == false) {
             AnimController3D.Crossfade(critterCtrl, "move", 0.35);
@@ -123,14 +137,14 @@ class ShowcaseCritters {
 
     hide func pickCritterTarget(i: Integer) {
         critterWanderSeed = critterWanderSeed + 1;
-        var ang = terrain.hash01(critterWanderSeed, 71) * 6.2831853;
+        var ang = mathutil.hash01(critterWanderSeed, 71) * 6.2831853;
         critterWanderSeed = critterWanderSeed + 1;
-        var radius = 6.0 + terrain.hash01(critterWanderSeed, 73) * 26.0;
+        var radius = 6.0 + mathutil.hash01(critterWanderSeed, 73) * 26.0;
         var cx = terrain.terrainWorldMaxX() * 0.5;
         var cz = terrain.terrainWorldMaxZ() * 0.5;
-        critterTX.set(i, terrain.clampFloat(cx + Sin(ang) * radius,
+        critterTX.set(i, mathutil.clampFloat(cx + Sin(ang) * radius,
             config.TERRAIN_MARGIN, terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN));
-        critterTZ.set(i, terrain.clampFloat(cz + Cos(ang) * radius,
+        critterTZ.set(i, mathutil.clampFloat(cz + Cos(ang) * radius,
             config.TERRAIN_MARGIN, terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN));
     }
 

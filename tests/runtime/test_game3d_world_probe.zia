@@ -45,10 +45,10 @@ func start() {
     var mesh = G3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
     var mat = G3D.Material3D.NewColor(0.2, 0.7, 0.9);
     var player = Game3D.Entity3D.Of(mesh, mat);
-    player.SetName("Player");
+    player.Name = "Player";
     player.SetPosition(0.0, 0.0, 0.0);
-    player.SetLayer(Game3D.Layers.get_Player());
-    player.SetCollisionMask(mask);
+    player.Layer = Game3D.Layers.get_Player();
+    player.CollisionMask = mask;
     world.Spawn(player);
 
     if (player.IsSpawned() == false) {

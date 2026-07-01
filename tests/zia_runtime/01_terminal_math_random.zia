@@ -56,9 +56,9 @@ func start() {    Viper.Terminal.BeginBatch();
     Viper.Terminal.SayBool(true);
     Viper.Terminal.Bell();
     Viper.Terminal.Flush();
-    Viper.Terminal.SetCursorVisible(0);
-    Viper.Terminal.SetCursorVisible(1);
-    Viper.Terminal.SetAltScreen(0);
+    Viper.Terminal.SetCursorVisible(false);
+    Viper.Terminal.SetCursorVisible(true);
+    Viper.Terminal.SetAltScreen(false);
     Viper.Terminal.EndBatch();
 
     assertApprox(Viper.Math.Sin(0.0), 0.0, 0.000001, "sin(0)");

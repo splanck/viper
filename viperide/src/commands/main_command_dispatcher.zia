@@ -179,7 +179,7 @@ hide func DispatchFileCommands(shell: app_shell.AppShell,
     var closeIdx = -1;
     if dispatch_helpers.Triggered("close", shell.miClose, null, cpSelected) {
         closeIdx = docMgr.activeIndex;
-    } else if shell.tabBar.WasCloseClicked() != 0 {
+    } else if shell.tabBar.WasCloseClicked() {
         closeIdx = shell.tabBar.GetCloseClickedIndex();
     }
     if closeIdx >= 0 {
@@ -188,7 +188,7 @@ hide func DispatchFileCommands(shell: app_shell.AppShell,
         }
     }
 
-    if shell.miExit.WasClicked() != 0 {
+    if shell.miExit.WasClicked() {
         file_commands.SaveEditorState(docMgr, engine);
         breakpointStore.Save();
         sessionMgr.Save(docMgr, projMgr);
@@ -289,7 +289,7 @@ hide func DispatchEditCommands(shell: app_shell.AppShell,
             shell.SetStatusLeft("Diagnostics complete");
         }
     }
-    if (shell.miSignatureHelp != null and shell.miSignatureHelp.WasClicked() != 0)
+    if (shell.miSignatureHelp != null and shell.miSignatureHelp.WasClicked())
        or cpSelected == "signature_trigger" {
         sigCtrl.trigger(engine);
     }
@@ -353,8 +353,8 @@ hide func DispatchViewSearchCommands(shell: app_shell.AppShell,
         if overlayDeletePath != "" { explorerOverlay.OpenDelete(shell, overlayDeletePath); }
     }
     if dispatch_helpers.TriggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
-    if shell.miKeyboardShortcuts.WasClicked() != 0                          { view_commands.handleKeybindings(shell, commandRegistry); }
-    if shell.miAbout.WasClicked() != 0                                      { overlays.OpenAbout(shell); }
+    if shell.miKeyboardShortcuts.WasClicked()                          { view_commands.handleKeybindings(shell, commandRegistry); }
+    if shell.miAbout.WasClicked()                                      { overlays.OpenAbout(shell); }
     if dispatch_helpers.TriggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
         if search_commands.ShowQuickOpenPalette(shell, projMgr) {
             paletteCtrl.BeginQuickOpen();

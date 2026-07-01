@@ -24,8 +24,8 @@ func start() {
     // --- SetVel / ApplyForce ---
     Say("--- Velocity ---");
     body.SetVel(10.0, 0.0);
-    SayNum(body.get_VX());
-    SayNum(body.get_VY());
+    SayNum(body.get_VelocityX());
+    SayNum(body.get_VelocityY());
     body.ApplyForce(0.0, 100.0);
     body.ApplyImpulse(5.0, 0.0);
 

@@ -38,8 +38,8 @@ PRINT bad.HasErrors()
 DIM tm AS OBJECT
 tm = scene.BuildTilemap()
 PRINT tm.GetTileLayer(layer, 1, 1)
-PRINT scene.AssetPaths().Length
-PRINT scene.AssetDescriptors().Length
+PRINT scene.AssetPaths().Count
+PRINT scene.AssetDescriptors().Count
 
 PRINT "done"
 END

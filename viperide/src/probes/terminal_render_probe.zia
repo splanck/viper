@@ -27,7 +27,7 @@ func main() {
     var shell = new app_shell.AppShell();
     shell.Build("ViperIDE Terminal Render Probe", 1000, 700);
     var pane = shell.terminalPane;
-    pane.SetTerminalMode(1);
+    pane.SetTerminalMode(true);
 
     // OSC window-title (swallowed) + SGR color + "hello", then \r + ESC[K + "world".
     // Cursor model: "hello" at col 0, \r -> col 0, ESC[K clears the line, "world".

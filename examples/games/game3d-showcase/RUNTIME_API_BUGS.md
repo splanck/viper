@@ -39,14 +39,14 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 - **Symptom:** Introspection lists `SetMetallic(f64)` and `SetRoughness(f64)` as methods, but the
   compiler (current binary) rejects them: `V-ZIA-SEMA: Runtime class 'Viper.Graphics3D.Material3D'
   has no method 'SetRoughness'`. The scalar factors must instead be set via the property setters
-  `set_Metallic` / `set_Roughness` (and likewise `set_AO`, `set_EmissiveIntensity`,
+  `set_Metallic` / `set_Roughness` (and likewise `set_AmbientOcclusion`, `set_EmissiveIntensity`,
   `set_NormalScale`, `set_Reflectivity`). The *map* setters (`SetAlbedoMap`, `SetNormalMap`, …)
   and `SetShadingModel`/`SetUnlit` ARE bound as methods, so the asymmetry is surprising.
 - **Repro:** `Material3D.SetRoughness(mat, 0.8);` fails; `Material3D.set_Roughness(mat, 0.8);` works.
 - **Workaround:** Historical: use the `set_*` property setters for scalar PBR factors.
 - **Status:** Resolved by removing the advertised `Set*` scalar aliases from the runtime class
   surface; the canonical API is the property setter (`set_Metallic`, `set_Roughness`,
-  `set_AO`, `set_EmissiveIntensity`, `set_NormalScale`, `set_Reflectivity`) or property
+  `set_AmbientOcclusion`, `set_EmissiveIntensity`, `set_NormalScale`, `set_Reflectivity`) or property
   assignment in languages that support it.
 - **Generalizes:** Same defect on **`Light3D.SetEnabled(i1)`** — advertised by introspection,
   rejected by the compiler (`has no method 'SetEnabled'`); must use `Light3D.set_Enabled(...)`.
@@ -99,7 +99,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 - **Symptom:** Introspection lists `SetMetallic(f64)` and `SetRoughness(f64)` as methods, but the
   compiler rejects them: `V-ZIA-SEMA: Runtime class 'Viper.Graphics3D.Material3D' has no method
   'SetRoughness'`. The scalar factors must instead be set via the property setters
-  `set_Metallic` / `set_Roughness` (and likewise `set_AO`, `set_EmissiveIntensity`,
+  `set_Metallic` / `set_Roughness` (and likewise `set_AmbientOcclusion`, `set_EmissiveIntensity`,
   `set_NormalScale`, `set_Reflectivity`). Note the asymmetry: the *map* setters (`SetAlbedoMap`,
   `SetNormalMap`, …) and `SetShadingModel`/`SetUnlit` ARE bound as methods.
 - **Repro:** `Material3D.SetRoughness(mat, 0.8);` fails; `Material3D.set_Roughness(mat, 0.8);` works.
@@ -191,6 +191,6 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   `vgfx_set_fullscreen`), `Canvas3D.DrawImage2D(x,y,w,h,pixels)` (overlay image blit; also added a
   final-overlay GC-object retention list so HUD-pass textured draws survive post-FX), `Canvas3D.
   DrawMeshWind(mesh,xform,mat,dirX,dirZ,strength,phase)` (CPU height-weighted vertex sway), and
-  `Game3D.Keys.get_F11`. Also: `Canvas3D.DrawMeshSkinned` now accepts an `AnimController3D` as well
+  `Game3D.Keys.get_KeyF11`. Also: `Canvas3D.DrawMeshSkinned` now accepts an `AnimController3D` as well
   as an `AnimPlayer3D`. Unit coverage in `src/tests/unit/test_rt_canvas3d.cpp` (wind deform + NULL
   safety); docs in `docs/viperlib/graphics/rendering3d.md`.

@@ -22,7 +22,7 @@ class OpenWorldSlice {
     hide Entity3D glbFixtureProp;
     hide Boolean glbFixtureLoaded;
     hide Boolean audioFixtureLoaded;
-    hide Any asyncProp;
+    hide Entity3D asyncProp;
     hide AssetHandle3D asyncHandle;
     hide TextureAsset3D groundTexture;
     hide TextureAsset3D compressedTexture;
@@ -255,7 +255,7 @@ class OpenWorldSlice {
         var groundMat = Materials.Rubber(0.22, 0.34, 0.25);
         Material3D.SetAlbedoMap(groundMat, groundTexture);
         var ground: Entity3D = Prefab.Ground(48.0, groundMat);
-        ground.SetName("SliceGround");
+        ground.Name = "SliceGround";
         ground.SetPosition(-1100.0, 0.0, -1100.0);
         ground.AttachBody(BodyDef.StaticPlane(48.0));
         world.Spawn(ground);
@@ -263,23 +263,23 @@ class OpenWorldSlice {
         var compressedMat = Material3D.NewPBR(1.0, 1.0, 1.0);
         Material3D.SetAlbedoMap(compressedMat, compressedTexture);
         compressedTexturePanel = Prefab.BoxXYZ(1.25, 1.25, 0.10, compressedMat);
-        compressedTexturePanel.SetName("NativeCompressedTexturePanel");
+        compressedTexturePanel.Name = "NativeCompressedTexturePanel";
         compressedTexturePanel.SetPosition(-1102.15, 0.95, -1098.75);
         world.Spawn(compressedTexturePanel);
 
         var crate: Entity3D = Prefab.BoxXYZ(1.2, 0.9, 1.2, Materials.Metal(0.58, 0.61, 0.63));
-        crate.SetName("SliceCrate");
+        crate.Name = "SliceCrate";
         crate.SetPosition(-1101.6, 0.45, -1100.8);
         crate.AttachBody(BodyDef.StaticBox(0.6, 0.45, 0.6));
         world.Spawn(crate);
 
         beacon = Prefab.BoxXYZ(0.42, 0.42, 0.42, Materials.Emissive(0.12, 0.72, 1.0, 1.6));
-        beacon.SetName("SliceBeacon");
+        beacon.Name = "SliceBeacon";
         beacon.SetPosition(-1098.3, 1.1, -1101.2);
         world.Spawn(beacon);
 
         var ball: Entity3D = Prefab.Sphere(0.42, 18, Materials.Plastic(0.92, 0.24, 0.16));
-        ball.SetName("SlicePhysicsBall");
+        ball.Name = "SlicePhysicsBall";
         ball.SetPosition(-1099.7, 0.55, -1099.9);
         var ballBody = BodyDef.Sphere(0.42, 1.0);
         ballBody.Restitution = 0.25;
@@ -323,20 +323,20 @@ class OpenWorldSlice {
         footIkBound = AnimController3D.SetIKSolver(footIkController, footIkSolver);
 
         footIkMarker = Prefab.Sphere(0.16, 12, Materials.Emissive(0.08, 0.95, 0.62, 1.4));
-        footIkMarker.SetName("TerrainFootIkMarker");
+        footIkMarker.Name = "TerrainFootIkMarker";
         footIkMarker.SetPosition(footIkTargetX, 0.32, footIkTargetZ);
         world.Spawn(footIkMarker);
 
         footIkLegMarker = Prefab.BoxXYZ(0.12, 0.92, 0.12, Materials.Plastic(0.12, 0.64, 0.50));
-        footIkLegMarker.SetName("TerrainFootIkLegMarker");
+        footIkLegMarker.Name = "TerrainFootIkLegMarker";
         footIkLegMarker.SetPosition(footIkTargetX + 0.20, 0.76, footIkTargetZ + 0.08);
         world.Spawn(footIkLegMarker);
     }
 
     hide func setupPlayer() {
         player = Entity3D.New();
-        player.SetName("SlicePlayer");
-        player.SetLayer(Layers.get_Player());
+        player.Name = "SlicePlayer";
+        player.Layer = Layers.get_Player();
         player.SetPosition(-1100.0, 1.0, -1094.5);
         world.Spawn(player);
 
@@ -354,12 +354,12 @@ class OpenWorldSlice {
         navmesh = world.BakeNavMesh(0.35, 1.8, 45.0, 0.3);
 
         scoutA = Prefab.BoxXYZ(0.35, 0.70, 0.35, Materials.Plastic(0.12, 0.42, 0.92));
-        scoutA.SetName("ScoutA");
+        scoutA.Name = "ScoutA";
         scoutA.SetPosition(-1101.6, 0.35, -1098.6);
         world.Spawn(scoutA);
 
         scoutB = Prefab.BoxXYZ(0.35, 0.70, 0.35, Materials.Plastic(0.92, 0.64, 0.18));
-        scoutB.SetName("ScoutB");
+        scoutB.Name = "ScoutB";
         scoutB.SetPosition(-1098.4, 0.35, -1098.6);
         world.Spawn(scoutB);
 
@@ -387,7 +387,7 @@ class OpenWorldSlice {
         if (skinnedTemplate == null) { return; }
         skinnedAgent = skinnedTemplate.Instantiate();
         if (skinnedAgent == null) { return; }
-        skinnedAgent.SetName("SkinnedAgent");
+        skinnedAgent.Name = "SkinnedAgent";
         skinnedAgent.SetPosition(-1099.2, 0.32, -1098.0);
         skinnedAgent.SetScale(0.85);
         world.Spawn(skinnedAgent);
@@ -414,7 +414,7 @@ class OpenWorldSlice {
 
         glbFixtureProp = Assets3D.LoadEntityAsset("assets/models/triangle.glb");
         if (glbFixtureProp != null) {
-            glbFixtureProp.SetName("FixtureGLBTriangle");
+            glbFixtureProp.Name = "FixtureGLBTriangle";
             glbFixtureProp.SetPosition(-1097.0, 0.12, -1100.6);
             glbFixtureProp.SetScale(0.75);
             world.Spawn(glbFixtureProp);
@@ -438,7 +438,7 @@ class OpenWorldSlice {
         if (asyncHandle.Ready == false) { return; }
         asyncProp = asyncHandle.GetEntity();
         if (asyncProp == null) { return; }
-        Entity3D.SetName(asyncProp, "AsyncTriangle");
+        asyncProp.Name = "AsyncTriangle";
         Entity3D.SetPosition(asyncProp, -1097.5, 0.08, -1098.8);
         Entity3D.SetScale(asyncProp, 0.85);
         world.Spawn(asyncProp);

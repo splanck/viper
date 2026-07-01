@@ -294,7 +294,7 @@ func loadFranchise(rootPath: String) -> LoadResult {
 func parseFranchiseHeader(text: String) -> FranchiseHeader {
     var header = new FranchiseHeader();
     var headerLines = String.Split(text, "\n");
-    for i in 0..Seq.get_Length(headerLines) {
+    for i in 0..Seq.get_Count(headerLines) {
         var line = String.Trim(toStr(Seq.Get(headerLines, i)));
         if line == "" {
             continue;
@@ -315,23 +315,23 @@ func applyFranchiseHeaderLine(header: FranchiseHeader, parts: Seq[String]) {
     header.completedOffseasons = toInt(Seq.Get(parts, 5));
     // Backwards-compat: older saves only had 6 fields. The RNG state fields
     // are appended at positions 6-8 in the new format.
-    if Seq.get_Length(parts) >= 7 {
+    if Seq.get_Count(parts) >= 7 {
         header.injuryRngState = toInt(Seq.Get(parts, 6));
     }
-    if Seq.get_Length(parts) >= 8 {
+    if Seq.get_Count(parts) >= 8 {
         header.developmentRngState = toInt(Seq.Get(parts, 7));
     }
-    if Seq.get_Length(parts) >= 9 {
+    if Seq.get_Count(parts) >= 9 {
         header.transactionRngState = toInt(Seq.Get(parts, 8));
     }
-    if Seq.get_Length(parts) >= 10 {
+    if Seq.get_Count(parts) >= 10 {
         header.nextGameNumber = toInt(Seq.Get(parts, 9));
     }
 }
 
 func parseSeasonText(ctx: SeasonLoadContext, text: String) {
     var seasonLines = String.Split(text, "\n");
-    for i in 0..Seq.get_Length(seasonLines) {
+    for i in 0..Seq.get_Count(seasonLines) {
         var raw = String.Trim(toStr(Seq.Get(seasonLines, i)));
         if raw == "" {
             continue;
@@ -761,7 +761,7 @@ func loadCareerLines(rootPath: String, franchise: season_model.FranchiseState) {
     }
     var careersText = File.ReadAllText(careersPath);
     var careerLines = String.Split(careersText, "\n");
-    for i in 0..Seq.get_Length(careerLines) {
+    for i in 0..Seq.get_Count(careerLines) {
         var line = String.Trim(toStr(Seq.Get(careerLines, i)));
         if line == "" {
             continue;
@@ -900,7 +900,7 @@ func renderStringList(lines: List[String]) -> String {
 func readStringLines(text: String) -> List[String] {
     var lines: List[String] = [];
     var parts = String.Split(text, "\n");
-    for i in 0..Seq.get_Length(parts) {
+    for i in 0..Seq.get_Count(parts) {
         var line = String.Trim(toStr(Seq.Get(parts, i)));
         if line != "" {
             lines.add(line);

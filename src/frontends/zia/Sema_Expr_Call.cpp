@@ -22,6 +22,7 @@
 #include <cctype>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string_view>
 
 using il::frontends::common::string_utils::iequals;
@@ -39,6 +40,15 @@ std::string capitalizedRuntimeMember(std::string_view name) {
     if (!out.empty())
         out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
     return out;
+}
+
+size_t runtimeMethodReceiverSkip(const Symbol *sym, const il::runtime::ParsedMethod *method) {
+    if (!sym || !sym->type || sym->type->kind != TypeKindSem::Function || !method)
+        return 1;
+
+    const size_t symbolArity = sym->type->paramTypes().size();
+    const size_t surfaceArity = method->signature.params.size();
+    return symbolArity == surfaceArity + 1 ? 1 : 0;
 }
 
 /// @brief Resolve a return type from a collection method return category.
@@ -1607,6 +1617,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 className = "Viper.Collections.Map";
 
             std::string fullMethodName = className + "." + fieldExpr->field;
+            std::optional<il::runtime::ParsedMethod> resolvedRuntimeMethod;
             Symbol *sym = lookupSymbol(fullMethodName);
             if (!sym) {
                 std::string fallbackMethodName =
@@ -1615,9 +1626,21 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 if (sym && sym->kind == Symbol::Kind::Function)
                     fullMethodName = fallbackMethodName;
             }
+            const auto &registry = il::runtime::RuntimeRegistry::instance();
+            if (auto method = registry.findMethod(className, fieldExpr->field, expr->args.size());
+                method && method->target && *method->target) {
+                if (Symbol *methodSym = lookupSymbol(method->target);
+                    methodSym && methodSym->kind == Symbol::Kind::Function) {
+                    resolvedRuntimeMethod = *method;
+                    sym = methodSym;
+                    fullMethodName = method->target;
+                }
+            }
             if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
-                if (!bindExternCallOnCall(expr, fullMethodName, sym, 1))
+                const size_t receiverSkip = runtimeMethodReceiverSkip(
+                    sym, resolvedRuntimeMethod ? &*resolvedRuntimeMethod : nullptr);
+                if (!bindExternCallOnCall(expr, fullMethodName, sym, receiverSkip))
                     return types::unknown();
                 if (sym->isExtern) {
                     runtimeCallees_[expr] = fullMethodName;
@@ -1647,12 +1670,15 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             std::string fullMethodName = "Viper.String." + fieldExpr->field;
             Symbol *sym = nullptr;
             const auto &registry = il::runtime::RuntimeRegistry::instance();
+            std::optional<il::runtime::ParsedMethod> resolvedRuntimeMethod;
             if (auto method =
                     registry.findMethod("Viper.String", fieldExpr->field, expr->args.size());
                 method && method->target && *method->target) {
                 sym = lookupSymbol(method->target);
-                if (sym && sym->kind == Symbol::Kind::Function)
+                if (sym && sym->kind == Symbol::Kind::Function) {
+                    resolvedRuntimeMethod = *method;
                     fullMethodName = method->target;
+                }
             }
 
             if (!sym)
@@ -1660,7 +1686,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
-                if (!bindExternCallOnCall(expr, fullMethodName, sym, 1))
+                const size_t receiverSkip = runtimeMethodReceiverSkip(
+                    sym, resolvedRuntimeMethod ? &*resolvedRuntimeMethod : nullptr);
+                if (!bindExternCallOnCall(expr, fullMethodName, sym, receiverSkip))
                     return types::unknown();
 
                 if (sym->isExtern)
@@ -1680,12 +1708,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         // Emit a diagnostic for method calls on an untyped opaque pointer (plain 'obj').
         // This occurs when a runtime function that returns obj/ptr without a typed seq
-        // annotation is used as a method receiver. The typed Seq API (Seq.Get, Seq.get_Length)
+        // annotation is used as a method receiver. The typed Seq API (Seq.Get, Seq.get_Count)
         // must be used instead, or the runtime.def entry should be annotated with seq<T>.
         if (baseType && baseType->kind == TypeKindSem::Ptr && baseType->name.empty()) {
             error(expr->loc,
                   "Cannot call method on an untyped object reference. "
-                  "Use Seq.Get/Seq.get_Length for sequence results, or check the runtime.def "
+                  "Use Seq.Get/Seq.get_Count for sequence results, or check the runtime.def "
                   "annotation for the function returning this value.");
             for (auto &arg : expr->args)
                 analyzeExpr(arg.value.get());
@@ -1700,6 +1728,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             Symbol *sym = nullptr;
             const auto &registry = il::runtime::RuntimeRegistry::instance();
+            std::optional<il::runtime::ParsedMethod> resolvedRuntimeMethod;
             std::vector<std::string> methodNames = {fieldExpr->field};
             std::string capitalized = capitalizedRuntimeMember(fieldExpr->field);
             if (capitalized != fieldExpr->field)
@@ -1710,6 +1739,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     method && method->target && *method->target) {
                     sym = lookupSymbol(method->target);
                     if (sym && sym->kind == Symbol::Kind::Function) {
+                        resolvedRuntimeMethod = *method;
                         fullMethodName = method->target;
                         break;
                     }
@@ -1733,9 +1763,21 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             if (!sym && baseType->name.find("Viper.GUI.") == 0 &&
                 baseType->name != "Viper.GUI.Widget") {
                 for (const auto &methodName : methodNames) {
+                    if (auto method =
+                            registry.findMethod("Viper.GUI.Widget", methodName, expr->args.size());
+                        method && method->target && *method->target) {
+                        sym = lookupSymbol(method->target);
+                        if (sym && sym->kind == Symbol::Kind::Function) {
+                            resolvedRuntimeMethod = *method;
+                            fullMethodName = method->target;
+                            break;
+                        }
+                    }
+
                     std::string widgetMethodName = "Viper.GUI.Widget." + methodName;
-                    sym = lookupSymbol(widgetMethodName);
-                    if (sym && sym->kind == Symbol::Kind::Function) {
+                    Symbol *widgetSym = lookupSymbol(widgetMethodName);
+                    if (widgetSym && widgetSym->kind == Symbol::Kind::Function) {
+                        sym = widgetSym;
                         fullMethodName = std::move(widgetMethodName);
                         break;
                     }
@@ -1748,7 +1790,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     analyzeExpr(arg.value.get());
                 }
 
-                if (!bindExternCallOnCall(expr, fullMethodName, sym, 1))
+                const size_t receiverSkip = runtimeMethodReceiverSkip(
+                    sym, resolvedRuntimeMethod ? &*resolvedRuntimeMethod : nullptr);
+                if (!bindExternCallOnCall(expr, fullMethodName, sym, receiverSkip))
                     return types::unknown();
 
                 // Skip validation for runtime class methods — their signatures

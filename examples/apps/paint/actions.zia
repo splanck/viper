@@ -86,72 +86,72 @@ class PaintActions {
     }
 
     hide func defineButtons() {
-        bindKey(ACT_QUIT, Keyboard.get_KEY_ESCAPE());
-        Action.BindKey(ACT_QUIT, Keyboard.get_KEY_Q());
+        bindKey(ACT_QUIT, Keyboard.get_KeyEscape());
+        Action.BindKey(ACT_QUIT, Keyboard.get_KeyQ());
 
-        bindKey(ACT_NEW, Keyboard.get_KEY_N());
+        bindKey(ACT_NEW, Keyboard.get_KeyN());
         bindKey(ACT_OPEN, config.KEY_O);
         bindKey(ACT_SAVE, config.KEY_S);
-        bindKey(ACT_SAVE_AS, Keyboard.get_KEY_F12());
-        bindKey(ACT_CLEAR, Keyboard.get_KEY_C());
+        bindKey(ACT_SAVE_AS, Keyboard.get_KeyF12());
+        bindKey(ACT_CLEAR, Keyboard.get_KeyC());
         bindKey(ACT_UNDO, config.KEY_Z);
         bindKey(ACT_REDO, config.KEY_Y);
         bindKey(ACT_SWAP_COLORS, config.KEY_X);
         bindKey(ACT_SIZE_UP, config.KEY_RIGHT_BRACKET);
-        Action.BindKey(ACT_SIZE_UP, Keyboard.get_KEY_NUMADD());
-        Action.BindKey(ACT_SIZE_UP, Keyboard.get_KEY_EQUALS());
+        Action.BindKey(ACT_SIZE_UP, Keyboard.get_KeyNumAdd());
+        Action.BindKey(ACT_SIZE_UP, Keyboard.get_KeyEquals());
         bindKey(ACT_SIZE_DOWN, config.KEY_LEFT_BRACKET);
-        Action.BindKey(ACT_SIZE_DOWN, Keyboard.get_KEY_NUMSUB());
-        Action.BindKey(ACT_SIZE_DOWN, Keyboard.get_KEY_MINUS());
-        bindKey(ACT_ZOOM_IN, Keyboard.get_KEY_PAGEUP());
-        bindKey(ACT_ZOOM_OUT, Keyboard.get_KEY_PAGEDOWN());
-        bindKey(ACT_ZOOM_RESET, Keyboard.get_KEY_HOME());
-        bindKey(ACT_FULLSCREEN, Keyboard.get_KEY_F11());
-        bindKey(ACT_DEBUG, Keyboard.get_KEY_F3());
-        bindKey(ACT_NEXT_TOOL, Keyboard.get_KEY_TAB());
-        bindKey(ACT_PREV_TOOL, Keyboard.get_KEY_BACKSPACE());
+        Action.BindKey(ACT_SIZE_DOWN, Keyboard.get_KeyNumSub());
+        Action.BindKey(ACT_SIZE_DOWN, Keyboard.get_KeyMinus());
+        bindKey(ACT_ZOOM_IN, Keyboard.get_KeyPageUp());
+        bindKey(ACT_ZOOM_OUT, Keyboard.get_KeyPageDown());
+        bindKey(ACT_ZOOM_RESET, Keyboard.get_KeyHome());
+        bindKey(ACT_FULLSCREEN, Keyboard.get_KeyF11());
+        bindKey(ACT_DEBUG, Keyboard.get_KeyF3());
+        bindKey(ACT_NEXT_TOOL, Keyboard.get_KeyTab());
+        bindKey(ACT_PREV_TOOL, Keyboard.get_KeyBackspace());
 
-        bindKey(ACT_TOOL_PENCIL, Keyboard.get_KEY_1());
+        bindKey(ACT_TOOL_PENCIL, Keyboard.get_Key1());
         Action.BindKey(ACT_TOOL_PENCIL, config.KEY_P);
-        bindKey(ACT_TOOL_BRUSH, Keyboard.get_KEY_2());
+        bindKey(ACT_TOOL_BRUSH, Keyboard.get_Key2());
         Action.BindKey(ACT_TOOL_BRUSH, config.KEY_B);
-        bindKey(ACT_TOOL_ERASER, Keyboard.get_KEY_3());
+        bindKey(ACT_TOOL_ERASER, Keyboard.get_Key3());
         Action.BindKey(ACT_TOOL_ERASER, config.KEY_E);
-        bindKey(ACT_TOOL_LINE, Keyboard.get_KEY_4());
+        bindKey(ACT_TOOL_LINE, Keyboard.get_Key4());
         Action.BindKey(ACT_TOOL_LINE, config.KEY_L);
-        bindKey(ACT_TOOL_RECT, Keyboard.get_KEY_5());
+        bindKey(ACT_TOOL_RECT, Keyboard.get_Key5());
         Action.BindKey(ACT_TOOL_RECT, config.KEY_R);
-        bindKey(ACT_TOOL_ELLIPSE, Keyboard.get_KEY_6());
+        bindKey(ACT_TOOL_ELLIPSE, Keyboard.get_Key6());
         Action.BindKey(ACT_TOOL_ELLIPSE, config.KEY_O);
-        bindKey(ACT_TOOL_FILL, Keyboard.get_KEY_7());
+        bindKey(ACT_TOOL_FILL, Keyboard.get_Key7());
         Action.BindKey(ACT_TOOL_FILL, config.KEY_F);
-        bindKey(ACT_TOOL_EYEDROPPER, Keyboard.get_KEY_8());
+        bindKey(ACT_TOOL_EYEDROPPER, Keyboard.get_Key8());
         Action.BindKey(ACT_TOOL_EYEDROPPER, config.KEY_I);
 
         // New tools (letter shortcuts).
         bindKey(ACT_TOOL_SELECT, config.KEY_S);
-        bindKey(ACT_TOOL_GRADIENT, Keyboard.get_KEY_G());
-        bindKey(ACT_TOOL_CURVE, Keyboard.get_KEY_U());
+        bindKey(ACT_TOOL_GRADIENT, Keyboard.get_KeyG());
+        bindKey(ACT_TOOL_CURVE, Keyboard.get_KeyU());
         bindKey(ACT_TOOL_POLYGON, config.KEY_Y);
-        bindKey(ACT_TOOL_SPRAY, Keyboard.get_KEY_A());
-        bindKey(ACT_TOOL_TEXT, Keyboard.get_KEY_T());
+        bindKey(ACT_TOOL_SPRAY, Keyboard.get_KeyA());
+        bindKey(ACT_TOOL_TEXT, Keyboard.get_KeyT());
 
         // Selection edit actions (used with Ctrl, except Delete).
-        bindKey(ACT_COPY, Keyboard.get_KEY_C());
+        bindKey(ACT_COPY, Keyboard.get_KeyC());
         bindKey(ACT_CUT, config.KEY_X);
-        bindKey(ACT_PASTE, Keyboard.get_KEY_V());
+        bindKey(ACT_PASTE, Keyboard.get_KeyV());
         bindKey(ACT_DELETE, config.KEY_DELETE);
 
         // Mode toggles.
-        bindKey(ACT_TOGGLE_FILL, Keyboard.get_KEY_D());
-        bindKey(ACT_TOGGLE_SHAPE, Keyboard.get_KEY_W());
+        bindKey(ACT_TOGGLE_FILL, Keyboard.get_KeyD());
+        bindKey(ACT_TOGGLE_SHAPE, Keyboard.get_KeyW());
 
         // Layer ops.
-        bindKey(ACT_MERGE_DOWN, Keyboard.get_KEY_E());
-        bindKey(ACT_BLEND_CYCLE, Keyboard.get_KEY_M());
+        bindKey(ACT_MERGE_DOWN, Keyboard.get_KeyE());
+        bindKey(ACT_BLEND_CYCLE, Keyboard.get_KeyM());
 
         // Help overlay.
-        bindKey(ACT_HELP, Keyboard.get_KEY_H());
+        bindKey(ACT_HELP, Keyboard.get_KeyH());
     }
 
     /// @brief True once when the action fires (edge-triggered).

@@ -572,7 +572,7 @@ class AppShell {
         scmViewHost.SetSpacing(0.0);
         scmViewHost.SetPadding(0.0);
         scmViewHost.SetFlex(1.0);
-        scmViewHost.SetVisible(0);
+        scmViewHost.SetVisible(false);
         leftViewStack.AddChild(scmViewHost);
 
         // Workbench — editor area plus the docked Preferences side panel.
@@ -593,7 +593,7 @@ class AppShell {
         preferencesPanel.SetSpacing(0.0);
         preferencesPanel.SetPadding(0.0);
         preferencesPanel.SetSize(420, 0);
-        preferencesPanel.SetVisible(0);
+        preferencesPanel.SetVisible(false);
         workbenchRow.AddChild(preferencesPanel);
 
         // Tab bar inside editor area
@@ -603,11 +603,11 @@ class AppShell {
         breadcrumb = GUI.Breadcrumb.New(editorArea);
         breadcrumb.SetSeparator(" / ");
         breadcrumb.SetMaxItems(6);
-        breadcrumb.SetVisible(0);
+        breadcrumb.SetVisible(false);
 
         // Find bar inside editor area (hidden until Ctrl+F)
         findBar = GUI.FindBar.New(editorArea);
-        findBar.SetVisible(0);
+        findBar.SetVisible(false);
 
         // Editor row — HBox (editor left with flex, minimap right with fixed width).
         // The editor widget is added to editorRow by engine.Setup() in main.zia;
@@ -620,7 +620,7 @@ class AppShell {
 
         // Diagnostics panel (hidden until a build produces errors or warnings)
         toolTabBar = GUI.TabBar.New(editorArea);
-        toolTabBar.SetAutoClose(0);
+        toolTabBar.SetAutoClose(false);
         toolProblemsTab = toolTabBar.AddTab("Problems", 0);
         toolOutputTab = toolTabBar.AddTab("Output", 0);
         toolSearchTab = toolTabBar.AddTab("Search", 0);
@@ -629,49 +629,49 @@ class AppShell {
         toolCallStackTab = toolTabBar.AddTab("Call Stack", 0);
         toolDebugTab = toolTabBar.AddTab("Debug Console", 0);
         toolTerminalTab = toolTabBar.AddTab("Terminal", 0);
-        toolTabBar.SetVisible(0);
+        toolTabBar.SetVisible(false);
 
         diagListBox = GUI.ListBox.New(editorArea);
-        diagListBox.SetMultiSelect(1);
-        diagListBox.SetVisible(0);
+        diagListBox.SetMultiSelect(true);
+        diagListBox.SetVisible(false);
         diagListBox.SetSize(0, 120);
 
         // Build output panel (hidden until a build runs; shows raw compiler stdout/stderr)
         outputPane = GUI.OutputPane.New(editorArea);
         outputPane.SetMaxLines(10000);
-        outputPane.SetAutoScroll(1);
-        outputPane.SetVisible(0);
+        outputPane.SetAutoScroll(true);
+        outputPane.SetVisible(false);
         outputPane.SetSize(0, 100);
 
         outputListBox = GUI.ListBox.New(editorArea);
-        outputListBox.SetMultiSelect(1);
-        outputListBox.SetVisible(0);
+        outputListBox.SetMultiSelect(true);
+        outputListBox.SetVisible(false);
         outputListBox.SetSize(0, 100);
         outputVirtualList = GUI.VirtualList.New(0, 18, 100);
 
         searchListBox = GUI.ListBox.New(editorArea);
-        searchListBox.SetMultiSelect(1);
-        searchListBox.SetVisible(0);
+        searchListBox.SetMultiSelect(true);
+        searchListBox.SetVisible(false);
         searchListBox.SetSize(0, 120);
 
         referencesListBox = GUI.ListBox.New(editorArea);
-        referencesListBox.SetMultiSelect(1);
-        referencesListBox.SetVisible(0);
+        referencesListBox.SetMultiSelect(true);
+        referencesListBox.SetVisible(false);
         referencesListBox.SetSize(0, 120);
 
         debugListBox = GUI.ListBox.New(editorArea);
-        debugListBox.SetMultiSelect(1);
-        debugListBox.SetVisible(0);
+        debugListBox.SetMultiSelect(true);
+        debugListBox.SetVisible(false);
         debugListBox.SetSize(0, 120);
 
         variablesListBox = GUI.ListBox.New(editorArea);
-        variablesListBox.SetMultiSelect(1);
-        variablesListBox.SetVisible(0);
+        variablesListBox.SetMultiSelect(true);
+        variablesListBox.SetVisible(false);
         variablesListBox.SetSize(0, 120);
 
         callStackListBox = GUI.ListBox.New(editorArea);
-        callStackListBox.SetMultiSelect(0);
-        callStackListBox.SetVisible(0);
+        callStackListBox.SetMultiSelect(false);
+        callStackListBox.SetVisible(false);
         callStackListBox.SetSize(0, 120);
 
         // Integrated terminal panel (Phase 5E): interactive PTY terminal. The
@@ -681,11 +681,11 @@ class AppShell {
         terminalPanel.SetSpacing(0.0);
         terminalPanel.SetPadding(0.0);
         terminalPanel.SetSize(0, 220);
-        terminalPanel.SetVisible(0);
+        terminalPanel.SetVisible(false);
         editorArea.AddChild(terminalPanel);
         terminalPane = GUI.OutputPane.New(terminalPanel);
         terminalPane.SetMaxLines(10000);
-        terminalPane.SetAutoScroll(1);
+        terminalPane.SetAutoScroll(true);
         terminalPane.SetFlex(1.0);
         var terminalInputRow = GUI.HBox.New();
         terminalInputRow.SetSpacing(0.0);
@@ -882,7 +882,7 @@ class AppShell {
     }
 
     expose func WasCloseRequested() -> Boolean {
-        return app.WasCloseRequested() != 0;
+        return app.WasCloseRequested();
     }
 
     /// @brief Pump the event queue. Call once per frame before reading
@@ -971,12 +971,12 @@ class AppShell {
     }
 
     expose func SetBuildJobActive(active: Boolean, name: String) {
-        var enabled = 1;
-        var stopEnabled = 0;
+        var enabled = true;
+        var stopEnabled = false;
         var jobName = status_bar_model.JobDisplayName(name);
         if active {
-            enabled = 0;
-            stopEnabled = 1;
+            enabled = false;
+            stopEnabled = true;
             lastBuildJobStatus = status_bar_model.BuildJobStatusText(true, jobName);
         } else {
             lastBuildJobStatus = status_bar_model.BuildJobStatusText(false, jobName);
@@ -1034,16 +1034,16 @@ class AppShell {
     ///          from presenting inert icons with no explanation while preserving
     ///          the existing menu/shortcut command routing.
     /// @param item Toolbar item handle; NULL is ignored during partial setup.
-    /// @param enabled Runtime GUI enabled flag (`1` enabled, `0` disabled).
+    /// @param enabled Runtime GUI enabled flag.
     /// @param enabledTooltip Tooltip used when the item can be activated.
     /// @param disabledTooltip Tooltip used when the item is disabled.
     hide func SetToolbarItemState(item: GUI.ToolbarItem,
-                                  enabled: Integer,
+                                  enabled: Boolean,
                                   enabledTooltip: String,
                                   disabledTooltip: String) {
         if item == null { return; }
         item.SetEnabled(enabled);
-        if enabled != 0 {
+        if enabled {
             item.SetTooltip(enabledTooltip);
         } else {
             item.SetTooltip(disabledTooltip);
@@ -1061,38 +1061,38 @@ class AppShell {
     expose func SetDebugSessionState(active: Boolean,
                                      stopped: Boolean,
                                      buildJobActive: Boolean) {
-        var startEnabled = 1;
+        var startEnabled = true;
         if active or buildJobActive {
-            startEnabled = 0;
+            startEnabled = false;
         }
-        var pausedEnabled = 0;
+        var pausedEnabled = false;
         if active and stopped {
-            pausedEnabled = 1;
+            pausedEnabled = true;
         }
-        var runningEnabled = 0;
+        var runningEnabled = false;
         if active and stopped == false {
-            runningEnabled = 1;
+            runningEnabled = true;
         }
-        var activeEnabled = 0;
+        var activeEnabled = false;
         if active {
-            activeEnabled = 1;
+            activeEnabled = true;
         }
 
         if active {
-            SetToolbarItemState(tbBuild, 0,
+            SetToolbarItemState(tbBuild, false,
                                 "Build (Ctrl+Shift+B)",
                                 "Build disabled while debugging");
-            SetToolbarItemState(tbRun, 0,
+            SetToolbarItemState(tbRun, false,
                                 "Build & Run (F5)",
                                 "Run disabled while debugging");
             SetMenuEnabled(miBuild, false);
             SetMenuEnabled(miBuildAndRun, false);
             SetMenuEnabled(miRun, false);
         } else if buildJobActive == false {
-            SetToolbarItemState(tbBuild, 1,
+            SetToolbarItemState(tbBuild, true,
                                 "Build (Ctrl+Shift+B)",
                                 "Build disabled while another job is running");
-            SetToolbarItemState(tbRun, 1,
+            SetToolbarItemState(tbRun, true,
                                 "Build & Run (F5)",
                                 "Run disabled while another job is running");
             SetMenuEnabled(miBuild, true);
@@ -1113,14 +1113,14 @@ class AppShell {
                             "Step Over (F10)",
                             "Step is available while paused at a breakpoint");
 
-        SetMenuEnabled(miDebugStart, startEnabled != 0);
-        SetMenuEnabled(miDebugContinue, pausedEnabled != 0);
-        SetMenuEnabled(miDebugStepOver, pausedEnabled != 0);
-        SetMenuEnabled(miDebugStepIn, pausedEnabled != 0);
-        SetMenuEnabled(miDebugStepOut, pausedEnabled != 0);
-        SetMenuEnabled(miDebugPause, runningEnabled != 0);
-        SetMenuEnabled(miDebugRestart, activeEnabled != 0);
-        SetMenuEnabled(miDebugStop, activeEnabled != 0);
+        SetMenuEnabled(miDebugStart, startEnabled);
+        SetMenuEnabled(miDebugContinue, pausedEnabled);
+        SetMenuEnabled(miDebugStepOver, pausedEnabled);
+        SetMenuEnabled(miDebugStepIn, pausedEnabled);
+        SetMenuEnabled(miDebugStepOut, pausedEnabled);
+        SetMenuEnabled(miDebugPause, runningEnabled);
+        SetMenuEnabled(miDebugRestart, activeEnabled);
+        SetMenuEnabled(miDebugStop, activeEnabled);
     }
 
     /// @brief Apply active-language capability state to menus and editor context actions.
@@ -1163,9 +1163,9 @@ class AppShell {
     hide func SetMenuEnabled(item: GUI.MenuItem, enabled: Boolean) {
         if item == null { return; }
         if enabled {
-            item.SetEnabled(1);
+            item.SetEnabled(true);
         } else {
-            item.SetEnabled(0);
+            item.SetEnabled(false);
         }
     }
 
@@ -1173,11 +1173,11 @@ class AppShell {
     expose func SetBreadcrumbPath(path: String) {
         if path == "" {
             breadcrumb.SetPath("", "/");
-            breadcrumb.SetVisible(0);
+            breadcrumb.SetVisible(false);
             return;
         }
         breadcrumb.SetPath(path, "/");
-        breadcrumb.SetVisible(1);
+        breadcrumb.SetVisible(true);
     }
 
     /// @brief Populate the build-output panel with one row per line of
@@ -1243,7 +1243,7 @@ class AppShell {
         outputPartialLine = "";
 
         var lines = Str.Split(combined, "\n");
-        var n = Seq.get_Length(lines);
+        var n = Seq.get_Count(lines);
         var endsWithNewline = Str.EndsWith(combined, "\n");
         var i = 0;
         while i < n {
@@ -1327,18 +1327,18 @@ class AppShell {
     /// @brief Switch the output panel to the raw multiline text widget.
     hide func UseOutputPane() {
         outputPaneMode = true;
-        outputListBox.SetVisible(0);
+        outputListBox.SetVisible(false);
         if activeToolPanelKind == tool_panel_model.PANEL_OUTPUT {
-            outputPane.SetVisible(1);
+            outputPane.SetVisible(true);
         }
     }
 
     /// @brief Switch the output panel to row-list mode.
     expose func UseOutputRows() {
         outputPaneMode = false;
-        outputPane.SetVisible(0);
+        outputPane.SetVisible(false);
         if activeToolPanelKind == tool_panel_model.PANEL_OUTPUT {
-            outputListBox.SetVisible(1);
+            outputListBox.SetVisible(true);
         }
     }
 
@@ -1369,7 +1369,7 @@ class AppShell {
             return;
         }
         var lines = Str.Split(text, "\n");
-        var n = Seq.get_Length(lines);
+        var n = Seq.get_Count(lines);
         var i = 0;
         while i < n {
             var line = Obj.ToString(Seq.Get(lines, i));
@@ -1415,7 +1415,7 @@ class AppShell {
 
     func AddBuildOutputLines(output: String) {
         var lines = Str.Split(output, "\n");
-        var n = Seq.get_Length(lines);
+        var n = Seq.get_Count(lines);
         var i = 0;
         while i < n {
             var line = Obj.ToString(Seq.Get(lines, i));
@@ -1464,9 +1464,9 @@ class AppShell {
     expose func SetOutputAutoScroll(enabled: Boolean) {
         outputAutoScroll = enabled;
         if enabled {
-            outputPane.SetAutoScroll(1);
+            outputPane.SetAutoScroll(true);
         } else {
-            outputPane.SetAutoScroll(0);
+            outputPane.SetAutoScroll(false);
         }
     }
 
@@ -1478,10 +1478,10 @@ class AppShell {
 
     expose func ClearOutputPanel() {
         outputPane.Clear();
-        outputPane.SetVisible(0);
+        outputPane.SetVisible(false);
         outputListBox.Clear();
         ResetOutputRows();
-        outputListBox.SetVisible(0);
+        outputListBox.SetVisible(false);
         lastBuildOutput = "";
         outputPartialLine = "";
         outputPartialItem = null;
@@ -1796,104 +1796,104 @@ class AppShell {
     ///        first, then reveals only its own — so adding a panel can never leave
     ///        two overlapping (the bug class the old per-function hide lists risked).
     hide func HideAllToolPanels() {
-        diagListBox.SetVisible(0);
-        outputPane.SetVisible(0);
-        outputListBox.SetVisible(0);
-        searchListBox.SetVisible(0);
-        referencesListBox.SetVisible(0);
-        debugListBox.SetVisible(0);
-        variablesListBox.SetVisible(0);
-        callStackListBox.SetVisible(0);
-        terminalPanel.SetVisible(0);
+        diagListBox.SetVisible(false);
+        outputPane.SetVisible(false);
+        outputListBox.SetVisible(false);
+        searchListBox.SetVisible(false);
+        referencesListBox.SetVisible(false);
+        debugListBox.SetVisible(false);
+        variablesListBox.SetVisible(false);
+        callStackListBox.SetVisible(false);
+        terminalPanel.SetVisible(false);
     }
 
     expose func ShowProblemsPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolProblemsTab);
         activeToolPanelKind = tool_panel_model.PANEL_PROBLEMS;
         HideAllToolPanels();
-        diagListBox.SetVisible(1);
+        diagListBox.SetVisible(true);
     }
 
     expose func HideProblemsPanel() {
-        diagListBox.SetVisible(0);
+        diagListBox.SetVisible(false);
         ShowFallbackToolPanel();
     }
 
     expose func ShowOutputPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolOutputTab);
         activeToolPanelKind = tool_panel_model.PANEL_OUTPUT;
         HideAllToolPanels();
         if outputPaneMode {
-            outputPane.SetVisible(1);
+            outputPane.SetVisible(true);
         } else {
-            outputListBox.SetVisible(1);
+            outputListBox.SetVisible(true);
         }
     }
 
     expose func HideOutputPanel() {
-        outputPane.SetVisible(0);
-        outputListBox.SetVisible(0);
+        outputPane.SetVisible(false);
+        outputListBox.SetVisible(false);
         ShowFallbackToolPanel();
     }
 
     expose func ShowSearchPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolSearchTab);
         activeToolPanelKind = tool_panel_model.PANEL_SEARCH;
         HideAllToolPanels();
-        searchListBox.SetVisible(1);
+        searchListBox.SetVisible(true);
     }
 
     expose func HideSearchPanel() {
-        searchListBox.SetVisible(0);
+        searchListBox.SetVisible(false);
         ShowFallbackToolPanel();
     }
 
     expose func ShowReferencesPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolReferencesTab);
         activeToolPanelKind = tool_panel_model.PANEL_REFERENCES;
         HideAllToolPanels();
-        referencesListBox.SetVisible(1);
+        referencesListBox.SetVisible(true);
     }
 
     expose func HideReferencesPanel() {
-        referencesListBox.SetVisible(0);
+        referencesListBox.SetVisible(false);
         ShowFallbackToolPanel();
     }
 
     expose func ShowVariablesPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolVariablesTab);
         activeToolPanelKind = tool_panel_model.PANEL_VARIABLES;
         HideAllToolPanels();
-        variablesListBox.SetVisible(1);
+        variablesListBox.SetVisible(true);
     }
 
     expose func ShowCallStackPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolCallStackTab);
         activeToolPanelKind = tool_panel_model.PANEL_CALL_STACK;
         HideAllToolPanels();
-        callStackListBox.SetVisible(1);
+        callStackListBox.SetVisible(true);
     }
 
     expose func ShowDebugPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolDebugTab);
         activeToolPanelKind = tool_panel_model.PANEL_DEBUG;
         HideAllToolPanels();
-        debugListBox.SetVisible(1);
+        debugListBox.SetVisible(true);
     }
 
     expose func ShowTerminalPanel() {
-        toolTabBar.SetVisible(1);
+        toolTabBar.SetVisible(true);
         toolTabBar.SetActive(toolTerminalTab);
         activeToolPanelKind = tool_panel_model.PANEL_TERMINAL;
         HideAllToolPanels();
-        terminalPanel.SetVisible(1);
+        terminalPanel.SetVisible(true);
         if terminalPane != null { terminalPane.Focus(); }
     }
 
@@ -1902,7 +1902,7 @@ class AppShell {
     ///          remains alive so long-running commands keep producing output and
     ///          can be resumed by showing the terminal again.
     expose func HideTerminalPanel() {
-        terminalPanel.SetVisible(0);
+        terminalPanel.SetVisible(false);
         if activeToolPanelKind == tool_panel_model.PANEL_TERMINAL {
             ShowFallbackToolPanelWithoutTerminal();
         }
@@ -1910,7 +1910,7 @@ class AppShell {
 
     /// @brief Toggle the terminal panel's visible state.
     expose func ToggleTerminalPanel() {
-        if terminalPanel != null and terminalPanel.IsVisible() != 0 {
+        if terminalPanel != null and terminalPanel.IsVisible() {
             HideTerminalPanel();
         } else {
             ShowTerminalPanel();
@@ -1919,11 +1919,11 @@ class AppShell {
 
     /// @brief Return true when the terminal panel container is visible.
     expose func IsTerminalPanelVisible() -> Boolean {
-        return terminalPanel != null and terminalPanel.IsVisible() != 0;
+        return terminalPanel != null and terminalPanel.IsVisible();
     }
 
     expose func HideDebugPanel() {
-        debugListBox.SetVisible(0);
+        debugListBox.SetVisible(false);
         ShowFallbackToolPanel();
     }
 
@@ -1948,7 +1948,7 @@ class AppShell {
         } else if debugListBox.Count > 0 {
             ShowDebugPanel();
         } else {
-            toolTabBar.SetVisible(0);
+            toolTabBar.SetVisible(false);
             activeToolPanelKind = tool_panel_model.PANEL_NONE;
         }
     }
@@ -1972,7 +1972,7 @@ class AppShell {
         } else if debugListBox.Count > 0 {
             ShowDebugPanel();
         } else {
-            toolTabBar.SetVisible(0);
+            toolTabBar.SetVisible(false);
             activeToolPanelKind = tool_panel_model.PANEL_NONE;
         }
     }
@@ -1989,7 +1989,7 @@ class AppShell {
 
     expose func PumpToolTabs() {
         if toolTabBar == null { return; }
-        if toolTabBar.WasChanged() == 0 { return; }
+        if !toolTabBar.WasChanged() { return; }
         var idx = toolTabBar.GetActiveIndex();
         if idx == tool_panel_model.TAB_PROBLEMS {
             if diagListBox.Count > 0 { ShowProblemsPanel(); }
@@ -2037,7 +2037,7 @@ class AppShell {
     expose func SelectSurface(kind: Integer) {
         activeSurfaceKind = kind;
         activeDocumentSurfaceKind = kind;
-        editorRow.SetVisible(1);
+        editorRow.SetVisible(true);
     }
 
     /// @brief Resize to scalePct% of the monitor and center on screen.

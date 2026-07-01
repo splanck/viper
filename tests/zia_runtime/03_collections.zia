@@ -6,7 +6,7 @@ bind "./_support";
 // COVER: Viper.Collections.List.Push
 // COVER: Viper.Collections.List.Get
 // COVER: Viper.Collections.List.Set
-// COVER: Viper.Collections.List.get_Length
+// COVER: Viper.Collections.List.get_Count
 // COVER: Viper.Collections.List.RemoveAt
 // COVER: Viper.Collections.List.Clear
 // COVER: Viper.Collections.Map.Set
@@ -18,7 +18,7 @@ bind "./_support";
 // COVER: Viper.Collections.Map.Keys
 // COVER: Viper.Collections.Map.Values
 // COVER: Viper.Collections.Map.Clear
-// COVER: Viper.Collections.Map.Length
+// COVER: Viper.Collections.Map.Count
 
 func start() {    var nums = [1, 2, 3];
     nums.add(4);

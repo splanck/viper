@@ -64,7 +64,7 @@ func start() {
 
     Game3D.PostFX.Crisp(world);
     var effects = world.Effects;
-    if (G3D.PostFX3D.get_EffectCount(effects.PostFX) < 2) {
+    if (G3D.PostFX3D.get_EffectCount(effects.PostFx) < 2) {
         fail("PostFX.Crisp did not install a visible effect chain");
         return;
     }

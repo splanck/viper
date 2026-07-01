@@ -184,7 +184,7 @@ class ProjectIndexer {
         var bytesThisFrame = 0;
         while processed < limit {
             if pendingIndexFiles == null { break; }
-            var total = Seq.get_Length(pendingIndexFiles);
+            var total = Seq.get_Count(pendingIndexFiles);
             if pendingIndexPos >= total {
                 if pendingIndexDone {
                     indexing = false;
@@ -194,7 +194,7 @@ class ProjectIndexer {
                     break;
                 }
                 FetchNextIndexPage();
-                if pendingIndexFiles == null or Seq.get_Length(pendingIndexFiles) == 0 {
+                if pendingIndexFiles == null or Seq.get_Count(pendingIndexFiles) == 0 {
                     if pendingIndexDone {
                         indexing = false;
                         pendingIndexFiles = null;
@@ -203,7 +203,7 @@ class ProjectIndexer {
                     }
                     break;
                 }
-                total = Seq.get_Length(pendingIndexFiles);
+                total = Seq.get_Count(pendingIndexFiles);
             }
             var entry = Seq.Get(pendingIndexFiles, pendingIndexPos);
             var path = Map.GetStr(entry, "path");
@@ -234,7 +234,7 @@ class ProjectIndexer {
         }
         if pendingIndexFiles != null
            and pendingIndexDone
-           and pendingIndexPos >= Seq.get_Length(pendingIndexFiles) {
+           and pendingIndexPos >= Seq.get_Count(pendingIndexFiles) {
             indexing = false;
             pendingIndexFiles = null;
             pendingIndexPos = 0;
@@ -286,7 +286,7 @@ class ProjectIndexer {
         if workspaceIndexComplete { return "Workspace index ready"; }
         var total = workspaceIndexEntryCount;
         if total <= 0 and pendingIndexFiles != null {
-            total = Seq.get_Length(pendingIndexFiles);
+            total = Seq.get_Count(pendingIndexFiles);
         }
         if total > 0 {
             if pendingIndexDone {

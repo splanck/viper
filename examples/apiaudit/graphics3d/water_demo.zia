@@ -62,7 +62,7 @@ func start() {
     var frameCount = 0;
     while (Canvas3D.get_ShouldClose(canvas) == 0) {
         Canvas3D.Poll(canvas);
-        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) { break; }
 
         var dt = Canvas3D.get_DeltaTime(canvas) / 1000.0;
         if (dt > 0.05) { dt = 0.05; }
@@ -74,12 +74,12 @@ func start() {
         var fwd = 0.0;
         var right = 0.0;
         var updown = 0.0;
-        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_SPACE())) { updown = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { updown = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyW())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyS())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyA())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyD())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeySpace())) { updown = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyLeftShift())) { updown = -1.0; }
 
         Camera3D.FPSUpdate(camera, mdx * 0.12, 0.0 - mdy * 0.12,
                            fwd, right, updown, 15.0, dt);

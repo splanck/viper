@@ -244,7 +244,7 @@ func start() {
         Canvas3D.Poll(canvas);
 
         // ESC to quit
-        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
+        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) {
             break;
         }
 
@@ -260,14 +260,14 @@ func start() {
         // WASD movement
         var fwd = 0.0;
         var right = 0.0;
-        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyW())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyS())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyA())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyD())) { right = 1.0; }
 
         // Sprint
         var speed = MOVE_SPEED;
-        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { speed = MOVE_SPEED * 2.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyLeftShift())) { speed = MOVE_SPEED * 2.0; }
 
         Camera3D.FPSUpdate(camera, mdx * MOUSE_SENS, 0.0 - mdy * MOUSE_SENS,
                            fwd, right, 0.0, speed, dt);

@@ -18,7 +18,7 @@ func start() {
         Say("RESULT: fail grid create");
         return;
     }
-    if g.Size != 12 || g.Length != 12 {
+    if g.Size != 12 {
         Say("RESULT: fail grid property access");
         return;
     }

@@ -189,7 +189,7 @@ func start() {
     var running = true;
     while running {
         var reason = Shutdown.Poll();
-        if reason != Shutdown.NONE {
+        if reason != Shutdown.None {
             Say("shutdown requested");
             running = false;
         } else {
@@ -204,7 +204,7 @@ func start() {
 ```basic
 DO
     reason = Viper.System.Shutdown.Poll()
-    IF reason <> Viper.System.Shutdown.NONE THEN
+    IF reason <> Viper.System.Shutdown.None THEN
         PRINT "shutdown requested"
         EXIT DO
     END IF
@@ -465,7 +465,7 @@ bind Viper.System.Machine as Machine;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    Say("OS: " + Machine.get_OS());
+    Say("OS: " + Machine.get_Os());
     Say("Endian: " + Machine.get_Endian());
     Say("Cores: " + Fmt.Int(Machine.get_Cores()));
     Say("Home: " + Machine.get_Home());
@@ -477,8 +477,8 @@ func start() {
 
 ```basic
 ' Operating system information
-PRINT "OS: "; Viper.System.Machine.OS
-PRINT "Version: "; Viper.System.Machine.OSVer
+PRINT "OS: "; Viper.System.Machine.Os
+PRINT "Version: "; Viper.System.Machine.OsVer
 
 ' User and host
 PRINT "User: "; Viper.System.Machine.User
@@ -497,11 +497,11 @@ PRINT "Free RAM: "; Viper.System.Machine.MemFree / 1073741824; " GB"
 PRINT "Byte Order: "; Viper.System.Machine.get_Endian
 
 ' Conditional behavior based on OS
-IF Viper.System.Machine.OS = "macos" THEN
+IF Viper.System.Machine.Os = "macos" THEN
     PRINT "Running on macOS"
-ELSEIF Viper.System.Machine.OS = "linux" THEN
+ELSEIF Viper.System.Machine.Os = "linux" THEN
     PRINT "Running on Linux"
-ELSEIF Viper.System.Machine.OS = "windows" THEN
+ELSEIF Viper.System.Machine.Os = "windows" THEN
     PRINT "Running on Windows"
 END IF
 
@@ -661,7 +661,7 @@ Terminal input and output operations.
 | `SetPosition(row, col)`   | `Void(Integer, Integer)` | Move cursor to 1-based row/column (clamped to 1)          |
 | `SetColor(fg, bg)`        | `Void(Integer, Integer)` | Set BASIC color codes; use `-1` to leave a channel unchanged |
 | `SetCursorVisible(show)`  | `Void(Integer)`          | Show (`!= 0`) or hide (`0`) the cursor                   |
-| `SetAltScreen(enable)`    | `Void(Integer)`          | Enter (`!= 0`) or exit (`0`) the alternate screen        |
+| `SetAltScreen(enable)`    | `Void(Boolean)`          | Enter or exit the alternate screen                       |
 | `Bell()`                  | `Void()`                 | Emits the terminal bell                                  |
 
 #### Output Batching

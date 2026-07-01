@@ -130,7 +130,7 @@ func CollectFunctions(source: String) -> List {
     var funcs = new List();
     var lines = Str.Split(source, "\n");
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var info = ParseFunctionLine(Obj.ToString(Seq.Get(lines, i)));
         if info != "" {
             funcs.Push(info);
@@ -243,7 +243,7 @@ func ParameterNames(paramsText: String) -> String {
     var parts = Str.Split(paramsText, ",");
     var out = "";
     var i = 0;
-    while i < Seq.get_Length(parts) {
+    while i < Seq.get_Count(parts) {
         var param = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
         var colon = Str.IndexOf(param, ":");
         if colon > 1 {
@@ -272,7 +272,7 @@ func ParamsForFunction(funcs: List, name: String) -> String {
     var i = 0;
     while i < funcs.count() {
         var fields = Str.Split(Obj.ToString(funcs.get(i)), "\t");
-        if Seq.get_Length(fields) >= 2 and Obj.ToString(Seq.Get(fields, 0)) == name {
+        if Seq.get_Count(fields) >= 2 and Obj.ToString(Seq.Get(fields, 0)) == name {
             return Obj.ToString(Seq.Get(fields, 1));
         }
         i = i + 1;
@@ -284,7 +284,7 @@ func ReturnTypeForFunction(funcs: List, name: String) -> String {
     var i = 0;
     while i < funcs.count() {
         var fields = Str.Split(Obj.ToString(funcs.get(i)), "\t");
-        if Seq.get_Length(fields) >= 3 and Obj.ToString(Seq.Get(fields, 0)) == name {
+        if Seq.get_Count(fields) >= 3 and Obj.ToString(Seq.Get(fields, 0)) == name {
             return Obj.ToString(Seq.Get(fields, 2));
         }
         i = i + 1;
@@ -296,7 +296,7 @@ func ParamHintList(params: String, argCount: Integer) -> String {
     var names = Str.Split(params, ",");
     var out = "";
     var i = 0;
-    while i < Seq.get_Length(names) and i < argCount {
+    while i < Seq.get_Count(names) and i < argCount {
         var name = Str.Trim(Obj.ToString(Seq.Get(names, i)));
         if name != "" {
             if out != "" { out = out + ", "; }

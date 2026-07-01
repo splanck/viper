@@ -45,6 +45,42 @@ bind Viper.Math;
 bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "../config";
+bind "../util/mathutil";
+
+/// @brief One row of per-weight ball stats. Keeping mass / speed / hook /
+///        colour together turns weight selection into a single table lookup
+///        instead of three parallel field-assignment branches.
+struct BallWeightSpec {
+    expose Float mass;
+    expose Float maxSpeed;
+    expose Float hook;
+    expose Float colorR;
+    expose Float colorG;
+    expose Float colorB;
+
+    expose func init(m: Float, spd: Float, hk: Float, r: Float, g: Float, b: Float) {
+        mass = m;
+        maxSpeed = spd;
+        hook = hk;
+        colorR = r;
+        colorG = g;
+        colorB = b;
+    }
+}
+
+/// @brief The ball-weight table: one row per weight class.
+func ballSpecFor(ballType: Integer) -> BallWeightSpec {
+    if (ballType == config.BALL_LIGHT) {
+        return new BallWeightSpec(config.BALL_MASS_LIGHT, config.BALL_SPEED_MAX_LIGHT, config.BALL_HOOK_LIGHT,
+            config.BALL_COLOR_LIGHT_R, config.BALL_COLOR_LIGHT_G, config.BALL_COLOR_LIGHT_B);
+    }
+    if (ballType == config.BALL_HEAVY) {
+        return new BallWeightSpec(config.BALL_MASS_HEAVY, config.BALL_SPEED_MAX_HEAVY, config.BALL_HOOK_HEAVY,
+            config.BALL_COLOR_HEAVY_R, config.BALL_COLOR_HEAVY_G, config.BALL_COLOR_HEAVY_B);
+    }
+    return new BallWeightSpec(config.BALL_MASS_MEDIUM, config.BALL_SPEED_MAX_MEDIUM, config.BALL_HOOK_MEDIUM,
+        config.BALL_COLOR_MEDIUM_R, config.BALL_COLOR_MEDIUM_G, config.BALL_COLOR_MEDIUM_B);
+}
 
 /// @brief Bowling ball entity with hook physics and weight-class stats.
 class Ball {
@@ -112,28 +148,13 @@ class Ball {
     /// @brief Copy weight-class stats (mass, max speed, hook, colour)
     ///        into the live `mass`/`maxSpeed`/etc. fields.
     hide func applyBallStats() {
-        if (ballType == config.BALL_LIGHT) {
-            mass = config.BALL_MASS_LIGHT;
-            maxSpeed = config.BALL_SPEED_MAX_LIGHT;
-            hookMultiplier = config.BALL_HOOK_LIGHT;
-            colorR = config.BALL_COLOR_LIGHT_R;
-            colorG = config.BALL_COLOR_LIGHT_G;
-            colorB = config.BALL_COLOR_LIGHT_B;
-        } else if (ballType == config.BALL_HEAVY) {
-            mass = config.BALL_MASS_HEAVY;
-            maxSpeed = config.BALL_SPEED_MAX_HEAVY;
-            hookMultiplier = config.BALL_HOOK_HEAVY;
-            colorR = config.BALL_COLOR_HEAVY_R;
-            colorG = config.BALL_COLOR_HEAVY_G;
-            colorB = config.BALL_COLOR_HEAVY_B;
-        } else {
-            mass = config.BALL_MASS_MEDIUM;
-            maxSpeed = config.BALL_SPEED_MAX_MEDIUM;
-            hookMultiplier = config.BALL_HOOK_MEDIUM;
-            colorR = config.BALL_COLOR_MEDIUM_R;
-            colorG = config.BALL_COLOR_MEDIUM_G;
-            colorB = config.BALL_COLOR_MEDIUM_B;
-        }
+        var spec = ballSpecFor(ballType);
+        mass = spec.mass;
+        maxSpeed = spec.maxSpeed;
+        hookMultiplier = spec.hook;
+        colorR = spec.colorR;
+        colorG = spec.colorG;
+        colorB = spec.colorB;
     }
 
     /// @brief Tear down + rebuild the physics body. Called on weight
@@ -148,7 +169,7 @@ class Ball {
         Physics3DBody.set_Friction(body, config.BALL_FRICTION);
         Physics3DBody.set_LinearDamping(body, 0.015);
         Physics3DBody.set_AngularDamping(body, 0.025);
-        Physics3DBody.set_UseCCD(body, true);
+        Physics3DBody.set_UseCcd(body, true);
         Physics3DBody.set_CollisionLayer(body, config.LAYER_BALL);
         Physics3DBody.set_CollisionMask(body, config.MASK_BALL);
         Physics3DBody.SetPosition(body,
@@ -268,10 +289,8 @@ class Ball {
             backend = (z - oilEndZ) / 3.0;
             if (backend > 1.0) { backend = 1.0; }
         }
-        var frictionPct = (laneFriction - config.OIL_FRICTION_OILED) /
-            (config.OIL_FRICTION_DRY - config.OIL_FRICTION_OILED + 0.0001);
-        if (frictionPct < 0.0) { frictionPct = 0.0; }
-        if (frictionPct > 1.0) { frictionPct = 1.0; }
+        var frictionPct = mathutil.normFrac(laneFriction,
+            config.OIL_FRICTION_OILED, config.OIL_FRICTION_DRY);
 
         var hookForce = spinAmount * hookMultiplier *
             (config.EARLY_HOOK_FORCE + backend * config.BACKEND_HOOK_FORCE) * frictionPct;
@@ -432,6 +451,18 @@ class Ball {
         var vy = Vec3.get_Y(vel);
         var vz = Vec3.get_Z(vel);
         return Sqrt(vx * vx + vy * vy + vz * vz);
+    }
+
+    /// @brief Travel angle off the straight-down-lane axis, in degrees.
+    /// @details 0° = dead straight; a real strike wants the ball entering
+    ///          the pocket at roughly 4–6°. Sampled near the head pin for
+    ///          the shot-feedback HUD readout.
+    expose func getTravelAngleDeg() -> Float {
+        var vel = Physics3DBody.get_Velocity(body);
+        var vx = Vec3.get_X(vel);
+        var vz = Vec3.get_Z(vel);
+        if (vz < 0.05) { return 0.0; }
+        return Atan2(Abs(vx), vz) * 57.29577951;
     }
 
     /// @brief Current X coordinate.

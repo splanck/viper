@@ -55,7 +55,7 @@ evt = canvas.Poll()
 Viper.Core.Diagnostics.Assert(evt >= 0, "canvas.poll")
 
 DIM held AS INTEGER
-held = canvas.KeyHeld(Viper.Input.Keyboard.KEY_A)
+held = canvas.KeyHeld(Viper.Input.Keyboard.KeyA)
 Viper.Core.Diagnostics.Assert(held = 0 OR held = 1, "canvas.keyheld")
 
 canvas.Flip()

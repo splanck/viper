@@ -7386,8 +7386,8 @@ bind Viper.Terminal;
 Clear();                    // Clear the screen
 SetPosition(10, 5);         // Move cursor to column 10, row 5
 SetColor(1, 0);             // Set foreground/background color codes
-SetCursorVisible(0);        // Hide the blinking cursor
-SetCursorVisible(1);        // Show it again
+SetCursorVisible(false);        // Hide the blinking cursor
+SetCursorVisible(true);        // Show it again
 </code></pre>
 <p>These are essential for building text-based games, progress bars, or any program where you want precise control over what the user sees.</p>
 <h3 id="practical-example-a-simple-menu">Practical Example: A Simple Menu</h3>
@@ -7454,7 +7454,7 @@ Math.Atan2(y, x);      // Angle from coordinates
 bind Viper.Math as Math;
 
 Math.Pi;               // 3.14159265358979...
-Math.E;                // 2.71828182845904...
+Math.Euler;                // 2.71828182845904...
 </code></pre>
 <h3 id="when-would-you-use-this">When Would You Use This?</h3>
 <p><strong>Game development:</strong> Calculate distances, angles, movement vectors.</p>

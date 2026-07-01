@@ -294,7 +294,7 @@ DO WHILE running
         IF sm.JustEntered THEN
             PRINT "Welcome! Press ENTER to start"
         END IF
-        IF Viper.Input.Keyboard.Pressed(KEY_ENTER) THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEnter) THEN
             sm.Transition(STATE_PLAYING)
         END IF
 
@@ -303,13 +303,13 @@ DO WHILE running
             InitGame()
         END IF
         UpdateGame()
-        IF Viper.Input.Keyboard.Pressed(KEY_ESCAPE) THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
             sm.Transition(STATE_PAUSED)
         END IF
 
     CASE STATE_PAUSED
         DrawPauseOverlay()
-        IF Viper.Input.Keyboard.Pressed(KEY_ESCAPE) THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
             sm.Transition(STATE_PLAYING)
         END IF
 

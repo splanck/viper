@@ -18,7 +18,7 @@ p2 = NEW App.Person()
 list.Push(p1)
 list.Push(p2)
 
-PRINT list.Length
+PRINT list.Count
 PRINT list.Get(0).ToString()
 PRINT list.Get(1).Equals(p2)
 PRINT list.Get(0).Equals(p2)

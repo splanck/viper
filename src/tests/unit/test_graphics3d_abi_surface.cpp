@@ -1215,8 +1215,8 @@ bool check_runtime_surface_names() {
              contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasMetallicRoughnessMap\""),
              "Material3D.HasMetallicRoughnessMap getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasAOMap\""),
-                 "Material3D.HasAOMap getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasAmbientOcclusionMap\""),
+                 "Material3D.HasAmbientOcclusionMap getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasEnvMap\""),
                  "Material3D.HasEnvMap getter must use Graphics3D PascalCase naming") &&
@@ -1233,8 +1233,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Roughness\""),
                  "Material3D.Roughness property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_AO\""),
-                 "Material3D.AO property setter missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_AmbientOcclusion\""),
+                 "Material3D.AmbientOcclusion property setter missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_EmissiveIntensity\""),
                  "Material3D.EmissiveIntensity property setter missing") &&

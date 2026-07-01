@@ -10,7 +10,7 @@ DIM seq AS Viper.Collections.Seq
 seq = Viper.Collections.Seq.New()
 
 ' Operations on empty seq
-PRINT "Empty seq Len: "; seq.Length
+PRINT "Empty seq Len: "; seq.Count
 PRINT "Empty seq Find('x'): "; seq.Find("x")
 PRINT "Empty seq Has('x'): "; seq.Has("x")
 
@@ -27,7 +27,7 @@ PRINT "Calling Get(0) on empty seq..."
 seq.Push("a")
 seq.Push("b")
 seq.Push("c")
-PRINT "After push a,b,c, Len: "; seq.Length
+PRINT "After push a,b,c, Len: "; seq.Count
 
 ' Get with negative index
 PRINT "Calling Get(-1)..."
@@ -58,7 +58,7 @@ DIM map AS Viper.Collections.Map
 map = Viper.Collections.Map.New()
 
 ' Operations on empty map
-PRINT "Empty map Len: "; map.Length
+PRINT "Empty map Len: "; map.Count
 PRINT "Empty map Has('x'): "; map.Has("x")
 
 ' Get non-existent key
@@ -87,7 +87,7 @@ PRINT "=== Stack Edge Cases ==="
 DIM stack AS Viper.Collections.Stack
 stack = Viper.Collections.Stack.New()
 
-PRINT "Empty stack Len: "; stack.Length
+PRINT "Empty stack Len: "; stack.Count
 
 ' Pop from empty
 PRINT "Calling Pop on empty stack..."
@@ -106,7 +106,7 @@ PRINT "=== Queue Edge Cases ==="
 DIM queue AS Viper.Collections.Queue
 queue = Viper.Collections.Queue.New()
 
-PRINT "Empty queue Len: "; queue.Length
+PRINT "Empty queue Len: "; queue.Count
 
 ' Take from empty
 PRINT "Calling Take on empty queue..."
@@ -125,7 +125,7 @@ PRINT "=== Heap Edge Cases ==="
 DIM heap AS Viper.Collections.Heap
 heap = Viper.Collections.Heap.New()
 
-PRINT "Empty heap Len: "; heap.Length
+PRINT "Empty heap Len: "; heap.Count
 
 ' Pop from empty
 PRINT "Calling Pop on empty heap..."
@@ -140,7 +140,7 @@ PRINT "Calling Peek on empty heap..."
 heap.Push(1, "a")
 heap.Push(1, "b")
 heap.Push(1, "c")
-PRINT "Pushed 3 items with same priority, Len: "; heap.Length
+PRINT "Pushed 3 items with same priority, Len: "; heap.Count
 
 PRINT ""
 
@@ -177,12 +177,12 @@ PRINT "=== Ring Edge Cases ==="
 DIM ring AS Viper.Collections.Ring
 ring = Viper.Collections.Ring.New(0)
 PRINT "Ring.New(0) Cap: "; ring.Cap
-PRINT "Ring.New(0) Len: "; ring.Length
+PRINT "Ring.New(0) Len: "; ring.Count
 
 ' Push to zero-capacity ring
 PRINT "Pushing to zero-cap ring..."
 ring.Push("test")
-PRINT "After push, Len: "; ring.Length
+PRINT "After push, Len: "; ring.Count
 
 ' Create with negative capacity
 PRINT "Calling Ring.New(-1)..."
@@ -196,7 +196,7 @@ PRINT "=== Bag Edge Cases ==="
 DIM bag AS Viper.Collections.Bag
 bag = Viper.Collections.Bag.New()
 
-PRINT "Empty bag Len: "; bag.Length
+PRINT "Empty bag Len: "; bag.Count
 PRINT "Empty bag Has('x'): "; bag.Has("x")
 
 ' Remove non-existent
@@ -205,7 +205,7 @@ PRINT "Remove('nonexistent'): "; bag.Remove("nonexistent")
 ' Add empty string
 bag.Add("")
 PRINT "Add(''), Has(''): "; bag.Has("")
-PRINT "After Add(''), Length: "; bag.Length
+PRINT "After Add(''), Length: "; bag.Count
 
 PRINT ""
 PRINT "=== Collection Edge Case Tests Complete ==="

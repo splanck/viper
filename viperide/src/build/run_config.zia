@@ -70,7 +70,7 @@ func ForDocument(action: String,
     }
 
     if cfg.program == "" { cfg.program = "viper"; }
-    if Seq.get_Length(cfg.args) == 0 {
+    if Seq.get_Count(cfg.args) == 0 {
         if action == ACTION_BUILD {
             Seq.Push(cfg.args, "build");
         } else {
@@ -117,7 +117,7 @@ func SplitArgsWithTarget(text: String, targetPath: String) -> Any {
     var items = SplitArgs(text);
     var out = Seq.New();
     var i = 0;
-    while i < Seq.get_Length(items) {
+    while i < Seq.get_Count(items) {
         var item = Obj.ToString(Seq.Get(items, i));
         if item == "{target}" {
             item = targetPath;

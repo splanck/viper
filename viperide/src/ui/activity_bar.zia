@@ -55,15 +55,15 @@ class ActivityBar {
     expose func ShowView(name: String) {
         activeView = name;
         if name == VIEW_SCM {
-            if explorerView != null { explorerView.SetVisible(0); }
-            if scmView != null { scmView.SetVisible(1); }
-            if explorerBtn != null { explorerBtn.SetToggled(0); }
-            if scmBtn != null { scmBtn.SetToggled(1); }
+            if explorerView != null { explorerView.SetVisible(false); }
+            if scmView != null { scmView.SetVisible(true); }
+            if explorerBtn != null { explorerBtn.SetToggled(false); }
+            if scmBtn != null { scmBtn.SetToggled(true); }
         } else {
-            if scmView != null { scmView.SetVisible(0); }
-            if explorerView != null { explorerView.SetVisible(1); }
-            if scmBtn != null { scmBtn.SetToggled(0); }
-            if explorerBtn != null { explorerBtn.SetToggled(1); }
+            if scmView != null { scmView.SetVisible(false); }
+            if explorerView != null { explorerView.SetVisible(true); }
+            if scmBtn != null { scmBtn.SetToggled(false); }
+            if explorerBtn != null { explorerBtn.SetToggled(true); }
         }
     }
 }

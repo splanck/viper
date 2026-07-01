@@ -51,7 +51,7 @@ expose Boolean Material3D.HasNormalMap;     // read
 expose Boolean Material3D.HasSpecularMap;   // read
 expose Boolean Material3D.HasEmissiveMap;   // read
 expose Boolean Material3D.HasMetallicRoughnessMap; // read
-expose Boolean Material3D.HasAOMap;         // read
+expose Boolean Material3D.HasAmbientOcclusionMap;         // read
 expose Boolean Material3D.HasEnvMap;        // read
 // CO-12 import bridge exists and remains canonical:
 // Entity3D.FromNode(root: SceneNode3D) wraps a raw hierarchy as a group entity.

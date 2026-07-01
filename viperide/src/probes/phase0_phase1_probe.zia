@@ -359,7 +359,7 @@ func main() {
     var indexer = new project_index.ProjectIndexer();
     indexer.Open(root, docMgr);
     var refs = indexer.References(filePath, doc.content, 3, 8);
-    if assertTrue(refs != null and Seq.get_Length(refs) >= 1,
+    if assertTrue(refs != null and Seq.get_Count(refs) >= 1,
                   "project index references from dirty buffer") == false { return; }
     indexer.Destroy();
 

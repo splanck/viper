@@ -201,26 +201,26 @@ void rt_entity_set_y(void *ent, int64_t v) {
 
 /// @brief Read X velocity in centipixels per dt unit.
 int64_t rt_entity_get_vx(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.VX: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityX: expected Viper.Game.Entity");
     return e ? e->vx : 0;
 }
 
 /// @brief Read Y velocity in centipixels per dt unit.
 int64_t rt_entity_get_vy(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.VY: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityY: expected Viper.Game.Entity");
     return e ? e->vy : 0;
 }
 
 /// @brief Set X velocity in centipixels per dt.
 void rt_entity_set_vx(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.VX.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityX.set: expected Viper.Game.Entity");
     if (e)
         e->vx = v;
 }
 
 /// @brief Set Y velocity in centipixels per dt.
 void rt_entity_set_vy(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.VY.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.VelocityY.set: expected Viper.Game.Entity");
     if (e)
         e->vy = v;
 }
@@ -252,26 +252,26 @@ void rt_entity_set_dir(void *ent, int64_t v) {
 
 /// @brief Read current hit-point count.
 int64_t rt_entity_get_hp(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.HP: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Health: expected Viper.Game.Entity");
     return e ? e->hp : 0;
 }
 
 /// @brief Set current hit-point count (no clamping — caller responsible for capping at max_hp).
 void rt_entity_set_hp(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.HP.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.Health.set: expected Viper.Game.Entity");
     if (e)
         e->hp = v;
 }
 
 /// @brief Read maximum hit-point cap.
 int64_t rt_entity_get_max_hp(void *ent) {
-    entity_impl *e = checked_entity(ent, "Entity.MaxHP: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.MaxHealth: expected Viper.Game.Entity");
     return e ? e->max_hp : 0;
 }
 
 /// @brief Set the max hit-point cap.
 void rt_entity_set_max_hp(void *ent, int64_t v) {
-    entity_impl *e = checked_entity(ent, "Entity.MaxHP.set: expected Viper.Game.Entity");
+    entity_impl *e = checked_entity(ent, "Entity.MaxHealth.set: expected Viper.Game.Entity");
     if (e)
         e->max_hp = v;
 }

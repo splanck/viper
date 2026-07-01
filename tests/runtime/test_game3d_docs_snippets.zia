@@ -50,7 +50,7 @@ func start() {
     world.Spawn(ground);
 
     var ball: Game3D.Entity3D = Game3D.Prefab.Sphere(0.35, 18, Game3D.Materials.Plastic(0.90, 0.20, 0.16));
-    ball.SetName("DocsBall");
+    ball.Name = "DocsBall";
     ball.SetPosition(0.0, 1.2, 0.0);
     var body = Game3D.BodyDef.Sphere(0.35, 1.0);
     body.Restitution = 0.25;
@@ -63,7 +63,7 @@ func start() {
         fail("Assets3D docs snippet failed");
         return;
     }
-    imported.SetName("DocsAsset");
+    imported.Name = "DocsAsset";
     imported.SetPosition(1.1, 0.08, -1.2);
     world.Spawn(imported);
 

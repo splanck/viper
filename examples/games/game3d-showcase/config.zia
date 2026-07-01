@@ -32,6 +32,11 @@ var PLAYER_SPRINT_MULT: Float = 1.75;
 var PLAYER_RADIUS: Float = 0.42;
 var PLAYER_BODY_HEIGHT: Float = 1.05;
 var PLAYER_GROUND_OFFSET: Float = 0.54;
+var PLAYER_JUMP_SPEED: Float = 8.0;    // upward launch velocity (world units/sec)
+var PLAYER_GRAVITY: Float = 22.0;      // downward accel while airborne (units/sec^2)
+
+// --- Environment collision (recommendation #10) -----------------------------
+var TREE_COLLIDE_RADIUS: Float = 0.7;  // trunk collision radius pushed against the player
 
 var TERRAIN_SIZE: Integer = 144;
 var TERRAIN_SCALE_X: Float = 1.75;
@@ -44,10 +49,12 @@ var TERRAIN_MARGIN: Float = 4.5;
 var PLAYER_BOUNDS_MARGIN: Float = 34.0;
 var TERRAIN_LOD_NEAR: Float = 110.0;
 var TERRAIN_LOD_FAR: Float = 260.0;
-var TERRAIN_SKIRT_DEPTH: Float = 3.5;
+var TERRAIN_SKIRT_DEPTH: Float = 6.0;
 
 var SKYBOX_FACE_SIZE: Integer = 64;
-var TERRAIN_TEXTURE_SIZE: Integer = 64;
+// Terrain layer albedo resolution. 128 (vs 64) softens the visible tiling of the
+// procedural grass/rock/dirt layers on close-up ground. Generated once at setup.
+var TERRAIN_TEXTURE_SIZE: Integer = 128;
 var SPLAT_SIZE: Integer = 128;
 
 var MOUNTAIN_RING_FADE: Float = 0.31;
@@ -69,9 +76,11 @@ var BEACON_TRIGGER_RADIUS: Float = 2.8;
 var AMBIENT_R: Float = 0.34;
 var AMBIENT_G: Float = 0.38;
 var AMBIENT_B: Float = 0.42;
-var FOG_R: Float = 0.36;
-var FOG_G: Float = 0.46;
-var FOG_B: Float = 0.56;
+// Fog day-target is matched to the sky horizon colour (see water_sky sampleSkyPixel)
+// so distant terrain dissolves into the sky instead of fading to a grey haze band.
+var FOG_R: Float = 0.68;
+var FOG_G: Float = 0.82;
+var FOG_B: Float = 0.94;
 var FOG_NEAR: Float = 125.0;
 var FOG_FAR: Float = 340.0;
 var SHADOW_BIAS: Float = 0.006;
@@ -147,16 +156,13 @@ var PLAYER_LIGHT_SLOT: Integer = 8;
 var PLAYER_LIGHT_RANGE: Float = 16.0;
 var PLAYER_LIGHT_INTENSITY: Float = 0.55;
 
-// --- Dawn<->dusk cycle (recommendation #7) ----------------------------------
-// The sun ping-pongs across the daytime sky: dawn -> noon -> dusk, then
-// reverses back toward dawn. It never crosses into night.
-var DAY_LENGTH_SEC: Float = 300.0;     // seconds for one full dawn->dusk->dawn round trip
-var DAY_START_PHASE: Float = 0.0;      // 0.0 = begin the cycle at dawn
-// Dawn/dusk sun angles (radians) bounding the daytime arc. Kept above the
-// horizon (Sin ~= 0.41) so dawn and dusk read as low golden light, never
-// darkness; the arc midpoint (PI/2) is full overhead noon. HI = PI - LO.
-var SUN_ARC_LO: Float = 0.42;
-var SUN_ARC_HI: Float = 2.72;
+// --- Full day <-> night cycle (recommendation #9) ---------------------------
+// Sun elevation follows a sine over one cycle: dawn -> noon -> dusk -> night ->
+// dawn. It now crosses below the horizon, so the world actually gets dark and a
+// cool moon light + starfield sky take over through the night half.
+var DAY_LENGTH_SEC: Float = 240.0;     // seconds for one full day->night->day cycle
+var DAY_START_PHASE: Float = 0.15;     // begin mid-morning so the demo opens in daylight
+var MOON_INTENSITY: Float = 0.42;      // cool directional moonlight at deep night
 var SUN_INTENSITY_DAY: Float = 1.5;
 var DAY_AMBIENT_R: Float = 0.22;
 var DAY_AMBIENT_G: Float = 0.24;
@@ -211,3 +217,5 @@ var PHYS_BALL_COUNT: Integer = 6;
 
 // --- Wandering sentinels (recommendation #4) -----------------------------------
 var CRITTER_SPEED: Float = 2.4;
+var CRITTER_FLEE_RADIUS: Float = 7.0;  // player distance that makes a critter bolt
+var CRITTER_FLEE_MULT: Float = 2.4;    // flee-speed multiple of the wander speed

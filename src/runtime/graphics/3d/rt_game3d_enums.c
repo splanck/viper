@@ -201,14 +201,14 @@ int64_t rt_game3d_key_escape(void) {
     return rt_keyboard_key_escape();
 }
 
-/// @brief Key code for the Shift modifier (forwards to the shared keyboard table).
+/// @brief Key code for the left Shift modifier (forwards to the shared keyboard table).
 int64_t rt_game3d_key_shift(void) {
-    return rt_keyboard_key_shift();
+    return rt_keyboard_key_lshift();
 }
 
-/// @brief Key code for the Ctrl modifier (forwards to the shared keyboard table).
+/// @brief Key code for the left Ctrl modifier (forwards to the shared keyboard table).
 int64_t rt_game3d_key_ctrl(void) {
-    return rt_keyboard_key_ctrl();
+    return rt_keyboard_key_lctrl();
 }
 
 /// @brief Key code for the Up arrow (forwards to the shared keyboard table).

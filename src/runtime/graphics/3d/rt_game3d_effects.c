@@ -98,7 +98,7 @@ void *game3d_effects_new(void *canvas, int64_t quality) {
 /// @brief Get the post-FX stack owned by this registry (NULL if invalid).
 void *rt_game3d_effects_get_postfx(void *obj) {
     rt_game3d_effects *effects =
-        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_PostFX: invalid effects");
+        game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_PostFx: invalid effects");
     return effects ? rt_g3d_checked_or_null(effects->postfx, RT_G3D_POSTFX3D_CLASS_ID) : NULL;
 }
 

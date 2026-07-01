@@ -19,9 +19,9 @@ func start() {
     // --- ExtractLinks ---
     Say("--- ExtractLinks ---");
     var links = MD.ExtractLinks(md);
-    SayInt(Seq.get_Length(links));
+    SayInt(Seq.get_Count(links));
     var i = 0;
-    while i < Seq.get_Length(links) {
+    while i < Seq.get_Count(links) {
         Say(Obj.ToString(Seq.Get(links, i)));
         i = i + 1;
     }
@@ -29,9 +29,9 @@ func start() {
     // --- ExtractHeadings ---
     Say("--- ExtractHeadings ---");
     var headings = MD.ExtractHeadings(md);
-    SayInt(Seq.get_Length(headings));
+    SayInt(Seq.get_Count(headings));
     var j = 0;
-    while j < Seq.get_Length(headings) {
+    while j < Seq.get_Count(headings) {
         Say(Obj.ToString(Seq.Get(headings, j)));
         j = j + 1;
     }
@@ -43,7 +43,7 @@ func start() {
 
     // No links
     var noLinks = MD.ExtractLinks("No links in this text.");
-    SayInt(Seq.get_Length(noLinks));
+    SayInt(Seq.get_Count(noLinks));
 
     Say("=== Markdown Demo Complete ===");
 }

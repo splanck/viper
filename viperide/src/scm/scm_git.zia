@@ -75,7 +75,7 @@ class Git {
         Seq.Push(args, "-C");
         Seq.Push(args, repo);
         var i = 0;
-        var n = Seq.get_Length(extra);
+        var n = Seq.get_Count(extra);
         while i < n {
             Seq.Push(args, Obj.ToString(Seq.Get(extra, i)));
             i = i + 1;
@@ -130,7 +130,7 @@ class Git {
 
         var out = RunCapture(Argv("status", "--porcelain", "", ""));
         var lines = Str.Split(out, "\n");
-        var n = Seq.get_Length(lines);
+        var n = Seq.get_Count(lines);
         var i = 0;
         while i < n {
             var line = Obj.ToString(Seq.Get(lines, i));

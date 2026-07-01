@@ -1,4 +1,4 @@
-// terrain.zia - Terrain, procedural textures, and shared math helpers.
+// terrain.zia - Terrain generation, procedural textures, and ground queries.
 module terrain;
 
 bind Viper.Game3D;
@@ -7,62 +7,20 @@ bind Viper.Graphics3D;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind "./config";
+bind "./mathutil";
 
-func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
-    return (((r * 256) + g) * 256 + b) * 256 + a;
-}
-
-func clampByte(value: Integer) -> Integer {
-    if (value < 0) { return 0; }
-    if (value > 255) { return 255; }
-    return value;
-}
-
-func clampFloat(value: Float, lo: Float, hi: Float) -> Float {
-    if (value < lo) { return lo; }
-    if (value > hi) { return hi; }
-    return value;
-}
-
-func absFloat(value: Float) -> Float {
-    if (value < 0.0) { return 0.0 - value; }
-    return value;
-}
-
-func lerpFloat(a: Float, b: Float, t: Float) -> Float {
-    return a + (b - a) * t;
-}
-
-func maxf(a: Float, b: Float) -> Float {
-    if (a > b) { return a; }
-    return b;
-}
-
-func minf(a: Float, b: Float) -> Float {
-    if (a < b) { return a; }
-    return b;
-}
-
-func smoothStep(edge0: Float, edge1: Float, value: Float) -> Float {
-    if (edge1 <= edge0) {
-        if (value >= edge1) { return 1.0; }
-        return 0.0;
-    }
-
-    var t = clampFloat((value - edge0) / (edge1 - edge0), 0.0, 1.0);
-    return t * t * (3.0 - 2.0 * t);
-}
+// Shared numeric, pixel, and hash helpers moved to mathutil.zia (bound above).
 
 func noise01(noise: PerlinNoise, x: Float, z: Float, octaves: Integer, persistence: Float) -> Float {
-    return clampFloat((PerlinNoise.Octave2D(noise, x, z, octaves, persistence) + 1.0) * 0.5, 0.0, 1.0);
+    return mathutil.clampFloat((PerlinNoise.Octave2D(noise, x, z, octaves, persistence) + 1.0) * 0.5, 0.0, 1.0);
 }
 
 func heightPixel(value: Float) -> Integer {
-    var h = clampFloat(value, 0.0, 1.0);
+    var h = mathutil.clampFloat(value, 0.0, 1.0);
     var h16 = Convert.NumToInt(h * 65535.0);
     if (h16 < 0) { h16 = 0; }
     if (h16 > 65535) { h16 = 65535; }
-    return packPixel(h16 / 256, h16 % 256, 0, 255);
+    return mathutil.packPixel(h16 / 256, h16 % 256, 0, 255);
 }
 
 func terrainWorldMaxX() -> Float {
@@ -85,23 +43,15 @@ func sampleGround(land: Terrain3D, x: Float, z: Float) -> Float {
     return Terrain3D.GetHeightAt(land, sx, sz);
 }
 
-func hash01(a: Integer, b: Integer) -> Float {
-    var h = (a * 374761393 + b * 668265263) % 2147483647;
-    if (h < 0) { h = 0 - h; }
-    h = (h * 1103515245 + 12345) % 2147483647;
-    if (h < 0) { h = 0 - h; }
-    return (h % 100000 + 0.0) / 100000.0;
-}
-
 func createStoneAlbedo(size: Integer) -> Pixels {
     var tex = Pixels.New(size, size);
 
     for (var py: Integer = 0; py < size; py = py + 1) {
         for (var px: Integer = 0; px < size; px = px + 1) {
             var n = ((px * 13 + py * 7 + px * py * 3) % 40) - 20;
-            var base = clampByte(120 + n);
-            var cool = clampByte(126 + n / 2);
-            tex.Set(px, py, packPixel(base, base, cool, 255));
+            var base = mathutil.clampByte(120 + n);
+            var cool = mathutil.clampByte(126 + n / 2);
+            tex.Set(px, py, mathutil.packPixel(base, base, cool, 255));
         }
     }
 
@@ -115,10 +65,10 @@ func createMetalAlbedo(size: Integer) -> Pixels {
         for (var px: Integer = 0; px < size; px = px + 1) {
             var n = ((px * 9 + py * 11) % 24) - 12;
             var brush = ((py * 5) % 14) - 7;
-            var r = clampByte(150 + n + brush);
-            var g = clampByte(140 + n + brush);
-            var b = clampByte(118 + n);
-            tex.Set(px, py, packPixel(r, g, b, 255));
+            var r = mathutil.clampByte(150 + n + brush);
+            var g = mathutil.clampByte(140 + n + brush);
+            var b = mathutil.clampByte(118 + n);
+            tex.Set(px, py, mathutil.packPixel(r, g, b, 255));
         }
     }
 
@@ -142,10 +92,10 @@ func createNormalMap(size: Integer, strength: Float) -> Pixels {
             nx = nx / len;
             ny = ny / len;
             nz = nz / len;
-            var r = clampByte(Convert.NumToInt((nx * 0.5 + 0.5) * 255.0));
-            var g = clampByte(Convert.NumToInt((nz * 0.5 + 0.5) * 255.0));
-            var b = clampByte(Convert.NumToInt((ny * 0.5 + 0.5) * 255.0));
-            tex.Set(px, py, packPixel(r, g, b, 255));
+            var r = mathutil.clampByte(Convert.NumToInt((nx * 0.5 + 0.5) * 255.0));
+            var g = mathutil.clampByte(Convert.NumToInt((nz * 0.5 + 0.5) * 255.0));
+            var b = mathutil.clampByte(Convert.NumToInt((ny * 0.5 + 0.5) * 255.0));
+            tex.Set(px, py, mathutil.packPixel(r, g, b, 255));
         }
     }
 
@@ -218,10 +168,10 @@ class ShowcaseTerrain {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var noise = ((px * 7 + py * 11 + px * py) % 28) - 14;
-                var r = clampByte(70 + noise / 2);
-                var g = clampByte(112 + noise);
-                var b = clampByte(48 + noise / 3);
-                tex.Set(px, py, packPixel(r, g, b, 255));
+                var r = mathutil.clampByte(70 + noise / 2);
+                var g = mathutil.clampByte(112 + noise);
+                var b = mathutil.clampByte(48 + noise / 3);
+                tex.Set(px, py, mathutil.packPixel(r, g, b, 255));
             }
         }
 
@@ -234,9 +184,9 @@ class ShowcaseTerrain {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var noise = ((px * 13 + py * 9 + px * py * 3) % 26) - 13;
-                var gray = clampByte(142 + noise);
-                var blue = clampByte(150 + noise / 2);
-                tex.Set(px, py, packPixel(gray, gray, blue, 255));
+                var gray = mathutil.clampByte(142 + noise);
+                var blue = mathutil.clampByte(150 + noise / 2);
+                tex.Set(px, py, mathutil.packPixel(gray, gray, blue, 255));
             }
         }
 
@@ -249,10 +199,10 @@ class ShowcaseTerrain {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var noise = ((px * 9 + py * 5 + px * py) % 22) - 11;
-                var r = clampByte(142 + noise);
-                var g = clampByte(108 + noise / 2);
-                var b = clampByte(66 + noise / 3);
-                tex.Set(px, py, packPixel(r, g, b, 255));
+                var r = mathutil.clampByte(142 + noise);
+                var g = mathutil.clampByte(108 + noise / 2);
+                var b = mathutil.clampByte(66 + noise / 3);
+                tex.Set(px, py, mathutil.packPixel(r, g, b, 255));
             }
         }
 
@@ -290,41 +240,41 @@ class ShowcaseTerrain {
         var lakeDx = (nx - config.LAKE_CENTER_X) / config.LAKE_RADIUS_X;
         var lakeDz = (nz - config.LAKE_CENTER_Z) / config.LAKE_RADIUS_Z;
         var lakeDist = Sqrt(lakeDx * lakeDx + lakeDz * lakeDz);
-        var basin = 1.0 - smoothStep(0.62, 1.10, lakeDist);
+        var basin = 1.0 - mathutil.smoothStep(0.62, 1.10, lakeDist);
         var lakeFloor = 0.035 + detail * 0.018;
-        h = lerpFloat(h, lakeFloor, basin);
+        h = mathutil.lerpFloat(h, lakeFloor, basin);
 
-        var shore = 1.0 - smoothStep(0.94, 1.17, lakeDist);
+        var shore = 1.0 - mathutil.smoothStep(0.94, 1.17, lakeDist);
         if (lakeDist > 0.96) {
-            h = lerpFloat(h, 0.135 + rolling * 0.035, shore * 0.48);
+            h = mathutil.lerpFloat(h, 0.135 + rolling * 0.035, shore * 0.48);
         }
 
         var homeDx = (nx - 0.50) / 0.085;
         var homeDz = (nz - 0.50) / 0.075;
         var homeDist = Sqrt(homeDx * homeDx + homeDz * homeDz);
-        var homeIsland = 1.0 - smoothStep(0.62, 1.05, homeDist);
+        var homeIsland = 1.0 - mathutil.smoothStep(0.62, 1.05, homeDist);
         var homeHeight = 0.185 + rolling * 0.040 + broad * 0.015;
-        h = lerpFloat(h, maxf(h, homeHeight), homeIsland);
+        h = mathutil.lerpFloat(h, mathutil.maxf(h, homeHeight), homeIsland);
 
-        var edge = minf(minf(nx, 1.0 - nx), minf(nz, 1.0 - nz));
-        var mountainBand = 1.0 - smoothStep(0.055, config.MOUNTAIN_RING_FADE, edge);
-        var crestBand = 1.0 - smoothStep(0.0, config.MOUNTAIN_CREST_FADE, edge);
+        var edge = mathutil.minf(mathutil.minf(nx, 1.0 - nx), mathutil.minf(nz, 1.0 - nz));
+        var mountainBand = 1.0 - mathutil.smoothStep(0.055, config.MOUNTAIN_RING_FADE, edge);
+        var crestBand = 1.0 - mathutil.smoothStep(0.0, config.MOUNTAIN_CREST_FADE, edge);
         var ridgeNoise = noise01(noise, nx * 7.7 + 5.0, nz * 7.7 - 3.0, 5, 0.54);
         var cragNoise = noise01(noise, nx * 27.0 - 11.0, nz * 27.0 + 4.0, 4, 0.50);
-        var striation = absFloat(Sin((nx * 39.0 + nz * 27.0) * 3.14159));
+        var striation = mathutil.absFloat(Sin((nx * 39.0 + nz * 27.0) * 3.14159));
         var mountain = 0.24
             + mountainBand * (0.22 + ridgeNoise * 0.26)
             + crestBand * (0.16 + cragNoise * 0.20 + striation * 0.065);
         if (mountain > h) { h = mountain; }
 
-        var guardEdge = minf(
+        var guardEdge = mathutil.minf(
             config.PLAYER_BOUNDS_MARGIN / terrainWorldMaxX(),
             config.PLAYER_BOUNDS_MARGIN / terrainWorldMaxZ());
-        var blocker = 1.0 - smoothStep(0.0, guardEdge, edge);
+        var blocker = 1.0 - mathutil.smoothStep(0.0, guardEdge, edge);
         var blockerHeight = 0.76 + blocker * (0.20 + cragNoise * 0.04);
         if (blocker > 0.0 && blockerHeight > h) { h = blockerHeight; }
 
-        return clampFloat(h, 0.0, 1.0);
+        return mathutil.clampFloat(h, 0.0, 1.0);
     }
 
     hide func createTerrainSplatMap(srcTerrain: Terrain3D, width: Integer, depth: Integer) -> Pixels {
@@ -367,7 +317,7 @@ class ShowcaseTerrain {
                     }
                 }
 
-                splat.Set(px, py, packPixel(grassLayer, rockLayer, dirtLayer, 0));
+                splat.Set(px, py, mathutil.packPixel(grassLayer, rockLayer, dirtLayer, 0));
             }
         }
 
@@ -389,9 +339,9 @@ class ShowcaseTerrain {
                 var h = Terrain3D.GetHeightAt(land, wx, wz);
                 var v = 0;
                 if (ny > 0.84 && h > config.WATER_HEIGHT + 0.6) {
-                    v = clampByte(Convert.NumToInt((ny - 0.84) / 0.16 * 255.0));
+                    v = mathutil.clampByte(Convert.NumToInt((ny - 0.84) / 0.16 * 255.0));
                 }
-                density.Set(px, py, packPixel(v, v, v, v));
+                density.Set(px, py, mathutil.packPixel(v, v, v, v));
             }
         }
 
@@ -411,14 +361,14 @@ class ShowcaseTerrain {
                 if (dx < 0) { dx = 0 - dx; }
                 if (dx <= halfW) {
                     var noise = ((px * 7 + py * 13) % 20) - 10;
-                    var r = clampByte(40 + noise / 2);
-                    var g = clampByte(118 + noise + (h - py) / 3);
-                    var b = clampByte(30 + noise / 3);
+                    var r = mathutil.clampByte(40 + noise / 2);
+                    var g = mathutil.clampByte(118 + noise + (h - py) / 3);
+                    var b = mathutil.clampByte(30 + noise / 3);
                     var alpha = 255;
-                    if (py < 4) { alpha = clampByte(110 + py * 36); }
-                    tex.Set(px, py, packPixel(r, g, b, alpha));
+                    if (py < 4) { alpha = mathutil.clampByte(110 + py * 36); }
+                    tex.Set(px, py, mathutil.packPixel(r, g, b, alpha));
                 } else {
-                    tex.Set(px, py, packPixel(0, 0, 0, 0));
+                    tex.Set(px, py, mathutil.packPixel(0, 0, 0, 0));
                 }
             }
         }

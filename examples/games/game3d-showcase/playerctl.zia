@@ -1,0 +1,99 @@
+// playerctl.zia - Player position, ground-relative movement, and footstep feel.
+//
+// Extracted from the game.zia orchestrator so player state (position, step
+// phase) and its update rules live in one place. Movement is expressed
+// relative to the camera yaw the orchestrator threads in each frame.
+module playerctl;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind "./config";
+bind "./terrain";
+bind "./audio";
+bind "./postfx";
+
+class ShowcasePlayer {
+    hide Float x;
+    hide Float y;
+    hide Float z;
+    hide Float stepPhase;
+    hide Float velocityY;
+    hide Boolean grounded;
+
+    expose func spawn(land: Terrain3D) {
+        x = terrain.terrainWorldMaxX() * 0.50;
+        z = terrain.terrainWorldMaxZ() * 0.50;
+        y = terrain.sampleGround(land, x, z);
+        stepPhase = 0.0;
+        velocityY = 0.0;
+        grounded = true;
+    }
+
+    // Move on the XZ plane relative to the camera yaw. audioObj/effectsObj fire
+    // footstep sfx and sprint dust as the accumulated step phase rolls over.
+    expose func updateMovement(dt: Float, input: Input3D, cameraYaw: Float,
+                               audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+        var move = input.MoveAxis();
+        var fwd = Vec3.get_Z(move);
+        var right = Vec3.get_X(move);
+        var moveX = Sin(cameraYaw) * fwd + Cos(cameraYaw) * right;
+        var moveZ = (0.0 - Cos(cameraYaw)) * fwd + Sin(cameraYaw) * right;
+        var moveLen = Sqrt(moveX * moveX + moveZ * moveZ);
+        if (moveLen <= 0.001) { return; }
+
+        moveX = moveX / moveLen;
+        moveZ = moveZ / moveLen;
+        var sprinting = input.IsDown(Keys.get_Shift());
+        var speed = config.PLAYER_MOVE_SPEED;
+        if (sprinting) { speed = speed * config.PLAYER_SPRINT_MULT; }
+        x = x + moveX * speed * dt;
+        z = z + moveZ * speed * dt;
+        stepPhase = stepPhase + speed * dt;
+        if (stepPhase >= config.STEP_DISTANCE) {
+            stepPhase = 0.0;
+            audioObj.playFootfall(x, y, z);
+            if (sprinting) { effectsObj.burstSprintDust(x, y, z); }
+        }
+    }
+
+    expose func clampToTerrain() {
+        var minX = config.PLAYER_BOUNDS_MARGIN;
+        var minZ = config.PLAYER_BOUNDS_MARGIN;
+        var maxX = terrain.terrainWorldMaxX() - config.PLAYER_BOUNDS_MARGIN;
+        var maxZ = terrain.terrainWorldMaxZ() - config.PLAYER_BOUNDS_MARGIN;
+        if (x < minX) { x = minX; }
+        if (x > maxX) { x = maxX; }
+        if (z < minZ) { z = minZ; }
+        if (z > maxZ) { z = maxZ; }
+    }
+
+    // Vertical motion: follow the terrain while grounded, launch upward on a
+    // Space press, then integrate gravity until landing back on the ground.
+    expose func updateVertical(dt: Float, input: Input3D, land: Terrain3D) {
+        var groundY = terrain.sampleGround(land, x, z);
+        if (grounded) {
+            y = groundY;
+            if (input.Pressed(Keys.get_Space())) {
+                velocityY = config.PLAYER_JUMP_SPEED;
+                grounded = false;
+            }
+        }
+        if (grounded == false) {
+            velocityY = velocityY - config.PLAYER_GRAVITY * dt;
+            y = y + velocityY * dt;
+            if (y <= groundY) {
+                y = groundY;
+                velocityY = 0.0;
+                grounded = true;
+            }
+        }
+    }
+
+    expose func isGrounded() -> Boolean { return grounded; }
+
+    expose func getX() -> Float { return x; }
+    expose func getY() -> Float { return y; }
+    expose func getZ() -> Float { return z; }
+    expose func setXZ(nx: Float, nz: Float) { x = nx; z = nz; }
+}

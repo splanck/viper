@@ -37,7 +37,7 @@ DIM matches AS OBJECT
 DIM count AS INTEGER
 pat = Viper.Text.CompiledPattern.New("[0-9]+")
 matches = pat.FindAll("a1b22c333")
-count = matches.Length
+count = matches.Count
 PRINT "match count: "; count
 
 PRINT "done"

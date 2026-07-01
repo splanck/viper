@@ -21,6 +21,7 @@
 #include "frontends/common/StringUtils.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
+#include <array>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -134,7 +135,72 @@ std::optional<int> scoreSignature(const std::vector<il::runtime::ILScalarType> &
     return score;
 }
 
+bool matchesGuiWidgetSubclass(std::string_view classQName) {
+    static constexpr std::array<std::string_view, 23> kGuiWidgetClasses = {
+        "Viper.GUI.Button",     "Viper.GUI.Checkbox",      "Viper.GUI.CodeEditor",
+        "Viper.GUI.Dropdown",   "Viper.GUI.FloatingPanel", "Viper.GUI.Grid",
+        "Viper.GUI.GroupBox",   "Viper.GUI.HBox",          "Viper.GUI.Image",
+        "Viper.GUI.Label",      "Viper.GUI.ListBox",       "Viper.GUI.OutputPane",
+        "Viper.GUI.PopupList",  "Viper.GUI.ProgressBar",   "Viper.GUI.RadioButton",
+        "Viper.GUI.ScrollView", "Viper.GUI.Slider",        "Viper.GUI.Spinner",
+        "Viper.GUI.SplitPane",  "Viper.GUI.TabBar",        "Viper.GUI.TextInput",
+        "Viper.GUI.TreeView",   "Viper.GUI.VBox",
+    };
+
+    for (std::string_view widgetClass : kGuiWidgetClasses) {
+        if (string_utils::iequals(widgetClass, classQName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<RuntimeMethodInfo> findTypedInClass(
+    const il::runtime::RuntimeClass &klass,
+    std::string_view method,
+    const std::vector<il::runtime::ILScalarType> &argTypes) {
+    std::optional<RuntimeMethodInfo> best;
+    int bestScore = std::numeric_limits<int>::max();
+    bool ambiguous = false;
+
+    for (const auto &candidate : klass.methods) {
+        if (!candidate.name || !string_utils::iequals(candidate.name, method)) {
+            continue;
+        }
+
+        auto sig =
+            il::runtime::parseRuntimeSignature(candidate.signature ? candidate.signature : "");
+        if (!sig.isValid() || sig.params.size() != argTypes.size()) {
+            continue;
+        }
+
+        il::runtime::ParsedMethod parsed{candidate.name, candidate.target, sig};
+        RuntimeMethodInfo info = makeRuntimeMethodInfo(klass.qname, candidate.name, parsed);
+        auto score = scoreSignature(info.args, argTypes);
+        if (!score) {
+            continue;
+        }
+
+        if (*score < bestScore) {
+            best = std::move(info);
+            bestScore = *score;
+            ambiguous = false;
+        } else if (*score == bestScore) {
+            ambiguous = true;
+        }
+    }
+
+    if (ambiguous) {
+        return std::nullopt;
+    }
+    return best;
+}
+
 } // namespace
+
+bool isGuiWidgetSubclass(std::string_view classQName) {
+    return matchesGuiWidgetSubclass(classQName);
+}
 
 const RuntimeMethodResolver &RuntimeMethodResolver::instance() {
     static const RuntimeMethodResolver resolver;
@@ -146,10 +212,17 @@ std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(std::string_view cl
                                                              std::size_t arity) const {
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     auto parsed = registry.findMethod(classQName, method, arity);
+    if (parsed) {
+        return makeRuntimeMethodInfo(classQName, method, *parsed);
+    }
+
+    if (isGuiWidgetSubclass(classQName)) {
+        parsed = registry.findMethod("Viper.GUI.Widget", method, arity);
+    }
     if (!parsed) {
         return std::nullopt;
     }
-    return makeRuntimeMethodInfo(classQName, method, *parsed);
+    return makeRuntimeMethodInfo("Viper.GUI.Widget", method, *parsed);
 }
 
 std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(
@@ -157,52 +230,35 @@ std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(
     std::string_view method,
     const std::vector<il::runtime::ILScalarType> &argTypes) const {
     const auto &registry = il::runtime::RuntimeRegistry::instance();
-    std::optional<RuntimeMethodInfo> best;
-    int bestScore = std::numeric_limits<int>::max();
-    bool ambiguous = false;
-
     for (const auto &klass : registry.rawCatalog()) {
         if (!klass.qname || !string_utils::iequals(klass.qname, classQName)) {
             continue;
         }
 
-        for (const auto &candidate : klass.methods) {
-            if (!candidate.name || !string_utils::iequals(candidate.name, method)) {
-                continue;
-            }
+        if (auto direct = findTypedInClass(klass, method, argTypes)) {
+            return direct;
+        }
+        break;
+    }
 
-            auto sig =
-                il::runtime::parseRuntimeSignature(candidate.signature ? candidate.signature : "");
-            if (!sig.isValid() || sig.params.size() != argTypes.size()) {
-                continue;
-            }
-
-            il::runtime::ParsedMethod parsed{candidate.name, candidate.target, sig};
-            RuntimeMethodInfo info = makeRuntimeMethodInfo(klass.qname, candidate.name, parsed);
-            auto score = scoreSignature(info.args, argTypes);
-            if (!score) {
-                continue;
-            }
-
-            if (*score < bestScore) {
-                best = std::move(info);
-                bestScore = *score;
-                ambiguous = false;
-            } else if (*score == bestScore) {
-                ambiguous = true;
+    if (isGuiWidgetSubclass(classQName)) {
+        for (const auto &klass : registry.rawCatalog()) {
+            if (klass.qname && string_utils::iequals(klass.qname, "Viper.GUI.Widget")) {
+                return findTypedInClass(klass, method, argTypes);
             }
         }
     }
-
-    if (ambiguous) {
-        return std::nullopt;
-    }
-    return best;
+    return std::nullopt;
 }
 
 std::vector<std::string> RuntimeMethodResolver::candidates(std::string_view classQName,
                                                            std::string_view method) const {
-    return il::runtime::RuntimeRegistry::instance().methodCandidates(classQName, method);
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+    std::vector<std::string> direct = registry.methodCandidates(classQName, method);
+    if (!direct.empty() || !isGuiWidgetSubclass(classQName)) {
+        return direct;
+    }
+    return registry.methodCandidates("Viper.GUI.Widget", method);
 }
 
 } // namespace il::frontends::common

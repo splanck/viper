@@ -653,7 +653,7 @@ rt_string rt_scene_node3d_get_name(void *n) {
     return NULL;
 }
 
-/// @brief Stub for `SceneNode3D.AABBMin` — get the min corner of the
+/// @brief Stub for `SceneNode3D.BoundsMin` — get the min corner of the
 ///        node's world-space axis-aligned bounding box.
 ///
 /// Silent stub returning NULL.
@@ -666,7 +666,7 @@ void *rt_scene_node3d_get_aabb_min(void *n) {
     return NULL;
 }
 
-/// @brief Stub for `SceneNode3D.AABBMax` — get the max corner of the
+/// @brief Stub for `SceneNode3D.BoundsMax` — get the max corner of the
 ///        node's world-space axis-aligned bounding box.
 ///
 /// Silent stub returning NULL.

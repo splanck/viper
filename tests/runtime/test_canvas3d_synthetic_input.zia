@@ -46,7 +46,7 @@ func start() {
     Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.1);
 
     var leftMask = 1;
-    var keyW = Keyboard.get_KEY_W();
+    var keyW = Keyboard.get_KeyW();
     var camA = setupCamera();
     var camB = setupCamera();
 
@@ -62,7 +62,7 @@ func start() {
         fail("synthetic mouse delta mismatch");
         return;
     }
-    if (Mouse.WasPressed(Mouse.get_BUTTON_LEFT()) == false || Mouse.Left() == false) {
+    if (Mouse.WasPressed(Mouse.get_ButtonLeft()) == false || Mouse.Left() == false) {
         fail("synthetic mouse button press mismatch");
         return;
     }
@@ -89,7 +89,7 @@ func start() {
         fail("synthetic key up did not reach Keyboard");
         return;
     }
-    if (Mouse.WasReleased(Mouse.get_BUTTON_LEFT()) == false || Mouse.Left()) {
+    if (Mouse.WasReleased(Mouse.get_ButtonLeft()) == false || Mouse.Left()) {
         fail("synthetic mouse button release mismatch");
         return;
     }

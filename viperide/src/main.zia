@@ -288,8 +288,8 @@ func main() {
         shell.Poll();
 
         // Activity bar — switch the left view (Explorer / Source Control).
-        if shell.abExplorer.WasClicked() != 0 { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
-        if shell.abSourceControl.WasClicked() != 0 {
+        if shell.abExplorer.WasClicked() { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
+        if shell.abSourceControl.WasClicked() {
             activityBarCtrl.ShowView(activity_bar.VIEW_SCM);
             if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
         }
@@ -385,26 +385,26 @@ func main() {
         debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
 
         if completer.isVisible {
-            if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_TAB()) {
+            if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyTab()) {
                 completer.AcceptTabKey();
                 typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter()) {
                 completer.AcceptSelected();
                 typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
                 completer.Hide();
                 typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_DOWN()) {
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyDown()) {
                 completer.NavigateDown();
                 typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_UP()) {
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyUp()) {
                 completer.NavigateUp();
                 typedThisFrame = "";
             } else if completer.AcceptTypedTab(typedThisFrame) {
                 typedThisFrame = "";
             } else if completer.AcceptIfEditorInsertedTab() {
                 typedThisFrame = "";
-            } else if completer.AcceptHeldTabKey(Input.Keyboard.IsDown(Input.Keyboard.get_KEY_TAB())) {
+            } else if completer.AcceptHeldTabKey(Input.Keyboard.IsDown(Input.Keyboard.get_KeyTab())) {
                 typedThisFrame = "";
             } else if typedThisFrame != "" {
                 completer.AcceptIfCommitCharacter(typedThisFrame);
@@ -449,12 +449,12 @@ func main() {
             perfMon.AddSymbols(perfSpan);
         }
         symbolOutline.handleClicks(engine);
-        if Shortcuts.WasTriggered("completion_trigger") != 0 {
+        if Shortcuts.WasTriggered("completion_trigger") {
             perfSpan = perfMon.StartSpan();
             completer.TriggerCompletion();
             perfMon.AddCompletion(perfSpan);
         }
-        if Shortcuts.WasTriggered("signature_trigger") != 0 {
+        if Shortcuts.WasTriggered("signature_trigger") {
             perfSpan = perfMon.StartSpan();
             sigCtrl.trigger(engine);
             perfMon.AddSignature(perfSpan);
@@ -494,7 +494,7 @@ func main() {
             hoverCtrl.hideTooltip();
             sigCtrl.Hide();
         }
-        if searcher.active and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+        if searcher.active and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
             searcher.Cancel(shell);
         }
 
@@ -502,7 +502,7 @@ func main() {
         // Command Palette + trigger source detection
         // ====================================================================
         var cpSelected = "";
-        if shell.commandPalette.WasSelected() != 0 {
+        if shell.commandPalette.WasSelected() {
             var rawPaletteSelection = shell.commandPalette.GetSelected();
             if paletteCtrl.IsQuickOpen() {
                 search_commands.HandleQuickOpenPaletteSelection(shell, projMgr, docMgr, engine, tabs,
@@ -519,7 +519,7 @@ func main() {
             }
         }
         paletteCtrl.RestoreCommandsWhenClosed(shell, commandRegistry, activeService);
-        if Shortcuts.WasTriggered("palette") != 0 {
+        if Shortcuts.WasTriggered("palette") {
             paletteCtrl.OpenCommands(shell, commandRegistry, activeService);
         }
 
@@ -543,7 +543,7 @@ func main() {
         }
 
         // FindBar per-frame updates
-        if shell.findBar.IsVisible() != 0 {
+        if shell.findBar.IsVisible() {
             shell.findBar.FindNext();
             shell.findBar.FindPrev();
             shell.findBar.Replace();
@@ -556,14 +556,14 @@ func main() {
         }
 
         // Diagnostics panel: click to navigate to error line
-        if shell.diagListBox.WasSelectionChanged() != 0 {
+        if shell.diagListBox.WasSelectionChanged() {
             var selItem = shell.diagListBox.Selected;
             if selItem != null {
                 locStore.OpenLocation(shell, docMgr, engine, tabs, GUI.ListBox.ItemGetData(selItem));
             }
         }
 
-        if shell.outputListBox.WasSelectionChanged() != 0 {
+        if shell.outputListBox.WasSelectionChanged() {
             var outItem = shell.outputListBox.Selected;
             if outItem != null {
                 var data = GUI.ListBox.ItemGetData(outItem);
@@ -578,7 +578,7 @@ func main() {
                 }
             }
         }
-        if shell.searchListBox.WasSelectionChanged() != 0 {
+        if shell.searchListBox.WasSelectionChanged() {
             var searchItem = shell.searchListBox.Selected;
             if searchItem != null {
                 var searchData = GUI.ListBox.ItemGetData(searchItem);
@@ -587,7 +587,7 @@ func main() {
                 }
             }
         }
-        if shell.referencesListBox.WasSelectionChanged() != 0 {
+        if shell.referencesListBox.WasSelectionChanged() {
             var refItem = shell.referencesListBox.Selected;
             if refItem != null {
                 var refData = GUI.ListBox.ItemGetData(refItem);
@@ -596,7 +596,7 @@ func main() {
                 }
             }
         }
-        if shell.callStackListBox.WasSelectionChanged() != 0 {
+        if shell.callStackListBox.WasSelectionChanged() {
             debug_commands.handleCallStackSelect(shell, docMgr, engine, tabs, dbgSession);
         }
         shell.PumpToolTabs();
@@ -643,7 +643,7 @@ func main() {
         // ====================================================================
         // Tab switching
         // ====================================================================
-        if shell.tabBar.WasChanged() != 0 {
+        if shell.tabBar.WasChanged() {
             var newIdx = shell.tabBar.GetActiveIndex();
             if newIdx >= 0 and newIdx < docMgr.GetCount() and newIdx != docMgr.activeIndex {
                 file_commands.SaveEditorState(docMgr, engine);

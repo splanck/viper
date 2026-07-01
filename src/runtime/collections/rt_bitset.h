@@ -42,6 +42,11 @@ void *rt_bitset_new(int64_t nbits);
 /// @return Bit capacity.
 int64_t rt_bitset_len(void *obj);
 
+/// @brief Count the number of set bits.
+/// @param obj BitSet pointer.
+/// @return Population count.
+int64_t rt_bitset_count(void *obj);
+
 /// @brief Check if all bits are zero.
 /// @param obj BitSet pointer.
 /// @return 1 if all bits are 0, 0 otherwise.

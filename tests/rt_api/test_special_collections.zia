@@ -53,24 +53,24 @@ func start() {
     lru.Put("a", "1");
     lru.Put("b", "2");
     lru.Put("c", "3");
-    SayInt(lru.Length);
+    SayInt(lru.Count);
     SayBool(lru.Has("a"));
     lru.Put("d", "4");
-    SayInt(lru.Length);
+    SayInt(lru.Count);
     lru.Remove("d");
-    SayInt(lru.Length);
+    SayInt(lru.Count);
 
     var mm = new Viper.Collections.MultiMap();
     SayBool(mm.IsEmpty);
     mm.Put("color", "red");
     mm.Put("color", "blue");
     mm.Put("size", "large");
-    SayInt(mm.Length);
+    SayInt(mm.Count);
     SayInt(mm.KeyCount);
     SayInt(mm.CountFor("color"));
     SayBool(mm.Has("color"));
     mm.RemoveAll("color");
-    SayInt(mm.Length);
+    SayInt(mm.Count);
 
     Say("done");
 }

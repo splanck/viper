@@ -37,7 +37,7 @@ func start() {
     world.SetCameraController(fps);
 
     var before = player.Position();
-    G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_W(), true);
+    G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_KeyW(), true);
     world.RunFramesOnly(1, 0.1);
     var after = player.Position();
 

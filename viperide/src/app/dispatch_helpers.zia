@@ -31,9 +31,9 @@ expose func Triggered(name: String,
                       menuItem: GUI.MenuItem,
                       toolbarItem: GUI.ToolbarItem,
                       cpSelected: String) -> Boolean {
-    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
-    if toolbarItem != null and toolbarItem.WasClicked() != 0 { return true; }
-    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if menuItem != null and menuItem.WasClicked() { return true; }
+    if toolbarItem != null and toolbarItem.WasClicked() { return true; }
+    if Shortcuts.WasTriggered(name) { return true; }
     if cpSelected == name { return true; }
     return false;
 }
@@ -43,7 +43,7 @@ expose func Triggered(name: String,
 /// @param cpSelected Current command-palette selection id, or empty.
 /// @return True when a non-menu source triggered the command this frame.
 expose func TriggeredNoMenu(name: String, cpSelected: String) -> Boolean {
-    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if Shortcuts.WasTriggered(name) { return true; }
     if cpSelected == name { return true; }
     return false;
 }
@@ -56,8 +56,8 @@ expose func TriggeredNoMenu(name: String, cpSelected: String) -> Boolean {
 expose func TriggeredMenu(name: String,
                           menuItem: GUI.MenuItem,
                           cpSelected: String) -> Boolean {
-    if menuItem != null and menuItem.WasClicked() != 0 { return true; }
-    if Shortcuts.WasTriggered(name) != 0 { return true; }
+    if menuItem != null and menuItem.WasClicked() { return true; }
+    if Shortcuts.WasTriggered(name) { return true; }
     if cpSelected == name { return true; }
     return false;
 }

@@ -62,7 +62,7 @@ class Food {
         }
 
         canvas.Disc(px, py, radius, color);
-        canvas.Ring(px, py, radius, colors.WHITE);
+        canvas.Ring(px, py, radius, colors.White);
     }
 }
 
@@ -274,25 +274,25 @@ class SnakeGame {
         var gridColor = RGB(30, 40, 30);
         canvas.Box(offsetX, offsetY, gridWidth * cellSize, gridHeight * cellSize, gridColor);
 
-        canvas.Frame(offsetX - 2, offsetY - 2, gridWidth * cellSize + 4, gridHeight * cellSize + 4, colors.WHITE);
+        canvas.Frame(offsetX - 2, offsetY - 2, gridWidth * cellSize + 4, gridHeight * cellSize + 4, colors.White);
 
         food.draw(canvas, cellSize, offsetX, offsetY);
         snake.draw(canvas, cellSize, offsetX, offsetY);
 
         var scoreStr = "Score: " + Int(score);
-        canvas.TextBg(10, 10, scoreStr, colors.WHITE, colors.BLACK);
+        canvas.TextBg(10, 10, scoreStr, colors.White, colors.Black);
 
         var hiStr = "High: " + Int(highScore);
-        canvas.TextBg(screenWidth - 100, 10, hiStr, colors.YELLOW, colors.BLACK);
+        canvas.TextBg(screenWidth - 100, 10, hiStr, colors.Yellow, colors.Black);
 
         if gameOver {
-            canvas.Box(screenWidth / 2 - 100, screenHeight / 2 - 40, 200, 80, colors.BLACK);
-            canvas.Frame(screenWidth / 2 - 100, screenHeight / 2 - 40, 200, 80, colors.RED);
-            canvas.Text(screenWidth / 2 - 50, screenHeight / 2 - 20, "GAME OVER", colors.RED);
-            canvas.Text(screenWidth / 2 - 70, screenHeight / 2 + 10, "Press R to restart", colors.WHITE);
+            canvas.Box(screenWidth / 2 - 100, screenHeight / 2 - 40, 200, 80, colors.Black);
+            canvas.Frame(screenWidth / 2 - 100, screenHeight / 2 - 40, 200, 80, colors.Red);
+            canvas.Text(screenWidth / 2 - 50, screenHeight / 2 - 20, "GAME OVER", colors.Red);
+            canvas.Text(screenWidth / 2 - 70, screenHeight / 2 + 10, "Press R to restart", colors.White);
         }
 
-        canvas.TextBg(10, screenHeight - 25, "Arrow Keys: Move | R: Restart | ESC: Exit", colors.DARK_GRAY, colors.BLACK);
+        canvas.TextBg(10, screenHeight - 25, "Arrow Keys: Move | R: Restart | ESC: Exit", colors.DARK_GRAY, colors.Black);
     }
 }
 

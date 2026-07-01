@@ -539,13 +539,13 @@ class PaintApp {
             if typed != "" {
                 textTool.appendText(typed);
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KEY_BACKSPACE()) {
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KeyBackspace()) {
                 textTool.backspace();
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KEY_ENTER()) {
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KeyEnter()) {
                 textTool.requestCommit();
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KEY_ESCAPE()) {
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KeyEscape()) {
                 textTool.cancel();
             }
             return;

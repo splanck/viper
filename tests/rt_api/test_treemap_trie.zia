@@ -7,7 +7,7 @@ func start() {
     tm.Set("banana", "yellow");
     tm.Set("apple", "red");
     tm.Set("cherry", "dark");
-    SayInt(tm.Length);
+    SayInt(tm.Count);
     Say(tm.Get("apple"));
     SayBool(tm.Has("banana"));
     Say(tm.First());
@@ -15,30 +15,30 @@ func start() {
     Say(tm.Floor("blueberry"));
     Say(tm.Ceil("blueberry"));
     tm.Remove("apple");
-    SayInt(tm.Length);
-    SayInt(tm.Keys().Length);
+    SayInt(tm.Count);
+    SayInt(tm.Keys().Count);
 
     var tr = new Viper.Collections.Trie();
     SayBool(tr.IsEmpty);
     tr.Set("hello", "1");
     tr.Set("help", "2");
     tr.Set("world", "3");
-    SayInt(tr.Length);
+    SayInt(tr.Count);
     Say(tr.Get("hello"));
     SayBool(tr.Has("help"));
     SayBool(tr.HasPrefix("hel"));
     SayBool(tr.HasPrefix("xyz"));
     Say(tr.LongestPrefix("helping"));
-    SayInt(tr.WithPrefix("hel").Length);
+    SayInt(tr.WithPrefix("hel").Count);
     tr.Remove("help");
-    SayInt(tr.Length);
+    SayInt(tr.Count);
 
     var ss = new Viper.Collections.SortedSet();
     SayBool(ss.IsEmpty);
     ss.Add("cherry");
     ss.Add("apple");
     ss.Add("banana");
-    SayInt(ss.Length);
+    SayInt(ss.Count);
     Say(ss.First());
     Say(ss.Last());
     SayBool(ss.Has("apple"));
@@ -47,19 +47,19 @@ func start() {
     Say(ss.Floor("blueberry"));
     Say(ss.Ceil("blueberry"));
     ss.Remove("apple");
-    SayInt(ss.Length);
+    SayInt(ss.Count);
 
     var bm = new Viper.Collections.BiMap();
     SayBool(bm.IsEmpty);
     bm.Put("one", "1");
     bm.Put("two", "2");
-    SayInt(bm.Length);
+    SayInt(bm.Count);
     Say(bm.GetByKey("one"));
     Say(bm.GetByValue("2"));
     SayBool(bm.HasKey("one"));
     SayBool(bm.HasValue("2"));
     bm.RemoveByKey("one");
-    SayInt(bm.Length);
+    SayInt(bm.Count);
 
     Say("done");
 }

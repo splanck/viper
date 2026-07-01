@@ -64,7 +64,7 @@ func render(profile: UserProfile) -> String {
 func parse(line: String) -> UserProfile {
     var profile = new UserProfile();
     var parts = String.Split(line, "|");
-    var count = Seq.get_Length(parts);
+    var count = Seq.get_Count(parts);
     if count < 4 {
         return profile;
     }
@@ -102,7 +102,7 @@ func load(franchiseDir: String) -> UserProfile {
     }
     var text = File.ReadAllText(path);
     var lines = String.Split(text, "\n");
-    if Seq.get_Length(lines) == 0 {
+    if Seq.get_Count(lines) == 0 {
         return new UserProfile();
     }
     return parse(Seq.GetStr(lines, 0));

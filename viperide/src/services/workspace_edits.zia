@@ -40,7 +40,7 @@ func PreviewRenameEdits(edits: Any, maxRows: Integer) -> String {
     if edits == null {
         return "No edits returned.";
     }
-    var count = Seq.get_Length(edits);
+    var count = Seq.get_Count(edits);
     var text = "Apply " + count + " rename edits?";
     var shown = 0;
     while shown < count and shown < maxRows {
@@ -76,7 +76,7 @@ func ApplyRenameEdits(edits: Any,
     var openPaths = Seq.New();
     var newContentByPath = Map.New();
     var i = 0;
-    while i < Seq.get_Length(edits) {
+    while i < Seq.get_Count(edits) {
         var edit = Seq.Get(edits, i);
         var path = Map.GetStr(edit, "file");
         var docIndex = docMgr.FindByPath(path);
@@ -95,7 +95,7 @@ func ApplyRenameEdits(edits: Any,
         i = i + 1;
     }
 
-    var j = Seq.get_Length(edits) - 1;
+    var j = Seq.get_Count(edits) - 1;
     while j >= 0 {
         var edit2 = Seq.Get(edits, j);
         var path2 = Map.GetStr(edit2, "file");
@@ -107,7 +107,7 @@ func ApplyRenameEdits(edits: Any,
         j = j - 1;
     }
 
-    if Seq.get_Length(closedEdits) > 0 {
+    if Seq.get_Count(closedEdits) > 0 {
         var editRoot = WorkspaceEditRoot(closedEdits);
         var diskValidation = WorkspaceEdit.ValidateInRoot(closedEdits, editRoot);
         if Map.GetBool(diskValidation, "success") == false {
@@ -124,7 +124,7 @@ func ApplyRenameEdits(edits: Any,
     }
 
     var p = 0;
-    while p < Seq.get_Length(openPaths) {
+    while p < Seq.get_Count(openPaths) {
         var openPath = Obj.ToString(Seq.Get(openPaths, p));
         var openIdx = docMgr.FindByPath(openPath);
         if openIdx >= 0 {
@@ -157,13 +157,13 @@ func ApplyRenameEdits(edits: Any,
 /// @return Absolute normalized directory path used as rooted validation/apply scope.
 func WorkspaceEditRoot(edits: Any) -> String {
     var safetyRoot = Path.Norm(Path.Abs("."));
-    if edits == null or Seq.get_Length(edits) == 0 {
+    if edits == null or Seq.get_Count(edits) == 0 {
         return safetyRoot;
     }
     var first = Seq.Get(edits, 0);
     var root = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(first, "file"))));
     var i = 1;
-    while i < Seq.get_Length(edits) {
+    while i < Seq.get_Count(edits) {
         var edit = Seq.Get(edits, i);
         var editDir = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(edit, "file"))));
         while root != "" and PathIsInRoot(root, editDir) == false {
@@ -208,12 +208,12 @@ func PathIsInRoot(root: String,
 /// @return Newline-delimited diagnostic summary.
 func FormatWorkspaceEditDiagnostics(diagnostics: Any,
                                     fallback: String) -> String {
-    if diagnostics == null or Seq.get_Length(diagnostics) == 0 {
+    if diagnostics == null or Seq.get_Count(diagnostics) == 0 {
         return fallback;
     }
     var result = "";
     var i = 0;
-    while i < Seq.get_Length(diagnostics) {
+    while i < Seq.get_Count(diagnostics) {
         var diag = Seq.Get(diagnostics, i);
         var message = Map.GetStr(diag, "message");
         var code = Map.GetStr(diag, "code");
@@ -246,7 +246,7 @@ func ApplyEditToDocument(doc: document.Document, edit: Any) -> Boolean {
 func ValidateRenameEdits(edits: Any,
                          docMgr: document_manager.DocumentManager) -> String {
     var i = 0;
-    while i < Seq.get_Length(edits) {
+    while i < Seq.get_Count(edits) {
         var edit = Seq.Get(edits, i);
         var path = Map.GetStr(edit, "file");
         if path == "" {
@@ -267,7 +267,7 @@ func ValidateRenameEdits(edits: Any,
         }
 
         var j = i + 1;
-        while j < Seq.get_Length(edits) {
+        while j < Seq.get_Count(edits) {
             var other = Seq.Get(edits, j);
             if EditsOverlap(edit, other) {
                 return RenameConflictMessage(edit, other);
@@ -339,8 +339,8 @@ func CanApplyEditToText(content: String, edit: Any) -> Boolean {
     if startLine == endLine and endCol < startCol { return false; }
 
     var lines = Str.Split(content, "\n");
-    if startLine > Seq.get_Length(lines) { return false; }
-    if endLine > Seq.get_Length(lines) { return false; }
+    if startLine > Seq.get_Count(lines) { return false; }
+    if endLine > Seq.get_Count(lines) { return false; }
     var startText = Obj.ToString(Seq.Get(lines, startLine - 1));
     var endText = Obj.ToString(Seq.Get(lines, endLine - 1));
     if startCol > Str.get_Length(startText) + 1 { return false; }
@@ -370,7 +370,7 @@ func ApplyEditToText(content: String, edit: Any) -> String {
     var rebuilt = "";
     var firstOutputLine = true;
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var emit = false;
         var text = "";
         if i < startLine - 1 or i > endLine - 1 {
@@ -394,7 +394,7 @@ func ApplyEditToText(content: String, edit: Any) -> String {
 
 func SeqContainsString(items: Any, value: String) -> Boolean {
     var i = 0;
-    while i < Seq.get_Length(items) {
+    while i < Seq.get_Count(items) {
         if Obj.ToString(Seq.Get(items, i)) == value {
             return true;
         }

@@ -382,13 +382,13 @@ class SettingsManager {
 }
 
 /// @brief Return the native per-user configuration directory for ViperIDE.
-/// @details Uses only `Machine.OS` for platform selection so OS-specific policy
+/// @details Uses only `Machine.Os` for platform selection so OS-specific policy
 ///          stays in an approved adapter-facing layer. The returned directory may
 ///          not exist yet; callers create it before saving.
 /// @param home The user home directory, already defaulted by the caller.
 /// @return Directory that should contain `settings.ini` for new installations.
 func PreferredSettingsDir(home: String) -> String {
-    var os = Machine.OS;
+    var os = Machine.Os;
     if os == "windows" {
         var appData = Env.GetVariable("APPDATA");
         if appData != "" {

@@ -881,7 +881,7 @@ class ContactBook {
         }
 
         var arr = Json.ParseArray(File.ReadAllText(self.filename));
-        for i in 0..Seq.get_Length(arr) {
+        for i in 0..Seq.get_Count(arr) {
             self.contacts.Push(contactFromJson(Seq.Get(arr, i)));
         }
     }

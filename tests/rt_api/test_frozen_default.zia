@@ -5,22 +5,22 @@ bind Viper.Terminal;
 
 func start() {
     var dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"));
-    SayInt(dm.Length);
+    SayInt(dm.Count);
     dm.Set("name", "viper");
     dm.Set("lang", "zia");
-    SayInt(dm.Length);
+    SayInt(dm.Count);
     SayBool(dm.Has("name"));
     SayBool(dm.Has("missing"));
     dm.Remove("lang");
-    SayInt(dm.Length);
+    SayInt(dm.Count);
     dm.Clear();
-    SayInt(dm.Length);
+    SayInt(dm.Count);
 
     var emptySet = Viper.Collections.FrozenSet.Empty();
-    SayInt(emptySet.Length);
+    SayInt(emptySet.Count);
 
     var emptyMap = Viper.Collections.FrozenMap.Empty();
-    SayInt(emptyMap.Length);
+    SayInt(emptyMap.Count);
 
     Say("done");
 }

@@ -72,7 +72,7 @@ func start() {
 
     var canvas = G3D.Canvas3D.New("Game3D Surface Probe", 64, 64);
     G3D.Canvas3D.Poll(canvas);
-    var wDown = Keyboard.IsDown(Keyboard.get_KEY_W());
+    var wDown = Keyboard.IsDown(Keyboard.get_KeyW());
     if (wDown) {
         controller.lateCalls = controller.lateCalls + 0;
     }

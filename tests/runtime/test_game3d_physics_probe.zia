@@ -22,7 +22,7 @@ func start() {
     var ballDef = Game3D.BodyDef.Sphere(0.5, 1.0);
     ballDef.Friction = 0.6;
     ballDef.Restitution = 0.0;
-    ballDef.UseCCD = true;
+    ballDef.UseCcd = true;
     ballDef.WithMask(Game3D.LayerMask.Of(Game3D.Layers.get_World()));
     ball.AttachBody(ballDef);
     world.Spawn(ball);
@@ -32,7 +32,7 @@ func start() {
         fail("StaticPlane did not use world layer");
         return;
     }
-    if (G3D.Physics3DBody.get_UseCCD(ball.Body) == false) {
+    if (G3D.Physics3DBody.get_UseCcd(ball.Body) == false) {
         fail("BodyDef did not apply CCD flag");
         return;
     }

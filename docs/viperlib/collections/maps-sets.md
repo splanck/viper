@@ -104,7 +104,7 @@ scores.Set("Alice", 95)
 scores.Set("Bob", 87)
 scores.Set("Carol", 92)
 
-PRINT scores.Length      ' Output: 3
+PRINT scores.Count      ' Output: 3
 PRINT scores.IsEmpty  ' Output: False
 
 ' Check existence and get value
@@ -133,7 +133,7 @@ END IF
 ' Iterate over keys
 DIM names AS Viper.Collections.Seq
 names = scores.Keys()
-FOR i = 0 TO names.Length - 1
+FOR i = 0 TO names.Count - 1
     PRINT names.Get(i)
 NEXT i
 
@@ -210,7 +210,7 @@ DIM c AS OBJECT = Viper.Core.Box.I64(3)
 items.Add(a)
 items.Add(b)
 items.Add(c)
-PRINT items.Length           ' Output: 3
+PRINT items.Count           ' Output: 3
 
 ' Duplicate add returns false
 DIM wasNew AS INTEGER = items.Add(a)
@@ -243,15 +243,15 @@ setB.Add(w)
 
 ' Union: elements in either set
 DIM merged AS OBJECT = setA.Union(setB)
-PRINT merged.Length          ' Output: 4 (x, y, z, w)
+PRINT merged.Count          ' Output: 4 (x, y, z, w)
 
 ' Intersection: elements in both sets
 DIM common AS OBJECT = setA.Intersect(setB)
-PRINT common.Length          ' Output: 2 (y, z)
+PRINT common.Count          ' Output: 2 (y, z)
 
 ' Difference: elements in A but not B
 DIM diff AS OBJECT = setA.Diff(setB)
-PRINT diff.Length            ' Output: 1 (x only)
+PRINT diff.Count            ' Output: 1 (x only)
 
 ' Subset/superset checks
 DIM subset AS OBJECT = Viper.Collections.Set.New()
@@ -341,7 +341,7 @@ func start() {
     om.Set("first", Box.Str("alpha"));
     om.Set("second", Box.Str("beta"));
     om.Set("third", Box.Str("gamma"));
-    SayInt(om.Length);                             // 3
+    SayInt(om.Count);                             // 3
 
     // Access by key
     Say(Box.ToStr(om.Get("first")));            // alpha
@@ -374,7 +374,7 @@ om = Viper.Collections.OrderedMap.New()
 om.Set("first", "alpha")
 om.Set("second", "beta")
 om.Set("third", "gamma")
-PRINT om.Length              ' 3
+PRINT om.Count              ' 3
 
 ' Access by key
 PRINT om.Get("first")     ' alpha
@@ -393,7 +393,7 @@ PRINT om.KeyAt(1)         ' second (still position 1)
 ' Keys in insertion order
 DIM keys AS OBJECT
 keys = om.Keys()
-PRINT keys.Length            ' 3
+PRINT keys.Count            ' 3
 PRINT keys.Get(0)         ' first
 PRINT keys.Get(1)         ' second
 PRINT keys.Get(2)         ' third
@@ -407,7 +407,7 @@ PRINT vals.Get(2)         ' gamma
 
 ' Remove
 PRINT om.Remove("second") ' 1
-PRINT om.Length              ' 2
+PRINT om.Count              ' 2
 DIM keys2 AS OBJECT
 keys2 = om.Keys()
 PRINT keys2.Get(0)        ' first
@@ -499,7 +499,7 @@ words.Add("apple")
 words.Add("banana")
 words.Add("date")
 
-PRINT words.Length          ' Output: 4
+PRINT words.Count          ' Output: 4
 
 ' Ordered access
 PRINT words.First()      ' Output: "apple"
@@ -517,13 +517,13 @@ PRINT words.Higher("cherry")   ' Output: "date" (smallest > "cherry")
 
 ' Get all items in sorted order
 DIM all AS OBJECT = words.Items()
-FOR i = 0 TO all.Length - 1
+FOR i = 0 TO all.Count - 1
     PRINT all.Get(i)     ' Output: apple, banana, cherry, date
 NEXT
 
 ' Get range [b, d] - from "b" through "d" inclusive
 DIM range AS OBJECT = words.Range("b", "d")
-FOR i = 0 TO range.Length - 1
+FOR i = 0 TO range.Count - 1
     PRINT range.Get(i)   ' Output: banana, cherry, date
 NEXT
 
@@ -540,15 +540,15 @@ set2.Add("d")
 
 ' Union
 DIM merged AS OBJECT = set1.Union(set2)
-PRINT merged.Length         ' Output: 4 (a, b, c, d)
+PRINT merged.Count         ' Output: 4 (a, b, c, d)
 
 ' Intersection
 DIM common AS OBJECT = set1.Intersect(set2)
-PRINT common.Length         ' Output: 2 (b, c)
+PRINT common.Count         ' Output: 2 (b, c)
 
 ' Difference
 DIM diff AS OBJECT = set1.Diff(set2)
-PRINT diff.Length           ' Output: 1 (a only)
+PRINT diff.Count           ' Output: 1 (a only)
 
 ' Subset check
 DIM subset AS OBJECT = NEW Viper.Collections.SortedSet()
@@ -641,7 +641,7 @@ func start() {
     vals.Push(Box.Str("Boston"));
 
     var fm = FrozenMap.FromSeqs(keys, vals);
-    SayInt(fm.Length);                                // 2
+    SayInt(fm.Count);                                // 2
     Say(Box.ToStr(fm.Get("name")));                // Alice
     SayBool(fm.Has("name"));                       // 1
     Say(Box.ToStr(fm.GetOr("email", Box.Str("N/A")))); // N/A
@@ -656,7 +656,7 @@ func start() {
     var fm2 = FrozenMap.FromSeqs(keys2, vals2);
 
     var merged = fm.Merge(fm2);
-    SayInt(merged.Length);                            // 3
+    SayInt(merged.Count);                            // 3
     Say(Box.ToStr(merged.Get("city")));            // NYC (fm2 wins)
 }
 ```
@@ -677,7 +677,7 @@ vals.Push("Boston")
 
 DIM fm AS OBJECT
 fm = Viper.Collections.FrozenMap.FromSeqs(keys, vals)
-PRINT fm.Length                ' 2
+PRINT fm.Count                ' 2
 PRINT fm.Get("name")        ' Alice
 PRINT fm.Has("name")        ' 1
 
@@ -698,7 +698,7 @@ DIM fm2 AS OBJECT
 fm2 = Viper.Collections.FrozenMap.FromSeqs(keys2, vals2)
 DIM merged AS OBJECT
 merged = fm.Merge(fm2)
-PRINT merged.Length             ' 3
+PRINT merged.Count             ' 3
 PRINT merged.Get("city")     ' NYC (fm2 wins)
 PRINT merged.Get("name")     ' Alice (from fm)
 
@@ -783,7 +783,7 @@ func start() {
     items.Push(Box.Str("apple"));  // duplicate
 
     var fs = FrozenSet.FromSeq(items);
-    SayInt(fs.Length);                               // 3
+    SayInt(fs.Count);                               // 3
     SayBool(fs.Has("apple"));                     // 1
     SayBool(fs.Has("grape"));                     // 0
 
@@ -794,13 +794,13 @@ func start() {
     var fs2 = FrozenSet.FromSeq(items2);
 
     var united = fs.Union(fs2);
-    SayInt(united.Length);                           // 4
+    SayInt(united.Count);                           // 4
 
     var inter = fs.Intersect(fs2);
-    SayInt(inter.Length);                            // 1 (cherry)
+    SayInt(inter.Count);                            // 1 (cherry)
 
     var diff = fs.Diff(fs2);
-    SayInt(diff.Length);                             // 2 (apple, banana)
+    SayInt(diff.Count);                             // 2 (apple, banana)
 }
 ```
 
@@ -817,14 +817,14 @@ items.Push("apple")  ' duplicate
 
 DIM fs AS OBJECT
 fs = Viper.Collections.FrozenSet.FromSeq(items)
-PRINT fs.Length              ' 3
+PRINT fs.Count              ' 3
 PRINT fs.Has("apple")     ' 1
 PRINT fs.Has("grape")     ' 0
 
 ' Get all items
 DIM all AS OBJECT
 all = fs.Items()
-PRINT all.Length             ' 3
+PRINT all.Count             ' 3
 
 ' Set operations
 DIM items2 AS Viper.Collections.Seq
@@ -837,15 +837,15 @@ fs2 = Viper.Collections.FrozenSet.FromSeq(items2)
 
 DIM united AS OBJECT
 united = fs.Union(fs2)
-PRINT united.Length          ' 5
+PRINT united.Count          ' 5
 
 DIM inter AS OBJECT
 inter = fs.Intersect(fs2)
-PRINT inter.Length           ' 1 (cherry)
+PRINT inter.Count           ' 1 (cherry)
 
 DIM diff AS OBJECT
 diff = fs.Diff(fs2)
-PRINT diff.Length            ' 2 (apple, banana)
+PRINT diff.Count            ' 2 (apple, banana)
 
 ' Subset check
 DIM subItems AS Viper.Collections.Seq
@@ -929,7 +929,7 @@ func start() {
     tm.Set("apple", Viper.Core.Box.Str("green"));
     tm.Set("banana", Viper.Core.Box.Str("yellow"));
 
-    Say("Length: " + Fmt.Int(tm.Length));           // 3
+    Say("Count: " + Fmt.Int(tm.Count));           // 3
     Say("First: " + tm.First());                  // apple
     Say("Last: " + tm.Last());                    // cherry
 

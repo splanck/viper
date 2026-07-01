@@ -28,7 +28,7 @@ bind Obj = Viper.Core.Object;
 //          shell's chrome and editor pick up consistent fonts.
 //
 // KEY-DESIGN-CHOICES:
-//   * OS-SPECIFIC FONT FALLBACKS. `Machine.OS` returns "macos" /
+//   * OS-SPECIFIC FONT FALLBACKS. `Machine.Os` returns "macos" /
 //     "windows" / "linux"; we try the platform-conventional UI font
 //     first, then progressively more conservative fallbacks. Matches
 //     real IDEs that "just work" on a fresh OS install.
@@ -70,7 +70,7 @@ func chromeFontSize(shell: app_shell.AppShell) -> Number {
 ///          `SetFontSize(15)` on the default if every load fails.
 func applyShellFont(shell: app_shell.AppShell) {
     var font: GUI.Font = null;
-    var os = Machine.OS;
+    var os = Machine.Os;
 
     if os == "macos" {
         font = GUI.Font.Load("/System/Library/Fonts/SFNS.ttf");
@@ -116,7 +116,7 @@ func applyEditorFont(engine: editor_engine.EditorEngine,
     }
 
     if font == null {
-        var os = Machine.OS;
+        var os = Machine.Os;
         if os == "macos" {
             font = GUI.Font.Load("/System/Library/Fonts/SFNSMono.ttf");
             if font == null { font = GUI.Font.Load("/System/Library/Fonts/Monaco.ttf"); }
@@ -154,27 +154,27 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     applyEditorFont(engine, appSettings);
     engine.editor.SetTabSize(appSettings.tabWidth);
     if appSettings.insertSpaces {
-        engine.editor.SetInsertSpaces(1);
+        engine.editor.SetInsertSpaces(true);
     } else {
-        engine.editor.SetInsertSpaces(0);
+        engine.editor.SetInsertSpaces(false);
     }
     if appSettings.wordWrap {
-        engine.editor.SetWordWrap(1);
+        engine.editor.SetWordWrap(true);
     } else {
-        engine.editor.SetWordWrap(0);
+        engine.editor.SetWordWrap(false);
     }
     if appSettings.lineNumbers {
-        engine.editor.SetShowLineNumbers(1);
+        engine.editor.SetShowLineNumbers(true);
     } else {
-        engine.editor.SetShowLineNumbers(0);
+        engine.editor.SetShowLineNumbers(false);
     }
 
     if appSettings.codeFolding {
-        engine.editor.SetShowFoldGutter(1);
-        engine.editor.SetAutoFoldDetection(0);
+        engine.editor.SetShowFoldGutter(true);
+        engine.editor.SetAutoFoldDetection(false);
     } else {
-        engine.editor.SetShowFoldGutter(0);
-        engine.editor.SetAutoFoldDetection(0);
+        engine.editor.SetShowFoldGutter(false);
+        engine.editor.SetAutoFoldDetection(false);
         engine.editor.ClearFoldRegions();
     }
 
@@ -188,14 +188,14 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     }
 
     if appSettings.minimapVisible {
-        shell.minimap.SetVisible(1);
+        shell.minimap.SetVisible(true);
     } else {
-        shell.minimap.SetVisible(0);
+        shell.minimap.SetVisible(false);
     }
     if appSettings.statusBarVisible {
-        shell.statusBar.SetVisible(1);
+        shell.statusBar.SetVisible(true);
     } else {
-        shell.statusBar.SetVisible(0);
+        shell.statusBar.SetVisible(false);
     }
     shell.app.SetFullscreen(appSettings.fullscreen);
 
@@ -210,12 +210,12 @@ func handleToggleSidebar(shell: app_shell.AppShell) {
 /// @brief Toggle status bar visibility and persist the new state.
 func handleToggleStatusBar(shell: app_shell.AppShell,
                            appSettings: settings.SettingsManager) {
-    if shell.statusBar.IsVisible() != 0 {
-        shell.statusBar.SetVisible(0);
+    if shell.statusBar.IsVisible() {
+        shell.statusBar.SetVisible(false);
         appSettings.statusBarVisible = false;
         shell.SetStatusLeft("Status bar hidden");
     } else {
-        shell.statusBar.SetVisible(1);
+        shell.statusBar.SetVisible(true);
         appSettings.statusBarVisible = true;
         shell.SetStatusLeft("Status bar shown");
     }
@@ -331,7 +331,7 @@ func handleKeybindings(shell: app_shell.AppShell,
         shell.outputListBox.AddItem("Keyboard Shortcuts - " + conflictCount + " conflicts");
         var conflicts = Str.Split(registry.ShortcutConflictSummary(), "\n");
         var c = 0;
-        while c < Seq.get_Length(conflicts) {
+        while c < Seq.get_Count(conflicts) {
             shell.outputListBox.AddItem("  conflict: " + Obj.ToString(Seq.Get(conflicts, c)));
             c = c + 1;
         }
@@ -443,9 +443,9 @@ func handleToggleMinimap(shell: app_shell.AppShell,
     var nowVisible = appSettings.minimapVisible == false;
     appSettings.minimapVisible = nowVisible;
     if nowVisible {
-        shell.minimap.SetVisible(1);
+        shell.minimap.SetVisible(true);
     } else {
-        shell.minimap.SetVisible(0);
+        shell.minimap.SetVisible(false);
     }
     appSettings.Save();
     return nowVisible;

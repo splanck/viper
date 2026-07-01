@@ -26,7 +26,7 @@ func start() {
         fail("LoadEntityAsset did not instantiate through asset resolver");
         return;
     }
-    assetEntity.SetName("AssetProbeImport");
+    assetEntity.Name = "AssetProbeImport";
     var world = Game3D.World3D.New("Game3D Asset Lifetime Probe", 64, 48);
     var i = 0;
     while (i < 4) {
@@ -36,7 +36,7 @@ func start() {
             fail("LoadEntityAsset did not create a fresh asset group");
             return;
         }
-        loopEntity.SetName("AssetProbeImport");
+        loopEntity.Name = "AssetProbeImport";
         world.Spawn(loopEntity);
         if (world.EntityCount != 1 ||
             world.FindEntity("AssetProbeImport") == null) {

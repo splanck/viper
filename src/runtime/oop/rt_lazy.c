@@ -254,11 +254,6 @@ void *rt_lazy_flat_map(void *obj, void *(*fn)(void *)) {
     return new_lazy;
 }
 
-/// @brief IL trampoline for `rt_lazy_new` — re-types the supplier pointer for the typed call.
-void *rt_lazy_new_wrapper(void *supplier) {
-    return rt_lazy_new((void *(*)(void))supplier);
-}
-
 /// @brief IL trampoline for `rt_lazy_map`.
 void *rt_lazy_map_wrapper(void *obj, void *fn) {
     return rt_lazy_map(obj, (void *(*)(void *))fn);

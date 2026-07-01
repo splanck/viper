@@ -1132,22 +1132,6 @@ int64_t rt_keyboard_key_escape(void) {
     return VIPER_KEY_ESCAPE;
 }
 
-/// @brief Key-code constant for the unspecified Shift modifier (matches
-///        either left or right shift on platforms that don't distinguish).
-int64_t rt_keyboard_key_shift(void) {
-    return VIPER_KEY_SHIFT;
-}
-
-/// @brief Key-code constant for the unspecified Ctrl modifier.
-int64_t rt_keyboard_key_ctrl(void) {
-    return VIPER_KEY_CTRL;
-}
-
-/// @brief Key-code constant for the unspecified Alt modifier (Option on macOS).
-int64_t rt_keyboard_key_alt(void) {
-    return VIPER_KEY_ALT;
-}
-
 /// @brief Key-code constant for the Left Shift modifier specifically.
 int64_t rt_keyboard_key_lshift(void) {
     return VIPER_KEY_LSHIFT;

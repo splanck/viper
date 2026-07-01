@@ -22,7 +22,7 @@ func start() {
 
     mat.Metallic = 0.72;
     mat.Roughness = 0.31;
-    mat.AO = 0.83;
+    mat.AmbientOcclusion = 0.83;
     mat.EmissiveIntensity = 1.45;
     mat.NormalScale = 0.62;
     mat.Reflectivity = 0.27;
@@ -35,8 +35,8 @@ func start() {
         Say("FAIL: set_Roughness should update Roughness");
         return;
     }
-    if (mat.AO < 0.82 || mat.AO > 0.84) {
-        Say("FAIL: set_AO should update AO");
+    if (mat.AmbientOcclusion < 0.82 || mat.AmbientOcclusion > 0.84) {
+        Say("FAIL: set_AmbientOcclusion should update AO");
         return;
     }
     if (mat.EmissiveIntensity < 1.44 ||

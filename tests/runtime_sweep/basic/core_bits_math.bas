@@ -17,7 +17,7 @@
 ' COVER: Viper.Math.Bits.TrailZ
 ' COVER: Viper.Math.Bits.Ushr
 ' COVER: Viper.Math.Bits.Xor
-' COVER: Viper.Math.E
+' COVER: Viper.Math.Euler
 ' COVER: Viper.Math.Pi
 ' COVER: Viper.Math.Tau
 ' COVER: Viper.Math.Abs
@@ -93,7 +93,7 @@ Viper.Core.Diagnostics.AssertEq(Viper.Math.Bits.Flip(Viper.Math.Bits.Flip(12345)
 DIM eps AS DOUBLE
 eps = 0.000001
 AssertApprox(Viper.Math.Pi, 3.14159265, 0.0001, "math.pi")
-AssertApprox(Viper.Math.E, 2.7182818, 0.0001, "math.e")
+AssertApprox(Viper.Math.Euler, 2.7182818, 0.0001, "math.e")
 AssertApprox(Viper.Math.Tau, 6.2831853, 0.0001, "math.tau")
 AssertApprox(Viper.Math.Abs(-1.5), 1.5, eps, "math.abs")
 Viper.Core.Diagnostics.AssertEq(Viper.Math.AbsInt(-7), 7, "math.absint")
@@ -107,12 +107,12 @@ Viper.Core.Diagnostics.AssertEq(Viper.Math.ClampInt(5, 1, 3), 3, "math.clampint"
 AssertApprox(Viper.Math.Cos(0), 1, eps, "math.cos")
 AssertApprox(Viper.Math.Cosh(0), 1, eps, "math.cosh")
 AssertApprox(Viper.Math.Deg(Viper.Math.Pi), 180, 0.01, "math.deg")
-AssertApprox(Viper.Math.Exp(1), Viper.Math.E, 0.0001, "math.exp")
+AssertApprox(Viper.Math.Exp(1), Viper.Math.Euler, 0.0001, "math.exp")
 AssertApprox(Viper.Math.FMod(5.5, 2), 1.5, eps, "math.fmod")
 AssertApprox(Viper.Math.Floor(1.9), 1, eps, "math.floor")
 AssertApprox(Viper.Math.Hypot(3, 4), 5, eps, "math.hypot")
 AssertApprox(Viper.Math.Lerp(0, 10, 0.5), 5, eps, "math.lerp")
-AssertApprox(Viper.Math.Log(Viper.Math.E), 1, 0.0001, "math.log")
+AssertApprox(Viper.Math.Log(Viper.Math.Euler), 1, 0.0001, "math.log")
 AssertApprox(Viper.Math.Log10(100), 2, eps, "math.log10")
 AssertApprox(Viper.Math.Log2(8), 3, eps, "math.log2")
 AssertApprox(Viper.Math.Max(1, 2), 2, eps, "math.max")

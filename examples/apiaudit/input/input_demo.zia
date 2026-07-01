@@ -27,7 +27,7 @@ func start() {
     Say("");
     Say("--- Manager ---");
     Say("New(), AddAction(action), GetAction(name), RemoveAction(name), Update()");
-    Say("Clear(), get_ActionCount, get_ScrollXF, get_ScrollYF");
+    Say("Clear(), get_ActionCount, get_ScrollHorizontalFloat, get_ScrollVerticalFloat");
     Say("");
     Say("--- KeyChord ---");
     Say("New(key1,key2), NewTriple(key1,key2,key3), IsActive(), WasActivated()");

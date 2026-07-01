@@ -2,8 +2,8 @@
 // API Audit: Viper.IO.Watcher
 // =============================================================================
 // Tests: New, Path, IsWatching, Start, Stop, Poll, PollFor,
-//        EventPath, EventType, EVENT_NONE, EVENT_CREATED, EVENT_MODIFIED,
-//        EVENT_DELETED, EVENT_RENAMED
+//        EventPath, EventType, EventNone, EventCreated, EventModified,
+//        EventDeleted, EventRenamed
 // =============================================================================
 
 module WatcherDemo;
@@ -32,16 +32,16 @@ func start() {
 
     // --- Event constants ---
     Say("--- Event constants ---");
-    Say("EVENT_NONE:");
-    SayInt(w.get_EVENT_NONE());
-    Say("EVENT_CREATED:");
-    SayInt(w.get_EVENT_CREATED());
-    Say("EVENT_MODIFIED:");
-    SayInt(w.get_EVENT_MODIFIED());
-    Say("EVENT_DELETED:");
-    SayInt(w.get_EVENT_DELETED());
-    Say("EVENT_RENAMED:");
-    SayInt(w.get_EVENT_RENAMED());
+    Say("EventNone:");
+    SayInt(w.get_EventNone());
+    Say("EventCreated:");
+    SayInt(w.get_EventCreated());
+    Say("EventModified:");
+    SayInt(w.get_EventModified());
+    Say("EventDeleted:");
+    SayInt(w.get_EventDeleted());
+    Say("EventRenamed:");
+    SayInt(w.get_EventRenamed());
 
     // --- Start ---
     Say("--- Start ---");

@@ -1,108 +1,105 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Input.Keyboard.KEY_UNKNOWN
-' COVER: Viper.Input.Keyboard.KEY_A
-' COVER: Viper.Input.Keyboard.KEY_B
-' COVER: Viper.Input.Keyboard.KEY_C
-' COVER: Viper.Input.Keyboard.KEY_D
-' COVER: Viper.Input.Keyboard.KEY_E
-' COVER: Viper.Input.Keyboard.KEY_F
-' COVER: Viper.Input.Keyboard.KEY_G
-' COVER: Viper.Input.Keyboard.KEY_H
-' COVER: Viper.Input.Keyboard.KEY_I
-' COVER: Viper.Input.Keyboard.KEY_J
-' COVER: Viper.Input.Keyboard.KEY_K
-' COVER: Viper.Input.Keyboard.KEY_L
-' COVER: Viper.Input.Keyboard.KEY_M
-' COVER: Viper.Input.Keyboard.KEY_N
-' COVER: Viper.Input.Keyboard.KEY_O
-' COVER: Viper.Input.Keyboard.KEY_P
-' COVER: Viper.Input.Keyboard.KEY_Q
-' COVER: Viper.Input.Keyboard.KEY_R
-' COVER: Viper.Input.Keyboard.KEY_S
-' COVER: Viper.Input.Keyboard.KEY_T
-' COVER: Viper.Input.Keyboard.KEY_U
-' COVER: Viper.Input.Keyboard.KEY_V
-' COVER: Viper.Input.Keyboard.KEY_W
-' COVER: Viper.Input.Keyboard.KEY_X
-' COVER: Viper.Input.Keyboard.KEY_Y
-' COVER: Viper.Input.Keyboard.KEY_Z
-' COVER: Viper.Input.Keyboard.KEY_0
-' COVER: Viper.Input.Keyboard.KEY_1
-' COVER: Viper.Input.Keyboard.KEY_2
-' COVER: Viper.Input.Keyboard.KEY_3
-' COVER: Viper.Input.Keyboard.KEY_4
-' COVER: Viper.Input.Keyboard.KEY_5
-' COVER: Viper.Input.Keyboard.KEY_6
-' COVER: Viper.Input.Keyboard.KEY_7
-' COVER: Viper.Input.Keyboard.KEY_8
-' COVER: Viper.Input.Keyboard.KEY_9
-' COVER: Viper.Input.Keyboard.KEY_F1
-' COVER: Viper.Input.Keyboard.KEY_F2
-' COVER: Viper.Input.Keyboard.KEY_F3
-' COVER: Viper.Input.Keyboard.KEY_F4
-' COVER: Viper.Input.Keyboard.KEY_F5
-' COVER: Viper.Input.Keyboard.KEY_F6
-' COVER: Viper.Input.Keyboard.KEY_F7
-' COVER: Viper.Input.Keyboard.KEY_F8
-' COVER: Viper.Input.Keyboard.KEY_F9
-' COVER: Viper.Input.Keyboard.KEY_F10
-' COVER: Viper.Input.Keyboard.KEY_F11
-' COVER: Viper.Input.Keyboard.KEY_F12
-' COVER: Viper.Input.Keyboard.KEY_UP
-' COVER: Viper.Input.Keyboard.KEY_DOWN
-' COVER: Viper.Input.Keyboard.KEY_LEFT
-' COVER: Viper.Input.Keyboard.KEY_RIGHT
-' COVER: Viper.Input.Keyboard.KEY_HOME
-' COVER: Viper.Input.Keyboard.KEY_END
-' COVER: Viper.Input.Keyboard.KEY_PAGEUP
-' COVER: Viper.Input.Keyboard.KEY_PAGEDOWN
-' COVER: Viper.Input.Keyboard.KEY_INSERT
-' COVER: Viper.Input.Keyboard.KEY_DELETE
+' COVER: Viper.Input.Keyboard.KeyUnknown
+' COVER: Viper.Input.Keyboard.KeyA
+' COVER: Viper.Input.Keyboard.KeyB
+' COVER: Viper.Input.Keyboard.KeyC
+' COVER: Viper.Input.Keyboard.KeyD
+' COVER: Viper.Input.Keyboard.KeyE
+' COVER: Viper.Input.Keyboard.KeyF
+' COVER: Viper.Input.Keyboard.KeyG
+' COVER: Viper.Input.Keyboard.KeyH
+' COVER: Viper.Input.Keyboard.KeyI
+' COVER: Viper.Input.Keyboard.KeyJ
+' COVER: Viper.Input.Keyboard.KeyK
+' COVER: Viper.Input.Keyboard.KeyL
+' COVER: Viper.Input.Keyboard.KeyM
+' COVER: Viper.Input.Keyboard.KeyN
+' COVER: Viper.Input.Keyboard.KeyO
+' COVER: Viper.Input.Keyboard.KeyP
+' COVER: Viper.Input.Keyboard.KeyQ
+' COVER: Viper.Input.Keyboard.KeyR
+' COVER: Viper.Input.Keyboard.KeyS
+' COVER: Viper.Input.Keyboard.KeyT
+' COVER: Viper.Input.Keyboard.KeyU
+' COVER: Viper.Input.Keyboard.KeyV
+' COVER: Viper.Input.Keyboard.KeyW
+' COVER: Viper.Input.Keyboard.KeyX
+' COVER: Viper.Input.Keyboard.KeyY
+' COVER: Viper.Input.Keyboard.KeyZ
+' COVER: Viper.Input.Keyboard.Key0
+' COVER: Viper.Input.Keyboard.Key1
+' COVER: Viper.Input.Keyboard.Key2
+' COVER: Viper.Input.Keyboard.Key3
+' COVER: Viper.Input.Keyboard.Key4
+' COVER: Viper.Input.Keyboard.Key5
+' COVER: Viper.Input.Keyboard.Key6
+' COVER: Viper.Input.Keyboard.Key7
+' COVER: Viper.Input.Keyboard.Key8
+' COVER: Viper.Input.Keyboard.Key9
+' COVER: Viper.Input.Keyboard.KeyF1
+' COVER: Viper.Input.Keyboard.KeyF2
+' COVER: Viper.Input.Keyboard.KeyF3
+' COVER: Viper.Input.Keyboard.KeyF4
+' COVER: Viper.Input.Keyboard.KeyF5
+' COVER: Viper.Input.Keyboard.KeyF6
+' COVER: Viper.Input.Keyboard.KeyF7
+' COVER: Viper.Input.Keyboard.KeyF8
+' COVER: Viper.Input.Keyboard.KeyF9
+' COVER: Viper.Input.Keyboard.KeyF10
+' COVER: Viper.Input.Keyboard.KeyF11
+' COVER: Viper.Input.Keyboard.KeyF12
+' COVER: Viper.Input.Keyboard.KeyUp
+' COVER: Viper.Input.Keyboard.KeyDown
+' COVER: Viper.Input.Keyboard.KeyLeft
+' COVER: Viper.Input.Keyboard.KeyRight
+' COVER: Viper.Input.Keyboard.KeyHome
+' COVER: Viper.Input.Keyboard.KeyEnd
+' COVER: Viper.Input.Keyboard.KeyPageUp
+' COVER: Viper.Input.Keyboard.KeyPageDown
+' COVER: Viper.Input.Keyboard.KeyInsert
+' COVER: Viper.Input.Keyboard.KeyDelete
 
 FUNCTION IsBool(v AS INTEGER) AS BOOLEAN
     IsBool = (v = 0) OR (v = 1) OR (v = -1)
 END FUNCTION
-' COVER: Viper.Input.Keyboard.KEY_BACKSPACE
-' COVER: Viper.Input.Keyboard.KEY_TAB
-' COVER: Viper.Input.Keyboard.KEY_ENTER
-' COVER: Viper.Input.Keyboard.KEY_SPACE
-' COVER: Viper.Input.Keyboard.KEY_ESCAPE
-' COVER: Viper.Input.Keyboard.KEY_SHIFT
-' COVER: Viper.Input.Keyboard.KEY_CTRL
-' COVER: Viper.Input.Keyboard.KEY_ALT
-' COVER: Viper.Input.Keyboard.KEY_LSHIFT
-' COVER: Viper.Input.Keyboard.KEY_RSHIFT
-' COVER: Viper.Input.Keyboard.KEY_LCTRL
-' COVER: Viper.Input.Keyboard.KEY_RCTRL
-' COVER: Viper.Input.Keyboard.KEY_LALT
-' COVER: Viper.Input.Keyboard.KEY_RALT
-' COVER: Viper.Input.Keyboard.KEY_MINUS
-' COVER: Viper.Input.Keyboard.KEY_EQUALS
-' COVER: Viper.Input.Keyboard.KEY_LBRACKET
-' COVER: Viper.Input.Keyboard.KEY_RBRACKET
-' COVER: Viper.Input.Keyboard.KEY_BACKSLASH
-' COVER: Viper.Input.Keyboard.KEY_SEMICOLON
-' COVER: Viper.Input.Keyboard.KEY_QUOTE
-' COVER: Viper.Input.Keyboard.KEY_GRAVE
-' COVER: Viper.Input.Keyboard.KEY_COMMA
-' COVER: Viper.Input.Keyboard.KEY_PERIOD
-' COVER: Viper.Input.Keyboard.KEY_SLASH
-' COVER: Viper.Input.Keyboard.KEY_NUM0
-' COVER: Viper.Input.Keyboard.KEY_NUM1
-' COVER: Viper.Input.Keyboard.KEY_NUM2
-' COVER: Viper.Input.Keyboard.KEY_NUM3
-' COVER: Viper.Input.Keyboard.KEY_NUM4
-' COVER: Viper.Input.Keyboard.KEY_NUM5
-' COVER: Viper.Input.Keyboard.KEY_NUM6
-' COVER: Viper.Input.Keyboard.KEY_NUM7
-' COVER: Viper.Input.Keyboard.KEY_NUM8
-' COVER: Viper.Input.Keyboard.KEY_NUM9
-' COVER: Viper.Input.Keyboard.KEY_NUMADD
-' COVER: Viper.Input.Keyboard.KEY_NUMSUB
-' COVER: Viper.Input.Keyboard.KEY_NUMMUL
-' COVER: Viper.Input.Keyboard.KEY_NUMDIV
-' COVER: Viper.Input.Keyboard.KEY_NUMENTER
-' COVER: Viper.Input.Keyboard.KEY_NUMDOT
+' COVER: Viper.Input.Keyboard.KeyBackspace
+' COVER: Viper.Input.Keyboard.KeyTab
+' COVER: Viper.Input.Keyboard.KeyEnter
+' COVER: Viper.Input.Keyboard.KeySpace
+' COVER: Viper.Input.Keyboard.KeyEscape
+' COVER: Viper.Input.Keyboard.KeyLeftShift
+' COVER: Viper.Input.Keyboard.KeyRightShift
+' COVER: Viper.Input.Keyboard.KeyLeftControl
+' COVER: Viper.Input.Keyboard.KeyRightControl
+' COVER: Viper.Input.Keyboard.KeyLeftAlt
+' COVER: Viper.Input.Keyboard.KeyRightAlt
+' COVER: Viper.Input.Keyboard.KeyMinus
+' COVER: Viper.Input.Keyboard.KeyEquals
+' COVER: Viper.Input.Keyboard.KeyLeftBracket
+' COVER: Viper.Input.Keyboard.KeyRightBracket
+' COVER: Viper.Input.Keyboard.KeyBackslash
+' COVER: Viper.Input.Keyboard.KeySemicolon
+' COVER: Viper.Input.Keyboard.KeyQuote
+' COVER: Viper.Input.Keyboard.KeyGrave
+' COVER: Viper.Input.Keyboard.KeyComma
+' COVER: Viper.Input.Keyboard.KeyPeriod
+' COVER: Viper.Input.Keyboard.KeySlash
+' COVER: Viper.Input.Keyboard.KeyNum0
+' COVER: Viper.Input.Keyboard.KeyNum1
+' COVER: Viper.Input.Keyboard.KeyNum2
+' COVER: Viper.Input.Keyboard.KeyNum3
+' COVER: Viper.Input.Keyboard.KeyNum4
+' COVER: Viper.Input.Keyboard.KeyNum5
+' COVER: Viper.Input.Keyboard.KeyNum6
+' COVER: Viper.Input.Keyboard.KeyNum7
+' COVER: Viper.Input.Keyboard.KeyNum8
+' COVER: Viper.Input.Keyboard.KeyNum9
+' COVER: Viper.Input.Keyboard.KeyNumAdd
+' COVER: Viper.Input.Keyboard.KeyNumSub
+' COVER: Viper.Input.Keyboard.KeyNumMul
+' COVER: Viper.Input.Keyboard.KeyNumDiv
+' COVER: Viper.Input.Keyboard.KeyNumEnter
+' COVER: Viper.Input.Keyboard.KeyNumDot
 ' COVER: Viper.Input.Keyboard.IsDown
 ' COVER: Viper.Input.Keyboard.IsUp
 ' COVER: Viper.Input.Keyboard.AnyDown
@@ -119,11 +116,11 @@ END FUNCTION
 ' COVER: Viper.Input.Keyboard.Alt
 ' COVER: Viper.Input.Keyboard.CapsLock
 ' COVER: Viper.Input.Keyboard.KeyName
-' COVER: Viper.Input.Mouse.BUTTON_LEFT
-' COVER: Viper.Input.Mouse.BUTTON_RIGHT
-' COVER: Viper.Input.Mouse.BUTTON_MIDDLE
-' COVER: Viper.Input.Mouse.BUTTON_X1
-' COVER: Viper.Input.Mouse.BUTTON_X2
+' COVER: Viper.Input.Mouse.ButtonLeft
+' COVER: Viper.Input.Mouse.ButtonRight
+' COVER: Viper.Input.Mouse.ButtonMiddle
+' COVER: Viper.Input.Mouse.ButtonX1
+' COVER: Viper.Input.Mouse.ButtonX2
 ' COVER: Viper.Input.Mouse.X
 ' COVER: Viper.Input.Mouse.Y
 ' COVER: Viper.Input.Mouse.DeltaX
@@ -146,21 +143,21 @@ END FUNCTION
 ' COVER: Viper.Input.Mouse.Release
 ' COVER: Viper.Input.Mouse.IsCaptured
 ' COVER: Viper.Input.Mouse.SetPos
-' COVER: Viper.Input.Pad.PAD_A
-' COVER: Viper.Input.Pad.PAD_B
-' COVER: Viper.Input.Pad.PAD_X
-' COVER: Viper.Input.Pad.PAD_Y
-' COVER: Viper.Input.Pad.PAD_LB
-' COVER: Viper.Input.Pad.PAD_RB
-' COVER: Viper.Input.Pad.PAD_BACK
-' COVER: Viper.Input.Pad.PAD_START
-' COVER: Viper.Input.Pad.PAD_LSTICK
-' COVER: Viper.Input.Pad.PAD_RSTICK
-' COVER: Viper.Input.Pad.PAD_UP
-' COVER: Viper.Input.Pad.PAD_DOWN
-' COVER: Viper.Input.Pad.PAD_LEFT
-' COVER: Viper.Input.Pad.PAD_RIGHT
-' COVER: Viper.Input.Pad.PAD_GUIDE
+' COVER: Viper.Input.Pad.ButtonA
+' COVER: Viper.Input.Pad.ButtonB
+' COVER: Viper.Input.Pad.ButtonX
+' COVER: Viper.Input.Pad.ButtonY
+' COVER: Viper.Input.Pad.ButtonLeftBumper
+' COVER: Viper.Input.Pad.ButtonRightBumper
+' COVER: Viper.Input.Pad.ButtonBack
+' COVER: Viper.Input.Pad.ButtonStart
+' COVER: Viper.Input.Pad.ButtonLeftStick
+' COVER: Viper.Input.Pad.ButtonRightStick
+' COVER: Viper.Input.Pad.ButtonUp
+' COVER: Viper.Input.Pad.ButtonDown
+' COVER: Viper.Input.Pad.ButtonLeft
+' COVER: Viper.Input.Pad.ButtonRight
+' COVER: Viper.Input.Pad.ButtonGuide
 ' COVER: Viper.Input.Pad.Count
 ' COVER: Viper.Input.Pad.IsConnected
 ' COVER: Viper.Input.Pad.Name
@@ -191,118 +188,115 @@ canvas.Poll()
 
 DIM keySum AS INTEGER
 keySum = 0
-keySum = keySum + Viper.Input.Keyboard.KEY_UNKNOWN
-keySum = keySum + Viper.Input.Keyboard.KEY_A
-keySum = keySum + Viper.Input.Keyboard.KEY_B
-keySum = keySum + Viper.Input.Keyboard.KEY_C
-keySum = keySum + Viper.Input.Keyboard.KEY_D
-keySum = keySum + Viper.Input.Keyboard.KEY_E
-keySum = keySum + Viper.Input.Keyboard.KEY_F
-keySum = keySum + Viper.Input.Keyboard.KEY_G
-keySum = keySum + Viper.Input.Keyboard.KEY_H
-keySum = keySum + Viper.Input.Keyboard.KEY_I
-keySum = keySum + Viper.Input.Keyboard.KEY_J
-keySum = keySum + Viper.Input.Keyboard.KEY_K
-keySum = keySum + Viper.Input.Keyboard.KEY_L
-keySum = keySum + Viper.Input.Keyboard.KEY_M
-keySum = keySum + Viper.Input.Keyboard.KEY_N
-keySum = keySum + Viper.Input.Keyboard.KEY_O
-keySum = keySum + Viper.Input.Keyboard.KEY_P
-keySum = keySum + Viper.Input.Keyboard.KEY_Q
-keySum = keySum + Viper.Input.Keyboard.KEY_R
-keySum = keySum + Viper.Input.Keyboard.KEY_S
-keySum = keySum + Viper.Input.Keyboard.KEY_T
-keySum = keySum + Viper.Input.Keyboard.KEY_U
-keySum = keySum + Viper.Input.Keyboard.KEY_V
-keySum = keySum + Viper.Input.Keyboard.KEY_W
-keySum = keySum + Viper.Input.Keyboard.KEY_X
-keySum = keySum + Viper.Input.Keyboard.KEY_Y
-keySum = keySum + Viper.Input.Keyboard.KEY_Z
-keySum = keySum + Viper.Input.Keyboard.KEY_0
-keySum = keySum + Viper.Input.Keyboard.KEY_1
-keySum = keySum + Viper.Input.Keyboard.KEY_2
-keySum = keySum + Viper.Input.Keyboard.KEY_3
-keySum = keySum + Viper.Input.Keyboard.KEY_4
-keySum = keySum + Viper.Input.Keyboard.KEY_5
-keySum = keySum + Viper.Input.Keyboard.KEY_6
-keySum = keySum + Viper.Input.Keyboard.KEY_7
-keySum = keySum + Viper.Input.Keyboard.KEY_8
-keySum = keySum + Viper.Input.Keyboard.KEY_9
-keySum = keySum + Viper.Input.Keyboard.KEY_F1
-keySum = keySum + Viper.Input.Keyboard.KEY_F2
-keySum = keySum + Viper.Input.Keyboard.KEY_F3
-keySum = keySum + Viper.Input.Keyboard.KEY_F4
-keySum = keySum + Viper.Input.Keyboard.KEY_F5
-keySum = keySum + Viper.Input.Keyboard.KEY_F6
-keySum = keySum + Viper.Input.Keyboard.KEY_F7
-keySum = keySum + Viper.Input.Keyboard.KEY_F8
-keySum = keySum + Viper.Input.Keyboard.KEY_F9
-keySum = keySum + Viper.Input.Keyboard.KEY_F10
-keySum = keySum + Viper.Input.Keyboard.KEY_F11
-keySum = keySum + Viper.Input.Keyboard.KEY_F12
-keySum = keySum + Viper.Input.Keyboard.KEY_UP
-keySum = keySum + Viper.Input.Keyboard.KEY_DOWN
-keySum = keySum + Viper.Input.Keyboard.KEY_LEFT
-keySum = keySum + Viper.Input.Keyboard.KEY_RIGHT
-keySum = keySum + Viper.Input.Keyboard.KEY_HOME
-keySum = keySum + Viper.Input.Keyboard.KEY_END
-keySum = keySum + Viper.Input.Keyboard.KEY_PAGEUP
-keySum = keySum + Viper.Input.Keyboard.KEY_PAGEDOWN
-keySum = keySum + Viper.Input.Keyboard.KEY_INSERT
-keySum = keySum + Viper.Input.Keyboard.KEY_DELETE
-keySum = keySum + Viper.Input.Keyboard.KEY_BACKSPACE
-keySum = keySum + Viper.Input.Keyboard.KEY_TAB
-keySum = keySum + Viper.Input.Keyboard.KEY_ENTER
-keySum = keySum + Viper.Input.Keyboard.KEY_SPACE
-keySum = keySum + Viper.Input.Keyboard.KEY_ESCAPE
-keySum = keySum + Viper.Input.Keyboard.KEY_SHIFT
-keySum = keySum + Viper.Input.Keyboard.KEY_CTRL
-keySum = keySum + Viper.Input.Keyboard.KEY_ALT
-keySum = keySum + Viper.Input.Keyboard.KEY_LSHIFT
-keySum = keySum + Viper.Input.Keyboard.KEY_RSHIFT
-keySum = keySum + Viper.Input.Keyboard.KEY_LCTRL
-keySum = keySum + Viper.Input.Keyboard.KEY_RCTRL
-keySum = keySum + Viper.Input.Keyboard.KEY_LALT
-keySum = keySum + Viper.Input.Keyboard.KEY_RALT
-keySum = keySum + Viper.Input.Keyboard.KEY_MINUS
-keySum = keySum + Viper.Input.Keyboard.KEY_EQUALS
-keySum = keySum + Viper.Input.Keyboard.KEY_LBRACKET
-keySum = keySum + Viper.Input.Keyboard.KEY_RBRACKET
-keySum = keySum + Viper.Input.Keyboard.KEY_BACKSLASH
-keySum = keySum + Viper.Input.Keyboard.KEY_SEMICOLON
-keySum = keySum + Viper.Input.Keyboard.KEY_QUOTE
-keySum = keySum + Viper.Input.Keyboard.KEY_GRAVE
-keySum = keySum + Viper.Input.Keyboard.KEY_COMMA
-keySum = keySum + Viper.Input.Keyboard.KEY_PERIOD
-keySum = keySum + Viper.Input.Keyboard.KEY_SLASH
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM0
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM1
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM2
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM3
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM4
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM5
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM6
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM7
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM8
-keySum = keySum + Viper.Input.Keyboard.KEY_NUM9
-keySum = keySum + Viper.Input.Keyboard.KEY_NUMADD
-keySum = keySum + Viper.Input.Keyboard.KEY_NUMSUB
-keySum = keySum + Viper.Input.Keyboard.KEY_NUMMUL
-keySum = keySum + Viper.Input.Keyboard.KEY_NUMDIV
-keySum = keySum + Viper.Input.Keyboard.KEY_NUMENTER
-keySum = keySum + Viper.Input.Keyboard.KEY_NUMDOT
+keySum = keySum + Viper.Input.Keyboard.KeyUnknown
+keySum = keySum + Viper.Input.Keyboard.KeyA
+keySum = keySum + Viper.Input.Keyboard.KeyB
+keySum = keySum + Viper.Input.Keyboard.KeyC
+keySum = keySum + Viper.Input.Keyboard.KeyD
+keySum = keySum + Viper.Input.Keyboard.KeyE
+keySum = keySum + Viper.Input.Keyboard.KeyF
+keySum = keySum + Viper.Input.Keyboard.KeyG
+keySum = keySum + Viper.Input.Keyboard.KeyH
+keySum = keySum + Viper.Input.Keyboard.KeyI
+keySum = keySum + Viper.Input.Keyboard.KeyJ
+keySum = keySum + Viper.Input.Keyboard.KeyK
+keySum = keySum + Viper.Input.Keyboard.KeyL
+keySum = keySum + Viper.Input.Keyboard.KeyM
+keySum = keySum + Viper.Input.Keyboard.KeyN
+keySum = keySum + Viper.Input.Keyboard.KeyO
+keySum = keySum + Viper.Input.Keyboard.KeyP
+keySum = keySum + Viper.Input.Keyboard.KeyQ
+keySum = keySum + Viper.Input.Keyboard.KeyR
+keySum = keySum + Viper.Input.Keyboard.KeyS
+keySum = keySum + Viper.Input.Keyboard.KeyT
+keySum = keySum + Viper.Input.Keyboard.KeyU
+keySum = keySum + Viper.Input.Keyboard.KeyV
+keySum = keySum + Viper.Input.Keyboard.KeyW
+keySum = keySum + Viper.Input.Keyboard.KeyX
+keySum = keySum + Viper.Input.Keyboard.KeyY
+keySum = keySum + Viper.Input.Keyboard.KeyZ
+keySum = keySum + Viper.Input.Keyboard.Key0
+keySum = keySum + Viper.Input.Keyboard.Key1
+keySum = keySum + Viper.Input.Keyboard.Key2
+keySum = keySum + Viper.Input.Keyboard.Key3
+keySum = keySum + Viper.Input.Keyboard.Key4
+keySum = keySum + Viper.Input.Keyboard.Key5
+keySum = keySum + Viper.Input.Keyboard.Key6
+keySum = keySum + Viper.Input.Keyboard.Key7
+keySum = keySum + Viper.Input.Keyboard.Key8
+keySum = keySum + Viper.Input.Keyboard.Key9
+keySum = keySum + Viper.Input.Keyboard.KeyF1
+keySum = keySum + Viper.Input.Keyboard.KeyF2
+keySum = keySum + Viper.Input.Keyboard.KeyF3
+keySum = keySum + Viper.Input.Keyboard.KeyF4
+keySum = keySum + Viper.Input.Keyboard.KeyF5
+keySum = keySum + Viper.Input.Keyboard.KeyF6
+keySum = keySum + Viper.Input.Keyboard.KeyF7
+keySum = keySum + Viper.Input.Keyboard.KeyF8
+keySum = keySum + Viper.Input.Keyboard.KeyF9
+keySum = keySum + Viper.Input.Keyboard.KeyF10
+keySum = keySum + Viper.Input.Keyboard.KeyF11
+keySum = keySum + Viper.Input.Keyboard.KeyF12
+keySum = keySum + Viper.Input.Keyboard.KeyUp
+keySum = keySum + Viper.Input.Keyboard.KeyDown
+keySum = keySum + Viper.Input.Keyboard.KeyLeft
+keySum = keySum + Viper.Input.Keyboard.KeyRight
+keySum = keySum + Viper.Input.Keyboard.KeyHome
+keySum = keySum + Viper.Input.Keyboard.KeyEnd
+keySum = keySum + Viper.Input.Keyboard.KeyPageUp
+keySum = keySum + Viper.Input.Keyboard.KeyPageDown
+keySum = keySum + Viper.Input.Keyboard.KeyInsert
+keySum = keySum + Viper.Input.Keyboard.KeyDelete
+keySum = keySum + Viper.Input.Keyboard.KeyBackspace
+keySum = keySum + Viper.Input.Keyboard.KeyTab
+keySum = keySum + Viper.Input.Keyboard.KeyEnter
+keySum = keySum + Viper.Input.Keyboard.KeySpace
+keySum = keySum + Viper.Input.Keyboard.KeyEscape
+keySum = keySum + Viper.Input.Keyboard.KeyLeftShift
+keySum = keySum + Viper.Input.Keyboard.KeyRightShift
+keySum = keySum + Viper.Input.Keyboard.KeyLeftControl
+keySum = keySum + Viper.Input.Keyboard.KeyRightControl
+keySum = keySum + Viper.Input.Keyboard.KeyLeftAlt
+keySum = keySum + Viper.Input.Keyboard.KeyRightAlt
+keySum = keySum + Viper.Input.Keyboard.KeyMinus
+keySum = keySum + Viper.Input.Keyboard.KeyEquals
+keySum = keySum + Viper.Input.Keyboard.KeyLeftBracket
+keySum = keySum + Viper.Input.Keyboard.KeyRightBracket
+keySum = keySum + Viper.Input.Keyboard.KeyBackslash
+keySum = keySum + Viper.Input.Keyboard.KeySemicolon
+keySum = keySum + Viper.Input.Keyboard.KeyQuote
+keySum = keySum + Viper.Input.Keyboard.KeyGrave
+keySum = keySum + Viper.Input.Keyboard.KeyComma
+keySum = keySum + Viper.Input.Keyboard.KeyPeriod
+keySum = keySum + Viper.Input.Keyboard.KeySlash
+keySum = keySum + Viper.Input.Keyboard.KeyNum0
+keySum = keySum + Viper.Input.Keyboard.KeyNum1
+keySum = keySum + Viper.Input.Keyboard.KeyNum2
+keySum = keySum + Viper.Input.Keyboard.KeyNum3
+keySum = keySum + Viper.Input.Keyboard.KeyNum4
+keySum = keySum + Viper.Input.Keyboard.KeyNum5
+keySum = keySum + Viper.Input.Keyboard.KeyNum6
+keySum = keySum + Viper.Input.Keyboard.KeyNum7
+keySum = keySum + Viper.Input.Keyboard.KeyNum8
+keySum = keySum + Viper.Input.Keyboard.KeyNum9
+keySum = keySum + Viper.Input.Keyboard.KeyNumAdd
+keySum = keySum + Viper.Input.Keyboard.KeyNumSub
+keySum = keySum + Viper.Input.Keyboard.KeyNumMul
+keySum = keySum + Viper.Input.Keyboard.KeyNumDiv
+keySum = keySum + Viper.Input.Keyboard.KeyNumEnter
+keySum = keySum + Viper.Input.Keyboard.KeyNumDot
 Viper.Core.Diagnostics.Assert(keySum > 0, "key.sum")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_A, 65, "key.a")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_0, 48, "key.0")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_SPACE, 32, "key.space")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_F1, 290, "key.f1")
-Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_UNKNOWN, 0, "key.unknown")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KeyA, 65, "key.a")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.Key0, 48, "key.0")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KeySpace, 32, "key.space")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KeyF1, 290, "key.f1")
+Viper.Core.Diagnostics.AssertEq(Viper.Input.Keyboard.KeyUnknown, 0, "key.unknown")
 
 DIM down AS INTEGER
-down = Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KEY_A)
+down = Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyA)
 Viper.Core.Diagnostics.Assert(IsBool(down), "key.isdown")
 DIM up AS INTEGER
-up = Viper.Input.Keyboard.IsUp(Viper.Input.Keyboard.KEY_A)
+up = Viper.Input.Keyboard.IsUp(Viper.Input.Keyboard.KeyA)
 Viper.Core.Diagnostics.Assert(IsBool(up), "key.isup")
 DIM anyDown AS INTEGER
 anyDown = Viper.Input.Keyboard.AnyDown()
@@ -311,17 +305,17 @@ DIM downKey AS INTEGER
 downKey = Viper.Input.Keyboard.GetDown()
 Viper.Core.Diagnostics.Assert(downKey >= 0, "key.getdown")
 DIM wasPressed AS INTEGER
-wasPressed = Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_A)
+wasPressed = Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyA)
 Viper.Core.Diagnostics.Assert(IsBool(wasPressed), "key.waspressed")
 DIM wasReleased AS INTEGER
-wasReleased = Viper.Input.Keyboard.WasReleased(Viper.Input.Keyboard.KEY_A)
+wasReleased = Viper.Input.Keyboard.WasReleased(Viper.Input.Keyboard.KeyA)
 Viper.Core.Diagnostics.Assert(IsBool(wasReleased), "key.wasreleased")
 DIM pressed AS Viper.Collections.Seq
 pressed = Viper.Input.Keyboard.GetPressed()
-Viper.Core.Diagnostics.Assert(pressed.Length >= 0, "key.getpressed")
+Viper.Core.Diagnostics.Assert(pressed.Count >= 0, "key.getpressed")
 DIM released AS Viper.Collections.Seq
 released = Viper.Input.Keyboard.GetReleased()
-Viper.Core.Diagnostics.Assert(released.Length >= 0, "key.getreleased")
+Viper.Core.Diagnostics.Assert(released.Count >= 0, "key.getreleased")
 Viper.Input.Keyboard.EnableTextInput()
 canvas.Poll()
 DIM text AS STRING
@@ -341,16 +335,16 @@ DIM caps AS INTEGER
 caps = Viper.Input.Keyboard.CapsLock()
 Viper.Core.Diagnostics.Assert(IsBool(caps), "key.caps")
 DIM keyName AS STRING
-keyName = Viper.Input.Keyboard.KeyName(Viper.Input.Keyboard.KEY_A)
+keyName = Viper.Input.Keyboard.KeyName(Viper.Input.Keyboard.KeyA)
 Viper.Core.Diagnostics.AssertEqStr(keyName, "A", "key.name")
 
 DIM btnSum AS INTEGER
 btnSum = 0
-btnSum = btnSum + Viper.Input.Mouse.BUTTON_LEFT
-btnSum = btnSum + Viper.Input.Mouse.BUTTON_RIGHT
-btnSum = btnSum + Viper.Input.Mouse.BUTTON_MIDDLE
-btnSum = btnSum + Viper.Input.Mouse.BUTTON_X1
-btnSum = btnSum + Viper.Input.Mouse.BUTTON_X2
+btnSum = btnSum + Viper.Input.Mouse.ButtonLeft
+btnSum = btnSum + Viper.Input.Mouse.ButtonRight
+btnSum = btnSum + Viper.Input.Mouse.ButtonMiddle
+btnSum = btnSum + Viper.Input.Mouse.ButtonX1
+btnSum = btnSum + Viper.Input.Mouse.ButtonX2
 Viper.Core.Diagnostics.Assert(btnSum > 0, "mouse.btnsum")
 Viper.Input.Mouse.Hide()
 Viper.Input.Mouse.Show()
@@ -372,10 +366,10 @@ dx = Viper.Input.Mouse.DeltaX()
 DIM dy AS INTEGER
 dy = Viper.Input.Mouse.DeltaY()
 DIM mdown AS INTEGER
-mdown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.BUTTON_LEFT)
+mdown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonLeft)
 Viper.Core.Diagnostics.Assert(IsBool(mdown), "mouse.isdown")
 DIM mup AS INTEGER
-mup = Viper.Input.Mouse.IsUp(Viper.Input.Mouse.BUTTON_LEFT)
+mup = Viper.Input.Mouse.IsUp(Viper.Input.Mouse.ButtonLeft)
 Viper.Core.Diagnostics.Assert(IsBool(mup), "mouse.isup")
 DIM leftDown AS INTEGER
 leftDown = Viper.Input.Mouse.Left()
@@ -384,13 +378,13 @@ rightDown = Viper.Input.Mouse.Right()
 DIM middleDown AS INTEGER
 middleDown = Viper.Input.Mouse.Middle()
 DIM wasPressM AS INTEGER
-wasPressM = Viper.Input.Mouse.WasPressed(Viper.Input.Mouse.BUTTON_LEFT)
+wasPressM = Viper.Input.Mouse.WasPressed(Viper.Input.Mouse.ButtonLeft)
 DIM wasRelM AS INTEGER
-wasRelM = Viper.Input.Mouse.WasReleased(Viper.Input.Mouse.BUTTON_LEFT)
+wasRelM = Viper.Input.Mouse.WasReleased(Viper.Input.Mouse.ButtonLeft)
 DIM wasClick AS INTEGER
-wasClick = Viper.Input.Mouse.WasClicked(Viper.Input.Mouse.BUTTON_LEFT)
+wasClick = Viper.Input.Mouse.WasClicked(Viper.Input.Mouse.ButtonLeft)
 DIM wasDbl AS INTEGER
-wasDbl = Viper.Input.Mouse.WasDoubleClicked(Viper.Input.Mouse.BUTTON_LEFT)
+wasDbl = Viper.Input.Mouse.WasDoubleClicked(Viper.Input.Mouse.ButtonLeft)
 DIM wheelX AS INTEGER
 wheelX = Viper.Input.Mouse.WheelX()
 DIM wheelY AS INTEGER
@@ -411,21 +405,21 @@ Viper.Core.Diagnostics.Assert(dy = dy, "mouse.dy")
 
 DIM padSum AS INTEGER
 padSum = 0
-padSum = padSum + Viper.Input.Pad.PAD_A
-padSum = padSum + Viper.Input.Pad.PAD_B
-padSum = padSum + Viper.Input.Pad.PAD_X
-padSum = padSum + Viper.Input.Pad.PAD_Y
-padSum = padSum + Viper.Input.Pad.PAD_LB
-padSum = padSum + Viper.Input.Pad.PAD_RB
-padSum = padSum + Viper.Input.Pad.PAD_BACK
-padSum = padSum + Viper.Input.Pad.PAD_START
-padSum = padSum + Viper.Input.Pad.PAD_LSTICK
-padSum = padSum + Viper.Input.Pad.PAD_RSTICK
-padSum = padSum + Viper.Input.Pad.PAD_UP
-padSum = padSum + Viper.Input.Pad.PAD_DOWN
-padSum = padSum + Viper.Input.Pad.PAD_LEFT
-padSum = padSum + Viper.Input.Pad.PAD_RIGHT
-padSum = padSum + Viper.Input.Pad.PAD_GUIDE
+padSum = padSum + Viper.Input.Pad.ButtonA
+padSum = padSum + Viper.Input.Pad.ButtonB
+padSum = padSum + Viper.Input.Pad.ButtonX
+padSum = padSum + Viper.Input.Pad.ButtonY
+padSum = padSum + Viper.Input.Pad.ButtonLeftBumper
+padSum = padSum + Viper.Input.Pad.ButtonRightBumper
+padSum = padSum + Viper.Input.Pad.ButtonBack
+padSum = padSum + Viper.Input.Pad.ButtonStart
+padSum = padSum + Viper.Input.Pad.ButtonLeftStick
+padSum = padSum + Viper.Input.Pad.ButtonRightStick
+padSum = padSum + Viper.Input.Pad.ButtonUp
+padSum = padSum + Viper.Input.Pad.ButtonDown
+padSum = padSum + Viper.Input.Pad.ButtonLeft
+padSum = padSum + Viper.Input.Pad.ButtonRight
+padSum = padSum + Viper.Input.Pad.ButtonGuide
 Viper.Core.Diagnostics.Assert(padSum > 0, "pad.sum")
 DIM padCount AS INTEGER
 padCount = Viper.Input.Pad.Count()
@@ -437,13 +431,13 @@ DIM padName AS STRING
 padName = Viper.Input.Pad.Name(0)
 Viper.Core.Diagnostics.Assert(padName.Length >= 0, "pad.name")
 DIM padDown AS INTEGER
-padDown = Viper.Input.Pad.IsDown(0, Viper.Input.Pad.PAD_A)
+padDown = Viper.Input.Pad.IsDown(0, Viper.Input.Pad.ButtonA)
 DIM padUp AS INTEGER
-padUp = Viper.Input.Pad.IsUp(0, Viper.Input.Pad.PAD_A)
+padUp = Viper.Input.Pad.IsUp(0, Viper.Input.Pad.ButtonA)
 DIM padPressed AS INTEGER
-padPressed = Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.PAD_A)
+padPressed = Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.ButtonA)
 DIM padReleased AS INTEGER
-padReleased = Viper.Input.Pad.WasReleased(0, Viper.Input.Pad.PAD_A)
+padReleased = Viper.Input.Pad.WasReleased(0, Viper.Input.Pad.ButtonA)
 Viper.Core.Diagnostics.Assert(padDown = padDown, "pad.isdown")
 Viper.Core.Diagnostics.Assert(padUp = padUp, "pad.isup")
 Viper.Core.Diagnostics.Assert(padPressed = padPressed, "pad.waspressed")

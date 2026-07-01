@@ -19,7 +19,7 @@ func start() {
     Say("Pi:");
     SayNum(Pi);
     Say("E:");
-    SayNum(E);
+    SayNum(Euler);
     Say("Tau:");
     SayNum(Tau);
 
@@ -136,7 +136,7 @@ func start() {
     Say("Log(1.0):");
     SayNum(Log(1.0));
     Say("Log(E):");
-    SayNum(Log(E));
+    SayNum(Log(Euler));
     Say("Log10(100.0):");
     SayNum(Log10(100.0));
     Say("Log10(1000.0):");

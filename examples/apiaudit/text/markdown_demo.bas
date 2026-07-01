@@ -27,9 +27,9 @@ PRINT Viper.Text.Markdown.ToText(md)
 PRINT "--- ExtractLinks ---"
 DIM links AS OBJECT
 links = Viper.Text.Markdown.ExtractLinks(md)
-PRINT "Link count: "; Viper.Collections.Seq.get_Length(links)
+PRINT "Link count: "; Viper.Collections.Seq.get_Count(links)
 DIM li AS INTEGER
-FOR li = 0 TO Viper.Collections.Seq.get_Length(links) - 1
+FOR li = 0 TO Viper.Collections.Seq.get_Count(links) - 1
     PRINT "Link: "; links.Get(li)
 NEXT li
 
@@ -37,9 +37,9 @@ NEXT li
 PRINT "--- ExtractHeadings ---"
 DIM headings AS OBJECT
 headings = Viper.Text.Markdown.ExtractHeadings(md)
-PRINT "Heading count: "; Viper.Collections.Seq.get_Length(headings)
+PRINT "Heading count: "; Viper.Collections.Seq.get_Count(headings)
 DIM hi AS INTEGER
-FOR hi = 0 TO Viper.Collections.Seq.get_Length(headings) - 1
+FOR hi = 0 TO Viper.Collections.Seq.get_Count(headings) - 1
     PRINT "Heading: "; headings.Get(hi)
 NEXT hi
 
@@ -51,7 +51,7 @@ PRINT Viper.Text.Markdown.ToText("Just **bold** text.")
 ' No links
 DIM noLinks AS OBJECT
 noLinks = Viper.Text.Markdown.ExtractLinks("No links in this text.")
-PRINT "No links count: "; Viper.Collections.Seq.get_Length(noLinks)
+PRINT "No links count: "; Viper.Collections.Seq.get_Count(noLinks)
 
 PRINT "=== Markdown Demo Complete ==="
 END

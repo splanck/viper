@@ -12,7 +12,7 @@ PRINT "=== API Audit: Viper.Math Functions ==="
 ' --- Constants ---
 PRINT "--- Constants ---"
 PRINT "Pi: "; Viper.Math.Pi
-PRINT "E: "; Viper.Math.E
+PRINT "E: "; Viper.Math.Euler
 PRINT "Tau: "; Viper.Math.Tau
 
 ' --- Abs / Sign ---

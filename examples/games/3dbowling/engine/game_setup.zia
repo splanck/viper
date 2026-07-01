@@ -67,56 +67,56 @@ class BowlingGameSetup extends BowlingGameState {
     hide func setupActions() {
         Action.Clear();
         Action.LoadPreset("menu_navigation");
-        Action.BindKey(config.ACT_MENU_UP, Keyboard.get_KEY_W());
-        Action.BindKey(config.ACT_MENU_UP, Keyboard.get_KEY_UP());
-        Action.BindKey(config.ACT_MENU_DOWN, Keyboard.get_KEY_S());
-        Action.BindKey(config.ACT_MENU_DOWN, Keyboard.get_KEY_DOWN());
-        Action.BindKey(config.ACT_CONFIRM, Keyboard.get_KEY_ENTER());
-        Action.BindKey(config.ACT_CONFIRM, Keyboard.get_KEY_SPACE());
-        Action.BindKey(config.ACT_BACK, Keyboard.get_KEY_ESCAPE());
-        Action.BindPadButton(config.ACT_MENU_UP, -1, Pad.get_PAD_UP());
-        Action.BindPadButton(config.ACT_MENU_DOWN, -1, Pad.get_PAD_DOWN());
-        Action.BindPadButton(config.ACT_CONFIRM, -1, Pad.get_PAD_A());
-        Action.BindPadButton(config.ACT_BACK, -1, Pad.get_PAD_B());
-        Action.BindPadButton(config.ACT_BACK, -1, Pad.get_PAD_START());
+        Action.BindKey(config.ACT_MENU_UP, Keyboard.get_KeyW());
+        Action.BindKey(config.ACT_MENU_UP, Keyboard.get_KeyUp());
+        Action.BindKey(config.ACT_MENU_DOWN, Keyboard.get_KeyS());
+        Action.BindKey(config.ACT_MENU_DOWN, Keyboard.get_KeyDown());
+        Action.BindKey(config.ACT_CONFIRM, Keyboard.get_KeyEnter());
+        Action.BindKey(config.ACT_CONFIRM, Keyboard.get_KeySpace());
+        Action.BindKey(config.ACT_BACK, Keyboard.get_KeyEscape());
+        Action.BindPadButton(config.ACT_MENU_UP, -1, Pad.get_ButtonUp());
+        Action.BindPadButton(config.ACT_MENU_DOWN, -1, Pad.get_ButtonDown());
+        Action.BindPadButton(config.ACT_CONFIRM, -1, Pad.get_ButtonA());
+        Action.BindPadButton(config.ACT_BACK, -1, Pad.get_ButtonB());
+        Action.BindPadButton(config.ACT_BACK, -1, Pad.get_ButtonStart());
 
         Action.DefineAxis(config.ACT_AIM_X);
-        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_A(), -1.0);
-        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_LEFT(), -1.0);
-        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_D(), 1.0);
-        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_RIGHT(), 1.0);
-        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_PAD_LEFT(), -1.0);
-        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_PAD_RIGHT(), 1.0);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KeyA(), -1.0);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KeyLeft(), -1.0);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KeyD(), 1.0);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KeyRight(), 1.0);
+        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_ButtonLeft(), -1.0);
+        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_ButtonRight(), 1.0);
 
         Action.DefineAxis(config.ACT_SPIN_X);
-        Action.BindKeyAxis(config.ACT_SPIN_X, Keyboard.get_KEY_Q(), -1.0);
-        Action.BindKeyAxis(config.ACT_SPIN_X, Keyboard.get_KEY_E(), 1.0);
-        Action.BindPadButtonAxis(config.ACT_SPIN_X, -1, Pad.get_PAD_LB(), -1.0);
-        Action.BindPadButtonAxis(config.ACT_SPIN_X, -1, Pad.get_PAD_RB(), 1.0);
+        Action.BindKeyAxis(config.ACT_SPIN_X, Keyboard.get_KeyQ(), -1.0);
+        Action.BindKeyAxis(config.ACT_SPIN_X, Keyboard.get_KeyE(), 1.0);
+        Action.BindPadButtonAxis(config.ACT_SPIN_X, -1, Pad.get_ButtonLeftBumper(), -1.0);
+        Action.BindPadButtonAxis(config.ACT_SPIN_X, -1, Pad.get_ButtonRightBumper(), 1.0);
 
         Action.Define(config.ACT_THROW);
-        Action.BindKey(config.ACT_THROW, Keyboard.get_KEY_SPACE());
-        Action.BindPadButton(config.ACT_THROW, -1, Pad.get_PAD_A());
+        Action.BindKey(config.ACT_THROW, Keyboard.get_KeySpace());
+        Action.BindPadButton(config.ACT_THROW, -1, Pad.get_ButtonA());
 
         Action.Define(config.ACT_BALL_PREV);
-        Action.BindKey(config.ACT_BALL_PREV, Keyboard.get_KEY_1());
-        Action.BindPadButton(config.ACT_BALL_PREV, -1, Pad.get_PAD_LB());
+        Action.BindKey(config.ACT_BALL_PREV, Keyboard.get_Key1());
+        Action.BindPadButton(config.ACT_BALL_PREV, -1, Pad.get_ButtonLeftBumper());
 
         Action.Define(config.ACT_BALL_NEXT);
-        Action.BindKey(config.ACT_BALL_NEXT, Keyboard.get_KEY_3());
-        Action.BindPadButton(config.ACT_BALL_NEXT, -1, Pad.get_PAD_RB());
+        Action.BindKey(config.ACT_BALL_NEXT, Keyboard.get_Key3());
+        Action.BindPadButton(config.ACT_BALL_NEXT, -1, Pad.get_ButtonRightBumper());
 
         Action.Define(config.ACT_RESET);
-        Action.BindKey(config.ACT_RESET, Keyboard.get_KEY_R());
-        Action.BindPadButton(config.ACT_RESET, -1, Pad.get_PAD_X());
+        Action.BindKey(config.ACT_RESET, Keyboard.get_KeyR());
+        Action.BindPadButton(config.ACT_RESET, -1, Pad.get_ButtonX());
 
         Action.Define(config.ACT_PAUSE);
-        Action.BindKey(config.ACT_PAUSE, Keyboard.get_KEY_P());
-        Action.BindPadButton(config.ACT_PAUSE, -1, Pad.get_PAD_START());
+        Action.BindKey(config.ACT_PAUSE, Keyboard.get_KeyP());
+        Action.BindPadButton(config.ACT_PAUSE, -1, Pad.get_ButtonStart());
 
         Action.Define(config.ACT_CAMERA);
-        Action.BindKey(config.ACT_CAMERA, Keyboard.get_KEY_C());
-        Action.BindPadButton(config.ACT_CAMERA, -1, Pad.get_PAD_Y());
+        Action.BindKey(config.ACT_CAMERA, Keyboard.get_KeyC());
+        Action.BindPadButton(config.ACT_CAMERA, -1, Pad.get_ButtonY());
     }
 
     /// @brief Initialize the audio system and load the SFX bank.

@@ -1041,13 +1041,13 @@ double rt_physics2d_body_h(void *obj) {
 
 /// @brief Linear X-velocity in world units per second.
 double rt_physics2d_body_vx(void *obj) {
-    rt_body_impl *b = checked_body(obj, "Physics2D.Body.VX: expected Physics2D.Body");
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.VelocityX: expected Physics2D.Body");
     return b ? b->vx : 0.0;
 }
 
 /// @brief Linear Y-velocity in world units per second.
 double rt_physics2d_body_vy(void *obj) {
-    rt_body_impl *b = checked_body(obj, "Physics2D.Body.VY: expected Physics2D.Body");
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.VelocityY: expected Physics2D.Body");
     return b ? b->vy : 0.0;
 }
 

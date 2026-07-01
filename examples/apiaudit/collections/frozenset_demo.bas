@@ -8,7 +8,7 @@ PRINT "=== FrozenSet API Audit ==="
 PRINT "--- Empty ---"
 DIM empty AS OBJECT
 empty = Viper.Collections.FrozenSet.Empty()
-PRINT empty.Length       ' 0
+PRINT empty.Count       ' 0
 PRINT empty.IsEmpty   ' 1
 
 ' --- FromSeq ---
@@ -21,7 +21,7 @@ items.Push("cherry")
 items.Push("apple")  ' duplicate
 DIM fs AS OBJECT
 fs = Viper.Collections.FrozenSet.FromSeq(items)
-PRINT fs.Length          ' 3
+PRINT fs.Count          ' 3
 PRINT fs.IsEmpty      ' 0
 
 ' --- Has ---
@@ -34,7 +34,7 @@ PRINT fs.Has("grape")    ' 0
 PRINT "--- Items ---"
 DIM all AS OBJECT
 all = fs.Items()
-PRINT all.Length             ' 3
+PRINT all.Count             ' 3
 
 ' --- Union ---
 PRINT "--- Union ---"
@@ -47,20 +47,20 @@ DIM fs2 AS OBJECT
 fs2 = Viper.Collections.FrozenSet.FromSeq(items2)
 DIM united AS OBJECT
 united = fs.Union(fs2)
-PRINT united.Length          ' 5
+PRINT united.Count          ' 5
 
 ' --- Intersect ---
 PRINT "--- Intersect ---"
 DIM inter AS OBJECT
 inter = fs.Intersect(fs2)
-PRINT inter.Length           ' 1
+PRINT inter.Count           ' 1
 PRINT inter.Has("cherry") ' 1
 
 ' --- Diff ---
 PRINT "--- Diff ---"
 DIM diff AS OBJECT
 diff = fs.Diff(fs2)
-PRINT diff.Length            ' 2
+PRINT diff.Count            ' 2
 PRINT diff.Has("apple")   ' 1
 PRINT diff.Has("cherry")  ' 0
 

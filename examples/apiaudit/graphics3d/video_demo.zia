@@ -35,7 +35,7 @@ func start() {
     var frameCount = 0;
     while (Canvas.get_ShouldClose(canvas) == 0) {
         Canvas.Poll(canvas);
-        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) { break; }
 
         var dt = Canvas.get_DeltaTime(canvas) / 1000.0;
         if (dt > 0.05) { dt = 0.05; }

@@ -228,7 +228,7 @@ class CompletionController {
         listbox = GUI.ListBox.New(null);
         popup.AddChild(listbox);
 
-        popup.SetVisible(0);
+        popup.SetVisible(false);
         Input.Keyboard.EnableTextInput();
     }
 
@@ -389,7 +389,7 @@ class CompletionController {
 
         if items != null {
             var itemIdx = 0;
-            while itemIdx < Seq.get_Length(items) {
+            while itemIdx < Seq.get_Count(items) {
                 var item = Seq.Get(items, itemIdx);
                 itemIdx = itemIdx + 1;
 
@@ -425,7 +425,7 @@ class CompletionController {
             visibleRevision = editor.Revision;
         }
         isVisible = true;
-        popup.SetVisible(1);
+        popup.SetVisible(true);
         editor.Focus();
     }
 
@@ -774,14 +774,14 @@ class CompletionController {
         } else if editor != null {
             visibleRevision = editor.Revision;
         }
-        popup.SetVisible(1);
+        popup.SetVisible(true);
         editor.Focus();
     }
 
     /// @brief Keep keyboard focus on the editor while completions are open.
     expose func EnsureFocus() {
         if isVisible and editor != null {
-            if editor.IsFocused() == 0 {
+            if !editor.IsFocused() {
                 editor.Focus();
             }
         }
@@ -792,7 +792,7 @@ class CompletionController {
         CancelPendingJob();
         CancelWorkspaceSymbolJob();
         isVisible = false;
-        popup.SetVisible(0);
+        popup.SetVisible(false);
         if editor != null {
             editor.Focus();
         }
@@ -803,7 +803,7 @@ class CompletionController {
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
-        if Input.Keyboard.IsDown(Input.Keyboard.get_KEY_TAB()) == false {
+        if Input.Keyboard.IsDown(Input.Keyboard.get_KeyTab()) == false {
             tabAcceptKeyDown = false;
         }
 
@@ -1084,12 +1084,12 @@ class CompletionController {
             var rows = Str.Split(raw, "\n");
             var lineOff = zia_query.LineOffset(doc.content);
             var r = 0;
-            while r < Seq.get_Length(rows) and added < limit {
+            while r < Seq.get_Count(rows) and added < limit {
                 var row = Obj.ToString(Seq.Get(rows, r));
                 r = r + 1;
                 if row == "" { continue; }
                 var parts = Str.Split(row, "\t");
-                if Seq.get_Length(parts) < 4 { continue; }
+                if Seq.get_Count(parts) < 4 { continue; }
                 var label = Obj.ToString(Seq.Get(parts, 0));
                 var lineText = Obj.ToString(Seq.Get(parts, 3));
                 if label == "" or lineText == "0" { continue; }

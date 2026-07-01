@@ -446,7 +446,7 @@ func BuildFileListFromIndex(rootPath: String, fileKinds: String) -> List {
     var result = new List();
     var indexed = FileIndex.Enumerate(rootPath, fileKinds, "", false);
     var i = 0;
-    while i < Seq.get_Length(indexed) {
+    while i < Seq.get_Count(indexed) {
         var entry = Seq.Get(indexed, i);
         var filePath = Map.GetStr(entry, "path");
         if filePath != "" {
@@ -759,13 +759,13 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
         var addedHeader = false;
         var rows = Str.Split(raw, "\n");
         var r = 0;
-        while r < Seq.get_Length(rows) {
+        while r < Seq.get_Count(rows) {
             var row = Obj.ToString(Seq.Get(rows, r));
             r = r + 1;
             if row == "" { continue; }
 
             var parts = Str.Split(row, "\t");
-            if Seq.get_Length(parts) < 4 { continue; }
+            if Seq.get_Count(parts) < 4 { continue; }
 
             var name = Obj.ToString(Seq.Get(parts, 0));
             var kind = Obj.ToString(Seq.Get(parts, 1));
@@ -882,7 +882,7 @@ func searchFiles(shell: app_shell.AppShell,
                  locStore: locations.LocationStore) -> Integer {
     var count = 0;
     var fileIdx = 0;
-    while fileIdx < Seq.get_Length(files) {
+    while fileIdx < Seq.get_Count(files) {
         var entry = Seq.Get(files, fileIdx);
         var filePath = Map.GetStr(entry, "path");
         fileIdx = fileIdx + 1;
@@ -908,7 +908,7 @@ func searchOneFile(shell: app_shell.AppShell,
     var contentLines = Str.Split(content, "\n");
     var lineNum = 0;
     var addedHeader = false;
-    while lineNum < Seq.get_Length(contentLines) {
+    while lineNum < Seq.get_Count(contentLines) {
         var line = Obj.ToString(Seq.Get(contentLines, lineNum));
         lineNum = lineNum + 1;
         var match = FindLineMatch(line, query, caseSensitive, wholeWord, regexMode);

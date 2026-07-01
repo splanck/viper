@@ -30,22 +30,22 @@ class StarterGame {
         world.Spawn(ground);
 
         var crate: Entity3D = Prefab.BoxXYZ(1.0, 0.8, 1.2, Materials.Metal(0.62, 0.66, 0.70));
-        crate.SetName("StarterCrate");
+        crate.Name = "StarterCrate";
         crate.SetPosition(-1.4, 0.42, -1.8);
         crate.AttachBody(BodyDef.StaticBox(0.50, 0.40, 0.60));
         world.Spawn(crate);
 
         var marker: Entity3D = Assets3D.LoadEntityAsset("assets/models/triangle.gltf");
         if (marker != null) {
-            marker.SetName("PackagedMarker");
+            marker.Name = "PackagedMarker";
             marker.SetPosition(1.4, 0.08, -2.1);
             marker.SetScale(1.6);
             world.Spawn(marker);
         }
 
         player = Entity3D.New();
-        player.SetName("Player");
-        player.SetLayer(Layers.get_Player());
+        player.Name = "Player";
+        player.Layer = Layers.get_Player();
         player.SetPosition(2.2, 1.0, 4.0);
         world.Spawn(player);
 

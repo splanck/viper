@@ -69,9 +69,9 @@ class SignatureController {
     expose func setup(appRoot: GUI.App) {
         panel = GUI.FloatingPanel.New(appRoot);
         panel.SetSize(680.0, 92.0);
-        panel.SetVisible(0);
+        panel.SetVisible(false);
         label = GUI.Label.New(null, "");
-        label.SetWordWrap(1);
+        label.SetWordWrap(true);
         panel.AddChild(label);
     }
 
@@ -143,7 +143,7 @@ class SignatureController {
         activeOverloadIndex = Map.GetInt(sigInfo, "activeSignature");
         label.SetText(FormatSignatureDisplayAt(sigInfo, activeOverloadIndex));
         panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
-        panel.SetVisible(1);
+        panel.SetVisible(true);
         visible = true;
         lastRevision = revision;
         lastCursorLine = line;
@@ -157,14 +157,14 @@ class SignatureController {
             Hide();
             return;
         }
-        if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+        if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
             Hide();
             return;
         }
-        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_DOWN()) {
+        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyDown()) {
             if NextOverload() { return; }
         }
-        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_UP()) {
+        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyUp()) {
             if PreviousOverload() { return; }
         }
 
@@ -218,7 +218,7 @@ class SignatureController {
     expose func Hide() {
         CancelPendingJob();
         if visible {
-            panel.SetVisible(0);
+            panel.SetVisible(false);
         }
         visible = false;
         lastRevision = -1;
@@ -267,9 +267,9 @@ func FormatSignatureDisplayAt(sigInfo: Any, overloadIndex: Integer) -> String {
     var activeIndex = overloadIndex;
     var sigRecord = sigInfo;
     var overloads = Map.Get(sigInfo, "overloads");
-    if overloads != null and Seq.get_Length(overloads) > 0 {
+    if overloads != null and Seq.get_Count(overloads) > 0 {
         if activeIndex < 0 { activeIndex = 0; }
-        if activeIndex >= Seq.get_Length(overloads) { activeIndex = Seq.get_Length(overloads) - 1; }
+        if activeIndex >= Seq.get_Count(overloads) { activeIndex = Seq.get_Count(overloads) - 1; }
         sigRecord = Seq.Get(overloads, activeIndex);
     }
 
@@ -280,7 +280,7 @@ func FormatSignatureDisplayAt(sigInfo: Any, overloadIndex: Integer) -> String {
     if documentation == "" {
         documentation = Map.GetStr(sigInfo, "documentation");
     }
-    if name == "" or params == null or Seq.get_Length(params) == 0 {
+    if name == "" or params == null or Seq.get_Count(params) == 0 {
         return AddSignatureMetadata(display + "  [" + (Map.GetInt(sigInfo, "activeParameter") + 1) + "]",
                                     documentation,
                                     Map.GetStr(sigInfo, "source"));
@@ -289,7 +289,7 @@ func FormatSignatureDisplayAt(sigInfo: Any, overloadIndex: Integer) -> String {
     var active = Map.GetInt(sigInfo, "activeParameter");
     var text = name + "(";
     var i = 0;
-    while i < Seq.get_Length(params) {
+    while i < Seq.get_Count(params) {
         if i > 0 { text = text + ", "; }
         var param = Seq.Get(params, i);
         var paramText = Map.GetStr(param, "name");
@@ -344,7 +344,7 @@ func ActiveParameter(source: String, line: Integer, col0: Integer) -> Integer {
     var param = 0;
     var lines = Str.Split(source, "\n");
     var lineIdx = line - 1;
-    if lineIdx >= Seq.get_Length(lines) { lineIdx = Seq.get_Length(lines) - 1; }
+    if lineIdx >= Seq.get_Count(lines) { lineIdx = Seq.get_Count(lines) - 1; }
     if lineIdx < 0 { return 0; }
 
     var minLine = lineIdx - SIGNATURE_MAX_BACKWARD_LINES + 1;
@@ -381,7 +381,7 @@ func IsInsideCall(source: String, line: Integer, col0: Integer) -> Boolean {
     var depth = 0;
     var lines = Str.Split(source, "\n");
     var lineIdx = line - 1;
-    if lineIdx >= Seq.get_Length(lines) { lineIdx = Seq.get_Length(lines) - 1; }
+    if lineIdx >= Seq.get_Count(lines) { lineIdx = Seq.get_Count(lines) - 1; }
     if lineIdx < 0 { return false; }
 
     var minLine = lineIdx - SIGNATURE_MAX_BACKWARD_LINES + 1;

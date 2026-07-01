@@ -37,7 +37,7 @@ class ShowcaseHud {
         Canvas3D.DrawRect2D(
             canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Mouse look | F11", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Space jump | Mouse look", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Shift sprint | Esc", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(sim.getBeaconsLit()) + " / " + toString(total), statusColor);
         Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);

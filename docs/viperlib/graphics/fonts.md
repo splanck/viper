@@ -109,8 +109,8 @@ var titleFont = BitmapFont.LoadBDF("assets/terminus-bold-32.bdf");
 var bodyFont = BitmapFont.LoadBDF("assets/cozette-13.bdf");
 
 // In the draw loop:
-canvas.TextFontCentered(50, "MY GAME", titleFont, Color.WHITE);
-canvas.TextFont(20, 100, "Score: 1234", bodyFont, Color.YELLOW);
+canvas.TextFontCentered(50, "MY GAME", titleFont, Color.White);
+canvas.TextFont(20, 100, "Score: 1234", bodyFont, Color.Yellow);
 
 // Measure text for layout
 var width = bodyFont.TextWidth("Hello World");

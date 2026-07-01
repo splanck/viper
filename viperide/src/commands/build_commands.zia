@@ -269,7 +269,7 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
     }
     var lines = Viper.String.Split(output, "\n");
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         if line != "" {
             var item = shell.outputListBox.AddItem(line);
@@ -302,7 +302,7 @@ func FormatCommand(cfg: run_config.RunConfig) -> String {
     if cfg == null { return ""; }
     var text = DisplayArg(cfg.program);
     var i = 0;
-    while i < Seq.get_Length(cfg.args) {
+    while i < Seq.get_Count(cfg.args) {
         text = text + " " + DisplayArg(Obj.ToString(Seq.Get(cfg.args, i)));
         i = i + 1;
     }

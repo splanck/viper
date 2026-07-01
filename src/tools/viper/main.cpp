@@ -294,6 +294,8 @@ int dumpRuntimeApi() {
         for (const auto &d : reg) {
             if (d.name.rfind("Viper.", 0) != 0)
                 continue; // skip rt_* aliases; canonical names carry the API
+            if (!d.publicSurface)
+                continue;
             if (!first)
                 os << ",";
             first = false;

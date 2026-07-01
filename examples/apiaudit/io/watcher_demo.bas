@@ -2,8 +2,8 @@
 ' API Audit: Viper.IO.Watcher (BASIC)
 ' =============================================================================
 ' Tests: New, Path, IsWatching, Start, Stop, Poll, PollFor,
-'        EventPath, EventType, EVENT_NONE, EVENT_CREATED, EVENT_MODIFIED,
-'        EVENT_DELETED, EVENT_RENAMED
+'        EventPath, EventType, EventNone, EventCreated, EventModified,
+'        EventDeleted, EventRenamed
 ' =============================================================================
 
 PRINT "=== API Audit: Viper.IO.Watcher ==="
@@ -25,11 +25,11 @@ PRINT w.IsWatching
 
 ' --- Event constants ---
 PRINT "--- Event constants ---"
-PRINT "EVENT_NONE: "; w.EVENT_NONE
-PRINT "EVENT_CREATED: "; w.EVENT_CREATED
-PRINT "EVENT_MODIFIED: "; w.EVENT_MODIFIED
-PRINT "EVENT_DELETED: "; w.EVENT_DELETED
-PRINT "EVENT_RENAMED: "; w.EVENT_RENAMED
+PRINT "EventNone: "; w.EventNone
+PRINT "EventCreated: "; w.EventCreated
+PRINT "EventModified: "; w.EventModified
+PRINT "EventDeleted: "; w.EventDeleted
+PRINT "EventRenamed: "; w.EventRenamed
 
 ' --- Start ---
 PRINT "--- Start ---"

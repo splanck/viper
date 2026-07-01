@@ -48,28 +48,28 @@ func start() {
     ms.Skip(1);
     SayInt(ms.Pos);
 
-    // --- Text streams via runtime constructors ---
+    // --- Text streams via explicit open factories ---
     var textPath = "/tmp/viper_rt_api_memstream_lines.txt";
-    var writer = new Viper.IO.LineWriter(textPath);
+    var writer = Viper.IO.LineWriter.Open(textPath);
     writer.Write("alpha");
     writer.WriteLn("beta");
     writer.Close();
 
-    var reader = new Viper.IO.LineReader(textPath);
+    var reader = Viper.IO.LineReader.Open(textPath);
     SayInt(reader.PeekChar());
     Say(reader.Read());
     Say(reader.Read());
     SayBool(reader.Eof);
     reader.Close();
 
-    // --- Binary file via runtime constructor ---
+    // --- Binary file via explicit open factory ---
     var binPath = "/tmp/viper_rt_api_memstream.bin";
-    var wf = new Viper.IO.BinFile(binPath, "w");
+    var wf = Viper.IO.BinFile.Open(binPath, "w");
     wf.WriteByte(65);
     wf.WriteByte(66);
     wf.Close();
 
-    var rf = new Viper.IO.BinFile(binPath, "r");
+    var rf = Viper.IO.BinFile.Open(binPath, "r");
     SayInt(rf.ReadByte());
     SayInt(rf.ReadByte());
     SayBool(rf.Eof);

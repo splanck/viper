@@ -69,14 +69,14 @@ RT_FUNC(ShutdownPoll,    rt_shutdown_poll,    "Viper.System.Shutdown.Poll",    "
 RT_FUNC(ShutdownPending, rt_shutdown_pending, "Viper.System.Shutdown.Pending", "i1()")
 RT_FUNC(ShutdownClear,   rt_shutdown_clear,   "Viper.System.Shutdown.Clear",   "void()")
 // Static class: RT_CLASS_BEGIN("Viper.System.Shutdown", Shutdown, "none", none)
-//   RT_PROP("NONE","i64",...) RT_PROP("INTERRUPT","i64",...) RT_PROP("TERMINATE","i64",...)
+//   RT_PROP("None","i64",...) RT_PROP("Interrupt","i64",...) RT_PROP("Terminate","i64",...)
 //   RT_METHOD("Request","void(i64)",ShutdownRequest) ... RT_CLASS_END
 ```
 
 Usage pattern:
 ```
 while running {
-    if Shutdown.Poll() != Shutdown.NONE { saveAndQuit(); break }
+    if Shutdown.Poll() != Shutdown.None { saveAndQuit(); break }
     tick()
 }
 ```

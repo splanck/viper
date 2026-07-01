@@ -130,7 +130,7 @@ These need to be fixed in the platform itself.
 
 ## BUG-FE-002: Zia `new` rejects non-`.New` constructors (Open, Create, Parse, FromSeq, Today)
 
-- **Status**: FIXED
+- **Status**: SUPERSEDED
 - **Severity**: Medium
 - **Component**: Zia frontend — `Sema.cpp`
 - **Symptom**: Zia programs using `new FrozenSet(...)`, `new Stream(...)`, `new DateOnly(...)`, etc. fail with "can only be used with value, class, or collection types". Any runtime class whose constructor is not named exactly `*New` is rejected.
@@ -139,6 +139,10 @@ These need to be fixed in the platform itself.
 - **Verification**: All affected classes (FrozenSet, FrozenMap, Stream, DateOnly, etc.) can be constructed in Zia.
 - **Found**: 2026-02-12
 - **Fixed**: 2026-02-12
+- **Superseded**: 2026-07-01 runtime API cleanup removed named factories from
+  constructor metadata. `new Type(...)` now maps only to canonical `Type.New`;
+  callers use explicit factories such as `FrozenSet.FromSeq`, `BinFile.Open`,
+  `Version.Parse`, and `DateOnly.Today`.
 
 ---
 

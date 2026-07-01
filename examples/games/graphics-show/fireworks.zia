@@ -159,7 +159,7 @@ class Rocket {
         var px = Convert.NumToInt(Floor(x));
         var py = Convert.NumToInt(Floor(y));
         canvas.Disc(px, py, 2, color);
-        canvas.Disc(px, py, 1, colors.WHITE);
+        canvas.Disc(px, py, 1, colors.White);
     }
 }
 
@@ -492,15 +492,15 @@ func fireworksRun(canvas: Canvas) {
         show.draw(canvas);
 
         // Draw UI
-        canvas.TextBg(10, 10, "FIREWORKS", colors.WHITE, colors.BLACK);
+        canvas.TextBg(10, 10, "FIREWORKS", colors.White, colors.Black);
 
         if show.autoLaunch {
-            canvas.TextBg(10, 28, "Auto: ON", colors.GREEN, colors.BLACK);
+            canvas.TextBg(10, 28, "Auto: ON", colors.Green, colors.Black);
         } else {
-            canvas.TextBg(10, 28, "Auto: OFF", colors.RED, colors.BLACK);
+            canvas.TextBg(10, 28, "Auto: OFF", colors.Red, colors.Black);
         }
 
-        canvas.TextBg(10, height - 45, "SPACE: Launch | A: Toggle Auto | UP/DOWN: Speed | ESC: Exit", colors.DARK_GRAY, colors.BLACK);
+        canvas.TextBg(10, height - 45, "SPACE: Launch | A: Toggle Auto | UP/DOWN: Speed | ESC: Exit", colors.DARK_GRAY, colors.Black);
 
         canvas.Flip();
         Viper.Time.Clock.Sleep(16);

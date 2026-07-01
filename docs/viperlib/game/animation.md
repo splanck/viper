@@ -480,7 +480,7 @@ func start() {
 
     // Region names list
     var names = sheet.RegionNames();
-    SayInt(Seq.get_Length(names));  // 4
+    SayInt(Seq.get_Count(names));  // 4
 
     // Remove a region
     sheet.RemoveRegion("jump");
@@ -747,13 +747,13 @@ tools.Add(TOOL_FILL)
 tools.Select(TOOL_PENCIL)  ' Default tool
 
 ' Handle keyboard shortcuts
-IF Viper.Input.Keyboard.Pressed(KEY_P) THEN tools.Select(TOOL_PENCIL)
-IF Viper.Input.Keyboard.Pressed(KEY_B) THEN tools.Select(TOOL_BRUSH)
-IF Viper.Input.Keyboard.Pressed(KEY_E) THEN tools.Select(TOOL_ERASER)
-IF Viper.Input.Keyboard.Pressed(KEY_F) THEN tools.Select(TOOL_FILL)
+IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyP) THEN tools.Select(TOOL_PENCIL)
+IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyB) THEN tools.Select(TOOL_BRUSH)
+IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyE) THEN tools.Select(TOOL_ERASER)
+IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyF) THEN tools.Select(TOOL_FILL)
 
 ' Cycle through tools with Tab
-IF Viper.Input.Keyboard.Pressed(KEY_TAB) THEN
+IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyTab) THEN
     tools.SelectNext()
 END IF
 
@@ -792,10 +792,10 @@ difficulty.Add(DIFF_HARD)
 difficulty.Select(DIFF_NORMAL)  ' Default
 
 ' In menu update
-IF Viper.Input.Keyboard.Pressed(KEY_UP) THEN
+IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyUp) THEN
     difficulty.SelectPrev()
 END IF
-IF Viper.Input.Keyboard.Pressed(KEY_DOWN) THEN
+IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyDown) THEN
     difficulty.SelectNext()
 END IF
 

@@ -85,8 +85,8 @@ class WalkMinGame {
         spawnStaticBox("ColumnCollider", 0.40, 0.70, 0.40, 0.22, 0.68, 1.42);
 
         playerEntity = Entity3D.New();
-        playerEntity.SetName("Player");
-        playerEntity.SetLayer(Layers.get_Player());
+        playerEntity.Name = "Player";
+        playerEntity.Layer = Layers.get_Player();
         playerEntity.SetPosition(3.2, 1.0, 5.4);
         world.Spawn(playerEntity);
 
@@ -182,7 +182,7 @@ class WalkMinGame {
         z: Float,
         scale: Float) -> Entity3D {
         var entity = Entity3D.Of(mesh, material);
-        entity.SetName(name);
+        entity.Name = name;
         entity.SetPosition(x, y, z);
         entity.SetScale(scale);
         world.Spawn(entity);
@@ -199,8 +199,8 @@ class WalkMinGame {
         z: Float) {
         var body = Physics3DBody.NewAABB(halfX, halfY, halfZ, 0.0);
         var entity = Entity3D.New();
-        entity.SetName(name);
-        entity.SetLayer(Layers.get_World());
+        entity.Name = name;
+        entity.Layer = Layers.get_World();
         entity.AttachBody(body);
         entity.SetPosition(x, y, z);
         world.Spawn(entity);

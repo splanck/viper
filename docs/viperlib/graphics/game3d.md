@@ -171,8 +171,8 @@ omitting zero counters and returning `""` when clean. Smoke probes can print
 
 `Viper.Graphics3D.Physics3DWorld.BroadphaseFallbackCount` reports the matching
 per-world broadphase fallback total. CCD inspection remains available through
-`LastCCDRequestedSubsteps`, `LastCCDSubsteps`, `CCDSubstepClampedCount`, plus
-`LastCCDClampedBodyCount` and `CCDSubstepClampedBodyCount` for affected-body
+`LastCcdRequestedSubsteps`, `LastCcdSubsteps`, `CcdSubstepClampedCount`, plus
+`LastCcdClampedBodyCount` and `CcdSubstepClampedBodyCount` for affected-body
 totals.
 
 `World3D.setWorkerCount(count)` controls the worker budget reserved for internal

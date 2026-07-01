@@ -79,12 +79,12 @@ func main() {
         fail(shell, "indent guides not on by default");
         return;
     }
-    engine.editor.SetShowIndentGuides(0);
+    engine.editor.SetShowIndentGuides(false);
     if engine.editor.GetShowIndentGuides() != 0 {
         fail(shell, "indent guides did not turn off");
         return;
     }
-    engine.editor.SetShowIndentGuides(1);
+    engine.editor.SetShowIndentGuides(true);
     if engine.editor.GetShowIndentGuides() != 1 {
         fail(shell, "indent guides did not turn back on");
         return;

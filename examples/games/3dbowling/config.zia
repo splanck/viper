@@ -241,6 +241,9 @@ var BALL_TARGET_X_SCALE: Float = 0.85;
 var BALL_TARGET_Z: Float = PIN_Z_OFFSET - 0.95;
 var BALL_SIDE_SPEED_SCALE: Float = 0.18;
 var BALL_SIDE_SPEED_MAX: Float = 0.28;
+// Z just short of the head pin where we sample the ball's entry angle for
+// the shot-feedback HUD readout (teaches pocket-angle cause/effect).
+var ENTRY_CAPTURE_Z: Float = PIN_Z_OFFSET - 0.6;
 var BALL_ROLL_MIN_SPEED: Float = 3.28;
 var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.86;
 var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.82;

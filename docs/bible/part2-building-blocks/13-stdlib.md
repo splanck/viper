@@ -93,8 +93,8 @@ bind Viper.Terminal;
 Clear();                    // Clear the screen
 SetPosition(10, 5);         // Move cursor to column 10, row 5
 SetColor(1, 0);             // Set foreground/background color codes
-SetCursorVisible(0);        // Hide the blinking cursor
-SetCursorVisible(1);        // Show it again
+SetCursorVisible(false);        // Hide the blinking cursor
+SetCursorVisible(true);        // Show it again
 ```
 
 These are essential for building text-based games, progress bars, or any program where you want precise control over what the user sees.
@@ -178,7 +178,7 @@ Math.Atan2(y, x);      // Angle from coordinates
 bind Viper.Math as Math;
 
 Math.Pi;               // 3.14159265358979...
-Math.E;                // 2.71828182845904...
+Math.Euler;                // 2.71828182845904...
 ```
 
 ### When Would You Use This?
@@ -500,7 +500,7 @@ if Env.HasVariable("DEBUG") {
 bind Env = Viper.System.Environment;
 bind Viper.System.Machine as Machine;
 
-var osName = Machine.OS;         // "windows", "macos", or "linux"
+var osName = Machine.Os;         // "windows", "macos", or "linux"
 var home = Env.GetVariable("HOME");  // User's home directory
 ```
 
@@ -514,9 +514,9 @@ bind Viper.System.Machine as Machine;
 func getConfigPath() -> String {
     var home = Machine.Home;
 
-    if Machine.OS == "windows" {
+    if Machine.Os == "windows" {
         return Path.Join(Path.Join(Path.Join(home, "AppData"), "Local"), "MyApp/config.json");
-    } else if Machine.OS == "macos" {
+    } else if Machine.Os == "macos" {
         return Path.Join(Path.Join(Path.Join(home, "Library"), "Application Support"), "MyApp/config.json");
     } else {
         return Path.Join(Path.Join(home, ".config"), "myapp/config.json");
@@ -1377,7 +1377,7 @@ The Viper standard library provides:
 | Text | String, Fmt | String.Trim, String.Split, Fmt.Int, Fmt.NumFixed |
 | Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
 | Data | Generic collections, Viper.Collections | `list.add`, `map.set`, `set.add`, `Queue.New` |
-| System | Environment, Machine | Env.GetArgument, Env.GetVariable, Machine.OS |
+| System | Environment, Machine | Env.GetArgument, Env.GetVariable, Machine.Os |
 | Security | Crypto.Hash, Codec, Uuid | Hash.SHA256, Hash.MD5, Uuid.New |
 
 The standard library is your first resort when you need functionality. It's tested, optimized, and familiar to other programmers. Learning it is as important as learning the language syntax.

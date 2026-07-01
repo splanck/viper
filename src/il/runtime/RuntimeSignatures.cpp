@@ -444,6 +444,7 @@ struct DescriptorRow {
     const RuntimeHiddenParam *hidden{nullptr};
     std::size_t hiddenCount{0};
     RuntimeTrapClass trapClass{RuntimeTrapClass::None};
+    bool publicSurface{true};
 };
 
 // Use deduced array size to avoid mismatches that would create an empty default row.
@@ -2366,6 +2367,7 @@ RuntimeDescriptor buildDescriptor(const DescriptorRow &row) {
     descriptor.handler = row.handler;
     descriptor.lowering = row.lowering;
     descriptor.trapClass = row.trapClass;
+    descriptor.publicSurface = row.publicSurface;
     return descriptor;
 }
 

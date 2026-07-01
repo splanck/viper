@@ -112,10 +112,10 @@ func start() {
         // WASD movement
         var fwd = 0.0;
         var right = 0.0;
-        if (Keyboard.IsDown(Keyboard.get_KEY_W())) { fwd = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_S())) { fwd = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_A())) { right = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_D())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyW())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyS())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyA())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyD())) { right = 1.0; }
         // Update FPS camera (no vertical movement — grounded)
         Camera3D.FPSUpdate(cam,
             mdx * sensitivity, -mdy * sensitivity,

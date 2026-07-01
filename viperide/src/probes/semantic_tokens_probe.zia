@@ -36,11 +36,11 @@ func runTokens(src: String) -> String {
 func hasKind(raw: String, kind: String) -> Boolean {
     var lines = Str.Split(raw, "\n");
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var row = Obj.ToString(Seq.Get(lines, i));
         i = i + 1;
         var parts = Str.Split(row, "\t");
-        if Seq.get_Length(parts) >= 4 {
+        if Seq.get_Count(parts) >= 4 {
             if Obj.ToString(Seq.Get(parts, 3)) == kind { return true; }
         }
     }

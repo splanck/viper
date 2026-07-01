@@ -35,7 +35,7 @@ bind Obj = Viper.Core.Object;
 func hasModuleDecl(text: String) -> Boolean {
     var lines = Str.Split(text, "\n");
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var t = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
         i = i + 1;
         if Str.get_Length(t) == 0 { continue; }

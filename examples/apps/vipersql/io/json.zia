@@ -578,7 +578,7 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if Viper.String.get_Length(text) == 0 { return sqlNull(); }
         if String.Substring(text, 0, 1) != "[" { return sqlNull(); }
         var arr = Json.ParseArray(text);
-        return sqlInteger(Seq.get_Length(arr));
+        return sqlInteger(Seq.get_Count(arr));
     }
 
     // JSON_OBJECT_KEYS(json) -> JSON array of keys

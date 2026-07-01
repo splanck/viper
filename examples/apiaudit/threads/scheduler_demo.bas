@@ -40,7 +40,7 @@ PRINT "Cancel(nonexistent): "; cancelMissing
 ' --- Poll ---
 PRINT "--- Poll ---"
 DIM due AS Viper.Collections.Seq = s.Poll()
-PRINT "Poll returned tasks: "; due.Length
+PRINT "Poll returned tasks: "; due.Count
 PRINT "Pending after poll: "; s.Pending
 
 ' --- Clear ---
@@ -63,7 +63,7 @@ PRINT "Pending after re-schedule: "; s.Pending
 PRINT "--- Poll on empty ---"
 s.Clear()
 DIM emptyPoll AS Viper.Collections.Seq = s.Poll()
-PRINT "Poll on empty: "; emptyPoll.Length
+PRINT "Poll on empty: "; emptyPoll.Count
 
 PRINT "=== Scheduler Audit Complete ==="
 END

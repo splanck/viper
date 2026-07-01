@@ -52,8 +52,8 @@ class EditorEngine {
     ///       editor expands to fill its parent.
     expose func Setup(parent: GUI.HBox) {
         editor = GUI.CodeEditor.New(parent);
-        editor.SetShowLineNumbers(1);
-        editor.SetShowFoldGutter(1);
+        editor.SetShowLineNumbers(true);
+        editor.SetShowFoldGutter(true);
         editor.SetFlex(1.0);
     }
 
@@ -68,9 +68,9 @@ class EditorEngine {
         editor.SetText(doc.content);
         editor.ClearModified();
         if doc.isReadOnlyPreview {
-            editor.SetReadOnly(1);
+            editor.SetReadOnly(true);
         } else {
-            editor.SetReadOnly(0);
+            editor.SetReadOnly(false);
         }
         editor.ClearSemanticTokens(); // drop the previous document's semantic overlay
         cachedTextSnapshot = doc.content;

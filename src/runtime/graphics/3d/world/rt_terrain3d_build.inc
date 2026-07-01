@@ -894,7 +894,9 @@ static void terrain_build_chunk_surface(void *mesh,
 }
 
 /// @brief Emit downward "skirt" geometry around a chunk's four edges to hide cracks between LOD
-///        levels. Only meaningful for stepped (LOD) chunks with a positive skirt depth @p sd.
+///        levels. Built for every LOD, including full-detail step==1 chunks, whenever skirt
+///        depth @p sd is positive: a fine chunk that borders a coarser neighbor still cracks on
+///        its own edge, so skipping skirts for step==1 left those seams open to the sky.
 static void terrain_build_chunk_skirts(void *mesh,
                                        rt_terrain3d *t,
                                        int32_t x0,
@@ -1044,13 +1046,16 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     terrain_build_chunk_surface(
         mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, aabb_min, aabb_max);
 
-    /* Skirt geometry: extend edges downward to hide cracks between LOD levels */
+    /* Skirt geometry: extend edges downward to hide cracks between LOD levels.
+     * Built for every LOD, including full-detail LOD0 (step==1): an LOD0 chunk
+     * bordering a coarser neighbor still cracks along its own fine edge, so
+     * gating skirts to step>1 left the nearest seams open to the sky. */
     float skirt_depth = terrain_skirt_depth_or(t);
-    if (skirt_depth > 0.0f)
+    if (skirt_depth > 0.0f) {
         aabb_min[1] -= skirt_depth;
-    if (skirt_depth > 0.0f && step > 1)
         terrain_build_chunk_skirts(
             mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, (double)skirt_depth);
+    }
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
 
     if (((rt_mesh3d *)mesh)->build_failed) {

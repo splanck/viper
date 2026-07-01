@@ -7,6 +7,7 @@ bind Viper.Graphics3D.SceneNode as SceneNode;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./game";
+bind "./forest";
 
 func fail(game: Game3DShowcase, msg: String) {
     Terminal.Say("FAIL: " + msg);
@@ -39,20 +40,24 @@ func main() {
     var game = new Game3DShowcase();
     game.setup("Game3D Showcase Fallback Tree Material Probe", 320, 180);
 
-    var world = game.getWorld();
-    var trunkNode = world.FindNode("procedural_maple_trunk");
-    var canopyNode = world.FindNode("procedural_maple_crown");
-    if (trunkNode == null) {
-        fail(game, "procedural fallback trunk was not spawned");
-        return;
-    }
-    if (canopyNode == null) {
-        fail(game, "procedural fallback canopy was not spawned");
+    var forest = game.getForest();
+    if (forest.getTreeCount() <= 0) {
+        fail(game, "procedural fallback planted no trees");
         return;
     }
 
-    var trunkMat = SceneNode.get_Material(trunkNode);
-    var canopyMat = SceneNode.get_Material(canopyNode);
+    // Trunks and canopy lobes now render from instance batches rather than scene
+    // nodes, so validate the shared materials those batches draw with directly.
+    var trunkMat = forest.getBarkMat();
+    var canopyMat = forest.getCanopyMat();
+    if (trunkMat == null) {
+        fail(game, "procedural fallback trunk material missing");
+        return;
+    }
+    if (canopyMat == null) {
+        fail(game, "procedural fallback canopy material missing");
+        return;
+    }
     if (matHasSurfaceDetail(trunkMat) == false) {
         fail(game, "fallback trunk material has no albedo/normal texture detail");
         return;

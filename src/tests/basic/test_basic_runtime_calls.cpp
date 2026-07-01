@@ -202,7 +202,7 @@ Viper.GUI.MessageBox.Destroy(box)
 dlg = Viper.GUI.FileDialog.NewOpen()
 Viper.GUI.FileDialog.SetTitle(dlg, "Choose")
 Viper.GUI.FileDialog.AddFilter(dlg, "Images", "*.png")
-Viper.GUI.FileDialog.SetMultiple(dlg, 1)
+Viper.GUI.FileDialog.SetMultiple(dlg, TRUE)
 shown = Viper.GUI.FileDialog.Show(dlg)
 path = Viper.GUI.FileDialog.GetPath(dlg)
 count = Viper.GUI.FileDialog.get_PathCount(dlg)
@@ -271,7 +271,7 @@ body.LinearDamping = 0.2
 body.AngularDamping = 0.3
 body.Kinematic = 1
 body.CanSleep = 1
-body.UseCCD = 1
+body.UseCcd = 1
 ang = body.AngularVelocity
 q = body.Orientation
 sleeping = body.Sleeping
@@ -648,7 +648,7 @@ tex = Viper.Graphics.Pixels.New(1, 1)
 base.SetAlbedoMap(tex)
 base.Metallic = 0.9
 base.Roughness = 0.15
-base.AO = 0.85
+base.AmbientOcclusion = 0.85
 base.EmissiveIntensity = 2.5
 base.SetNormalMap(tex)
 base.SetMetallicRoughnessMap(tex)
@@ -663,7 +663,7 @@ inst.Roughness = 0.55
 inst = inst.Clone()
 metallic = inst.Metallic
 roughness = inst.Roughness
-ao = inst.AO
+ao = inst.AmbientOcclusion
 emissiveIntensity = inst.EmissiveIntensity
 normalScale = inst.NormalScale
 anisotropy = inst.Anisotropy
@@ -680,13 +680,13 @@ DIM matches AS OBJECT
 DIM count AS INTEGER
 pat = Viper.Text.CompiledPattern.New("[0-9]+")
 matches = pat.FindAll("a1b22c333")
-count = matches.Length
+count = matches.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, DefaultMapKeysObjectResultKeepsSeqSurface) {
@@ -698,13 +698,13 @@ dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
 dm.Set("name", "Alice")
 dm.Set("city", "Boston")
 keys = dm.Keys()
-count = keys.Length
+count = keys.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, PatternFindAllObjectResultKeepsSeqSurface) {
@@ -712,13 +712,13 @@ TEST(BasicRuntimeCalls, PatternFindAllObjectResultKeepsSeqSurface) {
 DIM matches AS OBJECT
 DIM count AS INTEGER
 matches = Viper.Text.Pattern.FindAll("a1b22c333", "[0-9]+")
-count = matches.Length
+count = matches.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, TextWrapperWrapLinesObjectResultKeepsSeqSurface) {
@@ -726,13 +726,13 @@ TEST(BasicRuntimeCalls, TextWrapperWrapLinesObjectResultKeepsSeqSurface) {
 DIM lines AS OBJECT
 DIM count AS INTEGER
 lines = Viper.Text.TextWrapper.WrapLines("one two three", 7)
-count = lines.Length
+count = lines.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, TemplateKeysObjectResultKeepsSeqSurface) {
@@ -740,13 +740,13 @@ TEST(BasicRuntimeCalls, TemplateKeysObjectResultKeepsSeqSurface) {
 DIM keys AS OBJECT
 DIM count AS INTEGER
 keys = Viper.Text.Template.Keys("Hello {{name}} from {{place}}")
-count = keys.Length
+count = keys.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, LazySeqToSeqNObjectResultKeepsSeqSurface) {
@@ -756,13 +756,13 @@ DIM out AS OBJECT
 DIM count AS INTEGER
 seq = Viper.Functional.LazySeq.Range(1, 5, 1)
 out = Viper.Functional.LazySeq.ToSeqN(seq, 3)
-count = out.Length
+count = out.Count
 PRINT count
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, ResultAndOptionFactoriesKeepConcreteObjectSurface) {

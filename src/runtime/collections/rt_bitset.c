@@ -197,6 +197,10 @@ static int64_t bitset_popcount(void *obj, const char *what) {
     return total;
 }
 
+int64_t rt_bitset_count(void *obj) {
+    return bitset_popcount(obj, "BitSet.Count: invalid BitSet object");
+}
+
 /// @brief Returns 1 if every bit is 0 (popcount == 0). O(n/64).
 int8_t rt_bitset_is_empty(void *obj) {
     return bitset_popcount(obj, "BitSet.IsEmpty: invalid BitSet object") == 0;

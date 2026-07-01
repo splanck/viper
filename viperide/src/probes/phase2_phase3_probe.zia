@@ -64,18 +64,18 @@ func main() {
 
     var cfg = run_config.ForDocument(run_config.ACTION_RUN, doc, null);
     if assertTrue(cfg.program == "viper"
-                  and Seq.get_Length(cfg.args) == 3
+                  and Seq.get_Count(cfg.args) == 3
                   and Obj.ToString(Seq.Get(cfg.args, 1)) == "--diagnostic-format=json",
                   "default run config uses argument vector") == false { return; }
     if assertTrue(Obj.ToString(Seq.Get(cfg.args, 2)) == sourcePath,
                   "run config preserves path with spaces as one arg") == false { return; }
 
     var split = run_config.SplitArgs("run \"path with spaces\" {target}");
-    if assertTrue(Seq.get_Length(split) == 3
+    if assertTrue(Seq.get_Count(split) == 3
                   and Obj.ToString(Seq.Get(split, 1)) == "path with spaces",
                   "split args preserves quoted token") == false { return; }
     var splitEscaped = run_config.SplitArgs("run 'single quoted' escaped\\ token");
-    if assertTrue(Seq.get_Length(splitEscaped) == 3
+    if assertTrue(Seq.get_Count(splitEscaped) == 3
                   and Obj.ToString(Seq.Get(splitEscaped, 1)) == "single quoted"
                   and Obj.ToString(Seq.Get(splitEscaped, 2)) == "escaped token",
                   "split args preserves single quotes and escapes") == false { return; }
@@ -309,7 +309,7 @@ func main() {
                   "scene builds render tilemap copy") == false { return; }
     var bad = SceneDocument.LoadJson("{\"version\":1,");
     if assertTrue(bad.HasErrors()
-                  and Seq.get_Length(bad.DiagnosticRecords()) > 0
+                  and Seq.get_Count(bad.DiagnosticRecords()) > 0
                   and bad.LastError() != "",
                   "scene malformed json reports diagnostics") == false { return; }
 

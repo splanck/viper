@@ -102,13 +102,13 @@ class IdeOverlays {
     expose func OpenSettings(shell: app_shell.AppShell,
                              appSettings: settings.SettingsManager) {
         SyncSettings(appSettings);
-        settingsPanel.SetVisible(1);
+        settingsPanel.SetVisible(true);
         // Force the dock to re-measure/arrange now that it is visible so the
         // body scrolls and the footer (Cancel / Save Changes) lands within the
         // workbench height instead of below it.
         settingsDockWidth = 0;
         layoutSettingsPanel(shell);
-        aboutPanel.SetVisible(0);
+        aboutPanel.SetVisible(false);
         settingsVisible = true;
         aboutVisible = false;
         fontPathInput.Focus();
@@ -116,7 +116,7 @@ class IdeOverlays {
 
     expose func CloseSettings() {
         if settingsPanel != null {
-            settingsPanel.SetVisible(0);
+            settingsPanel.SetVisible(false);
         }
         settingsVisible = false;
     }
@@ -126,15 +126,15 @@ class IdeOverlays {
             aboutBuildInfo.SetText(build_info.BuildSummary());
         }
         layoutAboutPanel(shell);
-        aboutPanel.SetVisible(1);
-        settingsPanel.SetVisible(0);
+        aboutPanel.SetVisible(true);
+        settingsPanel.SetVisible(false);
         aboutVisible = true;
         settingsVisible = false;
     }
 
     expose func CloseAbout() {
         if aboutPanel != null {
-            aboutPanel.SetVisible(0);
+            aboutPanel.SetVisible(false);
         }
         aboutVisible = false;
     }
@@ -167,107 +167,107 @@ class IdeOverlays {
         }
         if minimapCheck != null {
             if appSettings.minimapVisible {
-                minimapCheck.SetChecked(1);
+                minimapCheck.SetChecked(true);
             } else {
-                minimapCheck.SetChecked(0);
+                minimapCheck.SetChecked(false);
             }
         }
         if statusBarCheck != null {
             if appSettings.statusBarVisible {
-                statusBarCheck.SetChecked(1);
+                statusBarCheck.SetChecked(true);
             } else {
-                statusBarCheck.SetChecked(0);
+                statusBarCheck.SetChecked(false);
             }
         }
         if fullscreenCheck != null {
             if appSettings.fullscreen {
-                fullscreenCheck.SetChecked(1);
+                fullscreenCheck.SetChecked(true);
             } else {
-                fullscreenCheck.SetChecked(0);
+                fullscreenCheck.SetChecked(false);
             }
         }
         if autoCheckCheck != null {
             if appSettings.autoCheckOnSave {
-                autoCheckCheck.SetChecked(1);
+                autoCheckCheck.SetChecked(true);
             } else {
-                autoCheckCheck.SetChecked(0);
+                autoCheckCheck.SetChecked(false);
             }
         }
         if codeFoldingCheck != null {
             if appSettings.codeFolding {
-                codeFoldingCheck.SetChecked(1);
+                codeFoldingCheck.SetChecked(true);
             } else {
-                codeFoldingCheck.SetChecked(0);
+                codeFoldingCheck.SetChecked(false);
             }
         }
         if wordWrapCheck != null {
             if appSettings.wordWrap {
-                wordWrapCheck.SetChecked(1);
+                wordWrapCheck.SetChecked(true);
             } else {
-                wordWrapCheck.SetChecked(0);
+                wordWrapCheck.SetChecked(false);
             }
         }
         if lineNumbersCheck != null {
             if appSettings.lineNumbers {
-                lineNumbersCheck.SetChecked(1);
+                lineNumbersCheck.SetChecked(true);
             } else {
-                lineNumbersCheck.SetChecked(0);
+                lineNumbersCheck.SetChecked(false);
             }
         }
         if insertSpacesCheck != null {
             if appSettings.insertSpaces {
-                insertSpacesCheck.SetChecked(1);
+                insertSpacesCheck.SetChecked(true);
             } else {
-                insertSpacesCheck.SetChecked(0);
+                insertSpacesCheck.SetChecked(false);
             }
         }
         if trimWhitespaceCheck != null {
             if appSettings.trimTrailingWhitespace {
-                trimWhitespaceCheck.SetChecked(1);
+                trimWhitespaceCheck.SetChecked(true);
             } else {
-                trimWhitespaceCheck.SetChecked(0);
+                trimWhitespaceCheck.SetChecked(false);
             }
         }
         if finalNewlineCheck != null {
             if appSettings.ensureFinalNewline {
-                finalNewlineCheck.SetChecked(1);
+                finalNewlineCheck.SetChecked(true);
             } else {
-                finalNewlineCheck.SetChecked(0);
+                finalNewlineCheck.SetChecked(false);
             }
         }
         if autoSaveCheck != null {
             if appSettings.autoSave {
-                autoSaveCheck.SetChecked(1);
+                autoSaveCheck.SetChecked(true);
             } else {
-                autoSaveCheck.SetChecked(0);
+                autoSaveCheck.SetChecked(false);
             }
         }
         if saveAllBeforeBuildCheck != null {
             if appSettings.saveAllBeforeBuild {
-                saveAllBeforeBuildCheck.SetChecked(1);
+                saveAllBeforeBuildCheck.SetChecked(true);
             } else {
-                saveAllBeforeBuildCheck.SetChecked(0);
+                saveAllBeforeBuildCheck.SetChecked(false);
             }
         }
         if restoreSessionCheck != null {
             if appSettings.restoreSession {
-                restoreSessionCheck.SetChecked(1);
+                restoreSessionCheck.SetChecked(true);
             } else {
-                restoreSessionCheck.SetChecked(0);
+                restoreSessionCheck.SetChecked(false);
             }
         }
         if restoreLastProjectCheck != null {
             if appSettings.restoreLastProject {
-                restoreLastProjectCheck.SetChecked(1);
+                restoreLastProjectCheck.SetChecked(true);
             } else {
-                restoreLastProjectCheck.SetChecked(0);
+                restoreLastProjectCheck.SetChecked(false);
             }
         }
         if confirmCloseCheck != null {
             if appSettings.confirmOnExitWithUnsavedChanges {
-                confirmCloseCheck.SetChecked(1);
+                confirmCloseCheck.SetChecked(true);
             } else {
-                confirmCloseCheck.SetChecked(0);
+                confirmCloseCheck.SetChecked(false);
             }
         }
     }
@@ -275,32 +275,32 @@ class IdeOverlays {
     expose func Pump(shell: app_shell.AppShell) -> Integer {
         if settingsVisible {
             layoutSettingsPanel(shell);
-            if browseFontButton.WasClicked() != 0 { return ACTION_BROWSE_FONT; }
-            if useSystemFontButton.WasClicked() != 0 { return ACTION_USE_SYSTEM_FONT; }
-            if resetFontSizeButton.WasClicked() != 0 { return ACTION_RESET_FONT_SIZE; }
-            if resetAppearanceButton.WasClicked() != 0 {
+            if browseFontButton.WasClicked() { return ACTION_BROWSE_FONT; }
+            if useSystemFontButton.WasClicked() { return ACTION_USE_SYSTEM_FONT; }
+            if resetFontSizeButton.WasClicked() { return ACTION_RESET_FONT_SIZE; }
+            if resetAppearanceButton.WasClicked() {
                 ResetAppearanceDefaults();
                 return ACTION_RESET_APPEARANCE;
             }
-            if resetEditingButton.WasClicked() != 0 {
+            if resetEditingButton.WasClicked() {
                 ResetEditingDefaults();
                 return ACTION_RESET_EDITING;
             }
-            if resetIntelliSenseButton.WasClicked() != 0 {
+            if resetIntelliSenseButton.WasClicked() {
                 ResetIntelliSenseDefaults();
                 return ACTION_RESET_INTELLISENSE;
             }
-            if resetStartupButton.WasClicked() != 0 {
+            if resetStartupButton.WasClicked() {
                 ResetStartupDefaults();
                 return ACTION_RESET_STARTUP;
             }
-            if applySettingsButton.WasClicked() != 0 { return ACTION_APPLY_SETTINGS; }
-            if closeSettingsButton.WasClicked() != 0 { return ACTION_CLOSE_SETTINGS; }
+            if applySettingsButton.WasClicked() { return ACTION_APPLY_SETTINGS; }
+            if closeSettingsButton.WasClicked() { return ACTION_CLOSE_SETTINGS; }
         }
 
         if aboutVisible {
             layoutAboutPanel(shell);
-            if aboutCloseButton.WasClicked() != 0 { return ACTION_CLOSE_ABOUT; }
+            if aboutCloseButton.WasClicked() { return ACTION_CLOSE_ABOUT; }
         }
 
         return ACTION_NONE;
@@ -416,22 +416,22 @@ class IdeOverlays {
         fontSizeSpinner.SetValue(settings.DEFAULT_FONT_SIZE);
         uiZoomSpinner.SetValue(100.0);
         themeDropdown.SetSelected(0);
-        minimapCheck.SetChecked(0);
-        statusBarCheck.SetChecked(1);
-        fullscreenCheck.SetChecked(0);
+        minimapCheck.SetChecked(false);
+        statusBarCheck.SetChecked(true);
+        fullscreenCheck.SetChecked(false);
     }
 
     expose func ResetEditingDefaults() {
         tabWidthSpinner.SetValue(4.0);
-        autoCheckCheck.SetChecked(1);
-        codeFoldingCheck.SetChecked(1);
-        wordWrapCheck.SetChecked(0);
-        lineNumbersCheck.SetChecked(1);
-        insertSpacesCheck.SetChecked(1);
-        trimWhitespaceCheck.SetChecked(0);
-        finalNewlineCheck.SetChecked(1);
-        autoSaveCheck.SetChecked(0);
-        saveAllBeforeBuildCheck.SetChecked(1);
+        autoCheckCheck.SetChecked(true);
+        codeFoldingCheck.SetChecked(true);
+        wordWrapCheck.SetChecked(false);
+        lineNumbersCheck.SetChecked(true);
+        insertSpacesCheck.SetChecked(true);
+        trimWhitespaceCheck.SetChecked(false);
+        finalNewlineCheck.SetChecked(true);
+        autoSaveCheck.SetChecked(false);
+        saveAllBeforeBuildCheck.SetChecked(true);
     }
 
     expose func ResetIntelliSenseDefaults() {
@@ -440,9 +440,9 @@ class IdeOverlays {
     }
 
     expose func ResetStartupDefaults() {
-        restoreSessionCheck.SetChecked(1);
-        restoreLastProjectCheck.SetChecked(1);
-        confirmCloseCheck.SetChecked(1);
+        restoreSessionCheck.SetChecked(true);
+        restoreLastProjectCheck.SetChecked(true);
+        confirmCloseCheck.SetChecked(true);
     }
 
     expose func SetFontPath(path: String) {
@@ -453,7 +453,7 @@ class IdeOverlays {
     hide func setupSettingsPanel(shell: app_shell.AppShell) {
         settingsPanel = shell.preferencesPanel;
         settingsPanel.SetSize(SETTINGS_DOCK_WIDTH, 0);
-        settingsPanel.SetVisible(0);
+        settingsPanel.SetVisible(false);
 
         var root = GUI.VBox.New();
         root.SetPadding(18.0);
@@ -625,7 +625,7 @@ class IdeOverlays {
         title.SetMargin(0);
         if descriptionText != "" {
             var description = GUI.Label.New(textCol, descriptionText);
-            description.SetWordWrap(1);
+            description.SetWordWrap(true);
             description.SetMargin(0);
         }
 
@@ -640,7 +640,7 @@ class IdeOverlays {
     hide func setupAboutPanel(shell: app_shell.AppShell) {
         aboutPanel = GUI.FloatingPanel.New(shell.app);
         aboutPanel.SetSize(ABOUT_PANEL_WIDTH, ABOUT_PANEL_HEIGHT);
-        aboutPanel.SetVisible(0);
+        aboutPanel.SetVisible(false);
 
         var root = GUI.VBox.New();
         root.SetPadding(18.0);
@@ -653,17 +653,17 @@ class IdeOverlays {
         var aboutLine1 = GUI.Label.New(
             root,
             "A native IDE for Zia with live diagnostics, hover info, project search, and an integrated editor.");
-        aboutLine1.SetWordWrap(1);
+        aboutLine1.SetWordWrap(true);
         var aboutLine2 = GUI.Label.New(
             root,
             "Viper BASIC files can be edited, built, and run; advanced language assistance is currently Zia-focused.");
-        aboutLine2.SetWordWrap(1);
+        aboutLine2.SetWordWrap(true);
         var aboutLine3 = GUI.Label.New(
             root,
             "Shortcuts: Ctrl+B sidebar, Ctrl+Shift+P palette, Ctrl+, settings, F5 build and run.");
-        aboutLine3.SetWordWrap(1);
+        aboutLine3.SetWordWrap(true);
         aboutBuildInfo = GUI.Label.New(root, build_info.BuildSummary());
-        aboutBuildInfo.SetWordWrap(1);
+        aboutBuildInfo.SetWordWrap(true);
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);

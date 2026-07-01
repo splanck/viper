@@ -11,7 +11,7 @@ func start() {
 
     var seq = Viper.Functional.LazySeq.Range(1, 5, 1);
     var out = Viper.Functional.LazySeq.ToSeqN(seq, 3);
-    SayInt(out.Length);
+    SayInt(out.Count);
 
     Say("done");
 }

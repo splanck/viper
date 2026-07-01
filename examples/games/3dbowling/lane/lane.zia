@@ -39,6 +39,7 @@ module lane;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind "../config";
+bind "../util/mathutil";
 
 /// @brief Builds and owns every static lane mesh / body / trigger.
 class LaneBuilder {
@@ -493,9 +494,7 @@ class LaneBuilder {
             friction = friction + (config.OIL_FRICTION_DRY - friction) * backend;
         }
 
-        if (friction < config.OIL_FRICTION_OILED) { friction = config.OIL_FRICTION_OILED; }
-        if (friction > config.OIL_FRICTION_DRY) { friction = config.OIL_FRICTION_DRY; }
-        return friction;
+        return mathutil.clampf(friction, config.OIL_FRICTION_OILED, config.OIL_FRICTION_DRY);
     }
 
     /// @brief Active oil pattern code.

@@ -413,7 +413,7 @@ TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef
                 }
             }
 
-            // Resolve runtime class property setters (e.g., ctrl.VY = value).
+            // Resolve runtime class property setters (e.g., ctrl.VelocityY = value).
             // Getters are resolved in Sema_Expr_Advanced; setters need the same
             // symbol-table lookup here on the assignment path.
             if (baseType && resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end()) {

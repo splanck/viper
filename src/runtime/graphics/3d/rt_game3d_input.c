@@ -185,8 +185,10 @@ void game3d_input_move_axis_components(rt_game3d_input *input,
         z -= 1.0;
     if (game3d_input_key_down(input, rt_keyboard_key_space()))
         y += 1.0;
-    if (game3d_input_key_down(input, rt_keyboard_key_shift()) ||
-        game3d_input_key_down(input, rt_keyboard_key_ctrl()))
+    if (game3d_input_key_down(input, rt_keyboard_key_lshift()) ||
+        game3d_input_key_down(input, rt_keyboard_key_rshift()) ||
+        game3d_input_key_down(input, rt_keyboard_key_lctrl()) ||
+        game3d_input_key_down(input, rt_keyboard_key_rctrl()))
         y -= 1.0;
     game3d_normalize_axis3(&x, &y, &z);
     if (out_x)

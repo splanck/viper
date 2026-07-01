@@ -1,10 +1,10 @@
 ' EXPECT_OUT: RESULT: ok
 ' COVER: Viper.IO.Watcher.new
-' COVER: Viper.IO.Watcher.EVENT_CREATED
-' COVER: Viper.IO.Watcher.EVENT_DELETED
-' COVER: Viper.IO.Watcher.EVENT_MODIFIED
-' COVER: Viper.IO.Watcher.EVENT_NONE
-' COVER: Viper.IO.Watcher.EVENT_RENAMED
+' COVER: Viper.IO.Watcher.EventCreated
+' COVER: Viper.IO.Watcher.EventDeleted
+' COVER: Viper.IO.Watcher.EventModified
+' COVER: Viper.IO.Watcher.EventNone
+' COVER: Viper.IO.Watcher.EventRenamed
 ' COVER: Viper.IO.Watcher.IsWatching
 ' COVER: Viper.IO.Watcher.Path
 ' COVER: Viper.IO.Watcher.EventPath
@@ -39,15 +39,15 @@ DIM event1 AS INTEGER
 DIM event2 AS INTEGER
 event1 = watcher.Poll()
 event2 = watcher.PollFor(50)
-    Viper.Core.Diagnostics.Assert(event1 >= Viper.IO.Watcher.EVENT_NONE, "watch.poll")
-    Viper.Core.Diagnostics.Assert(event2 >= Viper.IO.Watcher.EVENT_NONE, "watch.pollfor")
+    Viper.Core.Diagnostics.Assert(event1 >= Viper.IO.Watcher.EventNone, "watch.poll")
+    Viper.Core.Diagnostics.Assert(event2 >= Viper.IO.Watcher.EventNone, "watch.pollfor")
 
 DIM path1 AS STRING
 DIM type1 AS INTEGER
-IF event1 <> Viper.IO.Watcher.EVENT_NONE OR event2 <> Viper.IO.Watcher.EVENT_NONE THEN
+IF event1 <> Viper.IO.Watcher.EventNone OR event2 <> Viper.IO.Watcher.EventNone THEN
     path1 = watcher.EventPath()
     type1 = watcher.EventType()
-        Viper.Core.Diagnostics.Assert(type1 >= Viper.IO.Watcher.EVENT_NONE, "watch.eventtype")
+        Viper.Core.Diagnostics.Assert(type1 >= Viper.IO.Watcher.EventNone, "watch.eventtype")
 END IF
 
 watcher.Stop()

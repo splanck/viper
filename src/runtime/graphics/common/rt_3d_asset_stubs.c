@@ -532,7 +532,7 @@ void rt_material3d_set_ao(void *o, double v) {
     (void)v;
 }
 
-/// @brief Stub for `Material3D.AO` — get the PBR ambient-occlusion value.
+/// @brief Stub for `Material3D.AmbientOcclusion` — get the PBR ambient-occlusion value.
 ///
 /// Silent stub returning `1.0` (no occlusion).
 ///
@@ -683,7 +683,7 @@ void rt_material3d_set_ao_map(void *o, void *p) {
     (void)p;
 }
 
-/// @brief Stub for `Material3D.HasAOMap`.
+/// @brief Stub for `Material3D.HasAmbientOcclusionMap`.
 ///
 /// Silent stub returning `0`.
 int8_t rt_material3d_get_has_ao_map(void *o) {

@@ -149,12 +149,12 @@ class SemanticHighlighter {
         if raw == "" { return; }
         var lines = Str.Split(raw, "\n");
         var i = 0;
-        while i < Seq.get_Length(lines) {
+        while i < Seq.get_Count(lines) {
             var row = Obj.ToString(Seq.Get(lines, i));
             i = i + 1;
             if row == "" { continue; }
             var parts = Str.Split(row, "\t");
-            if Seq.get_Length(parts) < 4 { continue; }
+            if Seq.get_Count(parts) < 4 { continue; }
             var lineNum = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 0))) - lineOff;
             var startCol = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 1)));
             var endCol = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 2)));

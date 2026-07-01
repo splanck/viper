@@ -283,7 +283,7 @@ class CsvHandler {
     hide func splitLines(content: String) -> List[String] {
         var lines: List[String] = [];
         var rawSeq = String.Split(content, "\n");
-        var count = Seq.get_Length(rawSeq);
+        var count = Seq.get_Count(rawSeq);
         var i = 0;
         while i < count {
             var line = Seq.GetStr(rawSeq, i);
@@ -304,7 +304,7 @@ class CsvHandler {
     ///        standard quoting rules.
     hide func parseCSVLine(line: String) -> List[String] {
         var seq = Csv.ParseLine(line);
-        var count = Seq.get_Length(seq);
+        var count = Seq.get_Count(seq);
         var fields: List[String] = [];
         var i = 0;
         while i < count {

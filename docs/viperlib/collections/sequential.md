@@ -37,7 +37,7 @@ Dynamic array that grows automatically. Stores object references.
 | `Clear()`                | `Void()`                | Removes all items from the list                                                       |
 | `Has(item)`              | `Boolean(Object)`       | Returns true if the list contains the object (reference equality)                     |
 | `Find(item)`             | `Integer(Object)`       | Returns index of the first matching object, or `-1` if not found                      |
-| `Insert(index, item)`    | `Void(Integer, Object)` | Inserts the item at `index` (0..Length); `index == Len` appends; traps if out of range   |
+| `Insert(index, item)`    | `Void(Integer, Object)` | Inserts the item at `index` (0..Count); `index == Len` appends; traps if out of range   |
 | `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object (reference equality); returns true if removed       |
 | `RemoveAt(index)`        | `Void(Integer)`         | Removes the item at the specified index                                               |
 | `Slice(start, end)`      | `List(Integer, Integer)`| Returns a new list with elements from start (inclusive) to end (exclusive)            |
@@ -76,11 +76,11 @@ func start() {
     list.Push("apple");
     list.Push("banana");
     list.Push("cherry");
-    Say("Len: " + Fmt.Int(list.Length));            // 3
+    Say("Count: " + Fmt.Int(list.Count));            // 3
 
     // Access by index
     Say("First: " + list.Get(0));                // apple
-    Say("Last: " + list.Get(list.Length - 1));      // cherry
+    Say("Last: " + list.Get(list.Count - 1));      // cherry
 
     // Iterate with for-in
     for item in list {
@@ -120,7 +120,7 @@ IF list.Has(a) THEN
 END IF
 
 IF list.Remove(a) THEN
-  PRINT list.Length           ' Output: 2
+  PRINT list.Count           ' Output: 2
 END IF
 PRINT list.Find(a)         ' Output: -1
 
@@ -188,12 +188,12 @@ func start() {
     queue.Push("first");
     queue.Push("second");
     queue.Push("third");
-    Say("Length: " + Fmt.Int(queue.Length));                 // 3
+    Say("Count: " + Fmt.Int(queue.Count));                 // 3
 
     // FIFO order
     Say("Pop: " + Viper.Core.Box.ToStr(queue.Pop()));          // first
     Say("Peek: " + Viper.Core.Box.ToStr(queue.Peek()));        // second
-    Say("After pop: " + Fmt.Int(queue.Length));               // 2
+    Say("After pop: " + Fmt.Int(queue.Count));               // 2
 
     queue.Clear();
     Say("Empty: " + Fmt.Bool(queue.IsEmpty));              // true
@@ -211,13 +211,13 @@ queue.Push("first")
 queue.Push("second")
 queue.Push("third")
 
-PRINT queue.Length      ' Output: 3
+PRINT queue.Count      ' Output: 3
 PRINT queue.IsEmpty  ' Output: False
 
 ' Pop returns elements in FIFO order
 PRINT queue.Pop()    ' Output: "first"
 PRINT queue.Peek()   ' Output: "second" (still in queue)
-PRINT queue.Length      ' Output: 2
+PRINT queue.Count      ' Output: 2
 
 ' Clear the queue
 queue.Clear()
@@ -282,12 +282,12 @@ func start() {
     stack.Push("first");
     stack.Push("second");
     stack.Push("third");
-    Say("Length: " + Fmt.Int(stack.Length));                  // 3
+    Say("Count: " + Fmt.Int(stack.Count));                  // 3
 
     // LIFO order
     Say("Pop: " + Viper.Core.Box.ToStr(stack.Pop()));           // third
     Say("Peek: " + Viper.Core.Box.ToStr(stack.Peek()));         // second
-    Say("After pop: " + Fmt.Int(stack.Length));               // 2
+    Say("After pop: " + Fmt.Int(stack.Count));               // 2
 
     stack.Clear();
     Say("Empty: " + Fmt.Bool(stack.IsEmpty));              // true
@@ -305,13 +305,13 @@ stack.Push("first")
 stack.Push("second")
 stack.Push("third")
 
-PRINT stack.Length      ' Output: 3
+PRINT stack.Count      ' Output: 3
 PRINT stack.IsEmpty  ' Output: False
 
 ' Pop returns elements in LIFO order
 PRINT stack.Pop()    ' Output: "third"
 PRINT stack.Peek()   ' Output: "second" (still on stack)
-PRINT stack.Length      ' Output: 2
+PRINT stack.Count      ' Output: 2
 
 ' Clear the stack
 stack.Clear()
@@ -385,7 +385,7 @@ deque.PushBack("middle")
 deque.PushFront("front")
 deque.PushBack("back")
 
-PRINT deque.Length          ' Output: 3
+PRINT deque.Count          ' Output: 3
 
 ' Access by index (0 = front)
 PRINT deque.Get(0)       ' Output: "front"
@@ -399,7 +399,7 @@ PRINT deque.PeekBack()   ' Output: "back"
 ' Pop from either end
 PRINT deque.PopFront()   ' Output: "front"
 PRINT deque.PopBack()    ' Output: "back"
-PRINT deque.Length          ' Output: 1
+PRINT deque.Count          ' Output: 1
 
 ' Use as stack (LIFO)
 deque.PushBack("a")
@@ -501,7 +501,7 @@ func start() {
     ring.Push(Viper.Core.Box.Str("first"));
     ring.Push(Viper.Core.Box.Str("second"));
     ring.Push(Viper.Core.Box.Str("third"));
-    Say("Length: " + Fmt.Int(ring.Length));         // 3
+    Say("Count: " + Fmt.Int(ring.Count));         // 3
     Say("Full: " + Fmt.Bool(ring.IsFull));       // true
 
     // Overflow overwrites oldest
@@ -510,7 +510,7 @@ func start() {
 
     // Pop removes oldest (FIFO)
     Say("Pop: " + Viper.Core.Box.ToStr(ring.Pop()));       // second
-    Say("After pop: " + Fmt.Int(ring.Length));            // 2
+    Say("After pop: " + Fmt.Int(ring.Count));            // 2
 }
 ```
 
@@ -524,12 +524,12 @@ DIM recent AS OBJECT = NEW Viper.Collections.Ring(3)
 recent.Push("first")
 recent.Push("second")
 recent.Push("third")
-PRINT recent.Length        ' Output: 3
+PRINT recent.Count        ' Output: 3
 PRINT recent.IsFull     ' Output: 1 (true)
 
 ' Push when full overwrites oldest
 recent.Push("fourth")
-PRINT recent.Length        ' Output: 3 (still 3)
+PRINT recent.Count        ' Output: 3 (still 3)
 PRINT recent.Peek()     ' Output: second (first was overwritten)
 
 ' Get by index (0 = oldest)
@@ -540,7 +540,7 @@ PRINT recent.Get(2)     ' Output: fourth
 ' Pop removes oldest (FIFO)
 DIM oldest AS STRING = recent.Pop()
 PRINT oldest            ' Output: second
-PRINT recent.Length        ' Output: 2
+PRINT recent.Count        ' Output: 2
 
 ' Interleaved push/pop
 recent.Push("fifth")
@@ -628,7 +628,7 @@ heap.Push(3, "Low priority task")
 heap.Push(1, "Urgent task")
 heap.Push(2, "Medium priority task")
 
-PRINT heap.Length       ' Output: 3
+PRINT heap.Count       ' Output: 3
 
 ' Pop returns elements in priority order (lowest priority value first)
 PRINT heap.Pop()     ' Output: "Urgent task" (priority 1)

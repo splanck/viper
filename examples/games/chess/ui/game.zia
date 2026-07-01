@@ -296,29 +296,29 @@ class ChessGame {
         Action.Clear();
 
         Action.Define(ACT_NEW_GAME);
-        Action.BindKey(ACT_NEW_GAME, Keyboard.get_KEY_N());
+        Action.BindKey(ACT_NEW_GAME, Keyboard.get_KeyN());
 
         Action.Define(ACT_BACK);
-        Action.BindKey(ACT_BACK, Keyboard.get_KEY_ESCAPE());
+        Action.BindKey(ACT_BACK, Keyboard.get_KeyEscape());
 
         Action.Define(ACT_CONFIRM);
-        Action.BindKey(ACT_CONFIRM, Keyboard.get_KEY_ENTER());
-        Action.BindKey(ACT_CONFIRM, Keyboard.get_KEY_SPACE());
+        Action.BindKey(ACT_CONFIRM, Keyboard.get_KeyEnter());
+        Action.BindKey(ACT_CONFIRM, Keyboard.get_KeySpace());
 
         Action.Define(ACT_UNDO);
-        bindUndoChord(Keyboard.get_KEY_CTRL());
-        bindUndoChord(Keyboard.get_KEY_RCTRL());
+        bindUndoChord(Keyboard.get_KeyLeftControl());
+        bindUndoChord(Keyboard.get_KeyRightControl());
 
-        Action.BindPadButton(ACT_CONFIRM, -1, Pad.get_PAD_A());
-        Action.BindPadButton(ACT_BACK, -1, Pad.get_PAD_B());
-        Action.BindPadButton(ACT_BACK, -1, Pad.get_PAD_START());
+        Action.BindPadButton(ACT_CONFIRM, -1, Pad.get_ButtonA());
+        Action.BindPadButton(ACT_BACK, -1, Pad.get_ButtonB());
+        Action.BindPadButton(ACT_BACK, -1, Pad.get_ButtonStart());
     }
 
     /// @brief Bind Ctrl+Z variants through Viper.Input.Action chord support.
     hide func bindUndoChord(ctrlKey: Integer) {
         var undoChord = Seq.New();
         Seq.Push(undoChord, ctrlKey);
-        Seq.Push(undoChord, Keyboard.get_KEY_Z());
+        Seq.Push(undoChord, Keyboard.get_KeyZ());
         Action.BindChord(ACT_UNDO, undoChord);
     }
 
@@ -485,7 +485,7 @@ class ChessGame {
         }
 
         // Mouse press — pick up a piece
-        if Mouse.WasPressed(Mouse.get_BUTTON_LEFT()) {
+        if Mouse.WasPressed(Mouse.get_ButtonLeft()) {
             handleMousePress(mx, my);
         }
 
@@ -498,7 +498,7 @@ class ChessGame {
         }
 
         // Mouse release — drop piece
-        if Mouse.WasReleased(Mouse.get_BUTTON_LEFT()) {
+        if Mouse.WasReleased(Mouse.get_ButtonLeft()) {
             handleMouseRelease(mx, my);
         }
     }
@@ -587,7 +587,7 @@ class ChessGame {
             return;
         }
 
-        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return; }
+        if !Mouse.WasClicked(Mouse.get_ButtonLeft()) { return; }
 
         if layout.contains(layout.modeButtonRect(0), mx, my) { selectMode(MODE_PVP); }
         if layout.contains(layout.modeButtonRect(1), mx, my) { selectMode(MODE_PVC); }
@@ -608,7 +608,7 @@ class ChessGame {
 
     /// @brief Game-over overlay click handler (NEW GAME / MAIN MENU).
     hide func handleGameOverInput(mx: Integer, my: Integer) {
-        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return; }
+        if !Mouse.WasClicked(Mouse.get_ButtonLeft()) { return; }
 
         if layout.contains(layout.gameOverNewRect(), mx, my) {
             startNewGame();
@@ -622,7 +622,7 @@ class ChessGame {
 
     /// @brief Promotion-dialog click handler (Q / R / B / N choice).
     hide func handlePromoInput(mx: Integer, my: Integer) {
-        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return; }
+        if !Mouse.WasClicked(Mouse.get_ButtonLeft()) { return; }
 
         var pieces = [QUEEN, ROOK, BISHOP, KNIGHT];
         for i in 0..4 {
@@ -636,7 +636,7 @@ class ChessGame {
     /// @brief Top/footer chrome click handler (NEW / MENU / DRAW / RESIGN).
     /// @return true if a chrome button was clicked (caller stops further handling).
     hide func handleHudClick(mx: Integer, my: Integer) -> Boolean {
-        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return false; }
+        if !Mouse.WasClicked(Mouse.get_ButtonLeft()) { return false; }
 
         if layout.contains(layout.newButtonRect(), mx, my) {
             startNewGame();

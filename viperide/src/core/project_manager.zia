@@ -290,7 +290,7 @@ class ProjectManager {
         var entries = FileIndex.Enumerate(project.rootPath, "", project.ignorePatterns, false);
         if entries == null { return cache; }
         var i = 0;
-        while i < Seq.get_Length(entries) {
+        while i < Seq.get_Count(entries) {
             var entry = Seq.Get(entries, i);
             if Map.GetBool(entry, "isDirectory") == false {
                 var path = Map.GetStr(entry, "path");
@@ -466,7 +466,7 @@ class ProjectManager {
             return "";
         }
 
-        if treeView.WasSelectionChanged() != 0 {
+        if treeView.WasSelectionChanged() {
             var selected = treeView.GetSelected();
             if selected != null {
                 var path = GUI.TreeView.Node.GetData(selected);
@@ -671,7 +671,7 @@ class ProjectManager {
         if IO.File.Exists(manifestPath) {
             var lines = Str.Split(IO.File.ReadAllText(manifestPath), "\n");
             var i = 0;
-            while i < Seq.get_Length(lines) {
+            while i < Seq.get_Count(lines) {
                 var line = Obj.ToString(Seq.Get(lines, i));
                 if Str.StartsWith(Str.Trim(line), "entry ") {
                     line = "entry " + rel;
@@ -822,7 +822,7 @@ class ProjectManager {
         var entries = FileIndex.Enumerate(project.rootPath, ".zia", project.ignorePatterns, false);
         if entries == null { return; }
         var i = 0;
-        while i < Seq.get_Length(entries) {
+        while i < Seq.get_Count(entries) {
             var entry = Seq.Get(entries, i);
             var filePath = Map.GetStr(entry, "path");
             if filePath != "" and ListContains(files, filePath) == false {

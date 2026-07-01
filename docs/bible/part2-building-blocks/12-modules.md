@@ -369,7 +369,7 @@ hide func containsAt(email: String) -> Boolean {
 
 hide func hasValidDomain(email: String) -> Boolean {
     var parts = Str.Split(email, "@");
-    if Seq.get_Length(parts) != 2 {
+    if Seq.get_Count(parts) != 2 {
         return false;
     }
     return Str.Has(Seq.GetStr(parts, 1), ".");

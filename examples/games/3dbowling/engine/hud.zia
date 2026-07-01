@@ -89,6 +89,30 @@ class HUD {
         Canvas3D.DrawText2D(canvas, cw - 86, ch - 20, "FPS: " + toString(fps), config.HUD_COLOR_GRAY);
     }
 
+    /// @brief Post-throw readout: the ball's entry angle plus a pocket-quality
+    ///        cue, so players learn that angle (hook), not just power, is what
+    ///        drives strikes.
+    expose func drawShotFeedback(canvas: Canvas3D, entryAngle: Float, cw: Integer) {
+        var panelW = 224;
+        var px = cw / 2 - panelW / 2;
+        var py = 74;
+        Canvas3D.DrawRect2D(canvas, px, py, panelW, 42, config.HUD_COLOR_FRAME_BG);
+        Canvas3D.DrawRect2D(canvas, px, py, panelW, 2, config.HUD_COLOR_MENU_ACCENT);
+        Canvas3D.DrawText2D(canvas, px + 12, py + 10,
+            "Entry angle  " + toString(Convert.NumToInt(entryAngle)) + " deg", config.HUD_COLOR_WHITE);
+
+        var tag = "Straight-in - tough to strike";
+        var tagColor = config.HUD_COLOR_GRAY;
+        if (entryAngle >= 4.0) {
+            tag = "Strong pocket angle";
+            tagColor = config.HUD_COLOR_GOLD;
+        } else if (entryAngle >= 2.0) {
+            tag = "Shallow angle";
+            tagColor = config.HUD_COLOR_WHITE;
+        }
+        Canvas3D.DrawText2D(canvas, px + 12, py + 26, tag, tagColor);
+    }
+
     hide func drawControlPanel(canvas: Canvas3D, power: Float, charging: Boolean,
                                spin: Float, aimX: Float,
                                ch: Integer) {

@@ -4,7 +4,7 @@ bind Viper.Terminal;
 
 func start() {
     SayNum(Pi);
-    SayNum(E);
+    SayNum(Euler);
     SayNum(Tau);
     SayNum(Abs(-5.0));
     SayInt(AbsInt(-42));

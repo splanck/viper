@@ -51,7 +51,7 @@ func start() {
 
     // === Test 4: Velocity set/get ===
     Viper.Game.Physics2D.Body.SetVel(body, 50.0, 0.0);
-    var vx = Viper.Game.Physics2D.Body.get_VX(body);
+    var vx = Viper.Game.Physics2D.Body.get_VelocityX(body);
     if (vx != 50.0) {
         Say("FAIL: VX should be 50.0");
         return;
@@ -123,7 +123,7 @@ func start() {
     var forceWorld = Viper.Game.Physics2D.World.New(0.0, 0.0);
     Viper.Game.Physics2D.World.Add(forceWorld, pushBody);
     Viper.Game.Physics2D.World.Step(forceWorld, 0.1);
-    var pvx = Viper.Game.Physics2D.Body.get_VX(pushBody);
+    var pvx = Viper.Game.Physics2D.Body.get_VelocityX(pushBody);
     if (pvx == 0.0) {
         Say("FAIL: VX should be nonzero after ApplyForce + Step");
         return;
@@ -132,7 +132,7 @@ func start() {
     // === Test 9: ApplyImpulse ===
     var impBody = Viper.Game.Physics2D.Body.New(0.0, 0.0, 10.0, 10.0, 2.0);
     Viper.Game.Physics2D.Body.ApplyImpulse(impBody, 0.0, -50.0);
-    var ivy = Viper.Game.Physics2D.Body.get_VY(impBody);
+    var ivy = Viper.Game.Physics2D.Body.get_VelocityY(impBody);
     // Impulse = change in momentum, velocity change = impulse/mass = -50/2 = -25
     if (ivy > -1.0) {
         Say("FAIL: VY should be negative after upward impulse");
@@ -148,7 +148,7 @@ func start() {
     Viper.Game.Physics2D.World.Add(world2, testBody);
     Viper.Game.Physics2D.World.Step(world2, 0.1);
 
-    var vy2 = Viper.Game.Physics2D.Body.get_VY(testBody);
+    var vy2 = Viper.Game.Physics2D.Body.get_VelocityY(testBody);
     var y2 = Viper.Game.Physics2D.Body.get_Y(testBody);
     if (y2 != 50.0) {
         Say("FAIL: body should not move with zero gravity and zero velocity");

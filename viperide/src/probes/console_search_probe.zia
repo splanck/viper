@@ -163,7 +163,7 @@ func main() {
 
     shell.SetBuildOutput("");
     if shell.outputPane.LineCount != 0 or shell.outputListBox.Count != 0
-       or shell.outputPane.IsVisible() != 0 or shell.outputListBox.IsVisible() != 0 {
+       or shell.outputPane.IsVisible() or shell.outputListBox.IsVisible() {
         fail(shell, "clear output");
         return;
     }
@@ -230,22 +230,22 @@ func main() {
         fail(shell, "clear output helper");
         return;
     }
-    if shell.tbStop.IsEnabled() != 0 or shell.tbBuild.IsEnabled() == 0 {
+    if shell.tbStop.IsEnabled() or !shell.tbBuild.IsEnabled() {
         fail(shell, "initial build toolbar state");
         return;
     }
     shell.SetBuildJobActive(true, "Build");
-    if shell.tbBuild.IsEnabled() != 0 or shell.tbRun.IsEnabled() != 0
-       or shell.tbStop.IsEnabled() == 0 or shell.miBuild.IsEnabled() != 0
-       or shell.miStop.IsEnabled() == 0 or shell.lastBuildJobStatus != "Job: Build"
+    if shell.tbBuild.IsEnabled() or shell.tbRun.IsEnabled()
+       or !shell.tbStop.IsEnabled() or shell.miBuild.IsEnabled()
+       or !shell.miStop.IsEnabled() or shell.lastBuildJobStatus != "Job: Build"
        or shell.jobItem.GetText() != "Job: Build" {
         fail(shell, "active build toolbar state");
         return;
     }
     shell.SetBuildJobActive(false, "");
-    if shell.tbBuild.IsEnabled() == 0 or shell.tbRun.IsEnabled() == 0
-       or shell.tbStop.IsEnabled() != 0 or shell.miBuild.IsEnabled() == 0
-       or shell.miStop.IsEnabled() != 0 or shell.lastBuildJobStatus != "Job: idle"
+    if !shell.tbBuild.IsEnabled() or !shell.tbRun.IsEnabled()
+       or shell.tbStop.IsEnabled() or !shell.miBuild.IsEnabled()
+       or shell.miStop.IsEnabled() or shell.lastBuildJobStatus != "Job: idle"
        or shell.jobItem.GetText() != "Job: idle" {
         fail(shell, "idle build toolbar state");
         return;
@@ -256,7 +256,7 @@ func main() {
                                 "V-ZIA", "expected token", "");
     GUI.ListBox.ItemSetData(prob, "loc|src/main.zia|12|4|12|5|diagnostic|expected token");
     shell.FinishProblems(1);
-    if shell.diagListBox.Count != 2 or shell.diagListBox.IsVisible() == 0 {
+    if shell.diagListBox.Count != 2 or !shell.diagListBox.IsVisible() {
         fail(shell, "problems structured rows");
         return;
     }
@@ -338,7 +338,7 @@ func main() {
     shell.app.SetWindowSize(620, 460);
     overlays.OpenSettings(shell, prefs);
     overlays.Pump(shell);
-    if overlays.settingsPanel.IsVisible() == 0
+    if !overlays.settingsPanel.IsVisible()
        or overlays.settingsDockWidth != 420 {
         fail(shell, "preferences compact side panel");
         return;
@@ -346,13 +346,13 @@ func main() {
     shell.app.SetWindowSize(1000, 720);
     overlays.OpenSettings(shell, prefs);
     overlays.Pump(shell);
-    if overlays.settingsPanel.IsVisible() == 0
+    if !overlays.settingsPanel.IsVisible()
        or overlays.settingsDockWidth != 560 {
         fail(shell, "preferences wide side panel");
         return;
     }
     overlays.CloseSettings();
-    if overlays.settingsPanel.IsVisible() != 0 {
+    if overlays.settingsPanel.IsVisible() {
         fail(shell, "preferences side panel close");
         return;
     }
@@ -442,7 +442,7 @@ func main() {
         fail(shell, "cooperative search final count");
         return;
     }
-    if shell.searchListBox.Count != 80 or shell.searchListBox.IsVisible() == 0 {
+    if shell.searchListBox.Count != 80 or !shell.searchListBox.IsVisible() {
         fail(shell, "search panel rows");
         return;
     }
@@ -546,13 +546,13 @@ func main() {
         return;
     }
     shell.SetDebugOutput("debug one\ndebug two\n");
-    if shell.debugListBox.Count != 2 or shell.debugListBox.IsVisible() == 0 {
+    if shell.debugListBox.Count != 2 or !shell.debugListBox.IsVisible() {
         fail(shell, "debug console rows");
         return;
     }
     shell.referencesListBox.AddItem("main.zia");
     shell.ShowReferencesPanel();
-    if shell.referencesListBox.IsVisible() == 0 or shell.toolTabBar.GetActiveIndex() != 3 {
+    if !shell.referencesListBox.IsVisible() or shell.toolTabBar.GetActiveIndex() != 3 {
         fail(shell, "references panel rows");
         return;
     }

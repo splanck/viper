@@ -50,7 +50,7 @@ func start() {
     // (2b) Structured diagnostics and compile results must be available
     //      without parsing display strings.
     var structured = ZiaToolchain.CheckForFile(badSrc, "probe.zia");
-    if Seq.get_Length(structured) == 0 {
+    if Seq.get_Count(structured) == 0 {
         Terminal.Say("RESULT: fail structured diagnostics");
         return;
     }
@@ -78,7 +78,7 @@ func start() {
         return;
     }
     var compileDiags = Map.Get(badCompile, "diagnostics");
-    if Seq.get_Length(compileDiags) == 0 {
+    if Seq.get_Count(compileDiags) == 0 {
         Terminal.Say("RESULT: fail invalid compile diagnostics");
         return;
     }

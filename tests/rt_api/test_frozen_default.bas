@@ -9,14 +9,14 @@ dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
 dm.Set("name", "viper")
 dm.Set("lang", "zia")
 keys = dm.Keys()
-count = keys.Length
+count = keys.Count
 PRINT count
 
 fs = Viper.Collections.FrozenSet.Empty()
-PRINT fs.Length
+PRINT fs.Count
 
 fm = Viper.Collections.FrozenMap.Empty()
-PRINT fm.Length
+PRINT fm.Count
 
 PRINT "done"
 END

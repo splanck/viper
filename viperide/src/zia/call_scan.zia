@@ -38,7 +38,7 @@ expose func OutgoingZiaCallTokens(source: String,
     var toLine = endLine;
     if fromLine < 1 { fromLine = 1; }
     if toLine < fromLine { toLine = fromLine; }
-    if toLine > Seq.get_Length(lines) { toLine = Seq.get_Length(lines); }
+    if toLine > Seq.get_Count(lines) { toLine = Seq.get_Count(lines); }
 
     var i = fromLine;
     while i <= toLine {

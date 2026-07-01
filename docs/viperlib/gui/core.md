@@ -298,9 +298,9 @@ widget returned by `app.Root`.
 | `IsVisible()`                 | `Integer()`              | 1 if widget is visible                   |
 | `SetAcceptedDropTypes(types)` | `Void(String)`           | Set accepted drop type(s)                |
 | `SetDragData(type, data)`     | `Void(String, String)`   | Set drag data type and payload           |
-| `SetDraggable(enabled)`       | `Void(Integer)`          | Enable/disable drag source               |
-| `SetDropTarget(enabled)`      | `Void(Integer)`          | Enable/disable drop target               |
-| `SetEnabled(enabled)`         | `Void(Integer)`          | Set enabled state (1=enabled, 0=disabled)|
+| `SetDraggable(enabled)`       | `Void(Boolean)`          | Enable/disable drag source               |
+| `SetDropTarget(enabled)`      | `Void(Boolean)`          | Enable/disable drop target               |
+| `SetEnabled(enabled)`         | `Void(Boolean)`          | Set enabled state |
 | `SetFlex(flex)`               | `Void(Double)`           | Set flex factor for layout               |
 | `SetMargin(margin)`           | `Void(Integer)`          | Set uniform outer margin in pixels       |
 | `SetMaxSize(width, height)`   | `Void(Double, Double)`   | Set maximum layout size; use `0` to clear a maximum |
@@ -309,7 +309,7 @@ widget returned by `app.Root`.
 | `SetSize(width, height)`      | `Void(Integer, Integer)` | Set fixed size in pixels                 |
 | `SetTooltip(text)`            | `Void(String)`           | Set tooltip text for this widget         |
 | `SetTooltipRich(title, body)` | `Void(String, String)`   | Set rich tooltip with title and body     |
-| `SetVisible(visible)`         | `Void(Integer)`          | Set visibility (1=visible, 0=hidden)     |
+| `SetVisible(visible)`         | `Void(Boolean)`          | Set visibility      |
 | `WasClicked()`                | `Integer()`              | 1 if widget was clicked this frame       |
 | `WasDropped()`                | `Integer()`              | 1 if something was dropped this frame    |
 
@@ -319,10 +319,10 @@ Drag/drop type and payload strings are stored as C-string payloads by the GUI la
 
 | Method                        | Signature              | Description                                              |
 |-------------------------------|------------------------|----------------------------------------------------------|
-| `SetDraggable(enabled)`       | `Void(Integer)`        | Enable or disable dragging this widget                   |
+| `SetDraggable(enabled)`       | `Void(Boolean)`        | Enable or disable dragging this widget                   |
 | `SetDragData(type, data)`     | `Void(String, String)` | Set the type and data payload for drag operations        |
 | `IsBeingDragged()`            | `Integer()`            | 1 if this widget is currently being dragged              |
-| `SetDropTarget(enabled)`      | `Void(Integer)`        | Mark this widget as a drop target                        |
+| `SetDropTarget(enabled)`      | `Void(Boolean)`        | Mark this widget as a drop target                        |
 | `SetAcceptedDropTypes(types)` | `Void(String)`         | Specify which drag data types are accepted               |
 | `IsDragOver()`                | `Integer()`            | 1 if a dragged item is hovering over this widget         |
 | `WasDropped()`                | `Integer()`            | 1 if a drop occurred on this widget this frame           |

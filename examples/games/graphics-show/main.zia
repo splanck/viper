@@ -241,7 +241,7 @@ class Menu {
                 canvas.Text(itemX - 15, itemY, ">", indicatorColor);
 
                 // Draw item name in bright color
-                canvas.Text(itemX, itemY, item.name, colors.WHITE);
+                canvas.Text(itemX, itemY, item.name, colors.White);
             } else {
                 // Unselected item
                 canvas.Text(itemX, itemY, item.name, RGB(120, 120, 120));

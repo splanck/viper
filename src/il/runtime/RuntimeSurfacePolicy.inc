@@ -143,6 +143,11 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_asset_error_set")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_asset_error_set_if_empty")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_fbx_load_recoverable")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_material3d_resolve_texture_pixels")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_entity_set_collision_mask")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_entity_set_layer")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_entity_set_material")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_entity_set_mesh")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_entity_set_name")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_diag_record_anim_events_dropped")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_diag_record_audio_voice_evicted")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_game3d_diag_record_broadphase_fallback")
@@ -764,7 +769,6 @@ RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.MapErr", "rt_result_map_err_wrappe
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.AndThen", "rt_result_and_then_wrapper")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Result.OrElse", "rt_result_or_else_wrapper")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.New", "rt_lazy_new_wrapper")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.Map", "rt_lazy_map_wrapper")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Functional.Lazy.FlatMap", "rt_lazy_flat_map_wrapper")
 
@@ -823,7 +827,6 @@ RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "MapErr", "obj(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "AndThen", "obj(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Result", "OrElse", "obj(obj)")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "New", "obj<Viper.Functional.Lazy>(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "Map", "obj<Viper.Functional.Lazy>(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Functional.Lazy", "FlatMap", "obj<Viper.Functional.Lazy>(obj)")
 

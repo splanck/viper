@@ -7,6 +7,7 @@ bind Viper.Graphics3D;
 bind Viper.Core.Convert as Convert;
 bind "./config";
 bind "./terrain";
+bind "./mathutil";
 
 class ShowcaseMinimap {
     hide Pixels minimapBase;
@@ -55,12 +56,12 @@ class ShowcaseMinimap {
 
     hide func minimapHeightColor(h: Float) -> Integer {
         if (h < config.WATER_HEIGHT) {
-            return terrain.packPixel(28, 70, 110, 255);
+            return mathutil.packPixel(28, 70, 110, 255);
         }
-        var t = terrain.clampFloat((h - config.WATER_HEIGHT) / 20.0, 0.0, 1.0);
-        var r = Convert.NumToInt(terrain.lerpFloat(64.0, 150.0, t));
-        var g = Convert.NumToInt(terrain.lerpFloat(112.0, 138.0, t));
-        var b = Convert.NumToInt(terrain.lerpFloat(56.0, 120.0, t));
-        return terrain.packPixel(terrain.clampByte(r), terrain.clampByte(g), terrain.clampByte(b), 255);
+        var t = mathutil.clampFloat((h - config.WATER_HEIGHT) / 20.0, 0.0, 1.0);
+        var r = Convert.NumToInt(mathutil.lerpFloat(64.0, 150.0, t));
+        var g = Convert.NumToInt(mathutil.lerpFloat(112.0, 138.0, t));
+        var b = Convert.NumToInt(mathutil.lerpFloat(56.0, 120.0, t));
+        return mathutil.packPixel(mathutil.clampByte(r), mathutil.clampByte(g), mathutil.clampByte(b), 255);
     }
 }

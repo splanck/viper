@@ -91,7 +91,7 @@ class FileWatchController {
         }
         if hasWatcher == false { return; }
         var watchEvent = fileWatcher.Poll();
-        if watchEvent == fileWatcher.EVENT_MODIFIED {
+        if watchEvent == fileWatcher.EventModified {
             if pendingReload == false {
                 pendingReload = true;
                 doc.externalChangeNotified = true;

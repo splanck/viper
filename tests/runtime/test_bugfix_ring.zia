@@ -24,7 +24,7 @@ func start() {
     }
     defaultRing.Push("a");
     defaultRing.Push("b");
-    if (defaultRing.Length != 2) {
+    if (defaultRing.Count != 2) {
         Say("FAIL: default Ring should accept pushed values");
         passed = false;
     }

@@ -37,6 +37,9 @@ class BowlingGameRender extends BowlingGameScoring {
             hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
                 ballObj.getBallType(), gameState, render.getFps(), playerCount, activePlayer,
                 scoreKeeperOne.getTotalScore(), scoreKeeperTwo.getTotalScore(), laneObj.getOilPatternName());
+            if (hasLastEntry && gameState != config.STATE_AIMING) {
+                hudObj.drawShotFeedback(canvas, lastEntryAngle, cw);
+            }
         } else if (screenState == config.SCREEN_PAUSED) {
             hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
                 ballObj.getBallType(), gameState, render.getFps(), playerCount, activePlayer,

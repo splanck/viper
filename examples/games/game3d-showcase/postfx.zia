@@ -8,6 +8,7 @@ bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind "./config";
 bind "./terrain";
+bind "./mathutil";
 
 func buildPostFX(canvas: Canvas3D) {
     var fx = PostFX3D.New();
@@ -141,9 +142,9 @@ class ShowcaseEffects {
                 var dist = Sqrt(dx * dx + dy * dy);
                 var alpha = 1.0 - dist * 2.4;
                 if (alpha > 0.0) {
-                    buf.Set(px, py, terrain.packPixel(30, 22, 16, terrain.clampByte(Convert.NumToInt(alpha * 150.0))));
+                    buf.Set(px, py, mathutil.packPixel(30, 22, 16, mathutil.clampByte(Convert.NumToInt(alpha * 150.0))));
                 } else {
-                    buf.Set(px, py, terrain.packPixel(0, 0, 0, 0));
+                    buf.Set(px, py, mathutil.packPixel(0, 0, 0, 0));
                 }
             }
         }

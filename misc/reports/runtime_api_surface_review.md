@@ -25,8 +25,103 @@ Scope: frontend-visible `Viper.*` runtime API as reported by
 > - The Game3D lowercase-name total reproduces at 301 vs the reported 305
 >   (long-tail classifier edge); the per-class table is exact row-for-row.
 > - One illustrative example is imprecise: `Viper.Graphics3D.Material3D`
->   Alpha/Metallic/Roughness/AO are set via property setters (`set_*`), not
+>   Alpha/Metallic/Roughness/AmbientOcclusion are set via property setters (`set_*`), not
 >   `Set*` methods, so they are not accessor-duplication cases. Flagged inline.
+
+> ## Cleanup Progress — 2026-07-01
+>
+> Current live dump after cleanup is **6,222** functions / **461** classes.
+> `rtgen --audit --strict-header-sync --strict-unclassified` passes with
+> **6,222** declared functions, **461** classes, and **7,110** header
+> declarations. `RT_ALIAS` is now rejected by `rtgen`; no public `RT_ALIAS`
+> entries remain in `runtime.def`.
+>
+> Validated cleanup already completed:
+> - No public class property names contain all-caps acronym blocks; the stricter
+>   live dump audit (`[A-Z]{2,}` on property names) returns zero matches.
+> - No public property/method collisions remain under case-insensitive matching.
+> - No same class + method + arity duplicates remain in the live class catalog.
+> - No accessor-shaped `get_` / `set_` public methods remain in the class
+>   catalog; Canvas3D telemetry is exposed only as properties.
+> - No lowercase/camelCase public class member names remain in the live class
+>   catalog. Excluding canonical `get_` / `set_` accessor function spellings, no
+>   lowercase public `RT_FUNC` leaves remain.
+> - `Viper.Math.Random.inst_*` implementation targets are now
+>   `RT_INTERNAL_FUNC` descriptors: callable by class-method lowering and native
+>   codegen, but hidden from standalone frontend externs and `--dump-runtime-api`.
+>   Zia runtime method binding derives the implicit-receiver skip from resolved
+>   class-method metadata, so hidden implementation targets keep
+>   `rng.NextInt(...)` / `rng.Range(...)` source calls working without publishing
+>   `inst_*` as public functions.
+> - Sound boolean API shape is now corrected in the frontend-visible surface:
+>   `Voice.IsPlaying`, `Music.IsPlaying`, `Music.SetLoop`, and
+>   `MusicGen.SetLoopable` use `i1` in both function and class-method
+>   signatures.
+> - Concrete GUI/Assets/Terminal boolean examples from the review now use `i1`
+>   in public signatures, including `Widget.IsHovered`, `Widget.WasClicked`,
+>   `App.WasCloseRequested`, `ClipboardText.HasText`, `Shortcuts.IsEnabled`,
+>   `Assets.Exists`, `Terminal.SetCursorVisible`, and video `IsPlaying`
+>   properties.
+> - Standard boolean probe names are now clean across the live public surface:
+>   `Is*`, `Has*`, `Can*`, `Was*`, `get_Is*`, `get_Has*`, and `get_Can*`
+>   functions/methods all return `i1`; the runtime class-qualified surface audit
+>   guards this.
+> - Boolean state setters now use `i1` for the concrete GUI/runtime toggle
+>   names audited here, including visibility/enabled/draggable/checked,
+>   shortcut/cursor/menu/toolbar/findbar, code-editor display toggles,
+>   file-dialog multiple selection, output-pane flags, tab modified/auto-close,
+>   minimap slider, and video-widget visibility/enabled. The same audit guards
+>   these exact setter names and intentionally leaves selectors/counts such as
+>   `Dropdown.SetSelected(index)` and `Toast.SetMaxVisible(count)` as integers.
+> - `--dump-runtime-api` now emits public `runtime.def` signature text for
+>   frontend-visible `Viper.*` descriptors rather than lowered IL ABI
+>   signatures. The live dump has zero public `ptr` signature tokens, and
+>   `test_runtime_registry` guards `Viper.*` descriptor signature text.
+> - Direct parse of the current public `RT_FUNC` rows finds no public
+>   same-C-symbol + same-signature duplicate groups. `RT_INTERNAL_FUNC` rows are
+>   deliberately excluded from that public API measurement.
+> - Collection/container cardinality now uses `Count`, while `Length` is reserved
+>   for byte/string/buffer/stream length, `BitSet` bit capacity, durations, and
+>   geometric/path length. No class exposes both `Count` and `Length` except
+>   `BitSet`, where `Count` is population count and `Length` is bit capacity.
+>   `Grid2D.Length`, which was only a duplicate spelling for `Grid2D.Size`, was
+>   removed after verifying there were no in-repo call sites. The
+>   class-qualified surface audit now allowlists the remaining semantic
+>   `Length` properties and rejects new cardinality `Length` drift.
+> - Descendant namespace functions are no longer synthesized onto parent classes.
+> - Cross-class constructor targets no longer synthesize public methods such as
+>   `Viper.Core.ValueType.ValueType`.
+> - Constructor metadata now targets only canonical `Class.New` functions.
+>   Named factories such as `Open`, `Load`, `Parse`, `FromSeq`, `Some`, `Ok`,
+>   `Today`, `Range`, `Connect`, and `Build` are explicit factory methods only;
+>   Zia `new` no longer treats them as constructor aliases.
+> - `Viper.Functional.Lazy.New` was removed from the public runtime surface after
+>   confirming there were no in-repo source, test, example, or doc call sites.
+>   `Lazy.Of*` remain the public value factories.
+> - Writable property plus `Set<Property>` duplicate methods are gone from the
+>   live class catalog. The last five were `Viper.Game3D.Entity3D.Mesh`,
+>   `Material`, `Name`, `Layer`, and `CollisionMask`; call sites now use
+>   property assignment.
+> - Removed stale C-only generic modifier key aliases
+>   (`rt_keyboard_key_shift`, `rt_keyboard_key_ctrl`, `rt_keyboard_key_alt`) after
+>   verifying the public `KeyShift`/`KeyCtrl`/`KeyAlt` aliases were gone.
+> - Concrete GUI widget classes no longer copy `Viper.GUI.Widget` methods into
+>   their public class catalogs. Base widget methods remain on
+>   `Viper.GUI.Widget`; shared runtime method resolution and Zia completion
+>   expose those inherited operations for concrete widget handles without
+>   duplicating the public API surface. The class-qualified surface audit now
+>   rejects copied `Viper.GUI.Widget.*` targets on other GUI classes.
+> - Current focused verification passes:
+>   `test_runtime_class_qualified_surface`, `test_runtime_classes_catalog`,
+>   `test_method_index_basic`, `test_basic_runtime_calls`, `test_zia_rt_new`,
+>   `zia_rt_api_test_memstream`, and `test_runtime_surface_audit`.
+> - Final audit verification passes:
+>   `./scripts/audit_runtime_surface.sh`,
+>   `bash scripts/lint_zia_runtime_names.sh`, and
+>   strict `rtgen` audit with header sync and unclassified-symbol checks.
+> - Final demo/IDE verification requested for this cleanup passes:
+>   `./scripts/build_demos_mac.sh` reports 17 passed / 0 failed, and
+>   `./scripts/build_ide.sh` builds `viperide/bin/viperide`.
 
 ## Executive Summary
 
@@ -271,6 +366,10 @@ Relevant code:
 > ✅ **CONFIRMED.** Exactly **5,601** function signatures in `--dump-runtime-api`
 > contain `ptr`. All 4 examples match: `BitSet.New ptr(i64)`,
 > `List.Push void(ptr,ptr)`, `Box.I64 ptr(i64)`, `Canvas.Clear void(ptr,i64)`.
+>
+> 2026-07-01 cleanup: fixed. `--dump-runtime-api` prints public descriptor
+> signature text for frontend-visible `Viper.*` functions, and the live dump now
+> has **zero** public raw `ptr` signature tokens.
 
 The live API dump exposes `ptr` in 5,601 public function signatures. Class
 members do not show `ptr` because they use the raw catalog strings, but global
@@ -322,7 +421,7 @@ syntax. BASIC is case-insensitive, so these are especially risky.
 Correction:
 
 - Keep properties for constants and value access.
-- Delete method aliases for constants (`Math.E()`, `Machine.Arch()`) unless a
+- Delete method aliases for constants (`Math.Euler()`, `Machine.Arch()`) unless a
   method really performs computation.
 - Rename log level constants to non-colliding names such as `LevelDebug`, or
   rename log methods to `WriteDebug`, `WriteInfo`, etc.
@@ -335,6 +434,15 @@ Correction:
 > gated 5-arg forms) yields exactly **44** same-C-symbol + same-signature groups
 > with **zero** extras beyond the table below — the list is both complete and
 > accurate. Every one of the 44 rows was verified against the live registry.
+>
+> 2026-07-01 cleanup: the `Viper.Math.Random.inst_*` row is no longer part of the
+> public runtime API. Those descriptors are emitted through `RT_INTERNAL_FUNC`
+> so `rng.Next()` / `rng.Range(...)` keep working as class methods without
+> publishing implementation target names as standalone functions.
+>
+> Current-state note: a direct parse of public `RT_FUNC` rows now finds **zero**
+> public same-C-symbol + same-signature duplicate groups. The table below is
+> historical confirmation data from the original audit, not the current surface.
 
 There are 44 same C-symbol + same signature groups declared as separate
 `RT_FUNC`s, before counting `RT_ALIAS`. Some are legitimate bidirectional
@@ -387,7 +495,7 @@ Full duplicate `RT_FUNC` groups found:
 | `rt_deque_to_seq` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.FromDeque`; `Viper.Collections.Deque.ToSeq` |
 | `rt_fmt_int` | `str(i64)` | `Viper.Terminal.Int`; `Viper.Text.Fmt.Int` |
 | `rt_list_to_seq` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.List.ToSeq`; `Viper.Collections.Seq.FromList` |
-| `rt_math_e` | `f64()` | `Viper.Math.get_E`; `Viper.Math.E` |
+| `rt_math_e` | `f64()` | `Viper.Math.get_Euler`; `Viper.Math.Euler` |
 | `rt_math_pi` | `f64()` | `Viper.Math.get_Pi`; `Viper.Math.Pi` |
 | `rt_math_tau` | `f64()` | `Viper.Math.get_Tau`; `Viper.Math.Tau` |
 | `rt_parse_double_option` | `obj<Viper.Option>(str)` | `Viper.Core.Parse.Double`; `Viper.Core.Parse.DoubleOption`; `Viper.Core.Parse.TryNum` |
@@ -421,6 +529,13 @@ Full duplicate `RT_FUNC` groups found:
 > class-method slots. `Viper.GUI.Widget.SetEnabled` / `SetPreferredSize` /
 > `SetMaxSize` / `SetFlex` / `SetMargin` appear in **24** slots each;
 > `IsHovered` / `IsPressed` / `WasClicked` / `GetWidth` / `GetX` in **23** each.
+>
+> 2026-07-01 cleanup: copied base widget methods have been removed from concrete
+> GUI class catalogs. `Viper.GUI.Widget` owns the shared widget operations;
+> concrete widget handles resolve those methods through shared frontend runtime
+> method lookup and Zia completion rather than duplicate public catalog entries.
+> The runtime class-qualified surface audit rejects future copied
+> `Viper.GUI.Widget.*` targets outside `Viper.GUI.Widget`.
 
 The class catalog repeats base widget methods into concrete widget classes by
 pointing every class method at `Viper.GUI.Widget.*`.
@@ -453,6 +568,32 @@ Correction:
 > `Core.Box.ValueType`, `Graphics.ParticleSystem2D` and `Graphics.Emitter2D`→
 > `Game.ParticleEmitter.New`). All listed examples match. Constructor
 > auto-injection verified at `rtgen.cpp:1447–1466`.
+>
+> 2026-07-01 cleanup: constructor auto-method synthesis is now constrained to
+> constructor targets that are immediate members of the same class namespace.
+> `Viper.Core.ValueType` no longer exposes the synthetic
+> `ValueType(obj(i64))` method for `Viper.Core.Box.ValueType`; catalog coverage
+> asserts this stays removed.
+>
+> 2026-07-01 cleanup: self-returning `New` methods now require matching
+> constructor metadata. `Viper.Math.Mat3`, `Viper.Math.Mat4`,
+> `Viper.Network.Udp`, `Viper.Network.HttpReq`, and `Viper.Network.Url` were
+> marked with their existing canonical constructors. Zia `new` resolution now
+> uses constructor metadata instead of guessing from any `.New` function. The
+> remaining constructor-less `New` methods are intentional factories:
+> `Viper.Text.Uuid.New` returns `String`, and `Viper.Zia.ProjectIndex.New`
+> returns `ProjectIndexHandle`.
+> `Viper.Functional.Lazy.New` was removed from the public runtime surface after
+> confirming no tests, examples, docs, or source references used it; `Lazy.Of*`
+> remain the value factories.
+>
+> 2026-07-01 cleanup: constructor metadata now targets only canonical
+> `Class.New` functions. The 29 named-factory constructor mappings
+> (`Open`, `Load`, `Parse`, `FromSeq`, `Some`, `Ok`, `Today`, `Range`,
+> `Connect`, `Build`, etc.) were removed from constructor metadata; callers use
+> those factories explicitly. The Zia `new` regression tests now assert named
+> factories are not constructor aliases, and the class-qualified surface audit
+> rejects future non-`.New` constructor targets.
 
 Constructor metadata is inconsistent with method naming:
 
@@ -496,6 +637,11 @@ Relevant code:
 > reported 305 (long-tail classifier edge). Cited `runtime.def` lines carry the
 > lowercase names verbatim (15332 `get_bits`, 15364 `lookSensitivity`, 15397
 > `setPosition`, …).
+>
+> 2026-07-01 cleanup: the live class catalog now has **zero** lowercase/camelCase
+> public member names. Game3D public member names are PascalCase; remaining
+> lowercase-looking Game3D `RT_FUNC` names are canonical property accessors using
+> the expected `get_` / `set_` prefix.
 
 The surface mostly uses PascalCase class and method names, but `Game3D` uses
 lowercase/camelCase names heavily.
@@ -541,50 +687,69 @@ Relevant source examples:
 
 ## P1: Count/Length Policy Is Unclear
 
-> ✅ **CONFIRMED.** Exactly **10** paths expose both `get_Length` and `get_Count`,
-> **38** only `get_Length`, **22** only `get_Count`. The 10 "both" paths match the
-> report's list exactly (BitSet, BloomFilter, UnionFind, F64Buffer, I64Buffer,
-> List, Seq, Iterator, ButtonGroup, ParticleEmitter).
+> ✅ **FIXED.** The public class catalog now uses `Count` for
+> collection/container cardinality and reserves `Length` for true length
+> semantics: strings/text buffers, bytes/numeric buffers, streams, `BitSet` bit
+> capacity, music duration, distance-joint length, and 3D path length.
+> `BitSet` intentionally exposes both `Length` and `Count` because they are
+> different values: bit capacity versus population count.
+>
+> 2026-07-01 cleanup: duplicate `Count`/`Length` property pairs are gone,
+> `Grid2D.Length` was removed as a duplicate of `Grid2D.Size`, collection
+> cardinality getters/properties were renamed to `get_Count` / `Count`, and
+> tests/docs/examples were updated. The class-qualified surface audit now
+> allowlists the remaining semantic `Length` properties and rejects future
+> cardinality `Length` drift.
 
 Function namespaces with cardinality accessors:
 
-- 10 paths expose both `get_Length` and `get_Count`.
-- 38 paths expose only `get_Length`.
-- 22 paths expose only `get_Count`.
+- `Count` is the property/getter spelling for collection and container
+  cardinality (`List`, `Seq`, `Map`, `Set`, queues/stacks/deques, maps, thread
+  queues/maps/channels, playlists, etc.).
+- `Length` remains only on semantic length APIs (`String`, `Bytes`, buffers,
+  streams, `BitSet` capacity, `MusicGen`, distance/path length).
 
 Examples with both:
 
-- `Viper.Collections.BitSet`
-- `Viper.Collections.BloomFilter`
-- `Viper.Collections.UnionFind`
-- `Viper.Collections.F64Buffer`
-- `Viper.Collections.I64Buffer`
-- `Viper.Collections.List`
-- `Viper.Collections.Seq`
-- `Viper.Collections.Iterator`
-- `Viper.Game.ButtonGroup`
-- `Viper.Game.ParticleEmitter`
+- `Viper.Collections.BitSet` is the only intentional `Count` + `Length` class:
+  `Count` is set-bit population count; `Length` is bit capacity.
 
 Correction:
 
-- Adopt one rule:
-  - `Count` for collections and containers.
-  - `Length` for strings, byte buffers, durations, and geometric/path length.
-- Delete aliases that violate the rule.
-- Rename canonical functions rather than retaining both.
+- Keep the allowlist-based audit guard in place; new `Length` properties must be
+  justified as true length semantics.
+- Continue using canonical renames only. Do not reintroduce compatibility
+  aliases.
 
 ## P1: Boolean Values Are Exposed As `i64`
 
-> ✅ **CONFIRMED (substance + concrete cases).** The **4 exact getter/setter
-> mismatches** reproduce precisely — `Sprite.FlipX`, `Sprite.FlipY`,
-> `TileLayer2D.Visible`, `RenderPass2D.Enabled` all have getter `i1` / setter
-> `i64`. All 8 named examples return `i64` (IsHovered, WasClicked,
-> WasCloseRequested, HasText, IsEnabled, IsPlaying, Exists, SetCursorVisible).
+> ✅ **CONFIRMED (substance + concrete cases; original finding).** The **4 exact
+> getter/setter mismatches** reproduced precisely — `Sprite.FlipX`,
+> `Sprite.FlipY`, `TileLayer2D.Visible`, `RenderPass2D.Enabled` all had getter
+> `i1` / setter `i64`. The named examples returned `i64` before the cleanup
+> notes below were applied.
 > The aggregate "≥85 return / 33 setters" depends on an undocumented
 > "boolean-looking" classifier; independent nets reproduce ~57–66 returns and
 > ~21 setters — same order of magnitude, and the problem is pervasive.
 
 `i1` exists and is documented as boolean, but many APIs still use `i64`.
+
+> 2026-07-01 cleanup: the isolated sound cases are now fixed in the public
+> runtime surface: `Viper.Sound.Voice.IsPlaying` and
+> `Viper.Sound.Music.IsPlaying` return `i1`; `Viper.Sound.Music.SetLoop` and
+> `Viper.Sound.MusicGen.SetLoopable` take `i1`.
+>
+> 2026-07-01 cleanup: the four exact getter/setter mismatches listed below are
+> fixed, and the concrete GUI/Assets/Terminal examples from the original review
+> now use boolean signatures: `Widget.IsHovered`, `Widget.WasClicked`,
+> `App.WasCloseRequested`, `ClipboardText.HasText`, `Shortcuts.IsEnabled`,
+> `Assets.Exists`, `Terminal.SetCursorVisible`, plus video `IsPlaying`
+> properties.
+>
+> 2026-07-01 cleanup: standard boolean probes now all return `i1`, and concrete
+> boolean state setters now use `i1` for the audited toggle names. Selectors and
+> counts with boolean-looking words remain integer by design, e.g.
+> `Dropdown.SetSelected(index)` and `Toast.SetMaxVisible(count)`.
 
 Measured suspicious cases:
 
@@ -592,23 +757,22 @@ Measured suspicious cases:
 - 33 boolean-looking setters take `i64`.
 - 4 exact getter/setter type mismatches.
 
-Examples:
+Original concrete examples, now fixed:
 
-- `Viper.GUI.Widget.IsHovered i64(obj)`
-- `Viper.GUI.Widget.WasClicked i64(obj)`
-- `Viper.GUI.App.WasCloseRequested i64(obj)`
-- `Viper.GUI.ClipboardText.HasText i64()`
-- `Viper.GUI.Shortcuts.IsEnabled i64(str)`
-- `Viper.Sound.Music.IsPlaying i64(obj)`
-- `Viper.IO.Assets.Exists i64(str)`
-- `Viper.Terminal.SetCursorVisible void(i64)`
+- `Viper.GUI.Widget.IsHovered i1(obj)`
+- `Viper.GUI.Widget.WasClicked i1(obj)`
+- `Viper.GUI.App.WasCloseRequested i1(obj)`
+- `Viper.GUI.ClipboardText.HasText i1()`
+- `Viper.GUI.Shortcuts.IsEnabled i1(str)`
+- `Viper.IO.Assets.Exists i1(str)`
+- `Viper.Terminal.SetCursorVisible void(i1)`
 
-Exact getter/setter type mismatches:
+Original exact getter/setter type mismatches, now fixed:
 
-- `Viper.Graphics.Sprite.FlipX`: getter `i1`, setter `i64`
-- `Viper.Graphics.Sprite.FlipY`: getter `i1`, setter `i64`
-- `Viper.Graphics.TileLayer2D.Visible`: getter `i1`, setter `i64`
-- `Viper.Graphics.RenderPass2D.Enabled`: getter `i1`, setter `i64`
+- `Viper.Graphics.Sprite.FlipX`: getter `i1`, setter `i1`
+- `Viper.Graphics.Sprite.FlipY`: getter `i1`, setter `i1`
+- `Viper.Graphics.TileLayer2D.Visible`: getter `i1`, setter `i1`
+- `Viper.Graphics.RenderPass2D.Enabled`: getter `i1`, setter `i1`
 
 Correction:
 
@@ -624,9 +788,17 @@ Correction:
 > definition). Confirmed real cases include `Vec3.X/Y/Z`+`SetX/Y/Z`,
 > `Camera3D.Fov`+`SetFov`, `Light3D.Enabled`+`SetEnabled`, and many GUI
 > `Value`/`Text`/`Selected`. ⚠ **Example correction:** `Material3D`
-> Alpha/Metallic/Roughness/AO are set via property setters (`set_*`), **not**
+> Alpha/Metallic/Roughness/AmbientOcclusion are set via property setters (`set_*`), **not**
 > `Set*` methods (its actual set-methods are SetColor/SetAlbedoMap/…), so that
 > illustration is not an accessor-duplication case.
+>
+> 2026-07-01 cleanup: the live surface had only five remaining writable
+> property + `Set{P}` method pairs, all on `Viper.Game3D.Entity3D`:
+> `Mesh`, `Material`, `Name`, `Layer`, and `CollisionMask`. The simple public
+> `Set*` methods were removed, call sites were migrated to property assignment,
+> and recursive/command methods such as `SetMeshRecursive`, `SetMaterialRecursive`,
+> `SetPosition`, and `SetVelocity` were kept. The class-qualified surface audit
+> now rejects any future `Set{P}` method for a writable property.
 
 There are 115 writable properties that also expose `SetX` methods. Some are
 useful fluent APIs, but most are duplicate ways to mutate the same state.
@@ -634,7 +806,7 @@ useful fluent APIs, but most are duplicate ways to mutate the same state.
 Examples:
 
 - `Viper.Math.Vec3.X/Y/Z` and `SetX/SetY/SetZ`
-- `Viper.Graphics3D.Material3D.Alpha/Metallic/Roughness/AO/...` and matching
+- `Viper.Graphics3D.Material3D.Alpha/Metallic/Roughness/AmbientOcclusion/...` and matching
   `SetAlpha/SetMetallic/...`
 - `Viper.Graphics3D.Light3D.Enabled/CastsShadows/Direction/Position` and
   matching setters
@@ -652,16 +824,27 @@ Correction:
 ## P2: Constant Names Are Modeled As Properties
 
 > ✅ **CONFIRMED.** Key-code and event constants exist as readonly `get_`
-> properties: `Input.Keyboard.get_KEY_A`, `Input.Mouse.get_BUTTON_LEFT`,
-> `Input.Pad.get_PAD_A`, `IO.Watcher.get_EVENT_CREATED`, `Graphics.Color.get_RED`.
+> properties: `Input.Keyboard.get_KeyA`, `Input.Mouse.get_ButtonLeft`,
+> `Input.Pad.get_ButtonA`, `IO.Watcher.get_EventCreated`, `Graphics.Color.get_Red`.
+>
+> 2026-07-01 cleanup: all public multi-character all-caps constant properties
+> were renamed to PascalCase and re-audited. A later stricter pass also removed
+> acronym blocks from public property names (`UseCcd`, `PostFx`,
+> `HasAmbientOcclusionMap`, `BoundsMin`/`BoundsMax`,
+> `LastCcdRequestedSubsteps`, `LastLod0ChunkCount`, `KeyLeftShift`,
+> `ScrollHorizontalFloat`). Examples include
+> `Shutdown.None`, `Color.Red`, `Keyboard.KeyA`, `Mouse.ButtonLeft`,
+> `Pad.ButtonA`, `Action.AxisLeftX`, `Watcher.EventCreated`, `Machine.Os`,
+> `Math.Euler`, `Material3D.AmbientOcclusion`, `ShadingModel.Pbr`, and
+> `Collision3DEvent.EntityA` / `EntityB`.
 
 Constants such as input key codes are represented as readonly properties:
 
-- `Viper.Input.Keyboard.KEY_A`, `KEY_B`, ...
-- `Viper.Input.Mouse.BUTTON_LEFT`, ...
-- `Viper.Input.Pad.PAD_A`, ...
-- `Viper.IO.Watcher.EVENT_CREATED`, ...
-- `Viper.Graphics.Color.get_RED`, ...
+- `Viper.Input.Keyboard.KeyA`, `KeyB`, ...
+- `Viper.Input.Mouse.ButtonLeft`, ...
+- `Viper.Input.Pad.ButtonA`, ...
+- `Viper.IO.Watcher.EventCreated`, ...
+- `Viper.Graphics.Color.get_Red`, ...
 
 This is not inherently broken, but it is inconsistent with the rest of the
 PascalCase API and looks odd in a class-property catalog.
@@ -676,21 +859,31 @@ Correction:
 ## Recommended Cleanup Order
 
 1. Add validation first:
-   - No public `RT_ALIAS`.
-   - No `ptr` in public dump.
-   - No descendant namespace auto-methods.
-   - No same class + method + arity duplicates.
-   - No property/method collisions ignoring case.
+   - No public `RT_ALIAS`. **Done; enforced by `rtgen`.**
+   - No `ptr` in public dump. **Done; live dump and descriptor guard are clean.**
+   - No descendant namespace auto-methods. **Done.**
+   - No same class + method + arity duplicates. **Done.**
+   - No property/method collisions ignoring case. **Done.**
 2. Delete `rtgen` synthetic method auto-fill, or constrain it to immediate
-   functions only while requiring explicit `RT_METHOD`s.
-3. Delete all 337 `RT_ALIAS` entries and matching policy exceptions.
-4. Normalize `Game3D` public names to PascalCase.
+   functions only while requiring explicit `RT_METHOD`s. **Immediate-only
+   synthesis is in place.**
+3. Delete all 337 `RT_ALIAS` entries and matching policy exceptions. **Done.**
+4. Normalize `Game3D` public names to PascalCase. **Done for public class
+   members; canonical property accessor spellings still use `get_` / `set_` as
+   expected.**
 5. Collapse duplicate `RT_FUNC` spellings that share the same C symbol and
-   signature.
-6. Decide and apply the `Count`/`Length` policy.
-7. Convert boolean-shaped APIs to `i1`.
-8. Rebuild generated runtime files and update tests/goldens.
-9. Run:
+   signature. **Done for public `RT_FUNC` rows; guarded by the class-qualified
+   surface audit.**
+6. Decide and apply the `Count`/`Length` policy. **Done; collection and
+   container cardinality uses `Count`, semantic length APIs keep `Length`, and
+   the class-qualified surface audit guards the allowlist.**
+7. Convert boolean-shaped APIs to `i1`. **Done for standard boolean probe names
+   and original concrete examples; guarded by runtime surface tests.**
+8. Remove copied GUI widget methods from concrete class catalogs. **Done; base
+   widget methods resolve through shared frontend fallback and are guarded by
+   the class-qualified surface audit.**
+9. Rebuild generated runtime files and update tests/goldens.
+10. Run:
    - `./scripts/audit_runtime_surface.sh`
    - `./scripts/lint_zia_runtime_names.sh`
    - targeted runtime class/catalog tests

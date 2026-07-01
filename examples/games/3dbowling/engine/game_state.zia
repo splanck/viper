@@ -59,6 +59,10 @@ class BowlingGameState {
     hide Boolean ballHitPinsThisRoll;
     hide Boolean cinematicStarted;
 
+    hide Float lastEntryAngle;
+    hide Boolean entryCaptured;
+    hide Boolean hasLastEntry;
+
     hide Integer oilPattern;
     hide Integer qualityMode;
     hide Integer currentMode;
@@ -95,6 +99,9 @@ class BowlingGameState {
         gutterLatched = false;
         ballHitPinsThisRoll = false;
         cinematicStarted = false;
+        lastEntryAngle = 0.0;
+        entryCaptured = false;
+        hasLastEntry = false;
         oilPattern = config.OIL_HOUSE;
         qualityMode = config.QUALITY_CINEMATIC;
         currentMode = config.MODE_SINGLE;

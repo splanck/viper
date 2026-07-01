@@ -394,8 +394,8 @@ TypeRef Sema::resolveModuleFieldAccess(FieldExpr *expr, TypeRef baseType) {
     }
 
     // Try the getter convention (get_PropertyName) for static properties
-    // on runtime classes. Properties like Color.RED are registered as
-    // "Viper.Graphics.Color.get_RED" in the symbol table.
+    // on runtime classes. Properties like Color.Red are registered as
+    // "Viper.Graphics.Color.get_Red" in the symbol table.
     {
         std::string getterName = baseType->name + ".get_" + expr->field;
         Symbol *getter = lookupAccessibleSymbol(getterName, expr->loc, true);
@@ -1176,6 +1176,10 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
         if (!candidate || candidate->name.empty())
             return nullptr;
 
+        const auto *rtClass = il::runtime::findRuntimeClassByQName(candidate->name);
+        if (!rtClass || !rtClass->ctor)
+            return nullptr;
+
         if (expr->args.empty()) {
             std::string defaultCtorName = candidate->name + ".NewDefault";
             if (Symbol *sym = lookupSymbol(defaultCtorName);
@@ -1184,18 +1188,8 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
             }
         }
 
-        std::string ctorName = candidate->name + ".New";
-        if (Symbol *sym = lookupSymbol(ctorName); sym && sym->kind == Symbol::Kind::Function)
+        if (Symbol *sym = lookupSymbol(rtClass->ctor); sym && sym->kind == Symbol::Kind::Function)
             return sym;
-
-        if (const auto *rtClass = il::runtime::findRuntimeClassByQName(candidate->name)) {
-            if (rtClass->ctor) {
-                if (Symbol *sym = lookupSymbol(rtClass->ctor);
-                    sym && sym->kind == Symbol::Kind::Function) {
-                    return sym;
-                }
-            }
-        }
 
         return nullptr;
     };
@@ -1233,7 +1227,7 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
             if (!bindCallArgs(expr->args,
                               specs,
                               expr->loc,
-                              type->name + ".New",
+                              ctorSym->name.empty() ? type->name : ctorSym->name,
                               binding,
                               nullptr,
                               true,

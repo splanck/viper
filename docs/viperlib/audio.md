@@ -63,7 +63,7 @@ After playing a sound, you receive a voice ID that can be used with `Viper.Sound
 
 | Method                                 | Description                                       |
 |----------------------------------------|---------------------------------------------------|
-| `Viper.Sound.Voice.IsPlaying(id)`      | Returns 1 if voice is still playing               |
+| `Viper.Sound.Voice.IsPlaying(id)`      | Returns `true` if voice is still playing          |
 | `Viper.Sound.Voice.SetPan(id, pan)`    | Set pan: −100 = hard left, 0 = center, 100 = right |
 | `Viper.Sound.Voice.SetVolume(id, vol)` | Set voice volume (0–100)                          |
 | `Viper.Sound.Voice.Stop(id)`           | Stop a playing voice                              |
@@ -92,7 +92,7 @@ func start() {
 
         // Control the playing voice
         Voice.SetVolume(id2, 50);
-        Say("Playing: " + Fmt.Int(Voice.IsPlaying(id2)));
+        Say("Playing: " + Fmt.Bool(Voice.IsPlaying(id2)));
 
         // Play looping
         var loopId = snd.PlayLoop(60, 0);
@@ -167,7 +167,7 @@ Buffered music class for longer audio tracks. Playback uses incremental decode a
 
 | Method         | Signature           | Description                              |
 |----------------|---------------------|------------------------------------------|
-| `IsPlaying()`  | `Integer()`         | Returns 1 if currently playing, 0 if not |
+| `IsPlaying()`  | `Boolean()`         | Returns `true` if currently playing |
 | `Pause()`      | `Void()`            | Pause playback; also freezes an active crossfade involving this track |
 | `Play(loop)`   | `Void(Integer)`     | Start playback (1 = loop, 0 = one-shot)  |
 | `Resume()`     | `Void()`            | Resume paused playback and reclaim foreground ownership |
@@ -237,8 +237,8 @@ IF bgMusic <> NULL THEN
         PRINT "Position: "; bgMusic.Position; " / "; bgMusic.Duration
 
         ' Pause/resume with space bar
-        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_SPACE) THEN
-            IF bgMusic.IsPlaying() = 1 THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeySpace) THEN
+            IF bgMusic.IsPlaying() THEN
                 bgMusic.Pause()
             ELSE
                 bgMusic.Resume()
@@ -265,7 +265,7 @@ Static class for controlling individual playing voices (sound instances).
 
 | Method                     | Signature                      | Description                                              |
 |----------------------------|--------------------------------|----------------------------------------------------------|
-| `IsPlaying(id)`            | `Integer(Integer)`             | Check if voice is playing (returns 1 or 0)               |
+| `IsPlaying(id)`            | `Boolean(Integer)`             | Check if voice is playing                                |
 | `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Pan: −100 = hard left, 0 = center, +100 = hard right     |
 | `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0–100)                           |
 | `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                                     |
@@ -291,7 +291,7 @@ func start() {
     Audio.Init();
 
     // Voice control (safe with invalid IDs)
-    SayInt(Voice.IsPlaying(0));  // 0
+    SayBool(Voice.IsPlaying(0));  // false
     Voice.Stop(0);               // safe no-op
     Voice.SetVolume(0, 50);      // safe no-op
     Voice.SetPan(0, -50);        // safe no-op (panned left)
@@ -602,7 +602,7 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 | `ChannelCount` (read-only) | `Integer`               | Number of channels added                                          |
 | `SetLength(length)`        | `void(Integer)`         | Set song length in centbeats; equivalent to assigning `Length`    |
 | `SetSwing(amount)`         | `void(Integer)`         | Swing feel (0-100). Shifts off-beat notes forward. 0 = straight   |
-| `SetLoopable(flag)`        | `void(Integer)`         | 1 = apply crossfade at loop boundary for click-free looping       |
+| `SetLoopable(flag)`        | `void(Boolean)`         | `true` = apply crossfade at loop boundary for click-free looping  |
 | `Build()`                  | `Sound()`               | Pre-render all channels to a Sound object. Returns null on failure |
 
 `Length`, note positions, and note durations are clamped to the maximum renderable
@@ -677,7 +677,7 @@ func start() {
 
     // Build and play
     song.SetLength(400);       // 4 beats
-    song.SetLoopable(1);       // seamless loop
+    song.SetLoopable(true);    // seamless loop
     var sound = song.Build();
 
     if sound != null {

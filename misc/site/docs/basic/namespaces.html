@@ -819,9 +819,9 @@ END NAMESPACE
 <li><code>GetKey() -&gt; STRING</code> — Wait for and return keypress</li>
 <li><code>GetKeyTimeout(I64 ms) -&gt; STRING</code> — Wait with timeout (empty if timeout)</li>
 <li><code>InKey() -&gt; STRING</code> — Non-blocking key check (empty if no key)</li>
-<li><code>SetAltScreen(I64 enable) -&gt; VOID</code> — Switch to/from alternate screen buffer</li>
+<li><code>SetAltScreen(Boolean enable) -&gt; VOID</code> — Switch to/from alternate screen buffer</li>
 <li><code>SetColor(I64 fg, I64 bg) -&gt; VOID</code> — Set foreground/background colors</li>
-<li><code>SetCursorVisible(I64 visible) -&gt; VOID</code> — Show/hide cursor (0=hide, 1=show)</li>
+<li><code>SetCursorVisible(Boolean visible) -&gt; VOID</code> — Show/hide cursor (FALSE=hide, TRUE=show)</li>
 <li><code>SetPosition(I64 row, I64 col) -&gt; VOID</code> — Move cursor position</li>
 </ul>
 <p><strong>Note:</strong> Legacy <code>Viper.System.<em></code> aliases have been removed. Use the canonical <code>Viper.</em></code> names.</p>
@@ -931,11 +931,11 @@ Terminal.Clear()                    &#x27; Clear screen
 Terminal.SetColor(14, 1)            &#x27; Yellow on blue
 Terminal.SetPosition(10, 20)        &#x27; Move cursor
 PRINT &quot;Hello!&quot;
-Terminal.SetCursorVisible(0)        &#x27; Hide cursor
+Terminal.SetCursorVisible(FALSE)        &#x27; Hide cursor
 DIM key AS STRING
 key = Terminal.GetKeyTimeout(5000)  &#x27; Wait 5 seconds for key
 IF key &lt;&gt; &quot;&quot; THEN PRINT &quot;You pressed: &quot;; key
-Terminal.SetCursorVisible(1)        &#x27; Show cursor
+Terminal.SetCursorVisible(TRUE)        &#x27; Show cursor
 </code></pre>
 <h4 id="viper-graphics">Viper.Graphics</h4>
 <p>The Graphics namespace provides 2D rendering, image manipulation, and game development utilities.</p>

@@ -94,7 +94,7 @@ A floating overlay panel that appears above normal content. Floating panels are 
 | `SetPosition(x, y)`     | `Void(Integer, Integer)`   | Set panel position in window coordinates   |
 | `CenterInParent()`      | `Void()`                   | Center the panel within the window, clamped to the top-left (size and attach it first) |
 | `SetSize(w, h)`         | `Void(Integer, Integer)`   | Set panel dimensions                       |
-| `SetVisible(flag)`      | `Void(Integer)`            | Show or hide the panel                     |
+| `SetVisible(flag)`      | `Void(Boolean)`            | Show or hide the panel                     |
 | `AddChild(widget)`      | `Void(Object)`             | Add a child widget to the panel            |
 | `Destroy()`             | `Void()`                   | Destroy the panel and disconnect its runtime handle |
 
@@ -103,7 +103,7 @@ A floating overlay panel that appears above normal content. Floating panels are 
 var panel = FloatingPanel.New(root);
 panel.SetPosition(100, 100);
 panel.SetSize(200, 300);
-panel.SetVisible(1);
+panel.SetVisible(true);
 
 var btn = Button.New(null, "Action");
 panel.AddChild(btn);
@@ -138,7 +138,7 @@ Mouse activation and close actions now commit on mouse-up instead of mouse-down,
 | `GetTabAt(index)`        | `Object(Integer)`         | Get tab handle by index                  |
 | `RemoveTab(tab)`         | `Void(Object)`            | Remove a tab                             |
 | `SetActive(tab)`         | `Void(Object)`            | Set active tab                           |
-| `SetAutoClose(enabled)`  | `Void(Integer)`           | Enable/disable auto-close on close click |
+| `SetAutoClose(enabled)`  | `Void(Boolean)`           | Enable/disable auto-close on close click |
 | `WasChanged()`           | `Integer()`               | 1 if active tab changed this frame       |
 | `WasCloseClicked()`      | `Integer()`               | 1 if a close button was clicked          |
 
@@ -151,7 +151,7 @@ Tab handles are runtime-managed and become inert after `RemoveTab()`, `Clear()`,
 |---------------------------|--------------------|--------------------------------|
 | `tab.SetTitle(title)`     | `Void(String)`     | Set tab title; the default tooltip follows the title until explicitly overridden |
 | `tab.SetTooltip(text)`    | `Void(String)`     | Set hover tooltip text         |
-| `tab.SetModified(flag)`   | `Void(Integer)`    | Set modified indicator (`" *"` participates in tab-width measurement) |
+| `tab.SetModified(flag)`   | `Void(Boolean)`    | Set modified indicator (`" *"` participates in tab-width measurement) |
 
 ```basic
 DIM tabs AS Viper.GUI.TabBar
@@ -160,7 +160,7 @@ tabs = NEW Viper.GUI.TabBar(root)
 DIM tab1 AS Object = tabs.AddTab("File.txt", 1)
 DIM tab2 AS Object = tabs.AddTab("Config.ini", 1)
 
-tab1.SetModified(1)  ' Show unsaved indicator
+tab1.SetModified(true)  ' Show unsaved indicator
 
 IF tabs.WasChanged() THEN
     DIM active AS Object = tabs.GetActive()
@@ -179,7 +179,7 @@ END IF
 var tabs = TabBar.New(root);
 var tab1 = tabs.AddTab("File.txt", 1);
 var tab2 = tabs.AddTab("Config.ini", 1);
-tab1.SetModified(1);  // Unsaved indicator
+tab1.SetModified(true);  // Unsaved indicator
 
 if tabs.WasChanged() == 1 {
     var active = tabs.GetActive();
@@ -324,15 +324,15 @@ Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl
 | `Redo()`                                   | `Void()`                         | Redo last undone edit                    |
 | `RemoveFoldRegion(startLine)`              | `Void(Integer)`                  | Remove the fold region starting on a line |
 | `ScrollToLine(line)`                       | `Void(Integer)`                  | Scroll to line                           |
-| `SetAutoFoldDetection(enabled)`            | `Void(Integer)`                  | Enable or disable automatic fold detection |
+| `SetAutoFoldDetection(enabled)`            | `Void(Boolean)`                  | Enable or disable automatic fold detection |
 | `SelectAll()`                              | `Void()`                         | Select all text                          |
 | `SetCursor(line, col)`                     | `Void(Integer, Integer)`         | Set cursor position                      |
 | `SetFont(font, size)`                      | `Void(Font, Double)`             | Set monospace font                       |
 | `SetGutterIcon(line, icon, type)`          | `Void(Integer, Object, Integer)` | Set gutter icon on a line                |
 | `SetLanguage(name)`                        | `Void(String)`                   | Set syntax highlighting language         |
 | `SetLineNumberWidth(width)`                | `Void(Integer)`                  | Set line-number gutter width in character cells |
-| `SetShowFoldGutter(show)`                  | `Void(Integer)`                  | Show or hide fold markers in the gutter  |
-| `SetShowLineNumbers(show)`                 | `Void(Integer)`                  | Show/hide line numbers                   |
+| `SetShowFoldGutter(show)`                  | `Void(Boolean)`                  | Show or hide fold markers in the gutter  |
+| `SetShowLineNumbers(show)`                 | `Void(Boolean)`                  | Show/hide line numbers                   |
 | `SetText(text)`                            | `Void(String)`                   | Set editor content                       |
 | `SetTokenColor(tokenType, color)`          | `Void(Integer, Integer)`         | Set color for a token type               |
 | `ToggleFold(line)`                         | `Void(Integer)`                  | Toggle fold state at line                |
@@ -349,7 +349,7 @@ Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl
 | `CanRedo()`                  | `Boolean()`        | Check if redo is available                       |
 | `SetTabSize(size)`           | `Void(Integer)`    | Set tab width in spaces                          |
 | `GetTabSize()`               | `Integer()`        | Get current tab width in spaces                  |
-| `SetWordWrap(enabled)`       | `Void(Integer)`    | Enable or disable word wrapping                  |
+| `SetWordWrap(enabled)`       | `Void(Boolean)`    | Enable or disable word wrapping                  |
 | `GetWordWrap()`              | `Boolean()`        | Check if word wrap is enabled                    |
 
 ```basic
@@ -376,7 +376,7 @@ END IF
 var editor = CodeEditor.New(root);
 editor.SetSize(600, 400);
 editor.SetLanguage("zia");
-editor.SetShowLineNumbers(1);
+editor.SetShowLineNumbers(true);
 editor.SetText("func main() {\n    Say(\"hello\");\n}");
 
 if editor.IsModified() == 1 {

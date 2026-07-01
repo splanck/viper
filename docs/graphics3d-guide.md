@@ -301,7 +301,7 @@ frames:
 Canvas3D.SetInputSource(canvas, 1)
 Canvas3D.SetClockSource(canvas, 1)
 Canvas3D.SetSyntheticDeltaTimeSec(canvas, 1.0 / 60.0)
-Canvas3D.PushSyntheticKey(canvas, Keyboard.get_KEY_W(), true)
+Canvas3D.PushSyntheticKey(canvas, Keyboard.get_KeyW(), true)
 Canvas3D.PushSyntheticMouse(canvas, 8.0, -2.0, 1, 0.0)
 Canvas3D.AdvanceSyntheticFrame(canvas)
 ```
@@ -730,7 +730,7 @@ func start() {
     var base = Material3D.NewPBR(0.8, 0.6, 0.4);
     Material3D.set_Metallic(base, 0.7);
     Material3D.set_Roughness(base, 0.3);
-    Material3D.set_AO(base, 0.9);
+    Material3D.set_AmbientOcclusion(base, 0.9);
     Material3D.set_EmissiveIntensity(base, 1.4);
     Material3D.set_AlphaMode(base, 2); // blend
     Material3D.set_DoubleSided(base, 1);
@@ -1003,8 +1003,8 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 | `Name` | String | read/write | Name for Find() lookup |
 | `Mesh` | Mesh3D | write | Mesh to render |
 | `Material` | Material3D | write | Material for rendering |
-| `AABBMin` | Vec3 | read | Subtree axis-aligned bounding box minimum in this node's local space |
-| `AABBMax` | Vec3 | read | Subtree axis-aligned bounding box maximum in this node's local space |
+| `BoundsMin` | Vec3 | read | Subtree axis-aligned bounding box minimum in this node's local space |
+| `BoundsMax` | Vec3 | read | Subtree axis-aligned bounding box maximum in this node's local space |
 | `Body` | Physics3DBody | read | Bound body used by `SyncBindings` |
 | `Animator` | AnimController3D | read | Bound controller used for root motion and skinned draw submission |
 | `SyncMode` | Integer | read/write | Transform sync policy used by `SceneGraph.SyncBindings` |
@@ -1969,9 +1969,9 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 | `StayEventCount` | Integer | read | Number of collision pairs still touching this step |
 | `ExitEventCount` | Integer | read | Number of collision pairs that stopped touching this step |
 | `JointCount` | Integer | read | Number of active joints |
-| `LastCCDRequestedSubsteps` | Integer | read | Unclamped CCD substeps requested by the last step |
-| `LastCCDSubsteps` | Integer | read | CCD substeps actually used after capping |
-| `CCDSubstepClampedCount` | Integer | read | Number of steps that exceeded the CCD cap |
+| `LastCcdRequestedSubsteps` | Integer | read | Unclamped CCD substeps requested by the last step |
+| `LastCcdSubsteps` | Integer | read | CCD substeps actually used after capping |
+| `CcdSubstepClampedCount` | Integer | read | Number of steps that exceeded the CCD cap |
 | `SolverIterations` | Integer | read/write | Velocity contact/joint solver passes used by `Step()`; default `6`, clamped to `1..64` |
 | `PositionIterations` | Integer | read/write | Contact position-correction passes; default `1`, clamped to `1..64` |
 | `ContactBeta` | Float | read/write | Baumgarte contact recovery fraction; default `0.8`, clamped to `0..1` |
@@ -2140,7 +2140,7 @@ Notes:
 | `Trigger` | Boolean | read/write | Overlap detection only, no physics response |
 | `CanSleep` | Boolean | read/write | Allow automatic sleep when idle |
 | `Sleeping` | Boolean | read | Body is asleep and skipped by dynamic integration |
-| `UseCCD` | Boolean | read/write | Enable substep-based CCD for fast motion |
+| `UseCcd` | Boolean | read/write | Enable substep-based CCD for fast motion |
 | `Grounded` | Boolean | read | Touching ground surface |
 | `GroundNormal` | Vec3 | read | Surface normal of ground contact |
 | `Mass` | Float | read | Body mass |

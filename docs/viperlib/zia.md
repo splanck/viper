@@ -79,7 +79,7 @@ func start() {
 
     if Map.GetBool(result, "success") == false {
         var diagnostics = Map.Get(result, "diagnostics");
-        if Seq.get_Length(diagnostics) > 0 {
+        if Seq.get_Count(diagnostics) > 0 {
             var first = Seq.Get(diagnostics, 0);
             Terminal.Say(Map.GetStr(first, "file") + ":" + Map.GetInt(first, "line")
                 + ": " + Map.GetStr(first, "message"));

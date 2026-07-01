@@ -452,7 +452,7 @@ var peek = InKey();             // Non-blocking key check, &quot;&quot; if no ke
 Clear();                // Clear screen
 SetPosition(row, col);  // Move cursor
 SetColor(fg, bg);       // Set foreground/background (0-15)
-SetCursorVisible(0);    // Hide cursor
+SetCursorVisible(false);    // Hide cursor
 </code></pre>
 <blockquote><p>**Note:** You can also use fully qualified names like <code>Viper.Terminal.Say()</code> without binding.</p></blockquote>
 <h3 id="color-codes">Color Codes</h3>

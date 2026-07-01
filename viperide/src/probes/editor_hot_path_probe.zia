@@ -241,7 +241,7 @@ func main() {
         largeIdx = largeIdx + 1;
     }
     engine.SetText(idleLarge);
-    engine.editor.SetWordWrap(0);
+    engine.editor.SetWordWrap(false);
     engine.editor.ResetPerfStats();
     var moveStart = Viper.Time.Clock.Ticks();
     var moveIdx = 0;

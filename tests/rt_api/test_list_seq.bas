@@ -4,46 +4,46 @@ l = Viper.Collections.List.New()
 l.Push("a")
 l.Push("b")
 l.Push("c")
-PRINT "len: "; l.Length
+PRINT "len: "; l.Count
 PRINT "find b: "; l.Find("b")
 PRINT "has b: "; l.Has("b")
 l.Set(1, "B")
 l.Insert(0, "z")
-PRINT "len after insert: "; l.Length
+PRINT "len after insert: "; l.Count
 l.RemoveAt(0)
-PRINT "len after removeat: "; l.Length
+PRINT "len after removeat: "; l.Count
 l.Remove("a")
-PRINT "len after remove: "; l.Length
+PRINT "len after remove: "; l.Count
 l.Reverse()
 l.Clear()
-PRINT "len after clear: "; l.Length
+PRINT "len after clear: "; l.Count
 
 DIM s AS Viper.Collections.Seq
 s = Viper.Collections.Seq.New()
 s.Push("x")
 s.Push("y")
 s.Push("z")
-PRINT "seq len: "; s.Length
+PRINT "seq len: "; s.Count
 PRINT "seq find y: "; s.Find("y")
 PRINT "seq has y: "; s.Has("y")
 PRINT "seq isempty: "; s.IsEmpty
 s.Reverse()
 DIM s2 AS Viper.Collections.Seq
 s2 = s.Clone()
-PRINT "clone len: "; s2.Length
+PRINT "clone len: "; s2.Count
 DIM s3 AS Viper.Collections.Seq
 s3 = s.Slice(0, 2)
-PRINT "slice len: "; s3.Length
+PRINT "slice len: "; s3.Count
 DIM s4 AS Viper.Collections.Seq
 s4 = s.Take(2)
-PRINT "take len: "; s4.Length
+PRINT "take len: "; s4.Count
 DIM s5 AS Viper.Collections.Seq
 s5 = s.Drop(1)
-PRINT "drop len: "; s5.Length
+PRINT "drop len: "; s5.Count
 s.Sort()
 s.SortDesc()
 s.Clear()
-PRINT "seq len after clear: "; s.Length
+PRINT "seq len after clear: "; s.Count
 PRINT "seq isempty: "; s.IsEmpty
 PRINT "done"
 END

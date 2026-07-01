@@ -44,6 +44,10 @@ struct SignatureException {
 
 static const std::vector<SignatureException> kSignatureExceptions = {
     {"Viper.Graphics3D.IKSolver3D",
+     "TwoBone",
+     "IKSolver3DTwoBone",
+     "Static IK-solver factory; the leading obj is the skeleton input, not a receiver."},
+    {"Viper.Graphics3D.IKSolver3D",
      "LookAt",
      "IKSolver3DLookAt",
      "Static IK-solver factory; the leading obj is the skeleton input, not a receiver."},
@@ -58,6 +62,7 @@ struct RuntimeFunc {
     std::string c_symbol;
     std::string canonical;
     std::string signature;
+    bool public_surface;
 };
 
 struct RuntimeProp {
@@ -90,8 +95,9 @@ struct RuntimeSurface {
     void add_func(const char *id,
                   const char *c_symbol,
                   const char *canonical,
-                  const char *signature) {
-        funcs.push_back({id, c_symbol, canonical, signature});
+                  const char *signature,
+                  bool public_surface = true) {
+        funcs.push_back({id, c_symbol, canonical, signature, public_surface});
     }
 
     void begin_class(const char *name,
@@ -125,6 +131,8 @@ RuntimeSurface load_runtime_surface() {
 
 #define RT_FUNC(id, c_symbol, canonical, signature, ...)                                           \
     surface.add_func(#id, #c_symbol, canonical, signature);
+#define RT_INTERNAL_FUNC(id, c_symbol, canonical, signature, ...)                                  \
+    surface.add_func(#id, #c_symbol, canonical, signature, false);
 #define RT_BRIDGE(target_id, roles)
 #define RT_CLASS_BEGIN(name, type_id, layout, ctor_id)                                             \
     surface.begin_class(name, #type_id, layout, #ctor_id);
@@ -138,6 +146,7 @@ RuntimeSurface load_runtime_surface() {
 #undef RT_PROP
 #undef RT_CLASS_BEGIN
 #undef RT_BRIDGE
+#undef RT_INTERNAL_FUNC
 #undef RT_FUNC
 
     return surface;
@@ -214,6 +223,92 @@ std::string normalized_signature(std::string_view signature) {
     for (std::string &arg : args)
         arg = normalize_object_token(arg);
     return join_signature(ret, args);
+}
+
+std::string signature_return_type(std::string_view signature) {
+    size_t open = signature.find('(');
+    return std::string(open == std::string_view::npos ? signature : signature.substr(0, open));
+}
+
+std::string object_type_name(std::string_view token) {
+    constexpr std::string_view prefix = "obj<";
+    if (!starts_with(token, prefix) || token.size() <= prefix.size() || token.back() != '>')
+        return {};
+    return std::string(token.substr(prefix.size(), token.size() - prefix.size() - 1));
+}
+
+bool returns_own_runtime_object(const RuntimeClass &runtime_class, const RuntimeFunc &func) {
+    std::string ret = signature_return_type(func.signature);
+    return ret == "obj" || object_type_name(ret) == runtime_class.name;
+}
+
+std::string leaf_name(std::string_view canonical) {
+    size_t dot = canonical.rfind('.');
+    return std::string(dot == std::string_view::npos ? canonical : canonical.substr(dot + 1));
+}
+
+bool starts_with_bool_prefix(std::string_view name, std::string_view prefix) {
+    if (!starts_with(name, prefix))
+        return false;
+    if (name.size() == prefix.size())
+        return true;
+    return std::isupper(static_cast<unsigned char>(name[prefix.size()])) != 0;
+}
+
+bool is_boolean_probe_name(std::string_view name) {
+    return starts_with_bool_prefix(name, "Is") || starts_with_bool_prefix(name, "Has") ||
+           starts_with_bool_prefix(name, "Can") || starts_with_bool_prefix(name, "Was") ||
+           starts_with_bool_prefix(name, "get_Is") || starts_with_bool_prefix(name, "get_Has") ||
+           starts_with_bool_prefix(name, "get_Can");
+}
+
+bool is_boolean_setter_name(std::string_view name) {
+    static const std::set<std::string_view> names = {
+        "SetAltScreen",
+        "SetAutoClose",
+        "SetAutoFoldDetection",
+        "SetAutoScroll",
+        "SetCaseSensitive",
+        "SetCheckable",
+        "SetChecked",
+        "SetCursorVisible",
+        "SetDraggable",
+        "SetDropTarget",
+        "SetEnabled",
+        "SetFocused",
+        "SetGlobalEnabled",
+        "SetIndeterminate",
+        "SetInsertSpaces",
+        "SetIntegerScaling",
+        "SetLoop",
+        "SetLoopable",
+        "SetModified",
+        "SetMultiSelect",
+        "SetMultiple",
+        "SetReadOnly",
+        "SetRegex",
+        "SetReplaceMode",
+        "SetShowFoldGutter",
+        "SetShowIndentGuides",
+        "SetShowLineNumbers",
+        "SetShowSlider",
+        "SetTerminalMode",
+        "SetToggled",
+        "SetVisible",
+        "SetWholeWord",
+        "SetWordWrap",
+    };
+    return names.count(name) != 0;
+}
+
+std::string signature_last_arg(std::string_view signature) {
+    size_t open = signature.find('(');
+    size_t close = signature.rfind(')');
+    if (open == std::string_view::npos || close == std::string_view::npos || close < open)
+        return {};
+    std::vector<std::string> args =
+        split_signature_args(signature.substr(open + 1, close - open - 1));
+    return args.empty() ? std::string{} : args.back();
 }
 
 bool is_static_factory_method(const RuntimeClass &runtime_class, const RuntimeMethod &method) {
@@ -407,8 +502,8 @@ bool check_naming_symmetry(const RuntimeSurface &surface, const RuntimeIndex &in
                                    prop.name);
             if (!has_setter_name(runtime_class, index, prop))
                 failures.push_back(runtime_class.name + "." + prop.name +
-                                   " is missing qualified setter " + runtime_class.name +
-                                   ".set_" + prop.name);
+                                   " is missing qualified setter " + runtime_class.name + ".set_" +
+                                   prop.name);
         }
     }
 
@@ -538,10 +633,9 @@ bool check_redundant_property_accessor_methods(const RuntimeSurface &surface) {
                     failures.push_back(runtime_class.name + "." + method.name +
                                        " duplicates property getter " + prop.name);
                 }
-                if (prop.setter_id != "none" && method.target_id == prop.setter_id &&
-                    method.name == "Set" + prop.name) {
+                if (prop.setter_id != "none" && method.name == "Set" + prop.name) {
                     failures.push_back(runtime_class.name + "." + method.name +
-                                       " duplicates property setter " + prop.name);
+                                       " duplicates writable property " + prop.name);
                 }
             }
         }
@@ -563,8 +657,9 @@ bool check_property_accessor_types(const RuntimeSurface &surface, const RuntimeI
             const RuntimeFunc *getter = resolve_func(index, prop.getter_id);
             if (getter) {
                 size_t open = getter->signature.find('(');
-                std::string getter_ret =
-                    open == std::string::npos ? getter->signature : getter->signature.substr(0, open);
+                std::string getter_ret = open == std::string::npos
+                                             ? getter->signature
+                                             : getter->signature.substr(0, open);
                 if (getter_ret != prop.type) {
                     failures.push_back(runtime_class.name + "." + prop.name + " getter returns " +
                                        getter_ret + " but property type is " + prop.type);
@@ -602,8 +697,11 @@ bool check_property_accessor_types(const RuntimeSurface &surface, const RuntimeI
 
 bool check_duplicate_function_symbol_signatures(const RuntimeSurface &surface) {
     std::map<std::string, std::vector<std::string>> names_by_symbol_signature;
-    for (const RuntimeFunc &func : surface.funcs)
+    for (const RuntimeFunc &func : surface.funcs) {
+        if (!func.public_surface)
+            continue;
         names_by_symbol_signature[func.c_symbol + "|" + func.signature].push_back(func.canonical);
+    }
 
     std::vector<std::string> failures;
     for (const auto &entry : names_by_symbol_signature) {
@@ -625,6 +723,204 @@ bool check_duplicate_function_symbol_signatures(const RuntimeSurface &surface) {
     return false;
 }
 
+bool check_boolean_probe_signatures(const RuntimeSurface &surface) {
+    std::vector<std::string> failures;
+
+    for (const RuntimeFunc &func : surface.funcs) {
+        if (!func.public_surface)
+            continue;
+        const std::string leaf = leaf_name(func.canonical);
+        if (is_boolean_probe_name(leaf) && signature_return_type(func.signature) != "i1")
+            failures.push_back(func.canonical + " has non-i1 signature " + func.signature);
+    }
+
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        for (const RuntimeMethod &method : runtime_class.methods) {
+            if (is_boolean_probe_name(method.name) &&
+                signature_return_type(method.signature) != "i1") {
+                failures.push_back(runtime_class.name + "." + method.name +
+                                   " has non-i1 signature " + method.signature);
+            }
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Boolean runtime probe signatures must return i1:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool check_boolean_setter_signatures(const RuntimeSurface &surface) {
+    std::vector<std::string> failures;
+
+    for (const RuntimeFunc &func : surface.funcs) {
+        if (!func.public_surface)
+            continue;
+        const std::string leaf = leaf_name(func.canonical);
+        if (is_boolean_setter_name(leaf) && signature_last_arg(func.signature) != "i1")
+            failures.push_back(func.canonical + " has non-i1 signature " + func.signature);
+    }
+
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        for (const RuntimeMethod &method : runtime_class.methods) {
+            if (is_boolean_setter_name(method.name) &&
+                signature_last_arg(method.signature) != "i1") {
+                failures.push_back(runtime_class.name + "." + method.name +
+                                   " has non-i1 signature " + method.signature);
+            }
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Boolean runtime setter signatures must use i1:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool check_no_copied_gui_widget_methods(const RuntimeSurface &surface, const RuntimeIndex &index) {
+    std::vector<std::string> failures;
+
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        if (!starts_with(runtime_class.name, "Viper.GUI.") ||
+            runtime_class.name == "Viper.GUI.Widget") {
+            continue;
+        }
+
+        for (const RuntimeMethod &method : runtime_class.methods) {
+            const RuntimeFunc *target = resolve_func(index, method.target_id);
+            if (target && starts_with(target->canonical, "Viper.GUI.Widget.")) {
+                failures.push_back(runtime_class.name + "." + method.name +
+                                   " copies base widget target " + target->canonical);
+            }
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Concrete GUI classes must not copy Viper.GUI.Widget methods:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool check_self_returning_new_methods_have_constructor_metadata(const RuntimeSurface &surface,
+                                                               const RuntimeIndex &index) {
+    std::vector<std::string> failures;
+
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        for (const RuntimeMethod &method : runtime_class.methods) {
+            if (method.name != "New")
+                continue;
+
+            const RuntimeFunc *target = resolve_func(index, method.target_id);
+            if (!target || !returns_own_runtime_object(runtime_class, *target))
+                continue;
+
+            const RuntimeFunc *ctor = resolve_func(index, runtime_class.ctor_id);
+            if (!ctor || ctor->canonical != target->canonical) {
+                failures.push_back(runtime_class.name + ".New returns " + target->canonical +
+                                   " but constructor metadata is " + runtime_class.ctor_id);
+            }
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Self-returning New methods must be class constructor metadata:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool check_constructor_targets_are_canonical_new(const RuntimeSurface &surface,
+                                                const RuntimeIndex &index) {
+    std::vector<std::string> failures;
+
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        const RuntimeFunc *ctor = resolve_func(index, runtime_class.ctor_id);
+        if (!ctor)
+            continue;
+
+        std::string expected = runtime_class.name + ".New";
+        if (ctor->canonical != expected) {
+            failures.push_back(runtime_class.name + " constructor target is " + ctor->canonical +
+                               ", expected " + expected + " or no constructor metadata");
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Runtime constructor metadata must target canonical .New functions:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool is_allowed_length_property(std::string_view qualified_name) {
+    static const std::set<std::string_view> allowed = {
+        "Viper.Collections.BitSet.Length",
+        "Viper.Collections.Bytes.Length",
+        "Viper.Collections.F64Buffer.Length",
+        "Viper.Collections.I64Buffer.Length",
+        "Viper.Game.Physics2D.DistanceJoint.Length",
+        "Viper.Graphics3D.Path3D.Length",
+        "Viper.IO.BinaryBuffer.Length",
+        "Viper.IO.MemStream.Length",
+        "Viper.IO.Stream.Length",
+        "Viper.Sound.MusicGen.Length",
+        "Viper.String.Length",
+        "Viper.Text.Scanner.Length",
+        "Viper.Text.StringBuilder.Length",
+    };
+    return allowed.count(qualified_name) != 0;
+}
+
+bool check_length_properties_are_semantic_lengths(const RuntimeSurface &surface) {
+    std::vector<std::string> failures;
+
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        for (const RuntimeProp &prop : runtime_class.props) {
+            if (prop.name != "Length")
+                continue;
+
+            std::string qualified = runtime_class.name + "." + prop.name;
+            if (!is_allowed_length_property(qualified))
+                failures.push_back(qualified);
+        }
+    }
+
+    for (const RuntimeFunc &func : surface.funcs) {
+        constexpr std::string_view suffix = ".get_Length";
+        if (!func.public_surface || !starts_with(func.canonical, "Viper.") ||
+            func.canonical.size() < suffix.size() ||
+            func.canonical.substr(func.canonical.size() - suffix.size()) != suffix) {
+            continue;
+        }
+
+        std::string qualified = func.canonical.substr(0, func.canonical.size() - suffix.size()) +
+                                ".Length";
+        if (!is_allowed_length_property(qualified))
+            failures.push_back(func.canonical);
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Runtime Length properties must represent semantic length, not item count:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -640,6 +936,12 @@ int main() {
     ok = check_redundant_property_accessor_methods(surface) && ok;
     ok = check_property_accessor_types(surface, index) && ok;
     ok = check_duplicate_function_symbol_signatures(surface) && ok;
+    ok = check_boolean_probe_signatures(surface) && ok;
+    ok = check_boolean_setter_signatures(surface) && ok;
+    ok = check_no_copied_gui_widget_methods(surface, index) && ok;
+    ok = check_self_returning_new_methods_have_constructor_metadata(surface, index) && ok;
+    ok = check_constructor_targets_are_canonical_new(surface, index) && ok;
+    ok = check_length_properties_are_semantic_lengths(surface) && ok;
 
     if (!ok)
         return 1;

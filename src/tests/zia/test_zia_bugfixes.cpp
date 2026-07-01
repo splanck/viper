@@ -1814,9 +1814,9 @@ module Test;
 
 bind Viper.Collections.Seq as Seq;
 // Viper.String.Split should now return Seq[String] (not untyped obj), allowing
-// Seq.get_Length / Seq.Get access and for-in iteration.
+// Seq.get_Count / Seq.Get access and for-in iteration.
 func start() {    var parts = Viper.String.Split("a,b,c", ",");
-    var n = Seq.get_Length(parts);
+    var n = Seq.get_Count(parts);
     var i = 0;
     while i < n {
         var s = Seq.Get(parts, i);
@@ -1853,7 +1853,7 @@ func start() {    for part in Viper.String.Split("hello world foo", " ") {
 }
 
 /// @brief Pattern.FindAll should surface a typed Seq[String] in Zia.
-TEST(ZiaBugFixes, SeqReturnType_PatternFindAll_UsesSeqLength) {
+TEST(ZiaBugFixes, SeqReturnType_PatternFindAll_UsesSeqCount) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1862,7 +1862,7 @@ bind Viper.Text;
 
 func start() {
     var matches = Pattern.FindAll("a1b22c333", "[0-9]+");
-    var count = matches.Length;
+    var count = matches.Count;
     Viper.Terminal.SayInt(count);
 }
 )";
@@ -1878,14 +1878,14 @@ func start() {
 }
 
 /// @brief TextWrapper.WrapLines should surface a typed Seq[String] in Zia.
-TEST(ZiaBugFixes, SeqReturnType_TextWrapperWrapLines_UsesSeqLength) {
+TEST(ZiaBugFixes, SeqReturnType_TextWrapperWrapLines_UsesSeqCount) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
 func start() {
     var lines = Viper.Text.TextWrapper.WrapLines("one two three", 7);
-    var count = lines.Length;
+    var count = lines.Count;
     Viper.Terminal.SayInt(count);
 }
 )";
@@ -1901,14 +1901,14 @@ func start() {
 }
 
 /// @brief Template.Keys should surface a typed Seq[String] in Zia.
-TEST(ZiaBugFixes, SeqReturnType_TemplateKeys_UsesSeqLength) {
+TEST(ZiaBugFixes, SeqReturnType_TemplateKeys_UsesSeqCount) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 
 func start() {
     var keys = Viper.Text.Template.Keys("Hello {{name}} from {{place}}");
-    var count = keys.Length;
+    var count = keys.Count;
     Viper.Terminal.SayInt(count);
 }
 )";
@@ -1924,7 +1924,7 @@ func start() {
 }
 
 /// @brief LazySeq.ToSeqN should surface a typed Seq[Object] in Zia.
-TEST(ZiaBugFixes, SeqReturnType_LazySeqToSeqN_UsesSeqLength) {
+TEST(ZiaBugFixes, SeqReturnType_LazySeqToSeqN_UsesSeqCount) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1934,7 +1934,7 @@ bind Viper.Functional.LazySeq;
 func start() {
     var seq = Range(1, 5, 1);
     var out = ToSeqN(seq, 3);
-    var count = out.Length;
+    var count = out.Count;
     Viper.Terminal.SayInt(count);
 }
 )";
@@ -2013,7 +2013,7 @@ func start() {    var animals: List[Animal] = Viper.Collections.List.New();
     dog.age = 7;
     animals.Add(dog);
     var first: Animal = animals[0];
-    var count: Integer = animals.Length;
+    var count: Integer = animals.Count;
     Viper.Terminal.SayInt(first.age);
     Viper.Terminal.SayInt(count);
 }
@@ -2074,7 +2074,7 @@ module Test;
 func start() {    var scores: Map[String, Integer] = Viper.Collections.Map.New();
     scores["Ada"] = 42;
     var ada: Integer = scores["Ada"];
-    var count: Integer = scores.Length;
+    var count: Integer = scores.Count;
     Viper.Terminal.SayInt(ada);
     Viper.Terminal.SayInt(count);
 }
@@ -2140,7 +2140,7 @@ module Test;
 func start() {    var names: Set[String] = Viper.Collections.Set.New();
     var inserted: Boolean = names.add("Ada");
     var hasAda: Boolean = names.contains("Ada");
-    var count: Integer = names.Length;
+    var count: Integer = names.Count;
     Viper.Terminal.SayInt(inserted ? 1 : 0);
     Viper.Terminal.SayInt(hasAda ? 1 : 0);
     Viper.Terminal.SayInt(count);

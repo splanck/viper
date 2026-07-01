@@ -251,7 +251,7 @@ class SessionManager {
         Ini.Set(ini, "recent", "path.0", projectRoot);
         var written = 1;
         i = 0;
-        while i < Seq.get_Length(oldPaths) and written < MAX_RECENT_PROJECTS {
+        while i < Seq.get_Count(oldPaths) and written < MAX_RECENT_PROJECTS {
             Ini.Set(ini, "recent", "path." + written, Obj.ToString(Seq.Get(oldPaths, i)));
             written = written + 1;
             i = i + 1;
@@ -286,7 +286,7 @@ class SessionManager {
         Ini.Set(ini, "recentFiles", "path.0", path);
         var written = 1;
         i = 0;
-        while i < Seq.get_Length(oldPaths) and written < MAX_RECENT_FILES {
+        while i < Seq.get_Count(oldPaths) and written < MAX_RECENT_FILES {
             Ini.Set(ini, "recentFiles", "path." + written, Obj.ToString(Seq.Get(oldPaths, i)));
             written = written + 1;
             i = i + 1;

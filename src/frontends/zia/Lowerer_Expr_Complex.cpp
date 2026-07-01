@@ -151,7 +151,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    // Handle module-qualified identifier access (e.g., colors.BLACK)
+    // Handle module-qualified identifier access (e.g., colors.Black)
     // The module is just a namespace - we load the symbol directly
     if (baseType->kind == TypeKindSem::Module) {
         // Look up the symbol as a global variable or function. Static fields
@@ -288,7 +288,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     if (baseType->kind == TypeKindSem::List) {
         if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
             expr->field == "length" || expr->field == "Len" || expr->field == "Length") {
-            // Synthesize a call to Viper.Collections.List.get_Length(list)
+            // Synthesize a call to Viper.Collections.List.get_Count(list)
             Value result = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
             return {result, Type(Type::Kind::I64)};
         }
@@ -393,42 +393,30 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
 /// @param expr New expression.
 /// @param type Resolved runtime class type.
 /// @return The constructed object pointer.
-/// @details Resolves the constructor name from the runtime registry, preferring a zero-arg
-///          `NewDefault` for empty argument lists, an arity-matching `.New` overload, or the
-///          class catalog's declared ctor, falling back to the conventional `.New`. Arguments
-///          are lowered in the semantically resolved order and coerced to the descriptor's
-///          parameter types (boxing scalars into Ptr params, widening I64→F64).
+/// @details Resolves the constructor from runtime class metadata, preferring a zero-arg
+///          `NewDefault` for empty argument lists when present. Arguments are lowered in
+///          the semantically resolved order and coerced to the descriptor's parameter types
+///          (boxing scalars into Ptr params, widening I64→F64).
 LowerResult Lowerer::lowerNewRuntimeClass(NewExpr *expr, TypeRef type) {
     if (!type)
         return {Value::null(), Type(Type::Kind::Ptr)};
     {
         std::string ctorName;
+        const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name);
+        if (!rtClass || !rtClass->ctor) {
+            return poisonValue(expr->loc,
+                               "V-ZIA-LOWER-MISSING-RUNTIME-CTOR",
+                               "runtime type '" + type->name +
+                                   "' reached lowering without constructor metadata");
+        }
+
         if (expr->args.empty()) {
             std::string defaultCtorName = type->name + ".NewDefault";
             if (il::runtime::findRuntimeDescriptor(defaultCtorName))
                 ctorName = defaultCtorName;
         }
         if (ctorName.empty()) {
-            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
-                if (rtClass->ctor)
-                    ctorName = rtClass->ctor;
-            }
-        }
-        // Fall back to conventional .New suffix
-        if (ctorName.empty())
-            ctorName = type->name + ".New";
-        // Prefer an arity-matching New overload when the class catalog constructor
-        // points at a non-default overload but a zero-arg NewDefault exists.
-        if (expr->args.empty()) {
-            std::string defaultCtorName = type->name + ".NewDefault";
-            if (il::runtime::findRuntimeDescriptor(defaultCtorName))
-                ctorName = defaultCtorName;
-        } else if (const auto *rtDesc = il::runtime::findRuntimeDescriptor(type->name + ".New")) {
-            if (rtDesc->signature.paramTypes.size() == expr->args.size())
-                ctorName = type->name + ".New";
-        } else if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
-            if (rtClass->ctor)
-                ctorName = rtClass->ctor;
+            ctorName = rtClass->ctor;
         }
 
         const auto *binding = sema_.newArgBinding(expr);

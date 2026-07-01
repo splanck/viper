@@ -83,7 +83,7 @@ class BaseballFieldDemo {
     }
 
     expose func step(dt: Float) {
-        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
+        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) {
             quitRequested = true;
             return;
         }
@@ -99,15 +99,15 @@ class BaseballFieldDemo {
         var fwd = 0.0;
         var right = 0.0;
         var updown = 0.0;
-        if (Keyboard.IsDown(Keyboard.get_KEY_UP())) { fwd = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_DOWN())) { fwd = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_LEFT())) { right = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_RIGHT())) { right = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_PAGEUP())) { updown = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KEY_PAGEDOWN())) { updown = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyUp())) { fwd = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyDown())) { fwd = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyLeft())) { right = -1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyRight())) { right = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyPageUp())) { updown = 1.0; }
+        if (Keyboard.IsDown(Keyboard.get_KeyPageDown())) { updown = -1.0; }
 
         var speed = moveSpeed;
-        if (Keyboard.IsDown(Keyboard.get_KEY_LSHIFT())) { speed = moveSpeed * config.SPRINT_MULT; }
+        if (Keyboard.IsDown(Keyboard.get_KeyLeftShift())) { speed = moveSpeed * config.SPRINT_MULT; }
         var climb = updown * (config.UPDOWN_SPEED / config.BASE_MOVE_SPEED);
 
         Camera3D.FPSUpdate(
@@ -132,8 +132,8 @@ class BaseballFieldDemo {
     }
 
     hide func normalizeFieldRoot() {
-        var minV = fieldRoot.AABBMin;
-        var maxV = fieldRoot.AABBMax;
+        var minV = fieldRoot.BoundsMin;
+        var maxV = fieldRoot.BoundsMax;
 
         var rawSpanX = Vec3.get_X(maxV) - Vec3.get_X(minV);
         var rawSpanY = Vec3.get_Y(maxV) - Vec3.get_Y(minV);

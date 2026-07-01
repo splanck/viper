@@ -548,7 +548,7 @@ func ApplySaveTextRules(text: String) -> String {
         var lines = Str.Split(result, "\n");
         result = "";
         var i = 0;
-        while i < Seq.get_Length(lines) {
+        while i < Seq.get_Count(lines) {
             var line = Obj.ToString(Seq.Get(lines, i));
             if Str.EndsWith(line, "\r") {
                 line = Str.Left(line, Str.get_Length(line) - 1);

@@ -10,8 +10,8 @@ PRINT body.Y
 PRINT body.Width
 PRINT body.Height
 body.SetVel(10, 0)
-PRINT body.VX
-PRINT body.VY
+PRINT body.VelocityX
+PRINT body.VelocityY
 body.ApplyForce(0, 100)
 world.Step(16)
 PRINT body.IsStatic

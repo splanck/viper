@@ -157,7 +157,7 @@ expose func ZiaCommentDepthBeforeLine(lines: Any,
                                       targetLine: Integer) -> Integer {
     var depth = 0;
     var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
+    while i < targetLine and i < Seq.get_Count(lines) {
         var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
         depth = ZiaCommentDepthAfter(line, depth);
         i = i + 1;
@@ -241,7 +241,7 @@ expose func ZiaParenDepthBeforeLine(lines: Any,
     var paren = 0;
     var depth = 0;
     var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
+    while i < targetLine and i < Seq.get_Count(lines) {
         var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
         paren = paren + ZiaParenDelta(line, depth);
         if paren < 0 { paren = 0; }

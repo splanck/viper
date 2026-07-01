@@ -71,7 +71,7 @@ int64_t rt_entity_get_dir(void *ent);
 void rt_entity_set_dir(void *ent, int64_t dir);
 
 // HP
-/// @brief Get the current HP (typically clamped to 0..MaxHP).
+/// @brief Get the current HP (typically clamped to 0..MaxHealth).
 int64_t rt_entity_get_hp(void *ent);
 /// @brief Set the current HP.
 void rt_entity_set_hp(void *ent, int64_t hp);

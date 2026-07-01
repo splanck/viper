@@ -95,7 +95,7 @@ class SymbolOutline {
     expose func setup(parent: GUI.VBox) {
         symbolList = GUI.ListBox.New(parent);
         symbolList.SetSize(0, 200);
-        symbolList.SetVisible(0);
+        symbolList.SetVisible(false);
     }
 
     /// @brief Set the active file's path; invalidates path cache so the
@@ -115,7 +115,7 @@ class SymbolOutline {
         }
         enabled = value;
         if enabled == false {
-            symbolList.SetVisible(0);
+            symbolList.SetVisible(false);
             visible = false;
             CancelPendingJob();
         }
@@ -141,11 +141,11 @@ class SymbolOutline {
     expose func toggle() {
         visible = visible == false;
         if visible {
-            symbolList.SetVisible(1);
+            symbolList.SetVisible(true);
             lastSource = "";  // force refresh
             lastRevision = -1;
         } else {
-            symbolList.SetVisible(0);
+            symbolList.SetVisible(false);
             if semanticFoldingEnabled == false {
                 CancelPendingJob();
             }
@@ -264,13 +264,13 @@ class SymbolOutline {
 
         var lines = Str.Split(raw, "\n");
         var i = 0;
-        while i < Seq.get_Length(lines) {
+        while i < Seq.get_Count(lines) {
             var line = Obj.ToString(Seq.Get(lines, i));
             i = i + 1;
             if Str.get_Length(line) == 0 { continue; }
 
             var parts = Str.Split(line, "\t");
-            if Seq.get_Length(parts) < 4 { continue; }
+            if Seq.get_Count(parts) < 4 { continue; }
 
             var name = Obj.ToString(Seq.Get(parts, 0));
             var kind = Obj.ToString(Seq.Get(parts, 1));
@@ -295,7 +295,7 @@ class SymbolOutline {
     ///        editor caret/scroll there.
     expose func handleClicks(engine: editor_engine.EditorEngine) {
         if visible == false { return; }
-        if symbolList.WasSelectionChanged() != 0 {
+        if symbolList.WasSelectionChanged() {
             var selItem = symbolList.Selected;
             if selItem != null {
                 var lineStr = GUI.ListBox.ItemGetData(selItem);
@@ -325,20 +325,20 @@ expose func ApplySemanticFoldRegions(engine: editor_engine.EditorEngine,
     if raw == "" or source == "" { return 0; }
 
     var sourceLines = Str.Split(source, "\n");
-    if Seq.get_Length(sourceLines) > MAX_SEMANTIC_FOLD_LINES {
+    if Seq.get_Count(sourceLines) > MAX_SEMANTIC_FOLD_LINES {
         return 0;
     }
 
     var added = 0;
     var rows = Str.Split(raw, "\n");
     var i = 0;
-    while i < Seq.get_Length(rows) and added < MAX_SEMANTIC_FOLD_REGIONS {
+    while i < Seq.get_Count(rows) and added < MAX_SEMANTIC_FOLD_REGIONS {
         var row = Obj.ToString(Seq.Get(rows, i));
         i = i + 1;
         if row == "" { continue; }
 
         var parts = Str.Split(row, "\t");
-        if Seq.get_Length(parts) < 4 { continue; }
+        if Seq.get_Count(parts) < 4 { continue; }
 
         var kind = Obj.ToString(Seq.Get(parts, 1));
         if kind != "function" and kind != "type" { continue; }
@@ -365,12 +365,12 @@ expose func SemanticFoldEndLine(source: String, startLine: Integer) -> Integer {
 
 expose func SemanticFoldEndLineFromLines(lines: Any, startLine: Integer) -> Integer {
     var startIdx = startLine - 1;
-    if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
+    if startIdx < 0 or startIdx >= Seq.get_Count(lines) { return startLine; }
 
     var depth = 0;
     var seenOpen = false;
     var i = startIdx;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         var pos = 1;
         while pos <= Str.get_Length(line) {

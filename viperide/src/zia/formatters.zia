@@ -83,7 +83,7 @@ expose func TrimTrailingWhitespaceText(source: String) -> String {
     var lines = Str.Lines(source);
     var result = "";
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         line = text_utils.TrimLineRightWhitespace(line);
         if i > 0 { result = result + eol; }
@@ -102,7 +102,7 @@ expose func FormatZiaText(source: String,
                           tabSize: Integer,
                           insertSpaces: Boolean) -> String {
     var lines = Str.Lines(source);
-    return FormatZiaRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
+    return FormatZiaRangeText(source, 0, Seq.get_Count(lines) - 1, tabSize, insertSpaces);
 }
 
 /// @brief Format a 0-based inclusive line range in a Zia document.
@@ -121,7 +121,7 @@ expose func FormatZiaRangeText(source: String,
                                tabSize: Integer,
                                insertSpaces: Boolean) -> String {
     var lines = Str.Lines(source);
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     if count == 0 { return source; }
     var rangeStart = startLine;
     var rangeEnd = endLine;
@@ -168,7 +168,7 @@ expose func FormatBasicText(source: String,
                             tabSize: Integer,
                             insertSpaces: Boolean) -> String {
     var lines = Str.Lines(source);
-    return FormatBasicRangeText(source, 0, Seq.get_Length(lines) - 1, tabSize, insertSpaces);
+    return FormatBasicRangeText(source, 0, Seq.get_Count(lines) - 1, tabSize, insertSpaces);
 }
 
 /// @brief Format a 0-based inclusive line range in a BASIC document.
@@ -187,7 +187,7 @@ expose func FormatBasicRangeText(source: String,
                                  tabSize: Integer,
                                  insertSpaces: Boolean) -> String {
     var lines = Str.Lines(source);
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     if count == 0 { return source; }
     var rangeStart = startLine;
     var rangeEnd = endLine;
@@ -226,7 +226,7 @@ func TrimTrailingWhitespaceRangeText(source: String,
                                      startLine: Integer,
                                      endLine: Integer) -> String {
     var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     if count == 0 { return source; }
     var rangeStart = startLine;
     var rangeEnd = endLine;
@@ -282,7 +282,7 @@ func ZiaIndentBeforeLine(lines: Any,
     var indent = 0;
     var depth = 0;
     var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
+    while i < targetLine and i < Seq.get_Count(lines) {
         var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
         indent = indent + source_scan.ZiaBraceDelta(line, depth);
         if indent < 0 { indent = 0; }
@@ -330,7 +330,7 @@ func BasicIndentBeforeLine(lines: Any,
                            targetLine: Integer) -> Integer {
     var indent = 0;
     var i = 0;
-    while i < targetLine and i < Seq.get_Length(lines) {
+    while i < targetLine and i < Seq.get_Count(lines) {
         var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, i)));
         indent = indent + BasicLineDelta(line);
         if indent < 0 { indent = 0; }

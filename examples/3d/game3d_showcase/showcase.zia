@@ -103,7 +103,7 @@ func makeController(distance: Float, eventTime: Float) -> AnimController3D {
 func spawnProp(world: Game3D.World3D, name: String, mesh: Mesh3D, mat: Material3D,
                x: Float, y: Float, z: Float, scale: Float) -> Game3D.Entity3D {
     var entity = Game3D.Entity3D.Of(mesh, mat);
-    entity.SetName(name);
+    entity.Name = name;
     entity.SetPosition(x, y, z);
     entity.SetScale(scale);
     world.Spawn(entity);
@@ -151,14 +151,14 @@ func runScenario(title: String, render: Boolean) -> Float {
 
     var imported: Game3D.Entity3D = Game3D.Assets3D.LoadEntityAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
     if (imported != null) {
-        imported.SetName("PackagedTriangle");
+        imported.Name = "PackagedTriangle";
         imported.SetPosition(2.8, 0.08, 1.5);
         imported.SetScale(0.8);
         world.Spawn(imported);
     }
 
     var ball: Game3D.Entity3D = Game3D.Prefab.Sphere(0.45, 20, ballMat);
-    ball.SetName("ShowcaseBall");
+    ball.Name = "ShowcaseBall";
     ball.SetPosition(0.0, 0.45, 0.0);
     var ballDef = Game3D.BodyDef.Sphere(0.45, 1.0);
     ballDef.Restitution = 0.25;
@@ -170,7 +170,7 @@ func runScenario(title: String, render: Boolean) -> Float {
     world.Spawn(ball);
 
     var trigger = Game3D.Entity3D.New();
-    trigger.SetName("ImpactTrigger");
+    trigger.Name = "ImpactTrigger";
     var triggerDef = Game3D.BodyDef.StaticBox(0.9, 0.9, 0.9);
     triggerDef.WithLayer(Game3D.Layers.get_Trigger());
     triggerDef.AsTrigger();
@@ -179,8 +179,8 @@ func runScenario(title: String, render: Boolean) -> Float {
     world.Spawn(trigger);
 
     var player = Game3D.Entity3D.New();
-    player.SetName("Player");
-    player.SetLayer(Game3D.Layers.get_Player());
+    player.Name = "Player";
+    player.Layer = Game3D.Layers.get_Player();
     player.SetPosition(3.0, 1.0, 4.5);
     world.Spawn(player);
     var character = Game3D.CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
@@ -226,12 +226,12 @@ func runScenario(title: String, render: Boolean) -> Float {
         if (frame == 30) {
             Game3D.PostFX.Cinematic(world);
             Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Cinematic());
-            ball.SetMaterial(metalMat);
+            ball.Material = metalMat;
         }
         if (frame == 54) {
             Game3D.PostFX.Crisp(world);
             Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
-            ball.SetMaterial(ballMat);
+            ball.Material = ballMat;
             world.SetFog(0.025, 0.035, 0.045, 12.0, 48.0);
         }
 

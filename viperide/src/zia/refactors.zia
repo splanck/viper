@@ -36,7 +36,7 @@ bind Str = Viper.String;
 expose func InlineLocalVariableText(source: String,
                                     declarationLine: Integer) -> String {
     var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     if declarationLine < 0 or declarationLine >= count { return source; }
 
     var declLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, declarationLine)));
@@ -99,7 +99,7 @@ expose func ExtractLocalVariableText(source: String,
     if startCol < 0 or endCol <= startCol { return source; }
 
     var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     if startLine < 0 or startLine >= count { return source; }
 
     var funcStart = source_scan.EnclosingZiaFunctionStartLine(source, startLine + 1);
@@ -168,7 +168,7 @@ expose func ExtractFunctionText(source: String,
     if source == "" { return source; }
 
     var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     var rangeStart = startLine;
     var rangeEnd = endLine;
     if rangeStart < 0 or rangeStart >= count { return source; }
@@ -273,7 +273,7 @@ func ZiaFunctionNameExists(source: String,
                            name: String) -> Boolean {
     var lines = Str.Split(source, "\n");
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         if source_scan.ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i))) == name {
             return true;
         }
@@ -379,7 +379,7 @@ func ZiaFunctionContainsIdentifier(source: String,
     var i = startLine - 1;
     if i < 0 { i = 0; }
     var last = endLine - 1;
-    if last >= Seq.get_Length(lines) { last = Seq.get_Length(lines) - 1; }
+    if last >= Seq.get_Count(lines) { last = Seq.get_Count(lines) - 1; }
     while i <= last {
         var line = Obj.ToString(Seq.Get(lines, i));
         if source_scan.ReplaceIdentifierOutsideTrivia(line, name, "") != line {

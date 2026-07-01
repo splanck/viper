@@ -62,7 +62,7 @@ func start() {
     // --- Split / Join ---
     Say("--- Split / Join ---");
     var parts = Split("one,two,three", ",");
-    SayInt(Seq.get_Length(parts));
+    SayInt(Seq.get_Count(parts));
     Say(Seq.Get(parts, 0));
     Say(Seq.Get(parts, 1));
     Say(Seq.Get(parts, 2));

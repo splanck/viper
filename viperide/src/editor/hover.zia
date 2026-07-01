@@ -108,11 +108,11 @@ class HoverController {
         self.appRoot = appRoot;
         tooltip = GUI.FloatingPanel.New(appRoot);
         tooltip.SetSize(tooltipWidth, tooltipHeight);
-        tooltip.SetVisible(0);
+        tooltip.SetVisible(false);
 
         // Create unattached, then reparent it into the FloatingPanel via AddChild.
         tooltipLabel = GUI.Label.New(null, "");
-        tooltipLabel.SetWordWrap(1);
+        tooltipLabel.SetWordWrap(true);
         tooltip.AddChild(tooltipLabel);
     }
 
@@ -139,7 +139,7 @@ class HoverController {
         var mx = Viper.Input.Mouse.X();
         var my = Viper.Input.Mouse.Y();
 
-        if engine.editor.IsHovered() == 0 {
+        if !engine.editor.IsHovered() {
             hideTooltip();
             return;
         }
@@ -234,7 +234,7 @@ class HoverController {
         tooltipLabel.SetText(display);
         ApplyTooltipSize(display);
         PositionTooltip(mx, my);
-        tooltip.SetVisible(1);
+        tooltip.SetVisible(true);
         isVisible = true;
     }
 
@@ -321,7 +321,7 @@ class HoverController {
     expose func hideTooltip() {
         CancelPendingJob();
         if isVisible {
-            tooltip.SetVisible(0);
+            tooltip.SetVisible(false);
             isVisible = false;
         }
         waiting = false;

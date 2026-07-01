@@ -36,9 +36,9 @@ Viper.Terminal.SayNum(3.25)
 Viper.Terminal.SayBool(TRUE)
 Viper.Terminal.Bell()
 Viper.Terminal.Flush()
-Viper.Terminal.SetCursorVisible(0)
-Viper.Terminal.SetCursorVisible(1)
-Viper.Terminal.SetAltScreen(0)
+Viper.Terminal.SetCursorVisible(FALSE)
+Viper.Terminal.SetCursorVisible(TRUE)
+Viper.Terminal.SetAltScreen(FALSE)
 Viper.Terminal.EndBatch()
 
 DIM line1 AS STRING

@@ -1,0 +1,100 @@
+// camctl.zia - Third-person orbit camera: look input, sprint FOV, follow rig.
+//
+// Extracted from the game.zia orchestrator. Holds all camera state (yaw, pitch,
+// zoom distance, FOV, and the eye/target/up vectors) and the follow math that
+// orbits the player while keeping the eye above the ground.
+module camctl;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind "./config";
+bind "./terrain";
+
+class ShowcaseCamera {
+    hide Camera3D cam;
+    hide Vec3 eye;
+    hide Vec3 target;
+    hide Vec3 up;
+    hide Float yaw;
+    hide Float pitch;
+    hide Float distance;
+    hide Float fov;
+
+    expose func setup(camera: Camera3D) {
+        cam = camera;
+        eye = new Vec3(0.0, 0.0, 0.0);
+        target = new Vec3(0.0, 0.0, 0.0);
+        up = new Vec3(0.0, 1.0, 0.0);
+        reset();
+    }
+
+    expose func reset() {
+        yaw = 0.0;
+        pitch = config.CAMERA_PITCH_START;
+        distance = config.CAMERA_DISTANCE;
+        fov = config.CAMERA_FOV;
+    }
+
+    expose func getYaw() -> Float { return yaw; }
+
+    // Mouse look (yaw/pitch) plus wheel zoom, clamped to the configured ranges.
+    expose func updateLook(input: Input3D) {
+        var look = input.LookAxis();
+        yaw = yaw + Vec2.get_X(look);
+        pitch = pitch - Vec2.get_Y(look);
+        if (pitch < config.CAMERA_PITCH_MIN) { pitch = config.CAMERA_PITCH_MIN; }
+        if (pitch > config.CAMERA_PITCH_MAX) { pitch = config.CAMERA_PITCH_MAX; }
+        distance = distance - input.WheelY() * config.CAMERA_WHEEL_SPEED;
+        if (distance < config.CAMERA_DISTANCE_MIN) { distance = config.CAMERA_DISTANCE_MIN; }
+        if (distance > config.CAMERA_DISTANCE_MAX) { distance = config.CAMERA_DISTANCE_MAX; }
+    }
+
+    // Smoothly ease the horizontal FOV toward the sprint "kick" while moving+sprinting.
+    expose func updateFov(input: Input3D) {
+        var move = input.MoveAxis();
+        var moveLen = Sqrt(Vec3.get_X(move) * Vec3.get_X(move) + Vec3.get_Z(move) * Vec3.get_Z(move));
+        var fovTarget = config.CAMERA_FOV;
+        if (input.IsDown(Keys.get_Shift()) && moveLen > 0.001) {
+            fovTarget = config.CAMERA_FOV_SPRINT;
+        }
+        fov = fov + (fovTarget - fov) * 0.12;
+        Camera3D.SetHorizontalFov(cam, fov);
+    }
+
+    // Orbit the eye behind the player pivot, clamp to world bounds, and keep the
+    // eye a minimum clearance above the terrain so it never dips underground.
+    expose func follow(playerX: Float, playerY: Float, playerZ: Float, land: Terrain3D) {
+        var pivotX = playerX;
+        var pivotY = playerY + config.CAMERA_TARGET_HEIGHT;
+        var pivotZ = playerZ;
+        var flatX = Sin(yaw);
+        var flatZ = 0.0 - Cos(yaw);
+        var horizDist = distance * Cos(pitch);
+        var eyeX = pivotX - flatX * horizDist;
+        var eyeZ = pivotZ - flatZ * horizDist;
+        var minX = config.PLAYER_BOUNDS_MARGIN;
+        var minZ = config.PLAYER_BOUNDS_MARGIN;
+        var maxX = terrain.terrainWorldMaxX() - config.PLAYER_BOUNDS_MARGIN;
+        var maxZ = terrain.terrainWorldMaxZ() - config.PLAYER_BOUNDS_MARGIN;
+        if (eyeX < minX) { eyeX = minX; }
+        if (eyeX > maxX) { eyeX = maxX; }
+        if (eyeZ < minZ) { eyeZ = minZ; }
+        if (eyeZ > maxZ) { eyeZ = maxZ; }
+        var eyeGround = terrain.sampleGround(land, eyeX, eyeZ);
+        var eyeY = pivotY + Sin(pitch) * distance;
+        if (eyeY < eyeGround + config.CAMERA_MIN_CLEARANCE) { eyeY = eyeGround + config.CAMERA_MIN_CLEARANCE; }
+        eye.Set(eyeX, eyeY, eyeZ);
+        var targetX = pivotX + flatX * config.CAMERA_LOOK_AHEAD;
+        var targetZ = pivotZ + flatZ * config.CAMERA_LOOK_AHEAD;
+        if (targetX < minX) { targetX = minX; }
+        if (targetX > maxX) { targetX = maxX; }
+        if (targetZ < minZ) { targetZ = minZ; }
+        if (targetZ > maxZ) { targetZ = maxZ; }
+        target.Set(
+            targetX,
+            pivotY + Sin(pitch) * config.CAMERA_LOOK_AHEAD,
+            targetZ);
+        Camera3D.LookAt(cam, eye, target, up);
+    }
+}

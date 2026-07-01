@@ -138,7 +138,7 @@ class SceneGame {
     }
 
     expose func step(dt: Float) {
-        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) {
+        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) {
             quitRequested = true;
             return;
         }

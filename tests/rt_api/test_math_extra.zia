@@ -12,7 +12,7 @@ func start() {
 
     var pat = new Viper.Text.CompiledPattern("[0-9]+");
     var matches = pat.FindAll("a1b22c333");
-    SayInt(matches.Length);
+    SayInt(matches.Count);
 
     Say("done");
 }

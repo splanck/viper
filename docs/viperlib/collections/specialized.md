@@ -107,7 +107,7 @@ func start() {
     fruits.Add("apple");
     fruits.Add("banana");
     fruits.Add("cherry");
-    Say("Count: " + Fmt.Int(fruits.Length));              // 3
+    Say("Count: " + Fmt.Int(fruits.Count));              // 3
 
     // Membership testing
     Say("Has banana: " + Fmt.Bool(fruits.Has("banana")));  // true
@@ -118,7 +118,7 @@ func start() {
 
     // Remove
     fruits.Remove("banana");
-    Say("After remove: " + Fmt.Int(fruits.Length));             // 2
+    Say("After remove: " + Fmt.Int(fruits.Count));             // 2
 }
 ```
 
@@ -130,7 +130,7 @@ DIM fruits AS OBJECT = NEW Viper.Collections.Bag()
 fruits.Add("apple")
 fruits.Add("banana")
 fruits.Add("cherry")
-PRINT fruits.Length           ' Output: 3
+PRINT fruits.Count           ' Output: 3
 
 ' Duplicate add returns false
 DIM wasNew AS INTEGER = fruits.Add("apple")
@@ -158,19 +158,19 @@ bagB.Add("d")
 
 ' Union: elements in either bag
 DIM merged AS OBJECT = bagA.Union(bagB)
-PRINT merged.Length           ' Output: 4 (a, b, c, d)
+PRINT merged.Count           ' Output: 4 (a, b, c, d)
 
 ' Intersection: elements in both bags
 DIM common AS OBJECT = bagA.Intersect(bagB)
-PRINT common.Length           ' Output: 2 (b, c)
+PRINT common.Count           ' Output: 2 (b, c)
 
 ' Difference: elements in A but not B
 DIM diff AS OBJECT = bagA.Diff(bagB)
-PRINT diff.Length             ' Output: 1 (a only)
+PRINT diff.Count             ' Output: 1 (a only)
 
 ' Enumerate all elements
 DIM items AS OBJECT = fruits.Items()
-FOR i AS INTEGER = 0 TO items.Length - 1
+FOR i AS INTEGER = 0 TO items.Count - 1
     PRINT items.Get(i)
 NEXT
 ```
@@ -362,7 +362,7 @@ func start() {
     t.Set("card", Box.I64(3));
     t.Set("care", Box.I64(4));
     t.Set("dog", Box.I64(5));
-    SayInt(t.Length);                                 // 5
+    SayInt(t.Count);                                 // 5
 
     // Exact lookup
     SayInt(Box.ToI64(t.Get("cat")));               // 1
@@ -380,7 +380,7 @@ func start() {
 
     // All keys with prefix
     var carKeys = t.WithPrefix("car");
-    SayInt(carKeys.Length);                           // 3 (car, card, care)
+    SayInt(carKeys.Count);                           // 3 (car, card, care)
 
     // Remove
     t.Remove("card");
@@ -401,7 +401,7 @@ t.Set("car", Viper.Core.Box.I64(2))
 t.Set("card", Viper.Core.Box.I64(3))
 t.Set("care", Viper.Core.Box.I64(4))
 t.Set("dog", Viper.Core.Box.I64(5))
-PRINT t.Length                     ' 5
+PRINT t.Count                     ' 5
 
 ' Exact lookup
 PRINT Viper.Core.Box.ToI64(t.Get("cat"))   ' 1
@@ -422,16 +422,16 @@ PRINT t.LongestPrefix("dogs")       ' dog
 ' All keys with prefix
 DIM carKeys AS OBJECT
 carKeys = t.WithPrefix("car")
-PRINT carKeys.Length               ' 3 (car, card, care)
+PRINT carKeys.Count               ' 3 (car, card, care)
 
 DIM caKeys AS OBJECT
 caKeys = t.WithPrefix("ca")
-PRINT caKeys.Length                ' 4 (cat, car, card, care)
+PRINT caKeys.Count                ' 4 (cat, car, card, care)
 
 ' Update existing key
 t.Set("cat", Viper.Core.Box.I64(100))
 PRINT Viper.Core.Box.ToI64(t.Get("cat"))  ' 100
-PRINT t.Length                     ' 5 (no new entry)
+PRINT t.Count                     ' 5 (no new entry)
 
 ' Remove a key (does not affect siblings)
 PRINT t.Remove("card")          ' 1

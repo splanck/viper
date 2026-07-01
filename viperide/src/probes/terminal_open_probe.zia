@@ -26,7 +26,7 @@ func main() {
     if shell.terminalRestart == null { fail(shell, "terminal restart button missing"); return; }
 
     // Hidden until opened.
-    if shell.terminalPanel.IsVisible() != 0 { fail(shell, "terminal visible before open"); return; }
+    if shell.terminalPanel.IsVisible() { fail(shell, "terminal visible before open"); return; }
 
     var ctrl = new terminal_controller.TerminalController();
     ctrl.Setup(shell.terminalPanel, shell.terminalPane,
@@ -39,8 +39,8 @@ func main() {
 
     // Opening it (what View > Terminal / the palette command both do) reveals it.
     shell.ShowTerminalPanel();
-    if shell.terminalPanel.IsVisible() == 0 { fail(shell, "terminal not visible after ShowTerminalPanel"); return; }
-    if shell.terminalPane.IsVisible() == 0 { fail(shell, "terminal pane own visibility disabled"); return; }
+    if !shell.terminalPanel.IsVisible() { fail(shell, "terminal not visible after ShowTerminalPanel"); return; }
+    if !shell.terminalPane.IsVisible() { fail(shell, "terminal pane own visibility disabled"); return; }
 
     shell.Poll();
     shell.Render();

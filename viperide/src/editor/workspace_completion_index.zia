@@ -134,7 +134,7 @@ class WorkspaceCompletionIndex {
         var added = 0;
         var rows = Str.Split(raw, "\n");
         var i = 0;
-        while i < Seq.get_Length(rows) {
+        while i < Seq.get_Count(rows) {
             if maxItems > 0 and entries.count() >= maxItems {
                 return added;
             }
@@ -143,7 +143,7 @@ class WorkspaceCompletionIndex {
             if row == "" { continue; }
 
             var parts = Str.Split(row, "\t");
-            if Seq.get_Length(parts) < 4 { continue; }
+            if Seq.get_Count(parts) < 4 { continue; }
 
             var name = Obj.ToString(Seq.Get(parts, 0));
             var kind = Obj.ToString(Seq.Get(parts, 1));

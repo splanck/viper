@@ -147,21 +147,21 @@ class ScmView {
     expose func HandleEvents() {
         if ready == false { return; }
 
-        if refreshBtn.WasClicked() != 0 { Refresh(); }
+        if refreshBtn.WasClicked() { Refresh(); }
 
-        if stageAllBtn.WasClicked() != 0 {
+        if stageAllBtn.WasClicked() {
             git.StageAll();
             Refresh();
         }
-        if stageBtn.WasClicked() != 0 {
+        if stageBtn.WasClicked() {
             var p = SelectedPath();
             if p != "" { git.Stage(p); Refresh(); }
         }
-        if unstageBtn.WasClicked() != 0 {
+        if unstageBtn.WasClicked() {
             var p = SelectedPath();
             if p != "" { git.Unstage(p); Refresh(); }
         }
-        if commitBtn.WasClicked() != 0 {
+        if commitBtn.WasClicked() {
             var msg = commitInput.get_Text();
             if Str.get_Length(Str.Trim(msg)) > 0 {
                 git.Commit(msg);
@@ -169,10 +169,10 @@ class ScmView {
                 Refresh();
             }
         }
-        if pushBtn.WasClicked() != 0 { git.Push(); Refresh(); }
-        if pullBtn.WasClicked() != 0 { git.Pull(); Refresh(); }
+        if pushBtn.WasClicked() { git.Push(); Refresh(); }
+        if pullBtn.WasClicked() { git.Pull(); Refresh(); }
 
-        if statusList.WasSelectionChanged() != 0 {
+        if statusList.WasSelectionChanged() {
             ShowDiff(SelectedPath());
         }
     }

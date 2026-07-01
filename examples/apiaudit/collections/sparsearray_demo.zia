@@ -14,7 +14,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var sa = SparseArray.New();
-    SayInt(sa.Length);       // 0
+    SayInt(sa.Count);       // 0
 
     // --- Set / Len ---
     Say("--- Set / Len ---");
@@ -22,7 +22,7 @@ func start() {
     sa.Set(100, Box.Str("hundred"));
     sa.Set(1000, Box.Str("thousand"));
     sa.Set(-5, Box.Str("negative"));
-    SayInt(sa.Length);       // 4
+    SayInt(sa.Count);       // 4
 
     // --- Get ---
     Say("--- Get ---");
@@ -42,29 +42,29 @@ func start() {
     Say("--- Set (update) ---");
     sa.Set(100, Box.Str("HUNDRED"));
     Say(Box.ToStr(sa.Get(100)));     // HUNDRED
-    SayInt(sa.Length);                  // 4 (no new entry)
+    SayInt(sa.Count);                  // 4 (no new entry)
 
     // --- Remove ---
     Say("--- Remove ---");
     SayBool(sa.Remove(1000));   // 1
     SayBool(sa.Has(1000));      // 0
-    SayInt(sa.Length);             // 3
+    SayInt(sa.Count);             // 3
     SayBool(sa.Remove(1000));   // 0
 
     // --- Indices ---
     Say("--- Indices ---");
     var indices = sa.Indices();
-    SayInt(indices.Length);        // 3
+    SayInt(indices.Count);        // 3
 
     // --- Values ---
     Say("--- Values ---");
     var vals = sa.Values();
-    SayInt(vals.Length);           // 3
+    SayInt(vals.Count);           // 3
 
     // --- Clear ---
     Say("--- Clear ---");
     sa.Clear();
-    SayInt(sa.Length);             // 0
+    SayInt(sa.Count);             // 0
 
     Say("=== SparseArray audit complete ===");
 }

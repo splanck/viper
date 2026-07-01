@@ -13,7 +13,7 @@
 //     Each channel is built with `AddChannel(waveShape)`, tuned with
 //     ADSR + volume + pan, then populated with a note schedule in
 //     tick time.
-//   * LOOPABLE. SetLoopable(1) makes both tracks seamlessly loop
+//   * LOOPABLE. SetLoopable(true) makes both tracks seamlessly loop
 //     during gameplay and menu.
 //   * registerTracks IS THE PUBLIC API. The rest of the game only
 //     sees SoundBank entries named "music_menu" and "music_game".
@@ -118,7 +118,7 @@ hide func buildMenuSong() -> Sound {
     song.AddNote(bass, 3000, 50, 200);
 
     song.Length = 3200;
-    song.SetLoopable(1);
+    song.SetLoopable(true);
     return song.Build();
 }
 
@@ -225,7 +225,7 @@ hide func buildGameSong() -> Sound {
     }
 
     song.Length = 1600;
-    song.SetLoopable(1);
+    song.SetLoopable(true);
     return song.Build();
 }
 

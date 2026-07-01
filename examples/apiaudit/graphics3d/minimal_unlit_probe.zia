@@ -21,7 +21,7 @@ func start() {
 
     while (Canvas3D.get_ShouldClose(canvas) == 0) {
         Canvas3D.Poll(canvas);
-        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) { break; }
 
         Canvas3D.Clear(canvas, 0.1, 0.1, 0.15);
         Canvas3D.Begin(canvas, camera);

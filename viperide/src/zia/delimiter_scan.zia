@@ -129,7 +129,7 @@ expose func EnclosingBraceOpenLine(source: String,
     var lines = Str.Split(source, "\n");
     var openLines = new List();
     var i = 0;
-    while i < Seq.get_Length(lines) and i <= lineIdx {
+    while i < Seq.get_Count(lines) and i <= lineIdx {
         ScanBraceLineForStack(Obj.ToString(Seq.Get(lines, i)), i, openLines);
         i = i + 1;
     }
@@ -145,10 +145,10 @@ expose func MatchingBraceCloseLine(source: String,
                                    openLine: Integer) -> Integer {
     if source == "" or openLine < 0 { return -1; }
     var lines = Str.Split(source, "\n");
-    if openLine >= Seq.get_Length(lines) { return -1; }
+    if openLine >= Seq.get_Count(lines) { return -1; }
     var depth = 0;
     var i = openLine;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         var pos = 1;
         var inString = false;

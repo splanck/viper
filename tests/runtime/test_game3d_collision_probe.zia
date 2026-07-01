@@ -12,12 +12,12 @@ func start() {
     world.SetGravity(0.0, 0.0, 0.0);
 
     var a = Game3D.Entity3D.New();
-    a.SetName("A");
+    a.Name = "A";
     a.AttachBody(Game3D.BodyDef.StaticBox(1.0, 1.0, 1.0));
     world.Spawn(a);
 
     var b = Game3D.Entity3D.New();
-    b.SetName("B");
+    b.Name = "B";
     var bDef = Game3D.BodyDef.Box(1.0, 1.0, 1.0, 1.0);
     bDef.WithMask(Game3D.LayerMask.Of(Game3D.Layers.get_World()));
     bDef.WithSync(Game3D.SyncMode.get_BodyFromNode());
@@ -36,8 +36,8 @@ func start() {
         fail("enter event phase missing");
         return;
     }
-    if (evt.A == null ||
-        evt.B == null ||
+    if (evt.EntityA == null ||
+        evt.EntityB == null ||
         evt.Raw == null) {
         fail("event missing entity/raw handles");
         return;

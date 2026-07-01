@@ -121,7 +121,7 @@ hide func ShowContextMenuForPointer(shell: app_shell.AppShell,
     var suppressTreeOpen = false;
     var ctxX = Input.Mouse.X;
     var ctxY = Input.Mouse.Y;
-    if shell.sidebarTree.IsHovered() != 0 {
+    if shell.sidebarTree.IsHovered() {
         context_menus.DismissContextMenus(shell);
         var ctxNode = shell.sidebarTree.GetNodeAt(ctxX, ctxY);
         if ctxNode != null {
@@ -134,11 +134,11 @@ hide func ShowContextMenuForPointer(shell: app_shell.AppShell,
         shell.contextDir = context_menus.ContextDirForPath(projMgr, shell.contextPath);
         context_menus.ConfigureTreeContextMenuForPath(shell, projMgr, shell.contextPath, shell.contextDir);
         shell.treeContextMenu.Show(ctxX, ctxY);
-    } else if shell.tabBar.IsHovered() != 0 {
+    } else if shell.tabBar.IsHovered() {
         context_menus.DismissContextMenus(shell);
         shell.tabContextIndex = shell.tabBar.GetTabIndexAt(ctxX, ctxY);
         shell.tabContextMenu.Show(ctxX, ctxY);
-    } else if engine.editor.IsHovered() != 0 {
+    } else if engine.editor.IsHovered() {
         context_menus.DismissContextMenus(shell);
         context_menus.MoveEditorCursorForContextMenu(engine, ctxX, ctxY);
         context_menus.ConfigureEditorContextMenu(shell, engine, activeService, dbgSession);
@@ -164,41 +164,41 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
                               explorerOverlay: explorer_actions.ExplorerActionOverlay,
                               indexer: project_index.ProjectIndexer,
                               appSettings: settings.SettingsManager) {
-    if shell.ctxOpen.WasClicked() != 0 {
+    if shell.ctxOpen.WasClicked() {
         var ctxPath = context_menus.CurrentContextPath(projMgr, shell);
         if IO.File.Exists(ctxPath) != false {
             explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxPath);
             fileWatchCtrl.ResetPendingReload();
         }
     }
-    if shell.ctxOpenText.WasClicked() != 0 {
+    if shell.ctxOpenText.WasClicked() {
         var ctxTextPath = context_menus.CurrentContextPath(projMgr, shell);
         if IO.File.Exists(ctxTextPath) != false {
             explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxTextPath);
             fileWatchCtrl.ResetPendingReload();
         }
     }
-    if shell.ctxReveal.WasClicked() != 0 {
+    if shell.ctxReveal.WasClicked() {
         var revealPath = context_menus.CurrentContextPath(projMgr, shell);
         if revealPath != "" {
             context_menus.RevealPath(revealPath);
         }
     }
-    if shell.ctxCopyPath.WasClicked() != 0 {
+    if shell.ctxCopyPath.WasClicked() {
         var copyPath = context_menus.CurrentContextPath(projMgr, shell);
         if copyPath != "" {
             GUI.ClipboardText.SetText(copyPath);
             GUI.Toast.Success("Path copied");
         }
     }
-    if shell.ctxCopyRelativePath.WasClicked() != 0 {
+    if shell.ctxCopyRelativePath.WasClicked() {
         var copyRelPath = context_menus.CurrentContextPath(projMgr, shell);
         if copyRelPath != "" {
             GUI.ClipboardText.SetText(projMgr.RelativePath(copyRelPath));
             GUI.Toast.Success("Relative path copied");
         }
     }
-    if shell.ctxDuplicate.WasClicked() != 0 {
+    if shell.ctxDuplicate.WasClicked() {
         var dupPath = context_menus.CurrentContextPath(projMgr, shell);
         if IO.File.Exists(dupPath) != false {
             explorerOverlay.OpenDuplicate(shell, dupPath);
@@ -206,35 +206,35 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
             GUI.Toast.Info("Duplicate is available for files");
         }
     }
-    if shell.ctxRename.WasClicked() != 0 {
+    if shell.ctxRename.WasClicked() {
         var selectedPath = context_menus.CurrentContextPath(projMgr, shell);
         if selectedPath != "" {
             explorerOverlay.OpenRename(shell, selectedPath);
         }
     }
-    if shell.ctxDelete.WasClicked() != 0 {
+    if shell.ctxDelete.WasClicked() {
         var deletePath = context_menus.CurrentContextPath(projMgr, shell);
         if deletePath != "" {
             explorerOverlay.OpenDelete(shell, deletePath);
         }
     }
-    if shell.ctxNewFile.WasClicked() != 0 {
+    if shell.ctxNewFile.WasClicked() {
         var ctxDir = shell.contextDir;
         if ctxDir != "" {
             explorerOverlay.OpenNewFile(shell, ctxDir);
         }
     }
-    if shell.ctxNewFolder.WasClicked() != 0 {
+    if shell.ctxNewFolder.WasClicked() {
         var ctxDir2 = shell.contextDir;
         if ctxDir2 != "" {
             explorerOverlay.OpenNewFolder(shell, ctxDir2);
         }
     }
-    if shell.ctxSearchFolder.WasClicked() != 0 {
+    if shell.ctxSearchFolder.WasClicked() {
         search_commands.handleProjectSearchInFolderAsync(shell, projMgr, shell.contextDir,
                                                          docMgr, engine, locStore, searcher);
     }
-    if shell.ctxRunFile.WasClicked() != 0 {
+    if shell.ctxRunFile.WasClicked() {
         var runPath = context_menus.CurrentContextPath(projMgr, shell);
         if IO.File.Exists(runPath) != false {
             explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, runPath);
@@ -243,7 +243,7 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
                                      appSettings.saveAllBeforeBuild);
         }
     }
-    if shell.ctxSetEntry.WasClicked() != 0 {
+    if shell.ctxSetEntry.WasClicked() {
         var entryPath = context_menus.CurrentContextPath(projMgr, shell);
         if projMgr.SetEntryFile(entryPath) {
             shell.SetStatusLeft("Project entry: " + projMgr.RelativePath(entryPath));
@@ -252,7 +252,7 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
             GUI.Toast.Warning("Choose a project file as the entry point");
         }
     }
-    if shell.ctxRefresh.WasClicked() != 0 {
+    if shell.ctxRefresh.WasClicked() {
         projMgr.RefreshTree();
         indexer.EnsureProject(projMgr, docMgr);
         shell.SetStatusLeft("Project tree refreshed");
@@ -310,16 +310,16 @@ hide func PumpEditorContextMenu(shell: app_shell.AppShell,
                                 paletteCtrl: command_palette_controller.CommandPaletteController,
                                 commandRegistry: command_registry.CommandRegistry,
                                 activeService: language_service.LanguageService) {
-    if shell.ecCut.WasClicked() != 0        { edit_commands.handleCut(engine); }
-    if shell.ecCopy.WasClicked() != 0       { edit_commands.handleCopy(engine); }
-    if shell.ecPaste.WasClicked() != 0      { edit_commands.handlePaste(engine); }
-    if shell.ecGotoDef.WasClicked() != 0    { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
-    if shell.ecFindRefs.WasClicked() != 0   { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
-    if shell.ecRename.WasClicked() != 0     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
-    if shell.ecFormat.WasClicked() != 0     { edit_commands.handleFormatDocument(shell, docMgr, engine); }
-    if shell.ecToggleBreakpoint.WasClicked() != 0 { debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore); }
-    if shell.ecEvaluate.WasClicked() != 0 { debug_commands.handleEvaluateAtCursor(shell, engine, dbgSession); }
-    if shell.ecPalette.WasClicked() != 0 {
+    if shell.ecCut.WasClicked()        { edit_commands.handleCut(engine); }
+    if shell.ecCopy.WasClicked()       { edit_commands.handleCopy(engine); }
+    if shell.ecPaste.WasClicked()      { edit_commands.handlePaste(engine); }
+    if shell.ecGotoDef.WasClicked()    { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
+    if shell.ecFindRefs.WasClicked()   { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
+    if shell.ecRename.WasClicked()     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
+    if shell.ecFormat.WasClicked()     { edit_commands.handleFormatDocument(shell, docMgr, engine); }
+    if shell.ecToggleBreakpoint.WasClicked() { debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore); }
+    if shell.ecEvaluate.WasClicked() { debug_commands.handleEvaluateAtCursor(shell, engine, dbgSession); }
+    if shell.ecPalette.WasClicked() {
         paletteCtrl.OpenCommands(shell, commandRegistry, activeService);
     }
 }
@@ -346,23 +346,23 @@ hide func PumpTabContextMenu(shell: app_shell.AppShell,
     if tabTargetDoc != null {
         tabTargetPath = tabTargetDoc!.filePath;
     }
-    if shell.tcClose.WasClicked() != 0        { file_commands.handleClose(shell, docMgr, engine, tabs, tabTargetIndex); fileWatchCtrl.ResetPendingReload(); }
-    if shell.tcCloseOthers.WasClicked() != 0  { file_commands.handleCloseOthers(shell, docMgr, engine, tabs, tabTargetIndex); fileWatchCtrl.ResetPendingReload(); }
-    if shell.tcCloseAll.WasClicked() != 0     { file_commands.handleCloseAll(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
-    if shell.tcCloseSaved.WasClicked() != 0   { file_commands.handleCloseSaved(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
-    if shell.tcCopyPath.WasClicked() != 0 {
+    if shell.tcClose.WasClicked()        { file_commands.handleClose(shell, docMgr, engine, tabs, tabTargetIndex); fileWatchCtrl.ResetPendingReload(); }
+    if shell.tcCloseOthers.WasClicked()  { file_commands.handleCloseOthers(shell, docMgr, engine, tabs, tabTargetIndex); fileWatchCtrl.ResetPendingReload(); }
+    if shell.tcCloseAll.WasClicked()     { file_commands.handleCloseAll(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
+    if shell.tcCloseSaved.WasClicked()   { file_commands.handleCloseSaved(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
+    if shell.tcCopyPath.WasClicked() {
         if tabTargetPath != "" {
             GUI.ClipboardText.SetText(tabTargetPath);
             GUI.Toast.Success("Path copied");
         }
     }
-    if shell.tcCopyRelativePath.WasClicked() != 0 {
+    if shell.tcCopyRelativePath.WasClicked() {
         if tabTargetPath != "" {
             GUI.ClipboardText.SetText(projMgr.RelativePath(tabTargetPath));
             GUI.Toast.Success("Relative path copied");
         }
     }
-    if shell.tcReveal.WasClicked() != 0 {
+    if shell.tcReveal.WasClicked() {
         if tabTargetPath != "" {
             context_menus.RevealPath(tabTargetPath);
         }

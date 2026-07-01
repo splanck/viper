@@ -284,7 +284,7 @@ func plasmaRun(canvas: Canvas) {
         // Draw scaled plasma
         // Since we can't easily scale, we'll blit at position and let it clip
         // For a proper demo, we'd need a scaled blit or render at full res
-        canvas.Clear(colors.BLACK);
+        canvas.Clear(colors.Black);
 
         // Draw the low-res plasma multiple times to fill screen (simple scaling)
         var ty = 0;
@@ -298,8 +298,8 @@ func plasmaRun(canvas: Canvas) {
         }
 
         // Instructions overlay
-        canvas.TextBg(10, 10, "PLASMA DEMO", colors.WHITE, colors.BLACK);
-        canvas.TextBg(10, 28, "SPACE: Pattern | P: Palette | ESC: Exit", colors.GRAY, colors.BLACK);
+        canvas.TextBg(10, 10, "PLASMA DEMO", colors.White, colors.Black);
+        canvas.TextBg(10, 28, "SPACE: Pattern | P: Palette | ESC: Exit", colors.Gray, colors.Black);
 
         canvas.Flip();
         Viper.Time.Clock.Sleep(16);

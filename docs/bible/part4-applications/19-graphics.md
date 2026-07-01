@@ -183,14 +183,14 @@ Think of it this way:
 The graphics library provides common colors so you don't have to remember RGB values:
 
 ```rust
-Color.RED       // (255, 0, 0)
-Color.GREEN     // (0, 255, 0) — note: this is pure green, not forest green
-Color.BLUE      // (0, 0, 255)
-Color.WHITE     // (255, 255, 255)
-Color.BLACK     // (0, 0, 0)
-Color.YELLOW    // (255, 255, 0)
-Color.CYAN      // (0, 255, 255)
-Color.MAGENTA   // (255, 0, 255)
+Color.Red       // (255, 0, 0)
+Color.Green     // (0, 255, 0) — note: this is pure green, not forest green
+Color.Blue      // (0, 0, 255)
+Color.White     // (255, 255, 255)
+Color.Black     // (0, 0, 0)
+Color.Yellow    // (255, 255, 0)
+Color.Cyan      // (0, 255, 255)
+Color.Magenta   // (255, 0, 255)
 ```
 
 ---
@@ -206,7 +206,7 @@ func start() {
     var canvas = Canvas.New("My First Window", 800, 600);  // 800 pixels wide, 600 tall
 
     // Draw something
-    canvas.Box(100, 100, 200, 150, Color.RED);
+    canvas.Box(100, 100, 200, 150, Color.Red);
 
     // Show the result
     canvas.Flip();
@@ -223,7 +223,7 @@ Let's trace through what happens when this program runs:
 
 1. **`Canvas.New("My First Window", 800, 600)`** — Create a window 800 pixels wide and 600 pixels tall, with the given title. At this point, the window exists but nothing is drawn on it yet. The frame buffer is allocated in memory, initially filled with black (or whatever the default background is).
 
-2. **`canvas.Box(100, 100, 200, 150, Color.RED)`** — Draw a filled rectangle in red. The parameters mean:
+2. **`canvas.Box(100, 100, 200, 150, Color.Red)`** — Draw a filled rectangle in red. The parameters mean:
    - Start at x=100, y=100 (the top-left corner of the rectangle)
    - Width of 200 pixels
    - Height of 150 pixels
@@ -275,10 +275,10 @@ Rectangles are the workhorse of graphics — fast to draw and useful for backgro
 
 ```rust
 // Filled rectangle (solid color)
-canvas.Box(x, y, width, height, Color.BLUE);
+canvas.Box(x, y, width, height, Color.Blue);
 
 // Outline only (just the border)
-canvas.Frame(x, y, width, height, Color.WHITE);
+canvas.Frame(x, y, width, height, Color.White);
 ```
 
 The difference between `Box` and `Frame`:
@@ -298,10 +298,10 @@ Box(50, 50, 100, 80, color)       Frame(50, 50, 100, 80, color)
 
 ```rust
 // Filled circle: specify center, radius, and color
-canvas.Disc(centerX, centerY, radius, Color.YELLOW);
+canvas.Disc(centerX, centerY, radius, Color.Yellow);
 
 // Circle outline: specify center, radius, and color
-canvas.Ring(centerX, centerY, radius, Color.YELLOW);
+canvas.Ring(centerX, centerY, radius, Color.Yellow);
 ```
 
 For circles, you specify where the *center* is, how big the radius is, and what color to use. `Disc` draws a filled circle; `Ring` draws just the outline.
@@ -324,7 +324,7 @@ Disc(200, 150, 50, color)        Ring(200, 150, 50, color)
 
 ```rust
 // Draw a line from point 1 to point 2
-canvas.Line(x1, y1, x2, y2, Color.GREEN);
+canvas.Line(x1, y1, x2, y2, Color.Green);
 ```
 
 Lines connect two points. There's no "filled" version — a line is inherently just a path.
@@ -347,7 +347,7 @@ Line(50, 50, 200, 150, color)
 Sometimes you need to color a single pixel:
 
 ```rust
-canvas.Plot(x, y, Color.WHITE);
+canvas.Plot(x, y, Color.White);
 ```
 
 This is the most fundamental drawing operation — everything else is built from it. Drawing a line is really just setting many pixels in a row; drawing a rectangle is setting pixels in a grid pattern.
@@ -358,9 +358,9 @@ For arbitrary shapes, define a series of points and connect them:
 
 ```rust
 // Triangle — draw using three Line calls
-canvas.Line(100, 200, 150, 100, Color.RED);
-canvas.Line(150, 100, 200, 200, Color.RED);
-canvas.Line(200, 200, 100, 200, Color.RED);
+canvas.Line(100, 200, 150, 100, Color.Red);
+canvas.Line(150, 100, 200, 200, Color.Red);
+canvas.Line(200, 200, 100, 200, Color.Red);
 
 // For filled polygons, build them from Box/Disc primitives
 // or draw them line-by-line (scanline fill)
@@ -387,7 +387,7 @@ Triangle from [(100,200), (150,100), (200,200)]:
 Text is rendered as graphics too — each character is drawn as a pattern of pixels in the font's defined shape.
 
 ```rust
-canvas.Text(100, 100, "Hello, Graphics!", Color.BLACK);
+canvas.Text(100, 100, "Hello, Graphics!", Color.Black);
 ```
 
 The coordinates (100, 100) specify where the text starts — specifically, the left edge at the text's *baseline*. The baseline is the line that letters sit on (think of the bottom of letters like 'a' or 'x', but letters like 'g' and 'y' extend below it).
@@ -429,7 +429,7 @@ func start() {
     canvas.Box(0, 350, 640, 130, Color.RGB(34, 139, 34));  // Forest green
 
     // Step 3: Sun
-    canvas.Disc(550, 80, 50, Color.YELLOW);
+    canvas.Disc(550, 80, 50, Color.Yellow);
 
     // Step 4: House body
     canvas.Box(200, 250, 200, 150, Color.RGB(139, 69, 19));  // Brown
@@ -447,12 +447,12 @@ func start() {
     canvas.Box(320, 280, 50, 50, Color.RGB(173, 216, 230));  // Light blue
 
     // Step 8: Window frame
-    canvas.Frame(320, 280, 50, 50, Color.WHITE);
-    canvas.Line(345, 280, 345, 330, Color.WHITE);
-    canvas.Line(320, 305, 370, 305, Color.WHITE);
+    canvas.Frame(320, 280, 50, 50, Color.White);
+    canvas.Line(345, 280, 345, 330, Color.White);
+    canvas.Line(320, 305, 370, 305, Color.White);
 
     // Step 9: Label
-    canvas.Text(250, 450, "Home Sweet Home", Color.WHITE);
+    canvas.Text(250, 450, "Home Sweet Home", Color.White);
 
     canvas.Flip();
     while !canvas.ShouldClose {
@@ -596,10 +596,10 @@ func start() {
         // === RENDER ===
 
         // Clear screen (draw black background)
-        canvas.Clear(Color.BLACK);
+        canvas.Clear(Color.Black);
 
         // Draw ball at new position
-        canvas.Disc(x, y, radius, Color.RED);
+        canvas.Disc(x, y, radius, Color.Red);
 
         // Show the result
         canvas.Flip();
@@ -751,8 +751,8 @@ while !canvas.ShouldClose {
     // ... collision checks using the same dt logic ...
 
     // Render
-    canvas.Clear(Color.BLACK);
-    canvas.Disc(x, y, 20, Color.RED);
+    canvas.Clear(Color.Black);
+    canvas.Disc(x, y, 20, Color.Red);
     canvas.Flip();
 
     Time.Clock.Sleep(16);
@@ -797,7 +797,7 @@ var canvas = Canvas.New("My App", 800, 600);
 
 while !canvas.ShouldClose {
     canvas.Poll();
-    canvas.Clear(Color.BLACK);  // Clear the back buffer
+    canvas.Clear(Color.Black);  // Clear the back buffer
     drawEverything();            // Draw to back buffer
     canvas.Flip();               // Swap buffers — back becomes front
 }
@@ -958,7 +958,7 @@ class Game {
 
     func render() {
         // Clear screen
-        self.canvas.Clear(Color.BLACK);
+        self.canvas.Clear(Color.Black);
 
         // Draw all objects
         for obj in self.objects {
@@ -973,8 +973,8 @@ class Game {
 func start() {
     var game = new Game(800, 600, "My Game");
 
-    game.add(new GameObject(100, 100, 50, 50, Color.RED));
-    game.add(new GameObject(300, 200, 30, 30, Color.BLUE));
+    game.add(new GameObject(100, 100, 50, 50, Color.Red));
+    game.add(new GameObject(300, 200, 30, 30, Color.Blue));
 
     game.run();
 }
@@ -998,8 +998,8 @@ Graphics programming has some classic pitfalls. Learn from others' mistakes!
 ```rust
 var canvas = Canvas.New("Demo", 800, 600);
 // Later...
-canvas.Box(0, 0, 800, 600, Color.BLACK);  // This is correct
-canvas.Disc(800, 600, 10, Color.RED);     // Bug! (800, 600) is outside the canvas
+canvas.Box(0, 0, 800, 600, Color.Black);  // This is correct
+canvas.Disc(800, 600, 10, Color.Red);     // Bug! (800, 600) is outside the canvas
 ```
 
 **Why it's wrong:** A 800x600 canvas has coordinates from (0,0) to (799, 599). Position (800, 600) is one pixel beyond the right and bottom edges.
@@ -1007,10 +1007,10 @@ canvas.Disc(800, 600, 10, Color.RED);     // Bug! (800, 600) is outside the canv
 **The fix:**
 ```rust
 // The bottom-right corner is at (width-1, height-1)
-canvas.Disc(799, 599, 10, Color.RED);
+canvas.Disc(799, 599, 10, Color.Red);
 
 // Or calculate from canvas size:
-canvas.Disc(width - 1, height - 1, 10, Color.RED);
+canvas.Disc(width - 1, height - 1, 10, Color.Red);
 ```
 
 ### Mistake 2: Forgetting to Clear the Screen
@@ -1020,7 +1020,7 @@ canvas.Disc(width - 1, height - 1, 10, Color.RED);
 while !canvas.ShouldClose {
     canvas.Poll();
     x += 5;
-    canvas.Disc(x, 100, 20, Color.RED);  // No clear before this!
+    canvas.Disc(x, 100, 20, Color.Red);  // No clear before this!
     canvas.Flip();
 }
 ```
@@ -1034,9 +1034,9 @@ while !canvas.ShouldClose {
     x += 5;
 
     // Clear first!
-    canvas.Clear(Color.BLACK);
+    canvas.Clear(Color.Black);
 
-    canvas.Disc(x, 100, 20, Color.RED);
+    canvas.Disc(x, 100, 20, Color.Red);
     canvas.Flip();
 }
 ```
@@ -1045,8 +1045,8 @@ while !canvas.ShouldClose {
 
 **The bug:**
 ```rust
-canvas.Disc(100, 100, 50, Color.RED);     // Draw player
-canvas.Box(0, 0, 800, 600, Color.BLUE);   // Draw background
+canvas.Disc(100, 100, 50, Color.Red);     // Draw player
+canvas.Box(0, 0, 800, 600, Color.Blue);   // Draw background
 ```
 
 **What happens:** The background covers the player because it's drawn second.
@@ -1054,10 +1054,10 @@ canvas.Box(0, 0, 800, 600, Color.BLUE);   // Draw background
 **The fix:** Draw back-to-front (painter's algorithm):
 ```rust
 // Background first (farthest back)
-canvas.Box(0, 0, 800, 600, Color.BLUE);
+canvas.Box(0, 0, 800, 600, Color.Blue);
 
 // Then foreground elements (closer to viewer)
-canvas.Disc(100, 100, 50, Color.RED);
+canvas.Disc(100, 100, 50, Color.Red);
 ```
 
 ### Mistake 4: Integer vs. Float Precision
@@ -1077,7 +1077,7 @@ var x = 100.0;  // Float
 x = x + 0.5;    // Now x = 100.5
 
 // When drawing, convert to integer:
-canvas.Disc(x as Integer, y as Integer, 20, Color.RED);
+canvas.Disc(x as Integer, y as Integer, 20, Color.Red);
 ```
 
 ### Mistake 5: Forgetting Flip()
@@ -1086,8 +1086,8 @@ canvas.Disc(x as Integer, y as Integer, 20, Color.RED);
 ```rust
 while !canvas.ShouldClose {
     canvas.Poll();
-    canvas.Clear(Color.BLACK);
-    canvas.Disc(x, y, 20, Color.RED);
+    canvas.Clear(Color.Black);
+    canvas.Disc(x, y, 20, Color.Red);
     // Forgot canvas.Flip()!
 }
 ```
@@ -1141,14 +1141,14 @@ Make the invisible visible:
 
 ```rust
 // Draw bounding boxes around objects
-canvas.Frame(player.x, player.y, player.width, player.height, Color.WHITE);
+canvas.Frame(player.x, player.y, player.width, player.height, Color.White);
 
 // Draw collision points
-canvas.Disc(player.x, player.y, 3, Color.YELLOW);  // Top-left corner
-canvas.Disc(player.x + player.width, player.y + player.height, 3, Color.YELLOW);  // Bottom-right
+canvas.Disc(player.x, player.y, 3, Color.Yellow);  // Top-left corner
+canvas.Disc(player.x + player.width, player.y + player.height, 3, Color.Yellow);  // Bottom-right
 
 // Draw velocity vectors
-canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy * 10, Color.GREEN);
+canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy * 10, Color.Green);
 ```
 
 ### Step 3: Slow Down Time
@@ -1174,7 +1174,7 @@ Simplify until it works:
 
 ```rust
 // Remove the game loop — just draw once
-canvas.Box(100, 100, 50, 50, Color.RED);
+canvas.Box(100, 100, 50, 50, Color.Red);
 canvas.Flip();
 while !canvas.ShouldClose {
     canvas.Poll();
@@ -1200,8 +1200,8 @@ for i in 0..=6 {
 }
 
 // Label some coordinates
-canvas.Text(5, 15, "(0,0)", Color.WHITE);
-canvas.Text(405, 315, "(400,300)", Color.WHITE);
+canvas.Text(5, 15, "(0,0)", Color.White);
+canvas.Text(405, 315, "(400,300)", Color.White);
 ```
 
 ---
@@ -1213,7 +1213,7 @@ canvas.Text(405, 315, "(400,300)", Color.WHITE);
 bind Viper.Graphics;
 
 var canvas = Canvas.New("Demo", 800, 600);
-canvas.Box(100, 100, 200, 150, Color.RED);
+canvas.Box(100, 100, 200, 150, Color.Red);
 canvas.Flip();
 ```
 

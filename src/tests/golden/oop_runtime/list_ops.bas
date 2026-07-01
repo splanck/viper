@@ -36,7 +36,7 @@ PRINT l.Find(b)
 PRINT l.Find(c)
 
 ' Append via Insert(index == Count): [a, b, c, d]
-l.Insert(l.Length, d)
+l.Insert(l.Count, d)
 PRINT l.Find(d)
 
 ' Remove missing element
@@ -48,7 +48,7 @@ END IF
 
 ' Add duplicate and remove only first occurrence: [a, b, c, d, a] -> remove(a) -> [b, c, d, a]
 l.Push(a)
-PRINT l.Length
+PRINT l.Count
 
 IF l.Remove(a) THEN
   PRINT 1
@@ -56,8 +56,7 @@ ELSE
   PRINT 0
 END IF
 
-PRINT l.Length
+PRINT l.Count
 PRINT l.Find(a)
 
 END
-

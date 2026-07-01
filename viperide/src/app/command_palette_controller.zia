@@ -86,7 +86,7 @@ class CommandPaletteController {
                                           service: language_service.LanguageService) {
         if mode == MODE_COMMANDS { return; }
         if shell == null or shell.commandPalette == null { return; }
-        if shell.commandPalette.IsVisible() != 0 { return; }
+        if shell.commandPalette.IsVisible() { return; }
         ResetToCommands(shell, registry, service);
     }
 }

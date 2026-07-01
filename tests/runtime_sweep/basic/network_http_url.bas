@@ -89,7 +89,7 @@ Viper.Core.Diagnostics.Assert(headRes.IsOk(), "http.head.isok")
 
 DIM headHeaders AS Viper.Collections.Map
 headHeaders = headRes.Headers
-Viper.Core.Diagnostics.Assert(headHeaders.Length > 0, "http.head.headers")
+Viper.Core.Diagnostics.Assert(headHeaders.Count > 0, "http.head.headers")
 
 DIM headType AS STRING
 headType = headRes.Header("content-type")
@@ -117,7 +117,7 @@ Viper.Core.Diagnostics.Assert(res.IsOk(), "httpreq.isok")
 
 DIM resHeaders AS Viper.Collections.Map
 resHeaders = res.Headers
-Viper.Core.Diagnostics.Assert(resHeaders.Length > 0, "httpreq.headers")
+Viper.Core.Diagnostics.Assert(resHeaders.Count > 0, "httpreq.headers")
 
 DIM resBody AS Viper.Collections.Bytes
 resBody = res.Body()
@@ -158,7 +158,7 @@ Viper.Core.Diagnostics.Assert(url.HasQueryParam("x") = 0, "url.delparam")
 
 DIM qmap AS Viper.Collections.Map
 qmap = url.QueryMap()
-Viper.Core.Diagnostics.Assert(qmap.Length >= 2, "url.querymap")
+Viper.Core.Diagnostics.Assert(qmap.Count >= 2, "url.querymap")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Box.ToStr(qmap.Get("foo")), "bar", "url.querymap.foo")
 
 DIM base AS Viper.Network.Url

@@ -104,12 +104,12 @@ This distinction matters enormously:
 bind Keyboard = Viper.Input.Keyboard;
 
 // This fires continuously while the key is held
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     // This code runs 60 times per second while space is held!
 }
 
 // This fires exactly once when the key is first pressed
-if Keyboard.WasPressed(KEY_SPACE) {
+if Keyboard.WasPressed(Keyboard.KeySpace) {
     // This code runs once, when space goes from up to down
 }
 ```
@@ -132,7 +132,7 @@ Some actions need the key's current state (is it down right now?). Other actions
 
 ### Text Input Events
 
-Games typically use key codes (like `KEY_A`), but text input is more complex. When the user presses Shift+A, they probably want an uppercase 'A', not separate events for Shift and A. When they're typing in a language that requires an input method editor (like Chinese or Japanese), a single character might require multiple key presses.
+Games typically use key codes (like `KeyA`), but text input is more complex. When the user presses Shift+A, they probably want an uppercase 'A', not separate events for Shift and A. When they're typing in a language that requires an input method editor (like Chinese or Japanese), a single character might require multiple key presses.
 
 For text input (like typing a player's name), Viper provides text input events that handle all this complexity:
 
@@ -160,11 +160,11 @@ Let's trace exactly what happens when a player presses the Space bar to jump. Un
 - Sets the internal state of Space to "down"
 - Sets a flag indicating Space was "just pressed" this frame
 
-Your game loop runs. When it calls `Keyboard.WasPressed(KEY_SPACE)`, the function returns `true` because the "just pressed" flag is set. Your code calls `player.jump()`, and the character begins rising into the air.
+Your game loop runs. When it calls `Keyboard.WasPressed(Keyboard.KeySpace)`, the function returns `true` because the "just pressed" flag is set. Your code calls `player.jump()`, and the character begins rising into the air.
 
 **Frame 2:** No new Space events (the player is still holding the key). At the start of this frame, Viper clears all the "just pressed" flags from the previous frame. The state of Space is still "down", but it's no longer "just pressed."
 
-Your game loop runs. `Keyboard.WasPressed(KEY_SPACE)` now returns `false` because the flag was cleared. But `Keyboard.IsDown(KEY_SPACE)` still returns `true` because the key is still being held. Your physics code continues the jump — the character rises and then falls.
+Your game loop runs. `Keyboard.WasPressed(Keyboard.KeySpace)` now returns `false` because the flag was cleared. But `Keyboard.IsDown(Keyboard.KeySpace)` still returns `true` because the key is still being held. Your physics code continues the jump — the character rises and then falls.
 
 **Frame 10:** The player releases the Space bar. The OS creates a key-up event. Viper reads it and:
 - Sets the internal state of Space to "up"
@@ -188,16 +188,16 @@ To check if a key is currently held down, use `Keyboard.IsDown`:
 bind Keyboard = Viper.Input.Keyboard;
 
 while gameRunning {
-    if Keyboard.IsDown(KEY_LEFT) {
+    if Keyboard.IsDown(Keyboard.KeyLeft) {
         player.x -= speed * dt;
     }
-    if Keyboard.IsDown(KEY_RIGHT) {
+    if Keyboard.IsDown(Keyboard.KeyRight) {
         player.x += speed * dt;
     }
-    if Keyboard.IsDown(KEY_UP) {
+    if Keyboard.IsDown(Keyboard.KeyUp) {
         player.y -= speed * dt;
     }
-    if Keyboard.IsDown(KEY_DOWN) {
+    if Keyboard.IsDown(Keyboard.KeyDown) {
         player.y += speed * dt;
     }
 }
@@ -205,7 +205,7 @@ while gameRunning {
 
 Let's trace through this code:
 
-- `Keyboard.IsDown(KEY_LEFT)` returns `true` if the left arrow key is currently pressed, `false` otherwise.
+- `Keyboard.IsDown(Keyboard.KeyLeft)` returns `true` if the left arrow key is currently pressed, `false` otherwise.
 - If it's pressed, we subtract from `player.x`, moving the player leftward.
 - We multiply by `speed` (how fast to move) and `dt` (delta time — how many seconds passed since the last frame). This makes movement consistent regardless of frame rate.
 - We check each direction independently, so the player can move diagonally by holding two arrows.
@@ -219,15 +219,15 @@ For one-time actions, use `Keyboard.WasPressed`:
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.WasPressed(KEY_SPACE) {
+if Keyboard.WasPressed(Keyboard.KeySpace) {
     player.jump();
 }
 
-if Keyboard.WasPressed(KEY_ESCAPE) {
+if Keyboard.WasPressed(Keyboard.KeyEscape) {
     pauseGame();
 }
 
-if Keyboard.WasPressed(KEY_R) {
+if Keyboard.WasPressed(Keyboard.KeyR) {
     restartLevel();
 }
 ```
@@ -246,7 +246,7 @@ Sometimes you need to know when a key is released:
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.WasReleased(KEY_CTRL) {
+if Keyboard.WasReleased(Keyboard.KeyLeftControl) {
     // Player released the aim button
     releaseArrow();  // Fire the arrow they were aiming
 }
@@ -260,30 +260,30 @@ Viper provides named constants for all standard keys:
 
 ```rust
 // Arrow keys
-KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN
+KeyLeft, KeyRight, KeyUp, KeyDown
 
 // Letters (uppercase names, but detect both cases)
-KEY_A, KEY_B, KEY_C, ... KEY_Z
+KeyA, KeyB, KeyC, ... KeyZ
 
 // Numbers (top row of keyboard)
-KEY_0, KEY_1, ... KEY_9
+Key0, Key1, ... Key9
 
 // Numpad numbers
 KEY_NUMPAD_0, KEY_NUMPAD_1, ... KEY_NUMPAD_9
 
 // Function keys
-KEY_F1, KEY_F2, ... KEY_F12
+KeyF1, KeyF2, ... KeyF12
 
 // Special keys
-KEY_SPACE, KEY_ENTER, KEY_ESCAPE
-KEY_TAB, KEY_BACKSPACE, KEY_DELETE
-KEY_HOME, KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN
+KeySpace, KeyEnter, KeyEscape
+KeyTab, KeyBackspace, KeyDelete
+KeyHome, KeyEnd, KeyPageUp, KeyPageDown
 
 // Modifier keys
-KEY_SHIFT, KEY_CTRL, KEY_ALT
-KEY_LEFT_SHIFT, KEY_RIGHT_SHIFT  // Distinguish left from right
-KEY_LEFT_CTRL, KEY_RIGHT_CTRL
-KEY_LEFT_ALT, KEY_RIGHT_ALT
+KeyLeftShift, KeyLeftControl, KeyLeftAlt
+KeyLeft_SHIFT, KeyRight_SHIFT  // Distinguish left from right
+KeyLeft_CTRL, KeyRight_CTRL
+KeyLeft_ALT, KeyRight_ALT
 ```
 
 ### Checking Modifier Keys
@@ -293,11 +293,11 @@ Modifier keys (Shift, Ctrl, Alt) are often used in combination with other keys:
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.WasPressed(KEY_S) && Keyboard.IsDown(KEY_CTRL) {
+if Keyboard.WasPressed(Keyboard.KeyS) && Keyboard.IsDown(Keyboard.KeyLeftControl) {
     saveGame();  // Ctrl+S to save
 }
 
-if Keyboard.IsDown(KEY_SHIFT) {
+if Keyboard.IsDown(Keyboard.KeyLeftShift) {
     speed = runSpeed;  // Hold shift to run
 } else {
     speed = walkSpeed;
@@ -410,7 +410,7 @@ func start() {
     var canvas = Canvas.New("Draw with Mouse", 800, 600);
 
     // Start with a white background
-    canvas.Box(0, 0, 800, 600, Color.WHITE);
+    canvas.Box(0, 0, 800, 600, Color.White);
 
     while !canvas.ShouldClose {
         canvas.Poll();
@@ -419,12 +419,12 @@ func start() {
         if Mouse.IsDown(0) {
             var x = Mouse.X();
             var y = Mouse.Y();
-            canvas.Disc(x, y, 5, Color.BLACK);
+            canvas.Disc(x, y, 5, Color.Black);
         }
 
         // Right click clears the canvas
         if Mouse.WasClicked(1) {
-            canvas.Box(0, 0, 800, 600, Color.WHITE);
+            canvas.Box(0, 0, 800, 600, Color.White);
         }
 
         canvas.Flip();
@@ -514,8 +514,8 @@ ControllerButton.LEFT_STICK, ControllerButton.RIGHT_STICK
 ControllerButton.START, ControllerButton.SELECT
 
 // D-pad (digital directional pad)
-ControllerButton.DPAD_UP, ControllerButton.DPAD_DOWN
-ControllerButton.DPAD_LEFT, ControllerButton.DPAD_RIGHT
+ControllerButton.DButtonUp, ControllerButton.DButtonDown
+ControllerButton.DButtonLeft, ControllerButton.DButtonRight
 ```
 
 ### Controller Axes
@@ -585,10 +585,10 @@ bind Viper.Math as Math;
 class InputManager {
     func getMoveX() -> Number {
         // Check keyboard first
-        if Keyboard.IsDown(KEY_LEFT) || Keyboard.IsDown(KEY_A) {
+        if Keyboard.IsDown(Keyboard.KeyLeft) || Keyboard.IsDown(Keyboard.KeyA) {
             return -1.0;
         }
-        if Keyboard.IsDown(KEY_RIGHT) || Keyboard.IsDown(KEY_D) {
+        if Keyboard.IsDown(Keyboard.KeyRight) || Keyboard.IsDown(Keyboard.KeyD) {
             return 1.0;
         }
 
@@ -604,10 +604,10 @@ class InputManager {
     }
 
     func getMoveY() -> Number {
-        if Keyboard.IsDown(KEY_UP) || Keyboard.IsDown(KEY_W) {
+        if Keyboard.IsDown(Keyboard.KeyUp) || Keyboard.IsDown(Keyboard.KeyW) {
             return -1.0;
         }
-        if Keyboard.IsDown(KEY_DOWN) || Keyboard.IsDown(KEY_S) {
+        if Keyboard.IsDown(Keyboard.KeyDown) || Keyboard.IsDown(Keyboard.KeyS) {
             return 1.0;
         }
 
@@ -622,14 +622,14 @@ class InputManager {
     }
 
     func isJumpPressed() -> Boolean {
-        return Keyboard.WasPressed(KEY_SPACE) ||
-               Keyboard.WasPressed(KEY_W) ||
+        return Keyboard.WasPressed(Keyboard.KeySpace) ||
+               Keyboard.WasPressed(Keyboard.KeyW) ||
                Input.wasControllerButtonPressed(0, ControllerButton.A);
     }
 
     func isActionPressed() -> Boolean {
-        return Keyboard.WasPressed(KEY_E) ||
-               Keyboard.WasPressed(KEY_ENTER) ||
+        return Keyboard.WasPressed(Keyboard.KeyE) ||
+               Keyboard.WasPressed(Keyboard.KeyEnter) ||
                Input.wasControllerButtonPressed(0, ControllerButton.X);
     }
 }
@@ -668,22 +668,22 @@ class KeyMap {
     expose func init() {
         self.bindings = new Map();
         // Default bindings
-        self.bindings.Set("jump", Keyboard.KEY_SPACE);
-        self.bindings.Set("left", Keyboard.KEY_LEFT);
-        self.bindings.Set("right", Keyboard.KEY_RIGHT);
-        self.bindings.Set("up", Keyboard.KEY_UP);
-        self.bindings.Set("down", Keyboard.KEY_DOWN);
-        self.bindings.Set("fire", Keyboard.KEY_CTRL);
-        self.bindings.Set("pause", Keyboard.KEY_ESCAPE);
+        self.bindings.Set("jump", Keyboard.KeySpace);
+        self.bindings.Set("left", Keyboard.KeyLeft);
+        self.bindings.Set("right", Keyboard.KeyRight);
+        self.bindings.Set("up", Keyboard.KeyUp);
+        self.bindings.Set("down", Keyboard.KeyDown);
+        self.bindings.Set("fire", Keyboard.KeyLeftControl);
+        self.bindings.Set("pause", Keyboard.KeyEscape);
     }
 
     func isActionDown(action: String) -> Boolean {
-        var key = self.bindings.Get(action) ?? Keyboard.KEY_UNKNOWN;
+        var key = self.bindings.Get(action) ?? Keyboard.KeyUnknown;
         return Keyboard.IsDown(key);
     }
 
     func wasActionPressed(action: String) -> Boolean {
-        var key = self.bindings.Get(action) ?? Keyboard.KEY_UNKNOWN;
+        var key = self.bindings.Get(action) ?? Keyboard.KeyUnknown;
         return Keyboard.WasPressed(key);
     }
 
@@ -692,7 +692,7 @@ class KeyMap {
     }
 
     func getBinding(action: String) -> Integer {
-        return self.bindings.Get(action) ?? Keyboard.KEY_UNKNOWN;
+        return self.bindings.Get(action) ?? Keyboard.KeyUnknown;
     }
 }
 ```
@@ -735,7 +735,7 @@ class InputBuffer {
         }
 
         // When jump is pressed, start the buffer timer
-        if Keyboard.WasPressed(KEY_SPACE) {
+        if Keyboard.WasPressed(Keyboard.KeySpace) {
             self.jumpBufferTime = self.jumpBufferDuration;
         }
     }
@@ -839,10 +839,10 @@ var debouncer = Debouncer();
 while inMenu {
     debouncer.update(dt);
 
-    if Keyboard.IsDown(KEY_DOWN) && debouncer.canActivate("menuDown", 0.2) {
+    if Keyboard.IsDown(Keyboard.KeyDown) && debouncer.canActivate("menuDown", 0.2) {
         selectedIndex += 1;
     }
-    if Keyboard.IsDown(KEY_UP) && debouncer.canActivate("menuUp", 0.2) {
+    if Keyboard.IsDown(Keyboard.KeyUp) && debouncer.canActivate("menuUp", 0.2) {
         selectedIndex -= 1;
     }
 }
@@ -903,15 +903,15 @@ func start() {
         // --- INPUT ---
         // Horizontal movement (continuous - use IsDown)
         player.vx = 0.0;
-        if Keyboard.IsDown(Keyboard.KEY_LEFT) || Keyboard.IsDown(Keyboard.KEY_A) {
+        if Keyboard.IsDown(Keyboard.KeyLeft) || Keyboard.IsDown(Keyboard.KeyA) {
             player.vx = -MOVE_SPEED;
         }
-        if Keyboard.IsDown(Keyboard.KEY_RIGHT) || Keyboard.IsDown(Keyboard.KEY_D) {
+        if Keyboard.IsDown(Keyboard.KeyRight) || Keyboard.IsDown(Keyboard.KeyD) {
             player.vx = MOVE_SPEED;
         }
 
         // Jump (one-time action - use WasPressed)
-        if Keyboard.WasPressed(Keyboard.KEY_SPACE) && player.onGround {
+        if Keyboard.WasPressed(Keyboard.KeySpace) && player.onGround {
             player.vy = JUMP_SPEED;
             player.onGround = false;
         }
@@ -947,14 +947,14 @@ func start() {
         // Player (centered on position)
         var drawX = Convert.NumToInt(player.x - 25.0);
         var drawY = Convert.NumToInt(player.y - 50.0);
-        canvas.Box(drawX, drawY, 50, 50, Color.RED);
+        canvas.Box(drawX, drawY, 50, 50, Color.Red);
 
         // Instructions
-        canvas.Text(10, 25, "Arrow keys or A/D to move, Space to jump", Color.WHITE);
+        canvas.Text(10, 25, "Arrow keys or A/D to move, Space to jump", Color.White);
 
         // Debug info
-        canvas.Text(10, 50, "Position: (" + player.x + ", " + player.y + ")", Color.WHITE);
-        canvas.Text(10, 75, "On ground: " + player.onGround, Color.WHITE);
+        canvas.Text(10, 50, "Position: (" + player.x + ", " + player.y + ")", Color.White);
+        canvas.Text(10, 75, "On ground: " + player.onGround, Color.White);
 
         canvas.Flip();
         Clock.Sleep(16);
@@ -990,14 +990,14 @@ Learning from mistakes is efficient. Here are problems beginners often encounter
 
 **Wrong:**
 ```rust
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     fireBullet();  // Fires 60 bullets per second!
 }
 ```
 
 **Right:**
 ```rust
-if Keyboard.WasPressed(KEY_SPACE) {
+if Keyboard.WasPressed(Keyboard.KeySpace) {
     fireBullet();  // Fires once per button press
 }
 ```
@@ -1008,7 +1008,7 @@ When you hold the Space bar, `IsDown` returns `true` every frame. For actions th
 
 **Problem:**
 ```rust
-if Keyboard.WasPressed(KEY_SHIFT) {
+if Keyboard.WasPressed(Keyboard.KeyLeftShift) {
     player.isRunning = true;
 }
 // Player runs forever after pressing shift once!
@@ -1016,12 +1016,12 @@ if Keyboard.WasPressed(KEY_SHIFT) {
 
 **Fix:**
 ```rust
-player.isRunning = Keyboard.IsDown(KEY_SHIFT);
+player.isRunning = Keyboard.IsDown(Keyboard.KeyLeftShift);
 // Or:
-if Keyboard.WasPressed(KEY_SHIFT) {
+if Keyboard.WasPressed(Keyboard.KeyLeftShift) {
     player.isRunning = true;
 }
-if Keyboard.WasReleased(KEY_SHIFT) {
+if Keyboard.WasReleased(Keyboard.KeyLeftShift) {
     player.isRunning = false;
 }
 ```
@@ -1034,7 +1034,7 @@ For "hold to activate" mechanics, check the key state continuously, or handle bo
 ```rust
 func checkJump() {
     // This might miss the key press!
-    if Keyboard.WasPressed(KEY_SPACE) {
+    if Keyboard.WasPressed(Keyboard.KeySpace) {
         player.jump();
     }
 }
@@ -1046,7 +1046,7 @@ func checkJump() {
 ```rust
 // In main game loop, called every frame
 while gameRunning {
-    if Keyboard.WasPressed(KEY_SPACE) {
+    if Keyboard.WasPressed(Keyboard.KeySpace) {
         player.jump();
     }
     // ...
@@ -1081,9 +1081,9 @@ Physical analog sticks almost never rest at exactly (0, 0). Always apply a dead 
 **Problematic:**
 ```rust
 // Scattered throughout your code
-if Keyboard.IsDown(KEY_W) { moveUp(); }
-if Keyboard.IsDown(KEY_A) { moveLeft(); }
-if Keyboard.WasPressed(KEY_SPACE) { jump(); }
+if Keyboard.IsDown(Keyboard.KeyW) { moveUp(); }
+if Keyboard.IsDown(Keyboard.KeyA) { moveLeft(); }
+if Keyboard.WasPressed(Keyboard.KeySpace) { jump(); }
 ```
 
 **Better:**
@@ -1131,7 +1131,7 @@ When transitioning between game states (menu to gameplay, for example), leftover
 func startGame() {
     // The player pressed Enter to start, but Enter might still register
     // as a "just pressed" key this frame
-    if Keyboard.WasPressed(KEY_ENTER) {
+    if Keyboard.WasPressed(Keyboard.KeyEnter) {
         // This triggers immediately, maybe pausing the game!
         togglePause();
     }
@@ -1160,9 +1160,9 @@ The simplest debugging technique — see what the input system is actually repor
 
 ```rust
 // Add to your game loop temporarily
-canvas.Text(10, 50, "Space down: " + Keyboard.IsDown(KEY_SPACE), Color.WHITE);
-canvas.Text(10, 70, "Space pressed: " + Keyboard.WasPressed(KEY_SPACE), Color.WHITE);
-canvas.Text(10, 90, "Mouse: " + Mouse.X() + ", " + Mouse.Y(), Color.WHITE);
+canvas.Text(10, 50, "Space down: " + Keyboard.IsDown(Keyboard.KeySpace), Color.White);
+canvas.Text(10, 70, "Space pressed: " + Keyboard.WasPressed(Keyboard.KeySpace), Color.White);
+canvas.Text(10, 90, "Mouse: " + Mouse.X() + ", " + Mouse.Y(), Color.White);
 ```
 
 If the display shows the input is detected but your game doesn't respond, the bug is in your game logic. If the display doesn't show the input, the problem is earlier in the pipeline.
@@ -1174,7 +1174,7 @@ Sometimes the order of operations matters:
 ```rust
 // Bug: wasKeyPressed is checked after the action already happened
 player.update();  // This might call Input functions internally
-if Keyboard.WasPressed(KEY_SPACE) {
+if Keyboard.WasPressed(Keyboard.KeySpace) {
     // This never triggers because WasPressed was already
     // consumed (or cleared) during player.update()
 }
@@ -1187,7 +1187,7 @@ Make sure input is checked before it's used anywhere else in the frame.
 Is your game window actually focused?
 
 ```rust
-canvas.Text(10, 110, "Has focus: " + canvas.HasFocus(), Color.WHITE);
+canvas.Text(10, 110, "Has focus: " + canvas.HasFocus(), Color.White);
 ```
 
 Some input might not register if the window isn't focused.
@@ -1208,7 +1208,7 @@ bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Terminal;
 bind Viper.Time;
 
-if Keyboard.WasPressed(KEY_SPACE) {
+if Keyboard.WasPressed(Keyboard.KeySpace) {
     Say("Jump pressed at time: " + Time.Clock.Ticks());
 }
 
@@ -1232,10 +1232,10 @@ bind Keyboard = Viper.Input.Keyboard;
 bind Mouse = Viper.Input.Mouse;
 
 // Keyboard
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     player.charging = true;
 }
-if Keyboard.WasPressed(KEY_ESCAPE) {
+if Keyboard.WasPressed(Keyboard.KeyEscape) {
     pauseGame();
 }
 
@@ -1256,10 +1256,10 @@ if Input.isControllerConnected(0) {
 **BASIC**
 ```text
 ' Keyboard
-IF KEYDOWN(KEY_SPACE) THEN
+IF KEYDOWN(KeySpace) THEN
     player.charging = TRUE
 END IF
-IF KEYPRESSED(KEY_ESCAPE) THEN
+IF KEYPRESSED(KeyEscape) THEN
     CALL PauseGame()
 END IF
 
@@ -1267,14 +1267,14 @@ END IF
 DIM mx AS INTEGER, my AS INTEGER
 mx = MOUSEX
 my = MOUSEY
-IF MOUSEPRESSED(BUTTON_LEFT) THEN
+IF MOUSEPRESSED(ButtonLeft) THEN
     CALL HandleClick(mx, my)
 END IF
 
 ' Controller
 IF CONTROLLERCONNECTED(0) THEN
     DIM moveX AS SINGLE
-    moveX = CONTROLLERAXIS(0, AXIS_LEFT_X)
+    moveX = CONTROLLERAXIS(0, AxisLeftX)
     player.x = player.x + moveX * speed * dt
 END IF
 ```

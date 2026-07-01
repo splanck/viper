@@ -131,7 +131,7 @@ func start() {    var box = Viper.GUI.MessageBox.NewInfo("Title", "Body");
     var dlg = Viper.GUI.FileDialog.NewOpen();
     dlg.SetTitle("Choose");
     dlg.AddFilter("Images", "*.png");
-    dlg.SetMultiple(1);
+    dlg.SetMultiple(true);
     var shown = dlg.Show();
     var path = dlg.GetPath();
     var count = dlg.PathCount;
@@ -204,7 +204,7 @@ func worker(arg: Any) {}
 /// @brief Start.
 func start() {
     var parts = Str.Split("a,b", ",");
-    var n = Seq.get_Length(parts);
+    var n = Seq.get_Count(parts);
     var first = Seq.Get(parts, 0);
     var tcp = Viper.Network.Tcp.Connect("127.0.0.1", 1);
     var host = Viper.Network.Tcp.get_Host(tcp);

@@ -102,7 +102,7 @@ class SierpinskiTriangle {
             var vertex = vertices.get(j);
             var vx = vertex / 10000;
             var vy = vertex - (vx * 10000);
-            canvas.Disc(vx, vy, 5, colors.WHITE);
+            canvas.Disc(vx, vy, 5, colors.White);
             j = j + 1;
         }
     }
@@ -177,7 +177,7 @@ class MandelbrotRenderer {
                 // Color based on iteration count
                 var color: Integer;
                 if iter == maxIter {
-                    color = colors.BLACK;
+                    color = colors.Black;
                 } else {
                     var hue = (iter * 10) - ((iter * 10) / 360) * 360;
                     color = colors.rainbowPhase(hue);
@@ -200,7 +200,7 @@ class MandelbrotRenderer {
 
         if not complete {
             // Draw progress line
-            canvas.Line(0, currentRow, width, currentRow, colors.WHITE);
+            canvas.Line(0, currentRow, width, currentRow, colors.White);
         }
     }
 
@@ -488,12 +488,12 @@ func sierpinskiRun(canvas: Canvas) {
         demo.update();
 
         // Draw
-        canvas.Clear(colors.BLACK);
+        canvas.Clear(colors.Black);
         demo.draw(canvas, width, height);
 
         // Draw UI
         var modeName = demo.getModeName();
-        canvas.TextBg(10, 10, modeName, colors.WHITE, colors.BLACK);
+        canvas.TextBg(10, 10, modeName, colors.White, colors.Black);
 
         var hint = "";
         if demo.mode == 0 {
@@ -503,7 +503,7 @@ func sierpinskiRun(canvas: Canvas) {
         } else {
             hint = "SPACE: Next | R: Reset | Left/Right: Angle | ESC: Exit";
         }
-        canvas.TextBg(10, height - 25, hint, colors.DARK_GRAY, colors.BLACK);
+        canvas.TextBg(10, height - 25, hint, colors.DARK_GRAY, colors.Black);
 
         canvas.Flip();
         Viper.Time.Clock.Sleep(16);

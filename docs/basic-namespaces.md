@@ -863,9 +863,9 @@ first‑class and tested:
         - `GetKey() -> STRING` — Wait for and return keypress
         - `GetKeyTimeout(I64 ms) -> STRING` — Wait with timeout (empty if timeout)
         - `InKey() -> STRING` — Non-blocking key check (empty if no key)
-        - `SetAltScreen(I64 enable) -> VOID` — Switch to/from alternate screen buffer
+        - `SetAltScreen(Boolean enable) -> VOID` — Switch to/from alternate screen buffer
         - `SetColor(I64 fg, I64 bg) -> VOID` — Set foreground/background colors
-        - `SetCursorVisible(I64 visible) -> VOID` — Show/hide cursor (0=hide, 1=show)
+        - `SetCursorVisible(Boolean visible) -> VOID` — Show/hide cursor (FALSE=hide, TRUE=show)
         - `SetPosition(I64 row, I64 col) -> VOID` — Move cursor position
 
 **Note:** Legacy `Viper.System.*` aliases for core namespaces have been removed. Use the canonical `Viper.*` names, except for dedicated System services such as `Viper.System.Clipboard`.
@@ -1002,11 +1002,11 @@ Terminal.Clear()                    ' Clear screen
 Terminal.SetColor(14, 1)            ' Yellow on blue
 Terminal.SetPosition(10, 20)        ' Move cursor
 PRINT "Hello!"
-Terminal.SetCursorVisible(0)        ' Hide cursor
+Terminal.SetCursorVisible(FALSE)        ' Hide cursor
 DIM key AS STRING
 key = Terminal.GetKeyTimeout(5000)  ' Wait 5 seconds for key
 IF key <> "" THEN PRINT "You pressed: "; key
-Terminal.SetCursorVisible(1)        ' Show cursor
+Terminal.SetCursorVisible(TRUE)        ' Show cursor
 ```
 
 #### Viper.Graphics

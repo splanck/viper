@@ -16,6 +16,8 @@ bind "./postfx";
 bind "./minimap";
 bind "./hud";
 bind "./worldsim";
+bind "./playerctl";
+bind "./camctl";
 
 class Game3DShowcase {
     hide World3D world;
@@ -33,23 +35,15 @@ class Game3DShowcase {
     hide ShowcaseMinimap minimapSys;
     hide ShowcaseHud hudSys;
     hide ShowcaseWorldSim sim;
+    hide ShowcasePlayer player;
+    hide ShowcaseCamera camCtl;
 
-    hide Vec3 cameraEye;
-    hide Vec3 cameraTarget;
-    hide Vec3 cameraUp;
-    hide Float playerX;
-    hide Float playerY;
-    hide Float playerZ;
-    hide Float cameraYaw;
-    hide Float cameraPitch;
-    hide Float cameraDistance;
-    hide Float cameraFov;
     hide Float worldTime;
-    hide Float stepPhase;
     hide Integer qualityLevel;
     hide Boolean debugOn;
     hide Boolean fullscreenOn;
     hide Boolean quitRequested;
+    hide Boolean skyIsNight;
 
     expose func setup(title: String, width: Integer, height: Integer) {
         world = World3D.NewWithHorizontalCamera(
@@ -57,11 +51,12 @@ class Game3DShowcase {
         canvas = world.Canvas;
         camera = world.Camera;
         input = world.Input;
-        cameraEye = new Vec3(0.0, 0.0, 0.0);
-        cameraTarget = new Vec3(0.0, 0.0, 0.0);
-        cameraUp = new Vec3(0.0, 1.0, 0.0);
         input.LookSensitivity = config.CAMERA_MOUSE_SENS;
         Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
+
+        player = new ShowcasePlayer();
+        camCtl = new ShowcaseCamera();
+        camCtl.setup(camera);
 
         Quality.Apply(world, QualityLevel.get_Cinematic());
         Lighting.Outdoor(world, new Vec3(-0.36, -1.0, -0.22));
@@ -84,6 +79,7 @@ class Game3DShowcase {
         waterSky = new ShowcaseWaterSky();
         waterSky.setup(land);
         world.SetSkybox(waterSky.getSkybox());
+        skyIsNight = false;
         assets.applyEnvReflections(waterSky.getSkybox());
 
         minimapSys = new ShowcaseMinimap();
@@ -97,7 +93,7 @@ class Game3DShowcase {
         audioSys = new ShowcaseAudio();
         audioSys.setup(world);
         sim.setupBeaconLights(world);
-        sim.setupPlayerLight(world, playerX, playerY, playerZ);
+        sim.setupPlayerLight(world, player.getX(), player.getY(), player.getZ());
         effectsSys = new ShowcaseEffects();
         effectsSys.setup();
         sim.setupPhysicsProps(world, land, assets.getPedestalMat(), assets.getBeaconOnMat());
@@ -105,12 +101,13 @@ class Game3DShowcase {
         crittersSys.setup();
         sim.setupObjective(land);
         hudSys = new ShowcaseHud();
-        updateCamera();
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
         Terminal.Say("Backend: " + canvas.Backend);
     }
 
     expose func getWorld() -> World3D { return world; }
     expose func getCanvas() -> Canvas3D { return canvas; }
+    expose func getForest() -> ShowcaseForest { return forestSys; }
 
     expose func step(dt: Float) {
         var stepDt = dt;
@@ -120,23 +117,25 @@ class Game3DShowcase {
 
         if (input.Pressed(Keys.get_Escape())) { quitRequested = true; return; }
         handleToggles();
-        updateLook();
-        updateMovement(stepDt);
-        updateCameraFov();
-        clampPlayerToTerrain();
-        playerY = terrain.sampleGround(land, playerX, playerZ);
+        camCtl.updateLook(input);
+        player.updateMovement(stepDt, input, camCtl.getYaw(), audioSys, effectsSys);
+        camCtl.updateFov(input);
+        player.clampToTerrain();
+        resolvePlayerCollision();
+        player.updateVertical(stepDt, input, land);
 
-        sim.updateBeacons(world, camera, playerX, playerY, playerZ, audioSys, effectsSys);
-        updateCamera();
+        sim.updateBeacons(world, camera, player.getX(), player.getY(), player.getZ(), audioSys, effectsSys);
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
         sim.updateScanner(canvas, camera);
-        sim.updateDynamicLights(playerX, playerY, playerZ);
+        sim.updateDynamicLights(player.getX(), player.getY(), player.getZ());
         sim.updateTimeOfDay(world, worldTime);
+        updateSkybox();
         waterSky.update(stepDt);
         terrainSys.updateVegetation(stepDt, camera);
-        effectsSys.update(stepDt, playerX, playerY, playerZ);
-        crittersSys.update(stepDt, playerX, playerZ);
+        effectsSys.update(stepDt, player.getX(), player.getY(), player.getZ());
+        crittersSys.update(stepDt, player.getX(), player.getZ());
         audioSys.updateAmbient(stepDt);
-        sim.updateObjective(camera, playerX, playerY, playerZ, audioSys);
+        sim.updateObjective(camera, player.getX(), player.getY(), player.getZ(), audioSys);
         world.StepSimulation(stepDt);
     }
 
@@ -146,18 +145,19 @@ class Game3DShowcase {
         terrainSys.drawVegetation(canvas);
         waterSky.drawWater(canvas, camera);
         world.DrawScene();
+        forestSys.drawInstanced(canvas);
         sim.drawBeacons(canvas, assets.getCubeMesh(), assets.getBeaconMesh(), assets.getPedestalMat(),
             assets.getBeaconOffMat(), assets.getBeaconOnMat(), worldTime);
         drawPlayer();
         crittersSys.draw(canvas, land);
-        waterSky.drawReeds(canvas, land, worldTime);
+        waterSky.drawReeds(canvas, worldTime);
         effectsSys.drawDecals(canvas);
         effectsSys.draw(canvas, camera);
         world.DrawEffects();
         world.EndScene();
 
         Canvas3D.BeginOverlay(canvas);
-        hudSys.draw(canvas, minimapSys, sim, playerX, playerZ, debugOn);
+        hudSys.draw(canvas, minimapSys, sim, player.getX(), player.getZ(), debugOn);
         Canvas3D.EndOverlay(canvas);
     }
 
@@ -182,15 +182,9 @@ class Game3DShowcase {
     }
 
     hide func resetWorld() {
-        playerX = terrain.terrainWorldMaxX() * 0.50;
-        playerZ = terrain.terrainWorldMaxZ() * 0.50;
-        playerY = terrain.sampleGround(land, playerX, playerZ);
-        cameraYaw = 0.0;
-        cameraPitch = config.CAMERA_PITCH_START;
-        cameraDistance = config.CAMERA_DISTANCE;
-        cameraFov = config.CAMERA_FOV;
+        player.spawn(land);
+        camCtl.reset();
         worldTime = 0.0;
-        stepPhase = 0.0;
         quitRequested = false;
         qualityLevel = 2;
         debugOn = false;
@@ -199,7 +193,7 @@ class Game3DShowcase {
     }
 
     hide func handleToggles() {
-        if (input.Pressed(Keys.get_Space())) {
+        if (input.MousePressed(MouseButtons.get_Right())) {
             qualityLevel = qualityLevel + 1;
             if (qualityLevel > 2) { qualityLevel = 0; }
             Canvas3D.SetQuality(canvas, qualityLevel);
@@ -207,111 +201,45 @@ class Game3DShowcase {
         if (input.Pressed(Keys.get_Ctrl())) {
             if (debugOn) { debugOn = false; } else { debugOn = true; }
         }
-        if (input.Pressed(Keys.get_F11())) {
+        if (input.Pressed(Keys.get_KeyF11())) {
             Canvas3D.ToggleFullscreen(canvas);
             fullscreenOn = canvas.IsFullscreen;
         }
     }
 
-    hide func updateLook() {
-        var look = input.LookAxis();
-        cameraYaw = cameraYaw + Vec2.get_X(look);
-        cameraPitch = cameraPitch - Vec2.get_Y(look);
-        if (cameraPitch < config.CAMERA_PITCH_MIN) { cameraPitch = config.CAMERA_PITCH_MIN; }
-        if (cameraPitch > config.CAMERA_PITCH_MAX) { cameraPitch = config.CAMERA_PITCH_MAX; }
-        cameraDistance = cameraDistance - input.WheelY() * config.CAMERA_WHEEL_SPEED;
-        if (cameraDistance < config.CAMERA_DISTANCE_MIN) { cameraDistance = config.CAMERA_DISTANCE_MIN; }
-        if (cameraDistance > config.CAMERA_DISTANCE_MAX) { cameraDistance = config.CAMERA_DISTANCE_MAX; }
-    }
-
-    hide func updateMovement(stepDt: Float) {
-        var move = input.MoveAxis();
-        var fwd = Vec3.get_Z(move);
-        var right = Vec3.get_X(move);
-        var moveX = Sin(cameraYaw) * fwd + Cos(cameraYaw) * right;
-        var moveZ = (0.0 - Cos(cameraYaw)) * fwd + Sin(cameraYaw) * right;
-        var moveLen = Sqrt(moveX * moveX + moveZ * moveZ);
-        if (moveLen <= 0.001) { return; }
-
-        moveX = moveX / moveLen;
-        moveZ = moveZ / moveLen;
-        var sprinting = input.IsDown(Keys.get_Shift());
-        var speed = config.PLAYER_MOVE_SPEED;
-        if (sprinting) { speed = speed * config.PLAYER_SPRINT_MULT; }
-        playerX = playerX + moveX * speed * stepDt;
-        playerZ = playerZ + moveZ * speed * stepDt;
-        stepPhase = stepPhase + speed * stepDt;
-        if (stepPhase >= config.STEP_DISTANCE) {
-            stepPhase = 0.0;
-            audioSys.playFootfall(playerX, playerY, playerZ);
-            if (sprinting) { effectsSys.burstSprintDust(playerX, playerY, playerZ); }
+    // Swap between the day and starfield night skyboxes when the sun crosses the
+    // horizon. Only fires on a state change, so it costs nothing per frame otherwise.
+    hide func updateSkybox() {
+        var night = sim.isNight();
+        if (night != skyIsNight) {
+            skyIsNight = night;
+            if (night) {
+                world.SetSkybox(waterSky.getNightSkybox());
+            } else {
+                world.SetSkybox(waterSky.getSkybox());
+            }
         }
     }
 
-    hide func updateCameraFov() {
-        var move = input.MoveAxis();
-        var moveLen = Sqrt(Vec3.get_X(move) * Vec3.get_X(move) + Vec3.get_Z(move) * Vec3.get_Z(move));
-        var fovTarget = config.CAMERA_FOV;
-        if (input.IsDown(Keys.get_Shift()) && moveLen > 0.001) {
-            fovTarget = config.CAMERA_FOV_SPRINT;
-        }
-        cameraFov = cameraFov + (fovTarget - cameraFov) * 0.12;
-        Camera3D.SetHorizontalFov(camera, cameraFov);
-    }
-
-    hide func clampPlayerToTerrain() {
-        var minX = config.PLAYER_BOUNDS_MARGIN;
-        var minZ = config.PLAYER_BOUNDS_MARGIN;
-        var maxX = terrain.terrainWorldMaxX() - config.PLAYER_BOUNDS_MARGIN;
-        var maxZ = terrain.terrainWorldMaxZ() - config.PLAYER_BOUNDS_MARGIN;
-        if (playerX < minX) { playerX = minX; }
-        if (playerX > maxX) { playerX = maxX; }
-        if (playerZ < minZ) { playerZ = minZ; }
-        if (playerZ > maxZ) { playerZ = maxZ; }
-    }
-
-    hide func updateCamera() {
-        var pivotX = playerX;
-        var pivotY = playerY + config.CAMERA_TARGET_HEIGHT;
-        var pivotZ = playerZ;
-        var flatX = Sin(cameraYaw);
-        var flatZ = 0.0 - Cos(cameraYaw);
-        var horizDist = cameraDistance * Cos(cameraPitch);
-        var eyeX = pivotX - flatX * horizDist;
-        var eyeZ = pivotZ - flatZ * horizDist;
-        var minX = config.PLAYER_BOUNDS_MARGIN;
-        var minZ = config.PLAYER_BOUNDS_MARGIN;
-        var maxX = terrain.terrainWorldMaxX() - config.PLAYER_BOUNDS_MARGIN;
-        var maxZ = terrain.terrainWorldMaxZ() - config.PLAYER_BOUNDS_MARGIN;
-        if (eyeX < minX) { eyeX = minX; }
-        if (eyeX > maxX) { eyeX = maxX; }
-        if (eyeZ < minZ) { eyeZ = minZ; }
-        if (eyeZ > maxZ) { eyeZ = maxZ; }
-        var eyeGround = terrain.sampleGround(land, eyeX, eyeZ);
-        var eyeY = pivotY + Sin(cameraPitch) * cameraDistance;
-        if (eyeY < eyeGround + config.CAMERA_MIN_CLEARANCE) { eyeY = eyeGround + config.CAMERA_MIN_CLEARANCE; }
-        cameraEye.Set(eyeX, eyeY, eyeZ);
-        var targetX = pivotX + flatX * config.CAMERA_LOOK_AHEAD;
-        var targetZ = pivotZ + flatZ * config.CAMERA_LOOK_AHEAD;
-        if (targetX < minX) { targetX = minX; }
-        if (targetX > maxX) { targetX = maxX; }
-        if (targetZ < minZ) { targetZ = minZ; }
-        if (targetZ > maxZ) { targetZ = maxZ; }
-        cameraTarget.Set(
-            targetX,
-            pivotY + Sin(cameraPitch) * config.CAMERA_LOOK_AHEAD,
-            targetZ);
-        Camera3D.LookAt(camera, cameraEye, cameraTarget, cameraUp);
+    // Push the player out of solid obstacles (landmarks, then trees) after the
+    // raw move + terrain-bounds clamp, before the ground-follow/jump step.
+    hide func resolvePlayerCollision() {
+        var r = sim.resolvePlayerObstacles(player.getX(), player.getZ(), config.PLAYER_RADIUS);
+        var r2 = forestSys.resolveTreeCollision(Vec3.get_X(r), Vec3.get_Z(r), config.PLAYER_RADIUS);
+        player.setXZ(Vec3.get_X(r2), Vec3.get_Z(r2));
     }
 
     hide func drawPlayer() {
+        var px = player.getX();
+        var py = player.getY();
+        var pz = player.getZ();
         var bob = Sin(worldTime * 5.0) * 0.035;
         var body = Mat4.Mul(
-            Mat4.Translate(playerX, playerY + config.PLAYER_GROUND_OFFSET + bob, playerZ),
+            Mat4.Translate(px, py + config.PLAYER_GROUND_OFFSET + bob, pz),
             Mat4.Scale(1.0, 1.0, 1.0));
         Canvas3D.DrawMesh(canvas, assets.getPlayerBodyMesh(), body, assets.getPlayerMat());
         var core = Mat4.Mul(
-            Mat4.Translate(playerX, playerY + 1.20 + bob, playerZ),
+            Mat4.Translate(px, py + 1.20 + bob, pz),
             Mat4.Scale(1.0, 1.0, 1.0));
         Canvas3D.DrawMesh(canvas, assets.getPlayerCoreMesh(), core, assets.getWaterMarkerMat());
     }

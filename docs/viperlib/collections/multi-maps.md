@@ -66,7 +66,7 @@ func start() {
     // Add bidirectional mappings
     bm.Put("en", "English");
     bm.Put("fr", "French");
-    Say("Len: " + Fmt.Int(bm.Length));                  // 2
+    Say("Count: " + Fmt.Int(bm.Count));                  // 2
 
     // Forward lookup (key -> value)
     Say("GetByKey en: " + bm.GetByKey("en"));         // English
@@ -80,7 +80,7 @@ func start() {
 
     // Remove by key
     bm.RemoveByKey("en");
-    SayInt(bm.Length);                                   // 1
+    SayInt(bm.Count);                                   // 1
 }
 ```
 
@@ -93,7 +93,7 @@ bm = Viper.Collections.BiMap.New()
 ' Add bidirectional mappings
 bm.Put("en", "English")
 bm.Put("fr", "French")
-PRINT "Len: "; bm.Length                       ' Len: 2
+PRINT "Count: "; bm.Count                       ' Count: 2
 
 ' Forward lookup (key -> value)
 PRINT "GetByKey en: "; bm.GetByKey("en")     ' GetByKey en: English
@@ -107,7 +107,7 @@ PRINT "HasValue English: "; bm.HasValue("English")  ' HasValue English: -1
 
 ' Remove by key
 bm.RemoveByKey("en")
-PRINT "After remove: "; bm.Length              ' After remove: 1
+PRINT "After remove: "; bm.Count              ' After remove: 1
 ```
 
 ### Use Cases
@@ -178,12 +178,12 @@ func start() {
     mm.Put("size", Box.Str("small"));
     mm.Put("size", Box.Str("large"));
 
-    SayInt(mm.Length);                              // 5 (total values)
+    SayInt(mm.Count);                              // 5 (total values)
     SayInt(mm.KeyCount);                         // 2 (distinct keys)
 
     // Get all values for a key
     var colors = mm.Get("color");
-    SayInt(colors.Length);                          // 3
+    SayInt(colors.Count);                          // 3
     Say(Box.ToStr(Seq.Get(colors, 0)));          // red
     Say(Box.ToStr(Seq.Get(colors, 1)));          // green
     Say(Box.ToStr(Seq.Get(colors, 2)));          // blue
@@ -197,7 +197,7 @@ func start() {
 
     // Remove all values for a key
     mm.RemoveAll("color");
-    SayInt(mm.Length);                              // 2
+    SayInt(mm.Count);                              // 2
     SayInt(mm.KeyCount);                         // 1
 }
 ```
@@ -215,13 +215,13 @@ mm.Put("color", "blue")
 mm.Put("size", "small")
 mm.Put("size", "large")
 
-PRINT mm.Length             ' 5 (total values)
+PRINT mm.Count             ' 5 (total values)
 PRINT mm.KeyCount        ' 2 (distinct keys)
 
 ' Get all values for a key
 DIM colors AS Viper.Collections.Seq
 colors = mm.Get("color")
-PRINT colors.Length         ' 3
+PRINT colors.Count         ' 3
 PRINT colors.Get(0)      ' red
 PRINT colors.Get(1)      ' green
 PRINT colors.Get(2)      ' blue
@@ -237,11 +237,11 @@ PRINT mm.CountFor("shape")   ' 0
 ' Get for missing key returns empty Seq
 DIM empty AS Viper.Collections.Seq
 empty = mm.Get("shape")
-PRINT empty.Length              ' 0
+PRINT empty.Count              ' 0
 
 ' Remove all values for a key
 PRINT mm.RemoveAll("color")  ' 1
-PRINT mm.Length                 ' 2
+PRINT mm.Count                 ' 2
 PRINT mm.KeyCount            ' 1
 
 ' Clear all
@@ -319,7 +319,7 @@ func start() {
     cm.Inc("cherry");
     cm.Inc("cherry");
     cm.Inc("cherry");
-    SayInt(cm.Length);                // 3 (distinct keys)
+    SayInt(cm.Count);                // 3 (distinct keys)
 
     // Bulk increment
     cm.IncBy("banana", 5);
@@ -330,7 +330,7 @@ func start() {
 
     // Most common
     var top = cm.MostCommon(2);
-    SayInt(top.Length);               // 2
+    SayInt(top.Count);               // 2
 
     // Decrement removes at zero
     cm.Dec("apple");               // count -> 1
@@ -352,7 +352,7 @@ cm.Inc("banana")
 cm.Inc("cherry")
 cm.Inc("cherry")
 cm.Inc("cherry")
-PRINT cm.Length                ' 3 (distinct keys)
+PRINT cm.Count                ' 3 (distinct keys)
 
 ' Bulk increment
 cm.IncBy("banana", 5)
@@ -373,7 +373,7 @@ PRINT cm.Has("apple")        ' 0
 ' Get top entries
 DIM top AS OBJECT
 top = cm.MostCommon(2)
-PRINT top.Length                ' 2
+PRINT top.Count                ' 2
 
 ' Remove a key entirely
 cm.Remove("date")
@@ -445,7 +445,7 @@ func start() {
     m.Set(2, Box.Str("two"));
     m.Set(3, Box.Str("three"));
 
-    Say("Len: " + Fmt.Int(m.Length));                  // 3
+    Say("Count: " + Fmt.Int(m.Count));                  // 3
     Say("Has 2: " + Fmt.Bool(m.Has(2)));             // true
     Say("Get 1: " + Box.ToStr(m.Get(1)));            // one
 
@@ -465,7 +465,7 @@ m.Set(100, "apple")
 m.Set(200, "banana")
 m.Set(300, "cherry")
 
-PRINT m.Length      ' Output: 3
+PRINT m.Count      ' Output: 3
 PRINT m.IsEmpty  ' Output: 0
 
 ' Check existence and get value
@@ -483,7 +483,7 @@ END IF
 
 ' Iterate keys
 DIM keys AS OBJECT = m.Keys()
-FOR i = 0 TO keys.Length - 1
+FOR i = 0 TO keys.Count - 1
     PRINT keys.Get(i)
 NEXT i
 
@@ -553,7 +553,7 @@ func start() {
 
     dm.Set("name", Box.Str("Alice"));
     dm.Set("city", Box.Str("Boston"));
-    SayInt(dm.Length);                            // 2
+    SayInt(dm.Count);                            // 2
 
     // Existing key returns stored value
     Say(Box.ToStr(dm.Get("name")));            // Alice
@@ -582,7 +582,7 @@ dm = Viper.Collections.DefaultMap.New(Viper.Core.Box.Str("N/A"))
 
 dm.Set("name", "Alice")
 dm.Set("city", "Boston")
-PRINT dm.Length                  ' 2
+PRINT dm.Count                  ' 2
 
 ' Existing key returns stored value
 PRINT dm.Get("name")          ' Alice
@@ -607,7 +607,7 @@ PRINT Viper.Core.Box.ToI64(dm2.Get("missing"))   ' 0
 
 ' Clear all
 dm.Clear()
-PRINT dm.Length                  ' 0
+PRINT dm.Count                  ' 0
 PRINT dm.Get("name")          ' N/A
 ```
 
@@ -680,7 +680,7 @@ func start() {
     cache.Put("a", Box.Str("alpha"));
     cache.Put("b", Box.Str("beta"));
     cache.Put("c", Box.Str("gamma"));
-    SayInt(cache.Length);                             // 3
+    SayInt(cache.Count);                             // 3
 
     // Get promotes to MRU
     Say(Box.ToStr(cache.Get("a")));                // alpha
@@ -695,7 +695,7 @@ func start() {
 
     // Remove specific entry
     cache.Remove("b");
-    SayInt(cache.Length);                             // 2
+    SayInt(cache.Count);                             // 2
 
     // Clear all
     cache.Clear();
@@ -715,7 +715,7 @@ PRINT cache.Cap          ' 3
 cache.Put("a", "alpha")
 cache.Put("b", "beta")
 cache.Put("c", "gamma")
-PRINT cache.Length          ' 3
+PRINT cache.Count          ' 3
 
 ' Get promotes to most recently used
 PRINT cache.Get("a")     ' alpha
@@ -726,23 +726,23 @@ PRINT cache.Peek("c")    ' gamma
 
 ' Adding when full evicts LRU (c was not promoted by Peek)
 cache.Put("d", "delta")
-PRINT cache.Length          ' 3 (still at capacity)
+PRINT cache.Count          ' 3 (still at capacity)
 PRINT cache.Has("c")     ' 0 (evicted)
 PRINT cache.Has("d")     ' 1
 
 ' Update existing entry (no eviction)
 cache.Put("a", "ALPHA")
 PRINT cache.Get("a")     ' ALPHA
-PRINT cache.Length          ' 3
+PRINT cache.Count          ' 3
 
 ' Remove specific entry
 PRINT cache.Remove("b")  ' 1
-PRINT cache.Length          ' 2
+PRINT cache.Count          ' 2
 
 ' Remove oldest (LRU) entry
 cache.Put("e", "epsilon")
 PRINT cache.RemoveOldest() ' 1
-PRINT cache.Length          ' 2
+PRINT cache.Count          ' 2
 
 ' Clear all
 cache.Clear()
@@ -809,7 +809,7 @@ DIM obj AS OBJECT = CreateExpensiveObject()
 cache.Set("key1", obj)
 cache.Set("key2", CreateAnotherObject())
 
-PRINT cache.Length      ' Output: 2
+PRINT cache.Count      ' Output: 2
 PRINT cache.Has("key1")  ' Output: 1 (true)
 
 ' Get value (may be NULL if collected)
@@ -829,7 +829,7 @@ PRINT "Compacted "; removed; " stale entries"
 
 ' Get all current keys
 DIM keys AS OBJECT = cache.Keys()
-FOR i = 0 TO keys.Length - 1
+FOR i = 0 TO keys.Count - 1
     PRINT keys.Get(i)
 NEXT
 
@@ -907,7 +907,7 @@ func start() {
     sa.Set(100, Box.Str("hundred"));
     sa.Set(1000, Box.Str("thousand"));
     sa.Set(-5, Box.Str("negative"));
-    SayInt(sa.Length);                               // 4
+    SayInt(sa.Count);                               // 4
 
     // Retrieve values
     Say(Box.ToStr(sa.Get(0)));                    // zero
@@ -921,11 +921,11 @@ func start() {
     // Update existing index
     sa.Set(100, Box.Str("HUNDRED"));
     Say(Box.ToStr(sa.Get(100)));                  // HUNDRED
-    SayInt(sa.Length);                               // 4 (no new entry)
+    SayInt(sa.Count);                               // 4 (no new entry)
 
     // Remove
     sa.Remove(1000);
-    SayInt(sa.Length);                               // 3
+    SayInt(sa.Count);                               // 3
 
     // Setting null also removes an entry
     sa.Set(100, null);
@@ -933,7 +933,7 @@ func start() {
 
     // Get all indices and values
     var indices = sa.Indices();
-    SayInt(indices.Length);                          // 2
+    SayInt(indices.Count);                          // 2
 }
 ```
 
@@ -948,7 +948,7 @@ sa.Set(0, "zero")
 sa.Set(100, "hundred")
 sa.Set(1000, "thousand")
 sa.Set(-5, "negative")
-PRINT sa.Length             ' 4
+PRINT sa.Count             ' 4
 
 ' Retrieve values
 PRINT sa.Get(0)          ' zero
@@ -963,30 +963,30 @@ PRINT sa.Has(50)         ' 0
 ' Update existing
 sa.Set(100, "HUNDRED")
 PRINT sa.Get(100)        ' HUNDRED
-PRINT sa.Length             ' 4
+PRINT sa.Count             ' 4
 
 ' Remove
 PRINT sa.Remove(1000)    ' 1
 PRINT sa.Has(1000)       ' 0
-PRINT sa.Length             ' 3
+PRINT sa.Count             ' 3
 
 ' Setting NULL also removes an entry
 sa.Set(100, NULL)
 PRINT sa.Has(100)        ' 0
-PRINT sa.Length             ' 2
+PRINT sa.Count             ' 2
 
 ' Get all indices and values
 DIM indices AS OBJECT
 indices = sa.Indices()
-PRINT indices.Length        ' 2
+PRINT indices.Count        ' 2
 
 DIM vals AS OBJECT
 vals = sa.Values()
-PRINT vals.Length           ' 2
+PRINT vals.Count           ' 2
 
 ' Clear all
 sa.Clear()
-PRINT sa.Length             ' 0
+PRINT sa.Count             ' 0
 ```
 
 ### Use Cases

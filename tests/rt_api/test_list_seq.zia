@@ -6,7 +6,7 @@ func start() {
     l.Push("a");
     l.Push("b");
     l.Push("c");
-    SayInt(l.Length);
+    SayInt(l.Count);
     Say(l.Get(0));
     Say(l.Get(2));
     Say(l.First());
@@ -17,11 +17,11 @@ func start() {
     Say(l.Get(1));
     l.Insert(0, "z");
     Say(l.Get(0));
-    SayInt(l.Length);
+    SayInt(l.Count);
     l.RemoveAt(0);
-    SayInt(l.Length);
+    SayInt(l.Count);
     l.Remove("a");
-    SayInt(l.Length);
+    SayInt(l.Count);
     l.Reverse();
     Say(l.Get(0));
 
@@ -29,7 +29,7 @@ func start() {
     s.Push("x");
     s.Push("y");
     s.Push("z");
-    SayInt(s.Length);
+    SayInt(s.Count);
     Say(s.Get(0));
     Say(s.First());
     Say(s.Last());
@@ -39,19 +39,19 @@ func start() {
     s.Reverse();
     Say(s.Get(0));
     var s2 = s.Clone();
-    SayInt(s2.Length);
+    SayInt(s2.Count);
     var s3 = s.Slice(0, 2);
-    SayInt(s3.Length);
+    SayInt(s3.Count);
     var s4 = s.Take(2);
-    SayInt(s4.Length);
+    SayInt(s4.Count);
     var s5 = s.Drop(1);
-    SayInt(s5.Length);
+    SayInt(s5.Count);
     s.Sort();
     Say(s.Get(0));
     s.SortDesc();
     Say(s.Get(0));
     s.Clear();
-    SayInt(s.Length);
+    SayInt(s.Count);
     SayBool(s.IsEmpty);
     Say("done");
 }

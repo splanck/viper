@@ -19,8 +19,8 @@
 ' COVER: Viper.System.Machine.Host
 ' COVER: Viper.System.Machine.MemFree
 ' COVER: Viper.System.Machine.MemTotal
-' COVER: Viper.System.Machine.OS
-' COVER: Viper.System.Machine.OSVer
+' COVER: Viper.System.Machine.Os
+' COVER: Viper.System.Machine.OsVer
 ' COVER: Viper.System.Machine.Temp
 ' COVER: Viper.System.Machine.User
 ' COVER: Viper.Diagnostics.Log.LevelDebug
@@ -65,8 +65,8 @@ Viper.Core.Diagnostics.Assert(Viper.String.Trim(out) = "shellcap", "exec.shellca
 out = Viper.System.Exec.Capture("/bin/echo")
 Viper.Core.Diagnostics.Assert(Viper.String.Trim(out) = "", "exec.capture")
 
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.OS <> "", "machine.os")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.OSVer <> "", "machine.osver")
+Viper.Core.Diagnostics.Assert(Viper.System.Machine.Os <> "", "machine.os")
+Viper.Core.Diagnostics.Assert(Viper.System.Machine.OsVer <> "", "machine.osver")
 Viper.Core.Diagnostics.Assert(Viper.System.Machine.Host <> "", "machine.host")
 Viper.Core.Diagnostics.Assert(Viper.System.Machine.User <> "", "machine.user")
 Viper.Core.Diagnostics.Assert(Viper.System.Machine.Home <> "", "machine.home")

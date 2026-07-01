@@ -13,20 +13,20 @@ func testCanonicalRuntimeSurface() {
     assertTrue(Viper.String.Has(Viper.Text.Fmt.Num(1.5), "1.5"), "fmt_num");
 
     var seq = new Viper.Collections.Seq();
-    assertEqInt(seq.Length, 0, "seq_new_length");
+    assertEqInt(seq.Count, 0, "seq_new_count");
     seq.Push("x");
     assertEqStr(Viper.Collections.Seq.GetStr(seq, 0), "x", "seq_new_sized_set");
 
     var list = Viper.Collections.List.New();
-    assertEqInt(Viper.Collections.List.get_Length(list), 0, "list_length");
+    assertEqInt(Viper.Collections.List.get_Count(list), 0, "list_count");
 }
 
 func testCollectionSnapshots() {
     var map = new Viper.Collections.Map();
     map.SetStr("name", "zia");
     map.SetInt("version", 1);
-    assertEqInt(map.Keys().Length, 2, "map_keys_length");
-    assertEqInt(map.Values().Length, 2, "map_values_length");
+    assertEqInt(map.Keys().Count, 2, "map_keys_count");
+    assertEqInt(map.Values().Count, 2, "map_values_count");
 }
 
 func testConstructorsAndRandom() {
@@ -54,7 +54,7 @@ func testJsonMachineVecAndEasing() {
     assertTrue(Viper.Collections.Map.Has(obj, "name"), "json_has");
     assertTrue(Viper.String.Has(Viper.Text.Json.Format(obj), "zia"), "json_format");
 
-    assertNotEmpty(Viper.System.Machine.get_OS(), "environment_platform");
+    assertNotEmpty(Viper.System.Machine.get_Os(), "environment_platform");
     assertNotEmpty(Viper.System.Machine.get_Arch(), "machine_arch");
     assertGtInt(Viper.System.Machine.get_PageSize(), 0, "machine_page_size");
     assertGtInt(Viper.System.Machine.get_PointerSize(), 0, "machine_pointer_size");

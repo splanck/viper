@@ -189,7 +189,7 @@ class BuildSystem {
         if pathVar == "" { return ""; }
         var entries = Str.Split(pathVar, ListSep());
         var i = 0;
-        while i < Seq.get_Length(entries) {
+        while i < Seq.get_Count(entries) {
             var entry = Obj.ToString(Seq.Get(entries, i));
             if entry != "" {
                 var cand = Path.Join(entry, name);
@@ -206,12 +206,12 @@ class BuildSystem {
     }
 
     func ExeName() -> String {
-        if Machine.OS == "windows" { return "viper.exe"; }
+        if Machine.Os == "windows" { return "viper.exe"; }
         return "viper";
     }
 
     func ListSep() -> String {
-        if Machine.OS == "windows" { return ";"; }
+        if Machine.Os == "windows" { return ";"; }
         return ":";
     }
 
@@ -326,7 +326,7 @@ class BuildSystem {
         }
         var lines = Str.Split(buildOutput, "\n");
         var i = 0;
-        while i < Seq.get_Length(lines) {
+        while i < Seq.get_Count(lines) {
             var diag = ParseDiagnosticLine(Obj.ToString(Seq.Get(lines, i)));
             if diag != null {
                 diagnostics.add(diag);
@@ -355,7 +355,7 @@ class BuildSystem {
         if records == null { return false; }
 
         var i = 0;
-        while i < Seq.get_Length(records) {
+        while i < Seq.get_Count(records) {
             var record = Seq.Get(records, i);
             var diag = DiagnosticFromJsonRecord(record);
             if diag != null {
@@ -459,14 +459,14 @@ class BuildSystem {
         diag.message = Map.GetStr(record, "message");
         var notes = Map.Get(record, "notes");
         if notes != null {
-            diag.noteCount = Seq.get_Length(notes);
+            diag.noteCount = Seq.get_Count(notes);
             if diag.noteCount > 0 {
                 diag.noteSummary = Map.GetStr(Seq.Get(notes, 0), "message");
             }
         }
         var fixits = Map.Get(record, "fixits");
         if fixits != null {
-            diag.fixitCount = Seq.get_Length(fixits);
+            diag.fixitCount = Seq.get_Count(fixits);
             if diag.fixitCount > 0 {
                 diag.fixitMessage = Map.GetStr(Seq.Get(fixits, 0), "message");
                 if diag.fixitMessage == "" {

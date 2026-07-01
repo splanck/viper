@@ -307,10 +307,12 @@ TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
     EXPECT_FALSE(tilemapLoad->hasReceiver);
 
     EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "LoadCsv", 3).has_value());
-    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "SetTileAnim", 3).has_value());
+    EXPECT_TRUE(
+        runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "SetTileAnim", 3).has_value());
     EXPECT_TRUE(
         runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "SetTileAnimFrame", 3).has_value());
-    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "UpdateAnims", 1).has_value());
+    EXPECT_TRUE(
+        runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "UpdateAnims", 1).has_value());
     EXPECT_TRUE(
         runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "ResolveAnimTile", 1).has_value());
 
@@ -388,23 +390,58 @@ TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsIntegerBooleanArguments) {
     EXPECT_EQ(looping->target, std::string("Viper.Graphics3D.AnimController3D.SetStateLooping"));
 }
 
-TEST(RuntimeMethodIndexBasic, IoConstructorAliasesResolveToCtorTargets) {
+TEST(RuntimeMethodIndexBasic, GuiConcreteWidgetsResolveBaseWidgetMethods) {
+    runtimeMethodIndex().seed();
+
+    auto buttonEnabled = runtimeMethodIndex().find("Viper.GUI.Button", "SetEnabled", 1);
+    ASSERT_TRUE(buttonEnabled.has_value());
+    EXPECT_EQ(buttonEnabled->target, std::string("Viper.GUI.Widget.SetEnabled"));
+    EXPECT_TRUE(buttonEnabled->hasReceiver);
+    ASSERT_EQ(buttonEnabled->args.size(), 1u);
+    EXPECT_EQ(buttonEnabled->args[0], BasicType::Bool);
+
+    auto labelClicked = runtimeMethodIndex().find("Viper.GUI.Label", "WasClicked", 0);
+    ASSERT_TRUE(labelClicked.has_value());
+    EXPECT_EQ(labelClicked->target, std::string("Viper.GUI.Widget.WasClicked"));
+    EXPECT_EQ(labelClicked->ret, BasicType::Bool);
+    EXPECT_TRUE(labelClicked->hasReceiver);
+
+    auto typedTooltip = runtimeMethodIndex().find(
+        "Viper.GUI.TextInput", "SetTooltip", std::vector<BasicType>{BasicType::String});
+    ASSERT_TRUE(typedTooltip.has_value());
+    EXPECT_EQ(typedTooltip->target, std::string("Viper.GUI.Widget.SetTooltip"));
+    EXPECT_TRUE(typedTooltip->hasReceiver);
+
+    auto menuItemFallback = runtimeMethodIndex().find("Viper.GUI.MenuItem", "SetTooltip", 1);
+    EXPECT_FALSE(menuItemFallback.has_value());
+}
+
+TEST(RuntimeMethodIndexBasic, IoNamedFactoriesDoNotCreateNewAliases) {
     runtimeMethodIndex().seed();
 
     auto binNew = runtimeMethodIndex().find("Viper.IO.BinFile", "New", 2);
-    ASSERT_TRUE(binNew.has_value());
-    EXPECT_EQ(binNew->target, std::string("Viper.IO.BinFile.Open"));
-    EXPECT_EQ(binNew->ret, BasicType::Object);
+    EXPECT_FALSE(binNew.has_value());
+
+    auto binOpen = runtimeMethodIndex().find("Viper.IO.BinFile", "Open", 2);
+    ASSERT_TRUE(binOpen.has_value());
+    EXPECT_EQ(binOpen->target, std::string("Viper.IO.BinFile.Open"));
+    EXPECT_EQ(binOpen->ret, BasicType::Object);
 
     auto readerNew = runtimeMethodIndex().find("Viper.IO.LineReader", "New", 1);
-    ASSERT_TRUE(readerNew.has_value());
-    EXPECT_EQ(readerNew->target, std::string("Viper.IO.LineReader.Open"));
-    EXPECT_EQ(readerNew->ret, BasicType::Object);
+    EXPECT_FALSE(readerNew.has_value());
+
+    auto readerOpen = runtimeMethodIndex().find("Viper.IO.LineReader", "Open", 1);
+    ASSERT_TRUE(readerOpen.has_value());
+    EXPECT_EQ(readerOpen->target, std::string("Viper.IO.LineReader.Open"));
+    EXPECT_EQ(readerOpen->ret, BasicType::Object);
 
     auto writerNew = runtimeMethodIndex().find("Viper.IO.LineWriter", "New", 1);
-    ASSERT_TRUE(writerNew.has_value());
-    EXPECT_EQ(writerNew->target, std::string("Viper.IO.LineWriter.Open"));
-    EXPECT_EQ(writerNew->ret, BasicType::Object);
+    EXPECT_FALSE(writerNew.has_value());
+
+    auto writerOpen = runtimeMethodIndex().find("Viper.IO.LineWriter", "Open", 1);
+    ASSERT_TRUE(writerOpen.has_value());
+    EXPECT_EQ(writerOpen->target, std::string("Viper.IO.LineWriter.Open"));
+    EXPECT_EQ(writerOpen->ret, BasicType::Object);
 
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     EXPECT_TRUE(registry.findFunction("Viper.IO.BinFile.Open").has_value());

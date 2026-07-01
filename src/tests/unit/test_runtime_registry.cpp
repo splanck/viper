@@ -16,9 +16,28 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>
 #include <initializer_list>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+
+namespace {
+
+bool containsRawPointerToken(std::string_view signature) {
+    std::string token;
+    for (char ch : signature) {
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_') {
+            token.push_back(ch);
+            continue;
+        }
+        if (token == "ptr")
+            return true;
+        token.clear();
+    }
+    return token == "ptr";
+}
+
+} // namespace
 
 int main() {
     const auto &registry = il::runtime::runtimeRegistry();
@@ -33,6 +52,11 @@ int main() {
 
         const auto *byName = il::runtime::findRuntimeDescriptor(entry.name);
         assert(byName == &entry && "descriptor lookup by name mismatch");
+
+        if (entry.publicSurface && entry.name.rfind("Viper.", 0) == 0) {
+            assert(!containsRawPointerToken(entry.signatureText) &&
+                   "frontend-visible runtime descriptor exposes raw pointer signature text");
+        }
 
         if (entry.lowering.kind == il::runtime::RuntimeLoweringKind::Feature) {
             const auto *byFeature = il::runtime::findRuntimeDescriptor(entry.lowering.feature);
@@ -81,6 +105,17 @@ int main() {
            "string equality runtime descriptor first parameter mismatch");
     assert(strEqDescriptor->signature.paramTypes[1].kind == il::core::Type::Kind::Str &&
            "string equality runtime descriptor second parameter mismatch");
+
+    const auto *randomNext = il::runtime::findRuntimeDescriptor("Viper.Math.Random.Next");
+    assert(randomNext && "static Random.Next descriptor missing");
+    assert(randomNext->publicSurface && "static Random.Next should remain public");
+
+    const auto *randomInstNext = il::runtime::findRuntimeDescriptor("Viper.Math.Random.inst_Next");
+    assert(randomInstNext && "Random.Next instance target descriptor missing");
+    assert(!randomInstNext->publicSurface &&
+           "Random instance implementation target must not be public API");
+    assert(randomInstNext->signature.paramTypes.size() == 1 &&
+           "Random instance target should carry the receiver parameter");
 
     const auto &signatureMap = il::runtime::runtimeSignatures();
     assert(signatureMap.size() == registry.size());

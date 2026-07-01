@@ -12,7 +12,7 @@ func start() {
 
     mat.Metallic = 0.7;
     mat.Roughness = 0.3;
-    mat.AO = 0.85;
+    mat.AmbientOcclusion = 0.85;
     mat.EmissiveIntensity = 1.5;
     mat.NormalScale = 0.55;
     mat.Alpha = 0.6;
@@ -72,7 +72,7 @@ func start() {
         Say("FAIL: Roughness should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
-    if (Material3D.get_AO(loaded) < 0.84 || Material3D.get_AO(loaded) > 0.86) {
+    if (Material3D.get_AmbientOcclusion(loaded) < 0.84 || Material3D.get_AmbientOcclusion(loaded) > 0.86) {
         Say("FAIL: AO should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }

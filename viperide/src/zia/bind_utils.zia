@@ -39,7 +39,7 @@ expose func OrganizeZiaBindsText(source: String) -> String {
     var i = 0;
     var seenBind = false;
 
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         var trimmed = Str.Trim(line);
         if IsZiaBindLine(trimmed) {
@@ -65,7 +65,7 @@ expose func OrganizeZiaBindsText(source: String) -> String {
         b = b + 1;
     }
 
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         output.add(Obj.ToString(Seq.Get(lines, i)));
         i = i + 1;
     }
@@ -82,7 +82,7 @@ expose func InsertTopBindLineText(source: String,
     var eol = "\n";
     if Str.IndexOf(source, "\r\n") != 0 { eol = "\r\n"; }
     var lines = Str.Lines(source);
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     var insertAt = 0;
     var i = 0;
     while i < count {
@@ -130,7 +130,7 @@ expose func SourceHasBindAlias(source: String,
     var prefix = "bind " + identifier + " = ";
     var aliasSuffix = " as " + identifier + ";";
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var trimmed = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
         if Str.StartsWith(trimmed, prefix) { return true; }
         if Str.EndsWith(trimmed, aliasSuffix) { return true; }
@@ -148,7 +148,7 @@ expose func SourceHasFileBind(source: String,
     var lines = Str.Lines(source);
     var expected = "bind \"" + bindPath + "\";";
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var trimmed = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
         if trimmed == expected { return true; }
         i = i + 1;
@@ -174,7 +174,7 @@ expose func ProjectFileDefinesIdentifier(source: String,
     var depth = 0;
     var commentDepth = 0;
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         var trimmed = Str.Trim(line);
         if depth == 0 and commentDepth == 0 {
@@ -263,7 +263,7 @@ expose func RewriteZiaBindContent(content: String,
     var lines = Str.Split(content, "\n");
     var rebuilt = "";
     var i = 0;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         var rewritten = RewriteZiaBindLine(line, importingPath, oldNorm, newNorm, oldWasDir);
         if rewritten != line {
@@ -356,27 +356,27 @@ expose func RelativeBindPath(importingDir: String,
 
     var baseParts = PathParts(NormalizeAbsPath(importingDir));
     var targetParts = PathParts(targetNorm);
-    if Seq.get_Length(baseParts) > 0 and Seq.get_Length(targetParts) > 0 {
+    if Seq.get_Count(baseParts) > 0 and Seq.get_Count(targetParts) > 0 {
         if Obj.ToString(Seq.Get(baseParts, 0)) != Obj.ToString(Seq.Get(targetParts, 0)) {
             return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
         }
     }
 
     var common = 0;
-    while common < Seq.get_Length(baseParts)
-          and common < Seq.get_Length(targetParts)
+    while common < Seq.get_Count(baseParts)
+          and common < Seq.get_Count(targetParts)
           and Obj.ToString(Seq.Get(baseParts, common)) == Obj.ToString(Seq.Get(targetParts, common)) {
         common = common + 1;
     }
 
     var rel = "";
     var b = common;
-    while b < Seq.get_Length(baseParts) {
+    while b < Seq.get_Count(baseParts) {
         rel = AppendPathPart(rel, "..");
         b = b + 1;
     }
     var t = common;
-    while t < Seq.get_Length(targetParts) {
+    while t < Seq.get_Count(targetParts) {
         rel = AppendPathPart(rel, Obj.ToString(Seq.Get(targetParts, t)));
         t = t + 1;
     }
@@ -481,7 +481,7 @@ func PathParts(path: String) -> Any {
     var normalized = NormalizeBindSeparators(path);
     var raw = Str.Split(normalized, "/");
     var i = 0;
-    while i < Seq.get_Length(raw) {
+    while i < Seq.get_Count(raw) {
         var part = Obj.ToString(Seq.Get(raw, i));
         if part != "" and part != "." {
             Seq.Push(parts, part);

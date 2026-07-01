@@ -37,7 +37,7 @@ expose func ToggleLineCommentRangeText(source: String,
                                        endLine: Integer,
                                        marker: String) -> String {
     var lines = Str.Split(source, "\n");
-    var count = Seq.get_Length(lines);
+    var count = Seq.get_Count(lines);
     if count == 0 { return source; }
     var rangeStart = startLine;
     var rangeEnd = endLine;
@@ -79,7 +79,7 @@ expose func ShouldUncommentLineRange(lines: Any,
                                      marker: String) -> Boolean {
     var sawContent = false;
     var i = startLine;
-    while i <= endLine and i < Seq.get_Length(lines) {
+    while i <= endLine and i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         if Str.EndsWith(line, "\r") {
             line = Str.Left(line, Str.get_Length(line) - 1);

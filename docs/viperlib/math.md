@@ -151,7 +151,7 @@ Mathematical functions and constants.
 | Property | Type     | Description                          |
 |----------|----------|--------------------------------------|
 | `Pi`     | `Double` | π (3.14159265358979...)              |
-| `E`      | `Double` | Euler's number (2.71828182845904...) |
+| `Euler`  | `Double` | Euler's number (2.71828182845904...) |
 | `Tau`    | `Double` | τ = 2π (6.28318530717958...)         |
 
 ### Basic Functions
@@ -257,7 +257,7 @@ func start() {
 ```basic
 ' Using constants
 PRINT Viper.Math.Pi              ' Output: 3.14159265358979
-PRINT Viper.Math.E               ' Output: 2.71828182845905
+PRINT Viper.Math.Euler               ' Output: 2.71828182845905
 
 ' Basic math
 PRINT Viper.Math.Sqrt(16)        ' Output: 4.0
@@ -918,7 +918,7 @@ func start() {
     SayNum(len);  // 200.0
 
     var samples = Spline.Sample(lin, 5);
-    SayInt(Seq.get_Length(samples));  // 5
+    SayInt(Seq.get_Count(samples));  // 5
 
     // Bezier curve
     var bez = Spline.Bezier(

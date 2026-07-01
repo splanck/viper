@@ -12,7 +12,7 @@ func fail(message: String) {
 func start() {
     var world = Game3D.World3D.New("Game3D Effects Probe", 96, 72);
     var effects = world.Effects;
-    if (effects == null || effects.PostFX == null) {
+    if (effects == null || effects.PostFx == null) {
         fail("world did not create EffectRegistry3D/postfx");
         return;
     }

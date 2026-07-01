@@ -712,7 +712,7 @@ func start() {
 
     while !canvas.ShouldClose {
         canvas.Poll();
-        canvas.Clear(Color.BLACK);
+        canvas.Clear(Color.Black);
 
         batch.Begin();
         batch.DrawAtlas(atlas, "idle", 100, 200);

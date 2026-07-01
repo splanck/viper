@@ -407,12 +407,12 @@ Cross-platform file system watcher for monitoring files and directories for chan
 
 | Constant        | Value | Description                         |
 |-----------------|-------|-------------------------------------|
-| `EVENT_NONE`    | 0     | No event (returned by Poll timeout) |
-| `EVENT_CREATED` | 1     | File or directory was created       |
-| `EVENT_MODIFIED`| 2     | File was modified                   |
-| `EVENT_DELETED` | 3     | File or directory was deleted       |
-| `EVENT_RENAMED` | 4     | File or directory was renamed       |
-| `EVENT_OVERFLOW`| 5     | Watcher event queue overflowed      |
+| `EventNone`    | 0     | No event (returned by Poll timeout) |
+| `EventCreated` | 1     | File or directory was created       |
+| `EventModified`| 2     | File was modified                   |
+| `EventDeleted` | 3     | File or directory was deleted       |
+| `EventRenamed` | 4     | File or directory was renamed       |
+| `EventOverflow`| 5     | Watcher event queue overflowed      |
 
 ### Properties
 
@@ -420,12 +420,12 @@ Cross-platform file system watcher for monitoring files and directories for chan
 |---------------|---------|------------------------------------------------|
 | `Path`        | String  | The path being watched (read-only)             |
 | `IsWatching`  | Boolean | True if actively watching (read-only)          |
-| `EVENT_NONE`  | Integer | Event constant: No event (static, read-only)   |
-| `EVENT_CREATED` | Integer | Event constant: Created (static, read-only)  |
-| `EVENT_MODIFIED`| Integer | Event constant: Modified (static, read-only) |
-| `EVENT_DELETED` | Integer | Event constant: Deleted (static, read-only)  |
-| `EVENT_RENAMED` | Integer | Event constant: Renamed (static, read-only)  |
-| `EVENT_OVERFLOW`| Integer | Event constant: Queue overflow (static, read-only) |
+| `EventNone`  | Integer | Event constant: No event (static, read-only)   |
+| `EventCreated` | Integer | Event constant: Created (static, read-only)  |
+| `EventModified`| Integer | Event constant: Modified (static, read-only) |
+| `EventDeleted` | Integer | Event constant: Deleted (static, read-only)  |
+| `EventRenamed` | Integer | Event constant: Renamed (static, read-only)  |
+| `EventOverflow`| Integer | Event constant: Queue overflow (static, read-only) |
 
 ### Methods
 
@@ -467,19 +467,19 @@ DO
     ' Poll with 1 second timeout
     DIM event AS INTEGER = watcher.PollFor(1000)
 
-    IF event <> watcher.EVENT_NONE THEN
+    IF event <> watcher.EventNone THEN
         DIM path AS STRING = watcher.EventPath()
 
         SELECT CASE event
-            CASE watcher.EVENT_CREATED
+            CASE watcher.EventCreated
                 PRINT "Created: "; path
-            CASE watcher.EVENT_MODIFIED
+            CASE watcher.EventModified
                 PRINT "Modified: "; path
-            CASE watcher.EVENT_DELETED
+            CASE watcher.EventDeleted
                 PRINT "Deleted: "; path
-            CASE watcher.EVENT_RENAMED
+            CASE watcher.EventRenamed
                 PRINT "Renamed: "; path
-            CASE watcher.EVENT_OVERFLOW
+            CASE watcher.EventOverflow
                 PRINT "Watcher queue overflow"
         END SELECT
     END IF
@@ -503,7 +503,7 @@ DO
 
     ' Quick non-blocking check for file changes
     DIM event AS INTEGER = watcher.Poll()
-    IF event = watcher.EVENT_MODIFIED THEN
+    IF event = watcher.EventModified THEN
         PRINT "Config file changed, reloading..."
         ReloadConfig()
     END IF
@@ -524,14 +524,14 @@ watcher.Stop()
 
 - Creating a watcher traps if the path does not exist
 - The watcher must be started with `Start()` before events can be received
-- `Poll()` returns immediately with `EVENT_NONE` if no event is pending
+- `Poll()` returns immediately with `EventNone` if no event is pending
 - `PollFor(ms)` waits up to the specified milliseconds for an event; very large positive timeouts are clamped to the largest supported platform wait value
 - After receiving an event, use `EventPath()` and `EventType()` to get details
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
-- If the internal event queue overflows, a later `Poll()` returns `EVENT_OVERFLOW`. Treat this as a signal to rescan the watched directory or file state.
-- `Stop()` clears queued events and the last-event state. After `Stop()`, `EventType()` returns `EVENT_NONE` and `EventPath()` traps until a later successful `Poll()` after `Start()`.
+- If the internal event queue overflows, a later `Poll()` returns `EventOverflow`. Treat this as a signal to rescan the watched directory or file state.
+- `Stop()` clears queued events and the last-event state. After `Stop()`, `EventType()` returns `EventNone` and `EventPath()` traps until a later successful `Poll()` after `Start()`.
 - Directory watches are non-recursive
-- On Linux and Windows, single-file watches monitor the parent directory and filter by filename, so deleting and recreating the file at the same path can still produce a later `EVENT_CREATED`
+- On Linux and Windows, single-file watches monitor the parent directory and filter by filename, so deleting and recreating the file at the same path can still produce a later `EventCreated`
 - macOS directory watches report the watched directory path for queued events because `kqueue` does not provide child entry names
 - Platform-specific behavior may vary slightly for edge cases
 

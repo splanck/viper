@@ -86,7 +86,7 @@ func waitSemanticJob(job: Any, maxTicks: Integer) -> Boolean {
 func completionItemsContain(items: Any, label: String) -> Boolean {
     if items == null { return false; }
     var i = 0;
-    while i < Seq.get_Length(items) {
+    while i < Seq.get_Count(items) {
         var item = Seq.Get(items, i);
         if Map.GetStr(item, "label") == label {
             return true;
@@ -99,7 +99,7 @@ func completionItemsContain(items: Any, label: String) -> Boolean {
 func completionItemDocumentationContains(items: Any, label: String, needle: String) -> Boolean {
     if items == null { return false; }
     var i = 0;
-    while i < Seq.get_Length(items) {
+    while i < Seq.get_Count(items) {
         var item = Seq.Get(items, i);
         if Map.GetStr(item, "label") == label
            and Str.IndexOf(Map.GetStr(item, "documentation"), needle) > 0 {
@@ -163,7 +163,7 @@ func main() {
         fail(shell, "completion did not open");
         return;
     }
-    if engine.editor.IsFocused() == 0 {
+    if !engine.editor.IsFocused() {
         fail(shell, "completion stole editor focus");
         return;
     }
@@ -176,7 +176,7 @@ func main() {
                                                 "intellisense_probe.zia", 4, 6);
     var foundStructured = false;
     var s = 0;
-    while s < Seq.get_Length(structured) {
+    while s < Seq.get_Count(structured) {
         var item = Seq.Get(structured, s);
         if Map.GetStr(item, "label") == "greet" {
             foundStructured = true;
@@ -342,7 +342,7 @@ func main() {
         fail(shell, "async diagnostics job did not finish");
         return;
     }
-    if Seq.get_Length(SemanticJob.Diagnostics(diagJob)) == 0 {
+    if Seq.get_Count(SemanticJob.Diagnostics(diagJob)) == 0 {
         fail(shell, "async diagnostics missing parser error");
         return;
     }
@@ -415,7 +415,7 @@ func main() {
     }
     var missingBindRecord: Any = null;
     var mb = 0;
-    while mb < Seq.get_Length(missingBindRecords) {
+    while mb < Seq.get_Count(missingBindRecords) {
         var candidateMissingBind = Seq.Get(missingBindRecords, mb);
         if Map.GetInt(candidateMissingBind, "line") == 3 {
             missingBindRecord = candidateMissingBind;
@@ -521,7 +521,7 @@ func main() {
         "intellisense_probe.zia", 3, 6);
     var foundSnippetCursor = false;
     s = 0;
-    while s < Seq.get_Length(snippetItems) {
+    while s < Seq.get_Count(snippetItems) {
         var snippet = Seq.Get(snippetItems, s);
         if Map.GetStr(snippet, "label") == "while" and Map.GetBool(snippet, "isSnippet") {
             foundSnippetCursor = Map.GetInt(snippet, "cursorOffset") > 0;
@@ -682,7 +682,7 @@ func main() {
     var sigInfo = ZiaCompletion.SignatureInfoForFile(sigSource, "intellisense_probe.zia", 4, 10);
     if Map.GetBool(sigInfo, "available") == false
        or Map.GetInt(sigInfo, "activeParameter") != 0
-       or Seq.get_Length(Map.Get(sigInfo, "parameters")) != 2 {
+       or Seq.get_Count(Map.Get(sigInfo, "parameters")) != 2 {
         fail(shell, "structured signature info");
         return;
     }
@@ -693,7 +693,7 @@ func main() {
     }
     var asyncSigInfo = SemanticJob.SignatureInfo(sigJob);
     if Map.GetBool(asyncSigInfo, "available") == false
-       or Seq.get_Length(Map.Get(asyncSigInfo, "parameters")) != 2 {
+       or Seq.get_Count(Map.Get(asyncSigInfo, "parameters")) != 2 {
         fail(shell, "async structured signature info");
         return;
     }
@@ -716,7 +716,7 @@ func main() {
         return;
     }
     var overloads = Map.Get(overloadSig, "overloads");
-    if overloads == null or Seq.get_Length(overloads) != 2 {
+    if overloads == null or Seq.get_Count(overloads) != 2 {
         fail(shell, "signature overload records");
         return;
     }
@@ -941,12 +941,12 @@ func main() {
         return;
     }
     engine.editor.Fold(1);
-    if engine.editor.IsFolded(1) == 0 {
+    if !engine.editor.IsFolded(1) {
         fail(shell, "semantic fold function not foldable");
         return;
     }
     engine.editor.Fold(0);
-    if engine.editor.IsFolded(0) != 0 {
+    if engine.editor.IsFolded(0) {
         fail(shell, "semantic fold should skip module line");
         return;
     }
@@ -1272,7 +1272,7 @@ func main() {
         return;
     }
     var outgoingTokens = edit_commands.OutgoingZiaCallTokens(callSource, 5, 7);
-    if Seq.get_Length(outgoingTokens) != 1
+    if Seq.get_Count(outgoingTokens) != 1
        or Map.GetStr(Seq.Get(outgoingTokens, 0), "name") != "target" {
         fail(shell, "outgoing call token scan");
         return;
@@ -1376,7 +1376,7 @@ func main() {
     engine.SetText("alpha beta\ngamma");
     engine.editor.SetCursor(0, 2);
     edit_commands.handleExpandSelection(shell, engine);
-    if engine.editor.CursorHasSelection(0) == 0
+    if !engine.editor.CursorHasSelection(0)
        or engine.editor.GetSelectionStartLineAt(0) != 0
        or engine.editor.GetSelectionStartColAt(0) != 0
        or engine.editor.GetSelectionEndColAt(0) != 5 {
@@ -1406,7 +1406,7 @@ func main() {
         return;
     }
     edit_commands.handleShrinkSelection(shell, engine);
-    if engine.editor.CursorHasSelection(0) != 0 {
+    if engine.editor.CursorHasSelection(0) {
         fail(shell, "shrink selection collapse");
         return;
     }
@@ -1570,13 +1570,13 @@ func main() {
     // must surface in-scope symbols (keyword TO + the DIM'd TOTAL).
     var basicBad = "DIM x AS INTEGER\nx = \"hello\"\n";
     var basicDiags = BasicToolchain.CheckForFile(basicBad, "probe.bas");
-    if Seq.get_Length(basicDiags) == 0 {
+    if Seq.get_Count(basicDiags) == 0 {
         fail(shell, "basic diagnostics missing type-mismatch error");
         return;
     }
     var basicSrc = "DIM total AS INTEGER\ntotal = 1\nPRINT to";
     var basicItems = BasicCompletion.ItemsForFile(basicSrc, "probe.bas", 3, 9);
-    if Seq.get_Length(basicItems) == 0 {
+    if Seq.get_Count(basicItems) == 0 {
         fail(shell, "basic completion returned no items");
         return;
     }

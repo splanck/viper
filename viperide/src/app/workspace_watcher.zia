@@ -88,7 +88,7 @@ expose func PumpWorkspaceWatcher(shell: app_shell.AppShell,
     }
 
     var events = WorkspaceWatcher.PollBatch(state.watcher, 32);
-    if events != null and Seq.get_Length(events) > 0 {
+    if events != null and Seq.get_Count(events) > 0 {
         HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
         PrimeWorkspaceWatcherRescanState(state, root);
         return;
@@ -185,7 +185,7 @@ func HandleWorkspaceWatcherEvents(shell: app_shell.AppShell,
     var touchedIndex = false;
     var changed = 0;
     var i = 0;
-    while i < Seq.get_Length(events) {
+    while i < Seq.get_Count(events) {
         var ev = Seq.Get(events, i);
         i = i + 1;
         changed = changed + 1;

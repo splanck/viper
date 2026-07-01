@@ -1104,12 +1104,12 @@ Viper.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
 <th>Description</th>
 </tr></thead><tbody>
 <tr>
-<td>`get_OS`</td>
+<td>`get_Os`</td>
 <td>`str()`</td>
 <td>Operating system name</td>
 </tr>
 <tr>
-<td>`get_OSVer`</td>
+<td>`get_OsVer`</td>
 <td>`str()`</td>
 <td>OS version string</td>
 </tr>
@@ -1156,7 +1156,7 @@ Viper.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-Viper.Terminal.Say(&quot;OS: &quot; + Viper.System.Machine.get_OS);
+Viper.Terminal.Say(&quot;OS: &quot; + Viper.System.Machine.get_Os);
 Viper.Terminal.Say(&quot;Cores: &quot; + Viper.Core.Convert.ToString_Int(Viper.System.Machine.get_Cores));
 Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToString_Int(Viper.System.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
 </code></pre>
@@ -3070,7 +3070,7 @@ var first = Viper.Collections.Seq.First(items);
 var numbers = Viper.Collections.List.New();
 Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(1));
 Viper.Collections.List.Push(numbers, Viper.Core.Box.I64(2));
-var count = Viper.Collections.List.get_Length(numbers);
+var count = Viper.Collections.List.get_Count(numbers);
 
 // Map for key-value storage
 var config = Viper.Collections.Map.New();

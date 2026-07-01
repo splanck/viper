@@ -225,8 +225,8 @@ class Player {
         isCharging = false;
         dashCooldown = 0;
         freezeTimer = 0;
-        ctrl.VX = 0;
-        ctrl.VY = 0;
+        ctrl.VelocityX = 0;
+        ctrl.VelocityY = 0;
         stateMachine.SetInitial(PS_IDLE);
     }
 
@@ -245,8 +245,8 @@ class Player {
         state = PS_IDLE;
         iframes = IFRAMES_MS;
         canDoubleJump = true;
-        ctrl.VX = 0;
-        ctrl.VY = 0;
+        ctrl.VelocityX = 0;
+        ctrl.VelocityY = 0;
     }
 
     /// @brief Per-frame driver.  `dt` is elapsed ms (the caller
@@ -306,14 +306,14 @@ class Player {
 
         // Pull processed velocity back out of the controller so
         // the rest of this file can read/override vx/vy.
-        vx = ctrl.VX;
-        vy = ctrl.VY;
+        vx = ctrl.VelocityX;
+        vy = ctrl.VelocityY;
         if ctrl.IsMoving { facing = ctrl.Facing; }
 
         if ctrl.ShouldJump {
             // Controller says "jump now" (ground or coyote).
             vy = PLAYER_JUMP;
-            ctrl.VY = vy;
+            ctrl.VelocityY = vy;
             onGround = false;
             canDoubleJump = true;
             state = PS_JUMP;
@@ -325,8 +325,8 @@ class Player {
                 vy = WALL_JUMP_VY;
                 vx = 0 - wallDir * WALL_JUMP_VX;
                 facing = 0 - wallDir;        // flip to face away
-                ctrl.VX = vx;
-                ctrl.VY = vy;
+                ctrl.VelocityX = vx;
+                ctrl.VelocityY = vy;
                 onWall = false;
                 canDoubleJump = true;        // refund the air jump
                 state = PS_JUMP;
@@ -334,7 +334,7 @@ class Player {
                 // Double jump: smaller impulse, spent once per
                 // airtime.
                 vy = PLAYER_DJUMP;
-                ctrl.VY = vy;
+                ctrl.VelocityY = vy;
                 canDoubleJump = false;
                 state = PS_DJUMP;
             }
@@ -344,7 +344,7 @@ class Player {
         // slowly-sliding rather than plummeting.
         if onWall and vy > WALL_SLIDE_SPEED {
             vy = WALL_SLIDE_SPEED;
-            ctrl.VY = vy;
+            ctrl.VelocityY = vy;
         }
 
         // Schedule the next bullet.  `wantsToShoot()` is the
@@ -385,10 +385,10 @@ class Player {
         // Cancel velocity on any hit, and mirror into the
         // controller so it doesn't re-accelerate into the wall
         // next frame.
-        if result.hitLeft { vx = 0; ctrl.VX = 0; }
-        if result.hitRight { vx = 0; ctrl.VX = 0; }
-        if result.hitFloor { vy = 0; ctrl.VY = 0; }
-        if result.hitCeiling { vy = 0; ctrl.VY = 0; }
+        if result.hitLeft { vx = 0; ctrl.VelocityX = 0; }
+        if result.hitRight { vx = 0; ctrl.VelocityX = 0; }
+        if result.hitFloor { vy = 0; ctrl.VelocityY = 0; }
+        if result.hitCeiling { vy = 0; ctrl.VelocityY = 0; }
 
         onGround = result.hitFloor;
 
@@ -511,7 +511,7 @@ class Player {
         iframes = IFRAMES_MS;
         state = PS_HURT;
         vy = -450;
-        ctrl.VY = vy;
+        ctrl.VelocityY = vy;
 
         if hp <= 0 {
             die();
@@ -526,8 +526,8 @@ class Player {
         hp = 0;
         vx = 0;
         vy = -600;
-        ctrl.VX = 0;
-        ctrl.VY = vy;
+        ctrl.VelocityX = 0;
+        ctrl.VelocityY = vy;
     }
 
     /// @brief Apply a pickup's effect.  See `pickups.zia` for
@@ -576,8 +576,8 @@ class Player {
     ///        velocity (e.g. knockback), otherwise the
     ///        controller's internal state drifts.
     expose func syncVelocity() {
-        ctrl.VX = vx;
-        ctrl.VY = vy;
+        ctrl.VelocityX = vx;
+        ctrl.VelocityY = vy;
     }
 
     // -------- Pixel accessors for drawing and collision --------
@@ -625,8 +625,8 @@ class Player {
         } else {
             vx = dashVx;
             vy = 0;
-            ctrl.VX = vx;
-            ctrl.VY = vy;
+            ctrl.VelocityX = vx;
+            ctrl.VelocityY = vy;
         }
     }
 
@@ -686,7 +686,7 @@ class Player {
         isPounding = true;
         poundVy = 2500;
         vx = 0;
-        ctrl.VX = 0;
+        ctrl.VelocityX = 0;
     }
 
     /// @brief Per-frame driver: stay at pound velocity until
@@ -694,7 +694,7 @@ class Player {
     expose func updatePound(dt: Integer) {
         if not isPounding { return; }
         vy = poundVy;
-        ctrl.VY = vy;
+        ctrl.VelocityY = vy;
         if onGround {
             isPounding = false;
             poundVy = 0;
@@ -715,8 +715,8 @@ class Player {
         freezeTimer = durationMs;
         vx = 0;
         vy = 0;
-        ctrl.VX = 0;
-        ctrl.VY = 0;
+        ctrl.VelocityX = 0;
+        ctrl.VelocityY = 0;
     }
 
     /// @brief Per-frame freeze-timer decrement.  Returns true
@@ -725,7 +725,7 @@ class Player {
         if freezeTimer <= 0 { return false; }
         freezeTimer = freezeTimer - dt;
         vx = 0;
-        ctrl.VX = 0;
+        ctrl.VelocityX = 0;
         return true;
     }
 

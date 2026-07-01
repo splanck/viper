@@ -67,7 +67,7 @@ class DebugBreakpointOverlay {
     expose func Setup(shell: app_shell.AppShell) {
         panel = GUI.FloatingPanel.New(shell.app);
         panel.SetSize(DEBUG_BP_PANEL_WIDTH, DEBUG_BP_PANEL_HEIGHT);
-        panel.SetVisible(0);
+        panel.SetVisible(false);
 
         root = GUI.VBox.New();
         root.SetPadding(16.0);
@@ -77,11 +77,11 @@ class DebugBreakpointOverlay {
         titleLabel = GUI.Label.New(root, "Breakpoint");
         titleLabel.SetMargin(0);
         descriptionLabel = GUI.Label.New(root, "");
-        descriptionLabel.SetWordWrap(1);
+        descriptionLabel.SetWordWrap(true);
         descriptionLabel.SetMargin(0);
         input = GUI.TextInput.New(root);
         detailLabel = GUI.Label.New(root, "");
-        detailLabel.SetWordWrap(1);
+        detailLabel.SetWordWrap(true);
         detailLabel.SetMargin(0);
 
         var footer = GUI.HBox.New();
@@ -133,19 +133,19 @@ class DebugBreakpointOverlay {
     expose func Pump(shell: app_shell.AppShell) -> Integer {
         if visible == false { return DEBUG_BP_ACTION_NONE; }
         Layout(shell);
-        if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+        if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
             Cancel();
             return DEBUG_BP_ACTION_CANCEL;
         }
-        if cancelButton.WasClicked() != 0 {
+        if cancelButton.WasClicked() {
             Cancel();
             return DEBUG_BP_ACTION_CANCEL;
         }
-        if applyButton.WasClicked() != 0
-           or Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
+        if applyButton.WasClicked()
+           or Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter()) {
             value = Str.Trim(input.Text);
             visible = false;
-            panel.SetVisible(0);
+            panel.SetVisible(false);
             return pendingAction;
         }
         return DEBUG_BP_ACTION_NONE;
@@ -163,7 +163,7 @@ class DebugBreakpointOverlay {
     expose func Cancel() {
         visible = false;
         pendingAction = DEBUG_BP_ACTION_NONE;
-        panel.SetVisible(0);
+        panel.SetVisible(false);
     }
 
     /// @brief Return the edited condition/logpoint text.
@@ -211,7 +211,7 @@ class DebugBreakpointOverlay {
         input.SetText(existing);
         applyButton.SetText(buttonLabel);
         visible = true;
-        panel.SetVisible(1);
+        panel.SetVisible(true);
         Layout(shell);
         input.Focus();
     }

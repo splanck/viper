@@ -197,6 +197,7 @@ struct RuntimeDescriptor {
     RuntimeHandler handler{nullptr}; ///< Adapter that invokes the C implementation.
     RuntimeLowering lowering;   ///< Lowering metadata controlling declaration.
     RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap classification for VM bridge.
+    bool publicSurface{true}; ///< Visible as a standalone frontend runtime function.
 };
 
 /// @brief Access the ordered registry of runtime descriptors.

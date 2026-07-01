@@ -29,6 +29,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "frontends/common/RuntimeMethodResolver.hpp"
 #include "frontends/zia/RuntimeAdapter.hpp"
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
@@ -391,39 +392,62 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
     if (!rtClass)
         return result;
 
+    std::unordered_set<std::string> emittedMembers;
+
+    auto appendRuntimeMethods = [&](const il::runtime::RuntimeClass *sourceClass) {
+        if (!sourceClass)
+            return;
+
+        for (const auto &method : sourceClass->methods) {
+            if (!method.name)
+                continue;
+
+            auto sig = il::runtime::parseRuntimeSignature(method.signature ? method.signature : "");
+            TypeRef retType = sig.isValid() ? toZiaReturnType(sig) : types::unknown();
+
+            std::vector<TypeRef> paramTypes;
+            if (sig.isValid()) {
+                for (auto ilType : sig.params) {
+                    paramTypes.push_back(toZiaType(ilType));
+                }
+            }
+
+            Symbol sym;
+            sym.kind = Symbol::Kind::Method;
+            sym.name = method.name;
+            sym.type = types::function(std::move(paramTypes), retType);
+            sym.isExtern = true;
+
+            std::string key = sym.name + "#" + (sym.type ? sym.type->toDisplayString() : "");
+            if (!emittedMembers.insert(std::move(key)).second)
+                continue;
+
+            if (const Symbol *externSym = [&]() -> const Symbol * {
+                    if (!method.target || scopes_.empty())
+                        return nullptr;
+                    const auto &symbols = scopes_[0]->getSymbols();
+                    auto it = symbols.find(method.target);
+                    return it == symbols.end() ? nullptr : &it->second;
+                }()) {
+                sym.paramNames = memberParamNamesFromExtern(
+                    externSym, sym.type ? sym.type->paramTypes().size() : 0);
+            }
+            sym.documentation = runtimeMethodDocumentation(
+                className, method.name, method.target, sym.type, sym.paramNames);
+            result.push_back(sym);
+        }
+    };
+
     // Methods — parse the signature to build a function TypeRef.
-    for (const auto &method : rtClass->methods) {
-        if (!method.name)
-            continue;
+    appendRuntimeMethods(rtClass);
 
-        auto sig = il::runtime::parseRuntimeSignature(method.signature ? method.signature : "");
-        TypeRef retType = sig.isValid() ? toZiaReturnType(sig) : types::unknown();
-
-        std::vector<TypeRef> paramTypes;
-        if (sig.isValid()) {
-            for (auto ilType : sig.params) {
-                paramTypes.push_back(toZiaType(ilType));
+    if (common::isGuiWidgetSubclass(className)) {
+        for (const auto &cls : catalog) {
+            if (cls.qname && std::string_view(cls.qname) == "Viper.GUI.Widget") {
+                appendRuntimeMethods(&cls);
+                break;
             }
         }
-
-        Symbol sym;
-        sym.kind = Symbol::Kind::Method;
-        sym.name = method.name;
-        sym.type = types::function(std::move(paramTypes), retType);
-        sym.isExtern = true;
-        if (const Symbol *externSym = [&]() -> const Symbol * {
-                if (!method.target || scopes_.empty())
-                    return nullptr;
-                const auto &symbols = scopes_[0]->getSymbols();
-                auto it = symbols.find(method.target);
-                return it == symbols.end() ? nullptr : &it->second;
-            }()) {
-            sym.paramNames =
-                memberParamNamesFromExtern(externSym, sym.type ? sym.type->paramTypes().size() : 0);
-        }
-        sym.documentation = runtimeMethodDocumentation(
-            className, method.name, method.target, sym.type, sym.paramNames);
-        result.push_back(sym);
     }
 
     // Properties — represent as Field symbols with the property's struct type.

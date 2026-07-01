@@ -7,7 +7,7 @@ func start() {
     m.Set("a", "1");
     m.Set("b", "2");
     m.Set("c", "3");
-    SayInt(m.Length);
+    SayInt(m.Count);
     Say(m.Get("b"));
     SayBool(m.Has("a"));
     SayBool(m.Has("z"));
@@ -15,9 +15,9 @@ func start() {
     m.SetIfMissing("a", "99");
     Say(m.Get("a"));
     m.Remove("b");
-    SayInt(m.Length);
-    SayInt(m.Keys().Length);
-    SayInt(m.Values().Length);
+    SayInt(m.Count);
+    SayInt(m.Keys().Count);
+    SayInt(m.Values().Count);
     m.Clear();
     SayBool(m.IsEmpty);
 
@@ -27,12 +27,12 @@ func start() {
     b.Add("y");
     b.Add("z");
     b.Add("x");
-    SayInt(b.Length);
+    SayInt(b.Count);
     SayBool(b.Has("x"));
     SayBool(b.Has("w"));
     b.Remove("x");
-    SayInt(b.Length);
-    SayInt(b.Items().Length);
+    SayInt(b.Count);
+    SayInt(b.Items().Count);
     b.Clear();
     SayBool(b.IsEmpty);
 
@@ -44,7 +44,7 @@ func start() {
     SayInt(cm.Get("a"));
     SayInt(cm.Get("c"));
     SayInt(cm.Total);
-    SayInt(cm.Length);
+    SayInt(cm.Count);
     cm.Dec("a");
     SayInt(cm.Get("a"));
     cm.Set("d", 10);
@@ -52,20 +52,20 @@ func start() {
     SayBool(cm.Has("d"));
     cm.Remove("d");
     SayBool(cm.Has("d"));
-    SayInt(cm.Keys().Length);
+    SayInt(cm.Keys().Count);
 
     var om = new Viper.Collections.OrderedMap();
     om.Set("first", "1");
     om.Set("second", "2");
     om.Set("third", "3");
-    SayInt(om.Length);
+    SayInt(om.Count);
     Say(om.Get("second"));
     Say(om.KeyAt(0));
     SayBool(om.Has("first"));
     om.Remove("second");
-    SayInt(om.Length);
-    SayInt(om.Keys().Length);
-    SayInt(om.Values().Length);
+    SayInt(om.Count);
+    SayInt(om.Keys().Count);
+    SayInt(om.Values().Count);
 
     Say("done");
 }

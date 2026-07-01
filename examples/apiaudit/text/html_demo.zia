@@ -40,9 +40,9 @@ func start() {
     // --- ExtractLinks ---
     Say("--- ExtractLinks ---");
     var links = Html.ExtractLinks(html);
-    SayInt(Seq.get_Length(links));
+    SayInt(Seq.get_Count(links));
     var i = 0;
-    while i < Seq.get_Length(links) {
+    while i < Seq.get_Count(links) {
         Say(Obj.ToString(Seq.Get(links, i)));
         i = i + 1;
     }
@@ -50,16 +50,16 @@ func start() {
     // --- ExtractText ---
     Say("--- ExtractText ---");
     var texts = Html.ExtractText(html, "p");
-    SayInt(Seq.get_Length(texts));
+    SayInt(Seq.get_Count(texts));
     var j = 0;
-    while j < Seq.get_Length(texts) {
+    while j < Seq.get_Count(texts) {
         Say(Obj.ToString(Seq.Get(texts, j)));
         j = j + 1;
     }
 
     // Extract h1 tags
     var h1s = Html.ExtractText(html, "h1");
-    SayInt(Seq.get_Length(h1s));
+    SayInt(Seq.get_Count(h1s));
     Say(Obj.ToString(Seq.Get(h1s, 0)));
 
     Say("=== Html Demo Complete ===");

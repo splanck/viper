@@ -7,7 +7,7 @@ func start() {
     Say("=== Asset Embedding Demo ===");
 
     // Test 1: Check if embedded asset exists
-    if Assets.Exists("assets/greeting.txt") != 0 {
+    if Assets.Exists("assets/greeting.txt") {
         Say("PASS: assets/greeting.txt exists");
     } else {
         Say("FAIL: assets/greeting.txt not found");

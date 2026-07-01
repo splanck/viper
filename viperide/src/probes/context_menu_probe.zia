@@ -64,7 +64,7 @@ func main() {
         fail(shell, "tab context menu missing");
         return;
     }
-    if shell.editorContextMenu.IsVisible() != 0 or shell.tabContextMenu.IsVisible() != 0 {
+    if shell.editorContextMenu.IsVisible() or shell.tabContextMenu.IsVisible() {
         fail(shell, "context menu visible at rest");
         return;
     }

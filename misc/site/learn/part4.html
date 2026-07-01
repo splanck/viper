@@ -277,14 +277,14 @@ var brown = Color.RGB(139, 69, 19);    // More red than green, less blue
 <h3 id="using-predefined-colors">Using Predefined Colors</h3>
 <p>The graphics library provides common colors so you don&#x27;t have to remember RGB values:</p>
 <pre><code data-lang="rust">
-Color.RED       // (255, 0, 0)
-Color.GREEN     // (0, 255, 0) — note: this is pure green, not forest green
-Color.BLUE      // (0, 0, 255)
-Color.WHITE     // (255, 255, 255)
-Color.BLACK     // (0, 0, 0)
-Color.YELLOW    // (255, 255, 0)
-Color.CYAN      // (0, 255, 255)
-Color.MAGENTA   // (255, 0, 255)
+Color.Red       // (255, 0, 0)
+Color.Green     // (0, 255, 0) — note: this is pure green, not forest green
+Color.Blue      // (0, 0, 255)
+Color.White     // (255, 255, 255)
+Color.Black     // (0, 0, 0)
+Color.Yellow    // (255, 255, 0)
+Color.Cyan      // (0, 255, 255)
+Color.Magenta   // (255, 0, 255)
 </code></pre>
 <p>---</p>
 <h2 id="your-first-canvas">Your First Canvas</h2>
@@ -296,7 +296,7 @@ func start() {
     var canvas = Canvas.New(&quot;My First Window&quot;, 800, 600);  // 800 pixels wide, 600 tall
 
     // Draw something
-    canvas.Box(100, 100, 200, 150, Color.RED);
+    canvas.Box(100, 100, 200, 150, Color.Red);
 
     // Show the result
     canvas.Flip();
@@ -313,7 +313,7 @@ func start() {
 <li>**<code>Canvas.New(&quot;My First Window&quot;, 800, 600)</code>** — Create a window 800 pixels wide and 600 pixels tall, with the given title. At this point, the window exists but nothing is drawn on it yet. The frame buffer is allocated in memory, initially filled with black (or whatever the default background is).</li>
 </ul>
 <ol>
-<li>**<code>canvas.Box(100, 100, 200, 150, Color.RED)</code>** — Draw a filled rectangle in red. The parameters mean:</li>
+<li>**<code>canvas.Box(100, 100, 200, 150, Color.Red)</code>** — Draw a filled rectangle in red. The parameters mean:</li>
 <li>Start at x=100, y=100 (the top-left corner of the rectangle)</li>
 <li>Width of 200 pixels</li>
 <li>Height of 150 pixels</li>
@@ -359,10 +359,10 @@ func start() {
 <p>Rectangles are the workhorse of graphics — fast to draw and useful for backgrounds, UI elements, platforms, and countless other purposes.</p>
 <pre><code data-lang="rust">
 // Filled rectangle (solid color)
-canvas.Box(x, y, width, height, Color.BLUE);
+canvas.Box(x, y, width, height, Color.Blue);
 
 // Outline only (just the border)
-canvas.Frame(x, y, width, height, Color.WHITE);
+canvas.Frame(x, y, width, height, Color.White);
 </code></pre>
 <p>The difference between <code>Box</code> and <code>Frame</code>:</p>
 <pre><code data-lang="text">
@@ -378,10 +378,10 @@ Box(50, 50, 100, 80, color)       Frame(50, 50, 100, 80, color)
 <h3 id="circles-and-ellipses">Circles and Ellipses</h3>
 <pre><code data-lang="rust">
 // Filled circle: specify center, radius, and color
-canvas.Disc(centerX, centerY, radius, Color.YELLOW);
+canvas.Disc(centerX, centerY, radius, Color.Yellow);
 
 // Circle outline: specify center, radius, and color
-canvas.Ring(centerX, centerY, radius, Color.YELLOW);
+canvas.Ring(centerX, centerY, radius, Color.Yellow);
 </code></pre>
 <p>For circles, you specify where the <em>center</em> is, how big the radius is, and what color to use. <code>Disc</code> draws a filled circle; <code>Ring</code> draws just the outline.</p>
 <pre><code data-lang="text">
@@ -400,7 +400,7 @@ Disc(200, 150, 50, color)        Ring(200, 150, 50, color)
 <h3 id="lines">Lines</h3>
 <pre><code data-lang="rust">
 // Draw a line from point 1 to point 2
-canvas.Line(x1, y1, x2, y2, Color.GREEN);
+canvas.Line(x1, y1, x2, y2, Color.Green);
 </code></pre>
 <p>Lines connect two points. There&#x27;s no &quot;filled&quot; version — a line is inherently just a path.</p>
 <pre><code data-lang="text">
@@ -418,16 +418,16 @@ Line(50, 50, 200, 150, color)
 <h3 id="individual-pixels">Individual Pixels</h3>
 <p>Sometimes you need to color a single pixel:</p>
 <pre><code data-lang="rust">
-canvas.Plot(x, y, Color.WHITE);
+canvas.Plot(x, y, Color.White);
 </code></pre>
 <p>This is the most fundamental drawing operation — everything else is built from it. Drawing a line is really just setting many pixels in a row; drawing a rectangle is setting pixels in a grid pattern.</p>
 <h3 id="polygons">Polygons</h3>
 <p>For arbitrary shapes, define a series of points and connect them:</p>
 <pre><code data-lang="rust">
 // Triangle — draw using three Line calls
-canvas.Line(100, 200, 150, 100, Color.RED);
-canvas.Line(150, 100, 200, 200, Color.RED);
-canvas.Line(200, 200, 100, 200, Color.RED);
+canvas.Line(100, 200, 150, 100, Color.Red);
+canvas.Line(150, 100, 200, 200, Color.Red);
+canvas.Line(200, 200, 100, 200, Color.Red);
 
 // For filled polygons, build them from Box/Disc primitives
 // or draw them line-by-line (scanline fill)
@@ -448,7 +448,7 @@ Triangle from [(100,200), (150,100), (200,200)]:
 <h2 id="drawing-text">Drawing Text</h2>
 <p>Text is rendered as graphics too — each character is drawn as a pattern of pixels in the font&#x27;s defined shape.</p>
 <pre><code data-lang="rust">
-canvas.Text(100, 100, &quot;Hello, Graphics!&quot;, Color.BLACK);
+canvas.Text(100, 100, &quot;Hello, Graphics!&quot;, Color.Black);
 </code></pre>
 <p>The coordinates (100, 100) specify where the text starts — specifically, the left edge at the text&#x27;s <em>baseline</em>. The baseline is the line that letters sit on (think of the bottom of letters like &#x27;a&#x27; or &#x27;x&#x27;, but letters like &#x27;g&#x27; and &#x27;y&#x27; extend below it).</p>
 <pre><code data-lang="text">
@@ -484,7 +484,7 @@ func start() {
     canvas.Box(0, 350, 640, 130, Color.RGB(34, 139, 34));  // Forest green
 
     // Step 3: Sun
-    canvas.Disc(550, 80, 50, Color.YELLOW);
+    canvas.Disc(550, 80, 50, Color.Yellow);
 
     // Step 4: House body
     canvas.Box(200, 250, 200, 150, Color.RGB(139, 69, 19));  // Brown
@@ -502,12 +502,12 @@ func start() {
     canvas.Box(320, 280, 50, 50, Color.RGB(173, 216, 230));  // Light blue
 
     // Step 8: Window frame
-    canvas.Frame(320, 280, 50, 50, Color.WHITE);
-    canvas.Line(345, 280, 345, 330, Color.WHITE);
-    canvas.Line(320, 305, 370, 305, Color.WHITE);
+    canvas.Frame(320, 280, 50, 50, Color.White);
+    canvas.Line(345, 280, 345, 330, Color.White);
+    canvas.Line(320, 305, 370, 305, Color.White);
 
     // Step 9: Label
-    canvas.Text(250, 450, &quot;Home Sweet Home&quot;, Color.WHITE);
+    canvas.Text(250, 450, &quot;Home Sweet Home&quot;, Color.White);
 
     canvas.Flip();
     while !canvas.ShouldClose {
@@ -623,10 +623,10 @@ func start() {
         // === RENDER ===
 
         // Clear screen (draw black background)
-        canvas.Clear(Color.BLACK);
+        canvas.Clear(Color.Black);
 
         // Draw ball at new position
-        canvas.Disc(x, y, radius, Color.RED);
+        canvas.Disc(x, y, radius, Color.Red);
 
         // Show the result
         canvas.Flip();
@@ -759,8 +759,8 @@ while !canvas.ShouldClose {
     // ... collision checks using the same dt logic ...
 
     // Render
-    canvas.Clear(Color.BLACK);
-    canvas.Disc(x, y, 20, Color.RED);
+    canvas.Clear(Color.Black);
+    canvas.Disc(x, y, 20, Color.Red);
     canvas.Flip();
 
     Time.Clock.Sleep(16);
@@ -797,7 +797,7 @@ var canvas = Canvas.New(&quot;My App&quot;, 800, 600);
 
 while !canvas.ShouldClose {
     canvas.Poll();
-    canvas.Clear(Color.BLACK);  // Clear the back buffer
+    canvas.Clear(Color.Black);  // Clear the back buffer
     drawEverything();            // Draw to back buffer
     canvas.Flip();               // Swap buffers — back becomes front
 }
@@ -936,7 +936,7 @@ class Game {
 
     func render() {
         // Clear screen
-        self.canvas.Clear(Color.BLACK);
+        self.canvas.Clear(Color.Black);
 
         // Draw all objects
         for obj in self.objects {
@@ -951,8 +951,8 @@ class Game {
 func start() {
     var game = Game(800, 600, &quot;My Game&quot;);
 
-    game.Add(GameObject(100, 100, 50, 50, Color.RED));
-    game.Add(GameObject(300, 200, 30, 30, Color.BLUE));
+    game.Add(GameObject(100, 100, 50, 50, Color.Red));
+    game.Add(GameObject(300, 200, 30, 30, Color.Blue));
 
     game.run();
 }
@@ -972,17 +972,17 @@ func start() {
 <pre><code data-lang="rust">
 var canvas = Canvas.New(&quot;Demo&quot;, 800, 600);
 // Later...
-canvas.Box(0, 0, 800, 600, Color.BLACK);  // This is correct
-canvas.Disc(800, 600, 10, Color.RED);     // Bug! (800, 600) is outside the canvas
+canvas.Box(0, 0, 800, 600, Color.Black);  // This is correct
+canvas.Disc(800, 600, 10, Color.Red);     // Bug! (800, 600) is outside the canvas
 </code></pre>
 <p><strong>Why it&#x27;s wrong:</strong> A 800x600 canvas has coordinates from (0,0) to (799, 599). Position (800, 600) is one pixel beyond the right and bottom edges.</p>
 <p><strong>The fix:</strong></p>
 <pre><code data-lang="rust">
 // The bottom-right corner is at (width-1, height-1)
-canvas.Disc(799, 599, 10, Color.RED);
+canvas.Disc(799, 599, 10, Color.Red);
 
 // Or calculate from canvas size:
-canvas.Disc(width - 1, height - 1, 10, Color.RED);
+canvas.Disc(width - 1, height - 1, 10, Color.Red);
 </code></pre>
 <h3 id="mistake-2-forgetting-to-clear-the-screen">Mistake 2: Forgetting to Clear the Screen</h3>
 <p><strong>The bug:</strong></p>
@@ -990,7 +990,7 @@ canvas.Disc(width - 1, height - 1, 10, Color.RED);
 while !canvas.ShouldClose {
     canvas.Poll();
     x += 5;
-    canvas.Disc(x, 100, 20, Color.RED);  // No clear before this!
+    canvas.Disc(x, 100, 20, Color.Red);  // No clear before this!
     canvas.Flip();
 }
 </code></pre>
@@ -1002,26 +1002,26 @@ while !canvas.ShouldClose {
     x += 5;
 
     // Clear first!
-    canvas.Clear(Color.BLACK);
+    canvas.Clear(Color.Black);
 
-    canvas.Disc(x, 100, 20, Color.RED);
+    canvas.Disc(x, 100, 20, Color.Red);
     canvas.Flip();
 }
 </code></pre>
 <h3 id="mistake-3-drawing-in-wrong-order-z-order-issues">Mistake 3: Drawing in Wrong Order (Z-Order Issues)</h3>
 <p><strong>The bug:</strong></p>
 <pre><code data-lang="rust">
-canvas.Disc(100, 100, 50, Color.RED);     // Draw player
-canvas.Box(0, 0, 800, 600, Color.BLUE);   // Draw background
+canvas.Disc(100, 100, 50, Color.Red);     // Draw player
+canvas.Box(0, 0, 800, 600, Color.Blue);   // Draw background
 </code></pre>
 <p><strong>What happens:</strong> The background covers the player because it&#x27;s drawn second.</p>
 <p><strong>The fix:</strong> Draw back-to-front (painter&#x27;s algorithm):</p>
 <pre><code data-lang="rust">
 // Background first (farthest back)
-canvas.Box(0, 0, 800, 600, Color.BLUE);
+canvas.Box(0, 0, 800, 600, Color.Blue);
 
 // Then foreground elements (closer to viewer)
-canvas.Disc(100, 100, 50, Color.RED);
+canvas.Disc(100, 100, 50, Color.Red);
 </code></pre>
 <h3 id="mistake-4-integer-vs-float-precision">Mistake 4: Integer vs. Float Precision</h3>
 <p><strong>The bug:</strong></p>
@@ -1037,15 +1037,15 @@ var x = 100.0;  // Float
 x = x + 0.5;    // Now x = 100.5
 
 // When drawing, convert to integer:
-canvas.Disc(x as Integer, y as Integer, 20, Color.RED);
+canvas.Disc(x as Integer, y as Integer, 20, Color.Red);
 </code></pre>
 <h3 id="mistake-5-forgetting-flip">Mistake 5: Forgetting Flip()</h3>
 <p><strong>The bug:</strong></p>
 <pre><code data-lang="rust">
 while !canvas.ShouldClose {
     canvas.Poll();
-    canvas.Clear(Color.BLACK);
-    canvas.Disc(x, y, 20, Color.RED);
+    canvas.Clear(Color.Black);
+    canvas.Disc(x, y, 20, Color.Red);
     // Forgot canvas.Flip()!
 }
 </code></pre>
@@ -1083,14 +1083,14 @@ Say(&quot;x=&quot; + x + &quot;, y=&quot; + y + &quot;, dx=&quot; + dx);
 <p>Make the invisible visible:</p>
 <pre><code data-lang="rust">
 // Draw bounding boxes around objects
-canvas.Frame(player.x, player.y, player.width, player.height, Color.WHITE);
+canvas.Frame(player.x, player.y, player.width, player.height, Color.White);
 
 // Draw collision points
-canvas.Disc(player.x, player.y, 3, Color.YELLOW);  // Top-left corner
-canvas.Disc(player.x + player.width, player.y + player.height, 3, Color.YELLOW);  // Bottom-right
+canvas.Disc(player.x, player.y, 3, Color.Yellow);  // Top-left corner
+canvas.Disc(player.x + player.width, player.y + player.height, 3, Color.Yellow);  // Bottom-right
 
 // Draw velocity vectors
-canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy * 10, Color.GREEN);
+canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy * 10, Color.Green);
 </code></pre>
 <h3 id="step-3-slow-down-time">Step 3: Slow Down Time</h3>
 <p>Make things move slowly so you can watch:</p>
@@ -1108,7 +1108,7 @@ x += dx * speedMultiplier;
 <p>Simplify until it works:</p>
 <pre><code data-lang="rust">
 // Remove the game loop — just draw once
-canvas.Box(100, 100, 50, 50, Color.RED);
+canvas.Box(100, 100, 50, 50, Color.Red);
 canvas.Flip();
 while !canvas.ShouldClose {
     canvas.Poll();
@@ -1130,8 +1130,8 @@ for i in 0..=6 {
 }
 
 // Label some coordinates
-canvas.Text(5, 15, &quot;(0,0)&quot;, Color.WHITE);
-canvas.Text(405, 315, &quot;(400,300)&quot;, Color.WHITE);
+canvas.Text(5, 15, &quot;(0,0)&quot;, Color.White);
+canvas.Text(405, 315, &quot;(400,300)&quot;, Color.White);
 </code></pre>
 <p>---</p>
 <h2 id="the-two-languages">The Two Languages</h2>
@@ -1140,7 +1140,7 @@ canvas.Text(405, 315, &quot;(400,300)&quot;, Color.WHITE);
 bind Viper.Graphics;
 
 var canvas = Canvas.New(&quot;Demo&quot;, 800, 600);
-canvas.Box(100, 100, 200, 150, Color.RED);
+canvas.Box(100, 100, 200, 150, Color.Red);
 canvas.Flip();
 </code></pre>
 <p><strong>BASIC</strong></p>
@@ -1248,12 +1248,12 @@ REFRESH
 bind Keyboard = Viper.Input.Keyboard;
 
 // This fires continuously while the key is held
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     // This code runs 60 times per second while space is held!
 }
 
 // This fires exactly once when the key is first pressed
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.IsPressed(Keyboard.KeySpace) {
     // This code runs once, when space goes from up to down
 }
 </code></pre>
@@ -1273,7 +1273,7 @@ if Keyboard.IsPressed(KEY_SPACE) {
 <li>Any action that should happen once per button press</li>
 </ul>
 <h3 id="text-input-events">Text Input Events</h3>
-<p>Games typically use key codes (like <code>KEY_A</code>), but text input is more complex. When the user presses Shift+A, they probably want an uppercase &#x27;A&#x27;, not separate events for Shift and A. When they&#x27;re typing in a language that requires an input method editor (like Chinese or Japanese), a single character might require multiple key presses.</p>
+<p>Games typically use key codes (like <code>KeyA</code>), but text input is more complex. When the user presses Shift+A, they probably want an uppercase &#x27;A&#x27;, not separate events for Shift and A. When they&#x27;re typing in a language that requires an input method editor (like Chinese or Japanese), a single character might require multiple key presses.</p>
 <p>For text input (like typing a player&#x27;s name), Viper provides text input events that handle all this complexity:</p>
 <pre><code data-lang="rust">
 bind Keyboard = Viper.Input.Keyboard;
@@ -1292,9 +1292,9 @@ if Keyboard.HasTextInput() {
 <li>Sets the internal state of Space to &quot;down&quot;</li>
 <li>Sets a flag indicating Space was &quot;just pressed&quot; this frame</li>
 </ul>
-<p>Your game loop runs. When it calls <code>Keyboard.IsPressed(KEY_SPACE)</code>, the function returns <code>true</code> because the &quot;just pressed&quot; flag is set. Your code calls <code>player.jump()</code>, and the character begins rising into the air.</p>
+<p>Your game loop runs. When it calls <code>Keyboard.IsPressed(Keyboard.KeySpace)</code>, the function returns <code>true</code> because the &quot;just pressed&quot; flag is set. Your code calls <code>player.jump()</code>, and the character begins rising into the air.</p>
 <p><strong>Frame 2:</strong> No new Space events (the player is still holding the key). At the start of this frame, Viper clears all the &quot;just pressed&quot; flags from the previous frame. The state of Space is still &quot;down&quot;, but it&#x27;s no longer &quot;just pressed.&quot;</p>
-<p>Your game loop runs. <code>Keyboard.IsPressed(KEY_SPACE)</code> now returns <code>false</code> because the flag was cleared. But <code>Keyboard.IsDown(KEY_SPACE)</code> still returns <code>true</code> because the key is still being held. Your physics code continues the jump — the character rises and then falls.</p>
+<p>Your game loop runs. <code>Keyboard.IsPressed(Keyboard.KeySpace)</code> now returns <code>false</code> because the flag was cleared. But <code>Keyboard.IsDown(Keyboard.KeySpace)</code> still returns <code>true</code> because the key is still being held. Your physics code continues the jump — the character rises and then falls.</p>
 <p><strong>Frame 10:</strong> The player releases the Space bar. The OS creates a key-up event. Viper reads it and:</p>
 <ul>
 <li>Sets the internal state of Space to &quot;up&quot;</li>
@@ -1311,23 +1311,23 @@ if Keyboard.HasTextInput() {
 bind Keyboard = Viper.Input.Keyboard;
 
 while gameRunning {
-    if Keyboard.IsDown(KEY_LEFT) {
+    if Keyboard.IsDown(Keyboard.KeyLeft) {
         player.x -= speed * dt;
     }
-    if Keyboard.IsDown(KEY_RIGHT) {
+    if Keyboard.IsDown(Keyboard.KeyRight) {
         player.x += speed * dt;
     }
-    if Keyboard.IsDown(KEY_UP) {
+    if Keyboard.IsDown(Keyboard.KeyUp) {
         player.y -= speed * dt;
     }
-    if Keyboard.IsDown(KEY_DOWN) {
+    if Keyboard.IsDown(Keyboard.KeyDown) {
         player.y += speed * dt;
     }
 }
 </code></pre>
 <p>Let&#x27;s trace through this code:</p>
 <ul>
-<li><code>Keyboard.IsDown(KEY_LEFT)</code> returns <code>true</code> if the left arrow key is currently pressed, <code>false</code> otherwise.</li>
+<li><code>Keyboard.IsDown(Keyboard.KeyLeft)</code> returns <code>true</code> if the left arrow key is currently pressed, <code>false</code> otherwise.</li>
 <li>If it&#x27;s pressed, we subtract from <code>player.x</code>, moving the player leftward.</li>
 <li>We multiply by <code>speed</code> (how fast to move) and <code>dt</code> (delta time — how many seconds passed since the last frame). This makes movement consistent regardless of frame rate.</li>
 <li>We check each direction independently, so the player can move diagonally by holding two arrows.</li>
@@ -1338,15 +1338,15 @@ while gameRunning {
 <pre><code data-lang="rust">
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.IsPressed(Keyboard.KeySpace) {
     player.jump();
 }
 
-if Keyboard.IsPressed(KEY_ESCAPE) {
+if Keyboard.IsPressed(Keyboard.KeyEscape) {
     pauseGame();
 }
 
-if Keyboard.IsPressed(KEY_R) {
+if Keyboard.IsPressed(Keyboard.KeyR) {
     restartLevel();
 }
 </code></pre>
@@ -1361,7 +1361,7 @@ if Keyboard.IsPressed(KEY_R) {
 <pre><code data-lang="rust">
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.IsReleased(KEY_CTRL) {
+if Keyboard.IsReleased(Keyboard.KeyLeftControl) {
     // Player released the aim button
     releaseArrow();  // Fire the arrow they were aiming
 }
@@ -1371,41 +1371,41 @@ if Keyboard.IsReleased(KEY_CTRL) {
 <p>Viper provides named constants for all standard keys:</p>
 <pre><code data-lang="rust">
 // Arrow keys
-KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN
+KeyLeft, KeyRight, KeyUp, KeyDown
 
 // Letters (uppercase names, but detect both cases)
-KEY_A, KEY_B, KEY_C, ... KEY_Z
+KeyA, KeyB, KeyC, ... KeyZ
 
 // Numbers (top row of keyboard)
-KEY_0, KEY_1, ... KEY_9
+Key0, Key1, ... Key9
 
 // Numpad numbers
 KEY_NUMPAD_0, KEY_NUMPAD_1, ... KEY_NUMPAD_9
 
 // Function keys
-KEY_F1, KEY_F2, ... KEY_F12
+KeyF1, KeyF2, ... KeyF12
 
 // Special keys
-KEY_SPACE, KEY_ENTER, KEY_ESCAPE
-KEY_TAB, KEY_BACKSPACE, KEY_DELETE
-KEY_HOME, KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN
+KeySpace, KeyEnter, KeyEscape
+KeyTab, KeyBackspace, KeyDelete
+KeyHome, KeyEnd, KeyPageUp, KeyPageDown
 
 // Modifier keys
-KEY_SHIFT, KEY_CTRL, KEY_ALT
-KEY_LEFT_SHIFT, KEY_RIGHT_SHIFT  // Distinguish left from right
-KEY_LEFT_CTRL, KEY_RIGHT_CTRL
-KEY_LEFT_ALT, KEY_RIGHT_ALT
+KeyLeftShift, KeyLeftControl, KeyLeftAlt
+KeyLeft_SHIFT, KeyRight_SHIFT  // Distinguish left from right
+KeyLeft_CTRL, KeyRight_CTRL
+KeyLeft_ALT, KeyRight_ALT
 </code></pre>
 <h3 id="checking-modifier-keys">Checking Modifier Keys</h3>
 <p>Modifier keys (Shift, Ctrl, Alt) are often used in combination with other keys:</p>
 <pre><code data-lang="rust">
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.IsPressed(KEY_S) &amp;&amp; Keyboard.IsDown(KEY_CTRL) {
+if Keyboard.IsPressed(Keyboard.KeyS) &amp;&amp; Keyboard.IsDown(Keyboard.KeyLeftControl) {
     saveGame();  // Ctrl+S to save
 }
 
-if Keyboard.IsDown(KEY_SHIFT) {
+if Keyboard.IsDown(Keyboard.KeyLeftShift) {
     speed = runSpeed;  // Hold shift to run
 } else {
     speed = walkSpeed;
@@ -1496,7 +1496,7 @@ func start() {
     var canvas = Canvas.New(&quot;Draw with Mouse&quot;, 800, 600);
 
     // Start with a white background
-    canvas.Box(0, 0, 800, 600, Color.WHITE);
+    canvas.Box(0, 0, 800, 600, Color.White);
 
     while !canvas.ShouldClose {
         canvas.Poll();
@@ -1505,12 +1505,12 @@ func start() {
         if Mouse.IsDown(0) {
             var x = Mouse.X();
             var y = Mouse.Y();
-            canvas.Disc(x, y, 5, Color.BLACK);
+            canvas.Disc(x, y, 5, Color.Black);
         }
 
         // Right click clears the canvas
         if Mouse.IsClicked(1) {
-            canvas.Box(0, 0, 800, 600, Color.WHITE);
+            canvas.Box(0, 0, 800, 600, Color.White);
         }
 
         canvas.Flip();
@@ -1584,8 +1584,8 @@ ControllerButton.LEFT_STICK, ControllerButton.RIGHT_STICK
 ControllerButton.START, ControllerButton.SELECT
 
 // D-pad (digital directional pad)
-ControllerButton.DPAD_UP, ControllerButton.DPAD_DOWN
-ControllerButton.DPAD_LEFT, ControllerButton.DPAD_RIGHT
+ControllerButton.DButtonUp, ControllerButton.DButtonDown
+ControllerButton.DButtonLeft, ControllerButton.DButtonRight
 </code></pre>
 <h3 id="controller-axes">Controller Axes</h3>
 <pre><code data-lang="rust">
@@ -1639,10 +1639,10 @@ bind Viper.Math as Math;
 class InputManager {
     func getMoveX() -&gt; Number {
         // Check keyboard first
-        if Keyboard.IsDown(KEY_LEFT) || Keyboard.IsDown(KEY_A) {
+        if Keyboard.IsDown(Keyboard.KeyLeft) || Keyboard.IsDown(Keyboard.KeyA) {
             return -1.0;
         }
-        if Keyboard.IsDown(KEY_RIGHT) || Keyboard.IsDown(KEY_D) {
+        if Keyboard.IsDown(Keyboard.KeyRight) || Keyboard.IsDown(Keyboard.KeyD) {
             return 1.0;
         }
 
@@ -1658,10 +1658,10 @@ class InputManager {
     }
 
     func getMoveY() -&gt; Number {
-        if Keyboard.IsDown(KEY_UP) || Keyboard.IsDown(KEY_W) {
+        if Keyboard.IsDown(Keyboard.KeyUp) || Keyboard.IsDown(Keyboard.KeyW) {
             return -1.0;
         }
-        if Keyboard.IsDown(KEY_DOWN) || Keyboard.IsDown(KEY_S) {
+        if Keyboard.IsDown(Keyboard.KeyDown) || Keyboard.IsDown(Keyboard.KeyS) {
             return 1.0;
         }
 
@@ -1676,14 +1676,14 @@ class InputManager {
     }
 
     func isJumpPressed() -&gt; Boolean {
-        return Keyboard.IsPressed(KEY_SPACE) ||
-               Keyboard.IsPressed(KEY_W) ||
+        return Keyboard.IsPressed(Keyboard.KeySpace) ||
+               Keyboard.IsPressed(Keyboard.KeyW) ||
                Input.wasControllerButtonPressed(0, ControllerButton.A);
     }
 
     func isActionPressed() -&gt; Boolean {
-        return Keyboard.IsPressed(KEY_E) ||
-               Keyboard.IsPressed(KEY_ENTER) ||
+        return Keyboard.IsPressed(Keyboard.KeyE) ||
+               Keyboard.IsPressed(Keyboard.KeyEnter) ||
                Input.wasControllerButtonPressed(0, ControllerButton.X);
     }
 }
@@ -1717,13 +1717,13 @@ class KeyMap {
     expose func init() {
         self.bindings = new Map();
         // Default bindings
-        self.bindings.Set(&quot;jump&quot;, KEY_SPACE);
-        self.bindings.Set(&quot;left&quot;, KEY_LEFT);
-        self.bindings.Set(&quot;right&quot;, KEY_RIGHT);
-        self.bindings.Set(&quot;up&quot;, KEY_UP);
-        self.bindings.Set(&quot;down&quot;, KEY_DOWN);
-        self.bindings.Set(&quot;fire&quot;, KEY_CTRL);
-        self.bindings.Set(&quot;pause&quot;, KEY_ESCAPE);
+        self.bindings.Set(&quot;jump&quot;, Keyboard.KeySpace);
+        self.bindings.Set(&quot;left&quot;, Keyboard.KeyLeft);
+        self.bindings.Set(&quot;right&quot;, Keyboard.KeyRight);
+        self.bindings.Set(&quot;up&quot;, Keyboard.KeyUp);
+        self.bindings.Set(&quot;down&quot;, Keyboard.KeyDown);
+        self.bindings.Set(&quot;fire&quot;, Keyboard.KeyLeftControl);
+        self.bindings.Set(&quot;pause&quot;, Keyboard.KeyEscape);
     }
 
     func isActionDown(action: String) -&gt; Boolean {
@@ -1778,7 +1778,7 @@ class InputBuffer {
         }
 
         // When jump is pressed, start the buffer timer
-        if Keyboard.IsPressed(KEY_SPACE) {
+        if Keyboard.IsPressed(Keyboard.KeySpace) {
             self.jumpBufferTime = self.jumpBufferDuration;
         }
     }
@@ -1870,10 +1870,10 @@ var debouncer = Debouncer();
 while inMenu {
     debouncer.update(dt);
 
-    if Keyboard.IsDown(KEY_DOWN) &amp;&amp; debouncer.canActivate(&quot;menuDown&quot;, 0.2) {
+    if Keyboard.IsDown(Keyboard.KeyDown) &amp;&amp; debouncer.canActivate(&quot;menuDown&quot;, 0.2) {
         selectedIndex += 1;
     }
-    if Keyboard.IsDown(KEY_UP) &amp;&amp; debouncer.canActivate(&quot;menuUp&quot;, 0.2) {
+    if Keyboard.IsDown(Keyboard.KeyUp) &amp;&amp; debouncer.canActivate(&quot;menuUp&quot;, 0.2) {
         selectedIndex -= 1;
     }
 }
@@ -1926,15 +1926,15 @@ func start() {
         // --- INPUT ---
         // Horizontal movement (continuous - use IsDown)
         player.vx = 0.0;
-        if Keyboard.IsDown(KEY_LEFT) || Keyboard.IsDown(KEY_A) {
+        if Keyboard.IsDown(Keyboard.KeyLeft) || Keyboard.IsDown(Keyboard.KeyA) {
             player.vx = -MOVE_SPEED;
         }
-        if Keyboard.IsDown(KEY_RIGHT) || Keyboard.IsDown(KEY_D) {
+        if Keyboard.IsDown(Keyboard.KeyRight) || Keyboard.IsDown(Keyboard.KeyD) {
             player.vx = MOVE_SPEED;
         }
 
         // Jump (one-time action - use IsPressed)
-        if Keyboard.IsPressed(KEY_SPACE) &amp;&amp; player.onGround {
+        if Keyboard.IsPressed(Keyboard.KeySpace) &amp;&amp; player.onGround {
             player.vy = JUMP_SPEED;
             player.onGround = false;
         }
@@ -1968,14 +1968,14 @@ func start() {
         canvas.Box(0, GROUND_Y + 50, 800, 100, Color.RGB(50, 150, 50));
 
         // Player (centered on position)
-        canvas.Box(player.x - 25, player.y - 50, 50, 50, Color.RED);
+        canvas.Box(player.x - 25, player.y - 50, 50, 50, Color.Red);
 
         // Instructions
-        canvas.Text(10, 25, &quot;Arrow keys or A/D to move, Space to jump&quot;, Color.WHITE);
+        canvas.Text(10, 25, &quot;Arrow keys or A/D to move, Space to jump&quot;, Color.White);
 
         // Debug info
-        canvas.Text(10, 50, &quot;Position: (&quot; + player.x + &quot;, &quot; + player.y + &quot;)&quot;, Color.WHITE);
-        canvas.Text(10, 75, &quot;On ground: &quot; + player.onGround, Color.WHITE);
+        canvas.Text(10, 50, &quot;Position: (&quot; + player.x + &quot;, &quot; + player.y + &quot;)&quot;, Color.White);
+        canvas.Text(10, 75, &quot;On ground: &quot; + player.onGround, Color.White);
 
         canvas.Flip();
         Time.Clock.Sleep(16);
@@ -2013,13 +2013,13 @@ func start() {
 <h3 id="mistake-1-using-isdown-for-one-time-actions">Mistake 1: Using IsDown for One-Time Actions</h3>
 <p><strong>Wrong:</strong></p>
 <pre><code data-lang="rust">
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     fireBullet();  // Fires 60 bullets per second!
 }
 </code></pre>
 <p><strong>Right:</strong></p>
 <pre><code data-lang="rust">
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.IsPressed(Keyboard.KeySpace) {
     fireBullet();  // Fires once per button press
 }
 </code></pre>
@@ -2027,19 +2027,19 @@ if Keyboard.IsPressed(KEY_SPACE) {
 <h3 id="mistake-2-forgetting-to-handle-key-release">Mistake 2: Forgetting to Handle Key Release</h3>
 <p><strong>Problem:</strong></p>
 <pre><code data-lang="rust">
-if Keyboard.IsPressed(KEY_SHIFT) {
+if Keyboard.IsPressed(Keyboard.KeyLeftShift) {
     player.isRunning = true;
 }
 // Player runs forever after pressing shift once!
 </code></pre>
 <p><strong>Fix:</strong></p>
 <pre><code data-lang="rust">
-player.isRunning = Keyboard.IsDown(KEY_SHIFT);
+player.isRunning = Keyboard.IsDown(Keyboard.KeyLeftShift);
 // Or:
-if Keyboard.IsPressed(KEY_SHIFT) {
+if Keyboard.IsPressed(Keyboard.KeyLeftShift) {
     player.isRunning = true;
 }
-if Keyboard.IsReleased(KEY_SHIFT) {
+if Keyboard.IsReleased(Keyboard.KeyLeftShift) {
     player.isRunning = false;
 }
 </code></pre>
@@ -2049,7 +2049,7 @@ if Keyboard.IsReleased(KEY_SHIFT) {
 <pre><code data-lang="rust">
 func checkJump() {
     // This might miss the key press!
-    if Keyboard.IsPressed(KEY_SPACE) {
+    if Keyboard.IsPressed(Keyboard.KeySpace) {
         player.jump();
     }
 }
@@ -2060,7 +2060,7 @@ func checkJump() {
 <pre><code data-lang="rust">
 // In main game loop, called every frame
 while gameRunning {
-    if Keyboard.IsPressed(KEY_SPACE) {
+    if Keyboard.IsPressed(Keyboard.KeySpace) {
         player.jump();
     }
     // ...
@@ -2088,9 +2088,9 @@ player.x += stickX * speed * dt;
 <p><strong>Problematic:</strong></p>
 <pre><code data-lang="rust">
 // Scattered throughout your code
-if Keyboard.IsDown(KEY_W) { moveUp(); }
-if Keyboard.IsDown(KEY_A) { moveLeft(); }
-if Keyboard.IsPressed(KEY_SPACE) { jump(); }
+if Keyboard.IsDown(Keyboard.KeyW) { moveUp(); }
+if Keyboard.IsDown(Keyboard.KeyA) { moveLeft(); }
+if Keyboard.IsPressed(Keyboard.KeySpace) { jump(); }
 </code></pre>
 <p><strong>Better:</strong></p>
 <pre><code data-lang="rust">
@@ -2130,7 +2130,7 @@ while !canvas.ShouldClose {
 func startGame() {
     // The player pressed Enter to start, but Enter might still register
     // as a &quot;just pressed&quot; key this frame
-    if Keyboard.IsPressed(KEY_ENTER) {
+    if Keyboard.IsPressed(Keyboard.KeyEnter) {
         // This triggers immediately, maybe pausing the game!
         togglePause();
     }
@@ -2151,9 +2151,9 @@ func startGame() {
 <p>The simplest debugging technique — see what the input system is actually reporting:</p>
 <pre><code data-lang="rust">
 // Add to your game loop temporarily
-canvas.Text(10, 50, &quot;Space down: &quot; + Keyboard.IsDown(KEY_SPACE), Color.WHITE);
-canvas.Text(10, 70, &quot;Space pressed: &quot; + Keyboard.IsPressed(KEY_SPACE), Color.WHITE);
-canvas.Text(10, 90, &quot;Mouse: &quot; + Mouse.X() + &quot;, &quot; + Mouse.Y(), Color.WHITE);
+canvas.Text(10, 50, &quot;Space down: &quot; + Keyboard.IsDown(Keyboard.KeySpace), Color.White);
+canvas.Text(10, 70, &quot;Space pressed: &quot; + Keyboard.IsPressed(Keyboard.KeySpace), Color.White);
+canvas.Text(10, 90, &quot;Mouse: &quot; + Mouse.X() + &quot;, &quot; + Mouse.Y(), Color.White);
 </code></pre>
 <p>If the display shows the input is detected but your game doesn&#x27;t respond, the bug is in your game logic. If the display doesn&#x27;t show the input, the problem is earlier in the pipeline.</p>
 <h3 id="check-event-order">Check Event Order</h3>
@@ -2161,7 +2161,7 @@ canvas.Text(10, 90, &quot;Mouse: &quot; + Mouse.X() + &quot;, &quot; + Mouse.Y()
 <pre><code data-lang="rust">
 // Bug: wasKeyPressed is checked after the action already happened
 player.update();  // This might call Input functions internally
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.IsPressed(Keyboard.KeySpace) {
     // This never triggers because IsPressed was already
     // consumed (or cleared) during player.update()
 }
@@ -2170,7 +2170,7 @@ if Keyboard.IsPressed(KEY_SPACE) {
 <h3 id="verify-focus">Verify Focus</h3>
 <p>Is your game window actually focused?</p>
 <pre><code data-lang="rust">
-canvas.Text(10, 110, &quot;Has focus: &quot; + canvas.HasFocus(), Color.WHITE);
+canvas.Text(10, 110, &quot;Has focus: &quot; + canvas.HasFocus(), Color.White);
 </code></pre>
 <p>Some input might not register if the window isn&#x27;t focused.</p>
 <h3 id="test-with-different-input-devices">Test with Different Input Devices</h3>
@@ -2187,7 +2187,7 @@ bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Terminal;
 bind Viper.Time;
 
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.IsPressed(Keyboard.KeySpace) {
     Say(&quot;Jump pressed at time: &quot; + Time.Clock.Ticks());
 }
 
@@ -2207,10 +2207,10 @@ bind Keyboard = Viper.Input.Keyboard;
 bind Mouse = Viper.Input.Mouse;
 
 // Keyboard
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     player.charging = true;
 }
-if Keyboard.IsPressed(KEY_ESCAPE) {
+if Keyboard.IsPressed(Keyboard.KeyEscape) {
     pauseGame();
 }
 
@@ -2230,10 +2230,10 @@ if Input.isControllerConnected(0) {
 <p><strong>BASIC</strong></p>
 <pre><code data-lang="basic">
 &#x27; Keyboard
-IF KEYDOWN(KEY_SPACE) THEN
+IF KEYDOWN(KeySpace) THEN
     player.charging = TRUE
 END IF
-IF KEYPRESSED(KEY_ESCAPE) THEN
+IF KEYPRESSED(KeyEscape) THEN
     CALL PauseGame()
 END IF
 
@@ -2241,14 +2241,14 @@ END IF
 DIM mx AS INTEGER, my AS INTEGER
 mx = MOUSEX
 my = MOUSEY
-IF MOUSEPRESSED(BUTTON_LEFT) THEN
+IF MOUSEPRESSED(ButtonLeft) THEN
     CALL HandleClick(mx, my)
 END IF
 
 &#x27; Controller
 IF CONTROLLERCONNECTED(0) THEN
     DIM moveX AS SINGLE
-    moveX = CONTROLLERAXIS(0, AXIS_LEFT_X)
+    moveX = CONTROLLERAXIS(0, AxisLeftX)
     player.x = player.x + moveX * speed * dt
 END IF
 </code></pre>
@@ -2373,7 +2373,7 @@ Rectangle A overlaps Rectangle B when:
 <p>This is why we use delta time. If your game runs slower on an old computer (say, 30 frames per second instead of 60), objects should still move the same distance per real-world second. You calculate how much time passed since the last frame and multiply speeds by that value. This way, a car moving at 100 pixels per second actually moves 100 pixels each real second, regardless of frame rate.</p>
 <h3 id="events-vs-states">Events vs. States</h3>
 <p>Some things in games are states: the frog is alive, the player is pressing right, the game is paused. States are continuously true or false. Other things are events: the player just pressed space, the frog just died, the level just completed. Events happen at a specific moment and then are over.</p>
-<p>Treating these differently prevents bugs. If you check <code>Keyboard.IsDown(KEY_SPACE)</code> for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want <code>Keyboard.IsPressed(KEY_SPACE)</code>, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.</p>
+<p>Treating these differently prevents bugs. If you check <code>Keyboard.IsDown(Keyboard.KeySpace)</code> for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want <code>Keyboard.IsPressed(Keyboard.KeySpace)</code>, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.</p>
 <h3 id="the-coordinate-dance">The Coordinate Dance</h3>
 <p>In Frogger, we work with two coordinate systems:</p>
 <p><strong>Grid coordinates</strong> divide the screen into tiles. The frog moves one tile at a time. Row 0 is the top (home row), row 14 is the bottom (starting row). This makes position checking simple: if the frog is in rows 8-13, it is on the road. If it is in rows 1-6, it is on the river.</p>
@@ -2753,28 +2753,28 @@ func setupLevel(state: GameState) -&gt; GameState {
     // This creates variety and challenge
 
     // Row 8: slow cars going right (easiest to dodge)
-    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
-    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
+    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.Red));
+    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.Red));
 
     // Row 9: faster cars going left
-    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
-    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
+    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.Blue));
+    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.Blue));
 
     // Row 10: slow trucks going right (wide, hard to squeeze past)
-    s.vehicles.Push(Vehicle.create(10, 50 * speedMod, 120, Color.YELLOW));
+    s.vehicles.Push(Vehicle.create(10, 50 * speedMod, 120, Color.Yellow));
 
     // Row 11: fast cars going left (dangerous!)
-    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
-    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
-    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.Green));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.Green));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.Green));
 
     // Row 12: medium cars going right
-    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
-    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
+    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.Magenta));
+    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.Magenta));
 
     // Row 13: slow trucks going left (closest to starting area)
-    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
-    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
+    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.Cyan));
+    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.Cyan));
 
     // Spread vehicles out so they do not all start at the same place
     for i in 0..s.vehicles.Length {
@@ -2993,7 +2993,7 @@ bind Viper.Graphics;
 
 expose func render(canvas: Canvas, state: Game.GameState) {
     // Clear the canvas
-    canvas.Clear(Color.BLACK);
+    canvas.Clear(Color.Black);
 
     // Draw the world zones (background)
     drawBackground(canvas);
@@ -3048,7 +3048,7 @@ func drawBackground(canvas: Canvas) {
         var y = row * Config.TILE_SIZE + Config.TILE_SIZE / 2;
         // Dashed lines
         for x in 0..(Config.SCREEN_WIDTH / 50) {
-            canvas.Box(x * 50, y - 2, 30, 4, Color.YELLOW);
+            canvas.Box(x * 50, y - 2, 30, 4, Color.Yellow);
         }
     }
 
@@ -3080,14 +3080,14 @@ func drawHomes(canvas: Canvas, occupied: List[Boolean]) {
 <pre><code data-lang="rust">
 func drawUI(canvas: Canvas, state: Game.GameState) {
     // Display current stats at the bottom
-    canvas.Text(10, Config.SCREEN_HEIGHT - 10, &quot;Score: &quot; + state.score, Color.WHITE);
-    canvas.Text(200, Config.SCREEN_HEIGHT - 10, &quot;Lives: &quot; + state.lives, Color.WHITE);
-    canvas.Text(350, Config.SCREEN_HEIGHT - 10, &quot;Level: &quot; + state.level, Color.WHITE);
+    canvas.Text(10, Config.SCREEN_HEIGHT - 10, &quot;Score: &quot; + state.score, Color.White);
+    canvas.Text(200, Config.SCREEN_HEIGHT - 10, &quot;Lives: &quot; + state.lives, Color.White);
+    canvas.Text(350, Config.SCREEN_HEIGHT - 10, &quot;Level: &quot; + state.level, Color.White);
 
     // Game over screen
     if state.gameOver {
-        canvas.Text(300, 300, &quot;GAME OVER&quot;, Color.RED);
-        canvas.Text(280, 350, &quot;Press ENTER to restart&quot;, Color.WHITE);
+        canvas.Text(300, 300, &quot;GAME OVER&quot;, Color.Red);
+        canvas.Text(280, 350, &quot;Press ENTER to restart&quot;, Color.White);
     }
 }
 </code></pre>
@@ -3128,27 +3128,27 @@ func start() {
         // === INPUT PHASE ===
         if state.gameOver {
             // Only accept restart input when game is over
-            if Keyboard.IsPressed(KEY_ENTER) {
+            if Keyboard.IsPressed(Keyboard.KeyEnter) {
                 state = Game.create();  // Fresh game
             }
         } else {
             // Normal gameplay input
-            if Keyboard.IsPressed(KEY_UP) || Keyboard.IsPressed(KEY_W) {
+            if Keyboard.IsPressed(Keyboard.KeyUp) || Keyboard.IsPressed(Keyboard.KeyW) {
                 state = Game.moveFrog(state, 0, -1);
             }
-            if Keyboard.IsPressed(KEY_DOWN) || Keyboard.IsPressed(KEY_S) {
+            if Keyboard.IsPressed(Keyboard.KeyDown) || Keyboard.IsPressed(Keyboard.KeyS) {
                 state = Game.moveFrog(state, 0, 1);
             }
-            if Keyboard.IsPressed(KEY_LEFT) || Keyboard.IsPressed(KEY_A) {
+            if Keyboard.IsPressed(Keyboard.KeyLeft) || Keyboard.IsPressed(Keyboard.KeyA) {
                 state = Game.moveFrog(state, -1, 0);
             }
-            if Keyboard.IsPressed(KEY_RIGHT) || Keyboard.IsPressed(KEY_D) {
+            if Keyboard.IsPressed(Keyboard.KeyRight) || Keyboard.IsPressed(Keyboard.KeyD) {
                 state = Game.moveFrog(state, 1, 0);
             }
         }
 
         // Escape always quits
-        if Keyboard.IsPressed(KEY_ESCAPE) {
+        if Keyboard.IsPressed(Keyboard.KeyEscape) {
             break;
         }
 
@@ -3205,14 +3205,14 @@ player.x += speed * dt;
 <p><strong>Wrong:</strong></p>
 <pre><code data-lang="rust">
 // This fires every frame the key is held!
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     fireBullet();
 }
 </code></pre>
 <p><strong>Right:</strong></p>
 <pre><code data-lang="rust">
 // This fires once per key press
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.IsPressed(Keyboard.KeySpace) {
     fireBullet();
 }
 </code></pre>
@@ -3284,7 +3284,7 @@ if newX &gt;= 0 &amp;&amp; newX &lt; screenWidth {
 <pre><code data-lang="rust">
 var debugSlowMotion = false;
 
-if Keyboard.IsPressed(KEY_F1) {
+if Keyboard.IsPressed(Keyboard.KeyF1) {
     debugSlowMotion = !debugSlowMotion;
 }
 
@@ -3320,11 +3320,11 @@ if frog.alive &amp;&amp; newFrog.alive == false {
 var paused = false;
 var stepOneFrame = false;
 
-if Keyboard.IsPressed(KEY_P) {
+if Keyboard.IsPressed(Keyboard.KeyP) {
     paused = !paused;
 }
 
-if Keyboard.IsPressed(KEY_N) {  // Next frame
+if Keyboard.IsPressed(Keyboard.KeyN) {  // Next frame
     stepOneFrame = true;
 }
 
@@ -3436,7 +3436,7 @@ if s.timeRemaining &lt;= 0 {
 
 // In rendering:
 canvas.Text(500, Config.SCREEN_HEIGHT - 10,
-            &quot;Time: &quot; + Convert.NumToInt(Math.Floor(state.timeRemaining)), Color.WHITE);
+            &quot;Time: &quot; + Convert.NumToInt(Math.Floor(state.timeRemaining)), Color.White);
 </code></pre>
 <h3 id="submerging-turtles">Submerging Turtles</h3>
 <p>In the original Frogger, turtles periodically submerge, creating temporary danger:</p>

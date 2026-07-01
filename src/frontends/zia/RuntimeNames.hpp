@@ -146,7 +146,7 @@ inline constexpr const char *kListGet = kCollectionsListGet;
 /// @brief Set the element at a given index. O(1).
 inline constexpr const char *kListSet = kCollectionsListSet;
 /// @brief Get the number of elements in the list. O(1).
-inline constexpr const char *kListCount = kCollectionsListGetLength;
+inline constexpr const char *kListCount = kCollectionsListGetCount;
 /// @brief Remove all elements from the list.
 inline constexpr const char *kListClear = kCollectionsListClear;
 /// @brief Remove the element at a given index, shifting subsequent elements.
@@ -173,7 +173,7 @@ inline constexpr const char *kListPop = kCollectionsListPop;
 /// @brief Create a new empty Set. Returns a heap-allocated set handle.
 inline constexpr const char *kSetNew = kCollectionsSetNew;
 /// @brief Get the number of elements in the set. O(1).
-inline constexpr const char *kSetCount = kCollectionsSetGetLength;
+inline constexpr const char *kSetCount = kCollectionsSetGetCount;
 /// @brief Check if the set contains a given value. O(1) average.
 inline constexpr const char *kSetHas = kCollectionsSetHas;
 /// @brief Add a value to the set. No effect if already present. O(1) average.
@@ -204,7 +204,7 @@ inline constexpr const char *kMapGetOr = kCollectionsMapGetOr;
 /// @brief Check if the map contains a given key. O(1) average.
 inline constexpr const char *kMapContainsKey = kCollectionsMapHas;
 /// @brief Get the number of key-value pairs in the map. O(1).
-inline constexpr const char *kMapCount = kCollectionsMapGetLength;
+inline constexpr const char *kMapCount = kCollectionsMapGetCount;
 /// @brief Remove a key-value pair by key.
 inline constexpr const char *kMapRemove = kCollectionsMapRemove;
 /// @brief Set a key-value pair only if the key is not already present.
@@ -237,7 +237,7 @@ inline constexpr const char *kIntMapGetOr = kCollectionsIntMapGetOr;
 /// @brief Check whether an integer key is present.
 inline constexpr const char *kIntMapContainsKey = kCollectionsIntMapHas;
 /// @brief Get the number of integer key-value pairs.
-inline constexpr const char *kIntMapCount = kCollectionsIntMapGetLength;
+inline constexpr const char *kIntMapCount = kCollectionsIntMapGetCount;
 /// @brief Remove an integer key-value pair.
 inline constexpr const char *kIntMapRemove = kCollectionsIntMapRemove;
 /// @brief Remove all integer key-value pairs.
@@ -255,7 +255,7 @@ inline constexpr const char *kIntMapValues = kCollectionsIntMapValues;
 //=============================================================================
 
 /// @brief Get the number of elements in the Seq. O(1).
-inline constexpr const char *kSeqLen = kCollectionsSeqGetLength;
+inline constexpr const char *kSeqLen = kCollectionsSeqGetCount;
 /// @brief Get the element at a given index in the Seq. O(1). Returns obj (Ptr).
 inline constexpr const char *kSeqGet = kCollectionsSeqGet;
 /// @brief Get a string element at a given index in a seq<str> Seq. Returns Str directly.

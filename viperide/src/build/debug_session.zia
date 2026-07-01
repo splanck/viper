@@ -401,12 +401,12 @@ class DebugSession {
     /// @brief Number of call-stack frames at the current stop (0 if not stopped).
     expose func FrameCount() -> Integer {
         if stopFrames == null { return 0; }
-        return Seq.get_Length(stopFrames);
+        return Seq.get_Count(stopFrames);
     }
 
     /// @brief One-line label for call-stack frame @p i: "function — file:line".
     expose func FrameLabel(i: Integer) -> String {
-        if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return ""; }
+        if stopFrames == null or i < 0 or i >= Seq.get_Count(stopFrames) { return ""; }
         var f = Seq.Get(stopFrames, i);
         var fn = Viper.Collections.Map.GetStr(f, "function");
         if fn == "" { fn = "<anonymous>"; }
@@ -415,25 +415,25 @@ class DebugSession {
 
     /// @brief Source path for frame @p i (for click-to-navigate), or "".
     expose func FramePath(i: Integer) -> String {
-        if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return ""; }
+        if stopFrames == null or i < 0 or i >= Seq.get_Count(stopFrames) { return ""; }
         return Viper.Collections.Map.GetStr(Seq.Get(stopFrames, i), "path");
     }
 
     /// @brief One-based source line for frame @p i, or 0.
     expose func FrameLine(i: Integer) -> Integer {
-        if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return 0; }
+        if stopFrames == null or i < 0 or i >= Seq.get_Count(stopFrames) { return 0; }
         return Viper.Collections.Map.GetInt(Seq.Get(stopFrames, i), "line");
     }
 
     /// @brief Number of locals visible at the current stop (0 if not stopped).
     expose func LocalCount() -> Integer {
         if stopLocals == null { return 0; }
-        return Seq.get_Length(stopLocals);
+        return Seq.get_Count(stopLocals);
     }
 
     /// @brief "name = value : type" label for local @p i.
     expose func LocalLabel(i: Integer) -> String {
-        if stopLocals == null or i < 0 or i >= Seq.get_Length(stopLocals) { return ""; }
+        if stopLocals == null or i < 0 or i >= Seq.get_Count(stopLocals) { return ""; }
         var l = Seq.Get(stopLocals, i);
         return Viper.Collections.Map.GetStr(l, "name") + " = " + Viper.Collections.Map.GetStr(l, "value")
             + " : " + Viper.Collections.Map.GetStr(l, "type");
@@ -454,10 +454,10 @@ class DebugSession {
             + activePath + ":" + lastLine + "\n";
 
         var frames = Map.Get(ev, "frames");
-        if frames != null and Seq.get_Length(frames) > 0 {
+        if frames != null and Seq.get_Count(frames) > 0 {
             text = text + "\nCall stack:\n";
             var i = 0;
-            while i < Seq.get_Length(frames) {
+            while i < Seq.get_Count(frames) {
                 var f = Seq.Get(frames, i);
                 text = text + "  #" + i + " " + Viper.Collections.Map.GetStr(f, "function")
                     + " " + Viper.Collections.Map.GetStr(f, "path") + ":" + Viper.Collections.Map.GetInt(f, "line") + "\n";
@@ -466,10 +466,10 @@ class DebugSession {
         }
 
         var locals = Map.Get(ev, "locals");
-        if locals != null and Seq.get_Length(locals) > 0 {
+        if locals != null and Seq.get_Count(locals) > 0 {
             text = text + "\nLocals:\n";
             var j = 0;
-            while j < Seq.get_Length(locals) {
+            while j < Seq.get_Count(locals) {
                 var l = Seq.Get(locals, j);
                 text = text + "  " + Viper.Collections.Map.GetStr(l, "name") + " = "
                     + Viper.Collections.Map.GetStr(l, "value") + " : " + Viper.Collections.Map.GetStr(l, "type") + "\n";

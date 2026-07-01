@@ -112,7 +112,7 @@ expose func NormalizeSearchGlobList(globs: String) -> String {
     var parts = Str.Split(raw, ",");
     var result = "";
     var i = 0;
-    while i < Seq.get_Length(parts) {
+    while i < Seq.get_Count(parts) {
         var part = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
         i = i + 1;
         if part == "" { continue; }
@@ -148,7 +148,7 @@ expose func AnySearchGlobMatches(relativePath: String, globs: String) -> Boolean
 
     var parts = Str.Split(normalizedGlobs, ",");
     var i = 0;
-    while i < Seq.get_Length(parts) {
+    while i < Seq.get_Count(parts) {
         var pattern = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
         i = i + 1;
         if pattern == "" { continue; }

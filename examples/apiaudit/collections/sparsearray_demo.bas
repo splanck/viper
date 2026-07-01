@@ -7,7 +7,7 @@ PRINT "=== SparseArray API Audit ==="
 PRINT "--- New ---"
 DIM sa AS OBJECT
 sa = Viper.Collections.SparseArray.New()
-PRINT sa.Length       ' 0
+PRINT sa.Count       ' 0
 
 ' --- Set / Len ---
 PRINT "--- Set / Len ---"
@@ -15,7 +15,7 @@ sa.Set(0, "zero")
 sa.Set(100, "hundred")
 sa.Set(1000, "thousand")
 sa.Set(-5, "negative")
-PRINT sa.Length       ' 4
+PRINT sa.Count       ' 4
 
 ' --- Get ---
 PRINT "--- Get ---"
@@ -35,31 +35,31 @@ PRINT sa.Has(-5)      ' 1
 PRINT "--- Set (update) ---"
 sa.Set(100, "HUNDRED")
 PRINT sa.Get(100)     ' HUNDRED
-PRINT sa.Length          ' 4
+PRINT sa.Count          ' 4
 
 ' --- Remove ---
 PRINT "--- Remove ---"
 PRINT sa.Remove(1000)    ' 1
 PRINT sa.Has(1000)       ' 0
-PRINT sa.Length             ' 3
+PRINT sa.Count             ' 3
 PRINT sa.Remove(1000)    ' 0
 
 ' --- Indices ---
 PRINT "--- Indices ---"
 DIM indices AS OBJECT
 indices = sa.Indices()
-PRINT indices.Length        ' 3
+PRINT indices.Count        ' 3
 
 ' --- Values ---
 PRINT "--- Values ---"
 DIM vals AS OBJECT
 vals = sa.Values()
-PRINT vals.Length           ' 3
+PRINT vals.Count           ' 3
 
 ' --- Clear ---
 PRINT "--- Clear ---"
 sa.Clear()
-PRINT sa.Length             ' 0
+PRINT sa.Count             ' 0
 
 PRINT "=== SparseArray audit complete ==="
 END

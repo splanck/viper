@@ -164,7 +164,7 @@ class Project {
 
         ignorePatterns = JoinStringSeq(Map.Get(manifest, "excludes"), ",");
         var runConfigs = Map.Get(manifest, "runConfigs");
-        if runConfigs != null and Seq.get_Length(runConfigs) > 0 {
+        if runConfigs != null and Seq.get_Count(runConfigs) > 0 {
             var run = Seq.Get(runConfigs, 0);
             runProgram = Map.GetStr(run, "program");
             runArgs = JoinStringSeq(Map.Get(run, "args"), " ");
@@ -172,7 +172,7 @@ class Project {
         }
 
         var buildConfigs = Map.Get(manifest, "buildConfigs");
-        if buildConfigs != null and Seq.get_Length(buildConfigs) > 0 {
+        if buildConfigs != null and Seq.get_Count(buildConfigs) > 0 {
             var build = Seq.Get(buildConfigs, 0);
             buildProgram = Map.GetStr(build, "program");
             buildArgs = JoinStringSeq(Map.Get(build, "args"), " ");
@@ -193,7 +193,7 @@ class Project {
         if items == null { return ""; }
         var out = "";
         var i = 0;
-        while i < Seq.get_Length(items) {
+        while i < Seq.get_Count(items) {
             var item = Obj.ToString(Seq.Get(items, i));
             if item != "" {
                 if out != "" { out = out + separator; }
@@ -212,7 +212,7 @@ class Project {
         var content = IO.File.ReadAllText(path);
         var lines = Str.Split(content, "\n");
         var i = 0;
-        while i < Seq.get_Length(lines) {
+        while i < Seq.get_Count(lines) {
             var line = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
             i = i + 1;
 

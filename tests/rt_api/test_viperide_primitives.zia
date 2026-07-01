@@ -16,7 +16,7 @@ func start() {
     scene.SetTile(layer, 1, 1, 7);
     scene.SetLayerAsset(layer, "tiles.png");
     SayInt(scene.GetTile(layer, 1, 1));
-    SayInt(scene.AssetPaths().Length);
+    SayInt(scene.AssetPaths().Count);
 
     var fuzzy = Viper.Text.FuzzyMatch.Match("VS", "ViperScene.zia");
     SayBool(fuzzy.GetBool("matched"));

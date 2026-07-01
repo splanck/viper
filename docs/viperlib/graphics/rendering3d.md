@@ -134,7 +134,7 @@ compares against `examples/3d/baselines/walk_min_software.png`.
   and `Canvas3D.get_IsFullscreen(canvas)` switch the backing window between windowed and
   native desktop fullscreen (implemented per-platform on Cocoa, Win32, and X11). The canvas
   re-syncs its size on the toggle and the per-frame projection derives aspect from the active
-  output, so the view stays un-stretched. `Game3D.Keys.get_F11` pairs naturally with these.
+  output, so the view stays un-stretched. `Game3D.Keys.get_KeyF11` pairs naturally with these.
 - **Overlay image blit** — `Canvas3D.DrawImage2D(canvas, x, y, w, h, pixels)` blits a `Pixels`
   image into the 2D overlay (unlit, screen-space) scaled to `w×h`. Combine with
   `RenderTarget3D.AsPixels(rt)` to show a rendered texture, such as a top-down minimap, on the HUD.
@@ -654,7 +654,7 @@ the currently resident RGBA8 mip and native block source for each draw.
 | `HasSpecularMap` | Boolean | Read | Specular-map slot is bound |
 | `HasEmissiveMap` | Boolean | Read | Emissive-map slot is bound |
 | `HasMetallicRoughnessMap` | Boolean | Read | PBR metallic-roughness map slot is bound |
-| `HasAOMap` | Boolean | Read | Ambient-occlusion map slot is bound |
+| `HasAmbientOcclusionMap` | Boolean | Read | Ambient-occlusion map slot is bound |
 | `HasEnvMap` | Boolean | Read | Environment cubemap slot is bound |
 | `Reflectivity` | Double | Read/Write | Environment reflection strength |
 

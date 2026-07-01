@@ -14,7 +14,7 @@ func near(a: Float, b: Float, eps: Float) -> Boolean {
 
 func spawnPin(world: Game3D.World3D, x: Float, z: Float, index: Integer) -> Game3D.Entity3D {
     var pin: Game3D.Entity3D = Game3D.Prefab.Cylinder(0.16, 0.92, 18, Game3D.Materials.Plastic(0.96, 0.94, 0.86));
-    pin.SetName("Pin" + index);
+    pin.Name = "Pin" + index;
     pin.SetPosition(x, 0.46, z);
     var body = Game3D.BodyDef.Capsule(0.16, 0.92, 0.85);
     body.Friction = 0.72;
@@ -39,30 +39,30 @@ func runSetup(render: Boolean) -> Float {
     var ballMat = Game3D.Materials.Plastic(0.08, 0.18, 0.72);
 
     var lane: Game3D.Entity3D = Game3D.Prefab.BoxXYZ(3.2, 0.12, 12.0, laneMat);
-    lane.SetName("Lane");
+    lane.Name = "Lane";
     lane.SetPosition(0.0, -0.06, 0.0);
     lane.AttachBody(Game3D.BodyDef.StaticBox(1.6, 0.06, 6.0));
     world.Spawn(lane);
 
     var leftRail: Game3D.Entity3D = Game3D.Prefab.BoxXYZ(0.18, 0.28, 12.0, railMat);
-    leftRail.SetName("LeftRail");
+    leftRail.Name = "LeftRail";
     leftRail.SetPosition(-1.78, 0.08, 0.0);
     leftRail.AttachBody(Game3D.BodyDef.StaticBox(0.09, 0.14, 6.0));
     world.Spawn(leftRail);
 
     var rightRail: Game3D.Entity3D = Game3D.Prefab.BoxXYZ(0.18, 0.28, 12.0, railMat);
-    rightRail.SetName("RightRail");
+    rightRail.Name = "RightRail";
     rightRail.SetPosition(1.78, 0.08, 0.0);
     rightRail.AttachBody(Game3D.BodyDef.StaticBox(0.09, 0.14, 6.0));
     world.Spawn(rightRail);
 
     var ball: Game3D.Entity3D = Game3D.Prefab.Sphere(0.28, 20, ballMat);
-    ball.SetName("BowlingBall");
+    ball.Name = "BowlingBall";
     ball.SetPosition(0.0, 0.30, 4.7);
     var ballBody = Game3D.BodyDef.Sphere(0.28, 3.2);
     ballBody.Friction = 0.48;
     ballBody.Restitution = 0.18;
-    ballBody.UseCCD = true;
+    ballBody.UseCcd = true;
     ball.AttachBody(ballBody);
     world.Spawn(ball);
 

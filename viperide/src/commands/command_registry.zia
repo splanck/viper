@@ -148,9 +148,9 @@ class CommandRegistry {
             var cmd = commands.get(i);
             if cmd.shortcut != "" {
                 if IsSupported(cmd, service) {
-                    Shortcuts.SetEnabled(cmd.id, 1);
+                    Shortcuts.SetEnabled(cmd.id, true);
                 } else {
-                    Shortcuts.SetEnabled(cmd.id, 0);
+                    Shortcuts.SetEnabled(cmd.id, false);
                 }
             }
             i = i + 1;

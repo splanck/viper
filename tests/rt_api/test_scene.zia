@@ -33,12 +33,12 @@ func start() {
 
     var bad = SceneDocument.LoadJson("{\"version\":1,");
     SayBool(bad.HasErrors());
-    SayInt(bad.DiagnosticRecords().Length);
+    SayInt(bad.DiagnosticRecords().Count);
 
     var tm = scene.BuildTilemap();
     SayInt(tm.GetTileLayer(layer, 1, 1));
-    SayInt(scene.AssetPaths().Length);
-    SayInt(scene.AssetDescriptors().Length);
+    SayInt(scene.AssetPaths().Count);
+    SayInt(scene.AssetDescriptors().Count);
 
     Say("done");
 }

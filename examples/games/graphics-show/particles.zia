@@ -207,16 +207,16 @@ func particlesRun(canvas: Canvas) {
 
     var system = new ParticleSystem(2000);
 
-    var emitter1 = new Emitter(width / 4, height - 50, colors.ORANGE);
+    var emitter1 = new Emitter(width / 4, height - 50, colors.Orange);
     emitter1.rate = 8;
     emitter1.speed = 8.0;
 
-    var emitter2 = new Emitter(width / 2, height - 50, colors.CYAN);
+    var emitter2 = new Emitter(width / 2, height - 50, colors.Cyan);
     emitter2.rate = 6;
     emitter2.speed = 10.0;
     emitter2.spread = 0.3;
 
-    var emitter3 = new Emitter((width * 3) / 4, height - 50, colors.MAGENTA);
+    var emitter3 = new Emitter((width * 3) / 4, height - 50, colors.Magenta);
     emitter3.rate = 8;
     emitter3.speed = 8.0;
 
@@ -270,20 +270,20 @@ func particlesRun(canvas: Canvas) {
         system.draw(canvas);
 
         if showEmitters {
-            canvas.Ring(Convert.NumToInt(Floor(emitter1.x)), Convert.NumToInt(Floor(emitter1.y)), 10, colors.ORANGE);
-            canvas.Ring(Convert.NumToInt(Floor(emitter2.x)), Convert.NumToInt(Floor(emitter2.y)), 10, colors.CYAN);
-            canvas.Ring(Convert.NumToInt(Floor(emitter3.x)), Convert.NumToInt(Floor(emitter3.y)), 10, colors.MAGENTA);
+            canvas.Ring(Convert.NumToInt(Floor(emitter1.x)), Convert.NumToInt(Floor(emitter1.y)), 10, colors.Orange);
+            canvas.Ring(Convert.NumToInt(Floor(emitter2.x)), Convert.NumToInt(Floor(emitter2.y)), 10, colors.Cyan);
+            canvas.Ring(Convert.NumToInt(Floor(emitter3.x)), Convert.NumToInt(Floor(emitter3.y)), 10, colors.Magenta);
         }
 
-        canvas.TextBg(10, 10, "PARTICLE SYSTEM", colors.WHITE, colors.BLACK);
+        canvas.TextBg(10, 10, "PARTICLE SYSTEM", colors.White, colors.Black);
 
         var countStr = "Particles: " + Int(system.getCount());
-        canvas.TextBg(10, 28, countStr, colors.GRAY, colors.BLACK);
+        canvas.TextBg(10, 28, countStr, colors.Gray, colors.Black);
 
         var windStr = "Wind: " + Num(system.wind);
-        canvas.TextBg(10, 46, windStr, colors.GRAY, colors.BLACK);
+        canvas.TextBg(10, 46, windStr, colors.Gray, colors.Black);
 
-        canvas.TextBg(10, height - 30, "LEFT/RIGHT: Wind | C: Clear | R: Reset Wind | ESC: Exit", colors.DARK_GRAY, colors.BLACK);
+        canvas.TextBg(10, height - 30, "LEFT/RIGHT: Wind | C: Clear | R: Reset Wind | ESC: Exit", colors.DARK_GRAY, colors.Black);
 
         canvas.Flip();
         frameCount = frameCount + 1;

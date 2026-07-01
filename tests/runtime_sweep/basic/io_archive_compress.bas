@@ -75,7 +75,7 @@ Viper.Core.Diagnostics.Assert(arc2.Path <> "", "zip.path")
 Viper.Core.Diagnostics.Assert(arc2.Count >= 3, "zip.count")
 DIM names AS Viper.Collections.Seq
 names = arc2.Names
-Viper.Core.Diagnostics.Assert(names.Length >= 3, "zip.names")
+Viper.Core.Diagnostics.Assert(names.Count >= 3, "zip.names")
 Viper.Core.Diagnostics.Assert(arc2.Has("hello.txt"), "zip.has")
 Viper.Core.Diagnostics.AssertEqStr(arc2.ReadStr("hello.txt"), "hi", "zip.readstr")
 DIM bin AS Viper.Collections.Bytes

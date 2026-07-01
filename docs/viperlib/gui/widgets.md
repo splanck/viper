@@ -130,8 +130,8 @@ Checkbox labels also use the current GUI theme or app font by default, matching 
 |-------------------------------|-----------------|--------------------------------------------------|
 | `IsChecked()`                 | `Boolean()`     | Get checked state                                |
 | `IsIndeterminate()`           | `Boolean()`     | Get indeterminate tri-state state                |
-| `SetChecked(checked)`         | `Void(Integer)` | Set checked state                                |
-| `SetIndeterminate(value)`     | `Void(Integer)` | Show or clear indeterminate state; setting it clears checked state |
+| `SetChecked(checked)`         | `Void(Boolean)` | Set checked state                                |
+| `SetIndeterminate(value)`     | `Void(Boolean)` | Show or clear indeterminate state; setting it clears checked state |
 | `SetText(text)`               | `Void(String)`  | Set label text                                   |
 
 ```basic
@@ -163,7 +163,7 @@ Runtime-created radio groups are opaque handles. After `Destroy()`, that handle 
 | Method                     | Signature          | Description              |
 |----------------------------|--------------------|--------------------------|
 | `IsSelected()`             | `Integer()`        | 1 if selected            |
-| `SetSelected(selected)`    | `Void(Integer)`    | Set selection state      |
+| `SetSelected(selected)`    | `Void(Boolean)`    | Set selection state      |
 
 ```basic
 ' Create a group
@@ -180,7 +180,7 @@ optB = NEW Viper.GUI.RadioButton(root, "Option B", group)
 optC = NEW Viper.GUI.RadioButton(root, "Option C", group)
 
 ' Select default
-optA.SetSelected(1)
+optA.SetSelected(true)
 ```
 
 ```rust
@@ -189,7 +189,7 @@ var group = RadioGroup.New();
 var optA = RadioButton.New(root, "Option A", group);
 var optB = RadioButton.New(root, "Option B", group);
 var optC = RadioButton.New(root, "Option C", group);
-optA.SetSelected(1);
+optA.SetSelected(true);
 ```
 
 ---
@@ -533,7 +533,7 @@ All five return `0` until a font is set with `SetFont`.
 // Zia — size a terminal grid from the real font instead of guessing 8x18 px.
 var pane = OutputPane.New(root);
 pane.SetFont(monoFont, 14.0);
-pane.SetTerminalMode(1);
+pane.SetTerminalMode(true);
 var cols = pane.ColumnsForWidth();   // was: pane.GetWidth() / 8
 var rows = pane.RowsForHeight();     // was: pane.GetHeight() / 18
 ```
@@ -651,10 +651,10 @@ popup mechanics (filter, selection, anchor, accept). Created hidden.
 | `SetWidth(w)`            | `Void(Number)`         | Set the popup width                                          |
 | `SetMaxRows(n)`          | `Void(Integer)`        | Maximum visible rows before clamping height                 |
 | `SetFont(font, size)`    | `Void(Object, Number)` | Set the item font                                           |
-| `SetVisible(on)` / `IsVisible()` | `Void(Integer)` / `Boolean()` | Show/hide the popup                       |
+| `SetVisible(on)` / `IsVisible()` | `Void(Boolean)` / `Boolean()` | Show/hide the popup                       |
 
 The host typically: clears + adds candidates, `SetFilter(typed)`, `AnchorAt(caretX, caretY)`,
-`SetVisible(1)`; then on arrow keys calls `NavigateUp/Down`, on Enter calls `AcceptSelected` and
+`SetVisible(true)`; then on arrow keys calls `NavigateUp/Down`, on Enter calls `AcceptSelected` and
 reads `WasAccepted` to perform the insertion, and hides the popup on edit or escape.
 
 ### Example
@@ -667,9 +667,9 @@ popup.AddItem("Convert");
 popup.AddItem("Canvas");
 popup.SetFilter("con");                 // -> "Console", "Convert"
 popup.AnchorAt(editor.GetCursorPixelX(), editor.GetCursorPixelY() + 20);
-popup.SetVisible(1);
+popup.SetVisible(true);
 // On Enter:
-if popup.WasAccepted() { editor.Insert(popup.GetSelected()); popup.SetVisible(0); }
+if popup.WasAccepted() { editor.Insert(popup.GetSelected()); popup.SetVisible(false); }
 ```
 
 ---

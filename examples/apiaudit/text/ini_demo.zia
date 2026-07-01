@@ -45,9 +45,9 @@ func start() {
     // --- Sections ---
     Say("--- Sections ---");
     var sections = Ini.Sections(cfg);
-    SayInt(Seq.get_Length(sections));
+    SayInt(Seq.get_Count(sections));
     var i = 0;
-    while i < Seq.get_Length(sections) {
+    while i < Seq.get_Count(sections) {
         Say(Obj.ToString(Seq.Get(sections, i)));
         i = i + 1;
     }

@@ -9,26 +9,26 @@ func start() {
     s.Add("apple");
     s.Add("banana");
     s.Add("cherry");
-    SayInt(s.Length);
+    SayInt(s.Count);
     SayBool(s.Has("apple"));
     SayBool(s.Has("mango"));
     s.Remove("banana");
-    SayInt(s.Length);
+    SayInt(s.Count);
 
     var dq = new Viper.Collections.Deque();
     SayBool(dq.IsEmpty);
     dq.PushBack("a");
     dq.PushBack("b");
     dq.PushFront("z");
-    SayInt(dq.Length);
+    SayInt(dq.Count);
     dq.PopFront();
-    SayInt(dq.Length);
+    SayInt(dq.Count);
     dq.PopBack();
-    SayInt(dq.Length);
+    SayInt(dq.Count);
     dq.PushBack("x");
     dq.PushBack("y");
     dq.Reverse();
-    SayInt(dq.Length);
+    SayInt(dq.Count);
     dq.Clear();
     SayBool(dq.IsEmpty);
 
@@ -36,20 +36,20 @@ func start() {
     sa.Set(0, "zero");
     sa.Set(100, "hundred");
     sa.Set(999, "big");
-    SayInt(sa.Length);
+    SayInt(sa.Count);
     SayBool(sa.Has(100));
     SayBool(sa.Has(50));
     sa.Remove(100);
-    SayInt(sa.Length);
+    SayInt(sa.Count);
 
     var wm = new Viper.Collections.WeakMap();
     SayBool(wm.IsEmpty);
     wm.Set("key1", "val1");
     wm.Set("key2", "val2");
-    SayInt(wm.Length);
+    SayInt(wm.Count);
     SayBool(wm.Has("key1"));
     wm.Remove("key1");
-    SayInt(wm.Length);
+    SayInt(wm.Count);
     wm.Clear();
     SayBool(wm.IsEmpty);
 

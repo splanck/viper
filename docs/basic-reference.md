@@ -338,7 +338,7 @@ runtime does not check element types.
 
 Properties:
 
-- `Len: i64` → `Viper.Collections.List.get_Length(obj)`
+- `Len: i64` → `Viper.Collections.List.get_Count(obj)`
 
 Methods:
 

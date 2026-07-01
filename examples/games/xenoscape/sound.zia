@@ -209,7 +209,7 @@ class SoundManager {
         menuSong.AddNote(menuBass, 2800, 46, 400);
 
         menuSong.Length = 3200;
-        menuSong.SetLoopable(1);
+        menuSong.SetLoopable(true);
         var menuSound = menuSong.Build();
         if menuSound != null {
             bank.RegisterSound("music_menu", menuSound);
@@ -277,7 +277,7 @@ class SoundManager {
         }
 
         gameSong.Length = 1600;
-        gameSong.SetLoopable(1);
+        gameSong.SetLoopable(true);
         var gameSound = gameSong.Build();
         if gameSound != null {
             bank.RegisterSound("music_game", gameSound);

@@ -63,6 +63,7 @@ struct RuntimeFunc {
     std::string signature;                // Type signature (e.g., "void(str)")
     std::string lowering;                 // Lowering kind: "always" or "" (default: manual)
     std::vector<std::string> bridgeRoles; // Safe Zia bridge roles: none/callback/payload
+    bool publicSurface{true};             // False for class-method implementation targets.
 };
 
 /// @brief A property exposed by a runtime class (RT_PROP entry).
@@ -105,6 +106,7 @@ struct DescriptorFields {
     std::string hidden;      ///< Hidden-argument expression.
     std::string hiddenCount; ///< Number of hidden arguments.
     std::string trapClass;   ///< Trap classification.
+    std::string publicSurface; ///< Whether this descriptor is frontend-visible as a function.
 };
 
 /// @brief A runtime function prototype recovered from a runtime header.
@@ -446,10 +448,10 @@ static std::optional<std::string> extractParens(std::string_view line, std::stri
 // Parser
 //===----------------------------------------------------------------------===//
 
-/// @brief Parse an RT_FUNC directive and append a RuntimeFunc to @p state.
-/// @details Validates the 4–5 argument arity, strips quotes, and enforces unique
+/// @brief Parse an RT_FUNC-like directive and append a RuntimeFunc to @p state.
+/// @details Validates the 4-5 argument arity, strips quotes, and enforces unique
 ///          ids and canonical names (reporting a fatal error otherwise).
-static void parseRtFunc(ParseState &state, const std::string &args) {
+static void parseRtFunc(ParseState &state, const std::string &args, bool publicSurface = true) {
     // RT_FUNC(id, c_symbol, canonical, signature [, lowering])
     auto parts = splitTopLevel(args, ',');
     if (parts.size() < 4 || parts.size() > 5) {
@@ -464,6 +466,7 @@ static void parseRtFunc(ParseState &state, const std::string &args) {
     func.signature = parts[3];
     if (parts.size() == 5)
         func.lowering = parts[4];
+    func.publicSurface = publicSurface;
 
     // Remove quotes from canonical and signature
     if (func.canonical.size() >= 2 && func.canonical.front() == '"')
@@ -632,6 +635,8 @@ static void parseLine(ParseState &state, const std::string &line) {
     // shared name trips -Wshadow.
     if (auto funcArgs = extractParens(trimmed, "RT_FUNC")) {
         parseRtFunc(state, *funcArgs);
+    } else if (auto internalFuncArgs = extractParens(trimmed, "RT_INTERNAL_FUNC")) {
+        parseRtFunc(state, *internalFuncArgs, false);
     } else if (auto aliasArgs = extractParens(trimmed, "RT_ALIAS")) {
         (void)aliasArgs;
         state.error("RT_ALIAS is not supported; define a single canonical RT_FUNC name");
@@ -1331,7 +1336,7 @@ static std::string methodSlotKey(std::string_view name, std::string_view signatu
 
 /// @brief Resolve every parsed class into a ResolvedRuntimeClass for codegen.
 /// @details For each class this resolves ctor/getter/setter/method id references
-///          to canonical names, then synthesizes method entries for any remaining
+///          to canonical names, then synthesizes method entries for class-local
 ///          functions whose canonical name is prefixed by the class (excluding
 ///          get_/set_ accessors and already-covered slots), deduplicating by
 ///          canonical name and method slot.
@@ -1392,7 +1397,9 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
             methods.push_back(std::move(outMethod));
         }
 
-        if (!outClass.ctorCanonical.empty()) {
+        const std::string classPrefix = cls.name + ".";
+        if (!outClass.ctorCanonical.empty() && startsWith(outClass.ctorCanonical, classPrefix)) {
+            const std::string ctorMethodName = outClass.ctorCanonical.substr(classPrefix.size());
             bool hasCtorMethod = false;
             for (const auto &method : methods) {
                 if (method.targetCanonical == outClass.ctorCanonical) {
@@ -1400,11 +1407,11 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
                     break;
                 }
             }
-            if (!hasCtorMethod) {
+            if (!hasCtorMethod && ctorMethodName.find('.') == std::string::npos) {
                 if (const auto *ctorFunc = resolveRuntimeFunc(
                         state, cls.ctor_id.empty() ? outClass.ctorCanonical : cls.ctor_id)) {
                     ResolvedRuntimeMethod ctorMethod;
-                    ctorMethod.name = lastSegment(ctorFunc->canonical);
+                    ctorMethod.name = ctorMethodName;
                     ctorMethod.signature = ctorFunc->signature;
                     ctorMethod.targetCanonical = ctorFunc->canonical;
                     coveredMethodSlots.insert(methodSlotKey(ctorMethod.name, ctorMethod.signature));
@@ -1414,7 +1421,6 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
             }
         }
 
-        const std::string classPrefix = cls.name + ".";
         for (const auto &fn : state.functions) {
             if (!startsWith(fn.canonical, classPrefix))
                 continue;
@@ -1643,6 +1649,7 @@ static DescriptorFields buildDefaultDescriptor(
     fields.hidden = "nullptr";
     fields.hiddenCount = "0";
     fields.trapClass = "RuntimeTrapClass::None";
+    fields.publicSurface = "true";
     return fields;
 }
 
@@ -1663,7 +1670,8 @@ static void emitDescriptorRow(std::ostream &out,
     out << pad << "              " << fields.lowering << ",\n";
     out << pad << "              " << fields.hidden << ",\n";
     out << pad << "              " << fields.hiddenCount << ",\n";
-    out << pad << "              " << fields.trapClass << "},\n";
+    out << pad << "              " << fields.trapClass << ",\n";
+    out << pad << "              " << fields.publicSurface << "},\n";
 }
 
 /// @brief Generate RuntimeNameMap.inc: canonical Viper.* → C rt_* symbol mappings.
@@ -1790,6 +1798,8 @@ static void generateSignatures(const ParseState &state,
 
         const RuntimeEntry &entry = entryIt->second;
         DescriptorFields fields = buildDefaultDescriptor(entry, cSignatures, rtSigMap);
+        if (const auto *func = resolveRuntimeFunc(state, name))
+            fields.publicSurface = func->publicSurface ? "true" : "false";
         emitDescriptorRow(out, name, fields);
     }
 
@@ -1903,7 +1913,8 @@ static void generateZiaExterns(const ParseState &state,
         if (secondDot != std::string::npos) {
             ns = func.canonical.substr(0, secondDot);
         }
-        byNamespace[ns].push_back(&func);
+        if (func.publicSurface)
+            byNamespace[ns].push_back(&func);
     }
 
     // Keep groups only as comments for generated-file readability. The runtime

@@ -31,7 +31,7 @@ expose func FindNextOccurrence(source: String,
                                startCol: Integer) -> String {
     var lines = Str.Split(source, "\n");
     var i = startLine - 1;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         var fromCol = 1;
         if i == startLine - 1 {

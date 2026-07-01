@@ -26,19 +26,19 @@ func main() {
 
     // Default view is Explorer.
     if ab.activeView != activity_bar.VIEW_EXPLORER { fail(shell, "default view not explorer"); return; }
-    if shell.explorerView.IsVisible() == 0 { fail(shell, "explorer hidden by default"); return; }
-    if shell.scmViewHost.IsVisible() != 0 { fail(shell, "scm visible by default"); return; }
+    if !shell.explorerView.IsVisible() { fail(shell, "explorer hidden by default"); return; }
+    if shell.scmViewHost.IsVisible() { fail(shell, "scm visible by default"); return; }
 
     // Switch to Source Control.
     ab.ShowView(activity_bar.VIEW_SCM);
     if ab.activeView != activity_bar.VIEW_SCM { fail(shell, "activeView not scm after switch"); return; }
-    if shell.scmViewHost.IsVisible() == 0 { fail(shell, "scm hidden after switch"); return; }
-    if shell.explorerView.IsVisible() != 0 { fail(shell, "explorer still visible after scm switch"); return; }
+    if !shell.scmViewHost.IsVisible() { fail(shell, "scm hidden after switch"); return; }
+    if shell.explorerView.IsVisible() { fail(shell, "explorer still visible after scm switch"); return; }
 
     // Switch back to Explorer.
     ab.ShowView(activity_bar.VIEW_EXPLORER);
-    if shell.explorerView.IsVisible() == 0 { fail(shell, "explorer hidden after switch back"); return; }
-    if shell.scmViewHost.IsVisible() != 0 { fail(shell, "scm still visible after switch back"); return; }
+    if !shell.explorerView.IsVisible() { fail(shell, "explorer hidden after switch back"); return; }
+    if shell.scmViewHost.IsVisible() { fail(shell, "scm still visible after switch back"); return; }
 
     shell.Destroy();
     Terminal.Say("RESULT: ok");

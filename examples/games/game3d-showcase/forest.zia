@@ -10,18 +10,30 @@ bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./config";
 bind "./terrain";
+bind "./mathutil";
 
 class ShowcaseForest {
     hide List[Material3D] treeMats;
     hide Material3D barkMat;
     hide List[Float] beaconXs;
     hide List[Float] beaconZs;
+    hide List[Float] treeXs;
+    hide List[Float] treeZs;
+    hide Vec3 treeResult;
+    hide Mesh3D unitCylinder;
+    hide Mesh3D unitSphere;
+    hide InstanceBatch3D trunkBatch;
+    hide List[InstanceBatch3D] lobeBatches;
 
     expose func spawn(world: World3D, land: Terrain3D, bx: List[Float], bz: List[Float]) {
         beaconXs = bx;
         beaconZs = bz;
+        treeXs = [];
+        treeZs = [];
+        treeResult = new Vec3(0.0, 0.0, 0.0);
         var model = loadTreeModel();
         buildFoliageMaterials();
+        buildInstanceBatches();
 
         if (treeBad(model)) {
             var fallbackPlanted = plantHomeGrove(world, land, null);
@@ -95,9 +107,9 @@ class ShowcaseForest {
 
         var i = 0;
         while (i < config.GROVE_COUNT) {
-            var ang = (i + 0.0) / (config.GROVE_COUNT + 0.0) * 6.2831853 + terrain.hash01(i, 23);
+            var ang = (i + 0.0) / (config.GROVE_COUNT + 0.0) * 6.2831853 + mathutil.hash01(i, 23);
             var radius = config.GROVE_RADIUS_MIN
-                + terrain.hash01(i, 31) * (config.GROVE_RADIUS_MAX - config.GROVE_RADIUS_MIN);
+                + mathutil.hash01(i, 31) * (config.GROVE_RADIUS_MAX - config.GROVE_RADIUS_MIN);
             var wx = cx + Sin(ang) * radius;
             var wz = cz + Cos(ang) * radius;
             if (wx > config.FOREST_MARGIN && wx < terrain.terrainWorldMaxX() - config.FOREST_MARGIN
@@ -105,8 +117,8 @@ class ShowcaseForest {
                 var gy = terrain.sampleGround(land, wx, wz);
                 if (gy > config.WATER_HEIGHT + 0.4) {
                     var s = config.FOREST_SCALE_MIN
-                        + terrain.hash01(i, 7) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
-                    plantTreeOrFallback(world, model, wx, wz, gy, s, terrain.hash01(i, 13) * 360.0);
+                        + mathutil.hash01(i, 7) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
+                    plantTreeOrFallback(world, model, wx, wz, gy, s, mathutil.hash01(i, 13) * 360.0);
                     planted = planted + 1;
                 }
             }
@@ -128,13 +140,13 @@ class ShowcaseForest {
             var gx = config.FOREST_MARGIN;
             while (gx < maxX - config.FOREST_MARGIN && planted < config.FOREST_MAX) {
                 seed = seed + 1;
-                if (terrain.hash01(seed, 17) < config.FOREST_DENSITY) {
-                    var wx = gx + (terrain.hash01(seed, 3) - 0.5) * cell * 1.4;
-                    var wz = gz + (terrain.hash01(seed, 9) - 0.5) * cell * 1.4;
+                if (mathutil.hash01(seed, 17) < config.FOREST_DENSITY) {
+                    var wx = gx + (mathutil.hash01(seed, 3) - 0.5) * cell * 1.4;
+                    var wz = gz + (mathutil.hash01(seed, 9) - 0.5) * cell * 1.4;
                     if (canPlantTree(land, wx, wz, maxX, maxZ)) {
                         var s = config.FOREST_SCALE_MIN
-                            + terrain.hash01(seed, 5) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
-                        plantTreeOrFallback(world, model, wx, wz, terrain.sampleGround(land, wx, wz), s, terrain.hash01(seed, 11) * 360.0);
+                            + mathutil.hash01(seed, 5) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
+                        plantTreeOrFallback(world, model, wx, wz, terrain.sampleGround(land, wx, wz), s, mathutil.hash01(seed, 11) * 360.0);
                         planted = planted + 1;
                     }
                 }
@@ -157,7 +169,35 @@ class ShowcaseForest {
         return true;
     }
 
+    // Push the player out of any tree trunk (XZ circle collision). Iterates the
+    // trunk positions recorded at plant time; returns the corrected x/z.
+    expose func resolveTreeCollision(px: Float, pz: Float, radius: Float) -> Vec3 {
+        var nx = px;
+        var nz = pz;
+        var minD = config.TREE_COLLIDE_RADIUS + radius;
+        for i in 0..treeXs.count() {
+            var dx = nx - treeXs.get(i);
+            var dz = nz - treeZs.get(i);
+            var d = Sqrt(dx * dx + dz * dz);
+            if (d < minD && d > 0.0001) {
+                var push = (minD - d) / d;
+                nx = nx + dx * push;
+                nz = nz + dz * push;
+            }
+        }
+        treeResult.Set(nx, 0.0, nz);
+        return treeResult;
+    }
+
+    // Material accessors so probes/tests can validate procedural-tree material
+    // quality now that trunks/lobes render from instance batches, not entities.
+    expose func getBarkMat() -> Material3D { return barkMat; }
+    expose func getCanopyMat() -> Material3D { return treeMats.get(0); }
+    expose func getTreeCount() -> Integer { return treeXs.count(); }
+
     hide func plantTreeOrFallback(world: World3D, model: SceneAsset, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
+        treeXs.add(x);
+        treeZs.add(z);
         if (treeBad(model)) {
             plantProceduralTree(world, x, z, y, scale, yawDeg);
         } else {
@@ -168,8 +208,8 @@ class ShowcaseForest {
     hide func plantTree(world: World3D, model: SceneAsset, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
         var node = SceneAsset.Instantiate(model);
         var ent = Entity3D.FromNode(node);
-        ent.SetName("maple");
-        ent.SetLayer(Layers.get_World());
+        ent.Name = "maple";
+        ent.Layer = Layers.get_World();
         applyTreeMaterials(ent, treeMats.get(pickFoliage(x, z)));
         ent.SetScaleXYZ(scale, scale, scale);
         ent.SetRotationEuler(yawDeg, 0.0, 0.0);
@@ -182,25 +222,25 @@ class ShowcaseForest {
         var trunkHeight = height * 0.56;
         var trunkRadius = height * 0.038;
         var canopyRadius = height * 0.22;
-        var canopyMat = treeMats.get(pickFoliage(x, z));
+        var foliageIdx = pickFoliage(x, z);
+        var canopyMat = treeMats.get(foliageIdx);
 
-        var trunk: Entity3D = Prefab.Cylinder(trunkRadius, trunkHeight, 18, barkMat);
-        trunk.SetName("procedural_maple_trunk");
-        trunk.SetLayer(Layers.get_World());
-        trunk.SetRotationEuler(0.0, yawDeg, 0.0);
-        trunk.SetPosition(x, y + trunkHeight * 0.5, z);
-        world.Spawn(trunk);
+        // Trunk: instanced. A cylinder is symmetric about its Y axis, so the old
+        // SetRotationEuler(0, yaw, 0) was a visual no-op and is dropped here.
+        trunkBatch.Add(Mat4.Mul(
+            Mat4.Translate(x, y + trunkHeight * 0.5, z),
+            Mat4.Scale(trunkRadius, trunkHeight, trunkRadius)));
 
         plantBranch(world, x, z, y + trunkHeight * 0.58, yawDeg + 18.0, trunkRadius * 0.44, trunkHeight * 0.48, 28.0);
         plantBranch(world, x, z, y + trunkHeight * 0.66, yawDeg + 142.0, trunkRadius * 0.36, trunkHeight * 0.40, -32.0);
         plantBranch(world, x, z, y + trunkHeight * 0.78, yawDeg + 258.0, trunkRadius * 0.30, trunkHeight * 0.34, 24.0);
         plantBranch(world, x, z, y + trunkHeight * 0.88, yawDeg + 314.0, trunkRadius * 0.22, trunkHeight * 0.26, 36.0);
 
-        plantCanopyLobe(world, x, z, y, yawDeg, canopyRadius, canopyMat, 0.0, 0.0, 1.28, 0.86, 1.18, 0.52);
-        plantCanopyLobe(world, x, z, y, yawDeg + 28.0, canopyRadius * 0.78, canopyMat, -0.34, 0.18, 1.08, 0.72, 0.94, 0.38);
-        plantCanopyLobe(world, x, z, y, yawDeg + 146.0, canopyRadius * 0.72, canopyMat, 0.36, -0.22, 0.96, 0.76, 1.06, 0.34);
-        plantCanopyLobe(world, x, z, y, yawDeg + 244.0, canopyRadius * 0.66, canopyMat, 0.10, 0.42, 1.02, 0.64, 0.88, 0.62);
-        plantCanopyLobe(world, x, z, y, yawDeg + 8.0, canopyRadius * 0.56, canopyMat, 0.0, 0.02, 0.78, 0.86, 0.72, 0.92);
+        plantCanopyLobe(foliageIdx, x, z, y, yawDeg, canopyRadius, 0.0, 0.0, 1.28, 0.86, 1.18, 0.52);
+        plantCanopyLobe(foliageIdx, x, z, y, yawDeg + 28.0, canopyRadius * 0.78, -0.34, 0.18, 1.08, 0.72, 0.94, 0.38);
+        plantCanopyLobe(foliageIdx, x, z, y, yawDeg + 146.0, canopyRadius * 0.72, 0.36, -0.22, 0.96, 0.76, 1.06, 0.34);
+        plantCanopyLobe(foliageIdx, x, z, y, yawDeg + 244.0, canopyRadius * 0.66, 0.10, 0.42, 1.02, 0.64, 0.88, 0.62);
+        plantCanopyLobe(foliageIdx, x, z, y, yawDeg + 8.0, canopyRadius * 0.56, 0.0, 0.02, 0.78, 0.86, 0.72, 0.92);
         plantLeafPlate(world, x, z, y, yawDeg + 18.0, canopyRadius, canopyMat, 0.0, 0.0, 1.08);
         plantLeafPlate(world, x, z, y, yawDeg + 72.0, canopyRadius * 0.86, canopyMat, -0.26, 0.22, 0.94);
         plantLeafPlate(world, x, z, y, yawDeg + 136.0, canopyRadius * 0.78, canopyMat, 0.24, -0.28, 0.88);
@@ -209,31 +249,33 @@ class ShowcaseForest {
 
     hide func plantBranch(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, length: Float, pitchDeg: Float) {
         var branch: Entity3D = Prefab.Cylinder(radius, length, 12, barkMat);
-        branch.SetName("procedural_maple_branch");
-        branch.SetLayer(Layers.get_World());
+        branch.Name = "procedural_maple_branch";
+        branch.Layer = Layers.get_World();
         branch.SetRotationEuler(pitchDeg, yawDeg, 38.0);
         branch.SetPosition(x + Sin(yawDeg * 0.0174533) * length * 0.18, y + length * 0.18, z + Cos(yawDeg * 0.0174533) * length * 0.18);
         world.Spawn(branch);
     }
 
-    hide func plantCanopyLobe(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, mat: Material3D, ox: Float, oz: Float, sx: Float, sy: Float, sz: Float, lift: Float) {
-        var crown: Entity3D = Prefab.Sphere(radius, 22, mat);
+    // Canopy lobe: instanced ellipsoid. The world position already bakes in the
+    // yaw (via the sin/cos offset), so RotateY only orients the squash axes,
+    // matching the old SetRotationEuler(0, yaw, 0) on the scaled sphere.
+    hide func plantCanopyLobe(foliageIdx: Integer, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, ox: Float, oz: Float, sx: Float, sy: Float, sz: Float, lift: Float) {
         var wx = x + Sin(yawDeg * 0.0174533) * ox * radius + Cos(yawDeg * 0.0174533) * oz * radius;
         var wz = z + Cos(yawDeg * 0.0174533) * ox * radius - Sin(yawDeg * 0.0174533) * oz * radius;
-        crown.SetName("procedural_maple_crown");
-        crown.SetLayer(Layers.get_World());
-        crown.SetScaleXYZ(sx, sy, sz);
-        crown.SetRotationEuler(0.0, yawDeg, 0.0);
-        crown.SetPosition(wx, y + scaleCanopyBase(radius) + lift * radius, wz);
-        world.Spawn(crown);
+        var xform = Mat4.Mul(
+            Mat4.Mul(
+                Mat4.Translate(wx, y + scaleCanopyBase(radius) + lift * radius, wz),
+                Mat4.RotateY(yawDeg * 0.0174533)),
+            Mat4.Scale(radius * sx, radius * sy, radius * sz));
+        lobeBatches.get(foliageIdx).Add(xform);
     }
 
     hide func plantLeafPlate(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, mat: Material3D, ox: Float, oz: Float, lift: Float) {
         var plate: Entity3D = Prefab.BoxXYZ(radius * 1.72, radius * 0.08, radius * 1.18, mat);
         var wx = x + Sin(yawDeg * 0.0174533) * ox * radius + Cos(yawDeg * 0.0174533) * oz * radius;
         var wz = z + Cos(yawDeg * 0.0174533) * ox * radius - Sin(yawDeg * 0.0174533) * oz * radius;
-        plate.SetName("procedural_maple_leaf_plate");
-        plate.SetLayer(Layers.get_World());
+        plate.Name = "procedural_maple_leaf_plate";
+        plate.Layer = Layers.get_World();
         plate.SetRotationEuler(6.0, yawDeg, 11.0);
         plate.SetPosition(wx, y + scaleCanopyBase(radius) + lift * radius, wz);
         world.Spawn(plate);
@@ -241,6 +283,30 @@ class ShowcaseForest {
 
     hide func scaleCanopyBase(radius: Float) -> Float {
         return radius * 2.45;
+    }
+
+    // Shared unit meshes + one batch per foliage material. The procedural-tree
+    // trunks and canopy lobes are drawn from these batches (hardware instancing)
+    // instead of spawning a scene entity per part.
+    hide func buildInstanceBatches() {
+        unitCylinder = Mesh3D.NewCylinder(1.0, 1.0, 18);
+        unitSphere = Mesh3D.NewSphere(1.0, 22);
+        trunkBatch = InstanceBatch3D.New(unitCylinder, barkMat);
+        lobeBatches = [];
+        for i in 0..treeMats.count() {
+            lobeBatches.add(InstanceBatch3D.New(unitSphere, treeMats.get(i)));
+        }
+    }
+
+    // Draw the instanced procedural-tree parts (trunks + canopy lobes): a few
+    // DrawInstanced calls in place of hundreds of per-part scene draws. A no-op
+    // when the FBX maples loaded and the procedural path went unused.
+    expose func drawInstanced(canvas: Canvas3D) {
+        if (trunkBatch == null) { return; }
+        Canvas3D.DrawInstanced(canvas, trunkBatch);
+        for i in 0..lobeBatches.count() {
+            Canvas3D.DrawInstanced(canvas, lobeBatches.get(i));
+        }
     }
 
     hide func buildFoliageMaterials() {
@@ -307,13 +373,13 @@ class ShowcaseForest {
     }
 
     hide func isBarkMesh(node: SceneNode) -> Boolean {
-        var amin = node.AABBMin;
-        var amax = node.AABBMax;
+        var amin = node.BoundsMin;
+        var amax = node.BoundsMax;
         var dx = Vec3.get_X(amax) - Vec3.get_X(amin);
         var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
         var dz = Vec3.get_Z(amax) - Vec3.get_Z(amin);
         var minXZ = minf(dx, dz);
-        var maxXZ = terrain.maxf(dx, dz);
+        var maxXZ = mathutil.maxf(dx, dz);
 
         if (maxXZ <= 0.0001) { return false; }
         if (dy > maxXZ * 1.40) { return true; }
@@ -358,10 +424,10 @@ class ShowcaseForest {
                 if (major <= 1) { vein = 26; }
                 if (minor == 0) { vein = vein + 14; }
                 var shadow = ((px / 8 + py / 8) % 2) * 5;
-                tex.Set(px, py, terrain.packPixel(
-                    terrain.clampByte(baseR + 18 + noise / 4 + vein / 4 - shadow),
-                    terrain.clampByte(baseG + 20 + noise / 2 + vein - shadow),
-                    terrain.clampByte(baseB + 10 + noise / 5 + vein / 5 - shadow / 2),
+                tex.Set(px, py, mathutil.packPixel(
+                    mathutil.clampByte(baseR + 18 + noise / 4 + vein / 4 - shadow),
+                    mathutil.clampByte(baseG + 20 + noise / 2 + vein - shadow),
+                    mathutil.clampByte(baseB + 10 + noise / 5 + vein / 5 - shadow / 2),
                     255));
             }
         }
@@ -376,11 +442,11 @@ class ShowcaseForest {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var major = ((px + py * 2) % 19) - 9;
                 var minor = ((px * 2 - py + size * 2) % 23) - 11;
-                var nx = terrain.clampByte(128 + major * 3);
-                var nz = terrain.clampByte(128 + minor * 2);
+                var nx = mathutil.clampByte(128 + major * 3);
+                var nz = mathutil.clampByte(128 + minor * 2);
                 var ny = 244;
                 if (absInt(major) <= 1 || absInt(minor) == 0) { ny = 252; }
-                tex.Set(px, py, terrain.packPixel(nx, nz, ny, 255));
+                tex.Set(px, py, mathutil.packPixel(nx, nz, ny, 255));
             }
         }
 
@@ -396,10 +462,10 @@ class ShowcaseForest {
                 var noise = ((px * 11 + py * 23 + px * py) % 34) - 17;
                 var dark = 0;
                 if (groove <= 1) { dark = 26; }
-                tex.Set(px, py, terrain.packPixel(
-                    terrain.clampByte(116 + noise - dark),
-                    terrain.clampByte(72 + noise / 2 - dark / 2),
-                    terrain.clampByte(38 + noise / 4 - dark / 3),
+                tex.Set(px, py, mathutil.packPixel(
+                    mathutil.clampByte(116 + noise - dark),
+                    mathutil.clampByte(72 + noise / 2 - dark / 2),
+                    mathutil.clampByte(38 + noise / 4 - dark / 3),
                     255));
             }
         }
@@ -413,11 +479,11 @@ class ShowcaseForest {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var groove = ((px + py / 3) % 14) - 7;
-                var nx = terrain.clampByte(128 + groove * 8);
-                var nz = terrain.clampByte(128 + (((px * 3 + py) % 9) - 4) * 2);
+                var nx = mathutil.clampByte(128 + groove * 8);
+                var nz = mathutil.clampByte(128 + (((px * 3 + py) % 9) - 4) * 2);
                 var ny = 232;
                 if (absInt(groove) <= 1) { ny = 214; }
-                tex.Set(px, py, terrain.packPixel(nx, nz, ny, 255));
+                tex.Set(px, py, mathutil.packPixel(nx, nz, ny, 255));
             }
         }
 
@@ -425,7 +491,7 @@ class ShowcaseForest {
     }
 
     hide func pickFoliage(x: Float, z: Float) -> Integer {
-        var h = terrain.hash01(Convert.NumToInt(x * 7.0), Convert.NumToInt(z * 7.0));
+        var h = mathutil.hash01(Convert.NumToInt(x * 7.0), Convert.NumToInt(z * 7.0));
         if (h < 0.55) { return 0; }
         if (h < 0.82) { return 1; }
         return 2;

@@ -10,6 +10,7 @@ bind Viper.Graphics3D;
 bind Viper.Input;
 bind "../config";
 bind "../menu";
+bind "../util/mathutil";
 bind "./camera";
 bind "./game_setup";
 
@@ -189,6 +190,8 @@ class BowlingGameFlow extends BowlingGameSetup {
             playSpatialSound("roll", ballObj.getPosition(), 12.0, 80);
             gutterLatched = false;
             ballHitPinsThisRoll = false;
+            entryCaptured = false;
+            hasLastEntry = false;
             impactCooldown = 0.0;
             skidMarkTimer = 0.0;
             fixedStepAlpha = 0.0;
@@ -211,6 +214,15 @@ class BowlingGameFlow extends BowlingGameSetup {
         pinMgr.updateKnockdowns(dt);
         handlePinImpacts();
         updateTriggerZones();
+
+        // Sample the ball's entry angle just before the head pin (once, and
+        // only if it stayed on the lane) for the shot-feedback HUD readout.
+        if (entryCaptured == false && ballObj.gutterBall() == false &&
+            ballObj.getPosZ() >= config.ENTRY_CAPTURE_Z) {
+            lastEntryAngle = ballObj.getTravelAngleDeg();
+            entryCaptured = true;
+            hasLastEntry = true;
+        }
 
         if (friction > config.OIL_FRICTION_BLEND && Abs(ballObj.getSpin()) > 0.16 && skidMarkTimer <= 0.0) {
             particleMgr.spawnSkidMark(ballObj.getPosX(), ballObj.getPosZ());
@@ -311,10 +323,7 @@ class BowlingGameFlow extends BowlingGameSetup {
             var layerB = Physics3DBody.get_CollisionLayer(bodyB);
             var posA = Physics3DBody.get_Position(bodyA);
             var posB = Physics3DBody.get_Position(bodyB);
-            var point = new Vec3(
-                (Vec3.get_X(posA) + Vec3.get_X(posB)) * 0.5,
-                (Vec3.get_Y(posA) + Vec3.get_Y(posB)) * 0.5,
-                (Vec3.get_Z(posA) + Vec3.get_Z(posB)) * 0.5);
+            var point = mathutil.vec3Mid(posA, posB);
             if (CollisionEvent3D.get_ContactCount(evt) > 0) {
                 var cp = CollisionEvent3D.GetContactPoint(evt, 0);
                 point = new Vec3(Vec3.get_X(cp), Vec3.get_Y(cp), Vec3.get_Z(cp));

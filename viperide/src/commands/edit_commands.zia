@@ -56,7 +56,7 @@ final SEMANTIC_QUERY_PUMP_FILES = 32;
 func handleUndo(engine: editor_engine.EditorEngine,
                 docMgr: document_manager.DocumentManager) {
     if engine != null and engine.editor != null {
-        if engine.editor.CanUndo() != 0 {
+        if engine.editor.CanUndo() {
             engine.editor.Undo();
             return;
         }
@@ -122,10 +122,10 @@ func handleSelectAll(engine: editor_engine.EditorEngine) {
 
 /// @brief Toggle the find bar; auto-focuses when shown.
 func handleFind(shell: app_shell.AppShell) {
-    if shell.findBar.IsVisible() != 0 {
-        shell.findBar.SetVisible(0);
+    if shell.findBar.IsVisible() {
+        shell.findBar.SetVisible(false);
     } else {
-        shell.findBar.SetVisible(1);
+        shell.findBar.SetVisible(true);
         shell.findBar.Focus();
     }
 }
@@ -209,14 +209,14 @@ func handleFindReferences(shell: app_shell.AppShell,
     if PrepareSemanticQuery(shell, indexer, "Find references") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
     shell.referencesListBox.Clear();
-    if refs == null or Seq.get_Length(refs) == 0 {
+    if refs == null or Seq.get_Count(refs) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No references found");
         return;
     }
     var i = 0;
     var lastFile = "";
-    while i < Seq.get_Length(refs) {
+    while i < Seq.get_Count(refs) {
         var ref = Seq.Get(refs, i);
         var file = Map.GetStr(ref, "file");
         var line = Map.GetInt(ref, "line");
@@ -242,9 +242,9 @@ func handleFindReferences(shell: app_shell.AppShell,
         GUI.ListBox.ItemSetData(item, id);
         i = i + 1;
     }
-    shell.referencesListBox.SetVisible(1);
+    shell.referencesListBox.SetVisible(true);
     shell.ShowReferencesPanel();
-    shell.SetStatusLeft("Found " + Seq.get_Length(refs) + " references");
+    shell.SetStatusLeft("Found " + Seq.get_Count(refs) + " references");
 }
 
 func handleIncomingCalls(shell: app_shell.AppShell,
@@ -269,7 +269,7 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     if PrepareSemanticQuery(shell, indexer, "Incoming calls") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
     shell.referencesListBox.Clear();
-    if refs == null or Seq.get_Length(refs) == 0 {
+    if refs == null or Seq.get_Count(refs) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No incoming calls found");
         return;
@@ -278,7 +278,7 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     var i = 0;
     var count = 0;
     var lastGroup = "";
-    while i < Seq.get_Length(refs) {
+    while i < Seq.get_Count(refs) {
         var ref = Seq.Get(refs, i);
         if Map.GetBool(ref, "isDefinition") {
             i = i + 1;
@@ -319,7 +319,7 @@ func handleIncomingCalls(shell: app_shell.AppShell,
         GUI.Toast.Info("No incoming calls found");
         return;
     }
-    shell.referencesListBox.SetVisible(1);
+    shell.referencesListBox.SetVisible(true);
     shell.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " incoming calls");
 }
@@ -356,7 +356,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     var endLine = ZiaFunctionEndLine(activeDoc.content, startLine);
     var tokens = OutgoingZiaCallTokens(activeDoc.content, startLine, endLine);
     shell.referencesListBox.Clear();
-    if tokens == null or Seq.get_Length(tokens) == 0 {
+    if tokens == null or Seq.get_Count(tokens) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No outgoing calls found");
         return;
@@ -365,7 +365,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     var i = 0;
     var count = 0;
     var lastTarget = "";
-    while i < Seq.get_Length(tokens) {
+    while i < Seq.get_Count(tokens) {
         var token = Seq.Get(tokens, i);
         var tokenLine = Map.GetInt(token, "line");
         var tokenCol = Map.GetInt(token, "column");
@@ -407,7 +407,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
         GUI.Toast.Info("No outgoing calls found");
         return;
     }
-    shell.referencesListBox.SetVisible(1);
+    shell.referencesListBox.SetVisible(true);
     shell.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " outgoing calls");
 }
@@ -418,7 +418,7 @@ func ReferencePreviewLine(docMgr: document_manager.DocumentManager,
     var source = SourceForPath(docMgr, filePath);
     if source == "" { return ""; }
     var lines = Str.Split(source, "\n");
-    if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
+    if lineNumber < 1 or lineNumber > Seq.get_Count(lines) { return ""; }
     return Str.Trim(Obj.ToString(Seq.Get(lines, lineNumber - 1)));
 }
 
@@ -615,7 +615,7 @@ func handleSelectAllOccurrences(shell: app_shell.AppShell,
     var lines = Str.Split(engine.GetTextSnapshot(), "\n");
     var lineIdx = 0;
     var firstSet = false;
-    while lineIdx < Seq.get_Length(lines) {
+    while lineIdx < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, lineIdx));
         var searchFrom = 1;
         var idx = Str.IndexOf(line, word);
@@ -650,7 +650,7 @@ func handleClearCursors(shell: app_shell.AppShell,
 func handleExpandSelection(shell: app_shell.AppShell,
                            engine: editor_engine.EditorEngine) {
     if engine == null or engine.editor == null { return; }
-    if engine.editor.CursorHasSelection(0) == 0 {
+    if !engine.editor.CursorHasSelection(0) {
         if SelectWordAt(engine, engine.editor.CursorLine, engine.editor.CursorCol) {
             shell.SetStatusLeft("Selected word");
             return;
@@ -684,7 +684,7 @@ func handleExpandSelection(shell: app_shell.AppShell,
 func handleShrinkSelection(shell: app_shell.AppShell,
                            engine: editor_engine.EditorEngine) {
     if engine == null or engine.editor == null { return; }
-    if engine.editor.CursorHasSelection(0) == 0 {
+    if !engine.editor.CursorHasSelection(0) {
         shell.SetStatusLeft("No selection to shrink");
         return;
     }
@@ -720,7 +720,7 @@ func handleToggleLineComment(shell: app_shell.AppShell,
         marker = "'";
     }
 
-    if engine.editor.CursorHasSelection(0) != 0 {
+    if engine.editor.CursorHasSelection(0) {
         var source = engine.GetTextSnapshot();
         var startLine = engine.editor.GetSelectionStartLineAt(0);
         var endLine = engine.editor.GetSelectionEndLineAt(0);
@@ -790,7 +790,7 @@ func handleToggleBlockComment(shell: app_shell.AppShell,
         return;
     }
 
-    if engine.editor.CursorHasSelection(0) != 0 {
+    if engine.editor.CursorHasSelection(0) {
         var startLine = engine.editor.GetSelectionStartLineAt(0);
         var startCol = engine.editor.GetSelectionStartColAt(0);
         var endLine = engine.editor.GetSelectionEndLineAt(0);
@@ -946,7 +946,7 @@ func handleExtractLocalVariable(shell: app_shell.AppShell,
         shell.SetStatusLeft("Extract Local unavailable");
         return;
     }
-    if engine.editor.CursorHasSelection(0) == 0 {
+    if !engine.editor.CursorHasSelection(0) {
         GUI.Toast.Info("Select an expression to extract");
         shell.SetStatusLeft("Extract Local needs a selection");
         return;
@@ -988,7 +988,7 @@ func handleExtractFunction(shell: app_shell.AppShell,
         shell.SetStatusLeft("Extract Function unavailable");
         return;
     }
-    if engine.editor.CursorHasSelection(0) == 0 {
+    if !engine.editor.CursorHasSelection(0) {
         GUI.Toast.Info("Select complete statement lines to extract");
         shell.SetStatusLeft("Extract Function needs a selection");
         return;
@@ -1084,7 +1084,7 @@ func handleFormatSelection(shell: app_shell.AppShell,
         GUI.Toast.Info("No active document");
         return;
     }
-    if engine.editor.CursorHasSelection(0) == 0 {
+    if !engine.editor.CursorHasSelection(0) {
         GUI.Toast.Info("No selection to format");
         shell.SetStatusLeft("Format Selection needs a selection");
         return;
@@ -1239,7 +1239,7 @@ func DiagnosticFixItAt(records: Any,
                        targetLine: Integer) -> Any {
     if records == null { return null; }
     var i = 0;
-    while i < Seq.get_Length(records) {
+    while i < Seq.get_Count(records) {
         var record = Seq.Get(records, i);
         i = i + 1;
         if Map.GetBool(record, "hasFixit") {
@@ -1255,7 +1255,7 @@ func MissingRuntimeBindIdentifierAt(records: Any,
                                     targetLine: Integer) -> String {
     if records == null { return ""; }
     var i = 0;
-    while i < Seq.get_Length(records) {
+    while i < Seq.get_Count(records) {
         var record = Seq.Get(records, i);
         i = i + 1;
         var name = quick_fixes.MissingRuntimeBindIdentifierForRecord(record);
@@ -1272,7 +1272,7 @@ func MissingUndefinedIdentifierAt(records: Any,
                                   targetLine: Integer) -> String {
     if records == null { return ""; }
     var i = 0;
-    while i < Seq.get_Length(records) {
+    while i < Seq.get_Count(records) {
         var record = Seq.Get(records, i);
         i = i + 1;
         var name = quick_fixes.UndefinedIdentifierForRecord(record);
@@ -1411,7 +1411,7 @@ func StripTrailingCr(line: String) -> String {
 func SuppressibleDiagnosticCodeAt(records: Any, targetLine: Integer) -> String {
     if records == null { return ""; }
     var i = 0;
-    while i < Seq.get_Length(records) {
+    while i < Seq.get_Count(records) {
         var record = Seq.Get(records, i);
         i = i + 1;
         if Map.GetInt(record, "severity") == 1
@@ -1592,7 +1592,7 @@ func SelectEnclosingBraceBlock(engine: editor_engine.EditorEngine,
     var closeLine = MatchingBraceCloseLine(source, openLine);
     if closeLine <= openLine { return false; }
     if closeLine >= engine.editor.LineCount { return false; }
-    if engine.editor.CursorHasSelection(0) != 0
+    if engine.editor.CursorHasSelection(0)
        and engine.editor.GetSelectionStartLineAt(0) == openLine
        and engine.editor.GetSelectionEndLineAt(0) == closeLine {
         return false;

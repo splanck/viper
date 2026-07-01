@@ -273,11 +273,11 @@ class EnemyManager {
         var w = getEnemyW(etype.get(i));
         var h = getEnemyH(etype.get(i));
         var ent = Entity.New(ex.get(i), ey.get(i), w, h);
-        ent.set_VX(evx.get(i));
-        ent.set_VY(evy.get(i));
+        ent.set_VelocityX(evx.get(i));
+        ent.set_VelocityY(evy.get(i));
         ent.set_Dir(edir.get(i));
-        ent.set_HP(ehp.get(i));
-        ent.set_MaxHP(ehp.get(i));
+        ent.set_Health(ehp.get(i));
+        ent.set_MaxHealth(ehp.get(i));
         ent.set_Type(etype.get(i));
         ent.set_Active(true);
         ebody.set(i, ent);
@@ -454,16 +454,16 @@ class EnemyManager {
     hide func applyPhysics(i: Integer, w: Integer, h: Integer,
                            level: Level, dt: Integer) -> Entity {
         var ent = ebody.get(i);
-        ent.set_VX(evx.get(i));
-        ent.set_VY(evy.get(i));
+        ent.set_VelocityX(evx.get(i));
+        ent.set_VelocityY(evy.get(i));
         ent.set_Dir(edir.get(i));
         ent.set_X(ex.get(i));
         ent.set_Y(ey.get(i));
         ent.UpdatePhysics(level.tilemap, GRAVITY, MAX_FALL, dt);
         ex.set(i, ent.get_X());
         ey.set(i, ent.get_Y());
-        evx.set(i, ent.get_VX());
-        evy.set(i, ent.get_VY());
+        evx.set(i, ent.get_VelocityX());
+        evy.set(i, ent.get_VelocityY());
         edir.set(i, ent.get_Dir());
         return ent;
     }
@@ -475,14 +475,14 @@ class EnemyManager {
         var ent = ebody.get(i);
         ent.set_X(ex.get(i));
         ent.set_Y(ey.get(i));
-        ent.set_VX(evx.get(i));
-        ent.set_VY(evy.get(i));
+        ent.set_VelocityX(evx.get(i));
+        ent.set_VelocityY(evy.get(i));
         ent.set_Dir(edir.get(i));
         ebhv.get(i).Update(ent, level.tilemap, 0, 0, dt);
         ex.set(i, ent.get_X());
         ey.set(i, ent.get_Y());
-        evx.set(i, ent.get_VX());
-        evy.set(i, ent.get_VY());
+        evx.set(i, ent.get_VelocityX());
+        evy.set(i, ent.get_VelocityY());
         edir.set(i, ent.get_Dir());
         if estate.get(i) != 1 {
             eframe.set(i, ebhv.get(i).get_AnimFrame());
@@ -1860,7 +1860,7 @@ class EnemyManager {
 
         var hp = ehp.get(i) - amount;
         ehp.set(i, hp);
-        ebody.get(i).set_HP(hp);
+        ebody.get(i).set_Health(hp);
         estate.set(i, 1);
         etimer.set(i, HURT_TIMER_MS);
 

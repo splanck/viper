@@ -350,7 +350,7 @@ hide func wordAtCursor(engine: editor_engine.EditorEngine) -> String {
     var col0 = engine.GetCursorCol() - 1; // 0-based column
     var source = engine.GetTextSnapshot();
     var lines = Str.Split(source, "\n");
-    if idx < 0 or idx >= Seq.get_Length(lines) { return ""; }
+    if idx < 0 or idx >= Seq.get_Count(lines) { return ""; }
     var lineText = Obj.ToString(Seq.Get(lines, idx));
     if Str.EndsWith(lineText, "\r") {
         lineText = Str.Left(lineText, Str.get_Length(lineText) - 1);
@@ -410,7 +410,7 @@ func handleRunToCursor(shell: app_shell.AppShell,
 /// @return Trimmed selected text or cursor identifier, empty if unavailable.
 func DebugExpressionFromEditor(engine: editor_engine.EditorEngine) -> String {
     if engine == null or engine.editor == null { return ""; }
-    if engine.editor.CursorHasSelection(0) != 0 {
+    if engine.editor.CursorHasSelection(0) {
         var selected = Str.Trim(engine.editor.GetSelectedText());
         if selected != "" { return selected; }
     }

@@ -206,16 +206,16 @@ func starfieldRun(canvas: Canvas) {
             }
         }
 
-        canvas.Clear(colors.BLACK);
+        canvas.Clear(colors.Black);
 
         field.update();
         field.draw(canvas, width, height);
 
-        canvas.Text(10, 10, "STARFIELD DEMO", colors.WHITE);
-        canvas.Text(10, 25, "UP/DOWN: Speed | SPACE: Warp | ESC: Exit", colors.GRAY);
+        canvas.Text(10, 10, "STARFIELD DEMO", colors.White);
+        canvas.Text(10, 25, "UP/DOWN: Speed | SPACE: Warp | ESC: Exit", colors.Gray);
 
         if field.warpMode {
-            canvas.Text(10, 45, "** WARP ENGAGED **", colors.CYAN);
+            canvas.Text(10, 45, "** WARP ENGAGED **", colors.Cyan);
         }
 
         canvas.Flip();

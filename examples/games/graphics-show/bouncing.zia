@@ -270,15 +270,15 @@ func bouncingRun(canvas: Canvas) {
 
         manager.draw(canvas);
 
-        canvas.TextBg(10, 10, "BOUNCING BALLS", colors.WHITE, colors.BLACK);
+        canvas.TextBg(10, 10, "BOUNCING BALLS", colors.White, colors.Black);
 
         var countStr = "Balls: " + Int(manager.getCount());
-        canvas.TextBg(10, 28, countStr, colors.GRAY, colors.BLACK);
+        canvas.TextBg(10, 28, countStr, colors.Gray, colors.Black);
 
         var gravStr = "Gravity: " + Num(manager.gravity);
-        canvas.TextBg(10, 46, gravStr, colors.GRAY, colors.BLACK);
+        canvas.TextBg(10, 46, gravStr, colors.Gray, colors.Black);
 
-        canvas.TextBg(10, height - 30, "SPACE: Add | UP/DOWN: Gravity | C: Clear | R: Reset | ESC: Exit", colors.DARK_GRAY, colors.BLACK);
+        canvas.TextBg(10, height - 30, "SPACE: Add | UP/DOWN: Gravity | C: Clear | R: Reset | ESC: Exit", colors.DARK_GRAY, colors.Black);
 
         canvas.Flip();
         Viper.Time.Clock.Sleep(16);

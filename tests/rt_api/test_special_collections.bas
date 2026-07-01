@@ -53,12 +53,12 @@ PRINT "lru cap: "; lru.Cap
 lru.Put("a", "1")
 lru.Put("b", "2")
 lru.Put("c", "3")
-PRINT "lru len: "; lru.Length
+PRINT "lru count: "; lru.Count
 PRINT "lru has a: "; lru.Has("a")
 lru.Put("d", "4")
-PRINT "lru len after evict: "; lru.Length
+PRINT "lru count after evict: "; lru.Count
 lru.Remove("d")
-PRINT "lru len after remove: "; lru.Length
+PRINT "lru count after remove: "; lru.Count
 
 DIM mm AS Viper.Collections.MultiMap
 mm = Viper.Collections.MultiMap.New()
@@ -66,12 +66,12 @@ PRINT "mm empty: "; mm.IsEmpty
 mm.Put("color", "red")
 mm.Put("color", "blue")
 mm.Put("size", "large")
-PRINT "mm len: "; mm.Length
+PRINT "mm count: "; mm.Count
 PRINT "mm keycount: "; mm.KeyCount
 PRINT "mm countfor color: "; mm.CountFor("color")
 PRINT "mm has color: "; mm.Has("color")
 mm.RemoveAll("color")
-PRINT "mm len after removeall: "; mm.Length
+PRINT "mm count after removeall: "; mm.Count
 
 PRINT "done"
 END

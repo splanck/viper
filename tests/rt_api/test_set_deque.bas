@@ -5,11 +5,11 @@ PRINT "set empty: "; s.IsEmpty
 s.Add("apple")
 s.Add("banana")
 s.Add("cherry")
-PRINT "set len: "; s.Length
+PRINT "set len: "; s.Count
 PRINT "set has apple: "; s.Has("apple")
 PRINT "set has mango: "; s.Has("mango")
 s.Remove("banana")
-PRINT "set len after remove: "; s.Length
+PRINT "set len after remove: "; s.Count
 
 DIM dq AS Viper.Collections.Deque
 dq = Viper.Collections.Deque.New()
@@ -17,15 +17,15 @@ PRINT "deque empty: "; dq.IsEmpty
 dq.PushBack("a")
 dq.PushBack("b")
 dq.PushFront("z")
-PRINT "deque len: "; dq.Length
+PRINT "deque len: "; dq.Count
 dq.PopFront()
-PRINT "deque len after popfront: "; dq.Length
+PRINT "deque len after popfront: "; dq.Count
 dq.PopBack()
-PRINT "deque len after popback: "; dq.Length
+PRINT "deque len after popback: "; dq.Count
 dq.PushBack("x")
 dq.PushBack("y")
 dq.Reverse()
-PRINT "deque len after reverse: "; dq.Length
+PRINT "deque len after reverse: "; dq.Count
 dq.Clear()
 PRINT "deque empty after clear: "; dq.IsEmpty
 
@@ -34,21 +34,21 @@ sa = Viper.Collections.SparseArray.New()
 sa.Set(0, "zero")
 sa.Set(100, "hundred")
 sa.Set(999, "big")
-PRINT "sparse len: "; sa.Length
+PRINT "sparse len: "; sa.Count
 PRINT "sparse has 100: "; sa.Has(100)
 PRINT "sparse has 50: "; sa.Has(50)
 sa.Remove(100)
-PRINT "sparse len after remove: "; sa.Length
+PRINT "sparse len after remove: "; sa.Count
 
 DIM wm AS Viper.Collections.WeakMap
 wm = Viper.Collections.WeakMap.New()
 PRINT "weakmap empty: "; wm.IsEmpty
 wm.Set("key1", "val1")
 wm.Set("key2", "val2")
-PRINT "weakmap len: "; wm.Length
+PRINT "weakmap len: "; wm.Count
 PRINT "weakmap has key1: "; wm.Has("key1")
 wm.Remove("key1")
-PRINT "weakmap len after remove: "; wm.Length
+PRINT "weakmap len after remove: "; wm.Count
 wm.Clear()
 PRINT "weakmap empty after clear: "; wm.IsEmpty
 

@@ -178,7 +178,7 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(
 ///          (`get_member`); static property getter or static field load on a class name. Falls
 ///          back to a null/zero value when nothing matches.
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr) {
-    // Check for enum variant access: Color.RED → ConstInt(I64, value)
+    // Check for enum variant access: Color.Red → ConstInt(I64, value)
     if (expr.base && expr.base->kind() == Expr::Kind::Var) {
         const auto &varExpr = static_cast<const VarExpr &>(*expr.base);
         auto enumVal = oopIndex_.findEnumVariant(varExpr.name, expr.member);

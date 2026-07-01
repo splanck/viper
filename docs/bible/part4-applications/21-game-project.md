@@ -123,7 +123,7 @@ This is why we use delta time. If your game runs slower on an old computer (say,
 
 Some things in games are states: the frog is alive, the player is pressing right, the game is paused. States are continuously true or false. Other things are events: the player just pressed space, the frog just died, the level just completed. Events happen at a specific moment and then are over.
 
-Treating these differently prevents bugs. If you check `Keyboard.IsDown(KEY_SPACE)` for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want `Keyboard.WasPressed(KEY_SPACE)`, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.
+Treating these differently prevents bugs. If you check `Keyboard.IsDown(Keyboard.KeySpace)` for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want `Keyboard.WasPressed(Keyboard.KeySpace)`, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.
 
 ### The Coordinate Dance
 
@@ -557,28 +557,28 @@ func setupLevel(state: GameState) -> GameState {
     // This creates variety and challenge
 
     // Row 8: slow cars going right (easiest to dodge)
-    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
-    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.RED));
+    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.Red));
+    s.vehicles.Push(Vehicle.create(8, 60 * speedMod, 60, Color.Red));
 
     // Row 9: faster cars going left
-    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
-    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.BLUE));
+    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.Blue));
+    s.vehicles.Push(Vehicle.create(9, -80 * speedMod, 50, Color.Blue));
 
     // Row 10: slow trucks going right (wide, hard to squeeze past)
-    s.vehicles.Push(Vehicle.create(10, 50 * speedMod, 120, Color.YELLOW));
+    s.vehicles.Push(Vehicle.create(10, 50 * speedMod, 120, Color.Yellow));
 
     // Row 11: fast cars going left (dangerous!)
-    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
-    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
-    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.GREEN));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.Green));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.Green));
+    s.vehicles.Push(Vehicle.create(11, -120 * speedMod, 40, Color.Green));
 
     // Row 12: medium cars going right
-    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
-    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.MAGENTA));
+    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.Magenta));
+    s.vehicles.Push(Vehicle.create(12, 70 * speedMod, 55, Color.Magenta));
 
     // Row 13: slow trucks going left (closest to starting area)
-    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
-    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.CYAN));
+    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.Cyan));
+    s.vehicles.Push(Vehicle.create(13, -40 * speedMod, 100, Color.Cyan));
 
     // Spread vehicles out so they do not all start at the same place
     for i in 0..s.vehicles.Length {
@@ -818,7 +818,7 @@ bind Viper.Graphics;
 
 expose func render(canvas: Canvas, state: Game.GameState) {
     // Clear the canvas
-    canvas.Clear(Color.BLACK);
+    canvas.Clear(Color.Black);
 
     // Draw the world zones (background)
     drawBackground(canvas);
@@ -875,7 +875,7 @@ func drawBackground(canvas: Canvas) {
         var y = row * Config.TILE_SIZE + Config.TILE_SIZE / 2;
         // Dashed lines
         for x in 0..(Config.SCREEN_WIDTH / 50) {
-            canvas.Box(x * 50, y - 2, 30, 4, Color.YELLOW);
+            canvas.Box(x * 50, y - 2, 30, 4, Color.Yellow);
         }
     }
 
@@ -911,14 +911,14 @@ Filled homes glow bright green, celebrating the player's progress. Empty homes a
 ```rust
 func drawUI(canvas: Canvas, state: Game.GameState) {
     // Display current stats at the bottom
-    canvas.Text(10, Config.SCREEN_HEIGHT - 10, "Score: " + state.score, Color.WHITE);
-    canvas.Text(200, Config.SCREEN_HEIGHT - 10, "Lives: " + state.lives, Color.WHITE);
-    canvas.Text(350, Config.SCREEN_HEIGHT - 10, "Level: " + state.level, Color.WHITE);
+    canvas.Text(10, Config.SCREEN_HEIGHT - 10, "Score: " + state.score, Color.White);
+    canvas.Text(200, Config.SCREEN_HEIGHT - 10, "Lives: " + state.lives, Color.White);
+    canvas.Text(350, Config.SCREEN_HEIGHT - 10, "Level: " + state.level, Color.White);
 
     // Game over screen
     if state.gameOver {
-        canvas.Text(300, 300, "GAME OVER", Color.RED);
-        canvas.Text(280, 350, "Press ENTER to restart", Color.WHITE);
+        canvas.Text(300, 300, "GAME OVER", Color.Red);
+        canvas.Text(280, 350, "Press ENTER to restart", Color.White);
     }
 }
 ```
@@ -964,27 +964,27 @@ func start() {
         // === INPUT PHASE ===
         if state.gameOver {
             // Only accept restart input when game is over
-            if Keyboard.WasPressed(KEY_ENTER) {
+            if Keyboard.WasPressed(Keyboard.KeyEnter) {
                 state = Game.create();  // Fresh game
             }
         } else {
             // Normal gameplay input
-            if Keyboard.WasPressed(KEY_UP) || Keyboard.WasPressed(KEY_W) {
+            if Keyboard.WasPressed(Keyboard.KeyUp) || Keyboard.WasPressed(Keyboard.KeyW) {
                 state = Game.moveFrog(state, 0, -1);
             }
-            if Keyboard.WasPressed(KEY_DOWN) || Keyboard.WasPressed(KEY_S) {
+            if Keyboard.WasPressed(Keyboard.KeyDown) || Keyboard.WasPressed(Keyboard.KeyS) {
                 state = Game.moveFrog(state, 0, 1);
             }
-            if Keyboard.WasPressed(KEY_LEFT) || Keyboard.WasPressed(KEY_A) {
+            if Keyboard.WasPressed(Keyboard.KeyLeft) || Keyboard.WasPressed(Keyboard.KeyA) {
                 state = Game.moveFrog(state, -1, 0);
             }
-            if Keyboard.WasPressed(KEY_RIGHT) || Keyboard.WasPressed(KEY_D) {
+            if Keyboard.WasPressed(Keyboard.KeyRight) || Keyboard.WasPressed(Keyboard.KeyD) {
                 state = Game.moveFrog(state, 1, 0);
             }
         }
 
         // Escape always quits
-        if Keyboard.WasPressed(KEY_ESCAPE) {
+        if Keyboard.WasPressed(Keyboard.KeyEscape) {
             break;
         }
 
@@ -1063,7 +1063,7 @@ Without delta time, your game runs twice as fast on a 120 FPS machine as on a 60
 **Wrong:**
 ```rust
 // This fires every frame the key is held!
-if Keyboard.IsDown(KEY_SPACE) {
+if Keyboard.IsDown(Keyboard.KeySpace) {
     fireBullet();
 }
 ```
@@ -1071,7 +1071,7 @@ if Keyboard.IsDown(KEY_SPACE) {
 **Right:**
 ```rust
 // This fires once per key press
-if Keyboard.WasPressed(KEY_SPACE) {
+if Keyboard.WasPressed(Keyboard.KeySpace) {
     fireBullet();
 }
 ```
@@ -1170,7 +1170,7 @@ Add a debug mode that runs at 1/10 speed:
 ```rust
 var debugSlowMotion = false;
 
-if Keyboard.WasPressed(KEY_F1) {
+if Keyboard.WasPressed(Keyboard.KeyF1) {
     debugSlowMotion = !debugSlowMotion;
 }
 
@@ -1214,11 +1214,11 @@ Add the ability to pause the game and advance one frame at a time:
 var paused = false;
 var stepOneFrame = false;
 
-if Keyboard.WasPressed(KEY_P) {
+if Keyboard.WasPressed(Keyboard.KeyP) {
     paused = !paused;
 }
 
-if Keyboard.WasPressed(KEY_N) {  // Next frame
+if Keyboard.WasPressed(Keyboard.KeyN) {  // Next frame
     stepOneFrame = true;
 }
 
@@ -1347,7 +1347,7 @@ if s.timeRemaining <= 0 {
 
 // In rendering:
 canvas.Text(500, Config.SCREEN_HEIGHT - 10,
-            "Time: " + Convert.NumToInt(Math.Floor(state.timeRemaining)), Color.WHITE);
+            "Time: " + Convert.NumToInt(Math.Floor(state.timeRemaining)), Color.White);
 ```
 
 ### Submerging Turtles

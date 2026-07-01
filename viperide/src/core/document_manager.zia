@@ -313,7 +313,7 @@ class DocumentManager {
     /// @return Last line number in the runtime workspace-edit coordinate system.
     hide func EndLineForText(text: String) -> Integer {
         var lines = Str.Split(text, "\n");
-        var count = Seq.get_Length(lines);
+        var count = Seq.get_Count(lines);
         if count <= 0 { return 1; }
         return count;
     }
@@ -332,7 +332,7 @@ class DocumentManager {
     /// @return Exclusive 1-based end column for the final line.
     hide func EndColumnForText(text: String) -> Integer {
         var lines = Str.Split(text, "\n");
-        var count = Seq.get_Length(lines);
+        var count = Seq.get_Count(lines);
         if count <= 0 { return 1; }
         var last = Obj.ToString(Seq.Get(lines, count - 1));
         return Str.get_Length(last) + 1;

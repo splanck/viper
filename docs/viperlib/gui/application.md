@@ -41,21 +41,21 @@ Menu and menu-item handles are runtime-managed and become inert after removal, `
 | `AddSeparator()`        | `Object()`         | Add separator                  |
 | `AddSubmenu(title)`     | `Object(String)`   | Add submenu, returns menu      |
 | `IsEnabled()`           | `Integer()`        | Check if menu is enabled       |
-| `SetEnabled(enabled)`   | `Void(Integer)`    | Enable/disable the menu title  |
+| `SetEnabled(enabled)`   | `Void(Boolean)`    | Enable/disable the menu title  |
 
 ### MenuItem
 
 Menu item (returned by `Menu.AddItem()`).
-Checkable state is explicit: `IsCheckable()` is false until `SetCheckable(1)` or `SetChecked(...)` makes the item a toggle. Disabling checkable state clears the checked mark.
+Checkable state is explicit: `IsCheckable()` is false until `SetCheckable(true)` or `SetChecked(...)` makes the item a toggle. Disabling checkable state clears the checked mark.
 
 | Method                  | Signature       | Description                    |
 |-------------------------|-----------------|--------------------------------|
 | `IsChecked()`           | `Boolean()`     | Check if checked               |
 | `IsCheckable()`         | `Boolean()`     | Check if item supports checked state |
 | `IsEnabled()`           | `Integer()`     | Check if enabled               |
-| `SetCheckable(enabled)` | `Void(Integer)` | Enable/disable checked-state support |
-| `SetChecked(checked)`   | `Void(Integer)` | Set check mark                 |
-| `SetEnabled(enabled)`   | `Void(Integer)` | Enable/disable item            |
+| `SetCheckable(enabled)` | `Void(Boolean)` | Enable/disable checked-state support |
+| `SetChecked(checked)`   | `Void(Boolean)` | Set check mark                 |
+| `SetEnabled(enabled)`   | `Void(Boolean)` | Enable/disable item            |
 | `SetIcon(pixels)`       | `Void(Object)`  | Set image icon from a `Pixels` handle |
 | `SetShortcut(shortcut)` | `Void(String)`  | Set keyboard shortcut display  |
 | `SetText(text)`         | `Void(String)`  | Set item text                  |
@@ -102,7 +102,7 @@ Removed toolbar item handles become inert until the toolbar is destroyed, and re
 | `NewVertical(parent)`               | `Object(Object)`               | Create a vertical toolbar                |
 | `SetIconSize(size)`                 | `Void(Integer)`                | Set icon size in pixels                  |
 | `SetStyle(style)`                   | `Void(Integer)`                | Set toolbar style; unknown values are ignored |
-| `SetVisible(visible)`               | `Void(Integer)`                | Show/hide toolbar                        |
+| `SetVisible(visible)`               | `Void(Boolean)`                | Show/hide toolbar                        |
 
 ### ToolbarItem
 
@@ -112,7 +112,7 @@ Toolbar item handles are runtime-managed and become inert after `RemoveItem()`, 
 | Method                | Signature       | Description                    |
 |-----------------------|-----------------|--------------------------------|
 | `IsEnabled()`         | `Integer()`     | Check if enabled               |
-| `SetEnabled(enabled)` | `Void(Integer)` | Enable/disable button          |
+| `SetEnabled(enabled)` | `Void(Boolean)` | Enable/disable button          |
 | `SetIcon(icon)`       | `Void(String)`  | Change icon                    |
 | `SetIconPixels(pixels)` | `Void(Object)` | Change icon from a `Pixels` handle |
 | `SetText(text)`       | `Void(String)`  | Change button label            |
@@ -151,7 +151,7 @@ Buttons added with `AddButton()` are wired into `StatusBarItem.WasClicked()` for
 | `SetCenterText(text)`      | `Void(String)`            | Set center-aligned text                  |
 | `SetLeftText(text)`        | `Void(String)`            | Set left-aligned text                    |
 | `SetRightText(text)`       | `Void(String)`            | Set right-aligned text                   |
-| `SetVisible(visible)`      | `Void(Integer)`           | Show/hide status bar                     |
+| `SetVisible(visible)`      | `Void(Boolean)`           | Show/hide status bar                     |
 
 ### StatusBarItem
 
@@ -163,7 +163,7 @@ Status-bar item handles are runtime-managed and become inert after removal, `Cle
 | `SetText(text)`       | `Void(String)`  | Set item text                  |
 | `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
 | `WasClicked()`        | `Integer()`     | 1 once after a button item was clicked |
-| `SetVisible(visible)` | `Void(Integer)` | Show/hide item                 |
+| `SetVisible(visible)` | `Void(Boolean)` | Show/hide item                 |
 
 ### Example
 
@@ -223,7 +223,7 @@ if copyItem.WasClicked() == 1 { /* copy */ }
 Find and replace bar for text searching.
 
 `GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
-`SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options. POSIX-style regular expressions are used on platforms that provide them, and Windows builds use the built-in regex subset for literals, `.`, character classes, `^`/`$`, and `*`/`+`/`?`.
+`SetRegex(true)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options. POSIX-style regular expressions are used on platforms that provide them, and Windows builds use the built-in regex subset for literals, `.`, character classes, `^`/`$`, and `*`/`+`/`?`.
 If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops. If the bound `CodeEditor` is destroyed, the bar unbinds itself before any later search or replace call. Boolean option getters return normalized `0` or `1` from the live widget state, including user checkbox clicks and `Ctrl+H` replace-mode toggles.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
@@ -244,22 +244,22 @@ If the parent widget destroys the underlying bar, the runtime wrapper disconnect
 | `IsWholeWord()`             | `Integer()`     | Check if whole word mode                 |
 | `Replace()`                 | `Integer()`     | Replace current match; returns 0 when nothing was replaced |
 | `ReplaceAll()`              | `Integer()`     | Replace all matches; returns count       |
-| `SetCaseSensitive(enabled)` | `Void(Integer)` | Enable/disable case sensitivity          |
+| `SetCaseSensitive(enabled)` | `Void(Boolean)` | Enable/disable case sensitivity          |
 | `SetFindText(text)`         | `Void(String)`  | Set search text                          |
-| `SetRegex(enabled)`         | `Void(Integer)` | Enable/disable regex matching            |
-| `SetReplaceMode(enabled)`   | `Void(Integer)` | Enable/disable replace mode              |
+| `SetRegex(enabled)`         | `Void(Boolean)` | Enable/disable regex matching            |
+| `SetReplaceMode(enabled)`   | `Void(Boolean)` | Enable/disable replace mode              |
 | `SetReplaceText(text)`      | `Void(String)`  | Set replacement text                     |
-| `SetVisible(visible)`       | `Void(Integer)` | Show/hide find bar                       |
-| `SetWholeWord(enabled)`     | `Void(Integer)` | Enable/disable whole word matching       |
+| `SetVisible(visible)`       | `Void(Boolean)` | Show/hide find bar                       |
+| `SetWholeWord(enabled)`     | `Void(Boolean)` | Enable/disable whole word matching       |
 
 ### Example
 
 ```rust
 // Zia
 var findbar = FindBar.New(root);
-findbar.SetCaseSensitive(0);
-findbar.SetWholeWord(0);
-findbar.SetReplaceMode(1);
+findbar.SetCaseSensitive(false);
+findbar.SetWholeWord(false);
+findbar.SetReplaceMode(true);
 findbar.SetFindText("search");
 findbar.SetReplaceText("replace");
 
@@ -408,7 +408,7 @@ Replacing or clearing items also clears stale click payloads. After
 | `SetMaxItems(max)`         | `Void(Integer)`        | Set max visible items                    |
 | `SetPath(path, separator)` | `Void(String, String)` | Set path with separator (e.g. "/")       |
 | `SetSeparator(sep)`        | `Void(String)`         | Set separator character                  |
-| `SetVisible(visible)`      | `Void(Integer)`        | Show/hide breadcrumb                     |
+| `SetVisible(visible)`      | `Void(Boolean)`        | Show/hide breadcrumb                     |
 | `WasItemClicked()`         | `Integer()`            | 1 if an item was clicked                 |
 
 ### Example
@@ -445,8 +445,8 @@ Minimap wrappers install runtime finalizers and clamp width/scale changes throug
 | `IsVisible()`                  | `Integer()`         | Check if visible                         |
 | `RemoveMarkers(type)`          | `Void(Integer)`     | Remove markers by type                   |
 | `SetScale(scale)`              | `Void(Double)`      | Set minimap scale                        |
-| `SetShowSlider(show)`          | `Void(Integer)`     | Show/hide scroll slider                  |
-| `SetVisible(visible)`          | `Void(Integer)`     | Show/hide minimap                        |
+| `SetShowSlider(show)`          | `Void(Boolean)`     | Show/hide scroll slider                  |
+| `SetVisible(visible)`          | `Void(Boolean)`     | Show/hide minimap                        |
 | `SetWidth(width)`              | `Void(Integer)`     | Set minimap width                        |
 | `UnbindEditor()`               | `Void()`            | Unbind from editor                       |
 
@@ -458,7 +458,7 @@ var minimap = Minimap.New(root);
 minimap.BindEditor(editor);
 minimap.SetWidth(80);
 minimap.SetScale(0.5);
-minimap.SetShowSlider(1);
+minimap.SetShowSlider(true);
 minimap.AddMarker(10, 0xFFFF0000, 1);  // Error marker
 ```
 
@@ -557,7 +557,7 @@ filters, a default filename, or multiple selected paths:
 | `dialog.SetFilter(label, pattern)` | `Void(String,String)` | Replace filters with one named filter |
 | `dialog.AddFilter(label, pattern)` | `Void(String,String)` | Add another named filter |
 | `dialog.SetDefaultName(name)` | `Void(String)` | Set default filename for save dialogs |
-| `dialog.SetMultiple(enabled)` | `Void(Integer)` | Enable multiple selection for open dialogs |
+| `dialog.SetMultiple(enabled)` | `Void(Boolean)` | Enable multiple selection for open dialogs |
 | `dialog.Show()` | `Integer()` | Show the dialog; returns 1 on accept, 0 on cancel or unavailable GUI window |
 | `dialog.GetPath()` | `String()` | Return the first selected path |
 | `dialog.PathCount` | `Integer` | Number of selected paths |
@@ -751,7 +751,7 @@ vbox.SetPadding(20.0)
 Keyboard shortcut registration system (static methods).
 
 Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Function keys are case-insensitive (`F5` and `f5` are equivalent), and malformed tokens such as `F1x` are rejected. Focused widgets receive key-down events first; a global shortcut only fires when the widget tree leaves the key unhandled. While a modal dialog is open, global shortcuts are suppressed so accelerators cannot leak through the modal.
-Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one. IDs and key specs containing embedded NUL bytes are rejected instead of being truncated. Shortcut triggers are retained for the whole current frame: `GetTriggered()` returns the first triggered id, and `WasTriggered(id)` can report any shortcut fired before the next poll clears the frame state. `SetGlobalEnabled(0)` stops new shortcut matches, but `WasTriggered(id)` still reports a shortcut that was already triggered earlier in the same frame.
+Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one. IDs and key specs containing embedded NUL bytes are rejected instead of being truncated. Shortcut triggers are retained for the whole current frame: `GetTriggered()` returns the first triggered id, and `WasTriggered(id)` can report any shortcut fired before the next poll clears the frame state. `SetGlobalEnabled(false)` stops new shortcut matches, but `WasTriggered(id)` still reports a shortcut that was already triggered earlier in the same frame.
 
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|
@@ -760,8 +760,8 @@ Invalid shortcut strings are rejected without registering a new shortcut or repl
 | `Viper.GUI.Shortcuts.GetTriggered()`            | `String()`              | Get ID of triggered shortcut             |
 | `Viper.GUI.Shortcuts.IsEnabled(id)`             | `Integer(String)`       | Check if shortcut is enabled             |
 | `Viper.GUI.Shortcuts.Register(id, keys, desc)`  | `Void(Str, Str, Str)`  | Register a shortcut                      |
-| `Viper.GUI.Shortcuts.SetEnabled(id, enabled)`   | `Void(String, Integer)` | Enable/disable shortcut                  |
-| `Viper.GUI.Shortcuts.SetGlobalEnabled(enabled)` | `Void(Integer)`         | Enable/disable all shortcuts             |
+| `Viper.GUI.Shortcuts.SetEnabled(id, enabled)`   | `Void(String, Boolean)` | Enable/disable shortcut                  |
+| `Viper.GUI.Shortcuts.SetGlobalEnabled(enabled)` | `Void(Boolean)`         | Enable/disable all shortcuts             |
 | `Viper.GUI.Shortcuts.Unregister(id)`            | `Void(String)`          | Unregister a shortcut                    |
 | `Viper.GUI.Shortcuts.WasTriggered(id)`          | `Integer(String)`       | 1 if shortcut was triggered this frame   |
 
@@ -788,14 +788,14 @@ Mouse cursor control (static methods).
 |---------------------------------------|------------------|--------------------------------|
 | `Viper.GUI.Cursor.Set(cursorType)`    | `Void(Integer)`  | Set cursor type                |
 | `Viper.GUI.Cursor.Reset()`            | `Void()`         | Reset to default cursor        |
-| `Viper.GUI.Cursor.SetVisible(visible)` | `Void(Integer)` | Show/hide cursor               |
+| `Viper.GUI.Cursor.SetVisible(visible)` | `Void(Boolean)` | Show/hide cursor               |
 
 ### Example
 
 ```rust
 // Zia
 Cursor.Set(1);       // Pointer cursor
-Cursor.SetVisible(1);
+Cursor.SetVisible(true);
 Cursor.Reset();       // Default cursor
 ```
 
@@ -854,7 +854,7 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]`; non-finite values become `0.0` |
 | `SetFlex(flex)` / `SetMargin(margin)` | `Void(...)` | Proxy layout configuration to the internal root widget |
 | `SetSize(w, h)` / `SetPreferredSize(w, h)` / `SetMaxSize(w, h)` | `Void(...)` | Proxy sizing to the internal root widget |
-| `SetVisible(flag)` / `SetEnabled(flag)` | `Void(Integer)` | Proxy visibility/enabled state to the internal root widget |
+| `SetVisible(flag)` / `SetEnabled(flag)` | `Void(Boolean)` | Proxy visibility/enabled state to the internal root widget |
 | `AddChild(widget)` | `Void(Object)` | Add extra content to the widget's internal root container |
 | `Destroy()` | `Void()` | Release decoder resources |
 

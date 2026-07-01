@@ -103,8 +103,8 @@ func testCursorControl() {
     setTest("CursorControl");
 
     // Show/hide cursor (just verify no crash)
-    Viper.Terminal.SetCursorVisible(0);  // hide
-    Viper.Terminal.SetCursorVisible(1);  // show
+    Viper.Terminal.SetCursorVisible(false);  // hide
+    Viper.Terminal.SetCursorVisible(true);  // show
     pass();
 }
 
@@ -112,7 +112,7 @@ func testAltScreen() {
     setTest("AltScreen");
 
     // Alt screen (0 = normal, 1 = alternate)
-    Viper.Terminal.SetAltScreen(0);  // ensure normal screen
+    Viper.Terminal.SetAltScreen(false);  // ensure normal screen
     pass();
 }
 

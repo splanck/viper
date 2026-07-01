@@ -43,7 +43,7 @@ func start() {
     // --- FindAll ---
     Say("--- FindAll ---");
     var matches = pat.FindAll("a1b22c333");
-    SayInt(Seq.get_Length(matches));
+    SayInt(Seq.get_Count(matches));
     Say(Obj.ToString(Seq.Get(matches, 0)));
     Say(Obj.ToString(Seq.Get(matches, 1)));
     Say(Obj.ToString(Seq.Get(matches, 2)));
@@ -52,7 +52,7 @@ func start() {
     Say("--- Captures ---");
     var capPat = CP.New("(\\w+)@(\\w+)");
     var caps = capPat.Captures("user@host");
-    SayInt(Seq.get_Length(caps));
+    SayInt(Seq.get_Count(caps));
     Say(Obj.ToString(Seq.Get(caps, 0)));
     Say(Obj.ToString(Seq.Get(caps, 1)));
     Say(Obj.ToString(Seq.Get(caps, 2)));
@@ -60,7 +60,7 @@ func start() {
     // --- CapturesFrom ---
     Say("--- CapturesFrom ---");
     var caps2 = pat.CapturesFrom("abc123def456", 6);
-    SayInt(Seq.get_Length(caps2));
+    SayInt(Seq.get_Count(caps2));
     Say(Obj.ToString(Seq.Get(caps2, 0)));
 
     // --- Replace ---
@@ -75,7 +75,7 @@ func start() {
     Say("--- Split ---");
     var commaPat = CP.New("[,;]+");
     var parts = commaPat.Split("one,two;;three,four");
-    SayInt(Seq.get_Length(parts));
+    SayInt(Seq.get_Count(parts));
     Say(Obj.ToString(Seq.Get(parts, 0)));
     Say(Obj.ToString(Seq.Get(parts, 1)));
     Say(Obj.ToString(Seq.Get(parts, 2)));
@@ -84,7 +84,7 @@ func start() {
     // --- SplitN ---
     Say("--- SplitN ---");
     var parts2 = commaPat.SplitN("one,two;;three,four", 2);
-    SayInt(Seq.get_Length(parts2));
+    SayInt(Seq.get_Count(parts2));
     Say(Obj.ToString(Seq.Get(parts2, 0)));
     Say(Obj.ToString(Seq.Get(parts2, 1)));
 

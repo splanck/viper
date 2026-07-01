@@ -58,7 +58,7 @@ class TerminalController {
         pane = paneArg;
         killBtn = killArg;
         restartBtn = restartArg;
-        if pane != null { pane.SetTerminalMode(1); }
+        if pane != null { pane.SetTerminalMode(true); }
         ready = true;
     }
 
@@ -80,7 +80,7 @@ class TerminalController {
     ///          effective visibility. The controller therefore checks the panel
     ///          container that AppShell actually hides and shows.
     expose func IsVisible() -> Boolean {
-        return panel != null and panel.IsVisible() != 0;
+        return panel != null and panel.IsVisible();
     }
 
     /// @brief Return true after any PTY start attempt has been made.
@@ -94,7 +94,7 @@ class TerminalController {
     ///          existing file and falls back to `/bin/sh`.
     /// @return Shell executable path or name for PTY startup.
     hide func ShellPath() -> String {
-        if Machine.OS == "windows" {
+        if Machine.Os == "windows" {
             var comspec = Env.GetVariable("COMSPEC");
             if comspec != "" and IO.File.Exists(comspec) { return comspec; }
             return "cmd.exe";
@@ -111,7 +111,7 @@ class TerminalController {
     /// @return Sequence suitable for TerminalSession.Start/Restart.
     hide func ShellArgs() -> Any {
         var args = Seq.New();
-        if Machine.OS != "windows" { Seq.Push(args, "-i"); } // interactive shell: show a prompt
+        if Machine.Os != "windows" { Seq.Push(args, "-i"); } // interactive shell: show a prompt
         return args;
     }
 
@@ -227,12 +227,12 @@ class TerminalController {
             sess.Send(keys);
         }
 
-        if killBtn.WasClicked() != 0 {
+        if killBtn.WasClicked() {
             sess.Stop();
             manualStop = true;
             pane.Append("\n[stopped]\n");
         }
-        if restartBtn.WasClicked() != 0 {
+        if restartBtn.WasClicked() {
             pane.Append("\n[restarting]\n");
             RestartSession();
         }

@@ -50,6 +50,16 @@ struct RuntimeMethodInfo {
 };
 
 /**
+ * @brief Return true for concrete GUI runtime classes that inherit Widget operations.
+ *
+ * @details The runtime class catalog keeps base widget methods only on
+ * `Viper.GUI.Widget`; frontends use this predicate to offer and resolve those
+ * methods for concrete widget handles without copying the methods into every
+ * public class surface.
+ */
+[[nodiscard]] bool isGuiWidgetSubclass(std::string_view classQName);
+
+/**
  * @brief Shared resolver for runtime class methods.
  *
  * @details This class centralizes the behavior that had drifted across

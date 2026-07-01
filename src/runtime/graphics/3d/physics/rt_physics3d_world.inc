@@ -819,7 +819,7 @@ int8_t rt_world3d_contains_body(void *obj, void *body) {
     return world3d_body_is_registered(w, b) ? 1 : 0;
 }
 
-/// @brief `World3D.LastCCDRequestedSubsteps` — unclamped substep demand from the last Step.
+/// @brief `World3D.LastCcdRequestedSubsteps` — unclamped substep demand from the last Step.
 int64_t rt_world3d_get_last_ccd_requested_substeps(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || w->last_ccd_requested_substeps <= 0)
@@ -828,7 +828,7 @@ int64_t rt_world3d_get_last_ccd_requested_substeps(void *obj) {
                                                        : w->last_ccd_requested_substeps;
 }
 
-/// @brief `World3D.LastCCDSubsteps` — actual CCD substeps used by the last Step.
+/// @brief `World3D.LastCcdSubsteps` — actual CCD substeps used by the last Step.
 int64_t rt_world3d_get_last_ccd_substeps(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || w->last_ccd_substeps <= 0)
@@ -837,19 +837,19 @@ int64_t rt_world3d_get_last_ccd_substeps(void *obj) {
                                                         : w->last_ccd_substeps;
 }
 
-/// @brief `World3D.CCDSubstepClampedCount` — number of frames that hit the substep cap.
+/// @brief `World3D.CcdSubstepClampedCount` — number of frames that hit the substep cap.
 int64_t rt_world3d_get_ccd_substep_clamped_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return (w && w->ccd_substep_clamped_count > 0) ? w->ccd_substep_clamped_count : 0;
 }
 
-/// @brief `World3D.LastCCDClampedBodyCount` — bodies capped by CCD in the last Step.
+/// @brief `World3D.LastCcdClampedBodyCount` — bodies capped by CCD in the last Step.
 int64_t rt_world3d_get_last_ccd_clamped_body_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return (w && w->last_ccd_clamped_body_count > 0) ? w->last_ccd_clamped_body_count : 0;
 }
 
-/// @brief `World3D.CCDSubstepClampedBodyCount` — total bodies affected by CCD caps.
+/// @brief `World3D.CcdSubstepClampedBodyCount` — total bodies affected by CCD caps.
 int64_t rt_world3d_get_ccd_substep_clamped_body_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return (w && w->ccd_substep_clamped_body_count > 0) ? w->ccd_substep_clamped_body_count : 0;

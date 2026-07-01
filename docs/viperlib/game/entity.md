@@ -34,8 +34,8 @@ Positions use floor division when converting centipixels to tile pixels, so nega
 ## Example
 ```rust
 var enemy = Entity.New(10000, 5000, 24, 16)
-enemy.set_HP(3)
-enemy.set_VX(100)
+enemy.set_Health(3)
+enemy.set_VelocityX(100)
 
 // Per frame:
 enemy.UpdatePhysics(tilemap, 78, 1350, dt)

@@ -146,11 +146,6 @@ extern "C" {
 #define VIPER_KEY_RCTRL 345
 #define VIPER_KEY_RALT 346
 
-// Alias for generic modifier keys
-#define VIPER_KEY_SHIFT VIPER_KEY_LSHIFT
-#define VIPER_KEY_CTRL VIPER_KEY_LCTRL
-#define VIPER_KEY_ALT VIPER_KEY_LALT
-
 // Maximum key code we track
 #define VIPER_KEY_MAX 512
 
@@ -355,9 +350,6 @@ int64_t rt_keyboard_key_tab(void);
 int64_t rt_keyboard_key_enter(void);
 int64_t rt_keyboard_key_space(void);
 int64_t rt_keyboard_key_escape(void);
-int64_t rt_keyboard_key_shift(void);
-int64_t rt_keyboard_key_ctrl(void);
-int64_t rt_keyboard_key_alt(void);
 int64_t rt_keyboard_key_lshift(void);
 int64_t rt_keyboard_key_rshift(void);
 int64_t rt_keyboard_key_lctrl(void);

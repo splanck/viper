@@ -416,19 +416,19 @@ int64_t rt_world3d_get_dropped_fixed_steps(void *w) {
     return 0;
 }
 
-/// @brief Stub for `Physics3DWorld.LastCCDRequestedSubsteps`.
+/// @brief Stub for `Physics3DWorld.LastCcdRequestedSubsteps`.
 int64_t rt_world3d_get_last_ccd_requested_substeps(void *w) {
     (void)w;
     return 0;
 }
 
-/// @brief Stub for `Physics3DWorld.LastCCDSubsteps`.
+/// @brief Stub for `Physics3DWorld.LastCcdSubsteps`.
 int64_t rt_world3d_get_last_ccd_substeps(void *w) {
     (void)w;
     return 0;
 }
 
-/// @brief Stub for `Physics3DWorld.CCDSubstepClampedCount`.
+/// @brief Stub for `Physics3DWorld.CcdSubstepClampedCount`.
 int64_t rt_world3d_get_ccd_substep_clamped_count(void *w) {
     (void)w;
     return 0;
@@ -2478,7 +2478,7 @@ void rt_body3d_sleep(void *o) {
     (void)o;
 }
 
-/// @brief Stub for `Body3D.SetUseCCD` — enable Continuous Collision
+/// @brief Stub for `Body3D.SetUseCcd` — enable Continuous Collision
 ///        Detection: fast-moving bodies are advanced in `PH3D_MAX_CCD_
 ///        SUBSTEPS = 16` substeps to detect tunneling through thin
 ///        geometry. More expensive than discrete collision.
@@ -2492,7 +2492,7 @@ void rt_body3d_set_use_ccd(void *o, int8_t use_ccd) {
     (void)use_ccd;
 }
 
-/// @brief Stub for `Body3D.UseCCD` — get the CCD flag.
+/// @brief Stub for `Body3D.UseCcd` — get the CCD flag.
 ///
 /// Silent stub returning `0`.
 ///

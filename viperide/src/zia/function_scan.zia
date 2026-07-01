@@ -25,7 +25,7 @@ expose func SourceLine(source: String,
                        lineNumber: Integer) -> String {
     if source == "" { return ""; }
     var lines = Str.Split(source, "\n");
-    if lineNumber < 1 or lineNumber > Seq.get_Length(lines) { return ""; }
+    if lineNumber < 1 or lineNumber > Seq.get_Count(lines) { return ""; }
     return Obj.ToString(Seq.Get(lines, lineNumber - 1));
 }
 
@@ -38,8 +38,8 @@ expose func EnclosingZiaFunctionStartLine(source: String,
     if source == "" { return 0; }
     var lines = Str.Split(source, "\n");
     var i = lineNumber;
-    if i > Seq.get_Length(lines) {
-        i = Seq.get_Length(lines);
+    if i > Seq.get_Count(lines) {
+        i = Seq.get_Count(lines);
     }
     while i >= 1 {
         if ZiaFunctionNameFromLine(Obj.ToString(Seq.Get(lines, i - 1))) != "" {
@@ -99,12 +99,12 @@ expose func ZiaFunctionEndLine(source: String,
                                startLine: Integer) -> Integer {
     var lines = Str.Split(source, "\n");
     var startIdx = startLine - 1;
-    if startIdx < 0 or startIdx >= Seq.get_Length(lines) { return startLine; }
+    if startIdx < 0 or startIdx >= Seq.get_Count(lines) { return startLine; }
 
     var depth = 0;
     var seenOpen = false;
     var i = startIdx;
-    while i < Seq.get_Length(lines) {
+    while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         var pos = 1;
         var inString = false;

@@ -8,10 +8,12 @@ bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind "./config";
 bind "./terrain";
+bind "./mathutil";
 
 class ShowcaseWaterSky {
     hide Water3D water;
     hide CubeMap3D skybox;
+    hide CubeMap3D nightSkybox;
     hide Mesh3D lakeMesh;
     hide Material3D lakeMat;
     hide Mesh3D saplingMesh;
@@ -19,9 +21,11 @@ class ShowcaseWaterSky {
     hide List[Float] reedXs;
     hide List[Float] reedZs;
     hide List[Float] reedPhase;
+    hide List[Float] reedY;
 
     expose func setup(land: Terrain3D) {
         skybox = createOutdoorSkybox();
+        nightSkybox = createNightSkybox();
 
         var waterTex = createWaterSurfaceTexture(config.WATER_TEXTURE_SIZE);
         var waterNormal = createWaterNormalTexture(config.WATER_TEXTURE_SIZE);
@@ -58,6 +62,10 @@ class ShowcaseWaterSky {
         return skybox;
     }
 
+    expose func getNightSkybox() -> CubeMap3D {
+        return nightSkybox;
+    }
+
     expose func getWater() -> Water3D {
         return water;
     }
@@ -80,14 +88,16 @@ class ShowcaseWaterSky {
         }
     }
 
-    expose func drawReeds(canvas: Canvas3D, land: Terrain3D, worldTime: Float) {
+    // Reed ground heights are cached at setup (reeds never move), so this hot
+    // per-frame path skips the terrain heightmap sampling it used to do.
+    expose func drawReeds(canvas: Canvas3D, worldTime: Float) {
         if (saplingMesh == null) { return; }
         var windDirX = Sin(config.FOLIAGE_WIND_DIR);
         var windDirZ = Cos(config.FOLIAGE_WIND_DIR);
         for i in 0..reedXs.count() {
             var x = reedXs.get(i);
             var z = reedZs.get(i);
-            var gy = terrain.sampleGround(land, x, z) + config.REED_HEIGHT * 0.5;
+            var gy = reedY.get(i);
             var xform = Mat4.Translate(x, gy, z);
             var phase = worldTime * config.REED_WIND_FREQ * 6.0 + reedPhase.get(i);
             Canvas3D.DrawMeshWind(
@@ -104,6 +114,56 @@ class ShowcaseWaterSky {
         var front = createSkyFace(4);
         var back = createSkyFace(5);
         return CubeMap3D.New(right, left, top, bottom, front, back);
+    }
+
+    // Dark blue starfield for the night half of the day cycle. Swapped in by the
+    // orchestrator when the sun drops below the horizon (see game.updateSkybox).
+    hide func createNightSkybox() -> CubeMap3D {
+        var right = createNightSkyFace(0);
+        var left = createNightSkyFace(1);
+        var top = createNightSkyFace(2);
+        var bottom = createNightSkyFace(3);
+        var front = createNightSkyFace(4);
+        var back = createNightSkyFace(5);
+        return CubeMap3D.New(right, left, top, bottom, front, back);
+    }
+
+    hide func createNightSkyFace(faceId: Integer) -> Pixels {
+        var size = config.SKYBOX_FACE_SIZE;
+        var face = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                // Vertical factor: 1 toward the zenith, 0 at the horizon band.
+                var up = 0.5;
+                if (faceId == 2) {
+                    up = 1.0;
+                } else {
+                    if (faceId == 3) {
+                        up = 0.0;
+                    } else {
+                        up = 1.0 - (py + 0.0) / (size + 0.0);
+                    }
+                }
+                var r = mathutil.clampByte(Convert.NumToInt(mathutil.lerpFloat(20.0, 6.0, up)));
+                var g = mathutil.clampByte(Convert.NumToInt(mathutil.lerpFloat(26.0, 9.0, up)));
+                var b = mathutil.clampByte(Convert.NumToInt(mathutil.lerpFloat(44.0, 22.0, up)));
+
+                // Sparse stars everywhere except the ground-facing bottom face.
+                if (faceId != 3) {
+                    var s = mathutil.hash01(px * 131 + faceId * 17, py * 71 + faceId * 29);
+                    if (s > 0.992) {
+                        var bright = mathutil.clampByte(180 + Convert.NumToInt((s - 0.992) / 0.008 * 75.0));
+                        r = bright;
+                        g = bright;
+                        b = mathutil.clampByte(bright + 10);
+                    }
+                }
+                face.Set(px, py, mathutil.packPixel(r, g, b, 255));
+            }
+        }
+
+        return face;
     }
 
     hide func createSkyFace(faceId: Integer) -> Pixels {
@@ -162,31 +222,31 @@ class ShowcaseWaterSky {
 
         var len = Sqrt(dx * dx + dy * dy + dz * dz);
         if (len <= 0.0001) {
-            return terrain.packPixel(132, 174, 220, 255);
+            return mathutil.packPixel(132, 174, 220, 255);
         }
 
         return sampleSkyPixel(dx / len, dy / len, dz / len);
     }
 
     hide func sampleSkyPixel(dx: Float, dy: Float, dz: Float) -> Integer {
-        var up = terrain.clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
-        var haze = terrain.clampFloat(1.0 - terrain.absFloat(dy) * 2.6, 0.0, 1.0);
-        var sun = terrain.clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
-        var r = terrain.lerpFloat(168.0, 88.0, up) + haze * (11.0 + sun * 6.0);
-        var g = terrain.lerpFloat(207.0, 144.0, up) + haze * (8.0 + sun * 4.0);
-        var b = terrain.lerpFloat(238.0, 218.0, up) + haze * 5.0;
+        var up = mathutil.clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
+        var haze = mathutil.clampFloat(1.0 - mathutil.absFloat(dy) * 2.6, 0.0, 1.0);
+        var sun = mathutil.clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
+        var r = mathutil.lerpFloat(168.0, 88.0, up) + haze * (11.0 + sun * 6.0);
+        var g = mathutil.lerpFloat(207.0, 144.0, up) + haze * (8.0 + sun * 4.0);
+        var b = mathutil.lerpFloat(238.0, 218.0, up) + haze * 5.0;
 
         if (dy < -0.18) {
-            var ground = terrain.clampFloat((0.0 - dy - 0.18) / 0.82, 0.0, 1.0);
-            r = terrain.lerpFloat(r, 77.0, ground);
-            g = terrain.lerpFloat(g, 94.0, ground);
-            b = terrain.lerpFloat(b, 82.0, ground);
+            var ground = mathutil.clampFloat((0.0 - dy - 0.18) / 0.82, 0.0, 1.0);
+            r = mathutil.lerpFloat(r, 77.0, ground);
+            g = mathutil.lerpFloat(g, 94.0, ground);
+            b = mathutil.lerpFloat(b, 82.0, ground);
         }
 
-        return terrain.packPixel(
-            terrain.clampByte(Convert.NumToInt(r)),
-            terrain.clampByte(Convert.NumToInt(g)),
-            terrain.clampByte(Convert.NumToInt(b)),
+        return mathutil.packPixel(
+            mathutil.clampByte(Convert.NumToInt(r)),
+            mathutil.clampByte(Convert.NumToInt(g)),
+            mathutil.clampByte(Convert.NumToInt(b)),
             255);
     }
 
@@ -201,10 +261,10 @@ class ShowcaseWaterSky {
                 var foam = 0;
                 if (longLine <= 1) { foam = foam + 24; }
                 if (shortLine == 0) { foam = foam + 12; }
-                tex.Set(px, py, terrain.packPixel(
-                    terrain.clampByte(10 + ripple / 3 + foam / 5),
-                    terrain.clampByte(92 + ripple / 2 + foam),
-                    terrain.clampByte(154 + ripple + foam),
+                tex.Set(px, py, mathutil.packPixel(
+                    mathutil.clampByte(10 + ripple / 3 + foam / 5),
+                    mathutil.clampByte(92 + ripple / 2 + foam),
+                    mathutil.clampByte(154 + ripple + foam),
                     255));
             }
         }
@@ -222,9 +282,9 @@ class ShowcaseWaterSky {
                 var crest = absInt(((px * 2 + py * 3) % 23) - 11);
                 var ny = 238;
                 if (crest <= 1) { ny = 248; }
-                tex.Set(px, py, terrain.packPixel(
-                    terrain.clampByte(128 + sx * 5),
-                    terrain.clampByte(128 + sz * 4),
+                tex.Set(px, py, mathutil.packPixel(
+                    mathutil.clampByte(128 + sx * 5),
+                    mathutil.clampByte(128 + sz * 4),
                     ny,
                     255));
             }
@@ -266,14 +326,15 @@ class ShowcaseWaterSky {
         reedXs = [];
         reedZs = [];
         reedPhase = [];
+        reedY = [];
         var cx = terrain.terrainWorldMaxX() * config.LAKE_CENTER_X;
         var cz = terrain.terrainWorldMaxZ() * config.LAKE_CENTER_Z;
         var rx = terrain.terrainWorldMaxX() * config.LAKE_RADIUS_X;
         var rz = terrain.terrainWorldMaxZ() * config.LAKE_RADIUS_Z;
         var i = 0;
         while (i < config.REED_COUNT) {
-            var ang = (i + 0.0) / (config.REED_COUNT + 0.0) * 6.2831853 + terrain.hash01(i, 41);
-            var radius = 0.88 + terrain.hash01(i, 43) * 0.28;
+            var ang = (i + 0.0) / (config.REED_COUNT + 0.0) * 6.2831853 + mathutil.hash01(i, 41);
+            var radius = 0.88 + mathutil.hash01(i, 43) * 0.28;
             var wx = cx + Sin(ang) * rx * radius;
             var wz = cz + Cos(ang) * rz * radius;
             if (wx > config.TERRAIN_MARGIN && wx < terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN
@@ -282,7 +343,8 @@ class ShowcaseWaterSky {
                 if (ground > config.WATER_HEIGHT - 0.7 && ground < config.WATER_HEIGHT + 2.0) {
                     reedXs.add(wx);
                     reedZs.add(wz);
-                    reedPhase.add(terrain.hash01(i, 47) * 6.2831853);
+                    reedPhase.add(mathutil.hash01(i, 47) * 6.2831853);
+                    reedY.add(ground + config.REED_HEIGHT * 0.5);
                 }
             }
             i = i + 1;

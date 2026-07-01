@@ -5,15 +5,15 @@ bind Viper.IO.Dir;
 bind Viper.Terminal;
 
 func start() {
-    Say(Viper.System.Machine.get_OS());
-    Say(Viper.System.Machine.get_OSVer());
+    Say(Viper.System.Machine.get_Os());
+    Say(Viper.System.Machine.get_OsVer());
     Say(Viper.System.Machine.get_User());
     Say(Viper.System.Machine.get_Home());
     SayInt(Viper.System.Machine.get_Cores());
     SayInt(Viper.System.Machine.get_Cores());
     SayInt(Viper.System.Machine.get_PageSize());
     Say(Viper.System.Machine.get_Arch());
-    Say(Viper.System.Machine.get_OS());
+    Say(Viper.System.Machine.get_Os());
     Say(Viper.System.Machine.get_Endian());
     SayInt(Viper.System.Machine.get_PointerSize());
     Say(Viper.IO.Dir.Current());

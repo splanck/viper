@@ -190,8 +190,8 @@ func start() {    Viper.Terminal.Clear();
     Viper.Terminal.SetPosition(1, 1);
     Viper.Terminal.SetColor(1, 0);
     Viper.Terminal.Print("Hello");
-    Viper.Terminal.SetCursorVisible(0);
-    Viper.Terminal.SetCursorVisible(1);
+    Viper.Terminal.SetCursorVisible(false);
+    Viper.Terminal.SetCursorVisible(true);
     var key: String = Viper.Terminal.GetKeyTimeout(1);
     if (key != "") {
         key = Viper.Terminal.GetKey();

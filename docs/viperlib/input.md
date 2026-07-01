@@ -83,91 +83,86 @@ All key codes are accessed as read-only properties on the Keyboard class.
 
 | Property | Value | Property | Value | Property | Value |
 |----------|-------|----------|-------|----------|-------|
-| `KEY_A`  | 65    | `KEY_J`  | 74    | `KEY_S`  | 83    |
-| `KEY_B`  | 66    | `KEY_K`  | 75    | `KEY_T`  | 84    |
-| `KEY_C`  | 67    | `KEY_L`  | 76    | `KEY_U`  | 85    |
-| `KEY_D`  | 68    | `KEY_M`  | 77    | `KEY_V`  | 86    |
-| `KEY_E`  | 69    | `KEY_N`  | 78    | `KEY_W`  | 87    |
-| `KEY_F`  | 70    | `KEY_O`  | 79    | `KEY_X`  | 88    |
-| `KEY_G`  | 71    | `KEY_P`  | 80    | `KEY_Y`  | 89    |
-| `KEY_H`  | 72    | `KEY_Q`  | 81    | `KEY_Z`  | 90    |
-| `KEY_I`  | 73    | `KEY_R`  | 82    |          |       |
+| `KeyA`  | 65    | `KeyJ`  | 74    | `KeyS`  | 83    |
+| `KeyB`  | 66    | `KeyK`  | 75    | `KeyT`  | 84    |
+| `KeyC`  | 67    | `KeyL`  | 76    | `KeyU`  | 85    |
+| `KeyD`  | 68    | `KeyM`  | 77    | `KeyV`  | 86    |
+| `KeyE`  | 69    | `KeyN`  | 78    | `KeyW`  | 87    |
+| `KeyF`  | 70    | `KeyO`  | 79    | `KeyX`  | 88    |
+| `KeyG`  | 71    | `KeyP`  | 80    | `KeyY`  | 89    |
+| `KeyH`  | 72    | `KeyQ`  | 81    | `KeyZ`  | 90    |
+| `KeyI`  | 73    | `KeyR`  | 82    |          |       |
 
 #### Numbers
 
 | Property  | Value | Property  | Value |
 |-----------|-------|-----------|-------|
-| `KEY_0`   | 48    | `KEY_5`   | 53    |
-| `KEY_1`   | 49    | `KEY_6`   | 54    |
-| `KEY_2`   | 50    | `KEY_7`   | 55    |
-| `KEY_3`   | 51    | `KEY_8`   | 56    |
-| `KEY_4`   | 52    | `KEY_9`   | 57    |
+| `Key0`   | 48    | `Key5`   | 53    |
+| `Key1`   | 49    | `Key6`   | 54    |
+| `Key2`   | 50    | `Key7`   | 55    |
+| `Key3`   | 51    | `Key8`   | 56    |
+| `Key4`   | 52    | `Key9`   | 57    |
 
 #### Function Keys
 
 | Property   | Value | Property   | Value |
 |------------|-------|------------|-------|
-| `KEY_F1`   | 290   | `KEY_F7`   | 296   |
-| `KEY_F2`   | 291   | `KEY_F8`   | 297   |
-| `KEY_F3`   | 292   | `KEY_F9`   | 298   |
-| `KEY_F4`   | 293   | `KEY_F10`  | 299   |
-| `KEY_F5`   | 294   | `KEY_F11`  | 300   |
-| `KEY_F6`   | 295   | `KEY_F12`  | 301   |
+| `KeyF1`   | 290   | `KeyF7`   | 296   |
+| `KeyF2`   | 291   | `KeyF8`   | 297   |
+| `KeyF3`   | 292   | `KeyF9`   | 298   |
+| `KeyF4`   | 293   | `KeyF10`  | 299   |
+| `KeyF5`   | 294   | `KeyF11`  | 300   |
+| `KeyF6`   | 295   | `KeyF12`  | 301   |
 
 #### Navigation
 
 | Property       | Value | Property       | Value |
 |----------------|-------|----------------|-------|
-| `KEY_UP`       | 265   | `KEY_HOME`     | 268   |
-| `KEY_DOWN`     | 264   | `KEY_END`      | 269   |
-| `KEY_LEFT`     | 263   | `KEY_PAGEUP`   | 266   |
-| `KEY_RIGHT`    | 262   | `KEY_PAGEDOWN` | 267   |
-| `KEY_INSERT`   | 260   | `KEY_DELETE`   | 261   |
+| `KeyUp`       | 265   | `KeyHome`     | 268   |
+| `KeyDown`     | 264   | `KeyEnd`      | 269   |
+| `KeyLeft`     | 263   | `KeyPageUp`   | 266   |
+| `KeyRight`    | 262   | `KeyPageDown` | 267   |
+| `KeyInsert`   | 260   | `KeyDelete`   | 261   |
 
 #### Special Keys
 
 | Property        | Value | Property       | Value |
 |-----------------|-------|----------------|-------|
-| `KEY_UNKNOWN`   | 0     | `KEY_SPACE`    | 32    |
-| `KEY_TAB`       | 258   | `KEY_ENTER`    | 257   |
-| `KEY_BACKSPACE` | 259   | `KEY_ESCAPE`   | 256   |
+| `KeyUnknown`   | 0     | `KeySpace`    | 32    |
+| `KeyTab`       | 258   | `KeyEnter`    | 257   |
+| `KeyBackspace` | 259   | `KeyEscape`   | 256   |
 
 #### Modifier Keys
 
 | Property      | Value | Property      | Value |
 |---------------|-------|---------------|-------|
-| `KEY_SHIFT`   | 340   | `KEY_LSHIFT`  | 340   |
-| `KEY_CTRL`    | 341   | `KEY_RSHIFT`  | 344   |
-| `KEY_ALT`     | 342   | `KEY_LCTRL`   | 341   |
-|               |       | `KEY_RCTRL`   | 345   |
-|               |       | `KEY_LALT`    | 342   |
-|               |       | `KEY_RALT`    | 346   |
-
-**Note:** KEY_SHIFT (340) is an alias for KEY_LSHIFT (340) — they refer to the same physical key. Similarly, KEY_CTRL (341) is an alias for KEY_LCTRL (341).
+| `KeyLeftShift`   | 340   | `KeyRightShift`  | 344   |
+| `KeyLeftControl`    | 341   | `KeyRightControl`   | 345   |
+| `KeyLeftAlt`     | 342   | `KeyRightAlt`    | 346   |
 
 #### Punctuation
 
 | Property         | Value | Property         | Value |
 |------------------|-------|------------------|-------|
-| `KEY_MINUS`      | 45    | `KEY_SEMICOLON`  | 59    |
-| `KEY_EQUALS`     | 61    | `KEY_QUOTE`      | 39    |
-| `KEY_LBRACKET`   | 91    | `KEY_COMMA`      | 44    |
-| `KEY_RBRACKET`   | 93    | `KEY_PERIOD`     | 46    |
-| `KEY_BACKSLASH`  | 92    | `KEY_SLASH`      | 47    |
-| `KEY_GRAVE`      | 96    |                  |       |
+| `KeyMinus`      | 45    | `KeySemicolon`  | 59    |
+| `KeyEquals`     | 61    | `KeyQuote`      | 39    |
+| `KeyLeftBracket`   | 91    | `KeyComma`      | 44    |
+| `KeyRightBracket`   | 93    | `KeyPeriod`     | 46    |
+| `KeyBackslash`  | 92    | `KeySlash`      | 47    |
+| `KeyGrave`      | 96    |                  |       |
 
 #### Numpad
 
 | Property       | Value | Property       | Value |
 |----------------|-------|----------------|-------|
-| `KEY_NUM0`     | 320   | `KEY_NUM6`     | 326   |
-| `KEY_NUM1`     | 321   | `KEY_NUM7`     | 327   |
-| `KEY_NUM2`     | 322   | `KEY_NUM8`     | 328   |
-| `KEY_NUM3`     | 323   | `KEY_NUM9`     | 329   |
-| `KEY_NUM4`     | 324   | `KEY_NUMADD`   | 334   |
-| `KEY_NUM5`     | 325   | `KEY_NUMSUB`   | 333   |
-| `KEY_NUMDOT`   | 330   | `KEY_NUMMUL`   | 332   |
-| `KEY_NUMENTER` | 335   | `KEY_NUMDIV`   | 331   |
+| `KeyNum0`     | 320   | `KeyNum6`     | 326   |
+| `KeyNum1`     | 321   | `KeyNum7`     | 327   |
+| `KeyNum2`     | 322   | `KeyNum8`     | 328   |
+| `KeyNum3`     | 323   | `KeyNum9`     | 329   |
+| `KeyNum4`     | 324   | `KeyNumAdd`   | 334   |
+| `KeyNum5`     | 325   | `KeyNumSub`   | 333   |
+| `KeyNumDot`   | 330   | `KeyNumMul`   | 332   |
+| `KeyNumEnter` | 335   | `KeyNumDiv`   | 331   |
 
 ### Zia Example: Basic Game Input
 
@@ -188,16 +183,16 @@ func start() {
         c.Poll();
 
         // Movement using polling (smooth, held keys)
-        if KB.IsDown(KB.get_KEY_W()) { py = py - 5; }
-        if KB.IsDown(KB.get_KEY_S()) { py = py + 5; }
-        if KB.IsDown(KB.get_KEY_A()) { px = px - 5; }
-        if KB.IsDown(KB.get_KEY_D()) { px = px + 5; }
+        if KB.IsDown(KB.get_KeyW()) { py = py - 5; }
+        if KB.IsDown(KB.get_KeyS()) { py = py + 5; }
+        if KB.IsDown(KB.get_KeyA()) { px = px - 5; }
+        if KB.IsDown(KB.get_KeyD()) { px = px + 5; }
 
         // Action on single press
-        if KB.WasPressed(KB.get_KEY_SPACE()) { Say("Action!"); }
+        if KB.WasPressed(KB.get_KeySpace()) { Say("Action!"); }
 
         // Escape to quit
-        if KB.WasPressed(KB.get_KEY_ESCAPE()) { return; }
+        if KB.WasPressed(KB.get_KeyEscape()) { return; }
 
         c.Clear(Color.RGB(0, 0, 0));
         c.Box(px - 10, py - 10, 20, 20, Color.RGB(255, 0, 0));
@@ -221,27 +216,27 @@ DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Movement using polling (smooth, held keys)
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KEY_W) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyW) THEN
         playerY = playerY - speed
     END IF
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KEY_S) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyS) THEN
         playerY = playerY + speed
     END IF
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KEY_A) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyA) THEN
         playerX = playerX - speed
     END IF
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KEY_D) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyD) THEN
         playerX = playerX + speed
     END IF
 
     ' Action using event (single press)
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_SPACE) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeySpace) THEN
         ' Fire weapon or jump - only triggers once per press
         PRINT "Action!"
     END IF
 
     ' Escape to quit
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_ESCAPE) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
         EXIT DO
     END IF
 
@@ -266,7 +261,7 @@ DO WHILE NOT canvas.ShouldClose
     pressed = Viper.Input.Keyboard.GetPressed()
 
     DIM i AS INTEGER
-    FOR i = 0 TO Viper.Collections.Seq.get_Length(pressed) - 1
+    FOR i = 0 TO Viper.Collections.Seq.get_Count(pressed) - 1
         DIM key AS INTEGER
         key = pressed.Get(i)
         PRINT "Pressed: "; Viper.Input.Keyboard.KeyName(key)
@@ -297,14 +292,14 @@ DO WHILE NOT canvas.ShouldClose
     inputText = inputText + typed
 
     ' Handle backspace
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_BACKSPACE) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyBackspace) THEN
         IF LEN(inputText) > 0 THEN
             inputText = LEFT$(inputText, LEN(inputText) - 1)
         END IF
     END IF
 
     ' Submit on Enter
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_ENTER) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEnter) THEN
         PRINT "Submitted: "; inputText
         inputText = ""
     END IF
@@ -529,11 +524,11 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 
 | Property        | Value | Description              |
 |-----------------|-------|--------------------------|
-| `BUTTON_LEFT`   | 0     | Left mouse button        |
-| `BUTTON_MIDDLE` | 2     | Middle mouse button      |
-| `BUTTON_RIGHT`  | 1     | Right mouse button       |
-| `BUTTON_X1`     | 3     | Extra button 1 (back)    |
-| `BUTTON_X2`     | 4     | Extra button 2 (forward) |
+| `ButtonLeft`   | 0     | Left mouse button        |
+| `ButtonMiddle` | 2     | Middle mouse button      |
+| `ButtonRight`  | 1     | Right mouse button       |
+| `ButtonX1`     | 3     | Extra button 1 (back)    |
+| `ButtonX2`     | 4     | Extra button 2 (forward) |
 
 ### Zia Example: Mouse Drawing
 
@@ -557,7 +552,7 @@ func start() {
         }
 
         // Clear on right click
-        if Mouse.WasClicked(Mouse.get_BUTTON_RIGHT()) {
+        if Mouse.WasClicked(Mouse.get_ButtonRight()) {
             c.Clear(Color.RGB(0, 0, 0));
         }
 
@@ -578,12 +573,12 @@ DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Start drawing when left button pressed
-    IF Viper.Input.Mouse.WasPressed(Viper.Input.Mouse.BUTTON_LEFT) THEN
+    IF Viper.Input.Mouse.WasPressed(Viper.Input.Mouse.ButtonLeft) THEN
         drawing = 1
     END IF
 
     ' Stop drawing when released
-    IF Viper.Input.Mouse.WasReleased(Viper.Input.Mouse.BUTTON_LEFT) THEN
+    IF Viper.Input.Mouse.WasReleased(Viper.Input.Mouse.ButtonLeft) THEN
         drawing = 0
     END IF
 
@@ -595,7 +590,7 @@ DO WHILE NOT canvas.ShouldClose
     END IF
 
     ' Clear on right click
-    IF Viper.Input.Mouse.WasClicked(Viper.Input.Mouse.BUTTON_RIGHT) THEN
+    IF Viper.Input.Mouse.WasClicked(Viper.Input.Mouse.ButtonRight) THEN
         canvas.Clear(0)
     END IF
 
@@ -632,7 +627,7 @@ DO WHILE NOT canvas.ShouldClose
     END IF
 
     ' Start dragging on press
-    IF Viper.Input.Mouse.WasPressed(Viper.Input.Mouse.BUTTON_LEFT) THEN
+    IF Viper.Input.Mouse.WasPressed(Viper.Input.Mouse.ButtonLeft) THEN
         IF overBox = 1 THEN
             dragging = 1
             offsetX = mx - boxX
@@ -641,7 +636,7 @@ DO WHILE NOT canvas.ShouldClose
     END IF
 
     ' Stop dragging on release
-    IF Viper.Input.Mouse.WasReleased(Viper.Input.Mouse.BUTTON_LEFT) THEN
+    IF Viper.Input.Mouse.WasReleased(Viper.Input.Mouse.ButtonLeft) THEN
         dragging = 0
     END IF
 
@@ -695,7 +690,7 @@ DO WHILE NOT canvas.ShouldClose
     IF cameraPitch < -90 THEN cameraPitch = -90
 
     ' Escape to release cursor and exit
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_ESCAPE) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
         Viper.Input.Mouse.Release()
         Viper.Input.Mouse.Show()
         EXIT DO
@@ -833,21 +828,21 @@ Standard gamepad layout compatible with Xbox and PlayStation controllers:
 
 | Property        | Value | Xbox          | PlayStation    |
 |-----------------|-------|---------------|----------------|
-| `PAD_A`         | 0     | A             | Cross (X)      |
-| `PAD_B`         | 1     | B             | Circle (O)     |
-| `PAD_X`         | 2     | X             | Square         |
-| `PAD_Y`         | 3     | Y             | Triangle       |
-| `PAD_LB`        | 4     | Left Bumper   | L1             |
-| `PAD_RB`        | 5     | Right Bumper  | R1             |
-| `PAD_BACK`      | 6     | Back/View     | Share          |
-| `PAD_START`     | 7     | Start/Menu    | Options        |
-| `PAD_LSTICK`    | 8     | Left Stick    | L3             |
-| `PAD_RSTICK`    | 9     | Right Stick   | R3             |
-| `PAD_UP`        | 10    | D-pad Up      | D-pad Up       |
-| `PAD_DOWN`      | 11    | D-pad Down    | D-pad Down     |
-| `PAD_LEFT`      | 12    | D-pad Left    | D-pad Left     |
-| `PAD_RIGHT`     | 13    | D-pad Right   | D-pad Right    |
-| `PAD_GUIDE`     | 14    | Xbox Button   | PS Button      |
+| `ButtonA`         | 0     | A             | Cross (X)      |
+| `ButtonB`         | 1     | B             | Circle (O)     |
+| `ButtonX`         | 2     | X             | Square         |
+| `ButtonY`         | 3     | Y             | Triangle       |
+| `ButtonLeftBumper`        | 4     | Left Bumper   | L1             |
+| `ButtonRightBumper`        | 5     | Right Bumper  | R1             |
+| `ButtonBack`      | 6     | Back/View     | Share          |
+| `ButtonStart`     | 7     | Start/Menu    | Options        |
+| `ButtonLeftStick`    | 8     | Left Stick    | L3             |
+| `ButtonRightStick`    | 9     | Right Stick   | R3             |
+| `ButtonUp`        | 10    | D-pad Up      | D-pad Up       |
+| `ButtonDown`      | 11    | D-pad Down    | D-pad Down     |
+| `ButtonLeft`      | 12    | D-pad Left    | D-pad Left     |
+| `ButtonRight`     | 13    | D-pad Right   | D-pad Right    |
+| `ButtonGuide`     | 14    | Xbox Button   | PS Button      |
 
 ### Zia Example: Controller Movement
 
@@ -873,7 +868,7 @@ func start() {
             px = px + Pad.LeftX(0) * 5.0;
             py = py + Pad.LeftY(0) * 5.0;
 
-            if Pad.WasPressed(0, Pad.get_PAD_A()) { Say("Jump!"); }
+            if Pad.WasPressed(0, Pad.get_ButtonA()) { Say("Jump!"); }
 
             // Trigger for shooting
             if Pad.RightTrigger(0) > 0.5 { Say("Shooting!"); }
@@ -908,7 +903,7 @@ DO WHILE NOT canvas.ShouldClose
         playerY = playerY + ly * speed
 
         ' Action on A button press
-        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.PAD_A) THEN
+        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.ButtonA) THEN
             PRINT "Jump!"
         END IF
 
@@ -936,17 +931,17 @@ DO WHILE NOT canvas.ShouldClose
 
     IF Viper.Input.Pad.IsConnected(0) THEN
         ' Strong rumble on left bumper
-        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.PAD_LB) THEN
+        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.ButtonLeftBumper) THEN
             Viper.Input.Pad.Vibrate(0, 1.0, 0.3)
         END IF
 
         ' Light rumble on right bumper
-        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.PAD_RB) THEN
+        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.ButtonRightBumper) THEN
             Viper.Input.Pad.Vibrate(0, 0.3, 1.0)
         END IF
 
         ' Stop on B button
-        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.PAD_B) THEN
+        IF Viper.Input.Pad.WasPressed(0, Viper.Input.Pad.ButtonB) THEN
             Viper.Input.Pad.StopVibration(0)
         END IF
     END IF
@@ -1220,12 +1215,12 @@ Action.BindKey("special_attack", 81);  // Q
 
 | Property            | Value | Description                     |
 |---------------------|-------|---------------------------------|
-| `AXIS_LEFT_X`       | 0     | Left stick horizontal           |
-| `AXIS_LEFT_Y`       | 1     | Left stick vertical             |
-| `AXIS_RIGHT_X`      | 2     | Right stick horizontal          |
-| `AXIS_RIGHT_Y`      | 3     | Right stick vertical            |
-| `AXIS_LEFT_TRIGGER` | 4     | Left trigger (0.0 to 1.0)       |
-| `AXIS_RIGHT_TRIGGER`| 5     | Right trigger (0.0 to 1.0)      |
+| `AxisLeftX`       | 0     | Left stick horizontal           |
+| `AxisLeftY`       | 1     | Left stick vertical             |
+| `AxisRightX`      | 2     | Right stick horizontal          |
+| `AxisRightY`      | 3     | Right stick vertical            |
+| `AxisLeftTrigger` | 4     | Left trigger (0.0 to 1.0)       |
+| `AxisRightTrigger`| 5     | Right trigger (0.0 to 1.0)      |
 
 ### Zia Example: Action Mapping
 
@@ -1250,16 +1245,16 @@ func start() {
     Action.DefineAxis("move_y");
 
     // Bind keyboard
-    Action.BindKey("jump", KB.get_KEY_SPACE());
-    Action.BindKey("fire", KB.get_KEY_Z());
-    Action.BindKeyAxis("move_x", KB.get_KEY_LEFT(), -1.0);
-    Action.BindKeyAxis("move_x", KB.get_KEY_RIGHT(), 1.0);
-    Action.BindKeyAxis("move_y", KB.get_KEY_UP(), -1.0);
-    Action.BindKeyAxis("move_y", KB.get_KEY_DOWN(), 1.0);
+    Action.BindKey("jump", KB.get_KeySpace());
+    Action.BindKey("fire", KB.get_KeyZ());
+    Action.BindKeyAxis("move_x", KB.get_KeyLeft(), -1.0);
+    Action.BindKeyAxis("move_x", KB.get_KeyRight(), 1.0);
+    Action.BindKeyAxis("move_y", KB.get_KeyUp(), -1.0);
+    Action.BindKeyAxis("move_y", KB.get_KeyDown(), 1.0);
 
     // Bind gamepad (any controller)
-    Action.BindPadButton("jump", -1, Pad.get_PAD_A());
-    Action.BindPadButton("fire", -1, Pad.get_PAD_X());
+    Action.BindPadButton("jump", -1, Pad.get_ButtonA());
+    Action.BindPadButton("fire", -1, Pad.get_ButtonX());
 
     Say("Jump bindings: " + Action.BindingsStr("jump"));
 
@@ -1297,18 +1292,18 @@ Viper.Input.Action.DefineAxis("move_x")
 Viper.Input.Action.DefineAxis("move_y")
 
 ' Bind keyboard
-Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KEY_SPACE)
-Viper.Input.Action.BindKey("fire", Viper.Input.Keyboard.KEY_Z)
-Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KEY_LEFT, -1.0)
-Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KEY_RIGHT, 1.0)
-Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KEY_UP, -1.0)
-Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KEY_DOWN, 1.0)
+Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KeySpace)
+Viper.Input.Action.BindKey("fire", Viper.Input.Keyboard.KeyZ)
+Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KeyLeft, -1.0)
+Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KeyRight, 1.0)
+Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KeyUp, -1.0)
+Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KeyDown, 1.0)
 
 ' Bind gamepad (any controller)
-Viper.Input.Action.BindPadButton("jump", -1, Viper.Input.Pad.PAD_A)
-Viper.Input.Action.BindPadButton("fire", -1, Viper.Input.Pad.PAD_X)
-Viper.Input.Action.BindPadAxis("move_x", -1, Viper.Input.Action.AXIS_LEFT_X, 1.0)
-Viper.Input.Action.BindPadAxis("move_y", -1, Viper.Input.Action.AXIS_LEFT_Y, 1.0)
+Viper.Input.Action.BindPadButton("jump", -1, Viper.Input.Pad.ButtonA)
+Viper.Input.Action.BindPadButton("fire", -1, Viper.Input.Pad.ButtonX)
+Viper.Input.Action.BindPadAxis("move_x", -1, Viper.Input.Action.AxisLeftX, 1.0)
+Viper.Input.Action.BindPadAxis("move_y", -1, Viper.Input.Action.AxisLeftY, 1.0)
 
 DIM playerX AS DOUBLE = 400.0
 DIM playerY AS DOUBLE = 300.0
@@ -1352,8 +1347,8 @@ Viper.Input.Action.BindMouseX("look_x", 0.002)
 Viper.Input.Action.BindMouseY("look_y", 0.002)
 
 ' Also allow gamepad right stick
-Viper.Input.Action.BindPadAxis("look_x", -1, Viper.Input.Action.AXIS_RIGHT_X, 0.05)
-Viper.Input.Action.BindPadAxis("look_y", -1, Viper.Input.Action.AXIS_RIGHT_Y, 0.05)
+Viper.Input.Action.BindPadAxis("look_x", -1, Viper.Input.Action.AxisRightX, 0.05)
+Viper.Input.Action.BindPadAxis("look_y", -1, Viper.Input.Action.AxisRightY, 0.05)
 
 DIM yaw AS DOUBLE = 0.0
 DIM pitch AS DOUBLE = 0.0
@@ -1388,14 +1383,14 @@ PRINT "Jump is bound to: "; jumpBindings
 
 ' Check for conflicts
 DIM conflict AS STRING
-conflict = Viper.Input.Action.KeyBoundTo(Viper.Input.Keyboard.KEY_SPACE)
+conflict = Viper.Input.Action.KeyBoundTo(Viper.Input.Keyboard.KeySpace)
 IF conflict <> "" THEN
     PRINT "Space is already bound to: "; conflict
 END IF
 
 ' Rebind at runtime
-Viper.Input.Action.UnbindKey("jump", Viper.Input.Keyboard.KEY_SPACE)
-Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KEY_W)
+Viper.Input.Action.UnbindKey("jump", Viper.Input.Keyboard.KeySpace)
+Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KeyW)
 ```
 
 ### Notes
@@ -1493,6 +1488,8 @@ These properties check ALL input sources (keyboard, D-pad, analog sticks) and re
 | `MouseDeltaY`| Integer | Read   | Mouse Y movement since last frame        |
 | `ScrollX`    | Integer | Read   | Horizontal scroll delta                  |
 | `ScrollY`    | Integer | Read   | Vertical scroll delta                    |
+| `ScrollHorizontalFloat` | Double | Read | Horizontal scroll delta with fractional precision |
+| `ScrollVerticalFloat`   | Double | Read | Vertical scroll delta with fractional precision   |
 
 ### Gamepad Methods
 
@@ -1649,12 +1646,12 @@ DO WHILE running
     input.Update()
 
     ' Non-debounced: fires every frame while held
-    IF input.KeyHeld(Viper.Input.Keyboard.KEY_SPACE) THEN
+    IF input.KeyHeld(Viper.Input.Keyboard.KeySpace) THEN
         FireWeapon()  ' Continuous fire
     END IF
 
     ' Debounced: fires once, then requires release or wait
-    IF input.KeyPressedDebounced(Viper.Input.Keyboard.KEY_P) THEN
+    IF input.KeyPressedDebounced(Viper.Input.Keyboard.KeyP) THEN
         TogglePause()  ' Won't rapid-toggle
     END IF
 LOOP

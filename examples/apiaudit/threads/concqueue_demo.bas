@@ -17,7 +17,7 @@ PRINT "IsEmpty: "; q.IsEmpty
 
 ' --- Len (initial) ---
 PRINT "--- Len (initial) ---"
-PRINT "Len: "; q.Length
+PRINT "Len: "; q.Count
 
 ' --- Enqueue ---
 PRINT "--- Enqueue ---"
@@ -28,7 +28,7 @@ PRINT "Enqueued 3 items"
 
 ' --- Len (after enqueue) ---
 PRINT "--- Len (after enqueue) ---"
-PRINT "Len: "; q.Length
+PRINT "Len: "; q.Count
 
 ' --- IsEmpty (after enqueue) ---
 PRINT "--- IsEmpty (after enqueue) ---"
@@ -43,13 +43,13 @@ PRINT "Peek: "; Viper.Core.Box.ToStr(front)
 PRINT "--- TryDequeue ---"
 DIM item1 AS OBJECT = q.TryDequeue()
 PRINT "TryDequeue: "; Viper.Core.Box.ToStr(item1)
-PRINT "Len after TryDequeue: "; q.Length
+PRINT "Len after TryDequeue: "; q.Count
 
 ' --- Dequeue (blocking, but queue has items) ---
 PRINT "--- Dequeue ---"
 DIM item2 AS OBJECT = q.Dequeue()
 PRINT "Dequeue: "; Viper.Core.Box.ToStr(item2)
-PRINT "Len after Dequeue: "; q.Length
+PRINT "Len after Dequeue: "; q.Count
 
 ' --- TryDequeue remaining ---
 PRINT "--- TryDequeue remaining ---"
@@ -66,9 +66,9 @@ PRINT "--- Clear ---"
 q.Enqueue(Viper.Core.Box.I64(10))
 q.Enqueue(Viper.Core.Box.I64(20))
 q.Enqueue(Viper.Core.Box.I64(30))
-PRINT "Len before Clear: "; q.Length
+PRINT "Len before Clear: "; q.Count
 q.Clear()
-PRINT "Len after Clear: "; q.Length
+PRINT "Len after Clear: "; q.Count
 PRINT "IsEmpty after Clear: "; q.IsEmpty
 
 PRINT "=== ConcurrentQueue Audit Complete ==="

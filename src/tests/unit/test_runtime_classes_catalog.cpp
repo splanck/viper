@@ -51,11 +51,23 @@ bool hasProperty(const il::runtime::RuntimeClass &cls,
     return false;
 }
 
+bool startsWith(std::string_view value, std::string_view prefix) {
+    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
 } // namespace
 
 int main() {
     const auto &cat = il::runtime::runtimeClassCatalog();
     assert(cat.size() >= 1);
+
+    for (const auto &cls : cat) {
+        for (const auto &method : cls.methods) {
+            const std::string_view name(method.name);
+            assert(!startsWith(name, "get_") && "accessors must be runtime properties, not methods");
+            assert(!startsWith(name, "set_") && "accessors must be runtime properties, not methods");
+        }
+    }
 
     // Find Viper.String in the catalog (order-independent)
     const il::runtime::RuntimeClass *stringCls = findClass("Viper.String");
@@ -84,6 +96,8 @@ int main() {
     const il::runtime::RuntimeClass *valueTypeCls = findClass("Viper.Core.ValueType");
     assert(valueTypeCls != nullptr && "Viper.Core.ValueType not found in catalog");
     assert(hasMethod(*valueTypeCls, "AddField", "void(i64,i64,i1)"));
+    assert(!hasMethod(*valueTypeCls, "ValueType", "obj(i64)") &&
+           "Viper.Core.ValueType must not expose Viper.Core.Box.ValueType as a method");
 
     const il::runtime::RuntimeClass *systemClipboardCls = findClass("Viper.System.Clipboard");
     assert(systemClipboardCls != nullptr && "Viper.System.Clipboard not found in catalog");
@@ -108,16 +122,16 @@ int main() {
 
     const il::runtime::RuntimeClass *guiAppCls = findClass("Viper.GUI.App");
     assert(guiAppCls != nullptr && "Viper.GUI.App not found in catalog");
-    assert(hasMethod(*guiAppCls, "WasFileDropped", "i64()"));
+    assert(hasMethod(*guiAppCls, "WasFileDropped", "i1()"));
     assert(hasMethod(*guiAppCls, "GetDroppedFileCount", "i64()"));
     assert(hasMethod(*guiAppCls, "GetDroppedFile", "str(i64)"));
 
     const il::runtime::RuntimeClass *guiWidgetCls = findClass("Viper.GUI.Widget");
     assert(guiWidgetCls != nullptr && "Viper.GUI.Widget not found in catalog");
     assert(hasMethod(*guiWidgetCls, "SetTooltip", "void(str)"));
-    assert(hasMethod(*guiWidgetCls, "SetDraggable", "void(i64)"));
+    assert(hasMethod(*guiWidgetCls, "SetDraggable", "void(i1)"));
     assert(hasMethod(*guiWidgetCls, "SetDragData", "void(str,str)"));
-    assert(hasMethod(*guiWidgetCls, "WasDropped", "i64()"));
+    assert(hasMethod(*guiWidgetCls, "WasDropped", "i1()"));
     assert(hasMethod(*guiWidgetCls, "GetDropData", "str()"));
 
     const il::runtime::RuntimeClass *guiCodeEditorCls = findClass("Viper.GUI.CodeEditor");

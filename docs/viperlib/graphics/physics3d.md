@@ -36,9 +36,9 @@ and joint integration.
 | `StayEventCount` | Integer | Read | Number of collision pairs that remained touching this step |
 | `ExitEventCount` | Integer | Read | Number of collision pairs that stopped touching this step |
 | `JointCount`     | Integer | Read   | Number of active joints |
-| `LastCCDRequestedSubsteps` | Integer | Read | Unclamped CCD substep demand from the most recent `Step()` |
-| `LastCCDSubsteps` | Integer | Read | Actual CCD substeps used after applying the runtime cap |
-| `CCDSubstepClampedCount` | Integer | Read | Number of steps whose CCD demand exceeded the cap |
+| `LastCcdRequestedSubsteps` | Integer | Read | Unclamped CCD substep demand from the most recent `Step()` |
+| `LastCcdSubsteps` | Integer | Read | Actual CCD substeps used after applying the runtime cap |
+| `CcdSubstepClampedCount` | Integer | Read | Number of steps whose CCD demand exceeded the cap |
 | `SolverIterations` | Integer | Read/Write | Velocity/contact/joint solver passes used by `Step()`; default `6`, clamped to `1..64` |
 | `PositionIterations` | Integer | Read/Write | Contact position-correction passes; default `1`, clamped to `1..64` |
 | `ContactBeta` | Double | Read/Write | Baumgarte contact recovery fraction; default `0.8`, clamped to `0.0..1.0` |
@@ -109,7 +109,7 @@ and joint integration.
   fixture covers 16 static mesh tiles while building only the one overlapping
   tile's per-mesh BVH.
 - Sphere sweeps use analytic tests against primitive spheres and boxes before falling back to adaptive sampling. Capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
-- `LastCCDRequestedSubsteps`, `LastCCDSubsteps`, and `CCDSubstepClampedCount` are diagnostics for fast-body tuning; clamping is expected when very high velocity would require more substeps than the engine's safety cap.
+- `LastCcdRequestedSubsteps`, `LastCcdSubsteps`, and `CcdSubstepClampedCount` are diagnostics for fast-body tuning; clamping is expected when very high velocity would require more substeps than the engine's safety cap.
 - `SolverIterations` defaults to `6` and drives velocity contact solving plus joint
   constraint passes. `PositionIterations` defaults to `1` and controls the split
   contact position-correction pass. Both clamp to `1..64`; higher values can reduce
@@ -301,7 +301,7 @@ sleeping, and optional CCD.
 | `Trigger` | Boolean | Read/Write | Trigger-only overlap body; no impulse response |
 | `CanSleep` | Boolean | Read/Write | Allow the body to auto-sleep when idle |
 | `Sleeping` | Boolean | Read | Body is currently asleep |
-| `UseCCD` | Boolean | Read/Write | Enable substep-based CCD for fast motion |
+| `UseCcd` | Boolean | Read/Write | Enable substep-based CCD for fast motion |
 | `Grounded` | Boolean | Read | Body touched a ground-like contact in the last step |
 | `GroundNormal` | Object (`Vec3`) | Read | Normal of the last ground contact |
 | `Mass` | Double | Read | Body mass |
@@ -335,7 +335,7 @@ sleeping, and optional CCD.
 - `Sleep()` and `Wake()` only affect dynamic bodies. Static and kinematic bodies do not enter
   the sleeping state.
 - `Kinematic = true` makes the body move from explicit `Velocity` / `AngularVelocity` only.
-- `UseCCD` uses additional substeps to reduce tunneling for fast-moving bodies. It is
+- `UseCcd` uses additional substeps to reduce tunneling for fast-moving bodies. It is
   **off by default**; enable it explicitly on small or fast bodies (projectiles, balls).
   Without it, a fast body can tunnel through thin geometry within a single step.
 - Position, velocity, angular velocity, force, torque, and integrated state are

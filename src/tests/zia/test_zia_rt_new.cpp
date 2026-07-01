@@ -5,9 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Zia 'new' keyword with runtime classes whose constructors
-// are not named '.New' (e.g., FrozenSet.FromSeq, Version.Parse, BinFile.Open).
-// Fixes bugs A-028, A-029, A-031, A-032, A-033, A-042, A-050.
+// Tests for Zia 'new' keyword with runtime classes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,13 +18,12 @@ using namespace il::support;
 
 namespace {
 
-/// Helper: compile a Zia source string and return whether it succeeded.
-bool compileOk(const std::string &source) {
+bool compileSource(const std::string &source, bool printDiagnostics) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "<test>"};
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
-    if (!result.succeeded()) {
+    if (!result.succeeded() && printDiagnostics) {
         std::cerr << "Compilation failed:\n";
         for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
@@ -36,9 +33,16 @@ bool compileOk(const std::string &source) {
     return result.succeeded();
 }
 
-// A-028: FrozenSet 'new' was rejected because ctor is FromSeq, not New
-TEST(ZiaRtNew, FrozenSetNew) {
-    EXPECT_TRUE(compileOk(R"(
+bool compileOk(const std::string &source) {
+    return compileSource(source, true);
+}
+
+bool compileFails(const std::string &source) {
+    return !compileSource(source, false);
+}
+
+TEST(ZiaRtNew, FrozenSetNamedFactoryIsNotNew) {
+    EXPECT_TRUE(compileFails(R"(
 module TestFS;
 bind Viper.Collections;
 /// @brief Start.
@@ -46,11 +50,18 @@ func start() {    var s = new Seq();
     var x = new FrozenSet(s);
 }
 )"));
+    EXPECT_TRUE(compileOk(R"(
+module TestFSFactory;
+bind Viper.Collections;
+/// @brief Start.
+func start() {    var s = new Seq();
+    var x = FrozenSet.FromSeq(s);
+}
+)"));
 }
 
-// A-029: FrozenMap 'new' was rejected because ctor is FromSeqs, not New
-TEST(ZiaRtNew, FrozenMapNew) {
-    EXPECT_TRUE(compileOk(R"(
+TEST(ZiaRtNew, FrozenMapNamedFactoryIsNotNew) {
+    EXPECT_TRUE(compileFails(R"(
 module TestFM;
 bind Viper.Collections;
 /// @brief Start.
@@ -59,15 +70,30 @@ func start() {    var keys = new Seq();
     var x = new FrozenMap(keys, vals);
 }
 )"));
+    EXPECT_TRUE(compileOk(R"(
+module TestFMFactory;
+bind Viper.Collections;
+/// @brief Start.
+func start() {    var keys = new Seq();
+    var vals = new Seq();
+    var x = FrozenMap.FromSeqs(keys, vals);
+}
+)"));
 }
 
-// A-031: Version 'new' was rejected because ctor is Parse, not New
-TEST(ZiaRtNew, VersionNew) {
-    EXPECT_TRUE(compileOk(R"(
+TEST(ZiaRtNew, VersionParseIsNotNew) {
+    EXPECT_TRUE(compileFails(R"(
 module TestVer;
 bind Viper.Text;
 /// @brief Start.
 func start() {    var v = new Version("1.0.0");
+}
+)"));
+    EXPECT_TRUE(compileOk(R"(
+module TestVerFactory;
+bind Viper.Text;
+/// @brief Start.
+func start() {    var v = Version.Parse("1.0.0");
 }
 )"));
 }
@@ -94,46 +120,70 @@ func start() {    var s = new Scanner("hello world");
 )"));
 }
 
-// A-042: DateOnly 'new' — ctor is Today (0-arg factory)
-TEST(ZiaRtNew, DateOnlyNew) {
-    EXPECT_TRUE(compileOk(R"(
+TEST(ZiaRtNew, DateOnlyTodayIsNotNew) {
+    EXPECT_TRUE(compileFails(R"(
 module TestDate;
 bind Viper.Time;
 /// @brief Start.
 func start() {    var d = new DateOnly();
 }
 )"));
+    EXPECT_TRUE(compileOk(R"(
+module TestDateFactory;
+bind Viper.Time;
+/// @brief Start.
+func start() {    var d = DateOnly.Today();
+}
+)"));
 }
 
-// A-050: BinFile 'new' — ctor is Open, not New
-TEST(ZiaRtNew, BinFileNew) {
-    EXPECT_TRUE(compileOk(R"(
+TEST(ZiaRtNew, BinFileOpenIsNotNew) {
+    EXPECT_TRUE(compileFails(R"(
 module TestBF;
 bind Viper.IO;
 /// @brief Start.
 func start() {    var f = new BinFile("/tmp/test.dat", "rw");
 }
 )"));
+    EXPECT_TRUE(compileOk(R"(
+module TestBFFactory;
+bind Viper.IO;
+/// @brief Start.
+func start() {    var f = BinFile.Open("/tmp/test.dat", "rw");
+}
+)"));
 }
 
-// A-050: LineReader 'new' — ctor is Open, not New
-TEST(ZiaRtNew, LineReaderNew) {
-    EXPECT_TRUE(compileOk(R"(
+TEST(ZiaRtNew, LineReaderOpenIsNotNew) {
+    EXPECT_TRUE(compileFails(R"(
 module TestLR;
 bind Viper.IO;
 /// @brief Start.
 func start() {    var r = new LineReader("/tmp/test.txt");
 }
 )"));
+    EXPECT_TRUE(compileOk(R"(
+module TestLRFactory;
+bind Viper.IO;
+/// @brief Start.
+func start() {    var r = LineReader.Open("/tmp/test.txt");
+}
+)"));
 }
 
-// A-050: LineWriter 'new' — ctor is Open, not New
-TEST(ZiaRtNew, LineWriterNew) {
-    EXPECT_TRUE(compileOk(R"(
+TEST(ZiaRtNew, LineWriterOpenIsNotNew) {
+    EXPECT_TRUE(compileFails(R"(
 module TestLW;
 bind Viper.IO;
 /// @brief Start.
 func start() {    var w = new LineWriter("/tmp/test_out.txt");
+}
+)"));
+    EXPECT_TRUE(compileOk(R"(
+module TestLWFactory;
+bind Viper.IO;
+/// @brief Start.
+func start() {    var w = LineWriter.Open("/tmp/test_out.txt");
 }
 )"));
 }

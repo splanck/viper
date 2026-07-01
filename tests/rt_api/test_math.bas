@@ -1,6 +1,6 @@
 ' test_math.bas — Viper.Math
 PRINT Viper.Math.Pi
-PRINT Viper.Math.E
+PRINT Viper.Math.Euler
 PRINT Viper.Math.Tau
 PRINT Viper.Math.Abs(-5.0)
 PRINT Viper.Math.AbsInt(-42)

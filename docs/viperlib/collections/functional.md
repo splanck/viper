@@ -97,12 +97,12 @@ func start() {
     seq.Push("first");
     seq.Push("second");
     seq.Push("third");
-    Say("Length: " + Fmt.Int(seq.Length));                     // 3
+    Say("Count: " + Fmt.Int(seq.Count));                     // 3
 
     // Peek and Pop (LIFO)
     Say("Peek: " + Viper.Core.Box.ToStr(seq.Peek()));            // third
     Say("Pop: " + Viper.Core.Box.ToStr(seq.Pop()));              // third
-    Say("After pop: " + Fmt.Int(seq.Length));                   // 2
+    Say("After pop: " + Fmt.Int(seq.Count));                   // 2
 
     // Reverse in place
     seq.Reverse();
@@ -121,7 +121,7 @@ seq.Push(item1)
 seq.Push(item2)
 seq.Push(item3)
 
-PRINT seq.Length      ' Output: 3
+PRINT seq.Count      ' Output: 3
 PRINT seq.IsEmpty  ' Output: False
 
 ' Access elements by index
@@ -352,12 +352,12 @@ DIM evens AS OBJECT = Viper.Functional.LazySeq.Range(1, 100, 1) _
 
 ' Collect into a Seq
 DIM evenSeq AS OBJECT = evens.ToSeq()
-PRINT evenSeq.Length    ' Output: 5
+PRINT evenSeq.Count    ' Output: 5
 
 ' Infinite sequence with Take
 DIM ones AS OBJECT = Viper.Functional.LazySeq.Repeat(1, -1)  ' Infinite 1s
 DIM firstTen AS OBJECT = ones.Take(10).ToSeq()
-PRINT firstTen.Length   ' Output: 10
+PRINT firstTen.Count   ' Output: 10
 
 ' Find first element matching condition
 DIM firstBig AS OBJECT = Viper.Functional.LazySeq.Range(1, 1000000, 1) _
@@ -486,7 +486,7 @@ func start() {
     it.Next();   // consume a
     it.Next();   // consume b
     var rest = it.ToSeq();
-    SayInt(rest.Length);                         // 3 (c, d, e)
+    SayInt(rest.Count);                         // 3 (c, d, e)
 }
 ```
 
@@ -537,7 +537,7 @@ it.Next()   ' consume a
 it.Next()   ' consume b
 DIM rest AS OBJECT
 rest = it.ToSeq()
-PRINT rest.Length           ' 3 (c, d, e)
+PRINT rest.Count           ' 3 (c, d, e)
 PRINT rest.Get(0)        ' c
 PRINT rest.Get(1)        ' d
 PRINT rest.Get(2)        ' e

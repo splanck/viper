@@ -24,7 +24,7 @@ func main() {
     var sess = new terminal_session.TerminalSession();
     var args = Seq.New();
     var program = "/bin/echo";
-    if Machine.OS == "windows" {
+    if Machine.Os == "windows" {
         program = Env.GetVariable("COMSPEC");
         if program == "" { program = "cmd.exe"; }
         Seq.Push(args, "/c");

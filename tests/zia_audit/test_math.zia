@@ -30,7 +30,7 @@ func start() {
 
     // Constants (use get_* for property getters)
     checkNum("Pi", Viper.Math.get_Pi(), 3.14159265, 0.0001);
-    checkNum("E", Viper.Math.get_E(), 2.71828182, 0.0001);
+    checkNum("E", Viper.Math.get_Euler(), 2.71828182, 0.0001);
     checkNum("Tau", Viper.Math.get_Tau(), 6.28318530, 0.0001);
 
     // Absolute value
@@ -90,7 +90,7 @@ func start() {
     check("SgnInt zero", Viper.Math.SgnInt(0), 0);
 
     // Logarithms
-    checkNum("Log e", Viper.Math.Log(Viper.Math.get_E()), 1.0, 0.001);
+    checkNum("Log e", Viper.Math.Log(Viper.Math.get_Euler()), 1.0, 0.001);
     checkNum("Log10 100", Viper.Math.Log10(100.0), 2.0, 0.001);
     checkNum("Log2 8", Viper.Math.Log2(8.0), 3.0, 0.001);
 
