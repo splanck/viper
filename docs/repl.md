@@ -27,7 +27,7 @@ vbasic                  # zero-arg vbasic launches the BASIC REPL directly
 You'll see a prompt where you can type code:
 
 ```text
-Viper zia REPL v0.2.6-dev
+Viper zia REPL v0.2.7-dev
 Type .help for commands, .quit to exit.
 
 zia> 2 + 3
