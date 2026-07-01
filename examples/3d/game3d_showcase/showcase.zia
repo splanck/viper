@@ -276,8 +276,8 @@ func runScenario(title: String, render: Boolean) -> Float {
         return -99999.0;
     }
 
-    var ballPos = ball.Position();
-    var markerPos = animEntity.Position();
+    var ballPos = ball.Position;
+    var markerPos = animEntity.Position;
     var metric = Math.Vec3.get_X(ballPos) + Math.Vec3.get_Y(ballPos) +
                  Math.Vec3.get_X(markerPos) + (hitCount * 0.125) +
                  anim.EventCount();

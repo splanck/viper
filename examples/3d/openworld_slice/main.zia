@@ -187,7 +187,7 @@ class OpenWorldSlice {
         completeAsyncAsset();
         NavAgent3D.Update(agentA, dt);
         NavAgent3D.Update(agentB, dt);
-        stream.SetCenter(player.Position());
+        stream.SetCenter(player.Position);
         stream.Update(dt);
         world.RunFramesOnly(1, dt);
     }
@@ -212,9 +212,9 @@ class OpenWorldSlice {
     }
 
     expose func replayMetric() -> Float {
-        var a = scoutA.Position();
-        var b = scoutB.Position();
-        var p = player.Position();
+        var a = scoutA.Position;
+        var b = scoutB.Position;
+        var p = player.Position;
         return Vec3.get_X(a) + Vec3.get_Z(a) + Vec3.get_X(b) + Vec3.get_Z(b) +
                Vec3.get_X(p) + Vec3.get_Z(p);
     }

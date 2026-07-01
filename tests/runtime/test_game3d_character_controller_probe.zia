@@ -36,10 +36,10 @@ func start() {
     fps.Speed = 5.0;
     world.SetCameraController(fps);
 
-    var before = player.Position();
+    var before = player.Position;
     G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_KeyW(), true);
     world.RunFramesOnly(1, 0.1);
-    var after = player.Position();
+    var after = player.Position;
 
     if (Math.Vec3.get_Z(after) >= Math.Vec3.get_Z(before) - 0.05) {
         fail("FirstPersonController did not move CharacterController3D in the same frame");

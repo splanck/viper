@@ -1217,6 +1217,15 @@ class Sema {
     /// @return The resolved member type, or `unknown` on error/not-found.
     TypeRef resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType);
 
+    /// @brief Resolve a paren-less member access on a runtime class (a `Viper.`-
+    ///        prefixed Ptr base): an RT_PROP getter, a method accessed without
+    ///        call parentheses (diagnosed with a fix-it), or a genuine unknown
+    ///        member (diagnosed like every other field-access branch). Mirrors
+    ///        `resolveClassStructFieldAccess` so runtime-class access is a
+    ///        complete, self-diagnosing resolver rather than a silent fall-through.
+    /// @return The resolved property type, or `unknown` on error/not-found.
+    TypeRef resolveRuntimeClassFieldAccess(FieldExpr *expr, TypeRef baseType);
+
     /// @brief Analyze an optional chain expression.
     /// @return An optional type wrapping the field type.
     TypeRef analyzeOptionalChain(OptionalChainExpr *expr);
@@ -1701,6 +1710,17 @@ class Sema {
     /// @param loc Source location.
     /// @param name The undefined name.
     void errorUndefined(SourceLoc loc, const std::string &name);
+
+    /// @brief Report that a runtime method was accessed without call parentheses.
+    /// @details Emits `V-ZIA-METHOD-CALL` with an "add ()" fix-it when a zero-arg
+    ///          overload exists (so the fix fully resolves it). Prevents the
+    ///          member-access resolver from silently returning `unknown()` for a
+    ///          real method (which the lowerer would miscompile).
+    /// @param expr The field-access expression (its `loc` is the `.` token).
+    /// @param className Fully-qualified runtime class name.
+    /// @param candidates `methodCandidates` results (`"Name/arity"`) for the field.
+    void errorRuntimeMethodNeedsCall(FieldExpr *expr, const std::string &className,
+                                     const std::vector<std::string> &candidates);
 
     /// @brief Report a type mismatch error.
     /// @param loc Source location.

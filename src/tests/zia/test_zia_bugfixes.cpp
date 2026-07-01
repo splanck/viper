@@ -3337,6 +3337,100 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+// --- Paren-less runtime-method access is diagnosed (V-ZIA-METHOD-CALL) --------
+// Regression for the sema/lowering bug where accessing a runtime method without
+// call parentheses passed sema and then emitted invalid IL (or a silently-typed
+// constant). Sema now completes the runtime-class resolver: property -> method-
+// without-parens (with an "add ()" fix-it) -> genuine "no member".
+
+TEST(ZiaRuntimeMemberAccess, ParenlessZeroArgMethodEmitsMethodCallDiagnostic) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Game3D;
+func start() {
+    var e: Entity3D = Entity3D.New();
+    var s = e.IsSpawned;
+}
+)";
+    CompilerInput input{.source = source, .path = "parenless_method.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagnosticCode(result, "V-ZIA-METHOD-CALL"));
+    EXPECT_TRUE(hasErrorContaining(result, "is a method of"));
+}
+
+TEST(ZiaRuntimeMemberAccess, ParenfulMethodCallCompiles) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Game3D;
+func start() {
+    var e: Entity3D = Entity3D.New();
+    var s = e.IsSpawned();
+}
+)";
+    CompilerInput input{.source = source, .path = "parenful_method.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_FALSE(hasDiagnosticCode(result, "V-ZIA-METHOD-CALL"));
+}
+
+TEST(ZiaRuntimeMemberAccess, ParenlessArgMethodDiagnosedNotUnknownMember) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Game3D;
+func start() {
+    var e: Entity3D = Entity3D.New();
+    var f = e.SetPosition;
+}
+)";
+    CompilerInput input{.source = source, .path = "parenless_arg_method.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagnosticCode(result, "V-ZIA-METHOD-CALL"));
+    // An arg-taking method is still a method — it must not be mislabeled "no member".
+    EXPECT_FALSE(hasErrorContaining(result, "has no member"));
+}
+
+TEST(ZiaRuntimeMemberAccess, UnknownRuntimeMemberEmitsNoMemberError) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Game3D;
+func start() {
+    var e: Entity3D = Entity3D.New();
+    var g = e.Nonexistent;
+}
+)";
+    CompilerInput input{.source = source, .path = "unknown_member.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "has no member 'Nonexistent'"));
+}
+
+TEST(ZiaRuntimeMemberAccess, ParenlessPropertyStillResolves) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Game3D;
+func start() {
+    var e: Entity3D = Entity3D.New();
+    var n = e.Name;
+}
+)";
+    CompilerInput input{.source = source, .path = "parenless_property.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_FALSE(hasDiagnosticCode(result, "V-ZIA-METHOD-CALL"));
+}
+
 } // namespace
 
 int main() {

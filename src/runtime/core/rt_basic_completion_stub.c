@@ -26,16 +26,11 @@
 #include "rt_string.h"
 
 #include "rt_map.h"
+#include "rt_platform.h" // RT_WEAK (weak-symbol linkage, compiler-abstracted)
 #include "rt_seq.h"
 
 #include <stdint.h>
 #include <string.h>
-
-#ifndef _MSC_VER
-#define RT_WEAK __attribute__((weak))
-#else
-#define RT_WEAK
-#endif
 
 RT_WEAK void *rt_basic_toolchain_check_for_file(rt_string source, rt_string file_path) {
     (void)source;

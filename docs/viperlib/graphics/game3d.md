@@ -437,7 +437,7 @@ an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 | `setCollisionMask(mask)` | Set the layer mask used by attached bodies |
 | `attachBody(bodyDef)` | Create and attach a `Physics3DBody` from a `BodyDef` |
 | `attachAnimator(animator)` | Attach an `Animator3D` or raw `AnimController3D` to the entity node |
-| `position()` / `worldPosition()` | Read local/world position |
+| `position` / `worldPosition` | Read local/world position (properties) |
 | `isSpawned()` / `isDestroyed()` | Inspect lifecycle state |
 | `isGroup()` | True when the entity wraps an imported/`FromNode` multi-node group rather than a single primitive |
 

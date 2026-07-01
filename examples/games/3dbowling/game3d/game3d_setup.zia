@@ -110,8 +110,8 @@ func runSetup(render: Boolean) -> Float {
         frame = frame + 1;
     }
 
-    var ballPos = ball.Position();
-    var pinPos = p1.Position();
+    var ballPos = ball.Position;
+    var pinPos = p1.Position;
     var metric = Math.Vec3.get_Z(ballPos) + Math.Vec3.get_X(pinPos) + Math.Vec3.get_Z(pinPos) + hits;
     world.Destroy();
     return metric;

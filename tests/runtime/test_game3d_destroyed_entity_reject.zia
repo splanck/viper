@@ -14,7 +14,7 @@ func start() {
     var entity = Game3D.Entity3D.New();
     world.Spawn(entity);
     world.Destroy();
-    var pos = entity.Position();
+    var pos = entity.Position;
     if (pos == null ||
         Math.Vec3.get_X(pos) != 0.0 ||
         Math.Vec3.get_Y(pos) != 0.0 ||

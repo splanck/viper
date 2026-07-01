@@ -43,17 +43,10 @@
 
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_platform.h" // RT_WEAK (weak-symbol linkage, compiler-abstracted)
 #include "rt_seq.h"
 
 #include <string.h>
-
-#ifndef _MSC_VER
-#define RT_WEAK __attribute__((weak))
-#else
-// MSVC: accept a duplicate-symbol link error rather than silently stub out;
-// production Windows builds always link zia_editor_services so the issue never arises.
-#define RT_WEAK
-#endif
 
 /// @brief Construct a runtime string from a static C-string payload.
 /// @details Helper used by every weak stub in this file to wrap the shared

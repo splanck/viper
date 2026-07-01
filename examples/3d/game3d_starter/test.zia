@@ -52,7 +52,7 @@ func runStarterReplay() -> Float {
         return fail("starter character did not stay grounded");
     }
 
-    var pos = game.getPlayer().Position();
+    var pos = game.getPlayer().Position;
     var metric = Vec3.get_X(pos) + Vec3.get_Y(pos) + Vec3.get_Z(pos);
     game.destroy();
     return metric;

@@ -74,7 +74,7 @@ func start() {
     world.Spawn(entity);
     world.RunFramesOnly(1, 0.25);
 
-    var pos = entity.Position();
+    var pos = entity.Position;
     if (Math.Vec3.get_X(pos) < 2.4 || Math.Vec3.get_X(pos) > 2.6) {
         fail("World3D did not advance root motion before scene sync");
         return;

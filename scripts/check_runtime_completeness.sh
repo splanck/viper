@@ -31,9 +31,12 @@ prop_setters=$(grep -E '^\s+RT_PROP\(' "$DEF" \
 handlers=$(printf '%s\n%s\n%s\n' "$method_handlers" "$prop_getters" "$prop_setters" \
     | grep -v '^$' | grep -v '^none$' | sort -u)
 
-# Extract all handler identifiers defined by RT_FUNC(HandlerName, ...) lines.
-funcs=$(grep -E '^RT_FUNC\(' "$DEF" \
-    | sed -E 's/RT_FUNC\(([A-Za-z_][A-Za-z0-9_]*).*/\1/' \
+# Extract all handler identifiers defined by RT_FUNC(HandlerName, ...) and
+# RT_INTERNAL_FUNC(HandlerName, ...) lines — both macros define a handler that an
+# RT_METHOD/RT_PROP may reference (RT_INTERNAL_FUNC is used for internal class
+# metadata/lowering targets hidden from the public catalog).
+funcs=$(grep -E '^RT_(INTERNAL_)?FUNC\(' "$DEF" \
+    | sed -E 's/RT_(INTERNAL_)?FUNC\(([A-Za-z_][A-Za-z0-9_]*).*/\2/' \
     | sort -u)
 
 # Find handler names with no RT_FUNC entry.

@@ -336,11 +336,18 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         }
     }
 
-    // Unknown field access -- use sema type to determine correct IL type as fallback.
-    // This prevents silent I64 mistyping for non-integer fields (BUG-FE-006 safety net).
-    TypeRef exprType = sema_.typeOf(expr);
-    Type fallbackType = exprType ? mapType(exprType) : Type(Type::Kind::I64);
-    return {Value::constInt(0), fallbackType};
+    // Unreachable for well-formed input: Sema::resolveRuntimeClassFieldAccess now
+    // resolves or diagnoses every runtime-class member access, and the other
+    // analyzeField branches diagnose their own unknown members. Reaching here means
+    // a sema gap let an unresolved field through to lowering — fail loud with an
+    // internal-compiler-error rather than silently emitting a mistyped constant
+    // (the BUG-FE-006 intent: never silently mistype a field, now enforced loudly).
+    diag_.report({il::support::Severity::Error,
+                  "internal: unresolved field '" + expr->field +
+                      "' reached lowering; please report this as a compiler bug",
+                  expr->loc,
+                  "V-ZIA-INTERNAL"});
+    return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
 //=============================================================================

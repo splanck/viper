@@ -328,6 +328,55 @@ void Sema::errorUndefined(SourceLoc loc, const std::string &name) {
     diag_.report(std::move(diag));
 }
 
+/// @brief Report a runtime method accessed without call parentheses. See header.
+void Sema::errorRuntimeMethodNeedsCall(FieldExpr *expr, const std::string &className,
+                                       const std::vector<std::string> &candidates) {
+    // A zero-arg overload means `()` fully fixes the access, so we offer a fix-it.
+    // With only arg-taking overloads we guide but omit the fix-it — a fix that
+    // produces a fresh "wrong argument count" error would not be a fix.
+    bool hasZeroArg = false;
+    for (const auto &candidate : candidates) {
+        if (candidate.size() >= 2 && candidate.compare(candidate.size() - 2, 2, "/0") == 0) {
+            hasZeroArg = true;
+            break;
+        }
+    }
+    const std::string call = hasZeroArg ? "()" : "(...)";
+    std::string message = "'" + expr->field + "' is a method of '" + className +
+                          "'; call it with '" + expr->field + call + "'";
+
+    // The field-name span. FieldExpr::loc is the `.` token and the field name
+    // immediately follows it, so the name occupies [column+1, column+1+len).
+    // Used both to underline the access and to attach the "add ()" fix-it.
+    il::support::SourceRange range{};
+    std::vector<il::support::DiagnosticFixIt> fixits;
+    if (expr->loc.isValid()) {
+        const uint32_t fieldColumn = expr->loc.column + 1;
+        range = il::support::SourceRange{
+            il::support::SourceLoc{expr->loc.file_id, expr->loc.line, fieldColumn},
+            il::support::SourceLoc{expr->loc.file_id, expr->loc.line,
+                                   fieldColumn + static_cast<uint32_t>(expr->field.size())},
+        };
+        if (hasZeroArg) {
+            fixits.push_back({range, expr->field + "()", "add '()' to call the method"});
+        }
+    }
+
+    hasError_ = true;
+    il::support::Diagnostic diag{
+        il::support::Severity::Error,
+        std::move(message),
+        expr->loc,
+        "V-ZIA-METHOD-CALL",
+    };
+    diag.range = range;
+    diag.stage = "sema";
+    diag.help =
+        "Runtime methods are invoked with parentheses; write '" + expr->field + call + "'.";
+    diag.fixits = std::move(fixits);
+    diag_.report(std::move(diag));
+}
+
 /// @brief Report a type mismatch error showing expected vs actual types.
 void Sema::errorTypeMismatch(SourceLoc loc, TypeRef expected, TypeRef actual) {
     std::string expectedStr = expected ? expected->toDisplayString() : "unknown";

@@ -278,34 +278,55 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         return types::unknown();
     }
 
-    // Handle runtime class property access (e.g., app.Root, editor.LineCount)
-    // Runtime classes are Ptr types with a name like "Viper.GUI.App"
+    // Runtime class member access (a "Viper."-prefixed Ptr base, e.g. app.Root,
+    // editor.LineCount). Delegated to a complete resolver that diagnoses every
+    // failure mode, symmetric with resolveClassStructFieldAccess for user types.
     if (baseType && baseType->kind == TypeKindSem::Ptr && !baseType->name.empty() &&
         baseType->name.find("Viper.") == 0) {
-        const auto &registry = il::runtime::RuntimeRegistry::instance();
-        std::string getterName = baseType->name + ".get_" + expr->field;
-        if (auto prop = registry.findProperty(baseType->name, expr->field); prop) {
-            if (!prop->getter || !*prop->getter) {
-                error(expr->loc,
-                      "Property '" + expr->field + "' of type '" + baseType->name +
-                          "' is write-only");
-                return types::unknown();
-            }
-            getterName = prop->getter;
-        }
-
-        Symbol *sym = lookupAccessibleSymbol(getterName, expr->loc, true);
-        if (sym && sym->kind == Symbol::Kind::Function) {
-            resolvedFieldGetters_[expr] = getterName;
-            // Return the function's return type (the property type)
-            TypeRef funcType = sym->type;
-            if (funcType && funcType->kind == TypeKindSem::Function) {
-                return normalizeRuntimeSurfaceType(funcType->returnType());
-            }
-            return normalizeRuntimeSurfaceType(funcType);
-        }
+        return resolveRuntimeClassFieldAccess(expr, baseType);
     }
 
+    return types::unknown();
+}
+
+/// @brief Resolve a paren-less member access on a runtime class. See header.
+TypeRef Sema::resolveRuntimeClassFieldAccess(FieldExpr *expr, TypeRef baseType) {
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+    std::string getterName = baseType->name + ".get_" + expr->field;
+    if (auto prop = registry.findProperty(baseType->name, expr->field); prop) {
+        if (!prop->getter || !*prop->getter) {
+            error(expr->loc,
+                  "Property '" + expr->field + "' of type '" + baseType->name +
+                      "' is write-only");
+            return types::unknown();
+        }
+        getterName = prop->getter;
+    }
+
+    Symbol *sym = lookupAccessibleSymbol(getterName, expr->loc, true);
+    if (sym && sym->kind == Symbol::Kind::Function) {
+        resolvedFieldGetters_[expr] = getterName;
+        // Return the function's return type (the property type).
+        TypeRef funcType = sym->type;
+        if (funcType && funcType->kind == TypeKindSem::Function) {
+            return normalizeRuntimeSurfaceType(funcType->returnType());
+        }
+        return normalizeRuntimeSurfaceType(funcType);
+    }
+
+    // Not a property. A method accessed without call parentheses is not a value:
+    // diagnose it (with an "add ()" fix-it) rather than returning unknown() and
+    // letting the lowerer miscompile it into a mistyped constant.
+    if (auto candidates = registry.methodCandidates(baseType->name, expr->field);
+        !candidates.empty()) {
+        errorRuntimeMethodNeedsCall(expr, baseType->name, candidates);
+        return types::unknown();
+    }
+
+    // Genuinely not a member of this runtime class — diagnose symmetrically with
+    // every other field-access branch (List/Map/Set/String/primitive/...).
+    error(expr->loc,
+          "Type '" + baseType->name + "' has no member '" + expr->field + "'");
     return types::unknown();
 }
 

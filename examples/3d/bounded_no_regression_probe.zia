@@ -24,7 +24,7 @@ class BoundedSceneCapture {
     expose func capture(game: WalkMinGame, snap: Pixels) {
         frame = Pixels.Clone(snap);
         var world = game.getWorld();
-        var playerPos = game.getPlayer().Position();
+        var playerPos = game.getPlayer().Position;
         playerX = Vec3.get_X(playerPos);
         playerY = Vec3.get_Y(playerPos);
         playerZ = Vec3.get_Z(playerPos);

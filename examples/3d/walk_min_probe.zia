@@ -119,14 +119,14 @@ func assertWalksGrounded(game: WalkMinGame, canvas: Canvas3D) -> Boolean {
 
     Canvas3D.ClearSyntheticInput(canvas);
     Canvas3D.SetInputSource(canvas, 1);
-    var before = player.Position();
+    var before = player.Position;
 
     Canvas3D.PushSyntheticKey(canvas, Keys.get_KeyW(), true);
     game.getWorld().Tick();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);
 
-    var after = player.Position();
+    var after = player.Position;
     var dx = Vec3.get_X(after) - Vec3.get_X(before);
     var dz = Vec3.get_Z(after) - Vec3.get_Z(before);
     if (dx * dx + dz * dz < 0.0025) {

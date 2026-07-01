@@ -362,7 +362,7 @@ class ShowcaseWorldSim {
     expose func pushBoulders(dt: Float, playerX: Float, playerZ: Float, kick: Boolean) {
         for i in 0..boulders.count() {
             var e = boulders.get(i);
-            var p = e.Position();
+            var p = e.Position;
             var dx = Vec3.get_X(p) - playerX;
             var dz = Vec3.get_Z(p) - playerZ;
             var d = Sqrt(dx * dx + dz * dz);
