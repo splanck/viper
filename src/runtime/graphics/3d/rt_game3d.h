@@ -226,6 +226,182 @@ int64_t rt_game3d_key_right(void);
 /// @brief Key code for the F11 function key.
 int64_t rt_game3d_key_f11(void);
 
+// --- Full keyboard coverage: remaining A-Z / 0-9 / F1-F12 / navigation /
+//     modifier / punctuation / numpad keys, completing Viper.Game3D.Keys so any
+//     physical key is reachable as Keys.get_<Name>(). Backing: rt_input table. ---
+/// @brief Key code for the B key.
+int64_t rt_game3d_key_b(void);
+/// @brief Key code for the C key.
+int64_t rt_game3d_key_c(void);
+/// @brief Key code for the E key.
+int64_t rt_game3d_key_e(void);
+/// @brief Key code for the F key.
+int64_t rt_game3d_key_f(void);
+/// @brief Key code for the G key.
+int64_t rt_game3d_key_g(void);
+/// @brief Key code for the H key.
+int64_t rt_game3d_key_h(void);
+/// @brief Key code for the I key.
+int64_t rt_game3d_key_i(void);
+/// @brief Key code for the J key.
+int64_t rt_game3d_key_j(void);
+/// @brief Key code for the K key.
+int64_t rt_game3d_key_k(void);
+/// @brief Key code for the L key.
+int64_t rt_game3d_key_l(void);
+/// @brief Key code for the M key.
+int64_t rt_game3d_key_m(void);
+/// @brief Key code for the N key.
+int64_t rt_game3d_key_n(void);
+/// @brief Key code for the O key.
+int64_t rt_game3d_key_o(void);
+/// @brief Key code for the P key.
+int64_t rt_game3d_key_p(void);
+/// @brief Key code for the Q key.
+int64_t rt_game3d_key_q(void);
+/// @brief Key code for the R key.
+int64_t rt_game3d_key_r(void);
+/// @brief Key code for the T key.
+int64_t rt_game3d_key_t(void);
+/// @brief Key code for the U key.
+int64_t rt_game3d_key_u(void);
+/// @brief Key code for the V key.
+int64_t rt_game3d_key_v(void);
+/// @brief Key code for the X key.
+int64_t rt_game3d_key_x(void);
+/// @brief Key code for the Y key.
+int64_t rt_game3d_key_y(void);
+/// @brief Key code for the Z key.
+int64_t rt_game3d_key_z(void);
+/// @brief Key code for the 0 key (top row).
+int64_t rt_game3d_key_0(void);
+/// @brief Key code for the 1 key (top row).
+int64_t rt_game3d_key_1(void);
+/// @brief Key code for the 2 key (top row).
+int64_t rt_game3d_key_2(void);
+/// @brief Key code for the 3 key (top row).
+int64_t rt_game3d_key_3(void);
+/// @brief Key code for the 4 key (top row).
+int64_t rt_game3d_key_4(void);
+/// @brief Key code for the 5 key (top row).
+int64_t rt_game3d_key_5(void);
+/// @brief Key code for the 6 key (top row).
+int64_t rt_game3d_key_6(void);
+/// @brief Key code for the 7 key (top row).
+int64_t rt_game3d_key_7(void);
+/// @brief Key code for the 8 key (top row).
+int64_t rt_game3d_key_8(void);
+/// @brief Key code for the 9 key (top row).
+int64_t rt_game3d_key_9(void);
+/// @brief Key code for the F1 function key.
+int64_t rt_game3d_key_f1(void);
+/// @brief Key code for the F2 function key.
+int64_t rt_game3d_key_f2(void);
+/// @brief Key code for the F3 function key.
+int64_t rt_game3d_key_f3(void);
+/// @brief Key code for the F4 function key.
+int64_t rt_game3d_key_f4(void);
+/// @brief Key code for the F5 function key.
+int64_t rt_game3d_key_f5(void);
+/// @brief Key code for the F6 function key.
+int64_t rt_game3d_key_f6(void);
+/// @brief Key code for the F7 function key.
+int64_t rt_game3d_key_f7(void);
+/// @brief Key code for the F8 function key.
+int64_t rt_game3d_key_f8(void);
+/// @brief Key code for the F9 function key.
+int64_t rt_game3d_key_f9(void);
+/// @brief Key code for the F10 function key.
+int64_t rt_game3d_key_f10(void);
+/// @brief Key code for the F12 function key.
+int64_t rt_game3d_key_f12(void);
+/// @brief Key code for the Enter/Return key.
+int64_t rt_game3d_key_enter(void);
+/// @brief Key code for the Tab key.
+int64_t rt_game3d_key_tab(void);
+/// @brief Key code for the Backspace key.
+int64_t rt_game3d_key_backspace(void);
+/// @brief Key code for the Insert key.
+int64_t rt_game3d_key_insert(void);
+/// @brief Key code for the Delete key.
+int64_t rt_game3d_key_delete(void);
+/// @brief Key code for the Home key.
+int64_t rt_game3d_key_home(void);
+/// @brief Key code for the End key.
+int64_t rt_game3d_key_end(void);
+/// @brief Key code for the Page Up key.
+int64_t rt_game3d_key_pageup(void);
+/// @brief Key code for the Page Down key.
+int64_t rt_game3d_key_pagedown(void);
+/// @brief Key code for the Alt modifier (left).
+int64_t rt_game3d_key_alt(void);
+/// @brief Key code for the left Shift modifier.
+int64_t rt_game3d_key_lshift(void);
+/// @brief Key code for the right Shift modifier.
+int64_t rt_game3d_key_rshift(void);
+/// @brief Key code for the left Ctrl modifier.
+int64_t rt_game3d_key_lctrl(void);
+/// @brief Key code for the right Ctrl modifier.
+int64_t rt_game3d_key_rctrl(void);
+/// @brief Key code for the left Alt modifier.
+int64_t rt_game3d_key_lalt(void);
+/// @brief Key code for the right Alt modifier.
+int64_t rt_game3d_key_ralt(void);
+/// @brief Key code for the apostrophe/quote key.
+int64_t rt_game3d_key_quote(void);
+/// @brief Key code for the comma key.
+int64_t rt_game3d_key_comma(void);
+/// @brief Key code for the minus/hyphen key.
+int64_t rt_game3d_key_minus(void);
+/// @brief Key code for the period key.
+int64_t rt_game3d_key_period(void);
+/// @brief Key code for the forward-slash key.
+int64_t rt_game3d_key_slash(void);
+/// @brief Key code for the semicolon key.
+int64_t rt_game3d_key_semicolon(void);
+/// @brief Key code for the equals key.
+int64_t rt_game3d_key_equals(void);
+/// @brief Key code for the left-bracket key.
+int64_t rt_game3d_key_lbracket(void);
+/// @brief Key code for the backslash key.
+int64_t rt_game3d_key_backslash(void);
+/// @brief Key code for the right-bracket key.
+int64_t rt_game3d_key_rbracket(void);
+/// @brief Key code for the grave/backtick key.
+int64_t rt_game3d_key_grave(void);
+/// @brief Key code for the numpad 0.
+int64_t rt_game3d_key_num0(void);
+/// @brief Key code for the numpad 1.
+int64_t rt_game3d_key_num1(void);
+/// @brief Key code for the numpad 2.
+int64_t rt_game3d_key_num2(void);
+/// @brief Key code for the numpad 3.
+int64_t rt_game3d_key_num3(void);
+/// @brief Key code for the numpad 4.
+int64_t rt_game3d_key_num4(void);
+/// @brief Key code for the numpad 5.
+int64_t rt_game3d_key_num5(void);
+/// @brief Key code for the numpad 6.
+int64_t rt_game3d_key_num6(void);
+/// @brief Key code for the numpad 7.
+int64_t rt_game3d_key_num7(void);
+/// @brief Key code for the numpad 8.
+int64_t rt_game3d_key_num8(void);
+/// @brief Key code for the numpad 9.
+int64_t rt_game3d_key_num9(void);
+/// @brief Key code for the numpad decimal point.
+int64_t rt_game3d_key_numdot(void);
+/// @brief Key code for the numpad divide.
+int64_t rt_game3d_key_numdiv(void);
+/// @brief Key code for the numpad multiply.
+int64_t rt_game3d_key_nummul(void);
+/// @brief Key code for the numpad subtract.
+int64_t rt_game3d_key_numsub(void);
+/// @brief Key code for the numpad add.
+int64_t rt_game3d_key_numadd(void);
+/// @brief Key code for the numpad Enter.
+int64_t rt_game3d_key_numenter(void);
+
 //=========================================================================
 // MouseButtons — mouse-button code constants (Viper.Game3D.MouseButtons)
 //=========================================================================
@@ -1000,6 +1176,17 @@ void rt_game3d_world_set_origin_rebase_threshold(void *world, double meters);
 void rt_game3d_world_rebase_origin(void *world, double dx, double dy, double dz);
 /// @brief Spawn an entity into the world (adds it to scene + physics); returns the entity.
 void *rt_game3d_world_spawn(void *world, void *entity);
+/// @brief Spawn an invisible static heightfield collider (from a Pixels heightmap) so a
+///   standalone Terrain3D becomes solid to physics/character controllers. The heightfield is
+///   centered on the entity; pass the terrain center as (pos_x,pos_y,pos_z). Returns the entity.
+void *rt_game3d_world_spawn_heightfield_collider(void *world,
+                                                 void *heightmap,
+                                                 double scale_x,
+                                                 double scale_y,
+                                                 double scale_z,
+                                                 double pos_x,
+                                                 double pos_y,
+                                                 double pos_z);
 /// @brief Despawn an entity, removing it from scene and physics.
 void rt_game3d_world_despawn(void *world, void *entity);
 /// @brief Find a scene node by name, or null if absent.

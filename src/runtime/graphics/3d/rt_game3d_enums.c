@@ -236,6 +236,439 @@ int64_t rt_game3d_key_f11(void) {
     return rt_keyboard_key_f11();
 }
 
+
+// --- Full keyboard coverage wrappers (forward to the shared rt_keyboard table) ---
+
+/// @brief Key code for the B key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_b(void) {
+    return rt_keyboard_key_b();
+}
+
+/// @brief Key code for the C key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_c(void) {
+    return rt_keyboard_key_c();
+}
+
+/// @brief Key code for the E key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_e(void) {
+    return rt_keyboard_key_e();
+}
+
+/// @brief Key code for the F key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f(void) {
+    return rt_keyboard_key_f();
+}
+
+/// @brief Key code for the G key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_g(void) {
+    return rt_keyboard_key_g();
+}
+
+/// @brief Key code for the H key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_h(void) {
+    return rt_keyboard_key_h();
+}
+
+/// @brief Key code for the I key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_i(void) {
+    return rt_keyboard_key_i();
+}
+
+/// @brief Key code for the J key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_j(void) {
+    return rt_keyboard_key_j();
+}
+
+/// @brief Key code for the K key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_k(void) {
+    return rt_keyboard_key_k();
+}
+
+/// @brief Key code for the L key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_l(void) {
+    return rt_keyboard_key_l();
+}
+
+/// @brief Key code for the M key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_m(void) {
+    return rt_keyboard_key_m();
+}
+
+/// @brief Key code for the N key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_n(void) {
+    return rt_keyboard_key_n();
+}
+
+/// @brief Key code for the O key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_o(void) {
+    return rt_keyboard_key_o();
+}
+
+/// @brief Key code for the P key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_p(void) {
+    return rt_keyboard_key_p();
+}
+
+/// @brief Key code for the Q key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_q(void) {
+    return rt_keyboard_key_q();
+}
+
+/// @brief Key code for the R key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_r(void) {
+    return rt_keyboard_key_r();
+}
+
+/// @brief Key code for the T key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_t(void) {
+    return rt_keyboard_key_t();
+}
+
+/// @brief Key code for the U key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_u(void) {
+    return rt_keyboard_key_u();
+}
+
+/// @brief Key code for the V key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_v(void) {
+    return rt_keyboard_key_v();
+}
+
+/// @brief Key code for the X key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_x(void) {
+    return rt_keyboard_key_x();
+}
+
+/// @brief Key code for the Y key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_y(void) {
+    return rt_keyboard_key_y();
+}
+
+/// @brief Key code for the Z key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_z(void) {
+    return rt_keyboard_key_z();
+}
+
+/// @brief Key code for the 0 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_0(void) {
+    return rt_keyboard_key_0();
+}
+
+/// @brief Key code for the 1 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_1(void) {
+    return rt_keyboard_key_1();
+}
+
+/// @brief Key code for the 2 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_2(void) {
+    return rt_keyboard_key_2();
+}
+
+/// @brief Key code for the 3 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_3(void) {
+    return rt_keyboard_key_3();
+}
+
+/// @brief Key code for the 4 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_4(void) {
+    return rt_keyboard_key_4();
+}
+
+/// @brief Key code for the 5 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_5(void) {
+    return rt_keyboard_key_5();
+}
+
+/// @brief Key code for the 6 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_6(void) {
+    return rt_keyboard_key_6();
+}
+
+/// @brief Key code for the 7 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_7(void) {
+    return rt_keyboard_key_7();
+}
+
+/// @brief Key code for the 8 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_8(void) {
+    return rt_keyboard_key_8();
+}
+
+/// @brief Key code for the 9 key (top row) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_9(void) {
+    return rt_keyboard_key_9();
+}
+
+/// @brief Key code for the F1 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f1(void) {
+    return rt_keyboard_key_f1();
+}
+
+/// @brief Key code for the F2 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f2(void) {
+    return rt_keyboard_key_f2();
+}
+
+/// @brief Key code for the F3 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f3(void) {
+    return rt_keyboard_key_f3();
+}
+
+/// @brief Key code for the F4 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f4(void) {
+    return rt_keyboard_key_f4();
+}
+
+/// @brief Key code for the F5 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f5(void) {
+    return rt_keyboard_key_f5();
+}
+
+/// @brief Key code for the F6 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f6(void) {
+    return rt_keyboard_key_f6();
+}
+
+/// @brief Key code for the F7 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f7(void) {
+    return rt_keyboard_key_f7();
+}
+
+/// @brief Key code for the F8 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f8(void) {
+    return rt_keyboard_key_f8();
+}
+
+/// @brief Key code for the F9 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f9(void) {
+    return rt_keyboard_key_f9();
+}
+
+/// @brief Key code for the F10 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f10(void) {
+    return rt_keyboard_key_f10();
+}
+
+/// @brief Key code for the F12 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f12(void) {
+    return rt_keyboard_key_f12();
+}
+
+/// @brief Key code for the Enter/Return key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_enter(void) {
+    return rt_keyboard_key_enter();
+}
+
+/// @brief Key code for the Tab key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_tab(void) {
+    return rt_keyboard_key_tab();
+}
+
+/// @brief Key code for the Backspace key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_backspace(void) {
+    return rt_keyboard_key_backspace();
+}
+
+/// @brief Key code for the Insert key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_insert(void) {
+    return rt_keyboard_key_insert();
+}
+
+/// @brief Key code for the Delete key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_delete(void) {
+    return rt_keyboard_key_delete();
+}
+
+/// @brief Key code for the Home key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_home(void) {
+    return rt_keyboard_key_home();
+}
+
+/// @brief Key code for the End key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_end(void) {
+    return rt_keyboard_key_end();
+}
+
+/// @brief Key code for the Page Up key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_pageup(void) {
+    return rt_keyboard_key_pageup();
+}
+
+/// @brief Key code for the Page Down key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_pagedown(void) {
+    return rt_keyboard_key_pagedown();
+}
+
+/// @brief Key code for the Alt modifier (left) (forwards to the shared keyboard table).
+int64_t rt_game3d_key_alt(void) {
+    return rt_keyboard_key_lalt();
+}
+
+/// @brief Key code for the left Shift modifier (forwards to the shared keyboard table).
+int64_t rt_game3d_key_lshift(void) {
+    return rt_keyboard_key_lshift();
+}
+
+/// @brief Key code for the right Shift modifier (forwards to the shared keyboard table).
+int64_t rt_game3d_key_rshift(void) {
+    return rt_keyboard_key_rshift();
+}
+
+/// @brief Key code for the left Ctrl modifier (forwards to the shared keyboard table).
+int64_t rt_game3d_key_lctrl(void) {
+    return rt_keyboard_key_lctrl();
+}
+
+/// @brief Key code for the right Ctrl modifier (forwards to the shared keyboard table).
+int64_t rt_game3d_key_rctrl(void) {
+    return rt_keyboard_key_rctrl();
+}
+
+/// @brief Key code for the left Alt modifier (forwards to the shared keyboard table).
+int64_t rt_game3d_key_lalt(void) {
+    return rt_keyboard_key_lalt();
+}
+
+/// @brief Key code for the right Alt modifier (forwards to the shared keyboard table).
+int64_t rt_game3d_key_ralt(void) {
+    return rt_keyboard_key_ralt();
+}
+
+/// @brief Key code for the apostrophe/quote key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_quote(void) {
+    return rt_keyboard_key_quote();
+}
+
+/// @brief Key code for the comma key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_comma(void) {
+    return rt_keyboard_key_comma();
+}
+
+/// @brief Key code for the minus/hyphen key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_minus(void) {
+    return rt_keyboard_key_minus();
+}
+
+/// @brief Key code for the period key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_period(void) {
+    return rt_keyboard_key_period();
+}
+
+/// @brief Key code for the forward-slash key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_slash(void) {
+    return rt_keyboard_key_slash();
+}
+
+/// @brief Key code for the semicolon key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_semicolon(void) {
+    return rt_keyboard_key_semicolon();
+}
+
+/// @brief Key code for the equals key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_equals(void) {
+    return rt_keyboard_key_equals();
+}
+
+/// @brief Key code for the left-bracket key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_lbracket(void) {
+    return rt_keyboard_key_lbracket();
+}
+
+/// @brief Key code for the backslash key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_backslash(void) {
+    return rt_keyboard_key_backslash();
+}
+
+/// @brief Key code for the right-bracket key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_rbracket(void) {
+    return rt_keyboard_key_rbracket();
+}
+
+/// @brief Key code for the grave/backtick key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_grave(void) {
+    return rt_keyboard_key_grave();
+}
+
+/// @brief Key code for the numpad 0 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num0(void) {
+    return rt_keyboard_key_num0();
+}
+
+/// @brief Key code for the numpad 1 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num1(void) {
+    return rt_keyboard_key_num1();
+}
+
+/// @brief Key code for the numpad 2 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num2(void) {
+    return rt_keyboard_key_num2();
+}
+
+/// @brief Key code for the numpad 3 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num3(void) {
+    return rt_keyboard_key_num3();
+}
+
+/// @brief Key code for the numpad 4 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num4(void) {
+    return rt_keyboard_key_num4();
+}
+
+/// @brief Key code for the numpad 5 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num5(void) {
+    return rt_keyboard_key_num5();
+}
+
+/// @brief Key code for the numpad 6 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num6(void) {
+    return rt_keyboard_key_num6();
+}
+
+/// @brief Key code for the numpad 7 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num7(void) {
+    return rt_keyboard_key_num7();
+}
+
+/// @brief Key code for the numpad 8 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num8(void) {
+    return rt_keyboard_key_num8();
+}
+
+/// @brief Key code for the numpad 9 (forwards to the shared keyboard table).
+int64_t rt_game3d_key_num9(void) {
+    return rt_keyboard_key_num9();
+}
+
+/// @brief Key code for the numpad decimal point (forwards to the shared keyboard table).
+int64_t rt_game3d_key_numdot(void) {
+    return rt_keyboard_key_numdot();
+}
+
+/// @brief Key code for the numpad divide (forwards to the shared keyboard table).
+int64_t rt_game3d_key_numdiv(void) {
+    return rt_keyboard_key_numdiv();
+}
+
+/// @brief Key code for the numpad multiply (forwards to the shared keyboard table).
+int64_t rt_game3d_key_nummul(void) {
+    return rt_keyboard_key_nummul();
+}
+
+/// @brief Key code for the numpad subtract (forwards to the shared keyboard table).
+int64_t rt_game3d_key_numsub(void) {
+    return rt_keyboard_key_numsub();
+}
+
+/// @brief Key code for the numpad add (forwards to the shared keyboard table).
+int64_t rt_game3d_key_numadd(void) {
+    return rt_keyboard_key_numadd();
+}
+
+/// @brief Key code for the numpad Enter (forwards to the shared keyboard table).
+int64_t rt_game3d_key_numenter(void) {
+    return rt_keyboard_key_numenter();
+}
+
 /// @brief Button code for the left mouse button (forwards to the shared mouse table).
 int64_t rt_game3d_mouse_left(void) {
     return rt_mouse_button_left();

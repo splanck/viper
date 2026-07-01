@@ -20,6 +20,7 @@ class ShowcaseCamera {
     hide Float pitch;
     hide Float distance;
     hide Float fov;
+    hide Boolean firstPerson;
 
     expose func setup(camera: Camera3D) {
         cam = camera;
@@ -34,17 +35,38 @@ class ShowcaseCamera {
         pitch = config.CAMERA_PITCH_START;
         distance = config.CAMERA_DISTANCE;
         fov = config.CAMERA_FOV;
+        firstPerson = false;
     }
 
     expose func getYaw() -> Float { return yaw; }
 
-    // Mouse look (yaw/pitch) plus wheel zoom, clamped to the configured ranges.
+    // First-person state is queried by the orchestrator (to hide the player body)
+    // and flipped by the view-toggle key each time it is pressed.
+    expose func isFirstPerson() -> Boolean { return firstPerson; }
+
+    expose func toggleMode() {
+        if (firstPerson) { firstPerson = false; } else { firstPerson = true; }
+    }
+
+    // Mouse look (yaw/pitch) plus wheel zoom. Pitch is clamped to the wide
+    // free-look range in first-person and to the orbit range otherwise, so the
+    // eye can pitch all the way up to the sky when in first-person.
     expose func updateLook(input: Input3D) {
         var look = input.LookAxis();
         yaw = yaw + Vec2.get_X(look);
-        pitch = pitch - Vec2.get_Y(look);
-        if (pitch < config.CAMERA_PITCH_MIN) { pitch = config.CAMERA_PITCH_MIN; }
-        if (pitch > config.CAMERA_PITCH_MAX) { pitch = config.CAMERA_PITCH_MAX; }
+        if (config.CAMERA_INVERT_Y) {
+            pitch = pitch + Vec2.get_Y(look);
+        } else {
+            pitch = pitch - Vec2.get_Y(look);
+        }
+        var pitchLo = config.CAMERA_PITCH_MIN;
+        var pitchHi = config.CAMERA_PITCH_MAX;
+        if (firstPerson) {
+            pitchLo = 0.0 - config.CAMERA_FP_PITCH_LIMIT;
+            pitchHi = config.CAMERA_FP_PITCH_LIMIT;
+        }
+        if (pitch < pitchLo) { pitch = pitchLo; }
+        if (pitch > pitchHi) { pitch = pitchHi; }
         distance = distance - input.WheelY() * config.CAMERA_WHEEL_SPEED;
         if (distance < config.CAMERA_DISTANCE_MIN) { distance = config.CAMERA_DISTANCE_MIN; }
         if (distance > config.CAMERA_DISTANCE_MAX) { distance = config.CAMERA_DISTANCE_MAX; }
@@ -65,6 +87,10 @@ class ShowcaseCamera {
     // Orbit the eye behind the player pivot, clamp to world bounds, and keep the
     // eye a minimum clearance above the terrain so it never dips underground.
     expose func follow(playerX: Float, playerY: Float, playerZ: Float, land: Terrain3D) {
+        if (firstPerson) {
+            followFirstPerson(playerX, playerY, playerZ);
+            return;
+        }
         var pivotX = playerX;
         var pivotY = playerY + config.CAMERA_TARGET_HEIGHT;
         var pivotZ = playerZ;
@@ -95,6 +121,21 @@ class ShowcaseCamera {
             targetX,
             pivotY + Sin(pitch) * config.CAMERA_LOOK_AHEAD,
             targetZ);
+        Camera3D.LookAt(cam, eye, target, up);
+    }
+
+    // First-person rig: eye at the player's head, aiming along the yaw/pitch
+    // forward vector so the full free-look pitch range points ground-to-sky.
+    // No ground-clearance clamp is needed since the eye rides the player.
+    hide func followFirstPerson(playerX: Float, playerY: Float, playerZ: Float) {
+        var eyeX = playerX;
+        var eyeY = playerY + config.CAMERA_FP_EYE_HEIGHT;
+        var eyeZ = playerZ;
+        var fwdX = Cos(pitch) * Sin(yaw);
+        var fwdY = Sin(pitch);
+        var fwdZ = 0.0 - Cos(pitch) * Cos(yaw);
+        eye.Set(eyeX, eyeY, eyeZ);
+        target.Set(eyeX + fwdX, eyeY + fwdY, eyeZ + fwdZ);
         Camera3D.LookAt(cam, eye, target, up);
     }
 }

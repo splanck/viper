@@ -1634,8 +1634,16 @@ static void canvas3d_finalize_frame_impl(rt_canvas3d *c, int present_to_window) 
         (c->final_overlay_count == 0 || canvas3d_backend_splits_gpu_postfx_present(c))) {
         if (c->frame_gpu_postfx_enabled) {
             if (canvas3d_backend_splits_gpu_postfx_present(c)) {
-                c->backend->apply_postfx(c->backend_ctx, &c->frame_postfx_chain);
+                // Replay the final overlay (HUD) into the backend's overlay
+                // target BEFORE applying post-FX. Each split-capable backend
+                // composites the overlay on top of the post-processed scene only
+                // when it was already drawn this frame (the overlay-composite
+                // pass in the backend's post-FX encoder is gated on that flag).
+                // Applying post-FX first left the just-drawn overlay in a
+                // separate target that present never composited, so the HUD
+                // flickered against the 3D scene depending on buffer aliasing.
                 canvas3d_replay_final_overlay(c);
+                c->backend->apply_postfx(c->backend_ctx, &c->frame_postfx_chain);
                 c->backend->present(c->backend_ctx);
             } else {
                 c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);
@@ -1647,8 +1655,11 @@ static void canvas3d_finalize_frame_impl(rt_canvas3d *c, int present_to_window) 
     }
     if (!present_to_window && canvas3d_backend_splits_gpu_postfx_present(c) &&
         c->frame_gpu_postfx_enabled) {
-        c->backend->apply_postfx(c->backend_ctx, &c->frame_postfx_chain);
+        // Same overlay-before-post-FX ordering as the on-screen path so a
+        // captured frame includes the HUD composited over the post-processed
+        // scene rather than dropping it.
         canvas3d_replay_final_overlay(c);
+        c->backend->apply_postfx(c->backend_ctx, &c->frame_postfx_chain);
         c->frame_finalized = 1;
         return;
     }

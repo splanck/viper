@@ -114,11 +114,15 @@ func bumpHeight(x: Integer, y: Integer, size: Integer) -> Float {
 class ShowcaseTerrain {
     hide Terrain3D land;
     hide Pixels splatMap;
+    hide Pixels heightmap;
     hide Vegetation3D grass;
 
     expose func build(terrainMat: Material3D) -> Terrain3D {
         land = Terrain3D.New(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
-        Terrain3D.SetHeightmap(land, createShowcaseHeightmap(config.TERRAIN_SIZE, config.TERRAIN_SIZE));
+        // Retain the heightmap Pixels so a matching physics heightfield collider
+        // can be built from the exact same data (see game.zia setup).
+        heightmap = createShowcaseHeightmap(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
+        Terrain3D.SetHeightmap(land, heightmap);
         Terrain3D.SetScale(
             land, config.TERRAIN_SCALE_X, config.TERRAIN_SCALE_Y, config.TERRAIN_SCALE_Z);
         Terrain3D.SetMaterial(land, terrainMat);
@@ -138,6 +142,10 @@ class ShowcaseTerrain {
 
         return land;
     }
+
+    // The 16-bit heightmap Pixels used to build the terrain, reused to spawn a
+    // matching physics heightfield collider so the character walks the terrain.
+    expose func getHeightmap() -> Pixels { return heightmap; }
 
     expose func buildVegetation() {
         grass = Vegetation3D.New(createGrassBladeTexture());

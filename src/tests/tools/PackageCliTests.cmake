@@ -435,6 +435,48 @@ if (NOT _no_version_out MATCHES "noversionpkg-0\\.0\\.0-tarball")
     message(FATAL_ERROR "default output path did not use fallback version 0.0.0\nstdout:\n${_no_version_out}\nstderr:\n${_no_version_err}")
 endif ()
 
+set(_portable_version_project "${TEST_WORK_DIR}/portable-version-project")
+file(MAKE_DIRECTORY "${_portable_version_project}")
+file(WRITE "${_portable_version_project}/main.zia" "func start() {}\n")
+file(WRITE "${_portable_version_project}/viper.project"
+        "project portableversion
+version 1^2
+lang zia
+entry main.zia
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_portable_version_project}" --target tarball --dry-run --json
+        RESULT_VARIABLE _portable_version_rv
+        OUTPUT_VARIABLE _portable_version_out
+        ERROR_VARIABLE _portable_version_err)
+if (NOT _portable_version_rv EQUAL 0)
+    message(FATAL_ERROR "tarball dry-run should accept portable non-Debian versions\nstdout:\n${_portable_version_out}\nstderr:\n${_portable_version_err}")
+endif ()
+if (NOT _portable_version_out MATCHES "\"target\"")
+    message(FATAL_ERROR "package --dry-run --json did not emit JSON-looking output\nstdout:\n${_portable_version_out}\nstderr:\n${_portable_version_err}")
+endif ()
+
+set(_rpm_version_project "${TEST_WORK_DIR}/rpm-version-project")
+file(MAKE_DIRECTORY "${_rpm_version_project}")
+file(WRITE "${_rpm_version_project}/main.zia" "func start() {}\n")
+file(WRITE "${_rpm_version_project}/viper.project"
+        "project rpmversion
+version 1^2
+lang zia
+entry main.zia
+package-rpm-depends libX11 >= 1.8
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_rpm_version_project}" --target rpm --dry-run
+        RESULT_VARIABLE _rpm_version_rv
+        OUTPUT_VARIABLE _rpm_version_out
+        ERROR_VARIABLE _rpm_version_err)
+if (NOT _rpm_version_rv EQUAL 0)
+    message(FATAL_ERROR "RPM dry-run should use RPM version/dependency validation\nstdout:\n${_rpm_version_out}\nstderr:\n${_rpm_version_err}")
+endif ()
+
 file(WRITE "${TEST_WORK_DIR}/not-an-installer.zip" "not an installer\n")
 execute_process(
         COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip"

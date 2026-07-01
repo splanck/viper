@@ -22,10 +22,22 @@ var CAMERA_TARGET_HEIGHT: Float = 1.35;
 var CAMERA_LOOK_AHEAD: Float = 3.6;
 var CAMERA_MIN_CLEARANCE: Float = 1.3;
 var CAMERA_PITCH_START: Float = 0.24;
-var CAMERA_PITCH_MIN: Float = -0.30;
-var CAMERA_PITCH_MAX: Float = 0.82;
-var CAMERA_MOUSE_SENS: Float = 0.0065;
+// Orbit pitch clamp. Widened from the old -0.30..0.82 (~64 deg total) to a much
+// larger arc so the third-person camera can swing from near-overhead down to a
+// strong upward tilt. Kept clear of +-pi/2 to avoid LookAt up-vector degeneracy.
+var CAMERA_PITCH_MIN: Float = -0.72;   // ~-41 deg (eye drops low/behind, view tilts up)
+var CAMERA_PITCH_MAX: Float = 1.30;    // ~74 deg (near-overhead bird's-eye)
+var CAMERA_MOUSE_SENS: Float = 0.010;  // degrees-per-pixel look sensitivity (was 0.0065)
 var CAMERA_WHEEL_SPEED: Float = 1.0;
+var CAMERA_INVERT_Y: Boolean = false;  // set true to invert vertical mouse look
+
+// --- First-person / free-look mode (toggle with CAMERA_TOGGLE_KEY) -----------
+// The orbit rig fundamentally can't look straight up (the eye orbits a pivot and
+// the ground-clearance clamp forces it back up). First-person places the eye at
+// the player's head and aims a free look vector, so you can look right at the sky.
+var CAMERA_FP_EYE_HEIGHT: Float = 1.55; // eye height above the player's ground Y
+var CAMERA_FP_PITCH_LIMIT: Float = 1.50; // ~+-86 deg free-look pitch clamp
+// The view toggle is bound to the V key in game.zia via Keys.get_KeyV().
 
 var PLAYER_MOVE_SPEED: Float = 9.2;
 var PLAYER_SPRINT_MULT: Float = 1.75;
@@ -34,6 +46,10 @@ var PLAYER_BODY_HEIGHT: Float = 1.05;
 var PLAYER_GROUND_OFFSET: Float = 0.54;
 var PLAYER_JUMP_SPEED: Float = 8.0;    // upward launch velocity (world units/sec)
 var PLAYER_GRAVITY: Float = 22.0;      // downward accel while airborne (units/sec^2)
+var PLAYER_CAPSULE_HEIGHT: Float = 1.8; // CharacterController3D capsule height
+var PLAYER_MASS: Float = 70.0;          // CharacterController3D mass (kg)
+var STAMINA_DRAIN_SEC: Float = 6.0;     // seconds of continuous sprint to fully drain
+var STAMINA_REGEN_SEC: Float = 9.0;     // seconds walking to fully regenerate
 
 // --- Environment collision (recommendation #10) -----------------------------
 var TREE_COLLIDE_RADIUS: Float = 0.7;  // trunk collision radius pushed against the player
@@ -72,6 +88,9 @@ var WATER_A: Float = 0.80;
 var WATER_REFLECTIVITY: Float = 0.72;
 var WATER_TEXTURE_SIZE: Integer = 64;
 var BEACON_TRIGGER_RADIUS: Float = 2.8;
+// Interact-to-scan (aim + hold E) beacon activation.
+var INTERACT_RANGE: Float = 12.0;      // max distance to scan-activate a beacon
+var INTERACT_SCAN_SEC: Float = 0.9;    // hold-E charge time to link a beacon
 
 // Flat global ambient kept low so the directional sun + cool fill actually model
 // the terrain (a high uniform ambient is what flattened the scene). See worldsim.
@@ -127,6 +146,9 @@ var FOREST_PLAYER_CLEAR: Float = 36.0; // squared clearance around the spawn poi
 var GROVE_COUNT: Integer = 22;
 var GROVE_RADIUS_MIN: Float = 9.0;
 var GROVE_RADIUS_MAX: Float = 30.0;
+// Screen-size-driven auto-LOD for the FBX maples: distant trees simplify to a
+// target screen error (in pixels), cutting triangle load in the open world.
+var FOREST_LOD_ERROR_PX: Float = 3.0;
 
 // --- Ground vegetation (recommendation #8: instanced grass + wind) ----------
 var GRASS_BLADE_COUNT: Integer = 6000;
@@ -154,6 +176,7 @@ var STEP_DISTANCE: Float = 2.4;        // world units between footstep sounds
 var BEACON_LIGHT_SLOT: Integer = 3;    // beacons occupy slots 3..7 (16 max)
 var BEACON_LIGHT_RANGE: Float = 42.0;
 var BEACON_LIGHT_INTENSITY: Float = 1.6;
+var BEACON_FADE_SEC: Float = 0.6;      // glow-in time when a beacon is activated
 var PLAYER_LIGHT_SLOT: Integer = 8;
 var PLAYER_LIGHT_RANGE: Float = 16.0;
 var PLAYER_LIGHT_INTENSITY: Float = 0.55;
@@ -165,7 +188,9 @@ var PLAYER_LIGHT_INTENSITY: Float = 0.55;
 var DAY_LENGTH_SEC: Float = 240.0;     // seconds for one full day->night->day cycle
 var DAY_START_PHASE: Float = 0.15;     // begin mid-morning so the demo opens in daylight
 var MOON_INTENSITY: Float = 0.42;      // cool directional moonlight at deep night
-var SUN_INTENSITY_DAY: Float = 1.45;
+// Keep the startup frame inside the smoke probe's exposure band while preserving
+// the stronger daylight/direct-shadow look introduced with the day/night cycle.
+var SUN_INTENSITY_DAY: Float = 1.35;
 var DAY_AMBIENT_R: Float = 0.13;
 var DAY_AMBIENT_G: Float = 0.15;
 var DAY_AMBIENT_B: Float = 0.19;
@@ -179,6 +204,14 @@ var MIST_COUNT: Integer = 120;
 var DUST_COUNT: Integer = 60;
 var SCORCH_LIFETIME: Float = 45.0;
 var DECAL_MAX: Integer = 16;
+
+// --- Dynamic weather (rain/snow over a slow cycle) --------------------------
+var WEATHER_RAIN_COUNT: Integer = 900;   // rain particle pool
+var WEATHER_SNOW_COUNT: Integer = 700;   // snow particle pool
+var WEATHER_RAIN_RATE: Float = 700.0;    // drops/sec at full storm (low altitude)
+var WEATHER_SNOW_RATE: Float = 260.0;    // flakes/sec at full storm (on the peaks)
+var WEATHER_PERIOD_SEC: Float = 150.0;   // one clear->storm->clear weather cycle
+var WEATHER_SNOW_ALTITUDE: Float = 16.0; // metres above the waterline that turn rain to snow
 
 // --- Raycast scanner + camera feel (recommendation #9) ----------------------
 var SCAN_MAX_DIST: Float = 140.0;
@@ -216,8 +249,21 @@ var MINIMAP_SIZE: Integer = 128;
 
 // --- Rigid-body physics props (recommendation #2) ------------------------------
 var PHYS_BALL_COUNT: Integer = 6;
+// Player-driven boulder physics (walk-into push + F kick).
+var PUSH_RANGE: Float = 1.5;     // radius within which walking shoves a boulder
+var PUSH_FORCE: Float = 34.0;    // continuous shove force (scaled by dt)
+var KICK_RANGE: Float = 3.6;     // radius a kick launches boulders
+var KICK_FORCE: Float = 7.5;     // outward kick impulse
+var KICK_UP: Float = 4.2;        // upward kick impulse
 
 // --- Wandering sentinels (recommendation #4) -----------------------------------
 var CRITTER_SPEED: Float = 2.4;
 var CRITTER_FLEE_RADIUS: Float = 7.0;  // player distance that makes a critter bolt
 var CRITTER_FLEE_MULT: Float = 2.4;    // flee-speed multiple of the wander speed
+
+// --- Nav-mesh pathfinding (critters path around trees/landmarks) -------------
+var NAV_AGENT_RADIUS: Float = 0.5;     // bake clearance radius
+var NAV_AGENT_HEIGHT: Float = 1.8;     // bake agent height
+var NAV_MAX_SLOPE: Float = 52.0;       // max walkable slope (degrees)
+var NAV_CELL_SIZE: Float = 1.4;        // bake voxel cell size (world units)
+var CRITTER_FLEE_DIST: Float = 16.0;   // how far a fleeing critter paths away

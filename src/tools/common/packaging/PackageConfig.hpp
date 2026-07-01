@@ -49,6 +49,9 @@ struct PackageConfig {
     std::string description;     ///< package-description
     std::string homepage;        ///< package-homepage
     std::string license;         ///< package-license (SPDX)
+    std::string licenseFilePath; ///< package-license-file (relative path to full license text)
+    std::string readmeFilePath;  ///< package-readme (relative path to packaged README text)
+    std::string welcomeText;     ///< package-welcome (single-line installer/package summary text)
     std::string identifier;      ///< package-identifier (reverse DNS)
     std::string iconPath;        ///< package-icon (relative path to PNG)
 
@@ -72,11 +75,16 @@ struct PackageConfig {
     bool macosDisableHardenedRuntime{
         false};                       ///< Opt out of the otherwise default-on hardened runtime.
     int macosNotaryTimeoutSeconds{0}; ///< notarytool --timeout in seconds (0 = built-in 30m).
+    std::string macosDmgBackground;   ///< macos-dmg-background (project-relative PNG).
+    std::string macosDmgIcon;         ///< macos-dmg-icon (project-relative .icns volume icon).
 
-    std::string windowsInstallScope;   ///< machine (default) or user
-    std::string windowsInstallDir;     ///< Optional install directory override.
-    bool windowsSign{false};           ///< Request Authenticode signing for Windows installers.
-    bool windowsSignSet{false};        ///< True when windows-sign was specified.
+    std::string windowsInstallScope;  ///< machine (default) or user
+    std::string windowsInstallDir;    ///< Optional install directory override.
+    std::string windowsPublisher;     ///< Optional Windows Publisher override for ARP/version info.
+    std::string windowsWizardSummary; ///< Optional short wizard summary shown before install.
+    std::vector<std::string> windowsDlls; ///< Extra DLL/data dependency paths to bundle beside app.
+    bool windowsSign{false};              ///< Request Authenticode signing for Windows installers.
+    bool windowsSignSet{false};           ///< True when windows-sign was specified.
     std::string windowsSignPfx;        ///< PFX certificate path, project-relative unless absolute.
     std::string windowsSignThumbprint; ///< Certificate store SHA-1 thumbprint for signtool /sha1.
     std::string windowsTimestampUrl;   ///< RFC3161 timestamp URL for signtool.
@@ -87,6 +95,10 @@ struct PackageConfig {
 
     std::string category;             ///< package-category (e.g. "Game", "Development", "Utility")
     std::vector<std::string> depends; ///< package-depends (e.g. "libc6", "libx11-6")
+    std::vector<std::string> rpmDepends; ///< package-rpm-depends (RPM Requires entries).
+    std::string linuxStartupWmClass;     ///< linux-startup-wm-class for StartupWMClass=.
+    std::string linuxKeywords;           ///< linux-keywords for freedesktop Keywords=.
+    std::string appstreamId;             ///< linux-appstream-id for AppStream component metadata.
 
     std::string postInstallScript;  ///< Custom post-install script content
     std::string preUninstallScript; ///< Custom pre-uninstall script content
@@ -96,18 +108,23 @@ struct PackageConfig {
     /// @brief Check if any package-* directives were specified.
     bool hasPackageConfig() const {
         return !displayName.empty() || !author.empty() || !description.empty() ||
-               !homepage.empty() || !license.empty() || !identifier.empty() || !iconPath.empty() ||
-               !assets.empty() || !fileAssociations.empty() || shortcutDesktop || !shortcutMenu ||
-               allowHomeDesktopShortcuts || !minOsWindows.empty() || !minOsMacos.empty() ||
-               !macosSignMode.empty() || !macosSignIdentity.empty() || !macosEntitlements.empty() ||
-               macosHardenedRuntime || !macosNotaryProfile.empty() || macosStaple ||
-               !windowsInstallScope.empty() || windowsSignSet || !windowsSignPfx.empty() ||
-               !windowsSignThumbprint.empty() || !windowsTimestampUrl.empty() ||
-               !windowsSigntoolPath.empty() || windowsSignNoVerify ||
-               !targetArchitectures.empty() || !category.empty() || !depends.empty() ||
-               !postInstallScript.empty() || !preUninstallScript.empty() || allowInstallHooks ||
-               !maintainerEmail.empty() || macosDisableHardenedRuntime ||
-               macosNotaryTimeoutSeconds != 0;
+               !homepage.empty() || !license.empty() || !licenseFilePath.empty() ||
+               !readmeFilePath.empty() || !welcomeText.empty() || !identifier.empty() ||
+               !iconPath.empty() || !assets.empty() || !fileAssociations.empty() ||
+               shortcutDesktop || !shortcutMenu || allowHomeDesktopShortcuts ||
+               !minOsWindows.empty() || !minOsMacos.empty() || !macosSignMode.empty() ||
+               !macosSignIdentity.empty() || !macosEntitlements.empty() || macosHardenedRuntime ||
+               !macosNotaryProfile.empty() || macosStaple || !macosDmgBackground.empty() ||
+               !macosDmgIcon.empty() || !windowsInstallScope.empty() ||
+               !windowsInstallDir.empty() || !windowsPublisher.empty() ||
+               !windowsWizardSummary.empty() || !windowsDlls.empty() || windowsSignSet ||
+               !windowsSignPfx.empty() || !windowsSignThumbprint.empty() ||
+               !windowsTimestampUrl.empty() || !windowsSigntoolPath.empty() ||
+               windowsSignNoVerify || !targetArchitectures.empty() || !category.empty() ||
+               !depends.empty() || !rpmDepends.empty() || !linuxStartupWmClass.empty() ||
+               !linuxKeywords.empty() || !appstreamId.empty() || !postInstallScript.empty() ||
+               !preUninstallScript.empty() || allowInstallHooks || !maintainerEmail.empty() ||
+               macosDisableHardenedRuntime || macosNotaryTimeoutSeconds != 0;
     }
 };
 

@@ -10,19 +10,13 @@ if "%NUMBER_OF_PROCESSORS%"=="" (
     set "JOBS=%NUMBER_OF_PROCESSORS%"
 )
 
-if not exist "%VIPER_BUILD_DIR%\CMakeCache.txt" (
-    echo Configuring Viper build tree...
-    if "%VIPER_CMAKE_GENERATOR%"=="" (
-        cmake -S "%ROOT_DIR%" -B "%VIPER_BUILD_DIR%" -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% -DVIPER_INSTALL_VIPERIDE=ON %VIPER_EXTRA_CMAKE_ARGS%
-        if errorlevel 1 exit /b 1
-    ) else (
-        cmake -S "%ROOT_DIR%" -B "%VIPER_BUILD_DIR%" -G "%VIPER_CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% -DVIPER_INSTALL_VIPERIDE=ON %VIPER_EXTRA_CMAKE_ARGS%
-        if errorlevel 1 exit /b 1
-    )
+if "%VIPER_SKIP_INSTALL%"=="" set "VIPER_SKIP_INSTALL=1"
+echo %VIPER_EXTRA_CMAKE_ARGS% | findstr /C:"-DVIPER_INSTALL_VIPERIDE=" >nul
+if errorlevel 1 (
+    set "VIPER_EXTRA_CMAKE_ARGS=%VIPER_EXTRA_CMAKE_ARGS% -DVIPER_INSTALL_VIPERIDE=ON"
 )
 
-echo Building Viper toolchain payload...
-cmake --build "%VIPER_BUILD_DIR%" --config %VIPER_BUILD_TYPE% -j %JOBS%
+call "%ROOT_DIR%\scripts\build_viper_win.cmd"
 if errorlevel 1 exit /b 1
 
 set "VIPER_EXE=%VIPER_BUILD_DIR%\src\tools\viper\viper.exe"

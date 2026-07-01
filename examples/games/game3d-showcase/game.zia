@@ -13,6 +13,7 @@ bind "./forest";
 bind "./critters";
 bind "./audio";
 bind "./postfx";
+bind "./weather";
 bind "./minimap";
 bind "./hud";
 bind "./worldsim";
@@ -32,6 +33,7 @@ class Game3DShowcase {
     hide ShowcaseCritters crittersSys;
     hide ShowcaseAudio audioSys;
     hide ShowcaseEffects effectsSys;
+    hide ShowcaseWeather weatherSys;
     hide ShowcaseMinimap minimapSys;
     hide ShowcaseHud hudSys;
     hide ShowcaseWorldSim sim;
@@ -41,6 +43,7 @@ class Game3DShowcase {
     hide Float worldTime;
     hide Integer qualityLevel;
     hide Boolean debugOn;
+    hide Boolean helpOn;
     hide Boolean fullscreenOn;
     hide Boolean quitRequested;
     hide Boolean skyIsNight;
@@ -53,6 +56,7 @@ class Game3DShowcase {
         input = world.Input;
         input.LookSensitivity = config.CAMERA_MOUSE_SENS;
         Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
+        validateConfig();
 
         player = new ShowcasePlayer();
         camCtl = new ShowcaseCamera();
@@ -73,6 +77,11 @@ class Game3DShowcase {
         }
         sim.setDirectLightingFallback(hasPostFx == false);
         Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
+        // View-frustum + CPU occlusion culling: skip drawing the trees, landmarks,
+        // and scene props that are off-screen or hidden behind terrain/monoliths.
+        // A clear win for this open world (130+ trees + landmarks + props).
+        Canvas3D.SetFrustumCulling(canvas, true);
+        Canvas3D.SetOcclusionCulling(canvas, true);
         world.SetAmbient(config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
         world.SetFog(config.FOG_R, config.FOG_G, config.FOG_B, config.FOG_NEAR, config.FOG_FAR);
 
@@ -80,6 +89,13 @@ class Game3DShowcase {
         assets.setup();
         terrainSys = new ShowcaseTerrain();
         land = terrainSys.build(assets.getTerrainMat());
+        // Physics collision for the terrain so the CharacterController3D walks it.
+        // The heightfield is centered on its entity; place it at the terrain's
+        // center (the visual terrain's corner sits at the world origin).
+        world.SpawnHeightfieldCollider(
+            terrainSys.getHeightmap(),
+            config.TERRAIN_SCALE_X, config.TERRAIN_SCALE_Y, config.TERRAIN_SCALE_Z,
+            terrain.terrainWorldMaxX() * 0.5, 0.0, terrain.terrainWorldMaxZ() * 0.5);
         waterSky = new ShowcaseWaterSky();
         waterSky.setup(land);
         world.SetSkybox(waterSky.getSkybox());
@@ -100,9 +116,16 @@ class Game3DShowcase {
         sim.setupPlayerLight(world, player.getX(), player.getY(), player.getZ());
         effectsSys = new ShowcaseEffects();
         effectsSys.setup();
+        weatherSys = new ShowcaseWeather();
+        weatherSys.setup();
         sim.setupPhysicsProps(world, land, assets.getPedestalMat(), assets.getBeaconOnMat());
         crittersSys = new ShowcaseCritters();
-        crittersSys.setup();
+        // Bake a nav-mesh from the spawned world (terrain + tree/landmark
+        // colliders) so critters path around obstacles instead of walking
+        // straight lines through them.
+        var navMesh = world.BakeNavMesh(
+            config.NAV_AGENT_RADIUS, config.NAV_AGENT_HEIGHT, config.NAV_MAX_SLOPE, config.NAV_CELL_SIZE);
+        crittersSys.setup(navMesh, land);
         sim.setupObjective(land);
         hudSys = new ShowcaseHud();
         camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
@@ -122,21 +145,26 @@ class Game3DShowcase {
         if (input.Pressed(Keys.get_Escape())) { quitRequested = true; return; }
         handleToggles();
         camCtl.updateLook(input);
-        player.updateMovement(stepDt, input, camCtl.getYaw(), audioSys, effectsSys);
         camCtl.updateFov(input);
-        player.clampToTerrain();
-        resolvePlayerCollision();
-        player.updateVertical(stepDt, input, land);
-
-        sim.updateBeacons(world, camera, player.getX(), player.getY(), player.getZ(), audioSys, effectsSys);
+        // Orient the camera first: CharacterController3D.update moves relative to
+        // the camera basis, so the camera must reflect this frame's look before
+        // the character moves. Re-follow afterwards to track the moved character.
         camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
+        player.update(stepDt, input, camera, audioSys, effectsSys);
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
+
+        // Scanner first so the interact target (crosshair-on-beacon) is current
+        // before updateBeacons reads it for the hold-E scan-to-activate.
         sim.updateScanner(canvas, camera);
+        sim.updateBeacons(stepDt, world, camera, input, player.getX(), player.getY(), player.getZ(), audioSys, effectsSys);
+        sim.pushBoulders(stepDt, player.getX(), player.getZ(), input.Pressed(Keys.get_KeyF()));
         sim.updateDynamicLights(player.getX(), player.getY(), player.getZ());
         sim.updateTimeOfDay(world, worldTime);
         updateSkybox();
         waterSky.update(stepDt);
         terrainSys.updateVegetation(stepDt, camera);
         effectsSys.update(stepDt, player.getX(), player.getY(), player.getZ());
+        weatherSys.update(stepDt, camera, player.getY());
         crittersSys.update(stepDt, player.getX(), player.getZ());
         audioSys.updateAmbient(stepDt);
         sim.updateObjective(camera, player.getX(), player.getY(), player.getZ(), audioSys);
@@ -157,11 +185,13 @@ class Game3DShowcase {
         waterSky.drawReeds(canvas, worldTime);
         effectsSys.drawDecals(canvas);
         effectsSys.draw(canvas, camera);
+        weatherSys.draw(canvas, camera);
         world.DrawEffects();
         world.EndScene();
 
         Canvas3D.BeginOverlay(canvas);
-        hudSys.draw(canvas, minimapSys, sim, player.getX(), player.getZ(), debugOn);
+        hudSys.draw(canvas, minimapSys, sim, player.getX(), player.getZ(),
+            player.getStamina(), helpOn, debugOn);
         Canvas3D.EndOverlay(canvas);
     }
 
@@ -186,14 +216,32 @@ class Game3DShowcase {
     }
 
     hide func resetWorld() {
-        player.spawn(land);
+        player.spawn(world, land);
         camCtl.reset();
         worldTime = 0.0;
         quitRequested = false;
         qualityLevel = 2;
         debugOn = false;
+        helpOn = false;
         fullscreenOn = false;
         sim.reset(land);
+    }
+
+    // Cheap startup sanity check for the hand-tuned config: warns (does not
+    // abort) on obviously-inverted ranges so a bad edit is caught immediately.
+    hide func validateConfig() {
+        if (config.CAMERA_PITCH_MIN >= config.CAMERA_PITCH_MAX) {
+            Terminal.Say("config warning: CAMERA_PITCH_MIN must be < CAMERA_PITCH_MAX");
+        }
+        if (config.CAMERA_DISTANCE_MIN >= config.CAMERA_DISTANCE_MAX) {
+            Terminal.Say("config warning: CAMERA_DISTANCE_MIN must be < CAMERA_DISTANCE_MAX");
+        }
+        if (config.STAMINA_DRAIN_SEC <= 0.0 || config.STAMINA_REGEN_SEC <= 0.0) {
+            Terminal.Say("config warning: stamina drain/regen seconds must be > 0");
+        }
+        if (config.INTERACT_SCAN_SEC <= 0.0) {
+            Terminal.Say("config warning: INTERACT_SCAN_SEC must be > 0");
+        }
     }
 
     hide func handleToggles() {
@@ -209,6 +257,12 @@ class Game3DShowcase {
             Canvas3D.ToggleFullscreen(canvas);
             fullscreenOn = canvas.IsFullscreen;
         }
+        if (input.Pressed(Keys.get_KeyV())) {
+            camCtl.toggleMode();
+        }
+        if (input.Pressed(Keys.get_KeyH())) {
+            if (helpOn) { helpOn = false; } else { helpOn = true; }
+        }
     }
 
     // Swap between the day and starfield night skyboxes when the sun crosses the
@@ -222,18 +276,14 @@ class Game3DShowcase {
             } else {
                 world.SetSkybox(waterSky.getSkybox());
             }
+            waterSky.setNightReflections(night);
         }
     }
 
-    // Push the player out of solid obstacles (landmarks, then trees) after the
-    // raw move + terrain-bounds clamp, before the ground-follow/jump step.
-    hide func resolvePlayerCollision() {
-        var r = sim.resolvePlayerObstacles(player.getX(), player.getZ(), config.PLAYER_RADIUS);
-        var r2 = forestSys.resolveTreeCollision(Vec3.get_X(r), Vec3.get_Z(r), config.PLAYER_RADIUS);
-        player.setXZ(Vec3.get_X(r2), Vec3.get_Z(r2));
-    }
-
     hide func drawPlayer() {
+        // In first-person the camera sits at the player's head, so drawing the
+        // body/core would fill the view — skip it entirely.
+        if (camCtl.isFirstPerson()) { return; }
         var px = player.getX();
         var py = player.getY();
         var pz = player.getZ();

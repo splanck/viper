@@ -20,6 +20,20 @@ class Beacon {
     expose Float z;
     expose Integer state;
     expose Light3D light;
+    expose Float litProgress;
+}
+
+// One landmark monolith: world position, scan (ray-sphere) radius, collision
+// push-out radius, and display name. Replaces the former parallel
+// landmarkXs/Ys/Zs/R/CollR/Names arrays so a landmark's fields can never fall
+// out of index-sync (same rationale as the Beacon class above).
+class Landmark {
+    expose Float x;
+    expose Float y;
+    expose Float z;
+    expose Float r;
+    expose Float collR;
+    expose String name;
 }
 
 class ShowcaseWorldSim {
@@ -32,20 +46,17 @@ class ShowcaseWorldSim {
     hide Vec3 moonDirection;
     hide Vec3 objectiveProbePos;
     hide Vec3 playerLightPos;
-    hide Vec3 collideResult;
     hide Trigger3D homeTrigger;
     hide Boolean sanctuaryDone;
     hide Boolean nightNow;
     hide Integer beaconsLit;
     hide List[Beacon] beacons;
-    hide List[Float] landmarkXs;
-    hide List[Float] landmarkYs;
-    hide List[Float] landmarkZs;
-    hide List[Float] landmarkR;
-    hide List[Float] landmarkCollR;
-    hide List[String] landmarkNames;
+    hide List[Landmark] landmarks;
+    hide List[Entity3D] boulders;
     hide String scanLabel;
     hide Float scanDist;
+    hide Integer scanBeaconIndex;
+    hide Float scanProgress;
     hide Float directLightingScale;
 
     expose func init() {
@@ -53,9 +64,10 @@ class ShowcaseWorldSim {
         moonDirection = new Vec3(0.30, -0.70, 0.38);
         objectiveProbePos = new Vec3(0.0, 0.0, 0.0);
         playerLightPos = new Vec3(0.0, 0.0, 0.0);
-        collideResult = new Vec3(0.0, 0.0, 0.0);
         scanLabel = "";
         scanDist = 0.0;
+        scanBeaconIndex = -1;
+        scanProgress = 0.0;
         directLightingScale = 1.0;
         nightNow = false;
     }
@@ -93,12 +105,7 @@ class ShowcaseWorldSim {
 
     expose func spawnLandmarks(world: World3D, land: Terrain3D,
                                stoneMat: Material3D, archiveMat: Material3D, waterMarkerMat: Material3D) {
-        landmarkXs = [];
-        landmarkYs = [];
-        landmarkZs = [];
-        landmarkR = [];
-        landmarkCollR = [];
-        landmarkNames = [];
+        landmarks = [];
         spawnMonolithPct(world, land, "West Archive", 0.16, 0.18, 5.4, 1.35, 1.10, stoneMat);
         spawnMonolithPct(world, land, "North Archive", 0.84, 0.22, 4.2, 1.00, 1.00, archiveMat);
         spawnMonolithPct(world, land, "South Gate", 0.78, 0.62, 6.4, 1.55, 1.30, stoneMat);
@@ -189,27 +196,46 @@ class ShowcaseWorldSim {
         homeTrigger = Trigger3D.New(hx - 5.0, hy - 2.0, hz - 5.0, hx + 5.0, hy + 7.0, hz + 5.0);
     }
 
-    expose func updateBeacons(world: World3D, camera: Camera3D,
+    // Interact-to-activate: aim the crosshair at a dormant beacon within range
+    // and hold E to charge a scan. The beacon links when the scan completes, so
+    // lighting the ridge is a deliberate act instead of an accidental fly-by.
+    expose func updateBeacons(dt: Float, world: World3D, camera: Camera3D, input: Input3D,
                               playerX: Float, playerY: Float, playerZ: Float,
                               audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
-        var radiusSq = config.BEACON_TRIGGER_RADIUS * config.BEACON_TRIGGER_RADIUS;
-        for i in 0..beacons.count() {
-            var b = beacons.get(i);
-            if (b.state != 0) { continue; }
+        rampBeaconGlow(dt);
+        if (scanBeaconIndex >= 0 && input.IsDown(Keys.get_KeyE())) {
+            var b = beacons.get(scanBeaconIndex);
             var dx = playerX - b.x;
             var dz = playerZ - b.z;
-            if (dx * dx + dz * dz <= radiusSq) {
-                b.state = 1;
-                beaconsLit = beaconsLit + 1;
-                var point = new Vec3(b.x, b.y + 2.0, b.z);
-                Effects3D.Sparks(world, point, new Vec3(0.0, 1.0, 0.0));
-                onBeaconLit(camera, i, audioObj, effectsObj);
-                if (beaconsLit >= beacons.count()) {
-                    Effects3D.Smoke(world, new Vec3(playerX, playerY + 1.0, playerZ));
-                    audioObj.playVictory();
-                    Camera3D.Shake(camera, config.SHAKE_ALL, 0.8, 3.0);
+            if (b.state == 0 && dx * dx + dz * dz <= config.INTERACT_RANGE * config.INTERACT_RANGE) {
+                scanProgress = scanProgress + dt / config.INTERACT_SCAN_SEC;
+                if (scanProgress >= 1.0) {
+                    scanProgress = 0.0;
+                    activateBeacon(world, camera, scanBeaconIndex, playerX, playerY, playerZ, audioObj, effectsObj);
                 }
+            } else {
+                scanProgress = 0.0;
             }
+        } else {
+            scanProgress = scanProgress - dt * 2.0;
+            if (scanProgress < 0.0) { scanProgress = 0.0; }
+        }
+    }
+
+    hide func activateBeacon(world: World3D, camera: Camera3D, i: Integer,
+                             playerX: Float, playerY: Float, playerZ: Float,
+                             audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+        var b = beacons.get(i);
+        if (b.state != 0) { return; }
+        b.state = 1;
+        beaconsLit = beaconsLit + 1;
+        var point = new Vec3(b.x, b.y + 2.0, b.z);
+        Effects3D.Sparks(world, point, new Vec3(0.0, 1.0, 0.0));
+        onBeaconLit(camera, i, audioObj, effectsObj);
+        if (beaconsLit >= beacons.count()) {
+            Effects3D.Smoke(world, new Vec3(playerX, playerY + 1.0, playerZ));
+            audioObj.playVictory();
+            Camera3D.Shake(camera, config.SHAKE_ALL, 0.8, 3.0);
         }
     }
 
@@ -244,15 +270,15 @@ class ShowcaseWorldSim {
 
         var best = config.SCAN_MAX_DIST;
         var label = "";
-        for i in 0..landmarkNames.count() {
-            var t = raySphere(
-                ox, oy, oz, dx, dy, dz,
-                landmarkXs.get(i), landmarkYs.get(i), landmarkZs.get(i), landmarkR.get(i));
+        for i in 0..landmarks.count() {
+            var lm = landmarks.get(i);
+            var t = raySphere(ox, oy, oz, dx, dy, dz, lm.x, lm.y, lm.z, lm.r);
             if (t > 0.0 && t < best) {
                 best = t;
-                label = landmarkNames.get(i);
+                label = lm.name;
             }
         }
+        var hitBeacon = -1;
         for i in 0..beacons.count() {
             var b = beacons.get(i);
             var tb = raySphere(
@@ -260,10 +286,12 @@ class ShowcaseWorldSim {
                 b.x, b.y + 2.2, b.z, 2.2);
             if (tb > 0.0 && tb < best) {
                 best = tb;
-                if (b.state != 0) { label = "Ridge beacon (linked)"; }
-                else { label = "Ridge beacon (dormant)"; }
+                if (b.state != 0) { label = "Ridge beacon (linked)"; hitBeacon = -1; }
+                else { label = "Ridge beacon (dormant)"; hitBeacon = i; }
             }
         }
+        // The dormant beacon under the crosshair (if any) is the interact target.
+        scanBeaconIndex = hitBeacon;
 
         if (label == "") {
             scanLabel = "";
@@ -304,6 +332,7 @@ class ShowcaseWorldSim {
         plinth.AttachBody(BodyDef.StaticBox(5.0, 0.6, 5.0));
         world.Spawn(plinth);
 
+        boulders = [];
         var i = 0;
         while (i < config.PHYS_BALL_COUNT) {
             var ball: Entity3D = Prefab.Sphere(0.45, 16, beaconOnMat);
@@ -321,7 +350,29 @@ class ShowcaseWorldSim {
             bdef.WithMask(mask);
             ball.AttachBody(bdef);
             world.Spawn(ball);
+            boulders.add(ball);
             i = i + 1;
+        }
+    }
+
+    // Player-driven physics: continuously shove any boulder the player walks into
+    // (radial impulse scaled by overlap), and on a kick apply a strong outward +
+    // upward launch to nearby boulders. Uses Entity3D.ApplyImpulse on the dynamic
+    // sphere bodies spawned above.
+    expose func pushBoulders(dt: Float, playerX: Float, playerZ: Float, kick: Boolean) {
+        for i in 0..boulders.count() {
+            var e = boulders.get(i);
+            var p = e.Position();
+            var dx = Vec3.get_X(p) - playerX;
+            var dz = Vec3.get_Z(p) - playerZ;
+            var d = Sqrt(dx * dx + dz * dz);
+            if (d <= 0.001) { continue; }
+            if (kick && d < config.KICK_RANGE) {
+                e.ApplyImpulse(dx / d * config.KICK_FORCE, config.KICK_UP, dz / d * config.KICK_FORCE);
+            } else if (d < config.PUSH_RANGE) {
+                var f = (config.PUSH_RANGE - d) / config.PUSH_RANGE * config.PUSH_FORCE * dt;
+                e.ApplyImpulse(dx / d * f, 0.0, dz / d * f);
+            }
         }
     }
 
@@ -350,27 +401,26 @@ class ShowcaseWorldSim {
     expose func getSanctuaryDone() -> Boolean { return sanctuaryDone; }
     expose func getScanLabel() -> String { return scanLabel; }
     expose func getScanDist() -> Float { return scanDist; }
-    expose func isNight() -> Boolean { return nightNow; }
+    expose func getScanProgress() -> Float { return scanProgress; }
+    // True when the crosshair is on a dormant beacon (drives the "hold E" hint).
+    expose func hasInteractTarget() -> Boolean { return scanBeaconIndex >= 0; }
 
-    // Push the player out of any landmark footprint (XZ circle collision) so the
-    // stone monoliths read as solid. Returns the corrected position in x/z.
-    expose func resolvePlayerObstacles(px: Float, pz: Float, radius: Float) -> Vec3 {
-        var nx = px;
-        var nz = pz;
-        for i in 0..landmarkXs.count() {
-            var dx = nx - landmarkXs.get(i);
-            var dz = nz - landmarkZs.get(i);
-            var minD = landmarkCollR.get(i) + radius;
-            var d = Sqrt(dx * dx + dz * dz);
-            if (d < minD && d > 0.0001) {
-                var push = (minD - d) / d;
-                nx = nx + dx * push;
-                nz = nz + dz * push;
+    // Distance to the nearest still-dormant beacon (-1 when all are linked), for
+    // the objective readout / compass on the HUD.
+    expose func nearestDormantBeaconDist(playerX: Float, playerZ: Float) -> Float {
+        var best = -1.0;
+        for i in 0..beacons.count() {
+            var b = beacons.get(i);
+            if (b.state == 0) {
+                var dx = playerX - b.x;
+                var dz = playerZ - b.z;
+                var d = Sqrt(dx * dx + dz * dz);
+                if (best < 0.0 || d < best) { best = d; }
             }
         }
-        collideResult.Set(nx, 0.0, nz);
-        return collideResult;
+        return best;
     }
+    expose func isNight() -> Boolean { return nightNow; }
 
     hide func spawnMonolithPct(world: World3D, land: Terrain3D,
         name: String, xPct: Float, zPct: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
@@ -384,13 +434,19 @@ class ShowcaseWorldSim {
         entity.Layer = Layers.get_World();
         var cy = terrain.sampleGround(land, x, z) + height * 0.5;
         entity.SetPosition(x, cy, z);
+        // Static physics body so the character controller collides with the
+        // monolith instead of walking through it (replaces the old manual
+        // circle push-out in resolvePlayerObstacles).
+        entity.AttachBody(BodyDef.StaticBox(sx, height, sz));
         world.Spawn(entity);
-        landmarkXs.add(x);
-        landmarkYs.add(cy);
-        landmarkZs.add(z);
-        landmarkR.add(mathutil.maxf(height * 0.5, mathutil.maxf(sx, sz)) + 0.6);
-        landmarkCollR.add(mathutil.maxf(sx, sz) + 0.6);
-        landmarkNames.add(name);
+        var lm: Landmark = new Landmark();
+        lm.x = x;
+        lm.y = cy;
+        lm.z = z;
+        lm.r = mathutil.maxf(height * 0.5, mathutil.maxf(sx, sz)) + 0.6;
+        lm.collR = mathutil.maxf(sx, sz) + 0.6;
+        lm.name = name;
+        landmarks.add(lm);
     }
 
     hide func addBeaconPct(land: Terrain3D, xPct: Float, zPct: Float) {
@@ -404,14 +460,32 @@ class ShowcaseWorldSim {
         b.z = z;
         b.state = 0;
         b.light = null;
+        b.litProgress = 0.0;
         beacons.add(b);
+    }
+
+    // Ease each lit beacon's point-light intensity from 0 to full over
+    // BEACON_FADE_SEC so activation reads as a glow-in rather than an instant pop.
+    hide func rampBeaconGlow(dt: Float) {
+        for i in 0..beacons.count() {
+            var b = beacons.get(i);
+            if (b.state != 0 && b.litProgress < 1.0) {
+                b.litProgress = b.litProgress + dt / config.BEACON_FADE_SEC;
+                if (b.litProgress > 1.0) { b.litProgress = 1.0; }
+                if (b.light != null) {
+                    Light3D.SetIntensity(b.light, b.litProgress * config.BEACON_LIGHT_INTENSITY);
+                }
+            }
+        }
     }
 
     hide func onBeaconLit(camera: Camera3D, i: Integer, audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
         var b = beacons.get(i);
         if (b.light != null) {
+            // Enable at zero and let updateBeacons ramp the intensity in, so the
+            // beacon glows on smoothly instead of popping to full brightness.
             Light3D.set_Enabled(b.light, true);
-            Light3D.SetIntensity(b.light, config.BEACON_LIGHT_INTENSITY);
+            Light3D.SetIntensity(b.light, 0.0);
         }
         effectsObj.stampScorch(b.x, b.y, b.z);
         audioObj.playBeacon(b.x, b.y, b.z);

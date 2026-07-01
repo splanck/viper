@@ -1004,8 +1004,23 @@ frame.
 | `captureMouse()` / `releaseMouse()` | Forward to the active mouse capture policy |
 
 Use `Game3D.Keys` and `Game3D.MouseButtons` instead of hard-coded integer input
-codes in game code. `Game3D.Keys` covers the WASD/arrow movement keys plus `Space`,
-`Shift`, `Ctrl`, `Escape`, and `F11` (handy for a fullscreen toggle).
+codes in game code. `Game3D.Keys` covers the full keyboard, each exposed as a
+read-only `i64` key code (e.g. `Keys.get_KeyV()`):
+
+| Group | Members |
+| --- | --- |
+| Letters | `KeyA`–`KeyZ` |
+| Digits | `Key0`–`Key9` |
+| Function | `KeyF1`–`KeyF12` |
+| Arrows | `Up`, `Down`, `Left`, `Right` |
+| Navigation / editing | `Space`, `Escape`, `Enter`, `Tab`, `Backspace`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown` |
+| Modifiers | `Shift`, `Ctrl`, `Alt` (left by default) plus explicit `LShift`, `RShift`, `LCtrl`, `RCtrl`, `LAlt`, `RAlt` |
+| Punctuation | `Quote`, `Comma`, `Minus`, `Period`, `Slash`, `Semicolon`, `Equals`, `LBracket`, `RBracket`, `Backslash`, `Grave` |
+| Numpad | `Num0`–`Num9`, `NumAdd`, `NumSub`, `NumMul`, `NumDiv`, `NumDot`, `NumEnter` |
+
+The same key codes are also available application-wide through
+`Viper.Input.Keyboard`; `Game3D.Keys` is the Game3D-facing mirror so game code
+that already binds `Viper.Game3D` needs no extra import.
 
 ---
 

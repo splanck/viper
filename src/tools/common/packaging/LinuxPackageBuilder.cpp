@@ -44,6 +44,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -629,6 +630,96 @@ std::vector<std::string> appDebDepends(const PackageConfig &pkg) {
     return deps;
 }
 
+/// @brief Build the RPM `Requires:` list for application packages.
+/// @details Adds conservative base runtime dependencies, package-manager helper
+///          tools when desktop/MIME metadata is emitted, then appends validated
+///          `package-rpm-depends` entries without exact duplicates.
+/// @param pkg Package metadata controlling desktop/MIME output and user deps.
+/// @return Ordered RPM Requires entries.
+std::vector<std::string> appRpmRequires(const PackageConfig &pkg) {
+    std::vector<std::string> deps = {"glibc", "libstdc++", "libgcc"};
+    const bool needDesktopEntry =
+        pkg.shortcutMenu || pkg.shortcutDesktop || !pkg.fileAssociations.empty();
+    if (needDesktopEntry)
+        deps.push_back("desktop-file-utils");
+    if (!pkg.fileAssociations.empty())
+        deps.push_back("shared-mime-info");
+    for (const auto &dep : pkg.rpmDepends) {
+        validateRpmDependency(dep);
+        if (std::find(deps.begin(), deps.end(), dep) == deps.end())
+            deps.push_back(dep);
+    }
+    return deps;
+}
+
+/// @brief Escape text for simple AppStream XML text nodes and attributes.
+/// @param text Raw metadata value.
+/// @return XML-safe text with reserved characters escaped.
+std::string appStreamXmlEscape(const std::string &text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        switch (c) {
+            case '&':
+                out += "&amp;";
+                break;
+            case '<':
+                out += "&lt;";
+                break;
+            case '>':
+                out += "&gt;";
+                break;
+            case '"':
+                out += "&quot;";
+                break;
+            case '\'':
+                out += "&apos;";
+                break;
+            default:
+                out.push_back(c);
+                break;
+        }
+    }
+    return out;
+}
+
+/// @brief Generate minimal AppStream component metadata for a Linux application.
+/// @details The generated file is intentionally small and schema-friendly: it
+///          identifies the desktop launcher, name, summary, metadata license, and
+///          optional homepage/project license. Richer screenshots and releases can
+///          be added later through manifest fields without changing package layout.
+/// @param pkgName Normalized Linux package name.
+/// @param displayName User-visible application name.
+/// @param version Package version string for release metadata.
+/// @param pkg Package metadata from the manifest.
+/// @return AppStream metainfo XML.
+std::string generateAppStreamMetaInfo(const std::string &pkgName,
+                                      const std::string &displayName,
+                                      const std::string &version,
+                                      const PackageConfig &pkg) {
+    const std::string componentId =
+        pkg.appstreamId.empty() ? pkgName + ".desktop" : pkg.appstreamId;
+    const std::string summary = pkg.description.empty() ? displayName : pkg.description;
+    std::ostringstream xml;
+    xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        << "<component type=\"desktop-application\">\n"
+        << "  <id>" << appStreamXmlEscape(componentId) << "</id>\n"
+        << "  <metadata_license>CC0-1.0</metadata_license>\n";
+    if (!pkg.license.empty())
+        xml << "  <project_license>" << appStreamXmlEscape(pkg.license) << "</project_license>\n";
+    xml << "  <name>" << appStreamXmlEscape(displayName) << "</name>\n"
+        << "  <summary>" << appStreamXmlEscape(summary) << "</summary>\n"
+        << "  <launchable type=\"desktop-id\">" << appStreamXmlEscape(pkgName)
+        << ".desktop</launchable>\n";
+    if (!pkg.homepage.empty())
+        xml << "  <url type=\"homepage\">" << appStreamXmlEscape(pkg.homepage) << "</url>\n";
+    xml << "  <releases>\n"
+        << "    <release version=\"" << appStreamXmlEscape(version) << "\"/>\n"
+        << "  </releases>\n"
+        << "</component>\n";
+    return xml.str();
+}
+
 /// @brief Build the RPM "Requires" list for a toolchain package.
 /// @details Always requires the base C/C++ runtime and build tools, and adds
 ///          libX11 / alsa-lib when the manifest stages the graphics/audio support
@@ -1140,6 +1231,70 @@ std::string appTarballLicenseText(const std::string &displayName, const PackageC
     return out.str();
 }
 
+/// @brief Return a portable tarball install helper for application packages.
+/// @details The helper installs the unpacked application tree under
+///          `${PREFIX:-$HOME/.local}/share/<package>` and writes a small launcher
+///          into `${PREFIX}/bin` that runs from the installed app directory, giving
+///          asset-relative applications the same working directory each time.
+/// @param pkgName Normalized package directory name.
+/// @param exeName Executable filename inside the tarball.
+/// @return POSIX shell script text for `install.sh`.
+std::string appTarballInstallScript(const std::string &pkgName, const std::string &exeName) {
+    const std::string qPkg = shellSingleQuote(pkgName);
+    const std::string qExe = shellSingleQuote(exeName);
+    std::ostringstream script;
+    script << "#!/bin/sh\n"
+              "set -eu\n"
+              "PREFIX=${PREFIX:-${HOME:-}/.local}\n"
+              "if [ -z \"$PREFIX\" ]; then echo \"PREFIX or HOME must be set\" >&2; exit 2; fi\n"
+              "app_name="
+           << qPkg
+           << "\n"
+              "exe_name="
+           << qExe
+           << "\n"
+              "bindir=$PREFIX/bin\n"
+              "appdir=$PREFIX/share/$app_name\n"
+              "mkdir -p \"$bindir\" \"$appdir\"\n"
+              "find . -mindepth 1 -maxdepth 1 ! -name install.sh ! -name uninstall.sh "
+              "! -name README.install -exec cp -R {} \"$appdir\" \\;\n"
+              "cat > \"$bindir/$exe_name\" <<EOF\n"
+              "#!/bin/sh\n"
+              "cd \"$appdir\"\n"
+              "exec \"./$exe_name\" \"\\$@\"\n"
+              "EOF\n"
+              "chmod +x \"$bindir/$exe_name\"\n"
+              "echo \"Installed $app_name to $appdir\"\n";
+    return script.str();
+}
+
+/// @brief Return a portable tarball uninstall helper for application packages.
+/// @details Removes only the launcher and installed share directory written by
+///          appTarballInstallScript(); it intentionally leaves parent directories
+///          such as `$PREFIX/bin` in place.
+/// @param pkgName Normalized package directory name.
+/// @param exeName Executable filename installed as the launcher.
+/// @return POSIX shell script text for `uninstall.sh`.
+std::string appTarballUninstallScript(const std::string &pkgName, const std::string &exeName) {
+    const std::string qPkg = shellSingleQuote(pkgName);
+    const std::string qExe = shellSingleQuote(exeName);
+    std::ostringstream script;
+    script << "#!/bin/sh\n"
+              "set -eu\n"
+              "PREFIX=${PREFIX:-${HOME:-}/.local}\n"
+              "if [ -z \"$PREFIX\" ]; then echo \"PREFIX or HOME must be set\" >&2; exit 2; fi\n"
+              "app_name="
+           << qPkg
+           << "\n"
+              "exe_name="
+           << qExe
+           << "\n"
+              "rm -f \"$PREFIX/bin/$exe_name\"\n"
+              "rm -rf \"$PREFIX/share/$app_name\"\n"
+              "echo \"Removed $app_name from $PREFIX\"\n";
+    return script.str();
+}
+
 /// @brief Return a small generated PNG used for toolchain AppImage desktop metadata.
 std::vector<uint8_t> defaultViperAppImageIconPng() {
     return pngEncode(imageResize(defaultViperToolchainIconImage(), 256, 256));
@@ -1349,6 +1504,8 @@ static std::vector<DataFile> collectAppLinuxDataFiles(const LinuxBuildParams &pa
         dep.execPath = "/usr/bin/" + exeName;
         dep.iconName = exeName;
         dep.categories = pkg.category;
+        dep.startupWmClass = pkg.linuxStartupWmClass;
+        dep.keywords = pkg.linuxKeywords;
         dep.terminal = false;
         dep.workingDir = "/usr/share/" + pkgName;
         dep.fileAssociations = pkg.fileAssociations;
@@ -1361,14 +1518,20 @@ static std::vector<DataFile> collectAppLinuxDataFiles(const LinuxBuildParams &pa
             dataFiles.push_back({"usr/share/" + pkgName + "/" + pkgName + ".desktop", ddata});
     }
 
-    // Icon PNGs at standard sizes (via IconGenerator)
-    if (!pkg.iconPath.empty()) {
-        fs::path iconSrc =
-            resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
-        if (!fs::is_regular_file(iconSrc))
-            throw std::runtime_error("package icon not found: " + pkg.iconPath);
-        auto srcImage = pngRead(iconSrc.string());
-        auto pngs = generateMultiSizePngs(srcImage);
+    // Icon PNGs at standard sizes (via IconGenerator). Menu-visible apps get a
+    // generated fallback so Icon=<exeName> never points at a missing theme icon.
+    if (!pkg.iconPath.empty() || needDesktopEntry) {
+        std::map<uint32_t, std::vector<uint8_t>> pngs;
+        if (!pkg.iconPath.empty()) {
+            fs::path iconSrc =
+                resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
+            if (!fs::is_regular_file(iconSrc))
+                throw std::runtime_error("package icon not found: " + pkg.iconPath);
+            auto srcImage = pngRead(iconSrc.string());
+            pngs = generateMultiSizePngs(srcImage);
+        } else {
+            pngs = generateMultiSizePngs(defaultViperToolchainIconImage());
+        }
         for (const auto &[sz, pngData] : pngs) {
             std::string iconPath = "usr/share/icons/hicolor/" + std::to_string(sz) + "x" +
                                    std::to_string(sz) + "/apps/" + exeName + ".png";
@@ -1381,6 +1544,12 @@ static std::vector<DataFile> collectAppLinuxDataFiles(const LinuxBuildParams &pa
         auto mimeXml = generateMimeTypeXml(pkgName, pkg.fileAssociations);
         std::vector<uint8_t> mdata(mimeXml.begin(), mimeXml.end());
         dataFiles.push_back({"usr/share/mime/packages/" + pkgName + ".xml", mdata});
+    }
+    if (!pkg.appstreamId.empty()) {
+        const std::string version = params.version.empty() ? "0.0.0" : params.version;
+        const std::string appstream = generateAppStreamMetaInfo(pkgName, displayName, version, pkg);
+        std::vector<uint8_t> adata(appstream.begin(), appstream.end());
+        dataFiles.push_back({"usr/share/metainfo/" + pkgName + ".metainfo.xml", adata});
     }
     validateDataFilePaths(dataFiles);
     return dataFiles;
@@ -1666,11 +1835,32 @@ void buildTarball(const LinuxBuildParams &params) {
                 reinterpret_cast<const uint8_t *>(readme.data()),
                 readme.size(),
                 0644);
-    const std::string licenseText = appTarballLicenseText(displayName, pkg);
+    if (!pkg.readmeFilePath.empty()) {
+        const std::string projectReadme =
+            readPackageTextFile(params.projectRoot, pkg.readmeFilePath, "package readme");
+        tar.addFile(topDir + "README",
+                    reinterpret_cast<const uint8_t *>(projectReadme.data()),
+                    projectReadme.size(),
+                    0644);
+    }
+    const std::string licenseText =
+        pkg.licenseFilePath.empty()
+            ? appTarballLicenseText(displayName, pkg)
+            : readPackageTextFile(params.projectRoot, pkg.licenseFilePath, "package license file");
     tar.addFile(topDir + "LICENSE",
                 reinterpret_cast<const uint8_t *>(licenseText.data()),
                 licenseText.size(),
                 0644);
+    const std::string installScript = appTarballInstallScript(pkgName, exeName);
+    tar.addFile(topDir + "install.sh",
+                reinterpret_cast<const uint8_t *>(installScript.data()),
+                installScript.size(),
+                0755);
+    const std::string uninstallScript = appTarballUninstallScript(pkgName, exeName);
+    tar.addFile(topDir + "uninstall.sh",
+                reinterpret_cast<const uint8_t *>(uninstallScript.data()),
+                uninstallScript.size(),
+                0755);
 
     auto tarBytes = tar.finish();
     auto tarGz = gzip(tarBytes.data(), tarBytes.size());
@@ -1760,11 +1950,20 @@ void buildAppImage(const LinuxBuildParams &params) {
         dep.execPath = "AppRun";
         dep.iconName = exeName;
         dep.categories = pkg.category;
+        dep.startupWmClass = pkg.linuxStartupWmClass;
+        dep.keywords = pkg.linuxKeywords;
         dep.terminal = false;
         dep.fileAssociations = pkg.fileAssociations;
         dep.acceptsFileArgument = !pkg.fileAssociations.empty();
         const std::string desktopText = generateDesktopEntry(dep);
         tar.addFileString(exeName + ".desktop", desktopText, 0644);
+    }
+
+    if (!pkg.appstreamId.empty()) {
+        const std::string appstream = generateAppStreamMetaInfo(pkgName, displayName, version, pkg);
+        tar.addDirectory("usr/share", 0755);
+        tar.addDirectory("usr/share/metainfo", 0755);
+        tar.addFileString("usr/share/metainfo/" + pkgName + ".metainfo.xml", appstream, 0644);
     }
 
     // Icon at the payload root (<exe>.png); falls back to a generated default icon.
@@ -1781,6 +1980,7 @@ void buildAppImage(const LinuxBuildParams &params) {
             iconPng = defaultViperAppImageIconPng();
         }
         tar.addFileVec(exeName + ".png", iconPng, 0644);
+        tar.addFileVec(".DirIcon", iconPng, 0644);
     }
 
     const auto tarBytes = tar.finish();
@@ -1822,7 +2022,7 @@ void buildRpmPackage(const LinuxBuildParams &params) {
     if (!rpmbuildAvailable()) {
         throw std::runtime_error(
             "rpmbuild is required to generate RPM application packages; install rpm-build "
-            "or use --target deb, appimage, or tarball");
+            "or use --target linux, appimage, or tarball");
     }
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-app-rpm-" + version + "-" + arch);
@@ -1876,23 +2076,33 @@ void buildRpmPackage(const LinuxBuildParams &params) {
     }
     spec << "BuildArch: " << arch << "\n";
     spec << "Source0: %{name}-%{version}.tar.gz\n";
+    for (const auto &dep : appRpmRequires(pkg))
+        spec << "Requires: " << dep << "\n";
     spec << "\n";
     spec << "%description\n" << summary << "\n\n";
     spec << "%prep\n%setup -q\n\n";
     spec << "%build\n:\n\n";
     spec << "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}/usr\ncp -a . "
             "%{buildroot}/usr/\n\n";
-    if (!pkg.fileAssociations.empty()) {
+    const bool needDesktopEntry =
+        pkg.shortcutMenu || pkg.shortcutDesktop || !pkg.fileAssociations.empty();
+    if (needDesktopEntry || !pkg.fileAssociations.empty()) {
         spec << "%post\n";
-        spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
-                "/usr/share/mime || true; fi\n";
-        spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
-                "update-desktop-database /usr/share/applications || true; fi\n\n";
+        if (!pkg.fileAssociations.empty())
+            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
+                    "/usr/share/mime || true; fi\n";
+        if (needDesktopEntry)
+            spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                    "update-desktop-database /usr/share/applications || true; fi\n";
+        spec << "\n";
         spec << "%postun\n";
-        spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
-                "/usr/share/mime || true; fi\n";
-        spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
-                "update-desktop-database /usr/share/applications || true; fi\n\n";
+        if (!pkg.fileAssociations.empty())
+            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
+                    "/usr/share/mime || true; fi\n";
+        if (needDesktopEntry)
+            spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                    "update-desktop-database /usr/share/applications || true; fi\n";
+        spec << "\n";
     }
     spec << "%files\n";
     for (const auto &file : dataFiles) {

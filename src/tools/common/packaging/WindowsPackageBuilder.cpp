@@ -53,6 +53,12 @@ constexpr size_t kInstallerStubPathCharLimit = 32768;
 constexpr uint64_t kInstallerStackReserve = 0x200000;
 constexpr uint64_t kInstallerStackCommit = 0x100000;
 
+/// @brief One Windows runtime dependency to bundle with an app installer.
+struct WindowsDllDependency {
+    fs::path sourcePath;             ///< Absolute or caller-resolved source DLL path.
+    std::string installRelativePath; ///< Path to write under the app install root.
+};
+
 /// @brief Apply a larger-than-default stack to all installer/uninstaller PEs.
 /// The installer recursively creates directory trees and copies large files;
 /// the default 1 MB reserve is too small for deeply nested install paths.
@@ -584,12 +590,33 @@ std::optional<fs::path> findLocalDllCaseInsensitive(const fs::path &dir,
     return std::nullopt;
 }
 
+/// @brief Return a stable install path for a discovered DLL dependency.
+/// @details Dependencies found under the executable directory keep their
+///          relative subdirectory path so plugin folders and similarly named
+///          DLLs do not collapse into the install root. Paths outside that tree
+///          fall back to the filename, which is used only for explicit manifest
+///          dependencies.
+/// @param exeDir Directory containing the packaged executable.
+/// @param dllPath Resolved DLL source path.
+/// @return Sanitized install-relative path.
+std::string dllInstallRelativePath(const fs::path &exeDir, const fs::path &dllPath) {
+    std::error_code ec;
+    fs::path rel = fs::relative(dllPath, exeDir, ec);
+    const std::string relText = rel.generic_string();
+    if (ec || rel.empty() || relText == ".." || relText.rfind("../", 0) == 0)
+        rel = dllPath.filename();
+    return sanitizePackageRelativePath(rel.generic_string(), "Windows DLL dependency path");
+}
+
 /// @brief Transitively collect non-system DLLs that ship next to @p exePath.
 /// @details Breadth-first walks the import tables of the executable and each
 ///          discovered local DLL, skipping known redistributable/system DLLs, and
-///          returns the adjacent files that must be bundled into the installer.
-std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
-    std::vector<fs::path> deps;
+///          returns the adjacent files that must be bundled into the installer
+///          together with the install-relative paths they should keep.
+/// @param exePath Windows PE executable being packaged.
+/// @return Local DLL dependencies with resolved source paths and install targets.
+std::vector<WindowsDllDependency> discoverAdjacentDllDependencies(const fs::path &exePath) {
+    std::vector<WindowsDllDependency> deps;
     const fs::path dir = exePath.parent_path();
     std::set<std::string> seen;
     std::vector<fs::path> queue{exePath};
@@ -603,7 +630,7 @@ std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
                 continue;
             const auto local = findLocalDllCaseInsensitive(dir, dll);
             if (local) {
-                deps.push_back(*local);
+                deps.push_back({*local, dllInstallRelativePath(dir, *local)});
                 queue.push_back(*local);
                 continue;
             }
@@ -635,13 +662,51 @@ std::string windowsProgIdExtensionComponent(const FileAssoc &assoc) {
     return ext;
 }
 
+/// @brief Return an 8-character stable hexadecimal FNV-1a hash.
+/// @details Used only to shorten generated Windows ProgID bases while keeping
+///          a deterministic suffix that avoids obvious collisions between long
+///          executable names.
+/// @param text Input text to hash.
+/// @return Lowercase hexadecimal hash suffix.
+std::string shortStableHexHash(std::string_view text) {
+    uint32_t hash = 2166136261u;
+    for (unsigned char c : text) {
+        hash ^= c;
+        hash *= 16777619u;
+    }
+    std::ostringstream out;
+    out << std::hex << std::setfill('0') << std::setw(8) << hash;
+    return out.str();
+}
+
+/// @brief Build a valid default Windows ProgID base for an executable.
+/// @details Windows ProgID bases are capped at 39 characters by Viper's registry
+///          policy. The generated `viper.<exe>` base is truncated and hash-
+///          suffixed when needed, while preserving alphanumeric/underscore/dash
+///          characters already produced by normalizeExecName().
+/// @param exec Normalized executable stem.
+/// @return Valid ProgID base that passes validateWindowsProgIdBase().
+std::string defaultWindowsProgIdBase(const std::string &exec) {
+    std::string component = exec.empty() ? "app" : exec;
+    constexpr size_t kPrefixLen = 6; // "viper."
+    constexpr size_t kHashLen = 9;   // "-" + 8 hex chars
+    constexpr size_t kMaxBaseLen = 39;
+    if (kPrefixLen + component.size() > kMaxBaseLen) {
+        const size_t keep = kMaxBaseLen - kPrefixLen - kHashLen;
+        component = component.substr(0, keep) + "-" + shortStableHexHash(component);
+    }
+    std::string base = "viper." + component;
+    validateWindowsProgIdBase(base, "Windows file association ProgID base");
+    return base;
+}
+
 /// @brief Build the Windows ProgID string for a file association in app packages.
 /// Format: "<pkg.identifier>.<ext>" — e.g. "com.example.myapp.zia".
 /// ProgIDs are registered in HKEY_CLASSES_ROOT and link the extension to the app.
 std::string windowsProgIdFor(const PackageConfig &pkg,
                              const std::string &exec,
                              const FileAssoc &assoc) {
-    std::string base = pkg.identifier.empty() ? ("viper." + exec) : pkg.identifier;
+    std::string base = pkg.identifier.empty() ? defaultWindowsProgIdBase(exec) : pkg.identifier;
     validateWindowsProgIdBase(base, "Windows file association ProgID base");
     validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
     const std::string progId = base + "." + windowsProgIdExtensionComponent(assoc);
@@ -863,14 +928,29 @@ PEVersionInfo windowsVersionInfoForLayout(const WindowsPackageLayout &layout,
     return info;
 }
 
+/// @brief Convert a byte buffer to a string without transcoding.
+/// @details Installer metadata files are treated as byte-preserving text. This
+///          helper keeps existing newline and encoding bytes intact for license
+///          display and fallback metadata.
+/// @param data Raw file bytes.
+/// @return String containing the same bytes, or an empty string for empty input.
 std::string textFromBytes(const std::vector<uint8_t> &data) {
     if (data.empty())
         return {};
     return std::string(reinterpret_cast<const char *>(data.data()), data.size());
 }
 
+/// @brief Resolve the license text shown by the Windows installer wizard.
+/// @details Prefers the explicit package-license-file manifest entry, then
+///          common project LICENSE files, then the SPDX package-license field.
+///          A GPL-3.0-only fallback keeps existing installer metadata non-empty.
+/// @param projectRoot Root used to resolve project-relative metadata files.
+/// @param pkg Package metadata.
+/// @return License or license-summary text for installer display.
 std::string appLicenseTextFor(const std::string &projectRoot, const PackageConfig &pkg) {
     const fs::path root(projectRoot);
+    if (!pkg.licenseFilePath.empty())
+        return readPackageTextFile(root, pkg.licenseFilePath, "package license file");
     for (const char *name : {"LICENSE", "LICENSE.txt"}) {
         const fs::path candidate = root / name;
         if (fs::is_regular_file(candidate))
@@ -879,6 +959,21 @@ std::string appLicenseTextFor(const std::string &projectRoot, const PackageConfi
     if (!pkg.license.empty())
         return pkg.license;
     return "GPL-3.0-only";
+}
+
+/// @brief Resolve the Windows publisher shown in ARP and VERSIONINFO.
+/// @details The manifest can provide a Windows-specific publisher override.
+///          Otherwise Viper falls back to package-author, then the display name
+///          so release installers do not emit blank Publisher/Company fields.
+/// @param pkg Package metadata.
+/// @param displayName User-visible app name.
+/// @return Non-empty publisher text.
+std::string windowsPublisherFor(const PackageConfig &pkg, const std::string &displayName) {
+    if (!pkg.windowsPublisher.empty())
+        return pkg.windowsPublisher;
+    if (!pkg.author.empty())
+        return pkg.author;
+    return displayName;
 }
 
 /// @brief Build the Windows ProgID for a toolchain file association.
@@ -1084,6 +1179,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     if (!pkg.minOsWindows.empty())
         validateDottedNumericVersion(pkg.minOsWindows, "minimum Windows version");
     validateSingleLineField(pkg.author, "Windows package author");
+    validateSingleLineField(pkg.windowsPublisher, "Windows publisher");
+    validateSingleLineField(pkg.windowsWizardSummary, "Windows wizard summary");
     validateSingleLineField(pkg.description, "Windows package description");
     validatePackageUrl(pkg.homepage, "package homepage");
     validatePackageFileAssociations(pkg.fileAssociations);
@@ -1097,12 +1194,14 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.installDirName = installDir;
     layout.version = version;
     layout.identifier = pkg.identifier;
-    layout.publisher = pkg.author;
+    layout.publisher = windowsPublisherFor(pkg, displayName);
     layout.description = pkg.description;
-    layout.contact = pkg.maintainerEmail.empty() ? pkg.author : pkg.maintainerEmail;
+    layout.contact = pkg.maintainerEmail.empty() ? layout.publisher : pkg.maintainerEmail;
     layout.licenseText = appLicenseTextFor(params.projectRoot, pkg);
+    layout.wizardSummary =
+        pkg.windowsWizardSummary.empty() ? pkg.welcomeText : pkg.windowsWizardSummary;
     layout.executableName = exec + ".exe";
-    layout.perUserInstall = pkg.windowsInstallScope == "user";
+    layout.perUserInstall = pkg.windowsInstallScope.empty() || pkg.windowsInstallScope == "user";
     layout.homepage = pkg.homepage;
     layout.installDate = currentInstallDate();
     layout.createDesktopShortcut = pkg.shortcutDesktop;
@@ -1117,6 +1216,14 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     }
 
     std::set<std::string> installDirSet;
+    std::set<std::string> installFileSet;
+    auto noteInstallFile = [&](const std::string &relativePath) {
+        const std::string clean = sanitizePackageRelativePath(relativePath, "Windows install path");
+        const std::string key = lowerAscii(clean);
+        if (!installFileSet.insert(key).second)
+            throw std::runtime_error("Windows package install path collision: " + clean);
+        return clean;
+    };
 
     ZipWriter zip;
     zip.setCompressionEnabled(false);
@@ -1138,9 +1245,12 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
             throw std::runtime_error("package icon not found: " + pkg.iconPath);
         auto srcImage = pngRead(iconSrc.string());
         icoData = generateIco(srcImage);
+    } else {
+        icoData = generateIco(defaultViperToolchainIconImage());
     }
 
     const auto execData = readFile(params.executablePath);
+    noteInstallFile(exec + ".exe");
     addCompressedPayloadFile(payloadZip,
                              exec + ".exe",
                              execData.data(),
@@ -1152,10 +1262,22 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                              true,
                              &installedManifestPaths);
 
-    for (const auto &dllPath : discoverAdjacentDllDependencies(params.executablePath)) {
-        const std::string dllName = dllPath.filename().generic_string();
+    std::vector<WindowsDllDependency> dllDependencies =
+        discoverAdjacentDllDependencies(params.executablePath);
+    for (const auto &dllRelPath : pkg.windowsDlls) {
+        const fs::path dllPath =
+            resolvePackageSourcePath(params.projectRoot, dllRelPath, "Windows DLL dependency");
+        if (!fs::is_regular_file(dllPath))
+            throw std::runtime_error("Windows DLL dependency is not a regular file: " + dllRelPath);
+        dllDependencies.push_back(
+            {dllPath, sanitizePackageRelativePath(dllRelPath, "Windows DLL dependency path")});
+    }
+    for (const auto &dll : dllDependencies) {
+        const std::string dllName = noteInstallFile(dll.installRelativePath);
         validateWindowsRelativePath(dllName, "Windows DLL dependency path");
-        const auto dllData = readFile(dllPath.string());
+        addParentDirs(
+            layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, dllName);
+        const auto dllData = readFile(dll.sourcePath.string());
         addCompressedPayloadFile(payloadZip,
                                  dllName,
                                  dllData.data(),
@@ -1169,6 +1291,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     }
 
     if (!icoData.empty()) {
+        noteInstallFile(exec + ".ico");
         addCompressedPayloadFile(payloadZip,
                                  exec + ".ico",
                                  icoData.data(),
@@ -1221,6 +1344,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
                     const std::string relInstall =
                         joinPackageRelativePath(targetDir, relPath, "asset path");
+                    noteInstallFile(relInstall);
                     addParentDirs(layout.installDirectories,
                                   installDirSet,
                                   WindowsInstallRoot::InstallDir,
@@ -1240,6 +1364,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         } else if (fs::is_regular_file(srcPath)) {
             const std::string relInstall =
                 joinPackageRelativePath(targetDir, sourceLeaf, "asset path");
+            noteInstallFile(relInstall);
             addParentDirs(layout.installDirectories,
                           installDirSet,
                           WindowsInstallRoot::InstallDir,
@@ -1301,6 +1426,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                              &payloadManifest);
     }
 
+    noteInstallFile("uninstall.exe");
+    noteInstallFile(layout.installedManifestRelativePath);
     registerInstalledFile(
         layout, WindowsInstallRoot::InstallDir, layout.installedManifestRelativePath, 0, true);
     finalizeUninstallDirs(layout);

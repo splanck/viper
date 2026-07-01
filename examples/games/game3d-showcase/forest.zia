@@ -19,7 +19,6 @@ class ShowcaseForest {
     hide List[Float] beaconZs;
     hide List[Float] treeXs;
     hide List[Float] treeZs;
-    hide Vec3 treeResult;
     hide Mesh3D unitCylinder;
     hide Mesh3D unitSphere;
     hide InstanceBatch3D trunkBatch;
@@ -30,7 +29,6 @@ class ShowcaseForest {
         beaconZs = bz;
         treeXs = [];
         treeZs = [];
-        treeResult = new Vec3(0.0, 0.0, 0.0);
         var model = loadTreeModel();
         buildFoliageMaterials();
         buildInstanceBatches();
@@ -169,26 +167,6 @@ class ShowcaseForest {
         return true;
     }
 
-    // Push the player out of any tree trunk (XZ circle collision). Iterates the
-    // trunk positions recorded at plant time; returns the corrected x/z.
-    expose func resolveTreeCollision(px: Float, pz: Float, radius: Float) -> Vec3 {
-        var nx = px;
-        var nz = pz;
-        var minD = config.TREE_COLLIDE_RADIUS + radius;
-        for i in 0..treeXs.count() {
-            var dx = nx - treeXs.get(i);
-            var dz = nz - treeZs.get(i);
-            var d = Sqrt(dx * dx + dz * dz);
-            if (d < minD && d > 0.0001) {
-                var push = (minD - d) / d;
-                nx = nx + dx * push;
-                nz = nz + dz * push;
-            }
-        }
-        treeResult.Set(nx, 0.0, nz);
-        return treeResult;
-    }
-
     // Material accessors so probes/tests can validate procedural-tree material
     // quality now that trunks/lobes render from instance batches, not entities.
     expose func getBarkMat() -> Material3D { return barkMat; }
@@ -198,11 +176,24 @@ class ShowcaseForest {
     hide func plantTreeOrFallback(world: World3D, model: SceneAsset, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
         treeXs.add(x);
         treeZs.add(z);
+        spawnTrunkCollider(world, x, y, z);
         if (treeBad(model)) {
             plantProceduralTree(world, x, z, y, scale, yawDeg);
         } else {
             plantTree(world, model, x, z, y, scale, yawDeg);
         }
+    }
+
+    // Invisible static capsule around the trunk so the character controller
+    // slides around trees (replaces the old manual resolveTreeCollision push-out).
+    // Centered above the ground so it covers the lower trunk the player can reach.
+    hide func spawnTrunkCollider(world: World3D, x: Float, y: Float, z: Float) {
+        var col: Entity3D = Entity3D.New();
+        col.Name = "tree_trunk_collider";
+        col.Layer = Layers.get_World();
+        col.SetPosition(x, y + 3.0, z);
+        col.AttachBody(BodyDef.Capsule(config.TREE_COLLIDE_RADIUS, 6.0, 0.0));
+        world.Spawn(col);
     }
 
     hide func plantTree(world: World3D, model: SceneAsset, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
@@ -214,6 +205,8 @@ class ShowcaseForest {
         ent.SetScaleXYZ(scale, scale, scale);
         ent.SetRotationEuler(yawDeg, 0.0, 0.0);
         ent.SetPosition(x, y, z);
+        // Screen-size-driven LOD: distant maples simplify automatically.
+        ent.Node.SetAutoLOD(true, config.FOREST_LOD_ERROR_PX);
         world.Spawn(ent);
     }
 

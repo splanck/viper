@@ -59,6 +59,72 @@ fs::path uniqueTempPackagingDir(std::string_view stem) {
     return createUniqueTempDirectory(fs::temp_directory_path(), stem);
 }
 
+/// @brief Convert arbitrary project text into a macOS bundle-id component.
+/// @details Bundle identifier components must start and end with an alphanumeric
+///          character and may contain hyphens internally. This helper lowercases
+///          ASCII letters, converts all non-alphanumeric runs to a single hyphen,
+///          trims leading/trailing hyphens, and falls back to `app` when no valid
+///          characters remain.
+/// @param text Project or executable text used as the default bundle-id suffix.
+/// @return A bundle-identifier-safe component.
+std::string macOSBundleIdentifierComponent(std::string_view text) {
+    std::string out;
+    bool lastHyphen = true;
+    for (unsigned char c : text) {
+        if (std::isalnum(c)) {
+            out.push_back(static_cast<char>(std::tolower(c)));
+            lastHyphen = false;
+        } else if (!lastHyphen) {
+            out.push_back('-');
+            lastHyphen = true;
+        }
+    }
+    while (!out.empty() && out.back() == '-')
+        out.pop_back();
+    if (out.empty())
+        return "app";
+    return out;
+}
+
+/// @brief Build and validate the default macOS bundle identifier.
+/// @details The package manifest may override the identifier. When it does not,
+///          Viper uses a stable `com.viper.<component>` identifier derived from
+///          the project name with macOS-safe component rules.
+/// @param projectName Project name from the manifest.
+/// @return Valid reverse-DNS bundle identifier.
+std::string defaultMacOSBundleIdentifier(const std::string &projectName) {
+    std::string bundleId = "com.viper." + macOSBundleIdentifierComponent(projectName);
+    validateMacOSBundleIdentifier(bundleId, "macOS bundle identifier");
+    return bundleId;
+}
+
+/// @brief Map freedesktop-style package categories to Apple bundle categories.
+/// @details The manifest uses the existing cross-platform `package-category`
+///          field. This helper maps the broad freedesktop categories Viper
+///          already validates to the nearest LaunchServices category string.
+/// @param category Manifest category string.
+/// @return Empty string when no reasonable macOS category is declared.
+std::string macOSApplicationCategory(const std::string &category) {
+    if (category.find("Game") != std::string::npos)
+        return "public.app-category.games";
+    if (category.find("Development") != std::string::npos)
+        return "public.app-category.developer-tools";
+    if (category.find("Graphics") != std::string::npos)
+        return "public.app-category.graphics-design";
+    if (category.find("Audio") != std::string::npos || category.find("Video") != std::string::npos)
+        return "public.app-category.music";
+    if (category.find("Education") != std::string::npos)
+        return "public.app-category.education";
+    if (category.find("Office") != std::string::npos)
+        return "public.app-category.productivity";
+    if (category.find("Network") != std::string::npos)
+        return "public.app-category.utilities";
+    if (category.find("Utility") != std::string::npos ||
+        category.find("System") != std::string::npos)
+        return "public.app-category.utilities";
+    return {};
+}
+
 /// @brief RAII guard that removes the directory tree at `path_` on destruction.
 class TempDirGuard {
   public:
@@ -1133,11 +1199,13 @@ static StagedMacOSApp stageMacOSAppBundle(const MacOSBuildParams &params,
 
     PlistParams plistParams;
     plistParams.executableName = execName;
-    plistParams.bundleId = pkg.identifier.empty() ? ("com.viper." + execName) : pkg.identifier;
+    plistParams.bundleId =
+        pkg.identifier.empty() ? defaultMacOSBundleIdentifier(params.projectName) : pkg.identifier;
     plistParams.bundleName = displayName;
     plistParams.version = version;
     plistParams.iconFile = iconFileName;
     plistParams.minOsVersion = pkg.minOsMacos;
+    plistParams.appCategory = macOSApplicationCategory(pkg.category);
     plistParams.fileAssociations = pkg.fileAssociations;
     writeFileString(contentsDir / "Info.plist",
                     generatePlist(plistParams),
@@ -1156,10 +1224,19 @@ static StagedMacOSApp stageMacOSAppBundle(const MacOSBuildParams &params,
     return {appPath, stagedExec};
 }
 
-/// @brief Wrap a staged .app bundle in a compressed .dmg with a drag-to-/Applications symlink.
-/// @details macOS-only (shells to hdiutil). Builds the image directly from a staging folder
-///          (no attach/Finder styling) so it stays robust in headless runs.
-static void addStagedAppToDmg(const fs::path &appPath,
+/// @brief Wrap a staged .app bundle in a compressed drag-to-install .dmg.
+/// @details Stages the app, an `/Applications` symlink, and optional visual
+///          assets from package metadata. The image is created read-write,
+///          styled best-effort through Finder when a macOS desktop session is
+///          available, then compressed to the final UDZO output. If styling
+///          commands fail in headless CI, the package remains valid.
+/// @param params Original app build parameters carrying project root and DMG metadata.
+/// @param appPath Path to the already-staged signed `.app` bundle.
+/// @param volumeName Mounted volume name and Finder window title.
+/// @param outputPath Final `.dmg` output path.
+/// @throws std::runtime_error on staging, hdiutil, or required visual asset failures.
+static void addStagedAppToDmg(const MacOSBuildParams &params,
+                              const fs::path &appPath,
                               const std::string &volumeName,
                               const std::string &outputPath) {
     // hdiutil is macOS-only; off-platform it is simply absent and runChecked surfaces a
@@ -1183,8 +1260,33 @@ static void addStagedAppToDmg(const fs::path &appPath,
         throw std::runtime_error("cannot create /Applications symlink for .dmg staging: " +
                                  symEc.message());
 
+    bool haveBackground = false;
+    if (!params.pkgConfig.macosDmgBackground.empty()) {
+        const fs::path bgSrc = resolvePackageSourcePath(
+            params.projectRoot, params.pkgConfig.macosDmgBackground, "macOS DMG background");
+        if (!fs::is_regular_file(bgSrc))
+            throw std::runtime_error("macOS DMG background is not a regular file: " +
+                                     params.pkgConfig.macosDmgBackground);
+        const fs::path bgDir = stage / ".background";
+        fs::create_directories(bgDir);
+        fs::copy_file(bgSrc, bgDir / "background.png", fs::copy_options::overwrite_existing);
+        haveBackground = true;
+    }
+
+    bool haveVolumeIcon = false;
+    if (!params.pkgConfig.macosDmgIcon.empty()) {
+        const fs::path iconSrc = resolvePackageSourcePath(
+            params.projectRoot, params.pkgConfig.macosDmgIcon, "macOS DMG icon");
+        if (!fs::is_regular_file(iconSrc))
+            throw std::runtime_error("macOS DMG icon is not a regular file: " +
+                                     params.pkgConfig.macosDmgIcon);
+        fs::copy_file(iconSrc, stage / ".VolumeIcon.icns", fs::copy_options::overwrite_existing);
+        haveVolumeIcon = true;
+    }
+
     std::error_code rmEc;
     fs::remove(outputPath, rmEc);
+    const fs::path rwDmg = tmpRoot / "rw.dmg";
     runChecked({"hdiutil",
                 "create",
                 "-srcfolder",
@@ -1194,12 +1296,67 @@ static void addStagedAppToDmg(const fs::path &appPath,
                 "-fs",
                 "HFS+",
                 "-format",
+                "UDRW",
+                "-ov",
+                rwDmg.string()},
+               "macOS app .dmg read-write image creation");
+
+    const fs::path mountPoint = tmpRoot / "mnt";
+    fs::create_directories(mountPoint);
+    runChecked({"hdiutil",
+                "attach",
+                rwDmg.string(),
+                "-mountpoint",
+                mountPoint.string(),
+                "-nobrowse",
+                "-noverify",
+                "-noautoopen"},
+               "macOS app .dmg attach");
+
+    {
+        const std::string appFileName = appPath.filename().string();
+        std::ostringstream s;
+        s << "tell application \"Finder\"\n"
+          << "  tell disk \"" << volumeName << "\"\n"
+          << "    open\n"
+          << "    set current view of container window to icon view\n"
+          << "    set toolbar visible of container window to false\n"
+          << "    set statusbar visible of container window to false\n"
+          << "    set the bounds of container window to {200, 120, 760, 500}\n"
+          << "    set vopts to the icon view options of container window\n"
+          << "    set arrangement of vopts to not arranged\n"
+          << "    set icon size of vopts to 128\n";
+        if (haveBackground)
+            s << "    set background picture of vopts to file \".background:background.png\"\n";
+        s << "    set position of item \"" << appFileName
+          << "\" of container window to {180, 240}\n"
+          << "    set position of item \"Applications\" of container window to {420, 240}\n"
+          << "    update without registering applications\n"
+          << "    delay 1\n"
+          << "    close\n"
+          << "  end tell\n"
+          << "end tell\n";
+        (void)run_process({"osascript", "-e", s.str()});
+    }
+    if (haveVolumeIcon)
+        (void)run_process({"SetFile", "-a", "C", mountPoint.string()});
+    (void)run_process({"sync"});
+
+    if (run_process({"hdiutil", "detach", mountPoint.string()}).exit_code != 0)
+        runChecked({"hdiutil", "detach", "-force", mountPoint.string()}, "macOS app .dmg detach");
+
+    runChecked({"hdiutil",
+                "convert",
+                rwDmg.string(),
+                "-format",
                 "UDZO",
                 "-imagekey",
                 "zlib-level=9",
                 "-ov",
+                "-o",
                 outputPath},
-               "macOS app .dmg creation");
+               "macOS app .dmg compression");
+    runChecked({"hdiutil", "verify", outputPath}, "macOS app .dmg verification");
 }
 
 /// @brief Build a macOS .app bundle inside a ZIP archive from the given build parameters.
@@ -1224,7 +1381,7 @@ void buildMacOSAppDmg(const MacOSBuildParams &params) {
         uniqueTempPackagingDir("viper-macos-app-dmg-" + normalizeExecName(params.projectName));
     TempDirGuard cleanup(stageRoot);
     const StagedMacOSApp staged = stageMacOSAppBundle(params, stageRoot);
-    addStagedAppToDmg(staged.appPath, displayName, params.outputPath);
+    addStagedAppToDmg(params, staged.appPath, displayName, params.outputPath);
 }
 
 /// @brief Build a macOS `.pkg` installer for the staged toolchain.

@@ -22,6 +22,7 @@
 #include "PlistGenerator.hpp"
 #include "PkgUtils.hpp"
 
+#include <cctype>
 #include <sstream>
 
 namespace viper::pkg {
@@ -52,11 +53,46 @@ static std::string xmlEscape(const std::string &s) {
     return result;
 }
 
+/// @brief Return the LaunchServices role for a file association.
+/// @details Source/text-like MIME types are advertised as editable documents,
+///          while binary or unknown types default to Viewer so packaged apps do
+///          not overstate their document-editing capability.
+/// @param assoc File association metadata from the package manifest.
+/// @return `Editor` for text/source MIME types, otherwise `Viewer`.
+static std::string documentRoleFor(const FileAssoc &assoc) {
+    if (assoc.mimeType.rfind("text/", 0) == 0)
+        return "Editor";
+    if (assoc.mimeType.find("source") != std::string::npos)
+        return "Editor";
+    return "Viewer";
+}
+
+/// @brief Return the parent UTI for a file association.
+/// @details LaunchServices uses conformance to group document types. Text and
+///          source MIME types conform to public.text so editors/search tools can
+///          treat them as textual; everything else uses public.data.
+/// @param assoc File association metadata from the package manifest.
+/// @return Parent UTI identifier for UTTypeConformsTo.
+static std::string utiConformanceFor(const FileAssoc &assoc) {
+    if (assoc.mimeType.rfind("text/", 0) == 0)
+        return "public.text";
+    if (assoc.mimeType.find("source") != std::string::npos)
+        return "public.source-code";
+    return "public.data";
+}
+
 /// @brief Generate a complete macOS Info.plist for an .app bundle.
 /// Validates file associations first, then emits the PropertyList-1.0 XML with
 /// required CFBundle* keys, optional icon and min-OS entries, and — if file
 /// associations are present — both CFBundleDocumentTypes and UTExportedTypeDeclarations.
 std::string generatePlist(const PlistParams &params) {
+    validateSingleLineField(params.executableName, "macOS bundle executable name");
+    validateMacOSBundleIdentifier(params.bundleId, "macOS bundle identifier");
+    validateSingleLineField(params.bundleName, "macOS bundle name");
+    validateDottedNumericVersion(params.version, "macOS bundle version");
+    if (!params.minOsVersion.empty())
+        validateDottedNumericVersion(params.minOsVersion, "minimum macOS version");
+    validateSingleLineField(params.appCategory, "macOS application category");
     validatePackageFileAssociations(params.fileAssociations);
     std::ostringstream os;
 
@@ -94,6 +130,11 @@ std::string generatePlist(const PlistParams &params) {
            << "  <string>" << xmlEscape(params.iconFile) << "</string>\n";
     }
 
+    if (!params.appCategory.empty()) {
+        os << "  <key>LSApplicationCategoryType</key>\n"
+           << "  <string>" << xmlEscape(params.appCategory) << "</string>\n";
+    }
+
     // Minimum OS version
     std::string minOs = params.minOsVersion.empty() ? "10.13" : params.minOsVersion;
     os << "  <key>LSMinimumSystemVersion</key>\n"
@@ -118,7 +159,9 @@ std::string generatePlist(const PlistParams &params) {
             os << "      <key>CFBundleTypeName</key>\n"
                << "      <string>" << xmlEscape(fa.description) << "</string>\n";
             os << "      <key>CFBundleTypeRole</key>\n"
-               << "      <string>Editor</string>\n";
+               << "      <string>" << documentRoleFor(fa) << "</string>\n";
+            os << "      <key>LSHandlerRank</key>\n"
+               << "      <string>Alternate</string>\n";
             os << "    </dict>\n";
         }
         os << "  </array>\n";
@@ -140,14 +183,15 @@ std::string generatePlist(const PlistParams &params) {
             os << "      <key>UTTypeDescription</key>\n"
                << "      <string>" << xmlEscape(fa.description) << "</string>\n";
             os << "      <key>UTTypeConformsTo</key>\n"
-               << "      <array><string>public.data</string></array>\n";
+               << "      <array><string>" << xmlEscape(utiConformanceFor(fa))
+               << "</string></array>\n";
             os << "      <key>UTTypeTagSpecification</key>\n"
                << "      <dict>\n";
             os << "        <key>public.filename-extension</key>\n"
                << "        <array><string>" << xmlEscape(ext) << "</string></array>\n";
             if (!fa.mimeType.empty()) {
                 os << "        <key>public.mime-type</key>\n"
-                   << "        <string>" << xmlEscape(fa.mimeType) << "</string>\n";
+                   << "        <array><string>" << xmlEscape(fa.mimeType) << "</string></array>\n";
             }
             os << "      </dict>\n";
             os << "    </dict>\n";

@@ -110,7 +110,7 @@ void installPackageUsage() {
         << "\n"
         << "Options:\n"
         << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | appimage | tarball | "
-           "all | all-available | macos-dmg (verify-only)\n"
+           "all | all-available | macos-dmg\n"
         << "  --arch <arch>         x64 | arm64 (default: manifest/host)\n"
         << "  --stage-dir <dir>     Existing staged install tree\n"
         << "  --build-dir <dir>     Build tree; runs cmake --build then cmake --install\n"
@@ -235,6 +235,39 @@ bool macOSPackageSigningRequested(const InstallPackageArgs &args) {
     return !args.macosSignIdentity.empty() || !args.macosNotaryProfile.empty() || args.macosStaple;
 }
 
+/// @brief Locate the repository-provided Windows signing helper script.
+/// @details `viper install-package` may run outside the repository root. This
+///          helper first honors VIPER_WINDOWS_SIGN_SCRIPT, then probes the
+///          current directory and likely repository roots derived from
+///          --build-dir/--stage-dir before falling back to the conventional
+///          relative path for diagnostics.
+/// @param args Parsed install-package arguments.
+/// @return Existing script path when found, otherwise `scripts/sign-windows-installer.ps1`.
+fs::path defaultWindowsSigningScriptPath(const InstallPackageArgs &args) {
+    const std::string envScript = getenvOrEmpty("VIPER_WINDOWS_SIGN_SCRIPT");
+    if (!envScript.empty())
+        return envScript;
+    const fs::path rel = fs::path("scripts") / "sign-windows-installer.ps1";
+    std::vector<fs::path> roots;
+    roots.push_back(fs::current_path());
+    if (!args.buildDir.empty()) {
+        roots.push_back(args.buildDir.parent_path());
+        roots.push_back(args.buildDir);
+    }
+    if (!args.stageDir.empty()) {
+        roots.push_back(args.stageDir.parent_path());
+        roots.push_back(args.stageDir.parent_path().parent_path());
+    }
+    for (const auto &root : roots) {
+        if (root.empty())
+            continue;
+        fs::path candidate = root / rel;
+        if (fs::is_regular_file(candidate))
+            return candidate;
+    }
+    return rel;
+}
+
 /// @brief Authenticode-sign a Windows installer artifact when signing is requested.
 /// @details Resolves the PFX/thumbprint (falling back to VIPER_WINDOWS_SIGN_*
 ///          env vars), invokes signtool, and optionally verifies the signature.
@@ -280,11 +313,9 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
         return false;
     }
 
-    std::string signScript = getenvOrEmpty("VIPER_WINDOWS_SIGN_SCRIPT");
-    if (signScript.empty())
-        signScript = (fs::path("scripts") / "sign-windows-installer.ps1").string();
+    const fs::path signScript = defaultWindowsSigningScriptPath(args);
     if (!fs::is_regular_file(signScript)) {
-        err << "error: Windows signing script not found: " << signScript << "\n";
+        err << "error: Windows signing script not found: " << signScript.string() << "\n";
         return false;
     }
 
@@ -293,7 +324,7 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
                                         "-ExecutionPolicy",
                                         "Bypass",
                                         "-File",
-                                        signScript,
+                                        signScript.string(),
                                         "-InputPath",
                                         artifactPath.string(),
                                         "-TimestampUrl",
@@ -757,37 +788,52 @@ bool installPackageOptionRequiresValue(const std::string &arg) {
 ///          missing-value argument.
 /// @return true on a successful parse.
 bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
-    for (int i = 0; i < argc; ++i) {
-        const std::string arg = argv[i];
+    std::vector<std::string> expandedArgs;
+    expandedArgs.reserve(static_cast<size_t>(argc) * 2u);
+    for (int rawIndex = 0; rawIndex < argc; ++rawIndex) {
+        std::string raw = argv[rawIndex];
+        const size_t eq = raw.find('=');
+        const std::string optionName = eq == std::string::npos ? raw : raw.substr(0, eq);
+        if (eq != std::string::npos && raw.rfind("--", 0) == 0 &&
+            installPackageOptionRequiresValue(optionName)) {
+            expandedArgs.push_back(optionName);
+            expandedArgs.push_back(raw.substr(eq + 1));
+        } else {
+            expandedArgs.push_back(std::move(raw));
+        }
+    }
+
+    for (size_t i = 0; i < expandedArgs.size(); ++i) {
+        const std::string arg = expandedArgs[i];
         if ((arg == "--help" || arg == "-h")) {
             installPackageUsage();
             return false;
         }
-        if (installPackageOptionRequiresValue(arg) && i + 1 >= argc) {
+        if (installPackageOptionRequiresValue(arg) && i + 1 >= expandedArgs.size()) {
             std::cerr << "error: " << arg << " requires a value\n";
             return false;
-        } else if (arg == "--target" && i + 1 < argc) {
-            if (!parseTarget(argv[++i], args.target)) {
-                std::cerr << "error: unknown install-package target '" << argv[i] << "'\n";
+        } else if (arg == "--target" && i + 1 < expandedArgs.size()) {
+            if (!parseTarget(expandedArgs[++i], args.target)) {
+                std::cerr << "error: unknown install-package target '" << expandedArgs[i] << "'\n";
                 return false;
             }
-        } else if (arg == "--arch" && i + 1 < argc) {
-            args.archOverride = argv[++i];
+        } else if (arg == "--arch" && i + 1 < expandedArgs.size()) {
+            args.archOverride = expandedArgs[++i];
             if (args.archOverride != "x64" && args.archOverride != "arm64") {
                 std::cerr << "error: unknown arch '" << args.archOverride
                           << "'; expected x64 or arm64\n";
                 return false;
             }
-        } else if (arg == "--stage-dir" && i + 1 < argc) {
-            args.stageDir = argv[++i];
-        } else if (arg == "--build-dir" && i + 1 < argc) {
-            args.buildDir = argv[++i];
-        } else if (arg == "--config" && i + 1 < argc) {
-            args.buildConfig = argv[++i];
-        } else if (arg == "--verify-only" && i + 1 < argc) {
-            args.verifyOnlyPath = argv[++i];
-        } else if (arg == "--macos-pkg-version" && i + 1 < argc) {
-            args.macosPackageVersion = argv[++i];
+        } else if (arg == "--stage-dir" && i + 1 < expandedArgs.size()) {
+            args.stageDir = expandedArgs[++i];
+        } else if (arg == "--build-dir" && i + 1 < expandedArgs.size()) {
+            args.buildDir = expandedArgs[++i];
+        } else if (arg == "--config" && i + 1 < expandedArgs.size()) {
+            args.buildConfig = expandedArgs[++i];
+        } else if (arg == "--verify-only" && i + 1 < expandedArgs.size()) {
+            args.verifyOnlyPath = expandedArgs[++i];
+        } else if (arg == "--macos-pkg-version" && i + 1 < expandedArgs.size()) {
+            args.macosPackageVersion = expandedArgs[++i];
             try {
                 viper::pkg::validateDottedNumericVersion(args.macosPackageVersion,
                                                          "macOS package version override");
@@ -795,50 +841,50 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
                 std::cerr << "error: " << ex.what() << "\n";
                 return false;
             }
-        } else if (arg == "--macos-sign-identity" && i + 1 < argc) {
-            args.macosSignIdentity = argv[++i];
-        } else if (arg == "--macos-notary-profile" && i + 1 < argc) {
-            args.macosNotaryProfile = argv[++i];
+        } else if (arg == "--macos-sign-identity" && i + 1 < expandedArgs.size()) {
+            args.macosSignIdentity = expandedArgs[++i];
+        } else if (arg == "--macos-notary-profile" && i + 1 < expandedArgs.size()) {
+            args.macosNotaryProfile = expandedArgs[++i];
         } else if (arg == "--macos-staple") {
             args.macosStaple = true;
-        } else if (arg == "--macos-notary-timeout" && i + 1 < argc) {
-            const std::string_view timeoutValue = argv[++i];
+        } else if (arg == "--macos-notary-timeout" && i + 1 < expandedArgs.size()) {
+            const std::string_view timeoutValue = expandedArgs[++i];
             if (!parsePositiveIntOption(timeoutValue, args.macosNotaryTimeoutSeconds)) {
                 std::cerr << "error: --macos-notary-timeout expects a positive number of seconds\n";
                 return false;
             }
-        } else if (arg == "--license" && i + 1 < argc) {
-            args.toolchainLicense = argv[++i];
-        } else if (arg == "--maintainer" && i + 1 < argc) {
-            args.toolchainMaintainer = argv[++i];
-        } else if (arg == "--maintainer-email" && i + 1 < argc) {
-            args.toolchainMaintainerEmail = argv[++i];
-        } else if (arg == "--homepage" && i + 1 < argc) {
-            args.toolchainHomepage = argv[++i];
+        } else if (arg == "--license" && i + 1 < expandedArgs.size()) {
+            args.toolchainLicense = expandedArgs[++i];
+        } else if (arg == "--maintainer" && i + 1 < expandedArgs.size()) {
+            args.toolchainMaintainer = expandedArgs[++i];
+        } else if (arg == "--maintainer-email" && i + 1 < expandedArgs.size()) {
+            args.toolchainMaintainerEmail = expandedArgs[++i];
+        } else if (arg == "--homepage" && i + 1 < expandedArgs.size()) {
+            args.toolchainHomepage = expandedArgs[++i];
         } else if (arg == "--macos-dmg") {
             args.macosDmg = true;
-        } else if (arg == "--macos-dmg-background" && i + 1 < argc) {
-            args.macosDmgBackground = argv[++i];
+        } else if (arg == "--macos-dmg-background" && i + 1 < expandedArgs.size()) {
+            args.macosDmgBackground = expandedArgs[++i];
             if (!fs::is_regular_file(args.macosDmgBackground)) {
                 std::cerr << "error: --macos-dmg-background not found: " << args.macosDmgBackground
                           << "\n";
                 return false;
             }
-        } else if (arg == "--macos-dmg-icon" && i + 1 < argc) {
-            args.macosDmgIcon = argv[++i];
+        } else if (arg == "--macos-dmg-icon" && i + 1 < expandedArgs.size()) {
+            args.macosDmgIcon = expandedArgs[++i];
             if (!fs::is_regular_file(args.macosDmgIcon)) {
                 std::cerr << "error: --macos-dmg-icon not found: " << args.macosDmgIcon << "\n";
                 return false;
             }
-        } else if (arg == "--macos-pkg-license" && i + 1 < argc) {
-            args.macosPkgLicense = argv[++i];
+        } else if (arg == "--macos-pkg-license" && i + 1 < expandedArgs.size()) {
+            args.macosPkgLicense = expandedArgs[++i];
             if (!fs::is_regular_file(args.macosPkgLicense)) {
                 std::cerr << "error: --macos-pkg-license not found: " << args.macosPkgLicense
                           << "\n";
                 return false;
             }
-        } else if (arg == "--macos-pkg-background" && i + 1 < argc) {
-            args.macosPkgBackground = argv[++i];
+        } else if (arg == "--macos-pkg-background" && i + 1 < expandedArgs.size()) {
+            args.macosPkgBackground = expandedArgs[++i];
             if (!fs::is_regular_file(args.macosPkgBackground)) {
                 std::cerr << "error: --macos-pkg-background not found: " << args.macosPkgBackground
                           << "\n";
@@ -846,42 +892,42 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             }
         } else if (arg == "--windows-sign") {
             args.windowsSign = true;
-        } else if (arg == "--windows-sign-pfx" && i + 1 < argc) {
-            args.windowsSignPfx = argv[++i];
-        } else if (arg == "--windows-sign-thumbprint" && i + 1 < argc) {
-            args.windowsSignThumbprint = argv[++i];
-        } else if (arg == "--windows-timestamp-url" && i + 1 < argc) {
-            args.windowsTimestampUrl = argv[++i];
-        } else if (arg == "--windows-signtool" && i + 1 < argc) {
-            args.windowsSigntoolPath = argv[++i];
+        } else if (arg == "--windows-sign-pfx" && i + 1 < expandedArgs.size()) {
+            args.windowsSignPfx = expandedArgs[++i];
+        } else if (arg == "--windows-sign-thumbprint" && i + 1 < expandedArgs.size()) {
+            args.windowsSignThumbprint = expandedArgs[++i];
+        } else if (arg == "--windows-timestamp-url" && i + 1 < expandedArgs.size()) {
+            args.windowsTimestampUrl = expandedArgs[++i];
+        } else if (arg == "--windows-signtool" && i + 1 < expandedArgs.size()) {
+            args.windowsSigntoolPath = expandedArgs[++i];
         } else if (arg == "--windows-sign-no-verify") {
             args.windowsSignNoVerify = true;
-        } else if (arg == "--linux-sign-key" && i + 1 < argc) {
-            args.linuxSignKey = argv[++i];
-        } else if (arg == "--windows-install-scope" && i + 1 < argc) {
-            args.windowsInstallScope = argv[++i];
+        } else if (arg == "--linux-sign-key" && i + 1 < expandedArgs.size()) {
+            args.linuxSignKey = expandedArgs[++i];
+        } else if (arg == "--windows-install-scope" && i + 1 < expandedArgs.size()) {
+            args.windowsInstallScope = expandedArgs[++i];
             if (args.windowsInstallScope != "user" && args.windowsInstallScope != "machine") {
                 std::cerr << "error: --windows-install-scope expects user or machine\n";
                 return false;
             }
-        } else if (arg == "--windows-install-dir" && i + 1 < argc) {
-            args.windowsInstallDir = argv[++i];
+        } else if (arg == "--windows-install-dir" && i + 1 < expandedArgs.size()) {
+            args.windowsInstallDir = expandedArgs[++i];
         } else if (arg == "--windows-no-path") {
             args.windowsAddToPath = false;
-        } else if (arg == "--windows-file-associations" && i + 1 < argc) {
-            if (!parseOnOff(lowerAscii(argv[++i]), args.windowsFileAssociations)) {
+        } else if (arg == "--windows-file-associations" && i + 1 < expandedArgs.size()) {
+            if (!parseOnOff(lowerAscii(expandedArgs[++i]), args.windowsFileAssociations)) {
                 std::cerr << "error: --windows-file-associations expects on or off\n";
                 return false;
             }
-        } else if (arg == "--windows-shortcuts" && i + 1 < argc) {
-            if (!parseOnOff(lowerAscii(argv[++i]), args.windowsShortcuts)) {
+        } else if (arg == "--windows-shortcuts" && i + 1 < expandedArgs.size()) {
+            if (!parseOnOff(lowerAscii(expandedArgs[++i]), args.windowsShortcuts)) {
                 std::cerr << "error: --windows-shortcuts expects on or off\n";
                 return false;
             }
         } else if (arg == "--allow-debug-toolchain") {
             args.allowDebugToolchain = true;
-        } else if (arg == "-o" && i + 1 < argc) {
-            args.outputPath = argv[++i];
+        } else if (arg == "-o" && i + 1 < expandedArgs.size()) {
+            args.outputPath = expandedArgs[++i];
         } else if (arg == "--no-verify") {
             args.noVerify = true;
         } else if (arg == "--skip-build") {
@@ -1632,6 +1678,10 @@ int cmdInstallPackage(int argc, char **argv) {
     InstallPackageArgs args;
     if (!parseInstallPackageArgs(argc, argv, args))
         return 1;
+    if (args.target == InstallPackageTarget::MacOSDmg && args.verifyOnlyPath.empty()) {
+        args.target = InstallPackageTarget::MacOS;
+        args.macosDmg = true;
+    }
 
     try {
         if (!args.verifyOnlyPath.empty()) {

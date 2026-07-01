@@ -3362,9 +3362,14 @@ static void test_gpu_postfx_final_overlay_presents_composited_frame(void) {
     EXPECT_TRUE(final_submit_draw_calls == 1,
                 "GPU postfx finalize replays final overlay during finalization");
     EXPECT_TRUE(final_apply_postfx_calls == 1,
-                "GPU postfx finalization applies post-FX before final overlay replay");
-    EXPECT_TRUE(final_apply_postfx_saw_submit_count == 0,
-                "Backend post-FX apply runs before final overlay replay");
+                "GPU postfx finalization applies post-FX after the final overlay replay");
+    // The final overlay must be replayed (submit_draw == 1) BEFORE post-FX is
+    // applied, so the backend composites the overlay on top of the post-processed
+    // scene. Applying post-FX first left the overlay in a separate target that
+    // present never composited (the HUD flickered against the 3D scene).
+    EXPECT_TRUE(final_apply_postfx_saw_submit_count == 1,
+                "Backend post-FX apply runs after final overlay replay so the overlay "
+                "composites into the presented frame");
     EXPECT_TRUE(final_present_postfx_calls == 0,
                 "Split GPU postfx path avoids legacy present_postfx overwrite");
     EXPECT_TRUE(final_present_calls == 1,

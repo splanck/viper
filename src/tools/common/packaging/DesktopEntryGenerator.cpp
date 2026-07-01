@@ -173,6 +173,26 @@ void validateAssociations(const std::vector<FileAssoc> &assocs) {
     validatePackageFileAssociations(assocs);
 }
 
+/// @brief Normalize freedesktop Keywords= metadata.
+/// @details Keywords are a semicolon-separated list. This helper trims a
+///          manifest-provided value, validates it as single-line text, and adds
+///          the trailing semicolon required by desktop-file validators when the
+///          caller omitted it.
+/// @param keywords Raw keywords string from package metadata.
+/// @return Empty string when no keywords were supplied, otherwise a
+///         semicolon-terminated Keywords= value.
+std::string normalizeDesktopKeywords(const std::string &keywords) {
+    const std::string trimmed = trimAsciiWhitespace(keywords);
+    if (trimmed.empty())
+        return {};
+    validateSingleLineField(trimmed, "desktop keywords");
+    if (trimmed.find(',') != std::string::npos)
+        throw std::runtime_error("desktop keywords must be separated with semicolons");
+    if (trimmed.back() == ';')
+        return trimmed;
+    return trimmed + ";";
+}
+
 } // namespace
 
 /// @brief Build a complete freedesktop.org .desktop file from the given parameters.
@@ -181,7 +201,9 @@ void validateAssociations(const std::vector<FileAssoc> &assocs) {
 /// enabling the desktop environment to pass the opened file path to the application.
 std::string generateDesktopEntry(const DesktopEntryParams &params) {
     validateAssociations(params.fileAssociations);
-    const std::string categories = normalizeDesktopCategories(params.categories);
+    const std::string categories =
+        normalizeDesktopCategories(params.categories.empty() ? "Utility" : params.categories);
+    const std::string keywords = normalizeDesktopKeywords(params.keywords);
     std::ostringstream os;
     os << "[Desktop Entry]\n";
     os << "Type=Application\n";
@@ -190,7 +212,8 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
         os << "Comment=" << desktopEscape(params.comment) << "\n";
     os << "Exec=" << desktopEscapeExecToken(params.execPath, "desktop Exec path");
     if (!params.execArguments.empty()) {
-        for (const auto &arg : parseExecArgumentTokens(params.execArguments, "desktop Exec arguments"))
+        for (const auto &arg :
+             parseExecArgumentTokens(params.execArguments, "desktop Exec arguments"))
             os << " " << desktopEscapeExecToken(arg, "desktop Exec argument");
     }
     if (params.acceptsFileArgument || !params.fileAssociations.empty())
@@ -202,6 +225,10 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
         os << "Categories=" << desktopEscape(categories) << "\n";
     if (!params.workingDir.empty())
         os << "Path=" << desktopEscape(params.workingDir) << "\n";
+    if (!params.startupWmClass.empty())
+        os << "StartupWMClass=" << desktopEscape(params.startupWmClass) << "\n";
+    if (!keywords.empty())
+        os << "Keywords=" << desktopEscape(keywords) << "\n";
     if (params.noDisplay)
         os << "NoDisplay=true\n";
     os << "Terminal=" << (params.terminal ? "true" : "false") << "\n";

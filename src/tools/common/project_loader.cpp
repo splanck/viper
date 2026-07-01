@@ -41,6 +41,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <initializer_list>
 #include <optional>
 #include <set>
@@ -955,6 +956,89 @@ il::support::Expected<std::string> parsePackageScalar(std::set<std::string> &see
     return tokens.value()[0];
 }
 
+/// @brief Parse a scalar package directive as a safe project-relative path.
+/// @details This wraps parsePackageScalar() so duplicate and quoting rules stay
+///          identical to other scalar package fields, then normalizes and
+///          validates the returned value with sanitizePackageRelativePath().
+///          Existence is not checked here because packaging builders validate
+///          optional metadata paths when the target format actually consumes them.
+/// @param seen Set of already-seen scalar package directives.
+/// @param name Directive name to parse.
+/// @param value Raw directive value.
+/// @param manifestPath Manifest path, used for diagnostics.
+/// @param line 1-based line number, used for diagnostics.
+/// @return A normalized relative path, or a diagnostic on duplicate, arity, or
+///         path-safety failure.
+il::support::Expected<std::string> parsePackageRelativePathScalar(std::set<std::string> &seen,
+                                                                  const std::string &name,
+                                                                  const std::string &value,
+                                                                  const std::string &manifestPath,
+                                                                  int line) {
+    auto scalar = parsePackageScalar(seen, name, value, manifestPath, line);
+    if (!scalar)
+        return scalar;
+    try {
+        return viper::pkg::sanitizePackageRelativePath(scalar.value(), name.c_str());
+    } catch (const std::exception &ex) {
+        return makeManifestErr(manifestPath, line, ex.what());
+    }
+}
+
+/// @brief Parse and append comma-separated package dependency terms.
+/// @details Manifest dependency directives accept one raw line rather than
+///          tokenizing on spaces because Debian and RPM dependency expressions
+///          commonly contain spaces around version operators and alternatives.
+///          This helper trims each comma-delimited term, runs the caller-provided
+///          validator, rejects duplicates across repeated directives, and appends
+///          valid terms to @p out in declaration order.
+/// @param out Dependency list to extend.
+/// @param value Raw directive value after the directive name.
+/// @param manifestPath Manifest path, used for error context.
+/// @param lineNum 1-based manifest line number.
+/// @param directive Directive name, used in diagnostics.
+/// @param validator Function that validates one trimmed dependency string.
+/// @return True on success; a manifest diagnostic on an empty, duplicate, or
+///         validator-rejected dependency.
+il::support::Expected<bool> appendCommaSeparatedPackageDependencies(
+    std::vector<std::string> &out,
+    const std::string &value,
+    const std::string &manifestPath,
+    int lineNum,
+    const std::string &directive,
+    const std::function<void(const std::string &)> &validator) {
+    std::string depToken;
+    std::set<std::string> seenDeps(out.begin(), out.end());
+    auto appendDependency = [&](const std::string &raw) -> il::support::Expected<bool> {
+        size_t ds = raw.find_first_not_of(" \t");
+        size_t de = raw.find_last_not_of(" \t");
+        if (ds == std::string::npos)
+            return makeManifestErr(
+                manifestPath, lineNum, directive + " contains an empty dependency");
+        std::string dep = raw.substr(ds, de - ds + 1);
+        try {
+            validator(dep);
+        } catch (const std::exception &ex) {
+            return makeManifestErr(manifestPath, lineNum, ex.what());
+        }
+        if (!seenDeps.insert(dep).second)
+            return makeManifestErr(
+                manifestPath, lineNum, "duplicate package dependency '" + dep + "'");
+        out.push_back(std::move(dep));
+        return true;
+    };
+    for (char c : value) {
+        if (c == ',') {
+            auto added = appendDependency(depToken);
+            if (!added)
+                return il::support::Expected<bool>(added.error());
+            depToken.clear();
+        } else {
+            depToken.push_back(c);
+        }
+    }
+    return appendDependency(depToken);
+}
+
 /// @brief Apply one packaging-related manifest directive to @p config.
 /// @details Dispatches the "package-*", "macos-*", "windows-*", asset embedding
 ///          (asset/embed/pack/pack-compressed), file association, shortcut,
@@ -1010,6 +1094,24 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (!scalar)
             return il::support::Expected<bool>(scalar.error());
         config.packageConfig.license = scalar.value();
+    } else if (directive == "package-license-file") {
+        auto scalar = parsePackageRelativePathScalar(
+            packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.licenseFilePath = scalar.value();
+    } else if (directive == "package-readme") {
+        auto scalar = parsePackageRelativePathScalar(
+            packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.readmeFilePath = scalar.value();
+    } else if (directive == "package-welcome") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.welcomeText = scalar.value();
     } else if (directive == "package-identifier") {
         auto scalar =
             parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
@@ -1062,6 +1164,18 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (!b)
             return il::support::Expected<bool>(b.error());
         config.packageConfig.macosStaple = b.value();
+    } else if (directive == "macos-dmg-background") {
+        auto scalar = parsePackageRelativePathScalar(
+            packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.macosDmgBackground = scalar.value();
+    } else if (directive == "macos-dmg-icon") {
+        auto scalar = parsePackageRelativePathScalar(
+            packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.macosDmgIcon = scalar.value();
     } else if (directive == "windows-install-scope") {
         auto scalar =
             parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
@@ -1080,6 +1194,37 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (!scalar)
             return il::support::Expected<bool>(scalar.error());
         config.packageConfig.windowsInstallDir = scalar.value();
+    } else if (directive == "windows-publisher") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.windowsPublisher = scalar.value();
+    } else if (directive == "windows-wizard-summary") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.windowsWizardSummary = scalar.value();
+    } else if (directive == "windows-dll") {
+        auto tokens = requireManifestTokenCount(value, manifestPath, lineNum, directive, 1);
+        if (!tokens)
+            return il::support::Expected<bool>(tokens.error());
+        try {
+            std::string dllPath =
+                viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "windows-dll path");
+            if (dllPath.empty())
+                return makeManifestErr(manifestPath, lineNum, "windows-dll path must not be empty");
+            if (std::find(config.packageConfig.windowsDlls.begin(),
+                          config.packageConfig.windowsDlls.end(),
+                          dllPath) != config.packageConfig.windowsDlls.end()) {
+                return makeManifestErr(
+                    manifestPath, lineNum, "duplicate windows-dll path '" + dllPath + "'");
+            }
+            config.packageConfig.windowsDlls.push_back(std::move(dllPath));
+        } catch (const std::exception &ex) {
+            return makeManifestErr(manifestPath, lineNum, ex.what());
+        }
     } else if (directive == "windows-sign") {
         auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
         if (!ok)
@@ -1260,41 +1405,42 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
             return il::support::Expected<bool>(scalar.error());
         config.packageConfig.category = scalar.value();
     } else if (directive == "package-depends") {
-        // Comma-separated list: "libc6, libx11-6, libssl3"
-        std::string depToken;
-        std::set<std::string> seenDeps(config.packageConfig.depends.begin(),
-                                       config.packageConfig.depends.end());
-        auto appendDependency = [&](const std::string &raw) -> il::support::Expected<bool> {
-            size_t ds = raw.find_first_not_of(" \t");
-            size_t de = raw.find_last_not_of(" \t");
-            if (ds == std::string::npos)
-                return makeManifestErr(
-                    manifestPath, lineNum, "package-depends contains an empty dependency");
-            std::string dep = raw.substr(ds, de - ds + 1);
-            try {
-                viper::pkg::validateDebDependency(dep);
-            } catch (const std::exception &ex) {
-                return makeManifestErr(manifestPath, lineNum, ex.what());
-            }
-            if (!seenDeps.insert(dep).second)
-                return makeManifestErr(
-                    manifestPath, lineNum, "duplicate package dependency '" + dep + "'");
-            config.packageConfig.depends.push_back(std::move(dep));
-            return true;
-        };
-        for (char c : value) {
-            if (c == ',') {
-                auto added = appendDependency(depToken);
-                if (!added)
-                    return il::support::Expected<bool>(added.error());
-                depToken.clear();
-            } else {
-                depToken.push_back(c);
-            }
-        }
-        auto added = appendDependency(depToken);
+        auto added = appendCommaSeparatedPackageDependencies(config.packageConfig.depends,
+                                                             value,
+                                                             manifestPath,
+                                                             lineNum,
+                                                             directive,
+                                                             viper::pkg::validateDebDependency);
         if (!added)
             return il::support::Expected<bool>(added.error());
+    } else if (directive == "package-rpm-depends") {
+        auto added = appendCommaSeparatedPackageDependencies(
+            config.packageConfig.rpmDepends,
+            value,
+            manifestPath,
+            lineNum,
+            directive,
+            [](const std::string &dep) { viper::pkg::validateRpmDependency(dep); });
+        if (!added)
+            return il::support::Expected<bool>(added.error());
+    } else if (directive == "linux-startup-wm-class") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.linuxStartupWmClass = scalar.value();
+    } else if (directive == "linux-keywords") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.linuxKeywords = scalar.value();
+    } else if (directive == "linux-appstream-id") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.appstreamId = scalar.value();
     } else if (directive == "post-install") {
         auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
         if (!seen)

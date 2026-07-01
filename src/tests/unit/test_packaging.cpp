@@ -1629,21 +1629,19 @@ TEST(Icon, IcoEntryBitCount) {
     EXPECT_EQ(bitCount, static_cast<uint16_t>(32));
 }
 
-TEST(Icon, SmallSourceStillProducesStandardEntries) {
+TEST(Icon, RejectsTinyOrNonSquareSources) {
     PkgImage img;
     img.width = 1;
     img.height = 1;
     img.pixels.resize(4, 255);
+    EXPECT_THROWS(generateIco(img), PNGError);
+    EXPECT_THROWS(generateIcns(img), PNGError);
+    EXPECT_THROWS(generateMultiSizePngs(img), PNGError);
 
-    auto ico = generateIco(img);
-    ASSERT_GE(ico.size(), static_cast<size_t>(6));
-    EXPECT_EQ(readLE16(ico.data() + 4), static_cast<uint16_t>(7));
-
-    auto icns = generateIcns(img);
-    EXPECT_GT(icns.size(), static_cast<size_t>(8));
-
-    auto pngs = generateMultiSizePngs(img);
-    EXPECT_EQ(pngs.size(), static_cast<size_t>(5));
+    img.width = 64;
+    img.height = 32;
+    img.pixels.resize(64 * 32 * 4, 255);
+    EXPECT_THROWS(generateIco(img), PNGError);
 }
 
 TEST(PNG, RejectsBadChunkCrc) {
@@ -3257,9 +3255,9 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
     }
     {
         PkgImage img;
-        img.width = 1;
-        img.height = 1;
-        img.pixels = {255, 0, 0, 255};
+        img.width = 32;
+        img.height = 32;
+        img.pixels.resize(32 * 32 * 4, 255);
         const auto png = pngEncode(img);
         std::ofstream icon(tmpRoot / "icon.png", std::ios::binary);
         icon.write(reinterpret_cast<const char *>(png.data()),
@@ -3300,8 +3298,8 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
     if (!overlayOk)
         std::cerr << err.str();
     EXPECT_TRUE(overlayOk);
-    EXPECT_TRUE(containsUtf16LE(pe, "%ProgramFiles%\\Test App\\testapp.exe"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "%ProgramFiles%\\Test App\\testapp.ico"));
+    EXPECT_TRUE(containsUtf16LE(pe, "%LocalAppData%\\Test App\\testapp.exe"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "%LocalAppData%\\Test App\\testapp.ico"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia\\OpenWithProgids"));
     EXPECT_TRUE(containsUtf16LE(pe, "org.viper.testapp.zia"));
@@ -3361,9 +3359,9 @@ TEST(AppImage, BuildsVerifiableApplicationImage) {
     }
     {
         PkgImage img;
-        img.width = 1;
-        img.height = 1;
-        img.pixels = {0, 128, 255, 255};
+        img.width = 32;
+        img.height = 32;
+        img.pixels.resize(32 * 32 * 4, 255);
         const auto png = pngEncode(img);
         std::ofstream icon(tmpRoot / "icon.png", std::ios::binary);
         icon.write(reinterpret_cast<const char *>(png.data()),
@@ -3720,8 +3718,8 @@ TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) 
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlayPayload(
         pe, {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"}, err));
-    EXPECT_TRUE(containsUtf16LE(pe, "%ProgramFiles%\\DisplayAppCustom\\displayapp.exe"));
-    EXPECT_FALSE(containsUtf16LE(pe, "%ProgramFiles%\\Display App\\displayapp.exe"));
+    EXPECT_TRUE(containsUtf16LE(pe, "%LocalAppData%\\DisplayAppCustom\\displayapp.exe"));
+    EXPECT_FALSE(containsUtf16LE(pe, "%LocalAppData%\\Display App\\displayapp.exe"));
     EXPECT_TRUE(containsUtf16LE(pe, " --open-project"));
     EXPECT_TRUE(containsUtf16LE(pe, " \"%1\""));
     EXPECT_TRUE(containsUtf16LE(pe, "VS_VERSION_INFO"));

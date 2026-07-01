@@ -85,6 +85,7 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "  -o, --output <path>       Output file path\n"
         << "  --output=<path>           Inline form of --output\n"
         << "  --dry-run                 List package contents without building or signing\n"
+        << "  --json                    With --dry-run, print the package plan as JSON\n"
         << "  --keep-failed-artifact    Preserve generated artifacts after a failed package step\n"
         << "  --verbose, -v             Show detailed packaging output\n"
         << "  --help, -h                Show this help\n"
@@ -152,6 +153,7 @@ struct PackageArgs {
     std::string linuxSignKey;
     bool linuxSignKeySet{false};
     bool dryRun{false};
+    bool jsonOutput{false};
     bool keepFailedArtifact{false};
     bool verbose{false};
     bool help{false};
@@ -257,6 +259,69 @@ std::string platformExtension(PackageTarget t) {
     }
 }
 
+/// @brief Escape a string for JSON output.
+/// @details The package plan JSON is intentionally hand-written to avoid adding
+///          dependencies. This helper handles the JSON string escapes needed for
+///          paths, metadata fields, and diagnostic-friendly text values.
+/// @param text Raw UTF-8 byte string.
+/// @return JSON string literal body without surrounding quotes.
+std::string jsonEscape(const std::string &text) {
+    std::ostringstream out;
+    for (unsigned char c : text) {
+        switch (c) {
+            case '"':
+                out << "\\\"";
+                break;
+            case '\\':
+                out << "\\\\";
+                break;
+            case '\b':
+                out << "\\b";
+                break;
+            case '\f':
+                out << "\\f";
+                break;
+            case '\n':
+                out << "\\n";
+                break;
+            case '\r':
+                out << "\\r";
+                break;
+            case '\t':
+                out << "\\t";
+                break;
+            default:
+                if (c < 0x20) {
+                    static constexpr char hex[] = "0123456789abcdef";
+                    out << "\\u00" << hex[(c >> 4) & 0x0F] << hex[c & 0x0F];
+                } else {
+                    out << static_cast<char>(c);
+                }
+                break;
+        }
+    }
+    return out.str();
+}
+
+/// @brief Emit a JSON property containing an array of strings.
+/// @details Used by dry-run JSON output to keep repeated string-array formatting
+///          consistent while preserving the repository's dependency-free JSON
+///          writer approach.
+/// @param out Stream receiving the JSON property.
+/// @param name Property name to emit.
+/// @param values Raw string values to escape and write.
+void writeJsonStringArray(std::ostream &out,
+                          const char *name,
+                          const std::vector<std::string> &values) {
+    out << "  \"" << name << "\": [";
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i != 0)
+            out << ", ";
+        out << "\"" << jsonEscape(values[i]) << "\"";
+    }
+    out << "]";
+}
+
 /// @brief Sanitize a string for use as a filename component.
 /// @details Keeps alphanumerics and `._-+~`, replaces other characters with `_`,
 ///          strips leading `.`/`-`, and returns @p fallback if the result is empty
@@ -289,18 +354,45 @@ std::string defaultPackageOutputPath(const ProjectConfig &proj,
            sanitizeOutputFileComponent(archStr, "native") + platformExtension(target);
 }
 
-/// @brief Sanitize a version string into a portable filename component (keeps
-///        alphanumerics and `.+~-`, replaces anything else with `_`).
+/// @brief Validate a version string for portable archive naming.
+/// @details Portable application archives do not need Debian package syntax.
+///          This accepts any non-empty single-line version that is not "." or
+///          ".." and contains no path separators. Characters outside the
+///          filesystem-friendly set are normalized later by
+///          portableArchiveVersionComponent(), preserving support for metadata
+///          separators such as Debian epochs without making tarball dry-runs
+///          stricter than the tarball builder.
+/// @param version Version text from project metadata.
+/// @throws std::runtime_error when the version cannot be used in an archive path.
+void validatePortablePackageVersion(const std::string &version) {
+    if (version.empty())
+        throw std::runtime_error("package version must not be empty");
+    viper::pkg::validateSingleLineField(version, "package version");
+    if (version == "." || version == "..")
+        throw std::runtime_error("package version must not be a special path segment");
+    if (version.find('/') != std::string::npos || version.find('\\') != std::string::npos)
+        throw std::runtime_error("package version must not contain path separators: " + version);
+}
+
+/// @brief Sanitize a version string into a portable filename component.
+/// @details Keeps alphanumerics and `._+~-`, replaces any other safe metadata
+///          separator with `_`, and validates the raw version first so the
+///          result cannot be empty or a special path segment.
+/// @param version Version text from project metadata.
+/// @return Filesystem-safe version component for portable archive top dirs.
 std::string portableArchiveVersionComponent(const std::string &version) {
+    validatePortablePackageVersion(version);
     std::string out;
     out.reserve(version.size());
     for (char c : version) {
         const unsigned char uc = static_cast<unsigned char>(c);
-        if (std::isalnum(uc) || c == '.' || c == '+' || c == '~' || c == '-')
+        if (std::isalnum(uc) || c == '.' || c == '_' || c == '+' || c == '~' || c == '-')
             out.push_back(c);
         else
             out.push_back('_');
     }
+    if (out.empty() || out == "." || out == "..")
+        throw std::runtime_error("package version does not form a portable archive path");
     return out;
 }
 
@@ -687,7 +779,7 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                 arg, "--target", i, argc, argv, val, "a value", false, matched)) {
             if (!parsePackageTargetValue(val, args.platformTarget)) {
                 std::cerr << "error: unknown target '" << val
-                          << "'; expected macos, linux, windows, or tarball\n";
+                          << "'; expected macos, linux, windows, appimage, rpm, dmg, or tarball\n";
                 return false;
             }
         } else if (matched) {
@@ -887,6 +979,8 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
             args.windowsSignNoVerifySet = true;
         } else if (arg == "--dry-run") {
             args.dryRun = true;
+        } else if (arg == "--json") {
+            args.jsonOutput = true;
         } else if (arg == "--keep-failed-artifact") {
             args.keepFailedArtifact = true;
         } else if (arg == "--verbose" || arg == "-v") {
@@ -986,6 +1080,7 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
         viper::pkg::validateSingleLineField(pkg.author, "package author");
         viper::pkg::validateSingleLineField(pkg.description, "package description");
         viper::pkg::validateSingleLineField(pkg.license, "package license");
+        viper::pkg::validateSingleLineField(pkg.welcomeText, "package welcome text");
         viper::pkg::validatePackageUrl(pkg.homepage, "package homepage");
         viper::pkg::validatePackageFileAssociations(pkg.fileAssociations);
         for (const auto &asset : pkg.assets) {
@@ -995,6 +1090,13 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
         }
         if (!pkg.iconPath.empty() &&
             !validatePackageSourcePathExists(proj, pkg.iconPath, "package icon", false))
+            return false;
+        if (!pkg.licenseFilePath.empty() &&
+            !validatePackageSourcePathExists(
+                proj, pkg.licenseFilePath, "package license file", false))
+            return false;
+        if (!pkg.readmeFilePath.empty() &&
+            !validatePackageSourcePathExists(proj, pkg.readmeFilePath, "package readme", false))
             return false;
 
         switch (target) {
@@ -1040,6 +1142,16 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                         proj, pkg.macosEntitlements, "macOS entitlements", false)) {
                     return false;
                 }
+                if (!pkg.macosDmgBackground.empty() &&
+                    !validatePackageSourcePathExists(
+                        proj, pkg.macosDmgBackground, "macOS DMG background", false)) {
+                    return false;
+                }
+                if (!pkg.macosDmgIcon.empty() &&
+                    !validatePackageSourcePathExists(
+                        proj, pkg.macosDmgIcon, "macOS DMG icon", false)) {
+                    return false;
+                }
                 break;
             case PackageTarget::Linux: {
                 const std::string debArch = archStr == "x64" ? "amd64" : archStr;
@@ -1049,6 +1161,10 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 }
                 viper::pkg::validateDebVersion(version, "package version");
                 viper::pkg::validateDesktopCategories(pkg.category);
+                viper::pkg::validateSingleLineField(pkg.linuxStartupWmClass,
+                                                    "Linux StartupWMClass");
+                viper::pkg::validateSingleLineField(pkg.linuxKeywords, "Linux keywords");
+                viper::pkg::validateSingleLineField(pkg.appstreamId, "Linux AppStream id");
                 for (const auto &dep : pkg.depends)
                     viper::pkg::validateDebDependency(dep);
                 viper::pkg::validatePackageHooksAllowed(pkg);
@@ -1064,6 +1180,9 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 viper::pkg::validateWindowsFileName(displayName, "Windows display name");
                 viper::pkg::validateWindowsProgIdBase(pkg.identifier, "Windows package identifier");
                 viper::pkg::validateSingleLineField(version, "Windows package version");
+                viper::pkg::validateSingleLineField(pkg.windowsPublisher, "Windows publisher");
+                viper::pkg::validateSingleLineField(pkg.windowsWizardSummary,
+                                                    "Windows wizard summary");
                 if (!pkg.windowsInstallScope.empty() && pkg.windowsInstallScope != "machine" &&
                     pkg.windowsInstallScope != "user") {
                     throw std::runtime_error("Windows install scope must be machine or user: " +
@@ -1087,10 +1206,15 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                         throw std::runtime_error("Windows signing PFX not found: " + pfx.string());
                     }
                 }
+                for (const auto &dllPath : pkg.windowsDlls) {
+                    if (!validatePackageSourcePathExists(
+                            proj, dllPath, "Windows DLL dependency", false))
+                        return false;
+                }
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
             case PackageTarget::Tarball:
-                viper::pkg::validateDebVersion(version, "package version");
+                validatePortablePackageVersion(version);
                 (void)viper::pkg::sanitizePackageRelativePath(
                     viper::pkg::normalizeDebName(proj.name) + "-" +
                         portableArchiveVersionComponent(version),
@@ -1102,8 +1226,12 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                     throw std::runtime_error("AppImage architecture must be x64 or arm64: " +
                                              archStr);
                 }
-                viper::pkg::validateDebVersion(version, "package version");
+                validatePortablePackageVersion(version);
                 viper::pkg::validateDesktopCategories(pkg.category);
+                viper::pkg::validateSingleLineField(pkg.linuxStartupWmClass,
+                                                    "Linux StartupWMClass");
+                viper::pkg::validateSingleLineField(pkg.linuxKeywords, "Linux keywords");
+                viper::pkg::validateSingleLineField(pkg.appstreamId, "Linux AppStream id");
                 (void)viper::pkg::normalizeDebName(proj.name);
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
@@ -1112,8 +1240,14 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 if (archStr != "x64" && archStr != "arm64") {
                     throw std::runtime_error("RPM architecture must be x64 or arm64: " + archStr);
                 }
-                viper::pkg::validateDebVersion(version, "package version");
+                viper::pkg::validateRpmVersion(version, "package version");
                 viper::pkg::validateDesktopCategories(pkg.category);
+                viper::pkg::validateSingleLineField(pkg.linuxStartupWmClass,
+                                                    "Linux StartupWMClass");
+                viper::pkg::validateSingleLineField(pkg.linuxKeywords, "Linux keywords");
+                viper::pkg::validateSingleLineField(pkg.appstreamId, "Linux AppStream id");
+                for (const auto &dep : pkg.rpmDepends)
+                    viper::pkg::validateRpmDependency(dep);
                 (void)viper::pkg::normalizeDebName(proj.name);
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
@@ -1304,6 +1438,71 @@ int cmdPackage(int argc, char **argv) {
 
     // Dry-run mode: list what would be packaged, then exit
     if (args.dryRun) {
+        if (args.jsonOutput) {
+            std::cout << "{\n";
+            std::cout << "  \"project\": \"" << jsonEscape(proj.name) << "\",\n";
+            std::cout << "  \"displayName\": \"" << jsonEscape(displayName) << "\",\n";
+            std::cout << "  \"version\": \"" << jsonEscape(resolvedVersion) << "\",\n";
+            std::cout << "  \"target\": \"" << jsonEscape(platformName(args.platformTarget))
+                      << "\",\n";
+            std::cout << "  \"arch\": \"" << jsonEscape(archStr) << "\",\n";
+            std::cout << "  \"output\": \"" << jsonEscape(args.outputPath) << "\",\n";
+            std::cout << "  \"executable\": \""
+                      << jsonEscape(args.executablePath.empty() ? proj.name : args.executablePath)
+                      << "\",\n";
+            std::cout << "  \"prebuiltExecutable\": "
+                      << (args.executablePath.empty() ? "false" : "true") << ",\n";
+            std::cout << "  \"icon\": \"" << jsonEscape(proj.packageConfig.iconPath) << "\",\n";
+            std::cout << "  \"assets\": [";
+            for (size_t i = 0; i < proj.packageConfig.assets.size(); ++i) {
+                const auto &asset = proj.packageConfig.assets[i];
+                if (i != 0)
+                    std::cout << ", ";
+                std::cout << "{\"source\":\"" << jsonEscape(asset.sourcePath) << "\",\"target\":\""
+                          << jsonEscape(asset.targetPath) << "\"}";
+            }
+            std::cout << "],\n";
+            std::cout << "  \"fileAssociations\": [";
+            for (size_t i = 0; i < proj.packageConfig.fileAssociations.size(); ++i) {
+                const auto &assoc = proj.packageConfig.fileAssociations[i];
+                if (i != 0)
+                    std::cout << ", ";
+                std::cout << "{\"extension\":\"" << jsonEscape(assoc.extension)
+                          << "\",\"description\":\"" << jsonEscape(assoc.description)
+                          << "\",\"mimeType\":\"" << jsonEscape(assoc.mimeType)
+                          << "\",\"windowsOpenArgs\":\"" << jsonEscape(assoc.openCommandArguments)
+                          << "\"}";
+            }
+            std::cout << "],\n";
+            writeJsonStringArray(std::cout, "debianDepends", proj.packageConfig.depends);
+            std::cout << ",\n";
+            writeJsonStringArray(std::cout, "rpmDepends", proj.packageConfig.rpmDepends);
+            std::cout << ",\n";
+            writeJsonStringArray(std::cout, "windowsDlls", proj.packageConfig.windowsDlls);
+            std::cout << ",\n";
+            std::cout << "  \"windowsInstallScope\": \""
+                      << jsonEscape(proj.packageConfig.windowsInstallScope.empty()
+                                        ? "user"
+                                        : proj.packageConfig.windowsInstallScope)
+                      << "\",\n";
+            std::cout << "  \"windowsInstallDir\": \""
+                      << jsonEscape(proj.packageConfig.windowsInstallDir) << "\",\n";
+            std::cout << "  \"windowsPublisher\": \""
+                      << jsonEscape(proj.packageConfig.windowsPublisher.empty()
+                                        ? (proj.packageConfig.author.empty()
+                                               ? displayName
+                                               : proj.packageConfig.author)
+                                        : proj.packageConfig.windowsPublisher)
+                      << "\",\n";
+            std::cout << "  \"macosBundleIdentifier\": \""
+                      << jsonEscape(proj.packageConfig.identifier) << "\",\n";
+            std::cout << "  \"linuxCategory\": \"" << jsonEscape(proj.packageConfig.category)
+                      << "\",\n";
+            std::cout << "  \"linuxAppStreamId\": \"" << jsonEscape(proj.packageConfig.appstreamId)
+                      << "\"\n";
+            std::cout << "}\n";
+            return 0;
+        }
         std::ostream &dryOut = std::cout;
         dryOut << "Dry run: " << displayName << " for " << platformName(args.platformTarget) << " ("
                << archStr << ")\n";
@@ -1345,7 +1544,7 @@ int cmdPackage(int argc, char **argv) {
         }
         if (args.platformTarget == PackageTarget::Windows) {
             const std::string scope = proj.packageConfig.windowsInstallScope.empty()
-                                          ? "machine"
+                                          ? "user"
                                           : proj.packageConfig.windowsInstallScope;
             dryOut << "  Windows install scope: " << scope << "\n";
             if (!proj.packageConfig.windowsInstallDir.empty())

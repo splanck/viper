@@ -83,12 +83,20 @@ static const uint32_t kLinuxIconSizes[] = {16, 32, 48, 128, 256};
 /// @brief Standard icon sizes for Windows ICO.
 static const uint32_t kIcoSizes[] = {16, 24, 32, 48, 64, 128, 256};
 
-/// @brief Validate that `srcImage` is a well-formed RGBA image.
-/// Throws PNGError if the image is empty (zero dimensions) or if the pixel
-/// buffer size does not match width * height * 4 bytes.
+/// @brief Validate that `srcImage` is a well-formed package icon source.
+/// @details Throws PNGError if the image is empty, non-square, smaller than the
+///          minimum useful source size, or if the pixel buffer size does not
+///          match width * height * 4 bytes. Enforcing a square source prevents
+///          platform icon generators from silently stretching artwork.
+/// @param srcImage Decoded RGBA source image supplied by package metadata.
+/// @throws PNGError when dimensions or pixel storage are invalid for icon generation.
 void validateSourceImage(const PkgImage &srcImage) {
     if (srcImage.width == 0 || srcImage.height == 0)
         throw PNGError("icon: source image is empty");
+    if (srcImage.width != srcImage.height)
+        throw PNGError("icon: source image must be square");
+    if (srcImage.width < 32)
+        throw PNGError("icon: source image must be at least 32x32 pixels");
     const uint64_t pixels = static_cast<uint64_t>(srcImage.width) * srcImage.height;
     if (pixels > std::numeric_limits<size_t>::max() / 4u)
         throw PNGError("icon: source image dimensions overflow");

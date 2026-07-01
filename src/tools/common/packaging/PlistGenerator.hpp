@@ -36,6 +36,7 @@ struct PlistParams {
     std::string version;                     ///< CFBundleVersion
     std::string iconFile;                    ///< CFBundleIconFile (without .icns extension)
     std::string minOsVersion;                ///< LSMinimumSystemVersion (default "10.13")
+    std::string appCategory;                 ///< Optional LSApplicationCategoryType value.
     std::vector<FileAssoc> fileAssociations; ///< CFBundleDocumentTypes
 };
 

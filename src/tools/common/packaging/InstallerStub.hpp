@@ -79,6 +79,7 @@ struct WindowsPackageLayout {
     std::string description;    ///< Human-readable comments shown in installer metadata.
     std::string contact;        ///< Support/contact string for Add/Remove Programs.
     std::string licenseText;    ///< License text shown by the native Windows wizard.
+    std::string wizardSummary;  ///< Optional short summary shown in the first wizard page.
     std::string executableName; ///< Name of the main executable (e.g. "crackman.exe")
     uint64_t overlayFileOffset{
         0}; ///< Byte offset within the installer PE where the ZIP overlay begins

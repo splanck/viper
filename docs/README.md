@@ -202,6 +202,7 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 - [ADR-0015](adr/0015-workspace-file-index-paging.md) — Workspace file index paging
 - [ADR-0016](adr/0016-pty-runtime-surface.md) — PTY runtime surface
 - [ADR-0017](adr/0017-string-lines-runtime-function.md) — String lines runtime function
+- [ADR-0025](adr/0025-windows-release-installer-workflow.md) — Windows release installer workflow
 
 ---
 

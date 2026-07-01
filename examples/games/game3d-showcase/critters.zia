@@ -21,8 +21,13 @@ class ShowcaseCritters {
     hide List[Float] critterTX;
     hide List[Float] critterTZ;
     hide Integer critterWanderSeed;
+    hide NavMesh3D navMesh;
+    hide List[NavAgent3D] agents;
+    hide Terrain3D critterLand;
 
-    expose func setup() {
+    expose func setup(nav: NavMesh3D, land: Terrain3D) {
+        navMesh = nav;
+        critterLand = land;
         critterSkel = Skeleton3D.New();
         var b0 = Skeleton3D.AddBone(critterSkel, "root", -1, Mat4.Translate(0.0, 0.0, 0.0));
         var b1 = Skeleton3D.AddBone(critterSkel, "mid", b0, Mat4.Translate(0.0, 1.0, 0.0));
@@ -71,10 +76,16 @@ class ShowcaseCritters {
 
         critterTX = [];
         critterTZ = [];
+        agents = [];
         critterWanderSeed = 11;
         for i in 0..critterXs.count() {
             critterTX.add(critterXs.get(i));
             critterTZ.add(critterZs.get(i));
+            var a = NavAgent3D.New(navMesh, config.NAV_AGENT_RADIUS, config.CRITTER_SPEED);
+            var gx = critterXs.get(i);
+            var gz = critterZs.get(i);
+            NavAgent3D.Warp(a, new Vec3(gx, terrain.sampleGround(critterLand, gx, gz), gz));
+            agents.add(a);
             pickCritterTarget(i);
         }
     }
@@ -85,33 +96,33 @@ class ShowcaseCritters {
         var maxZ = terrain.terrainWorldMaxZ();
         var near = false;
         for i in 0..critterXs.count() {
+            var a = agents.get(i);
             var pdx = critterXs.get(i) - playerX;
             var pdz = critterZs.get(i) - playerZ;
             var pdist = Sqrt(pdx * pdx + pdz * pdz);
             if (pdist < config.CRITTER_FLEE_RADIUS && pdist > 0.0001) {
-                // Skittish: bolt directly away from the player, then re-pick a
-                // wander target from the new spot once the player backs off.
+                // Skittish: re-target a point away from the player; the nav agent
+                // paths there around obstacles rather than bolting in a line.
                 near = true;
-                var fsp = config.CRITTER_SPEED * config.CRITTER_FLEE_MULT * dt;
-                critterXs.set(i, mathutil.clampFloat(critterXs.get(i) + pdx / pdist * fsp,
-                    config.TERRAIN_MARGIN, maxX - config.TERRAIN_MARGIN));
-                critterZs.set(i, mathutil.clampFloat(critterZs.get(i) + pdz / pdist * fsp,
-                    config.TERRAIN_MARGIN, maxZ - config.TERRAIN_MARGIN));
-                pickCritterTarget(i);
+                var fx = mathutil.clampFloat(critterXs.get(i) + pdx / pdist * config.CRITTER_FLEE_DIST,
+                    config.TERRAIN_MARGIN, maxX - config.TERRAIN_MARGIN);
+                var fz = mathutil.clampFloat(critterZs.get(i) + pdz / pdist * config.CRITTER_FLEE_DIST,
+                    config.TERRAIN_MARGIN, maxZ - config.TERRAIN_MARGIN);
+                critterTX.set(i, fx);
+                critterTZ.set(i, fz);
+                NavAgent3D.SetTarget(a, new Vec3(fx, terrain.sampleGround(critterLand, fx, fz), fz));
             } else {
+                if (pdist < 12.0) { near = true; }
                 var dx = critterTX.get(i) - critterXs.get(i);
                 var dz = critterTZ.get(i) - critterZs.get(i);
-                var dist = Sqrt(dx * dx + dz * dz);
-                if (dist < 1.2) {
-                    pickCritterTarget(i);
-                } else {
-                    var sp = config.CRITTER_SPEED * dt;
-                    if (sp > dist) { sp = dist; }
-                    critterXs.set(i, critterXs.get(i) + dx / dist * sp);
-                    critterZs.set(i, critterZs.get(i) + dz / dist * sp);
-                }
-                if (pdist < 12.0) { near = true; }
+                if (dx * dx + dz * dz < 1.6) { pickCritterTarget(i); }
             }
+            // Advance the agent along its path and mirror its position back so the
+            // skinned mesh draws where the nav agent actually walked.
+            NavAgent3D.Update(a, dt);
+            var p = a.Position;
+            critterXs.set(i, Vec3.get_X(p));
+            critterZs.set(i, Vec3.get_Z(p));
         }
         if (near && crittersActive == false) {
             AnimController3D.Crossfade(critterCtrl, "move", 0.35);
@@ -146,6 +157,11 @@ class ShowcaseCritters {
             config.TERRAIN_MARGIN, terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN));
         critterTZ.set(i, mathutil.clampFloat(cz + Cos(ang) * radius,
             config.TERRAIN_MARGIN, terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN));
+        // Route the wander target through the nav-mesh: the agent will path to it
+        // around trees and monoliths instead of walking straight through them.
+        var tx = critterTX.get(i);
+        var tz = critterTZ.get(i);
+        NavAgent3D.SetTarget(agents.get(i), new Vec3(tx, terrain.sampleGround(critterLand, tx, tz), tz));
     }
 
     hide func addCritter(x: Float, z: Float) {

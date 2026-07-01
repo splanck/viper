@@ -72,6 +72,15 @@ class ShowcaseWaterSky {
         return nightSkybox;
     }
 
+    // Point the water's environment reflection at the live sky so the lake
+    // mirrors the starfield at night and the blue sky by day (was always day).
+    expose func setNightReflections(night: Boolean) {
+        var env = skybox;
+        if (night) { env = nightSkybox; }
+        Water3D.SetEnvMap(water, env);
+        if (lakeMat != null) { Material3D.SetEnvMap(lakeMat, env); }
+    }
+
     expose func getWater() -> Water3D {
         return water;
     }

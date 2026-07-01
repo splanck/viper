@@ -11,7 +11,7 @@ bind "./worldsim";
 
 class ShowcaseHud {
     expose func draw(canvas: Canvas3D, map: ShowcaseMinimap, sim: ShowcaseWorldSim,
-                     playerX: Float, playerZ: Float, debugOn: Boolean) {
+                     playerX: Float, playerZ: Float, stamina: Float, helpOn: Boolean, debugOn: Boolean) {
         var w = canvas.Width;
         var h = canvas.Height;
         var total = sim.getBeaconCount();
@@ -38,13 +38,13 @@ class ShowcaseHud {
             canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
         Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Space jump | Mouse look", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Shift sprint | Esc", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Sprint | V view | Esc", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(sim.getBeaconsLit()) + " / " + toString(total), statusColor);
         Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
 
         map.draw(canvas, w - 172, h - 172, 144, 144, playerX, playerZ,
             sim.getBeaconXs(), sim.getBeaconZs(), sim.getBeaconState());
-        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(canvas.Fps), config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(canvas.Fps) + "    H = controls", config.HUD_MUTED);
 
         Canvas3D.DrawCrosshair(canvas, config.HUD_ACCENT, 10);
         if (sim.getScanLabel() != "") {
@@ -52,14 +52,59 @@ class ShowcaseHud {
                 canvas, w / 2 - 100, h / 2 + 18,
                 sim.getScanLabel() + "  " + toString(Convert.NumToInt(sim.getScanDist())) + "m", config.HUD_TEXT);
         }
+        if (sim.hasInteractTarget()) {
+            var prog = sim.getScanProgress();
+            if (prog > 0.0) {
+                Canvas3D.DrawRect2D(canvas, w / 2 - 60, h / 2 + 40, 120, 8, config.HUD_CARD);
+                Canvas3D.DrawRect2D(canvas, w / 2 - 60, h / 2 + 40,
+                    Convert.NumToInt(120.0 * prog), 8, config.HUD_ACCENT);
+            } else {
+                Canvas3D.DrawText2D(canvas, w / 2 - 44, h / 2 + 40, "Hold E to scan", config.HUD_GOOD);
+            }
+        }
 
+        // Stamina bar + objective distance, below the main panel.
+        var sbY = config.HUD_PANEL_Y + config.HUD_PANEL_H + 8;
+        Canvas3D.DrawText2D(canvas, 24, sbY, "STAMINA", config.HUD_MUTED);
+        Canvas3D.DrawRect2D(canvas, 100, sbY - 1, 150, 10, config.HUD_CARD);
+        var scol = config.HUD_GOOD;
+        if (stamina < 0.3) { scol = config.HUD_WARN; }
+        Canvas3D.DrawRect2D(canvas, 100, sbY - 1, Convert.NumToInt(150.0 * stamina), 10, scol);
+
+        var od = sim.nearestDormantBeaconDist(playerX, playerZ);
+        if (od >= 0.0) {
+            Canvas3D.DrawText2D(canvas, 24, sbY + 18,
+                "Nearest beacon: " + toString(Convert.NumToInt(od)) + "m", config.HUD_MUTED);
+        } else {
+            Canvas3D.DrawText2D(canvas, 24, sbY + 18, "All linked - return home", config.HUD_GOOD);
+        }
+
+        if (helpOn) { drawControlsOverlay(canvas, w, h); }
         if (debugOn) { drawDebugPanel(canvas, w); }
+    }
+
+    // Toggleable controls reference (H). A centered card listing every binding.
+    hide func drawControlsOverlay(canvas: Canvas3D, w: Integer, h: Integer) {
+        var px = w / 2 - 170;
+        var py = h / 2 - 120;
+        Canvas3D.DrawRect2D(canvas, px, py, 340, 234, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, px, py, 340, 3, config.HUD_ACCENT);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 18, "CONTROLS", config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 44, "WASD - move", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 64, "Mouse - look   (click to capture)", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 84, "Shift - sprint (stamina)", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 104, "Space - jump", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 124, "V - toggle first-person / orbit", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 144, "E - hold to scan a beacon", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 164, "F - kick nearby boulders", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 184, "Wheel - zoom   Ctrl - debug   F11 - fullscreen", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 210, "H - close this help", config.HUD_GOOD);
     }
 
     hide func drawDebugPanel(canvas: Canvas3D, w: Integer) {
         var x = w - 296;
         var y = 14;
-        Canvas3D.DrawRect2D(canvas, x, y, 282, 244, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, 282, 262, config.HUD_PANEL);
         Canvas3D.DrawRect2D(canvas, x, y, 282, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  Space=quality", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + canvas.Backend, config.HUD_TEXT);
@@ -95,5 +140,9 @@ class ShowcaseHud {
             canvas, x + 10, y + 218,
             "ALSA xruns/fail: " + toString(Audio.get_BackendXruns()) + " / "
                 + toString(Audio.get_BackendWriteFailures()), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 236,
+            "Cull frustum/occ: " + toString(canvas.FrustumCulledDrawCount) + " / "
+                + toString(canvas.OccludedDrawCount), config.HUD_MUTED);
     }
 }

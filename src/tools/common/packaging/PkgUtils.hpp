@@ -41,8 +41,8 @@
 #include <system_error>
 #include <vector>
 
-#include "PackageConfig.hpp"
 #include "../../../common/PlatformCapabilities.hpp"
+#include "PackageConfig.hpp"
 
 #if VIPER_HOST_WINDOWS
 #ifndef NOMINMAX
@@ -768,6 +768,33 @@ inline void validateDebDependency(const std::string &dependency) {
     }
     if (expectAlternative)
         throw std::runtime_error("package dependency has empty alternative: '" + dep + "'");
+}
+
+/// @brief Validate a single RPM `Requires:` dependency expression.
+/// @details RPM dependency lines are emitted directly into the generated `.spec`
+///          file, so this accepts a conservative single-line expression suitable
+///          for common package names plus version relations while rejecting
+///          commas (the manifest separator) and `%` macro expansion. Full RPM
+///          dependency grammar is intentionally not reimplemented here; rpmbuild
+///          remains the final arbiter after this injection-safety pass.
+/// @param dependency One dependency term from `package-rpm-depends`.
+/// @throws std::runtime_error when the dependency is empty or unsafe for a spec.
+inline void validateRpmDependency(const std::string &dependency) {
+    const std::string dep = trimAsciiWhitespace(dependency);
+    if (dep.empty())
+        throw std::runtime_error("RPM dependency must not be empty");
+    validateSingleLineField(dep, "RPM dependency");
+    for (char c : dep) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (c == ',' || c == '%') {
+            throw std::runtime_error("RPM dependency contains an unsupported character: '" + dep +
+                                     "'");
+        }
+        if (!std::isprint(uc)) {
+            throw std::runtime_error("RPM dependency contains a non-printable character: '" + dep +
+                                     "'");
+        }
+    }
 }
 
 /// @brief Return true if category is a registered freedesktop.org desktop category.
@@ -1602,6 +1629,28 @@ inline std::filesystem::path resolvePackageSourcePath(const std::filesystem::pat
                                  "'");
     }
     return resolved;
+}
+
+/// @brief Read a project-relative package metadata text file.
+/// @details Resolves @p raw with resolvePackageSourcePath(), requires the result
+///          to be a regular file, and returns its byte contents as a string
+///          without transcoding or newline normalization. Intended for metadata
+///          files such as package-license-file and package-readme that are copied
+///          into installer UX surfaces or portable archives.
+/// @param projectRoot Canonical package root used to contain source paths.
+/// @param raw Project-relative path from the manifest.
+/// @param fieldName Name used in diagnostics.
+/// @return File contents as a byte-preserving string.
+/// @throws std::runtime_error on unsafe paths, missing/non-file inputs, or I/O errors.
+inline std::string readPackageTextFile(const std::filesystem::path &projectRoot,
+                                       const std::string &raw,
+                                       const char *fieldName) {
+    namespace fs = std::filesystem;
+    const fs::path path = resolvePackageSourcePath(projectRoot, raw, fieldName);
+    if (!fs::is_regular_file(path))
+        throw std::runtime_error(std::string(fieldName) + " is not a regular file: " + raw);
+    const std::vector<uint8_t> data = readFile(path.string());
+    return std::string(reinterpret_cast<const char *>(data.data()), data.size());
 }
 
 /// @brief Convert a UTF-8 string to a vector of UTF-16 code units (no BOM).

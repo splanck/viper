@@ -488,6 +488,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     ps << "$self=$args[0]\n";
     ps << "$mode=$args[1]\n";
     ps << "$display=" << powershellSingleQuote(layout.displayName) << "\n";
+    ps << "$license=" << powershellSingleQuote(layout.licenseText) << "\n";
+    ps << "$wizardSummary=" << powershellSingleQuote(layout.wizardSummary) << "\n";
     ps << "$installLeaf=" << powershellSingleQuote(installDir) << "\n";
     ps << "$version=" << powershellSingleQuote(version) << "\n";
     ps << "$publisher=" << powershellSingleQuote(publisher) << "\n";
@@ -546,6 +548,14 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
           "result); }' -ErrorAction SilentlyContinue|Out-Null;$r=[UIntPtr]::Zero;[void][ViperEnv]::"
           "SendMessageTimeout([IntPtr]0xffff,0x1a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$r)}"
           "catch{}}\n";
+    ps << "function TrimDialog([string]$s){if(-not $s){return ''};if($s.Length -le 3800){return "
+          "$s};return $s.Substring(0,3800)+\"`r`n`r`n...\"}\n";
+    ps << "function ConfirmDialog([string]$title,[string]$message){try{Add-Type -AssemblyName "
+          "System.Windows.Forms -ErrorAction Stop;$r=[System.Windows.Forms.MessageBox]::Show("
+          "$message,$title,[System.Windows.Forms.MessageBoxButtons]::OKCancel,[System.Windows."
+          "Forms."
+          "MessageBoxIcon]::Information);if($r -ne [System.Windows.Forms.DialogResult]::OK){exit "
+          "1}}catch{}}\n";
     ps << "function RemoveOne($r,$rel){$p=Join-Path (Root $r) $rel;Remove-Item -LiteralPath $p "
           "-Force -ErrorAction SilentlyContinue}\n";
     ps << "$classRoot=Join-Path " << powershellSingleQuote(hive) << " 'Software\\Classes'\n";
@@ -611,6 +621,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     ps << ")\n";
 
     ps << "if($mode -eq 'uninstall'){\n";
+    ps << "ConfirmDialog ($display+' Uninstall') ('This will remove '+$display+' from this "
+          "computer.')\n";
     ps << "RemovePath\n";
     ps << "UnregisterAssoc\n";
     ps << "$manifest=Join-Path $install "
@@ -631,6 +643,11 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     if (uninstallDialog) {
         ps << "exit 0\n";
     } else {
+        ps << "$intro=if($wizardSummary){$wizardSummary}else{'Review the license and install "
+              "scope before continuing.'}\n";
+        ps << "$msg=$intro+\"`r`n`r`nInstall scope: \"+$scope+\"`r`nInstall location: "
+              "\"+$install+\"`r`n`r`n\"+(TrimDialog $license)\n";
+        ps << "ConfirmDialog ($display+' Setup') $msg\n";
         ps << "[IO.Directory]::CreateDirectory($install)|Out-Null\n";
         if (needsMenuPath(layout))
             ps << "[IO.Directory]::CreateDirectory($menu)|Out-Null\n";
@@ -789,8 +806,11 @@ std::vector<uint8_t> buildWizardDialogTemplate(const WindowsPackageLayout &layou
 
     const std::string title = layout.displayName + (uninstallDialog ? " Uninstall" : " Setup");
     const std::string intro =
-        uninstallDialog ? "Review the removal summary, accept the confirmation, then choose Next."
-                        : "Review the license and install scope, then choose Next.";
+        !layout.wizardSummary.empty()
+            ? layout.wizardSummary
+            : (uninstallDialog
+                   ? "Review the removal summary, accept the confirmation, then choose Next."
+                   : "Review the license and install scope, then choose Next.");
     std::string body = uninstallDialog
                            ? ("This will remove " + layout.displayName + " from this computer.")
                            : layout.licenseText;

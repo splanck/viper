@@ -809,6 +809,65 @@ void *rt_game3d_world_spawn(void *world_obj, void *entity_obj) {
     return entity_obj;
 }
 
+/// @brief Spawn an invisible static heightfield collider from a Pixels heightmap.
+/// @details Streamed terrain auto-generates a `*_heightfield_collider` entity per
+///   tile; this exposes the same mechanism for a standalone `Terrain3D` so its
+///   surface becomes solid to physics bodies and character controllers. The
+///   heightfield is centered on the collider entity (local X/Z span
+///   `[-(w-1)*sx/2, +(w-1)*sx/2]`), so pass the terrain's center as
+///   `(pos_x, pos_y, pos_z)` — `(terrainWorldMaxX/2, 0, terrainWorldMaxZ/2)` for a
+///   terrain whose corner sits at the world origin — to align physics with the
+///   visual mesh. The position is applied before spawn because a static body
+///   drives its node (not vice-versa), so it cannot be repositioned afterwards.
+///   Returns the spawned Entity3D (NULL on invalid world/heightmap or allocation
+///   failure). See header.
+void *rt_game3d_world_spawn_heightfield_collider(void *world_obj,
+                                                 void *heightmap,
+                                                 double scale_x,
+                                                 double scale_y,
+                                                 double scale_z,
+                                                 double pos_x,
+                                                 double pos_y,
+                                                 double pos_z) {
+    rt_game3d_world *world = game3d_world_checked(
+        world_obj, "Game3D.World3D.spawnHeightfieldCollider: invalid world");
+    void *collider;
+    void *body;
+    void *entity;
+    if (!world || world->destroyed || !world->physics)
+        return NULL;
+    if (!heightmap) {
+        rt_trap("Game3D.World3D.spawnHeightfieldCollider: heightmap must be non-null");
+        return NULL;
+    }
+
+    collider = rt_collider3d_new_heightfield(heightmap, scale_x, scale_y, scale_z);
+    if (!collider)
+        return NULL;
+    body = rt_body3d_new(0.0);
+    if (!body) {
+        game3d_release_ref(&collider);
+        return NULL;
+    }
+    rt_body3d_set_static(body, 1);
+    rt_body3d_set_collision_layer(body, RT_GAME3D_LAYER_WORLD);
+    rt_body3d_set_collider(body, collider);
+
+    entity = rt_game3d_entity_new();
+    if (entity) {
+        rt_game3d_entity_set_name(entity, rt_const_cstr("terrain_heightfield_collider"));
+        rt_game3d_entity_set_position(entity,
+                                      game3d_clamp_coord_or(pos_x, 0.0),
+                                      game3d_clamp_coord_or(pos_y, 0.0),
+                                      game3d_clamp_coord_or(pos_z, 0.0));
+        rt_game3d_entity_attach_body(entity, body);
+        rt_game3d_world_spawn(world_obj, entity);
+    }
+    game3d_release_ref(&body);
+    game3d_release_ref(&collider);
+    return entity;
+}
+
 /// @brief Despawn an entity (and its child tree); stale handles no-op, while live
 ///   unspawned entities still trap if they do not belong to this world. See header.
 void rt_game3d_world_despawn(void *world_obj, void *entity_obj) {
