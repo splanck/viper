@@ -221,10 +221,10 @@ func main() -> Integer {
     var keysStr = keysVal.textValue;
     var hasName = false;
     var hasAge = false;
-    if String.Length(keysStr) > 0 {
+    if Viper.String.get_Length(keysStr) > 0 {
         // Check if "name" and "age" appear in the keys array
         var ki = 0;
-        var kLen = String.Length(keysStr);
+        var kLen = Viper.String.get_Length(keysStr);
         while ki < kLen {
             if ki + 6 <= kLen && String.Substring(keysStr, ki, 6) == "\"name\"" {
                 hasName = true;

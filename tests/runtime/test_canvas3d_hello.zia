@@ -25,6 +25,10 @@ func start() {
 
     // Test Material3D
     var mat = Viper.Graphics3D.Material3D.NewColor(1.0, 0.3, 0.2);
+    if (mat == null) {
+        Say("FAIL: Material3D.NewColor should return a material");
+        return;
+    }
 
     // Test Camera3D
     var cam = Viper.Graphics3D.Camera3D.New(60.0, 1.333, 0.1, 100.0);

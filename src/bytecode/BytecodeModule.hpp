@@ -302,8 +302,7 @@ struct BytecodeModule {
         ref.runtimeDescriptor = il::runtime::findRuntimeDescriptor(name);
         ref.runtimeSignature = ref.runtimeDescriptor ? &ref.runtimeDescriptor->signature
                                                      : il::runtime::findRuntimeSignature(name);
-        ref.consumesClonedStringArgs = name == "rt_str_concat" || name == "Viper.String.Concat" ||
-                                       name == "Viper.String.ConcatSelf";
+        ref.consumesClonedStringArgs = name == "rt_str_concat" || name == "Viper.String.Concat";
         ref.consumesOwnedStringArgs = name == "rt_str_release_maybe";
         ref.returnsString =
             ref.runtimeSignature && ref.runtimeSignature->retType.kind == il::core::Type::Kind::Str;

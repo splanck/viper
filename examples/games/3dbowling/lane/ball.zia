@@ -91,8 +91,8 @@ class Ball {
 
         ballMesh = Mesh3D.NewSphere(config.BALL_RADIUS, 16);
         ballMat = Material3D.NewPBR(colorR, colorG, colorB);
-        Material3D.set_Metallic(ballMat, 0.04);
-        Material3D.set_Roughness(ballMat, 0.18);
+        ballMat.Metallic = 0.04;
+        ballMat.Roughness = 0.18;
         Material3D.SetShininess(ballMat, config.BALL_SHININESS);
         ballHoleMesh = Mesh3D.NewSphere(config.BALL_RADIUS * 0.16, 8);
         ballHoleMat = Material3D.NewColor(0.015, 0.018, 0.022);
@@ -100,7 +100,7 @@ class Ball {
         guideMesh = Mesh3D.NewSphere(0.034, 8);
         guideMat = Material3D.NewColor(0.05, 0.92, 0.96);
         Material3D.SetEmissiveColor(guideMat, 0.08, 0.34, 0.36);
-        Material3D.set_Alpha(guideMat, 0.82);
+        guideMat.Alpha = 0.82;
         targetMesh = Mesh3D.NewSphere(0.082, 12);
         targetHaloMesh = Mesh3D.NewSphere(0.038, 8);
         targetMat = Material3D.NewColor(1.0, 0.82, 0.22);
@@ -277,22 +277,28 @@ class Ball {
             (config.EARLY_HOOK_FORCE + backend * config.BACKEND_HOOK_FORCE) * frictionPct;
         hookForce = hookForce * (0.55 + frictionPct * 0.35);
         var dragForce = -vx * config.SIDE_DRAG * (0.8 + frictionPct);
-        var laneHalf = config.LANE_WIDTH / 2.0;
-        var edgeStart = laneHalf * config.LANE_ASSIST_EDGE_RATIO;
-        var edgeLimit = laneHalf + config.GUTTER_DETECT_OVERHANG;
         var assistForce = 0.0;
-        if (z > config.GUTTER_DETECT_Z && z < config.GUTTER_DETECT_END_Z && Abs(x) > edgeStart) {
-            var edgePct = (Abs(x) - edgeStart) / (edgeLimit - edgeStart + 0.0001);
-            if (edgePct < 0.0) { edgePct = 0.0; }
-            if (edgePct > 1.0) { edgePct = 1.0; }
-            var edgeSign = 1.0;
-            if (x < 0.0) { edgeSign = -1.0; }
-            assistForce = -edgeSign * config.LANE_ASSIST_FORCE * edgePct * edgePct;
-            dragForce = dragForce - vx * config.LANE_ASSIST_DAMP * edgePct;
+        // Arcade rail (bumpers): a centering force near the edges plus a hard
+        // X clamp so the ball can never gutter. Off by default so the ball
+        // obeys physics and a badly aimed shot rolls into the gutter trough.
+        if (config.BUMPERS_ENABLED == 1) {
+            var laneHalf = config.LANE_WIDTH / 2.0;
+            var edgeStart = laneHalf * config.LANE_ASSIST_EDGE_RATIO;
+            var edgeLimit = laneHalf + config.GUTTER_DETECT_OVERHANG;
+            if (z > config.GUTTER_DETECT_Z && z < config.GUTTER_DETECT_END_Z && Abs(x) > edgeStart) {
+                var edgePct = (Abs(x) - edgeStart) / (edgeLimit - edgeStart + 0.0001);
+                if (edgePct < 0.0) { edgePct = 0.0; }
+                if (edgePct > 1.0) { edgePct = 1.0; }
+                var edgeSign = 1.0;
+                if (x < 0.0) { edgeSign = -1.0; }
+                assistForce = -edgeSign * config.LANE_ASSIST_FORCE * edgePct * edgePct;
+                dragForce = dragForce - vx * config.LANE_ASSIST_DAMP * edgePct;
+            }
         }
         Physics3DBody.ApplyForce(body, hookForce + dragForce + assistForce, 0.0, 0.0);
 
-        if (z > config.GUTTER_DETECT_Z && z < config.PIN_Z_OFFSET - 0.75 && Abs(x) > config.LANE_SAFE_HALF_WIDTH) {
+        if (config.BUMPERS_ENABLED == 1 &&
+            z > config.GUTTER_DETECT_Z && z < config.PIN_Z_OFFSET - 0.75 && Abs(x) > config.LANE_SAFE_HALF_WIDTH) {
             var safeSign = 1.0;
             if (x < 0.0) { safeSign = -1.0; }
             var safeX = safeSign * config.LANE_SAFE_HALF_WIDTH;
@@ -328,7 +334,10 @@ class Ball {
     }
 
     /// @brief Arcade lane guard: keep normal throws rolling on the lane.
+    /// @note Bumper-mode only. In skill play the ball rides real physics
+    ///       (lane floor + gutter troughs) with no positional override.
     expose func stabilizeLaneRoll() {
+        if (config.BUMPERS_ENABLED == 0) { return; }
         if (hasBeenThrown == false || isInGutter) { return; }
 
         var pos = Physics3DBody.get_Position(body);
@@ -427,12 +436,12 @@ class Ball {
 
     /// @brief Current X coordinate.
     expose func getPosX() -> Float {
-        return Vec3.get_X(Physics3DBody.get_Position(body));
+        return Physics3DBody.get_Position(body).X;
     }
 
     /// @brief Current Z coordinate.
     expose func getPosZ() -> Float {
-        return Vec3.get_Z(Physics3DBody.get_Position(body));
+        return Physics3DBody.get_Position(body).Z;
     }
 
     /// @brief True once the ball has crossed past the pin deck.
@@ -463,9 +472,9 @@ class Ball {
     /// @brief Wire up env-map reflections on the ball material.
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(ballMat, env);
-        Material3D.set_Reflectivity(ballMat, config.BALL_REFLECTIVITY);
+        ballMat.Reflectivity = config.BALL_REFLECTIVITY;
         Material3D.SetEnvMap(ballHoleMat, env);
-        Material3D.set_Reflectivity(ballHoleMat, 0.05);
+        ballHoleMat.Reflectivity = 0.05;
     }
 
     /// @brief Snap back to the spawn position; clear all per-throw state.
@@ -527,7 +536,7 @@ class Ball {
         for (var i: Integer = 0; i <= 12; i = i + 1) {
             var t = (i + 0.0) / 12.0;
             var z = guideStartZ + (config.BALL_TARGET_Z - guideStartZ) * t;
-            var hook = spinPreview * 0.035 * t * t;
+            var hook = spinPreview * 0.30 * t * t;
             var x = releaseX + (targetX - releaseX) * t + hook;
             Canvas3D.DrawMesh(canvas, guideMesh, Mat4.Translate(x, 0.035, z), guideMat);
         }

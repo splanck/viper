@@ -27,7 +27,7 @@ expose func EnclosingInlineDelimiterOpenCol(line: String,
     if line == "" { return -1; }
     var limit = startCol;
     if limit < 0 { limit = 0; }
-    var len = Str.Length(line);
+    var len = Str.get_Length(line);
     if limit >= len { limit = len - 1; }
 
     var openCols = new List();
@@ -68,7 +68,7 @@ expose func EnclosingInlineDelimiterOpenCol(line: String,
         pos = pos + 1;
     }
     if openCols.count() == 0 { return -1; }
-    return Convert.ToInt(Obj.ToString(openCols.get(openCols.count() - 1)));
+    return Convert.ToInt64(Obj.ToString(openCols.get(openCols.count() - 1)));
 }
 
 /// @brief Find the close delimiter matching an inline open delimiter.
@@ -77,7 +77,7 @@ expose func EnclosingInlineDelimiterOpenCol(line: String,
 /// @return Zero-based close delimiter column, or -1 when no match is found.
 expose func MatchingInlineDelimiterCloseCol(line: String,
                                             openCol: Integer) -> Integer {
-    var len = Str.Length(line);
+    var len = Str.get_Length(line);
     if line == "" or openCol < 0 or openCol >= len { return -1; }
     var openCh = Str.MidLen(line, openCol + 1, 1);
     if IsInlineOpenDelimiter(openCh) == false { return -1; }
@@ -134,7 +134,7 @@ expose func EnclosingBraceOpenLine(source: String,
         i = i + 1;
     }
     if openLines.count() == 0 { return -1; }
-    return Convert.ToInt(Obj.ToString(openLines.get(openLines.count() - 1)));
+    return Convert.ToInt64(Obj.ToString(openLines.get(openLines.count() - 1)));
 }
 
 /// @brief Find the close brace line matching an open brace line.
@@ -152,10 +152,10 @@ expose func MatchingBraceCloseLine(source: String,
         var line = Obj.ToString(Seq.Get(lines, i));
         var pos = 1;
         var inString = false;
-        while pos <= Str.Length(line) {
+        while pos <= Str.get_Length(line) {
             var ch = Str.MidLen(line, pos, 1);
             var next = "";
-            if pos < Str.Length(line) {
+            if pos < Str.get_Length(line) {
                 next = Str.MidLen(line, pos + 1, 1);
             }
             if inString {
@@ -222,10 +222,10 @@ func ScanBraceLineForStack(line: String,
                            openLines: List) {
     var pos = 1;
     var inString = false;
-    while pos <= Str.Length(line) {
+    while pos <= Str.get_Length(line) {
         var ch = Str.MidLen(line, pos, 1);
         var next = "";
-        if pos < Str.Length(line) {
+        if pos < Str.get_Length(line) {
             next = Str.MidLen(line, pos + 1, 1);
         }
         if inString {

@@ -70,8 +70,8 @@ class HUD {
                      fps: Integer, playerCount: Integer, activePlayer: Integer,
                      playerOneScore: Integer, playerTwoScore: Integer,
                      oilName: String) {
-        var cw: Integer = Canvas3D.get_Width(canvas);
-        var ch: Integer = Canvas3D.get_Height(canvas);
+        var cw: Integer = canvas.Width;
+        var ch: Integer = canvas.Height;
 
         drawScoreboard(canvas, scoreKeeper, cw);
         drawStatusPanel(canvas, cw, playerCount, activePlayer, playerOneScore, playerTwoScore, oilName, ballType);

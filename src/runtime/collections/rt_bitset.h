@@ -12,7 +12,7 @@
 //   - Bit indices are 0-based; the bitset auto-grows when setting beyond current size.
 //   - All bits start as 0 on allocation.
 //   - Bitwise AND/OR/XOR operations return a result sized to the larger operand.
-//   - rt_bitset_count returns the population count (number of set bits).
+//   - rt_bitset_is_empty tests whether any bits are set.
 //
 // Ownership/Lifetime:
 //   - BitSet objects are heap-allocated; caller is responsible for lifetime management.
@@ -41,11 +41,6 @@ void *rt_bitset_new(int64_t nbits);
 /// @param obj BitSet pointer.
 /// @return Bit capacity.
 int64_t rt_bitset_len(void *obj);
-
-/// @brief Count the number of set (1) bits (population count).
-/// @param obj BitSet pointer.
-/// @return Number of bits that are 1.
-int64_t rt_bitset_count(void *obj);
 
 /// @brief Check if all bits are zero.
 /// @param obj BitSet pointer.

@@ -571,7 +571,7 @@ rt_string rt_unbox_str(void *box) {
 }
 
 /// @brief Try to extract an `i64` value from @p box, never trapping. Returns 1 on success.
-/// @details Option-style accessor backing `Viper.Core.Box.TryToI64`. On success writes the
+/// @details Option-style accessor backing `Viper.Core.Box.ToI64Option`. On success writes the
 ///          unboxed `int64_t` to @p out and returns 1. Returns 0 (with @p out zeroed) when
 ///          @p box is NULL, isn't a Box, has the wrong tag, or @p out itself is NULL.
 int8_t rt_box_try_to_i64(void *box, int64_t *out) {
@@ -619,7 +619,7 @@ int8_t rt_box_try_to_i1(void *box, int8_t *out) {
 /// @brief Try to extract a runtime string from @p box, never trapping. Returns 1 on success.
 /// @details On success writes a *retained* string handle to @p out — caller owns the new
 ///          reference and must release it. This raw C helper is runtime-internal; the public
-///          `Viper.Core.Box.TryToStr` surface returns an owned `Option<String>`.
+///          `Viper.Core.Box.ToStrOption` surface returns an owned `Option<String>`.
 ///          Failure paths NULL out @p out.
 int8_t rt_box_try_to_str(void *box, rt_string *out) {
     if (out)

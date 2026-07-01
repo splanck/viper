@@ -30,7 +30,7 @@ Viper.IO.File.WriteAllText(emptyFile, "")
 PRINT "Created empty file"
 PRINT "Size: "; Viper.IO.File.Size(emptyFile)
 result = Viper.IO.File.ReadAllText(emptyFile)
-PRINT "ReadAllText length: "; Viper.String.Length(result)
+PRINT "ReadAllText length: "; Viper.String.get_Length(result)
 Viper.IO.File.Delete(emptyFile)
 PRINT ""
 
@@ -93,7 +93,7 @@ Viper.IO.File.WriteAllText(largeFile, largeContent)
 PRINT "Wrote 100KB file"
 PRINT "Size: "; Viper.IO.File.Size(largeFile)
 result = Viper.IO.File.ReadAllText(largeFile)
-PRINT "Read back length: "; Viper.String.Length(result)
+PRINT "Read back length: "; Viper.String.get_Length(result)
 Viper.IO.File.Delete(largeFile)
 PRINT ""
 

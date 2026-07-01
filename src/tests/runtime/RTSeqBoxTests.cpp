@@ -211,7 +211,7 @@ static void test_box_type_rejects_box_element_arrays() {
 
     test_result("Box.Type ignores RT_ELEM_BOX arrays", rt_box_type(arr) == -1);
     int64_t out = 0;
-    test_result("Box.TryToI64 ignores RT_ELEM_BOX arrays",
+    test_result("rt_box_try_to_i64 ignores RT_ELEM_BOX arrays",
                 rt_box_try_to_i64(arr, &out) == 0 && out == 0);
 
     release_object(arr);

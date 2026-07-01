@@ -119,21 +119,21 @@ func assertWalksGrounded(game: WalkMinGame, canvas: Canvas3D) -> Boolean {
 
     Canvas3D.ClearSyntheticInput(canvas);
     Canvas3D.SetInputSource(canvas, 1);
-    var before = Entity3D.position(player);
+    var before = player.Position();
 
     Canvas3D.PushSyntheticKey(canvas, Keys.get_W(), true);
-    World3D.tick(game.getWorld());
+    game.getWorld().Tick();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);
 
-    var after = Entity3D.position(player);
+    var after = player.Position();
     var dx = Vec3.get_X(after) - Vec3.get_X(before);
     var dz = Vec3.get_Z(after) - Vec3.get_Z(before);
     if (dx * dx + dz * dz < 0.0025) {
         Terminal.Say("RESULT: fail player did not walk");
         return false;
     }
-    if (CharacterController3D.grounded(character) == false) {
+    if (character.Grounded() == false) {
         Terminal.Say("RESULT: fail player not grounded");
         return false;
     }
@@ -152,13 +152,13 @@ func main() {
     game.renderFrame();
 
     var canvas = game.getCanvas();
-    var snap = World3D.captureFinalFrame(game.getWorld());
+    var snap = game.getWorld().CaptureFinalFrame();
     if (snap == null) {
         Terminal.Say("RESULT: fail screenshot-final null");
         return;
     }
 
-    if (Canvas3D.get_FrameFinalized(canvas) == false) {
+    if (canvas.FrameFinalized == false) {
         Terminal.Say("RESULT: fail frame not finalized");
         return;
     }
@@ -199,7 +199,7 @@ func main() {
         return;
     }
 
-    World3D.present(game.getWorld());
+    game.getWorld().Present();
     game.destroy();
 
     var movementGame = new WalkMinGame();

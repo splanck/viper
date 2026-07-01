@@ -16,7 +16,7 @@ func start() {
     var mesh = Mesh3D.NewBox(2.0, 1.0, 4.0);
     var hull = Collider3D.NewConvexHull(mesh);
     var wall = Physics3DBody.New(0.0);
-    Physics3DBody.SetCollider(wall, hull);
+    wall.Collider = hull;
     Physics3DWorld.Add(world, wall);
 
     var sphere = Physics3DBody.NewSphere(0.5, 1.0);
@@ -46,7 +46,7 @@ func start() {
     }
     var heightfield = Collider3D.NewHeightfield(pixels, 1.0, 2.0, 1.0);
     var terrain = Physics3DBody.New(0.0);
-    Physics3DBody.SetCollider(terrain, heightfield);
+    terrain.Collider = heightfield;
     Physics3DWorld.Add(world, terrain);
 
     sphere = Physics3DBody.NewSphere(0.35, 1.0);

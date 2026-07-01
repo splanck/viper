@@ -8,11 +8,11 @@ func start() {
     var arr = Viper.Collections.Seq.New(5);
     Viper.Terminal.Say("Created seq");
 
-    Viper.Collections.Seq.Set(arr, 0, Viper.Box.I64(10));
-    Viper.Collections.Seq.Set(arr, 1, Viper.Box.I64(20));
+    Viper.Collections.Seq.Set(arr, 0, Viper.Core.Box.I64(10));
+    Viper.Collections.Seq.Set(arr, 1, Viper.Core.Box.I64(20));
 
-    var v0 = Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 0));
-    var v1 = Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 1));
+    var v0 = Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(arr, 0));
+    var v1 = Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(arr, 1));
 
     Viper.Terminal.Say("v0 = " + Viper.String.FromInt(v0));
     Viper.Terminal.Say("v1 = " + Viper.String.FromInt(v1));

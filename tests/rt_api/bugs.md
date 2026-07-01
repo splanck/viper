@@ -117,7 +117,7 @@ All files now use GC-managed allocation with proper finalizers for internal sub-
 **Severity:** High
 **Status:** PARTIALLY FIXED
 **Root Cause:** `RuntimeClasses.cpp:273-291` — `mapILToken()` did not recognize `bool` or `i32` type tokens, causing `parseRuntimeSignature()` to return invalid for methods using these types. `buildIndexes()` silently skipped these methods with `continue`.
-**Fix:** Added `bool` → `ILScalarType::Bool` and `i32`/`i16`/`i8` → `ILScalarType::I64` mappings to `mapILToken()`. Also fixed the 3 affected signatures in `runtime.def`: `String.Equals` (`bool(str,str)` → `i1(str,str)`), `Parse.Double` and `Parse.Int64` (`i32(ptr,ptr)` → `i64(ptr,ptr)`).
+**Fix:** Added `bool` → `ILScalarType::Bool` and `i32`/`i16`/`i8` → `ILScalarType::I64` mappings to `mapILToken()`. Also fixed the affected parse-helper signatures so the public parse surface no longer exposed raw output pointers.
 **Notes:** The "~30+ missing classes" in the original report is likely overstated. The mapILToken fix resolves the signature parsing failures. Some classes may still be inaccessible due to case-sensitivity issues in BASIC's method lookup (BASIC uppercases identifiers).
 
 ---

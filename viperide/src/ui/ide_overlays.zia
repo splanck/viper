@@ -307,23 +307,23 @@ class IdeOverlays {
     }
 
     expose func ReadFontSize() -> Integer {
-        return Convert.ToInt("" + fontSizeSpinner.Value);
+        return Convert.ToInt64("" + fontSizeSpinner.Value);
     }
 
     expose func ReadTabWidth() -> Integer {
-        return Convert.ToInt("" + tabWidthSpinner.Value);
+        return Convert.ToInt64("" + tabWidthSpinner.Value);
     }
 
     expose func ReadDiagnosticsDelayMs() -> Integer {
-        return Convert.ToInt("" + diagnosticsDelaySpinner.Value);
+        return Convert.ToInt64("" + diagnosticsDelaySpinner.Value);
     }
 
     expose func ReadCompletionDelayMs() -> Integer {
-        return Convert.ToInt("" + completionDelaySpinner.Value);
+        return Convert.ToInt64("" + completionDelaySpinner.Value);
     }
 
     expose func ReadUiZoom() -> Integer {
-        return Convert.ToInt("" + uiZoomSpinner.Value);
+        return Convert.ToInt64("" + uiZoomSpinner.Value);
     }
 
     expose func ReadTheme() -> String {

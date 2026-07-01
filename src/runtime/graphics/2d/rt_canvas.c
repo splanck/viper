@@ -330,7 +330,7 @@ int64_t rt_canvas_get_delta_time(void *canvas_ptr) {
 
 /// @brief Get DeltaTime in seconds for frame-rate-independent simulation code.
 /// @param canvas_ptr Canvas handle. Returns 0.0 if NULL.
-/// @return Delta time in seconds, using the same clamp as DeltaTime/DeltaTimeMs.
+/// @return Delta time in seconds, using the same clamp as DeltaTime.
 double rt_canvas_get_delta_time_sec(void *canvas_ptr) {
     return (double)rt_canvas_get_delta_time(canvas_ptr) / 1000.0;
 }

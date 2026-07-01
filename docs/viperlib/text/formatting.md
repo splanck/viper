@@ -603,9 +603,9 @@ Semantic version (SemVer 2.0.0) parsing, comparison, and manipulation. Supports 
 | `Cmp(other)`      | `Integer(Version)`   | Compare to another version: -1 (less), 0 (equal), 1 (greater) |
 | `Compare(a, b)`   | `Integer(String, String)` | Parse and compare two version strings: -1, 0, or 1 (static) |
 | `IsValid(str)`    | `Boolean(String)`    | Check if a string is a valid semantic version (static)      |
-| `Major(str)`      | `Integer(String)`    | Parse and return the major component (static)               |
-| `Minor(str)`      | `Integer(String)`    | Parse and return the minor component (static)               |
-| `Patch(str)`      | `Integer(String)`    | Parse and return the patch component (static)               |
+| `ParseMajor(str)` | `Integer(String)`    | Parse and return the major component (static)               |
+| `ParseMinor(str)` | `Integer(String)`    | Parse and return the minor component (static)               |
+| `ParsePatch(str)` | `Integer(String)`    | Parse and return the patch component (static)               |
 | `Satisfies(constraint)` | `Boolean(String)` | Check if version satisfies a constraint (e.g., ">=1.0.0", "^1.2.3", "~1.2.3") |
 | `ToString()`      | `String()`           | Format version object back to string                        |
 

@@ -55,7 +55,7 @@ Reproducible with same seed: PASS
 === Viper.Terminal ===
 WriteLine test: PASS
 
-=== Viper.Convert ===
+=== Viper.Core.Convert ===
 ToInt64('42'): 42
 ToDouble('3.14159'): 3.14159
 ToString_Int(123): '123'

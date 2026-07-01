@@ -8,13 +8,13 @@ func fail(message: String) {
 }
 
 func start() {
-    Game3D.Diagnostics.Reset();
+    Game3D.Diagnostics3D.Reset();
     var world = Game3D.World3D.New("Game3D Double Despawn Noop", 32, 24);
     var entity = Game3D.Entity3D.New();
-    Game3D.World3D.spawn(world, entity);
-    Game3D.World3D.despawn(world, entity);
-    Game3D.World3D.despawn(world, entity);
-    if (Game3D.Diagnostics.get_StaleEntityCalls() != 1) {
+    world.Spawn(entity);
+    world.Despawn(entity);
+    world.Despawn(entity);
+    if (Game3D.Diagnostics3D.get_StaleEntityCalls() != 1) {
         fail("second despawn should be one counted stale no-op");
         return;
     }

@@ -109,8 +109,8 @@ func start() {
     var i = Viper.Core.Parse.TryInt("123");
     var n = Viper.Core.Parse.TryNum("12.5");
     var b = Viper.Core.Parse.TryBool("yes");
-    var d = Viper.Core.Parse.Double("12.5");
-    var i64 = Viper.Core.Parse.Int64("123");
+    var d = Viper.Core.Parse.TryNum("12.5");
+    var i64 = Viper.Core.Parse.TryInt("123");
 }
 )");
 
@@ -186,13 +186,13 @@ module Test;
 
 func start() {
     var box = Viper.Core.Box.I64(12);
-    var opt = Viper.Core.Box.TryToI64(box);
+    var opt = Viper.Core.Box.ToI64Option(box);
     var fields = Viper.String.SplitFields("a,\"b,c\"");
     var path = Viper.Graphics.Path2D.New(4);
     var canvas = Viper.Graphics.Canvas.New("x", 16, 16);
-    Viper.Graphics.Canvas.Polyline(canvas, path, 16777215);
+    Viper.Graphics.Canvas.PolylinePath(canvas, path, 16777215);
     var emitter = Viper.Game.ParticleEmitter.New(4);
-    var particle = Viper.Game.ParticleEmitter.Get(emitter, 0);
+    var particle = Viper.Game.ParticleEmitter.ParticleAt(emitter, 0);
 }
 )");
 

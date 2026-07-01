@@ -210,129 +210,129 @@ bool check_runtime_surface_names() {
         read_file("src/runtime/graphics/3d/render/rt_canvas3d_overlay.c");
     bool ok = true;
 
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_workerCount\""),
-                 "World3D.workerCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_WorkerCount\""),
+                 "World3D.WorkerCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_jobsEnabled\""),
-                 "World3D.jobsEnabled getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_JobsEnabled\""),
+                 "World3D.JobsEnabled getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.setWorkerCount\""),
-                 "World3D.setWorkerCount must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.SetWorkerCount\""),
+                 "World3D.SetWorkerCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_floatingOrigin\""),
-                 "World3D.floatingOrigin getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_FloatingOrigin\""),
+                 "World3D.FloatingOrigin getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.set_floatingOrigin\""),
-                 "World3D.floatingOrigin setter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.set_FloatingOrigin\""),
+                 "World3D.FloatingOrigin setter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_worldOrigin\""),
-                 "World3D.worldOrigin getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_WorldOrigin\""),
+                 "World3D.WorldOrigin getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_stream\""),
-                 "World3D.stream getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_Stream\""),
+                 "World3D.Stream getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_entityCount\""),
-                 "World3D.entityCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_EntityCount\""),
+                 "World3D.EntityCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_bodyCount\""),
-                 "World3D.bodyCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_BodyCount\""),
+                 "World3D.BodyCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_drawCount\""),
-                 "World3D.drawCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_DrawCount\""),
+                 "World3D.DrawCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_visibleNodeCount\""),
-                 "World3D.visibleNodeCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_VisibleNodeCount\""),
+                 "World3D.VisibleNodeCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_occludedDrawCount\""),
-                 "World3D.occludedDrawCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_OccludedDrawCount\""),
+                 "World3D.OccludedDrawCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_streamResidentBytes\""),
-                 "World3D.streamResidentBytes getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_StreamResidentBytes\""),
+                 "World3D.StreamResidentBytes getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.setOriginRebaseThreshold\""),
-                 "World3D.setOriginRebaseThreshold must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.SetOriginRebaseThreshold\""),
+                 "World3D.SetOriginRebaseThreshold must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.rebaseOrigin\""),
-                 "World3D.rebaseOrigin must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.RebaseOrigin\""),
+                 "World3D.RebaseOrigin must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.bakeNavMesh\""),
-                 "World3D.bakeNavMesh must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.BakeNavMesh\""),
+                 "World3D.BakeNavMesh must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.bakeTiledNavMesh\""),
-                 "World3D.bakeTiledNavMesh must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.BakeTiledNavMesh\""),
+                 "World3D.BakeTiledNavMesh must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"workerCount\""),
-                 "World3D.workerCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"WorkerCount\""),
+                 "World3D.WorkerCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"jobsEnabled\""),
-                 "World3D.jobsEnabled property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"JobsEnabled\""),
+                 "World3D.JobsEnabled property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"floatingOrigin\""),
-                 "World3D.floatingOrigin property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"FloatingOrigin\""),
+                 "World3D.FloatingOrigin property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"worldOrigin\""),
-                 "World3D.worldOrigin property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"WorldOrigin\""),
+                 "World3D.WorldOrigin property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"stream\""), "World3D.stream property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"Stream\""), "World3D.Stream property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"entityCount\""),
-                 "World3D.entityCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"EntityCount\""),
+                 "World3D.EntityCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"bodyCount\""),
-                 "World3D.bodyCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"BodyCount\""),
+                 "World3D.BodyCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"drawCount\""),
-                 "World3D.drawCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"DrawCount\""),
+                 "World3D.DrawCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"visibleNodeCount\""),
-                 "World3D.visibleNodeCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"VisibleNodeCount\""),
+                 "World3D.VisibleNodeCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"occludedDrawCount\""),
-                 "World3D.occludedDrawCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"OccludedDrawCount\""),
+                 "World3D.OccludedDrawCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"streamResidentBytes\""),
-                 "World3D.streamResidentBytes property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"StreamResidentBytes\""),
+                 "World3D.StreamResidentBytes property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"setWorkerCount\""),
-                 "World3D.setWorkerCount method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetWorkerCount\""),
+                 "World3D.SetWorkerCount method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"setOriginRebaseThreshold\""),
-                 "World3D.setOriginRebaseThreshold method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetOriginRebaseThreshold\""),
+                 "World3D.SetOriginRebaseThreshold method missing") &&
          ok;
     ok = require(contains(runtime_def,
-                          "RT_METHOD(\"rebaseOrigin\", \"void(f64,f64,f64)\", "
+                          "RT_METHOD(\"RebaseOrigin\", \"void(f64,f64,f64)\", "
                           "Game3DWorldRebaseOrigin)"),
-                 "World3D.rebaseOrigin method missing") &&
+                 "World3D.RebaseOrigin method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"bakeNavMesh\""),
-                 "World3D.bakeNavMesh method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"BakeNavMesh\""),
+                 "World3D.BakeNavMesh method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"bakeTiledNavMesh\""),
-                 "World3D.bakeTiledNavMesh method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"BakeTiledNavMesh\""),
+                 "World3D.BakeTiledNavMesh method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.get_contactCount\""),
-                 "Collision3DEvent.contactCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.get_ContactCount\""),
+                 "Collision3DEvent.ContactCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.contactPoint\""),
-                 "Collision3DEvent.contactPoint must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.ContactPoint\""),
+                 "Collision3DEvent.ContactPoint must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.contactNormal\""),
-                 "Collision3DEvent.contactNormal must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.ContactNormal\""),
+                 "Collision3DEvent.ContactNormal must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.contactSeparation\""),
-                 "Collision3DEvent.contactSeparation must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Collision3DEvent.ContactSeparation\""),
+                 "Collision3DEvent.ContactSeparation must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"contactCount\""),
-                 "Collision3DEvent.contactCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"ContactCount\""),
+                 "Collision3DEvent.ContactCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"contactPoint\""),
-                 "Collision3DEvent.contactPoint method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"ContactPoint\""),
+                 "Collision3DEvent.ContactPoint method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"contactNormal\""),
-                 "Collision3DEvent.contactNormal method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"ContactNormal\""),
+                 "Collision3DEvent.ContactNormal method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"contactSeparation\""),
-                 "Collision3DEvent.contactSeparation method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"ContactSeparation\""),
+                 "Collision3DEvent.ContactSeparation method missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Entity3D.FromNode\""),
                  "Entity3D.FromNode must use Game3D PascalCase factory naming") &&
@@ -353,26 +353,26 @@ bool check_runtime_surface_names() {
         require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAssetAsync\""),
                 "Assets3D.LoadTemplateAssetAsync must use Game3D PascalCase factory naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.get_sceneCount\""),
-                 "SceneTemplate.sceneCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.get_SceneCount\""),
+                 "SceneTemplate.SceneCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.getSceneName\""),
-                 "SceneTemplate.getSceneName must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.GetSceneName\""),
+                 "SceneTemplate.GetSceneName must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.getCameraCount\""),
-                 "SceneTemplate.getCameraCount must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.GetCameraCount\""),
+                 "SceneTemplate.GetCameraCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.getCamera\""),
-                 "SceneTemplate.getCamera must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.GetCamera\""),
+                 "SceneTemplate.GetCamera must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.instantiateSceneAt\""),
-                 "SceneTemplate.instantiateSceneAt must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.InstantiateSceneAt\""),
+                 "SceneTemplate.InstantiateSceneAt must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"sceneCount\""),
-                 "SceneTemplate.sceneCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"SceneCount\""),
+                 "SceneTemplate.SceneCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"instantiateSceneAt\""),
-                 "SceneTemplate.instantiateSceneAt method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"InstantiateSceneAt\""),
+                 "SceneTemplate.InstantiateSceneAt method missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget must use Game3D PascalCase method naming") &&
@@ -386,29 +386,29 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.Evict\""),
                  "Assets3D.Evict must use Game3D PascalCase method naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_ready\""),
-                 "AssetHandle3D.ready getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_Ready\""),
+                 "AssetHandle3D.Ready getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_progress\""),
-                 "AssetHandle3D.progress getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_Progress\""),
+                 "AssetHandle3D.Progress getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_error\""),
-                 "AssetHandle3D.error getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_Error\""),
+                 "AssetHandle3D.Error getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.cancel\""),
-                 "AssetHandle3D.cancel must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.Cancel\""),
+                 "AssetHandle3D.Cancel must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.getEntity\""),
-                 "AssetHandle3D.getEntity must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetEntity\""),
+                 "AssetHandle3D.GetEntity must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.getTemplate\""),
-                 "AssetHandle3D.getTemplate must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetTemplate\""),
+                 "AssetHandle3D.GetTemplate must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.AssetHandle3D\""),
                  "AssetHandle3D class missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"ready\""),
-                 "AssetHandle3D.ready property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"Ready\""),
+                 "AssetHandle3D.Ready property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"LoadEntityAsync\""),
                  "Assets3D.LoadEntityAsync method missing") &&
@@ -424,158 +424,158 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"Evict\""), "Assets3D.Evict method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getEntity\""),
-                 "AssetHandle3D.getEntity method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetEntity\""),
+                 "AssetHandle3D.GetEntity method missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.New\""),
                  "WorldStream3D.New must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_residentCellCount\""),
-                 "WorldStream3D.residentCellCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_ResidentCellCount\""),
+                 "WorldStream3D.ResidentCellCount getter must use Game3D PascalCase naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_residentTerrainTileCount\""),
-             "WorldStream3D.residentTerrainTileCount getter must use Game3D lower/camel naming") &&
+             contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_ResidentTerrainTileCount\""),
+             "WorldStream3D.ResidentTerrainTileCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getResidentTerrainTile\""),
-                 "WorldStream3D.getResidentTerrainTile must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetResidentTerrainTile\""),
+                 "WorldStream3D.GetResidentTerrainTile must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellCount\""),
-                 "WorldStream3D.getCellCount must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellCount\""),
+                 "WorldStream3D.GetCellCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellName\""),
-                 "WorldStream3D.getCellName must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellName\""),
+                 "WorldStream3D.GetCellName must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellCenter\""),
-                 "WorldStream3D.getCellCenter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellCenter\""),
+                 "WorldStream3D.GetCellCenter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellResident\""),
-                 "WorldStream3D.getCellResident must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellResident\""),
+                 "WorldStream3D.GetCellResident must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellBytes\""),
-                 "WorldStream3D.getCellBytes must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellBytes\""),
+                 "WorldStream3D.GetCellBytes must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellMaterial\""),
-                 "WorldStream3D.getCellMaterial must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellMaterial\""),
+                 "WorldStream3D.GetCellMaterial must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellCollisionMask\""),
-                 "WorldStream3D.getCellCollisionMask must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellCollisionMask\""),
+                 "WorldStream3D.GetCellCollisionMask must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellTraversalCost\""),
-                 "WorldStream3D.getCellTraversalCost must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetCellTraversalCost\""),
+                 "WorldStream3D.GetCellTraversalCost must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileCount\""),
-                 "WorldStream3D.getTerrainTileCount must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileCount\""),
+                 "WorldStream3D.GetTerrainTileCount must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileName\""),
-                 "WorldStream3D.getTerrainTileName must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileName\""),
+                 "WorldStream3D.GetTerrainTileName must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileHeightmap\""),
-                 "WorldStream3D.getTerrainTileHeightmap must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileHeightmap\""),
+                 "WorldStream3D.GetTerrainTileHeightmap must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileCenter\""),
-                 "WorldStream3D.getTerrainTileCenter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileCenter\""),
+                 "WorldStream3D.GetTerrainTileCenter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileResident\""),
-                 "WorldStream3D.getTerrainTileResident must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileResident\""),
+                 "WorldStream3D.GetTerrainTileResident must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileBytes\""),
-                 "WorldStream3D.getTerrainTileBytes must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileBytes\""),
+                 "WorldStream3D.GetTerrainTileBytes must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileMaterial\""),
-                 "WorldStream3D.getTerrainTileMaterial must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileMaterial\""),
+                 "WorldStream3D.GetTerrainTileMaterial must use Game3D PascalCase naming") &&
          ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileCollisionMask\""),
-                "WorldStream3D.getTerrainTileCollisionMask must use Game3D lower/camel naming") &&
+        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileCollisionMask\""),
+                "WorldStream3D.GetTerrainTileCollisionMask must use Game3D PascalCase naming") &&
         ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileTraversalCost\""),
-                "WorldStream3D.getTerrainTileTraversalCost must use Game3D lower/camel naming") &&
+        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.GetTerrainTileTraversalCost\""),
+                "WorldStream3D.GetTerrainTileTraversalCost must use Game3D PascalCase naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_pendingRequestCount\""),
-                 "WorldStream3D.pendingRequestCount getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_PendingRequestCount\""),
+                 "WorldStream3D.PendingRequestCount getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_residentBytes\""),
-                 "WorldStream3D.residentBytes getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_ResidentBytes\""),
+                 "WorldStream3D.ResidentBytes getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.setCenter\""),
-                 "WorldStream3D.setCenter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.SetCenter\""),
+                 "WorldStream3D.SetCenter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.setRadii\""),
-                 "WorldStream3D.setRadii must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.SetRadii\""),
+                 "WorldStream3D.SetRadii must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.mountTiledTerrain\""),
-                 "WorldStream3D.mountTiledTerrain must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.MountTiledTerrain\""),
+                 "WorldStream3D.MountTiledTerrain must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.WorldStream3D\""),
                  "WorldStream3D class missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"residentCellCount\""),
-                 "WorldStream3D.residentCellCount property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"ResidentCellCount\""),
+                 "WorldStream3D.ResidentCellCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getResidentTerrainTile\""),
-                 "WorldStream3D.getResidentTerrainTile method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetResidentTerrainTile\""),
+                 "WorldStream3D.GetResidentTerrainTile method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getCellCount\""),
-                 "WorldStream3D.getCellCount method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetCellCount\""),
+                 "WorldStream3D.GetCellCount method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getCellResident\""),
-                 "WorldStream3D.getCellResident method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetCellResident\""),
+                 "WorldStream3D.GetCellResident method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getCellMaterial\""),
-                 "WorldStream3D.getCellMaterial method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetCellMaterial\""),
+                 "WorldStream3D.GetCellMaterial method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getCellTraversalCost\""),
-                 "WorldStream3D.getCellTraversalCost method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetCellTraversalCost\""),
+                 "WorldStream3D.GetCellTraversalCost method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileCount\""),
-                 "WorldStream3D.getTerrainTileCount method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetTerrainTileCount\""),
+                 "WorldStream3D.GetTerrainTileCount method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileHeightmap\""),
-                 "WorldStream3D.getTerrainTileHeightmap method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetTerrainTileHeightmap\""),
+                 "WorldStream3D.GetTerrainTileHeightmap method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileResident\""),
-                 "WorldStream3D.getTerrainTileResident method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetTerrainTileResident\""),
+                 "WorldStream3D.GetTerrainTileResident method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileMaterial\""),
-                 "WorldStream3D.getTerrainTileMaterial method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetTerrainTileMaterial\""),
+                 "WorldStream3D.GetTerrainTileMaterial method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileTraversalCost\""),
-                 "WorldStream3D.getTerrainTileTraversalCost method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetTerrainTileTraversalCost\""),
+                 "WorldStream3D.GetTerrainTileTraversalCost method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"setCenter\""),
-                 "WorldStream3D.setCenter method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetCenter\""),
+                 "WorldStream3D.SetCenter method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.playLayerAdditive\""),
-                 "Animator3D.playLayerAdditive must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.PlayLayerAdditive\""),
+                 "Animator3D.PlayLayerAdditive must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"playLayerAdditive\""),
-                 "Animator3D.playLayerAdditive method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"PlayLayerAdditive\""),
+                 "Animator3D.PlayLayerAdditive method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.crossfadeLayerAdditive\""),
-                 "Animator3D.crossfadeLayerAdditive must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.CrossfadeLayerAdditive\""),
+                 "Animator3D.CrossfadeLayerAdditive must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"crossfadeLayerAdditive\""),
-                 "Animator3D.crossfadeLayerAdditive method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"CrossfadeLayerAdditive\""),
+                 "Animator3D.CrossfadeLayerAdditive method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.setBlendTree\""),
-                 "Animator3D.setBlendTree must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.SetBlendTree\""),
+                 "Animator3D.SetBlendTree must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"setBlendTree\""),
-                 "Animator3D.setBlendTree method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetBlendTree\""),
+                 "Animator3D.SetBlendTree method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.setIKSolver\""),
-                 "Animator3D.setIKSolver must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.SetIKSolver\""),
+                 "Animator3D.SetIKSolver must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"setIKSolver\""),
-                 "Animator3D.setIKSolver method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetIKSolver\""),
+                 "Animator3D.SetIKSolver method missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.get_nodeAnimator\""),
-                 "Animator3D.nodeAnimator getter must use Game3D lower/camel naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.get_NodeAnimator\""),
+                 "Animator3D.NodeAnimator getter must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"nodeAnimator\""),
-                 "Animator3D.nodeAnimator property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"NodeAnimator\""),
+                 "Animator3D.NodeAnimator property missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadAnimation\""),
                  "Assets3D.LoadAnimation must expose skeletal animation loading") &&
@@ -1024,8 +1024,8 @@ bool check_runtime_surface_names() {
             contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverContactCount\""),
             "Physics3DWorld.LastSolverContactCount getter must use Graphics3D PascalCase naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.SetSolverIterations\""),
-                 "Physics3DWorld.SetSolverIterations must use Graphics3D PascalCase naming") &&
+    ok = require(!contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.SetSolverIterations\""),
+                 "Physics3DWorld.SetSolverIterations duplicate method must stay removed") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.RebaseOrigin\""),
                  "Physics3DWorld.RebaseOrigin must use Graphics3D PascalCase naming") &&
@@ -1097,8 +1097,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"LastSolverContactCount\""),
                  "Physics3DWorld.LastSolverContactCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"SetSolverIterations\""),
-                 "Physics3DWorld.SetSolverIterations method missing") &&
+    ok = require(!contains(runtime_def, "RT_METHOD(\"SetSolverIterations\""),
+                 "Physics3DWorld.SetSolverIterations duplicate method must stay removed") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"StepFixed\", \"i64(f64,f64,i64)\""),
                  "Physics3DWorld.StepFixed method missing") &&
@@ -1190,14 +1190,14 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"CastsShadows\""),
                  "Light3D.CastsShadows property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"SetCastsShadows\""),
-                 "Light3D.SetCastsShadows method missing") &&
+    ok = require(!contains(runtime_def, "RT_METHOD(\"SetCastsShadows\""),
+                 "Light3D.SetCastsShadows duplicate method must stay removed") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.SetEnabled\""),
-                 "Light3D.SetEnabled static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_Enabled\""),
+                 "Light3D.Enabled property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.SetCastsShadows\""),
-                 "Light3D.SetCastsShadows static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_CastsShadows\""),
+                 "Light3D.CastsShadows property setter missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasTexture\""),
                  "Material3D.HasTexture getter must use Graphics3D PascalCase naming") &&
@@ -1227,20 +1227,20 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"HasMetallicRoughnessMap\""),
                  "Material3D.HasMetallicRoughnessMap property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetMetallic\""),
-                 "Material3D.SetMetallic static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Metallic\""),
+                 "Material3D.Metallic property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetRoughness\""),
-                 "Material3D.SetRoughness static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Roughness\""),
+                 "Material3D.Roughness property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetAO\""),
-                 "Material3D.SetAO static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_AO\""),
+                 "Material3D.AO property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetEmissiveIntensity\""),
-                 "Material3D.SetEmissiveIntensity static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_EmissiveIntensity\""),
+                 "Material3D.EmissiveIntensity property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetNormalScale\""),
-                 "Material3D.SetNormalScale static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_NormalScale\""),
+                 "Material3D.NormalScale property setter missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_Anisotropy\""),
                  "Material3D.Anisotropy getter must use Graphics3D PascalCase naming") &&
@@ -1248,14 +1248,14 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Anisotropy\""),
                  "Material3D.Anisotropy setter must use get_/set_ property naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetAnisotropy\""),
-                 "Material3D.SetAnisotropy static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Anisotropy\""),
+                 "Material3D.Anisotropy property setter missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"Anisotropy\""),
                  "Material3D.Anisotropy property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetReflectivity\""),
-                 "Material3D.SetReflectivity static alias missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Reflectivity\""),
+                 "Material3D.Reflectivity property setter missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetClusteredLighting\""),
                  "Canvas3D.SetClusteredLighting must use Graphics3D PascalCase naming") &&
@@ -1293,8 +1293,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendStateChanges\""),
                  "Canvas3D.BackendStateChanges getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendName\""),
-                 "Canvas3D.BackendName getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_Backend\""),
+                 "Canvas3D.Backend getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendFallback\""),
                  "Canvas3D.BackendFallback getter must use Graphics3D PascalCase naming") &&
@@ -1414,54 +1414,56 @@ bool check_runtime_surface_names() {
          ok;
 
     static const char *forbidden[] = {
-        "Viper.Game3D.World3D.get_WorkerCount",
-        "Viper.Game3D.World3D.get_JobsEnabled",
-        "Viper.Game3D.World3D.SetWorkerCount",
-        "Viper.Game3D.World3D.get_FloatingOrigin",
-        "Viper.Game3D.World3D.set_FloatingOrigin",
-        "Viper.Game3D.World3D.get_WorldOrigin",
-        "Viper.Game3D.World3D.get_EntityCount",
-        "Viper.Game3D.World3D.get_BodyCount",
-        "Viper.Game3D.World3D.get_DrawCount",
-        "Viper.Game3D.World3D.get_VisibleNodeCount",
+        "Viper.Game3D.World3D.get_workerCount",
+        "Viper.Game3D.World3D.get_jobsEnabled",
+        "Viper.Game3D.World3D.setWorkerCount",
+        "Viper.Game3D.World3D.get_floatingOrigin",
+        "Viper.Game3D.World3D.set_floatingOrigin",
+        "Viper.Game3D.World3D.get_worldOrigin",
+        "Viper.Game3D.World3D.get_entityCount",
+        "Viper.Game3D.World3D.get_bodyCount",
+        "Viper.Game3D.World3D.get_drawCount",
+        "Viper.Game3D.World3D.get_visibleNodeCount",
         "Viper.Game3D.World3D.get_visible_node_count",
-        "Viper.Game3D.World3D.get_OccludedDrawCount",
+        "Viper.Game3D.World3D.get_occludedDrawCount",
         "Viper.Game3D.World3D.get_occluded_draw_count",
-        "Viper.Game3D.World3D.get_StreamResidentBytes",
+        "Viper.Game3D.World3D.get_streamResidentBytes",
         "Viper.Game3D.World3D.get_stream_resident_bytes",
-        "Viper.Game3D.World3D.SetOriginRebaseThreshold",
-        "Viper.Game3D.World3D.BakeNavMesh",
+        "Viper.Game3D.World3D.setOriginRebaseThreshold",
+        "Viper.Game3D.World3D.rebaseOrigin",
+        "Viper.Game3D.World3D.bakeNavMesh",
         "Viper.Game3D.World3D.bake_nav_mesh",
-        "Viper.Game3D.World3D.BakeTiledNavMesh",
+        "Viper.Game3D.World3D.bakeTiledNavMesh",
         "Viper.Game3D.World3D.bake_tiled_nav_mesh",
-        "Viper.Game3D.Collision3DEvent.get_ContactCount",
-        "Viper.Game3D.Collision3DEvent.ContactPoint",
-        "Viper.Game3D.Collision3DEvent.ContactNormal",
-        "Viper.Game3D.Collision3DEvent.ContactSeparation",
+        "Viper.Game3D.Collision3DEvent.get_contactCount",
+        "Viper.Game3D.Collision3DEvent.contactPoint",
+        "Viper.Game3D.Collision3DEvent.contactNormal",
+        "Viper.Game3D.Collision3DEvent.contactSeparation",
         "Viper.Game3D.Entity3D.fromNode",
         "Viper.Game3D.Entity3D.WrapNode",
-        "Viper.Game3D.Animator3D.PlayLayerAdditive",
+        "Viper.Game3D.Animator3D.playLayerAdditive",
         "Viper.Game3D.Animator3D.play_layer_additive",
-        "Viper.Game3D.Animator3D.CrossfadeLayerAdditive",
+        "Viper.Game3D.Animator3D.crossfadeLayerAdditive",
         "Viper.Game3D.Animator3D.crossfadeLayeradditive",
         "Viper.Game3D.Animator3D.crossfade_layer_additive",
-        "Viper.Game3D.Animator3D.SetBlendTree",
+        "Viper.Game3D.Animator3D.setBlendTree",
         "Viper.Game3D.Animator3D.set_blend_tree",
-        "Viper.Game3D.WorldStream3D.GetResidentTerrainTile",
+        "Viper.Game3D.Animator3D.setIKSolver",
+        "Viper.Game3D.WorldStream3D.getResidentTerrainTile",
         "Viper.Game3D.WorldStream3D.get_resident_terrain_tile",
         "Viper.Game3D.WorldStream3D.getresidentTerrainTile",
-        "Viper.Game3D.WorldStream3D.GetCellCount",
+        "Viper.Game3D.WorldStream3D.getCellCount",
         "Viper.Game3D.WorldStream3D.get_cellCount",
         "Viper.Game3D.WorldStream3D.get_cell_count",
-        "Viper.Game3D.WorldStream3D.GetCellMaterial",
+        "Viper.Game3D.WorldStream3D.getCellMaterial",
         "Viper.Game3D.WorldStream3D.get_cell_material",
-        "Viper.Game3D.WorldStream3D.GetTerrainTileCount",
+        "Viper.Game3D.WorldStream3D.getTerrainTileCount",
         "Viper.Game3D.WorldStream3D.get_terrainTileCount",
         "Viper.Game3D.WorldStream3D.get_terrain_tile_count",
-        "Viper.Game3D.WorldStream3D.GetTerrainTileHeightmap",
+        "Viper.Game3D.WorldStream3D.getTerrainTileHeightmap",
         "Viper.Game3D.WorldStream3D.get_terrainTileHeightmap",
         "Viper.Game3D.WorldStream3D.get_terrain_tile_heightmap",
-        "Viper.Game3D.WorldStream3D.GetTerrainTileMaterial",
+        "Viper.Game3D.WorldStream3D.getTerrainTileMaterial",
         "Viper.Game3D.WorldStream3D.get_terrain_tile_material",
         "Viper.Graphics3D.Physics3DWorld.get_solverIterations",
         "Viper.Graphics3D.Physics3DWorld.get_lastSolverIslandCount",
@@ -1532,7 +1534,6 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.IKSolver3D.setTarget",
         "Viper.Graphics3D.IKSolver3D.setWeight",
         "Viper.Graphics3D.AnimController3D.setIKSolver",
-        "Viper.Game3D.Animator3D.SetIKSolver",
         "Viper.Game3D.Animator3D.setIkSolver",
         "Viper.Graphics3D.NavMesh3D.addOffMeshLink",
         "Viper.Graphics3D.NavMesh3D.AddOffmeshLink",

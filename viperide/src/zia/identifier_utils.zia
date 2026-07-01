@@ -45,12 +45,12 @@ expose func IsIdentPart(ch: String) -> Boolean {
 /// @param name Candidate identifier.
 /// @return True when the name is safe to emit into generated Zia source.
 expose func IsValidIdentifier(name: String) -> Boolean {
-    if Str.Length(name) == 0 { return false; }
+    if Str.get_Length(name) == 0 { return false; }
     if IsKeyword(name) { return false; }
     var first = Str.MidLen(name, 1, 1);
     if IsIdentStart(first) == false { return false; }
     var i = 2;
-    while i <= Str.Length(name) {
+    while i <= Str.get_Length(name) {
         if IsIdentPart(Str.MidLen(name, i, 1)) == false { return false; }
         i = i + 1;
     }
@@ -70,7 +70,7 @@ expose func IsWordBoundaryMatch(line: String, startCol: Integer, len: Integer) -
         beforeOk = IsIdentPart(Str.MidLen(line, startCol - 1, 1)) == false;
     }
     var afterCol = startCol + len;
-    if afterCol <= Str.Length(line) {
+    if afterCol <= Str.get_Length(line) {
         afterOk = IsIdentPart(Str.MidLen(line, afterCol, 1)) == false;
     }
     return beforeOk and afterOk;
@@ -85,7 +85,7 @@ expose func IsWordBoundaryMatch(line: String, startCol: Integer, len: Integer) -
 expose func ReadIdentifierAt(text: String, startPos: Integer) -> String {
     var pos = startPos;
     var name = "";
-    while pos <= Str.Length(text) {
+    while pos <= Str.get_Length(text) {
         var ch = Str.MidLen(text, pos, 1);
         if name == "" {
             if IsIdentStart(ch) == false { return ""; }

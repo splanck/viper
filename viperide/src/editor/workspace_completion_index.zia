@@ -151,7 +151,7 @@ class WorkspaceCompletionIndex {
             var lineText = Obj.ToString(Seq.Get(parts, 3));
             if name == "" or lineText == "0" { continue; }
 
-            var symbolLine = Convert.ToInt(lineText) - lineOffset;
+            var symbolLine = Convert.ToInt64(lineText) - lineOffset;
             if AddIfMissing(name, kind, typeText, filePath, symbolLine, maxItems) {
                 added = added + 1;
             }

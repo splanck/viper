@@ -1923,9 +1923,8 @@ Flush();             // Flush output buffer
 #### Time
 
 ```rust
-// SleepMs is available under Viper.Time (RT_ALIAS from ClockSleep)
-Viper.Time.SleepMs(ms);         // Sleep for milliseconds
-Viper.Time.GetTickCount();      // Monotonic milliseconds (CLOCK_MONOTONIC, not Unix epoch)
+Viper.Time.Clock.Sleep(ms);         // Sleep for milliseconds
+Viper.Time.Clock.Ticks();      // Monotonic milliseconds (CLOCK_MONOTONIC, not Unix epoch)
 ```
 
 #### Math

@@ -1,7 +1,7 @@
 ' EXPECT_OUT: RESULT: ok
 ' COVER: Viper.String.FromStr
 ' COVER: Viper.String.IsEmpty
-' COVER: Viper.String.Length
+' COVER: Viper.String.get_Length
 ' COVER: Viper.String.Asc
 ' COVER: Viper.String.Chr
 ' COVER: Viper.String.Cmp

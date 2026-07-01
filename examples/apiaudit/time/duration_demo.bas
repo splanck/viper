@@ -60,11 +60,11 @@ PRINT "TotalSecondsF(5500ms): "; Viper.Time.Duration.TotalSecondsF(Viper.Time.Du
 
 ' --- Components ---
 PRINT "--- Components ---"
-PRINT "Days: "; Viper.Time.Duration.Days(cx)
-PRINT "Hours: "; Viper.Time.Duration.Hours(cx)
-PRINT "Minutes: "; Viper.Time.Duration.Minutes(cx)
-PRINT "Seconds: "; Viper.Time.Duration.Seconds(cx)
-PRINT "Millis: "; Viper.Time.Duration.Millis(cx)
+PRINT "Days: "; Viper.Time.Duration.get_Days(cx)
+PRINT "Hours: "; Viper.Time.Duration.get_Hours(cx)
+PRINT "Minutes: "; Viper.Time.Duration.get_Minutes(cx)
+PRINT "Seconds: "; Viper.Time.Duration.get_Seconds(cx)
+PRINT "Millis: "; Viper.Time.Duration.get_Millis(cx)
 
 ' --- Arithmetic ---
 PRINT "--- Arithmetic ---"

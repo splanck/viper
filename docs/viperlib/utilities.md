@@ -12,25 +12,24 @@ last-verified: 2026-05-13
 
 ## Contents
 
-- [Viper.Convert](#viperconvert)
+- [Viper.Core.Convert](#vipercoreconvert)
 - [Viper.Text.Fmt](#viperfmt)
 - [Viper.Diagnostics.Log](#viperlog)
-- [Viper.Parse](#viperparse)
+- [Viper.Core.Parse](#vipercoreparse)
 
 ---
 
-## Viper.Convert
+## Viper.Core.Convert
 
 Type conversion utilities.
 
 **Type:** Static utility class
-**Runtime namespace:** `Viper.Core.Convert`; public alias: `Viper.Convert`
+**Runtime namespace:** `Viper.Core.Convert`
 
 ### Methods
 
 | Method                   | Signature         | Description                                      |
 |--------------------------|-------------------|--------------------------------------------------|
-| `ToInt(text)`            | `Integer(String)` | Parses a string as a 64-bit integer (alias for ToInt64) |
 | `ToInt64(text)`          | `Integer(String)` | Parses a string as a 64-bit integer              |
 | `ToDouble(text)`         | `Double(String)`  | Parses a string as a double-precision float      |
 | `NumToInt(value)`        | `Integer(Double)` | Converts a floating-point value to integer (truncates) |
@@ -39,7 +38,7 @@ Type conversion utilities.
 
 ### Conversion Rules
 
-- `ToInt` and `ToInt64` parse decimal integer text with optional leading/trailing ASCII whitespace.
+- `ToInt64` parses decimal integer text with optional leading/trailing ASCII whitespace.
 - `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. It also accepts the formatter's non-finite spellings: `NaN`, `Inf`, and `-Inf`. C-style hexadecimal floats such as `0x1p4`, overflow, embedded NUL bytes, and non-whitespace trailing characters are rejected.
 - `ToString_Double` uses locale-independent round-trip precision for finite values, and emits `NaN`, `Inf`, or `-Inf` for non-finite values, so text it emits can be parsed back through `ToDouble`.
 - Embedded NUL bytes and non-whitespace trailing characters are rejected.
@@ -51,7 +50,7 @@ Type conversion utilities.
 module ConvertDemo;
 
 bind Viper.Terminal;
-bind Viper.Convert as Convert;
+bind Viper.Core.Convert as Convert;
 
 func start() {
     // Parse string to integer
@@ -75,16 +74,16 @@ DIM s AS STRING
 s = "12345"
 
 DIM n AS INTEGER
-n = Viper.Convert.ToInt64(s)
+n = Viper.Core.Convert.ToInt64(s)
 PRINT n + 1  ' Output: 12346
 
 DIM d AS DOUBLE
-d = Viper.Convert.ToDouble("3.14159")
+d = Viper.Core.Convert.ToDouble("3.14159")
 PRINT d * 2  ' Output: 6.28318
 
 ' Convert back to string
-PRINT Viper.Convert.ToString_Int(42)      ' Output: "42"
-PRINT Viper.Convert.ToString_Double(2.5)  ' Output: "2.5"
+PRINT Viper.Core.Convert.ToString_Int(42)      ' Output: "42"
+PRINT Viper.Core.Convert.ToString_Double(2.5)  ' Output: "2.5"
 ```
 
 ---
@@ -121,7 +120,7 @@ String formatting utilities for converting values to formatted strings.
 ### Formatting Rules
 
 - Numeric formatting is locale-stable: decimal output uses `.` even when the process locale uses another separator.
-- `Num` emits enough significant digits for finite values to round-trip through the `Viper.Parse` numeric helpers.
+- `Num` emits enough significant digits for finite values to round-trip through the `Viper.Core.Parse` numeric helpers.
 - Signed zero formats as zero in `Num`, `NumFixed`, `NumSci`, `NumPct`, and `Currency`.
 - `IntPad` defaults to space padding when the pad string is null, empty, or does not start with a valid UTF-8 character. It uses the first full UTF-8 character from valid pad strings and supports widths beyond 255 subject to allocation limits.
 - `Size` chooses units using integer byte thresholds, then promotes near-boundary rounded displays so output does not show values such as `1024.0 PB`.
@@ -230,7 +229,7 @@ Structured logging with configurable log levels.
 - Format: `[LEVEL] YYYY-MM-DD HH:MM:SS message`
 - Message output is length-aware. Embedded NUL bytes and control characters such as newline, carriage return, and tab are escaped so one log call produces one physical log line, even when multiple threads log concurrently. If heap allocation for the full line fails, the logger falls back to serialized streaming instead of dropping the message.
 - Log level reads and writes are atomic and safe to call concurrently.
-- Set `Level = Viper.Diagnostics.Log.OFF` to disable all logging
+- Set `Level = Viper.Diagnostics.Log.LevelOff` to disable all logging
 
 ### Zia Example
 
@@ -265,27 +264,27 @@ Viper.Diagnostics.Log.Error("Failed to connect to database")
 Viper.Diagnostics.Log.Debug("Entering function processData")
 
 ' Enable debug logging
-Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.DEBUG
+Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.LevelDebug
 Viper.Diagnostics.Log.Debug("Now this message appears")
 
 ' Check if level is enabled before expensive formatting
-IF Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.DEBUG) THEN
+IF Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.LevelDebug) THEN
     Viper.Diagnostics.Log.Debug("User count: " + Viper.Text.Fmt.Int(userCount))
 END IF
 
 ' Suppress all logging
-Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.OFF
+Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.LevelOff
 ```
 
 ---
 
-## Viper.Parse
+## Viper.Core.Parse
 
-Safe parsing utilities with error handling. Unlike `Viper.Convert` which traps on invalid input, these methods allow
+Safe parsing utilities with error handling. Unlike `Viper.Core.Convert` which traps on invalid input, these methods allow
 graceful error handling.
 
 **Type:** Static utility class
-**Runtime namespace:** `Viper.Core.Parse`; public alias: `Viper.Parse`
+**Runtime namespace:** `Viper.Core.Parse`
 
 ### Methods
 
@@ -300,12 +299,10 @@ graceful error handling.
 | `IsInt(text)`                    | `Boolean(String)`                   | Check if string is a valid integer        |
 | `IsNum(text)`                    | `Boolean(String)`                   | Check if string is a valid number         |
 | `IntRadix(text, radix, default)` | `Integer(String, Integer, Integer)` | Parse integer in given radix with default |
-| `Int64(text)`                    | `Option<Integer>(String)`           | Parse integer or return `None`       |
-| `Double(text)`                   | `Option<Double>(String)`            | Parse double or return `None`        |
 
 ### Notes
 
-- The `Try*`, `Int64`, and `Double` parser forms return managed `Option`
+- The `Try*` parser forms return managed `Option`
   objects. Raw output-pointer helpers are runtime-internal and are not part of
   the Zia or BASIC source surface.
 - **Boolean parsing** accepts (case-insensitive):
@@ -329,26 +326,26 @@ bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Parse with default fallback
-    var port = Viper.Parse.IntOr("8080", 3000);
+    var port = Viper.Core.Parse.IntOr("8080", 3000);
     Say("Port: " + Fmt.Int(port));             // Output: Port: 8080
 
-    var timeout = Viper.Parse.NumOr("invalid", 30.0);
+    var timeout = Viper.Core.Parse.NumOr("invalid", 30.0);
     Say("Timeout: " + Fmt.Num(timeout));       // Output: Timeout: 30
 
     // Validate input
-    if Viper.Parse.IsInt("42") {
+    if Viper.Core.Parse.IsInt("42") {
         Say("42 is a valid integer");          // Output: 42 is a valid integer
     }
-    if !Viper.Parse.IsInt("hello") {
+    if !Viper.Core.Parse.IsInt("hello") {
         Say("hello is not a valid integer");   // Output: hello is not a valid integer
     }
 
     // Boolean parsing
-    var enabled = Viper.Parse.BoolOr("yes", false);
+    var enabled = Viper.Core.Parse.BoolOr("yes", false);
     Say("Enabled: " + Fmt.Bool(enabled));      // Output: Enabled: true
 
     // Hex parsing with default
-    var color = Viper.Parse.IntRadix("ff", 16, 0);
+    var color = Viper.Core.Parse.IntRadix("ff", 16, 0);
     Say("Color: " + Fmt.Int(color));           // Output: Color: 255
 }
 ```
@@ -357,34 +354,34 @@ func start() {
 
 ```basic
 ' Parse with default fallback
-DIM port AS INTEGER = Viper.Parse.IntOr(portStr, 8080)
-DIM timeout AS DOUBLE = Viper.Parse.NumOr(timeoutStr, 30.0)
-DIM verbose AS INTEGER = Viper.Parse.BoolOr(verboseStr, FALSE)
+DIM port AS INTEGER = Viper.Core.Parse.IntOr(portStr, 8080)
+DIM timeout AS DOUBLE = Viper.Core.Parse.NumOr(timeoutStr, 30.0)
+DIM verbose AS INTEGER = Viper.Core.Parse.BoolOr(verboseStr, FALSE)
 
 ' Validate before use
-IF Viper.Parse.IsInt(userInput) THEN
-    DIM value AS INTEGER = Viper.Convert.ToInt64(userInput)
+IF Viper.Core.Parse.IsInt(userInput) THEN
+    DIM value AS INTEGER = Viper.Core.Convert.ToInt64(userInput)
     PRINT "Valid integer: "; value
 ELSE
     PRINT "Invalid input"
 END IF
 
 ' Parse hex value with default
-DIM color AS INTEGER = Viper.Parse.IntRadix("ff0000", 16, 0)
+DIM color AS INTEGER = Viper.Core.Parse.IntRadix("ff0000", 16, 0)
 
 ' Parse boolean from config
-DIM enabled AS INTEGER = Viper.Parse.BoolOr("yes", FALSE)
+DIM enabled AS INTEGER = Viper.Core.Parse.BoolOr("yes", FALSE)
 PRINT enabled  ' Output: 1 (true)
 ```
 
-### Comparison with Viper.Convert
+### Comparison with Viper.Core.Convert
 
 | Scenario                      | Use               |
 |-------------------------------|-------------------|
-| Trusted input (internal data) | `Viper.Convert`   |
-| User input (may be invalid)   | `Viper.Parse`     |
-| Need default value            | `Viper.Parse.*Or` |
-| Need validation only          | `Viper.Parse.Is*` |
+| Trusted input (internal data) | `Viper.Core.Convert`   |
+| User input (may be invalid)   | `Viper.Core.Parse`     |
+| Need default value            | `Viper.Core.Parse.*Or` |
+| Need validation only          | `Viper.Core.Parse.Is*` |
 
 ---
 

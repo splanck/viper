@@ -66,7 +66,7 @@ class Renderer {
         canvas = Canvas3D.New(config.WINDOW_TITLE, width, height);
         Canvas3D.SetDTMax(canvas, 50);
         Canvas3D.SetOcclusionCulling(canvas, true);
-        Say("Backend: " + Canvas3D.get_Backend(canvas));
+        Say("Backend: " + canvas.Backend);
 
         var aspect: Float = (width + 0.0) / (height + 0.0);
         cam = Camera3D.New(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
@@ -178,30 +178,30 @@ class Renderer {
 
     /// @brief True if the user closed the window.
     expose func shouldClose() -> Boolean {
-        return Canvas3D.get_ShouldClose(canvas);
+        return canvas.ShouldClose;
     }
 
     /// @brief Frame delta in seconds, clamped to DT_CLAMP to prevent
     ///        physics tunneling on hitches.
     expose func getDeltaTime() -> Float {
-        var raw: Float = (Canvas3D.get_DeltaTime(canvas) + 0.0) / 1000.0;
+        var raw: Float = (canvas.DeltaTime + 0.0) / 1000.0;
         if (raw > config.DT_CLAMP) { raw = config.DT_CLAMP; }
         return raw;
     }
 
     /// @brief Recent frame rate for HUD display.
     expose func getFps() -> Integer {
-        return Canvas3D.get_Fps(canvas);
+        return canvas.Fps;
     }
 
     /// @brief Window pixel width.
     expose func getWidth() -> Integer {
-        return Canvas3D.get_Width(canvas);
+        return canvas.Width;
     }
 
     /// @brief Window pixel height.
     expose func getHeight() -> Integer {
-        return Canvas3D.get_Height(canvas);
+        return canvas.Height;
     }
 
     /// @brief Bump the pin spotlight intensity (used for strike celebrations).

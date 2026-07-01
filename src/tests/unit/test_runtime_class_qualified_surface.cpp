@@ -11,7 +11,7 @@
 // Key invariants:
 //   - runtime.def is the single source of truth and is consumed by X-macro
 //     expansion, not by text scraping.
-//   - Class-qualified aliases must resolve to a callable class member with the
+//   - Class-qualified runtime functions must resolve to a callable class member with the
 //     same public member name.
 //   - Direct runtime class leaf names under Viper.* must not collide unless
 //     they are intentionally reused across 2D/3D namespaces.
@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <map>
 #include <set>
@@ -59,11 +60,6 @@ struct RuntimeFunc {
     std::string signature;
 };
 
-struct RuntimeAlias {
-    std::string canonical;
-    std::string target_id;
-};
-
 struct RuntimeProp {
     std::string name;
     std::string type;
@@ -88,7 +84,6 @@ struct RuntimeClass {
 
 struct RuntimeSurface {
     std::vector<RuntimeFunc> funcs;
-    std::vector<RuntimeAlias> aliases;
     std::vector<RuntimeClass> classes;
     RuntimeClass *current_class = nullptr;
 
@@ -97,10 +92,6 @@ struct RuntimeSurface {
                   const char *canonical,
                   const char *signature) {
         funcs.push_back({id, c_symbol, canonical, signature});
-    }
-
-    void add_alias(const char *canonical, const char *target_id) {
-        aliases.push_back({canonical, target_id});
     }
 
     void begin_class(const char *name,
@@ -134,7 +125,6 @@ RuntimeSurface load_runtime_surface() {
 
 #define RT_FUNC(id, c_symbol, canonical, signature, ...)                                           \
     surface.add_func(#id, #c_symbol, canonical, signature);
-#define RT_ALIAS(canonical, target_id) surface.add_alias(canonical, #target_id);
 #define RT_BRIDGE(target_id, roles)
 #define RT_CLASS_BEGIN(name, type_id, layout, ctor_id)                                             \
     surface.begin_class(name, #type_id, layout, #ctor_id);
@@ -148,7 +138,6 @@ RuntimeSurface load_runtime_surface() {
 #undef RT_PROP
 #undef RT_CLASS_BEGIN
 #undef RT_BRIDGE
-#undef RT_ALIAS
 #undef RT_FUNC
 
     return surface;
@@ -162,10 +151,11 @@ bool is_scoped_class(std::string_view class_name) {
     return starts_with(class_name, "Viper.Graphics3D.") || starts_with(class_name, "Viper.Game3D.");
 }
 
-std::string upper_first(std::string_view value) {
+std::string lower_ascii(std::string_view value) {
     std::string out(value);
-    if (!out.empty() && out.front() >= 'a' && out.front() <= 'z')
-        out.front() = static_cast<char>(out.front() - 'a' + 'A');
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
     return out;
 }
 
@@ -264,7 +254,6 @@ bool signature_exception_applies(std::string_view class_name,
 struct RuntimeIndex {
     std::map<std::string, const RuntimeFunc *> funcs_by_id;
     std::map<std::string, const RuntimeFunc *> funcs_by_canonical;
-    std::map<std::string, const RuntimeAlias *> aliases_by_canonical;
     std::map<std::string, const RuntimeClass *> classes_by_name;
 };
 
@@ -274,8 +263,6 @@ RuntimeIndex build_index(const RuntimeSurface &surface) {
         index.funcs_by_id.emplace(func.id, &func);
         index.funcs_by_canonical.emplace(func.canonical, &func);
     }
-    for (const RuntimeAlias &alias : surface.aliases)
-        index.aliases_by_canonical.emplace(alias.canonical, &alias);
     for (const RuntimeClass &runtime_class : surface.classes)
         index.classes_by_name.emplace(runtime_class.name, &runtime_class);
     return index;
@@ -292,10 +279,6 @@ const RuntimeFunc *resolve_func(const RuntimeIndex &index, const std::string &id
     auto canonical_it = index.funcs_by_canonical.find(id_or_canonical);
     if (canonical_it != index.funcs_by_canonical.end())
         return canonical_it->second;
-
-    auto alias_it = index.aliases_by_canonical.find(id_or_canonical);
-    if (alias_it != index.aliases_by_canonical.end())
-        return resolve_func(index, alias_it->second->target_id);
 
     return nullptr;
 }
@@ -384,17 +367,6 @@ bool check_coverage(const RuntimeSurface &surface, const RuntimeIndex &index) {
         }
     }
 
-    for (const RuntimeAlias &alias : surface.aliases) {
-        const RuntimeClass *owner = find_owner_class(index, alias.canonical);
-        if (!owner)
-            continue;
-        const RuntimeFunc *target = resolve_func(index, alias.target_id);
-        if (!is_explicit_method(reachable, alias.canonical, target) &&
-            !is_reachable(reachable, alias.canonical, target)) {
-            failures.push_back(alias.canonical + " -> " + alias.target_id);
-        }
-    }
-
     if (failures.empty())
         return true;
 
@@ -413,36 +385,14 @@ bool has_getter_name(const RuntimeClass &runtime_class,
     return getter && getter->canonical == runtime_class.name + ".get_" + prop.name;
 }
 
-std::vector<std::string> setter_method_names(const RuntimeProp &prop) {
-    if (!prop.name.empty() && prop.name.front() >= 'a' && prop.name.front() <= 'z')
-        return {"set" + upper_first(prop.name)};
-    return {"Set" + prop.name};
-}
-
-bool has_setter_symmetry(const RuntimeClass &runtime_class,
-                         const RuntimeIndex &index,
-                         const RuntimeProp &prop) {
+bool has_setter_name(const RuntimeClass &runtime_class,
+                     const RuntimeIndex &index,
+                     const RuntimeProp &prop) {
     if (prop.setter_id == "none")
         return true;
 
-    if (!resolve_func(index, prop.setter_id))
-        return false;
-
-    std::vector<std::string> candidates = setter_method_names(prop);
-    for (const RuntimeMethod &method : runtime_class.methods) {
-        for (const std::string &candidate : candidates)
-            if (method.name == candidate && resolve_func(index, method.target_id))
-                return true;
-    }
-
-    for (const std::string &candidate : candidates) {
-        auto alias_it = index.aliases_by_canonical.find(runtime_class.name + "." + candidate);
-        if (alias_it != index.aliases_by_canonical.end() &&
-            resolve_func(index, alias_it->second->target_id)) {
-            return true;
-        }
-    }
-    return false;
+    const RuntimeFunc *setter = resolve_func(index, prop.setter_id);
+    return setter && setter->canonical == runtime_class.name + ".set_" + prop.name;
 }
 
 bool check_naming_symmetry(const RuntimeSurface &surface, const RuntimeIndex &index) {
@@ -455,9 +405,10 @@ bool check_naming_symmetry(const RuntimeSurface &surface, const RuntimeIndex &in
                 failures.push_back(runtime_class.name + "." + prop.name +
                                    " is missing qualified getter " + runtime_class.name + ".get_" +
                                    prop.name);
-            if (!has_setter_symmetry(runtime_class, index, prop))
-                failures.push_back(runtime_class.name + "." + prop.name + " setter is missing " +
-                                   setter_method_names(prop).front() + " RT_METHOD or RT_ALIAS");
+            if (!has_setter_name(runtime_class, index, prop))
+                failures.push_back(runtime_class.name + "." + prop.name +
+                                   " is missing qualified setter " + runtime_class.name +
+                                   ".set_" + prop.name);
         }
     }
 
@@ -552,6 +503,128 @@ bool check_runtime_class_leaf_names(const RuntimeSurface &surface) {
     return false;
 }
 
+bool check_property_method_collisions(const RuntimeSurface &surface) {
+    std::vector<std::string> failures;
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        std::map<std::string, std::string> props_by_lower;
+        for (const RuntimeProp &prop : runtime_class.props)
+            props_by_lower.emplace(lower_ascii(prop.name), prop.name);
+
+        for (const RuntimeMethod &method : runtime_class.methods) {
+            auto prop_it = props_by_lower.find(lower_ascii(method.name));
+            if (prop_it != props_by_lower.end()) {
+                failures.push_back(runtime_class.name + "." + prop_it->second +
+                                   " collides with method " + method.name);
+            }
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Runtime property/method name collisions:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool check_redundant_property_accessor_methods(const RuntimeSurface &surface) {
+    std::vector<std::string> failures;
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        for (const RuntimeProp &prop : runtime_class.props) {
+            for (const RuntimeMethod &method : runtime_class.methods) {
+                if (prop.getter_id != "none" && method.target_id == prop.getter_id &&
+                    method.name == "Get" + prop.name) {
+                    failures.push_back(runtime_class.name + "." + method.name +
+                                       " duplicates property getter " + prop.name);
+                }
+                if (prop.setter_id != "none" && method.target_id == prop.setter_id &&
+                    method.name == "Set" + prop.name) {
+                    failures.push_back(runtime_class.name + "." + method.name +
+                                       " duplicates property setter " + prop.name);
+                }
+            }
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Redundant runtime property accessor methods:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool check_property_accessor_types(const RuntimeSurface &surface, const RuntimeIndex &index) {
+    std::vector<std::string> failures;
+    for (const RuntimeClass &runtime_class : surface.classes) {
+        for (const RuntimeProp &prop : runtime_class.props) {
+            const RuntimeFunc *getter = resolve_func(index, prop.getter_id);
+            if (getter) {
+                size_t open = getter->signature.find('(');
+                std::string getter_ret =
+                    open == std::string::npos ? getter->signature : getter->signature.substr(0, open);
+                if (getter_ret != prop.type) {
+                    failures.push_back(runtime_class.name + "." + prop.name + " getter returns " +
+                                       getter_ret + " but property type is " + prop.type);
+                }
+            }
+
+            const RuntimeFunc *setter = resolve_func(index, prop.setter_id);
+            if (setter) {
+                size_t open = setter->signature.find('(');
+                size_t close = setter->signature.rfind(')');
+                std::vector<std::string> args;
+                std::string setter_ret = setter->signature;
+                if (open != std::string::npos && close != std::string::npos && close > open) {
+                    setter_ret = setter->signature.substr(0, open);
+                    args = split_signature_args(
+                        std::string_view(setter->signature).substr(open + 1, close - open - 1));
+                }
+                if (setter_ret != "void" || args.empty() || args.back() != prop.type) {
+                    failures.push_back(runtime_class.name + "." + prop.name + " setter signature " +
+                                       setter->signature + " does not set property type " +
+                                       prop.type);
+                }
+            }
+        }
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Runtime property accessor type violations:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
+bool check_duplicate_function_symbol_signatures(const RuntimeSurface &surface) {
+    std::map<std::string, std::vector<std::string>> names_by_symbol_signature;
+    for (const RuntimeFunc &func : surface.funcs)
+        names_by_symbol_signature[func.c_symbol + "|" + func.signature].push_back(func.canonical);
+
+    std::vector<std::string> failures;
+    for (const auto &entry : names_by_symbol_signature) {
+        if (entry.second.size() <= 1)
+            continue;
+        std::ostringstream line;
+        line << entry.first << " exported as";
+        for (const std::string &canonical : entry.second)
+            line << " " << canonical;
+        failures.push_back(line.str());
+    }
+
+    if (failures.empty())
+        return true;
+
+    std::cerr << "Duplicate runtime function symbol/signature exports:\n";
+    for (const std::string &failure : failures)
+        std::cerr << "  " << failure << "\n";
+    return false;
+}
+
 } // namespace
 
 int main() {
@@ -563,6 +636,10 @@ int main() {
     ok = check_naming_symmetry(surface, index) && ok;
     ok = check_method_signatures(surface, index) && ok;
     ok = check_runtime_class_leaf_names(surface) && ok;
+    ok = check_property_method_collisions(surface) && ok;
+    ok = check_redundant_property_accessor_methods(surface) && ok;
+    ok = check_property_accessor_types(surface, index) && ok;
+    ok = check_duplicate_function_symbol_signatures(surface) && ok;
 
     if (!ok)
         return 1;

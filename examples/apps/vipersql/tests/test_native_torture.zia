@@ -255,7 +255,7 @@ func torture6_string_pressure() {
     if row != null {
         var rr = row;
         var val = rr.getValue(0).toString();
-        assert(String.Length(val) == 500, "strpress: row 49 has 500 chars");
+        assert(Viper.String.get_Length(val) == 500, "strpress: row 49 has 500 chars");
     }
 
     // LIKE on long strings

@@ -2029,7 +2029,7 @@ class DdlHandler {
         var lines = new List[String]();
         var current = "";
         var i = 0;
-        var len = String.Length(s);
+        var len = Viper.String.get_Length(s);
         while i < len {
             var ch = String.Substring(s, i, 1);
             if ch == "\n" {

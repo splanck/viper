@@ -70,13 +70,13 @@ func start() {
         fail("synthetic wheel precision mismatch");
         return;
     }
-    if (near(Canvas3D.get_DeltaTimeSec(canvas), 0.1, 0.0001) == false) {
+    if (near(canvas.DeltaTimeSec, 0.1, 0.0001) == false) {
         fail("synthetic clock mismatch");
         return;
     }
 
-    applyCameraInput(camA, Canvas3D.get_DeltaTimeSec(canvas));
-    var aPos = Camera3D.get_Position(camA);
+    applyCameraInput(camA, canvas.DeltaTimeSec);
+    var aPos = camA.Position;
     if (Vec3.get_Z(aPos) >= 5.0) {
         fail("synthetic WASD frame did not move camera forward");
         return;
@@ -101,8 +101,8 @@ func start() {
     Canvas3D.PushSyntheticKey(canvas, keyW, true);
     Canvas3D.PushSyntheticMouse(canvas, 9.0, -4.0, leftMask, 2.0);
     Canvas3D.AdvanceSyntheticFrame(canvas);
-    applyCameraInput(camB, Canvas3D.get_DeltaTimeSec(canvas));
-    var bPos = Camera3D.get_Position(camB);
+    applyCameraInput(camB, canvas.DeltaTimeSec);
+    var bPos = camB.Position;
 
     if (near(Vec3.get_X(aPos), Vec3.get_X(bPos), 0.0001) == false ||
         near(Vec3.get_Y(aPos), Vec3.get_Y(bPos), 0.0001) == false ||

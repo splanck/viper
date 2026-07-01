@@ -91,7 +91,7 @@ func main() {
     if st3.entries.count() != 0 { Terminal.Say("RESULT: fail status not clean after commit"); return; }
 
     // Branch query returns something (master/main).
-    if Str.Length(git.CurrentBranch()) == 0 { Terminal.Say("RESULT: fail empty branch name"); return; }
+    if Str.get_Length(git.CurrentBranch()) == 0 { Terminal.Say("RESULT: fail empty branch name"); return; }
 
     Terminal.Say("RESULT: ok");
 }

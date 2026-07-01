@@ -727,17 +727,14 @@ String manipulation:
 Type conversion:
 
 - `Viper.Core.Convert.ToDouble(str)->f64` — String to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
-- `Viper.Core.Convert.ToInt(str)->i64` — String to int (throws on error)
 - `Viper.Core.Convert.ToInt64(str)->i64` — String to int (throws on error)
 - `Viper.Core.Convert.NumToInt(f64)->i64` — Truncate/clamp double to int (`NaN` becomes `0`)
 - `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
 - `Viper.Core.Convert.ToString_Int(i64)->str` — Convert int64 to string
 
-`Viper.Convert` is a public alias for the same methods.
-
 #### Viper.Core.Parse
 
-Type parsing with explicit error codes:
+Type parsing with explicit error handling:
 
 - `Viper.Core.Parse.TryInt(str)->obj<Viper.Option>` — Try to parse integer
 - `Viper.Core.Parse.TryNum(str)->obj<Viper.Option>` — Try to parse double
@@ -748,13 +745,8 @@ Type parsing with explicit error codes:
 - `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
 - `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default; `+` and `-` are accepted only for decimal, prefixes are rejected
-- `Viper.Core.Parse.Double(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
-- `Viper.Core.Parse.Int64(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
-- `Viper.Core.Parse.DoubleOption(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
-- `Viper.Core.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 
-`Viper.Parse` is a public alias for the same methods. Numeric parsing accepts
-explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
+Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
 
 #### Viper.Core.Diagnostics
 
@@ -859,8 +851,8 @@ first‑class and tested:
 
 - `Viper.Time` — Time and timing utilities (static utility)
     - Methods (static):
-        - `GetTickCount() -> I64` — Milliseconds since program start (alias for `Viper.Time.Clock.Ticks`)
-        - `SleepMs(I64 ms) -> VOID` — Pause execution for milliseconds (alias for `Viper.Time.Clock.Sleep`)
+        - `Clock.Ticks() -> I64` — Milliseconds since program start
+        - `Clock.Sleep(I64 ms) -> VOID` — Pause execution for milliseconds
 
 #### Viper.Terminal
 
@@ -878,23 +870,15 @@ first‑class and tested:
 
 **Note:** Legacy `Viper.System.*` aliases for core namespaces have been removed. Use the canonical `Viper.*` names, except for dedicated System services such as `Viper.System.Clipboard`.
 
-### Legacy Aliases
+### Canonical Runtime Names
 
-For backward compatibility, legacy `rt_*` function names are maintained as aliases when built with
-`-DVIPER_RUNTIME_NS_DUAL=ON` (currently the default). Examples:
-
-- `rt_print_str` → `Viper.Terminal.PrintStr`
-- `rt_print_i64` → `Viper.Terminal.PrintI64`
-- `rt_str_len` → `Viper.String.Length`
-
-New code should use the canonical `Viper.*` names.
+Runtime procedures are exposed only through canonical `Viper.*` names. Legacy `rt_*` public aliases are intentionally unsupported.
 
 ### OOP Runtime vs Procedural Helpers
 
-The OOP `Viper.*` classes are the preferred surface for new code. The legacy procedural helpers (e.g.,
-`Viper.String.Length`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards
-compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as
-listed above.
+The OOP `Viper.*` classes are the preferred surface for new code. Some canonical function-style entry points (e.g.,
+`Viper.String.get_Length`, `Viper.IO.*`) remain available and are used internally by lowering bridges. Prefer equivalent
+class property/method calls where they exist.
 
 ### Examples
 
@@ -1004,10 +988,10 @@ Timing with Viper.Time:
 ```basic
 USING Viper
 DIM start AS LONG
-start = Time.GetTickCount()
+start = Time.Clock.Ticks()
 ' ... do work ...
-Time.SleepMs(100)            ' Pause 100ms
-PRINT "Elapsed: "; Time.GetTickCount() - start; "ms"
+Time.Clock.Sleep(100)            ' Pause 100ms
+PRINT "Elapsed: "; Time.Clock.Ticks() - start; "ms"
 ```
 
 Terminal control with Viper.Terminal:

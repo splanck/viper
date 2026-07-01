@@ -359,7 +359,6 @@ split metadata to the backend light payload.
 ## Physics — `Viper.Graphics3D.Physics3DWorld` / joints / `Collider3D`
 
 ```zia
-expose func Physics3DWorld.SetSolverIterations(n: Integer)   // iterative contact + joint passes
 expose Integer Physics3DWorld.SolverIterations;
 expose Integer Physics3DWorld.LastSolverIslandCount;         // max active contact islands in latest Step
 expose Integer Physics3DWorld.LastSolverActiveBodyCount;     // max awake dynamic bodies in latest island batch
@@ -389,7 +388,7 @@ class Viper.Graphics3D.SixDofJoint3D {
 // (sphere/capsule/box), including separated-overlapping-AABB edge cases (no API change).
 ```
 
-`SetSolverIterations` is now live for contact and joint passes. Awake,
+`SolverIterations` is now live for contact and joint passes. Awake,
 non-trigger contacts are scheduled through independent contact islands, and the
 latest `Step` exposes island/body/contact maxima through the solver telemetry
 properties above. The named `PHYSICS_ISLAND_BATCH_TARGET` fixture records a

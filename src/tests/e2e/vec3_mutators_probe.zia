@@ -27,9 +27,9 @@ func start() {
     v.Z = 9.0;
     if (check3("props", v, 7.0, 8.0, 9.0) == false) { return; }
 
-    v.SetX(10.0);
-    v.SetY(11.0);
-    v.SetZ(12.0);
+    v.X = 10.0;
+    v.Y = 11.0;
+    v.Z = 12.0;
     if (check3("set-axis", v, 10.0, 11.0, 12.0) == false) { return; }
 
     var other = Vec3.New(-1.0, -2.0, -3.0);

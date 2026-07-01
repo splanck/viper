@@ -197,7 +197,7 @@ expose func TopLevelZiaDeclarationName(trimmed: String) -> String {
         return "";
     }
     if Str.StartsWith(trimmed, "module ") {
-        return identifier_utils.ReadIdentifierAt(trimmed, Str.Length("module ") + 1);
+        return identifier_utils.ReadIdentifierAt(trimmed, Str.get_Length("module ") + 1);
     }
 
     var line = trimmed;
@@ -207,25 +207,25 @@ expose func TopLevelZiaDeclarationName(trimmed: String) -> String {
     line = StripLeadingDeclarationModifier(line, "weak");
 
     if Str.StartsWith(line, "func ") {
-        return identifier_utils.ReadIdentifierAt(line, Str.Length("func ") + 1);
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("func ") + 1);
     }
     if Str.StartsWith(line, "class ") {
-        return identifier_utils.ReadIdentifierAt(line, Str.Length("class ") + 1);
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("class ") + 1);
     }
     if Str.StartsWith(line, "struct ") {
-        return identifier_utils.ReadIdentifierAt(line, Str.Length("struct ") + 1);
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("struct ") + 1);
     }
     if Str.StartsWith(line, "interface ") {
-        return identifier_utils.ReadIdentifierAt(line, Str.Length("interface ") + 1);
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("interface ") + 1);
     }
     if Str.StartsWith(line, "enum ") {
-        return identifier_utils.ReadIdentifierAt(line, Str.Length("enum ") + 1);
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("enum ") + 1);
     }
     if Str.StartsWith(line, "final ") {
-        return identifier_utils.ReadIdentifierAt(line, Str.Length("final ") + 1);
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("final ") + 1);
     }
     if Str.StartsWith(line, "var ") {
-        return identifier_utils.ReadIdentifierAt(line, Str.Length("var ") + 1);
+        return identifier_utils.ReadIdentifierAt(line, Str.get_Length("var ") + 1);
     }
     return "";
 }
@@ -304,7 +304,7 @@ expose func RewriteZiaBindLine(line: String,
     if oldWasDir {
         var prefix = oldNorm + Path.Sep();
         if Str.StartsWith(resolved, prefix) {
-            var suffix = Str.Mid(resolved, Str.Length(prefix) + 1);
+            var suffix = Str.Mid(resolved, Str.get_Length(prefix) + 1);
             mapped = Path.Join(newNorm, suffix);
         }
     } else if resolved == oldNorm {
@@ -448,7 +448,7 @@ func InsertUniqueSortedBind(binds: List, line: String) {
 func StripLeadingDeclarationModifier(line: String, modifier: String) -> String {
     var prefix = modifier + " ";
     if Str.StartsWith(line, prefix) {
-        return Str.Trim(Str.Mid(line, Str.Length(prefix) + 1));
+        return Str.Trim(Str.Mid(line, Str.get_Length(prefix) + 1));
     }
     return line;
 }
@@ -459,7 +459,7 @@ func StripLeadingDeclarationModifier(line: String, modifier: String) -> String {
 /// @return Path with `.zia` removed when requested and present.
 func MaybeStripZiaExtension(path: String, keepNoExt: Boolean) -> String {
     if keepNoExt and Str.EndsWith(path, ".zia") {
-        return Str.Left(path, Str.Length(path) - 4);
+        return Str.Left(path, Str.get_Length(path) - 4);
     }
     return path;
 }

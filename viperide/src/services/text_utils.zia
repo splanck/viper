@@ -34,7 +34,7 @@ expose func StripTrailingCr(line: String) -> String {
 /// @param text Source line to inspect.
 /// @return Number of leading whitespace characters before the first non-space.
 expose func LeadingWhitespaceLength(text: String) -> Integer {
-    return Str.Length(text) - Str.Length(Str.TrimStart(text));
+    return Str.get_Length(text) - Str.get_Length(Str.TrimStart(text));
 }
 
 /// @brief Remove spaces and tabs from the right side of one line.

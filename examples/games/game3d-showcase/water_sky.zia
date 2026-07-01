@@ -42,14 +42,14 @@ class ShowcaseWaterSky {
         lakeMat = Material3D.NewPBR(0.02, 0.52, 0.86);
         Material3D.SetAlbedoMap(lakeMat, waterTex);
         Material3D.SetNormalMap(lakeMat, waterNormal);
-        Material3D.SetRoughness(lakeMat, 0.18);
-        Material3D.SetMetallic(lakeMat, 0.0);
-        Material3D.SetReflectivity(lakeMat, config.WATER_REFLECTIVITY);
+        lakeMat.Roughness = 0.18;
+        lakeMat.Metallic = 0.0;
+        lakeMat.Reflectivity = config.WATER_REFLECTIVITY;
         Material3D.SetEnvMap(lakeMat, skybox);
-        Material3D.set_Alpha(lakeMat, config.WATER_A);
-        Material3D.set_AlphaMode(lakeMat, 2);
+        lakeMat.Alpha = config.WATER_A;
+        lakeMat.AlphaMode = 2;
         Material3D.SetEmissiveColor(lakeMat, 0.015, 0.20, 0.32);
-        Material3D.set_DoubleSided(lakeMat, true);
+        lakeMat.DoubleSided = true;
 
         setupReeds(land);
     }

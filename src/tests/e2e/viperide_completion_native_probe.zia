@@ -32,7 +32,7 @@ func start() {
     // (1) Completion on a valid module must return real, non-stub items.
     var goodSrc = "module Probe;\nfunc greet() -> Integer { return 1; }\n";
     var r1 = ZiaCompletion.CompleteForFile(goodSrc, "probe.zia", 2, 30);
-    if Str.Length(r1) == 0 or looksLikeStub(r1) {
+    if Str.get_Length(r1) == 0 or looksLikeStub(r1) {
         Terminal.Say("RESULT: fail completion");
         return;
     }
@@ -42,7 +42,7 @@ func start() {
     //     analyzer (fe_zia) is linked.
     var badSrc = "module Probe;\nfunc f() -> Integer { return ; }\n";
     var r2 = ZiaCompletion.CheckForFile(badSrc, "probe.zia");
-    if Str.Length(r2) == 0 {
+    if Str.get_Length(r2) == 0 {
         Terminal.Say("RESULT: fail diagnostics");
         return;
     }
@@ -67,7 +67,7 @@ func start() {
         Terminal.Say("RESULT: fail structured diagnostic severity");
         return;
     }
-    if Str.Length(Map.GetStr(firstDiag, "message")) == 0 {
+    if Str.get_Length(Map.GetStr(firstDiag, "message")) == 0 {
         Terminal.Say("RESULT: fail structured diagnostic message");
         return;
     }
@@ -88,7 +88,7 @@ func start() {
         Terminal.Say("RESULT: fail valid compile success");
         return;
     }
-    if Str.Length(Map.GetStr(goodCompile, "il")) == 0 {
+    if Str.get_Length(Map.GetStr(goodCompile, "il")) == 0 {
         Terminal.Say("RESULT: fail valid compile il");
         return;
     }
@@ -104,7 +104,7 @@ func start() {
     }
     var wrapped = "module __ide__;\n" + bare;
     var rw = ZiaCompletion.CompleteForFile(wrapped, "p.zia", 2, 10);
-    if Str.Length(rw) == 0 or looksLikeStub(rw) {
+    if Str.get_Length(rw) == 0 or looksLikeStub(rw) {
         Terminal.Say("RESULT: fail wrap");
         return;
     }

@@ -206,7 +206,7 @@ func main() {
     if (Environment.HasVariable("VIPER_SHOWCASE_PERF")) {
         Terminal.Say("PERF: showcase_render_ms=" + fmt(ms(renderUs)));
     }
-    var finalFrame = World3D.captureFinalFrame(game.getWorld());
+    var finalFrame = game.getWorld().CaptureFinalFrame();
     if (finalFrame != null) {
         Pixels.SavePng(finalFrame, "/tmp/game3d_showcase_games_current.png");
     }
@@ -215,14 +215,14 @@ func main() {
         return;
     }
     var diagSummary = Diagnostics3D.Summary();
-    Terminal.Say("Game3D.Diagnostics.Summary=" + diagSummary);
+    Terminal.Say("Game3D.Diagnostics3D.Summary=" + diagSummary);
     if (diagSummary != "") {
         Terminal.Say("FAIL: showcase diagnostics recorded degradation");
         Terminal.Say(diagSummary);
         game.destroy();
         return;
     }
-    World3D.present(game.getWorld());
+    game.getWorld().Present();
     game.destroy();
     Terminal.Say("RESULT: ok");
 }

@@ -236,7 +236,7 @@ static void test_body_new_and_set_collider() {
     EXPECT_TRUE(body != nullptr, "Generic body created");
     EXPECT_TRUE(collider != nullptr, "Collider created");
     rt_body3d_set_collider(body, collider);
-    EXPECT_TRUE(rt_body3d_get_collider(body) == collider, "SetCollider stores collider");
+    EXPECT_TRUE(rt_body3d_get_collider(body) == collider, "Collider setter stores collider");
 }
 
 static void test_wrapper_constructors_assign_colliders() {
@@ -3230,13 +3230,13 @@ static void test_world_solver_iteration_controls() {
                 "World: RestitutionThreshold defaults to historical threshold");
     rt_world3d_set_solver_iterations(world, 0);
     EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 1,
-                "World: SetSolverIterations clamps low values to one");
+                "World: SolverIterations setter clamps low values to one");
     rt_world3d_set_solver_iterations(world, 999);
     EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 64,
-                "World: SetSolverIterations clamps high values to max");
+                "World: SolverIterations setter clamps high values to max");
     rt_world3d_set_solver_iterations(world, 4);
     EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 4,
-                "World: SetSolverIterations stores valid values");
+                "World: SolverIterations setter stores valid values");
     rt_world3d_set_position_iterations(world, 0);
     EXPECT_TRUE(rt_world3d_get_position_iterations(world) == 1,
                 "World: PositionIterations clamps low values to one");

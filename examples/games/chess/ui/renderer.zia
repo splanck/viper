@@ -3,6 +3,7 @@ module renderer;
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
 bind Clock = Viper.Time.Clock;
+bind Fmt = Viper.Text.Fmt;
 bind "../core/config";
 bind "../core/board";
 bind "./pieces";
@@ -180,7 +181,7 @@ class BoardRenderer {
                 }
 
                 if f == 0 {
-                    var rankLabel = Int(8 - r);
+                    var rankLabel = Fmt.Int(8 - r);
                     var labelCol = theme.BOARD_LABEL;
                     if isLight { labelCol = theme.BOARD_LABEL_DIM; }
                     theme.drawTextScaled(canvas, bx + 6, by + 5, rankLabel, 1, labelCol);
@@ -417,7 +418,7 @@ class BoardRenderer {
         widgets.drawBadge(canvas, badgeRect, badge, statusCol);
 
         if materialLead > 0 {
-            theme.drawTextRightClipped(canvas, card.x + card.w - 96, card.y + 60, 78, "+" + Int(materialLead / 100), 2, theme.ACCENT_GOLD);
+            theme.drawTextRightClipped(canvas, card.x + card.w - 96, card.y + 60, 78, "+" + Fmt.Int(materialLead / 100), 2, theme.ACCENT_GOLD);
         }
 
         widgets.drawDivider(canvas, card.x + 18, card.y + 88, card.w - 36);
@@ -434,7 +435,7 @@ class BoardRenderer {
         for i in 0..captures.length() {
             if i >= maxIcons {
                 canvas.ClearClipRect();
-                theme.drawTextScaled(canvas, x + maxW - 24, y + 7, "+" + Int(captures.length() - i), 1, theme.TEXT_MUTED);
+                theme.drawTextScaled(canvas, x + maxW - 24, y + 7, "+" + Fmt.Int(captures.length() - i), 1, theme.TEXT_MUTED);
                 return;
             }
             var sprite = pieces.getMiniPiece(captures.get(i), capturedAreWhite);
@@ -477,7 +478,7 @@ class BoardRenderer {
                 canvas.BoxAlpha(list.x + 6, rowY - 2, list.w - 12, rowH, theme.ACCENT_GOLD_SOFT, 48);
             }
 
-            theme.drawTextClipped(canvas, list.x + 10, rowY, 42, Int(moveNum) + ".", 1, theme.TEXT_MUTED);
+            theme.drawTextClipped(canvas, list.x + 10, rowY, 42, Fmt.Int(moveNum) + ".", 1, theme.TEXT_MUTED);
             theme.drawTextClipped(canvas, list.x + 58, rowY, 118, whiteMove, 1, theme.TEXT_PRIMARY);
             theme.drawTextClipped(canvas, list.x + 186, rowY, list.w - 204, blackMove, 1, theme.TEXT_PRIMARY);
 
@@ -620,9 +621,9 @@ class BoardRenderer {
     hide func formatClock(timeSec: Integer) -> String {
         var mins = timeSec / 60;
         var secs = timeSec % 60;
-        var secStr = Int(secs);
-        if secs < 10 { secStr = "0" + Int(secs); }
-        return Int(mins) + ":" + secStr;
+        var secStr = Fmt.Int(secs);
+        if secs < 10 { secStr = "0" + Fmt.Int(secs); }
+        return Fmt.Int(mins) + ":" + secStr;
     }
 
     hide func modeString(gameMode: Integer) -> String {

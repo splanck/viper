@@ -440,7 +440,7 @@ int64_t rt_world3d_get_solver_iterations(void *w) {
     return 0;
 }
 
-/// @brief Stub for `Physics3DWorld.SetSolverIterations`.
+/// @brief Stub for `Physics3DWorld.SolverIterations` setter.
 void rt_world3d_set_solver_iterations(void *w, int64_t iterations) {
     (void)w;
     (void)iterations;
@@ -1845,7 +1845,7 @@ int8_t rt_collider3d_sample_heightfield_raw(
 /* Physics3D Body stubs */
 
 /// @brief Stub for `Body3D.New` — would normally allocate a rigid body
-///        with the given mass and no collider attached. Use `SetCollider`
+///        with the given mass and no collider attached. Assign `Collider`
 ///        to bind a Collider3D shape, or use the convenience constructors
 ///        below (`NewAABB`, `NewSphere`, `NewCapsule`) that pre-attach a
 ///        primitive shape.
@@ -1915,7 +1915,7 @@ void *rt_body3d_new_capsule(double radius, double height, double mass) {
     return NULL;
 }
 
-/// @brief Stub for `Body3D.SetCollider` — attach a Collider3D shape to
+/// @brief Stub for `Body3D.Collider` setter — attach a Collider3D shape to
 ///        this body. A body without a collider participates in the
 ///        simulation (gets integrated) but cannot generate contacts and
 ///        will pass through everything.

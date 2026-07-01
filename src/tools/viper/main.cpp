@@ -297,19 +297,10 @@ int dumpRuntimeApi() {
             if (!first)
                 os << ",";
             first = false;
-            const auto &sig = d.signature;
-            std::string sigText = sig.retType.toString();
-            sigText += '(';
-            for (size_t i = 0; i < sig.paramTypes.size(); ++i) {
-                if (i)
-                    sigText += ',';
-                sigText += sig.paramTypes[i].toString();
-            }
-            sigText += ')';
             os << "{\"name\":";
             printJsonStringEscaped(os, d.name);
             os << ",\"signature\":";
-            printJsonStringEscaped(os, sigText);
+            printJsonStringEscaped(os, d.signatureText);
             os << "}";
         }
     }

@@ -41,13 +41,17 @@ bind "./sound";
 bind "./progression";
 bind "./ui/renderer";
 
-final EVENT_NONE = 0;
-final EVENT_PAUSE = 1;
-final EVENT_DYING = 2;
-final EVENT_GAME_OVER = 3;
-final EVENT_WIN = 4;
-final EVENT_READY_COMPLETE = 5;
-final EVENT_DYING_COMPLETE = 6;
+// What a gameplay frame reports back to Game's top-level state machine. Aliases
+// coerce to Integer, so the update*() methods can keep returning i64 event codes.
+enum GameEvent { None, Pause, Dying, GameOver, Win, ReadyComplete, DyingComplete }
+
+final EVENT_NONE = GameEvent.None;
+final EVENT_PAUSE = GameEvent.Pause;
+final EVENT_DYING = GameEvent.Dying;
+final EVENT_GAME_OVER = GameEvent.GameOver;
+final EVENT_WIN = GameEvent.Win;
+final EVENT_READY_COMPLETE = GameEvent.ReadyComplete;
+final EVENT_DYING_COMPLETE = GameEvent.DyingComplete;
 
 /// @brief One play-through — owns everything gameplay-related.
 class Session {
@@ -88,13 +92,15 @@ class Session {
         theMaze = new maze.Maze();
         theMaze.init();
 
-        pacman = new player.PacMan(14, 23);
+        pacman = new player.PacMan(config.PACMAN_START_X, config.PACMAN_START_Y);
 
+        // Personality, spawn tile, color — one row per ghost. Named type
+        // constants (not raw 0..3) keep the roster self-documenting.
         ghosts = [];
-        ghosts.add(new ghost.Ghost(0, 14, 11, config.COLOR_RED));
-        ghosts.add(new ghost.Ghost(1, 13, 14, config.COLOR_PINK));
-        ghosts.add(new ghost.Ghost(2, 14, 14, config.COLOR_CYAN));
-        ghosts.add(new ghost.Ghost(3, 15, 14, config.COLOR_ORANGE));
+        ghosts.add(new ghost.Ghost(ghost.GHOST_BLINKY, 14, 11, config.COLOR_RED));
+        ghosts.add(new ghost.Ghost(ghost.GHOST_PINKY, 13, 14, config.COLOR_PINK));
+        ghosts.add(new ghost.Ghost(ghost.GHOST_INKY, 14, 14, config.COLOR_CYAN));
+        ghosts.add(new ghost.Ghost(ghost.GHOST_CLYDE, 15, 14, config.COLOR_ORANGE));
 
         theFruit = new fruit.Fruit();
         theFruit.init();
@@ -122,7 +128,7 @@ class Session {
         comboCount = 0;
 
         score = 0;
-        lives = 3;
+        lives = config.START_LIVES;
         level = 1;
         highScore = 10000;
         dotsEaten = 0;
@@ -199,7 +205,7 @@ class Session {
             var winX = config.PLAYFIELD_X + config.PLAYFIELD_WIDTH / 2;
             var winY = config.PLAYFIELD_Y + config.PLAYFIELD_HEIGHT / 2;
             particleSys.burstCelebrate(winX, winY);
-            fx.Flash(config.COLOR_WHITE * 256 + 0x55, 240);
+            fx.Flash(utils.fxColor(config.COLOR_WHITE, 0x55), 240);
             Pad.Vibrate(config.PAD_IDX, 0.3, 0.6);
             if profile != null {
                 profile.noteBoardClear(level);
@@ -242,7 +248,7 @@ class Session {
 
     expose func resetGame() {
         score = 0;
-        lives = 3;
+        lives = config.START_LIVES;
         level = 1;
         dotsEaten = 0;
         extraLifeAwarded = false;
@@ -303,12 +309,8 @@ class Session {
 
         var overlayCol = fx.get_OverlayColor();
         if overlayCol != 0 {
-            var r = (overlayCol / 0x1000000) % 256;
-            var g = (overlayCol / 0x10000) % 256;
-            var b = (overlayCol / 0x100) % 256;
-            var a = overlayCol % 256;
-            var rgb = r * 0x10000 + g * 0x100 + b;
-            canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, rgb, a);
+            canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT,
+                            utils.fxColorRGB(overlayCol), utils.fxColorAlpha(overlayCol));
         }
 
         renderer.drawStateOverlay(canvas, overlayState, readyTween.Progress, uiTick);
@@ -427,7 +429,7 @@ class Session {
         var dotPy = utils.gridToCenterY(pacman.getGridY());
         if points == config.PELLET_POINTS {
             particleSys.burstPellet(dotPx, dotPy);
-            fx.Flash(config.COLOR_BLUE * 256 + 0x44, 80);
+            fx.Flash(utils.fxColor(config.COLOR_BLUE, 0x44), 80);
             sfx.playPellet();
         } else {
             particleSys.burstDotEat(dotPx, dotPy);
@@ -436,7 +438,7 @@ class Session {
             }
         }
 
-        if dotsEaten == 70 || dotsEaten == 170 {
+        if dotsEaten == config.FRUIT_SPAWN_DOTS_1 || dotsEaten == config.FRUIT_SPAWN_DOTS_2 {
             theFruit.spawn(level);
         }
 
@@ -523,8 +525,8 @@ class Session {
                 score = score + ghostPoints * mult;
                 comboScore = ghostPoints * mult;
                 comboCount = ghostsEaten;
-                comboTimer.Start(90);
-                comboTween.StartI64(0, 26, 90, config.EASE_OUT_QUAD);
+                comboTimer.Start(config.COMBO_WINDOW_FRAMES);
+                comboTween.StartI64(0, 26, config.COMBO_WINDOW_FRAMES, config.EASE_OUT_QUAD);
                 particleSys.burstGhostEat(gPx, gPy, g.getColor());
 
                 var popCol = config.COLOR_CYAN;
@@ -561,7 +563,7 @@ class Session {
         pacman.beginDeath();
         particleSys.burstDeath(deathPx, deathPy);
         fx.Shake(8000, 200, 500);
-        fx.Flash(config.COLOR_RED * 256 + 0xAA, 160);
+        fx.Flash(utils.fxColor(config.COLOR_RED, 0xAA), 160);
         Pad.Vibrate(config.PAD_IDX, 0.9, 0.9);
         sfx.playDeath();
         lives = lives - 1;
@@ -574,7 +576,7 @@ class Session {
     }
 
     hide func resetActors() {
-        pacman.reset(14, 23);
+        pacman.reset(config.PACMAN_START_X, config.PACMAN_START_Y);
         for i in 0..ghosts.length() {
             ghosts.get(i).reset();
         }

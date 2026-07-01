@@ -889,7 +889,7 @@ class Executor {
             // Find the LAST occurrence of a subquery pattern to flatten innermost first
             var idx = -1;
             var searchPos = 0;
-            var len = String.Length(result);
+            var len = Viper.String.get_Length(result);
             while searchPos < len - 9 {
                 var ch = String.Substring(result, searchPos, 1);
                 if ch == "(" {
@@ -948,7 +948,7 @@ class Executor {
             // Determine if subquery is in an IN context by checking preceding text.
             // IN context needs a parenthesized value list for multi-row results.
             var beforeText = String.Substring(result, 0, idx);
-            var btLen = String.Length(beforeText);
+            var btLen = Viper.String.get_Length(beforeText);
             var isInContext = false;
             if btLen >= 3 {
                 var lastThree = String.ToUpper(String.Substring(beforeText, btLen - 3, 3));
@@ -1046,7 +1046,7 @@ class Executor {
         outerTableAlias = currentTableAlias;
 
         // Clone and flatten nested subqueries to avoid deep recursion stack overflow
-        var sql = String.Substring(expr.subquerySQL, 0, String.Length(expr.subquerySQL));
+        var sql = String.Substring(expr.subquerySQL, 0, Viper.String.get_Length(expr.subquerySQL));
         sql = flattenSubqueries(sql);
 
         // Execute the subquery via dedicated path to avoid full executeSql recursion
@@ -1115,7 +1115,7 @@ class Executor {
         var savedCurrentAlias = currentTableAlias;
 
         // Clone and flatten nested subqueries
-        var sql = String.Substring(subqueryExpr.subquerySQL, 0, String.Length(subqueryExpr.subquerySQL));
+        var sql = String.Substring(subqueryExpr.subquerySQL, 0, Viper.String.get_Length(subqueryExpr.subquerySQL));
         sql = flattenSubqueries(sql);
 
         subqueryDepth = subqueryDepth + 1;
@@ -1462,7 +1462,7 @@ class Executor {
             // Convert SIMILAR TO pattern to regex: % → .*, _ → .
             var regex = "^";
             var pi = 0;
-            while pi < String.Length(pat) {
+            while pi < Viper.String.get_Length(pat) {
                 var ch = String.Substring(pat, pi, 1);
                 if ch == "%" { regex = regex + ".*"; }
                 else if ch == "_" { regex = regex + "."; }
@@ -1542,7 +1542,7 @@ class Executor {
             var extracted = jsonExtractPath(jsonStr, key);
             if extracted == "" { return sqlNull(); }
             // Unwrap: remove quotes if it's a JSON string value
-            var eLen = String.Length(extracted);
+            var eLen = Viper.String.get_Length(extracted);
             if eLen >= 2 && String.Substring(extracted, 0, 1) == "\"" && String.Substring(extracted, eLen - 1, 1) == "\"" {
                 return sqlText(String.Substring(extracted, 1, eLen - 2));
             }
@@ -1584,7 +1584,7 @@ class Executor {
         c.intValue = v.intValue;
         c.realValue = v.realValue;
         if v.kind == SQL_TEXT || v.kind == SQL_BLOB || v.kind == SQL_REAL || v.kind == SQL_JSON {
-            var len = String.Length(v.textValue);
+            var len = Viper.String.get_Length(v.textValue);
             c.textValue = String.Substring(v.textValue, 0, len);
         } else {
             c.textValue = "";
@@ -2914,7 +2914,7 @@ class Executor {
                                     if parser.currentKind() == TK_STRING {
                                         tok = "'" + tok + "'";
                                     }
-                                    if String.Length(defaultSQL) > 0 { defaultSQL = defaultSQL + " "; }
+                                    if Viper.String.get_Length(defaultSQL) > 0 { defaultSQL = defaultSQL + " "; }
                                     defaultSQL = defaultSQL + tok;
                                     parser.advance();
                                 }
@@ -5748,7 +5748,7 @@ class Executor {
                 var li = 0;
                 while li < lines.count() {
                     var line = lines.get(li);
-                    if String.Length(line) > 0 {
+                    if Viper.String.get_Length(line) > 0 {
                         var r = new Row();
                         r.initWithCount(1);
                         r.setValue(0, sqlText(line));
@@ -5790,7 +5790,7 @@ class Executor {
             var li = startLine;
             while li < lines.count() {
                 var line = lines.get(li);
-                if String.Length(line) == 0 {
+                if Viper.String.get_Length(line) == 0 {
                     li = li + 1;
                     continue;
                 }
@@ -5811,7 +5811,7 @@ class Executor {
                             continue;
                         }
                         var col = colOpt;
-                        if String.Length(rawVal) == 0 {
+                        if Viper.String.get_Length(rawVal) == 0 {
                             newRow.setValue(vi, sqlNull());
                         } else if col.typeCode == SQL_INTEGER {
                             newRow.setValue(vi, sqlInteger(stringToInt(rawVal)));
@@ -5819,7 +5819,7 @@ class Executor {
                             newRow.setValue(vi, sqlReal(stringToNumber(rawVal), rawVal));
                         } else {
                             // Remove surrounding quotes if present
-                            var vLen = String.Length(rawVal);
+                            var vLen = Viper.String.get_Length(rawVal);
                             if vLen >= 2 && String.Substring(rawVal, 0, 1) == "\"" && String.Substring(rawVal, vLen - 1, 1) == "\"" {
                                 rawVal = String.Substring(rawVal, 1, vLen - 2);
                                 rawVal = String.Replace(rawVal, "\"\"", "\"");
@@ -5847,7 +5847,7 @@ class Executor {
         var parts: List[String] = [];
         var current = "";
         var i = 0;
-        var len = String.Length(s);
+        var len = Viper.String.get_Length(s);
         while i < len {
             var ch = String.Substring(s, i, 1);
             if ch == "\n" {
@@ -5860,7 +5860,7 @@ class Executor {
             }
             i = i + 1;
         }
-        if String.Length(current) > 0 {
+        if Viper.String.get_Length(current) > 0 {
             parts.add(current);
         }
         return parts;
@@ -5872,7 +5872,7 @@ class Executor {
         var current = "";
         var inQuotes = false;
         var i = 0;
-        var len = String.Length(line);
+        var len = Viper.String.get_Length(line);
         while i < len {
             var ch = String.Substring(line, i, 1);
             if inQuotes {
@@ -5933,7 +5933,7 @@ class Executor {
                         parser.advance();
                     } else if parser.currentKind() == TK_RPAREN {
                         if depth == 0 {
-                            if String.Length(String.Trim(argText)) > 0 {
+                            if Viper.String.get_Length(String.Trim(argText)) > 0 {
                                 argSqls.add(String.Trim(argText));
                             }
                             parser.advance();
@@ -5950,7 +5950,7 @@ class Executor {
                         if parser.currentKind() == TK_STRING {
                             argText = argText + "'" + parser.currentText() + "'";
                         } else {
-                            if String.Length(argText) > 0 { argText = argText + " "; }
+                            if Viper.String.get_Length(argText) > 0 { argText = argText + " "; }
                             argText = argText + parser.currentText();
                         }
                         parser.advance();
@@ -6133,7 +6133,7 @@ class Executor {
         var result = new QueryResult();
         result.init();
 
-        if String.Length(String.Trim(body)) == 0 {
+        if Viper.String.get_Length(String.Trim(body)) == 0 {
             result.setError("DO block is empty");
             return result;
         }
@@ -6144,7 +6144,7 @@ class Executor {
         var current = "";
         var inString = false;
         var i = 0;
-        var bodyLen = String.Length(body);
+        var bodyLen = Viper.String.get_Length(body);
         while i < bodyLen {
             var ch = String.Substring(body, i, 1);
             if ch == "'" {
@@ -6152,7 +6152,7 @@ class Executor {
                 current = current + ch;
             } else if ch == ";" && inString == false {
                 var trimmed = String.Trim(current);
-                if String.Length(trimmed) > 0 {
+                if Viper.String.get_Length(trimmed) > 0 {
                     lastResult = executeSql(trimmed);
                     stmtCount = stmtCount + 1;
                     if lastResult.success == false {
@@ -6167,7 +6167,7 @@ class Executor {
         }
         // Execute any remaining statement
         var trimmedLast = String.Trim(current);
-        if String.Length(trimmedLast) > 0 {
+        if Viper.String.get_Length(trimmedLast) > 0 {
             lastResult = executeSql(trimmedLast);
             stmtCount = stmtCount + 1;
             if lastResult.success == false {

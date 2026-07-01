@@ -186,11 +186,11 @@ int64_t rt_bitset_len(void *obj) {
     return (int64_t)as_bitset(obj, "BitSet.Len: invalid BitSet object")->bit_count;
 }
 
-/// @brief Population count: number of bits set to 1 across the entire bitset (popcount).
-int64_t rt_bitset_count(void *obj) {
+/// @brief Population count: number of bits set to 1 across the entire bitset.
+static int64_t bitset_popcount(void *obj, const char *what) {
     if (!obj)
         return 0;
-    rt_bitset_impl *bs = as_bitset(obj, "BitSet.Count: invalid BitSet object");
+    rt_bitset_impl *bs = as_bitset(obj, what);
     int64_t total = 0;
     for (size_t i = 0; i < bs->word_count; ++i)
         total += popcount64(bs->words[i]);
@@ -199,7 +199,7 @@ int64_t rt_bitset_count(void *obj) {
 
 /// @brief Returns 1 if every bit is 0 (popcount == 0). O(n/64).
 int8_t rt_bitset_is_empty(void *obj) {
-    return rt_bitset_count(obj) == 0;
+    return bitset_popcount(obj, "BitSet.IsEmpty: invalid BitSet object") == 0;
 }
 
 /// @brief Read the bit at `idx`. Returns 0 for out-of-range indices (no growth on read).

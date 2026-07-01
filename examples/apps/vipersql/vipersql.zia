@@ -365,7 +365,7 @@ func processReplCommand(cmd: String, exec: Executor) {
     }
 
     if String.StartsWith(lower, ".schema ") {
-        var tableName = String.Substring(cmd, 8, String.Length(cmd) - 8);
+        var tableName = String.Substring(cmd, 8, Viper.String.get_Length(cmd) - 8);
         tableName = String.Trim(tableName);
         var result = exec.executeSql("DESCRIBE " + tableName);
         Terminal.Say(result.toString());

@@ -56,7 +56,7 @@ void *rt_soundlistener3d_get_position(void *l) {
     return NULL;
 }
 
-/// @brief Stub for `SoundListener3D.SetPosition` — set the listener's
+/// @brief Stub for `SoundListener3D.Position` setter — set the listener's
 ///        world-space position from a Vec3 handle.
 ///
 /// Silent no-op stub.
@@ -68,7 +68,7 @@ void rt_soundlistener3d_set_position(void *l, void *p) {
     (void)p;
 }
 
-/// @brief Stub for `SoundListener3D.SetPositionXYZ` — set the listener's
+/// @brief Stub for `SoundListener3D.Position` XYZ setter — set the listener's
 ///        world-space position from raw doubles. Convenience overload.
 ///
 /// Silent no-op stub.
@@ -97,7 +97,7 @@ void *rt_soundlistener3d_get_forward(void *l) {
     return NULL;
 }
 
-/// @brief Stub for `SoundListener3D.SetForward` — set the listener's
+/// @brief Stub for `SoundListener3D.Forward` setter — set the listener's
 ///        forward direction (must be normalized).
 ///
 /// Silent no-op stub.
@@ -132,7 +132,7 @@ void *rt_soundlistener3d_get_velocity(void *l) {
     return NULL;
 }
 
-/// @brief Stub for `SoundListener3D.SetVelocity` — set the listener's
+/// @brief Stub for `SoundListener3D.Velocity` setter — set the listener's
 ///        velocity vector for Doppler computation.
 ///
 /// Silent no-op stub.
@@ -243,7 +243,7 @@ void *rt_soundsource3d_get_position(void *s) {
     return NULL;
 }
 
-/// @brief Stub for `SoundSource3D.SetPosition` — set the source's
+/// @brief Stub for `SoundSource3D.Position` setter — set the source's
 ///        world-space position from a Vec3 handle.
 ///
 /// Silent no-op stub.
@@ -255,7 +255,7 @@ void rt_soundsource3d_set_position(void *s, void *p) {
     (void)p;
 }
 
-/// @brief Stub for `SoundSource3D.SetPositionXYZ` — set the source's
+/// @brief Stub for `SoundSource3D.Position` XYZ setter — set the source's
 ///        world-space position from raw doubles. Convenience overload.
 ///
 /// Silent no-op stub.
@@ -284,7 +284,7 @@ void *rt_soundsource3d_get_velocity(void *s) {
     return NULL;
 }
 
-/// @brief Stub for `SoundSource3D.SetVelocity` — set the source's
+/// @brief Stub for `SoundSource3D.Velocity` setter — set the source's
 ///        velocity vector for Doppler computation.
 ///
 /// Silent no-op stub.
@@ -315,7 +315,7 @@ double rt_soundsource3d_get_max_distance(void *s) {
     return 0.0;
 }
 
-/// @brief Stub for `SoundSource3D.SetMaxDistance` — set the cutoff
+/// @brief Stub for `SoundSource3D.MaxDistance` setter — set the cutoff
 ///        distance for attenuation.
 ///
 /// Silent no-op stub.
@@ -333,7 +333,7 @@ double rt_soundsource3d_get_ref_distance(void *s) {
     return 0.0;
 }
 
-/// @brief Stub for `SoundSource3D.SetRefDistance` — set the full-volume radius.
+/// @brief Stub for `SoundSource3D.RefDistance` setter — set the full-volume radius.
 void rt_soundsource3d_set_ref_distance(void *s, double d) {
     (void)s;
     (void)d;
@@ -352,7 +352,7 @@ int64_t rt_soundsource3d_get_volume(void *s) {
     return 0;
 }
 
-/// @brief Stub for `SoundSource3D.SetVolume` — set the per-source gain
+/// @brief Stub for `SoundSource3D.Volume` setter — set the per-source gain
 ///        multiplier.
 ///
 /// Silent no-op stub.
@@ -376,7 +376,7 @@ int8_t rt_soundsource3d_get_looping(void *s) {
     return 0;
 }
 
-/// @brief Stub for `SoundSource3D.SetLooping` — when enabled, the
+/// @brief Stub for `SoundSource3D.Looping` setter — when enabled, the
 ///        underlying voice loops at the end of the sound buffer.
 ///
 /// Silent no-op stub.

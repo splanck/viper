@@ -96,7 +96,7 @@ class ScmView {
             branchLabel.SetText("Not a git repository");
             return;
         }
-        if Str.Length(st.branch) > 0 {
+        if Str.get_Length(st.branch) > 0 {
             branchLabel.SetText("Branch: " + st.branch);
         } else {
             branchLabel.SetText("Branch: (detached)");
@@ -133,10 +133,10 @@ class ScmView {
         diffPane.Clear();
         if path == "" { return; }
         var d = git.Diff(path, false);
-        if Str.Length(Str.Trim(d)) == 0 {
+        if Str.get_Length(Str.Trim(d)) == 0 {
             d = git.Diff(path, true);
         }
-        if Str.Length(Str.Trim(d)) == 0 {
+        if Str.get_Length(Str.Trim(d)) == 0 {
             diffPane.Append("(no diff)\n");
         } else {
             diffPane.Append(d);
@@ -163,7 +163,7 @@ class ScmView {
         }
         if commitBtn.WasClicked() != 0 {
             var msg = commitInput.get_Text();
-            if Str.Length(Str.Trim(msg)) > 0 {
+            if Str.get_Length(Str.Trim(msg)) > 0 {
                 git.Commit(msg);
                 commitInput.SetText("");
                 Refresh();

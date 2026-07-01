@@ -284,7 +284,7 @@ class EditorScheduler {
     expose func Queue(kind: Integer, path: String, revision: Integer, delayMs: Integer) -> Integer {
         var delay = delayMs;
         if delay < 0 { delay = DefaultDelay(kind); }
-        var due = Viper.Time.GetTickCount() + delay;
+        var due = Viper.Time.Clock.Ticks() + delay;
         queuedTotal = queuedTotal + 1;
         lastQueuedKind = kind;
 
@@ -312,7 +312,7 @@ class EditorScheduler {
     }
 
     expose func IsDue(kind: Integer, path: String, revision: Integer) -> Boolean {
-        var now = Viper.Time.GetTickCount();
+        var now = Viper.Time.Clock.Ticks();
         if kind == JOB_DIAGNOSTICS { return diagnosticsJob.IsDue(now, path, revision); }
         if kind == JOB_COMPLETION { return completionJob.IsDue(now, path, revision); }
         if kind == JOB_SIGNATURE { return signatureJob.IsDue(now, path, revision); }

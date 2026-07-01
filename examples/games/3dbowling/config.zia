@@ -138,9 +138,13 @@ var PIN_CAPSULE_HEIGHT: Float = PIN_HEIGHT;
 var PIN_BODY_RADIUS: Float = PIN_RADIUS * 1.08;
 var PIN_BODY_CENTER_Y: Float = PIN_CAPSULE_HEIGHT / 2.0;
 var PIN_DRAW_Y_OFFSET: Float = 0.0;
-var PIN_MASS: Float = 1.88;
+var PIN_MASS: Float = 1.55;
 var PIN_RESTITUTION: Float = 0.26;
 var PIN_FRICTION: Float = 0.72;
+// Lower than the old 0.26/0.72: pins now tumble and slide into neighbors
+// instead of resisting the topple, so a good pocket hit carries the rack.
+var PIN_LINEAR_DAMPING: Float = 0.16;
+var PIN_ANGULAR_DAMPING: Float = 0.35;
 var PIN_Z_OFFSET: Float = 15.5;
 var PIN_KNOCKDOWN_SPEED: Float = 0.62;
 var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.062;
@@ -208,27 +212,35 @@ var SPIN_RATE: Float = 0.48;
 var SPIN_MAX: Float = 0.32;
 var SPIN_VISUAL_SPEED: Float = 7.0;
 var BALL_AXIS_SPIN_SPEED: Float = 2.6;
-var BACKEND_HOOK_FORCE: Float = 0.58;
-var EARLY_HOOK_FORCE: Float = 0.0;
+// Hook forces are what curve the ball into the pocket. The dry backend
+// (past oilEndZ) is where the ball "wakes up" and hooks hardest; the oiled
+// front skids straight. These were ~25x too weak before (spin was a no-op).
+var BACKEND_HOOK_FORCE: Float = 9.0;
+var EARLY_HOOK_FORCE: Float = 2.5;
 var SPIN_DECAY_OIL: Float = 0.07;
 var SPIN_DECAY_DRY: Float = 0.38;
-var SIDE_DRAG: Float = 0.92;
+var SIDE_DRAG: Float = 0.40;
 var LANE_ASSIST_EDGE_RATIO: Float = 0.34;
 var LANE_ASSIST_FORCE: Float = 54.0;
 var LANE_ASSIST_DAMP: Float = 4.8;
 var LANE_SAFE_HALF_WIDTH: Float = 0.34;
 var LANE_STABILIZE_END_Z: Float = PIN_Z_OFFSET - 0.18;
-var GUTTER_ENABLED: Integer = 0;
+// Gutters are a real failure state: with BUMPERS_ENABLED=0 the ball obeys
+// physics and rolls off the lane into the gutter troughs (built in lane.zia).
+// BUMPERS_ENABLED=1 restores the old always-on arcade rail (edge assist +
+// hard X clamp) so the ball cannot gutter — an optional easy/accessibility mode.
+var GUTTER_ENABLED: Integer = 1;
+var BUMPERS_ENABLED: Integer = 0;
 
 var BALL_START_X: Float = 0.0;
 var BALL_START_Y_OFFSET: Float = 0.026;
 var BALL_START_Z: Float = -1.5;
 var BALL_THROW_Z: Float = -0.85;
-var BALL_RELEASE_X_SCALE: Float = 0.16;
-var BALL_TARGET_X_SCALE: Float = 0.30;
+var BALL_RELEASE_X_SCALE: Float = 0.50;
+var BALL_TARGET_X_SCALE: Float = 0.85;
 var BALL_TARGET_Z: Float = PIN_Z_OFFSET - 0.95;
 var BALL_SIDE_SPEED_SCALE: Float = 0.18;
-var BALL_SIDE_SPEED_MAX: Float = 0.10;
+var BALL_SIDE_SPEED_MAX: Float = 0.28;
 var BALL_ROLL_MIN_SPEED: Float = 3.28;
 var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.86;
 var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.82;

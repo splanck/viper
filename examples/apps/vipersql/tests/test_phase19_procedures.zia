@@ -73,7 +73,7 @@ func main() -> Integer {
 
     // Test 5: toString
     var desc = fn2.toString();
-    assert(String.Length(desc) > 0, "toString produces output");
+    assert(Viper.String.get_Length(desc) > 0, "toString produces output");
 
     //=========================================================================
     // 2. FUNCTION MANAGER
@@ -107,7 +107,7 @@ func main() -> Integer {
     p1duplist.add(p1dup);
     f1dup.initFull("DOUBLE_IT", p1duplist, SQL_INTEGER, "SELECT $1 * 2");
     var dupErr = mgr.addFunction(f1dup);
-    assert(String.Length(dupErr) > 0, "Duplicate function rejected");
+    assert(Viper.String.get_Length(dupErr) > 0, "Duplicate function rejected");
 
     // Test 9: Find by name
     var byName = mgr.findByName("DOUBLE_IT");

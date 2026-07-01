@@ -41,15 +41,31 @@ bind "./utils";
 bind "./maze";
 bind "./ui/sprites";
 
-// Ghost type constants
-final GHOST_BLINKY = 0;  // Red - targets Crackman directly
-final GHOST_PINKY = 1;   // Pink - targets 4 tiles ahead of Crackman
-final GHOST_INKY = 2;    // Cyan - complex targeting using Blinky position
-final GHOST_CLYDE = 3;   // Orange - targets Crackman when far, scatter when close
+// Ghost personalities. GhostType is a real enum so the roster and targeting
+// dispatch are type-checked; the GHOST_* aliases coerce to Integer for any
+// runtime call (e.g. sprite lookups) that still expects an i64.
+enum GhostType { Blinky, Pinky, Inky, Clyde }
+
+final GHOST_BLINKY = GhostType.Blinky;  // Red - targets Crackman directly
+final GHOST_PINKY = GhostType.Pinky;    // Pink - targets ahead of Crackman
+final GHOST_INKY = GhostType.Inky;      // Cyan - reflects Blinky through Crackman
+final GHOST_CLYDE = GhostType.Clyde;    // Orange - chases when far, scatters when close
 
 // =============================================================================
 // GHOST ENTITY - Enemy characters with AI
 // =============================================================================
+
+/// @brief A grid tile the ghost AI steers toward. A value-type record stands in
+///        for a (col, row) pair — pickTarget() returns one per frame.
+struct TargetTile {
+    expose Integer x;
+    expose Integer y;
+
+    expose func init(tx: Integer, ty: Integer) {
+        x = tx;
+        y = ty;
+    }
+}
 
 /// @brief Enemy ghost with classic four-personality AI.
 class Ghost {
@@ -59,8 +75,8 @@ class Ghost {
     hide Integer screenY;
     hide Integer direction;
     hide Integer color;
-    hide Integer mode;
-    hide Integer ghostType;
+    hide config.GhostMode mode;
+    hide GhostType ghostType;
     hide Integer homeX;
     hide Integer homeY;
     hide Integer returnX;
@@ -69,7 +85,7 @@ class Ghost {
     hide Integer houseExitY;
     hide Integer scatterX;
     hide Integer scatterY;
-    hide Integer normalMode;
+    hide config.GhostMode normalMode;
     hide Boolean atTileCenter;
     hide Boolean inHouse;  // True if ghost is still in the ghost house
     hide Integer lastScreenX;
@@ -82,65 +98,90 @@ class Ghost {
     hide Timer exitTimer;  // Delay before exiting house
     hide Boolean flashWhite;
 
-    expose func init(gType: Integer, startX: Integer, startY: Integer, ghostColor: Integer) {
+    expose func init(gType: GhostType, startX: Integer, startY: Integer, ghostColor: Integer) {
+        // One-time identity + geometry (survives level resets).
         ghostType = gType;
-        gridX = startX;
-        gridY = startY;
-        screenX = utils.gridToScreenX(startX);
-        screenY = utils.gridToScreenY(startY);
-        direction = config.DIR_UP;
         color = ghostColor;
-        mode = config.MODE_SCATTER;
         homeX = startX;
         homeY = startY;
-        returnX = 14;
-        returnY = 14;
-        houseExitX = 14;
-        houseExitY = 11;
-        normalMode = config.MODE_SCATTER;
-        atTileCenter = true;
-        lastScreenX = screenX;
-        lastScreenY = screenY;
-        stuckTicks = 0;
+        returnX = config.GHOST_HOUSE_RETURN_X;
+        returnY = config.GHOST_HOUSE_RETURN_Y;
+        houseExitX = config.GHOST_HOUSE_EXIT_X;
+        houseExitY = config.GHOST_HOUSE_EXIT_Y;
+        self.initScatterCorner();
 
-        // Blinky starts outside, others start in the ghost house
-        inHouse = (ghostType != GHOST_BLINKY);
-
-        // Set scatter corner based on ghost type
-        if ghostType == GHOST_BLINKY {
-            scatterX = config.GRID_WIDTH - 3;
-            scatterY = 0;
-        } else if ghostType == GHOST_PINKY {
-            scatterX = 2;
-            scatterY = 0;
-        } else if ghostType == GHOST_INKY {
-            scatterX = config.GRID_WIDTH - 1;
-            scatterY = config.GRID_HEIGHT - 1;
-        } else {
-            scatterX = 0;
-            scatterY = config.GRID_HEIGHT - 1;
-        }
-
-        // Setup frightened timer
+        // Timers are created once here; resetToSpawn() (re)arms them.
         frightenedTimer = Timer.New();
-
-        // Setup flash timer (toggles every 10 frames when about to end)
         flashTimer = Timer.New();
-        flashTimer.StartRepeating(10);
-        flashWhite = false;
-
-        // Setup exit timer - stagger ghost exits
+        flashTimer.StartRepeating(config.GHOST_FLASH_BLINK_FRAMES);
         exitTimer = Timer.New();
-        if ghostType == GHOST_PINKY {
-            exitTimer.Start(60);   // Pinky exits after 1 second
-        } else if ghostType == GHOST_INKY {
-            exitTimer.Start(180);  // Inky exits after 3 seconds
-        } else if ghostType == GHOST_CLYDE {
-            exitTimer.Start(300);  // Clyde exits after 5 seconds
+
+        self.resetToSpawn();
+    }
+
+    /// @brief Scatter-mode home corner, fixed per personality.
+    hide func initScatterCorner() {
+        match ghostType {
+            GhostType.Blinky => {
+                scatterX = config.GRID_WIDTH - 3;
+                scatterY = 0;
+            }
+            GhostType.Pinky => {
+                scatterX = 2;
+                scatterY = 0;
+            }
+            GhostType.Inky => {
+                scatterX = config.GRID_WIDTH - 1;
+                scatterY = config.GRID_HEIGHT - 1;
+            }
+            GhostType.Clyde => {
+                scatterX = 0;
+                scatterY = config.GRID_HEIGHT - 1;
+            }
         }
     }
 
-    expose func setMode(newMode: Integer) {
+    /// @brief Return to the level-start spawn state. The single source of truth
+    ///        shared by init() and reset() so the two can never drift. Assumes
+    ///        identity/geometry and the timers already exist.
+    hide func resetToSpawn() {
+        gridX = homeX;
+        gridY = homeY;
+        screenX = utils.gridToScreenX(homeX);
+        screenY = utils.gridToScreenY(homeY);
+        direction = config.DIR_UP;
+        mode = config.MODE_SCATTER;
+        normalMode = config.MODE_SCATTER;
+        atTileCenter = true;
+        frightenedTimer.Stop();
+        flashWhite = false;
+        self.resetStuckTracking();
+
+        // Blinky starts outside; the others wait their staggered turn in the house.
+        inHouse = (ghostType != GHOST_BLINKY);
+        self.startExitTimer();
+    }
+
+    /// @brief Arm the staggered house-exit delay for this personality
+    ///        (Blinky never waits, so its timer is left unstarted).
+    hide func startExitTimer() {
+        match ghostType {
+            GhostType.Blinky => { }
+            GhostType.Pinky => { exitTimer.Start(config.GHOST_EXIT_DELAY_PINKY); }
+            GhostType.Inky => { exitTimer.Start(config.GHOST_EXIT_DELAY_INKY); }
+            GhostType.Clyde => { exitTimer.Start(config.GHOST_EXIT_DELAY_CLYDE); }
+        }
+    }
+
+    /// @brief The single entry point for mode transitions. Every mode change —
+    ///        external (session drives the scatter/chase cycle, a power pellet
+    ///        frightens, a bite eats) and internal (revertToNormalMode) — flows
+    ///        through here or a helper below, so the state graph lives in one
+    ///        place: CHASE/SCATTER latch normalMode but yield to an active
+    ///        FRIGHTENED/EATEN; FRIGHTENED reverses and starts the timer but
+    ///        cannot re-frighten an EATEN ghost; EATEN clears the frightened
+    ///        state and leaves the house to return home.
+    expose func setMode(newMode: config.GhostMode) {
         if newMode == config.MODE_CHASE || newMode == config.MODE_SCATTER {
             normalMode = newMode;
             if mode != config.MODE_FRIGHTENED && mode != config.MODE_EATEN {
@@ -169,7 +210,14 @@ class Ghost {
         mode = newMode;
     }
 
-    expose func getMode() -> Integer {
+    /// @brief Return to the scatter/chase cycle. The internal counterpart to the
+    ///        FRIGHTENED/EATEN transitions — used when the frightened timer runs
+    ///        out and when an eaten ghost respawns in the house.
+    hide func revertToNormalMode() {
+        mode = normalMode;
+    }
+
+    expose func getMode() -> config.GhostMode {
         return mode;
     }
 
@@ -193,105 +241,144 @@ class Ghost {
     }
 
     expose func update(theMaze: maze.Maze, pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) {
-        // Update exit timer for ghosts in house
-        if inHouse {
-            exitTimer.Update();
-        }
+        self.updateModeTimers();
 
-        // Update frightened mode
-        if mode == config.MODE_FRIGHTENED {
-            frightenedTimer.Update();
-
-            // Flash when about to end (last 2 seconds = 120 frames)
-            if frightenedTimer.Remaining < 120 {
-                if flashTimer.Update() {
-                    flashWhite = !flashWhite;
-                }
-            }
-
-            if frightenedTimer.IsExpired {
-                mode = normalMode;
-            }
-        }
-
-        // Check if at tile center
         atTileCenter = utils.isAtTileCenter(gridX, gridY, screenX, screenY);
 
-        // Only clear the house flag once the ghost is actively leaving through the exit.
+        // Clear the house flag only once the ghost is actively leaving via the exit.
         if inHouse && exitTimer.IsExpired && gridX == houseExitX && gridY <= houseExitY {
             inHouse = false;
         }
 
-        // Choose direction at tile centers
+        // At a tile center the ghost re-decides. Some cases fully resolve the
+        // frame themselves (they move + track progress) and short-circuit here.
         if atTileCenter {
-            if mode == config.MODE_EATEN && gridX == returnX && gridY == returnY {
-                inHouse = true;
-                mode = normalMode;
-                flashWhite = false;
-                direction = config.DIR_NONE;
-                exitTimer.Start(60);
-                self.resetStuckTracking();
+            if self.steerAtTileCenter(theMaze, pacmanX, pacmanY, blinkyX, blinkyY) {
                 return;
             }
-
-            // Ghosts waiting inside the house should stay put until their exit timer expires.
-            if inHouse && !exitTimer.IsExpired {
-                direction = config.DIR_NONE;
-                self.noteMovementProgress(theMaze);
-                return;
-            }
-
-            var targetX = scatterX;
-            var targetY = scatterY;
-
-            if mode == config.MODE_EATEN {
-                direction = theMaze.getGhostPathDirection(gridX, gridY, returnX, returnY, direction);
-                self.move(theMaze);
-                self.noteMovementProgress(theMaze);
-                return;
-            } else if inHouse {
-                // If in house and timer expired, target the exit
-                if exitTimer.IsExpired {
-                    // Target exit point (above the gate)
-                    targetX = houseExitX;
-                    targetY = houseExitY;
-                }
-            } else if mode == config.MODE_CHASE {
-                if ghostType == GHOST_BLINKY {
-                    // Blinky targets Crackman directly
-                    targetX = pacmanX;
-                    targetY = pacmanY;
-                } else if ghostType == GHOST_PINKY {
-                    // Pinky targets 4 tiles ahead of Crackman
-                    targetX = pacmanX;
-                    targetY = pacmanY - 4;
-                    if targetY < 0 { targetY = 0; }
-                } else if ghostType == GHOST_INKY {
-                    // Inky uses vector from Blinky through 2 tiles ahead of Crackman
-                    var aheadX = pacmanX;
-                    var aheadY = pacmanY - 2;
-                    targetX = aheadX + (aheadX - blinkyX);
-                    targetY = aheadY + (aheadY - blinkyY);
-                } else {
-                    // Clyde targets Crackman when far, scatter corner when close
-                    var dist = utils.manhattanDistance(gridX, gridY, pacmanX, pacmanY);
-                    if dist > 8 {
-                        targetX = pacmanX;
-                        targetY = pacmanY;
-                    }
-                    // Otherwise uses scatterX/scatterY
-                }
-            } else if mode == config.MODE_FRIGHTENED {
-                // Random target when frightened
-                targetX = NextInt(config.GRID_WIDTH);
-                targetY = NextInt(config.GRID_HEIGHT);
-            }
-
-            self.chooseDirection(targetX, targetY, theMaze);
         }
 
         self.move(theMaze);
         self.noteMovementProgress(theMaze);
+    }
+
+    /// @brief Per-frame timing: the house-exit countdown, plus the frightened
+    ///        countdown, end-of-frightened flash cue, and auto-revert on expiry.
+    hide func updateModeTimers() {
+        if inHouse {
+            exitTimer.Update();
+        }
+
+        if mode != config.MODE_FRIGHTENED {
+            return;
+        }
+
+        frightenedTimer.Update();
+
+        // Flash white in the last stretch before frightened wears off.
+        if frightenedTimer.Remaining < config.FRIGHTENED_FLASH_FRAMES {
+            if flashTimer.Update() {
+                flashWhite = !flashWhite;
+            }
+        }
+
+        if frightenedTimer.IsExpired {
+            self.revertToNormalMode();
+        }
+    }
+
+    /// @brief Decide the next direction at a tile center. Returns true if it
+    ///        fully handled this frame (already moved + tracked progress) and
+    ///        update() should stop; false to fall through to the shared move.
+    hide func steerAtTileCenter(theMaze: maze.Maze, pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) -> Boolean {
+        // An eaten ghost that reached the house respawns there.
+        if mode == config.MODE_EATEN && gridX == returnX && gridY == returnY {
+            self.respawnInHouse();
+            return true;
+        }
+
+        // Ghosts waiting inside the house hold until their exit timer expires.
+        if inHouse && !exitTimer.IsExpired {
+            direction = config.DIR_NONE;
+            self.noteMovementProgress(theMaze);
+            return true;
+        }
+
+        // An eaten ghost still en route follows the pathfinder home.
+        if mode == config.MODE_EATEN {
+            direction = theMaze.getGhostPathDirection(gridX, gridY, returnX, returnY, direction);
+            self.move(theMaze);
+            self.noteMovementProgress(theMaze);
+            return true;
+        }
+
+        // Otherwise steer toward this frame's target, then fall through to move.
+        var target = self.pickTarget(pacmanX, pacmanY, blinkyX, blinkyY);
+        self.chooseDirection(target.x, target.y, theMaze);
+        return false;
+    }
+
+    /// @brief Respawn an eaten ghost at the house: back onto the normal cycle,
+    ///        held briefly before it exits again.
+    hide func respawnInHouse() {
+        inHouse = true;
+        self.revertToNormalMode();
+        flashWhite = false;
+        direction = config.DIR_NONE;
+        exitTimer.Start(config.GHOST_RESPAWN_WAIT);
+        self.resetStuckTracking();
+    }
+
+    /// @brief The tile this ghost wants this frame, by mode + personality.
+    ///        Precedence mirrors the classic rules (and the original chain):
+    ///        in-house steering first, then chase, then the frightened wander,
+    ///        else the scatter home corner. Eaten routing is handled upstream.
+    hide func pickTarget(pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) -> TargetTile {
+        if inHouse {
+            if exitTimer.IsExpired {
+                return new TargetTile(houseExitX, houseExitY);
+            }
+            return new TargetTile(scatterX, scatterY);
+        }
+
+        if mode == config.MODE_CHASE {
+            return self.chaseTarget(pacmanX, pacmanY, blinkyX, blinkyY);
+        }
+
+        if mode == config.MODE_FRIGHTENED {
+            return new TargetTile(NextInt(config.GRID_WIDTH), NextInt(config.GRID_HEIGHT));
+        }
+
+        return new TargetTile(scatterX, scatterY);
+    }
+
+    /// @brief The four classic chase-mode targeting personalities.
+    hide func chaseTarget(pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) -> TargetTile {
+        var target = new TargetTile(scatterX, scatterY);
+        match ghostType {
+            GhostType.Blinky => {
+                // Targets Crackman directly.
+                target = new TargetTile(pacmanX, pacmanY);
+            }
+            GhostType.Pinky => {
+                // Targets a few tiles ahead of Crackman.
+                var ty = pacmanY - config.PINKY_LEAD;
+                if ty < 0 { ty = 0; }
+                target = new TargetTile(pacmanX, ty);
+            }
+            GhostType.Inky => {
+                // Reflects Blinky through a point ahead of Crackman.
+                var aheadY = pacmanY - config.INKY_LEAD;
+                target = new TargetTile(pacmanX + (pacmanX - blinkyX), aheadY + (aheadY - blinkyY));
+            }
+            GhostType.Clyde => {
+                // Chases when far; retreats to his corner when close.
+                if utils.manhattanDistance(gridX, gridY, pacmanX, pacmanY) > config.CLYDE_SCATTER_RADIUS {
+                    target = new TargetTile(pacmanX, pacmanY);
+                }
+            }
+        }
+        return target;
     }
 
     hide func resetStuckTracking() {
@@ -436,34 +523,14 @@ class Ghost {
     }
 
     expose func reset() {
-        gridX = homeX;
-        gridY = homeY;
-        screenX = utils.gridToScreenX(homeX);
-        screenY = utils.gridToScreenY(homeY);
-        direction = config.DIR_UP;
-        mode = config.MODE_SCATTER;
-        normalMode = config.MODE_SCATTER;
-        atTileCenter = true;
-        frightenedTimer.Stop();
-        flashWhite = false;
-        self.resetStuckTracking();
-
-        // Reset house state
-        inHouse = (ghostType != GHOST_BLINKY);
-        if ghostType == GHOST_PINKY {
-            exitTimer.Start(60);
-        } else if ghostType == GHOST_INKY {
-            exitTimer.Start(180);
-        } else if ghostType == GHOST_CLYDE {
-            exitTimer.Start(300);
-        }
+        self.resetToSpawn();
     }
 
     expose func draw(canvas: Canvas) {
         // Determine draw color
         var flash = false;
         if mode == config.MODE_FRIGHTENED {
-            if frightenedTimer.Remaining < 120 && flashWhite {
+            if frightenedTimer.Remaining < config.FRIGHTENED_FLASH_FRAMES && flashWhite {
                 flash = true;
             }
         }

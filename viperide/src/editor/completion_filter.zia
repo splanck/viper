@@ -22,8 +22,8 @@ bind Str = Viper.String;
 /// @return True when prefix is empty or exactly matches the start of text.
 expose func StartsWith(text: String, prefix: String) -> Boolean {
     if prefix == "" { return true; }
-    if Str.Length(text) < Str.Length(prefix) { return false; }
-    return Str.Left(text, Str.Length(prefix)) == prefix;
+    if Str.get_Length(text) < Str.get_Length(prefix) { return false; }
+    return Str.Left(text, Str.get_Length(prefix)) == prefix;
 }
 
 /// @brief Return true for prefix or subsequence completion matches.
@@ -38,13 +38,13 @@ expose func CompletionMatches(text: String, query: String) -> Boolean {
     if StartsWith(text, query) { return true; }
     var ti = 1;
     var qi = 1;
-    while ti <= Str.Length(text) and qi <= Str.Length(query) {
+    while ti <= Str.get_Length(text) and qi <= Str.get_Length(query) {
         if Str.MidLen(text, ti, 1) == Str.MidLen(query, qi, 1) {
             qi = qi + 1;
         }
         ti = ti + 1;
     }
-    return qi > Str.Length(query);
+    return qi > Str.get_Length(query);
 }
 
 /// @brief Return true when any typed character appears in a candidate set.
@@ -54,7 +54,7 @@ expose func CompletionMatches(text: String, query: String) -> Boolean {
 expose func ContainsAny(characters: String, typed: String) -> Boolean {
     if characters == "" or typed == "" { return false; }
     var i = 1;
-    while i <= Str.Length(typed) {
+    while i <= Str.get_Length(typed) {
         var ch = Str.MidLen(typed, i, 1);
         if Str.IndexOf(characters, ch) != 0 {
             return true;
@@ -73,7 +73,7 @@ expose func ContainsAny(characters: String, typed: String) -> Boolean {
 expose func FirstMatchingCharacter(characters: String, typed: String) -> String {
     if characters == "" or typed == "" { return ""; }
     var i = 1;
-    while i <= Str.Length(typed) {
+    while i <= Str.get_Length(typed) {
         var ch = Str.MidLen(typed, i, 1);
         if Str.IndexOf(characters, ch) != 0 {
             return ch;
@@ -91,7 +91,7 @@ expose func FirstMatchingCharacter(characters: String, typed: String) -> String 
 expose func IsOnlyIndentWhitespace(text: String) -> Boolean {
     if text == "" { return false; }
     var i = 1;
-    while i <= Str.Length(text) {
+    while i <= Str.get_Length(text) {
         var ch = Str.MidLen(text, i, 1);
         if ch != " " and ch != "\t" {
             return false;
@@ -110,7 +110,7 @@ expose func IsOnlyIndentWhitespace(text: String) -> Boolean {
 expose func ShouldSuppressAutoCompletionLine(line: String, cursorCol: Integer) -> Boolean {
     var limit = cursorCol;
     if limit < 0 { limit = 0; }
-    if limit > Str.Length(line) { limit = Str.Length(line); }
+    if limit > Str.get_Length(line) { limit = Str.get_Length(line); }
 
     var inString = false;
     var escaped = false;
@@ -183,7 +183,7 @@ expose func FormatCompletionDisplay(label: String,
 /// @return Trimmed single-line text, optionally shortened with an ellipsis.
 expose func ShortInlineText(text: String, limit: Integer) -> String {
     var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
-    if limit <= 0 or Str.Length(cleaned) <= limit {
+    if limit <= 0 or Str.get_Length(cleaned) <= limit {
         return cleaned;
     }
     if limit <= 3 {

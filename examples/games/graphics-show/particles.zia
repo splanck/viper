@@ -287,6 +287,6 @@ func particlesRun(canvas: Canvas) {
 
         canvas.Flip();
         frameCount = frameCount + 1;
-        Viper.Time.SleepMs(16);
+        Viper.Time.Clock.Sleep(16);
     }
 }

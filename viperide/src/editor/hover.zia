@@ -149,7 +149,7 @@ class HoverController {
             hideTooltip();
             lastMouseX = mx;
             lastMouseY = my;
-            hoverStartMs = Viper.Time.GetTickCount();
+            hoverStartMs = Viper.Time.Clock.Ticks();
             if workScheduler != null {
                 workScheduler.Queue(scheduler.JOB_HOVER, sourcePath, engine.GetRevision(), -1);
             }
@@ -179,7 +179,7 @@ class HoverController {
             }
             workScheduler.Complete(scheduler.JOB_HOVER);
         } else {
-            var now = Viper.Time.GetTickCount();
+            var now = Viper.Time.Clock.Ticks();
             if now - hoverStartMs < HOVER_DELAY_MS { return; }
         }
 
@@ -256,7 +256,7 @@ class HoverController {
             }
         }
 
-        var len = Str.Length(display);
+        var len = Str.get_Length(display);
         tooltipHeight = HOVER_TOOLTIP_DEFAULT_HEIGHT;
         if len > 220 {
             tooltipHeight = HOVER_TOOLTIP_MAX_HEIGHT;
@@ -364,7 +364,7 @@ func FormatHoverDisplay(info: Any) -> String {
 
 func ShortInlineText(text: String, limit: Integer) -> String {
     var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
-    if limit <= 0 or Str.Length(cleaned) <= limit {
+    if limit <= 0 or Str.get_Length(cleaned) <= limit {
         return cleaned;
     }
     if limit <= 3 {

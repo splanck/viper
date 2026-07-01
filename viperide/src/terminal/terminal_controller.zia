@@ -212,7 +212,7 @@ class TerminalController {
         ResizeIfNeeded();
 
         var delta = sess.Update();
-        if Str.Length(delta) > 0 {
+        if Str.get_Length(delta) > 0 {
             pane.Append(delta);
         }
         if sess.exitedThisUpdate and pane != null {
@@ -222,7 +222,7 @@ class TerminalController {
         // Drain keystrokes captured by the pane and write them raw to the PTY;
         // the shell echoes them back through the output stream above.
         var keys = pane.TakeInput();
-        if Str.Length(keys) > 0 {
+        if Str.get_Length(keys) > 0 {
             if sess.IsActive() == false { RestartSession(); }
             sess.Send(keys);
         }

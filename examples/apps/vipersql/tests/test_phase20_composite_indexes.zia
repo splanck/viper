@@ -31,7 +31,7 @@ func main() -> Integer {
 
     // Test 2: toString shows all columns
     var desc = idx.toString();
-    assert(String.Length(desc) > 0, "toString produces output");
+    assert(Viper.String.get_Length(desc) > 0, "toString produces output");
 
     //=========================================================================
     // 2. SQL: CREATE COMPOSITE INDEX

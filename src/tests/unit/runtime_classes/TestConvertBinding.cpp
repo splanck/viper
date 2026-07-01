@@ -10,8 +10,7 @@
 ///
 /// @details This test file verifies that the canonical Viper.Core.Convert and
 /// Viper.Core.Parse runtime classes are registered in the catalog and that the
-/// public Viper.Convert / Viper.Parse compatibility names remain function
-/// aliases rather than duplicate runtime classes.
+/// public runtime surface exposes only the canonical conversion and parse names.
 ///
 /// ## Test Coverage
 ///
@@ -19,7 +18,6 @@
 ///
 /// Verifies that Viper.Core.Convert exists in the runtime class catalog with
 /// the expected conversion methods:
-/// - ToInt(str) - Parse string to 64-bit integer
 /// - ToInt64(str) - Parse string to 64-bit integer
 /// - ToDouble(str) - Parse string to 64-bit float
 /// - NumToInt(f64) - Truncate/clamp float to 64-bit integer
@@ -32,8 +30,7 @@
 ///
 /// | Method            | Arity | Expected Target              |
 /// |-------------------|-------|------------------------------|
-/// | ToInt(str)        | 1     | Viper.Core.Convert.ToInt     |
-/// | ToInt64(str)      | 1     | Viper.Core.Convert.ToInt     |
+/// | ToInt64(str)      | 1     | Viper.Core.Convert.ToInt64     |
 /// | ToDouble(str)     | 1     | Viper.Core.Convert.ToDouble  |
 /// | NumToInt(f64)     | 1     | Viper.Core.Convert.NumToInt  |
 /// | ToString_Int(i64) | 1     | Viper.Core.Convert.ToString_Int |
@@ -44,7 +41,6 @@
 /// The Viper.Core.Convert class provides bidirectional type conversion:
 ///
 /// **String → Numeric:**
-/// - ToInt: Parses string to i64
 /// - ToInt64: Parses decimal string to i64
 /// - ToDouble: Parses string to f64 (handles scientific notation)
 /// - NumToInt: Converts f64 to i64
@@ -85,21 +81,19 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
         (void)qname;
 
         // Verify expected conversion methods are present
-        bool hasToInt = false;
         bool hasToInt64 = false;
         bool hasToDouble = false;
         bool hasNumToInt = false;
         bool hasToStringInt = false;
         bool hasToStringDouble = false;
         for (const auto &m : it->methods) {
-            hasToInt = hasToInt || std::string(m.name) == "ToInt";
             hasToInt64 = hasToInt64 || std::string(m.name) == "ToInt64";
             hasToDouble = hasToDouble || std::string(m.name) == "ToDouble";
             hasNumToInt = hasNumToInt || std::string(m.name) == "NumToInt";
             hasToStringInt = hasToStringInt || std::string(m.name) == "ToString_Int";
             hasToStringDouble = hasToStringDouble || std::string(m.name) == "ToString_Double";
+            EXPECT_NE(std::string(m.name), "ToInt");
         }
-        EXPECT_TRUE(hasToInt);
         EXPECT_TRUE(hasToInt64);
         EXPECT_TRUE(hasToDouble);
         EXPECT_TRUE(hasNumToInt);
@@ -121,14 +115,13 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
-    // Test Convert.ToInt64(str: String) -> Int
-    auto ti_alias = midx.find("Viper.Core.Convert", "ToInt", 1);
-    ASSERT_TRUE(ti_alias.has_value());
-    EXPECT_EQ(ti_alias->target, std::string("Viper.Core.Convert.ToInt"));
+    // Test Convert.ToInt64(str: String) -> Int.
+    auto oldToInt = midx.find("Viper.Core.Convert", "ToInt", 1);
+    EXPECT_FALSE(oldToInt.has_value());
 
     auto ti = midx.find("Viper.Core.Convert", "ToInt64", 1);
     ASSERT_TRUE(ti.has_value());
-    EXPECT_EQ(ti->target, std::string("Viper.Core.Convert.ToInt"));
+    EXPECT_EQ(ti->target, std::string("Viper.Core.Convert.ToInt64"));
 
     // Test Convert.ToDouble(str: String) -> Float
     auto td = midx.find("Viper.Core.Convert", "ToDouble", 1);
@@ -151,7 +144,7 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     EXPECT_EQ(tsd->target, std::string("Viper.Core.Convert.ToString_Double"));
 }
 
-TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
+TEST(RuntimeClassParseBinding, CatalogContainsCanonicalParseMethods) {
     const auto &cat = il::runtime::runtimeClassCatalog();
 
     auto requireParseClass = [&](const char *qname) {
@@ -169,8 +162,8 @@ TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
         bool hasIsInt = false;
         bool hasIsNum = false;
         bool hasIntRadix = false;
-        bool hasInt64 = false;
-        bool hasDouble = false;
+        bool hasLegacyInt64 = false;
+        bool hasLegacyDouble = false;
         for (const auto &m : it->methods) {
             hasTryInt = hasTryInt || std::string(m.name) == "TryInt";
             hasTryNum = hasTryNum || std::string(m.name) == "TryNum";
@@ -181,14 +174,8 @@ TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
             hasIsInt = hasIsInt || std::string(m.name) == "IsInt";
             hasIsNum = hasIsNum || std::string(m.name) == "IsNum";
             hasIntRadix = hasIntRadix || std::string(m.name) == "IntRadix";
-            if (std::string(m.name) == "Int64") {
-                hasInt64 = true;
-                EXPECT_EQ(std::string(m.signature), std::string("obj<Viper.Option>(str)"));
-            }
-            if (std::string(m.name) == "Double") {
-                hasDouble = true;
-                EXPECT_EQ(std::string(m.signature), std::string("obj<Viper.Option>(str)"));
-            }
+            hasLegacyInt64 = hasLegacyInt64 || std::string(m.name) == "Int64";
+            hasLegacyDouble = hasLegacyDouble || std::string(m.name) == "Double";
         }
         EXPECT_TRUE(hasTryInt);
         EXPECT_TRUE(hasTryNum);
@@ -199,8 +186,8 @@ TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
         EXPECT_TRUE(hasIsInt);
         EXPECT_TRUE(hasIsNum);
         EXPECT_TRUE(hasIntRadix);
-        EXPECT_TRUE(hasInt64);
-        EXPECT_TRUE(hasDouble);
+        EXPECT_FALSE(hasLegacyInt64);
+        EXPECT_FALSE(hasLegacyDouble);
     };
 
     requireParseClass("Viper.Core.Parse");
@@ -223,12 +210,12 @@ TEST(RuntimeClassParseBinding, MethodIndexTargets) {
     EXPECT_EQ(tryNum->target, std::string("Viper.Core.Parse.TryNum"));
 }
 
-TEST(RuntimeUtilityAliases, DirectFunctionAliasesResolve) {
-    auto convert = il::runtime::mapCanonicalRuntimeName("Viper.Convert.ToInt");
+TEST(RuntimeUtilityBindings, DirectCanonicalFunctionsResolve) {
+    auto convert = il::runtime::mapCanonicalRuntimeName("Viper.Core.Convert.ToInt64");
     ASSERT_TRUE(convert.has_value());
     EXPECT_EQ(*convert, std::string_view("rt_to_int"));
 
-    auto parse = il::runtime::mapCanonicalRuntimeName("Viper.Parse.IntRadix");
+    auto parse = il::runtime::mapCanonicalRuntimeName("Viper.Core.Parse.IntRadix");
     ASSERT_TRUE(parse.has_value());
     EXPECT_EQ(*parse, std::string_view("rt_parse_int_radix"));
 }

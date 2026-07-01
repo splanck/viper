@@ -494,7 +494,7 @@ PRINT "Total RAM: "; Viper.System.Machine.MemTotal / 1073741824; " GB"
 PRINT "Free RAM: "; Viper.System.Machine.MemFree / 1073741824; " GB"
 
 ' System characteristics
-PRINT "Byte Order: "; Viper.System.Machine.Endian
+PRINT "Byte Order: "; Viper.System.Machine.get_Endian
 
 ' Conditional behavior based on OS
 IF Viper.System.Machine.OS = "macos" THEN

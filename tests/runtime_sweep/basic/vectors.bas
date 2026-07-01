@@ -8,7 +8,7 @@
 ' COVER: Viper.Math.Vec2.Dist
 ' COVER: Viper.Math.Vec2.Div
 ' COVER: Viper.Math.Vec2.Dot
-' COVER: Viper.Math.Vec2.Length
+' COVER: Viper.Math.Vec2.Len
 ' COVER: Viper.Math.Vec2.LenSq
 ' COVER: Viper.Math.Vec2.Lerp
 ' COVER: Viper.Math.Vec2.Mul
@@ -25,7 +25,7 @@
 ' COVER: Viper.Math.Vec3.Dist
 ' COVER: Viper.Math.Vec3.Div
 ' COVER: Viper.Math.Vec3.Dot
-' COVER: Viper.Math.Vec3.Length
+' COVER: Viper.Math.Vec3.Len
 ' COVER: Viper.Math.Vec3.LenSq
 ' COVER: Viper.Math.Vec3.Lerp
 ' COVER: Viper.Math.Vec3.Mul

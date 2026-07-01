@@ -16,52 +16,52 @@ class StarterGame {
 
     expose func setup(title: String, width: Integer, height: Integer) {
         world = World3D.New(title, width, height);
-        canvas = World3D.get_canvas(world);
+        canvas = world.Canvas;
         Canvas3D.SetDTMax(canvas, 50);
 
         Quality.Apply(world, QualityLevel.get_Balanced());
         Lighting.Outdoor(world, Vec3.New(-0.35, -1.0, -0.25));
         PostFX.Crisp(world);
-        var env = Environment3D.Outdoor(world);
-        EnvHandle.withFog(env, 18.0, 80.0);
+        var env: EnvHandle = Environment3D.Outdoor(world);
+        env.WithFog(18.0, 80.0);
 
-        var ground = Prefab.Ground(32.0, Materials.Rubber(0.24, 0.36, 0.28));
-        Entity3D.attachBody(ground, BodyDef.StaticPlane(32.0));
-        World3D.spawn(world, ground);
+        var ground: Entity3D = Prefab.Ground(32.0, Materials.Rubber(0.24, 0.36, 0.28));
+        ground.AttachBody(BodyDef.StaticPlane(32.0));
+        world.Spawn(ground);
 
-        var crate = Prefab.BoxXYZ(1.0, 0.8, 1.2, Materials.Metal(0.62, 0.66, 0.70));
-        Entity3D.setName(crate, "StarterCrate");
-        Entity3D.setPosition(crate, -1.4, 0.42, -1.8);
-        Entity3D.attachBody(crate, BodyDef.StaticBox(0.50, 0.40, 0.60));
-        World3D.spawn(world, crate);
+        var crate: Entity3D = Prefab.BoxXYZ(1.0, 0.8, 1.2, Materials.Metal(0.62, 0.66, 0.70));
+        crate.SetName("StarterCrate");
+        crate.SetPosition(-1.4, 0.42, -1.8);
+        crate.AttachBody(BodyDef.StaticBox(0.50, 0.40, 0.60));
+        world.Spawn(crate);
 
-        var marker = Assets3D.LoadEntityAsset("assets/models/triangle.gltf");
+        var marker: Entity3D = Assets3D.LoadEntityAsset("assets/models/triangle.gltf");
         if (marker != null) {
-            Entity3D.setName(marker, "PackagedMarker");
-            Entity3D.setPosition(marker, 1.4, 0.08, -2.1);
-            Entity3D.setScale(marker, 1.6);
-            World3D.spawn(world, marker);
+            marker.SetName("PackagedMarker");
+            marker.SetPosition(1.4, 0.08, -2.1);
+            marker.SetScale(1.6);
+            world.Spawn(marker);
         }
 
         player = Entity3D.New();
-        Entity3D.setName(player, "Player");
-        Entity3D.setLayer(player, Layers.get_Player());
-        Entity3D.setPosition(player, 2.2, 1.0, 4.0);
-        World3D.spawn(world, player);
+        player.SetName("Player");
+        player.SetLayer(Layers.get_Player());
+        player.SetPosition(2.2, 1.0, 4.0);
+        world.Spawn(player);
 
         character = CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
-        CharacterController3D.set_speed(character, 3.4);
+        character.Speed = 3.4;
 
         fps = FirstPersonController.New(world);
-        FirstPersonController.set_character(fps, character);
-        FirstPersonController.set_speed(fps, 3.4);
-        FirstPersonController.set_lookSensitivity(fps, 0.16);
-        FirstPersonController.releaseMouse(fps);
-        World3D.setCameraController(world, fps);
+        fps.Character = character;
+        fps.Speed = 3.4;
+        fps.LookSensitivity = 0.16;
+        fps.ReleaseMouse();
+        world.SetCameraController(fps);
 
         elapsed = 0.0;
         quitRequested = false;
-        World3D.stepSimulation(world, 0.016);
+        world.StepSimulation(0.016);
     }
 
     expose func getWorld() -> World3D {
@@ -82,19 +82,19 @@ class StarterGame {
 
     expose func step(dt: Float) {
         elapsed = elapsed + dt;
-        var input = World3D.get_input(world);
-        if (Input3D.pressed(input, Keys.get_Escape())) {
+        var input = world.Input;
+        if (input.Pressed(Keys.get_Escape())) {
             quitRequested = true;
             return;
         }
-        World3D.stepSimulation(world, dt);
+        world.StepSimulation(dt);
     }
 
     expose func renderFrame() {
-        World3D.beginFrame(world);
-        World3D.drawScene(world);
-        World3D.drawEffects(world);
-        World3D.endScene(world);
+        world.BeginFrame();
+        world.DrawScene();
+        world.DrawEffects();
+        world.EndScene();
 
         Canvas3D.BeginOverlay(canvas);
         Canvas3D.DrawRect2D(canvas, 14, 14, 120, 3, 0x00E8FF);
@@ -104,20 +104,20 @@ class StarterGame {
     }
 
     expose func run() {
-        FirstPersonController.captureMouse(fps);
-        while (quitRequested == false && World3D.tick(world)) {
-            var dt = World3D.get_dt(world);
+        fps.CaptureMouse();
+        while (quitRequested == false && world.Tick()) {
+            var dt = world.Dt;
             if (dt <= 0.0) { dt = 0.016; }
             if (dt > 0.050) { dt = 0.050; }
             step(dt);
             renderFrame();
-            World3D.present(world);
+            world.Present();
         }
-        FirstPersonController.releaseMouse(fps);
+        fps.ReleaseMouse();
     }
 
     expose func destroy() {
-        World3D.destroy(world);
+        world.Destroy();
     }
 }
 

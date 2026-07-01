@@ -40,7 +40,7 @@ expose func FindNextOccurrence(source: String,
         }
         var idx = Str.IndexOfFrom(line, fromCol, word);
         while idx != 0 {
-            if identifier_utils.IsWordBoundaryMatch(line, idx, Str.Length(word)) {
+            if identifier_utils.IsWordBoundaryMatch(line, idx, Str.get_Length(word)) {
                 return "" + (i + 1) + ":" + idx;
             }
             idx = Str.IndexOfFrom(line, idx + 1, word);

@@ -1020,7 +1020,7 @@ func pgCommandTag(query: String, rowsAffected: Integer, rowCount: Integer) -> St
 
 // Simple starts-with helper (avoids cross-module dependency)
 func stringStartsWithPg(s: String, prefix: String) -> Boolean {
-    var prefixLen = String.Length(prefix);
-    if String.Length(s) < prefixLen { return false; }
+    var prefixLen = Viper.String.get_Length(prefix);
+    if Viper.String.get_Length(s) < prefixLen { return false; }
     return String.Substring(s, 0, prefixLen) == prefix;
 }

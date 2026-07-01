@@ -1,5 +1,5 @@
 // Regression: binding a broad runtime namespace must not make nested class
-// properties shadow Viper.String.Length as an unqualified function.
+// properties shadow Viper.String.get_Length as an unqualified function.
 module namespace_length_collision;
 
 bind Viper.Game;

@@ -17,19 +17,19 @@ func near(a: Float, b: Float, eps: Float) -> Boolean {
 
 func start() {
     var world = Game3D.World3D.New("Game3D Camera Controllers Probe", 64, 48);
-    var canvas = Game3D.World3D.get_canvas(world);
-    var camera = Game3D.World3D.get_camera(world);
+    var canvas = world.Canvas;
+    var camera = world.Camera;
 
     var freeFly = Game3D.FreeFlyController.New(world);
-    Game3D.FreeFlyController.set_speed(freeFly, 10.0);
-    Game3D.FreeFlyController.set_lookSensitivity(freeFly, 0.10);
-    Game3D.World3D.setCameraController(world, freeFly);
+    freeFly.Speed = 10.0;
+    freeFly.LookSensitivity = 0.10;
+    world.SetCameraController(freeFly);
 
-    var before = G3D.Camera3D.get_Position(camera);
+    var before = camera.Position;
     G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_W(), true);
     G3D.Canvas3D.PushSyntheticMouse(canvas, 12.0, -4.0, 0, 0.0);
-    Game3D.World3D.runFramesOnly(world, 1, 0.1);
-    var after = G3D.Camera3D.get_Position(camera);
+    world.RunFramesOnly(1, 0.1);
+    var after = camera.Position;
     if (Math.Vec3.get_Z(after) >= Math.Vec3.get_Z(before) - 0.05) {
         fail("FreeFlyController did not move camera from synthetic W input");
         return;
@@ -38,25 +38,25 @@ func start() {
 
     var orbitTarget = new Math.Vec3(0.0, 1.0, 0.0);
     var orbit = Game3D.OrbitController.New(world, orbitTarget);
-    Game3D.World3D.setCameraController(world, orbit);
+    world.SetCameraController(orbit);
     G3D.Canvas3D.PushSyntheticMouse(canvas, 20.0, -8.0, 1, 1.0);
-    Game3D.World3D.runFramesOnly(world, 1, 0.1);
-    if (Game3D.OrbitController.get_yaw(orbit) <= 0.0 ||
-        Game3D.OrbitController.get_distance(orbit) >= 6.0) {
+    world.RunFramesOnly(1, 0.1);
+    if (orbit.Yaw <= 0.0 ||
+        orbit.Distance >= 6.0) {
         fail("OrbitController did not consume mouse drag and wheel input");
         return;
     }
     G3D.Canvas3D.ClearSyntheticInput(canvas);
 
     var target = Game3D.Entity3D.New();
-    Game3D.Entity3D.setPosition(target, 4.0, 0.5, -2.0);
-    Game3D.World3D.spawn(world, target);
+    target.SetPosition(4.0, 0.5, -2.0);
+    world.Spawn(target);
     var follow = Game3D.FollowController.New(world, target, new Math.Vec3(0.0, 2.0, 5.0));
-    Game3D.FollowController.set_damping(follow, 0.0);
-    Game3D.World3D.setCameraController(world, follow);
-    Game3D.World3D.runFramesOnly(world, 1, 0.1);
+    follow.Damping = 0.0;
+    world.SetCameraController(follow);
+    world.RunFramesOnly(1, 0.1);
 
-    var followPos = G3D.Camera3D.get_Position(camera);
+    var followPos = camera.Position;
     if (near(Math.Vec3.get_X(followPos), 4.0, 0.0001) == false ||
         near(Math.Vec3.get_Y(followPos), 2.5, 0.0001) == false ||
         near(Math.Vec3.get_Z(followPos), 3.0, 0.0001) == false) {
@@ -64,15 +64,15 @@ func start() {
         return;
     }
 
-    Game3D.Entity3D.setPosition(target, 6.0, 0.5, -3.0);
-    Game3D.World3D.stepSimulation(world, 0.1);
-    followPos = G3D.Camera3D.get_Position(camera);
+    target.SetPosition(6.0, 0.5, -3.0);
+    world.StepSimulation(0.1);
+    followPos = camera.Position;
     if (near(Math.Vec3.get_X(followPos), 6.0, 0.0001) == false ||
         near(Math.Vec3.get_Z(followPos), 2.0, 0.0001) == false) {
         fail("FollowController did not track post-physics target pose");
         return;
     }
 
-    Game3D.World3D.destroy(world);
+    world.Destroy();
     Terminal.Say("PASS");
 }

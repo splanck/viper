@@ -32,7 +32,7 @@ static int body3d_assign_collider(rt_body3d *body, void *collider, const char *a
     if (!body)
         return 0;
     if (collider && !rt_g3d_has_class(collider, RT_G3D_COLLIDER3D_CLASS_ID)) {
-        rt_trap("Physics3DBody.SetCollider: collider must be a Collider3D");
+        rt_trap("Physics3DBody.Collider: collider must be a Collider3D");
         return 0;
     }
     if (collider == body->collider)
@@ -83,7 +83,7 @@ static void *make_body(double mass) {
 
 /// @brief `Body3D.New(mass)` — bare body without a collider.
 ///
-/// Caller must assign a collider via `SetCollider` before adding to a
+/// Caller must assign a collider via the `Collider` property before adding to a
 /// world (otherwise body-vs-body tests skip it).
 void *rt_body3d_new(double mass) {
     return make_body(mass);
@@ -146,7 +146,7 @@ void *rt_body3d_new_capsule(double radius, double height, double mass) {
     return b;
 }
 
-/// @brief `Body3D.SetCollider(collider)` — swap the body's collider.
+/// @brief `Body3D.Collider` setter — swap the body's collider.
 ///
 /// Traps if the collider requires a static-only body but the body is
 /// dynamic/kinematic (e.g., concave triangle meshes).
@@ -155,7 +155,7 @@ void rt_body3d_set_collider(void *o, void *collider) {
     if (!b)
         return;
     body3d_assign_collider(
-        b, collider, "Physics3DBody.SetCollider: collider requires a static body");
+        b, collider, "Physics3DBody.Collider: collider requires a static body");
 }
 
 /// @brief `Body3D.GetCollider` — borrowed reference to the body's collider.

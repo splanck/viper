@@ -2,7 +2,7 @@ il 0.1
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.ReadLine() -> str
-extern @Viper.Convert.ToInt(str) -> i64
+extern @Viper.Core.Convert.ToInt64(str) -> i64
 
 global const str @.L0 = "FACTORIAL"
 global const str @.L1 = "ENTER N:"
@@ -22,7 +22,7 @@ entry:
   store str, %s_slot, %line
 
   %sval = load str, %s_slot
-  %n0 = call @Viper.Convert.ToInt(%sval)
+  %n0 = call @Viper.Core.Convert.ToInt64(%sval)
   store i64, %n_slot, %n0
 
   store i64, %r_slot, 1

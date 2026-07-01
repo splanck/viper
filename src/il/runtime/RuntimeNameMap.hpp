@@ -28,7 +28,7 @@ namespace il::runtime {
 ///          generator uses this mapping to resolve IL extern references to
 ///          linkable C symbols.
 struct RuntimeNameAlias {
-    std::string_view canonical; ///< High-level Viper.* symbol name (e.g., "Viper.String.Length").
+    std::string_view canonical; ///< High-level Viper.* symbol name (e.g., "Viper.String.get_Length").
     std::string_view runtime;   ///< Low-level C runtime symbol (e.g., "rt_str_len").
 };
 

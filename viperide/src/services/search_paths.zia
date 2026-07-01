@@ -49,7 +49,7 @@ expose func ShouldSearchIgnore(rootPath: String,
         prefix = prefix + Path.Sep();
     }
     if Str.StartsWith(fullPath, prefix) {
-        rel = Str.Mid(fullPath, Str.Length(prefix) + 1);
+        rel = Str.Mid(fullPath, Str.get_Length(prefix) + 1);
     }
     if isDir and Str.EndsWith(rel, "/") == false {
         rel = rel + "/";
@@ -88,7 +88,7 @@ expose func RelativeSearchPath(rootPath: String, filePath: String) -> String {
         prefix = prefix + Path.Sep();
     }
     if prefix != "" and Str.StartsWith(filePath, prefix) {
-        rel = Str.Mid(filePath, Str.Length(prefix) + 1);
+        rel = Str.Mid(filePath, Str.get_Length(prefix) + 1);
     }
     return NormalizeSearchPath(rel);
 }
@@ -204,8 +204,8 @@ func SearchPathBaseName(path: String) -> String {
 /// @param pattern Normalized glob pattern.
 /// @return True when the pattern matches the full text.
 func GlobMatchesText(text: String, pattern: String) -> Boolean {
-    var textLen = Str.Length(text);
-    var patLen = Str.Length(pattern);
+    var textLen = Str.get_Length(text);
+    var patLen = Str.get_Length(pattern);
     var ti = 1;
     var pi = 1;
     var star = 0;

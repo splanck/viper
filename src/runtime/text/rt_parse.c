@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_parse.c
-// Purpose: Implements safe parsing utility functions for the Viper.Parse
+// Purpose: Implements safe parsing utility functions for the Viper.Core.Parse
 //          namespace. Provides TryParseInt, TryParseLong, TryParseFloat,
 //          TryParseBool, TryParseDate, and related functions that return
 //          false instead of trapping on invalid input.

@@ -566,7 +566,7 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     }
 }
 
-/// @brief `Character3D.SetStepHeight(h)` — max obstacle height the controller can step over.
+/// @brief `Character3D.set_StepHeight(h)` — max obstacle height the controller can step over.
 void rt_character3d_set_step_height(void *o, double h) {
     rt_character3d *c = character3d_checked(o);
     if (c)
@@ -594,7 +594,7 @@ void rt_character3d_set_slope_limit(void *o, double degrees) {
     }
 }
 
-/// @brief `Character3D.SetWorld(world)` — bind the character to a physics world.
+/// @brief `Character3D.set_World(world)` — bind the character to a physics world.
 ///
 /// Required before `Move` will collide against anything. Releases any
 /// previous world reference and retains the new one. NULL detaches.

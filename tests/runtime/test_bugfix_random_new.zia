@@ -44,9 +44,9 @@ func start() {
         passed = false;
     }
 
-    var ranged = rng.NextInt(10, 20);
+    var ranged = rng.Range(10, 20);
     if (ranged < 10 || ranged > 20) {
-        Say("FAIL: NextInt(min,max) out of range");
+        Say("FAIL: Range(min,max) out of range");
         passed = false;
     }
 

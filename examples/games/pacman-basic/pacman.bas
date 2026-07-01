@@ -262,7 +262,7 @@ Sub ResetAfterDeath()
     Next i
 
     ' Brief pause
-    Viper.Time.SleepMs(1000)
+    Viper.Time.Clock.Sleep(1000)
 End Sub
 
 ' ============================================================================
@@ -334,7 +334,7 @@ Sub UpdateGame()
         PRINT "*** LEVEL ";
         PRINT Level;
         PRINT " ***";
-        Viper.Time.SleepMs(2000)
+        Viper.Time.Clock.Sleep(2000)
 
         ' Redraw maze
         TheMaze.Draw()
@@ -379,7 +379,7 @@ Sub GameLoop()
         End If
 
         FrameCount = FrameCount + 1
-        Viper.Time.SleepMs(80)
+        Viper.Time.Clock.Sleep(80)
     Loop
 
     ' Game over screen

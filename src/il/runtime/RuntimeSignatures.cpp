@@ -2361,6 +2361,7 @@ RuntimeSignature buildSignature(const DescriptorRow &row) {
 RuntimeDescriptor buildDescriptor(const DescriptorRow &row) {
     RuntimeDescriptor descriptor;
     descriptor.name = row.name;
+    descriptor.signatureText = row.spec;
     descriptor.signature = buildSignature(row);
     descriptor.handler = row.handler;
     descriptor.lowering = row.lowering;

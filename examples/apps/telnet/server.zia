@@ -118,7 +118,7 @@ func splitCommand(cmd: String) -> List[String] {
     var result: List[String] = [];
     var current = "";
     var i = 0;
-    var len = String.Length(cmd);
+    var len = Viper.String.get_Length(cmd);
 
     while i < len {
         var ch = String.Substring(cmd, i, 1);
@@ -168,7 +168,7 @@ func cdCommand(path: String) -> String {
     var newPath = path;
 
     // Handle relative paths
-    var pathLen = String.Length(path);
+    var pathLen = Viper.String.get_Length(path);
     if pathLen > 0 {
         var firstChar = String.Substring(path, 0, 1);
         if firstChar != "/" {
@@ -190,7 +190,7 @@ func lsCommand(path: String) -> String {
     var targetPath = path;
 
     // Handle relative paths
-    var pathLen = String.Length(path);
+    var pathLen = Viper.String.get_Length(path);
     if pathLen > 0 {
         var firstChar = String.Substring(path, 0, 1);
         if firstChar != "/" {
@@ -226,7 +226,7 @@ func catCommand(filename: String) -> String {
     var filepath = filename;
 
     // Handle relative paths
-    var fnLen = String.Length(filename);
+    var fnLen = Viper.String.get_Length(filename);
     if fnLen > 0 {
         var firstChar = String.Substring(filename, 0, 1);
         if firstChar != "/" {
@@ -251,7 +251,7 @@ func dateCommand() -> String {
 // ECHO command
 func echoCommand(cmd: String) -> String {
     // Remove "echo " prefix
-    var len = String.Length(cmd);
+    var len = Viper.String.get_Length(cmd);
     if len > 5 {
         var sublen = len - 5;
         return String.Substring(cmd, 5, sublen) + "\n";

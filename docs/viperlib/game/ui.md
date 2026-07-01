@@ -206,7 +206,6 @@ Editable single-line text field with UTF-8-safe cursoring, selection, placeholde
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetText(text)` / `GetText()` | `Void(String)` / `String()` | Set or read text |
 | `TextLength()` | `Integer()` | Return codepoint count |
 | `GetCursor()` / `SetCursor(pos)` | `Integer()` / `Void(Integer)` | Read or move the cursor by codepoint index |
 | `SelectAll()` / `ClearSelection()` | `Void()` | Manage selection |

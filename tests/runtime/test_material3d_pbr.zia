@@ -10,39 +10,39 @@ func start() {
     var mesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
     var mat = Material3D.NewPBR(0.6, 0.4, 0.2);
 
-    Material3D.set_Metallic(mat, 0.7);
-    Material3D.set_Roughness(mat, 0.3);
-    Material3D.set_AO(mat, 0.85);
-    Material3D.set_EmissiveIntensity(mat, 1.5);
-    Material3D.set_NormalScale(mat, 0.55);
-    Material3D.set_Alpha(mat, 0.6);
-    Material3D.set_AlphaMode(mat, 2);
-    Material3D.set_DoubleSided(mat, true);
+    mat.Metallic = 0.7;
+    mat.Roughness = 0.3;
+    mat.AO = 0.85;
+    mat.EmissiveIntensity = 1.5;
+    mat.NormalScale = 0.55;
+    mat.Alpha = 0.6;
+    mat.AlphaMode = 2;
+    mat.DoubleSided = true;
 
     var inst = Material3D.MakeInstance(mat);
-    Material3D.set_Roughness(inst, 0.9);
-    Material3D.set_DoubleSided(inst, false);
-    if (Material3D.get_Roughness(mat) < 0.29 || Material3D.get_Roughness(mat) > 0.31) {
+    inst.Roughness = 0.9;
+    inst.DoubleSided = false;
+    if (mat.Roughness < 0.29 || mat.Roughness > 0.31) {
         Say("FAIL: MakeInstance should keep scalar overrides independent");
         return;
     }
-    if (Material3D.get_DoubleSided(mat) != true) {
+    if (mat.DoubleSided != true) {
         Say("FAIL: MakeInstance should not mutate the source material");
         return;
     }
 
     var clone = Material3D.Clone(mat);
-    if (Material3D.get_Metallic(clone) < 0.69 || Material3D.get_Metallic(clone) > 0.71) {
+    if (clone.Metallic < 0.69 || clone.Metallic > 0.71) {
         Say("FAIL: Clone should preserve metallic");
         return;
     }
-    if (Material3D.get_AlphaMode(clone) != 2) {
+    if (clone.AlphaMode != 2) {
         Say("FAIL: Clone should preserve alpha mode");
         return;
     }
 
-    SceneNode.set_Mesh(node, mesh);
-    SceneNode.set_Material(node, mat);
+    node.Mesh = mesh;
+    node.Material = mat;
     SceneGraph.Add(scene, node);
     if (SceneGraph.Save(scene, path) != 1) {
         Say("FAIL: SceneGraph.Save should create the PBR fixture asset");

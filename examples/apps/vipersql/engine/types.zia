@@ -227,7 +227,7 @@ func timestampToDate(tsEpoch: Integer) -> Integer {
 /// "no date today", and the three-valued comparison still drops the
 /// row.
 func parseDateText(text: String) -> Integer {
-    var sLen = String.Length(text);
+    var sLen = Viper.String.get_Length(text);
     if sLen < 10 { return 0; }
     var yr = stringToInt(String.Substring(text, 0, 4));
     var mo = stringToInt(String.Substring(text, 5, 2));
@@ -548,8 +548,8 @@ class SqlValue {
             if textValue == other.textValue {
                 result = 0;
             } else {
-                var myLen = String.Length(textValue);
-                var otherLen = String.Length(other.textValue);
+                var myLen = Viper.String.get_Length(textValue);
+                var otherLen = Viper.String.get_Length(other.textValue);
                 var minLen = myLen;
                 if otherLen < minLen { minLen = otherLen; }
                 var i = 0;
@@ -829,12 +829,12 @@ func sqlArray(val: String) -> SqlValue {
 /// A comma outside quotes flushes `current` into `elements` and resets.
 func parseArrayElements(arrayText: String) -> List[String] {
     var elements: List[String] = [];
-    var len = String.Length(arrayText);
+    var len = Viper.String.get_Length(arrayText);
     if len < 2 { return elements; }
 
     // Strip outer braces.
     var inner = String.Substring(arrayText, 1, len - 2);
-    var innerLen = String.Length(inner);
+    var innerLen = Viper.String.get_Length(inner);
     if innerLen == 0 { return elements; }
 
     var current = "";
@@ -869,7 +869,7 @@ func parseArrayElements(arrayText: String) -> List[String] {
     }
     // Flush the trailing element.  The `innerLen > 0` guard is there so
     // `"{}"` correctly produces an empty list.
-    if String.Length(current) > 0 || innerLen > 0 {
+    if Viper.String.get_Length(current) > 0 || innerLen > 0 {
         elements.add(String.Trim(current));
     }
     return elements;

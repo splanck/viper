@@ -152,17 +152,22 @@ TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
     EXPECT_EQ(releaseStr->target, std::string("Viper.Memory.ReleaseStr"));
     EXPECT_EQ(releaseStr->ret, BasicType::Int);
 
-    auto doubleOpt = runtimeMethodIndex().find("Viper.Core.Parse", "DoubleOption", 1);
-    ASSERT_TRUE(doubleOpt.has_value());
-    EXPECT_EQ(doubleOpt->target, std::string("Viper.Core.Parse.DoubleOption"));
-    EXPECT_EQ(doubleOpt->ret, BasicType::Object);
-    EXPECT_EQ(doubleOpt->returnClassQName, std::string("Viper.Option"));
+    auto oldDoubleOpt = runtimeMethodIndex().find("Viper.Core.Parse", "DoubleOption", 1);
+    EXPECT_FALSE(oldDoubleOpt.has_value());
+    auto oldIntOpt = runtimeMethodIndex().find("Viper.Core.Parse", "Int64Option", 1);
+    EXPECT_FALSE(oldIntOpt.has_value());
 
-    auto intOpt = runtimeMethodIndex().find("Viper.Core.Parse", "Int64Option", 1);
-    ASSERT_TRUE(intOpt.has_value());
-    EXPECT_EQ(intOpt->target, std::string("Viper.Core.Parse.Int64Option"));
-    EXPECT_EQ(intOpt->ret, BasicType::Object);
-    EXPECT_EQ(intOpt->returnClassQName, std::string("Viper.Option"));
+    auto tryNum = runtimeMethodIndex().find("Viper.Core.Parse", "TryNum", 1);
+    ASSERT_TRUE(tryNum.has_value());
+    EXPECT_EQ(tryNum->target, std::string("Viper.Core.Parse.TryNum"));
+    EXPECT_EQ(tryNum->ret, BasicType::Object);
+    EXPECT_EQ(tryNum->returnClassQName, std::string("Viper.Option"));
+
+    auto tryInt = runtimeMethodIndex().find("Viper.Core.Parse", "TryInt", 1);
+    ASSERT_TRUE(tryInt.has_value());
+    EXPECT_EQ(tryInt->target, std::string("Viper.Core.Parse.TryInt"));
+    EXPECT_EQ(tryInt->ret, BasicType::Object);
+    EXPECT_EQ(tryInt->returnClassQName, std::string("Viper.Option"));
 
     auto weakNew = runtimeMethodIndex().find("Viper.Memory.WeakRef", "New", 1);
     ASSERT_TRUE(weakNew.has_value());
@@ -402,9 +407,9 @@ TEST(RuntimeMethodIndexBasic, IoConstructorAliasesResolveToCtorTargets) {
     EXPECT_EQ(writerNew->ret, BasicType::Object);
 
     const auto &registry = il::runtime::RuntimeRegistry::instance();
-    EXPECT_TRUE(registry.findFunction("Viper.IO.BinFile.New").has_value());
-    EXPECT_TRUE(registry.findFunction("Viper.IO.LineReader.New").has_value());
-    EXPECT_TRUE(registry.findFunction("Viper.IO.LineWriter.New").has_value());
+    EXPECT_TRUE(registry.findFunction("Viper.IO.BinFile.Open").has_value());
+    EXPECT_TRUE(registry.findFunction("Viper.IO.LineReader.Open").has_value());
+    EXPECT_TRUE(registry.findFunction("Viper.IO.LineWriter.Open").has_value());
 }
 
 /// @brief Test entry point.

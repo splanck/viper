@@ -2156,3 +2156,5 @@ if (NOT TARGET runtime_surface_audit_bundle)
             test_rt_graphics_surface_link
             test_rt_audio_surface_link)
 endif ()
+
+viper_apply_display_test_environment()

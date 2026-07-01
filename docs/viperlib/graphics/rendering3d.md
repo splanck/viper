@@ -78,10 +78,9 @@ Unsupported required extensions fail the load and name the extension list, for
 example `GLTF.Load: requires KHR_draco_mesh_compression (unsupported)`. Draco
 mesh compression is not implemented.
 
-Writable `Viper.Graphics3D` properties expose both property accessors and
-method-call setters. A writable property named `X` has a `set_X` runtime
-accessor and a matching `SetX(...)` class method, such as
-`Material3D.SetRoughness(material, value)` or `material.SetRoughness(value)`.
+Writable `Viper.Graphics3D` properties expose `get_X` / `set_X` runtime
+accessors and language-level property assignment where supported, such as
+`Material3D.set_Roughness(material, value)` or `material.Roughness = value`.
 
 ---
 
@@ -209,13 +208,12 @@ worker counts.
 | Property / Method | Type | Description |
 |-------------------|------|-------------|
 | `Backend` | `String` | Active renderer name: `software`, `metal`, `d3d11`, or `opengl` |
-| `BackendName` | `String` | Alias for `Backend` for code that wants an explicit name getter |
 | `BackendFallback` | `Boolean` | True when Canvas3D fell back from the selected GPU backend to software at creation |
 | `BackendSupports(name)` | `Boolean` | Tests backend capabilities; `runtime-fallback`, `backend-fallback`, and `software-fallback` report the `BackendFallback` state |
 
 Use `BackendSupports("gpu")`, `BackendSupports("software")`, or
 `BackendFallback` for control flow. String comparisons against `Backend` or
-`BackendName` should be reserved for logs and diagnostics.
+the value returned by `get_Backend` should be reserved for logs and diagnostics.
 
 ### Canvas3D Quality Profiles
 
@@ -679,8 +677,6 @@ Scene light with configurable color, intensity, and enabled state.
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `Void(Double)` | Set light intensity multiplier |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set light color using normalized RGB components |
-| `SetEnabled(enabled)` | `Void(Boolean)` | Toggle contribution without clearing the light slot |
-| `SetCastsShadows(enabled)` | `Void(Boolean)` | Toggle whether the light may be selected for shadow-map rendering |
 
 #### Properties
 
@@ -1194,10 +1190,6 @@ the audio-owned spatial listener state.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetPosition(pos)` | `Void(Object)` | Set position from a `Vec3` |
-| `SetForward(dir)` | `Void(Object)` | Set facing direction from a `Vec3` |
-| `SetUp(up)` | `Void(Object)` | Set up direction from a `Vec3` |
-| `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
 | `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode` position each `SpatialAudio3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove the node binding |
 | `BindCamera(camera)` | `Void(Object)` | Automatically track a `Camera3D` position and forward |
@@ -1234,8 +1226,6 @@ calculation path for playback-rate-capable backends.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetPosition(pos)` | `Void(Object)` | Set position from a `Vec3` |
-| `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
 | `Play()` | `Integer()` | Start playback; returns voice ID |
 | `Stop()` | `Void()` | Stop playback |
 | `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode` each `SpatialAudio3D.SyncBindings` call |
@@ -1254,7 +1244,7 @@ listener.BindCamera(cam)
 var explosion = Sound.LoadAsset("assets/explosion.ogg")
 var src = SoundSource3D.New(explosion)
 src.MaxDistance = 40.0
-src.SetPosition(Vec3.New(10.0, 0.0, 0.0))
+src.Position = Vec3.New(10.0, 0.0, 0.0)
 src.Play()
 
 // per frame

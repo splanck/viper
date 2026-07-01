@@ -205,7 +205,7 @@ class SessionManager {
         if doc == null { return false; }
         if doc.isModified == false { return false; }
         if doc.isReadOnlyPreview { return false; }
-        return Str.Length(doc.content) <= MAX_SESSION_RECOVERY_CHARS;
+        return Str.get_Length(doc.content) <= MAX_SESSION_RECOVERY_CHARS;
     }
 
     /// @brief Encode crash-recovery text into an INI-safe scalar value.

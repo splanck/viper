@@ -15,16 +15,16 @@ func start() {
     SceneGraph.Add(scene, parent);
 
     SceneNode.BindBody(child, body);
-    SceneNode.set_SyncMode(child, 0);
+    child.SyncMode = 0;
     Physics3DBody.SetPosition(body, 6.0, 2.0, -3.0);
     SceneGraph.SyncBindings(scene, 0.016);
 
-    var pos = SceneNode.get_Position(child);
+    var pos = child.Position;
     if (Vec3.get_X(pos) < 0.99 || Vec3.get_X(pos) > 1.01) {
         Say("FAIL: NodeFromBody should compute child local x");
         return;
     }
-    if (SceneNode.get_Body(child) != body) {
+    if (child.Body != body) {
         Say("FAIL: Body property should return the bound body");
         return;
     }
@@ -48,15 +48,15 @@ func start() {
     var animNode = SceneNode.New();
     SceneGraph.Add(scene, animNode);
     SceneNode.BindAnimator(animNode, controller);
-    SceneNode.set_SyncMode(animNode, 2);
+    animNode.SyncMode = 2;
     SceneGraph.SyncBindings(scene, 0.016);
 
-    pos = SceneNode.get_Position(animNode);
+    pos = animNode.Position;
     if (Vec3.get_X(pos) < 2.9 || Vec3.get_X(pos) > 3.1) {
         Say("FAIL: SyncMode=NodeFromAnimatorRootMotion should consume root motion");
         return;
     }
-    if (SceneNode.get_Animator(animNode) != controller) {
+    if (animNode.Animator != controller) {
         Say("FAIL: Animator property should return the bound controller");
         return;
     }

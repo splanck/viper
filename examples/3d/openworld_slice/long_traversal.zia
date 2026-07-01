@@ -62,18 +62,18 @@ func visit(game: OpenWorldSlice,
     game.renderFrame();
 
     var stream = game.getStream();
-    if (WorldStream3D.getCellCount(stream) != 4 ||
-        WorldStream3D.getTerrainTileCount(stream) != 4 ||
-        WorldStream3D.getCellName(stream, index) != cellName ||
-        WorldStream3D.getTerrainTileName(stream, index) != tileName) {
+    if (stream.GetCellCount() != 4 ||
+        stream.GetTerrainTileCount() != 4 ||
+        stream.GetCellName(index) != cellName ||
+        stream.GetTerrainTileName(index) != tileName) {
         return fail(label + " stream inspection mismatch");
     }
 
     if (game.getResidentCellCount() != 1 ||
         game.getResidentTerrainTileCount() != 1 ||
-        WorldStream3D.get_pendingRequestCount(stream) != 0 ||
-        WorldStream3D.getCellResident(stream, index) == false ||
-        WorldStream3D.getTerrainTileResident(stream, index) == false) {
+        stream.PendingRequestCount != 0 ||
+        stream.GetCellResident(index) == false ||
+        stream.GetTerrainTileResident(index) == false) {
         return fail(label + " resident count mismatch");
     }
 
@@ -87,28 +87,28 @@ func visit(game: OpenWorldSlice,
     }
 
     var world = game.getWorld();
-    if (World3D.get_streamResidentBytes(world) <= 0 ||
-        World3D.get_streamResidentBytes(world) > 400000) {
+    if (world.StreamResidentBytes <= 0 ||
+        world.StreamResidentBytes > 400000) {
         return fail(label + " resident bytes mismatch");
     }
-    if (World3D.get_bodyCount(world) < 2 || World3D.get_entityCount(world) < 5) {
+    if (world.BodyCount < 2 || world.EntityCount < 5) {
         return fail(label + " entity/body telemetry mismatch");
     }
-    if (World3D.get_drawCount(world) <= 0) {
+    if (world.DrawCount <= 0) {
         return fail(label + " render telemetry mismatch");
     }
 
-    return (World3D.get_streamResidentBytes(world) / 1000.0) +
-           World3D.get_bodyCount(world) +
-           World3D.get_entityCount(world) +
-           World3D.get_drawCount(world) +
+    return (world.StreamResidentBytes / 1000.0) +
+           world.BodyCount +
+           world.EntityCount +
+           world.DrawCount +
            firstHeight;
 }
 
 func runTraversal() -> Float {
     var game = new OpenWorldSlice();
     game.setup("Open World Slice Long Traversal", 160, 120);
-    var backend = Canvas3D.get_Backend(game.getCanvas());
+    var backend = game.getCanvas().Backend;
     var runStartUs = Clock.TicksUs();
     var maxVisitUs = 0;
     var maxStreamBytes = 0;
@@ -127,17 +127,17 @@ func runTraversal() -> Float {
         total = total + v;
         var visitUs = Clock.TicksUs() - visitStartUs;
         if (visitUs > maxVisitUs) { maxVisitUs = visitUs; }
-        if (World3D.get_streamResidentBytes(game.getWorld()) > maxStreamBytes) {
-            maxStreamBytes = World3D.get_streamResidentBytes(game.getWorld());
+        if (game.getWorld().StreamResidentBytes > maxStreamBytes) {
+            maxStreamBytes = game.getWorld().StreamResidentBytes;
         }
-        if (World3D.get_drawCount(game.getWorld()) > maxDrawCount) {
-            maxDrawCount = World3D.get_drawCount(game.getWorld());
+        if (game.getWorld().DrawCount > maxDrawCount) {
+            maxDrawCount = game.getWorld().DrawCount;
         }
-        if (World3D.get_bodyCount(game.getWorld()) > maxBodies) {
-            maxBodies = World3D.get_bodyCount(game.getWorld());
+        if (game.getWorld().BodyCount > maxBodies) {
+            maxBodies = game.getWorld().BodyCount;
         }
-        if (World3D.get_entityCount(game.getWorld()) > maxEntities) {
-            maxEntities = World3D.get_entityCount(game.getWorld());
+        if (game.getWorld().EntityCount > maxEntities) {
+            maxEntities = game.getWorld().EntityCount;
         }
         visits = visits + 1;
 
@@ -148,17 +148,17 @@ func runTraversal() -> Float {
         total = total + v;
         visitUs = Clock.TicksUs() - visitStartUs;
         if (visitUs > maxVisitUs) { maxVisitUs = visitUs; }
-        if (World3D.get_streamResidentBytes(game.getWorld()) > maxStreamBytes) {
-            maxStreamBytes = World3D.get_streamResidentBytes(game.getWorld());
+        if (game.getWorld().StreamResidentBytes > maxStreamBytes) {
+            maxStreamBytes = game.getWorld().StreamResidentBytes;
         }
-        if (World3D.get_drawCount(game.getWorld()) > maxDrawCount) {
-            maxDrawCount = World3D.get_drawCount(game.getWorld());
+        if (game.getWorld().DrawCount > maxDrawCount) {
+            maxDrawCount = game.getWorld().DrawCount;
         }
-        if (World3D.get_bodyCount(game.getWorld()) > maxBodies) {
-            maxBodies = World3D.get_bodyCount(game.getWorld());
+        if (game.getWorld().BodyCount > maxBodies) {
+            maxBodies = game.getWorld().BodyCount;
         }
-        if (World3D.get_entityCount(game.getWorld()) > maxEntities) {
-            maxEntities = World3D.get_entityCount(game.getWorld());
+        if (game.getWorld().EntityCount > maxEntities) {
+            maxEntities = game.getWorld().EntityCount;
         }
         visits = visits + 1;
 
@@ -169,17 +169,17 @@ func runTraversal() -> Float {
         total = total + v;
         visitUs = Clock.TicksUs() - visitStartUs;
         if (visitUs > maxVisitUs) { maxVisitUs = visitUs; }
-        if (World3D.get_streamResidentBytes(game.getWorld()) > maxStreamBytes) {
-            maxStreamBytes = World3D.get_streamResidentBytes(game.getWorld());
+        if (game.getWorld().StreamResidentBytes > maxStreamBytes) {
+            maxStreamBytes = game.getWorld().StreamResidentBytes;
         }
-        if (World3D.get_drawCount(game.getWorld()) > maxDrawCount) {
-            maxDrawCount = World3D.get_drawCount(game.getWorld());
+        if (game.getWorld().DrawCount > maxDrawCount) {
+            maxDrawCount = game.getWorld().DrawCount;
         }
-        if (World3D.get_bodyCount(game.getWorld()) > maxBodies) {
-            maxBodies = World3D.get_bodyCount(game.getWorld());
+        if (game.getWorld().BodyCount > maxBodies) {
+            maxBodies = game.getWorld().BodyCount;
         }
-        if (World3D.get_entityCount(game.getWorld()) > maxEntities) {
-            maxEntities = World3D.get_entityCount(game.getWorld());
+        if (game.getWorld().EntityCount > maxEntities) {
+            maxEntities = game.getWorld().EntityCount;
         }
         visits = visits + 1;
 
@@ -190,17 +190,17 @@ func runTraversal() -> Float {
         total = total + v;
         visitUs = Clock.TicksUs() - visitStartUs;
         if (visitUs > maxVisitUs) { maxVisitUs = visitUs; }
-        if (World3D.get_streamResidentBytes(game.getWorld()) > maxStreamBytes) {
-            maxStreamBytes = World3D.get_streamResidentBytes(game.getWorld());
+        if (game.getWorld().StreamResidentBytes > maxStreamBytes) {
+            maxStreamBytes = game.getWorld().StreamResidentBytes;
         }
-        if (World3D.get_drawCount(game.getWorld()) > maxDrawCount) {
-            maxDrawCount = World3D.get_drawCount(game.getWorld());
+        if (game.getWorld().DrawCount > maxDrawCount) {
+            maxDrawCount = game.getWorld().DrawCount;
         }
-        if (World3D.get_bodyCount(game.getWorld()) > maxBodies) {
-            maxBodies = World3D.get_bodyCount(game.getWorld());
+        if (game.getWorld().BodyCount > maxBodies) {
+            maxBodies = game.getWorld().BodyCount;
         }
-        if (World3D.get_entityCount(game.getWorld()) > maxEntities) {
-            maxEntities = World3D.get_entityCount(game.getWorld());
+        if (game.getWorld().EntityCount > maxEntities) {
+            maxEntities = game.getWorld().EntityCount;
         }
         visits = visits + 1;
 

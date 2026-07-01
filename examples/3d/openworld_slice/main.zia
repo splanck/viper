@@ -22,7 +22,7 @@ class OpenWorldSlice {
     hide Entity3D glbFixtureProp;
     hide Boolean glbFixtureLoaded;
     hide Boolean audioFixtureLoaded;
-    hide Entity3D asyncProp;
+    hide Any asyncProp;
     hide AssetHandle3D asyncHandle;
     hide TextureAsset3D groundTexture;
     hide TextureAsset3D compressedTexture;
@@ -45,26 +45,26 @@ class OpenWorldSlice {
 
     expose func setup(title: String, width: Integer, height: Integer) {
         world = World3D.New(title, width, height);
-        canvas = World3D.get_canvas(world);
-        camera = World3D.get_camera(world);
+        canvas = world.Canvas;
+        camera = world.Camera;
         Canvas3D.SetDTMax(canvas, 50);
 
         Quality.Apply(world, QualityLevel.get_Balanced());
         Lighting.Outdoor(world, Vec3.New(-0.35, -1.0, -0.25));
         PostFX.Crisp(world);
-        var env = Environment3D.Outdoor(world);
-        EnvHandle.withFog(env, 28.0, 420.0);
-        EnvHandle.withWater(env, -0.08);
-        World3D.setAmbient(world, 0.22, 0.25, 0.29);
-        World3D.setFog(world, 0.025, 0.035, 0.045, 48.0, 520.0);
-        Camera3D.set_Yaw(camera, -30.0);
-        Camera3D.set_Pitch(camera, -12.0);
+        var env: EnvHandle = Environment3D.Outdoor(world);
+        env.WithFog(28.0, 420.0);
+        env.WithWater(-0.08);
+        world.SetAmbient(0.22, 0.25, 0.29);
+        world.SetFog(0.025, 0.035, 0.045, 48.0, 520.0);
+        camera.Yaw = -30.0;
+        camera.Pitch = -12.0;
 
-        stream = World3D.get_stream(world);
-        WorldStream3D.setRadii(stream, 360.0, 520.0);
-        WorldStream3D.setCenter(stream, Vec3.New(-1100.0, 0.0, -1100.0));
-        WorldStream3D.mountCells(stream, "assets/world/cells.vscn");
-        WorldStream3D.mountTiledTerrain(stream, "assets/world/terrain.vscn");
+        stream = world.Stream;
+        stream.SetRadii(360.0, 520.0);
+        stream.SetCenter(Vec3.New(-1100.0, 0.0, -1100.0));
+        stream.MountCells("assets/world/cells.vscn");
+        stream.MountTiledTerrain("assets/world/terrain.vscn");
         settleStream(2);
 
         setupTextureAssets();
@@ -97,19 +97,19 @@ class OpenWorldSlice {
     }
 
     expose func getResidentCellCount() -> Integer {
-        return WorldStream3D.get_residentCellCount(stream);
+        return stream.ResidentCellCount;
     }
 
     expose func getResidentTerrainTileCount() -> Integer {
-        return WorldStream3D.get_residentTerrainTileCount(stream);
+        return stream.ResidentTerrainTileCount;
     }
 
     expose func getResidentBytes() -> Integer {
-        return WorldStream3D.get_residentBytes(stream);
+        return stream.ResidentBytes;
     }
 
     expose func getResidentTileHeight() -> Float {
-        var tile = WorldStream3D.getResidentTerrainTile(stream, 0);
+        var tile = stream.GetResidentTerrainTile(0);
         if (tile == null) { return -99999.0; }
         return Terrain3D.GetHeightAt(tile, 0.0, 0.0);
     }
@@ -132,10 +132,10 @@ class OpenWorldSlice {
 
     expose func skinnedCharacterReady() -> Boolean {
         if (skinnedAgent == null) { return false; }
-        var anim = Entity3D.get_anim(skinnedAgent);
+        var anim = skinnedAgent.Anim;
         if (anim == null) { return false; }
-        return Animator3D.isPlaying(anim, "Wave") &&
-               Animator3D.stateTime(anim) > 0.0 &&
+        return anim.IsPlaying("Wave") &&
+               anim.StateTime() > 0.0 &&
                skinnedIkBound &&
                hasNode("SkinnedAgentMeshNode");
     }
@@ -144,7 +144,7 @@ class OpenWorldSlice {
         return glbFixtureLoaded &&
                audioFixtureLoaded &&
                glbFixtureProp != null &&
-               World3D.findEntity(world, "FixtureGLBTriangle") != null &&
+               world.FindEntity("FixtureGLBTriangle") != null &&
                hasNode("GlbTriangle");
     }
 
@@ -174,11 +174,11 @@ class OpenWorldSlice {
     }
 
     expose func hasNode(name: String) -> Boolean {
-        return World3D.findNode(world, name) != null;
+        return world.FindNode(name) != null;
     }
 
     expose func setStreamCenter(x: Float, z: Float) {
-        WorldStream3D.setCenter(stream, Vec3.New(x, 0.0, z));
+        stream.SetCenter(Vec3.New(x, 0.0, z));
         settleStream(4);
     }
 
@@ -187,53 +187,53 @@ class OpenWorldSlice {
         completeAsyncAsset();
         NavAgent3D.Update(agentA, dt);
         NavAgent3D.Update(agentB, dt);
-        WorldStream3D.setCenter(stream, Entity3D.position(player));
-        WorldStream3D.update(stream, dt);
-        World3D.runFramesOnly(world, 1, dt);
+        stream.SetCenter(player.Position());
+        stream.Update(dt);
+        world.RunFramesOnly(1, dt);
     }
 
     expose func renderFrame() {
-        Entity3D.setRotationEuler(beacon, 0.0, sceneTime * 38.0, 0.0);
+        beacon.SetRotationEuler(0.0, sceneTime * 38.0, 0.0);
 
-        World3D.beginFrame(world);
-        World3D.drawScene(world);
-        World3D.drawEffects(world);
-        World3D.endScene(world);
+        world.BeginFrame();
+        world.DrawScene();
+        world.DrawEffects();
+        world.EndScene();
 
         Canvas3D.BeginOverlay(canvas);
         Canvas3D.DrawRect2D(canvas, 10, 10, 214, 42, 0x111821);
         Canvas3D.DrawRect2D(canvas, 10, 10, 214, 3, 0x00E8FF);
         Canvas3D.DrawText2D(canvas, 22, 24, "OPEN_WORLD_SLICE", 0xFFFFFF);
-        Canvas3D.DrawRect2D(canvas, Canvas3D.get_Width(canvas) - 48, Canvas3D.get_Height(canvas) - 48,
+        Canvas3D.DrawRect2D(canvas, canvas.Width - 48, canvas.Height - 48,
                             32, 32, 0x00E8FF);
-        Canvas3D.DrawRect2D(canvas, Canvas3D.get_Width(canvas) - 40, Canvas3D.get_Height(canvas) - 40,
+        Canvas3D.DrawRect2D(canvas, canvas.Width - 40, canvas.Height - 40,
                             16, 16, 0x101722);
         Canvas3D.EndOverlay(canvas);
     }
 
     expose func replayMetric() -> Float {
-        var a = Entity3D.position(scoutA);
-        var b = Entity3D.position(scoutB);
-        var p = Entity3D.position(player);
+        var a = scoutA.Position();
+        var b = scoutB.Position();
+        var p = player.Position();
         return Vec3.get_X(a) + Vec3.get_Z(a) + Vec3.get_X(b) + Vec3.get_Z(b) +
                Vec3.get_X(p) + Vec3.get_Z(p);
     }
 
     expose func run() {
-        FirstPersonController.captureMouse(fps);
-        while (World3D.tick(world)) {
-            var dt = World3D.get_dt(world);
+        fps.CaptureMouse();
+        while (world.Tick()) {
+            var dt = world.Dt;
             if (dt <= 0.0) { dt = 0.016; }
             if (dt > 0.050) { dt = 0.050; }
             stepFixed(dt);
             renderFrame();
-            World3D.present(world);
+            world.Present();
         }
-        FirstPersonController.releaseMouse(fps);
+        fps.ReleaseMouse();
     }
 
     expose func destroy() {
-        World3D.destroy(world);
+        world.Destroy();
     }
 
     hide func setupTextureAssets() {
@@ -246,7 +246,7 @@ class OpenWorldSlice {
     hide func settleStream(frames: Integer) {
         var i = 0;
         while (i < frames) {
-            WorldStream3D.update(stream, 1.0 / 60.0);
+            stream.Update(1.0 / 60.0);
             i = i + 1;
         }
     }
@@ -254,39 +254,39 @@ class OpenWorldSlice {
     hide func spawnBaseScene() {
         var groundMat = Materials.Rubber(0.22, 0.34, 0.25);
         Material3D.SetAlbedoMap(groundMat, groundTexture);
-        var ground = Prefab.Ground(48.0, groundMat);
-        Entity3D.setName(ground, "SliceGround");
-        Entity3D.setPosition(ground, -1100.0, 0.0, -1100.0);
-        Entity3D.attachBody(ground, BodyDef.StaticPlane(48.0));
-        World3D.spawn(world, ground);
+        var ground: Entity3D = Prefab.Ground(48.0, groundMat);
+        ground.SetName("SliceGround");
+        ground.SetPosition(-1100.0, 0.0, -1100.0);
+        ground.AttachBody(BodyDef.StaticPlane(48.0));
+        world.Spawn(ground);
 
         var compressedMat = Material3D.NewPBR(1.0, 1.0, 1.0);
         Material3D.SetAlbedoMap(compressedMat, compressedTexture);
         compressedTexturePanel = Prefab.BoxXYZ(1.25, 1.25, 0.10, compressedMat);
-        Entity3D.setName(compressedTexturePanel, "NativeCompressedTexturePanel");
-        Entity3D.setPosition(compressedTexturePanel, -1102.15, 0.95, -1098.75);
-        World3D.spawn(world, compressedTexturePanel);
+        compressedTexturePanel.SetName("NativeCompressedTexturePanel");
+        compressedTexturePanel.SetPosition(-1102.15, 0.95, -1098.75);
+        world.Spawn(compressedTexturePanel);
 
-        var crate = Prefab.BoxXYZ(1.2, 0.9, 1.2, Materials.Metal(0.58, 0.61, 0.63));
-        Entity3D.setName(crate, "SliceCrate");
-        Entity3D.setPosition(crate, -1101.6, 0.45, -1100.8);
-        Entity3D.attachBody(crate, BodyDef.StaticBox(0.6, 0.45, 0.6));
-        World3D.spawn(world, crate);
+        var crate: Entity3D = Prefab.BoxXYZ(1.2, 0.9, 1.2, Materials.Metal(0.58, 0.61, 0.63));
+        crate.SetName("SliceCrate");
+        crate.SetPosition(-1101.6, 0.45, -1100.8);
+        crate.AttachBody(BodyDef.StaticBox(0.6, 0.45, 0.6));
+        world.Spawn(crate);
 
         beacon = Prefab.BoxXYZ(0.42, 0.42, 0.42, Materials.Emissive(0.12, 0.72, 1.0, 1.6));
-        Entity3D.setName(beacon, "SliceBeacon");
-        Entity3D.setPosition(beacon, -1098.3, 1.1, -1101.2);
-        World3D.spawn(world, beacon);
+        beacon.SetName("SliceBeacon");
+        beacon.SetPosition(-1098.3, 1.1, -1101.2);
+        world.Spawn(beacon);
 
-        var ball = Prefab.Sphere(0.42, 18, Materials.Plastic(0.92, 0.24, 0.16));
-        Entity3D.setName(ball, "SlicePhysicsBall");
-        Entity3D.setPosition(ball, -1099.7, 0.55, -1099.9);
+        var ball: Entity3D = Prefab.Sphere(0.42, 18, Materials.Plastic(0.92, 0.24, 0.16));
+        ball.SetName("SlicePhysicsBall");
+        ball.SetPosition(-1099.7, 0.55, -1099.9);
         var ballBody = BodyDef.Sphere(0.42, 1.0);
-        BodyDef.set_restitution(ballBody, 0.25);
-        BodyDef.withMask(ballBody, LayerMask.Of(Layers.get_World()));
-        Entity3D.attachBody(ball, ballBody);
-        World3D.spawn(world, ball);
-        Entity3D.applyImpulse(ball, 0.8, 1.6, 0.2);
+        ballBody.Restitution = 0.25;
+        ballBody.WithMask(LayerMask.Of(Layers.get_World()));
+        ball.AttachBody(ballBody);
+        world.Spawn(ball);
+        ball.ApplyImpulse(0.8, 1.6, 0.2);
     }
 
     hide func setupTerrainFootIkProof() {
@@ -294,9 +294,9 @@ class OpenWorldSlice {
         footIkMarker = null;
         footIkLegMarker = null;
         footIkFootBone = -1;
-        var tile = WorldStream3D.getResidentTerrainTile(stream, 0);
+        var tile = stream.GetResidentTerrainTile(0);
         if (tile == null) { return; }
-        var center = WorldStream3D.getTerrainTileCenter(stream, 0);
+        var center = stream.GetTerrainTileCenter(0);
         if (center == null) { return; }
         var localFootX = -2.30;
         var localFootZ = 1.30;
@@ -323,50 +323,50 @@ class OpenWorldSlice {
         footIkBound = AnimController3D.SetIKSolver(footIkController, footIkSolver);
 
         footIkMarker = Prefab.Sphere(0.16, 12, Materials.Emissive(0.08, 0.95, 0.62, 1.4));
-        Entity3D.setName(footIkMarker, "TerrainFootIkMarker");
-        Entity3D.setPosition(footIkMarker, footIkTargetX, 0.32, footIkTargetZ);
-        World3D.spawn(world, footIkMarker);
+        footIkMarker.SetName("TerrainFootIkMarker");
+        footIkMarker.SetPosition(footIkTargetX, 0.32, footIkTargetZ);
+        world.Spawn(footIkMarker);
 
         footIkLegMarker = Prefab.BoxXYZ(0.12, 0.92, 0.12, Materials.Plastic(0.12, 0.64, 0.50));
-        Entity3D.setName(footIkLegMarker, "TerrainFootIkLegMarker");
-        Entity3D.setPosition(footIkLegMarker, footIkTargetX + 0.20, 0.76, footIkTargetZ + 0.08);
-        World3D.spawn(world, footIkLegMarker);
+        footIkLegMarker.SetName("TerrainFootIkLegMarker");
+        footIkLegMarker.SetPosition(footIkTargetX + 0.20, 0.76, footIkTargetZ + 0.08);
+        world.Spawn(footIkLegMarker);
     }
 
     hide func setupPlayer() {
         player = Entity3D.New();
-        Entity3D.setName(player, "SlicePlayer");
-        Entity3D.setLayer(player, Layers.get_Player());
-        Entity3D.setPosition(player, -1100.0, 1.0, -1094.5);
-        World3D.spawn(world, player);
+        player.SetName("SlicePlayer");
+        player.SetLayer(Layers.get_Player());
+        player.SetPosition(-1100.0, 1.0, -1094.5);
+        world.Spawn(player);
 
         character = CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
-        CharacterController3D.set_speed(character, 3.0);
+        character.Speed = 3.0;
 
         fps = FirstPersonController.New(world);
-        FirstPersonController.set_character(fps, character);
-        FirstPersonController.set_speed(fps, 3.0);
-        FirstPersonController.releaseMouse(fps);
-        World3D.setCameraController(world, fps);
+        fps.Character = character;
+        fps.Speed = 3.0;
+        fps.ReleaseMouse();
+        world.SetCameraController(fps);
     }
 
     hide func setupNavAgents() {
-        navmesh = World3D.bakeNavMesh(world, 0.35, 1.8, 45.0, 0.3);
+        navmesh = world.BakeNavMesh(0.35, 1.8, 45.0, 0.3);
 
         scoutA = Prefab.BoxXYZ(0.35, 0.70, 0.35, Materials.Plastic(0.12, 0.42, 0.92));
-        Entity3D.setName(scoutA, "ScoutA");
-        Entity3D.setPosition(scoutA, -1101.6, 0.35, -1098.6);
-        World3D.spawn(world, scoutA);
+        scoutA.SetName("ScoutA");
+        scoutA.SetPosition(-1101.6, 0.35, -1098.6);
+        world.Spawn(scoutA);
 
         scoutB = Prefab.BoxXYZ(0.35, 0.70, 0.35, Materials.Plastic(0.92, 0.64, 0.18));
-        Entity3D.setName(scoutB, "ScoutB");
-        Entity3D.setPosition(scoutB, -1098.4, 0.35, -1098.6);
-        World3D.spawn(world, scoutB);
+        scoutB.SetName("ScoutB");
+        scoutB.SetPosition(-1098.4, 0.35, -1098.6);
+        world.Spawn(scoutB);
 
         agentA = NavAgent3D.New(navmesh, 0.35, 1.8);
         agentB = NavAgent3D.New(navmesh, 0.35, 1.8);
-        NavAgent3D.BindNode(agentA, Entity3D.get_node(scoutA));
-        NavAgent3D.BindNode(agentB, Entity3D.get_node(scoutB));
+        NavAgent3D.BindNode(agentA, scoutA.Node);
+        NavAgent3D.BindNode(agentB, scoutB.Node);
         NavAgent3D.set_DesiredSpeed(agentA, 1.7);
         NavAgent3D.set_DesiredSpeed(agentB, 1.5);
         NavAgent3D.set_StoppingDistance(agentA, 0.05);
@@ -385,24 +385,24 @@ class OpenWorldSlice {
         skinnedIkBound = false;
         skinnedTemplate = Assets3D.LoadTemplateAsset("assets/models/skinned_agent.gltf");
         if (skinnedTemplate == null) { return; }
-        skinnedAgent = SceneTemplate.instantiate(skinnedTemplate);
+        skinnedAgent = skinnedTemplate.Instantiate();
         if (skinnedAgent == null) { return; }
-        Entity3D.setName(skinnedAgent, "SkinnedAgent");
-        Entity3D.setPosition(skinnedAgent, -1099.2, 0.32, -1098.0);
-        Entity3D.setScale(skinnedAgent, 0.85);
-        World3D.spawn(world, skinnedAgent);
+        skinnedAgent.SetName("SkinnedAgent");
+        skinnedAgent.SetPosition(-1099.2, 0.32, -1098.0);
+        skinnedAgent.SetScale(0.85);
+        world.Spawn(skinnedAgent);
 
-        var anim = Entity3D.get_anim(skinnedAgent);
+        var anim = skinnedAgent.Anim;
         if (anim != null) {
-            Animator3D.crossfade(anim, "Wave", 0.08);
-            var model = SceneTemplate.get_model(skinnedTemplate);
+            anim.Crossfade("Wave", 0.08);
+            var model = skinnedTemplate.Model;
             if (model != null) {
                 var skeleton = SceneAsset.GetSkeleton(model, 0);
                 var solver = IKSolver3D.LookAt(skeleton, 0);
                 if (solver != null) {
                     IKSolver3D.SetTarget(solver, Vec3.New(0.35, 0.65, 1.0));
                     IKSolver3D.SetWeight(solver, 0.35);
-                    skinnedIkBound = Animator3D.setIKSolver(anim, solver);
+                    skinnedIkBound = anim.SetIKSolver(solver);
                 }
             }
         }
@@ -414,34 +414,34 @@ class OpenWorldSlice {
 
         glbFixtureProp = Assets3D.LoadEntityAsset("assets/models/triangle.glb");
         if (glbFixtureProp != null) {
-            Entity3D.setName(glbFixtureProp, "FixtureGLBTriangle");
-            Entity3D.setPosition(glbFixtureProp, -1097.0, 0.12, -1100.6);
-            Entity3D.setScale(glbFixtureProp, 0.75);
-            World3D.spawn(world, glbFixtureProp);
+            glbFixtureProp.SetName("FixtureGLBTriangle");
+            glbFixtureProp.SetPosition(-1097.0, 0.12, -1100.6);
+            glbFixtureProp.SetScale(0.75);
+            world.Spawn(glbFixtureProp);
             glbFixtureLoaded = hasNode("GlbTriangle");
         }
 
-        var audio = World3D.get_audio(world);
+        var audio = world.Audio;
         if (audio == null) { return; }
-        var clip = Sound3D.loadAsset(audio, "assets/audio/jump.wav");
+        var clip = audio.LoadAsset("assets/audio/jump.wav");
         audioFixtureLoaded = clip != null;
         if (clip != null) {
-            var source = Sound3D.playAt(audio, clip, Vec3.New(-1097.0, 0.6, -1100.6));
+            var source = audio.PlayAt(clip, Vec3.New(-1097.0, 0.6, -1100.6));
             if (source != null) {
-                Sound3D.clearSources(audio);
+                audio.ClearSources();
             }
         }
     }
 
     hide func completeAsyncAsset() {
         if (asyncSpawned || asyncHandle == null) { return; }
-        if (AssetHandle3D.get_ready(asyncHandle) == false) { return; }
-        asyncProp = AssetHandle3D.getEntity(asyncHandle);
+        if (asyncHandle.Ready == false) { return; }
+        asyncProp = asyncHandle.GetEntity();
         if (asyncProp == null) { return; }
-        Entity3D.setName(asyncProp, "AsyncTriangle");
-        Entity3D.setPosition(asyncProp, -1097.5, 0.08, -1098.8);
-        Entity3D.setScale(asyncProp, 0.85);
-        World3D.spawn(world, asyncProp);
+        Entity3D.SetName(asyncProp, "AsyncTriangle");
+        Entity3D.SetPosition(asyncProp, -1097.5, 0.08, -1098.8);
+        Entity3D.SetScale(asyncProp, 0.85);
+        world.Spawn(asyncProp);
         asyncSpawned = true;
     }
 

@@ -26,9 +26,9 @@
 /// ### Phase 2: Runtime Function Fallbacks (ZiaRuntimeExterns.inc)
 ///
 /// Reads the generated ZiaRuntimeExterns.inc metadata table and registers
-/// ABI-shaped fallback extern signatures for every RT_FUNC/RT_ALIAS entry.
+/// ABI-shaped fallback extern signatures for every RT_FUNC entry.
 /// These cover runtime calls that are not described by the runtime-class
-/// catalog, such as `Viper.Time.SleepMs` or `Viper.Game.LevelData.ObjectType`.
+/// catalog, such as `Viper.Time.Clock.Sleep` or `Viper.Game.LevelData.ObjectType`.
 ///
 /// ### Phase 3: Methods and Properties from RuntimeRegistry
 ///
@@ -398,7 +398,7 @@ static bool methodTargetBelongsToClass(const il::runtime::RuntimeMethod &method,
 /// 1. **Type Registration**: Each runtime class is registered as a named type,
 ///    enabling `new ClassName()` expressions and type annotations.
 ///
-/// 2. **Fallback Registration**: Each generated RT_FUNC/RT_ALIAS row is
+/// 2. **Fallback Registration**: Each generated RT_FUNC row is
 ///    registered with ABI-shaped parameter types and pointer-safety metadata.
 ///
 /// 3. **Method/Property Registration**: For each class, all methods and

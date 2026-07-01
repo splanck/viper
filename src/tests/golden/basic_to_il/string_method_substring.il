@@ -31,7 +31,6 @@ extern @Viper.String.Join(str, ptr) -> str
 extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
 extern @rt_obj_retain_maybe(ptr) -> void
 extern @rt_obj_release_check0(ptr) -> i1

@@ -33,7 +33,7 @@ expose func ZiaBraceDelta(line: String, commentDepth: Integer) -> Integer {
     var inString = false;
     var escape = false;
     var depth = commentDepth;
-    var n = Str.Length(line);
+    var n = Str.get_Length(line);
     var i = 1;
     while i <= n {
         var ch = Str.MidLen(line, i, 1);
@@ -97,7 +97,7 @@ expose func ZiaCommentDepthAfter(line: String, commentDepth: Integer) -> Integer
     var inString = false;
     var escape = false;
     var depth = commentDepth;
-    var n = Str.Length(line);
+    var n = Str.get_Length(line);
     var i = 1;
     while i <= n {
         var ch = Str.MidLen(line, i, 1);
@@ -176,7 +176,7 @@ expose func ZiaParenDelta(line: String, commentDepth: Integer) -> Integer {
     var inString = false;
     var escape = false;
     var depth = commentDepth;
-    var n = Str.Length(line);
+    var n = Str.get_Length(line);
     var i = 1;
     while i <= n {
         var ch = Str.MidLen(line, i, 1);
@@ -278,10 +278,10 @@ expose func ReplaceIdentifierOutsideTrivia(line: String,
     var pos = 1;
     var inString = false;
     var escape = false;
-    while pos <= Str.Length(line) {
+    while pos <= Str.get_Length(line) {
         var ch = Str.MidLen(line, pos, 1);
         var next = "";
-        if pos < Str.Length(line) {
+        if pos < Str.get_Length(line) {
             next = Str.MidLen(line, pos + 1, 1);
         }
         if inString {
@@ -308,7 +308,7 @@ expose func ReplaceIdentifierOutsideTrivia(line: String,
         }
         if identifier_utils.IsIdentStart(ch) {
             var ident = "";
-            while pos <= Str.Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+            while pos <= Str.get_Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
                 ident = ident + Str.MidLen(line, pos, 1);
                 pos = pos + 1;
             }
@@ -332,7 +332,7 @@ expose func ReplaceIdentifierOutsideTrivia(line: String,
 expose func SkipWhitespace(line: String,
                            pos: Integer) -> Integer {
     var i = pos;
-    while i <= Str.Length(line) {
+    while i <= Str.get_Length(line) {
         var ch = Str.MidLen(line, i, 1);
         if ch != " " and ch != "\t" {
             return i;

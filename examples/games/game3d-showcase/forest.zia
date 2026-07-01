@@ -168,13 +168,13 @@ class ShowcaseForest {
     hide func plantTree(world: World3D, model: SceneAsset, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
         var node = SceneAsset.Instantiate(model);
         var ent = Entity3D.FromNode(node);
-        Entity3D.setName(ent, "maple");
-        Entity3D.setLayer(ent, Layers.get_World());
+        ent.SetName("maple");
+        ent.SetLayer(Layers.get_World());
         applyTreeMaterials(ent, treeMats.get(pickFoliage(x, z)));
-        Entity3D.setScaleXYZ(ent, scale, scale, scale);
-        Entity3D.setRotationEuler(ent, yawDeg, 0.0, 0.0);
-        Entity3D.setPosition(ent, x, y, z);
-        World3D.spawn(world, ent);
+        ent.SetScaleXYZ(scale, scale, scale);
+        ent.SetRotationEuler(yawDeg, 0.0, 0.0);
+        ent.SetPosition(x, y, z);
+        world.Spawn(ent);
     }
 
     hide func plantProceduralTree(world: World3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
@@ -184,12 +184,12 @@ class ShowcaseForest {
         var canopyRadius = height * 0.22;
         var canopyMat = treeMats.get(pickFoliage(x, z));
 
-        var trunk = Prefab.Cylinder(trunkRadius, trunkHeight, 18, barkMat);
-        Entity3D.setName(trunk, "procedural_maple_trunk");
-        Entity3D.setLayer(trunk, Layers.get_World());
-        Entity3D.setRotationEuler(trunk, 0.0, yawDeg, 0.0);
-        Entity3D.setPosition(trunk, x, y + trunkHeight * 0.5, z);
-        World3D.spawn(world, trunk);
+        var trunk: Entity3D = Prefab.Cylinder(trunkRadius, trunkHeight, 18, barkMat);
+        trunk.SetName("procedural_maple_trunk");
+        trunk.SetLayer(Layers.get_World());
+        trunk.SetRotationEuler(0.0, yawDeg, 0.0);
+        trunk.SetPosition(x, y + trunkHeight * 0.5, z);
+        world.Spawn(trunk);
 
         plantBranch(world, x, z, y + trunkHeight * 0.58, yawDeg + 18.0, trunkRadius * 0.44, trunkHeight * 0.48, 28.0);
         plantBranch(world, x, z, y + trunkHeight * 0.66, yawDeg + 142.0, trunkRadius * 0.36, trunkHeight * 0.40, -32.0);
@@ -208,35 +208,35 @@ class ShowcaseForest {
     }
 
     hide func plantBranch(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, length: Float, pitchDeg: Float) {
-        var branch = Prefab.Cylinder(radius, length, 12, barkMat);
-        Entity3D.setName(branch, "procedural_maple_branch");
-        Entity3D.setLayer(branch, Layers.get_World());
-        Entity3D.setRotationEuler(branch, pitchDeg, yawDeg, 38.0);
-        Entity3D.setPosition(branch, x + Sin(yawDeg * 0.0174533) * length * 0.18, y + length * 0.18, z + Cos(yawDeg * 0.0174533) * length * 0.18);
-        World3D.spawn(world, branch);
+        var branch: Entity3D = Prefab.Cylinder(radius, length, 12, barkMat);
+        branch.SetName("procedural_maple_branch");
+        branch.SetLayer(Layers.get_World());
+        branch.SetRotationEuler(pitchDeg, yawDeg, 38.0);
+        branch.SetPosition(x + Sin(yawDeg * 0.0174533) * length * 0.18, y + length * 0.18, z + Cos(yawDeg * 0.0174533) * length * 0.18);
+        world.Spawn(branch);
     }
 
     hide func plantCanopyLobe(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, mat: Material3D, ox: Float, oz: Float, sx: Float, sy: Float, sz: Float, lift: Float) {
-        var crown = Prefab.Sphere(radius, 22, mat);
+        var crown: Entity3D = Prefab.Sphere(radius, 22, mat);
         var wx = x + Sin(yawDeg * 0.0174533) * ox * radius + Cos(yawDeg * 0.0174533) * oz * radius;
         var wz = z + Cos(yawDeg * 0.0174533) * ox * radius - Sin(yawDeg * 0.0174533) * oz * radius;
-        Entity3D.setName(crown, "procedural_maple_crown");
-        Entity3D.setLayer(crown, Layers.get_World());
-        Entity3D.setScaleXYZ(crown, sx, sy, sz);
-        Entity3D.setRotationEuler(crown, 0.0, yawDeg, 0.0);
-        Entity3D.setPosition(crown, wx, y + scaleCanopyBase(radius) + lift * radius, wz);
-        World3D.spawn(world, crown);
+        crown.SetName("procedural_maple_crown");
+        crown.SetLayer(Layers.get_World());
+        crown.SetScaleXYZ(sx, sy, sz);
+        crown.SetRotationEuler(0.0, yawDeg, 0.0);
+        crown.SetPosition(wx, y + scaleCanopyBase(radius) + lift * radius, wz);
+        world.Spawn(crown);
     }
 
     hide func plantLeafPlate(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, mat: Material3D, ox: Float, oz: Float, lift: Float) {
-        var plate = Prefab.BoxXYZ(radius * 1.72, radius * 0.08, radius * 1.18, mat);
+        var plate: Entity3D = Prefab.BoxXYZ(radius * 1.72, radius * 0.08, radius * 1.18, mat);
         var wx = x + Sin(yawDeg * 0.0174533) * ox * radius + Cos(yawDeg * 0.0174533) * oz * radius;
         var wz = z + Cos(yawDeg * 0.0174533) * ox * radius - Sin(yawDeg * 0.0174533) * oz * radius;
-        Entity3D.setName(plate, "procedural_maple_leaf_plate");
-        Entity3D.setLayer(plate, Layers.get_World());
-        Entity3D.setRotationEuler(plate, 6.0, yawDeg, 11.0);
-        Entity3D.setPosition(plate, wx, y + scaleCanopyBase(radius) + lift * radius, wz);
-        World3D.spawn(world, plate);
+        plate.SetName("procedural_maple_leaf_plate");
+        plate.SetLayer(Layers.get_World());
+        plate.SetRotationEuler(6.0, yawDeg, 11.0);
+        plate.SetPosition(wx, y + scaleCanopyBase(radius) + lift * radius, wz);
+        world.Spawn(plate);
     }
 
     hide func scaleCanopyBase(radius: Float) -> Float {
@@ -251,34 +251,34 @@ class ShowcaseForest {
         barkMat = Material3D.NewPBR(0.38, 0.23, 0.12);
         Material3D.SetAlbedoMap(barkMat, createBarkAlbedo(64));
         Material3D.SetNormalMap(barkMat, createBarkNormal(64));
-        Material3D.SetRoughness(barkMat, 0.88);
-        Material3D.SetMetallic(barkMat, 0.0);
-        Material3D.SetNormalScale(barkMat, 0.48);
+        barkMat.Roughness = 0.88;
+        barkMat.Metallic = 0.0;
+        barkMat.NormalScale = 0.48;
         Material3D.SetEmissiveColor(barkMat, 0.026, 0.014, 0.006);
     }
 
     hide func applyTreeMaterials(ent: Entity3D, canopyMat: Material3D) {
-        var node = Entity3D.get_node(ent);
+        var node = ent.Node;
         var meshCount = countMeshNodes(node);
         var assigned = applyTreeMaterialsRecursive(node, canopyMat, meshCount);
         if (assigned == 0) {
-            Entity3D.setMaterialRecursive(ent, canopyMat);
+            ent.SetMaterialRecursive(canopyMat);
         }
     }
 
     hide func applyTreeMaterialsRecursive(node: SceneNode, canopyMat: Material3D, meshCount: Integer) -> Integer {
         if (node == null) { return 0; }
         var assigned = 0;
-        if (SceneNode.get_Mesh(node) != null) {
+        if (node.Mesh != null) {
             if (isBarkNode(node, meshCount)) {
-                SceneNode.set_Material(node, barkMat);
+                node.Material = barkMat;
                 assigned = assigned + 1;
             } else {
-                SceneNode.set_Material(node, canopyMat);
+                node.Material = canopyMat;
                 assigned = assigned + 1;
             }
         }
-        var count = SceneNode.get_ChildCount(node);
+        var count = node.ChildCount;
         for i in 0..count {
             assigned = assigned + applyTreeMaterialsRecursive(SceneNode.GetChild(node, i), canopyMat, meshCount);
         }
@@ -288,10 +288,10 @@ class ShowcaseForest {
     hide func countMeshNodes(node: SceneNode) -> Integer {
         if (node == null) { return 0; }
         var total = 0;
-        if (SceneNode.get_Mesh(node) != null) {
+        if (node.Mesh != null) {
             total = 1;
         }
-        var count = SceneNode.get_ChildCount(node);
+        var count = node.ChildCount;
         for i in 0..count {
             total = total + countMeshNodes(SceneNode.GetChild(node, i));
         }
@@ -299,7 +299,7 @@ class ShowcaseForest {
     }
 
     hide func isBarkNode(node: SceneNode, meshCount: Integer) -> Boolean {
-        var name = SceneNode.get_Name(node);
+        var name = node.Name;
         if (name == "mesh_0_material_0") { return true; }
         if (name == "mesh_1_material_1") { return false; }
         if (meshCount <= 1) { return false; }
@@ -307,8 +307,8 @@ class ShowcaseForest {
     }
 
     hide func isBarkMesh(node: SceneNode) -> Boolean {
-        var amin = SceneNode.get_AABBMin(node);
-        var amax = SceneNode.get_AABBMax(node);
+        var amin = node.AABBMin;
+        var amax = node.AABBMax;
         var dx = Vec3.get_X(amax) - Vec3.get_X(amin);
         var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
         var dz = Vec3.get_Z(amax) - Vec3.get_Z(amin);
@@ -335,11 +335,11 @@ class ShowcaseForest {
         var m = Material3D.NewPBR(r, g, b);
         Material3D.SetAlbedoMap(m, createLeafAlbedo(64, r, g, b));
         Material3D.SetNormalMap(m, createLeafNormal(64));
-        Material3D.SetRoughness(m, 0.94);
-        Material3D.SetMetallic(m, 0.0);
-        Material3D.SetNormalScale(m, 0.36);
+        m.Roughness = 0.94;
+        m.Metallic = 0.0;
+        m.NormalScale = 0.36;
         Material3D.SetEmissiveColor(m, r * 0.075, g * 0.105, b * 0.045);
-        Material3D.set_DoubleSided(m, true);
+        m.DoubleSided = true;
         return m;
     }
 

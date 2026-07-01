@@ -278,7 +278,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     // Handle String.Length and String.length property (Bug #3 fix)
     if (baseType->kind == TypeKindSem::String) {
         if (expr->field == "Length" || expr->field == "length") {
-            // Synthesize a call to Viper.String.Length(str)
+            // Synthesize a call to Viper.String.get_Length(str)
             Value result = emitCallRet(Type(Type::Kind::I64), kStringLength, {base.value});
             return {result, Type(Type::Kind::I64)};
         }
@@ -288,7 +288,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     if (baseType->kind == TypeKindSem::List) {
         if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
             expr->field == "length" || expr->field == "Len" || expr->field == "Length") {
-            // Synthesize a call to Viper.Collections.List.get_Count(list)
+            // Synthesize a call to Viper.Collections.List.get_Length(list)
             Value result = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
             return {result, Type(Type::Kind::I64)};
         }

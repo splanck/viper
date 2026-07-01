@@ -831,8 +831,8 @@ USING Viper.Terminal
 PrintI64(42)
 </code></pre>
 <h3 id="runtime-procedures">Runtime Procedures</h3>
-<p>All runtime procedures are available under canonical <code>Viper.<em></code> namespace names. Legacy <code>rt_</em></code> aliases are maintained for</p>
-<p>compatibility. Signatures shown as <code>Name(params)-&gt;result</code>.</p>
+<p>All runtime procedures are available under canonical <code>Viper.<em></code> namespace names. Legacy <code>rt_</em></code> public aliases are intentionally unsupported.</p>
+<p>Signatures shown as <code>Name(params)-&gt;result</code>.</p>
 <h4 id="viper-terminal">Viper.Terminal</h4>
 <p>Console I/O operations:</p>
 <ul>
@@ -853,19 +853,26 @@ PrintI64(42)
 <li><code>Viper.String.FromSingle(f64)-&gt;str</code> — Convert float to string (formats with single precision)</li>
 <li><code>Viper.Text.StringBuilder.New()-&gt;ptr</code> — Create a new StringBuilder instance</li>
 </ul>
-<h4 id="viper-convert">Viper.Convert</h4>
+<h4 id="viper-core-convert">Viper.Core.Convert</h4>
 <p>Type conversion:</p>
 <ul>
-<li><code>Viper.Convert.ToInt64(str)-&gt;i64</code> — Convert string to integer (throws on error)</li>
-<li><code>Viper.Convert.ToDouble(str)-&gt;f64</code> — Convert string to double (throws on error)</li>
-<li><code>Viper.Convert.ToString_Int(i64)-&gt;str</code> — Convert integer to string</li>
-<li><code>Viper.Convert.ToString_Double(f64)-&gt;str</code> — Convert double to string</li>
+<li><code>Viper.Core.Convert.ToInt64(str)-&gt;i64</code> — Convert string to integer (throws on error)</li>
+<li><code>Viper.Core.Convert.ToDouble(str)-&gt;f64</code> — Convert string to double (throws on error)</li>
+<li><code>Viper.Core.Convert.ToString_Int(i64)-&gt;str</code> — Convert integer to string</li>
+<li><code>Viper.Core.Convert.ToString_Double(f64)-&gt;str</code> — Convert double to string</li>
 </ul>
-<h4 id="viper-parse">Viper.Parse</h4>
+<h4 id="viper-core-parse">Viper.Core.Parse</h4>
 <p>Type parsing (with explicit error handling):</p>
 <ul>
-<li><code>Viper.Parse.Int64(cstr, ptr i64)-&gt;i32</code> — Parse int64, returns success code</li>
-<li><code>Viper.Parse.Double(cstr, ptr f64)-&gt;i32</code> — Parse double, returns success code</li>
+<li><code>Viper.Core.Parse.TryInt(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse integer</li>
+<li><code>Viper.Core.Parse.TryNum(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse double</li>
+<li><code>Viper.Core.Parse.TryBool(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse boolean</li>
+<li><code>Viper.Core.Parse.IntOr(str, i64)-&gt;i64</code> — Parse integer or return default</li>
+<li><code>Viper.Core.Parse.NumOr(str, f64)-&gt;f64</code> — Parse double or return default</li>
+<li><code>Viper.Core.Parse.BoolOr(str, i1)-&gt;i1</code> — Parse boolean or return default</li>
+<li><code>Viper.Core.Parse.IsInt(str)-&gt;i1</code> — Validate integer text</li>
+<li><code>Viper.Core.Parse.IsNum(str)-&gt;i1</code> — Validate numeric text</li>
+<li><code>Viper.Core.Parse.IntRadix(str, i64, i64)-&gt;i64</code> — Parse radix 2-36 integer or return default</li>
 </ul>
 <h4 id="viper-diagnostics">Viper.Diagnostics</h4>
 <p>Error and diagnostic utilities:</p>
@@ -911,9 +918,8 @@ PrintStr(Concat(&quot;hello&quot;, &quot; world&quot;))
 DIM sb AS Viper.Text.StringBuilder
 LET sb = NEW Viper.Text.StringBuilder()
 </code></pre>
-<h3 id="migration-note">Migration Note</h3>
-<p>Legacy <code>rt_<em></code> function names (e.g., <code>rt_print_str</code>, <code>rt_str_len</code>) are maintained as aliases to their canonical <code>Viper.</em></code></p>
-<p>counterparts. New code should use the canonical names.</p>
+<h3 id="runtime-name-policy">Runtime Name Policy</h3>
+<p>Runtime APIs are canonical-only. Use the <code>Viper.*</code> names listed above; legacy <code>rt_*</code> public aliases are not part of the runtime surface.</p>
 <h2 id="reserved-root">Reserved Root</h2>
 <p>The <code>Viper</code> root namespace is reserved for ViperLib. User code may not declare symbols under <code>Viper</code> (for</p>
 <p>example, <code>NAMESPACE Viper.Tools</code> is an error). You may import and call <code>Viper.*</code> library procedures, but define your own</p>
@@ -1187,7 +1193,7 @@ END NAMESPACE
 <p>Conventions and semantics:</p>
 <ul>
 <li>Properties and methods lower to canonical externs with the receiver as arg0.</li>
-<li>Examples: s.Length → call @Viper.String.Length(s);</li>
+<li>Examples: s.Length → call @Viper.String.get_Length(s);</li>
 </ul>
 <p>s.Substring(i,n) → call @Viper.String.Substring(s,i,n);</p>
 <p>s.Mid(i) → call @Viper.String.Mid(s,i);</p>

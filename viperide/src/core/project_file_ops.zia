@@ -65,7 +65,7 @@ expose func TrashPathFor(projectRoot: String, sourcePath: String) -> String {
     var trashRoot = Path.Join(projectRoot, ".viperide-trash");
     var base = Path.Name(sourcePath);
     if base == "" { return ""; }
-    var stem = base + "." + Time.GetTickCount();
+    var stem = base + "." + Viper.Time.Clock.Ticks();
     var attempt = 0;
     while attempt < 128 {
         var name = stem;

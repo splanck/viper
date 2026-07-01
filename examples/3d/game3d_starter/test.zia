@@ -25,7 +25,7 @@ func runStarterReplay() -> Float {
     var canvas = game.getCanvas();
     Canvas3D.SetInputSource(canvas, 1);
     Canvas3D.PushSyntheticKey(canvas, Keys.get_W(), true);
-    World3D.tick(game.getWorld());
+    game.getWorld().Tick();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);
 
@@ -36,23 +36,23 @@ func runStarterReplay() -> Float {
     }
 
     game.renderFrame();
-    var snap = World3D.captureFinalFrame(game.getWorld());
+    var snap = game.getWorld().CaptureFinalFrame();
     if (snap == null ||
         Pixels.get_Width(snap) != 128 ||
         Pixels.get_Height(snap) != 96) {
         game.destroy();
         return fail("starter final-frame capture failed");
     }
-    if (Canvas3D.get_FrameFinalized(canvas) == false) {
+    if (canvas.FrameFinalized == false) {
         game.destroy();
         return fail("starter frame was not finalized");
     }
-    if (CharacterController3D.grounded(game.getCharacter()) == false) {
+    if (game.getCharacter().Grounded() == false) {
         game.destroy();
         return fail("starter character did not stay grounded");
     }
 
-    var pos = Entity3D.position(game.getPlayer());
+    var pos = game.getPlayer().Position();
     var metric = Vec3.get_X(pos) + Vec3.get_Y(pos) + Vec3.get_Z(pos);
     game.destroy();
     return metric;

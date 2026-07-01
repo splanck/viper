@@ -11,12 +11,12 @@ bind Viper.Terminal as Terminal;
 // ============================================================================
 
 func ResetDiagnostics() {
-    Game3D.Diagnostics.Reset();
+    Game3D.Diagnostics3D.Reset();
 }
 
 func DiagnosticsClean() -> Bool {
-    var summary = Game3D.Diagnostics.Summary();
-    Terminal.Say("Game3D.Diagnostics.Summary=" + summary);
+    var summary = Game3D.Diagnostics3D.Summary();
+    Terminal.Say("Game3D.Diagnostics3D.Summary=" + summary);
     if (summary != "") {
         Terminal.Say("FAIL: Game3D diagnostics recorded degradation");
         Terminal.Say(summary);

@@ -38,7 +38,7 @@
 ' COVER: Viper.Collections.Heap.TryPeek
 ' COVER: Viper.Collections.Heap.TryPop
 ' COVER: Viper.Collections.List.New
-' COVER: Viper.Collections.List.Length
+' COVER: Viper.Collections.List.get_Length
 ' COVER: Viper.Collections.List.Push
 ' COVER: Viper.Collections.List.Clear
 ' COVER: Viper.Collections.List.Find
@@ -81,7 +81,7 @@
 ' COVER: Viper.Collections.Seq.WithCapacity
 ' COVER: Viper.Collections.Seq.Cap
 ' COVER: Viper.Collections.Seq.IsEmpty
-' COVER: Viper.Collections.Seq.Length
+' COVER: Viper.Collections.Seq.get_Length
 ' COVER: Viper.Collections.Seq.Clear
 ' COVER: Viper.Collections.Seq.Clone
 ' COVER: Viper.Collections.Seq.Find

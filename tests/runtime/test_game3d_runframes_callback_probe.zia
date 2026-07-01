@@ -27,7 +27,7 @@ func onFrame(dt: Float) {
 
 func start() {
     var world = Game3D.World3D.New("Game3D RunFrames Callback Probe", 32, 24);
-    Game3D.World3D.runFrames(world, 3, 0.016, &onFrame);
+    world.RunFrames(3, 0.016, &onFrame);
 
     if (frameCallbackCount != 3) {
         fail("runFrames callback count was " + toString(frameCallbackCount));
@@ -37,12 +37,12 @@ func start() {
         fail("runFrames callback received the wrong fixed dt");
         return;
     }
-    if (Game3D.World3D.get_frame(world) != 3) {
+    if (world.Frame != 3) {
         fail("runFrames did not advance the frame counter");
         return;
     }
 
-    Game3D.World3D.destroy(world);
+    world.Destroy();
     Terminal.Say("RESULT: ok");
     Terminal.Say("PASS");
 }

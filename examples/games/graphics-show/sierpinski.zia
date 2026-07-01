@@ -506,6 +506,6 @@ func sierpinskiRun(canvas: Canvas) {
         canvas.TextBg(10, height - 25, hint, colors.DARK_GRAY, colors.BLACK);
 
         canvas.Flip();
-        Viper.Time.SleepMs(16);
+        Viper.Time.Clock.Sleep(16);
     }
 }

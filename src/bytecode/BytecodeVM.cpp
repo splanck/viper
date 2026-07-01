@@ -313,8 +313,7 @@ rt_string BytecodeVM::getStringLiteral(uint16_t idx) {
 ///        needsConsumingStringHandler() — e.g. rt_str_concat.
 bool BytecodeVM::runtimeCallConsumesClonedStringArgs(std::string_view name) {
     // Keep this list aligned with rtgen's needsConsumingStringHandler().
-    return name == "rt_str_concat" || name == "Viper.String.Concat" ||
-           name == "Viper.String.ConcatSelf";
+    return name == "rt_str_concat" || name == "Viper.String.Concat";
 }
 
 /// @brief True if runtime function @p name consumes the *caller's owned*
@@ -6213,23 +6212,23 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Network.HttpsServer.BindHandler",
                             reinterpret_cast<void *>(&unified_https_server_bind_handler),
                             gPriorHttpsBindHandler);
-        capturePriorHandler("Viper.Game3D.World3D.run",
+        capturePriorHandler("Viper.Game3D.World3D.Run",
                             reinterpret_cast<void *>(&unified_game3d_run_handler),
                             gPriorGame3DRunHandler);
-        capturePriorHandler("Viper.Game3D.World3D.runWithOverlay",
+        capturePriorHandler("Viper.Game3D.World3D.RunWithOverlay",
                             reinterpret_cast<void *>(&unified_game3d_run_with_overlay_handler),
                             gPriorGame3DRunWithOverlayHandler);
-        capturePriorHandler("Viper.Game3D.World3D.runFixed",
+        capturePriorHandler("Viper.Game3D.World3D.RunFixed",
                             reinterpret_cast<void *>(&unified_game3d_run_fixed_handler),
                             gPriorGame3DRunFixedHandler);
         capturePriorHandler(
-            "Viper.Game3D.World3D.runFixedWithOverlay",
+            "Viper.Game3D.World3D.RunFixedWithOverlay",
             reinterpret_cast<void *>(&unified_game3d_run_fixed_with_overlay_handler),
             gPriorGame3DRunFixedWithOverlayHandler);
-        capturePriorHandler("Viper.Game3D.World3D.runFrames",
+        capturePriorHandler("Viper.Game3D.World3D.RunFrames",
                             reinterpret_cast<void *>(&unified_game3d_run_frames_handler),
                             gPriorGame3DRunFramesHandler);
-        capturePriorHandler("Viper.Game3D.World3D.drawOverlay",
+        capturePriorHandler("Viper.Game3D.World3D.DrawOverlay",
                             reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler),
                             gPriorGame3DDrawOverlayHandler);
         capturePriorHandler("Viper.Threads.Parallel.For",
@@ -6321,28 +6320,28 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.run";
+        ext.name = "Viper.Game3D.World3D.Run";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.runWithOverlay";
+        ext.name = "Viper.Game3D.World3D.RunWithOverlay";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_with_overlay_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.runFixed";
+        ext.name = "Viper.Game3D.World3D.RunFixed";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::F64, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_fixed_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.runFixedWithOverlay";
+        ext.name = "Viper.Game3D.World3D.RunFixedWithOverlay";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::F64, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_fixed_with_overlay_handler);
@@ -6350,7 +6349,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.runFrames";
+        ext.name = "Viper.Game3D.World3D.RunFrames";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::I64, SigParam::F64, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_run_frames_handler);
@@ -6358,7 +6357,7 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
-        ext.name = "Viper.Game3D.World3D.drawOverlay";
+        ext.name = "Viper.Game3D.World3D.DrawOverlay";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler);
         il::vm::RuntimeBridge::registerExtern(ext);

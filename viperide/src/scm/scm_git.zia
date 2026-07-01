@@ -135,7 +135,7 @@ class Git {
         while i < n {
             var line = Obj.ToString(Seq.Get(lines, i));
             i = i + 1;
-            if Str.Length(line) < 4 { continue; }
+            if Str.get_Length(line) < 4 { continue; }
             var x = Str.Left(line, 1);
             var y = Str.Left(Str.Mid(line, 2), 1);
             var path = Str.Mid(line, 4);

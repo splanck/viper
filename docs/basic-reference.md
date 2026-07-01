@@ -817,8 +817,7 @@ PrintI64(42)
 
 ### Runtime Procedures
 
-All runtime procedures are available under canonical `Viper.*` namespace names. Legacy `rt_*` aliases are maintained for
-compatibility. Signatures shown as `Name(params)->result`.
+All runtime procedures are available under canonical `Viper.*` namespace names. Legacy `rt_*` public aliases are intentionally unsupported. Signatures shown as `Name(params)->result`.
 
 #### Viper.Terminal
 
@@ -842,34 +841,29 @@ String manipulation:
 - `Viper.String.FromSingle(f64)->str` — Convert float to string (formats with single precision)
 - `Viper.Text.StringBuilder.New()->obj` — Create a new StringBuilder instance
 
-#### Viper.Convert
+#### Viper.Core.Convert
 
 Type conversion:
 
-- `Viper.Convert.ToInt(str)->i64` — Convert string to integer (alias for ToInt64, throws on error)
-- `Viper.Convert.ToInt64(str)->i64` — Convert string to integer (throws on error)
-- `Viper.Convert.ToDouble(str)->f64` — Convert string to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
-- `Viper.Convert.NumToInt(f64)->i64` — Truncate finite double to integer; NaN becomes 0 and out-of-range values clamp
-- `Viper.Convert.ToString_Int(i64)->str` — Convert integer to string
-- `Viper.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
+- `Viper.Core.Convert.ToInt64(str)->i64` — Convert string to integer (throws on error)
+- `Viper.Core.Convert.ToDouble(str)->f64` — Convert string to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
+- `Viper.Core.Convert.NumToInt(f64)->i64` — Truncate finite double to integer; NaN becomes 0 and out-of-range values clamp
+- `Viper.Core.Convert.ToString_Int(i64)->str` — Convert integer to string
+- `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
 
-#### Viper.Parse
+#### Viper.Core.Parse
 
 Type parsing (with explicit error handling):
 
-- `Viper.Parse.TryInt(str)->obj<Viper.Option>` — Try to parse integer
-- `Viper.Parse.TryNum(str)->obj<Viper.Option>` — Try to parse double
-- `Viper.Parse.TryBool(str)->obj<Viper.Option>` — Try to parse boolean
-- `Viper.Parse.IntOr(str, i64)->i64` — Parse integer or return default
-- `Viper.Parse.NumOr(str, f64)->f64` — Parse double or return default
-- `Viper.Parse.BoolOr(str, i1)->i1` — Parse boolean or return default
-- `Viper.Parse.IsInt(str)->i1` — Validate integer text
-- `Viper.Parse.IsNum(str)->i1` — Validate numeric text
-- `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default; `+` and `-` are accepted only for decimal, prefixes are rejected
-- `Viper.Parse.Int64(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
-- `Viper.Parse.Double(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
-- `Viper.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
-- `Viper.Parse.DoubleOption(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
+- `Viper.Core.Parse.TryInt(str)->obj<Viper.Option>` — Try to parse integer
+- `Viper.Core.Parse.TryNum(str)->obj<Viper.Option>` — Try to parse double
+- `Viper.Core.Parse.TryBool(str)->obj<Viper.Option>` — Try to parse boolean
+- `Viper.Core.Parse.IntOr(str, i64)->i64` — Parse integer or return default
+- `Viper.Core.Parse.NumOr(str, f64)->f64` — Parse double or return default
+- `Viper.Core.Parse.BoolOr(str, i1)->i1` — Parse boolean or return default
+- `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
+- `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
+- `Viper.Core.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default; `+` and `-` are accepted only for decimal, prefixes are rejected
 
 Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
 
@@ -929,10 +923,9 @@ DIM sb AS Viper.Text.StringBuilder
 LET sb = NEW Viper.Text.StringBuilder()
 ```
 
-### Migration Note
+### Runtime Name Policy
 
-Legacy `rt_*` function names (e.g., `rt_print_str`, `rt_str_len`) are maintained as aliases to their canonical `Viper.*`
-counterparts. New code should use the canonical names.
+Runtime APIs are canonical-only. Use the `Viper.*` names listed above; legacy `rt_*` public aliases are not part of the runtime surface.
 
 ## Reserved Root
 
@@ -1232,7 +1225,7 @@ Viper.Terminal.PrintStr(sb.ToString())
 Conventions and semantics:
 
 - Properties and methods lower to canonical externs with the receiver as arg0.
-    - Examples: s.Length → call @Viper.String.Length(s);
+    - Examples: s.Length → call @Viper.String.get_Length(s);
       s.Substring(i,n) → call @Viper.String.Substring(s,i,n);
       s.Mid(i) → call @Viper.String.Mid(s,i);
       sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)

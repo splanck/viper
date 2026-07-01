@@ -50,7 +50,7 @@ func testCopyToFile() {
 
     // Verify file exists and has content
     var content = IO.File.ReadAllText("/tmp/viper_test_copy.csv");
-    assertTrue(String.Length(content) > 0, "File has content");
+    assertTrue(Viper.String.get_Length(content) > 0, "File has content");
     assertTrue(stringContains(content, "Alice"), "File contains Alice");
     assertTrue(stringContains(content, "Bob"), "File contains Bob");
 }

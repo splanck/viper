@@ -18,20 +18,20 @@ func near(a: Float, b: Float, eps: Float) -> Boolean {
 
 func start() {
     var world = Game3D.World3D.New("Game3D RunFrames Probe", 64, 48);
-    Game3D.World3D.onResize(world, 64, 48);
-    Game3D.World3D.runFramesOnly(world, 3, 0.025);
+    world.OnResize(64, 48);
+    world.RunFramesOnly(3, 0.025);
 
-    if (Game3D.World3D.get_frame(world) != 3) {
+    if (world.Frame != 3) {
         fail("runFramesOnly did not advance World3D.frame");
         return;
     }
-    if (near(Game3D.World3D.get_dt(world), 0.025, 0.0001) == false ||
-        near(Game3D.World3D.get_elapsed(world), 0.075, 0.0001) == false) {
+    if (near(world.Dt, 0.025, 0.0001) == false ||
+        near(world.Elapsed, 0.075, 0.0001) == false) {
         fail("runFramesOnly did not update World3D dt/elapsed");
         return;
     }
 
-    var snap = Game3D.World3D.captureFinalFrame(world);
+    var snap = world.CaptureFinalFrame();
     if (snap == null ||
         Graphics.Pixels.get_Width(snap) != 64 ||
         Graphics.Pixels.get_Height(snap) != 48) {
@@ -39,6 +39,6 @@ func start() {
         return;
     }
 
-    Game3D.World3D.destroy(world);
+    world.Destroy();
     Terminal.Say("PASS");
 }

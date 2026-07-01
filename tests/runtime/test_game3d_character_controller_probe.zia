@@ -17,36 +17,36 @@ func near(a: Float, b: Float, eps: Float) -> Boolean {
 
 func start() {
     var world = Game3D.World3D.New("Game3D Character Controller Probe", 64, 48);
-    var canvas = Game3D.World3D.get_canvas(world);
-    var camera = Game3D.World3D.get_camera(world);
+    var canvas = world.Canvas;
+    var camera = world.Camera;
 
     var ground = Game3D.Entity3D.New();
     var groundBody = G3D.Physics3DBody.NewAABB(10.0, 0.5, 10.0, 0.0);
-    Game3D.Entity3D.attachBody(ground, groundBody);
-    Game3D.Entity3D.setPosition(ground, 0.0, -0.5, 0.0);
-    Game3D.World3D.spawn(world, ground);
+    ground.AttachBody(groundBody);
+    ground.SetPosition(0.0, -0.5, 0.0);
+    world.Spawn(ground);
 
     var player = Game3D.Entity3D.New();
-    Game3D.Entity3D.setPosition(player, 0.0, 1.0, 4.0);
-    Game3D.World3D.spawn(world, player);
+    player.SetPosition(0.0, 1.0, 4.0);
+    world.Spawn(player);
 
     var character = Game3D.CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
     var fps = Game3D.FirstPersonController.New(world);
-    Game3D.FirstPersonController.set_character(fps, character);
-    Game3D.FirstPersonController.set_speed(fps, 5.0);
-    Game3D.World3D.setCameraController(world, fps);
+    fps.Character = character;
+    fps.Speed = 5.0;
+    world.SetCameraController(fps);
 
-    var before = Game3D.Entity3D.position(player);
+    var before = player.Position();
     G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_W(), true);
-    Game3D.World3D.runFramesOnly(world, 1, 0.1);
-    var after = Game3D.Entity3D.position(player);
+    world.RunFramesOnly(1, 0.1);
+    var after = player.Position();
 
     if (Math.Vec3.get_Z(after) >= Math.Vec3.get_Z(before) - 0.05) {
         fail("FirstPersonController did not move CharacterController3D in the same frame");
         return;
     }
 
-    var cameraPos = G3D.Camera3D.get_Position(camera);
+    var cameraPos = camera.Position;
     if (near(Math.Vec3.get_Z(cameraPos), Math.Vec3.get_Z(after), 0.0001) == false ||
         Math.Vec3.get_Y(cameraPos) <= Math.Vec3.get_Y(after)) {
         fail("FirstPersonController lateUpdate did not align camera to character");
@@ -54,6 +54,6 @@ func start() {
     }
 
     G3D.Canvas3D.ClearSyntheticInput(canvas);
-    Game3D.World3D.destroy(world);
+    world.Destroy();
     Terminal.Say("PASS");
 }

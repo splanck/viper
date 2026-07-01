@@ -682,8 +682,8 @@ PRINT "Sum: "; Viper.Time.Duration.ToString(sum)
 PRINT "Diff: "; Viper.Time.Duration.ToString(diff)
 
 ' Component extraction
-PRINT "Hours: "; Viper.Time.Duration.Hours(d2)         ' Output: 2
-PRINT "Minutes: "; Viper.Time.Duration.Minutes(d2)     ' Output: 30
+PRINT "Hours: "; Viper.Time.Duration.get_Hours(d2)         ' Output: 2
+PRINT "Minutes: "; Viper.Time.Duration.get_Minutes(d2)     ' Output: 30
 ```
 
 ---

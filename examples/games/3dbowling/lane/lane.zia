@@ -148,19 +148,19 @@ class LaneBuilder {
 
         laneMesh = Mesh3D.NewBox(config.LANE_WIDTH, 0.05, totalLen);
         laneMat = Material3D.NewPBR(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
-        Material3D.set_Metallic(laneMat, 0.0);
-        Material3D.set_Roughness(laneMat, 0.32);
+        laneMat.Metallic = 0.0;
+        laneMat.Roughness = 0.32;
         Material3D.SetShininess(laneMat, config.LANE_SHININESS);
         boardMesh = Mesh3D.NewBox(config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0) * 0.92, 0.006, totalLen);
         boardLightMat = Material3D.NewPBR(
             config.LANE_BOARD_LIGHT_R, config.LANE_BOARD_LIGHT_G, config.LANE_BOARD_LIGHT_B);
-        Material3D.set_Metallic(boardLightMat, 0.0);
-        Material3D.set_Roughness(boardLightMat, 0.36);
+        boardLightMat.Metallic = 0.0;
+        boardLightMat.Roughness = 0.36;
         Material3D.SetShininess(boardLightMat, config.LANE_SHININESS);
         boardDarkMat = Material3D.NewPBR(
             config.LANE_BOARD_DARK_R, config.LANE_BOARD_DARK_G, config.LANE_BOARD_DARK_B);
-        Material3D.set_Metallic(boardDarkMat, 0.0);
-        Material3D.set_Roughness(boardDarkMat, 0.42);
+        boardDarkMat.Metallic = 0.0;
+        boardDarkMat.Roughness = 0.42;
         Material3D.SetShininess(boardDarkMat, config.LANE_SHININESS * 0.82);
 
         var oilLen = oilEndZ - config.OIL_START_Z;
@@ -168,7 +168,7 @@ class LaneBuilder {
         oilMesh = Mesh3D.NewBox(config.LANE_WIDTH - 0.02, 0.005, oilLen);
         oilMat = Material3D.NewColor(config.LANE_OIL_COLOR_R, config.LANE_OIL_COLOR_G, config.LANE_OIL_COLOR_B);
         Material3D.SetShininess(oilMat, config.LANE_OIL_SHININESS);
-        Material3D.set_Alpha(oilMat, 0.34);
+        oilMat.Alpha = 0.34;
 
         pinDeckMesh = Mesh3D.NewBox(config.LANE_WIDTH - 0.02, 0.008, 1.9);
         pinDeckMat = Material3D.NewColor(config.PIN_DECK_COLOR_R, config.PIN_DECK_COLOR_G, config.PIN_DECK_COLOR_B);
@@ -417,41 +417,41 @@ class LaneBuilder {
     /// @brief Wire up cube-map reflections on every shiny surface.
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(laneMat, env);
-        Material3D.set_Reflectivity(laneMat, config.LANE_REFLECTIVITY);
+        laneMat.Reflectivity = config.LANE_REFLECTIVITY;
         Material3D.SetEnvMap(boardLightMat, env);
-        Material3D.set_Reflectivity(boardLightMat, config.LANE_REFLECTIVITY);
+        boardLightMat.Reflectivity = config.LANE_REFLECTIVITY;
         Material3D.SetEnvMap(boardDarkMat, env);
-        Material3D.set_Reflectivity(boardDarkMat, config.LANE_REFLECTIVITY * 0.72);
+        boardDarkMat.Reflectivity = config.LANE_REFLECTIVITY * 0.72;
 
         Material3D.SetEnvMap(oilMat, env);
-        Material3D.set_Reflectivity(oilMat, config.LANE_OIL_REFLECTIVITY);
+        oilMat.Reflectivity = config.LANE_OIL_REFLECTIVITY;
 
         Material3D.SetEnvMap(pinDeckMat, env);
-        Material3D.set_Reflectivity(pinDeckMat, config.PIN_DECK_REFLECTIVITY);
+        pinDeckMat.Reflectivity = config.PIN_DECK_REFLECTIVITY;
 
         Material3D.SetEnvMap(roomFloorMat, env);
-        Material3D.set_Reflectivity(roomFloorMat, 0.03);
+        roomFloorMat.Reflectivity = 0.03;
 
         Material3D.SetEnvMap(sideLaneMat, env);
-        Material3D.set_Reflectivity(sideLaneMat, 0.05);
+        sideLaneMat.Reflectivity = 0.05;
 
         Material3D.SetEnvMap(sideGutterMat, env);
-        Material3D.set_Reflectivity(sideGutterMat, 0.02);
+        sideGutterMat.Reflectivity = 0.02;
 
         Material3D.SetEnvMap(approachMat, env);
-        Material3D.set_Reflectivity(approachMat, config.LANE_REFLECTIVITY * 0.75);
+        approachMat.Reflectivity = config.LANE_REFLECTIVITY * 0.75;
 
         Material3D.SetEnvMap(ceilingMat, env);
-        Material3D.set_Reflectivity(ceilingMat, 0.02);
+        ceilingMat.Reflectivity = 0.02;
 
         Material3D.SetEnvMap(sidePanelMat, env);
-        Material3D.set_Reflectivity(sidePanelMat, 0.03);
+        sidePanelMat.Reflectivity = 0.03;
 
         Material3D.SetEnvMap(pinsetterMat, env);
-        Material3D.set_Reflectivity(pinsetterMat, 0.05);
+        pinsetterMat.Reflectivity = 0.05;
 
         Material3D.SetEnvMap(foulLineMat, env);
-        Material3D.set_Reflectivity(foulLineMat, 0.18);
+        foulLineMat.Reflectivity = 0.18;
     }
 
     /// @brief Sample friction at a 2D lane position.

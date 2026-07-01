@@ -8,8 +8,8 @@ bind Viper.Math;
 bind Viper.Input;
 
 func do_shoot(cam: Camera3D, sparks: Particles3D) {
-    var shoot_pos = Camera3D.get_Position(cam);
-    var shoot_dir = Camera3D.get_Forward(cam);
+    var shoot_pos = cam.Position;
+    var shoot_dir = cam.Forward;
 
     var d1 = Ray3D.IntersectSphere(shoot_pos, shoot_dir,
         new Vec3(-3.0, 1.0, -5.0), 0.5);
@@ -99,10 +99,10 @@ func start() {
     var shoot_cooldown = 0.0;
     var eye_height = 1.5;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
 
-        var dt = Canvas3D.get_DeltaTime(canvas) / 1000.0;
+        var dt = canvas.DeltaTime / 1000.0;
         if (dt > 0.05) { dt = 0.05; }
 
         // Mouse look
@@ -122,12 +122,12 @@ func start() {
             fwd, right, 0.0, speed, dt);
 
         // Clamp camera to floor height (prevent falling through)
-        var cur_pos = Camera3D.get_Position(cam);
+        var cur_pos = cam.Position;
         var cur_y = Vec3.get_Y(cur_pos);
         if (cur_y < eye_height) {
             var clamped = new Vec3(
                 Vec3.get_X(cur_pos), eye_height, Vec3.get_Z(cur_pos));
-            var look_fwd = Camera3D.get_Forward(cam);
+            var look_fwd = cam.Forward;
             var look_tgt = Vec3.Add(clamped, look_fwd);
             Camera3D.LookAt(cam, clamped, look_tgt, up);
         }
@@ -176,8 +176,8 @@ func start() {
         Particles3D.Draw(sparks, canvas, cam);
 
         // 3D crosshair: position tiny boxes right in front of the camera
-        var ch_pos = Camera3D.get_Position(cam);
-        var ch_fwd = Camera3D.get_Forward(cam);
+        var ch_pos = cam.Position;
+        var ch_fwd = cam.Forward;
         var ch_x = Vec3.get_X(ch_pos) + Vec3.get_X(ch_fwd) * 0.3;
         var ch_y = Vec3.get_Y(ch_pos) + Vec3.get_Y(ch_fwd) * 0.3;
         var ch_z = Vec3.get_Z(ch_pos) + Vec3.get_Z(ch_fwd) * 0.3;

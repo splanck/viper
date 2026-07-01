@@ -40,7 +40,7 @@ int main() {
     // STRING alias behaves like Viper.String
     assert(tyreg.kindOf("STRING") == TypeKind::BuiltinExternalType);
 
-    // 2) PropertyIndex: Viper.String.Length exists
+    // 2) PropertyIndex: Viper.String.get_Length exists
     auto &pidx = runtimePropertyIndex();
     auto p = pidx.find("Viper.String", "Length");
     assert(p.has_value());

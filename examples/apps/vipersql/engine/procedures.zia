@@ -325,8 +325,8 @@ func formatArgForSQL(val: SqlValue) -> String {
 func replaceAll(str: String, from: String, to: String) -> String {
     var result = "";
     var i = 0;
-    var fromLen = String.Length(from);
-    var strLen = String.Length(str);
+    var fromLen = Viper.String.get_Length(from);
+    var strLen = Viper.String.get_Length(str);
     while i < strLen {
         if i + fromLen <= strLen && String.Substring(str, i, fromLen) == from {
             result = result + to;

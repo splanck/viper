@@ -29,7 +29,7 @@ final MAX_DEBUG_OUTPUT_CHARS = 250000;
 final TERMINATE_GRACE_MS = 750;
 
 class DebugSession {
-    expose Process.Handle processHandle;
+    expose Process.ProcessHandle processHandle;
     expose Boolean hasSession;
     expose Boolean stopped;
     expose Boolean terminated;
@@ -314,7 +314,7 @@ class DebugSession {
     hide func handleLine(line: String) {
         if line == "" { return; }
         if Str.StartsWith(line, SENTINEL) {
-            handleEvent(Str.Mid(line, Str.Length(SENTINEL) + 1));
+            handleEvent(Str.Mid(line, Str.get_Length(SENTINEL) + 1));
         } else {
             // Raw program stderr or trap text: show it as output.
             programOutput = AppendBoundedOutput(programOutput, line + "\n");
@@ -331,34 +331,34 @@ class DebugSession {
     /// @return Combined buffer, trimmed to MAX_DEBUG_OUTPUT_CHARS when needed.
     hide func AppendBoundedOutput(existing: String, text: String) -> String {
         var combined = existing + text;
-        var textLen = Str.Length(text);
+        var textLen = Str.get_Length(text);
         if textLen >= MAX_DEBUG_OUTPUT_CHARS {
             return "[debug output truncated]\n"
                 + Str.Mid(text, textLen - MAX_DEBUG_OUTPUT_CHARS + 1);
         }
-        var existingLen = Str.Length(existing);
+        var existingLen = Str.get_Length(existing);
         var keepExisting = MAX_DEBUG_OUTPUT_CHARS - textLen;
         if existingLen > keepExisting {
             return "[debug output truncated]\n"
                 + Str.Mid(existing, existingLen - keepExisting + 1) + text;
         }
-        if Str.Length(combined) <= MAX_DEBUG_OUTPUT_CHARS {
+        if Str.get_Length(combined) <= MAX_DEBUG_OUTPUT_CHARS {
             return combined;
         }
         return "[debug output truncated]\n"
-            + Str.Mid(combined, Str.Length(combined) - MAX_DEBUG_OUTPUT_CHARS + 1);
+            + Str.Mid(combined, Str.get_Length(combined) - MAX_DEBUG_OUTPUT_CHARS + 1);
     }
 
     hide func handleEvent(jsonText: String) {
         if Json.IsValid(jsonText) == false { return; }
         var ev = Json.Parse(jsonText);
-        var evType = Json.GetStr(ev, "type");
+        var evType = Viper.Collections.Map.GetStr(ev, "type");
         if evType == "stopped" {
             stopped = true;
             lastType = "stopped";
-            lastReason = Json.GetStr(ev, "reason");
-            activePath = Json.GetStr(ev, "path");
-            lastLine = Json.GetInt(ev, "line");
+            lastReason = Viper.Collections.Map.GetStr(ev, "reason");
+            activePath = Viper.Collections.Map.GetStr(ev, "path");
+            lastLine = Viper.Collections.Map.GetInt(ev, "line");
             stopFrames = Map.Get(ev, "frames");
             stopLocals = Map.Get(ev, "locals");
             consoleText = formatStopped(ev);
@@ -370,20 +370,20 @@ class DebugSession {
             stopFrames = null;
             stopLocals = null;
             lastType = "terminated";
-            lastReason = Json.GetStr(ev, "reason");
-            exitCode = Json.GetInt(ev, "exitCode");
+            lastReason = Viper.Collections.Map.GetStr(ev, "reason");
+            exitCode = Viper.Collections.Map.GetInt(ev, "exitCode");
             dirty = true;
         } else if evType == "evaluated" {
-            lastEvalExpr = Json.GetStr(ev, "expr");
-            lastEvalValue = Json.GetStr(ev, "value");
-            lastEvalType = Json.GetStr(ev, "valueType");
-            lastEvalOk = Json.GetBool(ev, "ok");
+            lastEvalExpr = Viper.Collections.Map.GetStr(ev, "expr");
+            lastEvalValue = Viper.Collections.Map.GetStr(ev, "value");
+            lastEvalType = Viper.Collections.Map.GetStr(ev, "valueType");
+            lastEvalOk = Viper.Collections.Map.GetBool(ev, "ok");
             evalJustArrived = true;
             dirty = true;
         } else if evType == "log" {
             // Logpoint: surfaced in the debug console; execution never paused.
             programOutput = AppendBoundedOutput(programOutput,
-                "[logpoint:" + Json.GetInt(ev, "line") + "] " + Json.GetStr(ev, "message") + "\n");
+                "[logpoint:" + Viper.Collections.Map.GetInt(ev, "line") + "] " + Viper.Collections.Map.GetStr(ev, "message") + "\n");
             dirty = true;
         } else if evType == "initialized" {
             dirty = true;
@@ -408,21 +408,21 @@ class DebugSession {
     expose func FrameLabel(i: Integer) -> String {
         if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return ""; }
         var f = Seq.Get(stopFrames, i);
-        var fn = Json.GetStr(f, "function");
+        var fn = Viper.Collections.Map.GetStr(f, "function");
         if fn == "" { fn = "<anonymous>"; }
-        return fn + " — " + baseName(Json.GetStr(f, "path")) + ":" + Json.GetInt(f, "line");
+        return fn + " — " + baseName(Viper.Collections.Map.GetStr(f, "path")) + ":" + Viper.Collections.Map.GetInt(f, "line");
     }
 
     /// @brief Source path for frame @p i (for click-to-navigate), or "".
     expose func FramePath(i: Integer) -> String {
         if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return ""; }
-        return Json.GetStr(Seq.Get(stopFrames, i), "path");
+        return Viper.Collections.Map.GetStr(Seq.Get(stopFrames, i), "path");
     }
 
     /// @brief One-based source line for frame @p i, or 0.
     expose func FrameLine(i: Integer) -> Integer {
         if stopFrames == null or i < 0 or i >= Seq.get_Length(stopFrames) { return 0; }
-        return Json.GetInt(Seq.Get(stopFrames, i), "line");
+        return Viper.Collections.Map.GetInt(Seq.Get(stopFrames, i), "line");
     }
 
     /// @brief Number of locals visible at the current stop (0 if not stopped).
@@ -435,8 +435,8 @@ class DebugSession {
     expose func LocalLabel(i: Integer) -> String {
         if stopLocals == null or i < 0 or i >= Seq.get_Length(stopLocals) { return ""; }
         var l = Seq.Get(stopLocals, i);
-        return Json.GetStr(l, "name") + " = " + Json.GetStr(l, "value")
-            + " : " + Json.GetStr(l, "type");
+        return Viper.Collections.Map.GetStr(l, "name") + " = " + Viper.Collections.Map.GetStr(l, "value")
+            + " : " + Viper.Collections.Map.GetStr(l, "type");
     }
 
     /// @brief Trailing path component of @p p (handles both / and \\ separators).
@@ -459,8 +459,8 @@ class DebugSession {
             var i = 0;
             while i < Seq.get_Length(frames) {
                 var f = Seq.Get(frames, i);
-                text = text + "  #" + i + " " + Json.GetStr(f, "function")
-                    + " " + Json.GetStr(f, "path") + ":" + Json.GetInt(f, "line") + "\n";
+                text = text + "  #" + i + " " + Viper.Collections.Map.GetStr(f, "function")
+                    + " " + Viper.Collections.Map.GetStr(f, "path") + ":" + Viper.Collections.Map.GetInt(f, "line") + "\n";
                 i = i + 1;
             }
         }
@@ -471,8 +471,8 @@ class DebugSession {
             var j = 0;
             while j < Seq.get_Length(locals) {
                 var l = Seq.Get(locals, j);
-                text = text + "  " + Json.GetStr(l, "name") + " = "
-                    + Json.GetStr(l, "value") + " : " + Json.GetStr(l, "type") + "\n";
+                text = text + "  " + Viper.Collections.Map.GetStr(l, "name") + " = "
+                    + Viper.Collections.Map.GetStr(l, "value") + " : " + Viper.Collections.Map.GetStr(l, "type") + "\n";
                 j = j + 1;
             }
         }

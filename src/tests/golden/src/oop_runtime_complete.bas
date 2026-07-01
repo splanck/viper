@@ -141,9 +141,9 @@ PRINT "WriteLine test: PASS"
 PRINT ""
 
 ' =============================================================================
-' Viper.Convert Tests
+' Viper.Core.Convert Tests
 ' =============================================================================
-PRINT "=== Viper.Convert ==="
+PRINT "=== Viper.Core.Convert ==="
 DIM numStr AS STRING
 numStr = "42"
 DIM numVal AS DOUBLE

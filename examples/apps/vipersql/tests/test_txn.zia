@@ -67,7 +67,7 @@ func testTransactionToString() {
     txn.initWithId(5, 100);
 
     var str = txn.toString();
-    assert(String.Length(str) > 0, "Transaction has string representation");
+    assert(Viper.String.get_Length(str) > 0, "Transaction has string representation");
 }
 
 //=============================================================================
@@ -129,7 +129,7 @@ func testLockToString() {
     lock.initTableLock(5, LOCK_EXCLUSIVE, 10);
 
     var str = lock.toString();
-    assert(String.Length(str) > 0, "Lock has string representation");
+    assert(Viper.String.get_Length(str) > 0, "Lock has string representation");
 }
 
 //=============================================================================

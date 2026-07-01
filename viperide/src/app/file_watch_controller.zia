@@ -134,7 +134,7 @@ class FileWatchController {
                                          docMgr: document_manager.DocumentManager,
                                          openDocPollMs: Integer) {
         if docMgr == null { return; }
-        var now = Time.GetTickCount();
+        var now = Viper.Time.Clock.Ticks();
         if now - lastOpenDocPollMs < openDocPollMs { return; }
         lastOpenDocPollMs = now;
         var changedOpenDocs = PollOpenDocumentExternalChanges(shell, docMgr);

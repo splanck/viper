@@ -19,11 +19,10 @@ bind Viper.Text.Fmt as Fmt;
 // COVER: Bug #12 - Toml.GetStr for string values
 
 func start() {
-    // --- Bug #8: Csv.ParseLine().Count should return field count ---
+    // --- Bug #8: Csv.ParseLine().Length should return field count ---
     setTest("Bug8_CsvParseLineCount");
     var fields = Csv.ParseLine("Alice,30,NY");
     assertEqInt(fields.Length, 3, "Csv.ParseLine field count via .Length");
-    assertEqInt(fields.Count, 3, "Csv.ParseLine field count via .Count");
 
     // --- Bug #9: Csv.FormatLine with boxed strings ---
     setTest("Bug9_CsvFormatLineBoxed");
@@ -42,16 +41,16 @@ func start() {
     var line2 = Csv.FormatLine(seq2);
     assertEqStr(line2, "Bob,25,LA", "Csv.FormatLine with raw strings");
 
-    // --- Bug #10: Markdown.ExtractHeadings().Count ---
+    // --- Bug #10: Markdown.ExtractHeadings().Length ---
     setTest("Bug10_MarkdownExtractHeadings");
     var md = "# Hello\n## World\nParagraph.\n### Third";
     var headings = Md.ExtractHeadings(md);
-    assertGtInt(headings.Count, 0, "Markdown.ExtractHeadings count > 0");
+    assertGtInt(headings.Length, 0, "Markdown.ExtractHeadings length > 0");
 
     // Also check ExtractLinks returns a proper Seq
     var md2 = "Visit [here](http://example.com) and [there](http://test.com).";
     var links = Md.ExtractLinks(md2);
-    assertGtInt(links.Count, 0, "Markdown.ExtractLinks count > 0");
+    assertGtInt(links.Length, 0, "Markdown.ExtractLinks length > 0");
 
     // --- Bug #11: JsonPath auto-parse raw JSON strings ---
     setTest("Bug11_JsonPathAutoParse");

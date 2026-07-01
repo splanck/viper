@@ -109,7 +109,7 @@ class Lexer {
     hide Integer pos;      // byte offset into `source`
     hide Integer line;     // current line, 1-based
     hide Integer column;   // current column, 1-based
-    hide Integer length;   // cached `String.Length(source)`
+    hide Integer length;   // cached `Viper.String.get_Length(source)`
 
     /// @brief Wire up a lexer for a given SQL source string.
     ///
@@ -121,7 +121,7 @@ class Lexer {
         pos = 0;
         line = 1;
         column = 1;
-        length = String.Length(src);
+        length = Viper.String.get_Length(src);
     }
 
     /// @brief "Have we consumed every character?" — the termination

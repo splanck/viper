@@ -165,40 +165,23 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gui_test_harness_event_count")
 // Managed replacements for legacy raw-pointer runtime surfaces. These entries
 // keep the frontend API names present while routing them to object, Option,
 // sequence, path, or callback-reference signatures.
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.TryToI64", "rt_box_to_i64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.TryToF64", "rt_box_to_f64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.TryToI1", "rt_box_to_i1_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.TryToStr", "rt_box_to_str_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToI64Option", "rt_box_to_i64_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToF64Option", "rt_box_to_f64_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToI1Option", "rt_box_to_i1_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Box.ToStrOption", "rt_box_to_str_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.String.SplitFields", "rt_str_split_fields_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.String.SplitFieldsSeq", "rt_str_split_fields_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.Polyline", "rt_canvas_polyline_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.Polygon", "rt_canvas_polygon_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.PolygonFrame",
-                                "rt_canvas_polygon_frame_path")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.PolylinePath", "rt_canvas_polyline_path")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.PolygonPath", "rt_canvas_polygon_path")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.Canvas.PolygonFramePath",
                                 "rt_canvas_polygon_frame_path")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.Double", "rt_parse_double_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.Int64", "rt_parse_int64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.TryInt", "rt_parse_int64_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.TryNum", "rt_parse_double_option")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.TryInt", "rt_parse_int64_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Core.Parse.TryBool", "rt_parse_bool_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Parse.Double", "rt_parse_double_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Parse.Int64", "rt_parse_int64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Parse.TryInt", "rt_parse_int64_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Parse.TryNum", "rt_parse_double_option")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Parse.TryBool", "rt_parse_bool_option")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.New", "rt_weakref_new")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.Get", "rt_weakref_get")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.Alive", "rt_weakref_alive")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.Free", "rt_weakref_free")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Memory.WeakRef.Reset", "rt_weakref_reset")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.ParticleEmitter.Get", "rt_particle_emitter_particle_at")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.ParticleEmitter.ParticleAt",
                                 "rt_particle_emitter_particle_at")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.IO.File.WriteAllLines", "rt_io_file_write_all_lines")
@@ -221,16 +204,10 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_parse_try_num")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_parse_try_bool")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_particle_emitter_get")
 
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "TryToI64", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "TryToF64", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "TryToI1", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "TryToStr", "obj<Viper.Option>(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToI64Option", "obj<Viper.Option>(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToF64Option", "obj<Viper.Option>(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToI1Option", "obj<Viper.Option>(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Box", "ToStrOption", "obj<Viper.Option>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "Double", "obj<Viper.Option>(str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "Int64", "obj<Viper.Option>(str)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "TryInt", "obj<Viper.Option>(str)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "TryNum", "obj<Viper.Option>(str)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Core.Parse", "TryBool", "obj<Viper.Option>(str)")
@@ -245,16 +222,7 @@ RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Free", "void(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Free", "void()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Reset", "void(obj,obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Memory.WeakRef", "Reset", "void(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.String", "SplitFieldsSeq", "seq<str>(str)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Canvas",
-                              "Polyline",
-                              "void(obj<Viper.Graphics.Path2D>,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Canvas",
-                              "Polygon",
-                              "void(obj<Viper.Graphics.Path2D>,i64)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Canvas",
-                              "PolygonFrame",
-                              "void(obj<Viper.Graphics.Path2D>,i64)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.String", "SplitFields", "seq<str>(str)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.Canvas",
                               "PolylinePath",
                               "void(obj<Viper.Graphics.Path2D>,i64)")
@@ -818,18 +786,18 @@ RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.get_Current",
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.Physics2D.Body.get_PrevX", "rt_physics2d_body_prev_x")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.Physics2D.Body.get_PrevY", "rt_physics2d_body_prev_y")
 
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Bag.FromSeq", "rt_seq_to_bag")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Set.FromSeq", "rt_seq_to_set")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.List.FromSeq", "rt_seq_to_list")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.List.FromSet", "rt_set_to_list")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.List.FromDeque", "rt_deque_to_list")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Queue.FromSeq", "rt_seq_to_queue")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.FromList", "rt_list_to_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.FromSet", "rt_set_to_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.FromDeque", "rt_deque_to_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.FromBag", "rt_bag_to_seq")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Stack.FromSeq", "rt_seq_to_stack")
-RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Deque.FromSeq", "rt_seq_to_deque")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Bag.ToSeq", "rt_bag_to_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Deque.ToList", "rt_deque_to_list")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Deque.ToSeq", "rt_deque_to_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.List.ToSeq", "rt_list_to_seq")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToBag", "rt_seq_to_bag")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToDeque", "rt_seq_to_deque")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToList", "rt_seq_to_list")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToQueue", "rt_seq_to_queue")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToSet", "rt_seq_to_set")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Seq.ToStack", "rt_seq_to_stack")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Set.ToList", "rt_set_to_list")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Set.ToSeq", "rt_set_to_seq")
 
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.MessageBox", "New", "obj(str,str,i64)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.GUI.MessageBox", "NewInfo", "obj(str,str)")
@@ -888,35 +856,37 @@ RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.CircleBody", "PrevX", "f64
 RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.CircleBody", "PrevY", "f64")
 
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Bag", "FromSeq", "obj<Viper.Collections.Bag>(obj)")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Bag", "ToSeq", "obj<Viper.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Bag", "ToSet", "obj<Viper.Collections.Set>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Map", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Set", "FromSeq", "obj<Viper.Collections.Set>(obj)")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Set", "New", "obj()")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Set", "ToSeq", "obj<Viper.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Set", "ToList", "obj<Viper.Collections.List>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List",
-                              "FromSeq",
-                              "obj<Viper.Collections.List>(obj)")
+                              "ToSeq",
+                              "obj<Viper.Collections.Seq>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List",
-                              "FromSet",
-                              "obj<Viper.Collections.List>(obj)")
+                              "ToSet",
+                              "obj<Viper.Collections.Set>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List",
-                              "FromDeque",
-                              "obj<Viper.Collections.List>(obj)")
+                              "ToStack",
+                              "obj<Viper.Collections.Stack>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Queue",
-                              "FromSeq",
-                              "obj<Viper.Collections.Queue>(obj)")
+                              "ToSeq",
+                              "obj<Viper.Collections.Seq>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq",
-                              "FromList",
-                              "obj<Viper.Collections.Seq>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq", "FromSet", "obj<Viper.Collections.Seq>(obj)")
+                              "ToList",
+                              "obj<Viper.Collections.List>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq", "ToSet", "obj<Viper.Collections.Set>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq",
-                              "FromDeque",
-                              "obj<Viper.Collections.Seq>(obj)")
-RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq", "FromBag", "obj<Viper.Collections.Seq>(obj)")
+                              "ToDeque",
+                              "obj<Viper.Collections.Deque>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Seq", "ToBag", "obj<Viper.Collections.Bag>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Stack",
-                              "FromSeq",
-                              "obj<Viper.Collections.Stack>(obj)")
+                              "ToSeq",
+                              "obj<Viper.Collections.Seq>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Deque",
-                              "FromSeq",
-                              "obj<Viper.Collections.Deque>(obj)")
+                              "ToSeq",
+                              "obj<Viper.Collections.Seq>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Time.Stopwatch", "New", "obj()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Time.Stopwatch", "StartNew", "obj()")

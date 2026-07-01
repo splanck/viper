@@ -146,17 +146,17 @@ TEST(ZiaStaticCalls, RuntimeCollectionConverters) {
 module Test;
 /// @brief Start.
 func start() {    var seq = Viper.Collections.Seq.New();
-    var list = Viper.Collections.List.FromSeq(seq);
-    var set = Viper.Collections.Set.FromSeq(seq);
-    var bag = Viper.Collections.Bag.FromSeq(seq);
-    var queue = Viper.Collections.Queue.FromSeq(seq);
-    var stack = Viper.Collections.Stack.FromSeq(seq);
-    var deque = Viper.Collections.Deque.FromSeq(seq);
-    var seqFromList = Viper.Collections.Seq.FromList(list);
-    var seqFromSet = Viper.Collections.Seq.FromSet(set);
-    var seqFromBag = Viper.Collections.Seq.FromBag(bag);
-    var listFromSet = Viper.Collections.List.FromSet(set);
-    var listFromDeque = Viper.Collections.List.FromDeque(deque);
+    var list = Viper.Collections.Seq.ToList(seq);
+    var set = Viper.Collections.Seq.ToSet(seq);
+    var bag = Viper.Collections.Seq.ToBag(seq);
+    var queue = Viper.Collections.Seq.ToQueue(seq);
+    var stack = Viper.Collections.Seq.ToStack(seq);
+    var deque = Viper.Collections.Seq.ToDeque(seq);
+    var seqFromList = Viper.Collections.List.ToSeq(list);
+    var seqFromSet = Viper.Collections.Set.ToSeq(set);
+    var seqFromBag = Viper.Collections.Bag.ToSeq(bag);
+    var listFromSet = Viper.Collections.Set.ToList(set);
+    var listFromDeque = Viper.Collections.Deque.ToList(deque);
 }
 )"));
 }

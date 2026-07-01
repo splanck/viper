@@ -4,6 +4,6 @@ bind Viper.Game3D as Game3D;
 
 func start() {
     var world = Game3D.World3D.New("Game3D Destroyed Handle Reject", 32, 24);
-    Game3D.World3D.destroy(world);
-    Game3D.World3D.get_frame(world);
+    world.Destroy();
+    world.Frame;
 }

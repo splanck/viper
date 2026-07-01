@@ -24,18 +24,18 @@ class BoundedSceneCapture {
     expose func capture(game: WalkMinGame, snap: Pixels) {
         frame = Pixels.Clone(snap);
         var world = game.getWorld();
-        var playerPos = Entity3D.position(game.getPlayer());
+        var playerPos = game.getPlayer().Position();
         playerX = Vec3.get_X(playerPos);
         playerY = Vec3.get_Y(playerPos);
         playerZ = Vec3.get_Z(playerPos);
-        grounded = CharacterController3D.grounded(game.getCharacter());
-        floatingOrigin = World3D.get_floatingOrigin(world);
-        entityCount = World3D.get_entityCount(world);
-        bodyCount = World3D.get_bodyCount(world);
-        drawCount = World3D.get_drawCount(world);
-        visibleNodeCount = World3D.get_visibleNodeCount(world);
-        occludedDrawCount = World3D.get_occludedDrawCount(world);
-        streamResidentBytes = World3D.get_streamResidentBytes(world);
+        grounded = game.getCharacter().Grounded();
+        floatingOrigin = world.FloatingOrigin;
+        entityCount = world.EntityCount;
+        bodyCount = world.BodyCount;
+        drawCount = world.DrawCount;
+        visibleNodeCount = world.VisibleNodeCount;
+        occludedDrawCount = world.OccludedDrawCount;
+        streamResidentBytes = world.StreamResidentBytes;
     }
 }
 
@@ -46,7 +46,7 @@ func fail(message: String) {
 func scaleFlagsOff(game: WalkMinGame) {
     var world = game.getWorld();
     var canvas = game.getCanvas();
-    World3D.set_floatingOrigin(world, false);
+    world.FloatingOrigin = false;
     Canvas3D.SetOcclusionCulling(canvas, false);
     Canvas3D.SetClusteredLighting(canvas, false);
     Canvas3D.SetShadowCascades(canvas, 1);
@@ -102,7 +102,7 @@ func runBoundedScene(explicitFlagsOff: Boolean) -> BoundedSceneCapture {
     game.step(0.016);
     game.renderFrame();
 
-    var snap = World3D.captureFinalFrame(game.getWorld());
+    var snap = game.getWorld().CaptureFinalFrame();
     if (snap == null ||
         Pixels.get_Width(snap) != 320 ||
         Pixels.get_Height(snap) != 180) {

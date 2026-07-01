@@ -9,89 +9,89 @@ func fail(message: String) {
 
 func start() {
     var world = Game3D.World3D.New("Game3D Collision Probe", 80, 60);
-    Game3D.World3D.setGravity(world, 0.0, 0.0, 0.0);
+    world.SetGravity(0.0, 0.0, 0.0);
 
     var a = Game3D.Entity3D.New();
-    Game3D.Entity3D.setName(a, "A");
-    Game3D.Entity3D.attachBody(a, Game3D.BodyDef.StaticBox(1.0, 1.0, 1.0));
-    Game3D.World3D.spawn(world, a);
+    a.SetName("A");
+    a.AttachBody(Game3D.BodyDef.StaticBox(1.0, 1.0, 1.0));
+    world.Spawn(a);
 
     var b = Game3D.Entity3D.New();
-    Game3D.Entity3D.setName(b, "B");
+    b.SetName("B");
     var bDef = Game3D.BodyDef.Box(1.0, 1.0, 1.0, 1.0);
-    Game3D.BodyDef.withMask(bDef, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
-    Game3D.BodyDef.withSync(bDef, Game3D.SyncMode.get_BodyFromNode());
-    Game3D.Entity3D.attachBody(b, bDef);
-    Game3D.Entity3D.setPosition(b, 0.5, 0.0, 0.0);
-    Game3D.World3D.spawn(world, b);
+    bDef.WithMask(Game3D.LayerMask.Of(Game3D.Layers.get_World()));
+    bDef.WithSync(Game3D.SyncMode.get_BodyFromNode());
+    b.AttachBody(bDef);
+    b.SetPosition(0.5, 0.0, 0.0);
+    world.Spawn(b);
 
-    Game3D.World3D.stepSimulation(world, 0.016);
-    if (Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Enter()) <= 0) {
+    world.StepSimulation(0.016);
+    if (world.CollisionEventCount(Game3D.CollisionPhase.get_Enter()) <= 0) {
         fail("no enter event");
         return;
     }
-    var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
+    var evt = world.CollisionEvent(Game3D.CollisionPhase.get_Enter(), 0);
     if (evt == null ||
-        Game3D.Collision3DEvent.get_phase(evt) != Game3D.CollisionPhase.get_Enter()) {
+        evt.Phase != Game3D.CollisionPhase.get_Enter()) {
         fail("enter event phase missing");
         return;
     }
-    if (Game3D.Collision3DEvent.get_a(evt) == null ||
-        Game3D.Collision3DEvent.get_b(evt) == null ||
-        Game3D.Collision3DEvent.get_raw(evt) == null) {
+    if (evt.A == null ||
+        evt.B == null ||
+        evt.Raw == null) {
         fail("event missing entity/raw handles");
         return;
     }
-    if (Game3D.Collision3DEvent.other(evt, a) != b) {
+    if (evt.Other(a) != b) {
         fail("event.other did not resolve opposite entity");
         return;
     }
-    if (Game3D.Collision3DEvent.point(evt) == null ||
-        Game3D.Collision3DEvent.normal(evt) == null) {
+    if (evt.Point() == null ||
+        evt.Normal() == null) {
         fail("event point/normal missing");
         return;
     }
 
-    Game3D.World3D.stepSimulation(world, 0.016);
-    if (Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Stay()) <= 0) {
+    world.StepSimulation(0.016);
+    if (world.CollisionEventCount(Game3D.CollisionPhase.get_Stay()) <= 0) {
         fail("no stay event");
         return;
     }
 
-    Game3D.Entity3D.setPosition(b, 5.0, 0.0, 0.0);
-    Game3D.World3D.stepSimulation(world, 0.016);
-    if (Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Exit()) <= 0) {
+    b.SetPosition(5.0, 0.0, 0.0);
+    world.StepSimulation(0.016);
+    if (world.CollisionEventCount(Game3D.CollisionPhase.get_Exit()) <= 0) {
         fail("no exit event");
         return;
     }
 
-    Game3D.World3D.destroy(world);
+    world.Destroy();
 
     var triggerWorld = Game3D.World3D.New("Game3D Trigger Probe", 80, 60);
-    Game3D.World3D.setGravity(triggerWorld, 0.0, 0.0, 0.0);
+    triggerWorld.SetGravity(0.0, 0.0, 0.0);
 
     var trigger = Game3D.Entity3D.New();
     var triggerDef = Game3D.BodyDef.StaticBox(1.0, 1.0, 1.0);
-    Game3D.BodyDef.withLayer(triggerDef, Game3D.Layers.get_Trigger());
-    Game3D.BodyDef.asTrigger(triggerDef);
-    Game3D.Entity3D.attachBody(trigger, triggerDef);
-    Game3D.World3D.spawn(triggerWorld, trigger);
+    triggerDef.WithLayer(Game3D.Layers.get_Trigger());
+    triggerDef.AsTrigger();
+    trigger.AttachBody(triggerDef);
+    triggerWorld.Spawn(trigger);
 
     var body = Game3D.Entity3D.New();
     var bodyDef = Game3D.BodyDef.Sphere(0.5, 1.0);
     var triggerMask = Game3D.LayerMask.Of(Game3D.Layers.get_World());
-    Game3D.LayerMask.include(triggerMask, Game3D.Layers.get_Trigger());
-    Game3D.BodyDef.withMask(bodyDef, triggerMask);
-    Game3D.Entity3D.attachBody(body, bodyDef);
-    Game3D.World3D.spawn(triggerWorld, body);
+    triggerMask.Include(Game3D.Layers.get_Trigger());
+    bodyDef.WithMask(triggerMask);
+    body.AttachBody(bodyDef);
+    triggerWorld.Spawn(body);
 
-    Game3D.World3D.stepSimulation(triggerWorld, 0.016);
-    var triggerEvt = Game3D.World3D.collisionEvent(triggerWorld, Game3D.CollisionPhase.get_Enter(), 0);
-    if (triggerEvt == null || Game3D.Collision3DEvent.get_isTrigger(triggerEvt) == false) {
+    triggerWorld.StepSimulation(0.016);
+    var triggerEvt = triggerWorld.CollisionEvent(Game3D.CollisionPhase.get_Enter(), 0);
+    if (triggerEvt == null || triggerEvt.IsTrigger == false) {
         fail("trigger event missing");
         return;
     }
 
-    Game3D.World3D.destroy(triggerWorld);
+    triggerWorld.Destroy();
     Terminal.Say("PASS");
 }

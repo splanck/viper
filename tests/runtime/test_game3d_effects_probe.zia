@@ -11,8 +11,8 @@ func fail(message: String) {
 
 func start() {
     var world = Game3D.World3D.New("Game3D Effects Probe", 96, 72);
-    var effects = Game3D.World3D.get_effects(world);
-    if (effects == null || Game3D.EffectRegistry3D.get_postfx(effects) == null) {
+    var effects = world.Effects;
+    if (effects == null || effects.PostFX == null) {
         fail("world did not create EffectRegistry3D/postfx");
         return;
     }
@@ -29,9 +29,9 @@ func start() {
         fail("an Effects3D preset returned null");
         return;
     }
-    if (Game3D.EffectRegistry3D.get_count(effects) != 5 ||
-        Game3D.EffectRegistry3D.get_particlesCount(effects) != 4 ||
-        Game3D.EffectRegistry3D.get_decalCount(effects) != 1) {
+    if (effects.Count != 5 ||
+        effects.ParticlesCount != 4 ||
+        effects.DecalCount != 1) {
         fail("Effects3D presets did not register expected entries");
         return;
     }
@@ -40,17 +40,17 @@ func start() {
         return;
     }
 
-    Game3D.World3D.beginFrame(world);
-    Game3D.World3D.drawScene(world);
-    Game3D.World3D.drawEffects(world);
-    Game3D.World3D.endScene(world);
-    if (Game3D.World3D.captureFinalFrame(world) == null) {
+    world.BeginFrame();
+    world.DrawScene();
+    world.DrawEffects();
+    world.EndScene();
+    if (world.CaptureFinalFrame() == null) {
         fail("drawEffects did not leave a capturable frame");
         return;
     }
 
-    Game3D.EffectRegistry3D.update(effects, 3.0);
-    if (Game3D.EffectRegistry3D.get_count(effects) != 0) {
+    effects.Update(3.0);
+    if (effects.Count != 0) {
         fail("Effects3D presets did not auto-expire");
         return;
     }
@@ -58,45 +58,45 @@ func start() {
     var manualParticles = G3D.Particles3D.New(16);
     G3D.Particles3D.SetPosition(manualParticles, 0.0, 0.0, 0.0);
     G3D.Particles3D.Burst(manualParticles, 6);
-    Game3D.EffectRegistry3D.addParticles(effects, manualParticles, 0.1);
+    effects.AddParticles(manualParticles, 0.1);
 
     var manualDecal = G3D.Decal3D.New(pos, up, 0.25, null);
     G3D.Decal3D.SetLifetime(manualDecal, 0.1);
-    Game3D.EffectRegistry3D.addDecal(effects, manualDecal);
-    if (Game3D.EffectRegistry3D.get_count(effects) != 2) {
+    effects.AddDecal(manualDecal);
+    if (effects.Count != 2) {
         fail("EffectRegistry3D did not accept manual particle/decal effects");
         return;
     }
-    Game3D.EffectRegistry3D.update(effects, 0.2);
-    if (Game3D.EffectRegistry3D.get_count(effects) != 0) {
+    effects.Update(0.2);
+    if (effects.Count != 0) {
         fail("manual effects did not expire");
         return;
     }
 
-    Game3D.World3D.setGravity(world, 0.0, 0.0, 0.0);
+    world.SetGravity(0.0, 0.0, 0.0);
     var a = Game3D.Entity3D.New();
-    Game3D.Entity3D.attachBody(a, Game3D.BodyDef.StaticBox(1.0, 1.0, 1.0));
-    Game3D.World3D.spawn(world, a);
+    a.AttachBody(Game3D.BodyDef.StaticBox(1.0, 1.0, 1.0));
+    world.Spawn(a);
 
     var b = Game3D.Entity3D.New();
     var bDef = Game3D.BodyDef.Sphere(0.5, 1.0);
-    Game3D.BodyDef.withMask(bDef, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
-    Game3D.Entity3D.attachBody(b, bDef);
-    Game3D.Entity3D.setPosition(b, 0.5, 0.0, 0.0);
-    Game3D.World3D.spawn(world, b);
+    bDef.WithMask(Game3D.LayerMask.Of(Game3D.Layers.get_World()));
+    b.AttachBody(bDef);
+    b.SetPosition(0.5, 0.0, 0.0);
+    world.Spawn(b);
 
-    Game3D.World3D.stepSimulation(world, 0.016);
-    var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
+    world.StepSimulation(0.016);
+    var evt = world.CollisionEvent(Game3D.CollisionPhase.get_Enter(), 0);
     if (evt == null) {
         fail("collision event missing for VFX trigger");
         return;
     }
-    var hitPoint = Game3D.Collision3DEvent.point(evt);
+    var hitPoint = evt.Point();
     if (Game3D.Effects3D.Dust(world, hitPoint) == null) {
         fail("collision point did not spawn a VFX preset");
         return;
     }
 
-    Game3D.World3D.destroy(world);
+    world.Destroy();
     Terminal.Say("PASS");
 }

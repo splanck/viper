@@ -26,7 +26,7 @@ func runTokens(src: String) -> String {
     var job = ZiaCompletion.BeginTokensForFile(src, "probe.zia");
     var waited = 0;
     while SemanticJob.IsDone(job) == false and waited < 8000 {
-        Time.SleepMs(5);
+        Time.Clock.Sleep(5);
         waited = waited + 5;
     }
     if SemanticJob.IsError(job) { return ""; }

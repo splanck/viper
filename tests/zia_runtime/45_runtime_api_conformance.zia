@@ -2,13 +2,15 @@ module RuntimeTest45;
 
 bind "./_support";
 bind Viper.Text.Json;
+bind Viper.Text.Fmt;
 bind Viper.Math.Easing;
+bind Viper.Collections.Map;
 
 // EXPECT_OUT: RESULT: ok
 
-func testCompatibilityAliases() {
-    assertEqStr(Viper.String.FromInt(42), "42", "string_from_int_alias");
-    assertTrue(Viper.String.Has(Viper.String.FromDouble(1.5), "1.5"), "string_from_double_alias");
+func testCanonicalRuntimeSurface() {
+    assertEqStr(Viper.Text.Fmt.Int(42), "42", "fmt_int");
+    assertTrue(Viper.String.Has(Viper.Text.Fmt.Num(1.5), "1.5"), "fmt_num");
 
     var seq = new Viper.Collections.Seq();
     assertEqInt(seq.Length, 0, "seq_new_length");
@@ -16,7 +18,7 @@ func testCompatibilityAliases() {
     assertEqStr(Viper.Collections.Seq.GetStr(seq, 0), "x", "seq_new_sized_set");
 
     var list = Viper.Collections.List.New();
-    assertEqInt(Viper.Collections.List.Length(list), 0, "list_length_alias");
+    assertEqInt(Viper.Collections.List.get_Length(list), 0, "list_length");
 }
 
 func testCollectionSnapshots() {
@@ -36,35 +38,35 @@ func testConstructorsAndRandom() {
     assertEqInt(a.NextInt(1000), b.NextInt(1000), "random_same_seed_first");
     assertEqInt(a.NextInt(1000), b.NextInt(1000), "random_same_seed_second");
     assertInRange(a.NextDouble(), 0.0, 1.0, "random_next_double");
-    var ranged = a.NextInt(10, 20);
+    var ranged = a.Range(10, 20);
     assertGteInt(ranged, 10, "random_range_min");
     assertLteInt(ranged, 20, "random_range_max");
 }
 
 func testJsonMachineVecAndEasing() {
     var obj = NewObject();
-    SetStr(obj, "name", "zia");
-    SetInt(obj, "version", 1);
-    SetBool(obj, "ready", true);
-    assertEqStr(GetStr(obj, "name"), "zia", "json_get_str");
-    assertEqInt(GetInt(obj, "version"), 1, "json_get_int");
-    assertTrue(GetBool(obj, "ready"), "json_get_bool");
-    assertTrue(Has(obj, "name"), "json_has");
-    assertTrue(Viper.String.Has(Stringify(obj), "zia"), "json_stringify_alias");
+    Viper.Collections.Map.SetStr(obj, "name", "zia");
+    Viper.Collections.Map.SetInt(obj, "version", 1);
+    Viper.Collections.Map.SetBool(obj, "ready", true);
+    assertEqStr(Viper.Collections.Map.GetStr(obj, "name"), "zia", "json_get_str");
+    assertEqInt(Viper.Collections.Map.GetInt(obj, "version"), 1, "json_get_int");
+    assertTrue(Viper.Collections.Map.GetBool(obj, "ready"), "json_get_bool");
+    assertTrue(Viper.Collections.Map.Has(obj, "name"), "json_has");
+    assertTrue(Viper.String.Has(Viper.Text.Json.Format(obj), "zia"), "json_format");
 
-    assertNotEmpty(Viper.System.Environment.Platform(), "environment_platform");
-    assertNotEmpty(Viper.System.Machine.Arch(), "machine_arch");
-    assertGtInt(Viper.System.Machine.PageSize(), 0, "machine_page_size");
-    assertGtInt(Viper.System.Machine.PointerSize(), 0, "machine_pointer_size");
+    assertNotEmpty(Viper.System.Machine.get_OS(), "environment_platform");
+    assertNotEmpty(Viper.System.Machine.get_Arch(), "machine_arch");
+    assertGtInt(Viper.System.Machine.get_PageSize(), 0, "machine_page_size");
+    assertGtInt(Viper.System.Machine.get_PointerSize(), 0, "machine_pointer_size");
 
     var v = new Viper.Math.Vec2(3.0, 4.0);
-    assertApprox(v.Length(), 5.0, 0.0001, "vec2_length_alias");
-    assertApprox(Viper.Math.Vec2.Distance(new Viper.Math.Vec2(0.0, 0.0), v), 5.0, 0.0001, "vec2_distance_alias");
-    assertApprox(EaseInQuad(0.5), 0.25, 0.0001, "easing_ease_in_quad_alias");
+    assertApprox(v.Length(), 5.0, 0.0001, "vec2_length");
+    assertApprox(Viper.Math.Vec2.Dist(new Viper.Math.Vec2(0.0, 0.0), v), 5.0, 0.0001, "vec2_distance");
+    assertApprox(Viper.Math.Easing.InQuad(0.5), 0.25, 0.0001, "easing_in_quad");
 }
 
 func start() {
-    testCompatibilityAliases();
+    testCanonicalRuntimeSurface();
     testCollectionSnapshots();
     testConstructorsAndRandom();
     testJsonMachineVecAndEasing();

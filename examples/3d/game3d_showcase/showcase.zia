@@ -103,19 +103,19 @@ func makeController(distance: Float, eventTime: Float) -> AnimController3D {
 func spawnProp(world: Game3D.World3D, name: String, mesh: Mesh3D, mat: Material3D,
                x: Float, y: Float, z: Float, scale: Float) -> Game3D.Entity3D {
     var entity = Game3D.Entity3D.Of(mesh, mat);
-    Game3D.Entity3D.setName(entity, name);
-    Game3D.Entity3D.setPosition(entity, x, y, z);
-    Game3D.Entity3D.setScale(entity, scale);
-    Game3D.World3D.spawn(world, entity);
+    entity.SetName(name);
+    entity.SetPosition(x, y, z);
+    entity.SetScale(scale);
+    world.Spawn(entity);
     return entity;
 }
 
 func probeRunFramesOnly() -> Boolean {
     var world = Game3D.World3D.New("Game3D Showcase Frame Helper Probe", 32, 24);
-    Game3D.World3D.runFramesOnly(world, 2, 1.0 / 60.0);
-    var ok = Game3D.World3D.get_frame(world) == 2 &&
-             near(Game3D.World3D.get_elapsed(world), 2.0 / 60.0, 0.0001);
-    Game3D.World3D.destroy(world);
+    world.RunFramesOnly(2, 1.0 / 60.0);
+    var ok = world.Frame == 2 &&
+             near(world.Elapsed, 2.0 / 60.0, 0.0001);
+    world.Destroy();
     if (ok == false) {
         Terminal.Say("FAIL: runFramesOnly helper diverged");
     }
@@ -124,15 +124,15 @@ func probeRunFramesOnly() -> Boolean {
 
 func runScenario(title: String, render: Boolean) -> Float {
     var world = Game3D.World3D.New(title, 128, 96);
-    var canvas = Game3D.World3D.get_canvas(world);
+    var canvas = world.Canvas;
     Canvas3D.SetDTMax(canvas, 50);
 
     Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
     Game3D.Lighting.Outdoor(world, Math.Vec3.New(-0.4, -1.0, -0.25));
     Game3D.PostFX.Crisp(world);
-    var env = Game3D.Environment3D.Outdoor(world);
-    Game3D.EnvHandle.withWater(env, 0.03);
-    Game3D.EnvHandle.withFog(env, 0.03, 55.0);
+    var env: Game3D.EnvHandle = Game3D.Environment3D.Outdoor(world);
+    env.WithWater(0.03);
+    env.WithFog(0.03, 55.0);
     Game3D.Debug3D.ShowOverlay(world, false);
     Game3D.Debug3D.DrawPhysics(world, false);
 
@@ -141,74 +141,73 @@ func runScenario(title: String, render: Boolean) -> Float {
     var metalMat = Game3D.Materials.Metal(0.75, 0.78, 0.82);
     var glowMat = Game3D.Materials.Emissive(0.18, 0.72, 1.0, 1.5);
 
-    var ground = Game3D.Prefab.Ground(28.0, groundMat);
-    Game3D.Entity3D.attachBody(ground, Game3D.BodyDef.StaticPlane(28.0));
-    Game3D.World3D.spawn(world, ground);
+    var ground: Game3D.Entity3D = Game3D.Prefab.Ground(28.0, groundMat);
+    ground.AttachBody(Game3D.BodyDef.StaticPlane(28.0));
+    world.Spawn(ground);
 
     var crateMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
     spawnProp(world, "MetalCrate", crateMesh, metalMat, -2.2, 0.55, -1.4, 1.0);
     spawnProp(world, "Beacon", crateMesh, glowMat, 1.8, 0.65, -1.0, 0.35);
 
-    var imported = Game3D.Assets3D.LoadEntityAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    var imported: Game3D.Entity3D = Game3D.Assets3D.LoadEntityAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
     if (imported != null) {
-        Game3D.Entity3D.setName(imported, "PackagedTriangle");
-        Game3D.Entity3D.setPosition(imported, 2.8, 0.08, 1.5);
-        Game3D.Entity3D.setScale(imported, 0.8);
-        Game3D.World3D.spawn(world, imported);
+        imported.SetName("PackagedTriangle");
+        imported.SetPosition(2.8, 0.08, 1.5);
+        imported.SetScale(0.8);
+        world.Spawn(imported);
     }
 
-    var ball = Game3D.Prefab.Sphere(0.45, 20, ballMat);
-    Game3D.Entity3D.setName(ball, "ShowcaseBall");
-    Game3D.Entity3D.setPosition(ball, 0.0, 0.45, 0.0);
+    var ball: Game3D.Entity3D = Game3D.Prefab.Sphere(0.45, 20, ballMat);
+    ball.SetName("ShowcaseBall");
+    ball.SetPosition(0.0, 0.45, 0.0);
     var ballDef = Game3D.BodyDef.Sphere(0.45, 1.0);
-    Game3D.BodyDef.set_restitution(ballDef, 0.25);
-    Game3D.BodyDef.withLayer(ballDef, Game3D.Layers.get_Dynamic());
+    ballDef.Restitution = 0.25;
+    ballDef.WithLayer(Game3D.Layers.get_Dynamic());
     var ballMask = Game3D.LayerMask.Of(Game3D.Layers.get_World());
-    Game3D.LayerMask.include(ballMask, Game3D.Layers.get_Trigger());
-    Game3D.BodyDef.withMask(ballDef, ballMask);
-    Game3D.Entity3D.attachBody(ball, ballDef);
-    Game3D.World3D.spawn(world, ball);
+    ballMask.Include(Game3D.Layers.get_Trigger());
+    ballDef.WithMask(ballMask);
+    ball.AttachBody(ballDef);
+    world.Spawn(ball);
 
     var trigger = Game3D.Entity3D.New();
-    Game3D.Entity3D.setName(trigger, "ImpactTrigger");
+    trigger.SetName("ImpactTrigger");
     var triggerDef = Game3D.BodyDef.StaticBox(0.9, 0.9, 0.9);
-    Game3D.BodyDef.withLayer(triggerDef, Game3D.Layers.get_Trigger());
-    Game3D.BodyDef.asTrigger(triggerDef);
-    Game3D.Entity3D.attachBody(trigger, triggerDef);
-    Game3D.Entity3D.setPosition(trigger, 0.2, 0.35, 0.0);
-    Game3D.World3D.spawn(world, trigger);
+    triggerDef.WithLayer(Game3D.Layers.get_Trigger());
+    triggerDef.AsTrigger();
+    trigger.AttachBody(triggerDef);
+    trigger.SetPosition(0.2, 0.35, 0.0);
+    world.Spawn(trigger);
 
     var player = Game3D.Entity3D.New();
-    Game3D.Entity3D.setName(player, "Player");
-    Game3D.Entity3D.setLayer(player, Game3D.Layers.get_Player());
-    Game3D.Entity3D.setPosition(player, 3.0, 1.0, 4.5);
-    Game3D.World3D.spawn(world, player);
+    player.SetName("Player");
+    player.SetLayer(Game3D.Layers.get_Player());
+    player.SetPosition(3.0, 1.0, 4.5);
+    world.Spawn(player);
     var character = Game3D.CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
     var fps = Game3D.FirstPersonController.New(world);
-    Game3D.FirstPersonController.set_character(fps, character);
-    Game3D.FirstPersonController.releaseMouse(fps);
+    fps.Character = character;
+    fps.ReleaseMouse();
     var follow = Game3D.FollowController.New(world, ball, Math.Vec3.New(0.0, 2.6, 5.2));
     var orbit = Game3D.OrbitController.New(world, Math.Vec3.New(0.0, 0.7, 0.0));
-    Game3D.OrbitController.set_distance(orbit, 5.5);
-    Game3D.World3D.setCameraController(world, fps);
+    orbit.Distance = 5.5;
+    world.SetCameraController(fps);
 
     var animEntity = spawnProp(world, "AnimatedMarker", crateMesh, glowMat, -1.5, 0.45, 1.4, 0.28);
     var anim = Game3D.Animator3D.New(makeController(0.8, 0.25));
-    Game3D.Entity3D.attachAnimator(animEntity, anim);
-    SceneNode.set_SyncMode(Game3D.Entity3D.get_node(animEntity),
-                             Game3D.SyncMode.get_NodeFromAnimRootMotion());
-    Game3D.Animator3D.play(anim, "move");
+    animEntity.AttachAnimator(anim);
+    animEntity.Node.SyncMode = Game3D.SyncMode.get_NodeFromAnimRootMotion();
+    anim.Play("move");
 
-    var audio = Game3D.World3D.get_audio(world);
-    Game3D.Sound3D.setAttenuation(audio, 1.0, 12.0);
-    var bounceClip = Game3D.Sound3D.loadAsset(audio, "examples/games/xenoscape/sounds/jump.wav");
+    var audio = world.Audio;
+    audio.SetAttenuation(1.0, 12.0);
+    var bounceClip = audio.LoadAsset("examples/games/xenoscape/sounds/jump.wav");
     if (bounceClip == null) {
         bounceClip = Sound.Synth.Tone(440, 80, 0);
     }
     var humClip = Sound.Synth.Tone(220, 100, 1);
     if (humClip != null) {
-        Game3D.Sound3D.playAttached(audio, humClip, ball);
-        Game3D.Sound3D.play2D(audio, humClip);
+        audio.PlayAttached(humClip, ball);
+        audio.Play2D(humClip);
     }
 
     var frame = 0;
@@ -216,53 +215,53 @@ func runScenario(title: String, render: Boolean) -> Float {
     var visualOk = true;
     while (frame < 72) {
         if (frame == 0) {
-            Game3D.Entity3D.applyImpulse(ball, 1.5, 2.0, 0.4);
+            ball.ApplyImpulse(1.5, 2.0, 0.4);
         }
         if (frame == 18) {
-            Game3D.World3D.setCameraController(world, follow);
+            world.SetCameraController(follow);
         }
         if (frame == 42) {
-            Game3D.World3D.setCameraController(world, orbit);
+            world.SetCameraController(orbit);
         }
         if (frame == 30) {
             Game3D.PostFX.Cinematic(world);
             Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Cinematic());
-            Game3D.Entity3D.setMaterial(ball, metalMat);
+            ball.SetMaterial(metalMat);
         }
         if (frame == 54) {
             Game3D.PostFX.Crisp(world);
             Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
-            Game3D.Entity3D.setMaterial(ball, ballMat);
-            Game3D.World3D.setFog(world, 0.025, 0.035, 0.045, 12.0, 48.0);
+            ball.SetMaterial(ballMat);
+            world.SetFog(0.025, 0.035, 0.045, 12.0, 48.0);
         }
 
-        Game3D.World3D.stepSimulation(world, 1.0 / 60.0);
-        var enters = Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Enter());
+        world.StepSimulation(1.0 / 60.0);
+        var enters = world.CollisionEventCount(Game3D.CollisionPhase.get_Enter());
         if (enters > 0) {
-            var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
-            var point = Game3D.Collision3DEvent.point(evt);
-            var normal = Game3D.Collision3DEvent.normal(evt);
+            var evt = world.CollisionEvent(Game3D.CollisionPhase.get_Enter(), 0);
+            var point = evt.Point();
+            var normal = evt.Normal();
             Game3D.Effects3D.Dust(world, point);
             Game3D.Effects3D.ImpactDecal(world, point, normal);
             if (bounceClip != null) {
-                Game3D.Sound3D.playAt(audio, bounceClip, point);
+                audio.PlayAt(bounceClip, point);
             }
             hitCount = hitCount + 1;
-            Game3D.World3D.clearCollisionEvents(world);
+            world.ClearCollisionEvents();
         }
 
         if (render) {
-            Game3D.World3D.beginFrame(world);
-            Game3D.World3D.drawScene(world);
-            Game3D.World3D.drawEffects(world);
-            Game3D.World3D.endScene(world);
+            world.BeginFrame();
+            world.DrawScene();
+            world.DrawEffects();
+            world.EndScene();
             Canvas3D.BeginOverlay(canvas);
             Canvas3D.DrawRect2D(canvas, 10, 10, 108, 3, 0x00E8FF);
             Canvas3D.DrawText2D(canvas, 22, 25, "GAME3D SHOWCASE", 0xFFFFFF);
             Canvas3D.DrawText2D(canvas, 22, 36, "f " + frame + " hits " + hitCount, 0xC6D6E8);
             Canvas3D.EndOverlay(canvas);
             if (frame == 71) {
-                var finalFrame = Game3D.World3D.captureFinalFrame(world);
+                var finalFrame = world.CaptureFinalFrame();
                 Pixels.SavePng(finalFrame, "/tmp/game3d_showcase_software_current.png");
                 if (assertShowcaseFrame(finalFrame) == false) {
                     visualOk = false;
@@ -273,16 +272,16 @@ func runScenario(title: String, render: Boolean) -> Float {
     }
 
     if (render && visualOk == false) {
-        Game3D.World3D.destroy(world);
+        world.Destroy();
         return -99999.0;
     }
 
-    var ballPos = Game3D.Entity3D.position(ball);
-    var markerPos = Game3D.Entity3D.position(animEntity);
+    var ballPos = ball.Position();
+    var markerPos = animEntity.Position();
     var metric = Math.Vec3.get_X(ballPos) + Math.Vec3.get_Y(ballPos) +
                  Math.Vec3.get_X(markerPos) + (hitCount * 0.125) +
-                 Game3D.Animator3D.eventCount(anim);
-    Game3D.World3D.destroy(world);
+                 anim.EventCount();
+    world.Destroy();
     return metric;
 }
 

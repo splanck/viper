@@ -43,9 +43,10 @@ Underneath, the hardening backbone matters most to your running programs: recove
 | Source files | 3,096 | 3,402 | +306 |
 | Production SLOC | 669K | 762K | +93K |
 | Test SLOC | 278K | 304K | +26K |
+| ViperIDE SLOC | 19K | 28K | +9K |
 | Demo SLOC | 192K | 197K | +5K |
 
-Counts via `scripts/count_sloc.sh` (production 761,859 / test 304,255 / demo 196,632 / source files 3,402); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 761,859 / test 304,255 / demo 196,632 / viperide 28,134 / source files 3,402); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -62,7 +63,7 @@ Counts via `scripts/count_sloc.sh` (production 761,859 / test 304,255 / demo 196
 - `NodeAnimation3D`/`NodeAnimator3D` play node, object, camera, and morph-weight clips, and `SceneAsset`/`Assets3D` can pull a single clip from an external file.
 - The FBX importer gains full model transforms (rotation order, pivots, Z-up), cubic curves, PBR texture-slot routing, and async loading; glTF accessor and skin-weight validation tightens.
 - New authoring helpers: `DrawMeshWind` foliage sway, `DrawImage2D` HUD blits, `DrawMeshSkinned` from an `AnimController3D` pose, native `SetFullscreen`/`ToggleFullscreen` (`Game3D.Keys.F11`), and `Material3D` depth-bias/`ShadowMode`.
-- `Canvas3D` adds `BackendName` and `BackendFallback` (true when init fell back to software), and a recoverable texture-fallback diagnostic records when a failed upload substitutes a placeholder, so a degraded frame is observable rather than silent.
+- `Canvas3D` exposes `Backend` and `BackendFallback` (true when init fell back to software), and a recoverable texture-fallback diagnostic records when a failed upload substitutes a placeholder, so a degraded frame is observable rather than silent.
 - Content loaders stop trapping on bad content: every 2D image and 3D model/scene loader returns `null` and records a thread-local last-error code/message (`AssetDiagnostics3D.LastLoadError`), reserving traps for null or invalid handles.
 - A shared `rt_untrusted_count` guard validates every element count read from a 3D asset against its backing bytes across the glTF, FBX, OBJ/STL, SceneGraph, and Game3D loaders, and new libFuzzer harnesses keep these parsers crash-free; the FBX importer parses ASCII doubles locale-independently, the glTF loader rejects unsafe accessor strides, and compound-collider and mesh-vertex growth became transactional so a failed resize leaves no half-built geometry.
 
@@ -142,8 +143,8 @@ Counts via `scripts/count_sloc.sh` (production 761,859 / test 304,255 / demo 196
 
 ### Runtime class-name disambiguation
 
-- No two runtime classes share a leaf name under `Viper.*` anymore: each collision is renamed unique — `Graphics.Scene`→`Graphics.SceneGraph`, `GUI.Clipboard`→`GUI.ClipboardText`, `Workspace.Watcher`→`Workspace.WorkspaceWatcher`, the `Game.UI` widgets that shadowed `GUI` ones→`HudLabel`/`HudTextInput`/`HudSlider`/`HudDropdown`/`HudTooltip`, and `Sound3D`→`SpatialAudio3D` — with the old fully-qualified names kept working through `RT_ALIAS` and a leaf-name-collision check in the qualified-surface test locking the invariant.
-- Duplicate `Viper.Parse` and `Viper.Convert` classes collapse into the canonical `Viper.Core.Parse`/`Viper.Core.Convert`, with the public `Viper.Parse`/`Viper.Convert` names preserved as function aliases.
+- No two runtime classes share a leaf name under `Viper.*` anymore: each collision is renamed unique — `Graphics.Scene`→`Graphics.SceneGraph`, `GUI.Clipboard`→`GUI.ClipboardText`, `Workspace.Watcher`→`Workspace.WorkspaceWatcher`, the `Game.UI` widgets that shadowed `GUI` ones→`HudLabel`/`HudTextInput`/`HudSlider`/`HudDropdown`/`HudTooltip`, and `Sound3D`→`SpatialAudio3D` — with a leaf-name-collision check in the qualified-surface test locking the invariant.
+- Duplicate `Viper.Parse` and `Viper.Convert` classes collapse into the canonical `Viper.Core.Parse`/`Viper.Core.Convert`; the old public names were removed during pre-alpha runtime cleanup.
 
 ### Project loading and packaging
 

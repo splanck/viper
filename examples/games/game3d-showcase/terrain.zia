@@ -198,7 +198,7 @@ class ShowcaseTerrain {
 
     expose func updateVegetation(dt: Float, camera: Camera3D) {
         if (grass == null) { return; }
-        var camPos = Camera3D.get_Position(camera);
+        var camPos = camera.Position;
         Vegetation3D.Update(grass, dt, Vec3.get_X(camPos), Vec3.get_Y(camPos), Vec3.get_Z(camPos));
     }
 

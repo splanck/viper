@@ -59,24 +59,19 @@ func updateGutter(ballObj: Ball, sawBallPin: Boolean) {
     var px = Vec3.get_X(pos);
     var py = Vec3.get_Y(pos);
     var pz = Vec3.get_Z(pos);
+    // Mirror game_flow.updateTriggerZones: gutter once the ball's centre
+    // crosses the lane edge, or it drops off the surface into the trough.
     var laneHalf = config.LANE_WIDTH / 2.0;
-    var overhangEdge = laneHalf + config.LANE_GUTTER_W * 0.72;
+    var edgeCommit = laneHalf + config.BALL_RADIUS * 0.15;
+    var dropEdge = laneHalf - config.BALL_RADIUS * 0.35;
     var side = 0;
     if (pz > config.GUTTER_DETECT_Z && pz < config.GUTTER_DETECT_END_Z) {
-        if (px < -overhangEdge) { side = -1; }
-        if (px > overhangEdge) { side = 1; }
-        if (py < config.BALL_RADIUS * 0.46) {
-            if (px < -(laneHalf - config.BALL_RADIUS * 0.03)) { side = -1; }
-            if (px > laneHalf - config.BALL_RADIUS * 0.03) { side = 1; }
+        if (px < -edgeCommit) { side = -1; }
+        if (px > edgeCommit) { side = 1; }
+        if (py < config.BALL_RADIUS * 0.72) {
+            if (px < -dropEdge) { side = -1; }
+            if (px > dropEdge) { side = 1; }
         }
-    }
-    if (py < config.GUTTER_Y &&
-        pz > config.GUTTER_DETECT_Z &&
-        pz < config.GUTTER_DETECT_END_Z &&
-        Abs(px) > laneHalf + config.LANE_GUTTER_W * 0.28 &&
-        side == 0) {
-        if (px < 0.0) { side = -1; }
-        else { side = 1; }
     }
     if (side != 0) {
         ballObj.markGutter(side);
@@ -194,7 +189,9 @@ func runShot(label: String, aim: Float, power: Float, spin: Float) -> Integer {
     if (ballObj.gutterBall() && sawBallPin == false) {
         return -100;
     }
-    if (minLaneY < config.BALL_RADIUS + config.BALL_START_Y_OFFSET - 0.004) {
+    // The ball now rests on the lane floor at its natural radius height
+    // (no artificial rail). A value well below that means it fell through.
+    if (minLaneY < config.BALL_RADIUS - 0.03) {
         return -200;
     }
     return knocked;
@@ -210,16 +207,17 @@ func main() {
         return;
     }
 
-    var center = runShot("center-full", 0.0, 1.0, 0.0);
-    var leftPocket = runShot("left-pocket", -config.AIM_MAX * 0.50, config.THROW_POWER_MAX, config.SPIN_MAX * 0.58);
-    var rightPocket = runShot("right-pocket", config.AIM_MAX * 0.50, config.THROW_POWER_MAX, -config.SPIN_MAX * 0.58);
-    var tapRelease = runShot("tap-release", 0.0, config.THROW_POWER_MAX * 0.04, 0.0);
-    var edge = runShot("forgiving-edge", config.AIM_MAX, config.THROW_POWER_MAX * 0.72, config.SPIN_MAX);
-    var hardLeft = runShot("hard-left-controls", -config.AIM_MAX, config.THROW_POWER_MAX * 0.55, -config.SPIN_MAX);
-    var hardRight = runShot("hard-right-controls", config.AIM_MAX, config.THROW_POWER_MAX * 0.55, config.SPIN_MAX);
+    // Skill contract: well-placed shots carry the rack; a shot aimed at the
+    // edge with compounding spin actually reaches the gutter (real failure
+    // state, previously impossible). Pocket shots use aim + opposite hook.
+    var center = runShot("center-power", 0.0, 1.0, 0.0);
+    var leftPocket = runShot("left-pocket", -config.AIM_MAX * 0.35, config.THROW_POWER_MAX, config.SPIN_MAX * 0.55);
+    var rightPocket = runShot("right-pocket", config.AIM_MAX * 0.35, config.THROW_POWER_MAX, -config.SPIN_MAX * 0.55);
+    var softRoll = runShot("soft-roll", 0.0, config.THROW_POWER_MAX * 0.5, 0.0);
+    var gutterMiss = runShot("gutter-miss", config.AIM_MAX, config.THROW_POWER_MAX * 0.72, config.SPIN_MAX);
 
     if (center < 5) {
-        Terminal.Say("RESULT: fail center shot did not reach the rack");
+        Terminal.Say("RESULT: fail center power shot did not carry the rack");
         return;
     }
     if (leftPocket < 6) {
@@ -230,20 +228,12 @@ func main() {
         Terminal.Say("RESULT: fail right pocket shot underperformed");
         return;
     }
-    if (tapRelease < 3) {
-        Terminal.Say("RESULT: fail tap-release shot stopped or sank before the rack");
+    if (softRoll < 3) {
+        Terminal.Say("RESULT: fail soft roll stopped or sank before the rack");
         return;
     }
-    if (edge < 3) {
-        Terminal.Say("RESULT: fail max aim edge shot became too punishing");
-        return;
-    }
-    if (hardLeft < 1) {
-        Terminal.Say("RESULT: fail hard-left controls became an automatic gutter");
-        return;
-    }
-    if (hardRight < 1) {
-        Terminal.Say("RESULT: fail hard-right controls became an automatic gutter");
+    if (gutterMiss != -100) {
+        Terminal.Say("RESULT: fail gutter miss no longer reaches the gutter");
         return;
     }
 

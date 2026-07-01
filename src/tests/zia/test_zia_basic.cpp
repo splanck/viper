@@ -196,7 +196,7 @@ func start() {    Viper.Terminal.Clear();
     if (key != "") {
         key = Viper.Terminal.GetKey();
     }
-    Viper.Time.SleepMs(100);
+    Viper.Time.Clock.Sleep(100);
     Viper.Terminal.Say("Done");
 }
 )";

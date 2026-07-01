@@ -51,6 +51,14 @@ static int g_vgfx_macos_cursor_hidden = 0;
 static mach_timebase_info_data_t g_vgfx_macos_timebase = {0};
 static pthread_once_t g_vgfx_macos_timebase_once = PTHREAD_ONCE_INIT;
 
+static int vgfx_macos_no_activate_on_create(void) {
+    const char *value = getenv("VIPER_GFX_NO_ACTIVATE");
+    if (!value || value[0] == '\0')
+        return 0;
+    return strcmp(value, "0") != 0 && strcmp(value, "false") != 0 && strcmp(value, "FALSE") != 0 &&
+           strcmp(value, "off") != 0 && strcmp(value, "OFF") != 0;
+}
+
 /// @brief Allocate an aligned framebuffer buffer using POSIX allocation.
 /// @details macOS exposes `posix_memalign`, and this Cocoa adapter is the only
 ///          layer that should use that platform API directly.  The core receives
@@ -980,7 +988,7 @@ float vgfx_platform_get_display_scale(void) {
 ///            - Miniaturizable (yellow ⊖ button)
 ///            - Resizable (optional, based on params->resizable)
 ///            - Centered on screen
-///            - Made key and ordered front (visible and focused)
+///            - Made visible, and normally focused unless VIPER_GFX_NO_ACTIVATE is set
 int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params) {
     if (!win || !params)
         return 0;
@@ -1044,12 +1052,19 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         [platform->window setDelegate:platform->delegate];
 
         /* Center window on screen and make it visible */
+        int no_activate = vgfx_macos_no_activate_on_create();
         [platform->window center];
-        [platform->window makeKeyAndOrderFront:nil];
+        if (no_activate) {
+            [platform->window orderFront:nil];
+            vgfx_internal_set_focus_state(win, 0);
+        } else {
+            [platform->window makeKeyAndOrderFront:nil];
+        }
         macos_sync_window_metrics(win, 0, 0);
 
         /* Activate the application (bring to foreground) */
-        [NSApp activateIgnoringOtherApps:YES];
+        if (!no_activate)
+            [NSApp activateIgnoringOtherApps:YES];
 
         return 1;
     }

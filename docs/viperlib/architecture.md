@@ -76,7 +76,7 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.Collections.Ring`      | Fixed-size circular buffer (overwrites oldest)              |
 | `Viper.Collections.Seq`       | Dynamic array with Push, Pop, Get, Set                      |
 | `Viper.Collections.Stack`     | LIFO with Push, Pop, Peek                                   |
-| `Viper.Convert`               | Type conversion (ToInt, ToDouble)                           |
+| `Viper.Core.Convert`          | Type conversion (ToInt64, ToDouble)                         |
 | `Viper.Core.Box`              | Boxing primitives for generic collections                   |
 | `Viper.Core.Diagnostics`      | Runtime assertions and traps                                |
 | `Viper.Crypto.Hash`           | MD5, SHA1, SHA256, CRC32 hashing                            |

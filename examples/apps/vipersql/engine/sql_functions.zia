@@ -176,7 +176,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if name == "LENGTH" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_TEXT {
-            return sqlInteger(String.Length(arg.textValue));
+            return sqlInteger(Viper.String.get_Length(arg.textValue));
         }
     }
 
@@ -187,14 +187,14 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             var str = strArg.textValue;
             var start = startArg.intValue - 1;
             if start < 0 { start = 0; }
-            var len = String.Length(str) - start;
+            var len = Viper.String.get_Length(str) - start;
             if args.count() >= 3 {
                 var lenArg = args.get(2);
                 if lenArg.kind == SQL_INTEGER {
                     len = lenArg.intValue;
                 }
             }
-            if start >= String.Length(str) {
+            if start >= Viper.String.get_Length(str) {
                 return sqlText("");
             }
             return sqlText(String.Substring(str, start, len));
@@ -213,10 +213,10 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             if charArg.kind == SQL_TEXT { trimChar = charArg.textValue; }
             var dir = "BOTH";
             if dirArg.kind == SQL_TEXT { dir = dirArg.textValue; }
-            if String.Length(trimChar) == 0 { return sqlText(s); }
+            if Viper.String.get_Length(trimChar) == 0 { return sqlText(s); }
             var tc = String.Substring(trimChar, 0, 1);
             var start = 0;
-            var end = String.Length(s);
+            var end = Viper.String.get_Length(s);
             if dir == "LEADING" || dir == "BOTH" {
                 while start < end && String.Substring(s, start, 1) == tc {
                     start = start + 1;
@@ -296,7 +296,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if strArg.kind == SQL_TEXT && nArg.kind == SQL_INTEGER {
             var s = strArg.textValue;
             var n = nArg.intValue;
-            var sLen = String.Length(s);
+            var sLen = Viper.String.get_Length(s);
             if n >= sLen { return strArg; }
             if n <= 0 { return sqlText(""); }
             return sqlText(String.Substring(s, 0, n));
@@ -310,7 +310,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if strArg.kind == SQL_TEXT && nArg.kind == SQL_INTEGER {
             var s = strArg.textValue;
             var n = nArg.intValue;
-            var sLen = String.Length(s);
+            var sLen = Viper.String.get_Length(s);
             if n >= sLen { return strArg; }
             if n <= 0 { return sqlText(""); }
             return sqlText(String.Substring(s, sLen - n, n));
@@ -328,7 +328,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             var padArg = args.get(2);
             if padArg.kind == SQL_TEXT { pad = padArg.textValue; }
         }
-        var sLen = String.Length(s);
+        var sLen = Viper.String.get_Length(s);
         if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
         return sqlText(String.PadLeft(s, targetLen, pad));
     }
@@ -344,7 +344,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             var padArg = args.get(2);
             if padArg.kind == SQL_TEXT { pad = padArg.textValue; }
         }
-        var sLen = String.Length(s);
+        var sLen = Viper.String.get_Length(s);
         if sLen >= targetLen { return sqlText(String.Substring(s, 0, targetLen)); }
         return sqlText(String.PadRight(s, targetLen, pad));
     }
@@ -384,7 +384,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var sb = SB.New();
         var capitalize = true;
         var i = 0;
-        while i < String.Length(s) {
+        while i < Viper.String.get_Length(s) {
             var ch = String.Substring(s, i, 1);
             if ch == " " || ch == "\t" || ch == "\n" {
                 SB.Append(sb, ch);
@@ -414,9 +414,9 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var partNum = args.get(2).intValue;
         var parts: List[String] = [];
         var current = "";
-        var delimLen = String.Length(delim);
+        var delimLen = Viper.String.get_Length(delim);
         var i = 0;
-        var sLen = String.Length(s);
+        var sLen = Viper.String.get_Length(s);
         while i < sLen {
             if i + delimLen <= sLen && String.Substring(s, i, delimLen) == delim {
                 parts.add(current);
@@ -452,11 +452,11 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         var s = arg.toString();
-        if String.Length(s) == 0 { return sqlNull(); }
+        if Viper.String.get_Length(s) == 0 { return sqlNull(); }
         var ch = String.Substring(s, 0, 1);
         var chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
         var i = 0;
-        while i < String.Length(chars) {
+        while i < Viper.String.get_Length(chars) {
             if String.Substring(chars, i, 1) == ch {
                 return sqlInteger(i + 32);
             }
@@ -493,21 +493,21 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
     if (name == "CHAR_LENGTH" || name == "CHARACTER_LENGTH") && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        return sqlInteger(String.Length(arg.toString()));
+        return sqlInteger(Viper.String.get_Length(arg.toString()));
     }
 
     // OCTET_LENGTH — byte length (same as LENGTH for ASCII)
     if name == "OCTET_LENGTH" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        return sqlInteger(String.Length(arg.toString()));
+        return sqlInteger(Viper.String.get_Length(arg.toString()));
     }
 
     // BIT_LENGTH — bit length (8 * byte length)
     if name == "BIT_LENGTH" && args.count() > 0 {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
-        return sqlInteger(String.Length(arg.toString()) * 8);
+        return sqlInteger(Viper.String.get_Length(arg.toString()) * 8);
     }
 
     // TRANSLATE(str, from_chars, to_chars) — character-by-character substitution
@@ -521,15 +521,15 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var to = toArg.toString();
         var sb = SB.New();
         var i = 0;
-        while i < String.Length(s) {
+        while i < Viper.String.get_Length(s) {
             var ch = String.Substring(s, i, 1);
             var found = false;
             var fi = 0;
-            while fi < String.Length(from) {
+            while fi < Viper.String.get_Length(from) {
                 if String.Substring(from, fi, 1) == ch {
                     found = true;
-                    if fi < String.Length(to) { SB.Append(sb, String.Substring(to, fi, 1)); }
-                    fi = String.Length(from);
+                    if fi < Viper.String.get_Length(to) { SB.Append(sb, String.Substring(to, fi, 1)); }
+                    fi = Viper.String.get_Length(from);
                 }
                 fi = fi + 1;
             }
@@ -549,11 +549,11 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var newStr = newStrArg.toString();
         var start = startArg.intValue - 1;
         if start < 0 { start = 0; }
-        var count = String.Length(newStr);
+        var count = Viper.String.get_Length(newStr);
         if args.count() >= 4 {
             count = args.get(3).intValue;
         }
-        var sLen = String.Length(s);
+        var sLen = Viper.String.get_Length(s);
         var prefix = "";
         if start > 0 {
             if start > sLen { start = sLen; }
@@ -574,8 +574,8 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if strArg.kind == SQL_NULL || prefArg.kind == SQL_NULL { return sqlNull(); }
         var s = strArg.toString();
         var prefix = prefArg.toString();
-        var pLen = String.Length(prefix);
-        if pLen > String.Length(s) { return sqlBoolean(false); }
+        var pLen = Viper.String.get_Length(prefix);
+        if pLen > Viper.String.get_Length(s) { return sqlBoolean(false); }
         if String.Substring(s, 0, pLen) == prefix {
             return sqlBoolean(true);
         }
@@ -589,8 +589,8 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if strArg.kind == SQL_NULL || sufArg.kind == SQL_NULL { return sqlNull(); }
         var s = strArg.toString();
         var suffix = sufArg.toString();
-        var sLen = String.Length(s);
-        var xLen = String.Length(suffix);
+        var sLen = Viper.String.get_Length(s);
+        var xLen = Viper.String.get_Length(suffix);
         if xLen > sLen { return sqlBoolean(false); }
         if String.Substring(s, sLen - xLen, xLen) == suffix {
             return sqlBoolean(true);
@@ -1293,7 +1293,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var s = arg.toString();
         var tPos = findChar(s, "T");
         if tPos < 0 { tPos = findChar(s, " "); }
-        if tPos >= 0 && String.Length(s) >= tPos + 9 {
+        if tPos >= 0 && Viper.String.get_Length(s) >= tPos + 9 {
             return sqlText(String.Substring(s, tPos + 1, 8));
         }
         return sqlText("00:00:00");
@@ -1712,7 +1712,7 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var text = args.get(0).toString();
         var pat = args.get(1).toString();
         var result = Pattern.Find(text, pat);
-        if String.Length(result) == 0 { return sqlNull(); }
+        if Viper.String.get_Length(result) == 0 { return sqlNull(); }
         return sqlText(result);
     }
 
@@ -1725,14 +1725,14 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var matches: List[String] = [];
         var pos = 0;
         var maxIter = 1000;
-        while pos < String.Length(text) && maxIter > 0 {
+        while pos < Viper.String.get_Length(text) && maxIter > 0 {
             var m = Pattern.FindFrom(text, pat, pos);
-            if String.Length(m) == 0 { pos = String.Length(text); }
+            if Viper.String.get_Length(m) == 0 { pos = Viper.String.get_Length(text); }
             else {
                 matches.add(m);
-                var mpos = Pattern.FindPos(String.Substring(text, pos, String.Length(text) - pos), pat);
-                if mpos < 0 { pos = String.Length(text); }
-                else { pos = pos + mpos + String.Length(m); }
+                var mpos = Pattern.FindPos(String.Substring(text, pos, Viper.String.get_Length(text) - pos), pat);
+                if mpos < 0 { pos = Viper.String.get_Length(text); }
+                else { pos = pos + mpos + Viper.String.get_Length(m); }
             }
             maxIter = maxIter - 1;
         }
@@ -1775,14 +1775,14 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var count = 0;
         var pos = 0;
         var maxIter = 1000;
-        while pos < String.Length(text) && maxIter > 0 {
-            var sub = String.Substring(text, pos, String.Length(text) - pos);
+        while pos < Viper.String.get_Length(text) && maxIter > 0 {
+            var sub = String.Substring(text, pos, Viper.String.get_Length(text) - pos);
             var m = Pattern.Find(sub, pat);
-            if String.Length(m) == 0 { pos = String.Length(text); }
+            if Viper.String.get_Length(m) == 0 { pos = Viper.String.get_Length(text); }
             else {
                 count = count + 1;
                 var mpos = Pattern.FindPos(sub, pat);
-                pos = pos + mpos + String.Length(m);
+                pos = pos + mpos + Viper.String.get_Length(m);
             }
             maxIter = maxIter - 1;
         }
@@ -1798,7 +1798,7 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var parts: List[String] = [];
         var remaining = text;
         var maxIter = 1000;
-        while String.Length(remaining) > 0 && maxIter > 0 {
+        while Viper.String.get_Length(remaining) > 0 && maxIter > 0 {
             var mpos = Pattern.FindPos(remaining, pat);
             if mpos < 0 {
                 parts.add(remaining);
@@ -1806,11 +1806,11 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             } else {
                 parts.add(String.Substring(remaining, 0, mpos));
                 var m = Pattern.Find(remaining, pat);
-                remaining = String.Substring(remaining, mpos + String.Length(m), String.Length(remaining) - mpos - String.Length(m));
+                remaining = String.Substring(remaining, mpos + Viper.String.get_Length(m), Viper.String.get_Length(remaining) - mpos - Viper.String.get_Length(m));
             }
             maxIter = maxIter - 1;
         }
-        if String.Length(remaining) > 0 { parts.add(remaining); }
+        if Viper.String.get_Length(remaining) > 0 { parts.add(remaining); }
         var result = "{";
         var i = 0;
         while i < parts.count() {
@@ -1828,7 +1828,7 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var text = args.get(0).toString();
         var pat = args.get(1).toString();
         var result = Pattern.Find(text, pat);
-        if String.Length(result) == 0 { return sqlNull(); }
+        if Viper.String.get_Length(result) == 0 { return sqlNull(); }
         return sqlText(result);
     }
 

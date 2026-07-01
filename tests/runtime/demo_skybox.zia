@@ -56,7 +56,7 @@ func start() {
     var floor_xform = Mat4.Translate(0.0, -1.0, 0.0);
     var angle = 0.0;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
 
         var target = new Vec3(0.0, 0.0, 0.0);

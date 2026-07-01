@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/test_graphics3d_scalar_set_aliases.zia
-// Purpose: Regression coverage for Graphics3D scalar property setter aliases.
+// Purpose: Regression coverage for Graphics3D scalar property setter accessors.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,57 +15,54 @@ module TestGraphics3DScalarSetAliases;
 bind Viper.Graphics3D;
 bind Viper.Terminal;
 
-/// @brief Exercise advertised static `Set*` method aliases for scalar Graphics3D properties.
-/// @details The runtime class catalog exposes instance-style methods such as
-/// `Material3D.SetRoughness(value)`, while Zia static calls use ABI-shaped functions such as
-/// `Material3D.SetRoughness(material, value)`. This test verifies both the compiler binding and
-/// runtime dispatch for the static call spelling.
+/// @brief Exercise canonical static `set_*` functions for scalar Graphics3D properties.
+/// @details These are the ABI-shaped property setter functions used by static calls.
 func start() {
     var mat = Material3D.NewPBR(0.4, 0.5, 0.6);
 
-    Material3D.SetMetallic(mat, 0.72);
-    Material3D.SetRoughness(mat, 0.31);
-    Material3D.SetAO(mat, 0.83);
-    Material3D.SetEmissiveIntensity(mat, 1.45);
-    Material3D.SetNormalScale(mat, 0.62);
-    Material3D.SetReflectivity(mat, 0.27);
+    mat.Metallic = 0.72;
+    mat.Roughness = 0.31;
+    mat.AO = 0.83;
+    mat.EmissiveIntensity = 1.45;
+    mat.NormalScale = 0.62;
+    mat.Reflectivity = 0.27;
 
-    if (Material3D.get_Metallic(mat) < 0.71 || Material3D.get_Metallic(mat) > 0.73) {
-        Say("FAIL: SetMetallic alias should update Metallic");
+    if (mat.Metallic < 0.71 || mat.Metallic > 0.73) {
+        Say("FAIL: set_Metallic should update Metallic");
         return;
     }
-    if (Material3D.get_Roughness(mat) < 0.30 || Material3D.get_Roughness(mat) > 0.32) {
-        Say("FAIL: SetRoughness alias should update Roughness");
+    if (mat.Roughness < 0.30 || mat.Roughness > 0.32) {
+        Say("FAIL: set_Roughness should update Roughness");
         return;
     }
-    if (Material3D.get_AO(mat) < 0.82 || Material3D.get_AO(mat) > 0.84) {
-        Say("FAIL: SetAO alias should update AO");
+    if (mat.AO < 0.82 || mat.AO > 0.84) {
+        Say("FAIL: set_AO should update AO");
         return;
     }
-    if (Material3D.get_EmissiveIntensity(mat) < 1.44 ||
-        Material3D.get_EmissiveIntensity(mat) > 1.46) {
-        Say("FAIL: SetEmissiveIntensity alias should update EmissiveIntensity");
+    if (mat.EmissiveIntensity < 1.44 ||
+        mat.EmissiveIntensity > 1.46) {
+        Say("FAIL: set_EmissiveIntensity should update EmissiveIntensity");
         return;
     }
-    if (Material3D.get_NormalScale(mat) < 0.61 || Material3D.get_NormalScale(mat) > 0.63) {
-        Say("FAIL: SetNormalScale alias should update NormalScale");
+    if (mat.NormalScale < 0.61 || mat.NormalScale > 0.63) {
+        Say("FAIL: set_NormalScale should update NormalScale");
         return;
     }
-    if (Material3D.get_Reflectivity(mat) < 0.26 || Material3D.get_Reflectivity(mat) > 0.28) {
-        Say("FAIL: SetReflectivity alias should update Reflectivity");
+    if (mat.Reflectivity < 0.26 || mat.Reflectivity > 0.28) {
+        Say("FAIL: set_Reflectivity should update Reflectivity");
         return;
     }
 
     var light = Light3D.NewAmbient(0.1, 0.2, 0.3);
-    Light3D.SetEnabled(light, false);
-    Light3D.SetCastsShadows(light, true);
+    Light3D.set_Enabled(light, false);
+    Light3D.set_CastsShadows(light, true);
 
     if (Light3D.get_Enabled(light) != false) {
-        Say("FAIL: SetEnabled alias should update Enabled");
+        Say("FAIL: set_Enabled should update Enabled");
         return;
     }
     if (Light3D.get_CastsShadows(light) != true) {
-        Say("FAIL: SetCastsShadows alias should update CastsShadows");
+        Say("FAIL: set_CastsShadows should update CastsShadows");
         return;
     }
 

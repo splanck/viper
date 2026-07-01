@@ -59,10 +59,10 @@ func AddOutgoingCallsFromLine(tokens: Any,
                               lineNumber: Integer) {
     var pos = 1;
     var inString = false;
-    while pos <= Str.Length(line) {
+    while pos <= Str.get_Length(line) {
         var ch = Str.MidLen(line, pos, 1);
         var next = "";
-        if pos < Str.Length(line) {
+        if pos < Str.get_Length(line) {
             next = Str.MidLen(line, pos + 1, 1);
         }
 
@@ -88,12 +88,12 @@ func AddOutgoingCallsFromLine(tokens: Any,
         if identifier_utils.IsIdentStart(ch) {
             var start = pos;
             var name = "";
-            while pos <= Str.Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+            while pos <= Str.get_Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
                 name = name + Str.MidLen(line, pos, 1);
                 pos = pos + 1;
             }
             var callParen = trivia_scan.SkipWhitespace(line, pos);
-            if callParen <= Str.Length(line)
+            if callParen <= Str.get_Length(line)
                and Str.MidLen(line, callParen, 1) == "("
                and identifier_utils.IsKeyword(name) == false
                and IsFunctionDeclarationName(line, start) == false {

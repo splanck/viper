@@ -28,11 +28,11 @@ inline constexpr const char *kStringFromDouble = kCoreConvertToStringDouble;
 
 // Core.Convert short aliases
 inline constexpr const char *kConvertToDouble = kCoreConvertToDouble;
-inline constexpr const char *kConvertToInt = kCoreConvertToInt;
+inline constexpr const char *kConvertToInt = kCoreConvertToInt64;
 
 // Core.Parse short aliases
-inline constexpr const char *kParseDouble = kCoreParseDouble;
-inline constexpr const char *kParseInt64 = kCoreParseInt64;
+inline constexpr const char *kParseDouble = kCoreParseTryNum;
+inline constexpr const char *kParseInt64 = kCoreParseTryInt;
 inline constexpr const char *kParseDoubleCStr = "rt_parse_double";
 inline constexpr const char *kParseInt64CStr = "rt_parse_int64";
 inline constexpr const char *kStringSplitFieldsRaw = "rt_str_split_fields";

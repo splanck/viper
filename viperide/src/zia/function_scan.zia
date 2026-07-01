@@ -80,7 +80,7 @@ expose func ZiaFunctionNameFromLine(line: String) -> String {
             return "";
         }
     }
-    var nameStart = funcPos + Str.Length("func ");
+    var nameStart = funcPos + Str.get_Length("func ");
     var openParen = Str.IndexOfFrom(trimmed, nameStart, "(");
     if openParen == 0 or openParen <= nameStart {
         return "";
@@ -108,10 +108,10 @@ expose func ZiaFunctionEndLine(source: String,
         var line = Obj.ToString(Seq.Get(lines, i));
         var pos = 1;
         var inString = false;
-        while pos <= Str.Length(line) {
+        while pos <= Str.get_Length(line) {
             var ch = Str.MidLen(line, pos, 1);
             var next = "";
-            if pos < Str.Length(line) {
+            if pos < Str.get_Length(line) {
                 next = Str.MidLen(line, pos + 1, 1);
             }
 

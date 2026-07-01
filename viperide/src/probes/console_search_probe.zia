@@ -28,7 +28,7 @@ func copySelectedClipboardContains(shell: app_shell.AppShell, needle: String) ->
     var attempt = 0;
     while attempt < CLIPBOARD_RETRY_ATTEMPTS {
         if shell.CopySelectedToolRow() {
-            if Str.IndexOf(GUI.Clipboard.GetText(), needle) != 0 {
+            if Str.IndexOf(GUI.ClipboardText.GetText(), needle) != 0 {
                 return true;
             }
         }
@@ -42,7 +42,7 @@ func copySelectedClipboardEquals(shell: app_shell.AppShell, expected: String) ->
     var attempt = 0;
     while attempt < CLIPBOARD_RETRY_ATTEMPTS {
         if shell.CopySelectedToolRow() {
-            if GUI.Clipboard.GetText() == expected {
+            if GUI.ClipboardText.GetText() == expected {
                 return true;
             }
         }
@@ -56,7 +56,7 @@ func copySelectedClipboardNonEmpty(shell: app_shell.AppShell) -> Boolean {
     var attempt = 0;
     while attempt < CLIPBOARD_RETRY_ATTEMPTS {
         if shell.CopySelectedToolRow() {
-            if GUI.Clipboard.GetText() != "" {
+            if GUI.ClipboardText.GetText() != "" {
                 return true;
             }
         }
@@ -70,7 +70,7 @@ func copyOutputClipboardContains(shell: app_shell.AppShell, needle: String) -> B
     var attempt = 0;
     while attempt < CLIPBOARD_RETRY_ATTEMPTS {
         if shell.CopyOutputText() {
-            if Str.IndexOf(GUI.Clipboard.GetText(), needle) != 0 {
+            if Str.IndexOf(GUI.ClipboardText.GetText(), needle) != 0 {
                 return true;
             }
         }

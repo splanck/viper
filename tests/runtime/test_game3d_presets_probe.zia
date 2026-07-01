@@ -12,10 +12,10 @@ func fail(message: String) {
 
 func start() {
     var world = Game3D.World3D.New("Game3D Presets Probe", 96, 72);
-    Game3D.World3D.onResize(world, 96, 72);
-    var canvas = Game3D.World3D.get_canvas(world);
-    var scene = Game3D.World3D.get_scene(world);
-    var physics = Game3D.World3D.get_physics(world);
+    world.OnResize(96, 72);
+    var canvas = world.Canvas;
+    var scene = world.Scene;
+    var physics = world.Physics;
 
     var metal = Game3D.Materials.Metal(0.72, 0.74, 0.78);
     var glass = Game3D.Materials.Glass(0.18, 0.45, 0.75, 0.42);
@@ -31,49 +31,49 @@ func start() {
         return;
     }
 
-    var box = Game3D.Prefab.Box(1.0, metal);
-    Game3D.Entity3D.setPosition(box, -1.5, 0.7, 0.0);
-    Game3D.World3D.spawn(world, box);
+    var box: Game3D.Entity3D = Game3D.Prefab.Box(1.0, metal);
+    box.SetPosition(-1.5, 0.7, 0.0);
+    world.Spawn(box);
 
-    var sphere = Game3D.Prefab.Sphere(0.5, 16, glass);
-    Game3D.Entity3D.setPosition(sphere, 1.5, 0.7, 0.0);
-    Game3D.World3D.spawn(world, sphere);
+    var sphere: Game3D.Entity3D = Game3D.Prefab.Sphere(0.5, 16, glass);
+    sphere.SetPosition(1.5, 0.7, 0.0);
+    world.Spawn(sphere);
 
-    var ground = Game3D.Prefab.Ground(24.0, Game3D.Materials.Rubber(0.30, 0.42, 0.22));
-    Game3D.World3D.spawn(world, ground);
+    var ground: Game3D.Entity3D = Game3D.Prefab.Ground(24.0, Game3D.Materials.Rubber(0.30, 0.42, 0.22));
+    world.Spawn(ground);
 
-    if (G3D.Mesh3D.get_TriangleCount(Game3D.Entity3D.get_mesh(box)) != 12 ||
-        G3D.Mesh3D.get_TriangleCount(Game3D.Entity3D.get_mesh(sphere)) <= 0 ||
-        Game3D.Entity3D.get_layer(ground) != Game3D.Layers.get_World()) {
+    if (G3D.Mesh3D.get_TriangleCount(box.Mesh) != 12 ||
+        G3D.Mesh3D.get_TriangleCount(sphere.Mesh) <= 0 ||
+        ground.Layer != Game3D.Layers.get_World()) {
         fail("prefab factories did not produce spawnable entities");
         return;
     }
 
     Game3D.Lighting.Studio(world);
-    if (G3D.Canvas3D.get_LightCount(canvas) != 2) {
+    if (canvas.LightCount != 2) {
         fail("Lighting.Studio did not install a readable light setup");
         return;
     }
 
     Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Cinematic());
-    if (G3D.Canvas3D.get_QualityRequested(canvas) != Game3D.QualityLevel.get_Cinematic() ||
-        G3D.Canvas3D.get_QualityActive(canvas) < Game3D.QualityLevel.get_Performance()) {
+    if (canvas.QualityRequested != Game3D.QualityLevel.get_Cinematic() ||
+        canvas.QualityActive < Game3D.QualityLevel.get_Performance()) {
         fail("Quality.Apply did not record a safe quality profile");
         return;
     }
 
     Game3D.PostFX.Crisp(world);
-    var effects = Game3D.World3D.get_effects(world);
-    if (G3D.PostFX3D.get_EffectCount(Game3D.EffectRegistry3D.get_postfx(effects)) < 2) {
+    var effects = world.Effects;
+    if (G3D.PostFX3D.get_EffectCount(effects.PostFX) < 2) {
         fail("PostFX.Crisp did not install a visible effect chain");
         return;
     }
 
     var beforeNodes = G3D.SceneGraph.get_NodeCount(scene);
-    var env = Game3D.Environment.Outdoor(world);
-    Game3D.EnvHandle.withTerrain(env, 32.0, -0.05);
-    Game3D.EnvHandle.withWater(env, 0.02);
-    Game3D.EnvHandle.withFog(env, 5.0, 60.0);
+    var env: Game3D.EnvHandle = Game3D.Environment3D.Outdoor(world);
+    env.WithTerrain(32.0, -0.05);
+    env.WithWater(0.02);
+    env.WithFog(5.0, 60.0);
     if (G3D.SceneGraph.get_NodeCount(scene) <= beforeNodes + 1 ||
         G3D.Physics3DWorld.get_BodyCount(physics) < 1) {
         fail("Environment helpers did not add terrain, water, and physics");
@@ -86,16 +86,16 @@ func start() {
     Game3D.Debug3D.DrawCameraInfo(world, true);
     Game3D.Debug3D.DrawCapabilities(world, true);
 
-    Game3D.World3D.beginFrame(world);
-    Game3D.World3D.drawScene(world);
-    Game3D.World3D.drawEffects(world);
-    Game3D.World3D.endScene(world);
-    var finalFrame = Game3D.World3D.captureFinalFrame(world);
+    world.BeginFrame();
+    world.DrawScene();
+    world.DrawEffects();
+    world.EndScene();
+    var finalFrame = world.CaptureFinalFrame();
     if (Gfx.Pixels.get_Width(finalFrame) != 96 || Gfx.Pixels.get_Height(finalFrame) != 72) {
         fail("debug overlay did not render through the final frame path");
         return;
     }
 
-    Game3D.World3D.destroy(world);
+    world.Destroy();
     Terminal.Say("PASS");
 }

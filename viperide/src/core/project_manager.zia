@@ -189,9 +189,9 @@ class ProjectManager {
             var r = all.get(i);
             var rp = r.rootPath;
             var prefix = rp + Path.Sep();
-            if (path == rp or Str.StartsWith(path, prefix)) and Str.Length(rp) > bestLen {
+            if (path == rp or Str.StartsWith(path, prefix)) and Str.get_Length(rp) > bestLen {
                 best = r;
-                bestLen = Str.Length(rp);
+                bestLen = Str.get_Length(rp);
             }
             i = i + 1;
         }
@@ -720,7 +720,7 @@ class ProjectManager {
         var root = owner.rootPath;
         var prefix = root + Path.Sep();
         if Str.StartsWith(fullPath, prefix) {
-            return NormalizeBindSeparators(Str.Mid(fullPath, Str.Length(prefix) + 1));
+            return NormalizeBindSeparators(Str.Mid(fullPath, Str.get_Length(prefix) + 1));
         }
         return NormalizeBindSeparators(fullPath);
     }
@@ -734,7 +734,7 @@ class ProjectManager {
         if oldWasDir {
             var prefix = oldNorm + Path.Sep();
             if Str.StartsWith(entryAbs, prefix) {
-                var suffix = Str.Mid(entryAbs, Str.Length(prefix) + 1);
+                var suffix = Str.Mid(entryAbs, Str.get_Length(prefix) + 1);
                 replacement = Path.Join(newNorm, suffix);
             }
         } else if entryAbs == oldNorm {

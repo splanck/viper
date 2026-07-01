@@ -67,7 +67,7 @@ func start() {
 
     var theMaze = new maze.Maze();
     theMaze.init();
-    var returningGhost = new ghost.Ghost(0, 1, 1, config.COLOR_RED);
+    var returningGhost = new ghost.Ghost(ghost.GHOST_BLINKY, 1, 1, config.COLOR_RED);
     returningGhost.setMode(config.MODE_EATEN);
     returningGhost.update(theMaze, 14, 23, 14, 11);
     if returningGhost.getMode() != config.MODE_EATEN {

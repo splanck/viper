@@ -342,7 +342,7 @@ static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
 /// @brief Recognize canonical non-finite floating literals.
 /// @details Accepts `NaN`, `Inf`, `+Inf`, and `-Inf` case-insensitively so
 ///          Convert.ToString_Double output can be parsed back through
-///          Convert.ToDouble and Viper.Core.Parse.Double.
+///          Convert.ToDouble and Viper.Core.Parse.TryNum.
 static int rt_scan_nonfinite_float(const unsigned char *cursor,
                                    double *out_value,
                                    const unsigned char **out_end) {

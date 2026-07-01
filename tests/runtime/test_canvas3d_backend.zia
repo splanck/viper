@@ -5,7 +5,7 @@ bind Viper.Terminal;
 
 func start() {
     var canvas = Viper.Graphics3D.Canvas3D.New("Backend Test", 320, 240);
-    var backend = Viper.Graphics3D.Canvas3D.get_Backend(canvas);
+    var backend = Viper.Graphics3D.canvas.Backend;
     Say("Backend: " + backend);
 
     var cam = Viper.Graphics3D.Camera3D.New(60.0, 320.0 / 240.0, 0.1, 100.0);

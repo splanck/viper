@@ -343,8 +343,8 @@ func CanApplyEditToText(content: String, edit: Any) -> Boolean {
     if endLine > Seq.get_Length(lines) { return false; }
     var startText = Obj.ToString(Seq.Get(lines, startLine - 1));
     var endText = Obj.ToString(Seq.Get(lines, endLine - 1));
-    if startCol > Str.Length(startText) + 1 { return false; }
-    if endCol > Str.Length(endText) + 1 { return false; }
+    if startCol > Str.get_Length(startText) + 1 { return false; }
+    if endCol > Str.get_Length(endText) + 1 { return false; }
     return true;
 }
 
@@ -363,7 +363,7 @@ func ApplyEditToText(content: String, edit: Any) -> String {
         prefix = Str.Left(startText, startCol - 1);
     }
     var suffix = "";
-    if endCol <= Str.Length(endText) {
+    if endCol <= Str.get_Length(endText) {
         suffix = Str.Mid(endText, endCol);
     }
     var replacement = prefix + newText + suffix;

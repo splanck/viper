@@ -1111,7 +1111,7 @@ func main() {
                                                                  2,
                                                                  0,
                                                                  3,
-                                                                 Str.Length("    Terminal.Say(\"two\");"),
+                                                                 Str.get_Length("    Terminal.Say(\"two\");"),
                                                                  "sayBoth");
     if Str.IndexOf(extractFunctionText, "    sayBoth();") == 0
        or Str.IndexOf(extractFunctionText, "func sayBoth() {") == 0
@@ -1129,7 +1129,7 @@ func main() {
                                          3,
                                          0,
                                          3,
-                                         Str.Length("    Terminal.Say(count);"),
+                                         Str.get_Length("    Terminal.Say(count);"),
                                          "sayCount") != captureFunctionSource {
         fail(shell, "extract function rejects captured local");
         return;
@@ -1143,7 +1143,7 @@ func main() {
                                          2,
                                          0,
                                          2,
-                                         Str.Length("    var count = 1;"),
+                                         Str.get_Length("    var count = 1;"),
                                          "makeCount") != escapingLocalSource {
         fail(shell, "extract function rejects escaping local");
         return;
@@ -1152,7 +1152,7 @@ func main() {
                                          2,
                                          0,
                                          2,
-                                         Str.Length("    Terminal.Say(\"one\");"),
+                                         Str.get_Length("    Terminal.Say(\"one\");"),
                                          "main") != extractFunctionSource {
         fail(shell, "extract function rejects duplicate function");
         return;

@@ -18,6 +18,7 @@ _To be written as work lands._
 | Source files | 3,402 | — | — |
 | Production SLOC | 762K | — | — |
 | Test SLOC | 304K | — | — |
+| ViperIDE SLOC | 28K | — | — |
 | Demo SLOC | 197K | — | — |
 
 Counts via `scripts/count_sloc.sh`; commits since the `v0.2.7-dev` tag (2026-06-30).

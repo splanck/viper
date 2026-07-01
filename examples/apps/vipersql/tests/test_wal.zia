@@ -379,7 +379,7 @@ func testRecoveryResultToString() {
     result.undoCount = 5;
 
     var str = result.toString();
-    assert(String.Length(str) > 0, "Recovery result has string representation");
+    assert(Viper.String.get_Length(str) > 0, "Recovery result has string representation");
 }
 
 //=============================================================================

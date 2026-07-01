@@ -45,7 +45,7 @@ func runGpuRobustnessProbe(canvas: Canvas3D) -> Boolean {
     Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), mat);
     Canvas3D.End(canvas);
 
-    if (Canvas3D.get_DrawCount(canvas) <= 0) {
+    if (canvas.DrawCount <= 0) {
         fail("GPU robustness probe submitted no draw");
         return false;
     }
@@ -95,15 +95,15 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
     Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
     Canvas3D.End(canvas);
     var fallbackUs = Clock.TicksUs() - fallbackStart;
-    var fallbackMax = Canvas3D.get_MaxActiveLights(canvas);
-    if (fallbackMax != 16 || Canvas3D.get_DrawCount(canvas) != 1) {
+    var fallbackMax = canvas.MaxActiveLights;
+    if (fallbackMax != 16 || canvas.DrawCount != 1) {
         fail("forward fallback light-cap probe failed");
         return false;
     }
 
     Canvas3D.SetClusteredLighting(canvas, true);
-    if (Canvas3D.get_MaxActiveLights(canvas) < 24 ||
-        Canvas3D.get_LightCount(canvas) != 24) {
+    if (canvas.MaxActiveLights < 24 ||
+        canvas.LightCount != 24) {
         fail("clustered lighting did not expose the many-light budget");
         return false;
     }
@@ -114,7 +114,7 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
     Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
     Canvas3D.End(canvas);
     var clusteredUs = Clock.TicksUs() - clusteredStart;
-    if (Canvas3D.get_DrawCount(canvas) != 1) {
+    if (canvas.DrawCount != 1) {
         fail("clustered lighting probe submitted no draw");
         return false;
     }
@@ -126,10 +126,10 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
         }
     }
 
-    Terminal.Say("CLUSTERED_LIGHTING: backend=" + Canvas3D.get_Backend(canvas) +
+    Terminal.Say("CLUSTERED_LIGHTING: backend=" + canvas.Backend +
                  " fallback_max_lights=" + Fmt.Int(fallbackMax) +
-                 " clustered_max_lights=" + Fmt.Int(Canvas3D.get_MaxActiveLights(canvas)) +
-                 " configured_lights=" + Fmt.Int(Canvas3D.get_LightCount(canvas)) +
+                 " clustered_max_lights=" + Fmt.Int(canvas.MaxActiveLights) +
+                 " configured_lights=" + Fmt.Int(canvas.LightCount) +
                  " fallback_us=" + Fmt.Int(fallbackUs) +
                  " clustered_us=" + Fmt.Int(clusteredUs));
     return true;
@@ -172,7 +172,7 @@ func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
     Canvas3D.End(canvas);
     var csmUs = Clock.TicksUs() - start;
 
-    if (Canvas3D.get_DrawCount(canvas) != 4) {
+    if (canvas.DrawCount != 4) {
         fail("CSM shadow probe submitted an unexpected draw count");
         return false;
     }
@@ -184,9 +184,9 @@ func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
         }
     }
 
-    Terminal.Say("CSM_SHADOWS: backend=" + Canvas3D.get_Backend(canvas) +
+    Terminal.Say("CSM_SHADOWS: backend=" + canvas.Backend +
                  " cascades=3 shadow_map=1024 draws=" +
-                 Fmt.Int(Canvas3D.get_DrawCount(canvas)) +
+                 Fmt.Int(canvas.DrawCount) +
                  " csm_us=" + Fmt.Int(csmUs));
     return true;
 }
@@ -196,7 +196,7 @@ func start() {
     game.setup("Open World Slice GPU Smoke", 160, 120);
 
     var canvas = game.getCanvas();
-    var backend = Canvas3D.get_Backend(canvas);
+    var backend = canvas.Backend;
     if (backend == "software" || Canvas3D.BackendSupports(canvas, "gpu") == false) {
         game.destroy();
         Terminal.Say("SKIP: requested GPU backend unavailable");
@@ -216,15 +216,15 @@ func start() {
     }
 
     game.renderFrame();
-    if (World3D.get_drawCount(game.getWorld()) <= 0 ||
-        World3D.get_visibleNodeCount(game.getWorld()) <= 0) {
+    if (game.getWorld().DrawCount <= 0 ||
+        game.getWorld().VisibleNodeCount <= 0) {
         game.destroy();
         fail("GPU backend produced no visible draw telemetry");
         return;
     }
 
     if (Canvas3D.BackendSupports(canvas, "final-screenshot")) {
-        var snap = World3D.captureFinalFrame(game.getWorld());
+        var snap = game.getWorld().CaptureFinalFrame();
         if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 120) {
             game.destroy();
             fail("GPU final-frame readback failed");
@@ -245,9 +245,9 @@ func start() {
         return;
     }
 
-    Terminal.Say("GPU_FRAME_TIME: backend=" + Canvas3D.get_Backend(canvas) +
-                 " frame_gpu_us=" + Fmt.Int(Canvas3D.get_FrameGpuTimeUs(canvas)));
-    World3D.present(game.getWorld());
+    Terminal.Say("GPU_FRAME_TIME: backend=" + canvas.Backend +
+                 " frame_gpu_us=" + Fmt.Int(canvas.FrameGpuTimeUs));
+    game.getWorld().Present();
     game.destroy();
     Terminal.Say("PASS: " + backend);
 }

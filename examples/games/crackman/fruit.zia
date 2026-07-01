@@ -38,7 +38,7 @@ bind "./ui/sprites";
 
 /// @brief Level-scaled bonus fruit with timer-driven lifecycle.
 class Fruit {
-    hide Integer fruitType;
+    hide config.FruitType fruitType;
     hide Integer gridX;
     hide Integer gridY;
     hide Integer screenX;

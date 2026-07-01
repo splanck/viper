@@ -13,7 +13,7 @@ bind Dir = Viper.IO.Dir;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
-bind WorkspaceWatcher = Viper.Workspace.Watcher;
+bind WorkspaceWatcher = Viper.Workspace.WorkspaceWatcher;
 bind FileIndex = Viper.Workspace.FileIndex;
 bind Threads = Viper.Threads;
 

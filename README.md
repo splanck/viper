@@ -234,22 +234,22 @@ viper --dump-opcodes
 
 ## Tools
 
-| Command | Purpose |
-|---------|---------|
-| `viper run <file|dir>` | Build and run a source file, project directory, or manifest |
-| `viper build <file|dir> -o <out>` | Build IL or a native executable |
-| `viper check <file|dir> --diagnostic-format=json` | Type-check and verify without running; JSON diagnostics include ranges, notes, and fixits |
+| Command                                | Purpose |
+|----------------------------------------|---------|
+| `viper run <file                       |dir>` | Build and run a source file, project directory, or manifest |
+| `viper build <file                     |dir> -o <out>` | Build IL or a native executable |
+| `viper check <file                     |dir> --diagnostic-format=json` | Type-check and verify without running; JSON diagnostics include ranges, notes, and fixits |
 | `viper eval 'expr' --json --type --il` | Evaluate a Zia or BASIC snippet through the REPL pipeline |
-| `viper explain <CODE> --json` | Explain a diagnostic code from the central catalog |
-| `viper repl [zia|basic]` | Interactive REPL |
-| `viper -run <file.il>` | Execute an IL module directly, with optional tracing and step limits |
-| `viper package <dir>` | Package an application for macOS, Linux, Windows, or tarball output |
-| `viper install-package` | Package a staged Viper toolchain installer |
-| `zia` / `vbasic` | Standalone source compiler entry points |
-| `zia-server` / `vbasic-server` | Language servers with LSP and MCP modes |
-| `ilrun`, `il-verify`, `il-dis` | Direct IL execution, verification, and disassembly |
-| `viper il-opt` | Run and inspect optimizer pipelines |
-| `viper bench` | IL benchmark runner |
+| `viper explain <CODE> --json`          | Explain a diagnostic code from the central catalog |
+| `viper repl [zia & basic]`             | Interactive REPL |
+| `viper -run <file.il>`                 | Execute an IL module directly, with optional tracing and step limits |
+| `viper package <dir>`                  | Package an application for macOS, Linux, Windows, or tarball output |
+| `viper install-package`                | Package a staged Viper toolchain installer |
+| `zia` / `vbasic`                       | Standalone source compiler entry points |
+| `zia-server` / `vbasic-server`         | Language servers with LSP and MCP modes |
+| `ilrun`, `il-verify`, `il-dis`         | Direct IL execution, verification, and disassembly |
+| `viper il-opt`                         | Run and inspect optimizer pipelines |
+| `viper bench`                          | IL benchmark runner |
 
 Common examples:
 
@@ -274,8 +274,6 @@ See the [Tools Reference](docs/tools.md), [Debugging Guide](docs/debugging.md), 
 
 - CMake 3.20+
 - C++20 compiler: Apple Clang, Clang, GCC 11+, or MSVC
-- Ninja is optional but recommended for faster local builds
-- Python 3 is optional for helper scripts
 
 ### Build Scripts
 

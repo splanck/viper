@@ -395,7 +395,7 @@ if (NOT TARGET test_console_binding)
     viper_add_ctest(test_console_binding test_console_binding)
 endif ()
 
-# Viper.Convert binding tests
+# Viper.Core.Convert binding tests
 if (NOT TARGET test_convert_binding)
     viper_add_test(test_convert_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestConvertBinding.cpp)
     target_link_libraries(test_convert_binding PRIVATE fe_basic)

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTParseTests.cpp
-// Purpose: Tests for Viper.Parse safe parsing functions.
+// Purpose: Tests for Viper.Core.Parse safe parsing functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -538,7 +538,7 @@ static void test_embedded_nul_inputs() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Parse Tests ===\n\n");
+    printf("=== Viper.Core.Parse Tests ===\n\n");
 
     // TryInt
     test_try_int_valid();

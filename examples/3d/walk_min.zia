@@ -32,16 +32,16 @@ class WalkMinGame {
 
     expose func setup(title: String, width: Integer, height: Integer) {
         world = World3D.New(title, width, height);
-        canvas = World3D.get_canvas(world);
-        camera = World3D.get_camera(world);
+        canvas = world.Canvas;
+        camera = world.Camera;
         Canvas3D.SetDTMax(canvas, 50);
 
-        World3D.setFog(world, 0.025, 0.035, 0.050, 16.0, 42.0);
-        World3D.setAmbient(world, 0.24, 0.26, 0.30);
-        World3D.setQuality(world, QualityLevel.get_Balanced());
+        world.SetFog(0.025, 0.035, 0.050, 16.0, 42.0);
+        world.SetAmbient(0.24, 0.26, 0.30);
+        world.SetQuality(QualityLevel.get_Balanced());
 
-        Camera3D.set_Yaw(camera, -30.6);
-        Camera3D.set_Pitch(camera, -14.3);
+        camera.Yaw = -30.6;
+        camera.Pitch = -14.3;
 
         groundMesh = Mesh3D.NewPlane(18.0, 18.0);
         boxMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
@@ -49,23 +49,23 @@ class WalkMinGame {
         cylinderMesh = Mesh3D.NewCylinder(0.36, 1.35, 18);
 
         groundMat = Material3D.NewColor(0.24, 0.36, 0.30);
-        Material3D.set_Roughness(groundMat, 0.82);
+        groundMat.Roughness = 0.82;
 
         crateMat = Material3D.NewColor(0.72, 0.34, 0.18);
-        Material3D.set_Roughness(crateMat, 0.58);
+        crateMat.Roughness = 0.58;
         Material3D.SetShininess(crateMat, 36.0);
 
         orbMat = Material3D.NewColor(0.08, 0.42, 0.94);
         Material3D.SetEmissiveColor(orbMat, 0.02, 0.14, 0.52);
-        Material3D.set_EmissiveIntensity(orbMat, 0.75);
-        Material3D.set_Roughness(orbMat, 0.34);
+        orbMat.EmissiveIntensity = 0.75;
+        orbMat.Roughness = 0.34;
 
         columnMat = Material3D.NewColor(0.78, 0.70, 0.52);
-        Material3D.set_Roughness(columnMat, 0.46);
+        columnMat.Roughness = 0.46;
 
         markerMat = Material3D.NewColor(1.0, 0.82, 0.28);
         Material3D.SetEmissiveColor(markerMat, 0.35, 0.20, 0.02);
-        Material3D.set_EmissiveIntensity(markerMat, 1.1);
+        markerMat.EmissiveIntensity = 1.1;
 
         postfx = PostFX3D.New();
         PostFX3D.AddTonemap(postfx, 1, 1.14);
@@ -85,22 +85,22 @@ class WalkMinGame {
         spawnStaticBox("ColumnCollider", 0.40, 0.70, 0.40, 0.22, 0.68, 1.42);
 
         playerEntity = Entity3D.New();
-        Entity3D.setName(playerEntity, "Player");
-        Entity3D.setLayer(playerEntity, Layers.get_Player());
-        Entity3D.setPosition(playerEntity, 3.2, 1.0, 5.4);
-        World3D.spawn(world, playerEntity);
+        playerEntity.SetName("Player");
+        playerEntity.SetLayer(Layers.get_Player());
+        playerEntity.SetPosition(3.2, 1.0, 5.4);
+        world.Spawn(playerEntity);
 
         character = CharacterController3D.New(world, playerEntity, 0.32, 1.8, 70.0);
-        CharacterController3D.set_speed(character, 3.2);
+        character.Speed = 3.2;
 
         fps = FirstPersonController.New(world);
-        FirstPersonController.set_character(fps, character);
-        FirstPersonController.set_speed(fps, 3.2);
-        FirstPersonController.set_lookSensitivity(fps, 0.17);
-        FirstPersonController.releaseMouse(fps);
-        World3D.setCameraController(world, fps);
+        fps.Character = character;
+        fps.Speed = 3.2;
+        fps.LookSensitivity = 0.17;
+        fps.ReleaseMouse();
+        world.SetCameraController(fps);
 
-        World3D.stepSimulation(world, 0.016);
+        world.StepSimulation(0.016);
 
         sceneTime = 0.0;
         quitRequested = false;
@@ -125,28 +125,28 @@ class WalkMinGame {
     expose func step(dt: Float) {
         sceneTime = sceneTime + dt;
 
-        var input = World3D.get_input(world);
-        if (Input3D.pressed(input, Keys.get_Escape())) {
+        var input = world.Input;
+        if (input.Pressed(Keys.get_Escape())) {
             quitRequested = true;
             return;
         }
 
         var speed = 3.2;
-        if (Input3D.isDown(input, Keys.get_Shift())) {
+        if (input.IsDown(Keys.get_Shift())) {
             speed = 5.2;
         }
-        FirstPersonController.set_speed(fps, speed);
+        fps.Speed = speed;
 
-        World3D.stepSimulation(world, dt);
+        world.StepSimulation(dt);
     }
 
     expose func renderFrame() {
         updateAnimatedProps();
 
-        World3D.beginFrame(world);
-        World3D.drawScene(world);
-        World3D.drawEffects(world);
-        World3D.endScene(world);
+        world.BeginFrame();
+        world.DrawScene();
+        world.DrawEffects();
+        world.EndScene();
 
         Canvas3D.BeginOverlay(canvas);
         drawFinalOverlay();
@@ -154,23 +154,23 @@ class WalkMinGame {
     }
 
     expose func run() {
-        FirstPersonController.captureMouse(fps);
+        fps.CaptureMouse();
 
-        while (quitRequested == false && World3D.tick(world)) {
-            var dt = World3D.get_dt(world);
+        while (quitRequested == false && world.Tick()) {
+            var dt = world.Dt;
             if (dt <= 0.0) { dt = 0.016; }
             if (dt > 0.050) { dt = 0.050; }
 
             step(dt);
             renderFrame();
-            World3D.present(world);
+            world.Present();
         }
 
-        FirstPersonController.releaseMouse(fps);
+        fps.ReleaseMouse();
     }
 
     expose func destroy() {
-        World3D.destroy(world);
+        world.Destroy();
     }
 
     hide func spawnProp(
@@ -182,10 +182,10 @@ class WalkMinGame {
         z: Float,
         scale: Float) -> Entity3D {
         var entity = Entity3D.Of(mesh, material);
-        Entity3D.setName(entity, name);
-        Entity3D.setPosition(entity, x, y, z);
-        Entity3D.setScale(entity, scale);
-        World3D.spawn(world, entity);
+        entity.SetName(name);
+        entity.SetPosition(x, y, z);
+        entity.SetScale(scale);
+        world.Spawn(entity);
         return entity;
     }
 
@@ -199,25 +199,25 @@ class WalkMinGame {
         z: Float) {
         var body = Physics3DBody.NewAABB(halfX, halfY, halfZ, 0.0);
         var entity = Entity3D.New();
-        Entity3D.setName(entity, name);
-        Entity3D.setLayer(entity, Layers.get_World());
-        Entity3D.attachBody(entity, body);
-        Entity3D.setPosition(entity, x, y, z);
-        World3D.spawn(world, entity);
+        entity.SetName(name);
+        entity.SetLayer(Layers.get_World());
+        entity.AttachBody(body);
+        entity.SetPosition(x, y, z);
+        world.Spawn(entity);
     }
 
     hide func updateAnimatedProps() {
         var orbBob = 0.09 * Sin(sceneTime * 2.2);
-        Entity3D.setPosition(orbEntity, 1.25, 0.72 + orbBob, -0.78);
+        orbEntity.SetPosition(1.25, 0.72 + orbBob, -0.78);
 
-        Entity3D.setPosition(markerEntity, 0.22, 1.55, 1.42);
-        Entity3D.setRotationEuler(markerEntity, 0.0, sceneTime * 42.9718, 0.0);
-        Entity3D.setScale(markerEntity, 0.26);
+        markerEntity.SetPosition(0.22, 1.55, 1.42);
+        markerEntity.SetRotationEuler(0.0, sceneTime * 42.9718, 0.0);
+        markerEntity.SetScale(0.26);
     }
 
     hide func drawFinalOverlay() {
-        var w = Canvas3D.get_Width(canvas);
-        var h = Canvas3D.get_Height(canvas);
+        var w = canvas.Width;
+        var h = canvas.Height;
 
         Canvas3D.DrawRect2D(canvas, 12, 12, 280, 54, 0x101722);
         Canvas3D.DrawRect2D(canvas, 12, 12, 280, 3, 0x00E8FF);

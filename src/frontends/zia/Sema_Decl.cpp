@@ -433,8 +433,8 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns) {
         }
     }
 
-    // Alias-only namespaces such as Viper.Parse are valid even when they no
-    // longer publish a duplicate runtime class in the catalog.
+    // Function-only namespaces can exist even when they do not publish a
+    // duplicate runtime class in the catalog.
     for (const auto &alias : il::runtime::kRuntimeNameAliases) {
         std::string_view canonical = alias.canonical;
         if (canonical.size() >= prefixView.size() &&
@@ -531,10 +531,10 @@ void Sema::importNamespaceSymbols(const std::string &ns, SourceLoc loc) {
         }
 
         // Also import properties by their display name for namespace-like
-        // runtime classes (e.g., Viper.String.Length -> Viper.String.get_Length).
+        // runtime classes (e.g., Length backed by Viper.String.get_Length).
         // Do not import nested class properties from a broad namespace such as
         // Viper.Game; otherwise names like Grid2D.Length become global
-        // Length() candidates and can shadow Viper.String.Length.
+        // Length() candidates and can shadow Viper.String.get_Length.
         for (const auto &p : cls.properties) {
             if (p.getter && p.name) {
                 std::string getter(p.getter);

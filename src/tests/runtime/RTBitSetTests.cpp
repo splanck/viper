@@ -53,6 +53,16 @@ static bool str_eq(rt_string s, const char *expected) {
     return cstr && strcmp(cstr, expected) == 0;
 }
 
+static int64_t bitset_count_public(void *obj) {
+    int64_t total = 0;
+    const int64_t len = rt_bitset_len(obj);
+    for (int64_t i = 0; i < len; ++i) {
+        if (rt_bitset_get(obj, i))
+            ++total;
+    }
+    return total;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -61,7 +71,7 @@ static void test_new_bitset() {
     void *bs = rt_bitset_new(128);
     assert(bs != nullptr);
     assert(rt_bitset_len(bs) == 128);
-    assert(rt_bitset_count(bs) == 0);
+    assert(bitset_count_public(bs) == 0);
     assert(rt_bitset_is_empty(bs) == 1);
     rt_release_obj(bs);
 }
@@ -82,7 +92,7 @@ static void test_set_and_get() {
     assert(rt_bitset_get(bs, 1) == 0);
     assert(rt_bitset_get(bs, 5) == 1);
     assert(rt_bitset_get(bs, 63) == 1);
-    assert(rt_bitset_count(bs) == 3);
+    assert(bitset_count_public(bs) == 3);
     assert(rt_bitset_is_empty(bs) == 0);
 
     rt_release_obj(bs);
@@ -96,7 +106,7 @@ static void test_clear_bit() {
 
     rt_bitset_clear(bs, 10);
     assert(rt_bitset_get(bs, 10) == 0);
-    assert(rt_bitset_count(bs) == 0);
+    assert(bitset_count_public(bs) == 0);
 
     rt_release_obj(bs);
 }
@@ -117,14 +127,14 @@ static void test_set_all_and_clear_all() {
     void *bs = rt_bitset_new(10);
 
     rt_bitset_set_all(bs);
-    assert(rt_bitset_count(bs) == 10);
+    assert(bitset_count_public(bs) == 10);
     for (int i = 0; i < 10; ++i)
         assert(rt_bitset_get(bs, i) == 1);
     // Bits beyond bit_count should not be set
     // (last word is masked)
 
     rt_bitset_clear_all(bs);
-    assert(rt_bitset_count(bs) == 0);
+    assert(bitset_count_public(bs) == 0);
     for (int i = 0; i < 10; ++i)
         assert(rt_bitset_get(bs, i) == 0);
 
@@ -139,7 +149,7 @@ static void test_auto_grow() {
     rt_bitset_set(bs, 200);
     assert(rt_bitset_len(bs) == 201);
     assert(rt_bitset_get(bs, 200) == 1);
-    assert(rt_bitset_count(bs) == 1);
+    assert(bitset_count_public(bs) == 1);
 
     rt_release_obj(bs);
 }
@@ -162,7 +172,7 @@ static void test_and() {
     assert(rt_bitset_get(result, 1) == 1);
     assert(rt_bitset_get(result, 2) == 1);
     assert(rt_bitset_get(result, 3) == 0);
-    assert(rt_bitset_count(result) == 2);
+    assert(bitset_count_public(result) == 2);
 
     rt_release_obj(a);
     rt_release_obj(b);
@@ -185,7 +195,7 @@ static void test_or() {
     assert(rt_bitset_get(result, 1) == 1);
     assert(rt_bitset_get(result, 2) == 1);
     assert(rt_bitset_get(result, 3) == 0);
-    assert(rt_bitset_count(result) == 3);
+    assert(bitset_count_public(result) == 3);
 
     rt_release_obj(a);
     rt_release_obj(b);
@@ -207,7 +217,7 @@ static void test_xor() {
     assert(rt_bitset_get(result, 0) == 1);
     assert(rt_bitset_get(result, 1) == 0);
     assert(rt_bitset_get(result, 2) == 1);
-    assert(rt_bitset_count(result) == 2);
+    assert(bitset_count_public(result) == 2);
 
     rt_release_obj(a);
     rt_release_obj(b);
@@ -225,7 +235,7 @@ static void test_not() {
     assert(rt_bitset_get(result, 1) == 1);
     assert(rt_bitset_get(result, 2) == 0);
     assert(rt_bitset_get(result, 3) == 1);
-    assert(rt_bitset_count(result) == 2);
+    assert(bitset_count_public(result) == 2);
 
     rt_release_obj(bs);
     rt_release_obj(result);
@@ -262,7 +272,7 @@ static void test_large_bitset() {
     rt_bitset_set(bs, 500);
     rt_bitset_set(bs, 999);
 
-    assert(rt_bitset_count(bs) == 3);
+    assert(bitset_count_public(bs) == 3);
     assert(rt_bitset_get(bs, 0) == 1);
     assert(rt_bitset_get(bs, 500) == 1);
     assert(rt_bitset_get(bs, 999) == 1);
@@ -281,7 +291,7 @@ static void test_different_sizes_or() {
     void *result = rt_bitset_or(a, b);
     assert(rt_bitset_get(result, 3) == 1);
     assert(rt_bitset_get(result, 100) == 1);
-    assert(rt_bitset_count(result) == 2);
+    assert(bitset_count_public(result) == 2);
 
     rt_release_obj(a);
     rt_release_obj(b);
@@ -290,7 +300,7 @@ static void test_different_sizes_or() {
 
 static void test_null_safety() {
     assert(rt_bitset_len(NULL) == 0);
-    assert(rt_bitset_count(NULL) == 0);
+    assert(bitset_count_public(NULL) == 0);
     assert(rt_bitset_is_empty(NULL) == 1);
     assert(rt_bitset_get(NULL, 0) == 0);
     rt_bitset_set(NULL, 0);    // No-op
@@ -306,7 +316,7 @@ static void test_negative_index() {
     assert(rt_bitset_get(bs, -1) == 0);
     rt_bitset_set(bs, -5);   // No-op
     rt_bitset_clear(bs, -1); // No-op
-    assert(rt_bitset_count(bs) == 0);
+    assert(bitset_count_public(bs) == 0);
     rt_release_obj(bs);
 }
 

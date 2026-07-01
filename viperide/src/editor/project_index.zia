@@ -398,7 +398,7 @@ class ProjectIndexer {
             }
             workScheduler.Complete(scheduler.JOB_INDEX_SYNC);
         } else {
-            var now = Viper.Time.GetTickCount();
+            var now = Viper.Time.Clock.Ticks();
             if doc.filePath != pendingActivePath or revision != pendingActiveRevision {
                 pendingActivePath = doc.filePath;
                 pendingActiveRevision = revision;
@@ -431,12 +431,12 @@ class ProjectIndexer {
     }
 
     hide func ShouldIndexContent(content: String) -> Boolean {
-        return Str.Length(content) <= INDEX_MAX_SOURCE_BYTES;
+        return Str.get_Length(content) <= INDEX_MAX_SOURCE_BYTES;
     }
 
     hide func SnapshotContent(content: String) -> String {
         if content == "" { return ""; }
-        return Str.MidLen(content, 1, Str.Length(content));
+        return Str.MidLen(content, 1, Str.get_Length(content));
     }
 
     hide func NormalizePath(path: String) -> String {
@@ -446,7 +446,7 @@ class ProjectIndexer {
 
     hide func TrackUpdate(content: String) {
         updateCount = updateCount + 1;
-        updateBytes = updateBytes + Str.Length(content);
+        updateBytes = updateBytes + Str.get_Length(content);
     }
 
     /// @brief Fetch the next bounded runtime file-index page.

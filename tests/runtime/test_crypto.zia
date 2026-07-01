@@ -105,15 +105,15 @@ func testHMAC() {
 
     // HMAC-MD5
     var hmacMd5 = Viper.Crypto.Hash.HmacMD5(key, msg);
-    assertEqInt(Viper.String.Length(hmacMd5), 32, "hmac-md5 length");
+    assertEqInt(Viper.String.get_Length(hmacMd5), 32, "hmac-md5 length");
 
     // HMAC-SHA1
     var hmacSha1 = Viper.Crypto.Hash.HmacSHA1(key, msg);
-    assertEqInt(Viper.String.Length(hmacSha1), 40, "hmac-sha1 length");
+    assertEqInt(Viper.String.get_Length(hmacSha1), 40, "hmac-sha1 length");
 
     // HMAC-SHA256
     var hmacSha256 = Viper.Crypto.Hash.HmacSHA256(key, msg);
-    assertEqInt(Viper.String.Length(hmacSha256), 64, "hmac-sha256 length");
+    assertEqInt(Viper.String.get_Length(hmacSha256), 64, "hmac-sha256 length");
 }
 
 func testCryptoRandInt() {
@@ -132,7 +132,7 @@ func testCryptoRandBytes() {
 
     var bytes = Viper.Crypto.Rand.Bytes(16);
     assertEqInt(bytes.Length, 16, "crypto rand bytes length");
-    assertEqInt(Viper.String.Length(bytes.ToHex()), 32, "crypto rand bytes hex length");
+    assertEqInt(Viper.String.get_Length(bytes.ToHex()), 32, "crypto rand bytes hex length");
 }
 
 
@@ -157,13 +157,13 @@ func testHashLength() {
     var input = "test";
 
     // MD5 produces 32 hex chars (128 bits)
-    assertEqInt(Viper.String.Length(Viper.Crypto.Hash.MD5(input)), 32, "md5 length");
+    assertEqInt(Viper.String.get_Length(Viper.Crypto.Hash.MD5(input)), 32, "md5 length");
 
     // SHA1 produces 40 hex chars (160 bits)
-    assertEqInt(Viper.String.Length(Viper.Crypto.Hash.SHA1(input)), 40, "sha1 length");
+    assertEqInt(Viper.String.get_Length(Viper.Crypto.Hash.SHA1(input)), 40, "sha1 length");
 
     // SHA256 produces 64 hex chars (256 bits)
-    assertEqInt(Viper.String.Length(Viper.Crypto.Hash.SHA256(input)), 64, "sha256 length");
+    assertEqInt(Viper.String.get_Length(Viper.Crypto.Hash.SHA256(input)), 64, "sha256 length");
 }
 
 func start() {

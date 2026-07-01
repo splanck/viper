@@ -9,7 +9,7 @@ DIM flag AS INTEGER
 PRINT "=== Empty String Tests ==="
 
 ' String.Length on empty
-num = Viper.String.Length("")
+num = Viper.String.get_Length("")
 PRINT "Length(''): "; num
 IF num <> 0 THEN PRINT "BUG: Length('') should be 0"
 

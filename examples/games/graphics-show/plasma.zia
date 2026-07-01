@@ -302,6 +302,6 @@ func plasmaRun(canvas: Canvas) {
         canvas.TextBg(10, 28, "SPACE: Pattern | P: Palette | ESC: Exit", colors.GRAY, colors.BLACK);
 
         canvas.Flip();
-        Viper.Time.SleepMs(16);
+        Viper.Time.Clock.Sleep(16);
     }
 }

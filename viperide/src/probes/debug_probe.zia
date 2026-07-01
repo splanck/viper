@@ -35,7 +35,7 @@ func pollUntilSettled(session: debug_session.DebugSession, budgetMs: Integer) {
     while session.IsActive() and session.stopped == false and waited < budgetMs {
         session.Poll();
         if session.stopped or session.terminated { return; }
-        Time.SleepMs(5);
+        Time.Clock.Sleep(5);
         waited = waited + 5;
     }
     session.Poll();
@@ -130,7 +130,7 @@ func main() {
     var ew = 0;
     while ew < 8000 and session.lastEvalExpr != "a" {
         session.Poll();
-        Time.SleepMs(5);
+        Time.Clock.Sleep(5);
         ew = ew + 5;
     }
     if session.lastEvalOk == false {
@@ -145,7 +145,7 @@ func main() {
     var ewExpr = 0;
     while ewExpr < 8000 and session.lastEvalExpr != "a + b" {
         session.Poll();
-        Time.SleepMs(5);
+        Time.Clock.Sleep(5);
         ewExpr = ewExpr + 5;
     }
     if session.lastEvalOk == false or session.lastEvalValue != "30" {
@@ -157,7 +157,7 @@ func main() {
     var ew2 = 0;
     while ew2 < 8000 and session.lastEvalExpr != "not_a_real_local" {
         session.Poll();
-        Time.SleepMs(5);
+        Time.Clock.Sleep(5);
         ew2 = ew2 + 5;
     }
     if session.lastEvalOk {
@@ -291,7 +291,7 @@ func main() {
     var cw = 0;
     while cw < 8000 and csession.lastEvalExpr != "i" {
         csession.Poll();
-        Time.SleepMs(5);
+        Time.Clock.Sleep(5);
         cw = cw + 5;
     }
     if csession.lastEvalValue != "3" {
@@ -315,7 +315,7 @@ func main() {
             fail("logpoint: unexpectedly halted at line " + lsession.lastLine);
             return;
         }
-        Time.SleepMs(5);
+        Time.Clock.Sleep(5);
         lw = lw + 5;
     }
     lsession.Poll();

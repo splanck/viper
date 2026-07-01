@@ -208,7 +208,7 @@ class SoundManager {
         menuSong.AddNote(menuBass, 2400, 46, 400);   // Bb2
         menuSong.AddNote(menuBass, 2800, 46, 400);
 
-        menuSong.SetLength(3200);
+        menuSong.Length = 3200;
         menuSong.SetLoopable(1);
         var menuSound = menuSong.Build();
         if menuSound != null {
@@ -276,7 +276,7 @@ class SoundManager {
             d = d + 400;
         }
 
-        gameSong.SetLength(1600);
+        gameSong.Length = 1600;
         gameSong.SetLoopable(1);
         var gameSound = gameSong.Build();
         if gameSound != null {

@@ -419,7 +419,7 @@ bind Viper.Graphics;     // Import graphics classes
 func start() {
     Say(&quot;Hello from Zia!&quot;);           // No need for Viper.Terminal.Say()
     var canvas = new Canvas(&quot;Game&quot;, 800, 600);
-    Viper.Time.SleepMs(16);           // SleepMs is under Viper.Time
+    Viper.Time.Clock.Sleep(16);           // SleepMs is under Viper.Time
 }
 </code></pre>
 <p><strong>Namespace bind options:</strong></p>
@@ -499,8 +499,8 @@ SetCursorVisible(0);    // Hide cursor
 </tbody></table>
 <h3 id="time-functions">Time Functions</h3>
 <pre><code data-lang="viper">
-// SleepMs is available as Viper.Time.SleepMs (use fully qualified name or bind)
-Viper.Time.SleepMs(500);        // Sleep for 500 milliseconds
+// SleepMs is available as Viper.Time.Clock.Sleep (use fully qualified name or bind)
+Viper.Time.Clock.Sleep(500);        // Sleep for 500 milliseconds
 </code></pre>
 <h3 id="math-functions">Math Functions</h3>
 <pre><code data-lang="viper">

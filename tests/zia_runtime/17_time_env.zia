@@ -14,7 +14,7 @@ func start() {    var argc = Viper.System.Environment.GetArgumentCount();
     var cmd = Viper.System.Environment.GetCommandLine();
     assertNotEmpty(cmd, "cmd");
 
-    Viper.Time.SleepMs(1);
+    Viper.Time.Clock.Sleep(1);
     Viper.Time.Clock.Sleep(1);
 
     report();

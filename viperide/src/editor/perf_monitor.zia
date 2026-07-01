@@ -33,7 +33,7 @@ class PerfMonitor {
         enabled = Env.HasVariable("VIPERIDE_PERF") or Env.HasVariable("VIPERIDE_PERF_LOG");
         logPath = Env.GetVariable("VIPERIDE_PERF_LOG");
         frameStartUs = 0;
-        lastFlushMs = Viper.Time.GetTickCount();
+        lastFlushMs = Viper.Time.Clock.Ticks();
         ResetWindow();
     }
 
@@ -113,7 +113,7 @@ class PerfMonitor {
         if frameUs > maxFrameUs { maxFrameUs = frameUs; }
         frameCount = frameCount + 1;
 
-        var nowMs = Viper.Time.GetTickCount();
+        var nowMs = Viper.Time.Clock.Ticks();
         if nowMs - lastFlushMs < 1000 { return; }
 
         var avgUs = 0;

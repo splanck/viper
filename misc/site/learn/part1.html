@@ -3687,7 +3687,7 @@ func start() {
     Say(&quot;Validation results:&quot;);
 
     // Check username length
-    var usernameLength = Viper.String.Length(username);
+    var usernameLength = Viper.String.get_Length(username);
     if usernameLength &lt; 4 {
         Say(&quot;[FAIL] Username too short (minimum 4 characters)&quot;);
         isValid = false;
@@ -3946,7 +3946,7 @@ if name { ... }       // Does this run? Is &quot;&quot; truthy or falsy?
 <p>Different languages disagree on whether empty strings are truthy or falsy. Zia avoids this confusion by requiring:</p>
 <pre><code data-lang="rust">
 if name != &quot;&quot; { ... }       // Explicit: &quot;if name is not empty&quot;
-if Viper.String.Length(name) &gt; 0 { ... }  // Also explicit
+if Viper.String.get_Length(name) &gt; 0 { ... }  // Also explicit
 </code></pre>
 <p>---</p>
 <h2 id="debugging-conditions-when-things-go-wrong">Debugging Conditions: When Things Go Wrong</h2>

@@ -18,8 +18,8 @@ bind "./src/season/season_engine";
 bind "./src/season/output/season_writer";
 
 func stringContains(s: String, sub: String) -> Boolean {
-    var sLen = String.Length(s);
-    var subLen = String.Length(sub);
+    var sLen = Viper.String.get_Length(s);
+    var subLen = Viper.String.get_Length(sub);
     if subLen > sLen {
         return false;
     }

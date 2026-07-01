@@ -14,7 +14,7 @@
 ' COVER: Viper.System.Exec.Shell
 ' COVER: Viper.System.Exec.ShellCapture
 ' COVER: Viper.System.Machine.Cores
-' COVER: Viper.System.Machine.Endian
+' COVER: Viper.System.Machine.get_Endian
 ' COVER: Viper.System.Machine.Home
 ' COVER: Viper.System.Machine.Host
 ' COVER: Viper.System.Machine.MemFree
@@ -23,11 +23,11 @@
 ' COVER: Viper.System.Machine.OSVer
 ' COVER: Viper.System.Machine.Temp
 ' COVER: Viper.System.Machine.User
-' COVER: Viper.Diagnostics.Log.DEBUG
-' COVER: Viper.Diagnostics.Log.INFO
-' COVER: Viper.Diagnostics.Log.WARN
-' COVER: Viper.Diagnostics.Log.ERROR
-' COVER: Viper.Diagnostics.Log.OFF
+' COVER: Viper.Diagnostics.Log.LevelDebug
+' COVER: Viper.Diagnostics.Log.LevelInfo
+' COVER: Viper.Diagnostics.Log.LevelWarn
+' COVER: Viper.Diagnostics.Log.LevelError
+' COVER: Viper.Diagnostics.Log.LevelOff
 ' COVER: Viper.Diagnostics.Log.Level
 ' COVER: Viper.Diagnostics.Log.Debug
 ' COVER: Viper.Diagnostics.Log.Info
@@ -74,14 +74,14 @@ Viper.Core.Diagnostics.Assert(Viper.System.Machine.Temp <> "", "machine.temp")
 Viper.Core.Diagnostics.Assert(Viper.System.Machine.Cores > 0, "machine.cores")
 Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemTotal > 0, "machine.memtotal")
 Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemFree >= 0, "machine.memfree")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.Endian <> "", "machine.endian")
+Viper.Core.Diagnostics.Assert(Viper.System.Machine.get_Endian <> "", "machine.endian")
 
-Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.INFO
+Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.LevelInfo
 Viper.Diagnostics.Log.Debug("debug")
 Viper.Diagnostics.Log.Info("info")
 Viper.Diagnostics.Log.Warn("warn")
 Viper.Diagnostics.Log.Error("error")
-Viper.Core.Diagnostics.Assert(Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.INFO), "log.enabled")
+Viper.Core.Diagnostics.Assert(Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.LevelInfo), "log.enabled")
 
 PRINT "RESULT: ok"
 END

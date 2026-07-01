@@ -55,6 +55,7 @@ platforms (ccache is auto-detected; disable with `VIPER_NO_CCACHE=1`):
 | `VIPER_RUN_SLOW_TESTS=1` | Include tests labeled `slow` |
 | `VIPER_SKIP_LINT=1`, `VIPER_SKIP_AUDIT=1`, `VIPER_SKIP_SMOKE=1`, `VIPER_SKIP_INSTALL=1` | Skip the corresponding post-build stages |
 | `VIPER_EXTRA_CMAKE_ARGS="-DVIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON"` | Register legacy per-case BASIC-to-IL golden tests alongside the default batch shards |
+| `VIPER_GFX_NO_ACTIVATE=1` | On macOS, show new ViperGFX windows without making them the active app; CTest applies this automatically to `requires_display` tests |
 
 ```bash
 

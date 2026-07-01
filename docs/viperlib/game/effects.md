@@ -42,8 +42,7 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 |---------------------------------------------|--------------------------------|--------------------------------------|
 | `Burst(count)`                              | `Void(Integer)`                | Emit burst of particles instantly    |
 | `Clear()`                                   | `Void()`                       | Remove all particles                 |
-| `Get(index)`                                | `Option(ParticleSnapshot)`      | Get particle data by index           |
-| `ParticleAt(index)`                         | `Option(ParticleSnapshot)`      | Alias for `Get(index)`               |
+| `ParticleAt(index)`                         | `Option(ParticleSnapshot)`      | Get particle data by index           |
 | `SetGravity(gx, gy)`                        | `Void(Double,Double)`          | Set gravity (per frame²)             |
 | `SetLifetime(min, max)`                     | `Void(Int,Int)`                | Set particle lifetime range (frames) |
 | `SetPosition(x, y)`                         | `Void(Double,Double)`          | Set emitter position                 |

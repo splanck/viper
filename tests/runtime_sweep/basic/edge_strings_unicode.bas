@@ -9,7 +9,7 @@ PRINT "=== Unicode Handling ==="
 DIM unicodeStr AS STRING
 unicodeStr = "Hello, 世界! 🌍 Привет мир"
 PRINT "Unicode string: "; unicodeStr
-PRINT "Length: "; Viper.String.Length(unicodeStr)
+PRINT "Length: "; Viper.String.get_Length(unicodeStr)
 
 result = Viper.String.ToUpper(unicodeStr)
 PRINT "ToUpper: "; result
@@ -36,7 +36,7 @@ PRINT "=== Very Long Strings ==="
 DIM longStr AS STRING
 longStr = Viper.String.Repeat("x", 1000000)
 PRINT "Created 1MB string of 'x'"
-PRINT "Length: "; Viper.String.Length(longStr)
+PRINT "Length: "; Viper.String.get_Length(longStr)
 
 result = Viper.String.Left(longStr, 10)
 PRINT "Left(10): "; result
@@ -74,10 +74,10 @@ specialStr = "Line1" + CHR$(10) + "Line2" + CHR$(13) + "Line3" + CHR$(9) + "Tab"
 PRINT "String with newlines/tabs:"
 PRINT specialStr
 PRINT ""
-PRINT "Length: "; Viper.String.Length(specialStr)
+PRINT "Length: "; Viper.String.get_Length(specialStr)
 
 result = Viper.String.Trim(specialStr)
-PRINT "After Trim, Length: "; Viper.String.Length(result)
+PRINT "After Trim, Length: "; Viper.String.get_Length(result)
 PRINT ""
 
 ' === Split with unicode delimiter ===

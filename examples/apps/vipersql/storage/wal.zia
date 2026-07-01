@@ -755,7 +755,7 @@ class WALManager {
 
         // Convert string to buffer
         var i = 0;
-        var len = String.Length(content);
+        var len = Viper.String.get_Length(content);
         while i < len {
             var ch = String.Substring(content, i, 1);
             var code = String.Asc(ch);

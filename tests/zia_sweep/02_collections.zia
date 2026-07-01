@@ -227,13 +227,13 @@ func testBytes() {
 
 func testList() {
     var lst = Viper.Collections.List.New();
-    assertEqInt(Viper.Collections.List.Length(lst), 0, "list new empty");
+    assertEqInt(Viper.Collections.List.get_Length(lst), 0, "list new empty");
 
     // Add
     Viper.Collections.List.Push(lst, "a");
     Viper.Collections.List.Push(lst, "b");
     Viper.Collections.List.Push(lst, "c");
-    assertEqInt(Viper.Collections.List.Length(lst), 3, "list add count");
+    assertEqInt(Viper.Collections.List.get_Length(lst), 3, "list add count");
 
     // Has
     assertTrue(Viper.Collections.List.Has(lst, "b"), "list has");
@@ -245,17 +245,17 @@ func testList() {
 
     // Insert
     Viper.Collections.List.Insert(lst, 1, "x");
-    assertEqInt(Viper.Collections.List.Length(lst), 4, "list insert count");
+    assertEqInt(Viper.Collections.List.get_Length(lst), 4, "list insert count");
 
     // RemoveAt
     Viper.Collections.List.RemoveAt(lst, 1);
-    assertEqInt(Viper.Collections.List.Length(lst), 3, "list removeat count");
+    assertEqInt(Viper.Collections.List.get_Length(lst), 3, "list removeat count");
 
     // Remove
     assertTrue(Viper.Collections.List.Remove(lst, "a"), "list remove");
-    assertEqInt(Viper.Collections.List.Length(lst), 2, "list remove count");
+    assertEqInt(Viper.Collections.List.get_Length(lst), 2, "list remove count");
 
     // Clear
     Viper.Collections.List.Clear(lst);
-    assertEqInt(Viper.Collections.List.Length(lst), 0, "list clear");
+    assertEqInt(Viper.Collections.List.get_Length(lst), 0, "list clear");
 }

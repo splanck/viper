@@ -696,10 +696,17 @@ END NAMESPACE
 <li><code>Viper.Core.Convert.ToString_Int(i64)-&gt;str</code> — Convert int64 to string</li>
 </ul>
 <h4 id="viper-core-parse">Viper.Core.Parse</h4>
-<p>Type parsing with explicit error codes:</p>
+<p>Type parsing with explicit error handling:</p>
 <ul>
-<li><code>Viper.Core.Parse.Double(ptr,ptr)-&gt;i64</code> — Parse double</li>
-<li><code>Viper.Core.Parse.Int64(ptr,ptr)-&gt;i64</code> — Parse int64</li>
+<li><code>Viper.Core.Parse.TryInt(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse integer</li>
+<li><code>Viper.Core.Parse.TryNum(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse double</li>
+<li><code>Viper.Core.Parse.TryBool(str)-&gt;obj&lt;Viper.Option&gt;</code> — Try to parse boolean</li>
+<li><code>Viper.Core.Parse.IntOr(str,i64)-&gt;i64</code> — Parse integer or default</li>
+<li><code>Viper.Core.Parse.NumOr(str,f64)-&gt;f64</code> — Parse double or default</li>
+<li><code>Viper.Core.Parse.BoolOr(str,i1)-&gt;i1</code> — Parse boolean or default</li>
+<li><code>Viper.Core.Parse.IsInt(str)-&gt;i1</code> — Validate integer text</li>
+<li><code>Viper.Core.Parse.IsNum(str)-&gt;i1</code> — Validate numeric text</li>
+<li><code>Viper.Core.Parse.IntRadix(str,i64,i64)-&gt;i64</code> — Parse radix 2-36 integer or default</li>
 </ul>
 <h4 id="viper-core-diagnostics">Viper.Core.Diagnostics</h4>
 <p>Error and diagnostic utilities:</p>
@@ -800,8 +807,8 @@ END NAMESPACE
 <ul>
 <li><code>Viper.Time</code> — Time and timing utilities (static utility)</li>
 <li>Methods (static):</li>
-<li><code>GetTickCount() -&gt; I64</code> — Milliseconds since program start (alias for <code>Viper.Time.Clock.Ticks</code>)</li>
-<li><code>SleepMs(I64 ms) -&gt; VOID</code> — Pause execution for milliseconds (alias for <code>Viper.Time.Clock.Sleep</code>)</li>
+<li><code>Clock.Ticks() -&gt; I64</code> — Milliseconds since program start</li>
+<li><code>Clock.Sleep(I64 ms) -&gt; VOID</code> — Pause execution for milliseconds</li>
 </ul>
 <h4 id="viper-terminal">Viper.Terminal</h4>
 <ul>
@@ -818,20 +825,13 @@ END NAMESPACE
 <li><code>SetPosition(I64 row, I64 col) -&gt; VOID</code> — Move cursor position</li>
 </ul>
 <p><strong>Note:</strong> Legacy <code>Viper.System.<em></code> aliases have been removed. Use the canonical <code>Viper.</em></code> names.</p>
-<h3 id="legacy-aliases">Legacy Aliases</h3>
-<p>For backward compatibility, legacy <code>rt_*</code> function names are maintained as aliases when built with</p>
-<p><code>-DVIPER_RUNTIME_NS_DUAL=ON</code> (currently the default). Examples:</p>
-<ul>
-<li><code>rt_print_str</code> → <code>Viper.Terminal.PrintStr</code></li>
-<li><code>rt_print_i64</code> → <code>Viper.Terminal.PrintI64</code></li>
-<li><code>rt_str_len</code> → <code>Viper.String.Length</code></li>
-</ul>
+<h3 id="canonical-runtime-names">Canonical Runtime Names</h3>
+<p>Runtime procedures are exposed only through canonical <code>Viper.*</code> names. Legacy <code>rt_*</code> public aliases are intentionally unsupported.</p>
 <p>New code should use the canonical <code>Viper.*</code> names.</p>
 <h3 id="oop-runtime-vs-procedural-helpers">OOP Runtime vs Procedural Helpers</h3>
-<p>The OOP <code>Viper.*</code> classes are the preferred surface for new code. The legacy procedural helpers (e.g.,</p>
-<p><code>Viper.String.Length</code>, <code>Viper.IO.*</code>) remain available and are used internally by some lowering bridges for backwards</p>
-<p>compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as</p>
-<p>listed above.</p>
+<p>The OOP <code>Viper.*</code> classes are the preferred surface for new code. Some canonical function-style entry points (e.g.,</p>
+<p><code>Viper.String.get_Length</code>, <code>Viper.IO.*</code>) remain available and are used internally by lowering bridges. Prefer equivalent</p>
+<p>class property/method calls where they exist.</p>
 <h3 id="examples">Examples</h3>
 <p>Object methods on user classes:</p>
 <pre><code data-lang="basic">
@@ -919,10 +919,10 @@ NEXT i
 <pre><code data-lang="basic">
 USING Viper
 DIM start AS LONG
-start = Time.GetTickCount()
+start = Time.Clock.Ticks()
 &#x27; ... do work ...
-Time.SleepMs(100)            &#x27; Pause 100ms
-PRINT &quot;Elapsed: &quot;; Time.GetTickCount() - start; &quot;ms&quot;
+Time.Clock.Sleep(100)            &#x27; Pause 100ms
+PRINT &quot;Elapsed: &quot;; Time.Clock.Ticks() - start; &quot;ms&quot;
 </code></pre>
 <p>Terminal control with Viper.Terminal:</p>
 <pre><code data-lang="basic">

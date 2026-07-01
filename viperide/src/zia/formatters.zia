@@ -241,7 +241,7 @@ func TrimTrailingWhitespaceRangeText(source: String,
         var hadCr = false;
         if Str.EndsWith(line, "\r") {
             hadCr = true;
-            line = Str.Left(line, Str.Length(line) - 1);
+            line = Str.Left(line, Str.get_Length(line) - 1);
         }
         if i >= rangeStart and i <= rangeEnd {
             line = text_utils.TrimLineRightWhitespace(line);
@@ -298,7 +298,7 @@ func ZiaIndentBeforeLine(lines: Any,
 func LeadingCloseBraceCount(trimmed: String) -> Integer {
     var count = 0;
     var i = 1;
-    while i <= Str.Length(trimmed) and Str.MidLen(trimmed, i, 1) == "}" {
+    while i <= Str.get_Length(trimmed) and Str.MidLen(trimmed, i, 1) == "}" {
         count = count + 1;
         i = i + 1;
     }
@@ -343,7 +343,7 @@ func BasicIndentBeforeLine(lines: Any,
 /// @param trimmed Line text with surrounding whitespace removed.
 /// @return Uppercase first word, or empty when none exists.
 func BasicFirstWord(trimmed: String) -> String {
-    var n = Str.Length(trimmed);
+    var n = Str.get_Length(trimmed);
     var i = 1;
     while i <= n and (Str.MidLen(trimmed, i, 1) == " " or Str.MidLen(trimmed, i, 1) == "\t") {
         i = i + 1;
@@ -360,7 +360,7 @@ func BasicFirstWord(trimmed: String) -> String {
 /// @param trimmed Line text with surrounding whitespace removed.
 /// @return Uppercase second word, or empty when none exists.
 func BasicSecondWord(trimmed: String) -> String {
-    var n = Str.Length(trimmed);
+    var n = Str.get_Length(trimmed);
     var i = 1;
     while i <= n and Str.MidLen(trimmed, i, 1) != " " and Str.MidLen(trimmed, i, 1) != "\t" {
         i = i + 1;
@@ -381,7 +381,7 @@ func BasicSecondWord(trimmed: String) -> String {
 /// @return Code portion before the first comment apostrophe outside strings.
 func BasicCodeOnly(line: String) -> String {
     var inString = false;
-    var n = Str.Length(line);
+    var n = Str.get_Length(line);
     var i = 1;
     while i <= n {
         var ch = Str.MidLen(line, i, 1);

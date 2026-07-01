@@ -176,10 +176,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `ActiveOutputHeight` | Integer | read | Explicit alias for the active output height |
 | `Fps` | Integer | read | Frames per second |
 | `DeltaTime` | Integer | read | Milliseconds since the last live `Poll()` or `Flip()`, or fixed synthetic dt when synthetic clock is selected (first live frame = 0, capped to 100ms by default) |
-| `DeltaTimeMs` | Integer | read | Explicit millisecond alias for `DeltaTime` |
 | `DeltaTimeSec` | Number | read | Seconds since last Flip or synthetic frame, using the same clamp as `DeltaTime` |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
-| `BackendName` | String | read | Alias for `Backend` for explicit backend-name queries |
 | `BackendFallback` | Boolean | read | True when Canvas3D fell back from the selected GPU backend to software at creation |
 | `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
 | `QualityRequested` | Integer | read | Last requested quality profile (`0` performance, `1` balanced, `2` cinematic) |
@@ -2125,7 +2123,7 @@ Notes:
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Collider` | Object | read/write | Active `Collider3D` shape for the body |
+| `Collider` | Collider3D | read/write | Active collision shape for the body |
 | `Position` | Vec3 | read | World position (set via `SetPosition`) |
 | `Scale` | Vec3 | read | Collision scale applied to the collider |
 | `Orientation` | Quat | read | World orientation (set via `SetOrientation`) |
@@ -2149,7 +2147,6 @@ Notes:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetCollider(collider)` | `void(obj)` | Attach or replace the active `Collider3D` |
 | `SetPosition(x, y, z)` | `void(f64, f64, f64)` | Teleport body |
 | `SetScale(x, y, z)` | `void(f64, f64, f64)` | Set per-body collider scale |
 | `SetOrientation(quat)` | `void(obj)` | Set body orientation from a Quat |
@@ -2163,7 +2160,7 @@ Notes:
 | `Sleep()` | `void()` | Force a dynamic body into the sleeping state |
 
 `NewAABB`, `NewSphere`, and `NewCapsule` now allocate a body, create the matching collider, and
-attach it internally. Use `New(mass)` plus `SetCollider()` when you want reusable or advanced
+attach it internally. Use `New(mass)` plus `body.Collider = collider` when you want reusable or advanced
 shapes.
 
 For a small headless example of the new rotation surface, see
@@ -3414,7 +3411,7 @@ The GPU backend is selected automatically at startup:
 | Windows | Direct3D 11 | Software |
 | Linux | OpenGL 3.3 | Software |
 
-If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` or `canvas.BackendName` to see which renderer is active, and `canvas.BackendFallback` or `canvas.BackendSupports("runtime-fallback")` to detect a runtime software fallback.
+If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` to see which renderer is active, and `canvas.BackendFallback` or `canvas.BackendSupports("runtime-fallback")` to detect a runtime software fallback.
 
 For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `shadow-csm`, `occlusion`, `hlod`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
 

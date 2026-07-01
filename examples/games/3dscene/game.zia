@@ -96,7 +96,7 @@ class SceneGame {
         Canvas3D.SetShadowBias(canvas, 0.0016);
         Canvas3D.SetAmbient(canvas, 0.16, 0.19, 0.24);
 
-        backendName = Canvas3D.get_Backend(canvas);
+        backendName = canvas.Backend;
 
         var aspect = (width + 0.0) / (height + 0.0);
         camera = Camera3D.New(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
@@ -124,10 +124,10 @@ class SceneGame {
     }
 
     expose func run() {
-        while (Canvas3D.get_ShouldClose(canvas) == false && quitRequested == false) {
+        while (canvas.ShouldClose == false && quitRequested == false) {
             Canvas3D.Poll(canvas);
 
-            var dt = (Canvas3D.get_DeltaTime(canvas) + 0.0) / 1000.0;
+            var dt = (canvas.DeltaTime + 0.0) / 1000.0;
             if (dt <= 0.0) { dt = 0.016; }
             if (dt > config.DT_MAX_SEC) { dt = config.DT_MAX_SEC; }
 
@@ -164,55 +164,55 @@ class SceneGame {
     hide func buildMaterials() {
         floorMat = Material3D.NewPBR(0.18, 0.24, 0.31);
         Material3D.SetAlbedoMap(floorMat, createFloorTexture(floorTextureSize()));
-        Material3D.set_Metallic(floorMat, 0.16);
-        Material3D.set_Roughness(floorMat, 0.28);
-        Material3D.set_Reflectivity(floorMat, 0.20);
+        floorMat.Metallic = 0.16;
+        floorMat.Roughness = 0.28;
+        floorMat.Reflectivity = 0.20;
         Material3D.SetEnvMap(floorMat, skybox);
         Material3D.SetEmissiveColor(floorMat, 0.02, 0.05, 0.08);
 
         chromeMat = Material3D.NewPBR(0.92, 0.96, 1.0);
-        Material3D.set_Metallic(chromeMat, 1.0);
-        Material3D.set_Roughness(chromeMat, 0.06);
-        Material3D.set_Reflectivity(chromeMat, 0.95);
+        chromeMat.Metallic = 1.0;
+        chromeMat.Roughness = 0.06;
+        chromeMat.Reflectivity = 0.95;
         Material3D.SetEnvMap(chromeMat, skybox);
 
         goldMat = Material3D.NewPBR(0.96, 0.78, 0.32);
-        Material3D.set_Metallic(goldMat, 0.90);
-        Material3D.set_Roughness(goldMat, 0.18);
-        Material3D.set_Reflectivity(goldMat, 0.60);
+        goldMat.Metallic = 0.90;
+        goldMat.Roughness = 0.18;
+        goldMat.Reflectivity = 0.60;
         Material3D.SetEnvMap(goldMat, skybox);
         Material3D.SetEmissiveColor(goldMat, 0.10, 0.05, 0.01);
 
         cyanMat = Material3D.NewPBR(0.34, 0.72, 1.0);
-        Material3D.set_Metallic(cyanMat, 0.34);
-        Material3D.set_Roughness(cyanMat, 0.16);
-        Material3D.set_Reflectivity(cyanMat, 0.36);
+        cyanMat.Metallic = 0.34;
+        cyanMat.Roughness = 0.16;
+        cyanMat.Reflectivity = 0.36;
         Material3D.SetEnvMap(cyanMat, skybox);
         Material3D.SetEmissiveColor(cyanMat, 0.08, 0.18, 0.30);
-        Material3D.set_EmissiveIntensity(cyanMat, 1.5);
+        cyanMat.EmissiveIntensity = 1.5;
 
         glowMat = Material3D.NewPBR(0.62, 0.88, 1.0);
-        Material3D.set_Metallic(glowMat, 0.08);
-        Material3D.set_Roughness(glowMat, 0.06);
+        glowMat.Metallic = 0.08;
+        glowMat.Roughness = 0.06;
         Material3D.SetEmissiveColor(glowMat, 0.34, 0.68, 1.0);
-        Material3D.set_EmissiveIntensity(glowMat, 2.8);
-        Material3D.set_Reflectivity(glowMat, 0.10);
+        glowMat.EmissiveIntensity = 2.8;
+        glowMat.Reflectivity = 0.10;
 
         glassMat = Material3D.NewPBR(0.78, 0.90, 1.0);
-        Material3D.set_Metallic(glassMat, 0.02);
-        Material3D.set_Roughness(glassMat, 0.04);
-        Material3D.set_AlphaMode(glassMat, 2);
-        Material3D.set_Alpha(glassMat, 0.34);
-        Material3D.set_DoubleSided(glassMat, true);
+        glassMat.Metallic = 0.02;
+        glassMat.Roughness = 0.04;
+        glassMat.AlphaMode = 2;
+        glassMat.Alpha = 0.34;
+        glassMat.DoubleSided = true;
         Material3D.SetEnvMap(glassMat, skybox);
-        Material3D.set_Reflectivity(glassMat, 0.58);
+        glassMat.Reflectivity = 0.58;
         Material3D.SetEmissiveColor(glassMat, 0.04, 0.10, 0.18);
-        Material3D.set_EmissiveIntensity(glassMat, 0.9);
+        glassMat.EmissiveIntensity = 0.9;
 
         darkMat = Material3D.NewPBR(0.12, 0.15, 0.18);
-        Material3D.set_Metallic(darkMat, 0.14);
-        Material3D.set_Roughness(darkMat, 0.62);
-        Material3D.set_Reflectivity(darkMat, 0.05);
+        darkMat.Metallic = 0.14;
+        darkMat.Roughness = 0.62;
+        darkMat.Reflectivity = 0.05;
         Material3D.SetEnvMap(darkMat, skybox);
     }
 

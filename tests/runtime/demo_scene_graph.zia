@@ -40,15 +40,15 @@ func start() {
     // Floor
     var floor_node = SceneNode.New();
     SceneNode.SetPosition(floor_node, 0.0, -2.0, 0.0);
-    SceneNode.set_Mesh(floor_node, floor_mesh);
-    SceneNode.set_Material(floor_node, floor_mat);
+    floor_node.Mesh = floor_mesh;
+    floor_node.Material = floor_mat;
     SceneGraph.Add(scene, floor_node);
 
     // Sun (center, unlit emissive look)
     var sun_node = SceneNode.New();
     SceneNode.SetPosition(sun_node, 0.0, 0.0, 0.0);
-    SceneNode.set_Mesh(sun_node, sun_mesh);
-    SceneNode.set_Material(sun_node, sun_mat);
+    sun_node.Mesh = sun_mesh;
+    sun_node.Material = sun_mat;
     SceneGraph.Add(scene, sun_node);
 
     // Planet orbit arm (invisible transform group — rotated each frame)
@@ -58,8 +58,8 @@ func start() {
     // Planet (offset from sun)
     var planet_node = SceneNode.New();
     SceneNode.SetPosition(planet_node, 4.0, 0.0, 0.0);
-    SceneNode.set_Mesh(planet_node, planet_mesh);
-    SceneNode.set_Material(planet_node, planet_mat);
+    planet_node.Mesh = planet_mesh;
+    planet_node.Material = planet_mat;
     SceneNode.AddChild(planet_arm, planet_node);
 
     // Moon orbit arm (parented to planet)
@@ -69,13 +69,13 @@ func start() {
     // Moon (offset from planet)
     var moon_node = SceneNode.New();
     SceneNode.SetPosition(moon_node, 1.0, 0.0, 0.0);
-    SceneNode.set_Mesh(moon_node, moon_mesh);
-    SceneNode.set_Material(moon_node, moon_mat);
+    moon_node.Mesh = moon_mesh;
+    moon_node.Material = moon_mat;
     SceneNode.AddChild(moon_arm, moon_node);
 
     var time = 0.0;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
 
@@ -85,11 +85,11 @@ func start() {
 
         // Animate: rotate planet arm around Y (planet orbits sun)
         var planet_rot = Quat.FromEuler(time * 0.5, 0.0, 0.0);
-        SceneNode.set_Rotation(planet_arm, planet_rot);
+        planet_arm.Rotation = planet_rot;
 
         // Animate: rotate moon arm around Y (moon orbits planet)
         var moon_rot = Quat.FromEuler(time * 2.0, 0.0, 0.0);
-        SceneNode.set_Rotation(moon_arm, moon_rot);
+        moon_arm.Rotation = moon_rot;
 
         // Draw entire scene graph
         SceneGraph.Draw(scene, canvas, cam);

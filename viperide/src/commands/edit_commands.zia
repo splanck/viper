@@ -135,7 +135,7 @@ func handleGoToLine(shell: app_shell.AppShell,
                     engine: editor_engine.EditorEngine) {
     var lineStr = GUI.MessageBox.Prompt("Go To Line", "Enter line number:");
     if lineStr != "" {
-        var lineNum = Convert.ToInt(lineStr);
+        var lineNum = Convert.ToInt64(lineStr);
         if lineNum > 0 {
             engine.GoToLine(lineNum);
             shell.SetStatusLeft("Jumped to line " + lineNum);
@@ -566,7 +566,7 @@ expose func ApplyActiveDocumentContentToEditor(docMgr: document_manager.Document
     var lastLine = engine.editor.LineCount - 1;
     if lastLine < 0 { return false; }
     var last = engine.editor.GetLine(lastLine);
-    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.get_Length(last));
     engine.editor.InsertAtCursor(target);
     engine.SaveToDocument(active!);
     active!.isModified = true;
@@ -583,14 +583,14 @@ func handleAddNextOccurrence(shell: app_shell.AppShell,
         GUI.Toast.Info("No word at cursor");
         return;
     }
-    var next = FindNextOccurrence(engine.GetTextSnapshot(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
+    var next = FindNextOccurrence(engine.GetTextSnapshot(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.get_Length(word));
     if next == "" {
         GUI.Toast.Info("No next occurrence");
         return;
     }
     var parts = Str.Split(next, ":");
-    var line = Convert.ToInt(Obj.ToString(Seq.Get(parts, 0)));
-    var col = Convert.ToInt(Obj.ToString(Seq.Get(parts, 1)));
+    var line = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 0)));
+    var col = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 1)));
     engine.editor.AddCursor(line - 1, col - 1);
     shell.SetStatusLeft("Cursors: " + engine.editor.GetCursorCount());
 }
@@ -599,11 +599,11 @@ func handleSkipOccurrence(shell: app_shell.AppShell,
                           engine: editor_engine.EditorEngine) {
     var word = engine.editor.GetWordAtCursor();
     if word == "" { return; }
-    var next = FindNextOccurrence(engine.GetTextSnapshot(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.Length(word));
+    var next = FindNextOccurrence(engine.GetTextSnapshot(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.get_Length(word));
     if next == "" { return; }
     var parts = Str.Split(next, ":");
-    engine.editor.SetCursor(Convert.ToInt(Obj.ToString(Seq.Get(parts, 0))) - 1,
-                            Convert.ToInt(Obj.ToString(Seq.Get(parts, 1))) - 1);
+    engine.editor.SetCursor(Convert.ToInt64(Obj.ToString(Seq.Get(parts, 0))) - 1,
+                            Convert.ToInt64(Obj.ToString(Seq.Get(parts, 1))) - 1);
     shell.SetStatusLeft("Skipped occurrence");
 }
 
@@ -620,18 +620,18 @@ func handleSelectAllOccurrences(shell: app_shell.AppShell,
         var searchFrom = 1;
         var idx = Str.IndexOf(line, word);
         while idx != 0 {
-            if IsWordBoundaryMatch(line, idx, Str.Length(word)) {
+            if IsWordBoundaryMatch(line, idx, Str.get_Length(word)) {
                 if firstSet == false {
                     engine.editor.SetCursor(lineIdx, idx - 1);
-                    engine.editor.SetCursorSelection(0, lineIdx, idx - 1, lineIdx, idx - 1 + Str.Length(word));
+                    engine.editor.SetCursorSelection(0, lineIdx, idx - 1, lineIdx, idx - 1 + Str.get_Length(word));
                     firstSet = true;
                 } else {
                     engine.editor.AddCursor(lineIdx, idx - 1);
                     var cursorIdx = engine.editor.GetCursorCount() - 1;
-                    engine.editor.SetCursorSelection(cursorIdx, lineIdx, idx - 1, lineIdx, idx - 1 + Str.Length(word));
+                    engine.editor.SetCursorSelection(cursorIdx, lineIdx, idx - 1, lineIdx, idx - 1 + Str.get_Length(word));
                 }
             }
-            searchFrom = idx + Str.Length(word);
+            searchFrom = idx + Str.get_Length(word);
             idx = Str.IndexOfFrom(line, searchFrom, word);
         }
         lineIdx = lineIdx + 1;
@@ -746,16 +746,16 @@ func handleToggleLineComment(shell: app_shell.AppShell,
     var rest = Str.Mid(line, indentLen + 1);
     var replacement = "";
     if Str.StartsWith(rest, marker + " ") {
-        replacement = before + Str.Mid(rest, Str.Length(marker + " ") + 1);
+        replacement = before + Str.Mid(rest, Str.get_Length(marker + " ") + 1);
     } else if Str.StartsWith(rest, marker) {
-        replacement = before + Str.Mid(rest, Str.Length(marker) + 1);
+        replacement = before + Str.Mid(rest, Str.get_Length(marker) + 1);
     } else {
         replacement = before + marker + " " + rest;
     }
 
-    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx, Str.Length(line));
+    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx, Str.get_Length(line));
     engine.editor.InsertAtCursor(replacement);
-    engine.editor.SetCursor(lineIdx, Str.Length(replacement));
+    engine.editor.SetCursor(lineIdx, Str.get_Length(replacement));
     shell.SetStatusLeft("Toggled line comment");
 }
 
@@ -816,9 +816,9 @@ func handleToggleBlockComment(shell: app_shell.AppShell,
     }
     var rest = Str.Mid(line, indentLen + 1);
     var replacement = before + ToggleBlockCommentText(rest);
-    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx, Str.Length(line));
+    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx, Str.get_Length(line));
     engine.editor.InsertAtCursor(replacement);
-    engine.editor.SetCursor(lineIdx, Str.Length(replacement));
+    engine.editor.SetCursor(lineIdx, Str.get_Length(replacement));
     shell.SetStatusLeft("Toggled block comment");
 }
 
@@ -843,9 +843,9 @@ func handleDuplicateLine(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var lineIdx = engine.editor.CursorLine;
     var line = engine.editor.GetLine(lineIdx);
-    engine.editor.SetCursor(lineIdx, Str.Length(line));
+    engine.editor.SetCursor(lineIdx, Str.get_Length(line));
     engine.editor.InsertAtCursor("\n" + line);
-    engine.editor.SetCursor(lineIdx + 1, Str.Length(line));
+    engine.editor.SetCursor(lineIdx + 1, Str.get_Length(line));
     shell.SetStatusLeft("Duplicated line");
 }
 
@@ -860,9 +860,9 @@ func handleMoveLineUp(shell: app_shell.AppShell,
     var col = engine.editor.CursorCol;
     var line = engine.editor.GetLine(lineIdx);
     var prev = engine.editor.GetLine(lineIdx - 1);
-    engine.editor.SetCursorSelection(0, lineIdx - 1, 0, lineIdx, Str.Length(line));
+    engine.editor.SetCursorSelection(0, lineIdx - 1, 0, lineIdx, Str.get_Length(line));
     engine.editor.InsertAtCursor(line + "\n" + prev);
-    if col > Str.Length(line) { col = Str.Length(line); }
+    if col > Str.get_Length(line) { col = Str.get_Length(line); }
     engine.editor.SetCursor(lineIdx - 1, col);
     shell.SetStatusLeft("Moved line up");
 }
@@ -878,9 +878,9 @@ func handleMoveLineDown(shell: app_shell.AppShell,
     var col = engine.editor.CursorCol;
     var line = engine.editor.GetLine(lineIdx);
     var next = engine.editor.GetLine(lineIdx + 1);
-    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx + 1, Str.Length(next));
+    engine.editor.SetCursorSelection(0, lineIdx, 0, lineIdx + 1, Str.get_Length(next));
     engine.editor.InsertAtCursor(next + "\n" + line);
-    if col > Str.Length(line) { col = Str.Length(line); }
+    if col > Str.get_Length(line) { col = Str.get_Length(line); }
     engine.editor.SetCursor(lineIdx + 1, col);
     shell.SetStatusLeft("Moved line down");
 }
@@ -906,7 +906,7 @@ func handleOrganizeBinds(shell: app_shell.AppShell,
     var lastLine = engine.editor.LineCount - 1;
     if lastLine < 0 { return; }
     var last = engine.editor.GetLine(lastLine);
-    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.get_Length(last));
     engine.editor.InsertAtCursor(organized);
     shell.SetStatusLeft("Organized Zia binds");
 }
@@ -1426,7 +1426,7 @@ func SuppressibleDiagnosticCodeAt(records: Any, targetLine: Integer) -> String {
 }
 
 func IsSuppressibleDiagnosticCode(code: String) -> Boolean {
-    return Str.Length(code) >= 2 and Str.Left(code, 1) == "W";
+    return Str.get_Length(code) >= 2 and Str.Left(code, 1) == "W";
 }
 
 expose func OrganizeZiaBindsText(source: String) -> String {
@@ -1525,7 +1525,7 @@ func ReplaceWholeDocument(engine: editor_engine.EditorEngine,
     var lastLine = engine.editor.LineCount - 1;
     if lastLine < 0 { return; }
     var last = engine.editor.GetLine(lastLine);
-    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.get_Length(last));
     engine.editor.InsertAtCursor(text);
 }
 
@@ -1540,7 +1540,7 @@ func SelectWordAt(engine: editor_engine.EditorEngine,
     if engine == null or engine.editor == null { return false; }
     if lineIdx < 0 or lineIdx >= engine.editor.LineCount { return false; }
     var line = engine.editor.GetLine(lineIdx);
-    var len = Str.Length(line);
+    var len = Str.get_Length(line);
     if len == 0 { return false; }
     var pos = col + 1;
     if pos < 1 { pos = 1; }
@@ -1572,7 +1572,7 @@ func SelectLine(engine: editor_engine.EditorEngine, lineIdx: Integer) {
     if targetLine >= engine.editor.LineCount { targetLine = engine.editor.LineCount - 1; }
     if targetLine < 0 { return; }
     var line = engine.editor.GetLine(targetLine);
-    engine.editor.SetCursorSelection(0, targetLine, 0, targetLine, Str.Length(line));
+    engine.editor.SetCursorSelection(0, targetLine, 0, targetLine, Str.get_Length(line));
 }
 
 func SelectDocument(engine: editor_engine.EditorEngine) {
@@ -1580,7 +1580,7 @@ func SelectDocument(engine: editor_engine.EditorEngine) {
     var lastLine = engine.editor.LineCount - 1;
     if lastLine < 0 { return; }
     var last = engine.editor.GetLine(lastLine);
-    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.Length(last));
+    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.get_Length(last));
 }
 
 func SelectEnclosingBraceBlock(engine: editor_engine.EditorEngine,
@@ -1598,7 +1598,7 @@ func SelectEnclosingBraceBlock(engine: editor_engine.EditorEngine,
         return false;
     }
     var closeText = engine.editor.GetLine(closeLine);
-    engine.editor.SetCursorSelection(0, openLine, 0, closeLine, Str.Length(closeText));
+    engine.editor.SetCursorSelection(0, openLine, 0, closeLine, Str.get_Length(closeText));
     return true;
 }
 
@@ -1646,7 +1646,7 @@ func IsWholeLineSelection(engine: editor_engine.EditorEngine,
                           endCol: Integer) -> Boolean {
     if engine == null or engine.editor == null { return false; }
     if lineIdx < 0 or lineIdx >= engine.editor.LineCount { return false; }
-    return startCol == 0 and endCol == Str.Length(engine.editor.GetLine(lineIdx));
+    return startCol == 0 and endCol == Str.get_Length(engine.editor.GetLine(lineIdx));
 }
 
 func IsWholeDocumentSelection(engine: editor_engine.EditorEngine,
@@ -1660,7 +1660,7 @@ func IsWholeDocumentSelection(engine: editor_engine.EditorEngine,
     return startLine == 0
        and startCol == 0
        and endLine == lastLine
-       and endCol == Str.Length(engine.editor.GetLine(lastLine));
+       and endCol == Str.get_Length(engine.editor.GetLine(lastLine));
 }
 
 func FindNextOccurrence(source: String, word: String, startLine: Integer, startCol: Integer) -> String {

@@ -16,7 +16,7 @@ func lineAt(text: String, idx: Integer) -> String {
     var lines = Str.Split(text, "\n");
     if idx < 0 or idx >= Seq.get_Length(lines) { return "<oob>"; }
     var l = Obj.ToString(Seq.Get(lines, idx));
-    if Str.EndsWith(l, "\r") { l = Str.Left(l, Str.Length(l) - 1); }
+    if Str.EndsWith(l, "\r") { l = Str.Left(l, Str.get_Length(l) - 1); }
     return l;
 }
 

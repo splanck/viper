@@ -174,7 +174,7 @@ class CsvHandler {
             var sb = SB.New();
             SB.Append(sb, "\"");
             var i = 0;
-            var len = String.Length(value);
+            var len = Viper.String.get_Length(value);
             while i < len {
                 var ch = String.Substring(value, i, 1);
                 if ch == "\"" { SB.Append(sb, "\"\""); }
@@ -287,11 +287,11 @@ class CsvHandler {
         var i = 0;
         while i < count {
             var line = Seq.GetStr(rawSeq, i);
-            var lineLen = String.Length(line);
+            var lineLen = Viper.String.get_Length(line);
             if lineLen > 0 && String.Substring(line, lineLen - 1, 1) == "\r" {
                 line = String.Substring(line, 0, lineLen - 1);
             }
-            if String.Length(line) > 0 || i < count - 1 {
+            if Viper.String.get_Length(line) > 0 || i < count - 1 {
                 lines.add(line);
             }
             i = i + 1;

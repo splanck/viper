@@ -38,7 +38,7 @@ func hasModuleDecl(text: String) -> Boolean {
     while i < Seq.get_Length(lines) {
         var t = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
         i = i + 1;
-        if Str.Length(t) == 0 { continue; }
+        if Str.get_Length(t) == 0 { continue; }
         if Str.StartsWith(t, "//") { continue; }
         if Str.StartsWith(t, "module ") { return true; }
         if Str.StartsWith(t, "module\t") { return true; }

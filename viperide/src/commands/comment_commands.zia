@@ -53,7 +53,7 @@ expose func ToggleLineCommentRangeText(source: String,
     while i < count {
         var line = Obj.ToString(Seq.Get(lines, i));
         if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
+            line = Str.Left(line, Str.get_Length(line) - 1);
         }
         if i >= rangeStart and i <= rangeEnd {
             line = ToggleSingleLineCommentText(line, marker, uncomment);
@@ -82,7 +82,7 @@ expose func ShouldUncommentLineRange(lines: Any,
     while i <= endLine and i < Seq.get_Length(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         if Str.EndsWith(line, "\r") {
-            line = Str.Left(line, Str.Length(line) - 1);
+            line = Str.Left(line, Str.get_Length(line) - 1);
         }
         if Str.Trim(line) != "" {
             sawContent = true;
@@ -116,10 +116,10 @@ expose func ToggleSingleLineCommentText(line: String,
     var rest = Str.Mid(line, indentLen + 1);
     if uncomment {
         if Str.StartsWith(rest, marker + " ") {
-            return before + Str.Mid(rest, Str.Length(marker + " ") + 1);
+            return before + Str.Mid(rest, Str.get_Length(marker + " ") + 1);
         }
         if Str.StartsWith(rest, marker) {
-            return before + Str.Mid(rest, Str.Length(marker) + 1);
+            return before + Str.Mid(rest, Str.get_Length(marker) + 1);
         }
         return line;
     }
@@ -177,7 +177,7 @@ expose func RemoveBlockCommentText(text: String) -> String {
     middle = StripSingleCommentPadding(middle);
 
     var after = "";
-    if last + 2 <= Str.Length(text) {
+    if last + 2 <= Str.get_Length(text) {
         after = Str.Mid(text, last + 2);
     }
     return before + middle + after;
@@ -197,10 +197,10 @@ expose func StripSingleCommentPadding(text: String) -> String {
     } else if Str.StartsWith(result, " ") {
         result = Str.Mid(result, 2);
     }
-    if Str.EndsWith(result, "\n") and Str.Length(result) > 0 {
-        result = Str.Left(result, Str.Length(result) - 1);
-    } else if Str.EndsWith(result, " ") and Str.Length(result) > 0 {
-        result = Str.Left(result, Str.Length(result) - 1);
+    if Str.EndsWith(result, "\n") and Str.get_Length(result) > 0 {
+        result = Str.Left(result, Str.get_Length(result) - 1);
+    } else if Str.EndsWith(result, " ") and Str.get_Length(result) > 0 {
+        result = Str.Left(result, Str.get_Length(result) - 1);
     }
     return result;
 }

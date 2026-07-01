@@ -63,7 +63,7 @@ extern @rt_randomize_i64(i64) -> void
 extern @rt_rnd() -> f64
 extern @Viper.Collections.List.RemoveAt(ptr, i64) -> void
 extern @Viper.Collections.List.Add(ptr, ptr) -> void
-extern @Viper.Collections.List.get_Count(ptr) -> i64
+extern @Viper.Collections.List.get_Length(ptr) -> i64
 extern @Viper.Collections.List.New() -> ptr
 extern @Viper.Text.StringBuilder.Clear(ptr) -> void
 extern @Viper.Text.StringBuilder.Append(ptr, str) -> ptr
@@ -716,7 +716,7 @@ UL999999960:
   .loc 1 64 26
   %t145 = load ptr, %t14
   .loc 1 64 31
-  %t146 = call @Viper.Collections.List.get_Count(%t145)
+  %t146 = call @Viper.Collections.List.get_Length(%t145)
   .loc 1 64 31
   call @Viper.Terminal.PrintI64(%t146)
   .loc 1 64 31
@@ -774,7 +774,7 @@ UL999999954:
   .loc 1 72 24
   %t159 = load ptr, %t14
   .loc 1 72 29
-  %t160 = call @Viper.Collections.List.get_Count(%t159)
+  %t160 = call @Viper.Collections.List.get_Length(%t159)
   .loc 1 72 29
   call @Viper.Terminal.PrintI64(%t160)
   .loc 1 72 29
@@ -800,7 +800,7 @@ UL999999952:
   .loc 1 75 30
   %t165 = load ptr, %t14
   .loc 1 75 35
-  %t166 = call @Viper.Collections.List.get_Count(%t165)
+  %t166 = call @Viper.Collections.List.get_Length(%t165)
   .loc 1 75 35
   call @Viper.Terminal.PrintI64(%t166)
   .loc 1 75 35
@@ -826,7 +826,7 @@ UL999999950:
   .loc 1 78 24
   %t171 = load ptr, %t14
   .loc 1 78 29
-  %t172 = call @Viper.Collections.List.get_Count(%t171)
+  %t172 = call @Viper.Collections.List.get_Length(%t171)
   .loc 1 78 29
   call @Viper.Terminal.PrintI64(%t172)
   .loc 1 78 29

@@ -39,7 +39,7 @@ bind "./_support";
 // COVER: Viper.Math.Random.Seed
 // COVER: Viper.Math.Random.NextInt
 // COVER: Viper.Math.Random.Next
-// COVER: Viper.Time.SleepMs
+// COVER: Viper.Time.Clock.Sleep
 // COVER: Viper.Time.Clock.Sleep
 
 func start() {    Viper.Terminal.BeginBatch();
@@ -93,7 +93,7 @@ func start() {    Viper.Terminal.BeginBatch();
     assertTrue(key == "" || key == key, "keytimeout");
     assertTrue(ink == "" || ink == ink, "inkey");
 
-    Viper.Time.SleepMs(1);
+    Viper.Time.Clock.Sleep(1);
     Viper.Time.Clock.Sleep(1);
 
     report();

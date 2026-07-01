@@ -115,10 +115,45 @@ func moveToward(current: Integer, target: Integer, speed: Integer) -> Integer {
 }
 
 // =============================================================================
-// FRUIT HELPERS
+// FRUIT TABLE
 // =============================================================================
+// One row per fruit: its score and its render color live together, resolved by
+// FruitType. The exhaustive `match` means adding a FruitType variant is a
+// compile error until this table covers it — no more three parallel if-chains
+// kept in sync by hand.
 
-func getFruitForLevel(level: Integer) -> Integer {
+/// @brief Per-fruit attributes (score + color) resolved from a FruitType.
+struct FruitInfo {
+    expose Integer points;
+    expose Integer color;
+
+    expose func init(pts: Integer, col: Integer) {
+        points = pts;
+        color = col;
+    }
+}
+
+/// @brief The single fruit table. One `new FruitInfo(points, color)` per fruit.
+func fruitInfo(fruitType: config.FruitType) -> FruitInfo {
+    // Assigned in every arm; the seed also satisfies the return-path checker,
+    // which does not (yet) credit match exhaustiveness on its own.
+    var info = new FruitInfo(0, config.COLOR_WHITE);
+    match fruitType {
+        config.FruitType.None       => { info = new FruitInfo(0, config.COLOR_WHITE); }
+        config.FruitType.Cherry     => { info = new FruitInfo(100, config.COLOR_CHERRY); }
+        config.FruitType.Strawberry => { info = new FruitInfo(300, config.COLOR_STRAWBERRY); }
+        config.FruitType.Orange     => { info = new FruitInfo(500, config.COLOR_ORANGE_FRUIT); }
+        config.FruitType.Apple      => { info = new FruitInfo(700, config.COLOR_APPLE); }
+        config.FruitType.Melon      => { info = new FruitInfo(1000, config.COLOR_MELON); }
+        config.FruitType.Galaxian   => { info = new FruitInfo(2000, config.COLOR_GALAXIAN); }
+        config.FruitType.Bell       => { info = new FruitInfo(3000, config.COLOR_BELL); }
+        config.FruitType.Key        => { info = new FruitInfo(5000, config.COLOR_KEY); }
+    }
+    return info;
+}
+
+/// @brief The fruit shown at a given level, following the arcade progression.
+func getFruitForLevel(level: Integer) -> config.FruitType {
     if level == 1 { return config.FRUIT_CHERRY; }
     if level == 2 { return config.FRUIT_STRAWBERRY; }
     if level == 3 || level == 4 { return config.FRUIT_ORANGE; }
@@ -129,28 +164,35 @@ func getFruitForLevel(level: Integer) -> Integer {
     return config.FRUIT_KEY;
 }
 
-func getFruitPoints(fruitType: Integer) -> Integer {
-    if fruitType == config.FRUIT_CHERRY { return 100; }
-    if fruitType == config.FRUIT_STRAWBERRY { return 300; }
-    if fruitType == config.FRUIT_ORANGE { return 500; }
-    if fruitType == config.FRUIT_APPLE { return 700; }
-    if fruitType == config.FRUIT_MELON { return 1000; }
-    if fruitType == config.FRUIT_GALAXIAN { return 2000; }
-    if fruitType == config.FRUIT_BELL { return 3000; }
-    if fruitType == config.FRUIT_KEY { return 5000; }
-    return 0;
+func getFruitPoints(fruitType: config.FruitType) -> Integer {
+    return fruitInfo(fruitType).points;
 }
 
-func getFruitColor(fruitType: Integer) -> Integer {
-    if fruitType == config.FRUIT_CHERRY { return config.COLOR_CHERRY; }
-    if fruitType == config.FRUIT_STRAWBERRY { return config.COLOR_STRAWBERRY; }
-    if fruitType == config.FRUIT_ORANGE { return config.COLOR_ORANGE_FRUIT; }
-    if fruitType == config.FRUIT_APPLE { return config.COLOR_APPLE; }
-    if fruitType == config.FRUIT_MELON { return config.COLOR_MELON; }
-    if fruitType == config.FRUIT_GALAXIAN { return config.COLOR_GALAXIAN; }
-    if fruitType == config.FRUIT_BELL { return config.COLOR_BELL; }
-    if fruitType == config.FRUIT_KEY { return config.COLOR_KEY; }
-    return config.COLOR_WHITE;
+func getFruitColor(fruitType: config.FruitType) -> Integer {
+    return fruitInfo(fruitType).color;
+}
+
+// =============================================================================
+// SCREENFX COLOR PACKING
+// =============================================================================
+// ScreenFX flash/overlay colors pack as 0xRRGGBBAA — the RGB triple in the high
+// 24 bits and the alpha in the low byte. This byte order is specific to the
+// ScreenFX path: it differs from a Canvas draw color (0x00RRGGBB) and from
+// Viper.Graphics.Color.RGBA (0xAARRGGBB). Keep the arithmetic in one place so a
+// call site never has to remember which layout it is talking to.
+
+func fxColor(rgb: Integer, alpha: Integer) -> Integer {
+    return rgb * 256 + alpha;
+}
+
+// Extract the Canvas-space RGB (0x00RRGGBB) from a packed ScreenFX color.
+func fxColorRGB(packed: Integer) -> Integer {
+    return packed / 256;
+}
+
+// Extract the 0..255 alpha byte from a packed ScreenFX color.
+func fxColorAlpha(packed: Integer) -> Integer {
+    return packed % 256;
 }
 
 // =============================================================================

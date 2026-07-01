@@ -234,13 +234,8 @@ RT_FUNC(id, c_symbol, "canonical", "signature")
 | `canonical` | Viper namespace path | `"Viper.Math.Sin"` |
 | `signature` | IL type signature | `"f64(f64)"` |
 
-### RT_ALIAS - Function Aliases
-
-```c
-RT_ALIAS("canonical_alias", target_id)
-```
-
-Creates an alternate name for an existing function.
+Aliases are intentionally unsupported. When a runtime API is renamed, update
+callers to the canonical `RT_FUNC` name instead of adding a compatibility entry.
 
 ### RT_CLASS_BEGIN/END - Class Definition
 
@@ -836,13 +831,13 @@ For classes with multiple constructors:
 
 ```c
 // runtime.def
-RT_FUNC(SeqNew,      rt_seq_new_owned, "Viper.Collections.Seq.New",      "obj()")
-RT_FUNC(SeqFromList, rt_list_to_seq,   "Viper.Collections.Seq.FromList", "obj<Viper.Collections.Seq>(obj)")
+RT_FUNC(F64BufNew,     rt_f64buf_new,      "Viper.Collections.F64Buffer.New",     "obj(i64)")
+RT_FUNC(F64BufFromSeq, rt_f64buf_from_seq, "Viper.Collections.F64Buffer.FromSeq", "obj<Viper.Collections.F64Buffer>(obj)")
 
-RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
-    // SeqNew is the default constructor.
-    // SeqFromList is a static factory method.
-    RT_METHOD("FromList", "obj<Viper.Collections.Seq>(obj)", SeqFromList)
+RT_CLASS_BEGIN("Viper.Collections.F64Buffer", F64Buffer, "obj(i64)", F64BufNew)
+    // F64BufNew is the default constructor.
+    // F64BufFromSeq is a static factory method.
+    RT_METHOD("FromSeq", "obj<Viper.Collections.F64Buffer>(obj)", F64BufFromSeq)
     // ... other methods
 RT_CLASS_END()
 ```

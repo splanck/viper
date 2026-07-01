@@ -9,7 +9,7 @@ bind Viper.Terminal;
 func start() {
     var rng = new Viper.Math.Random(42);
     SayNum(rng.Next());
-    SayInt(rng.NextInt(1, 10));
+    SayInt(rng.Range(1, 10));
     SayNum(rng.NextDouble());
 
     var rng2 = new Viper.Math.Random(42);
@@ -27,7 +27,7 @@ func start() {
     SayNum(va.X);
     var vs = v.Scale(2.0);
     SayNum(vs.X);
-    SayNum(Viper.Math.Vec2.Distance(new Viper.Math.Vec2(0.0,0.0), new Viper.Math.Vec2(3.0,4.0)));
+    SayNum(Viper.Math.Vec2.Dist(new Viper.Math.Vec2(0.0,0.0), new Viper.Math.Vec2(3.0,4.0)));
 
     // Vec3
     var v3 = new Viper.Math.Vec3(1.0, 2.0, 3.0);
@@ -41,9 +41,9 @@ func start() {
 
     // Easing
     SayNum(Linear(0.5));
-    SayNum(EaseInQuad(0.5));
-    SayNum(EaseOutQuad(0.5));
-    SayNum(EaseInOutQuad(0.5));
+    SayNum(Viper.Math.Easing.InQuad(0.5));
+    SayNum(Viper.Math.Easing.OutQuad(0.5));
+    SayNum(Viper.Math.Easing.InOutQuad(0.5));
 
     // PerlinNoise
     var pn = new Viper.Math.PerlinNoise(42);

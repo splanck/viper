@@ -3078,7 +3078,7 @@ class Parser {
                     var spec = setSpecs.get(s);
                     // Split spec by comma
                     var pos = 0;
-                    var specLen = String.Length(spec);
+                    var specLen = Viper.String.get_Length(spec);
                     while pos < specLen {
                         var commaPos = specLen; // default: end of string
                         var scan = pos;
@@ -3111,16 +3111,16 @@ class Parser {
                                 // Parse table.col or col
                                 var dotPos2 = -1;
                                 var ds = 0;
-                                while ds < String.Length(colSpec) {
+                                while ds < Viper.String.get_Length(colSpec) {
                                     if String.Substring(colSpec, ds, 1) == "." {
                                         dotPos2 = ds;
-                                        ds = String.Length(colSpec);
+                                        ds = Viper.String.get_Length(colSpec);
                                     }
                                     ds = ds + 1;
                                 }
                                 if dotPos2 >= 0 {
                                     allColTables.add(String.Substring(colSpec, 0, dotPos2));
-                                    allColNames.add(String.Substring(colSpec, dotPos2 + 1, String.Length(colSpec) - dotPos2 - 1));
+                                    allColNames.add(String.Substring(colSpec, dotPos2 + 1, Viper.String.get_Length(colSpec) - dotPos2 - 1));
                                 } else {
                                     allColTables.add("");
                                     allColNames.add(colSpec);
@@ -3151,7 +3151,7 @@ class Parser {
                         var idxStr = "";
                         // Split spec by comma
                         var pos = 0;
-                        var specLen = String.Length(spec);
+                        var specLen = Viper.String.get_Length(spec);
                         while pos < specLen {
                             var commaPos = specLen;
                             var scan = pos;

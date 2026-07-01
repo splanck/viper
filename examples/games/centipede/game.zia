@@ -146,7 +146,7 @@ class Game {
             }
 
             canvas.Flip();
-            Viper.Time.SleepMs(config.FRAME_TIME);
+            Viper.Time.Clock.Sleep(config.FRAME_TIME);
         }
 
         canvas.Close();

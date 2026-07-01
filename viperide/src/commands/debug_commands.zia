@@ -329,7 +329,7 @@ hide func isIdentChar(ch: String) -> Boolean {
 
 /// @brief Extract the identifier spanning 0-based column `col0` of `lineText`.
 hide func identifierAt(lineText: String, col0: Integer) -> String {
-    var n = Str.Length(lineText);
+    var n = Str.get_Length(lineText);
     var p = col0 + 1; // 1-based for MidLen
     if p < 1 or p > n { return ""; }
     if isIdentChar(Str.MidLen(lineText, p, 1)) == false { return ""; }
@@ -353,7 +353,7 @@ hide func wordAtCursor(engine: editor_engine.EditorEngine) -> String {
     if idx < 0 or idx >= Seq.get_Length(lines) { return ""; }
     var lineText = Obj.ToString(Seq.Get(lines, idx));
     if Str.EndsWith(lineText, "\r") {
-        lineText = Str.Left(lineText, Str.Length(lineText) - 1);
+        lineText = Str.Left(lineText, Str.get_Length(lineText) - 1);
     }
     return identifierAt(lineText, col0);
 }

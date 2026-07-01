@@ -24,7 +24,7 @@ func start() {
     }
 
     // Set FlipX
-    Viper.Graphics.Sprite.set_FlipX(sprite, 1);
+    Viper.Graphics.Sprite.set_FlipX(sprite, true);
     fx = Viper.Graphics.Sprite.get_FlipX(sprite);
     if (fx != true) {
         Say("FAIL: FlipX should be 1 after set");
@@ -32,7 +32,7 @@ func start() {
     }
 
     // Set FlipY
-    Viper.Graphics.Sprite.set_FlipY(sprite, 1);
+    Viper.Graphics.Sprite.set_FlipY(sprite, true);
     fy = Viper.Graphics.Sprite.get_FlipY(sprite);
     if (fy != true) {
         Say("FAIL: FlipY should be 1 after set");
@@ -40,7 +40,7 @@ func start() {
     }
 
     // Unset FlipX
-    Viper.Graphics.Sprite.set_FlipX(sprite, 0);
+    Viper.Graphics.Sprite.set_FlipX(sprite, false);
     fx = Viper.Graphics.Sprite.get_FlipX(sprite);
     if (fx != false) {
         Say("FAIL: FlipX should be 0 after unset");

@@ -1193,7 +1193,7 @@ class AppShell {
 
         if lastBuildOutput != "" and Str.EndsWith(lastBuildOutput, "\n")
            and Str.StartsWith(output, lastBuildOutput) {
-            var delta = Str.Mid(output, Str.Length(lastBuildOutput) + 1);
+            var delta = Str.Mid(output, Str.get_Length(lastBuildOutput) + 1);
             if UsesRawOutputPane() {
                 AppendBuildOutput(delta);
             } else {
@@ -1220,9 +1220,9 @@ class AppShell {
     /// @param output Newly captured stdout/stderr text.
     expose func AppendBuildOutput(output: String) {
         if output == "" { return; }
-        var previousLen = Str.Length(lastBuildOutput);
+        var previousLen = Str.get_Length(lastBuildOutput);
         lastBuildOutput = BoundOutputCache(lastBuildOutput, output);
-        var trimmed = previousLen + Str.Length(output) > MAX_BUILD_OUTPUT_CACHE_CHARS;
+        var trimmed = previousLen + Str.get_Length(output) > MAX_BUILD_OUTPUT_CACHE_CHARS;
         if UsesRawOutputPane() {
             UseOutputPane();
             if trimmed {
@@ -1277,22 +1277,22 @@ class AppShell {
     hide func BoundOutputCache(existing: String,
                                text: String) -> String {
         var combined = existing + text;
-        var textLen = Str.Length(text);
+        var textLen = Str.get_Length(text);
         if textLen >= MAX_BUILD_OUTPUT_CACHE_CHARS {
             return OUTPUT_CACHE_TRUNCATED_PREFIX
                 + Str.Mid(text, textLen - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
         }
-        var existingLen = Str.Length(existing);
+        var existingLen = Str.get_Length(existing);
         var keepExisting = MAX_BUILD_OUTPUT_CACHE_CHARS - textLen;
         if existingLen > keepExisting {
             return OUTPUT_CACHE_TRUNCATED_PREFIX
                 + Str.Mid(existing, existingLen - keepExisting + 1) + text;
         }
-        if Str.Length(combined) <= MAX_BUILD_OUTPUT_CACHE_CHARS {
+        if Str.get_Length(combined) <= MAX_BUILD_OUTPUT_CACHE_CHARS {
             return combined;
         }
         return OUTPUT_CACHE_TRUNCATED_PREFIX
-            + Str.Mid(combined, Str.Length(combined) - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
+            + Str.Mid(combined, Str.get_Length(combined) - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
     }
 
     /// @brief Return whether build output can be rendered as raw appended text.
@@ -1493,7 +1493,7 @@ class AppShell {
         if lastBuildOutput == "" {
             return false;
         }
-        GUI.Clipboard.SetText(lastBuildOutput);
+        GUI.ClipboardText.SetText(lastBuildOutput);
         return true;
     }
 
@@ -1507,7 +1507,7 @@ class AppShell {
         if activeToolPanelKind == tool_panel_model.PANEL_REFERENCES { selectedText = referencesListBox.GetSelectedText(); }
         if activeToolPanelKind == tool_panel_model.PANEL_DEBUG { selectedText = debugListBox.GetSelectedText(); }
         if selectedText == "" { return false; }
-        GUI.Clipboard.SetText(selectedText);
+        GUI.ClipboardText.SetText(selectedText);
         return true;
     }
 
@@ -1517,7 +1517,7 @@ class AppShell {
         }
         EnsureOutputRowCapacity();
         var wrapColumn = OutputWrapColumn();
-        if outputWrapLines == false or Str.Length(line) <= wrapColumn {
+        if outputWrapLines == false or Str.get_Length(line) <= wrapColumn {
             var item = outputListBox.AddItem(line);
             RegisterOutputRow(item, line);
             ApplyOutputLineColor(item, line);
@@ -1529,7 +1529,7 @@ class AppShell {
 
         var first: Any = null;
         var start = 1;
-        while start <= Str.Length(line) {
+        while start <= Str.get_Length(line) {
             var chunk = Str.MidLen(line, start, wrapColumn);
             var item = outputListBox.AddItem(chunk);
             RegisterOutputRow(item, chunk);
@@ -1586,7 +1586,7 @@ class AppShell {
         if outputVirtualList != null {
             outputVirtualList.SetCount(outputRenderedRowCount);
             outputVirtualList.SetRowId(outputRenderedRowCount - 1,
-                                       "out:" + outputRenderedRowCount + ":" + Str.Length(text));
+                                       "out:" + outputRenderedRowCount + ":" + Str.get_Length(text));
         }
     }
 

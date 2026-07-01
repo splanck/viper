@@ -245,7 +245,7 @@ func run(canvas: Canvas, width: Integer, height: Integer) {
         }
 
         canvas.Flip();
-        Viper.Time.SleepMs(16);
+        Viper.Time.Clock.Sleep(16);
     }
 }
 

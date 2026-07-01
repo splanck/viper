@@ -54,13 +54,13 @@ class Game3DShowcase {
     expose func setup(title: String, width: Integer, height: Integer) {
         world = World3D.NewWithHorizontalCamera(
             title, width, height, config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
-        canvas = World3D.get_canvas(world);
-        camera = World3D.get_camera(world);
-        input = World3D.get_input(world);
+        canvas = world.Canvas;
+        camera = world.Camera;
+        input = world.Input;
         cameraEye = new Vec3(0.0, 0.0, 0.0);
         cameraTarget = new Vec3(0.0, 0.0, 0.0);
         cameraUp = new Vec3(0.0, 1.0, 0.0);
-        Input3D.set_lookSensitivity(input, config.CAMERA_MOUSE_SENS);
+        input.LookSensitivity = config.CAMERA_MOUSE_SENS;
         Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
 
         Quality.Apply(world, QualityLevel.get_Cinematic());
@@ -74,9 +74,8 @@ class Game3DShowcase {
         }
         sim.setDirectLightingFallback(gpuPostFx == false);
         Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
-        World3D.setAmbient(world, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
-        World3D.setFog(
-            world, config.FOG_R, config.FOG_G, config.FOG_B, config.FOG_NEAR, config.FOG_FAR);
+        world.SetAmbient(config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
+        world.SetFog(config.FOG_R, config.FOG_G, config.FOG_B, config.FOG_NEAR, config.FOG_FAR);
 
         assets = new ShowcaseAssets();
         assets.setup();
@@ -84,7 +83,7 @@ class Game3DShowcase {
         land = terrainSys.build(assets.getTerrainMat());
         waterSky = new ShowcaseWaterSky();
         waterSky.setup(land);
-        World3D.setSkybox(world, waterSky.getSkybox());
+        world.SetSkybox(waterSky.getSkybox());
         assets.applyEnvReflections(waterSky.getSkybox());
 
         minimapSys = new ShowcaseMinimap();
@@ -107,7 +106,7 @@ class Game3DShowcase {
         sim.setupObjective(land);
         hudSys = new ShowcaseHud();
         updateCamera();
-        Terminal.Say("Backend: " + Canvas3D.get_Backend(canvas));
+        Terminal.Say("Backend: " + canvas.Backend);
     }
 
     expose func getWorld() -> World3D { return world; }
@@ -119,7 +118,7 @@ class Game3DShowcase {
         if (stepDt > config.DT_MAX_SEC) { stepDt = config.DT_MAX_SEC; }
         worldTime = worldTime + stepDt;
 
-        if (Input3D.pressed(input, Keys.get_Escape())) { quitRequested = true; return; }
+        if (input.Pressed(Keys.get_Escape())) { quitRequested = true; return; }
         handleToggles();
         updateLook();
         updateMovement(stepDt);
@@ -138,15 +137,15 @@ class Game3DShowcase {
         crittersSys.update(stepDt, playerX, playerZ);
         audioSys.updateAmbient(stepDt);
         sim.updateObjective(camera, playerX, playerY, playerZ, audioSys);
-        World3D.stepSimulation(world, stepDt);
+        world.StepSimulation(stepDt);
     }
 
     expose func renderFrame() {
-        World3D.beginFrame(world);
+        world.BeginFrame();
         Canvas3D.DrawTerrain(canvas, land);
         terrainSys.drawVegetation(canvas);
         waterSky.drawWater(canvas, camera);
-        World3D.drawScene(world);
+        world.DrawScene();
         sim.drawBeacons(canvas, assets.getCubeMesh(), assets.getBeaconMesh(), assets.getPedestalMat(),
             assets.getBeaconOffMat(), assets.getBeaconOnMat(), worldTime);
         drawPlayer();
@@ -154,8 +153,8 @@ class Game3DShowcase {
         waterSky.drawReeds(canvas, land, worldTime);
         effectsSys.drawDecals(canvas);
         effectsSys.draw(canvas, camera);
-        World3D.drawEffects(world);
-        World3D.endScene(world);
+        world.DrawEffects();
+        world.EndScene();
 
         Canvas3D.BeginOverlay(canvas);
         hudSys.draw(canvas, minimapSys, sim, playerX, playerZ, debugOn);
@@ -164,22 +163,22 @@ class Game3DShowcase {
 
     expose func run() {
         var mouseCaptured = false;
-        while (quitRequested == false && World3D.tick(world)) {
-            if (mouseCaptured == false && Input3D.mousePressed(input, MouseButtons.get_Left())) {
-                Input3D.captureMouse(input);
+        while (quitRequested == false && world.Tick()) {
+            if (mouseCaptured == false && input.MousePressed(MouseButtons.get_Left())) {
+                input.CaptureMouse();
                 mouseCaptured = true;
             }
-            step(World3D.get_dt(world));
+            step(world.Dt);
             renderFrame();
-            World3D.present(world);
+            world.Present();
         }
         if (mouseCaptured) {
-            Input3D.releaseMouse(input);
+            input.ReleaseMouse();
         }
     }
 
     expose func destroy() {
-        World3D.destroy(world);
+        world.Destroy();
     }
 
     hide func resetWorld() {
@@ -200,33 +199,33 @@ class Game3DShowcase {
     }
 
     hide func handleToggles() {
-        if (Input3D.pressed(input, Keys.get_Space())) {
+        if (input.Pressed(Keys.get_Space())) {
             qualityLevel = qualityLevel + 1;
             if (qualityLevel > 2) { qualityLevel = 0; }
             Canvas3D.SetQuality(canvas, qualityLevel);
         }
-        if (Input3D.pressed(input, Keys.get_Ctrl())) {
+        if (input.Pressed(Keys.get_Ctrl())) {
             if (debugOn) { debugOn = false; } else { debugOn = true; }
         }
-        if (Input3D.pressed(input, Keys.get_F11())) {
+        if (input.Pressed(Keys.get_F11())) {
             Canvas3D.ToggleFullscreen(canvas);
-            fullscreenOn = Canvas3D.get_IsFullscreen(canvas);
+            fullscreenOn = canvas.IsFullscreen;
         }
     }
 
     hide func updateLook() {
-        var look = Input3D.lookAxis(input);
+        var look = input.LookAxis();
         cameraYaw = cameraYaw + Vec2.get_X(look);
         cameraPitch = cameraPitch - Vec2.get_Y(look);
         if (cameraPitch < config.CAMERA_PITCH_MIN) { cameraPitch = config.CAMERA_PITCH_MIN; }
         if (cameraPitch > config.CAMERA_PITCH_MAX) { cameraPitch = config.CAMERA_PITCH_MAX; }
-        cameraDistance = cameraDistance - Input3D.wheelY(input) * config.CAMERA_WHEEL_SPEED;
+        cameraDistance = cameraDistance - input.WheelY() * config.CAMERA_WHEEL_SPEED;
         if (cameraDistance < config.CAMERA_DISTANCE_MIN) { cameraDistance = config.CAMERA_DISTANCE_MIN; }
         if (cameraDistance > config.CAMERA_DISTANCE_MAX) { cameraDistance = config.CAMERA_DISTANCE_MAX; }
     }
 
     hide func updateMovement(stepDt: Float) {
-        var move = Input3D.moveAxis(input);
+        var move = input.MoveAxis();
         var fwd = Vec3.get_Z(move);
         var right = Vec3.get_X(move);
         var moveX = Sin(cameraYaw) * fwd + Cos(cameraYaw) * right;
@@ -236,7 +235,7 @@ class Game3DShowcase {
 
         moveX = moveX / moveLen;
         moveZ = moveZ / moveLen;
-        var sprinting = Input3D.isDown(input, Keys.get_Shift());
+        var sprinting = input.IsDown(Keys.get_Shift());
         var speed = config.PLAYER_MOVE_SPEED;
         if (sprinting) { speed = speed * config.PLAYER_SPRINT_MULT; }
         playerX = playerX + moveX * speed * stepDt;
@@ -250,10 +249,10 @@ class Game3DShowcase {
     }
 
     hide func updateCameraFov() {
-        var move = Input3D.moveAxis(input);
+        var move = input.MoveAxis();
         var moveLen = Sqrt(Vec3.get_X(move) * Vec3.get_X(move) + Vec3.get_Z(move) * Vec3.get_Z(move));
         var fovTarget = config.CAMERA_FOV;
-        if (Input3D.isDown(input, Keys.get_Shift()) && moveLen > 0.001) {
+        if (input.IsDown(Keys.get_Shift()) && moveLen > 0.001) {
             fovTarget = config.CAMERA_FOV_SPRINT;
         }
         cameraFov = cameraFov + (fovTarget - cameraFov) * 0.12;

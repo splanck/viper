@@ -34,8 +34,8 @@ DIM d AS INTEGER
 LET d = Viper.Time.Duration.FromSeconds(90)
 PRINT Viper.Time.Duration.TotalSeconds(d)
 PRINT Viper.Time.Duration.TotalMillis(d)
-PRINT Viper.Time.Duration.Minutes(d)
-PRINT Viper.Time.Duration.Seconds(d)
+PRINT Viper.Time.Duration.get_Minutes(d)
+PRINT Viper.Time.Duration.get_Seconds(d)
 
 DIM d2 AS INTEGER
 LET d2 = Viper.Time.Duration.Create(1, 2, 30, 0, 0)

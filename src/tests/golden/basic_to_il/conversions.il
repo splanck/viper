@@ -34,7 +34,6 @@ extern @Viper.String.Join(str, ptr) -> str
 extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.String.Length(str) -> i64
 extern @rt_int_floor(f64) -> f64
 extern @rt_val(str) -> f64
 extern @rt_val_to_double(ptr, ptr) -> f64

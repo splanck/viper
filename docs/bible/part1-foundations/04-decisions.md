@@ -1133,7 +1133,7 @@ func start() {
     Say("Validation results:");
 
     // Check username length
-    var usernameLength = Viper.String.Length(username);
+    var usernameLength = Viper.String.get_Length(username);
     if usernameLength < 4 {
         Say("[FAIL] Username too short (minimum 4 characters)");
         isValid = false;
@@ -1430,7 +1430,7 @@ Different languages disagree on whether empty strings are truthy or falsy. Zia a
 
 ```rust
 if name != "" { ... }       // Explicit: "if name is not empty"
-if Viper.String.Length(name) > 0 { ... }  // Also explicit
+if Viper.String.get_Length(name) > 0 { ... }  // Also explicit
 ```
 
 ---

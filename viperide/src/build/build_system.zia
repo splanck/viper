@@ -48,7 +48,7 @@ class BuildSystem {
     expose String activeAction;
     expose String activeName;
     expose run_config.RunConfig activeConfig;
-    expose Process.Handle processHandle;
+    expose Process.ProcessHandle processHandle;
 
     // Parsed diagnostics
     expose List[diagnostic.Diagnostic] diagnostics;
@@ -87,7 +87,7 @@ class BuildSystem {
         exitCode = -1;
         lastBuildSuccess = false;
         lastBuildTime = "";
-        startMs = Viper.Time.GetTickCount();
+        startMs = Viper.Time.Clock.Ticks();
 
         // The Process runtime spawns via execve(), which neither searches PATH nor
         // resolves a bare name against anything except the child's working directory
@@ -284,11 +284,11 @@ class BuildSystem {
         if maxChars <= 0 {
             return combined;
         }
-        var textLen = Str.Length(text);
+        var textLen = Str.get_Length(text);
         if textLen >= maxChars {
             return prefix + Str.Mid(text, textLen - maxChars + 1);
         }
-        var existingLen = Str.Length(existing);
+        var existingLen = Str.get_Length(existing);
         var keepExisting = maxChars - textLen;
         if existingLen > keepExisting {
             return prefix + Str.Mid(existing, existingLen - keepExisting + 1) + text;
@@ -301,7 +301,7 @@ class BuildSystem {
         isBuilding = false;
         isRunning = false;
         lastBuildSuccess = code == 0;
-        lastBuildTime = FormatDuration(Viper.Time.GetTickCount() - startMs);
+        lastBuildTime = FormatDuration(Viper.Time.Clock.Ticks() - startMs);
         ParseBuildOutput();
     }
 
@@ -379,7 +379,7 @@ class BuildSystem {
         var inString = false;
         var escaped = false;
         var pos = start;
-        while pos <= Str.Length(text) {
+        while pos <= Str.get_Length(text) {
             var ch = Str.MidLen(text, pos, 1);
             if inString {
                 if escaped {
@@ -487,7 +487,7 @@ class BuildSystem {
         if sevPos == 0 { return null; }
 
         var before = Str.Left(line, sevPos - 1);
-        var codeStart = sevPos + Str.Length(": " + severity + "[");
+        var codeStart = sevPos + Str.get_Length(": " + severity + "[");
         var msgSep = Str.IndexOfFrom(line, codeStart, "]: ");
         if msgSep == 0 { return null; }
         var code = Str.MidLen(line, codeStart, msgSep - codeStart);
@@ -501,8 +501,8 @@ class BuildSystem {
         if lineSep <= 0 { return null; }
         var lineText = Str.Mid(pathAndLine, lineSep + 1);
         var path = Str.Left(pathAndLine, lineSep - 1);
-        var lineNo = Convert.ToInt(lineText);
-        var colNo = Convert.ToInt(colText);
+        var lineNo = Convert.ToInt64(lineText);
+        var colNo = Convert.ToInt64(colText);
         if path == "" or lineNo <= 0 or colNo <= 0 { return null; }
 
         var diag = new diagnostic.Diagnostic();

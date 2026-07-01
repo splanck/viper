@@ -57,7 +57,7 @@ tested, and shipped without turning the plan into a multi-year research dump.
   namespaces already matching existing Game3D style (`Assets3D`, `Materials`,
   `Prefab`, `Quality`).
 - Low-level `Viper.Graphics3D` methods/properties use PascalCase:
-  `QueryAABB`, `RaycastNodes`, `SetSolverIterations`, `ContactCount`.
+  `QueryAABB`, `RaycastNodes`, `SolverIterations`, `ContactCount`.
 - Stateful `Viper.Game3D` methods/properties use the current ergonomic style:
   `setCenter`, `setRadii`, `update`, `workerCount`, `floatingOrigin`,
   `residentCellCount`, `ready`, `progress`.

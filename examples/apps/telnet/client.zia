@@ -46,7 +46,7 @@ func main() {
     Terminal.Say("");
 
     // Give server time to send banner
-    Time.SleepMs(100);
+    Time.Clock.Sleep(100);
 
     // Read and display initial welcome message
     var welcome = receiveResponse(connection);
@@ -69,7 +69,7 @@ func main() {
         // Check for local exit command
         if input == "quit" || input == "exit" {
             sendCommand(connection, input);
-            Time.SleepMs(100);
+            Time.Clock.Sleep(100);
             var goodbye = readAvailable(connection);
             Terminal.Print(goodbye);
             connected = 0;
@@ -119,10 +119,10 @@ func receiveResponse(conn: Viper.Network.Tcp) -> String {
             }
         } else {
             // Small delay before checking again
-            Time.SleepMs(10);
+            Time.Clock.Sleep(10);
 
             // If we have some response and no more data, we're done
-            var respLen = String.Length(response);
+            var respLen = Viper.String.get_Length(response);
             available = Network.Tcp.get_Available(conn);
             if respLen > 0 && available == 0 {
                 reading = 0;

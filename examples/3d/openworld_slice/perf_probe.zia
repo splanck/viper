@@ -35,7 +35,7 @@ func start() {
     var setupUs = Clock.TicksUs() - setupStart;
 
     var canvas = game.getCanvas();
-    var backend = Canvas3D.get_Backend(canvas);
+    var backend = canvas.Backend;
 
     var warmupFrames = 24;
     var i = 0;
@@ -63,11 +63,11 @@ func start() {
 
     var world = game.getWorld();
     if (frameUs <= 0 ||
-        World3D.get_drawCount(world) <= 0 ||
-        World3D.get_visibleNodeCount(world) <= 0 ||
-        World3D.get_entityCount(world) < 5 ||
-        World3D.get_bodyCount(world) < 2 ||
-        World3D.get_streamResidentBytes(world) <= 0 ||
+        world.DrawCount <= 0 ||
+        world.VisibleNodeCount <= 0 ||
+        world.EntityCount < 5 ||
+        world.BodyCount < 2 ||
+        world.StreamResidentBytes <= 0 ||
         game.getResidentCellCount() <= 0 ||
         game.getResidentTerrainTileCount() <= 0) {
         game.destroy();
@@ -81,12 +81,12 @@ func start() {
                  " elapsed_ms=" + fmt(ms(frameUs)) +
                  " avg_ms=" + fmt(avgFrameMs(frameUs, frames)) +
                  " fps=" + fmt(fps(frameUs, frames)) +
-                 " frame_gpu_us=" + Fmt.Int(Canvas3D.get_FrameGpuTimeUs(canvas)) +
-                 " draw_count=" + Fmt.Int(World3D.get_drawCount(world)) +
-                 " visible_nodes=" + Fmt.Int(World3D.get_visibleNodeCount(world)) +
-                 " entities=" + Fmt.Int(World3D.get_entityCount(world)) +
-                 " bodies=" + Fmt.Int(World3D.get_bodyCount(world)) +
-                 " stream_bytes=" + Fmt.Int(World3D.get_streamResidentBytes(world)) +
+                 " frame_gpu_us=" + Fmt.Int(canvas.FrameGpuTimeUs) +
+                 " draw_count=" + Fmt.Int(world.DrawCount) +
+                 " visible_nodes=" + Fmt.Int(world.VisibleNodeCount) +
+                 " entities=" + Fmt.Int(world.EntityCount) +
+                 " bodies=" + Fmt.Int(world.BodyCount) +
+                 " stream_bytes=" + Fmt.Int(world.StreamResidentBytes) +
                  " resident_cells=" + Fmt.Int(game.getResidentCellCount()) +
                  " resident_tiles=" + Fmt.Int(game.getResidentTerrainTileCount()));
 

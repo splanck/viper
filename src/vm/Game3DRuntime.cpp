@@ -326,22 +326,22 @@ static void registerExtern(const char *name,
 } // namespace
 
 void registerGame3DRuntimeExternals() {
-    registerExtern("Viper.Game3D.World3D.run",
+    registerExtern("Viper.Game3D.World3D.Run",
                    {SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_handler));
-    registerExtern("Viper.Game3D.World3D.runWithOverlay",
+    registerExtern("Viper.Game3D.World3D.RunWithOverlay",
                    {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_with_overlay_handler));
-    registerExtern("Viper.Game3D.World3D.runFixed",
+    registerExtern("Viper.Game3D.World3D.RunFixed",
                    {SigParam::Ptr, SigParam::F64, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_fixed_handler));
-    registerExtern("Viper.Game3D.World3D.runFixedWithOverlay",
+    registerExtern("Viper.Game3D.World3D.RunFixedWithOverlay",
                    {SigParam::Ptr, SigParam::F64, SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_fixed_with_overlay_handler));
-    registerExtern("Viper.Game3D.World3D.runFrames",
+    registerExtern("Viper.Game3D.World3D.RunFrames",
                    {SigParam::Ptr, SigParam::I64, SigParam::F64, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_run_frames_handler));
-    registerExtern("Viper.Game3D.World3D.drawOverlay",
+    registerExtern("Viper.Game3D.World3D.DrawOverlay",
                    {SigParam::Ptr, SigParam::Ptr},
                    reinterpret_cast<void *>(&game3d_draw_overlay_handler));
 }

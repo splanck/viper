@@ -93,7 +93,7 @@ func main() {
         workerHasResult = false;
         workerThread = Thread.StartSafe(&aiWorker, 0);
         while workerThread!.SafeIsAlive() {
-            Viper.Time.SleepMs(1);
+            Viper.Time.Clock.Sleep(1);
         }
         workerThread!.SafeJoin();
         if workerThread!.HasError {

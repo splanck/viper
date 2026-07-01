@@ -128,61 +128,72 @@ final ACTION_LIGHTS = "toggle_lights";
 // =============================================================================
 // GAME STATES (for state machine)
 // =============================================================================
+// Aliases coerce to Integer for Viper.Game.StateMachine's i64 state ids.
 
-final STATE_MENU = 0;
-final STATE_PLAYING = 1;
-final STATE_PAUSED = 2;
-final STATE_GAME_OVER = 3;
-final STATE_WIN = 4;
-final STATE_READY = 5;
-final STATE_DYING = 6;
-final STATE_HIGHSCORES = 7;
-final STATE_OPTIONS = 8;
-final STATE_PROFILE = 9;
-final STATE_SUMMARY = 10;
+enum GameState {
+    Menu, Playing, Paused, GameOver, Win, Ready, Dying,
+    HighScores, Options, Profile, Summary
+}
 
-// =============================================================================
-// DIRECTION CONSTANTS
-// =============================================================================
-
-final DIR_NONE = 0;
-final DIR_UP = 1;
-final DIR_DOWN = 2;
-final DIR_LEFT = 3;
-final DIR_RIGHT = 4;
+final STATE_MENU = GameState.Menu;
+final STATE_PLAYING = GameState.Playing;
+final STATE_PAUSED = GameState.Paused;
+final STATE_GAME_OVER = GameState.GameOver;
+final STATE_WIN = GameState.Win;
+final STATE_READY = GameState.Ready;
+final STATE_DYING = GameState.Dying;
+final STATE_HIGHSCORES = GameState.HighScores;
+final STATE_OPTIONS = GameState.Options;
+final STATE_PROFILE = GameState.Profile;
+final STATE_SUMMARY = GameState.Summary;
 
 // =============================================================================
-// GHOST MODES
+// ENUMS
 // =============================================================================
+// Categorical game values are real enums for type safety and exhaustive `match`.
+// Each family keeps back-compat `final NAME = Enum.Variant` aliases so existing
+// `config.DIR_*` / `config.MODE_*` / … call sites are untouched: the variant
+// values equal the historical integer codes and coerce to Integer where a
+// runtime API (Grid2D, StateMachine, sprite lookups) expects an i64.
 
-final MODE_SCATTER = 0;
-final MODE_CHASE = 1;
-final MODE_FRIGHTENED = 2;
-final MODE_EATEN = 3;
+// Travel / facing direction. DIR_NONE == 0 keeps "no movement" falsey-adjacent.
+enum Direction { None, Up, Down, Left, Right }
 
-// =============================================================================
-// TILE TYPES
-// =============================================================================
+final DIR_NONE = Direction.None;
+final DIR_UP = Direction.Up;
+final DIR_DOWN = Direction.Down;
+final DIR_LEFT = Direction.Left;
+final DIR_RIGHT = Direction.Right;
 
-final TILE_EMPTY = 0;
-final TILE_WALL = 1;
-final TILE_DOT = 2;
-final TILE_PELLET = 3;
-final TILE_GATE = 4;
+// Ghost behaviour mode (the chase/scatter cycle plus power-pellet states).
+enum GhostMode { Scatter, Chase, Frightened, Eaten }
 
-// =============================================================================
-// FRUIT TYPES
-// =============================================================================
+final MODE_SCATTER = GhostMode.Scatter;
+final MODE_CHASE = GhostMode.Chase;
+final MODE_FRIGHTENED = GhostMode.Frightened;
+final MODE_EATEN = GhostMode.Eaten;
 
-final FRUIT_NONE = 0;
-final FRUIT_CHERRY = 1;
-final FRUIT_STRAWBERRY = 2;
-final FRUIT_ORANGE = 3;
-final FRUIT_APPLE = 4;
-final FRUIT_MELON = 5;
-final FRUIT_GALAXIAN = 6;
-final FRUIT_BELL = 7;
-final FRUIT_KEY = 8;
+// Maze cell contents.
+enum TileType { Empty, Wall, Dot, Pellet, Gate }
+
+final TILE_EMPTY = TileType.Empty;
+final TILE_WALL = TileType.Wall;
+final TILE_DOT = TileType.Dot;
+final TILE_PELLET = TileType.Pellet;
+final TILE_GATE = TileType.Gate;
+
+// Bonus fruit, ordered to match the arcade level progression.
+enum FruitType { None, Cherry, Strawberry, Orange, Apple, Melon, Galaxian, Bell, Key }
+
+final FRUIT_NONE = FruitType.None;
+final FRUIT_CHERRY = FruitType.Cherry;
+final FRUIT_STRAWBERRY = FruitType.Strawberry;
+final FRUIT_ORANGE = FruitType.Orange;
+final FRUIT_APPLE = FruitType.Apple;
+final FRUIT_MELON = FruitType.Melon;
+final FRUIT_GALAXIAN = FruitType.Galaxian;
+final FRUIT_BELL = FruitType.Bell;
+final FRUIT_KEY = FruitType.Key;
 
 // =============================================================================
 // TIMING (in frames at 60 FPS)
@@ -192,9 +203,12 @@ final FRAME_TIME = 16;           // ~60 FPS in milliseconds
 final READY_DURATION = 180;      // 3 seconds
 final DEATH_DURATION = 120;      // 2 seconds
 final FRIGHTENED_DURATION = 600; // 10 seconds
+final FRIGHTENED_FLASH_FRAMES = 120; // ghosts flash white in the last 2 seconds
+final GHOST_FLASH_BLINK_FRAMES = 10; // flash toggle cadence while frightened ends
 final MODE_SWITCH_TIME = 420;    // 7 seconds between scatter/chase
 final FRUIT_DURATION = 600;      // 10 seconds
 final POINTS_DISPLAY_TIME = 120; // 2 seconds
+final COMBO_WINDOW_FRAMES = 90;  // how long the ghost-eat combo toast lingers
 
 // =============================================================================
 // EASING TYPES (from rt_tween.h)
@@ -236,3 +250,37 @@ final EXTRA_LIFE_SCORE = 10000;
 final DOT_POINTS = 10;
 final PELLET_POINTS = 50;
 final GHOST_BASE_POINTS = 200;
+
+// =============================================================================
+// GHOST AI TARGETING TUNING
+// =============================================================================
+
+final PINKY_LEAD = 4;          // tiles ahead of Crackman that Pinky aims for
+final INKY_LEAD = 2;           // ahead-of-Crackman anchor Inky reflects through Blinky
+final CLYDE_SCATTER_RADIUS = 8; // Clyde flees to his corner within this manhattan range
+
+// =============================================================================
+// SPAWN & PROGRESSION
+// =============================================================================
+
+final START_LIVES = 3;
+final PACMAN_START_X = 14;
+final PACMAN_START_Y = 23;
+
+// Ghost house geometry (grid coords).
+final GHOST_HOUSE_RETURN_X = 14; // tile an eaten ghost respawns on
+final GHOST_HOUSE_RETURN_Y = 14;
+final GHOST_HOUSE_EXIT_X = 14;   // tile just above the gate ghosts steer toward
+final GHOST_HOUSE_EXIT_Y = 11;
+
+// Staggered ghost-house exit delays (frames) by personality.
+final GHOST_EXIT_DELAY_PINKY = 60;
+final GHOST_EXIT_DELAY_INKY = 180;
+final GHOST_EXIT_DELAY_CLYDE = 300;
+
+// Wait before a respawned (previously eaten) ghost leaves the house again.
+final GHOST_RESPAWN_WAIT = 60;
+
+// Fruit appears when the player has eaten this many dots this level.
+final FRUIT_SPAWN_DOTS_1 = 70;
+final FRUIT_SPAWN_DOTS_2 = 170;

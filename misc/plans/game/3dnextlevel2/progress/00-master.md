@@ -99,8 +99,8 @@ docs/CTest snippets are now covered. A `partial` row with a large
   world-owned effects.
 - Game3D collision wrappers now expose `contactCount`, `contactPoint(i)`,
   `contactNormal(i)`, and `contactSeparation(i)` with ctest + ABI-name
-  coverage. `Physics3DWorld.SolverIterations` / `SetSolverIterations` also
-  landed with a spring-solver effect test. Raw multi-point manifolds and the
+  coverage. `Physics3DWorld.SolverIterations` also landed with a
+  spring-solver effect test. Raw multi-point manifolds and the
   warm-started contact solver remain Phase 8.
 - Mesh-vs-sphere/capsule/box/convex-hull narrow phase now traverses the
   per-mesh physics BVH after the body-centric broadphase selects body

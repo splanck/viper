@@ -316,7 +316,7 @@ class PgConnection {
                 while ci < numCols {
                     var colName = readCString(r, offset);
                     result.columns.add(colName);
-                    offset = offset + String.Length(colName) + 1;  // name + null
+                    offset = offset + Viper.String.get_Length(colName) + 1;  // name + null
                     offset = offset + 18;  // skip: tableOid(4) + colAttr(2) + typeOid(4) + typeLen(2) + typeMod(4) + format(2)
                     ci = ci + 1;
                 }
@@ -456,7 +456,7 @@ class PgConnection {
             offset = offset + 1;
             if fieldType == 0 { return "Unknown error"; }  // terminator
             var fieldVal = readCString(data, offset);
-            offset = offset + String.Length(fieldVal) + 1;
+            offset = offset + Viper.String.get_Length(fieldVal) + 1;
             if fieldType == 77 {  // 'M' = message
                 return fieldVal;
             }

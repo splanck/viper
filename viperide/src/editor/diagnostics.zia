@@ -162,7 +162,7 @@ class LiveDiagnostics {
             pendingGeneration = workScheduler.QueuedGeneration(scheduler.JOB_DIAGNOSTICS);
             workScheduler.Complete(scheduler.JOB_DIAGNOSTICS);
         } else {
-            var now = Viper.Time.GetTickCount();
+            var now = Viper.Time.Clock.Ticks();
             if pending == false or revision != pendingRevision or sourcePath != pendingPath {
                 pending = true;
                 pendingRevision = revision;
@@ -398,7 +398,7 @@ class LiveDiagnostics {
         pendingRevision = engine.GetRevision();
         pendingPath = sourcePath;
         pendingGeneration = 0;
-        lastEditMs = Viper.Time.GetTickCount() - DEBOUNCE_MS;
+        lastEditMs = Viper.Time.Clock.Ticks() - DEBOUNCE_MS;
         if workScheduler != null {
             pendingGeneration = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, pendingRevision, 0);
         }
@@ -430,5 +430,5 @@ expose func ProblemActionForDiagnosticRecord(record: Any) -> String {
 }
 
 func IsSuppressibleDiagnosticCode(code: String) -> Boolean {
-    return Str.Length(code) >= 2 and Str.Left(code, 1) == "W";
+    return Str.get_Length(code) >= 2 and Str.Left(code, 1) == "W";
 }

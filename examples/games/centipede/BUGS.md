@@ -180,10 +180,10 @@ Use the correct function names as listed above.
 There was no way to convert a Number (float) to an Integer. Functions like `Viper.Math.Trunc()`, `Viper.Math.Floor()`, etc. all return Number, not Integer.
 
 **Root Cause:**
-The `Viper.Convert.NumToInt` function was missing from both the semantic analyzer and the runtime.
+The `Viper.Core.Convert.NumToInt` function was missing from both the semantic analyzer and the runtime.
 
 **Fix:**
-Added `Viper.Convert.NumToInt(num)` which truncates a Number toward zero and returns an Integer:
+Added `Viper.Core.Convert.NumToInt(num)` which truncates a Number toward zero and returns an Integer:
 1. Added `rt_f64_to_i64()` function to `rt_numeric_conv.c`
 2. Added declaration to `rt_numeric.h`
 3. Added to `runtime.def`
@@ -192,10 +192,10 @@ Added `Viper.Convert.NumToInt(num)` which truncates a Number toward zero and ret
 **Correct Usage:**
 ```viper
 var n: Number = 3.7;
-var i: Integer = Viper.Convert.NumToInt(n);  // Returns 3
+var i: Integer = Viper.Core.Convert.NumToInt(n);  // Returns 3
 
 var n2: Number = -2.9;
-var i2: Integer = Viper.Convert.NumToInt(n2);  // Returns -2
+var i2: Integer = Viper.Core.Convert.NumToInt(n2);  // Returns -2
 ```
 
 ---
@@ -229,7 +229,7 @@ var len = items.size();  // Correct
 | #50 | Not a bug | Use `list.set_Item(index, value)` |
 | #51 | FIXED | Fixed by Bug #45 fix |
 | #52 | Docs only | Use correct API names |
-| #53 | FIXED | Added `Viper.Convert.NumToInt(num)` |
+| #53 | FIXED | Added `Viper.Core.Convert.NumToInt(num)` |
 | #54 | Docs only | Use `.size()` not `.count()` |
 
 ## Notes for Future Development

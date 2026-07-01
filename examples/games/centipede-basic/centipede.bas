@@ -326,7 +326,7 @@ Sub ShowLevelComplete()
     Viper.Terminal.SetColor(15, 0)
     PRINT ThePlayer.Score
 
-    Viper.Time.SleepMs(1500)
+    Viper.Time.Clock.Sleep(1500)
 End Sub
 
 ' === MAIN GAME LOOP ===
@@ -500,7 +500,7 @@ Sub PlayGame()
         ThePlayer.Draw()
 
         ' Frame delay
-        Viper.Time.SleepMs(30)
+        Viper.Time.Clock.Sleep(30)
     Loop
 End Sub
 

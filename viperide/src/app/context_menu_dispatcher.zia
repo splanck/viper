@@ -187,14 +187,14 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
     if shell.ctxCopyPath.WasClicked() != 0 {
         var copyPath = context_menus.CurrentContextPath(projMgr, shell);
         if copyPath != "" {
-            GUI.Clipboard.SetText(copyPath);
+            GUI.ClipboardText.SetText(copyPath);
             GUI.Toast.Success("Path copied");
         }
     }
     if shell.ctxCopyRelativePath.WasClicked() != 0 {
         var copyRelPath = context_menus.CurrentContextPath(projMgr, shell);
         if copyRelPath != "" {
-            GUI.Clipboard.SetText(projMgr.RelativePath(copyRelPath));
+            GUI.ClipboardText.SetText(projMgr.RelativePath(copyRelPath));
             GUI.Toast.Success("Relative path copied");
         }
     }
@@ -352,13 +352,13 @@ hide func PumpTabContextMenu(shell: app_shell.AppShell,
     if shell.tcCloseSaved.WasClicked() != 0   { file_commands.handleCloseSaved(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
     if shell.tcCopyPath.WasClicked() != 0 {
         if tabTargetPath != "" {
-            GUI.Clipboard.SetText(tabTargetPath);
+            GUI.ClipboardText.SetText(tabTargetPath);
             GUI.Toast.Success("Path copied");
         }
     }
     if shell.tcCopyRelativePath.WasClicked() != 0 {
         if tabTargetPath != "" {
-            GUI.Clipboard.SetText(projMgr.RelativePath(tabTargetPath));
+            GUI.ClipboardText.SetText(projMgr.RelativePath(tabTargetPath));
             GUI.Toast.Success("Relative path copied");
         }
     }

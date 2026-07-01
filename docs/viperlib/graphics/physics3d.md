@@ -59,7 +59,6 @@ and joint integration.
 | `TryAdd(body)`            | `Boolean(Object)`     | Add a body and report allocation/validation failure without changing the world |
 | `Remove(body)`            | `Void(Object)`        | Remove a body from the world |
 | `ContainsBody(body)`      | `Boolean(Object)`     | Return whether the body is currently registered in the world |
-| `SetSolverIterations(iterations)` | `Void(Integer)` | Tune iterative solver passes, clamped to `1..64` |
 | `SetGravity(x, y, z)`     | `Void(Double, Double, Double)` | Change the gravity vector |
 | `AddJoint(joint, type)`   | `Void(Object, Integer)` | Add a joint (`0 = DistanceJoint3D`, `1 = SpringJoint3D`, `2 = HingeJoint3D`, `3 = RopeJoint3D`, `4 = SixDofJoint3D`) |
 | `RemoveJoint(joint)`      | `Void(Object)`        | Remove a joint from the world |
@@ -285,7 +284,7 @@ sleeping, and optional CCD.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Collider` | Object | Read/Write | Active `Collider3D` attached to the body |
+| `Collider` | `Collider3D` | Read/Write | Active collision shape attached to the body |
 | `Position` | Object (`Vec3`) | Read | World position |
 | `Scale` | Object (`Vec3`) | Read | Collision scale applied to the attached collider |
 | `Orientation` | Object (`Quat`) | Read | World orientation quaternion |
@@ -311,7 +310,6 @@ sleeping, and optional CCD.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetCollider(collider)` | `Void(Object)` | Attach or replace the active collider |
 | `SetPosition(x, y, z)` | `Void(Double, Double, Double)` | Teleport body position |
 | `SetScale(x, y, z)` | `Void(Double, Double, Double)` | Set per-body collider scale |
 | `SetOrientation(quat)` | `Void(Object)` | Set body orientation from a `Viper.Math.Quat` |
@@ -328,7 +326,7 @@ sleeping, and optional CCD.
 
 - `NewAABB()`, `NewSphere()`, and `NewCapsule()` are now convenience factories that create a body,
   create the matching collider, and attach it internally.
-- Use `New(mass)` plus `SetCollider()` when you want reusable, mesh, compound, or heightfield shapes.
+- Use `New(mass)` plus `body.Collider = collider` when you want reusable, mesh, compound, or heightfield shapes.
 - `Scale` is a physics scale, not a renderer transform; Game3D keeps it synchronized from `Entity3D` scale when a body is attached to an entity.
 - `Orientation` uses the runtime quaternion type `Viper.Math.Quat`; `SetOrientation`
   traps when passed any other object type.

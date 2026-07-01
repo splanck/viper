@@ -98,10 +98,10 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 | `ToF64(box)`        | `Double(Object)`          | Unbox double (traps on wrong type)                     |
 | `ToI1(box)`         | `Boolean(Object)`         | Unbox boolean (traps on wrong type)                    |
 | `ToStr(box)`        | `String(Object)`          | Unbox string as a retained result (traps on wrong type) |
-| `TryToI64(box)`     | `Option<Integer>(Object)` | Return `Some(integer)` or `None` on wrong type                    |
-| `TryToF64(box)`     | `Option<Double>(Object)`  | Return `Some(double)` or `None` on wrong type                     |
-| `TryToI1(box)`      | `Option<Boolean>(Object)` | Return `Some(boolean)` or `None` on wrong type                    |
-| `TryToStr(box)`     | `Option<String>(Object)`  | Return `Some(string)` or `None` on wrong type                     |
+| `ToI64Option(box)`  | `Option<Integer>(Object)` | Return `Some(integer)` or `None` on wrong type                    |
+| `ToF64Option(box)`  | `Option<Double>(Object)`  | Return `Some(double)` or `None` on wrong type                     |
+| `ToI1Option(box)`   | `Option<Boolean>(Object)` | Return `Some(boolean)` or `None` on wrong type                    |
+| `ToStrOption(box)`  | `Option<String>(Object)`  | Return `Some(string)` or `None` on wrong type                     |
 | `Type(box)`         | `Integer(Object)`         | Return type tag (0=i64, 1=f64, 2=i1, 3=str)           |
 | `EqI64(box,val)`    | `Boolean(Object,Integer)` | Compare boxed value to integer                         |
 | `EqF64(box,val)`    | `Boolean(Object,Double)`  | Compare boxed value to double                          |
@@ -115,7 +115,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - Unboxing with the wrong type traps with a runtime diagnostic.
 - `ToStr` returns an owned/retained string; generated code releases it like other string-returning runtime calls.
 - String box helpers validate non-null string handles and trap invalid foreign pointers instead of retaining or comparing arbitrary memory.
-- The `TryTo*` forms do not trap for type mismatch and return managed `Option` values. They are aliases of the `To*Option` surface, so Zia and BASIC never need output pointers.
+- The `To*Option` forms do not trap for type mismatch and return managed `Option` values, so Zia and BASIC never need output pointers.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0`/`-0.0` and all NaN payloads. Boxed NaN values compare equal to other boxed NaNs so collection hashing and equality stay compatible.
 - `ValueType(size)` is used by the compiler when boxing structs. Size `0` is valid and creates a managed empty value-type object; negative sizes trap.
@@ -257,31 +257,25 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
 | `IntRadix(s, radix, default)` | `Integer(String, Integer, Integer)` | Parse `s` in the given radix (2–36); return `default` on failure |
-| `Double(text)`              | `Option<Double>(String)`            | Parse runtime string as double; returns `None` if invalid          |
-| `Int64(text)`               | `Option<Integer>(String)`           | Parse runtime string as integer; returns `None` if invalid         |
-| `DoubleOption(text)`        | `Option<Double>(String)`            | Parse string to floating-point; returns `None` if invalid          |
-| `Int64Option(text)`         | `Option<Integer>(String)`           | Parse string to integer; returns `None` if invalid                 |
 
 ### Notes
 
-- `TryInt`, `TryNum`, `TryBool`, `Double`, and `Int64` return managed `Option` values. The lower-level C output-pointer helpers remain runtime-internal.
-- Null input is treated as parse failure: `Try*` and `*Option` return `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
+- `TryInt`, `TryNum`, and `TryBool` return managed `Option` values. The lower-level C output-pointer helpers remain runtime-internal.
+- Null input is treated as parse failure: `Try*` returns `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). Leading `+` and `-` signs are accepted for radix 10 only; non-decimal radices parse unsigned 64-bit bit patterns so formatted hex/binary values can round-trip.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
 - Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings. Decimal overflow and non-finite decimal results are rejected; finite underflow to zero or a subnormal value is accepted.
-- `DoubleOption` and `Int64Option` are stable aliases for the same optional-return behavior. Use any `Option` parse form when invalid input is expected and should be handled gracefully rather than terminating the program.
-
-### Parse.DoubleOption and Parse.Int64Option Example
+### Parse.TryNum and Parse.TryInt Example
 
 ```rust
-var n = Parse.DoubleOption("3.14")    // Some(3.14)
-var bad = Parse.DoubleOption("abc")   // None
+var n = Parse.TryNum("3.14")          // Some(3.14)
+var bad = Parse.TryNum("abc")         // None
 if bad.get_IsNone() then
     Say("Not a number")
 end if
 
-var i = Parse.Int64Option("42")       // Some(42)
-var badInt = Parse.Int64Option("xyz") // None
+var i = Parse.TryInt("42")            // Some(42)
+var badInt = Parse.TryInt("xyz")      // None
 ```
 
 ### Zia Example
@@ -454,15 +448,15 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `Viper.String.Join(separator, items)`          | `String(String, Seq)`      | Joins sequence of strings with separator                         |
 | `Viper.String.SplitFields(text)`                | `Seq(String)`                   | Split by whitespace/CSV-style fields into a managed sequence |
 
-### Conversion Functions (Viper.Convert)
+### Conversion Functions (Viper.Core.Convert)
 
 | Function                                       | Signature                  | Description                              |
 |------------------------------------------------|----------------------------|------------------------------------------|
-| `Viper.Convert.ToString_Int(value)`            | `String(Integer)`          | Convert integer to string                |
-| `Viper.Convert.ToString_Double(value)`         | `String(Double)`           | Convert double to round-trip string      |
-| `Viper.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer (traps on failure) |
-| `Viper.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double, including `NaN` / `Inf` / `-Inf` (traps on failure) |
-| `Viper.Convert.NumToInt(value)`                | `Integer(Number)`          | Convert floating-point Number to Integer (truncates/clamps) |
+| `Viper.Core.Convert.ToString_Int(value)`            | `String(Integer)`          | Convert integer to string                |
+| `Viper.Core.Convert.ToString_Double(value)`         | `String(Double)`           | Convert double to round-trip string      |
+| `Viper.Core.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer (traps on failure) |
+| `Viper.Core.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double, including `NaN` / `Inf` / `-Inf` (traps on failure) |
+| `Viper.Core.Convert.NumToInt(value)`                | `Integer(Number)`          | Convert floating-point Number to Integer (truncates/clamps) |
 
 **Note:** `Convert.NumToInt(3.7)` returns `3`, `NaN` returns `0`, and out-of-range values clamp to the nearest signed 64-bit endpoint. This is distinct from `Convert.ToInt64(str)` which parses from a string.
 

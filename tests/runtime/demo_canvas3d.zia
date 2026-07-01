@@ -46,7 +46,7 @@ func start() {
     var floor_xform = Mat4.Translate(0.0, -1.5, 0.0);
     var time = 0.0;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.04, 0.04, 0.08);
 

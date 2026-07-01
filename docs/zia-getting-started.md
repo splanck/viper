@@ -488,7 +488,7 @@ bind Viper.Graphics;     // Import graphics classes
 func start() {
     Say("Hello from Zia!");           // No need for Viper.Terminal.Say()
     var canvas = new Canvas("Game", 800, 600);
-    Viper.Time.SleepMs(16);           // SleepMs is under Viper.Time
+    Viper.Time.Clock.Sleep(16);           // SleepMs is under Viper.Time
 }
 ```
 
@@ -549,8 +549,8 @@ SetCursorVisible(0);    // Hide cursor
 ### Time Functions
 
 ```rust
-// SleepMs is available as Viper.Time.SleepMs (use fully qualified name or bind)
-Viper.Time.SleepMs(500);        // Sleep for 500 milliseconds
+// SleepMs is available as Viper.Time.Clock.Sleep (use fully qualified name or bind)
+Viper.Time.Clock.Sleep(500);        // Sleep for 500 milliseconds
 ```
 
 ### Math Functions

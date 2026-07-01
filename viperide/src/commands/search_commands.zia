@@ -698,8 +698,8 @@ expose func QuickOpenCommandId(path: String) -> String {
 
 expose func QuickOpenPathFromCommandId(id: String) -> String {
     if Str.StartsWith(id, QUICK_OPEN_ID_PREFIX) == false { return ""; }
-    var prefixLen = Str.Length(QUICK_OPEN_ID_PREFIX);
-    return Str.MidLen(id, prefixLen + 1, Str.Length(id) - prefixLen);
+    var prefixLen = Str.get_Length(QUICK_OPEN_ID_PREFIX);
+    return Str.MidLen(id, prefixLen + 1, Str.get_Length(id) - prefixLen);
 }
 
 func handleWorkspaceSymbols(shell: app_shell.AppShell,
@@ -773,7 +773,7 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
             var lineText = Obj.ToString(Seq.Get(parts, 3));
             if lineText == "0" { continue; }
 
-            var symbolLine = Convert.ToInt(lineText) - lineOff;
+            var symbolLine = Convert.ToInt64(lineText) - lineOff;
             if symbolLine < 1 { continue; }
             if WorkspaceSymbolMatches(name, kind, filePath, needle) == false { continue; }
 
@@ -788,7 +788,7 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
                                                 "line " + symbolLine, typeText,
                                                 name + detail, "");
             var locId = locStore.Add(filePath, symbolLine, 1,
-                                     symbolLine, 1 + Str.Length(name),
+                                     symbolLine, 1 + Str.get_Length(name),
                                      locations.KIND_SYMBOL, name);
             GUI.ListBox.ItemSetData(item, locId);
             resultCount = resultCount + 1;

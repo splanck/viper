@@ -30,9 +30,9 @@ func testBasicOps() {
     assertEqStr(Viper.String.Concat("", ""), "", "concat both empty");
 
     // Length
-    assertEqInt(Viper.String.Length("hello"), 5, "length basic");
-    assertEqInt(Viper.String.Length(""), 0, "length empty");
-    assertEqInt(Viper.String.Length("a"), 1, "length single");
+    assertEqInt(Viper.String.get_Length("hello"), 5, "length basic");
+    assertEqInt(Viper.String.get_Length(""), 0, "length empty");
+    assertEqInt(Viper.String.get_Length("a"), 1, "length single");
 
     // Repeat
     assertEqStr(Viper.String.Repeat("ab", 3), "ababab", "repeat basic");
@@ -149,7 +149,7 @@ func testFlipOps() {
 func testEdgeCases() {
     // Very long string
     var long = Viper.String.Repeat("x", 10000);
-    assertEqInt(Viper.String.Length(long), 10000, "long string length");
+    assertEqInt(Viper.String.get_Length(long), 10000, "long string length");
 
     // Cmp (fixed from Compare)
     assertEqInt(Viper.String.Cmp("a", "b"), -1, "cmp less");

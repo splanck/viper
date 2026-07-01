@@ -10,7 +10,7 @@ func main() {
     Viper.Terminal.Say("");
     Viper.Terminal.Say("--- Length ---");
     Viper.Terminal.Print("Length of '" + s + "': ");
-    Viper.Terminal.SayInt(Viper.String.Length(s));
+    Viper.Terminal.SayInt(Viper.String.get_Length(s));
 
     // Substring
     Viper.Terminal.Say("");

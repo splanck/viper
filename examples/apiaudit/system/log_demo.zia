@@ -2,7 +2,7 @@
 // API Audit: Viper.Diagnostics.Log - Logging Utilities
 // =============================================================================
 // Tests: Debug, Info, Warn, Error, get_Level, set_Level, Enabled,
-//        get_DEBUG, get_INFO, get_WARN, get_ERROR, get_OFF
+//        get_LevelDebug, get_LevelInfo, get_LevelWarn, get_LevelError, get_LevelOff
 // =============================================================================
 
 module LogDemo;
@@ -13,16 +13,16 @@ func start() {
 
     // --- Level Constants ---
     Say("--- Level Constants ---");
-    Say("get_DEBUG:");
-    SayInt(Log.get_DEBUG);
-    Say("get_INFO:");
-    SayInt(Log.get_INFO);
-    Say("get_WARN:");
-    SayInt(Log.get_WARN);
-    Say("get_ERROR:");
-    SayInt(Log.get_ERROR);
-    Say("get_OFF:");
-    SayInt(Log.get_OFF);
+    Say("get_LevelDebug:");
+    SayInt(Log.LevelDebug);
+    Say("get_LevelInfo:");
+    SayInt(Log.LevelInfo);
+    Say("get_LevelWarn:");
+    SayInt(Log.LevelWarn);
+    Say("get_LevelError:");
+    SayInt(Log.LevelError);
+    Say("get_LevelOff:");
+    SayInt(Log.LevelOff);
 
     // --- get_Level (default) ---
     Say("--- get_Level (default) ---");
@@ -31,7 +31,7 @@ func start() {
 
     // --- set_Level to DEBUG ---
     Say("--- set_Level to DEBUG ---");
-    Log.set_Level(Log.get_DEBUG);
+    Log.set_Level(Log.LevelDebug);
     Say("Level set to DEBUG");
     Say("Current level:");
     SayInt(Log.get_Level);
@@ -39,13 +39,13 @@ func start() {
     // --- Enabled ---
     Say("--- Enabled ---");
     Say("Enabled(DEBUG):");
-    SayBool(Log.Enabled(Log.get_DEBUG));
+    SayBool(Log.Enabled(Log.LevelDebug));
     Say("Enabled(INFO):");
-    SayBool(Log.Enabled(Log.get_INFO));
+    SayBool(Log.Enabled(Log.LevelInfo));
     Say("Enabled(WARN):");
-    SayBool(Log.Enabled(Log.get_WARN));
+    SayBool(Log.Enabled(Log.LevelWarn));
     Say("Enabled(ERROR):");
-    SayBool(Log.Enabled(Log.get_ERROR));
+    SayBool(Log.Enabled(Log.LevelError));
 
     // --- Debug ---
     Say("--- Debug ---");
@@ -65,23 +65,23 @@ func start() {
 
     // --- Change level to ERROR only ---
     Say("--- Level = ERROR ---");
-    Log.set_Level(Log.get_ERROR);
+    Log.set_Level(Log.LevelError);
     Say("Level set to ERROR");
     Say("Enabled(DEBUG):");
-    SayBool(Log.Enabled(Log.get_DEBUG));
+    SayBool(Log.Enabled(Log.LevelDebug));
     Say("Enabled(INFO):");
-    SayBool(Log.Enabled(Log.get_INFO));
+    SayBool(Log.Enabled(Log.LevelInfo));
     Say("Enabled(WARN):");
-    SayBool(Log.Enabled(Log.get_WARN));
+    SayBool(Log.Enabled(Log.LevelWarn));
     Say("Enabled(ERROR):");
-    SayBool(Log.Enabled(Log.get_ERROR));
+    SayBool(Log.Enabled(Log.LevelError));
 
     // --- Level = OFF ---
     Say("--- Level = OFF ---");
-    Log.set_Level(Log.get_OFF);
+    Log.set_Level(Log.LevelOff);
     Say("Level set to OFF");
     Say("Enabled(ERROR):");
-    SayBool(Log.Enabled(Log.get_ERROR));
+    SayBool(Log.Enabled(Log.LevelError));
 
     Say("=== Log Demo Complete ===");
 }

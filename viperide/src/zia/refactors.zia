@@ -111,7 +111,7 @@ expose func ExtractLocalVariableText(source: String,
     }
 
     var line = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, startLine)));
-    if endCol > Str.Length(line) { return source; }
+    if endCol > Str.get_Length(line) { return source; }
 
     var expr = Str.MidLen(line, startCol + 1, endCol - startCol);
     var trimmedExpr = Str.Trim(expr);
@@ -182,7 +182,7 @@ expose func ExtractFunctionText(source: String,
     var firstLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, rangeStart)));
     var lastLine = text_utils.StripTrailingCr(Obj.ToString(Seq.Get(lines, rangeEnd)));
     if startCol > text_utils.LeadingWhitespaceLength(firstLine) { return source; }
-    if endCol < Str.Length(lastLine) { return source; }
+    if endCol < Str.get_Length(lastLine) { return source; }
 
     var funcStart = source_scan.EnclosingZiaFunctionStartLine(source, rangeStart + 1);
     if funcStart <= 0 { return source; }
@@ -401,10 +401,10 @@ func LineAssignsToIdentifier(line: String,
     var pos = 1;
     var inString = false;
     var escape = false;
-    while pos <= Str.Length(line) {
+    while pos <= Str.get_Length(line) {
         var ch = Str.MidLen(line, pos, 1);
         var next = "";
-        if pos < Str.Length(line) {
+        if pos < Str.get_Length(line) {
             next = Str.MidLen(line, pos + 1, 1);
         }
         if inString {
@@ -427,7 +427,7 @@ func LineAssignsToIdentifier(line: String,
         if identifier_utils.IsIdentStart(ch) {
             var start = pos;
             var ident = "";
-            while pos <= Str.Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
+            while pos <= Str.get_Length(line) and identifier_utils.IsIdentPart(Str.MidLen(line, pos, 1)) {
                 ident = ident + Str.MidLen(line, pos, 1);
                 pos = pos + 1;
             }
@@ -451,10 +451,10 @@ func LineAssignsToIdentifier(line: String,
 /// @return True for `=`, compound assignments, `++`, or `--`.
 func InlineLocalAssignmentOperatorAt(line: String,
                                      pos: Integer) -> Boolean {
-    if pos > Str.Length(line) { return false; }
+    if pos > Str.get_Length(line) { return false; }
     var op = Str.MidLen(line, pos, 1);
     var next = "";
-    if pos < Str.Length(line) {
+    if pos < Str.get_Length(line) {
         next = Str.MidLen(line, pos + 1, 1);
     }
     if op == "=" {

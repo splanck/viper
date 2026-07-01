@@ -33,8 +33,8 @@ func start() {
 
     // Floor node
     var floor_node = SceneNode.New();
-    SceneNode.set_Mesh(floor_node, floor_mesh);
-    SceneNode.set_Material(floor_node, floor_mat);
+    floor_node.Mesh = floor_mesh;
+    floor_node.Material = floor_mat;
     SceneNode.SetPosition(floor_node, 0.0, -1.0, 0.0);
     SceneGraph.Add(scene, floor_node);
 
@@ -42,14 +42,14 @@ func start() {
     var i = 0;
     while (i < 10) {
         var node = SceneNode.New();
-        SceneNode.set_Mesh(node, sphere_hi); // base mesh = high detail
+        node.Mesh = sphere_hi; // base mesh = high detail
         if (i % 3 == 0) {
-            SceneNode.set_Material(node, mat_red);
+            node.Material = mat_red;
         } else {
             if (i % 3 == 1) {
-                SceneNode.set_Material(node, mat_green);
+                node.Material = mat_green;
             } else {
-                SceneNode.set_Material(node, mat_blue);
+                node.Material = mat_blue;
             }
         }
 
@@ -73,7 +73,7 @@ func start() {
 
     var time = 0.0;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 

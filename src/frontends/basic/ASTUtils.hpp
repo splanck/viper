@@ -405,8 +405,8 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 
 /// @brief Recursively collects qualified name segments from an expression.
 /// @details Walks a chain of VarExpr or MemberAccessExpr nodes to build a list
-///          of name segments. For example, `Viper.String.Length` produces
-///          ["Viper", "String", "Length"].
+///          of name segments. For example, `Viper.String.get_Length` produces
+///          ["Viper", "String", "get_Length"].
 /// @param expr Expression to traverse.
 /// @param out Vector to accumulate name segments.
 /// @return True if the expression forms a valid qualified name, false otherwise.

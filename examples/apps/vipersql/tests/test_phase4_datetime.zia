@@ -27,14 +27,14 @@ func main() -> Integer {
     var dtVal = val(r, 0, 0);
     Terminal.Say("DATETIME result: " + dtVal);
     // Should contain 2025 and 06 and 15
-    assert(String.Length(dtVal) >= 10, "DATETIME returns a string: " + dtVal);
+    assert(Viper.String.get_Length(dtVal) >= 10, "DATETIME returns a string: " + dtVal);
 
     // DATETIME with just date (no time)
     r = exec.executeSql("SELECT DATETIME(2025, 1, 1)");
     assertSuccess(r, "DATETIME date only");
     var dtVal2 = val(r, 0, 0);
     Terminal.Say("DATETIME date-only result: " + dtVal2);
-    assert(String.Length(dtVal2) >= 10, "DATETIME date-only is a string: " + dtVal2);
+    assert(Viper.String.get_Length(dtVal2) >= 10, "DATETIME date-only is a string: " + dtVal2);
 
     //=========================================================================
     // YEAR, MONTH, DAY extraction
@@ -139,26 +139,26 @@ func main() -> Integer {
     assertSuccess(r, "NOW()");
     var nowVal = val(r, 0, 0);
     Terminal.Say("NOW() = " + nowVal);
-    assert(String.Length(nowVal) >= 10, "NOW() returns datetime string: " + nowVal);
+    assert(Viper.String.get_Length(nowVal) >= 10, "NOW() returns datetime string: " + nowVal);
     assert(nowVal != "NULL", "NOW() is not NULL");
 
     r = exec.executeSql("SELECT CURRENT_DATE");
     assertSuccess(r, "CURRENT_DATE");
     var cdVal = val(r, 0, 0);
     Terminal.Say("CURRENT_DATE = " + cdVal);
-    assert(String.Length(cdVal) == 10, "CURRENT_DATE is YYYY-MM-DD: " + cdVal);
+    assert(Viper.String.get_Length(cdVal) == 10, "CURRENT_DATE is YYYY-MM-DD: " + cdVal);
 
     r = exec.executeSql("SELECT CURRENT_TIME");
     assertSuccess(r, "CURRENT_TIME");
     var ctVal = val(r, 0, 0);
     Terminal.Say("CURRENT_TIME = " + ctVal);
-    assert(String.Length(ctVal) == 8, "CURRENT_TIME is HH:MM:SS: " + ctVal);
+    assert(Viper.String.get_Length(ctVal) == 8, "CURRENT_TIME is HH:MM:SS: " + ctVal);
 
     r = exec.executeSql("SELECT CURRENT_TIMESTAMP");
     assertSuccess(r, "CURRENT_TIMESTAMP");
     var ctsVal = val(r, 0, 0);
     Terminal.Say("CURRENT_TIMESTAMP = " + ctsVal);
-    assert(String.Length(ctsVal) >= 10, "CURRENT_TIMESTAMP is datetime: " + ctsVal);
+    assert(Viper.String.get_Length(ctsVal) >= 10, "CURRENT_TIMESTAMP is datetime: " + ctsVal);
 
     //=========================================================================
     // DAYOFWEEK

@@ -381,17 +381,17 @@ class SqlIndex {
             prefix = prefix + keyValues.get(i).toString();
             i = i + 1;
         }
-        var prefixLen = Viper.String.Length(prefix);
+        var prefixLen = Viper.String.get_Length(prefix);
 
         i = 0;
         while i < entries.count() {
             var entry = entries.get(i);
             var ks = entry.keyString;
-            if Viper.String.Length(ks) >= prefixLen {
+            if Viper.String.get_Length(ks) >= prefixLen {
                 var sub = Viper.String.Substring(ks, 0, prefixLen);
                 if sub == prefix {
                     // Full-segment boundary check.
-                    if Viper.String.Length(ks) == prefixLen || Viper.String.Substring(ks, prefixLen, 1) == "|" {
+                    if Viper.String.get_Length(ks) == prefixLen || Viper.String.Substring(ks, prefixLen, 1) == "|" {
                         results.add(entry.rowIndex);
                     }
                 }

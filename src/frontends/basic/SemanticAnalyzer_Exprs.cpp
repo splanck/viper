@@ -140,34 +140,12 @@ static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target
 }
 
 static std::string saferRuntimePointerAlternative(std::string_view target) {
-    if (target == "Viper.Core.Parse.Double")
-        return "Viper.Core.Parse.DoubleOption";
-    if (target == "Viper.Core.Parse.Int64")
-        return "Viper.Core.Parse.Int64Option";
     if (target == "Viper.Core.Parse.TryInt")
-        return "Viper.Core.Parse.Int64Option or Viper.Core.Parse.IntOr";
+        return "Viper.Core.Parse.IntOr";
     if (target == "Viper.Core.Parse.TryNum")
-        return "Viper.Core.Parse.DoubleOption or Viper.Core.Parse.NumOr";
+        return "Viper.Core.Parse.NumOr";
     if (target == "Viper.Core.Parse.TryBool")
         return "Viper.Core.Parse.BoolOr";
-    if (target == "Viper.Core.Box.TryToI64")
-        return "Viper.Core.Box.ToI64Option";
-    if (target == "Viper.Core.Box.TryToF64")
-        return "Viper.Core.Box.ToF64Option";
-    if (target == "Viper.Core.Box.TryToI1")
-        return "Viper.Core.Box.ToI1Option";
-    if (target == "Viper.Core.Box.TryToStr")
-        return "Viper.Core.Box.ToStrOption";
-    if (target == "Viper.String.SplitFields")
-        return "Viper.String.SplitFieldsSeq";
-    if (target == "Viper.Graphics.Canvas.Polyline")
-        return "Viper.Graphics.Canvas.PolylinePath";
-    if (target == "Viper.Graphics.Canvas.Polygon")
-        return "Viper.Graphics.Canvas.PolygonPath";
-    if (target == "Viper.Graphics.Canvas.PolygonFrame")
-        return "Viper.Graphics.Canvas.PolygonFramePath";
-    if (target == "Viper.Game.ParticleEmitter.Get")
-        return "Viper.Game.ParticleEmitter.ParticleAt";
     return {};
 }
 

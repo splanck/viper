@@ -28,7 +28,7 @@ func start() {
         i = i + 1;
     }
 
-    var worldPos = Mat4.TransformPoint(SceneNode.get_WorldMatrix(child), Vec3.Zero());
+    var worldPos = Mat4.TransformPoint(child.WorldMatrix, Vec3.Zero());
     if (Vec3.get_X(worldPos) < 3.65 || Vec3.get_X(worldPos) > 4.35 || Vec3.get_Z(worldPos) < 3.65 ||
         Vec3.get_Z(worldPos) > 4.35) {
         Say("FAIL: NavAgent3D should drive a bound SceneNode to the target in world space");

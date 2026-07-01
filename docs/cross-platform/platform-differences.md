@@ -186,7 +186,7 @@ Float-to-string and string-to-float conversions use locale-independent formattin
 | macOS | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
 | Linux | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
 
-**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Viper.Text.Fmt.Num()` and the `Viper.Parse` numeric helpers are locale-independent and round-trip consistent for finite values emitted by `Fmt.Num`.
+**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Viper.Text.Fmt.Num()` and the `Viper.Core.Parse` numeric helpers are locale-independent and round-trip consistent for finite values emitted by `Fmt.Num`.
 
 ---
 

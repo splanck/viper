@@ -16,9 +16,9 @@ func start() {
     var mat = Viper.Graphics3D.Material3D.NewColor(0.8, 0.2, 0.2);
     var transform = Viper.Math.Mat4.Identity();
 
-    var w = Viper.Graphics3D.Canvas3D.get_Width(canvas);
-    var h = Viper.Graphics3D.Canvas3D.get_Height(canvas);
-    var backend = Viper.Graphics3D.Canvas3D.get_Backend(canvas);
+    var w = Viper.Graphics3D.canvas.Width;
+    var h = Viper.Graphics3D.canvas.Height;
+    var backend = Viper.Graphics3D.canvas.Backend;
 
     // Render 3 frames then exit
     var frame = 0;

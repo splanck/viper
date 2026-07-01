@@ -330,7 +330,7 @@ func AddSignatureMetadata(display: String, documentation: String, source: String
 
 func ShortInlineText(text: String, limit: Integer) -> String {
     var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
-    if limit <= 0 or Str.Length(cleaned) <= limit {
+    if limit <= 0 or Str.get_Length(cleaned) <= limit {
         return cleaned;
     }
     if limit <= 3 {
@@ -353,10 +353,10 @@ func ActiveParameter(source: String, line: Integer, col0: Integer) -> Integer {
     var row = lineIdx;
     while row >= minLine {
         var text = Obj.ToString(Seq.Get(lines, row));
-        var pos = Str.Length(text);
+        var pos = Str.get_Length(text);
         if row == lineIdx {
             pos = col0;
-            if pos > Str.Length(text) { pos = Str.Length(text); }
+            if pos > Str.get_Length(text) { pos = Str.get_Length(text); }
         }
         while pos >= 1 {
             var ch = Str.MidLen(text, pos, 1);
@@ -390,10 +390,10 @@ func IsInsideCall(source: String, line: Integer, col0: Integer) -> Boolean {
     var row = lineIdx;
     while row >= minLine {
         var text = Obj.ToString(Seq.Get(lines, row));
-        var pos = Str.Length(text);
+        var pos = Str.get_Length(text);
         if row == lineIdx {
             pos = col0;
-            if pos > Str.Length(text) { pos = Str.Length(text); }
+            if pos > Str.get_Length(text) { pos = Str.get_Length(text); }
         }
         while pos >= 1 {
             var ch = Str.MidLen(text, pos, 1);

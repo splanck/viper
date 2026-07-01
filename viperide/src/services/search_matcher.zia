@@ -140,10 +140,10 @@ expose func FindLiteralLineMatch(line: String,
     }
     var idx = Str.IndexOf(hay, needle);
     while idx != 0 {
-        if wholeWord == false or IsWholeWordMatch(hay, idx, Str.Length(needle)) {
+        if wholeWord == false or IsWholeWordMatch(hay, idx, Str.get_Length(needle)) {
             match.matched = true;
             match.startCol = idx;
-            match.length = Str.Length(needle);
+            match.length = Str.get_Length(needle);
             return match;
         }
         idx = Str.IndexOfFrom(hay, idx + 1, needle);
@@ -171,7 +171,7 @@ expose func FindRegexLineMatch(line: String,
         pattern = Str.ToLower(pattern);
     }
 
-    var textLen = Str.Length(text);
+    var textLen = Str.get_Length(text);
     if Str.StartsWith(pattern, "^") {
         var anchoredEnd = RegexMatchHere(text, pattern, 1, 2);
         if anchoredEnd > 1 {
@@ -212,12 +212,12 @@ func RegexMatchHere(text: String,
                     pattern: String,
                     textPos: Integer,
                     patternPos: Integer) -> Integer {
-    var patternLen = Str.Length(pattern);
+    var patternLen = Str.get_Length(pattern);
     if patternPos > patternLen { return textPos; }
 
     var ch = Str.MidLen(pattern, patternPos, 1);
     if ch == "$" and patternPos == patternLen {
-        if textPos > Str.Length(text) { return textPos; }
+        if textPos > Str.get_Length(text) { return textPos; }
         return 0;
     }
 
@@ -288,7 +288,7 @@ func RegexMatchRepeat(text: String,
 /// @param patternPos 1-based position of the atom start.
 /// @return 1-based position after the atom.
 func RegexAtomEnd(pattern: String, patternPos: Integer) -> Integer {
-    var patternLen = Str.Length(pattern);
+    var patternLen = Str.get_Length(pattern);
     var ch = Str.MidLen(pattern, patternPos, 1);
     if ch == "\\" {
         if patternPos < patternLen { return patternPos + 2; }
@@ -311,9 +311,9 @@ func RegexAtomMatchesAt(text: String,
                         textPos: Integer,
                         pattern: String,
                         patternPos: Integer) -> Boolean {
-    if textPos > Str.Length(text) { return false; }
+    if textPos > Str.get_Length(text) { return false; }
     var textCh = Str.MidLen(text, textPos, 1);
-    var patternLen = Str.Length(pattern);
+    var patternLen = Str.get_Length(pattern);
     var patCh = Str.MidLen(pattern, patternPos, 1);
     if patCh == "." { return true; }
     if patCh == "\\" {
@@ -337,7 +337,7 @@ func RegexAtomMatchesAt(text: String,
 /// @return 1-based closing bracket position, or zero if unterminated.
 func RegexClassEnd(pattern: String, patternPos: Integer) -> Integer {
     var i = patternPos + 1;
-    var patternLen = Str.Length(pattern);
+    var patternLen = Str.get_Length(pattern);
     if i <= patternLen and Str.MidLen(pattern, i, 1) == "^" {
         i = i + 1;
     }
@@ -406,7 +406,7 @@ func IsWholeWordMatch(text: String, startCol: Integer, len: Integer) -> Boolean 
         beforeOk = IsIdentifierChar(Str.MidLen(text, startCol - 1, 1)) == false;
     }
     var afterCol = startCol + len;
-    if afterCol <= Str.Length(text) {
+    if afterCol <= Str.get_Length(text) {
         afterOk = IsIdentifierChar(Str.MidLen(text, afterCol, 1)) == false;
     }
     return beforeOk and afterOk;

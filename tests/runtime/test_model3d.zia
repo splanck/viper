@@ -12,14 +12,14 @@ func start() {
     var mesh = Mesh3D.NewBox(1.0, 2.0, 3.0);
     var mat = Material3D.NewColor(0.2, 0.4, 0.8);
 
-    SceneNode.set_Name(parent, "parent");
-    SceneNode.set_Name(child, "child");
+    parent.Name = "parent";
+    child.Name = "child";
     SceneNode.SetPosition(parent, 1.0, 2.0, 3.0);
     SceneNode.SetPosition(child, 0.0, 5.0, 0.0);
-    SceneNode.set_Mesh(parent, mesh);
-    SceneNode.set_Material(parent, mat);
-    SceneNode.set_Mesh(child, mesh);
-    SceneNode.set_Material(child, mat);
+    parent.Mesh = mesh;
+    parent.Material = mat;
+    child.Mesh = mesh;
+    child.Material = mat;
     SceneNode.AddChild(parent, child);
     SceneGraph.Add(scene, parent);
 

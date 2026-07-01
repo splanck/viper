@@ -551,7 +551,7 @@ func ApplySaveTextRules(text: String) -> String {
         while i < Seq.get_Length(lines) {
             var line = Obj.ToString(Seq.Get(lines, i));
             if Str.EndsWith(line, "\r") {
-                line = Str.Left(line, Str.Length(line) - 1);
+                line = Str.Left(line, Str.get_Length(line) - 1);
             }
             line = TrimLineRightWhitespace(line);
             if i > 0 { result = result + eol; }
@@ -567,7 +567,7 @@ func ApplySaveTextRules(text: String) -> String {
 }
 
 func TrimLineRightWhitespace(line: String) -> String {
-    var end = Str.Length(line);
+    var end = Str.get_Length(line);
     while end > 0 {
         var ch = Str.MidLen(line, end, 1);
         if ch != " " and ch != "\t" { break; }

@@ -39,7 +39,7 @@ class BaseballFieldDemo {
         Canvas3D.EnableShadows(canvas, 0);
         Canvas3D.SetOcclusionCulling(canvas, false);
 
-        backendName = Canvas3D.get_Backend(canvas);
+        backendName = canvas.Backend;
 
         var aspect = (width + 0.0) / (height + 0.0);
         camera = Camera3D.New(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
@@ -67,10 +67,10 @@ class BaseballFieldDemo {
     }
 
     expose func run() {
-        while (Canvas3D.get_ShouldClose(canvas) == false && quitRequested == false) {
+        while (canvas.ShouldClose == false && quitRequested == false) {
             Canvas3D.Poll(canvas);
 
-            var dt = (Canvas3D.get_DeltaTime(canvas) + 0.0) / 1000.0;
+            var dt = (canvas.DeltaTime + 0.0) / 1000.0;
             if (dt <= 0.0) { dt = 0.016; }
             if (dt > config.DT_MAX_SEC) { dt = config.DT_MAX_SEC; }
 
@@ -132,8 +132,8 @@ class BaseballFieldDemo {
     }
 
     hide func normalizeFieldRoot() {
-        var minV = SceneNode.get_AABBMin(fieldRoot);
-        var maxV = SceneNode.get_AABBMax(fieldRoot);
+        var minV = fieldRoot.AABBMin;
+        var maxV = fieldRoot.AABBMax;
 
         var rawSpanX = Vec3.get_X(maxV) - Vec3.get_X(minV);
         var rawSpanY = Vec3.get_Y(maxV) - Vec3.get_Y(minV);

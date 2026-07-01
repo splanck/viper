@@ -15,22 +15,29 @@
 
 #include <string>
 
-TEST(RuntimeWishlistBindings, CanvasDeltaAliasesAreRegistered) {
+TEST(RuntimeWishlistBindings, CanvasDeltaPropertiesAreRegistered) {
     const auto &registry = il::runtime::RuntimeRegistry::instance();
 
-    auto dtMs = registry.findProperty("Viper.Graphics.Canvas", "DeltaTimeMs");
-    ASSERT_TRUE(dtMs.has_value());
-    EXPECT_EQ(dtMs->type, il::runtime::ILScalarType::I64);
-    EXPECT_EQ(std::string(dtMs->getter), "Viper.Graphics.Canvas.get_DeltaTimeMs");
+    auto dt = registry.findProperty("Viper.Graphics.Canvas", "DeltaTime");
+    ASSERT_TRUE(dt.has_value());
+    EXPECT_EQ(dt->type, il::runtime::ILScalarType::I64);
+    EXPECT_EQ(std::string(dt->getter), "Viper.Graphics.Canvas.get_DeltaTime");
+
+    auto oldDtMs = registry.findProperty("Viper.Graphics.Canvas", "DeltaTimeMs");
+    EXPECT_FALSE(oldDtMs.has_value());
 
     auto dtSec = registry.findProperty("Viper.Graphics.Canvas", "DeltaTimeSec");
     ASSERT_TRUE(dtSec.has_value());
     EXPECT_EQ(dtSec->type, il::runtime::ILScalarType::F64);
     EXPECT_EQ(std::string(dtSec->getter), "Viper.Graphics.Canvas.get_DeltaTimeSec");
 
-    auto dt3dMs = registry.findProperty("Viper.Graphics3D.Canvas3D", "DeltaTimeMs");
-    ASSERT_TRUE(dt3dMs.has_value());
-    EXPECT_EQ(dt3dMs->type, il::runtime::ILScalarType::I64);
+    auto dt3d = registry.findProperty("Viper.Graphics3D.Canvas3D", "DeltaTime");
+    ASSERT_TRUE(dt3d.has_value());
+    EXPECT_EQ(dt3d->type, il::runtime::ILScalarType::I64);
+    EXPECT_EQ(std::string(dt3d->getter), "Viper.Graphics3D.Canvas3D.get_DeltaTime");
+
+    auto oldDt3dMs = registry.findProperty("Viper.Graphics3D.Canvas3D", "DeltaTimeMs");
+    EXPECT_FALSE(oldDt3dMs.has_value());
 
     auto dt3dSec = registry.findProperty("Viper.Graphics3D.Canvas3D", "DeltaTimeSec");
     ASSERT_TRUE(dt3dSec.has_value());

@@ -56,8 +56,8 @@ func main() {
     Terminal.Say("VALUES");
     Terminal.Say("ACT_LEFT=" + ACT_LEFT);
     Terminal.Say("ACT_RIGHT=" + ACT_RIGHT);
-    sayInt("ACT_LEFT_LEN", String.Length(ACT_LEFT));
-    sayInt("ACT_RIGHT_LEN", String.Length(ACT_RIGHT));
+    sayInt("ACT_LEFT_LEN", Viper.String.get_Length(ACT_LEFT));
+    sayInt("ACT_RIGHT_LEN", Viper.String.get_Length(ACT_RIGHT));
 
     Terminal.Say("EXISTS");
     sayBool("exists_ACT_LEFT", Action.Exists(ACT_LEFT));

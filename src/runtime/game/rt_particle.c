@@ -749,7 +749,7 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
                                double *out_y,
                                double *out_size,
                                int64_t *out_color) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Get: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter, "ParticleEmitter.ParticleAt: expected Viper.Game.ParticleEmitter");
     if (!emitter || index < 0)
         return 0;
 

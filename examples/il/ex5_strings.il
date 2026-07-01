@@ -1,7 +1,7 @@
 il 0.1
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
-extern @Viper.String.Length(str) -> i64
+extern @Viper.String.get_Length(str) -> i64
 extern @Viper.String.Concat(str, str) -> str
 extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Equals(str, str) -> i1
@@ -40,7 +40,7 @@ entry:
   %nl0 = const_str @.L4
   call @Viper.Terminal.PrintStr(%nl0)
 
-  %len = call @Viper.String.Length(%c3)
+  %len = call @Viper.String.get_Length(%c3)
   store i64, %l_slot, %len
   call @Viper.Terminal.PrintI64(%len)
   %nl1 = const_str @.L4

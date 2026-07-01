@@ -144,7 +144,7 @@ Counts via `scripts/count_sloc.sh` (production 668,733 / test 278,412 / demo 192
 ### Standard-library namespace de-clutter (breaking)
 
 - Seven root modules re-home under their documented `docs/viperlib/` taxonomy: `Lazy`/`LazySeq` → `Viper.Functional`, `Machine`/`Environment`/`Exec` → `Viper.System`, `Log` → `Viper.Diagnostics`, `Fmt` → `Viper.Text`. Hard rename, no compatibility aliases; `Math`, `String`, `Terminal`, and intrinsic `Option`/`Result`/`Error` stay at root.
-- `runtime.def` paths, `obj<…>` type tokens, relocated `RT_ALIAS` names, the codegen native-vs-runtime classification predicates, and ~410 consumer files across `src/`, `tests/`, `examples/`, `docs/`, and `misc/` were rewritten atomically.
+- `runtime.def` paths, `obj<…>` type tokens, relocated runtime names, the codegen native-vs-runtime classification predicates, and ~410 consumer files across `src/`, `tests/`, `examples/`, `docs/`, and `misc/` were rewritten atomically.
 
 ### Zia language stability
 

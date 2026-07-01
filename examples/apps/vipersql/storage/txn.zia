@@ -174,7 +174,7 @@ class TableLockManager {
             Threads.Monitor.Exit(monitor);
 
             // Wait and retry
-            Time.SleepMs(LOCK_RETRY_INTERVAL_MS);
+            Time.Clock.Sleep(LOCK_RETRY_INTERVAL_MS);
             waited = waited + LOCK_RETRY_INTERVAL_MS;
         }
 
@@ -378,7 +378,7 @@ class RowLockManager {
             Threads.Monitor.Exit(monitor);
 
             // Wait and retry
-            Time.SleepMs(ROW_LOCK_RETRY_MS);
+            Time.Clock.Sleep(ROW_LOCK_RETRY_MS);
             waited = waited + ROW_LOCK_RETRY_MS;
         }
 

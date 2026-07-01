@@ -30,10 +30,9 @@ extern @Viper.String.Join(str, ptr) -> str
 extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
 extern @Viper.Terminal.ReadLine() -> str
-extern @Viper.Core.Convert.ToInt(str) -> i64
+extern @Viper.Core.Convert.ToInt64(str) -> i64
 extern @rt_arr_i64_new(i64) -> ptr
 extern @rt_arr_i64_len(ptr) -> i64
 extern @rt_arr_i64_get(ptr, i64) -> i64
@@ -60,7 +59,7 @@ L10:
   .loc 1 1 4
   %t4:str = call @Viper.Terminal.ReadLine()
   .loc 1 1 4
-  %t5:i64 = call @Viper.Core.Convert.ToInt(%t4)
+  %t5:i64 = call @Viper.Core.Convert.ToInt64(%t4)
   .loc 1 1 4
   store i64, %t2, %t5
   .loc 1 1 4

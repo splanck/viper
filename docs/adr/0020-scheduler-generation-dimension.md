@@ -25,7 +25,7 @@ But its core `editor/scheduler.zia` (435 LOC) can't be built on `Scheduler`,
 because the one thing it needs the API can't express: a key's due entry carries no
 **identity over time**. `IsDue("diag:foo")` tells you the timer elapsed, not
 *which* revision's work elapsed — so it can't tell a current result from a
-superseded one. ViperIDE therefore hand-rolls timing on raw `Viper.Time.GetTickCount()`,
+superseded one. ViperIDE therefore hand-rolls timing on raw `Viper.Time.Clock.Ticks()`,
 a pattern that recurs in `editor/hover.zia`, `editor/diagnostics.zia`,
 `editor/completion.zia` (15+ sites).
 

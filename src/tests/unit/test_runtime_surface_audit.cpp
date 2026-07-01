@@ -144,6 +144,14 @@ std::string readText(const fs::path &path) {
     return ss.str();
 }
 
+std::string lowerAscii(std::string_view input) {
+    std::string out;
+    out.reserve(input.size());
+    for (char ch : input)
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    return out;
+}
+
 std::string stripComments(std::string input) {
     std::string out;
     out.reserve(input.size());
@@ -225,22 +233,13 @@ std::unordered_map<std::string, std::string> runtimeDefCanonicalsToSymbols() {
     const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
     const std::regex funcRe(
         R"RTFUNC(RT_FUNC\(\s*([A-Za-z0-9_]+)\s*,\s*(rt_[A-Za-z0-9_]+)\s*,\s*"([^"]+)")RTFUNC");
-    const std::regex aliasRe(R"RTALIAS(RT_ALIAS\(\s*"([^"]+)"\s*,\s*([A-Za-z0-9_]+)\s*\))RTALIAS");
     std::unordered_map<std::string, std::string> out;
-    std::unordered_map<std::string, std::string> idsToSymbols;
 
     for (std::sregex_iterator it(text.begin(), text.end(), funcRe), end; it != end; ++it) {
-        const std::string id = (*it)[1].str();
         const std::string symbol = (*it)[2].str();
-        idsToSymbols.emplace(id, symbol);
         out.emplace((*it)[3].str(), symbol);
     }
 
-    for (std::sregex_iterator it(text.begin(), text.end(), aliasRe), end; it != end; ++it) {
-        const auto target = idsToSymbols.find((*it)[2].str());
-        if (target != idsToSymbols.end())
-            out.emplace((*it)[1].str(), target->second);
-    }
     return out;
 }
 
@@ -507,6 +506,28 @@ TEST(RuntimeSurfaceAudit, ExpectedRuntimePropertiesExistInCatalog) {
         }
         EXPECT_TRUE(found);
     }
+}
+
+TEST(RuntimeSurfaceAudit, RuntimeCatalogHasNoPropertyMethodNameCollisions) {
+    std::vector<std::string> failures;
+
+    for (const auto &cls : il::runtime::runtimeClassCatalog()) {
+        std::unordered_map<std::string, std::string> propsByLower;
+        for (const auto &prop : cls.properties)
+            propsByLower.emplace(lowerAscii(prop.name), prop.name);
+
+        for (const auto &method : cls.methods) {
+            const auto propIt = propsByLower.find(lowerAscii(method.name));
+            if (propIt != propsByLower.end()) {
+                failures.push_back(std::string(cls.qname) + "." + propIt->second +
+                                   " collides with method " + method.name);
+            }
+        }
+    }
+
+    for (const std::string &failure : failures)
+        std::cerr << "Runtime property/method collision: " << failure << "\n";
+    EXPECT_TRUE(failures.empty());
 }
 
 TEST(RuntimeSurfaceAudit, GuiVideoWidgetReadWritePropertiesHaveGetterAndSetterTargets) {

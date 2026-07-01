@@ -1398,7 +1398,7 @@ class QueryHandler {
             var activeIndices = new List[Integer]();
             if setStr != "" {
                 var pos = 0;
-                var sLen = String.Length(setStr);
+                var sLen = Viper.String.get_Length(setStr);
                 while pos < sLen {
                     var commaPos = sLen;
                     var scan = pos;
@@ -2676,7 +2676,7 @@ class QueryHandler {
         var isDateMode = false;
         if startVal.kind == SQL_TEXT || startVal.kind == SQL_DATE {
             var startText = startVal.toString();
-            if String.Length(startText) >= 10 {
+            if Viper.String.get_Length(startText) >= 10 {
                 var ch4 = String.Substring(startText, 4, 1);
                 var ch7 = String.Substring(startText, 7, 1);
                 if ch4 == "-" && ch7 == "-" {

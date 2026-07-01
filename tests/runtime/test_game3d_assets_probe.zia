@@ -13,93 +13,93 @@ func start() {
     var path = "tests/runtime/assets/gltf/load_asset_triangle.gltf";
     Game3D.Assets3D.ClearCache();
 
-    var entity = Game3D.Assets3D.LoadEntity(path);
-    if (entity == null || Game3D.Entity3D.isGroup(entity) == false ||
-        G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(entity)) != 1) {
+    var entity: Game3D.Entity3D = Game3D.Assets3D.LoadEntity(path);
+    if (entity == null || entity.IsGroup() == false ||
+        entity.Node.ChildCount != 1) {
         fail("LoadEntity did not return an imported group entity");
         return;
     }
 
-    var assetEntity = Game3D.Assets3D.LoadEntityAsset(path);
+    var assetEntity: Game3D.Entity3D = Game3D.Assets3D.LoadEntityAsset(path);
     if (assetEntity == null ||
-        G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(assetEntity)) != 1) {
+        assetEntity.Node.ChildCount != 1) {
         fail("LoadEntityAsset did not instantiate through asset resolver");
         return;
     }
-    Game3D.Entity3D.setName(assetEntity, "AssetProbeImport");
+    assetEntity.SetName("AssetProbeImport");
     var world = Game3D.World3D.New("Game3D Asset Lifetime Probe", 64, 48);
     var i = 0;
     while (i < 4) {
-        var loopEntity = Game3D.Assets3D.LoadEntityAsset(path);
+        var loopEntity: Game3D.Entity3D = Game3D.Assets3D.LoadEntityAsset(path);
         if (loopEntity == null ||
-            G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(loopEntity)) != 1) {
+            loopEntity.Node.ChildCount != 1) {
             fail("LoadEntityAsset did not create a fresh asset group");
             return;
         }
-        Game3D.Entity3D.setName(loopEntity, "AssetProbeImport");
-        Game3D.World3D.spawn(world, loopEntity);
-        if (Game3D.World3D.get_entityCount(world) != 1 ||
-            Game3D.World3D.findEntity(world, "AssetProbeImport") == null) {
+        loopEntity.SetName("AssetProbeImport");
+        world.Spawn(loopEntity);
+        if (world.EntityCount != 1 ||
+            world.FindEntity("AssetProbeImport") == null) {
             fail("imported asset group did not spawn/index cleanly");
             return;
         }
-        Game3D.World3D.despawn(world, loopEntity);
-        if (Game3D.World3D.get_entityCount(world) != 0 ||
-            Game3D.World3D.findEntity(world, "AssetProbeImport") != null) {
+        world.Despawn(loopEntity);
+        if (world.EntityCount != 0 ||
+            world.FindEntity("AssetProbeImport") != null) {
             fail("imported asset group despawn leaked world registry state");
             return;
         }
         i = i + 1;
     }
-    Game3D.World3D.destroy(world);
+    world.Destroy();
 
-    var tpl1 = Game3D.Assets3D.LoadTemplate(path);
-    var tpl2 = Game3D.Assets3D.LoadTemplate(path);
+    var tpl1: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplate(path);
+    var tpl2: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplate(path);
     if (tpl1 == null || tpl2 == null) {
         fail("LoadTemplate did not return cached templates");
         return;
     }
-    if (G3D.SceneAsset.get_MeshCount(Game3D.SceneTemplate.get_model(tpl1)) != 1 ||
-        G3D.SceneAsset.get_MeshCount(Game3D.SceneTemplate.get_model(tpl2)) != 1) {
+    if (G3D.SceneAsset.get_MeshCount(tpl1.Model) != 1 ||
+        G3D.SceneAsset.get_MeshCount(tpl2.Model) != 1) {
         fail("SceneTemplate lost mesh data");
         return;
     }
 
-    var inst = Game3D.SceneTemplate.instantiate(tpl1);
-    if (inst == null || Game3D.Entity3D.isGroup(inst) == false ||
-        G3D.SceneNode.get_ChildCount(Game3D.Entity3D.get_node(inst)) != 1) {
+    var inst: Game3D.Entity3D = tpl1.Instantiate();
+    if (inst == null || inst.IsGroup() == false ||
+        inst.Node.ChildCount != 1) {
         fail("SceneTemplate.instantiate did not clone the model subtree");
         return;
     }
 
-    var assetTpl = Game3D.Assets3D.LoadTemplateAsset(path);
-    if (assetTpl == null || Game3D.SceneTemplate.get_isAsset(assetTpl) == false) {
+    var assetTpl: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplateAsset(path);
+    if (assetTpl == null || assetTpl.IsAsset == false) {
         fail("LoadTemplateAsset did not record asset path");
         return;
     }
 
-    var missing = Game3D.Assets3D.LoadTemplateAssetAsync("viper/missing/co3_missing.gltf");
+    var missing: Game3D.AssetHandle3D = Game3D.Assets3D.LoadTemplateAssetAsync("viper/missing/co3_missing.gltf");
     if (missing == null) {
         fail("missing package asset did not return a diagnostic handle");
         return;
     }
-    var missingReady = Game3D.AssetHandle3D.get_ready(missing);
+    var missingReady = missing.Ready;
     var wait = 0;
     while (missingReady == false && wait < 40) {
         Thread.Sleep(5);
-        missingReady = Game3D.AssetHandle3D.get_ready(missing);
+        missingReady = missing.Ready;
         wait = wait + 1;
     }
     if (missingReady == false ||
-        Game3D.AssetHandle3D.get_error(missing) != "failed to load model asset" ||
-        Game3D.AssetHandle3D.getTemplate(missing) != null) {
+        missing.Error != "failed to load model asset" ||
+        missing.GetTemplate() != null) {
         fail("missing package asset did not produce a terminal diagnostic handle");
         return;
     }
 
     Game3D.Assets3D.Preload(path);
     Game3D.Assets3D.ClearCache();
-    var tpl3 = Game3D.Assets3D.LoadTemplate(path);
+    var tpl3: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplate(path);
     if (tpl3 == null) {
         fail("LoadTemplate failed after ClearCache");
         return;

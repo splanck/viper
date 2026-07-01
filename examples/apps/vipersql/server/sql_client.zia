@@ -162,7 +162,7 @@ class SqlClient {
 
         while done == false {
             var chunk = Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
-            if String.Length(chunk) == 0 {
+            if Viper.String.get_Length(chunk) == 0 {
                 done = true;
             } else {
                 response = response + chunk;
@@ -187,7 +187,7 @@ class SqlClient {
     ///        REPL below.
     expose func executeAndPrint(query: String) {
         var result = execute(query);
-        if String.Length(result) > 0 {
+        if Viper.String.get_Length(result) > 0 {
             Terminal.Say(result);
         }
     }
@@ -234,7 +234,7 @@ func runInteractive(host: String, port: Integer) {
 
         if query == "quit" || query == "exit" || query == "\\q" {
             running = false;
-        } else if String.Length(query) > 0 {
+        } else if Viper.String.get_Length(query) > 0 {
             client.executeAndPrint(query);
             Terminal.Say("");
         }

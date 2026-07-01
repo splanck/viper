@@ -283,7 +283,7 @@ class CompletionController {
             return;
         }
         if pendingQuery == false {
-            pendingSinceMs = Viper.Time.GetTickCount();
+            pendingSinceMs = Viper.Time.Clock.Ticks();
         }
         pendingQuery = true;
     }
@@ -307,7 +307,7 @@ class CompletionController {
             return;
         }
         if pendingJob != null {
-            pendingSinceMs = Viper.Time.GetTickCount();
+            pendingSinceMs = Viper.Time.Clock.Ticks();
             pendingQuery = true;
             if workScheduler != null and engine != null {
                 workScheduler.Queue(scheduler.JOB_COMPLETION,
@@ -595,7 +595,7 @@ class CompletionController {
 
         var gapLen = editor.CursorCol - endCol;
         var lineText = editor.GetLine(endLine);
-        if gapLen <= 0 or Str.Length(lineText) < editor.CursorCol {
+        if gapLen <= 0 or Str.get_Length(lineText) < editor.CursorCol {
             return false;
         }
         var gap = Str.MidLen(lineText, endCol + 1, gapLen);
@@ -729,7 +729,7 @@ class CompletionController {
         var col = startCol;
         var consumed = 0;
         var i = 1;
-        while i <= Str.Length(inserted) and consumed < cursorOffset {
+        while i <= Str.get_Length(inserted) and consumed < cursorOffset {
             var ch = Str.MidLen(inserted, i, 1);
             if ch == "\n" {
                 line = line + 1;
@@ -821,7 +821,7 @@ class CompletionController {
         }
 
         if pendingQuery {
-            var now = Viper.Time.GetTickCount();
+            var now = Viper.Time.Clock.Ticks();
             if now - pendingSinceMs >= COMPLETION_DEBOUNCE_MS {
                 StartCompletionJob();
                 return true;
@@ -1041,7 +1041,7 @@ class CompletionController {
 
         var actualLine = curLine - 1 - off;
         if actualLine < 0 { actualLine = 0; }
-        var startCol = curCol - Str.Length(prefix);
+        var startCol = curCol - Str.get_Length(prefix);
         if startCol < 0 { startCol = 0; }
 
         var added = 0;
@@ -1093,7 +1093,7 @@ class CompletionController {
                 var label = Obj.ToString(Seq.Get(parts, 0));
                 var lineText = Obj.ToString(Seq.Get(parts, 3));
                 if label == "" or lineText == "0" { continue; }
-                var symbolLine = Viper.Core.Convert.ToInt(lineText) - lineOff;
+                var symbolLine = Viper.Core.Convert.ToInt64(lineText) - lineOff;
                 if symbolLine < 1 { continue; }
                 if WorkspaceSymbolMatchesPrefix(label, prefix) and LabelAlreadyListed(label) == false {
                     AddWorkspaceCompletion(label,
@@ -1213,10 +1213,10 @@ class CompletionController {
 
     hide func IsMemberAccessCompletion(prefix: String) -> Boolean {
         if editor == null { return false; }
-        var startCol = editor.CursorCol - Str.Length(prefix);
+        var startCol = editor.CursorCol - Str.get_Length(prefix);
         if startCol <= 0 { return false; }
         var line = editor.GetLine(editor.CursorLine);
-        if Str.Length(line) < startCol { return false; }
+        if Str.get_Length(line) < startCol { return false; }
         return Str.MidLen(line, startCol, 1) == ".";
     }
 }
@@ -1257,7 +1257,7 @@ func ListIntAt(values: List, index: Integer, fallback: Integer) -> Integer {
     if index < 0 or index >= values.count() {
         return fallback;
     }
-    return Viper.Core.Convert.ToInt(Obj.ToString(values.get(index)));
+    return Viper.Core.Convert.ToInt64(Obj.ToString(values.get(index)));
 }
 
 func FormatCompletionDisplay(label: String,

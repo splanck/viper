@@ -1,20 +1,21 @@
 module TestEnvMachine;
 bind Viper.System.Environment;
 bind Viper.System.Machine;
+bind Viper.IO.Dir;
 bind Viper.Terminal;
 
 func start() {
-    Say(Platform());
-    Say(PlatformVersion());
-    Say(UserName());
-    Say(HomeDir());
-    SayInt(Viper.System.Environment.CpuCount());
-    SayInt(Viper.System.Machine.CpuCount());
-    SayInt(PageSize());
-    Say(Arch());
-    Say(OsName());
-    Say(Endian());
-    SayInt(PointerSize());
-    Say(Cwd());
+    Say(Viper.System.Machine.get_OS());
+    Say(Viper.System.Machine.get_OSVer());
+    Say(Viper.System.Machine.get_User());
+    Say(Viper.System.Machine.get_Home());
+    SayInt(Viper.System.Machine.get_Cores());
+    SayInt(Viper.System.Machine.get_Cores());
+    SayInt(Viper.System.Machine.get_PageSize());
+    Say(Viper.System.Machine.get_Arch());
+    Say(Viper.System.Machine.get_OS());
+    Say(Viper.System.Machine.get_Endian());
+    SayInt(Viper.System.Machine.get_PointerSize());
+    Say(Viper.IO.Dir.Current());
     Say("done");
 }

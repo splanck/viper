@@ -87,7 +87,7 @@ class TerminalSession {
             active = false;
             exitedThisUpdate = true;
         }
-        if Str.Length(out) > MAX_TERMINAL_OUTPUT_DELTA {
+        if Str.get_Length(out) > MAX_TERMINAL_OUTPUT_DELTA {
             out = Str.Left(out, MAX_TERMINAL_OUTPUT_DELTA);
         }
         return out;

@@ -8,11 +8,11 @@ bind Viper.Terminal as Terminal;
 func start() {
     var world = World3D.New("Game3D Hello", 128, 96);
     Quality.Apply(world, QualityLevel.get_Balanced()); Lighting.Outdoor(world, Vec3.New(-0.4, -1.0, -0.2)); PostFX.Crisp(world);
-    var ground = Prefab.Ground(18.0, Materials.Rubber(0.25, 0.35, 0.25)); Entity3D.attachBody(ground, BodyDef.StaticPlane(18.0)); World3D.spawn(world, ground);
-    var player = Entity3D.New(); Entity3D.setPosition(player, 0.0, 1.0, 4.0); World3D.spawn(world, player);
+    var ground: Entity3D = Prefab.Ground(18.0, Materials.Rubber(0.25, 0.35, 0.25)); ground.AttachBody(BodyDef.StaticPlane(18.0)); world.Spawn(ground);
+    var player = Entity3D.New(); player.SetPosition(0.0, 1.0, 4.0); world.Spawn(player);
     var character = CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
-    var fps = FirstPersonController.New(world); FirstPersonController.set_character(fps, character); World3D.setCameraController(world, fps);
-    World3D.runFramesOnly(world, 1, 0.016);
-    World3D.destroy(world);
+    var fps = FirstPersonController.New(world); fps.Character = character; world.SetCameraController(fps);
+    world.RunFramesOnly(1, 0.016);
+    world.Destroy();
     Terminal.Say("PASS");
 }

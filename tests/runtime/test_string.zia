@@ -36,19 +36,19 @@ bind "./_support";
 func testLength() {
     setTest("Length");
 
-    assertEqInt(Viper.String.Length(""), 0, "length empty");
-    assertEqInt(Viper.String.Length("a"), 1, "length 'a'");
-    assertEqInt(Viper.String.Length("hello"), 5, "length 'hello'");
-    assertEqInt(Viper.String.Length("hello world"), 11, "length 'hello world'");
+    assertEqInt(Viper.String.get_Length(""), 0, "length empty");
+    assertEqInt(Viper.String.get_Length("a"), 1, "length 'a'");
+    assertEqInt(Viper.String.get_Length("hello"), 5, "length 'hello'");
+    assertEqInt(Viper.String.get_Length("hello world"), 11, "length 'hello world'");
 }
 
 func testIsEmpty() {
     setTest("IsEmpty");
 
     // Use Length == 0 since IsEmpty is a property getter
-    assertTrue(Viper.String.Length("") == 0, "empty string is empty");
-    assertFalse(Viper.String.Length("a") == 0, "'a' is not empty");
-    assertFalse(Viper.String.Length(" ") == 0, "' ' is not empty");
+    assertTrue(Viper.String.get_Length("") == 0, "empty string is empty");
+    assertFalse(Viper.String.get_Length("a") == 0, "'a' is not empty");
+    assertFalse(Viper.String.get_Length(" ") == 0, "' ' is not empty");
 }
 
 func testConcat() {

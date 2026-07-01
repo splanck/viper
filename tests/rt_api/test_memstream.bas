@@ -51,12 +51,12 @@ DIM textPath AS STRING
 DIM writer AS OBJECT
 DIM reader AS OBJECT
 textPath = "/tmp/viper_rt_api_memstream_lines.txt"
-writer = Viper.IO.LineWriter.New(textPath)
+writer = Viper.IO.LineWriter.Open(textPath)
 writer.Write("alpha")
 writer.WriteLn("beta")
 writer.Close()
 
-reader = Viper.IO.LineReader.New(textPath)
+reader = Viper.IO.LineReader.Open(textPath)
 PRINT "peek char: "; reader.PeekChar()
 PRINT "line 1: "; reader.Read()
 PRINT "line 2: "; reader.Read()
@@ -68,12 +68,12 @@ DIM binPath AS STRING
 DIM wf AS OBJECT
 DIM rf AS OBJECT
 binPath = "/tmp/viper_rt_api_memstream.bin"
-wf = Viper.IO.BinFile.New(binPath, "w")
+wf = Viper.IO.BinFile.Open(binPath, "w")
 wf.WriteByte(65)
 wf.WriteByte(66)
 wf.Close()
 
-rf = Viper.IO.BinFile.New(binPath, "r")
+rf = Viper.IO.BinFile.Open(binPath, "r")
 PRINT "byte 1: "; rf.ReadByte()
 PRINT "byte 2: "; rf.ReadByte()
 PRINT "bin eof: "; rf.Eof

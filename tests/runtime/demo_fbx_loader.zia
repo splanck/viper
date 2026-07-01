@@ -38,8 +38,8 @@ func start() {
 
     var floor_node = SceneNode.New();
     SceneNode.SetPosition(floor_node, 0.0, -2.0, 0.0);
-    SceneNode.set_Mesh(floor_node, floor_mesh);
-    SceneNode.set_Material(floor_node, floor_mat);
+    floor_node.Mesh = floor_mesh;
+    floor_node.Material = floor_mat;
     SceneGraph.Add(scene, floor_node);
 
     // Add all meshes from FBX as scene nodes
@@ -51,16 +51,16 @@ func start() {
         var m = FBX.GetMesh(asset, i);
         if (m != null) {
             var node = SceneNode.New();
-            SceneNode.set_Mesh(node, m);
+            node.Mesh = m;
             // Cycle through material palette
             if (i == 0) {
-                SceneNode.set_Material(node, mat0);
+                node.Material = mat0;
             }
             if (i == 1) {
-                SceneNode.set_Material(node, mat1);
+                node.Material = mat1;
             }
             if (i >= 2) {
-                SceneNode.set_Material(node, mat2);
+                node.Material = mat2;
             }
             SceneNode.SetScale(node, 0.02, 0.02, 0.02);
             SceneGraph.Add(scene, node);
@@ -70,7 +70,7 @@ func start() {
 
     var time = 0.0;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 

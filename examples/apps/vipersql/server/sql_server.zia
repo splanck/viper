@@ -74,8 +74,8 @@ final MSG_AUTH = 82;         // 'R' - Authentication
 
 // Check if string starts with prefix
 func stringStartsWith(s: String, prefix: String) -> Boolean {
-    var prefixLen = String.Length(prefix);
-    var sLen = String.Length(s);
+    var prefixLen = Viper.String.get_Length(prefix);
+    var sLen = Viper.String.get_Length(s);
     if sLen < prefixLen {
         return false;
     }
@@ -85,8 +85,8 @@ func stringStartsWith(s: String, prefix: String) -> Boolean {
 
 // Check if string contains substring
 func stringContains(s: String, sub: String) -> Boolean {
-    var sLen = String.Length(s);
-    var subLen = String.Length(sub);
+    var sLen = Viper.String.get_Length(s);
+    var subLen = Viper.String.get_Length(sub);
     if subLen > sLen {
         return false;
     }
@@ -103,8 +103,8 @@ func stringContains(s: String, sub: String) -> Boolean {
 
 // Find index of substring
 func stringIndexOf(s: String, sub: String) -> Integer {
-    var sLen = String.Length(s);
-    var subLen = String.Length(sub);
+    var sLen = Viper.String.get_Length(s);
+    var subLen = Viper.String.get_Length(sub);
     if subLen > sLen {
         return -1;
     }

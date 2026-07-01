@@ -155,14 +155,17 @@ class BowlingGameSetup extends BowlingGameState {
     /// @brief Sync the 3D audio listener to the camera each frame.
     hide func updateAudioListener() {
         if (soundReady == false) { return; }
-        SpatialAudio3D.SetListener(Camera3D.get_Position(render.getCamera()),
-            Camera3D.get_Forward(render.getCamera()));
+        SpatialAudio3D.SetListener(render.getCamera().Position,
+            render.getCamera().Forward);
     }
 
     /// @brief Build a fresh physics world plus lane / pins / ball /
     ///        particle / celebration managers; wire up env reflections.
     hide func createGameplayWorld() {
         physWorld = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+        // More solver passes stabilize the 10-pin contact island so a hit
+        // rack resolves cleanly and pins carry into each other (default 6).
+        Physics3DWorld.set_SolverIterations(physWorld, 12);
 
         laneObj = new LaneBuilder();
         laneObj.initLane(physWorld, oilPattern);

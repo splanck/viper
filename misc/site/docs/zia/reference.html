@@ -1251,9 +1251,8 @@ Flush();             // Flush output buffer
 </code></pre>
 <h4 id="time">Time</h4>
 <pre><code data-lang="viper">
-// SleepMs is available under Viper.Time (RT_ALIAS from ClockSleep)
-Viper.Time.SleepMs(ms);         // Sleep for milliseconds
-Viper.Time.GetTickCount();       // Milliseconds since epoch
+Viper.Time.Clock.Sleep(ms);         // Sleep for milliseconds
+Viper.Time.Clock.Ticks();       // Milliseconds since epoch
 </code></pre>
 <h4 id="math">Math</h4>
 <pre><code data-lang="viper">

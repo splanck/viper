@@ -20,9 +20,9 @@ class ShowcaseAudio {
     hide Vec3 beaconSoundPos;
 
     expose func setup(world: World3D) {
-        audio = World3D.get_audio(world);
-        Sound3D.listenerFollowCamera(audio, true);
-        Sound3D.setAttenuation(audio, config.AUDIO_REF_DIST, config.AUDIO_MAX_DIST);
+        audio = world.Audio;
+        audio.ListenerFollowCamera(true);
+        audio.SetAttenuation(config.AUDIO_REF_DIST, config.AUDIO_MAX_DIST);
         chimeClip = Synth.Sweep(520, 1040, 280, 45);
         humClip = Synth.Tone(190, 460, 30);
         stepClip = Synth.Noise(70, 22);
@@ -46,25 +46,25 @@ class ShowcaseAudio {
                 terrain.terrainWorldMaxX() * 0.5,
                 config.WATER_HEIGHT + 1.5,
                 terrain.terrainWorldMaxZ() * 0.5);
-            Sound3D.playAt(audio, gustClip, ambientSoundPos);
+            audio.PlayAt(gustClip, ambientSoundPos);
         }
     }
 
     expose func playFootfall(x: Float, y: Float, z: Float) {
         if (audio != null) {
             footfallPos.Set(x, y, z);
-            Sound3D.playAt(audio, stepClip, footfallPos);
+            audio.PlayAt(stepClip, footfallPos);
         }
     }
 
     expose func playBeacon(x: Float, y: Float, z: Float) {
         if (audio != null) {
             beaconSoundPos.Set(x, y + 2.0, z);
-            Sound3D.playAt(audio, chimeClip, beaconSoundPos);
+            audio.PlayAt(chimeClip, beaconSoundPos);
         }
     }
 
     expose func playVictory() {
-        if (audio != null) { Sound3D.play2D(audio, victoryClip); }
+        if (audio != null) { audio.Play2D(victoryClip); }
     }
 }

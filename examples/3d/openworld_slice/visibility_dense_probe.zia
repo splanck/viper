@@ -64,9 +64,9 @@ func addProp(scene: SceneGraph, mesh: Mesh3D, mat: Material3D, name: String,
              x: Float, y: Float, z: Float,
              sx: Float, sy: Float, sz: Float) -> Integer {
     var node = SceneNode.New();
-    SceneNode.set_Name(node, name);
-    SceneNode.set_Mesh(node, mesh);
-    SceneNode.set_Material(node, mat);
+    node.Name = name;
+    node.Mesh = mesh;
+    node.Material = mat;
     SceneNode.SetPosition(node, x, y, z);
     SceneNode.SetScale(node, sx, sy, sz);
     SceneGraph.Add(scene, node);
@@ -136,7 +136,7 @@ func start() {
     Canvas3D.SetOcclusionCulling(canvas, false);
     Canvas3D.SetAmbient(canvas, 0.35, 0.36, 0.38);
 
-    var backend = Canvas3D.get_Backend(canvas);
+    var backend = canvas.Backend;
     var camera = Camera3D.NewOrtho(12.0, 160.0 / 120.0, 0.1, 80.0);
     Camera3D.LookAt(camera,
         Vec3.New(0.0, 3.0, 18.0),
@@ -167,7 +167,7 @@ func start() {
     var baselineStart = Clock.TicksUs();
     var baselineSnap = renderFixture(canvas, scene, camera);
     var baselineUs = Clock.TicksUs() - baselineStart;
-    var baselineDraws = Canvas3D.get_DrawCount(canvas);
+    var baselineDraws = canvas.DrawCount;
     var baselineVisible = SceneGraph.get_VisibleNodeCount(scene);
 
     var frontZone = SceneGraph.AddVisibilityZone(scene, "city-front",
@@ -183,7 +183,7 @@ func start() {
     var optimizedStart = Clock.TicksUs();
     var optimizedSnap = renderFixture(canvas, scene, camera);
     var optimizedUs = Clock.TicksUs() - optimizedStart;
-    var optimizedDraws = Canvas3D.get_DrawCount(canvas);
+    var optimizedDraws = canvas.DrawCount;
     var optimizedVisible = SceneGraph.get_VisibleNodeCount(scene);
     var pvsCulled = SceneGraph.get_PvsCulledCount(scene);
 

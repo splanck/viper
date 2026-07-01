@@ -100,7 +100,7 @@ class Project {
         // Folder name from path; handle trailing-slash by trimming first.
         name = Path.Name(path);
         if name == "" {
-            var trimmed = Str.Left(path, Str.Length(path) - 1);
+            var trimmed = Str.Left(path, Str.get_Length(path) - 1);
             name = Path.Name(trimmed);
         }
         isOpen = true;
@@ -217,7 +217,7 @@ class Project {
             i = i + 1;
 
             // Blank lines and # comments are skipped.
-            if Str.Length(line) == 0 { continue; }
+            if Str.get_Length(line) == 0 { continue; }
             if Str.Left(line, 1) == "#" { continue; }
 
             // Split on first space: key | value.
@@ -229,7 +229,7 @@ class Project {
 
             // Unquote double-quoted values.
             if Str.Left(value, 1) == "\"" and Str.Right(value, 1) == "\"" {
-                value = Str.MidLen(value, 2, Str.Length(value) - 2);
+                value = Str.MidLen(value, 2, Str.get_Length(value) - 2);
             }
 
             if key == "project"       { name = value; }

@@ -38,28 +38,28 @@ func makeController(distance: Float, eventTime: Float) -> AnimController3D {
 func start() {
     var controller = makeController(10.0, 0.5);
     var animator = Game3D.Animator3D.New(controller);
-    if (Game3D.Animator3D.get_controller(animator) != controller) {
+    if (animator.Controller != controller) {
         fail("Animator3D did not expose its controller");
         return;
     }
-    if (Game3D.Animator3D.play(animator, "walk") == false ||
-        Game3D.Animator3D.isPlaying(animator, "walk") == false) {
+    if (animator.Play("walk") == false ||
+        animator.IsPlaying("walk") == false) {
         fail("Animator3D did not play the walk state");
         return;
     }
-    Game3D.Animator3D.update(animator, 0.5);
-    if (Game3D.Animator3D.stateTime(animator) < 0.49 ||
-        Game3D.Animator3D.stateTime(animator) > 0.51) {
+    animator.Update(0.5);
+    if (animator.StateTime() < 0.49 ||
+        animator.StateTime() > 0.51) {
         fail("Animator3D.stateTime was not updated");
         return;
     }
-    if (Game3D.Animator3D.eventCount(animator) != 1 ||
-        Game3D.Animator3D.eventName(animator, 0) != "step") {
+    if (animator.EventCount() != 1 ||
+        animator.EventName(0) != "step") {
         fail("Animator3D did not capture animation events");
         return;
     }
-    if (Game3D.Animator3D.crossfade(animator, "idle", 0.1) == false ||
-        Game3D.Animator3D.isPlaying(animator, "idle") == false) {
+    if (animator.Crossfade("idle", 0.1) == false ||
+        animator.IsPlaying("idle") == false) {
         fail("Animator3D.crossfade did not switch states");
         return;
     }
@@ -68,33 +68,32 @@ func start() {
     var entity = Game3D.Entity3D.New();
     var controller2 = makeController(10.0, 0.25);
     var animator2 = Game3D.Animator3D.New(controller2);
-    Game3D.Entity3D.attachAnimator(entity, animator2);
-    SceneNode.set_SyncMode(Game3D.Entity3D.get_node(entity),
-                             Game3D.SyncMode.get_NodeFromAnimRootMotion());
-    Game3D.Animator3D.play(animator2, "walk");
-    Game3D.World3D.spawn(world, entity);
-    Game3D.World3D.runFramesOnly(world, 1, 0.25);
+    entity.AttachAnimator(animator2);
+    entity.Node.SyncMode = Game3D.SyncMode.get_NodeFromAnimRootMotion();
+    animator2.Play("walk");
+    world.Spawn(entity);
+    world.RunFramesOnly(1, 0.25);
 
-    var pos = Game3D.Entity3D.position(entity);
+    var pos = entity.Position();
     if (Math.Vec3.get_X(pos) < 2.4 || Math.Vec3.get_X(pos) > 2.6) {
         fail("World3D did not advance root motion before scene sync");
         return;
     }
-    if (Game3D.Animator3D.eventCount(animator2) != 1 ||
-        Game3D.Animator3D.eventName(animator2, 0) != "step") {
+    if (animator2.EventCount() != 1 ||
+        animator2.EventName(0) != "step") {
         fail("World3D did not expose animation frame events");
         return;
     }
 
     var rawEntity = Game3D.Entity3D.New();
     var rawController = makeController(4.0, 0.25);
-    Game3D.Entity3D.attachAnimator(rawEntity, rawController);
-    if (Game3D.Entity3D.get_anim(rawEntity) == null ||
-        Game3D.Animator3D.get_controller(Game3D.Entity3D.get_anim(rawEntity)) != rawController) {
+    rawEntity.AttachAnimator(rawController);
+    if (rawEntity.Anim == null ||
+        rawEntity.Anim.Controller != rawController) {
         fail("Entity3D.attachAnimator did not wrap raw AnimController3D");
         return;
     }
 
-    Game3D.World3D.destroy(world);
+    world.Destroy();
     Terminal.Say("PASS");
 }

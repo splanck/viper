@@ -134,8 +134,8 @@ class PinManager {
             Physics3DBody.SetPosition(body, px, config.PIN_BODY_CENTER_Y, pz);
             Physics3DBody.set_Restitution(body, config.PIN_RESTITUTION);
             Physics3DBody.set_Friction(body, config.PIN_FRICTION);
-            Physics3DBody.set_LinearDamping(body, 0.26);
-            Physics3DBody.set_AngularDamping(body, 0.72);
+            Physics3DBody.set_LinearDamping(body, config.PIN_LINEAR_DAMPING);
+            Physics3DBody.set_AngularDamping(body, config.PIN_ANGULAR_DAMPING);
             Physics3DBody.set_CanSleep(body, true);
             Physics3DBody.set_UseCCD(body, true);
             Physics3DBody.set_CollisionLayer(body, config.LAYER_PINS);
@@ -509,9 +509,9 @@ class PinManager {
     /// @brief Wire up env-map reflections on the pin materials.
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(pinMat, env);
-        Material3D.set_Reflectivity(pinMat, config.PIN_REFLECTIVITY);
+        pinMat.Reflectivity = config.PIN_REFLECTIVITY;
         Material3D.SetEnvMap(pinNeckMat, env);
-        Material3D.set_Reflectivity(pinNeckMat, config.PIN_NECK_REFLECTIVITY);
+        pinNeckMat.Reflectivity = config.PIN_NECK_REFLECTIVITY;
     }
 
     /// @brief Render every pin. Knocked pins draw with their tilt

@@ -34,9 +34,8 @@ extern @Viper.String.Join(str, ptr) -> str
 extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
-extern @Viper.String.Length(str) -> i64
 extern @rt_str_empty() -> str
-extern @Viper.Core.Convert.ToInt(str) -> i64
+extern @Viper.Core.Convert.ToInt64(str) -> i64
 extern @Viper.Terminal.ReadLine() -> str
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
@@ -56,7 +55,7 @@ L10:
   .loc 1 1 4
   %t3:str = call @Viper.Terminal.ReadLine()
   .loc 1 1 4
-  %t4:i64 = call @Viper.Core.Convert.ToInt(%t3)
+  %t4:i64 = call @Viper.Core.Convert.ToInt64(%t3)
   .loc 1 1 4
   store i64, %a, %t4
   .loc 1 1 4

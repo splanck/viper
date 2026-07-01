@@ -68,7 +68,7 @@ class JsonParser {
     expose func initWithSource(s: String) {
         src = s;
         pos = 0;
-        len = String.Length(s);
+        len = Viper.String.get_Length(s);
         hasError = false;
     }
 
@@ -107,7 +107,7 @@ class JsonParser {
     }
 
     hide func matchWord(word: String) -> Boolean {
-        var wLen = String.Length(word);
+        var wLen = Viper.String.get_Length(word);
         if pos + wLen <= len && String.Substring(src, pos, wLen) == word {
             pos = pos + wLen;
             return true;
@@ -469,7 +469,7 @@ class JsonParser {
     //-------------------------------------------------------------------------
 
     expose func unwrapString(raw: String) -> String {
-        var rLen = String.Length(raw);
+        var rLen = Viper.String.get_Length(raw);
         if rLen >= 2 && String.Substring(raw, 0, 1) == "\"" && String.Substring(raw, rLen - 1, 1) == "\"" {
             // Parse the string content (handles escape sequences)
             src = raw;
@@ -490,7 +490,7 @@ class JsonParser {
 func escapeJsonString(s: String) -> String {
     var sb = SB.New();
     var i = 0;
-    var sLen = String.Length(s);
+    var sLen = Viper.String.get_Length(s);
     while i < sLen {
         var ch = String.Substring(s, i, 1);
         if ch == "\"" { SB.Append(sb, "\\\""); }
@@ -554,7 +554,7 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var jsonStr = jsonArg.toString();
         var path = pathArg.toString();
         var result = jsonExtractPath(jsonStr, path);
-        if String.Length(result) == 0 { return sqlNull(); }
+        if Viper.String.get_Length(result) == 0 { return sqlNull(); }
         return sqlJson(result);
     }
 
@@ -565,7 +565,7 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if jsonArg.kind == SQL_NULL || keyArg.kind == SQL_NULL { return sqlNull(); }
         var obj = Json.Parse(jsonArg.toString());
         var val = JP.GetStr(obj, keyArg.toString());
-        if String.Length(val) == 0 { return sqlNull(); }
+        if Viper.String.get_Length(val) == 0 { return sqlNull(); }
         return sqlText(val);
     }
 
@@ -575,7 +575,7 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if arg.kind == SQL_NULL { return sqlNull(); }
         var text = String.Trim(arg.toString());
         // Must be a JSON array (starts with [)
-        if String.Length(text) == 0 { return sqlNull(); }
+        if Viper.String.get_Length(text) == 0 { return sqlNull(); }
         if String.Substring(text, 0, 1) != "[" { return sqlNull(); }
         var arr = Json.ParseArray(text);
         return sqlInteger(Seq.get_Length(arr));
@@ -669,7 +669,7 @@ func evalJsonFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 //   "$.arr[0]"      — key then array index
 func jsonExtractPath(jsonStr: String, path: String) -> String {
     var current = jsonStr;
-    var pathLen = String.Length(path);
+    var pathLen = Viper.String.get_Length(path);
     var pi = 0;
 
     // Skip leading $
@@ -684,7 +684,7 @@ func jsonExtractPath(jsonStr: String, path: String) -> String {
     // If path is empty or just "$", return the whole thing
     if pi >= pathLen { return current; }
 
-    while pi < pathLen && String.Length(current) > 0 {
+    while pi < pathLen && Viper.String.get_Length(current) > 0 {
         var ch = String.Substring(path, pi, 1);
 
         if ch == "[" {
@@ -718,7 +718,7 @@ func jsonExtractPath(jsonStr: String, path: String) -> String {
                     pi = pi + 1;
                 }
             }
-            if String.Length(key) > 0 {
+            if Viper.String.get_Length(key) > 0 {
                 var parser = new JsonParser();
                 parser.initWithSource(current);
                 current = parser.extractKey(key);

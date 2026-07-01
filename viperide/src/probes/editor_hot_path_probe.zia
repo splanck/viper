@@ -188,7 +188,7 @@ func main() {
         fail(shell, "open document sync missed changed content");
         return;
     }
-    if indexer.updateCount != 1 or indexer.updateBytes < Str.Length(doc.content) {
+    if indexer.updateCount != 1 or indexer.updateBytes < Str.get_Length(doc.content) {
         fail(shell, "open document project index counters");
         return;
     }
@@ -243,13 +243,13 @@ func main() {
     engine.SetText(idleLarge);
     engine.editor.SetWordWrap(0);
     engine.editor.ResetPerfStats();
-    var moveStart = Viper.Time.GetTickCount();
+    var moveStart = Viper.Time.Clock.Ticks();
     var moveIdx = 0;
     while moveIdx < 1000 {
         engine.editor.SetCursor(moveIdx % 5000, 4);
         moveIdx = moveIdx + 1;
     }
-    var moveElapsed = Viper.Time.GetTickCount() - moveStart;
+    var moveElapsed = Viper.Time.Clock.Ticks() - moveStart;
     if moveElapsed > 250 {
         fail(shell, "large-buffer cursor movement exceeded budget: " + moveElapsed + "ms");
         return;
@@ -286,9 +286,9 @@ func main() {
         foldIdx = foldIdx + 1;
     }
     engine.SetText(foldStressSource);
-    var foldStartMs = Viper.Time.GetTickCount();
+    var foldStartMs = Viper.Time.Clock.Ticks();
     var foldCount = symbols.ApplySemanticFoldRegions(engine, foldStressRaw, 0, foldStressSource);
-    var foldElapsedMs = Viper.Time.GetTickCount() - foldStartMs;
+    var foldElapsedMs = Viper.Time.Clock.Ticks() - foldStartMs;
     if foldCount != 200 {
         fail(shell, "semantic fold perf count: " + foldCount);
         return;

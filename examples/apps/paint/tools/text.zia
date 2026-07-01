@@ -79,7 +79,7 @@ class TextTool implements Tool {
         blink = blink + 1;
         var sx = view.canvasToScreenX(caretX);
         var sy = view.canvasToScreenY(caretY);
-        if Str.Length(buffer) > 0 {
+        if Str.get_Length(buffer) > 0 {
             gfx.Text(sx, sy, buffer, ctx.colors.foreground);
         }
         // Blinking caret bar after the text.
@@ -98,7 +98,7 @@ class TextTool implements Tool {
 
     expose func backspace() {
         if active == 1 {
-            var n = Str.Length(buffer);
+            var n = Str.get_Length(buffer);
             if n > 0 {
                 buffer = Str.Left(buffer, n - 1);
             }
@@ -110,7 +110,7 @@ class TextTool implements Tool {
     }
 
     expose func requestCommit() {
-        if active == 1 and Str.Length(buffer) > 0 {
+        if active == 1 and Str.get_Length(buffer) > 0 {
             commitWanted = 1;
         } else {
             active = 0;

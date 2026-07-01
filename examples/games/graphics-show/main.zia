@@ -369,6 +369,6 @@ func start() {
         menu.draw(canvas, width, height);
 
         canvas.Flip();
-        Viper.Time.SleepMs(16);
+        Viper.Time.Clock.Sleep(16);
     }
 }

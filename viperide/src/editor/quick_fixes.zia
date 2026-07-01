@@ -31,9 +31,9 @@ expose func UndefinedIdentifierForRecord(record: Any) -> String {
 expose func UndefinedIdentifierName(message: String) -> String {
     var prefix = "Undefined identifier: ";
     if Str.StartsWith(message, prefix) == false { return ""; }
-    var pos = Str.Length(prefix) + 1;
+    var pos = Str.get_Length(prefix) + 1;
     var name = "";
-    while pos <= Str.Length(message) {
+    while pos <= Str.get_Length(message) {
         var ch = Str.MidLen(message, pos, 1);
         if IsIdentPart(ch) == false { break; }
         name = name + ch;

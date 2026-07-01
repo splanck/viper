@@ -55,7 +55,7 @@ func testNowMs() {
     setTest("NowMs");
 
     var ms1 = Viper.Time.DateTime.NowMs();
-    Viper.Time.SleepMs(10);
+    Viper.Time.Clock.Sleep(10);
     var ms2 = Viper.Time.DateTime.NowMs();
 
     assertGtInt(ms2, ms1, "time progressed");

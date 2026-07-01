@@ -347,7 +347,7 @@ func snakeRun(canvas: Canvas) {
 
         if canvas.KeyHeld(82) != 0 {
             game.restart();
-            Viper.Time.SleepMs(200);
+            Viper.Time.Clock.Sleep(200);
         }
 
         game.update();
@@ -356,6 +356,6 @@ func snakeRun(canvas: Canvas) {
         game.draw(canvas, width, height);
 
         canvas.Flip();
-        Viper.Time.SleepMs(16);
+        Viper.Time.Clock.Sleep(16);
     }
 }

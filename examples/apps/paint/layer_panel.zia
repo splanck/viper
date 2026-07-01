@@ -170,7 +170,7 @@ class LayerPanel {
         var label = doc.layerNameAt(layerIndex);
         var maxChars = (width - 36) / 8;
         if maxChars < 3 { maxChars = 3; }
-        if Str.Length(label) > maxChars {
+        if Str.get_Length(label) > maxChars {
             label = Str.Left(label, maxChars - 1) + ".";
         }
         gfx.Text(x + 22, rowY + 3, label, config.UI_TEXT);

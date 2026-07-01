@@ -11,6 +11,7 @@ bind ButtonGroup = Viper.Game.ButtonGroup;
 bind Timer = Viper.Game.Timer;
 bind Tween = Viper.Game.Tween;
 bind Clock = Viper.Time.Clock;
+bind Fmt = Viper.Text.Fmt;
 bind Seq = Viper.Collections.Seq;
 bind Thread = Viper.Threads.Thread;
 bind Monitor = Viper.Threads.Monitor;
@@ -1214,7 +1215,7 @@ class ChessGame {
         if isState(STATE_AI_THINK) { turnStr = "AI thinking..."; }
         renderer.drawTopBar(turnStr, gameMode, mx, my, mouseDown);
 
-        var statusStr = "Move " + Int(board.fullMoveNumber) + "  Halfmove " + Int(board.halfMoveClock);
+        var statusStr = "Move " + Fmt.Int(board.fullMoveNumber) + "  Halfmove " + Fmt.Int(board.halfMoveClock);
         renderer.drawFooter(statusStr, mx, my, mouseDown);
 
         // Side panel
@@ -1350,7 +1351,7 @@ class ChessGame {
             san = san + "x";
         }
 
-        san = san + files.get(toFile) + Int(toRank);
+        san = san + files.get(toFile) + Fmt.Int(toRank);
 
         // Promotion suffix
         if promotion {

@@ -128,7 +128,7 @@ func nativeProbeRequested() -> Boolean {
 
 func runNativeCompressedUploadProbe() -> String {
     var canvas = Canvas3D.New("Open World Native Upload Hitch Probe", 96, 72);
-    var backend = Canvas3D.get_Backend(canvas);
+    var backend = canvas.Backend;
     var texture: TextureAsset3D = null;
     var generatedPath = "";
     var nativeFormat = "";
@@ -192,8 +192,8 @@ func runNativeCompressedUploadProbe() -> String {
     Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
     Canvas3D.End(canvas);
     var zeroFrameUs = Clock.TicksUs() - zeroStart;
-    var zeroPendingBytes = Canvas3D.get_TextureUploadPendingBytes(canvas);
-    var zeroUploadBytes = Canvas3D.get_TextureUploadBytes(canvas);
+    var zeroPendingBytes = canvas.TextureUploadPendingBytes;
+    var zeroUploadBytes = canvas.TextureUploadBytes;
     if (zeroPendingBytes <= 0 || zeroUploadBytes != 0) {
         if (generatedPath != "") { IO.File.Delete(generatedPath); }
         fail("zero texture upload budget did not hold native compressed upload pending");
@@ -209,15 +209,15 @@ func runNativeCompressedUploadProbe() -> String {
         Canvas3D.Begin(canvas, camera);
         Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
         Canvas3D.End(canvas);
-        if (Canvas3D.get_TextureUploadPendingBytes(canvas) == 0) {
+        if (canvas.TextureUploadPendingBytes == 0) {
             nativeReady = true;
             break;
         }
         i = i + 1;
     }
     var nativeReleaseUs = Clock.TicksUs() - releaseStart;
-    var releaseUploadBytes = Canvas3D.get_TextureUploadBytes(canvas);
-    var releasePendingBytes = Canvas3D.get_TextureUploadPendingBytes(canvas);
+    var releaseUploadBytes = canvas.TextureUploadBytes;
+    var releasePendingBytes = canvas.TextureUploadPendingBytes;
     Canvas3D.SetTextureUploadBudget(canvas, -1);
 
     if (nativeReady == false || releaseUploadBytes <= 0 || releasePendingBytes != 0) {
@@ -283,7 +283,7 @@ func start() {
     Game3D.Assets3D.ClearCache();
 
     var blockingStart = Clock.TicksUs();
-    var blockingTemplate = Game3D.Assets3D.LoadTemplateAsset(path);
+    var blockingTemplate: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplateAsset(path);
     var blockingUs = Clock.TicksUs() - blockingStart;
     if (blockingTemplate == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
@@ -305,7 +305,7 @@ func start() {
 
     Game3D.Assets3D.SetUploadBudget(0);
     var asyncStart = Clock.TicksUs();
-    var asyncHandle = Game3D.Assets3D.LoadTemplateAssetAsync(path);
+    var asyncHandle: Game3D.AssetHandle3D = Game3D.Assets3D.LoadTemplateAssetAsync(path);
     var asyncCreateUs = Clock.TicksUs() - asyncStart;
     if (asyncHandle == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
@@ -314,7 +314,7 @@ func start() {
     }
 
     var observeStart = Clock.TicksUs();
-    var firstReady = Game3D.AssetHandle3D.get_ready(asyncHandle);
+    var firstReady = asyncHandle.Ready;
     var firstObserveUs = Clock.TicksUs() - observeStart;
     if (firstReady) {
         Game3D.Assets3D.SetUploadBudget(-1);
@@ -325,7 +325,7 @@ func start() {
     var stayedPending = true;
     var i = 0;
     while (i < 20) {
-        if (Game3D.AssetHandle3D.get_ready(asyncHandle)) {
+        if (asyncHandle.Ready) {
             stayedPending = false;
             break;
         }
@@ -343,7 +343,7 @@ func start() {
     var ready = false;
     i = 0;
     while (i < 200) {
-        if (Game3D.AssetHandle3D.get_ready(asyncHandle)) {
+        if (asyncHandle.Ready) {
             ready = true;
             break;
         }
@@ -354,10 +354,10 @@ func start() {
     if (ready == false) {
         Game3D.Assets3D.SetUploadBudget(-1);
         fail("positive upload budget did not release async commit: " +
-             Game3D.AssetHandle3D.get_error(asyncHandle));
+             asyncHandle.Error);
         return;
     }
-    if (Game3D.AssetHandle3D.getTemplate(asyncHandle) == null) {
+    if (asyncHandle.GetTemplate() == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
         fail("ready async handle did not expose a template");
         return;

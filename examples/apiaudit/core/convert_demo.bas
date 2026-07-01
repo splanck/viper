@@ -15,9 +15,9 @@ PRINT "ToDouble('-2.5'): "; Viper.Core.Convert.ToDouble("-2.5")
 
 ' --- Convert.ToInt ---
 PRINT "--- Convert.ToInt ---"
-PRINT "ToInt('42'): "; Viper.Core.Convert.ToInt("42")
-PRINT "ToInt('0'): "; Viper.Core.Convert.ToInt("0")
-PRINT "ToInt('-100'): "; Viper.Core.Convert.ToInt("-100")
+PRINT "ToInt('42'): "; Viper.Core.Convert.ToInt64("42")
+PRINT "ToInt('0'): "; Viper.Core.Convert.ToInt64("0")
+PRINT "ToInt('-100'): "; Viper.Core.Convert.ToInt64("-100")
 
 ' --- Convert.ToInt64 ---
 PRINT "--- Convert.ToInt64 ---"

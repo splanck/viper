@@ -52,10 +52,10 @@ func start() {
     theMaze.init();
 
     var ghosts: List[ghost.Ghost] = [];
-    ghosts.add(new ghost.Ghost(0, 14, 11, config.COLOR_RED));
-    ghosts.add(new ghost.Ghost(1, 13, 14, config.COLOR_PINK));
-    ghosts.add(new ghost.Ghost(2, 14, 14, config.COLOR_CYAN));
-    ghosts.add(new ghost.Ghost(3, 15, 14, config.COLOR_ORANGE));
+    ghosts.add(new ghost.Ghost(ghost.GHOST_BLINKY, 14, 11, config.COLOR_RED));
+    ghosts.add(new ghost.Ghost(ghost.GHOST_PINKY, 13, 14, config.COLOR_PINK));
+    ghosts.add(new ghost.Ghost(ghost.GHOST_INKY, 14, 14, config.COLOR_CYAN));
+    ghosts.add(new ghost.Ghost(ghost.GHOST_CLYDE, 15, 14, config.COLOR_ORANGE));
 
     var lastX: List[Integer] = [];
     var lastY: List[Integer] = [];

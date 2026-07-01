@@ -648,7 +648,7 @@ Over 170 individual bug fixes across all layers. Organized by subsystem:
    | `Set.Common()` | `Set.Intersect()` |
    | `TreeMap.Drop()` | `TreeMap.Remove()` |
 
-   Old names continue to work via RT_ALIAS backward compatibility.
+   Old compatibility names were later removed during pre-alpha runtime cleanup.
 
 ---
 

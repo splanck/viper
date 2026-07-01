@@ -490,7 +490,7 @@ func handleSettings(shell: app_shell.AppShell,
     sizePrompt = sizePrompt + "Leave this blank to keep the current value.";
     var sizeText = GUI.MessageBox.Prompt("Editor Font Size", sizePrompt);
     if sizeText != "" {
-        var requestedSize = Convert.ToInt(sizeText);
+        var requestedSize = Convert.ToInt64(sizeText);
         if requestedSize >= 6 and requestedSize <= 72 {
             appSettings.fontSize = requestedSize;
             applyEditorFont(engine, appSettings);

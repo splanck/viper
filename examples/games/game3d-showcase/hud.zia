@@ -12,8 +12,8 @@ bind "./worldsim";
 class ShowcaseHud {
     expose func draw(canvas: Canvas3D, map: ShowcaseMinimap, sim: ShowcaseWorldSim,
                      playerX: Float, playerZ: Float, debugOn: Boolean) {
-        var w = Canvas3D.get_Width(canvas);
-        var h = Canvas3D.get_Height(canvas);
+        var w = canvas.Width;
+        var h = canvas.Height;
         var total = sim.getBeaconCount();
         var statusColor = config.HUD_WARN;
         var statusText = "Seek the ridge beacons.";
@@ -44,7 +44,7 @@ class ShowcaseHud {
 
         map.draw(canvas, w - 172, h - 172, 144, 144, playerX, playerZ,
             sim.getBeaconXs(), sim.getBeaconZs(), sim.getBeaconState());
-        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(Canvas3D.get_Fps(canvas)), config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(canvas.Fps), config.HUD_MUTED);
 
         Canvas3D.DrawCrosshair(canvas, config.HUD_ACCENT, 10);
         if (sim.getScanLabel() != "") {
@@ -62,31 +62,31 @@ class ShowcaseHud {
         Canvas3D.DrawRect2D(canvas, x, y, 282, 244, config.HUD_PANEL);
         Canvas3D.DrawRect2D(canvas, x, y, 282, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  Space=quality", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + Canvas3D.get_Backend(canvas), config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 56, "FPS: " + toString(Canvas3D.get_Fps(canvas)), config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 74, "Draws: " + toString(Canvas3D.get_DrawCount(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + canvas.Backend, config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 56, "FPS: " + toString(canvas.Fps), config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 74, "Draws: " + toString(canvas.DrawCount), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 92,
-            "Lights: " + toString(Canvas3D.get_LightCount(canvas)) + " / "
-                + toString(Canvas3D.get_MaxActiveLights(canvas)), config.HUD_TEXT);
+            "Lights: " + toString(canvas.LightCount) + " / "
+                + toString(canvas.MaxActiveLights), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 110,
-            "Quality: " + toString(Canvas3D.get_QualityActive(canvas)), config.HUD_TEXT);
+            "Quality: " + toString(canvas.QualityActive), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 128,
-            "GL draws/drops: " + toString(Canvas3D.get_BackendDrawCalls(canvas)) + " / "
-                + toString(Canvas3D.get_BackendDroppedDraws(canvas)), config.HUD_TEXT);
+            "GL draws/drops: " + toString(canvas.BackendDrawCalls) + " / "
+                + toString(canvas.BackendDroppedDraws), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 146,
-            "Mesh cache H/M: " + toString(Canvas3D.get_BackendMeshCacheHits(canvas)) + " / "
-                + toString(Canvas3D.get_BackendMeshCacheMisses(canvas)), config.HUD_TEXT);
+            "Mesh cache H/M: " + toString(canvas.BackendMeshCacheHits) + " / "
+                + toString(canvas.BackendMeshCacheMisses), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 164,
-            "Stream/Fallback: " + toString(Canvas3D.get_BackendMeshStreamUploads(canvas)) + " / "
-                + toString(Canvas3D.get_BackendTextureFallbackBinds(canvas)), config.HUD_TEXT);
+            "Stream/Fallback: " + toString(canvas.BackendMeshStreamUploads) + " / "
+                + toString(canvas.BackendTextureFallbackBinds), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 182,
-            "Present path: " + toString(Canvas3D.get_BackendPresentPath(canvas)), config.HUD_TEXT);
+            "Present path: " + toString(canvas.BackendPresentPath), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 200,
             "Audio render/miss: " + toString(Audio.get_RenderCalls()) + " / "

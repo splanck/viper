@@ -867,7 +867,7 @@ names. Legacy `@rt_*` aliases are maintained for compatibility when built with `
 | Function                       | Signature    | Notes                                               |
 |--------------------------------|--------------|-----------------------------------------------------|
 | `@Viper.Core.Convert.ToDouble` | `str -> f64` | convert string to double; traps on invalid numeric  |
-| `@Viper.Core.Convert.ToInt`    | `str -> i64` | convert string to integer; traps on invalid numeric |
+| `@Viper.Core.Convert.ToInt64`    | `str -> i64` | convert string to integer; traps on invalid numeric |
 
 ##### Memory Management
 

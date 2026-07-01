@@ -32,8 +32,8 @@ func start() {
     var d = FromSeconds(90);
     SayInt(TotalSeconds(d));
     SayInt(TotalMillis(d));
-    SayInt(Viper.Time.Duration.Minutes(d));
-    SayInt(Viper.Time.Duration.Seconds(d));
+    SayInt(Viper.Time.Duration.get_Minutes(d));
+    SayInt(Viper.Time.Duration.get_Seconds(d));
 
     var d2 = Viper.Time.Duration.Create(1, 2, 30, 0, 0);
     SayInt(TotalHours(d2));

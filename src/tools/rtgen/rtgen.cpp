@@ -65,12 +65,6 @@ struct RuntimeFunc {
     std::vector<std::string> bridgeRoles; // Safe Zia bridge roles: none/callback/payload
 };
 
-/// @brief An RT_ALIAS entry: an extra canonical name pointing at an existing function.
-struct RuntimeAlias {
-    std::string canonical; // Alias canonical name
-    std::string target_id; // Target function id
-};
-
 /// @brief A property exposed by a runtime class (RT_PROP entry).
 struct RuntimeProperty {
     std::string name;      // Property name (e.g., "Length")
@@ -160,11 +154,10 @@ struct RuntimeSurfacePolicy {
 //===----------------------------------------------------------------------===//
 
 /// @brief Mutable parser state accumulated while reading runtime.def.
-/// @details Holds the parsed functions/aliases/classes plus validation indices and
+/// @details Holds the parsed functions/classes plus validation indices and
 ///          the current line context used for error/warning reporting.
 struct ParseState {
     std::vector<RuntimeFunc> functions; ///< All parsed RT_FUNC entries.
-    std::vector<RuntimeAlias> aliases;  ///< All parsed RT_ALIAS entries.
     std::vector<RuntimeClass> classes;  ///< All parsed RT_CLASS blocks.
 
     // Maps for validation
@@ -491,35 +484,6 @@ static void parseRtFunc(ParseState &state, const std::string &args) {
     state.functions.push_back(std::move(func));
 }
 
-/// @brief Parse an RT_ALIAS directive, validating the target exists and the alias
-///        name is not already taken.
-static void parseRtAlias(ParseState &state, const std::string &args) {
-    // RT_ALIAS(canonical, target_id)
-    auto parts = split(args, ',');
-    if (parts.size() != 2) {
-        state.error("RT_ALIAS requires 2 arguments: canonical, target_id");
-    }
-
-    RuntimeAlias alias;
-    alias.canonical = parts[0];
-    alias.target_id = parts[1];
-
-    // Remove quotes from canonical
-    if (alias.canonical.size() >= 2 && alias.canonical.front() == '"')
-        alias.canonical = alias.canonical.substr(1, alias.canonical.size() - 2);
-
-    // Check target exists
-    if (!state.func_by_id.count(alias.target_id))
-        state.error("RT_ALIAS target not found: " + alias.target_id);
-
-    // Check alias not already defined
-    if (state.all_canonicals.count(alias.canonical))
-        state.error("Duplicate canonical name (alias): " + alias.canonical);
-
-    state.all_canonicals.insert(alias.canonical);
-    state.aliases.push_back(std::move(alias));
-}
-
 /// @brief Parse an RT_BRIDGE directive assigning Zia bridge roles to a function's
 ///        parameters.
 /// @details Requires one role per surface parameter and validates each role is
@@ -669,7 +633,8 @@ static void parseLine(ParseState &state, const std::string &line) {
     if (auto funcArgs = extractParens(trimmed, "RT_FUNC")) {
         parseRtFunc(state, *funcArgs);
     } else if (auto aliasArgs = extractParens(trimmed, "RT_ALIAS")) {
-        parseRtAlias(state, *aliasArgs);
+        (void)aliasArgs;
+        state.error("RT_ALIAS is not supported; define a single canonical RT_FUNC name");
     } else if (auto bridgeArgs = extractParens(trimmed, "RT_BRIDGE")) {
         parseRtBridge(state, *bridgeArgs);
     } else if (auto classBeginArgs = extractParens(trimmed, "RT_CLASS_BEGIN")) {
@@ -1319,18 +1284,7 @@ static const RuntimeFunc *resolveRuntimeFunc(const ParseState &state,
     return nullptr;
 }
 
-/// @brief Find a RuntimeAlias by its canonical name.
-/// @return Pointer into @p state.aliases, or nullptr if not an alias.
-static const RuntimeAlias *resolveRuntimeAlias(const ParseState &state,
-                                               const std::string &canonical) {
-    for (const auto &alias : state.aliases) {
-        if (alias.canonical == canonical)
-            return &alias;
-    }
-    return nullptr;
-}
-
-/// @brief Resolve an id/canonical/alias reference to its canonical name.
+/// @brief Resolve an id/canonical reference to its canonical name.
 /// @return The canonical name; an empty string for "none"/empty; nullopt when the
 ///         reference does not resolve.
 static std::optional<std::string> resolveRuntimeCanonical(const ParseState &state,
@@ -1339,12 +1293,10 @@ static std::optional<std::string> resolveRuntimeCanonical(const ParseState &stat
         return std::string();
     if (const auto *fn = resolveRuntimeFunc(state, idOrCanonical))
         return fn->canonical;
-    if (const auto *alias = resolveRuntimeAlias(state, idOrCanonical))
-        return alias->canonical;
     return std::nullopt;
 }
 
-/// @brief Resolve an id/canonical/alias reference to its underlying C symbol.
+/// @brief Resolve an id/canonical reference to its underlying C symbol.
 /// @return The C symbol; an empty string for "none"/empty; nullopt when the
 ///         reference does not resolve.
 static std::optional<std::string> resolveRuntimeSymbol(const ParseState &state,
@@ -1353,10 +1305,6 @@ static std::optional<std::string> resolveRuntimeSymbol(const ParseState &state,
         return std::string();
     if (const auto *fn = resolveRuntimeFunc(state, idOrCanonical))
         return fn->c_symbol;
-    if (const auto *alias = resolveRuntimeAlias(state, idOrCanonical)) {
-        if (auto it = state.func_by_id.find(alias->target_id); it != state.func_by_id.end())
-            return state.functions[it->second].c_symbol;
-    }
     return std::nullopt;
 }
 
@@ -1470,9 +1418,11 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
         for (const auto &fn : state.functions) {
             if (!startsWith(fn.canonical, classPrefix))
                 continue;
+            std::string methodName = fn.canonical.substr(classPrefix.size());
+            if (methodName.find('.') != std::string::npos)
+                continue;
             if (coveredCanonicals.count(fn.canonical))
                 continue;
-            std::string methodName = lastSegment(fn.canonical);
             if (startsWith(methodName, "get_") || startsWith(methodName, "set_"))
                 continue;
             if (coveredMethodSlots.count(methodSlotKey(methodName, fn.signature)))
@@ -1717,9 +1667,8 @@ static void emitDescriptorRow(std::ostream &out,
 }
 
 /// @brief Generate RuntimeNameMap.inc: canonical Viper.* → C rt_* symbol mappings.
-/// @details Emits a RUNTIME_NAME_ALIAS row for every function and every alias
-///          (resolving aliases to their target's C symbol). Fatal error on write
-///          failure.
+/// @details Emits a RUNTIME_NAME_ALIAS row for every canonical function. Fatal
+///          error on write failure.
 static void generateNameMap(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeNameMap.inc";
     std::ostringstream out;
@@ -1727,20 +1676,9 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir) {
     out << fileHeader("RuntimeNameMap.inc",
                       "Canonical Viper.* to C rt_* symbol mapping for native codegen.");
 
-    // Emit primary mappings
     for (const auto &func : state.functions) {
         out << "RUNTIME_NAME_ALIAS(" << cppStringLiteral(func.canonical) << ", "
             << cppStringLiteral(func.c_symbol) << ")\n";
-    }
-
-    // Emit aliases
-    for (const auto &alias : state.aliases) {
-        auto it = state.func_by_id.find(alias.target_id);
-        if (it != state.func_by_id.end()) {
-            const auto &target = state.functions[it->second];
-            out << "RUNTIME_NAME_ALIAS(" << cppStringLiteral(alias.canonical) << ", "
-                << cppStringLiteral(target.c_symbol) << ")\n";
-        }
     }
 
     writeGeneratedTextFile(outPath, out);
@@ -1828,9 +1766,9 @@ static void generateSignatures(const ParseState &state,
     auto cSignatures = loadRuntimeCSignatures(runtimeHeaders, repoRoot);
     auto rtSigMap = buildRtSigMap(runtimeDir);
 
-    // Build entries from functions and aliases
+    // Build entries from functions.
     std::unordered_map<std::string, RuntimeEntry> entries;
-    entries.reserve(state.functions.size() + state.aliases.size());
+    entries.reserve(state.functions.size());
 
     std::unordered_map<std::string, const RuntimeFunc *> cSymbolToFunc;
     for (const auto &func : state.functions) {
@@ -1838,23 +1776,12 @@ static void generateSignatures(const ParseState &state,
                         RuntimeEntry{func.canonical, func.c_symbol, func.signature, func.lowering});
         cSymbolToFunc[func.c_symbol] = &func;
     }
-    for (const auto &alias : state.aliases) {
-        auto it = state.func_by_id.find(alias.target_id);
-        if (it == state.func_by_id.end())
-            continue;
-        const auto &target = state.functions[it->second];
-        entries.emplace(
-            alias.canonical,
-            RuntimeEntry{alias.canonical, target.c_symbol, target.signature, target.lowering});
-    }
 
     // Emit canonical entries in definition order
     std::vector<std::string> orderedNames;
     orderedNames.reserve(entries.size());
     for (const auto &func : state.functions)
         orderedNames.push_back(func.canonical);
-    for (const auto &alias : state.aliases)
-        orderedNames.push_back(alias.canonical);
 
     for (const auto &name : orderedNames) {
         auto entryIt = entries.find(name);
@@ -1995,29 +1922,6 @@ static void generateZiaExterns(const ParseState &state,
                 << cppStringLiteral(encodeZiaParamNames(paramNames)) << ", "
                 << cppStringLiteral(encodeZiaBridgeRoles(func->bridgeRoles, sig.argTypes.size()))
                 << "},\n";
-        }
-    }
-
-    // Also emit aliases
-    if (!state.aliases.empty()) {
-        out << "    // ALIASES\n";
-
-        for (const auto &alias : state.aliases) {
-            auto it = state.func_by_id.find(alias.target_id);
-            if (it != state.func_by_id.end()) {
-                const auto &target = state.functions[it->second];
-                ParsedSignature sig = parseSignature(target.signature);
-                std::vector<std::string> paramNames;
-                if (auto declIt = headerDecls.find(target.c_symbol); declIt != headerDecls.end()) {
-                    paramNames = ziaExternParamNamesFor(target, &declIt->second);
-                }
-                out << "    {" << cppStringLiteral(alias.canonical) << ", "
-                    << cppStringLiteral(target.signature) << ", "
-                    << cppStringLiteral(encodeZiaParamNames(paramNames)) << ", "
-                    << cppStringLiteral(
-                           encodeZiaBridgeRoles(target.bridgeRoles, sig.argTypes.size()))
-                    << "},\n";
-            }
         }
     }
 
@@ -2169,29 +2073,6 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
         }
     }
 
-    // Also emit aliases
-    if (!state.aliases.empty()) {
-        out << "// " << std::string(75, '=') << "\n";
-        out << "// ALIASES\n";
-        out << "// " << std::string(75, '=') << "\n\n";
-
-        for (const auto &alias : state.aliases) {
-            std::string id = canonicalToIdentifier(alias.canonical);
-
-            // Handle duplicate identifiers
-            std::string uniqueId = id;
-            int suffix = 2;
-            while (emittedIdentifiers.count(uniqueId)) {
-                uniqueId = id + std::to_string(suffix++);
-            }
-            emittedIdentifiers.insert(uniqueId);
-
-            out << "/// @brief " << alias.canonical << " (alias)\n";
-            out << "inline constexpr const char *" << uniqueId << " = "
-                << cppStringLiteral(alias.canonical) << ";\n\n";
-        }
-    }
-
     out << "} // namespace il::runtime::names\n";
 
     writeGeneratedTextFile(outPath, out);
@@ -2225,13 +2106,9 @@ static int runAudit(const ParseState &state,
     auto resolvedClasses = buildResolvedClasses(state);
 
     std::unordered_map<std::string, std::string> canonicalToSymbol;
-    canonicalToSymbol.reserve(state.functions.size() + state.aliases.size());
+    canonicalToSymbol.reserve(state.functions.size());
     for (const auto &func : state.functions)
         canonicalToSymbol.emplace(func.canonical, func.c_symbol);
-    for (const auto &alias : state.aliases) {
-        if (auto symbol = resolveRuntimeSymbol(state, alias.canonical); symbol && !symbol->empty())
-            canonicalToSymbol.emplace(alias.canonical, *symbol);
-    }
 
     std::unordered_map<std::string, const ResolvedRuntimeClass *> classesByName;
     for (const auto &cls : resolvedClasses)
@@ -2369,8 +2246,8 @@ static int runAudit(const ParseState &state,
     std::sort(headerSyncFindings.begin(), headerSyncFindings.end());
     std::sort(unclassifiedFindings.begin(), unclassifiedFindings.end());
 
-    std::cout << "rtgen audit: " << state.functions.size() << " functions, " << state.aliases.size()
-              << " aliases, " << state.classes.size() << " classes, " << headerDecls.size()
+    std::cout << "rtgen audit: " << state.functions.size() << " functions, "
+              << state.classes.size() << " classes, " << headerDecls.size()
               << " header declarations\n";
 
     if (!summaryOnly) {
@@ -2495,7 +2372,7 @@ int main(int argc, char **argv) {
     }
 
     std::cout << "rtgen: Parsed " << state.functions.size() << " functions, "
-              << state.aliases.size() << " aliases, " << state.classes.size() << " classes\n";
+              << state.classes.size() << " classes\n";
 
     std::cout << "rtgen: Generating output files in " << outputDir << "\n";
     try {

@@ -953,10 +953,10 @@ func toInt(text: String) -> Integer {
     var negative = false;
     if String.StartsWith(trimmed, "-") {
         negative = true;
-        trimmed = String.Substring(trimmed, 1, String.Length(trimmed) - 1);
+        trimmed = String.Substring(trimmed, 1, Viper.String.get_Length(trimmed) - 1);
     }
     var value = 0;
-    for i in 0..String.Length(trimmed) {
+    for i in 0..Viper.String.get_Length(trimmed) {
         var ch = String.Substring(trimmed, i, 1);
         value = value * 10 + (String.Asc(ch) - 48);
     }

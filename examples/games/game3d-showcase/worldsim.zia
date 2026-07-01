@@ -63,11 +63,11 @@ class ShowcaseWorldSim {
     expose func installOutdoorFillLight(world: World3D) {
         fillLight = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
         Light3D.SetIntensity(fillLight, 0.30);
-        World3D.addLight(world, 1, fillLight);
+        world.AddLight(1, fillLight);
 
         skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
         Light3D.SetIntensity(skyFill, 0.28);
-        World3D.addLight(world, 2, skyFill);
+        world.AddLight(2, skyFill);
     }
 
     expose func setDirectLightingFallback(enabled: Boolean) {
@@ -95,8 +95,8 @@ class ShowcaseWorldSim {
     expose func setupSun(world: World3D, canvas: Canvas3D) {
         sunLight = Light3D.NewDirectional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
         Light3D.SetIntensity(sunLight, config.SUN_INTENSITY_DAY);
-        World3D.addLight(world, 0, sunLight);
-        Light3D.SetCastsShadows(sunLight, true);
+        world.AddLight(0, sunLight);
+        Light3D.set_CastsShadows(sunLight, true);
         Canvas3D.EnableShadows(canvas, 2048);
         Canvas3D.SetShadowCascades(canvas, 3);
     }
@@ -124,19 +124,9 @@ class ShowcaseWorldSim {
         if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.02 + 0.06 * day) * directLightingScale); }
         if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.02 + 0.03 * day) * directLightingScale); }
 
-        World3D.setAmbient(
-            world,
-            terrain.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day) * directLightingScale,
-            terrain.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day) * directLightingScale,
-            terrain.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day) * directLightingScale);
+        world.SetAmbient(terrain.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day) * directLightingScale, terrain.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day) * directLightingScale, terrain.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day) * directLightingScale);
 
-        World3D.setFog(
-            world,
-            (terrain.lerpFloat(0.10, config.FOG_R, day) + warm * 0.10) * directLightingScale,
-            (terrain.lerpFloat(0.12, config.FOG_G, day) + warm * 0.03) * directLightingScale,
-            terrain.lerpFloat(0.18, config.FOG_B, day) * directLightingScale,
-            config.FOG_NEAR,
-            config.FOG_FAR);
+        world.SetFog((terrain.lerpFloat(0.10, config.FOG_R, day) + warm * 0.10) * directLightingScale, (terrain.lerpFloat(0.12, config.FOG_G, day) + warm * 0.03) * directLightingScale, terrain.lerpFloat(0.18, config.FOG_B, day) * directLightingScale, config.FOG_NEAR, config.FOG_FAR);
     }
 
     expose func setupBeaconLights(world: World3D) {
@@ -146,8 +136,8 @@ class ShowcaseWorldSim {
                 new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.4, beaconZs.get(i)),
                 1.0, 0.80, 0.34, config.BEACON_LIGHT_RANGE);
             Light3D.SetIntensity(pl, 0.0);
-            Light3D.SetEnabled(pl, false);
-            World3D.addLight(world, config.BEACON_LIGHT_SLOT + i, pl);
+            Light3D.set_Enabled(pl, false);
+            world.AddLight(config.BEACON_LIGHT_SLOT + i, pl);
             beaconLights.add(pl);
         }
     }
@@ -156,7 +146,7 @@ class ShowcaseWorldSim {
         playerLight = Light3D.NewPoint(
             new Vec3(playerX, playerY + 1.5, playerZ), 0.40, 0.72, 1.0, config.PLAYER_LIGHT_RANGE);
         Light3D.SetIntensity(playerLight, config.PLAYER_LIGHT_INTENSITY);
-        World3D.addLight(world, config.PLAYER_LIGHT_SLOT, playerLight);
+        world.AddLight(config.PLAYER_LIGHT_SLOT, playerLight);
     }
 
     expose func updateDynamicLights(playerX: Float, playerY: Float, playerZ: Float) {
@@ -209,8 +199,8 @@ class ShowcaseWorldSim {
     }
 
     expose func updateScanner(canvas: Canvas3D, camera: Camera3D) {
-        var w = Canvas3D.get_Width(canvas);
-        var h = Canvas3D.get_Height(canvas);
+        var w = canvas.Width;
+        var h = canvas.Height;
         var o = Camera3D.ScreenToRayOrigin(camera, w / 2, h / 2, w, h);
         var d = Camera3D.ScreenToRay(camera, w / 2, h / 2, w, h);
         var ox = Vec3.get_X(o);
@@ -278,30 +268,30 @@ class ShowcaseWorldSim {
         var cz = terrain.terrainWorldMaxZ() * 0.5 - 13.0;
         var gy = terrain.sampleGround(land, cx, cz);
 
-        var plinth = Prefab.BoxXYZ(5.0, 0.6, 5.0, pedestalMat);
-        Entity3D.setName(plinth, "Plinth");
-        Entity3D.setLayer(plinth, Layers.get_World());
-        Entity3D.setPosition(plinth, cx, gy + 0.3, cz);
-        Entity3D.attachBody(plinth, BodyDef.StaticBox(5.0, 0.6, 5.0));
-        World3D.spawn(world, plinth);
+        var plinth: Entity3D = Prefab.BoxXYZ(5.0, 0.6, 5.0, pedestalMat);
+        plinth.SetName("Plinth");
+        plinth.SetLayer(Layers.get_World());
+        plinth.SetPosition(cx, gy + 0.3, cz);
+        plinth.AttachBody(BodyDef.StaticBox(5.0, 0.6, 5.0));
+        world.Spawn(plinth);
 
         var i = 0;
         while (i < config.PHYS_BALL_COUNT) {
-            var ball = Prefab.Sphere(0.45, 16, beaconOnMat);
+            var ball: Entity3D = Prefab.Sphere(0.45, 16, beaconOnMat);
             var bx = cx + (terrain.hash01(i, 61) - 0.5) * 2.4;
             var bz = cz + (terrain.hash01(i, 63) - 0.5) * 2.4;
-            Entity3D.setName(ball, "Boulder");
-            Entity3D.setLayer(ball, Layers.get_Dynamic());
-            Entity3D.setPosition(ball, bx, gy + 4.0 + (i + 0.0) * 1.2, bz);
+            ball.SetName("Boulder");
+            ball.SetLayer(Layers.get_Dynamic());
+            ball.SetPosition(bx, gy + 4.0 + (i + 0.0) * 1.2, bz);
 
             var bdef = BodyDef.Sphere(0.45, 1.0);
-            BodyDef.set_restitution(bdef, 0.45);
-            BodyDef.withLayer(bdef, Layers.get_Dynamic());
+            bdef.Restitution = 0.45;
+            bdef.WithLayer(Layers.get_Dynamic());
             var mask = LayerMask.Of(Layers.get_World());
-            mask = LayerMask.include(mask, Layers.get_Dynamic());
-            BodyDef.withMask(bdef, mask);
-            Entity3D.attachBody(ball, bdef);
-            World3D.spawn(world, ball);
+            mask = mask.Include(Layers.get_Dynamic());
+            bdef.WithMask(mask);
+            ball.AttachBody(bdef);
+            world.Spawn(ball);
             i = i + 1;
         }
     }
@@ -323,12 +313,12 @@ class ShowcaseWorldSim {
 
     hide func spawnMonolith(world: World3D, land: Terrain3D,
         name: String, x: Float, z: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
-        var entity = Prefab.BoxXYZ(sx, height, sz, mat);
-        Entity3D.setName(entity, name);
-        Entity3D.setLayer(entity, Layers.get_World());
+        var entity: Entity3D = Prefab.BoxXYZ(sx, height, sz, mat);
+        entity.SetName(name);
+        entity.SetLayer(Layers.get_World());
         var cy = terrain.sampleGround(land, x, z) + height * 0.5;
-        Entity3D.setPosition(entity, x, cy, z);
-        World3D.spawn(world, entity);
+        entity.SetPosition(x, cy, z);
+        world.Spawn(entity);
         landmarkXs.add(x);
         landmarkYs.add(cy);
         landmarkZs.add(z);
@@ -350,7 +340,7 @@ class ShowcaseWorldSim {
     hide func onBeaconLit(camera: Camera3D, i: Integer, audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
         if (i < beaconLights.count()) {
             var pl = beaconLights.get(i);
-            Light3D.SetEnabled(pl, true);
+            Light3D.set_Enabled(pl, true);
             Light3D.SetIntensity(pl, config.BEACON_LIGHT_INTENSITY);
         }
         effectsObj.stampScorch(beaconXs.get(i), beaconYs.get(i), beaconZs.get(i));

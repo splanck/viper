@@ -259,24 +259,22 @@ class BowlingGameFlow extends BowlingGameSetup {
         var py = Vec3.get_Y(pos);
         var pz = Vec3.get_Z(pos);
         var laneHalf = config.LANE_WIDTH / 2.0;
-        var overhangEdge = laneHalf + config.LANE_GUTTER_W * 0.72;
+        // Committed to the gutter once the ball's centre crosses the lane edge,
+        // or once it has dropped off the lane surface into the trough near an
+        // edge. Physics carries the ball there; we only latch after it commits.
+        var edgeCommit = laneHalf + config.BALL_RADIUS * 0.15;
+        var dropEdge = laneHalf - config.BALL_RADIUS * 0.35;
         var inLeftGutter = false;
         var inRightGutter = false;
         if (pz > config.GUTTER_DETECT_Z && pz < config.GUTTER_DETECT_END_Z) {
-            if (px < -overhangEdge) { inLeftGutter = true; }
-            if (px > overhangEdge) { inRightGutter = true; }
-            if (py < config.BALL_RADIUS * 0.46) {
-                if (px < -(laneHalf - config.BALL_RADIUS * 0.03)) { inLeftGutter = true; }
-                if (px > laneHalf - config.BALL_RADIUS * 0.03) { inRightGutter = true; }
+            if (px < -edgeCommit) { inLeftGutter = true; }
+            if (px > edgeCommit) { inRightGutter = true; }
+            if (py < config.BALL_RADIUS * 0.72) {
+                if (px < -dropEdge) { inLeftGutter = true; }
+                if (px > dropEdge) { inRightGutter = true; }
             }
         }
         var inGutter = inLeftGutter || inRightGutter;
-        if (py < config.GUTTER_Y &&
-            pz > config.GUTTER_DETECT_Z &&
-            pz < config.GUTTER_DETECT_END_Z &&
-            Abs(px) > laneHalf + config.LANE_GUTTER_W * 0.28) {
-            inGutter = true;
-        }
         if (inGutter && gutterLatched == false) {
             gutterLatched = true;
             var gutterSide = 1;
@@ -367,7 +365,9 @@ class BowlingGameFlow extends BowlingGameSetup {
 
         if (bestStrength > 0.18) {
             impactCooldown = config.IMPACT_COOLDOWN;
-            if (ballPinImpact) {
+            // Bumper mode keeps the softer "absorbed" deck feel; skill play
+            // lets the ball drive through so the rack carries (real pin action).
+            if (ballPinImpact && config.BUMPERS_ENABLED == 1) {
                 ballObj.dampForPinDeckImpact(bestStrength * 0.006);
             }
             particleMgr.spawnCrashSparks(Vec3.get_X(bestPos), Vec3.get_Y(bestPos), Vec3.get_Z(bestPos));

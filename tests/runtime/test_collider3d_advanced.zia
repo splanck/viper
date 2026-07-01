@@ -20,7 +20,7 @@ func start() {
     Collider3D.AddChild(compound, hull, xf);
 
     var staticBody = Physics3DBody.New(0.0);
-    Physics3DBody.SetCollider(staticBody, compound);
+    staticBody.Collider = compound;
     Physics3DWorld.Add(world, staticBody);
 
     var sphere = Physics3DBody.NewSphere(0.45, 1.0);
@@ -53,7 +53,7 @@ func start() {
 
     var heightfield = Collider3D.NewHeightfield(pixels, 1.0, 2.0, 1.0);
     var terrainBody = Physics3DBody.New(0.0);
-    Physics3DBody.SetCollider(terrainBody, heightfield);
+    terrainBody.Collider = heightfield;
     Physics3DBody.SetPosition(terrainBody, 0.0, 0.0, 0.0);
     Physics3DWorld.Remove(world, sphere);
     sphere = Physics3DBody.NewSphere(0.35, 1.0);

@@ -155,9 +155,9 @@ class SemanticHighlighter {
             if row == "" { continue; }
             var parts = Str.Split(row, "\t");
             if Seq.get_Length(parts) < 4 { continue; }
-            var lineNum = Convert.ToInt(Obj.ToString(Seq.Get(parts, 0))) - lineOff;
-            var startCol = Convert.ToInt(Obj.ToString(Seq.Get(parts, 1)));
-            var endCol = Convert.ToInt(Obj.ToString(Seq.Get(parts, 2)));
+            var lineNum = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 0))) - lineOff;
+            var startCol = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 1)));
+            var endCol = Convert.ToInt64(Obj.ToString(Seq.Get(parts, 2)));
             var kind = Obj.ToString(Seq.Get(parts, 3));
             if lineNum < 0 { continue; }
             var tt = tokenTypeForKind(kind);

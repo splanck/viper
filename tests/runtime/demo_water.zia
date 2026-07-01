@@ -44,7 +44,7 @@ func start() {
 
     var time = 0.0;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.5, 0.6, 0.75);
 

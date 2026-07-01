@@ -438,7 +438,7 @@ func fireworksRun(canvas: Canvas) {
         // A toggles auto-launch
         if canvas.KeyHeld(65) != 0 {
             show.toggleAuto();
-            Viper.Time.SleepMs(200);  // Debounce
+            Viper.Time.Clock.Sleep(200);  // Debounce
         }
 
         // Up/Down adjusts launch frequency
@@ -503,6 +503,6 @@ func fireworksRun(canvas: Canvas) {
         canvas.TextBg(10, height - 45, "SPACE: Launch | A: Toggle Auto | UP/DOWN: Speed | ESC: Exit", colors.DARK_GRAY, colors.BLACK);
 
         canvas.Flip();
-        Viper.Time.SleepMs(16);
+        Viper.Time.Clock.Sleep(16);
     }
 }

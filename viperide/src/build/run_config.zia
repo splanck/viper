@@ -141,7 +141,7 @@ func SplitArgs(text: String) -> Any {
     var quote = "";
     var escaping = false;
     var i = 1;
-    while i <= Str.Length(text) {
+    while i <= Str.get_Length(text) {
         var ch = Str.MidLen(text, i, 1);
         if escaping {
             token = token + ch;

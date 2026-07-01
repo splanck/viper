@@ -36,7 +36,7 @@ func router_getCount() -> Integer {
 // Extract query string from path (everything after ?)
 // Returns empty string if no query string
 func router_extractQuery(fullPath: String) -> String {
-    var len = String.Length(fullPath);
+    var len = Viper.String.get_Length(fullPath);
     var i = 0;
 
     while i < len {
@@ -55,7 +55,7 @@ func router_extractQuery(fullPath: String) -> String {
 
 // Extract path portion (everything before ?)
 func router_extractPath(fullPath: String) -> String {
-    var len = String.Length(fullPath);
+    var len = Viper.String.get_Length(fullPath);
     var i = 0;
 
     while i < len {
@@ -72,8 +72,8 @@ func router_extractPath(fullPath: String) -> String {
 // Get a query parameter value by name
 // Returns empty string if not found
 func router_getQueryParam(query: String, name: String) -> String {
-    var queryLen = String.Length(query);
-    var nameLen = String.Length(name);
+    var queryLen = Viper.String.get_Length(query);
+    var nameLen = Viper.String.get_Length(name);
 
     if queryLen == 0 || nameLen == 0 {
         return "";

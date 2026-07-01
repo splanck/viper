@@ -322,11 +322,6 @@ var value = Viper.Core.Box.ToI64(boxedInt);  // 42
 <td>Parse string to float</td>
 </tr>
 <tr>
-<td>`ToInt(s)`</td>
-<td>`i64(str)`</td>
-<td>Parse string to integer</td>
-</tr>
-<tr>
 <td>`ToInt64(s)`</td>
 <td>`i64(str)`</td>
 <td>Parse string to 64-bit integer</td>
@@ -344,7 +339,7 @@ var value = Viper.Core.Box.ToI64(boxedInt);  // 42
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-var n = Viper.Core.Convert.ToInt(&quot;42&quot;);        // 42
+var n = Viper.Core.Convert.ToInt64(&quot;42&quot;);        // 42
 var f = Viper.Core.Convert.ToDouble(&quot;3.14&quot;);   // 3.14
 var s = Viper.Core.Convert.ToString_Int(100);  // &quot;100&quot;
 </code></pre>
@@ -1091,7 +1086,7 @@ var ext = Viper.IO.Path.Ext(full);   // &quot;.txt&quot;
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Set log level
-Viper.Diagnostics.Log.set_Level(Viper.Diagnostics.Log.get_DEBUG);
+Viper.Diagnostics.Log.set_Level(Viper.Diagnostics.Log.get_LevelDebug);
 
 // Log messages
 Viper.Diagnostics.Log.Debug(&quot;Processing item &quot; + Viper.Core.Convert.ToString_Int(i));
@@ -1229,7 +1224,7 @@ var enabled = Viper.Core.Parse.BoolOr(enabledStr, false);
 
 // Validation
 if (Viper.Core.Parse.IsInt(input)) {
-    var value = Viper.Core.Convert.ToInt(input);
+    var value = Viper.Core.Convert.ToInt64(input);
 }
 
 // Parse hex
@@ -2100,7 +2095,7 @@ var dist = Viper.Math.Vec2.Dist(pos, target);
 
 // Normalize velocity
 var dir = Viper.Math.Vec2.Norm(vel);
-var speed = Viper.Math.Vec2.Length(vel);
+var speed = Viper.Math.Vec2.Len(vel);
 
 // Interpolation
 var midpoint = Viper.Math.Vec2.Lerp(pos, target, 0.5);

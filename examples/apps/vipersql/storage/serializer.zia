@@ -190,7 +190,7 @@ class BinaryBuffer {
     /// character from `String.Substring(_, i, 1)`).  No encoding
     /// conversion — bytes go out as `String.Asc` reports them.
     expose func writeString(s: String) {
-        var len = String.Length(s);
+        var len = Viper.String.get_Length(s);
         writeInt32(len);
         var i = 0;
         while i < len {
@@ -445,11 +445,11 @@ class ValueSerializer {
         }
 
         if val.kind == SQL_REAL {
-            return 1 + 4 + String.Length(val.textValue);
+            return 1 + 4 + Viper.String.get_Length(val.textValue);
         }
 
         if val.kind == SQL_TEXT {
-            return 1 + 4 + String.Length(val.textValue);
+            return 1 + 4 + Viper.String.get_Length(val.textValue);
         }
 
         if val.kind == SQL_BOOLEAN {
@@ -465,7 +465,7 @@ class ValueSerializer {
         }
 
         if val.kind == SQL_JSON {
-            return 1 + 4 + String.Length(val.textValue);
+            return 1 + 4 + Viper.String.get_Length(val.textValue);
         }
 
         return 1;

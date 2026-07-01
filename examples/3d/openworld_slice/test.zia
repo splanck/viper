@@ -124,22 +124,22 @@ func validateQuadrant(game: OpenWorldSlice, label: String,
                       markerName: String, firstHeight: Float) -> Boolean {
     game.setStreamCenter(x, z);
     var stream = game.getStream();
-    if (WorldStream3D.getCellCount(stream) != 4 ||
-        WorldStream3D.getTerrainTileCount(stream) != 4) {
+    if (stream.GetCellCount() != 4 ||
+        stream.GetTerrainTileCount() != 4) {
         Terminal.Say("FAIL: stream inspection counts mismatch");
         return false;
     }
-    if (WorldStream3D.getCellName(stream, index) != cellName ||
-        WorldStream3D.getTerrainTileName(stream, index) != tileName) {
+    if (stream.GetCellName(index) != cellName ||
+        stream.GetTerrainTileName(index) != tileName) {
         Terminal.Say("FAIL: " + label + " stream inspection names mismatch");
         return false;
     }
-    if (WorldStream3D.getTerrainTileHeightmap(stream, index) != heightmapPath) {
+    if (stream.GetTerrainTileHeightmap(index) != heightmapPath) {
         Terminal.Say("FAIL: " + label + " terrain heightmap inspection mismatch");
         return false;
     }
-    var cellCenter = WorldStream3D.getCellCenter(stream, index);
-    var tileCenter = WorldStream3D.getTerrainTileCenter(stream, index);
+    var cellCenter = stream.GetCellCenter(index);
+    var tileCenter = stream.GetTerrainTileCenter(index);
     if (cellCenter == null || tileCenter == null ||
         near(Vec3.get_X(cellCenter), x, 0.0001) == false ||
         near(Vec3.get_Z(cellCenter), z, 0.0001) == false ||
@@ -148,10 +148,10 @@ func validateQuadrant(game: OpenWorldSlice, label: String,
         Terminal.Say("FAIL: " + label + " stream inspection centers mismatch");
         return false;
     }
-    if (WorldStream3D.getCellResident(stream, index) == false ||
-        WorldStream3D.getTerrainTileResident(stream, index) == false ||
-        WorldStream3D.getCellBytes(stream, index) <= 0 ||
-        WorldStream3D.getTerrainTileBytes(stream, index) <= 0) {
+    if (stream.GetCellResident(index) == false ||
+        stream.GetTerrainTileResident(index) == false ||
+        stream.GetCellBytes(index) <= 0 ||
+        stream.GetTerrainTileBytes(index) <= 0) {
         Terminal.Say("FAIL: " + label + " stream inspection resident metadata mismatch");
         return false;
     }
@@ -257,7 +257,7 @@ func runSliceReplay() -> Float {
     }
 
     game.renderFrame();
-    var snap = World3D.captureFinalFrame(game.getWorld());
+    var snap = game.getWorld().CaptureFinalFrame();
     if (snap == null || Pixels.get_Width(snap) != 128 || Pixels.get_Height(snap) != 96) {
         game.destroy();
         return fail("final-frame capture failed");
@@ -276,27 +276,27 @@ func runSliceReplay() -> Float {
         game.destroy();
         return fail("software visual baseline drifted");
     }
-    if (World3D.get_entityCount(game.getWorld()) < 5 ||
-        World3D.get_bodyCount(game.getWorld()) < 2 ||
-        World3D.get_streamResidentBytes(game.getWorld()) <= 0) {
+    if (game.getWorld().EntityCount < 5 ||
+        game.getWorld().BodyCount < 2 ||
+        game.getWorld().StreamResidentBytes <= 0) {
         game.destroy();
         return fail("world telemetry counters did not observe the slice");
     }
-    if (World3D.get_drawCount(game.getWorld()) <= 0 ||
-        World3D.get_visibleNodeCount(game.getWorld()) <= 0 ||
-        Canvas3D.get_DrawCount(game.getCanvas()) != World3D.get_drawCount(game.getWorld())) {
+    if (game.getWorld().DrawCount <= 0 ||
+        game.getWorld().VisibleNodeCount <= 0 ||
+        game.getCanvas().DrawCount != game.getWorld().DrawCount) {
         game.destroy();
         return fail("world render telemetry counters did not observe the slice");
     }
-    if (World3D.get_occludedDrawCount(game.getWorld()) < 0) {
+    if (game.getWorld().OccludedDrawCount < 0) {
         game.destroy();
         return fail("world occlusion telemetry was invalid");
     }
-    if (Canvas3D.get_FrameFinalized(game.getCanvas()) == false) {
+    if (game.getCanvas().FrameFinalized == false) {
         game.destroy();
         return fail("frame was not finalized");
     }
-    if (CharacterController3D.grounded(game.getCharacter()) == false) {
+    if (game.getCharacter().Grounded() == false) {
         game.destroy();
         return fail("character did not remain grounded");
     }

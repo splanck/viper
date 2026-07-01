@@ -34,9 +34,9 @@ func start() {
     }
 
     Physics3DBody.set_AngularDamping(body, 1.0);
-    var before = Vec3.get_Y(Physics3DBody.get_AngularVelocity(body));
+    var before = Physics3DBody.get_AngularVelocity(body).Y;
     Physics3DWorld.Step(world, 1.0);
-    var after = Vec3.get_Y(Physics3DBody.get_AngularVelocity(body));
+    var after = Physics3DBody.get_AngularVelocity(body).Y;
     if (after >= before) {
         Say("FAIL: angular damping should reduce angular velocity");
         return;

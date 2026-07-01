@@ -239,6 +239,6 @@ func matrixRun(canvas: Canvas) {
         }
 
         canvas.Flip();
-        Viper.Time.SleepMs(33);
+        Viper.Time.Clock.Sleep(33);
     }
 }

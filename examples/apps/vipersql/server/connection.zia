@@ -297,7 +297,7 @@ func handlePgQuery(client: Viper.Network.Tcp, session: Session, query: String) {
     var trimmed = String.Trim(query);
 
     // Empty query
-    if String.Length(trimmed) == 0 {
+    if Viper.String.get_Length(trimmed) == 0 {
         pgSendEmptyQueryResponse(client);
         pgSendReadyForQuery(client, getTxnStatus(session));
         return;
@@ -309,7 +309,7 @@ func handlePgQuery(client: Viper.Network.Tcp, session: Session, query: String) {
     var qi = 0;
     while qi < queries.count() {
         var q = String.Trim(queries.get(qi));
-        if String.Length(q) > 0 {
+        if Viper.String.get_Length(q) > 0 {
             executePgSingleQuery(client, session, q);
         }
         qi = qi + 1;
@@ -702,7 +702,7 @@ func handlePgClose(client: Viper.Network.Tcp, session: Session, body: Bytes) {
 // Count the highest $N parameter placeholder in a query
 func countParams(query: String) -> Integer {
     var maxParam = 0;
-    var len = String.Length(query);
+    var len = Viper.String.get_Length(query);
     var inQuote = false;
     var i = 0;
 
@@ -725,7 +725,7 @@ func countParams(query: String) -> Integer {
                     break;
                 }
             }
-            if String.Length(numStr) > 0 {
+            if Viper.String.get_Length(numStr) > 0 {
                 var paramNum = stringToInt(numStr);
                 if paramNum > maxParam {
                     maxParam = paramNum;
@@ -743,7 +743,7 @@ func countParams(query: String) -> Integer {
 // Substitute $1, $2, ... in a query with actual parameter values
 func substituteParams(query: String, paramValues: List[String], paramNulls: List[Integer]) -> String {
     var result = "";
-    var len = String.Length(query);
+    var len = Viper.String.get_Length(query);
     var inQuote = false;
     var i = 0;
 
@@ -769,7 +769,7 @@ func substituteParams(query: String, paramValues: List[String], paramNulls: List
                 }
             }
 
-            if String.Length(numStr) > 0 {
+            if Viper.String.get_Length(numStr) > 0 {
                 var paramIdx = stringToInt(numStr) - 1;
                 if paramIdx >= 0 && paramIdx < paramValues.count() {
                     if paramNulls.get(paramIdx) == 1 {
@@ -815,7 +815,7 @@ func substituteAllNull(query: String, paramCount: Integer) -> String {
 
 // Check if a string looks like a numeric value
 func isNumericParam(val: String) -> Boolean {
-    var len = String.Length(val);
+    var len = Viper.String.get_Length(val);
     if len == 0 { return false; }
 
     var start = 0;
@@ -845,7 +845,7 @@ func isNumericParam(val: String) -> Boolean {
 // Escape single quotes in a parameter value (double them)
 func escapeParamString(val: String) -> String {
     var result = "";
-    var len = String.Length(val);
+    var len = Viper.String.get_Length(val);
     var i = 0;
     while i < len {
         var ch = String.Substring(val, i, 1);
@@ -965,13 +965,13 @@ func handleSqlClient(client: Viper.Network.Tcp) {
         var rawQuery = Network.Tcp.RecvStr(client, SQL_MAX_QUERY_SIZE);
 
         // Empty recv = client disconnected or timeout
-        if String.Length(rawQuery) == 0 {
+        if Viper.String.get_Length(rawQuery) == 0 {
             running = false;
         } else {
             // Trim whitespace
             var query = String.Trim(rawQuery);
 
-            if String.Length(query) == 0 {
+            if Viper.String.get_Length(query) == 0 {
                 // Empty query, just send ready prompt
                 Network.Tcp.SendStr(client, "\n");
             } else if query == "quit" || query == "exit" || query == "\\q" {
@@ -1061,7 +1061,7 @@ func formatResultForClient(result: QueryResult) -> String {
     }
 
     // Message (if any)
-    if String.Length(result.message) > 0 && result.rows.count() == 0 {
+    if Viper.String.get_Length(result.message) > 0 && result.rows.count() == 0 {
         output = output + result.message + "\n";
     }
 
@@ -1075,14 +1075,14 @@ func formatResultForClient(result: QueryResult) -> String {
 //=============================================================================
 
 func stringStartsWithConn(s: String, prefix: String) -> Boolean {
-    var prefixLen = String.Length(prefix);
-    if String.Length(s) < prefixLen { return false; }
+    var prefixLen = Viper.String.get_Length(prefix);
+    if Viper.String.get_Length(s) < prefixLen { return false; }
     return String.Substring(s, 0, prefixLen) == prefix;
 }
 
 func stringContainsConn(s: String, sub: String) -> Boolean {
-    var sLen = String.Length(s);
-    var subLen = String.Length(sub);
+    var sLen = Viper.String.get_Length(s);
+    var subLen = Viper.String.get_Length(sub);
     if subLen > sLen { return false; }
     var i = 0;
     while i <= sLen - subLen {
@@ -1099,7 +1099,7 @@ func splitQueries(input: String) -> List[String] {
     var inSingleQuote = false;
     var inDoubleQuote = false;
     var i = 0;
-    var len = String.Length(input);
+    var len = Viper.String.get_Length(input);
 
     while i < len {
         var ch = String.Substring(input, i, 1);
@@ -1121,7 +1121,7 @@ func splitQueries(input: String) -> List[String] {
 
     // Add the last query if non-empty
     var trimmed = String.Trim(current);
-    if String.Length(trimmed) > 0 {
+    if Viper.String.get_Length(trimmed) > 0 {
         queries.add(current);
     }
 

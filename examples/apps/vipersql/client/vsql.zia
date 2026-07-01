@@ -153,7 +153,7 @@ func formatAligned(result: PgQueryResult) -> String {
     var widths: List[Integer] = [];
     var ci = 0;
     while ci < result.columns.count() {
-        widths.add(String.Length(result.columns.get(ci)));
+        widths.add(Viper.String.get_Length(result.columns.get(ci)));
         ci = ci + 1;
     }
 
@@ -163,7 +163,7 @@ func formatAligned(result: PgQueryResult) -> String {
         var row = result.rows.get(ri);
         ci = 0;
         while ci < row.count() && ci < widths.count() {
-            var valLen = String.Length(row.get(ci));
+            var valLen = Viper.String.get_Length(row.get(ci));
             if valLen > widths.get(ci) {
                 widths.set(ci, valLen);
             }
@@ -245,7 +245,7 @@ func formatExpanded(result: PgQueryResult) -> String {
 
 func padRight(s: String, width: Integer) -> String {
     var result = s;
-    var len = String.Length(s);
+    var len = Viper.String.get_Length(s);
     while len < width {
         result = result + " ";
         len = len + 1;
@@ -305,7 +305,7 @@ func handleMetaCommand(cmd: String, conn: PgConnection, config: ClientConfig) ->
     }
 
     if String.StartsWith(lower, "\\d ") {
-        var tableName = String.Trim(String.Substring(cmd, 3, String.Length(cmd) - 3));
+        var tableName = String.Trim(String.Substring(cmd, 3, Viper.String.get_Length(cmd) - 3));
         var result = conn.query("DESCRIBE " + tableName);
         if result.success {
             Terminal.Say(formatAligned(result));
@@ -328,7 +328,7 @@ func handleMetaCommand(cmd: String, conn: PgConnection, config: ClientConfig) ->
     }
 
     if String.StartsWith(lower, "\\c ") {
-        var dbName = String.Trim(String.Substring(cmd, 3, String.Length(cmd) - 3));
+        var dbName = String.Trim(String.Substring(cmd, 3, Viper.String.get_Length(cmd) - 3));
         var result = conn.query("USE " + dbName);
         if result.success {
             config.database = dbName;
@@ -341,7 +341,7 @@ func handleMetaCommand(cmd: String, conn: PgConnection, config: ClientConfig) ->
     }
 
     if String.StartsWith(lower, "\\i ") {
-        var filePath = String.Trim(String.Substring(cmd, 3, String.Length(cmd) - 3));
+        var filePath = String.Trim(String.Substring(cmd, 3, Viper.String.get_Length(cmd) - 3));
         if File.Exists(filePath) == false {
             Terminal.Say("ERROR: File not found: " + filePath);
             Terminal.Say("");

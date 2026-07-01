@@ -25,7 +25,7 @@ PRINT va.X
 DIM vs AS OBJECT
 LET vs = v.Scale(2.0)
 PRINT vs.X
-PRINT Viper.Math.Vec2.Distance(NEW Viper.Math.Vec2(0.0,0.0), NEW Viper.Math.Vec2(3.0,4.0))
+PRINT Viper.Math.Vec2.Dist(NEW Viper.Math.Vec2(0.0,0.0), NEW Viper.Math.Vec2(3.0,4.0))
 
 ' Vec3
 DIM v3 AS OBJECT
@@ -42,9 +42,9 @@ PRINT v3c.X
 
 ' Easing
 PRINT Viper.Math.Easing.Linear(0.5)
-PRINT Viper.Math.Easing.EaseInQuad(0.5)
-PRINT Viper.Math.Easing.EaseOutQuad(0.5)
-PRINT Viper.Math.Easing.EaseInOutQuad(0.5)
+PRINT Viper.Math.Easing.InQuad(0.5)
+PRINT Viper.Math.Easing.OutQuad(0.5)
+PRINT Viper.Math.Easing.InOutQuad(0.5)
 
 ' PerlinNoise
 DIM pn AS OBJECT

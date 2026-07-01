@@ -69,7 +69,7 @@ expose func TriggeredMenu(name: String,
 ///          completion controller to inspect source context.
 expose func HasIdentifierInput(text: String) -> Boolean {
     var i = 1;
-    while i <= Str.Length(text) {
+    while i <= Str.get_Length(text) {
         var ch = Str.MidLen(text, i, 1);
         if Char.IsIdentifierPart(ch) { return true; }
         i = i + 1;
@@ -87,7 +87,7 @@ expose func HasIdentifierInput(text: String) -> Boolean {
 expose func FrameBudgetAllows(frameWorkStartMs: Integer, budgetMs: Integer) -> Boolean {
     if frameWorkStartMs <= 0 { return true; }
     if budgetMs <= 0 { return true; }
-    return Viper.Time.GetTickCount() - frameWorkStartMs < budgetMs;
+    return Viper.Time.Clock.Ticks() - frameWorkStartMs < budgetMs;
 }
 
 /// @brief Return whether a build/run command may start in the current IDE state.

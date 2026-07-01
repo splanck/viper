@@ -99,18 +99,10 @@ class PacMan {
     hide Boolean dying;
     hide Integer deathT;       // 0..100 progress through the death open
 
+    // Construction and per-life respawn set the identical field state, so init()
+    // delegates to reset() — one source of truth for "PacMan at a spawn tile".
     expose func init(startX: Integer, startY: Integer) {
-        gridX = startX;
-        gridY = startY;
-        screenX = utils.gridToScreenX(startX);
-        screenY = utils.gridToScreenY(startY);
-        direction = config.DIR_NONE;
-        nextDirection = config.DIR_NONE;
-
-        facing = config.DIR_RIGHT;
-        chompPhase = 0;
-        dying = false;
-        deathT = 0;
+        self.reset(startX, startY);
     }
 
     expose func setNextDirection(dir: Integer) {

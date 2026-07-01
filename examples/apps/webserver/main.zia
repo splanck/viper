@@ -100,7 +100,7 @@ func registerRoutes() {
 // Parse HTTP request line and validate its structure.
 func parseRequestLine(line: String) -> Boolean {
     // Find first space (after method)
-    var len = String.Length(line);
+    var len = Viper.String.get_Length(line);
     var i = 0;
     var firstSpace = -1;
     var secondSpace = -1;
@@ -140,7 +140,7 @@ func parseRequestLine(line: String) -> Boolean {
 
 // Find the end of the first line (request line)
 func findLineEnd(rawRequest: String) -> Integer {
-    var len = String.Length(rawRequest);
+    var len = Viper.String.get_Length(rawRequest);
     var i = 0;
     while i < len {
         var ch = String.Substring(rawRequest, i, 1);
@@ -234,7 +234,7 @@ func isValidRequest(rawRequest: String) -> Boolean {
 // Build response with optional Last-Modified header and optional body inclusion
 func buildResponseFull(statusCode: Integer, statusText: String, contentType: String,
                        body: String, lastModified: Integer, includeBody: Boolean) -> String {
-    var bodyLen = String.Length(body);
+    var bodyLen = Viper.String.get_Length(body);
 
     var response = "HTTP/1.1 ";
     response = response + Fmt.Int(statusCode);
@@ -318,7 +318,7 @@ func response400() -> String {
 // ============================================================================
 
 func getMimeType(path: String) -> String {
-    var len = String.Length(path);
+    var len = Viper.String.get_Length(path);
 
     // Find last dot
     var dotPos = -1;
@@ -384,7 +384,7 @@ func getMimeType(path: String) -> String {
 // Check if path is safe (no directory traversal)
 func isPathSafe(path: String) -> Boolean {
     // Check for ".." sequences
-    var len = String.Length(path);
+    var len = Viper.String.get_Length(path);
     var i = 0;
 
     while i < len - 1 {
@@ -417,7 +417,7 @@ func normalizePath(path: String) -> String {
     }
 
     // Remove query string if present
-    var len = String.Length(path);
+    var len = Viper.String.get_Length(path);
     var i = 0;
     while i < len {
         var ch = String.Substring(path, i, 1);
@@ -467,7 +467,7 @@ func serveStaticFile(path: String, isHead: Boolean) -> String {
 
     // Build relative path (remove leading /)
     var relativePath = normalizedPath;
-    var pathLen = String.Length(normalizedPath);
+    var pathLen = Viper.String.get_Length(normalizedPath);
     if pathLen > 0 {
         var firstChar = String.Substring(normalizedPath, 0, 1);
         if firstChar == "/" {
@@ -497,7 +497,7 @@ func serveStaticFile(path: String, isHead: Boolean) -> String {
 // Response starts with "HTTP/1.1 XXX StatusText\r\n..."
 func extractStatusCode(response: String) -> Integer {
     // Find the first space (after HTTP/1.1)
-    var len = String.Length(response);
+    var len = Viper.String.get_Length(response);
     if len < 12 {
         return 0;
     }
@@ -533,7 +533,7 @@ func handleClient(client: Viper.Network.Tcp) {
     // Read request (up to MAX_REQUEST_SIZE bytes)
     var rawRequest = Network.Tcp.RecvStr(client, MAX_REQUEST_SIZE);
 
-    var requestLen = String.Length(rawRequest);
+    var requestLen = Viper.String.get_Length(rawRequest);
     if requestLen == 0 {
         Network.Tcp.Close(client);
         return;
@@ -546,7 +546,7 @@ func handleClient(client: Viper.Network.Tcp) {
     if reqMethod == "" || reqPath == "" {
         statusCode = 400;
         var response = response400();
-        responseSize = String.Length(response);
+        responseSize = Viper.String.get_Length(response);
         Network.Tcp.SendStr(client, response);
         Network.Tcp.Close(client);
         log_request(clientHost, "???", "???", statusCode, responseSize, log_elapsed(startTime));
@@ -557,7 +557,7 @@ func handleClient(client: Viper.Network.Tcp) {
     if reqMethod != "GET" && reqMethod != "HEAD" {
         statusCode = 405;
         var response = buildResponse(405, "Method Not Allowed", "text/plain", "Method not allowed");
-        responseSize = String.Length(response);
+        responseSize = Viper.String.get_Length(response);
         Network.Tcp.SendStr(client, response);
         Network.Tcp.Close(client);
         log_request(clientHost, reqMethod, reqPath, statusCode, responseSize, log_elapsed(startTime));
@@ -579,7 +579,7 @@ func handleClient(client: Viper.Network.Tcp) {
         // Fall back to static file serving
         response = serveStaticFile(reqPath, isHead);
     }
-    responseSize = String.Length(response);
+    responseSize = Viper.String.get_Length(response);
 
     // Extract status code from response (first line: "HTTP/1.1 XXX ...")
     statusCode = extractStatusCode(response);

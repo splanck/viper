@@ -18,7 +18,7 @@
 ' COVER: Viper.IO.LineReader.ReadAll
 ' COVER: Viper.IO.LineReader.ReadChar
 ' COVER: Viper.IO.LineWriter.Open
-' COVER: Viper.IO.LineWriter.NewLine
+' COVER: Viper.IO.LineWriter.OpenLine
 ' COVER: Viper.IO.LineWriter.Close
 ' COVER: Viper.IO.LineWriter.Flush
 ' COVER: Viper.IO.LineWriter.Write

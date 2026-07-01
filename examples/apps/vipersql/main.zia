@@ -160,7 +160,7 @@ func processMetaCommand(cmd: String, exec: Executor) {
         // With argument: show the single named table.  We use the
         // *original* case-preserved `cmd` here so identifier
         // lookups remain case-sensitive.
-        var tableName = String.Substring(cmd, 8, String.Length(cmd) - 8);
+        var tableName = String.Substring(cmd, 8, Viper.String.get_Length(cmd) - 8);
         tableName = String.Trim(tableName);
         var result = exec.executeSql("DESCRIBE " + tableName);
         Terminal.Say(result.toString());

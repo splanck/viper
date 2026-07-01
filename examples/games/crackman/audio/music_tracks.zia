@@ -117,7 +117,7 @@ hide func buildMenuSong() -> Sound {
     song.AddNote(bass, 2800, 43, 200);
     song.AddNote(bass, 3000, 50, 200);
 
-    song.SetLength(3200);
+    song.Length = 3200;
     song.SetLoopable(1);
     return song.Build();
 }
@@ -224,7 +224,7 @@ hide func buildGameSong() -> Sound {
         beat = beat + 200;
     }
 
-    song.SetLength(1600);
+    song.Length = 1600;
     song.SetLoopable(1);
     return song.Build();
 }

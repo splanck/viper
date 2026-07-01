@@ -1501,21 +1501,19 @@ func start() {
 }
 
 //===----------------------------------------------------------------------===//
-// ZIA-007: Viper.Terminal.Int() — integer-to-string conversion without
-//          requiring a separate `bind Viper.Text.Fmt` import.
+// ZIA-007 cleanup: integer-to-string conversion lives under Viper.Text.Fmt.
 //===----------------------------------------------------------------------===//
 
-/// @brief Viper.Terminal now exposes Int(i64) -> str so that integer-to-string
-/// conversion is available in any module that binds Viper.Terminal, without
-/// also requiring `bind Viper.Text.Fmt`.
-TEST(ZiaBugFixes, ZIA007_TerminalIntConversion) {
+/// @brief Fmt.Int remains the canonical integer-to-string conversion.
+TEST(ZiaBugFixes, ZIA007_FmtIntConversion) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
 bind Viper.Terminal;
+bind Viper.Text.Fmt as Fmt;
 
-func start() {    Say("x=" + Int(42));
-    Say("neg=" + Int(-7));
+func start() {    Say("x=" + Fmt.Int(42));
+    Say("neg=" + Fmt.Int(-7));
 }
 )";
     CompilerInput input{.source = source, .path = "zia007.zia"};
@@ -1526,8 +1524,8 @@ func start() {    Say("x=" + Int(42));
     EXPECT_TRUE(result.succeeded());
 }
 
-/// @brief Int() in Terminal should work alongside Say() in the same expression.
-TEST(ZiaBugFixes, ZIA007_TerminalIntInConcatenation) {
+/// @brief Terminal.Int is intentionally not a compatibility alias for Fmt.Int.
+TEST(ZiaBugFixes, ZIA007_TerminalIntIsNotAccepted) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1542,7 +1540,7 @@ func start() {    var n = 100;
 
     auto result = compile(input, opts, sm);
 
-    EXPECT_TRUE(result.succeeded());
+    EXPECT_FALSE(result.succeeded());
 }
 
 //===----------------------------------------------------------------------===//

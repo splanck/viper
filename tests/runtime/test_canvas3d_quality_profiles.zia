@@ -10,19 +10,19 @@ func fail(message: String) {
 func runProfile(canvas: Canvas3D, quality: Integer, expectFallback: Boolean) -> Boolean {
     Canvas3D.SetQuality(canvas, quality);
 
-    if (Canvas3D.get_QualityRequested(canvas) != quality) {
+    if (canvas.QualityRequested != quality) {
         fail("requested quality mismatch");
         return false;
     }
-    if (Canvas3D.get_QualityActive(canvas) != quality) {
+    if (canvas.QualityActive != quality) {
         fail("active quality mismatch");
         return false;
     }
-    if (Canvas3D.get_QualityFallback(canvas) != expectFallback) {
+    if (canvas.QualityFallback != expectFallback) {
         fail("fallback flag mismatch");
         return false;
     }
-    if (expectFallback && Canvas3D.get_QualityFallbackReason(canvas) == "") {
+    if (expectFallback && canvas.QualityFallbackReason == "") {
         fail("missing fallback reason");
         return false;
     }

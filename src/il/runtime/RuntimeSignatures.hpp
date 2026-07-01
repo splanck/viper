@@ -192,6 +192,7 @@ struct RuntimeSignature {
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.
 struct RuntimeDescriptor {
     std::string_view name;      ///< Symbol exported by the runtime library.
+    std::string_view signatureText; ///< Public runtime.def signature spelling.
     RuntimeSignature signature; ///< Canonical IL signature for the helper.
     RuntimeHandler handler{nullptr}; ///< Adapter that invokes the C implementation.
     RuntimeLowering lowering;   ///< Lowering metadata controlling declaration.

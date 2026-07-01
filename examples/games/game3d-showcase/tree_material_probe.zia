@@ -15,8 +15,8 @@ func fail(game: Game3DShowcase, msg: String) {
 
 func matHasSurfaceDetail(mat: Material3D) -> Boolean {
     if (mat == null) { return false; }
-    if (Material3D.get_HasTexture(mat)) { return true; }
-    if (Material3D.get_HasNormalMap(mat)) { return true; }
+    if (mat.HasTexture) { return true; }
+    if (mat.HasNormalMap) { return true; }
     return false;
 }
 
@@ -26,8 +26,8 @@ func absFloat(value: Float) -> Float {
 }
 
 func colorDistance(a: Material3D, b: Material3D) -> Float {
-    var ac = Material3D.get_Color(a);
-    var bc = Material3D.get_Color(b);
+    var ac = a.Color;
+    var bc = b.Color;
     return absFloat(Vec3.get_X(ac) - Vec3.get_X(bc))
         + absFloat(Vec3.get_Y(ac) - Vec3.get_Y(bc))
         + absFloat(Vec3.get_Z(ac) - Vec3.get_Z(bc));
@@ -40,8 +40,8 @@ func main() {
     game.setup("Game3D Showcase Tree Material Probe", 320, 180);
 
     var world = game.getWorld();
-    var barkNode = World3D.findNode(world, "mesh_0_material_0");
-    var canopyNode = World3D.findNode(world, "mesh_1_material_1");
+    var barkNode = world.FindNode("mesh_0_material_0");
+    var canopyNode = world.FindNode("mesh_1_material_1");
     if (barkNode == null) {
         fail(game, "imported maple bark material node was not spawned");
         return;
@@ -66,13 +66,13 @@ func main() {
         return;
     }
 
-    var barkColor = Material3D.get_Color(barkMat);
+    var barkColor = barkMat.Color;
     if (Vec3.get_X(barkColor) <= Vec3.get_Y(barkColor) ||
             Vec3.get_Y(barkColor) <= Vec3.get_Z(barkColor)) {
         fail(game, "bark material is not brown-toned");
         return;
     }
-    var canopyColor = Material3D.get_Color(canopyMat);
+    var canopyColor = canopyMat.Color;
     if (Vec3.get_Y(canopyColor) < 0.30 ||
             Vec3.get_X(canopyColor) + Vec3.get_Y(canopyColor) + Vec3.get_Z(canopyColor) <=
             Vec3.get_X(barkColor) + Vec3.get_Y(barkColor) + Vec3.get_Z(barkColor)) {

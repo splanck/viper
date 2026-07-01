@@ -37,15 +37,15 @@ class ShowcaseAssets {
         stoneMat = Material3D.NewPBR(0.52, 0.54, 0.57);
         Material3D.SetAlbedoMap(stoneMat, stoneAlbedo);
         Material3D.SetNormalMap(stoneMat, rockNormal);
-        Material3D.SetRoughness(stoneMat, 0.80);
-        Material3D.SetMetallic(stoneMat, 0.05);
+        stoneMat.Roughness = 0.80;
+        stoneMat.Metallic = 0.05;
         Material3D.SetEmissiveColor(stoneMat, 0.010, 0.012, 0.016);
 
         pedestalMat = Material3D.NewPBR(0.46, 0.43, 0.34);
         Material3D.SetAlbedoMap(pedestalMat, stoneAlbedo);
         Material3D.SetNormalMap(pedestalMat, rockNormal);
-        Material3D.SetRoughness(pedestalMat, 0.90);
-        Material3D.SetMetallic(pedestalMat, 0.0);
+        pedestalMat.Roughness = 0.90;
+        pedestalMat.Metallic = 0.0;
         Material3D.SetEmissiveColor(pedestalMat, 0.018, 0.016, 0.012);
 
         playerMat = Materials.Plastic(0.22, 0.76, 0.48);
@@ -57,19 +57,19 @@ class ShowcaseAssets {
         archiveMat = Material3D.NewPBR(0.78, 0.72, 0.58);
         Material3D.SetAlbedoMap(archiveMat, metalAlbedo);
         Material3D.SetNormalMap(archiveMat, rockNormal);
-        Material3D.SetRoughness(archiveMat, 0.34);
-        Material3D.SetMetallic(archiveMat, 0.85);
+        archiveMat.Roughness = 0.34;
+        archiveMat.Metallic = 0.85;
 
         waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 1.20);
     }
 
     expose func applyEnvReflections(skybox: CubeMap3D) {
         Material3D.SetEnvMap(stoneMat, skybox);
-        Material3D.SetReflectivity(stoneMat, 0.16);
+        stoneMat.Reflectivity = 0.16;
         Material3D.SetEnvMap(pedestalMat, skybox);
-        Material3D.SetReflectivity(pedestalMat, 0.10);
+        pedestalMat.Reflectivity = 0.10;
         Material3D.SetEnvMap(archiveMat, skybox);
-        Material3D.SetReflectivity(archiveMat, 0.45);
+        archiveMat.Reflectivity = 0.45;
     }
 
     expose func getCubeMesh() -> Mesh3D { return cubeMesh; }

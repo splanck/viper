@@ -4,10 +4,10 @@ bind Viper.Game3D as Game3D;
 bind Viper.Graphics3D as G3D;
 bind Viper.Terminal as Terminal;
 
-var callbackWorld: Any = null;
+var callbackWorld: Game3D.World3D = null;
 var callbackCount: Integer = 0;
 var callbackDtMismatch: Boolean = false;
-var overlayWorld: Any = null;
+var overlayWorld: Game3D.World3D = null;
 var overlayUpdateCount: Integer = 0;
 var overlayDrawCount: Integer = 0;
 var overlayDtMismatch: Boolean = false;
@@ -30,7 +30,7 @@ func onFixed(dt: Float) {
         callbackDtMismatch = true;
     }
     if (callbackCount >= 2) {
-        Game3D.World3D.destroy(callbackWorld);
+        callbackWorld.Destroy();
     }
 }
 
@@ -40,7 +40,7 @@ func onFixedWithOverlay(dt: Float) {
         overlayDtMismatch = true;
     }
     if (overlayUpdateCount >= 3) {
-        Game3D.World3D.destroy(overlayWorld);
+        overlayWorld.Destroy();
     }
 }
 
@@ -51,12 +51,12 @@ func onOverlay() {
 func start() {
     var world = Game3D.World3D.New("Game3D RunFixed Callback Probe", 32, 24);
     callbackWorld = world;
-    var canvas = Game3D.World3D.get_canvas(world);
+    var canvas = world.Canvas;
     G3D.Canvas3D.SetInputSource(canvas, 1);
     G3D.Canvas3D.SetClockSource(canvas, 1);
     G3D.Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.016);
 
-    Game3D.World3D.runFixed(world, 0.016, &onFixed);
+    world.RunFixed(0.016, &onFixed);
 
     if (callbackCount != 2) {
         fail("runFixed callback count was " + toString(callbackCount));
@@ -66,19 +66,19 @@ func start() {
         fail("runFixed callback received the wrong fixed dt");
         return;
     }
-    if (Game3D.World3D.isDestroyed(world) == false) {
+    if (world.IsDestroyed() == false) {
         fail("runFixed callback did not destroy the world");
         return;
     }
 
     var overlayProbe = Game3D.World3D.New("Game3D RunFixed Overlay Callback Probe", 32, 24);
     overlayWorld = overlayProbe;
-    var overlayCanvas = Game3D.World3D.get_canvas(overlayProbe);
+    var overlayCanvas = overlayProbe.Canvas;
     G3D.Canvas3D.SetInputSource(overlayCanvas, 1);
     G3D.Canvas3D.SetClockSource(overlayCanvas, 1);
     G3D.Canvas3D.SetSyntheticDeltaTimeSec(overlayCanvas, 0.016);
 
-    Game3D.World3D.runFixedWithOverlay(overlayProbe, 0.016, &onFixedWithOverlay, &onOverlay);
+    overlayProbe.RunFixedWithOverlay(0.016, &onFixedWithOverlay, &onOverlay);
 
     if (overlayUpdateCount != 3) {
         fail("runFixedWithOverlay update count was " + toString(overlayUpdateCount));
@@ -92,7 +92,7 @@ func start() {
         fail("runFixedWithOverlay update received the wrong fixed dt");
         return;
     }
-    if (Game3D.World3D.isDestroyed(overlayProbe) == false) {
+    if (overlayProbe.IsDestroyed() == false) {
         fail("runFixedWithOverlay callback did not destroy the world");
         return;
     }

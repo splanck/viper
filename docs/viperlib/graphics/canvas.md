@@ -23,7 +23,6 @@ last-verified: 2026-05-17
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
 | `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls, rounded to the nearest millisecond (first frame may be `0`) |
-| `DeltaTimeMs` | Integer | Explicit millisecond alias for `DeltaTime` |
 | `DeltaTimeSec` | Number | Seconds elapsed between last two `Flip()` calls, using the same clamp as `DeltaTime` |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
@@ -85,7 +84,7 @@ last-verified: 2026-05-17
 | `SavePng(path)`                       | `Integer(String)`                     | Saves canvas to PNG file (returns 1 on success)            |
 | `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
-| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime`/`DeltaTimeMs` auto-clamp to `[1, max]`; `DeltaTimeSec` reports the clamped value divided by 1000 |
+| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime` auto-clamps to `[1, max]`; `DeltaTimeSec` reports the clamped value divided by 1000 |
 | `SetFps(fps)`                         | `Void(Integer)`                       | Set the target frame rate (-1 = unlimited)                 |
 | `SetPosition(x, y)`                   | `Void(Integer, Integer)`              | Move the window to screen coordinates                      |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
@@ -261,19 +260,18 @@ canvas.ArcFrame(300, 200, 50, 45, 135, 65280) ' Arc outline
 ' Draw a quadratic Bezier curve (start, control point, end)
 canvas.Bezier(10, 100, 100, 10, 190, 100, 255)
 
-' Polyline and polygon require an Integer array of points [x1, y1, x2, y2, ...]
-' The array must contain at least count * 2 elements.
-DIM points(5) AS INTEGER
-points(0) = 50 : points(1) = 10   ' Point 1
-points(2) = 10 : points(3) = 90   ' Point 2
-points(4) = 90 : points(5) = 90   ' Point 3
+' Polyline and polygon path calls take a Path2D handle.
+DIM points AS Viper.Graphics.Path2D
+points = Viper.Graphics.Path2D.New(4)
+points.MoveTo(50, 10)
+points.LineTo(10, 90)
+points.LineTo(90, 90)
 
-canvas.Polygon(points, 3, 16711935)      ' Filled polygon (3 points = triangle)
-canvas.PolygonFrame(points, 3, 65535) ' Polygon outline
+canvas.PolygonPath(points, 16711935)      ' Filled polygon
+canvas.PolygonFramePath(points, 65535)    ' Polygon outline
 ```
 
-Polyline and polygon calls ignore invalid handles, non-Integer arrays, and arrays shorter than
-`count * 2` elements.
+Polyline and polygon path calls ignore invalid handles.
 
 ### Canvas Utilities
 
@@ -411,7 +409,7 @@ LOOP
 
 `BeginFrame()` and `SetDTMax()` simplify the standard game loop pattern. Instead of
 manually calling `Poll()` and checking `ShouldClose`, use `BeginFrame()` which combines
-both steps into a single call. `SetDTMax()` clamps the `DeltaTime`, `DeltaTimeMs`,
+both steps into a single call. `SetDTMax()` clamps the `DeltaTime`
 and `DeltaTimeSec` properties to prevent
 physics explosions after lag spikes or window drags.
 
@@ -440,7 +438,7 @@ func start() {
 **Notes:**
 - `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
 - If the platform event pump fails, `Poll()` marks `ShouldClose`, tears down the backend window, updates input actions, and returns `0` without querying stale mouse or event state.
-- Without `SetDTMax()`, `DeltaTime`/`DeltaTimeMs` are rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
+- Without `SetDTMax()`, `DeltaTime` is rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
 - `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first positive frame, rounded values clamp to `[1, max]`
 - Prefer `DeltaTimeSec` for velocity and animation math expressed in units per second
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation

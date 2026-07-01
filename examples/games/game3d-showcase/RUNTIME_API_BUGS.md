@@ -44,9 +44,10 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   and `SetShadingModel`/`SetUnlit` ARE bound as methods, so the asymmetry is surprising.
 - **Repro:** `Material3D.SetRoughness(mat, 0.8);` fails; `Material3D.set_Roughness(mat, 0.8);` works.
 - **Workaround:** Historical: use the `set_*` property setters for scalar PBR factors.
-- **Status:** Resolved 2026-06-04. The advertised `Set*` scalar aliases are bound instead of
-  removed: `SetMetallic`, `SetRoughness`, `SetAO`, `SetEmissiveIntensity`, `SetNormalScale`, and
-  `SetReflectivity`. `Light3D.SetEnabled` and `Light3D.SetCastsShadows` are also bound.
+- **Status:** Resolved by removing the advertised `Set*` scalar aliases from the runtime class
+  surface; the canonical API is the property setter (`set_Metallic`, `set_Roughness`,
+  `set_AO`, `set_EmissiveIntensity`, `set_NormalScale`, `set_Reflectivity`) or property
+  assignment in languages that support it.
 - **Generalizes:** Same defect on **`Light3D.SetEnabled(i1)`** — advertised by introspection,
   rejected by the compiler (`has no method 'SetEnabled'`); must use `Light3D.set_Enabled(...)`.
   Yet `Light3D.SetIntensity` / `SetColor` (no matching property) ARE bound. The pattern: when a

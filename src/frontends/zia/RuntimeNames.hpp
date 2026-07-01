@@ -58,6 +58,8 @@ using namespace il::runtime::names;
 
 /// @brief Check if a string contains a substring. Maps to Viper.String.Has.
 inline constexpr const char *kStringContains = kStringHas;
+/// @brief Get the length of a string. Maps to Viper.String.get_Length.
+inline constexpr const char *kStringLength = kStringGetLength;
 /// @brief Convert an i64 integer to its string representation.
 inline constexpr const char *kStringFromInt = kCoreConvertToStringInt;
 /// @brief Convert an f64 float to its string representation.
@@ -113,7 +115,7 @@ inline constexpr const char *kUnboxStr = kCoreBoxToStr;
 /// @brief Convert a value to f64 (double-precision float).
 inline constexpr const char *kConvertToDouble = kCoreConvertToDouble;
 /// @brief Convert a value to i64 (64-bit integer).
-inline constexpr const char *kConvertToInt = kCoreConvertToInt;
+inline constexpr const char *kConvertToInt = kCoreConvertToInt64;
 /// @}
 
 //=============================================================================
@@ -123,9 +125,9 @@ inline constexpr const char *kConvertToInt = kCoreConvertToInt;
 //=============================================================================
 
 /// @brief Parse a string to an f64 value.
-inline constexpr const char *kParseDouble = kCoreParseDouble;
+inline constexpr const char *kParseDouble = kCoreParseTryNum;
 /// @brief Parse a string to an i64 value.
-inline constexpr const char *kParseInt64 = kCoreParseInt64;
+inline constexpr const char *kParseInt64 = kCoreParseTryInt;
 /// @}
 
 //=============================================================================
@@ -270,8 +272,8 @@ inline constexpr const char *kSeqGetStr = kCollectionsSeqGetStr;
 
 /// @brief Generate a random number. Maps to Viper.Math.Random.Next.
 inline constexpr const char *kMathRandom = kMathRandomNext;
-/// @brief Sleep for a given number of milliseconds. Maps to Viper.Time.SleepMs.
-inline constexpr const char *kSystemSleep = kTimeSleepMs;
+/// @brief Sleep for a given number of milliseconds. Maps to Viper.Time.Clock.Sleep.
+inline constexpr const char *kSystemSleep = kTimeClockSleep;
 /// @}
 
 //=============================================================================

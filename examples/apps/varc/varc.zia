@@ -44,7 +44,7 @@ func intToStr(n: Integer) -> String {
 }
 
 func strToInt(s: String) -> Integer {
-    return Convert.ToInt(s);
+    return Convert.ToInt64(s);
 }
 
 // Write a 16-bit little-endian integer to bytes at position
@@ -91,7 +91,7 @@ func checksum(data: Viper.Collections.Bytes) -> Integer {
 
 // Get directory part of path
 func dirname(path: String) -> String {
-    var len = String.Length(path);
+    var len = Viper.String.get_Length(path);
     var i = len - 1;
     while (i >= 0) {
         var c = String.Asc(String.MidLen(path, i + 1, 1));
@@ -106,7 +106,7 @@ func dirname(path: String) -> String {
 // Process file data for storage: compress and/or encrypt
 // Uses Base64 encoding for binary-safe encryption of compressed data
 func processFileData(data: Viper.Collections.Bytes, compress: Boolean, password: String) -> Viper.Collections.Bytes {
-    if (compress && String.Length(password) > 0) {
+    if (compress && Viper.String.get_Length(password) > 0) {
         var compressed = IO.Compress.Deflate(data);
         // Encode compressed bytes as base64 for safe string encryption
         var base64 = Collections.Bytes.ToBase64(compressed);
@@ -115,7 +115,7 @@ func processFileData(data: Viper.Collections.Bytes, compress: Boolean, password:
     if (compress) {
         return IO.Compress.Deflate(data);
     }
-    if (String.Length(password) > 0) {
+    if (Viper.String.get_Length(password) > 0) {
         // Encode raw bytes as base64 for safe string encryption
         var base64 = Collections.Bytes.ToBase64(data);
         return Crypto.Aes.EncryptStr(base64, password);
@@ -161,7 +161,7 @@ func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boo
     if (compress) {
         Terminal.Say("Compression: DEFLATE");
     }
-    if (String.Length(password) > 0) {
+    if (Viper.String.get_Length(password) > 0) {
         Terminal.Say("Encryption: AES");
     }
 
@@ -170,7 +170,7 @@ func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boo
     if (compress) {
         flags = flags + FLAG_COMPRESSED;
     }
-    if (String.Length(password) > 0) {
+    if (Viper.String.get_Length(password) > 0) {
         flags = flags + FLAG_ENCRYPTED;
     }
 
@@ -192,7 +192,7 @@ func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boo
         allOriginal.add(fileData);
 
         var storedLen = Collections.Bytes.get_Length(storedData);
-        var pathLen = String.Length(filePath);
+        var pathLen = Viper.String.get_Length(filePath);
         totalSize = totalSize + ENT_HEADER_SIZE + pathLen + storedLen;
         i = i + 1;
     }
@@ -824,8 +824,8 @@ func cmdSelfTest() -> Integer {
 
     if (extracted1 != content1) {
         Terminal.Say("FAIL: file1.txt content mismatch");
-        Terminal.Say("Expected length: " + intToStr(String.Length(content1)));
-        Terminal.Say("Got length: " + intToStr(String.Length(extracted1)));
+        Terminal.Say("Expected length: " + intToStr(Viper.String.get_Length(content1)));
+        Terminal.Say("Got length: " + intToStr(Viper.String.get_Length(extracted1)));
         return 1;
     }
 

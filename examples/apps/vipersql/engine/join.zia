@@ -571,7 +571,7 @@ class JoinEngine {
                 var pat = right.toString();
                 var regex = "^";
                 var pi = 0;
-                while pi < String.Length(pat) {
+                while pi < Viper.String.get_Length(pat) {
                     var ch = String.Substring(pat, pi, 1);
                     if ch == "%" { regex = regex + ".*"; }
                     else if ch == "_" { regex = regex + "."; }
@@ -616,7 +616,7 @@ class JoinEngine {
                 var key = right.toString();
                 var extracted = jsonExtractPath(jsonStr, key);
                 if extracted == "" { return sqlNull(); }
-                var eLen = String.Length(extracted);
+                var eLen = Viper.String.get_Length(extracted);
                 if eLen >= 2 && String.Substring(extracted, 0, 1) == "\"" && String.Substring(extracted, eLen - 1, 1) == "\"" {
                     return sqlText(String.Substring(extracted, 1, eLen - 2));
                 }
@@ -1086,7 +1086,7 @@ class JoinEngine {
                     // Parse USING columns from comma-separated string
                     var ucCurrent = "";
                     var uci = 0;
-                    var ucLen = String.Length(usingColStr);
+                    var ucLen = Viper.String.get_Length(usingColStr);
                     while uci < ucLen {
                         var ch = String.Substring(usingColStr, uci, 1);
                         if ch == "," {
@@ -1946,8 +1946,8 @@ class JoinEngine {
 
                 // Suffix match (e.g., column named "orders.amount" matches "amount")
                 var suffix = "." + searchName;
-                var suffixLen = String.Length(suffix);
-                var colLen = String.Length(colName);
+                var suffixLen = Viper.String.get_Length(suffix);
+                var colLen = Viper.String.get_Length(colName);
                 if colLen > suffixLen {
                     if String.Substring(colName, colLen - suffixLen, suffixLen) == suffix {
                         matchCount = matchCount + 1;

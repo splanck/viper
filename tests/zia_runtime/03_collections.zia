@@ -6,7 +6,7 @@ bind "./_support";
 // COVER: Viper.Collections.List.Push
 // COVER: Viper.Collections.List.Get
 // COVER: Viper.Collections.List.Set
-// COVER: Viper.Collections.List.Length
+// COVER: Viper.Collections.List.get_Length
 // COVER: Viper.Collections.List.RemoveAt
 // COVER: Viper.Collections.List.Clear
 // COVER: Viper.Collections.Map.Set

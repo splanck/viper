@@ -75,8 +75,8 @@ DIM opt AS OBJECT
 opt = Viper.Core.Parse.TryInt("123")
 opt = Viper.Core.Parse.TryNum("12.5")
 opt = Viper.Core.Parse.TryBool("yes")
-opt = Viper.Core.Parse.Int64("123")
-opt = Viper.Core.Parse.Double("12.5")
+opt = Viper.Core.Parse.TryInt("123")
+opt = Viper.Core.Parse.TryNum("12.5")
 )"));
 }
 
@@ -90,10 +90,10 @@ DIM pe AS OBJECT
 entries = Viper.IO.Dir.List(".")
 box = Viper.Core.Box.I64(42)
 opt = Viper.Core.Box.ToI64Option(box)
-opt = Viper.Core.Box.TryToI64(box)
+opt = Viper.Core.Box.ToI64Option(box)
 fields = Viper.String.SplitFields("a,b")
 pe = Viper.Game.ParticleEmitter.New(4)
-opt = Viper.Game.ParticleEmitter.Get(pe, 0)
+opt = Viper.Game.ParticleEmitter.ParticleAt(pe, 0)
 PRINT "ok"
 )"));
 }
@@ -223,17 +223,17 @@ DIM stack AS OBJECT
 DIM deque AS OBJECT
 DIM seq2 AS OBJECT
 seq = Viper.Collections.Seq.New()
-list = Viper.Collections.List.FromSeq(seq)
-st = Viper.Collections.Set.FromSeq(seq)
-bag = Viper.Collections.Bag.FromSeq(seq)
-queue = Viper.Collections.Queue.FromSeq(seq)
-stack = Viper.Collections.Stack.FromSeq(seq)
-deque = Viper.Collections.Deque.FromSeq(seq)
-seq2 = Viper.Collections.Seq.FromList(list)
-seq2 = Viper.Collections.Seq.FromSet(st)
-seq2 = Viper.Collections.Seq.FromBag(bag)
-list = Viper.Collections.List.FromSet(st)
-list = Viper.Collections.List.FromDeque(deque)
+list = Viper.Collections.Seq.ToList(seq)
+st = Viper.Collections.Seq.ToSet(seq)
+bag = Viper.Collections.Seq.ToBag(seq)
+queue = Viper.Collections.Seq.ToQueue(seq)
+stack = Viper.Collections.Seq.ToStack(seq)
+deque = Viper.Collections.Seq.ToDeque(seq)
+seq2 = Viper.Collections.List.ToSeq(list)
+seq2 = Viper.Collections.Set.ToSeq(st)
+seq2 = Viper.Collections.Bag.ToSeq(bag)
+list = Viper.Collections.Set.ToList(st)
+list = Viper.Collections.Deque.ToList(deque)
 PRINT "ok"
 )"));
 }
@@ -305,7 +305,7 @@ maxv = Viper.Graphics3D.Collider3D.GetLocalBoundsMax(compound)
 ty = compound.Type
 body = Viper.Graphics3D.Physics3DBody.New(1.0)
 body.Collider = compound
-body.SetCollider(boxCol)
+body.Collider = boxCol
 boxCol = body.Collider
 PRINT ty
 )"));
@@ -646,15 +646,15 @@ DIM doubleSided AS BOOLEAN
 base = Viper.Graphics3D.Material3D.NewPBR(0.8, 0.7, 0.6)
 tex = Viper.Graphics.Pixels.New(1, 1)
 base.SetAlbedoMap(tex)
-base.SetMetallic(0.9)
-base.SetRoughness(0.15)
-base.SetAO(0.85)
-base.SetEmissiveIntensity(2.5)
+base.Metallic = 0.9
+base.Roughness = 0.15
+base.AO = 0.85
+base.EmissiveIntensity = 2.5
 base.SetNormalMap(tex)
 base.SetMetallicRoughnessMap(tex)
 base.SetAOMap(tex)
 base.SetEmissiveMap(tex)
-base.SetNormalScale(0.75)
+base.NormalScale = 0.75
 base.Anisotropy = 64
 base.AlphaMode = 2
 base.DoubleSided = 1
@@ -790,17 +790,17 @@ TEST(BasicRuntimeCalls, IoConstructorAliasesLowerToOpenTargets) {
 DIM writer AS OBJECT
 DIM reader AS OBJECT
 DIM file AS OBJECT
-writer = Viper.IO.LineWriter.New("out.txt")
-reader = Viper.IO.LineReader.New("out.txt")
-file = Viper.IO.BinFile.New("out.bin", "rw")
+writer = Viper.IO.LineWriter.Open("out.txt")
+reader = Viper.IO.LineReader.Open("out.txt")
+file = Viper.IO.BinFile.Open("out.bin", "rw")
 PRINT "ok"
 )");
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineWriter.New"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineReader.New"), static_cast<size_t>(1));
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.BinFile.New"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineWriter.Open"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.LineReader.Open"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.IO.BinFile.Open"), static_cast<size_t>(1));
 }
 
 /// @brief Main.

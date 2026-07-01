@@ -627,7 +627,7 @@ int64_t rt_world3d_get_solver_iterations(void *obj) {
     return w ? ph3d_clamp_solver_iterations(w->solver_iterations) : 0;
 }
 
-/// @brief `World3D.SetSolverIterations(iterations)` — tune iterative solver passes.
+/// @brief `World3D.SolverIterations` setter — tune iterative solver passes.
 void rt_world3d_set_solver_iterations(void *obj, int64_t iterations) {
     rt_world3d *w = world3d_checked(obj);
     if (w)

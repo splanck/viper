@@ -31,13 +31,13 @@ func start() {
 
     // Transparent materials (glass panels)
     var red_glass = Material3D.NewColor(1.0, 0.2, 0.2);
-    Material3D.set_Alpha(red_glass, 0.35);
+    red_glass.Alpha = 0.35;
 
     var green_glass = Material3D.NewColor(0.2, 1.0, 0.3);
-    Material3D.set_Alpha(green_glass, 0.35);
+    green_glass.Alpha = 0.35;
 
     var blue_glass = Material3D.NewColor(0.3, 0.4, 1.0);
-    Material3D.set_Alpha(blue_glass, 0.35);
+    blue_glass.Alpha = 0.35;
 
     // Light
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
@@ -48,7 +48,7 @@ func start() {
     var floor_xform = Mat4.Translate(0.0, -1.0, 0.0);
     var angle = 0.0;
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (canvas.ShouldClose == 0) {
         Canvas3D.Poll(canvas);
 
         var target = new Vec3(0.0, 0.5, 0.0);

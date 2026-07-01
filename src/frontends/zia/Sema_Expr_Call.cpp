@@ -669,10 +669,10 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
                    : fallback;
     }
 
-    if (calleeName == "Viper.Collections.List.Items" ||
-        calleeName == "Viper.Collections.Queue.Items" ||
-        calleeName == "Viper.Collections.Stack.Items" ||
-        calleeName == "Viper.Collections.Deque.Items") {
+    if (calleeName == "Viper.Collections.List.ToSeq" ||
+        calleeName == "Viper.Collections.Queue.ToSeq" ||
+        calleeName == "Viper.Collections.Stack.ToSeq" ||
+        calleeName == "Viper.Collections.Deque.ToSeq") {
         return elementReceiver && elementReceiver->elementType()
                    ? asSeq(elementReceiver->elementType())
                    : fallback;
