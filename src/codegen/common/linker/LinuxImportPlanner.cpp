@@ -87,6 +87,7 @@ bool isLinuxCppRuntimeSymbol(const std::string &name) {
         "__cxa_end_catch",
         "__cxa_rethrow",
         "__gxx_personality_v0",
+        "__once_proxy",
     };
     if (kExact.count(name) != 0)
         return true;

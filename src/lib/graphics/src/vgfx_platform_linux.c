@@ -60,6 +60,22 @@ typedef void *GLXFBConfig;
 
 static pthread_mutex_t g_x11_global_mu = PTHREAD_MUTEX_INITIALIZER;
 
+static int vgfx_x11_env_flag_enabled(const char *name) {
+    const char *value = getenv(name);
+    if (!value || value[0] == '\0')
+        return 0;
+    return strcmp(value, "0") != 0 && strcmp(value, "false") != 0 && strcmp(value, "FALSE") != 0 &&
+           strcmp(value, "off") != 0 && strcmp(value, "OFF") != 0;
+}
+
+static int vgfx_x11_hide_windows(void) {
+    return vgfx_x11_env_flag_enabled("VIPER_GFX_HIDE_WINDOWS");
+}
+
+static int vgfx_x11_no_activate_on_create(void) {
+    return vgfx_x11_env_flag_enabled("VIPER_GFX_NO_ACTIVATE") || vgfx_x11_hide_windows();
+}
+
 /// @brief Acquire the mutex protecting process-global X11 backend state.
 /// @details This lock covers Viper-owned globals such as the live-window list,
 ///          cached GLX library handle, and temporary X error handler changes.
@@ -137,6 +153,7 @@ typedef struct {
     size_t ximage_buf_size; ///< Size of ximage_buf in bytes
     int width;              ///< Cached window width
     int height;             ///< Cached window height
+    int hidden;             ///< 1 if creation intentionally skipped mapping
     int close_requested;    ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
     // XDND (drag-and-drop) atoms
     Atom xdnd_aware;                  ///< XdndAware atom
@@ -1009,9 +1026,14 @@ float vgfx_platform_get_display_scale(void) {
 ///            - Can be closed (intercepts WM_DELETE_WINDOW)
 ///            - Receives keyboard and mouse input
 ///            - 32-bit depth for direct RGBA rendering
+///            - Made visible unless VIPER_GFX_HIDE_WINDOWS is set
+///            - Hints that the window should not take focus when VIPER_GFX_NO_ACTIVATE is set
 int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params) {
     if (!win || !params)
         return 0;
+
+    int hide_window = vgfx_x11_hide_windows();
+    int no_activate = vgfx_x11_no_activate_on_create();
 
     /* Allocate platform data structure */
     vgfx_x11_data *x11 = (vgfx_x11_data *)calloc(1, sizeof(vgfx_x11_data));
@@ -1027,6 +1049,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->cursor_visible = 1;
     x11->width = win->width;
     x11->height = win->height;
+    x11->hidden = hide_window;
 
     /* Open connection to X server */
     x11_init_threads_once();
@@ -1113,6 +1136,30 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         XFree(size_hints);
     }
 
+    if (no_activate) {
+        XWMHints *wm_hints = XAllocWMHints();
+        if (wm_hints) {
+            wm_hints->flags = InputHint;
+            wm_hints->input = False;
+            XSetWMHints(x11->display, x11->window, wm_hints);
+            XFree(wm_hints);
+        }
+
+        Atom net_wm_user_time = XInternAtom(x11->display, "_NET_WM_USER_TIME", False);
+        if (net_wm_user_time != None) {
+            unsigned long user_time = 0;
+            XChangeProperty(x11->display,
+                            x11->window,
+                            net_wm_user_time,
+                            XA_CARDINAL,
+                            32,
+                            PropModeReplace,
+                            (unsigned char *)&user_time,
+                            1);
+        }
+        vgfx_internal_set_focus_state(win, 0);
+    }
+
     /* Set up WM_DELETE_WINDOW protocol (intercept close button) */
     x11->wm_delete_window = XInternAtom(x11->display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(x11->display, x11->window, &x11->wm_delete_window, 1);
@@ -1171,10 +1218,12 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         return 0;
     }
 
-    /* Map (show) the window */
-    XMapWindow(x11->display, x11->window);
+    /* Map (show) the window unless tests explicitly request hidden graphics windows. */
+    if (!hide_window)
+        XMapWindow(x11->display, x11->window);
     XFlush(x11->display);
-    x11_wait_for_viewable(x11);
+    if (!hide_window)
+        x11_wait_for_viewable(x11);
 
     return 1;
 }
@@ -1904,6 +1953,8 @@ int vgfx_platform_present(struct vgfx_window *win) {
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
     if (!x11->display || !x11->window || !x11->ximage)
         return 0;
+    if (x11->hidden)
+        return 1;
 
     if (!x11_convert_rgba_to_native32(win, x11))
         return 0;
@@ -2263,6 +2314,8 @@ void vgfx_platform_focus(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (x11->hidden)
+        return;
     if (x11->display && x11->window) {
         XSetInputFocus(x11->display, x11->window, RevertToParent, CurrentTime);
         XFlush(x11->display);

@@ -1,3 +1,10 @@
+## SPDX-License-Identifier: GPL-3.0-only
+## File: tests/e2e/test_vm_parallel_callbacks.cmake
+## Purpose: Verify parallel callback execution on every interpreted VM backend.
+## Key invariants: Parallel callbacks execute and VM teardown does not crash.
+## Ownership/Lifetime: Invoked by CTest.
+## Links: docs/codemap.md
+
 # Regression: Parallel.For + Pool.Submit + DefaultPool callbacks must run on EVERY interpreted
 # backend (tree-walking VM, bytecode VM switch dispatch, bytecode VM threaded dispatch) and tear
 # down cleanly. Two prior bugs are guarded here:
@@ -14,9 +21,12 @@
 set(_modes "tree-walker|" "bytecode|--bytecode" "bytecode-threaded|--bc-threaded")
 
 foreach (_mode IN LISTS _modes)
-    string(REPLACE "|" ";" _parts "${_mode}")
-    list(GET _parts 0 _label)
-    list(GET _parts 1 _flag)
+    string(REGEX MATCH "^([^|]*)\\|(.*)$" _matched "${_mode}")
+    if (NOT _matched)
+        message(FATAL_ERROR "invalid vm_parallel_callbacks mode tuple: '${_mode}'")
+    endif ()
+    set(_label "${CMAKE_MATCH_1}")
+    set(_flag "${CMAKE_MATCH_2}")
 
     set(_cmd ${ILC} -run ${SRC_DIR}/src/tests/data/parallel_callbacks.il)
     if (_flag)

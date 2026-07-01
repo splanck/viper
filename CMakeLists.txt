@@ -203,6 +203,15 @@ else()
   # GCC/Clang compiler flags
   list(APPEND IL_COMPILE_FLAGS -Wall -Wextra -Wpedantic)
 
+  # AArch64 outline atomics introduce libgcc.a helper references such as
+  # __aarch64_ldadd* into static archives. Viper's native linker does not pull
+  # compiler runtime archive members, so keep atomics inline for portable
+  # self-contained archives.
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$" AND
+     CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    list(APPEND IL_COMPILE_FLAGS -mno-outline-atomics)
+  endif()
+
   # High-value warnings not included in -Wall/-Wextra
   list(APPEND IL_COMPILE_FLAGS
     -Wshadow             # local hides outer declaration

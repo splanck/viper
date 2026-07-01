@@ -70,6 +70,16 @@ inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *p
 ///          RTTI/vtable, operator new/delete, and exception-runtime prefixes so
 ///          arbitrary user-defined C++ mangled names are not treated as system imports.
 inline bool isKnownCppRuntimeDynamicSymbol(const std::string &name) {
+    const std::string stripped = stripDynamicSymbolLeadingUnderscores(name);
+    static const char *const kCppRuntimeExact[] = {
+        "once_proxy",
+        nullptr,
+    };
+    for (const char *const *p = kCppRuntimeExact; p && *p; ++p) {
+        if (stripped == *p)
+            return true;
+    }
+
     static const char *const kCppRuntimePrefixes[] = {
         "ZNSt",
         "ZNKSt",
@@ -433,7 +443,9 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "signal",
         "sigaction",
         "sigaltstack",
+        "sigaddset",
         "sigemptyset",
+        "sigismember",
         "sigpending",
         "sigprocmask",
         "sigwait",

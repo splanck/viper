@@ -52,13 +52,21 @@ TEST(PlatformImportPlanners, LinuxPlannerClassifiesNeededLibraries) {
     LinuxImportPlan plan;
     std::ostringstream err;
     ASSERT_TRUE(planLinuxImports(
-        {"cbrtf", "cos", "dlopen", "exp10", "pthread_create", "XOpenDisplay", "snd_pcm_open"},
+        {"cbrtf",
+         "cos",
+         "dlopen",
+         "exp10",
+         "pthread_create",
+         "XOpenDisplay",
+         "snd_pcm_open",
+         "__once_proxy"},
         plan,
         err));
     EXPECT_EQ(std::vector<std::string>({"libc.so.6",
                                         "libm.so.6",
                                         "libdl.so.2",
                                         "libpthread.so.0",
+                                        "libstdc++.so.6",
                                         "libX11.so.6",
                                         "libasound.so.2"}),
               plan.neededLibs);

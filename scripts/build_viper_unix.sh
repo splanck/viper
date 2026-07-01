@@ -65,6 +65,10 @@ NO_CCACHE="${VIPER_NO_CCACHE:-0}"
 RUN_SLOW_TESTS="${VIPER_RUN_SLOW_TESTS:-0}"
 CTEST_TIMEOUT="${VIPER_CTEST_TIMEOUT:-}"
 INSTALL_PREFIX="${VIPER_INSTALL_PREFIX:-/usr/local}"
+INSTALL_PREFIX_EXPLICIT=0
+if [[ -n "${VIPER_INSTALL_PREFIX+x}" ]]; then
+    INSTALL_PREFIX_EXPLICIT=1
+fi
 CONFIGURE_ARGS=(
     -S "$ROOT_DIR"
     -B "$BUILD_DIR"
@@ -172,6 +176,13 @@ else
         exit 0
     fi
     if [[ ! -t 0 ]]; then
+        if [[ "$INSTALL_PREFIX_EXPLICIT" != "1" && "$INSTALL_PREFIX" == "/usr/local" ]]; then
+            INSTALL_PREFIX="$BUILD_DIR/install"
+            echo "[build_viper] Non-interactive install: /usr/local requires sudo; using $INSTALL_PREFIX"
+            cmake --install "$BUILD_DIR" --prefix "$INSTALL_PREFIX"
+            echo "[build_viper] Install complete"
+            exit 0
+        fi
         echo "error: install to $INSTALL_PREFIX requires sudo, but stdin is not a terminal" >&2
         echo "Set VIPER_SKIP_INSTALL=1 to build and test only, or set VIPER_INSTALL_PREFIX to a writable prefix." >&2
         exit 1
