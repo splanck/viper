@@ -13,7 +13,7 @@
 
 **[Zia](docs/zia-reference.md)** is the flagship language: a modern, statically typed language with classes, generics, enums, lambdas, modules, pattern matching, and direct access to the Viper runtime. A **[BASIC](docs/basic-reference.md)** frontend is included for education, compatibility experiments, and quick prototypes.
 
-> **Status:** Pre-alpha, active development. The current source tree is `0.2.7-dev`; the IL reference is `0.2.0`. APIs, diagnostics, IL rules, and tooling are still evolving.
+> **Status:** Pre-alpha, active development. The current source tree is `0.2.99-snapshot`; the IL reference is `0.2.0`. APIs, diagnostics, IL rules, and tooling are still evolving.
 
 ---
 
@@ -24,6 +24,8 @@
 - [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.7-dev.tar.gz)
 - [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.7-dev.zip)
 - [Release notes](docs/release_notes/Viper_Release_Notes_0_2_7.md)
+
+**In development:** `0.2.99-snapshot` on `master`. See the [draft v0.2.99 release notes](docs/release_notes/Viper_Release_Notes_0_2_99.md).
 
 ```sh
 git clone https://github.com/splanck/viper.git
