@@ -8,6 +8,13 @@
 // File: src/tests/runtime/RTGraphics3DRobustnessTests.cpp
 // Purpose: Graphics3D correctness contracts for handle validation, numeric
 //   sanitization, packing, and degenerate navigation cases.
+// Key invariants:
+//   - White-box view structs mirror private runtime layouts used by assertions.
+//   - Wrong-class handles must be rejected without dropping existing valid refs.
+// Ownership/Lifetime:
+//   - Tests use the runtime object system and release only where ownership is
+//     explicitly part of the contract under test.
+// Links: src/runtime/graphics/3d/, src/runtime/graphics/2d/rt_pixels_internal.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -231,6 +238,8 @@ struct WaterView {
     double width;
     double depth;
     double height;
+    double center_x;
+    double center_z;
     double wave_speed;
     double wave_amplitude;
     double wave_frequency;

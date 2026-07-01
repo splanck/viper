@@ -23,6 +23,7 @@
 
 #include "IconGenerator.hpp"
 
+#include <cstdlib>
 #include <limits>
 
 namespace viper::pkg {
@@ -227,6 +228,73 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
     }
 
     return result;
+}
+
+/// @brief Build the dependency-free fallback Viper toolchain icon.
+/// @details Draws a high-contrast square icon with a light "V" mark, subtle
+///          diagonal accent, and transparent-free pixels so every platform can
+///          resize it predictably for setup programs, launchers, and file
+///          association metadata.
+/// @return A 256x256 RGBA image.
+PkgImage defaultViperToolchainIconImage() {
+    constexpr uint32_t kSize = 256;
+    PkgImage img;
+    img.width = kSize;
+    img.height = kSize;
+    img.pixels.resize(static_cast<size_t>(img.width) * img.height * 4u);
+    for (uint32_t y = 0; y < kSize; ++y) {
+        for (uint32_t x = 0; x < kSize; ++x) {
+            uint8_t *px = img.at(x, y);
+            const int dx = static_cast<int>(x) - 128;
+            const int dy = static_cast<int>(y) - 128;
+            const bool roundedCorner =
+                (x < 24 && y < 24 && (dx + 104) * (dx + 104) + (dy + 104) * (dy + 104) > 24 * 24) ||
+                (x >= 232 && y < 24 &&
+                 (dx - 104) * (dx - 104) + (dy + 104) * (dy + 104) > 24 * 24) ||
+                (x < 24 && y >= 232 &&
+                 (dx + 104) * (dx + 104) + (dy - 104) * (dy - 104) > 24 * 24) ||
+                (x >= 232 && y >= 232 &&
+                 (dx - 104) * (dx - 104) + (dy - 104) * (dy - 104) > 24 * 24);
+            const uint8_t shade = static_cast<uint8_t>(18 + (x * 42u + y * 26u) / (kSize * 2u));
+            px[0] = roundedCorner ? 0 : static_cast<uint8_t>(10 + shade / 4u);
+            px[1] = roundedCorner ? 0 : static_cast<uint8_t>(74 + shade / 2u);
+            px[2] = roundedCorner ? 0 : static_cast<uint8_t>(92 + shade);
+            px[3] = roundedCorner ? 0 : 255;
+        }
+    }
+
+    for (uint32_t y = 48; y < 214; ++y) {
+        const int left = 55 + static_cast<int>((y - 48) * 45 / 166);
+        const int right = 201 - static_cast<int>((y - 48) * 45 / 166);
+        const int mid = 128;
+        for (uint32_t x = 34; x < 222; ++x) {
+            const bool onLeft = std::abs(static_cast<int>(x) - left) <= 13;
+            const bool onRight = std::abs(static_cast<int>(x) - right) <= 13;
+            const bool onPoint = y > 178 && std::abs(static_cast<int>(x) - mid) <=
+                                                static_cast<int>((214 - y) / 2 + 13);
+            if (!onLeft && !onRight && !onPoint)
+                continue;
+            uint8_t *px = img.at(x, y);
+            px[0] = 236;
+            px[1] = 252;
+            px[2] = 245;
+            px[3] = 255;
+        }
+    }
+
+    for (uint32_t y = 36; y < 220; ++y) {
+        for (uint32_t x = 36; x < 220; ++x) {
+            const int diagonal = static_cast<int>(x) - static_cast<int>(y);
+            if (diagonal >= 46 && diagonal <= 56) {
+                uint8_t *px = img.at(x, y);
+                px[0] = static_cast<uint8_t>((static_cast<unsigned>(px[0]) * 3u + 44u) / 4u);
+                px[1] = static_cast<uint8_t>((static_cast<unsigned>(px[1]) * 3u + 176u) / 4u);
+                px[2] = static_cast<uint8_t>((static_cast<unsigned>(px[2]) * 3u + 152u) / 4u);
+            }
+        }
+    }
+
+    return img;
 }
 
 //=============================================================================

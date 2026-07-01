@@ -537,6 +537,7 @@ std::string generateMacOSFileHandlerInfoPlist(const MacOSToolchainBuildParams &p
     xml << "  <key>CFBundleDevelopmentRegion</key><string>en</string>\n";
     xml << "  <key>CFBundleDisplayName</key><string>Viper Toolchain</string>\n";
     xml << "  <key>CFBundleExecutable</key><string>viper-file-handler</string>\n";
+    xml << "  <key>CFBundleIconFile</key><string>Viper.icns</string>\n";
     xml << "  <key>CFBundleIdentifier</key><string>"
         << xmlEscape(params.identifier + ".filehandler") << "</string>\n";
     xml << "  <key>CFBundleName</key><string>Viper Toolchain</string>\n";
@@ -556,7 +557,7 @@ std::string generateMacOSFileHandlerInfoPlist(const MacOSToolchainBuildParams &p
             << "</string>\n";
         xml << "      <key>CFBundleTypeRole</key><string>" << (sourceType ? "Editor" : "Viewer")
             << "</string>\n";
-        xml << "      <key>LSHandlerRank</key><string>Default</string>\n";
+        xml << "      <key>LSHandlerRank</key><string>Alternate</string>\n";
         xml << "      <key>LSItemContentTypes</key><array><string>" << xmlEscape(uti)
             << "</string></array>\n";
         xml << "    </dict>\n";
@@ -869,10 +870,15 @@ std::string generateMacOSToolchainWelcomeHtml(const std::string &displayName,
     html << "<h2>" << xmlEscape(displayName) << " " << xmlEscape(version) << "</h2>\n";
     html
         << "<p>This installer sets up the Viper compiler toolchain &mdash; the <code>viper</code>, "
-           "<code>vbasic</code>, and <code>zia</code> command-line tools together with the runtime "
-           "libraries, headers, CMake package files, and manual pages.</p>\n";
+           "<code>vbasic</code>, <code>zia</code>, language servers, IL utilities, and "
+           "<code>viperide</code> together with the runtime libraries, headers, CMake package "
+           "files, "
+           "and manual pages.</p>\n";
     html << "<p>The toolchain installs under <code>/usr/local/viper</code> with convenience "
             "symlinks in <code>/usr/local/bin</code>. Click Continue to proceed.</p>\n";
+    html << "<p>An uninstall helper is installed at "
+            "<code>/usr/local/viper/share/viper/uninstall.sh</code>. Source and IL file opens are "
+            "handled by a small helper app in <code>/Applications</code>.</p>\n";
     html << "</body></html>\n";
     return html.str();
 }
@@ -887,6 +893,23 @@ std::string generateMacOSToolchainLicenseText(const std::string &spdx) {
            "online at https://www.gnu.org/licenses/. By choosing Agree you accept the terms of the "
         << id << " license.\n";
     return txt.str();
+}
+
+/// @brief Find the staged Viper license file for the macOS installer license pane.
+/// @details Prefers a manifest entry whose leaf name is exactly `LICENSE`, which
+///          matches the CMake install layout under share/doc/viper. Returns
+///          nullptr when the staged tree does not contain a suitable file.
+/// @param manifest Staged toolchain manifest.
+/// @return Pointer to the license entry, or nullptr.
+const ToolchainFileEntry *findMacOSToolchainLicenseFile(const ToolchainInstallManifest &manifest) {
+    for (const auto &file : manifest.files) {
+        std::string leaf = fs::path(file.stagedRelativePath).filename().generic_string();
+        for (char &c : leaf)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (!file.symlink && leaf == "license")
+            return &file;
+    }
+    return nullptr;
 }
 
 /// @brief Walk the staged .app bundle and write all entries to a ZIP at `outputPath`.
@@ -1303,7 +1326,9 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
                                      fs::path(std::string(kMacOSToolchainAppPath)).relative_path() /
                                      "Contents";
         const fs::path appMacOS = appContents / "MacOS";
+        const fs::path appResources = appContents / "Resources";
         fs::create_directories(appMacOS);
+        fs::create_directories(appResources);
         writeFileString(appContents / "Info.plist",
                         generateMacOSFileHandlerInfoPlist(params, pkgVersion),
                         fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
@@ -1320,6 +1345,11 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
                             fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
                             fs::perms::others_exec,
                         fs::perm_options::replace);
+        const auto icns = generateIcns(defaultViperToolchainIconImage());
+        writeFileBytes(appResources / "Viper.icns",
+                       icns,
+                       fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                           fs::perms::others_read);
     }
 
     writeExecutableScript(installRoot / "share" / "viper" / "uninstall.sh",
@@ -1372,6 +1402,9 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
                                      params.licenseFilePath);
         const auto bytes = readFile(params.licenseFilePath);
         licenseText.assign(bytes.begin(), bytes.end());
+    } else if (const ToolchainFileEntry *license = findMacOSToolchainLicenseFile(params.manifest)) {
+        const auto bytes = readFile(license->stagedAbsolutePath.string());
+        licenseText.assign(bytes.begin(), bytes.end());
     } else {
         licenseText = generateMacOSToolchainLicenseText(params.manifest.license);
     }
@@ -1423,7 +1456,8 @@ void buildMacOSToolchainDmg(const MacOSToolchainDmgParams &params) {
             "macOS .dmg volume name must be non-empty and free of '/' and ':'");
 
     std::error_code ec;
-    const fs::path tmpRoot = createUniqueTempDirectory(fs::temp_directory_path(), "viper-dmg");
+    const fs::path tmpRoot = uniqueTempPackagingDir("viper-dmg");
+    TempDirGuard cleanup(tmpRoot);
     const fs::path stage = tmpRoot / "stage";
     fs::create_directories(stage);
 
@@ -1526,7 +1560,7 @@ void buildMacOSToolchainDmg(const MacOSToolchainDmgParams &params) {
                 params.outputPath},
                "macOS .dmg compression");
 
-    fs::remove_all(tmpRoot, ec);
+    runChecked({"hdiutil", "verify", params.outputPath}, "macOS .dmg verification");
 #endif
 }
 

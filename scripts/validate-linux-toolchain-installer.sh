@@ -74,22 +74,6 @@ mkdir -p "$OUT_DIR"
 APPIMAGE="$OUT_DIR/Viper.AppImage"
 
 STAGE_ARGS=(--build-dir "$BUILD_DIR" --skip-build)
-if [[ -e "$BUILD_DIR/install_manifest.txt" && ! -w "$BUILD_DIR/install_manifest.txt" ]]; then
-    STAGE_DIR="$OUT_DIR/stage"
-    mkdir -p "$STAGE_DIR/bin" "$STAGE_DIR/include/viper" "$STAGE_DIR/lib/cmake/Viper" \
-        "$STAGE_DIR/share/man/man1" "$STAGE_DIR/share/doc/viper"
-    cp "$VIPER_BIN" "$STAGE_DIR/bin/viper"
-    chmod 755 "$STAGE_DIR/bin/viper"
-    printf '#define VIPER_VERSION_STR "0.0.0"\n' >"$STAGE_DIR/include/viper/version.hpp"
-    printf '# AppImage validation config\n' >"$STAGE_DIR/lib/cmake/Viper/ViperConfig.cmake"
-    printf '# AppImage validation targets\n' >"$STAGE_DIR/lib/cmake/Viper/ViperTargets.cmake"
-    printf 'set(PACKAGE_VERSION "0.0.0")\n' >"$STAGE_DIR/lib/cmake/Viper/ViperConfigVersion.cmake"
-    printf '.TH viper 1\n' >"$STAGE_DIR/share/man/man1/viper.1"
-    printf 'Viper AppImage validation stage\n' >"$STAGE_DIR/share/doc/viper/README.md"
-    find "$BUILD_DIR/src" -type f -name '*.a' -exec cp {} "$STAGE_DIR/lib/" \;
-    STAGE_ARGS=(--stage-dir "$STAGE_DIR")
-fi
-
 CMD=("$VIPER_BIN" install-package "${STAGE_ARGS[@]}" --target appimage -o "$APPIMAGE")
 if [[ -n "$CONFIG" && "${STAGE_ARGS[0]}" == "--build-dir" ]]; then
     CMD+=(--config "$CONFIG")
@@ -97,6 +81,12 @@ fi
 "${CMD[@]}"
 "$VIPER_BIN" install-package --verify-only "$APPIMAGE"
 chmod +x "$APPIMAGE"
-"$APPIMAGE" --version >/dev/null
+APPIMAGE_CACHE="$OUT_DIR/cache"
+mkdir -p "$APPIMAGE_CACHE"
+XDG_CACHE_HOME="$APPIMAGE_CACHE" "$APPIMAGE" --version >/dev/null
+if [[ -z "$(find "$APPIMAGE_CACHE/viper" -name .payload.sha256 -type f -print -quit 2>/dev/null)" ]]; then
+    echo "AppImage did not create an XDG cache payload stamp" >&2
+    exit 1
+fi
 
 echo "Linux installer validation passed"

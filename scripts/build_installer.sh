@@ -39,6 +39,7 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
         EXTRA_ARGS=( ${VIPER_EXTRA_CMAKE_ARGS} )
         CONFIGURE_ARGS+=("${EXTRA_ARGS[@]}")
     fi
+    CONFIGURE_ARGS+=(-DVIPER_INSTALL_VIPERIDE=ON)
     cmake "${CONFIGURE_ARGS[@]}"
 fi
 
@@ -55,7 +56,7 @@ for ((i = 0; i < ${#FORWARD_ARGS[@]}; ++i)); do
 done
 
 if [[ "$HAS_STAGE_MODE" -eq 0 ]]; then
-    FORWARD_ARGS=(--build-dir "$BUILD_DIR" "${FORWARD_ARGS[@]}")
+    FORWARD_ARGS=(--build-dir "$BUILD_DIR" --skip-build "${FORWARD_ARGS[@]}")
 fi
 
 exec "$BUILD_DIR/src/tools/viper/viper" install-package "${FORWARD_ARGS[@]}"

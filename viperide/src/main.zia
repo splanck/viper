@@ -6,6 +6,7 @@ bind "ui/explorer_actions";
 bind "ui/debug_breakpoint_overlay";
 bind "ui/activity_bar";
 bind "app/dispatch_helpers";
+bind "app/build_info";
 bind "app/command_palette_controller";
 bind "app/context_menus";
 bind "app/context_menu_dispatcher";
@@ -53,9 +54,11 @@ bind "commands/debug_commands";
 bind "commands/search_commands";
 
 bind Viper.GUI;
+bind Env = Viper.System.Environment;
 bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 bind Dir = Viper.IO.Dir;
+bind Terminal = Viper.Terminal;
 bind Input = Viper.Input;
 bind Exec = Viper.System.Exec;
 bind Machine = Viper.System.Machine;
@@ -114,9 +117,34 @@ final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
 final MAIN_INDEX_FILES_PER_FRAME = 4;
 final MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME = 2;
 final FRAME_BACKGROUND_BUDGET_MS = 10;
+final VIPERIDE_VERSION = "0.1.0";
+
+func hasArg(name: String) -> Boolean {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        if Env.GetArgument(i) == name { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func handleCommandLine() -> Boolean {
+    if hasArg("--version") {
+        Terminal.Say("ViperIDE " + VIPERIDE_VERSION);
+        Terminal.Say(build_info.BuildSummary());
+        return true;
+    }
+    if hasArg("--help") or hasArg("-h") {
+        Terminal.Say("Usage: viperide [--version] [--help]");
+        return true;
+    }
+    return false;
+}
 
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
+    if handleCommandLine() { return; }
+
     // ========================================================================
     // Initialize components
     // ========================================================================

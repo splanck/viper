@@ -352,6 +352,38 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                            0644);
 }
 
+/// @brief Append the visible ViperIDE desktop launcher for Linux package menus.
+void addViperIDEDesktopMetadata(std::vector<DataFile> &dataFiles, const std::string &execPath) {
+    DesktopEntryParams desktop;
+    desktop.name = "ViperIDE";
+    desktop.comment = "Edit, build, and debug Viper projects";
+    desktop.execPath = execPath;
+    desktop.iconName = "viper";
+    desktop.categories = "Development;IDE;TextEditor;";
+    desktop.terminal = false;
+
+    const std::string desktopText = generateDesktopEntry(desktop);
+    dataFiles.emplace_back("usr/share/applications/viperide.desktop",
+                           std::vector<uint8_t>(desktopText.begin(), desktopText.end()),
+                           0644);
+}
+
+/// @brief Append hicolor theme icons for the built-in Viper toolchain launcher.
+/// @details Uses the dependency-free fallback image from IconGenerator and writes
+///          standard hicolor PNG sizes so desktop menus and MIME handlers resolve
+///          Icon=viper in Debian/RPM installs and portable Linux tarballs.
+/// @param dataFiles Package payload list to append to.
+/// @param iconName Theme icon name, without an extension.
+void addViperToolchainHicolorIcons(std::vector<DataFile> &dataFiles, const std::string &iconName) {
+    const auto icons = generateMultiSizePngs(defaultViperToolchainIconImage());
+    for (const auto &[size, png] : icons) {
+        dataFiles.emplace_back("usr/share/icons/hicolor/" + std::to_string(size) + "x" +
+                                   std::to_string(size) + "/apps/" + iconName + ".png",
+                               png,
+                               0644);
+    }
+}
+
 /// @brief Collect all Linux install files from the manifest, mapping each to its FHS path under
 /// /usr via `LinuxUsrRoot` policy, then appending generated file-association metadata entries.
 std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest &manifest,
@@ -369,6 +401,8 @@ std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest 
                 relInstall, readFile(file.stagedAbsolutePath.string()), permissionBitsFor(file));
     }
     addToolchainFileAssociationMetadata(dataFiles, manifest, packageName, "/usr/bin/viper");
+    addViperIDEDesktopMetadata(dataFiles, "/usr/bin/viperide");
+    addViperToolchainHicolorIcons(dataFiles, "viper");
     return dataFiles;
 }
 
@@ -565,6 +599,9 @@ std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
         "cmake",
         "g++ | clang++",
         "make",
+        "desktop-file-utils",
+        "shared-mime-info",
+        "man-db",
     };
     if (manifestNeedsX11(manifest))
         deps.push_back("libx11-6");
@@ -607,6 +644,9 @@ std::vector<std::string> toolchainRpmRequires(const ToolchainInstallManifest &ma
         "cmake",
         "gcc-c++",
         "make",
+        "desktop-file-utils",
+        "shared-mime-info",
+        "man-db",
     };
     if (manifestNeedsX11(manifest))
         deps.push_back("libX11");
@@ -813,14 +853,29 @@ echo "Removed Viper toolchain files listed in $manifest"
 std::string linuxTarballReadme() {
     return R"VIPER_TEXT(Viper Toolchain Tarball
 
+This archive is a portable Linux toolchain layout. You can run tools directly
+from the extracted bin/ directory, or install the layout into a prefix.
+
 Install:
   sudo ./install.sh
 
 Install under a custom prefix:
   PREFIX=/opt/viper sudo ./install.sh
 
+Use without installing:
+  ./bin/viper --version
+  ./bin/viperide --version
+
+If you install to a custom non-system prefix, add that prefix's bin directory to
+your shell PATH. For example:
+  export PATH=/opt/viper/bin:$PATH
+
 Stage into a package root without refreshing system caches:
   DESTDIR=/tmp/viper-root PREFIX=/usr ./install.sh
+
+Verify after install:
+  viper --version
+  viperide --version
 
 Uninstall:
   sudo ./uninstall.sh
@@ -828,6 +883,8 @@ Uninstall:
 Before copying a new tarball payload, install.sh removes files listed in the
 currently installed manifest when those files are absent from the new manifest.
 The uninstaller removes only files listed in share/viper/install_manifest.txt.
+Desktop, MIME, and manpage caches are refreshed when the relevant host tools are
+available.
 )VIPER_TEXT";
 }
 
@@ -1085,22 +1142,7 @@ std::string appTarballLicenseText(const std::string &displayName, const PackageC
 
 /// @brief Return a small generated PNG used for toolchain AppImage desktop metadata.
 std::vector<uint8_t> defaultViperAppImageIconPng() {
-    PkgImage img;
-    img.width = 64;
-    img.height = 64;
-    img.pixels.resize(static_cast<size_t>(img.width) * img.height * 4u);
-    for (uint32_t y = 0; y < img.height; ++y) {
-        for (uint32_t x = 0; x < img.width; ++x) {
-            uint8_t *px = img.at(x, y);
-            const bool border = x < 4 || y < 4 || x >= img.width - 4 || y >= img.height - 4;
-            const bool diagonal = x > y ? x - y < 6 : y - x < 6;
-            px[0] = border ? 30 : (diagonal ? 40 : 15);
-            px[1] = border ? 90 : (diagonal ? 150 : 120);
-            px[2] = border ? 80 : (diagonal ? 120 : 170);
-            px[3] = 255;
-        }
-    }
-    return pngEncode(img);
+    return pngEncode(imageResize(defaultViperToolchainIconImage(), 256, 256));
 }
 
 /// @brief Append AppImage desktop/icon metadata at the payload root.
@@ -1111,11 +1153,30 @@ void addToolchainAppImageMetadata(TarWriter &tar, const std::string &packageName
     desktop.execPath = "AppRun";
     desktop.iconName = packageName;
     desktop.categories = "Development;";
-    desktop.terminal = true;
+    desktop.terminal = false;
     const std::string desktopText = generateDesktopEntry(desktop);
     tar.addFileString(packageName + ".desktop", desktopText, 0644);
     const auto icon = defaultViperAppImageIconPng();
     tar.addFileVec(packageName + ".png", icon, 0644);
+    tar.addFileVec(".DirIcon", icon, 0644);
+}
+
+/// @brief Return the AppImage AppRun launcher script for the Viper toolchain.
+/// @details When launched from a desktop shell with no arguments it starts
+///          ViperIDE. When invoked from a terminal or file association with
+///          arguments, it preserves CLI behavior by delegating to `bin/viper`.
+/// @return POSIX shell script text installed as executable `AppRun`.
+std::string toolchainAppRunScript() {
+    return "#!/bin/sh\n"
+           "set -eu\n"
+           "self=$0\n"
+           "case \"$self\" in /*) appdir=$(dirname -- \"$self\") ;;\n"
+           "  *) appdir=$(CDPATH= cd -- \"$(dirname -- \"$self\")\" && pwd) ;;\n"
+           "esac\n"
+           "if [ \"$#\" -eq 0 ] && [ -x \"$appdir/bin/viperide\" ]; then\n"
+           "  exec \"$appdir/bin/viperide\"\n"
+           "fi\n"
+           "exec \"$appdir/bin/viper\" \"$@\"\n";
 }
 
 /// @brief Validate all install paths in `dataFiles` are normalized and unique.
@@ -2019,9 +2080,12 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
             tar.addFile(topDir + relPath, data.data(), data.size(), permissionBitsFor(file));
         }
     }
-    if (platform == "linux" && !manifest.fileAssociations.empty()) {
+    if (platform == "linux") {
         std::vector<DataFile> generated;
-        addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
+        if (!manifest.fileAssociations.empty())
+            addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
+        addViperIDEDesktopMetadata(generated, "viperide");
+        addViperToolchainHicolorIcons(generated, "viper");
         for (const auto &df : generated) {
             const std::string portablePath = sanitizePackageRelativePath(
                 df.installPath.rfind("usr/", 0) == 0 ? df.installPath.substr(4) : df.installPath,
@@ -2074,7 +2138,8 @@ void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
 
     TarWriter tar;
     tar.addDirectory("./", 0755);
-    tar.addSymlink("AppRun", "bin/viper");
+    const std::string appRun = toolchainAppRunScript();
+    tar.addFile("AppRun", reinterpret_cast<const uint8_t *>(appRun.data()), appRun.size(), 0755);
     for (const auto &file : manifest.files) {
         const std::string relPath = mapInstallPath(file, InstallPathPolicy::PortableArchive);
         validatePortableArchivePath(relPath, "AppImage payload path");
@@ -2085,9 +2150,12 @@ void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
             tar.addFile(relPath, data.data(), data.size(), permissionBitsFor(file));
         }
     }
-    if (!manifest.fileAssociations.empty()) {
+    {
         std::vector<DataFile> generated;
-        addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
+        if (!manifest.fileAssociations.empty())
+            addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
+        addViperIDEDesktopMetadata(generated, "viperide");
+        addViperToolchainHicolorIcons(generated, "viper");
         for (const auto &df : generated) {
             const std::string portablePath = sanitizePackageRelativePath(
                 df.installPath.rfind("usr/", 0) == 0 ? df.installPath.substr(4) : df.installPath,

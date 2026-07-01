@@ -129,6 +129,11 @@ The IDE build scripts write `viperide/bin/viperide` or
 `viperide.buildinfo` beside the generated binary and refresh a compatibility
 copy under `build/viperide/` unless `VIPER_IDE_SKIP_COMPAT_COPY=1` is set.
 
+Full repository builds also build and install ViperIDE when
+`VIPER_INSTALL_VIPERIDE=ON` (the default). `cmake --install` stages the IDE as
+`bin/viperide` or `bin\viperide.exe`, and the toolchain installer wrappers keep
+that option enabled so macOS, Windows, and Linux installers include the IDE.
+
 Useful IDE build variables:
 
 | Variable | Effect |
@@ -157,6 +162,12 @@ After `./scripts/build_ide.sh`, run the native binary directly:
 
 ```sh
 ./viperide/bin/viperide
+```
+
+For installer and automation smoke checks:
+
+```sh
+viperide --version
 ```
 
 ## Project Configuration

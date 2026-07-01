@@ -244,7 +244,7 @@ viper --dump-opcodes
 | `viper repl [zia & basic]`             | Interactive REPL |
 | `viper -run <file.il>`                 | Execute an IL module directly, with optional tracing and step limits |
 | `viper package <dir>`                  | Package an application for macOS, Linux, Windows, or tarball output |
-| `viper install-package`                | Package a staged Viper toolchain installer |
+| `viper install-package`                | Package the Viper binary tools and ViperIDE into a platform installer |
 | `zia` / `vbasic`                       | Standalone source compiler entry points |
 | `zia-server` / `vbasic-server`         | Language servers with LSP and MCP modes |
 | `ilrun`, `il-verify`, `il-dis`         | Direct IL execution, verification, and disassembly |

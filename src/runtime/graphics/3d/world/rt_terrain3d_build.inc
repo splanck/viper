@@ -1049,12 +1049,22 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     /* Skirt geometry: extend edges downward to hide cracks between LOD levels.
      * Built for every LOD, including full-detail LOD0 (step==1): an LOD0 chunk
      * bordering a coarser neighbor still cracks along its own fine edge, so
-     * gating skirts to step>1 left the nearest seams open to the sky. */
+     * gating skirts to step>1 left the nearest seams open to the sky.
+     *
+     * The depth adapts to this chunk's own vertical relief. A fixed depth cannot
+     * hide seams on steep terrain: a mountain chunk spans far more height than the
+     * flat configured depth, so the gap between a fine edge and its coarser
+     * neighbor exceeds a shallow skirt. The finer chunk's edge shares the coarse
+     * neighbor's corner samples, so its relief provably bounds the seam gap; a
+     * skirt that deep closes it. Flat chunks keep the small configured depth.
+     * relief is read before aabb_min[1] is lowered below. */
     float skirt_depth = terrain_skirt_depth_or(t);
     if (skirt_depth > 0.0f) {
-        aabb_min[1] -= skirt_depth;
+        float relief = aabb_max[1] - aabb_min[1];
+        float eff_skirt = skirt_depth > relief ? skirt_depth : relief;
+        aabb_min[1] -= eff_skirt;
         terrain_build_chunk_skirts(
-            mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, (double)skirt_depth);
+            mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, (double)eff_skirt);
     }
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
 

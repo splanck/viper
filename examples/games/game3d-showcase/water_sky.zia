@@ -30,10 +30,16 @@ class ShowcaseWaterSky {
         var waterTex = createWaterSurfaceTexture(config.WATER_TEXTURE_SIZE);
         var waterNormal = createWaterNormalTexture(config.WATER_TEXTURE_SIZE);
 
-        water = Water3D.New(terrain.terrainWorldMaxX() * 2.10, terrain.terrainWorldMaxZ() * 2.10);
+        // Sized to cover the terrain (+margin) and centred over it. The grid is
+        // built around the origin, but the terrain spans [0,size], so without the
+        // SetPosition centre the surface was mis-aligned and half its resolution
+        // fell off-map — the reason the lake barely read as water.
+        water = Water3D.New(terrain.terrainWorldMaxX() * 1.15, terrain.terrainWorldMaxZ() * 1.15);
         Water3D.SetHeight(water, config.WATER_HEIGHT);
+        Water3D.SetPosition(
+            water, terrain.terrainWorldMaxX() * 0.5, config.WATER_HEIGHT, terrain.terrainWorldMaxZ() * 0.5);
         Water3D.SetColor(water, config.WATER_R, config.WATER_G, config.WATER_B, config.WATER_A);
-        Water3D.SetResolution(water, 128);
+        Water3D.SetResolution(water, 160);
         Water3D.SetTexture(water, waterTex);
         Water3D.SetNormalMap(water, waterNormal);
         Water3D.SetEnvMap(water, skybox);
@@ -82,7 +88,7 @@ class ShowcaseWaterSky {
             var sx = terrain.terrainWorldMaxX() * config.LAKE_RADIUS_X * 1.08;
             var sz = terrain.terrainWorldMaxZ() * config.LAKE_RADIUS_Z * 1.08;
             var xform = Mat4.Mul(
-                Mat4.Translate(x, config.WATER_HEIGHT + 0.04, z),
+                Mat4.Translate(x, config.WATER_HEIGHT - 0.4, z),
                 Mat4.Scale(sx, 1.0, sz));
             Canvas3D.DrawMesh(canvas, lakeMesh, xform, lakeMat);
         }
@@ -149,14 +155,15 @@ class ShowcaseWaterSky {
                 var g = mathutil.clampByte(Convert.NumToInt(mathutil.lerpFloat(26.0, 9.0, up)));
                 var b = mathutil.clampByte(Convert.NumToInt(mathutil.lerpFloat(44.0, 22.0, up)));
 
-                // Sparse stars everywhere except the ground-facing bottom face.
+                // Denser, brightness-varied starfield (skip the ground-facing face).
                 if (faceId != 3) {
                     var s = mathutil.hash01(px * 131 + faceId * 17, py * 71 + faceId * 29);
-                    if (s > 0.992) {
-                        var bright = mathutil.clampByte(180 + Convert.NumToInt((s - 0.992) / 0.008 * 75.0));
-                        r = bright;
-                        g = bright;
-                        b = mathutil.clampByte(bright + 10);
+                    if (s > 0.984) {
+                        var t = (s - 0.984) / 0.016;
+                        var bright = mathutil.clampByte(120 + Convert.NumToInt(t * 135.0));
+                        r = mathutil.clampByte(r + bright);
+                        g = mathutil.clampByte(g + bright);
+                        b = mathutil.clampByte(b + bright + 8);
                     }
                 }
                 face.Set(px, py, mathutil.packPixel(r, g, b, 255));
@@ -230,11 +237,14 @@ class ShowcaseWaterSky {
 
     hide func sampleSkyPixel(dx: Float, dy: Float, dz: Float) -> Integer {
         var up = mathutil.clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
-        var haze = mathutil.clampFloat(1.0 - mathutil.absFloat(dy) * 2.6, 0.0, 1.0);
+        // Tighter, brighter horizon haze band + a warm sun-side glow, over a deeper
+        // saturated zenith blue for a more dramatic sky gradient.
+        var haze = mathutil.clampFloat(1.0 - mathutil.absFloat(dy) * 2.4, 0.0, 1.0);
+        haze = haze * haze;
         var sun = mathutil.clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
-        var r = mathutil.lerpFloat(168.0, 88.0, up) + haze * (11.0 + sun * 6.0);
-        var g = mathutil.lerpFloat(207.0, 144.0, up) + haze * (8.0 + sun * 4.0);
-        var b = mathutil.lerpFloat(238.0, 218.0, up) + haze * 5.0;
+        var r = mathutil.lerpFloat(150.0, 58.0, up) + haze * (30.0 + sun * 22.0);
+        var g = mathutil.lerpFloat(196.0, 116.0, up) + haze * (24.0 + sun * 14.0);
+        var b = mathutil.lerpFloat(242.0, 208.0, up) + haze * 10.0;
 
         if (dy < -0.18) {
             var ground = mathutil.clampFloat((0.0 - dy - 0.18) / 0.82, 0.0, 1.0);

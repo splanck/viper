@@ -145,8 +145,10 @@ class ShowcaseWorldSim {
             Light3D.SetIntensity(moonLight, night * config.MOON_INTENSITY * directLightingScale);
         }
 
-        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.02 + 0.06 * day) * directLightingScale); }
-        if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.02 + 0.03 * day) * directLightingScale); }
+        // Cool directional fill opposite the warm sun models the terrain (raised
+        // well above the old near-zero values); sky-fill stays a gentle flat lift.
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.05 + 0.22 * day) * directLightingScale); }
+        if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.03 + 0.06 * day) * directLightingScale); }
 
         world.SetAmbient(mathutil.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day) * directLightingScale, mathutil.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day) * directLightingScale, mathutil.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day) * directLightingScale);
 

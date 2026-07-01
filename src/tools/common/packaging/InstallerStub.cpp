@@ -116,6 +116,8 @@ constexpr uint32_t kWmClose = 0x0010;
 constexpr uint32_t kWmCommand = 0x0111;
 constexpr uint32_t kWmInitDialog = 0x0110;
 constexpr uint32_t kBmGetCheck = 0x00F0;
+constexpr uint32_t kBmSetCheck = 0x00F1;
+constexpr uint32_t kBstChecked = 1;
 constexpr uint32_t kIccProgressClass = 0x00000020;
 constexpr int32_t kDlgProcFrameSize = 0x48;
 constexpr int32_t kDlgProcHwndOff = -0x08;
@@ -238,9 +240,9 @@ inline void verifyImportSlotCount(const std::vector<PEImport> &imports,
     for (const PEImport &imp : imports)
         total += imp.functions.size();
     if (total != expectedSlots)
-        throw std::runtime_error(std::string("packaging: ") + label +
-                                 " IAT enum/import drift — " + std::to_string(total) +
-                                 " imported functions vs " + std::to_string(expectedSlots) +
+        throw std::runtime_error(std::string("packaging: ") + label + " IAT enum/import drift — " +
+                                 std::to_string(total) + " imported functions vs " +
+                                 std::to_string(expectedSlots) +
                                  " enum slots; keep the enum and the import list in sync");
 }
 
@@ -478,6 +480,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     const std::string assocExeRel = layout.fileAssociationExecutableRelativePath.empty()
                                         ? layout.executableName
                                         : layout.fileAssociationExecutableRelativePath;
+    const std::string assocIconRel =
+        layout.displayIconRelativePath.empty() ? assocExeRel : layout.displayIconRelativePath;
 
     std::ostringstream ps;
     ps << "$ErrorActionPreference='Stop'\n";
@@ -532,8 +536,61 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
           "$old){return};$parts=@($old -split ';'|Where-Object{$_.Length -gt 0 -and -not "
           "[String]::Equals($_,$entry,'OrdinalIgnoreCase')});[Environment]::SetEnvironmentVariable("
           "'Path',($parts -join ';'),$scope)}\n";
+    ps << "function BroadcastEnv(){try{Add-Type -TypeDefinition 'using System; using "
+          "System.Runtime.InteropServices; public static class ViperEnv { "
+          "[DllImport(\"user32.dll\", "
+          "SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr "
+          "SendMessageTimeout("
+          "IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint flags, uint timeout, out "
+          "UIntPtr "
+          "result); }' -ErrorAction SilentlyContinue|Out-Null;$r=[UIntPtr]::Zero;[void][ViperEnv]::"
+          "SendMessageTimeout([IntPtr]0xffff,0x1a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$r)}"
+          "catch{}}\n";
     ps << "function RemoveOne($r,$rel){$p=Join-Path (Root $r) $rel;Remove-Item -LiteralPath $p "
           "-Force -ErrorAction SilentlyContinue}\n";
+    ps << "$classRoot=Join-Path " << powershellSingleQuote(hive) << " 'Software\\Classes'\n";
+    ps << "$assocExe=" << powershellPathJoinLiteral("$install", assocExeRel) << "\n";
+    ps << "$assocIcon=" << powershellPathJoinLiteral("$install", assocIconRel) << "\n";
+    ps << "$assocs=@(\n";
+    for (const auto &assoc : layout.fileAssociations) {
+        ps << "@{Ext=" << powershellSingleQuote(assoc.extension)
+           << ";Desc=" << powershellSingleQuote(assoc.description)
+           << ";Mime=" << powershellSingleQuote(assoc.mimeType)
+           << ";Prog=" << powershellSingleQuote(assoc.progId)
+           << ";Args=" << powershellSingleQuote(assoc.openCommandArguments) << "},\n";
+    }
+    ps << ")\n";
+    ps << "function RegDefault($path,$value){New-Item -Path $path -Force|Out-Null;Set-Item -Path "
+          "$path -Value $value}\n";
+    ps << "function RegisterAssoc(){foreach($a in $assocs){$ext=Join-Path $classRoot $a.Ext;"
+          "New-Item -Path $ext -Force|Out-Null;if($a.Mime){$props=Get-ItemProperty -Path $ext "
+          "-ErrorAction SilentlyContinue;$owned=$props.VAPSContentTypeOwner;if(-not "
+          "$props.'Content Type' -or $owned -eq $identifier){New-ItemProperty -Path $ext -Name "
+          "'Content Type' -Value $a.Mime -PropertyType String -Force|Out-Null;New-ItemProperty "
+          "-Path "
+          "$ext -Name 'VAPSContentTypeOwner' -Value $identifier -PropertyType String "
+          "-Force|Out-Null}}"
+          "$owp=Join-Path $ext 'OpenWithProgids';New-Item -Path $owp -Force|Out-Null;"
+          "New-ItemProperty -Path $owp -Name $a.Prog -Value '' -PropertyType String "
+          "-Force|Out-Null;"
+          "$prog=Join-Path $classRoot $a.Prog;RegDefault $prog $a.Desc;New-ItemProperty -Path "
+          "$prog "
+          "-Name 'VAPSOwner' -Value $identifier -PropertyType String "
+          "-Force|Out-Null;$icon=Join-Path "
+          "$prog 'DefaultIcon';RegDefault $icon $assocIcon;$cmd=Join-Path $prog "
+          "'shell\\open\\command';"
+          "$open='\"'+$assocExe+'\"';if($a.Args){$open+=' '+$a.Args};$open+=' \"%1\"';RegDefault "
+          "$cmd $open}}\n";
+    ps << "function UnregisterAssoc(){foreach($a in $assocs){$ext=Join-Path $classRoot $a.Ext;"
+          "$owp=Join-Path $ext 'OpenWithProgids';Remove-ItemProperty -Path $owp -Name $a.Prog "
+          "-ErrorAction SilentlyContinue;$props=Get-ItemProperty -Path $ext -ErrorAction "
+          "SilentlyContinue;if($props.VAPSContentTypeOwner -eq $identifier){Remove-ItemProperty "
+          "-Path "
+          "$ext -Name 'Content Type' -ErrorAction SilentlyContinue;Remove-ItemProperty -Path $ext "
+          "-Name 'VAPSContentTypeOwner' -ErrorAction SilentlyContinue};$prog=Join-Path $classRoot "
+          "$a.Prog;$owner=(Get-ItemProperty -Path $prog -Name 'VAPSOwner' -ErrorAction "
+          "SilentlyContinue).VAPSOwner;if($owner -eq $identifier){Remove-Item -LiteralPath $prog "
+          "-Recurse -Force -ErrorAction SilentlyContinue}}}\n";
 
     ps << "$remove=@(\n";
     for (const auto &file : layout.uninstallFiles) {
@@ -555,6 +612,7 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
 
     ps << "if($mode -eq 'uninstall'){\n";
     ps << "RemovePath\n";
+    ps << "UnregisterAssoc\n";
     ps << "$manifest=Join-Path $install "
        << powershellSingleQuote(powershellRelPath(layout.installedManifestRelativePath)) << "\n";
     ps << "if(Test-Path -LiteralPath $manifest){Get-Content -LiteralPath $manifest|Sort-Object "
@@ -565,7 +623,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
           "-ErrorAction SilentlyContinue}\n";
     ps << "Remove-Item -LiteralPath $uninstallReg -Recurse -Force -ErrorAction SilentlyContinue\n";
     ps << "Remove-Item -LiteralPath $menu -Force -ErrorAction SilentlyContinue\n";
-    ps << "Remove-Item -LiteralPath $install -Recurse -Force -ErrorAction SilentlyContinue\n";
+    ps << "Remove-Item -LiteralPath $install -Force -ErrorAction SilentlyContinue\n";
+    ps << "BroadcastEnv\n";
     ps << "exit 0\n";
     ps << "}\n";
 
@@ -588,9 +647,25 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
             ps << "$payload=Join-Path $install "
                << powershellSingleQuote(powershellRelPath(layout.compressedPayloadRelativePath))
                << "\n";
-            ps << "if(Test-Path -LiteralPath $payload){Expand-Archive -LiteralPath $payload "
-                  "-DestinationPath $install -Force;Remove-Item -LiteralPath $payload -Force "
-                  "-ErrorAction SilentlyContinue}\n";
+            ps << "if(Test-Path -LiteralPath $payload){$oldManifest=Join-Path $install "
+               << powershellSingleQuote(powershellRelPath(layout.installedManifestRelativePath))
+               << ";$newManifest=Join-Path $install "
+               << powershellSingleQuote(
+                      powershellRelPath(layout.compressedPayloadManifestRelativePath))
+               << ";$oldLines=@();if(Test-Path -LiteralPath $oldManifest -PathType Leaf){"
+                  "$oldLines=Get-Content -LiteralPath $oldManifest|Where-Object{$_ -and "
+                  "-not [IO.Path]::IsPathRooted($_) -and -not $_.Contains(':') -and "
+                  "-not $_.Contains('..')}};$newLines=Get-Content -LiteralPath $newManifest|"
+                  "Where-Object{$_ -and -not [IO.Path]::IsPathRooted($_) -and -not "
+                  "$_.Contains(':') "
+                  "-and -not $_.Contains('..')};Expand-Archive -LiteralPath $payload "
+                  "-DestinationPath $install -Force;$owned=@{};foreach($n in $newLines){"
+                  "$owned[$n.ToLowerInvariant()]=$true};foreach($o in $oldLines){if(-not "
+                  "$owned.ContainsKey($o.ToLowerInvariant())){$f=Join-Path $install "
+                  "$o;if(Test-Path "
+                  "-LiteralPath $f -PathType Leaf){Remove-Item -LiteralPath $f -Force -ErrorAction "
+                  "SilentlyContinue}}};Remove-Item -LiteralPath $payload -Force -ErrorAction "
+                  "SilentlyContinue}\n";
         }
         if (!layout.compressedPayloadManifestRelativePath.empty()) {
             ps << "Remove-Item -LiteralPath (Join-Path $install "
@@ -620,6 +695,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
         ps << "SetS 'Comments' $comments\n";
         ps << "SetS 'Contact' $contact\n";
         ps << "AddPath " << pathEntryExpr << "\n";
+        ps << "RegisterAssoc\n";
+        ps << "BroadcastEnv\n";
         ps << "exit 0\n";
     }
 
@@ -713,7 +790,7 @@ std::vector<uint8_t> buildWizardDialogTemplate(const WindowsPackageLayout &layou
     const std::string title = layout.displayName + (uninstallDialog ? " Uninstall" : " Setup");
     const std::string intro =
         uninstallDialog ? "Review the removal summary, accept the confirmation, then choose Next."
-                        : "Review the license, choose the install scope, then choose Next.";
+                        : "Review the license and install scope, then choose Next.";
     std::string body = uninstallDialog
                            ? ("This will remove " + layout.displayName + " from this computer.")
                            : layout.licenseText;
@@ -1392,7 +1469,8 @@ void emitWizardDialogProc(InstallerStubGen &gen,
                           uint32_t endDialogSlot,
                           uint32_t getDlgItemSlot,
                           uint32_t sendMessageSlot,
-                          uint32_t enableWindowSlot) {
+                          uint32_t enableWindowSlot,
+                          bool perUserInstall) {
     const auto lblInit = gen.newLabel();
     const auto lblCommand = gen.newLabel();
     const auto lblClose = gen.newLabel();
@@ -1427,6 +1505,22 @@ void emitWizardDialogProc(InstallerStubGen &gen,
     gen.movRegReg(X64Reg::RCX, X64Reg::RAX);
     gen.xorRegReg(X64Reg::RDX, X64Reg::RDX);
     gen.callIATSlot(enableWindowSlot);
+    const uint32_t checkedScopeId = perUserInstall ? kDlgIdScopeUser : kDlgIdScopeMachine;
+    const uint32_t uncheckedScopeId = perUserInstall ? kDlgIdScopeMachine : kDlgIdScopeUser;
+    for (uint32_t scopeId : {checkedScopeId, uncheckedScopeId}) {
+        gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+        gen.movRegImm32(X64Reg::RDX, scopeId);
+        gen.callIATSlot(getDlgItemSlot);
+        gen.movRegReg(X64Reg::RBX, X64Reg::RAX);
+        gen.movRegReg(X64Reg::RCX, X64Reg::RAX);
+        gen.movRegImm32(X64Reg::RDX, kBmSetCheck);
+        gen.movRegImm32(X64Reg::R8, scopeId == checkedScopeId ? kBstChecked : 0);
+        gen.xorRegReg(X64Reg::R9, X64Reg::R9);
+        gen.callIATSlot(sendMessageSlot);
+        gen.movRegReg(X64Reg::RCX, X64Reg::RBX);
+        gen.xorRegReg(X64Reg::RDX, X64Reg::RDX);
+        gen.callIATSlot(enableWindowSlot);
+    }
     gen.jmp(lblReturnTrue);
 
     gen.bindLabel(lblCommand);
@@ -1974,6 +2068,10 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
             ? layout.executableName
             : windowsPathFragment(layout.fileAssociationExecutableRelativePath);
     const uint32_t exeNameOff = gen.embedStringW(associationExecutable);
+    const std::string associationIcon = layout.displayIconRelativePath.empty()
+                                            ? associationExecutable
+                                            : windowsPathFragment(layout.displayIconRelativePath);
+    const uint32_t iconNameOff = gen.embedStringW(associationIcon);
     const uint32_t quoteOff = gen.embedStringW("\"");
     const uint32_t quotedFileArgOff = gen.embedStringW(" \"%1\"");
 
@@ -2036,7 +2134,7 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
         gen.callIATSlot(copySlot);
         emitCheckedCatStack(gen, kTempPathOff, kInstallPathOff, catSlot, strlenSlot, errorLabel);
         emitCheckedCatEmbedded(gen, kTempPathOff, slashOff, catSlot, strlenSlot, errorLabel);
-        emitCheckedCatEmbedded(gen, kTempPathOff, exeNameOff, catSlot, strlenSlot, errorLabel);
+        emitCheckedCatEmbedded(gen, kTempPathOff, iconNameOff, catSlot, strlenSlot, errorLabel);
         emitCheckedCatEmbedded(gen, kTempPathOff, quoteOff, catSlot, strlenSlot, errorLabel);
         emitRegSetDefaultStackString(gen, setValueSlot, strlenSlot, kTempPathOff, errorLabel);
         emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
@@ -3281,8 +3379,10 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const uint32_t installDateFormatOff = gen.embedStringW("yyyyMMdd");
 
     const uint32_t successTitleOff = gen.embedStringW(layout.displayName + " Setup");
-    const uint32_t successMsgOff =
-        gen.embedStringW("Installation complete! " + layout.displayName + " has been installed.");
+    const uint32_t successMsgOff = gen.embedStringW(
+        "Installation complete. " + layout.displayName +
+        " has been installed. Open a new terminal to use PATH updates, or launch ViperIDE from "
+        "the Start Menu if shortcuts were enabled.");
     const uint32_t errorTitleOff = gen.embedStringW("Setup Error");
     const uint32_t errorMsgOff =
         gen.embedStringW("Installation failed. The package could not be extracted.");
@@ -3719,8 +3819,13 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     gen.movRegImm32(X64Reg::RCX, 1);
     gen.callIATSlot(kI_ExitProcess);
 
-    emitWizardDialogProc(
-        gen, lblWizardDialogProc, kI_EndDialog, kI_GetDlgItem, kI_SendMessageW, kI_EnableWindow);
+    emitWizardDialogProc(gen,
+                         lblWizardDialogProc,
+                         kI_EndDialog,
+                         kI_GetDlgItem,
+                         kI_SendMessageW,
+                         kI_EnableWindow,
+                         layout.perUserInstall);
 
     finalizeStubRVAs(result, gen);
     result.stubData = gen.dataSection();
@@ -3935,8 +4040,13 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.movRegImm32(X64Reg::RCX, 1);
     gen.callIATSlot(kU_ExitProcess);
 
-    emitWizardDialogProc(
-        gen, lblWizardDialogProc, kU_EndDialog, kU_GetDlgItem, kU_SendMessageW, kU_EnableWindow);
+    emitWizardDialogProc(gen,
+                         lblWizardDialogProc,
+                         kU_EndDialog,
+                         kU_GetDlgItem,
+                         kU_SendMessageW,
+                         kU_EnableWindow,
+                         layout.perUserInstall);
 
     finalizeStubRVAs(result, gen);
     result.stubData = gen.dataSection();

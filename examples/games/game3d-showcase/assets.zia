@@ -52,7 +52,7 @@ class ShowcaseAssets {
         Material3D.SetEmissiveColor(playerMat, 0.012, 0.045, 0.026);
         beaconOffMat = Materials.Plastic(0.38, 0.52, 0.70);
         Material3D.SetEmissiveColor(beaconOffMat, 0.025, 0.045, 0.065);
-        beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.45);
+        beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.9);
 
         archiveMat = Material3D.NewPBR(0.78, 0.72, 0.58);
         Material3D.SetAlbedoMap(archiveMat, metalAlbedo);
@@ -60,7 +60,7 @@ class ShowcaseAssets {
         archiveMat.Roughness = 0.34;
         archiveMat.Metallic = 0.85;
 
-        waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 1.20);
+        waterMarkerMat = Materials.Emissive(0.24, 0.78, 1.0, 1.7);
     }
 
     expose func applyEnvReflections(skybox: CubeMap3D) {

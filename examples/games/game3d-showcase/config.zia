@@ -51,7 +51,7 @@ var TERRAIN_LOD_NEAR: Float = 110.0;
 var TERRAIN_LOD_FAR: Float = 260.0;
 var TERRAIN_SKIRT_DEPTH: Float = 6.0;
 
-var SKYBOX_FACE_SIZE: Integer = 64;
+var SKYBOX_FACE_SIZE: Integer = 256;   // 256 (vs 64) removes visible sky banding
 // Terrain layer albedo resolution. 128 (vs 64) softens the visible tiling of the
 // procedural grass/rock/dirt layers on close-up ground. Generated once at setup.
 var TERRAIN_TEXTURE_SIZE: Integer = 128;
@@ -65,23 +65,25 @@ var LAKE_RADIUS_X: Float = 0.26;
 var LAKE_RADIUS_Z: Float = 0.19;
 
 var WATER_HEIGHT: Float = 5.4;
-var WATER_R: Float = 0.03;
-var WATER_G: Float = 0.42;
-var WATER_B: Float = 0.68;
-var WATER_A: Float = 0.92;
-var WATER_REFLECTIVITY: Float = 0.42;
+var WATER_R: Float = 0.05;
+var WATER_G: Float = 0.40;
+var WATER_B: Float = 0.60;
+var WATER_A: Float = 0.80;
+var WATER_REFLECTIVITY: Float = 0.72;
 var WATER_TEXTURE_SIZE: Integer = 64;
 var BEACON_TRIGGER_RADIUS: Float = 2.8;
 
-var AMBIENT_R: Float = 0.34;
-var AMBIENT_G: Float = 0.38;
-var AMBIENT_B: Float = 0.42;
+// Flat global ambient kept low so the directional sun + cool fill actually model
+// the terrain (a high uniform ambient is what flattened the scene). See worldsim.
+var AMBIENT_R: Float = 0.14;
+var AMBIENT_G: Float = 0.16;
+var AMBIENT_B: Float = 0.20;
 // Fog day-target is matched to the sky horizon colour (see water_sky sampleSkyPixel)
 // so distant terrain dissolves into the sky instead of fading to a grey haze band.
 var FOG_R: Float = 0.68;
 var FOG_G: Float = 0.82;
 var FOG_B: Float = 0.94;
-var FOG_NEAR: Float = 125.0;
+var FOG_NEAR: Float = 220.0;
 var FOG_FAR: Float = 340.0;
 var SHADOW_BIAS: Float = 0.006;
 
@@ -163,10 +165,10 @@ var PLAYER_LIGHT_INTENSITY: Float = 0.55;
 var DAY_LENGTH_SEC: Float = 240.0;     // seconds for one full day->night->day cycle
 var DAY_START_PHASE: Float = 0.15;     // begin mid-morning so the demo opens in daylight
 var MOON_INTENSITY: Float = 0.42;      // cool directional moonlight at deep night
-var SUN_INTENSITY_DAY: Float = 1.5;
-var DAY_AMBIENT_R: Float = 0.22;
-var DAY_AMBIENT_G: Float = 0.24;
-var DAY_AMBIENT_B: Float = 0.28;
+var SUN_INTENSITY_DAY: Float = 1.45;
+var DAY_AMBIENT_R: Float = 0.13;
+var DAY_AMBIENT_G: Float = 0.15;
+var DAY_AMBIENT_B: Float = 0.19;
 var NIGHT_AMBIENT_R: Float = 0.06;
 var NIGHT_AMBIENT_G: Float = 0.08;
 var NIGHT_AMBIENT_B: Float = 0.17;
@@ -186,12 +188,12 @@ var SHAKE_ALL: Float = 0.55;
 // --- Authored post-FX + quality + debug (recommendation #10) ----------------
 // NOTE: AddColorGrade's first arg (brightness) is an ADDITIVE offset near 0.0,
 // not a multiplier — values like 1.0 blow the frame out to pure white.
-var POSTFX_BLOOM_THRESHOLD: Float = 0.80;
-var POSTFX_BLOOM_INTENSITY: Float = 0.16;
-var POSTFX_COLORGRADE_BRIGHT: Float = 0.015;
-var POSTFX_COLORGRADE_CONTRAST: Float = 1.06;
-var POSTFX_COLORGRADE_SAT: Float = 1.10;
-var POSTFX_VIGNETTE_RADIUS: Float = 0.98;
+var POSTFX_BLOOM_THRESHOLD: Float = 0.72;
+var POSTFX_BLOOM_INTENSITY: Float = 0.50;
+var POSTFX_COLORGRADE_BRIGHT: Float = 0.0;
+var POSTFX_COLORGRADE_CONTRAST: Float = 1.22;
+var POSTFX_COLORGRADE_SAT: Float = 1.30;
+var POSTFX_VIGNETTE_RADIUS: Float = 0.92;
 var POSTFX_VIGNETTE_SOFT: Float = 0.12;
 // Depth-of-field (focus distance / focus range / blur strength) + motion blur.
 var POSTFX_DOF_FOCUS: Float = 26.0;

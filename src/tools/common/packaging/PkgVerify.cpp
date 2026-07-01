@@ -2048,4 +2048,25 @@ bool verifyPEZipOverlayNestedPayload(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Verify that @p data ends with a plausible UDIF trailer.
+/// @details Apple disk images store a 512-byte trailer whose first four bytes
+///          are the ASCII signature "koly". This does not mount the image, but
+///          it rejects empty/truncated/non-UDIF files without depending on
+///          macOS-only tooling.
+bool verifyMacOSDmg(const std::vector<uint8_t> &data, std::ostream &err) {
+    if (data.size() < 512u) {
+        err << "dmg: file is too small to contain a UDIF trailer\n";
+        return false;
+    }
+    const size_t trailer = data.size() - 512u;
+    if (data[trailer] != static_cast<uint8_t>('k') ||
+        data[trailer + 1u] != static_cast<uint8_t>('o') ||
+        data[trailer + 2u] != static_cast<uint8_t>('l') ||
+        data[trailer + 3u] != static_cast<uint8_t>('y')) {
+        err << "dmg: missing UDIF trailer signature\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace viper::pkg

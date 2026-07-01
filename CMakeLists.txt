@@ -88,6 +88,10 @@ endfunction()
 # No external scripting dependencies required (Python removed).
 
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
+option(VIPER_INSTALL_VIPERIDE "Build and install ViperIDE with toolchain installers" ON)
+set(VIPER_IDE_ARCH "" CACHE STRING
+    "ViperIDE native target architecture: x64 or arm64 (empty selects host architecture)")
+set_property(CACHE VIPER_IDE_ARCH PROPERTY STRINGS "" x64 arm64)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 option(VIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS
        "Register one CTest per BASIC-to-IL golden case in addition to the batch test" OFF)
@@ -665,6 +669,49 @@ message(STATUS "")
 
 add_subdirectory(src)
 viper_assert_no_directory_link_libraries("src" "src")
+
+if(VIPER_INSTALL_VIPERIDE)
+  set(_VIPER_IDE_ARCH "${VIPER_IDE_ARCH}")
+  if(_VIPER_IDE_ARCH STREQUAL "")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
+      set(_VIPER_IDE_ARCH arm64)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+      set(_VIPER_IDE_ARCH x64)
+    else()
+      message(FATAL_ERROR
+        "VIPER_INSTALL_VIPERIDE requires VIPER_IDE_ARCH=x64 or arm64 for "
+        "host processor '${CMAKE_SYSTEM_PROCESSOR}'")
+    endif()
+  endif()
+  if(NOT _VIPER_IDE_ARCH STREQUAL "x64" AND NOT _VIPER_IDE_ARCH STREQUAL "arm64")
+    message(FATAL_ERROR "VIPER_IDE_ARCH must be x64 or arm64, got '${_VIPER_IDE_ARCH}'")
+  endif()
+
+  set(_VIPERIDE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/viperide")
+  set(_VIPERIDE_BINARY "${_VIPERIDE_OUTPUT_DIR}/viperide${CMAKE_EXECUTABLE_SUFFIX}")
+  set(_VIPERIDE_BUILDINFO "${_VIPERIDE_OUTPUT_DIR}/viperide.buildinfo")
+  file(GLOB_RECURSE _VIPERIDE_SOURCE_FILES CONFIGURE_DEPENDS
+       "${CMAKE_SOURCE_DIR}/viperide/src/*.zia"
+       "${CMAKE_SOURCE_DIR}/viperide/viper.project")
+  add_custom_command(
+    OUTPUT "${_VIPERIDE_BINARY}" "${_VIPERIDE_BUILDINFO}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_VIPERIDE_OUTPUT_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E env "VIPER_BUILD_DIR=${CMAKE_BINARY_DIR}"
+            "$<TARGET_FILE:viper>" build "${CMAKE_SOURCE_DIR}/viperide"
+            --arch "${_VIPER_IDE_ARCH}" -o "${_VIPERIDE_BINARY}"
+    COMMAND ${CMAKE_COMMAND}
+            "-DOUTPUT_FILE=${_VIPERIDE_BINARY}"
+            "-DVIPER_PATH=$<TARGET_FILE:viper>"
+            "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/WriteViperIDEBuildInfo.cmake"
+    DEPENDS viper ${_VIPERIDE_SOURCE_FILES}
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Building ViperIDE native binary"
+    VERBATIM)
+  add_custom_target(viperide_native ALL DEPENDS "${_VIPERIDE_BINARY}" "${_VIPERIDE_BUILDINFO}")
+  install(PROGRAMS "${_VIPERIDE_BINARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES "${_VIPERIDE_BUILDINFO}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 
 # ---- ViperTUI subproject ----
 option(BUILD_TUI "Build ViperTUI subproject" ON)

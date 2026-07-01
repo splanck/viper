@@ -526,9 +526,20 @@ static int64_t canvas3d_capability_from_name(const char *name) {
         return RT_CANVAS3D_BACKEND_CAP_SKYBOX;
     if (strcmp(name, "hardware_instancing") == 0 || strcmp(name, "instancing") == 0)
         return RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING;
-    if (strcmp(name, "postfx") == 0 || strcmp(name, "post_fx") == 0)
+    if (strcmp(name, "postfx") == 0 || strcmp(name, "post_fx") == 0 ||
+        strcmp(name, "bloom") == 0 || strcmp(name, "tonemap") == 0 ||
+        strcmp(name, "tone_map") == 0 || strcmp(name, "color-grade") == 0 ||
+        strcmp(name, "color_grade") == 0 || strcmp(name, "colorgrade") == 0 ||
+        strcmp(name, "vignette") == 0 || strcmp(name, "fxaa") == 0)
         return RT_CANVAS3D_BACKEND_CAP_POSTFX;
-    if (strcmp(name, "gpu_postfx") == 0 || strcmp(name, "gpu_post_fx") == 0)
+    /* SSAO / depth-of-field / motion blur are GPU-only screen-space passes; alias
+     * their effect names to the GPU post-FX capability so a query like
+     * BackendSupports("ssao") resolves instead of silently returning false. */
+    if (strcmp(name, "gpu_postfx") == 0 || strcmp(name, "gpu_post_fx") == 0 ||
+        strcmp(name, "ssao") == 0 || strcmp(name, "dof") == 0 ||
+        strcmp(name, "depth-of-field") == 0 || strcmp(name, "depth_of_field") == 0 ||
+        strcmp(name, "motion-blur") == 0 || strcmp(name, "motion_blur") == 0 ||
+        strcmp(name, "motionblur") == 0)
         return RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
     if (strcmp(name, "postfx-overlay") == 0 || strcmp(name, "postfx_overlay") == 0 ||
         strcmp(name, "post_fx_overlay") == 0)

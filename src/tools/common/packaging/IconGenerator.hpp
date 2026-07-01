@@ -58,6 +58,18 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage);
 /// @return ICO file data.
 std::vector<uint8_t> generateIco(const PkgImage &srcImage);
 
+/// @brief Generate Viper's built-in fallback toolchain icon as an RGBA image.
+///
+/// The packagers use this when an installer is packaging Viper itself rather
+/// than an end-user project with a manifest-provided icon. The image is
+/// generated procedurally so the product remains dependency-free while still
+/// producing branded Windows resources, Linux hicolor icons, and macOS ICNS
+/// resources.
+///
+/// @return A 256x256 RGBA image suitable for generateIcns/generateIco and
+///         generateMultiSizePngs.
+PkgImage defaultViperToolchainIconImage();
+
 /// @brief Generate multi-size PNG icons from a source image.
 ///
 /// Returns a map of size -> PNG data for standard Linux icon sizes

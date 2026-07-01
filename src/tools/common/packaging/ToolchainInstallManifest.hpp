@@ -95,6 +95,9 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
 /// libraries. Throws std::runtime_error describing the first missing required entry.
 void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest);
 
+/// @brief Return the canonical binary tools that every toolchain installer must ship.
+std::vector<std::string> requiredToolchainBinaryNames();
+
 /// @brief Map a toolchain file entry to its destination install path string under policy.
 /// Returns a relative path (no leading "/") for all policies except LinuxUsrRoot which
 /// returns a path rooted at "/usr/".

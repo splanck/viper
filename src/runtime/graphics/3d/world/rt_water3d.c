@@ -105,6 +105,7 @@ typedef struct {
     void *vptr;
     double width, depth;
     double height;
+    double center_x, center_z;
     /* Legacy single-wave params (used when wave_count == 0) */
     double wave_speed, wave_amplitude, wave_frequency;
     double color[3];
@@ -381,6 +382,8 @@ void *rt_water3d_new(double width, double depth) {
     w->width = width;
     w->depth = depth;
     w->height = 0.0;
+    w->center_x = 0.0;
+    w->center_z = 0.0;
     w->wave_speed = 2.0;
     w->wave_amplitude = 0.15;
     w->wave_frequency = 1.5;
@@ -407,6 +410,21 @@ void rt_water3d_set_height(void *obj, double y) {
     rt_water3d *w = water3d_checked(obj);
     if (w) {
         w->height = water3d_clamp_abs_or(y, w->height, WATER3D_HEIGHT_ABS_MAX);
+        w->mesh_dirty = 1;
+    }
+}
+
+/// @brief Set the world XZ centre (and base Y height) of the water plane.
+/// @details The grid is generated around the origin, so a terrain that does not
+///   sit at the world origin (e.g. one spanning [0,size]) would leave the water
+///   misaligned and under-resolved. Setting the centre re-centres the surface
+///   over the terrain and keeps its resolution on the visible area.
+void rt_water3d_set_position(void *obj, double x, double y, double z) {
+    rt_water3d *w = water3d_checked(obj);
+    if (w) {
+        w->center_x = water3d_clamp_abs_or(x, w->center_x, WATER3D_SIZE_MAX);
+        w->height = water3d_clamp_abs_or(y, w->height, WATER3D_HEIGHT_ABS_MAX);
+        w->center_z = water3d_clamp_abs_or(z, w->center_z, WATER3D_SIZE_MAX);
         w->mesh_dirty = 1;
     }
 }
@@ -563,8 +581,8 @@ static void water3d_fill_vertices(rt_water3d *w,
         for (int gx = 0; gx <= grid; gx++) {
             uint32_t vertex_index = (uint32_t)(gz * row + gx);
             vgfx3d_vertex_t *vt = &mesh->vertices[vertex_index];
-            double x = -hx + gx * step_x;
-            double z = -hz + gz * step_z;
+            double x = w->center_x - hx + gx * step_x;
+            double z = w->center_z - hz + gz * step_z;
             double y = w->height;
             double dydx = 0.0, dydz = 0.0;
 

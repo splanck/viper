@@ -38,7 +38,17 @@ namespace fs = std::filesystem;
 
 namespace {
 
-enum class InstallPackageTarget { Windows, MacOS, LinuxDeb, LinuxRpm, AppImage, Tarball, All };
+enum class InstallPackageTarget {
+    Windows,
+    MacOS,
+    MacOSDmg,
+    LinuxDeb,
+    LinuxRpm,
+    AppImage,
+    Tarball,
+    All,
+    AllAvailable
+};
 
 /// @brief Parsed command-line arguments for the `viper install-package` subcommand.
 /// @details Selects the output format(s) and source (staged tree or build dir),
@@ -75,7 +85,7 @@ struct InstallPackageArgs {
     std::string windowsInstallScope{"user"};
     std::string windowsInstallDir{"Viper"};
     bool windowsAddToPath{true};
-    bool windowsFileAssociations{false};
+    bool windowsFileAssociations{true};
     bool windowsShortcuts{true};
     bool allowDebugToolchain{false};
     bool noVerify{false};
@@ -100,7 +110,7 @@ void installPackageUsage() {
         << "\n"
         << "Options:\n"
         << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | appimage | tarball | "
-           "all\n"
+           "all | all-available | macos-dmg (verify-only)\n"
         << "  --arch <arch>         x64 | arm64 (default: manifest/host)\n"
         << "  --stage-dir <dir>     Existing staged install tree\n"
         << "  --build-dir <dir>     Build tree; runs cmake --build then cmake --install\n"
@@ -131,7 +141,7 @@ void installPackageUsage() {
         << "  --windows-install-scope <scope> user | machine (default: user)\n"
         << "  --windows-install-dir <name> Directory name under install root (default: Viper)\n"
         << "  --windows-no-path    Do not add bin/ to PATH\n"
-        << "  --windows-file-associations on|off Register .zia/.bas/.il (default: off)\n"
+        << "  --windows-file-associations on|off Register .zia/.bas/.il (default: on)\n"
         << "  --windows-shortcuts on|off Create Start Menu developer shortcuts (default: on)\n"
         << "  --allow-debug-toolchain Allow Windows packages that reference MSVC debug CRTs\n"
         << "  --stage-only          Validate/gather the staged install tree and stop\n"
@@ -175,6 +185,38 @@ bool rpmbuildAvailable() {
     const RunResult rr = run_process({"rpmbuild", "--version"});
     cached = rr.exit_code == 0;
     return *cached;
+}
+
+/// @brief Return a boolean CMake cache value when @p cachePath contains @p key.
+/// @details Parses `KEY:TYPE=VALUE` entries from CMakeCache.txt and recognizes
+///          the usual CMake truth values. Unknown or absent keys return
+///          std::nullopt so callers can preserve legacy behavior for older
+///          build trees.
+/// @param cachePath Path to CMakeCache.txt.
+/// @param key Cache variable name to inspect.
+/// @return Parsed boolean value, or std::nullopt when unavailable.
+std::optional<bool> readCMakeCacheBool(const fs::path &cachePath, std::string_view key) {
+    std::ifstream in(cachePath);
+    if (!in)
+        return std::nullopt;
+    std::string line;
+    const std::string prefix = std::string(key) + ":";
+    while (std::getline(in, line)) {
+        if (line.rfind(prefix, 0) != 0)
+            continue;
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos)
+            return std::nullopt;
+        std::string value = line.substr(eq + 1);
+        for (char &c : value)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (value == "on" || value == "true" || value == "1" || value == "yes")
+            return true;
+        if (value == "off" || value == "false" || value == "0" || value == "no")
+            return false;
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 /// @brief Read an environment variable, returning "" when it is unset.
@@ -406,6 +448,73 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
 #endif
 }
 
+/// @brief Notarize and optionally staple a macOS `.dmg` when a notary profile is configured.
+/// @details The contained `.pkg` carries installer signing; this function treats
+///          the disk image as a release artifact by submitting it separately to
+///          notarytool and stapling the ticket when requested.
+/// @return true on success or when no DMG notarization was requested.
+bool notarizeMacOSDmgArtifact(const InstallPackageArgs &args,
+                              const fs::path &dmgPath,
+                              std::ostream &err) {
+    std::string notaryProfile = args.macosNotaryProfile.empty()
+                                    ? getenvOrEmpty("VIPER_MACOS_NOTARY_PROFILE")
+                                    : args.macosNotaryProfile;
+    try {
+        viper::pkg::validateSingleLineField(notaryProfile, "macOS notary profile");
+    } catch (const std::exception &ex) {
+        err << "error: " << ex.what() << "\n";
+        return false;
+    }
+    if (notaryProfile.empty()) {
+        if (args.macosStaple) {
+            err << "error: --macos-staple requires --macos-notary-profile or "
+                   "VIPER_MACOS_NOTARY_PROFILE for generated .dmg artifacts\n";
+            return false;
+        }
+        return true;
+    }
+#if !VIPER_HOST_MACOS
+    err << "error: macOS .dmg notarization requires running on macOS\n";
+    (void)dmgPath;
+    return false;
+#else
+    const int notaryTimeoutSeconds =
+        args.macosNotaryTimeoutSeconds > 0 ? args.macosNotaryTimeoutSeconds : 1800;
+    const std::string notaryTimeoutArg = std::to_string(notaryTimeoutSeconds) + "s";
+    RunResult notaryResult{};
+    for (int attempt = 1; attempt <= 2; ++attempt) {
+        notaryResult = run_process({"xcrun",
+                                    "notarytool",
+                                    "submit",
+                                    dmgPath.string(),
+                                    "--keychain-profile",
+                                    notaryProfile,
+                                    "--wait",
+                                    "--timeout",
+                                    notaryTimeoutArg});
+        if (notaryResult.exit_code == 0)
+            break;
+    }
+    if (notaryResult.exit_code != 0) {
+        err << "error: notarytool submit failed for .dmg with exit code " << notaryResult.exit_code
+            << "\n"
+            << notaryResult.out << notaryResult.err;
+        return false;
+    }
+    if (args.macosStaple) {
+        const RunResult stapleResult =
+            run_process({"xcrun", "stapler", "staple", dmgPath.string()});
+        if (stapleResult.exit_code != 0) {
+            err << "error: stapler failed for .dmg with exit code " << stapleResult.exit_code
+                << "\n"
+                << stapleResult.out << stapleResult.err;
+            return false;
+        }
+    }
+    return true;
+#endif
+}
+
 /// @brief Read a big-endian uint16 at @p off (caller must bounds-check).
 uint16_t readBE16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>((data[off] << 8) | data[off + 1]);
@@ -574,6 +683,8 @@ bool parseTarget(const std::string &text, InstallPackageTarget &out) {
         out = InstallPackageTarget::Windows;
     else if (text == "macos")
         out = InstallPackageTarget::MacOS;
+    else if (text == "macos-dmg")
+        out = InstallPackageTarget::MacOSDmg;
     else if (text == "linux-deb")
         out = InstallPackageTarget::LinuxDeb;
     else if (text == "linux-rpm")
@@ -584,6 +695,8 @@ bool parseTarget(const std::string &text, InstallPackageTarget &out) {
         out = InstallPackageTarget::Tarball;
     else if (text == "all")
         out = InstallPackageTarget::All;
+    else if (text == "all-available")
+        out = InstallPackageTarget::AllAvailable;
     else
         return false;
     return true;
@@ -635,7 +748,7 @@ bool installPackageOptionRequiresValue(const std::string &arg) {
            arg == "--macos-notary-timeout" || arg == "--license" || arg == "--maintainer" ||
            arg == "--maintainer-email" || arg == "--homepage" || arg == "--macos-dmg-background" ||
            arg == "--macos-dmg-icon" || arg == "--macos-pkg-license" ||
-           arg == "--macos-pkg-background" || arg == "-o";
+           arg == "--macos-pkg-background" || arg == "--linux-sign-key" || arg == "-o";
 }
 
 /// @brief Parse the `viper install-package` command line into @p args.
@@ -829,6 +942,8 @@ std::string targetFileName(InstallPackageTarget target,
             return "viper-" + version + "-win-" + arch + ".exe";
         case InstallPackageTarget::MacOS:
             return "viper-" + version + "-macos-" + arch + ".pkg";
+        case InstallPackageTarget::MacOSDmg:
+            return "viper-" + version + "-macos-" + arch + ".dmg";
         case InstallPackageTarget::LinuxDeb:
             return "viper_" + version + "_" + debArchFor(arch) + ".deb";
         case InstallPackageTarget::LinuxRpm:
@@ -838,6 +953,7 @@ std::string targetFileName(InstallPackageTarget target,
         case InstallPackageTarget::Tarball:
             return "viper-" + version + "-" + platform + "-" + arch + ".tar.gz";
         case InstallPackageTarget::All:
+        case InstallPackageTarget::AllAvailable:
         default:
             return {};
     }
@@ -883,6 +999,7 @@ std::vector<std::string> requiredPayloadPaths(
             paths.push_back("bin/viper-dev.cmd");
             paths.push_back("bin/viper-install-vscode-extension.cmd");
             paths.push_back("share/viper/README.windows-prerequisites.txt");
+            paths.push_back("share/viper/viper.ico");
             paths.push_back("uninstall.exe");
             paths.push_back(".viper-install-manifest.txt");
             break;
@@ -895,6 +1012,8 @@ std::vector<std::string> requiredPayloadPaths(
                     installPath.size() > 1 ? installPath.substr(1) : installPath,
                     "linux install path"));
             }
+            paths.push_back("usr/share/applications/viperide.desktop");
+            paths.push_back("usr/share/icons/hicolor/256x256/apps/viper.png");
             appendLinuxAssociationMetadata("", false);
             break;
         case InstallPackageTarget::AppImage:
@@ -903,8 +1022,11 @@ std::vector<std::string> requiredPayloadPaths(
                     file, viper::pkg::InstallPathPolicy::PortableArchive));
             }
             paths.push_back("AppRun");
+            paths.push_back(".DirIcon");
             paths.push_back("viper.desktop");
             paths.push_back("viper.png");
+            paths.push_back("share/applications/viperide.desktop");
+            paths.push_back("share/icons/hicolor/256x256/apps/viper.png");
             appendLinuxAssociationMetadata("", true);
             break;
         case InstallPackageTarget::Tarball: {
@@ -921,6 +1043,8 @@ std::vector<std::string> requiredPayloadPaths(
             }
             if (manifest.platform == "linux") {
                 appendLinuxAssociationMetadata(topDir + "/", true);
+                paths.push_back(topDir + "/share/applications/viperide.desktop");
+                paths.push_back(topDir + "/share/icons/hicolor/256x256/apps/viper.png");
                 paths.push_back(topDir + "/share/viper/install_manifest.txt");
                 paths.push_back(topDir + "/install.sh");
                 paths.push_back(topDir + "/uninstall.sh");
@@ -951,11 +1075,15 @@ std::vector<std::string> requiredPayloadPaths(
             if (!manifest.fileAssociations.empty()) {
                 paths.push_back("Applications/Viper Toolchain.app/Contents/Info.plist");
                 paths.push_back("Applications/Viper Toolchain.app/Contents/PkgInfo");
+                paths.push_back("Applications/Viper Toolchain.app/Contents/Resources/Viper.icns");
                 paths.push_back(
                     "Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler");
             }
             break;
+        case InstallPackageTarget::MacOSDmg:
+            break;
         case InstallPackageTarget::All:
+        case InstallPackageTarget::AllAvailable:
             break;
     }
     return paths;
@@ -981,6 +1109,28 @@ bool requireListedPayloadPaths(const std::set<std::string> &actual,
         }
     }
     return true;
+}
+
+/// @brief Return the gzip tar payload appended to a Viper AppImage.
+/// @details Generated AppImages are shell stubs followed by
+///          kLinuxRuntimePayloadMarker and a gzip-compressed tar tree.
+std::vector<uint8_t> appImagePayloadBytes(const std::vector<uint8_t> &data, std::ostream &err) {
+    const std::string marker = std::string(viper::pkg::kLinuxRuntimePayloadMarker) + "\n";
+    const auto markerIt =
+        std::search(data.begin(),
+                    data.end(),
+                    reinterpret_cast<const uint8_t *>(marker.data()),
+                    reinterpret_cast<const uint8_t *>(marker.data()) + marker.size());
+    if (markerIt == data.end()) {
+        err << "AppImage: missing payload marker\n";
+        return {};
+    }
+    const auto payloadIt = markerIt + static_cast<std::ptrdiff_t>(marker.size());
+    if (payloadIt == data.end()) {
+        err << "AppImage: missing appended payload\n";
+        return {};
+    }
+    return std::vector<uint8_t>(payloadIt, data.end());
 }
 
 /// @brief One index entry in an RPM header section.
@@ -1281,6 +1431,8 @@ bool verifyArtifact(const fs::path &artifact,
                 return viper::pkg::verifyMacOSPkgPayload(
                     data, requiredPayloadPaths(target, *manifest), err);
             return viper::pkg::verifyMacOSPkg(data, err);
+        case InstallPackageTarget::MacOSDmg:
+            return viper::pkg::verifyMacOSDmg(data, err);
         case InstallPackageTarget::LinuxRpm: {
             if (manifest) {
                 std::set<std::string> payloadPaths;
@@ -1297,16 +1449,30 @@ bool verifyArtifact(const fs::path &artifact,
                 err << appImageErr;
                 return false;
             }
+            if (manifest) {
+                std::ostringstream payloadErr;
+                const auto payload = appImagePayloadBytes(data, payloadErr);
+                if (payload.empty()) {
+                    err << payloadErr.str();
+                    return false;
+                }
+                if (!viper::pkg::verifyTarGzPayload(
+                        payload, requiredPayloadPaths(target, *manifest), payloadErr)) {
+                    err << payloadErr.str();
+                    return false;
+                }
+            }
             return true;
         }
         case InstallPackageTarget::All:
+        case InstallPackageTarget::AllAvailable:
         default:
             return false;
     }
 }
 
 /// @brief Infer the package target from an artifact's filename extension.
-/// @details Maps .exe/.pkg/.deb/.rpm/.AppImage/.tar.gz/.tgz to their targets for
+/// @details Maps .exe/.pkg/.dmg/.deb/.rpm/.AppImage/.tar.gz/.tgz to their targets for
 ///          `--verify-only`. @return true on a recognized extension.
 bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &target) {
     const std::string name = lowerAscii(path.filename().string());
@@ -1314,6 +1480,8 @@ bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &targe
         target = InstallPackageTarget::Windows;
     else if (name.size() >= 4 && name.substr(name.size() - 4) == ".pkg")
         target = InstallPackageTarget::MacOS;
+    else if (name.size() >= 4 && name.substr(name.size() - 4) == ".dmg")
+        target = InstallPackageTarget::MacOSDmg;
     else if (name.size() >= 4 && name.substr(name.size() - 4) == ".deb")
         target = InstallPackageTarget::LinuxDeb;
     else if (name.size() >= 4 && name.substr(name.size() - 4) == ".rpm")
@@ -1368,6 +1536,13 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
         viper::pkg::createUniqueTempDirectory(args.buildDir, "install-toolchain-stage");
     AutoStageCleanup cleanup(stageDir, !args.keepStageDir);
 
+    if (const auto installIDE =
+            readCMakeCacheBool(args.buildDir / "CMakeCache.txt", "VIPER_INSTALL_VIPERIDE");
+        installIDE && !*installIDE) {
+        throw std::runtime_error("toolchain installers require VIPER_INSTALL_VIPERIDE=ON; "
+                                 "reconfigure the build tree before running install-package");
+    }
+
     if (!args.skipBuild) {
         std::vector<std::string> buildCmd = {"cmake", "--build", args.buildDir.string()};
         if (!args.buildConfig.empty()) {
@@ -1405,6 +1580,7 @@ bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string 
         case InstallPackageTarget::Windows:
             return platform == "windows";
         case InstallPackageTarget::MacOS:
+        case InstallPackageTarget::MacOSDmg:
             return platform == "macos";
         case InstallPackageTarget::LinuxDeb:
         case InstallPackageTarget::LinuxRpm:
@@ -1413,6 +1589,7 @@ bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string 
         case InstallPackageTarget::Tarball:
             return true;
         case InstallPackageTarget::All:
+        case InstallPackageTarget::AllAvailable:
         default:
             return false;
     }
@@ -1423,7 +1600,7 @@ bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string 
 ///          native format(s) for @p platform (deb+rpm on Linux) plus a tarball.
 std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target,
                                                   const std::string &platform) {
-    if (target != InstallPackageTarget::All)
+    if (target != InstallPackageTarget::All && target != InstallPackageTarget::AllAvailable)
         return {target};
 
     std::vector<InstallPackageTarget> result;
@@ -1433,7 +1610,8 @@ std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target,
         result.push_back(InstallPackageTarget::MacOS);
     } else if (platform == "linux") {
         result.push_back(InstallPackageTarget::LinuxDeb);
-        result.push_back(InstallPackageTarget::LinuxRpm);
+        if (target == InstallPackageTarget::All || rpmbuildAvailable())
+            result.push_back(InstallPackageTarget::LinuxRpm);
         result.push_back(InstallPackageTarget::AppImage);
     }
     result.push_back(InstallPackageTarget::Tarball);
@@ -1459,7 +1637,8 @@ int cmdInstallPackage(int argc, char **argv) {
         if (!args.verifyOnlyPath.empty()) {
             std::ostringstream err;
             InstallPackageTarget target = args.target;
-            if (target == InstallPackageTarget::All &&
+            if ((target == InstallPackageTarget::All ||
+                 target == InstallPackageTarget::AllAvailable) &&
                 !inferVerifyTargetFromPath(args.verifyOnlyPath, target)) {
                 std::cerr << "error: cannot infer install-package artifact type from extension: "
                           << args.verifyOnlyPath.string()
@@ -1527,8 +1706,8 @@ int cmdInstallPackage(int argc, char **argv) {
         const auto targets = selectedTargets(args.target, manifest.platform);
         std::error_code outEc;
         const bool outPathExistsAsDirectory = !outBase.empty() && fs::is_directory(outBase, outEc);
-        const bool outIsDirectoryLike =
-            args.outputPath.empty() || outPathExistsAsDirectory || !outBase.has_extension();
+        const bool outIsDirectoryLike = args.outputPath.empty() || outPathExistsAsDirectory ||
+                                        targets.size() > 1 || !outBase.has_extension();
         if (outIsDirectoryLike)
             fs::create_directories(outBase);
 
@@ -1623,7 +1802,12 @@ int cmdInstallPackage(int argc, char **argv) {
                     viper::pkg::buildToolchainTarball(params);
                     break;
                 }
+                case InstallPackageTarget::MacOSDmg:
+                    std::cerr << "error: --target macos-dmg is only supported with --verify-only; "
+                                 "use --target macos --macos-dmg to build a DMG\n";
+                    return 1;
                 case InstallPackageTarget::All:
+                case InstallPackageTarget::AllAvailable:
                     break;
             }
 
@@ -1687,6 +1871,25 @@ int cmdInstallPackage(int argc, char **argv) {
                     if (dmgEc)
                         std::cerr << ": " << dmgEc.message();
                     std::cerr << "\n";
+                    return 1;
+                }
+                if (!args.noVerify) {
+                    std::ostringstream dmgErr;
+                    if (!verifyArtifact(dmgParams.outputPath,
+                                        InstallPackageTarget::MacOSDmg,
+                                        dmgErr,
+                                        nullptr)) {
+                        std::cerr << "error: verification failed for " << dmgParams.outputPath
+                                  << "\n"
+                                  << dmgErr.str();
+                        std::error_code removeEc;
+                        fs::remove(dmgParams.outputPath, removeEc);
+                        return 1;
+                    }
+                }
+                if (!notarizeMacOSDmgArtifact(args, dmgParams.outputPath, std::cerr)) {
+                    std::error_code removeEc;
+                    fs::remove(dmgParams.outputPath, removeEc);
                     return 1;
                 }
                 std::cout << dmgParams.outputPath << "\n";

@@ -589,9 +589,11 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     fs::create_directories(stage / "share" / "doc" / "viper");
 
 #if defined(_WIN32)
-    const std::string exeName = "viper.exe";
+    auto binaryName = [](std::string_view base) { return std::string(base) + ".exe"; };
+    const std::string exeName = binaryName("viper");
     auto archiveName = [](std::string_view base) { return std::string(base) + ".lib"; };
 #else
+    auto binaryName = [](std::string_view base) { return std::string(base); };
     const std::string exeName = "viper";
     auto archiveName = [](std::string_view base) { return "lib" + std::string(base) + ".a"; };
 #endif
@@ -612,8 +614,9 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
                              "zia-server",
                              "vbasic-server",
                              "basic-ast-dump",
-                             "basic-lex-dump"}) {
-        const fs::path toolPath = stage / "bin" / tool;
+                             "basic-lex-dump",
+                             "viperide"}) {
+        const fs::path toolPath = stage / "bin" / binaryName(tool);
         std::ofstream out(toolPath, std::ios::binary);
         out << "stub";
         out.close();
@@ -680,6 +683,21 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     }
 #endif
     return stage;
+}
+
+/// @brief Make a mock toolchain stage look like a Windows install tree.
+/// @details Non-Windows test hosts create the primary mock executable as
+///          `bin/viper`; Windows toolchain installer tests need `bin/viper.exe`
+///          so the manifest and payload names match the target platform.
+/// @param stage Mock stage root returned by createMockToolchainStage().
+static void normalizeMockStageForWindowsToolchain(const std::filesystem::path &stage) {
+#if !defined(_WIN32)
+    namespace fs = std::filesystem;
+    fs::copy_file(stage / "bin" / "viper", stage / "bin" / "viper.exe");
+    fs::remove(stage / "bin" / "viper");
+#else
+    (void)stage;
+#endif
 }
 
 static void addMockMacOSFileHandler(const std::filesystem::path &stage) {
@@ -1996,6 +2014,21 @@ TEST(Verify, MacOSAppZipRequiresBundlePayload) {
     EXPECT_FALSE(verifyMacOSAppZip(data, "App.app", "missing", missingErr));
 }
 
+TEST(Verify, MacOSDmgRecognizesUdifTrailer) {
+    std::vector<uint8_t> data(512, 0);
+    data[0] = 'k';
+    data[1] = 'o';
+    data[2] = 'l';
+    data[3] = 'y';
+    std::ostringstream err;
+    EXPECT_TRUE(verifyMacOSDmg(data, err));
+
+    data[0] = 'b';
+    std::ostringstream badErr;
+    EXPECT_FALSE(verifyMacOSDmg(data, badErr));
+    EXPECT_CONTAINS(badErr.str(), "UDIF");
+}
+
 TEST(Verify, DebValid) {
     ArWriter ar;
     ar.addMemberString("debian-binary", "2.0\n");
@@ -3188,6 +3221,10 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     EXPECT_TRUE(script.find("$display=") != std::string::npos);
     EXPECT_TRUE(script.find(".Read(") != std::string::npos);      // overlay byte reader
     EXPECT_TRUE(script.find("testapp.exe") != std::string::npos); // payload file name
+    EXPECT_TRUE(script.find("RegisterAssoc") != std::string::npos);
+    EXPECT_TRUE(script.find("UnregisterAssoc") != std::string::npos);
+    EXPECT_TRUE(script.find("BroadcastEnv") != std::string::npos);
+    EXPECT_TRUE(script.find("Remove-Item -LiteralPath $install -Recurse") == std::string::npos);
     // The layout's identifier must survive into the script (registry/uninstall key).
     EXPECT_TRUE(script.find("org.viper.testapp") != std::string::npos);
 }
@@ -4229,7 +4266,32 @@ TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
             return entry.kind == ToolchainFileKind::CMakeConfig &&
                    entry.stagedRelativePath == "lib/cmake/Viper/ViperTargets.cmake";
         }));
+    for (const std::string &binary : requiredToolchainBinaryNames()) {
+        EXPECT_TRUE(std::any_of(
+            manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
+                return entry.kind == ToolchainFileKind::Binary &&
+                       entry.stagedRelativePath.find("bin/" + binary) == 0;
+            }));
+    }
 
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, RequiresAllToolchainBinaries) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_no_tool";
+    for (const std::string &binary : requiredToolchainBinaryNames()) {
+        fs::remove_all(tmpRoot);
+        const fs::path stage = createMockToolchainStage(tmpRoot);
+        for (const auto &entry : fs::directory_iterator(stage / "bin")) {
+            const std::string filename = entry.path().filename().string();
+            if (filename == binary || filename == binary + ".exe") {
+                fs::remove(entry.path());
+                break;
+            }
+        }
+        EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
+    }
     fs::remove_all(tmpRoot);
 }
 
@@ -4447,16 +4509,19 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     std::ostringstream err;
     EXPECT_TRUE(verifyDeb(debBytes, err));
     std::ostringstream payloadErr;
-    EXPECT_TRUE(verifyDebPayload(debBytes,
-                                 {"usr/bin/viper",
-                                  "usr/share/applications/viper-source.desktop",
-                                  "usr/share/applications/viper-il.desktop",
-                                  "usr/share/mime/packages/viper.xml"},
-                                 payloadErr));
+    std::vector<std::string> requiredDebPayload;
+    for (const std::string &binary : requiredToolchainBinaryNames())
+        requiredDebPayload.push_back("usr/bin/" + binary);
+    requiredDebPayload.push_back("usr/share/applications/viperide.desktop");
+    requiredDebPayload.push_back("usr/share/applications/viper-source.desktop");
+    requiredDebPayload.push_back("usr/share/applications/viper-il.desktop");
+    requiredDebPayload.push_back("usr/share/icons/hicolor/256x256/apps/viper.png");
+    requiredDebPayload.push_back("usr/share/mime/packages/viper.xml");
+    EXPECT_TRUE(verifyDebPayload(debBytes, requiredDebPayload, payloadErr));
     const std::string control = debControlText(debBytes);
     EXPECT_CONTAINS(control,
                     "Depends: libc6, libstdc++6 | libc++1, libgcc-s1, cmake, "
-                    "g++ | clang++, make");
+                    "g++ | clang++, make, desktop-file-utils, shared-mime-info, man-db");
 #if VIPER_BUILD_HAS_GRAPHICS || VIPER_BUILD_HAS_GUI
     EXPECT_CONTAINS(control, "libx11-6");
 #endif
@@ -4633,16 +4698,19 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
         std::string("viper-9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
     EXPECT_EQ(tarFirstEntryName(tarBytes), topDir);
     std::ostringstream payloadErr;
-    EXPECT_TRUE(verifyTarGzPayload(tarGz,
-                                   {topDir + "bin/viper",
-                                    topDir + "share/applications/viper-source.desktop",
-                                    topDir + "share/applications/viper-il.desktop",
-                                    topDir + "share/mime/packages/viper.xml",
-                                    topDir + "share/viper/install_manifest.txt",
-                                    topDir + "install.sh",
-                                    topDir + "uninstall.sh",
-                                    topDir + "README.install"},
-                                   payloadErr));
+    std::vector<std::string> requiredTarballPayload;
+    for (const std::string &binary : requiredToolchainBinaryNames())
+        requiredTarballPayload.push_back(topDir + "bin/" + binary);
+    requiredTarballPayload.push_back(topDir + "share/applications/viperide.desktop");
+    requiredTarballPayload.push_back(topDir + "share/applications/viper-source.desktop");
+    requiredTarballPayload.push_back(topDir + "share/applications/viper-il.desktop");
+    requiredTarballPayload.push_back(topDir + "share/icons/hicolor/256x256/apps/viper.png");
+    requiredTarballPayload.push_back(topDir + "share/mime/packages/viper.xml");
+    requiredTarballPayload.push_back(topDir + "share/viper/install_manifest.txt");
+    requiredTarballPayload.push_back(topDir + "install.sh");
+    requiredTarballPayload.push_back(topDir + "uninstall.sh");
+    requiredTarballPayload.push_back(topDir + "README.install");
+    EXPECT_TRUE(verifyTarGzPayload(tarGz, requiredTarballPayload, payloadErr));
     std::vector<uint8_t> installScript;
     ASSERT_TRUE(tarEntryData(tarBytes, topDir + "install.sh", installScript));
     EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()), "DESTDIR");
@@ -4740,18 +4808,28 @@ TEST(ToolchainLinuxPackageBuilder, BuildsAppImageFromManifest) {
     const auto payloadGz = appImagePayloadBytes(appImage);
     const auto payloadTar = inflateGzipPayload(payloadGz);
     std::ostringstream payloadErr;
-    EXPECT_TRUE(verifyTarGzPayload(payloadGz,
-                                   {"AppRun",
-                                    "bin/viper",
-                                    "share/applications/viper-source.desktop",
-                                    "share/applications/viper-il.desktop",
-                                    "share/mime/packages/viper.xml",
-                                    "viper.desktop",
-                                    "viper.png"},
-                                   payloadErr));
+    std::vector<std::string> requiredAppImagePayload;
+    requiredAppImagePayload.push_back("AppRun");
+    for (const std::string &binary : requiredToolchainBinaryNames())
+        requiredAppImagePayload.push_back("bin/" + binary);
+    requiredAppImagePayload.push_back("share/applications/viperide.desktop");
+    requiredAppImagePayload.push_back("share/applications/viper-source.desktop");
+    requiredAppImagePayload.push_back("share/applications/viper-il.desktop");
+    requiredAppImagePayload.push_back("share/icons/hicolor/256x256/apps/viper.png");
+    requiredAppImagePayload.push_back("share/mime/packages/viper.xml");
+    requiredAppImagePayload.push_back(".DirIcon");
+    requiredAppImagePayload.push_back("viper.desktop");
+    requiredAppImagePayload.push_back("viper.png");
+    EXPECT_TRUE(verifyTarGzPayload(payloadGz, requiredAppImagePayload, payloadErr));
+    std::vector<uint8_t> appRun;
+    ASSERT_TRUE(tarEntryData(payloadTar, "AppRun", appRun));
+    const std::string appRunText(appRun.begin(), appRun.end());
+    EXPECT_CONTAINS(appRunText, "bin/viperide");
+    EXPECT_CONTAINS(appRunText, "bin/viper");
     std::vector<uint8_t> desktop;
     ASSERT_TRUE(tarEntryData(payloadTar, "viper.desktop", desktop));
     EXPECT_CONTAINS(std::string(desktop.begin(), desktop.end()), "Exec=AppRun");
+    EXPECT_CONTAINS(std::string(desktop.begin(), desktop.end()), "Terminal=false");
     std::vector<uint8_t> icon;
     ASSERT_TRUE(tarEntryData(payloadTar, "viper.png", icon));
     ASSERT_TRUE(icon.size() >= 8);
@@ -4818,10 +4896,7 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
-#if !defined(_WIN32)
-    fs::copy_file(stage / "bin" / "viper", stage / "bin" / "viper.exe");
-    fs::remove(stage / "bin" / "viper");
-#endif
+    normalizeMockStageForWindowsToolchain(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.arch = "x64";
     manifest.platform = "windows";
@@ -4840,19 +4915,23 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                                           {"meta/payload.zip",
                                            "meta/install_manifest.next",
                                            "meta/viper_developer_prompt.lnk",
-                                           "meta/viper_vscode_extension.lnk",
+                                           "meta/viperide.lnk",
                                            "meta/manifest.sha256"},
                                           payloadErr));
+    EXPECT_FALSE(
+        zipContainsEntries(extractFirstZipOverlay(pe), {"meta/viper_vscode_extension.lnk"}));
     EXPECT_GE(peOptionalHeaderField64(pe, 72), static_cast<uint64_t>(0x200000));
     EXPECT_GE(peOptionalHeaderField64(pe, 80), static_cast<uint64_t>(0x100000));
     EXPECT_TRUE(containsUtf16LE(pe, "Environment"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "%LocalAppData%\\Viper\\bin\\viper.exe"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "%LocalAppData%\\Viper\\share\\viper\\viper.ico"));
     EXPECT_TRUE(containsAscii(pe, "asInvoker"));
     EXPECT_TRUE(containsUtf16LE(pe, "VAPSOriginalPath"));
     EXPECT_TRUE(containsUtf16LE(pe, "VAPSPathEntry"));
     EXPECT_TRUE(containsUtf16LE(pe, "bin\\viper.exe"));
+    EXPECT_TRUE(containsUtf16LE(pe, "share\\viper\\viper.ico"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "Viper Developer Prompt"));
-    EXPECT_FALSE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ViperIDE"));
+    EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
     const std::string sendMessageImport = "SendMessageTimeoutW";
     EXPECT_TRUE(
         std::search(pe.begin(), pe.end(), sendMessageImport.begin(), sendMessageImport.end()) !=
@@ -4864,13 +4943,49 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                             shellFileOperationImport.end()) != pe.end());
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
-    EXPECT_TRUE(zipContainsEntries(payloadZip,
-                                   {"bin/viper.exe",
-                                    "bin/viper-dev.cmd",
-                                    "bin/viper-install-vscode-extension.cmd",
-                                    "share/viper/README.windows-prerequisites.txt",
-                                    "uninstall.exe",
-                                    ".viper-install-manifest.txt"}));
+    std::vector<std::string> requiredWindowsPayload;
+    for (const auto &file : manifest.files) {
+        requiredWindowsPayload.push_back(sanitizePackageRelativePath(
+            file.stagedRelativePath, "windows toolchain test payload path"));
+    }
+    requiredWindowsPayload.push_back("bin/viper-dev.cmd");
+    requiredWindowsPayload.push_back("bin/viper-install-vscode-extension.cmd");
+    requiredWindowsPayload.push_back("share/viper/README.windows-prerequisites.txt");
+    requiredWindowsPayload.push_back("share/viper/viper.ico");
+    requiredWindowsPayload.push_back("uninstall.exe");
+    requiredWindowsPayload.push_back(".viper-install-manifest.txt");
+    EXPECT_TRUE(zipContainsEntries(payloadZip, requiredWindowsPayload));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, AddsVSCodeShortcutWhenVSIXIsStaged) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_vscode_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForWindowsToolchain(stage);
+    fs::create_directories(stage / "share" / "viper" / "vscode");
+    {
+        std::ofstream vsix(stage / "share" / "viper" / "vscode" / "viper-lang.vsix",
+                           std::ios::binary);
+        vsix << "mock-vsix";
+    }
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "x64";
+    manifest.platform = "windows";
+
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.archStr = "x64";
+    buildWindowsToolchainInstaller(params);
+
+    const auto pe = readFile(params.outputPath);
+    std::ostringstream payloadErr;
+    EXPECT_TRUE(verifyPEZipOverlayPayload(pe, {"meta/viper_vscode_extension.lnk"}, payloadErr));
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(zipContainsEntries(payloadZip, {"share/viper/vscode/viper-lang.vsix"}));
     fs::remove_all(tmpRoot);
 }
 
@@ -4879,10 +4994,7 @@ TEST(ToolchainWindowsPackageBuilder, HonorsMachineScopeAndFileAssociations) {
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_machine_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
-#if !defined(_WIN32)
-    fs::copy_file(stage / "bin" / "viper", stage / "bin" / "viper.exe");
-    fs::remove(stage / "bin" / "viper");
-#endif
+    normalizeMockStageForWindowsToolchain(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.arch = "x64";
     manifest.platform = "windows";
@@ -4970,23 +5082,26 @@ TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
     EXPECT_EQ(pkgBytes[1], static_cast<uint8_t>('a'));
     EXPECT_EQ(pkgBytes[2], static_cast<uint8_t>('r'));
     EXPECT_EQ(pkgBytes[3], static_cast<uint8_t>('!'));
+    std::vector<std::string> requiredMacPayload;
+    for (const std::string &binary : requiredToolchainBinaryNames()) {
+        requiredMacPayload.push_back("usr/local/viper/bin/" + binary);
+        requiredMacPayload.push_back("usr/local/bin/" + binary);
+    }
+    requiredMacPayload.push_back("usr/local/viper/share/man/man1/viper.1");
+    requiredMacPayload.push_back("usr/local/share/man/man1/viper.1");
+    requiredMacPayload.push_back("usr/local/viper/share/man/man7/viper.7");
+    requiredMacPayload.push_back("usr/local/share/man/man7/viper.7");
+    requiredMacPayload.push_back("usr/local/viper/share/viper/install_manifest.txt");
+    requiredMacPayload.push_back("usr/local/viper/share/viper/uninstall.sh");
+    requiredMacPayload.push_back("usr/local/lib/cmake/Viper/ViperConfig.cmake");
+    requiredMacPayload.push_back("usr/local/lib/cmake/Viper/ViperConfigVersion.cmake");
+    requiredMacPayload.push_back("Applications/Viper Toolchain.app/Contents/Info.plist");
+    requiredMacPayload.push_back("Applications/Viper Toolchain.app/Contents/PkgInfo");
+    requiredMacPayload.push_back("Applications/Viper Toolchain.app/Contents/Resources/Viper.icns");
+    requiredMacPayload.push_back(
+        "Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler");
     std::ostringstream err;
-    const bool verified = verifyMacOSPkgPayload(
-        pkgBytes,
-        {"usr/local/viper/bin/viper",
-         "usr/local/bin/viper",
-         "usr/local/viper/share/man/man1/viper.1",
-         "usr/local/share/man/man1/viper.1",
-         "usr/local/viper/share/man/man7/viper.7",
-         "usr/local/share/man/man7/viper.7",
-         "usr/local/viper/share/viper/install_manifest.txt",
-         "usr/local/viper/share/viper/uninstall.sh",
-         "usr/local/lib/cmake/Viper/ViperConfig.cmake",
-         "usr/local/lib/cmake/Viper/ViperConfigVersion.cmake",
-         "Applications/Viper Toolchain.app/Contents/Info.plist",
-         "Applications/Viper Toolchain.app/Contents/PkgInfo",
-         "Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler"},
-        err);
+    const bool verified = verifyMacOSPkgPayload(pkgBytes, requiredMacPayload, err);
     if (!verified)
         std::cerr << err.str();
     EXPECT_TRUE(verified);

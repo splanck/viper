@@ -12,15 +12,13 @@ if "%NUMBER_OF_PROCESSORS%"=="" (
 
 if not exist "%VIPER_BUILD_DIR%\CMakeCache.txt" (
     echo Configuring Viper build tree...
-    set "CONFIG_ARGS="
-    if not "%VIPER_CMAKE_GENERATOR%"=="" (
-        set "CONFIG_ARGS=%CONFIG_ARGS% -G "%VIPER_CMAKE_GENERATOR%""
+    if "%VIPER_CMAKE_GENERATOR%"=="" (
+        cmake -S "%ROOT_DIR%" -B "%VIPER_BUILD_DIR%" -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% -DVIPER_INSTALL_VIPERIDE=ON %VIPER_EXTRA_CMAKE_ARGS%
+        if errorlevel 1 exit /b 1
+    ) else (
+        cmake -S "%ROOT_DIR%" -B "%VIPER_BUILD_DIR%" -G "%VIPER_CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% -DVIPER_INSTALL_VIPERIDE=ON %VIPER_EXTRA_CMAKE_ARGS%
+        if errorlevel 1 exit /b 1
     )
-    if not "%VIPER_EXTRA_CMAKE_ARGS%"=="" (
-        set "CONFIG_ARGS=%CONFIG_ARGS% %VIPER_EXTRA_CMAKE_ARGS%"
-    )
-    cmake -S "%ROOT_DIR%" -B "%VIPER_BUILD_DIR%" -DCMAKE_BUILD_TYPE=%VIPER_BUILD_TYPE% %CONFIG_ARGS%
-    if errorlevel 1 exit /b 1
 )
 
 echo Building Viper toolchain payload...

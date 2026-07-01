@@ -15307,6 +15307,7 @@ RT_CLASS_END()
 
 RT_FUNC(Water3DNew,            rt_water3d_new,            "Viper.Graphics3D.Water3D.New",            "obj(f64,f64)")
 RT_FUNC(Water3DSetHeight,      rt_water3d_set_height,     "Viper.Graphics3D.Water3D.SetHeight",      "void(obj,f64)")
+RT_FUNC(Water3DSetPosition,    rt_water3d_set_position,   "Viper.Graphics3D.Water3D.SetPosition",    "void(obj,f64,f64,f64)")
 RT_FUNC(Water3DSetWaveParams,  rt_water3d_set_wave_params,"Viper.Graphics3D.Water3D.SetWaveParams",  "void(obj,f64,f64,f64)")
 RT_FUNC(Water3DSetColor,       rt_water3d_set_color,      "Viper.Graphics3D.Water3D.SetColor",       "void(obj,f64,f64,f64,f64)")
 RT_FUNC(Water3DUpdate,         rt_water3d_update,         "Viper.Graphics3D.Water3D.Update",         "void(obj,f64)")
@@ -15321,6 +15322,7 @@ RT_FUNC(Canvas3DDrawWater,     rt_canvas3d_draw_water,    "Viper.Graphics3D.Canv
 
 RT_CLASS_BEGIN("Viper.Graphics3D.Water3D", Water3D, "obj", Water3DNew)
     RT_METHOD("SetHeight", "void(f64)", Water3DSetHeight)
+    RT_METHOD("SetPosition", "void(f64,f64,f64)", Water3DSetPosition)
     RT_METHOD("SetWaveParams", "void(f64,f64,f64)", Water3DSetWaveParams)
     RT_METHOD("SetColor", "void(f64,f64,f64,f64)", Water3DSetColor)
     RT_METHOD("SetTexture", "void(obj)", Water3DSetTexture)

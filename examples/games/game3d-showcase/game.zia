@@ -63,11 +63,15 @@ class Game3DShowcase {
         sim = new ShowcaseWorldSim();
         sim.init();
         sim.installOutdoorFillLight(world);
-        var gpuPostFx = Canvas3D.BackendSupports(canvas, "gpu_postfx");
-        if (gpuPostFx) {
+        // Build the post-FX chain whenever the backend has CPU-safe post-FX (true on
+        // software too), not only on GPU backends — otherwise software rendered raw
+        // and unlit. Only then fall back to dimmed direct lighting if there is no
+        // post-FX at all (so the tonemap/bloom can't compress the HDR range).
+        var hasPostFx = Canvas3D.BackendSupports(canvas, "postfx");
+        if (hasPostFx) {
             postfx.buildPostFX(canvas);
         }
-        sim.setDirectLightingFallback(gpuPostFx == false);
+        sim.setDirectLightingFallback(hasPostFx == false);
         Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
         world.SetAmbient(config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
         world.SetFog(config.FOG_R, config.FOG_G, config.FOG_B, config.FOG_NEAR, config.FOG_FAR);

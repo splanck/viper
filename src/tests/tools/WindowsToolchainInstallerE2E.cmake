@@ -10,6 +10,8 @@ if (NOT WIN32)
     message(FATAL_ERROR "WindowsToolchainInstallerE2E.cmake must run on Windows")
 endif ()
 
+include("${CMAKE_CURRENT_LIST_DIR}/ToolchainInstallerSmokeHelpers.cmake")
+
 if (NOT DEFINED ENV{LOCALAPPDATA} OR "$ENV{LOCALAPPDATA}" STREQUAL "")
     message(FATAL_ERROR "LOCALAPPDATA is not set; cannot locate per-user install root")
 endif ()
@@ -83,18 +85,7 @@ if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR
             "per-user Viper installer failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
 endif ()
-if (NOT EXISTS "${_installed_viper}")
-    message(FATAL_ERROR "installer did not install viper.exe: ${_installed_viper}")
-endif ()
-
-execute_process(COMMAND "${_installed_viper}" --version
-        RESULT_VARIABLE _version_rv
-        OUTPUT_VARIABLE _version_out
-        ERROR_VARIABLE _version_err)
-if (NOT _version_rv EQUAL 0)
-    message(FATAL_ERROR
-            "installed viper --version failed\nstdout:\n${_version_out}\nstderr:\n${_version_err}")
-endif ()
+viper_installer_smoke_verify_installed_tools("${_install_root}/bin" ".exe" "Windows installer E2E")
 
 set(_path_probe_ps [=[$machine=[Environment]::GetEnvironmentVariable('Path','Machine'); $user=[Environment]::GetEnvironmentVariable('Path','User'); $env:Path=($machine + ';' + $user); viper --version]=])
 execute_process(COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass

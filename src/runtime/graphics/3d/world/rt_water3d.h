@@ -29,6 +29,9 @@ extern "C" {
 void *rt_water3d_new(double width, double depth);
 /// @brief Set the world Y-coordinate of the water surface.
 void rt_water3d_set_height(void *water, double y);
+/// @brief Set the water plane's world XZ centre and base Y (aligns the origin-built
+///        grid over an off-origin terrain).
+void rt_water3d_set_position(void *water, double x, double y, double z);
 /// @brief Configure the legacy single-sine-wave parameters (speed, amplitude, frequency).
 void rt_water3d_set_wave_params(void *water, double speed, double amplitude, double frequency);
 /// @brief Set the water's tint color and per-pixel alpha (0–1).

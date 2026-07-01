@@ -12,16 +12,17 @@ bind "./mathutil";
 
 func buildPostFX(canvas: Canvas3D) {
     var fx = PostFX3D.New();
-    var gpuFx = Canvas3D.BackendSupports(canvas, "ssao");
-    if (gpuFx) {
-        PostFX3D.AddSSAO(fx, 0.45, 0.55, 12);
+    // GPU-only screen-space ambient occlusion — the biggest single depth cue here,
+    // grounding trees/props/creases with contact darkening. Gated on the valid
+    // "gpu_postfx" capability (the old "ssao" string was never recognized, so SSAO
+    // never actually ran). DOF + motion blur are intentionally omitted: they soften
+    // the distant snow-capped peaks and read poorly under constant mouse-look.
+    if (Canvas3D.BackendSupports(canvas, "gpu_postfx")) {
+        PostFX3D.AddSSAO(fx, 0.70, 0.90, 16);
     }
+    // CPU-safe chain — runs on every backend, software included.
     PostFX3D.AddTonemap(fx, 2, 1.0);
-    PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 3);
-    if (gpuFx) {
-        PostFX3D.AddDOF(fx, config.POSTFX_DOF_FOCUS, config.POSTFX_DOF_RANGE, config.POSTFX_DOF_STRENGTH);
-        PostFX3D.AddMotionBlur(fx, config.POSTFX_MOTIONBLUR_STRENGTH, config.POSTFX_MOTIONBLUR_SAMPLES);
-    }
+    PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 4);
     PostFX3D.AddColorGrade(
         fx, config.POSTFX_COLORGRADE_BRIGHT, config.POSTFX_COLORGRADE_CONTRAST,
         config.POSTFX_COLORGRADE_SAT);

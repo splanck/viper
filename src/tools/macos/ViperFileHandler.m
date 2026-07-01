@@ -40,7 +40,7 @@ static NSString *ViperModeForPath(NSString *path) {
     return @ "run";
 }
 
-static void LaunchViperInTerminal(NSString *path) {
+static BOOL LaunchViperInTerminal(NSString *path, NSError **outError) {
     NSString *directory = [path stringByDeletingLastPathComponent];
     NSString *mode = ViperModeForPath(path);
     NSString *command = [NSString
@@ -56,8 +56,7 @@ static void LaunchViperInTerminal(NSString *path) {
     NSTask *task = [[[NSTask alloc] init] autorelease];
     [task setLaunchPath:@ "/usr/bin/osascript"];
     [task setArguments:@[ @ "-e", script ]];
-    NSError *error = nil;
-    [task launchAndReturnError:&error];
+    return [task launchAndReturnError:outError];
 }
 
 @interface ViperFileHandlerDelegate : NSObject <NSApplicationDelegate>
@@ -73,9 +72,24 @@ static void LaunchViperInTerminal(NSString *path) {
 
 - (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames {
     self.sawOpenEvent = YES;
-    for (NSString *path in filenames)
-        LaunchViperInTerminal(path);
-    [sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
+    BOOL launchedAll = YES;
+    NSError *lastError = nil;
+    for (NSString *path in filenames) {
+        NSError *error = nil;
+        if (!LaunchViperInTerminal(path, &error)) {
+            launchedAll = NO;
+            lastError = error;
+            NSLog(@ "Viper file handler failed to launch Terminal for %@: %@", path, error);
+        }
+    }
+    if (!launchedAll && lastError != nil) {
+        NSAlert *alert = [[[NSAlert alloc] init] autorelease];
+        [alert setMessageText:@ "Viper could not open the selected file."];
+        [alert setInformativeText:[lastError localizedDescription]];
+        [alert runModal];
+    }
+    [sender replyToOpenOrPrint:(launchedAll ? NSApplicationDelegateReplySuccess
+                                            : NSApplicationDelegateReplyFailure)];
     [self performSelector:@selector(terminateApp) withObject:nil afterDelay:1.0];
 }
 

@@ -308,7 +308,7 @@ The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 - `init <project-name> [--lang zia|basic]`
 - `repl [zia|basic]`
 - `package [target] [--target macos|linux|windows|tarball] [--arch arm64|x64]`
-- `install-package [--target windows|macos|linux-deb|linux-rpm|tarball|all] (--stage-dir DIR | --build-dir DIR)`
+- `install-package [--target windows|macos|linux-deb|linux-rpm|appimage|tarball|all|all-available] (--stage-dir DIR | --build-dir DIR)`
 - `-run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
 - `front zia -emit-il|-run <file.zia>`
 - `front basic -emit-il <file.bas> [--bounds-checks]`

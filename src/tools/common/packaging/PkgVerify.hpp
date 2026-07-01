@@ -142,6 +142,15 @@ bool verifyMacOSPkgPayload(const std::vector<uint8_t> &data,
                            const std::vector<std::string> &requiredPaths,
                            std::ostream &err);
 
+/// @brief Verify structural correctness of a macOS UDIF `.dmg` image.
+/// @details Performs dependency-free checks for the UDIF trailer signature and
+///          basic image bounds. Runtime build paths may additionally shell out
+///          to `hdiutil verify` when available on macOS hosts.
+/// @param data `.dmg` file bytes.
+/// @param err Stream for error messages.
+/// @return true if the disk image has a valid UDIF trailer.
+bool verifyMacOSDmg(const std::vector<uint8_t> &data, std::ostream &err);
+
 /// @brief Verify structural correctness of a PE32+ executable.
 ///
 /// Checks:

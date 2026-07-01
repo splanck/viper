@@ -12,7 +12,7 @@
 // Key invariants:
 //   - Paths are always normalized via sanitizePackageRelativePath before use.
 //   - Symlinks that escape the stage prefix are rejected at scan time.
-//   - The viper binary, CMake config files, and all runtime archives must be
+//   - Every user-facing binary tool, CMake config, and runtime archive must be
 //     present for validateToolchainInstallManifest to succeed.
 //
 // Ownership/Lifetime:
@@ -595,8 +595,8 @@ void validateManifestFileEntries(const ToolchainInstallManifest &manifest) {
             const std::string resolvedText = resolved.generic_string();
             if (resolvedText.empty() || resolvedText == "." || resolvedText == ".." ||
                 resolvedText.rfind("../", 0) == 0) {
-                throw std::runtime_error("toolchain manifest symlink target escapes install root: " +
-                                         clean);
+                throw std::runtime_error(
+                    "toolchain manifest symlink target escapes install root: " + clean);
             }
             ec.clear();
             const fs::path canonicalTarget = fs::canonical(entry.stagedAbsolutePath, ec);
@@ -620,7 +620,8 @@ void validateManifestFileEntries(const ToolchainInstallManifest &manifest) {
             throw std::runtime_error("toolchain manifest regular file has a symlink target: " +
                                      clean);
         ec.clear();
-        const uint64_t actualSize = static_cast<uint64_t>(fs::file_size(entry.stagedAbsolutePath, ec));
+        const uint64_t actualSize =
+            static_cast<uint64_t>(fs::file_size(entry.stagedAbsolutePath, ec));
         if (ec) {
             throw std::runtime_error("cannot determine staged file size for '" + clean +
                                      "': " + ec.message());
@@ -700,6 +701,21 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
     return manifest;
 }
 
+/// @brief Return the canonical binary tools that every Viper toolchain installer ships.
+std::vector<std::string> requiredToolchainBinaryNames() {
+    return {"viper",
+            "zia",
+            "vbasic",
+            "ilrun",
+            "il-verify",
+            "il-dis",
+            "zia-server",
+            "vbasic-server",
+            "basic-ast-dump",
+            "basic-lex-dump",
+            "viperide"};
+}
+
 /// @brief Validate that the manifest contains a complete, shippable toolchain.
 /// Checks arch/platform/version strings, required binaries and cmake configs, all
 /// runtime archives from RuntimeComponentManifest, and any support libraries
@@ -729,8 +745,16 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
             });
     };
 
-    if (!hasBinary("viper"))
-        throw std::runtime_error("staged toolchain is missing the viper binary");
+    for (const std::string &binary : requiredToolchainBinaryNames()) {
+        if (!hasBinary(binary.c_str())) {
+            if (binary == "viperide") {
+                throw std::runtime_error("staged toolchain is missing required binary viperide "
+                                         "(configure installer build trees with "
+                                         "VIPER_INSTALL_VIPERIDE=ON)");
+            }
+            throw std::runtime_error("staged toolchain is missing required binary " + binary);
+        }
+    }
     if (!manifestHasRelativePath(manifest, "lib/cmake/Viper/ViperConfig.cmake"))
         throw std::runtime_error("staged toolchain is missing lib/cmake/Viper/ViperConfig.cmake");
     if (!manifestHasRelativePath(manifest, "lib/cmake/Viper/ViperTargets.cmake"))

@@ -80,12 +80,47 @@ try {
 
     Run-Checked -FilePath $installerPath -Arguments @("/quiet", "/norestart") | Out-Null
 
-    $viper = Join-Path $InstallRoot "bin\viper.exe"
-    if (-not (Test-Path -LiteralPath $viper -PathType Leaf)) {
-        throw "Expected installed viper.exe at $viper"
+    $requiredTools = @(
+        "viper",
+        "zia",
+        "vbasic",
+        "ilrun",
+        "il-verify",
+        "il-dis",
+        "zia-server",
+        "vbasic-server",
+        "basic-ast-dump",
+        "basic-lex-dump",
+        "viperide"
+    )
+    foreach ($tool in $requiredTools) {
+        $toolPath = Join-Path $InstallRoot "bin\$tool.exe"
+        if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw "Expected installed $tool.exe at $toolPath"
+        }
     }
 
+    $viper = Join-Path $InstallRoot "bin\viper.exe"
+    $viperide = Join-Path $InstallRoot "bin\viperide.exe"
+    $viperIcon = Join-Path $InstallRoot "share\viper\viper.ico"
+    if (-not (Test-Path -LiteralPath $viperIcon -PathType Leaf)) {
+        throw "Expected installed Viper icon at $viperIcon"
+    }
     Run-Checked -FilePath $viper -Arguments @("--version") | Out-Host
+    Run-Checked -FilePath $viperide -Arguments @("--version") | Out-Host
+
+    $classesRoot = "HKCU:\Software\Classes"
+    if ($InstallRoot.StartsWith($env:ProgramFiles, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $classesRoot = "HKLM:\Software\Classes"
+    }
+    $ziaAssoc = Join-Path $classesRoot ".zia\OpenWithProgids"
+    if (-not (Test-Path -LiteralPath $ziaAssoc)) {
+        throw "Expected .zia OpenWithProgids registration at $ziaAssoc"
+    }
+    $ziaProps = Get-ItemProperty -LiteralPath $ziaAssoc
+    if ($ziaProps.PSObject.Properties.Name -notcontains "org.viper.toolchain.zia") {
+        throw "Expected .zia to advertise org.viper.toolchain.zia"
+    }
 
     $pathFromRegistry = ([Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
                          [Environment]::GetEnvironmentVariable("Path", "User"))
@@ -138,7 +173,7 @@ finally {
         $uninstaller = Join-Path $InstallRoot "uninstall.exe"
         Run-Checked -FilePath $uninstaller -Arguments @("/quiet", "/norestart") | Out-Null
         Remove-Item -LiteralPath $uninstaller -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }

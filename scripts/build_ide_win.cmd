@@ -38,7 +38,7 @@ if "%VIPER_IDE_COMPAT_OUTPUT%"=="" (
 )
 if "%VIPER_IDE_SKIP_COMPAT_COPY%"=="" set "VIPER_IDE_SKIP_COMPAT_COPY=0"
 
-if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
+if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Release"
 if "%JOBS%"=="" set "JOBS=%NUMBER_OF_PROCESSORS%"
 if "%JOBS%"=="" set "JOBS=8"
 

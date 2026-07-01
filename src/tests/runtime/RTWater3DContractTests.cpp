@@ -4,6 +4,19 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTWater3DContractTests.cpp
+// Purpose: Isolated Water3D runtime contract tests for mesh sizing, material
+//   wiring, draw-state preservation, and numeric sanitization.
+// Key invariants:
+//   - WaterView mirrors rt_water3d's private layout for targeted white-box checks.
+//   - Stack fixture handles are accepted only through the isolated test stubs.
+// Ownership/Lifetime:
+//   - Test stubs allocate runtime objects with calloc and free them through
+//     rt_obj_free when the code under test releases owned references.
+// Links: src/runtime/graphics/3d/world/rt_water3d.c
+//
+//===----------------------------------------------------------------------===//
 
 extern "C" {
 #include "rt_canvas3d_internal.h"
@@ -55,6 +68,8 @@ struct WaterView {
     double width;
     double depth;
     double height;
+    double center_x;
+    double center_z;
     double wave_speed;
     double wave_amplitude;
     double wave_frequency;

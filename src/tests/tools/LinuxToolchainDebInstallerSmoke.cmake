@@ -30,7 +30,6 @@ set(_install_package_cmd
         "${VIPER_BIN}" install-package
         --build-dir "${VIPER_BUILD_DIR}"
         --target linux-deb
-        --no-verify
         -o "${_artifact}")
 if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
     list(APPEND _install_package_cmd --config "${VIPER_CONFIG}")
@@ -95,14 +94,15 @@ execute_process(
 if (NOT _list_rv EQUAL 0)
     message(FATAL_ERROR "dpkg-deb -c failed\nstdout:\n${_list_out}\nstderr:\n${_list_err}")
 endif ()
-foreach (_path IN ITEMS
-        "./usr/bin/viper"
+viper_installer_smoke_required_tool_names(_required_tools)
+set(_required_listing_paths
         "./usr/lib/cmake/Viper/ViperConfig.cmake"
+        "./usr/share/applications/viperide.desktop"
         "./usr/share/man/man1/viper.1")
-    if (NOT _list_out MATCHES "${_path}")
-        message(FATAL_ERROR "dpkg-deb payload listing did not contain '${_path}'\n${_list_out}")
-    endif ()
+foreach (_tool IN LISTS _required_tools)
+    list(APPEND _required_listing_paths "./usr/bin/${_tool}")
 endforeach ()
+viper_installer_smoke_require_listing_paths("${_list_out}" "Debian installer smoke" ${_required_listing_paths})
 
 if (NOT DEFINED ENV{VIPER_RUN_LINUX_INSTALLER_SMOKE} OR NOT "$ENV{VIPER_RUN_LINUX_INSTALLER_SMOKE}" STREQUAL "1")
     message(STATUS "Skipping Linux installer smoke; set VIPER_RUN_LINUX_INSTALLER_SMOKE=1 to install the .deb")
@@ -137,15 +137,7 @@ if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR "dpkg -i failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
 endif ()
 
-execute_process(
-        COMMAND /usr/bin/viper --version
-        RESULT_VARIABLE _run_rv
-        OUTPUT_VARIABLE _run_out
-        ERROR_VARIABLE _run_err
-)
-if (NOT _run_rv EQUAL 0)
-    message(FATAL_ERROR "installed /usr/bin/viper --version failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
-endif ()
+viper_installer_smoke_verify_installed_tools("/usr/bin" "" "Debian installer smoke")
 
 viper_installer_smoke_verify_cmake_consumer(
         "${CMAKE_BIN}"

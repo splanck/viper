@@ -24,6 +24,61 @@ function(viper_installer_smoke_host_codegen_arch out_var)
     endif ()
 endfunction()
 
+function(viper_installer_smoke_required_tool_names out_var)
+    set(${out_var}
+            viper
+            zia
+            vbasic
+            ilrun
+            il-verify
+            il-dis
+            zia-server
+            vbasic-server
+            basic-ast-dump
+            basic-lex-dump
+            viperide
+            PARENT_SCOPE)
+endfunction()
+
+function(viper_installer_smoke_require_listing_paths listing label)
+    foreach (_path IN LISTS ARGN)
+        string(FIND "${listing}" "${_path}" _path_index)
+        if (_path_index EQUAL -1)
+            message(FATAL_ERROR "${label}: payload listing did not contain '${_path}'\n${listing}")
+        endif ()
+    endforeach ()
+endfunction()
+
+function(viper_installer_smoke_verify_installed_tools bin_dir exe_suffix label)
+    viper_installer_smoke_required_tool_names(_required_tools)
+    foreach (_tool IN LISTS _required_tools)
+        set(_tool_path "${bin_dir}/${_tool}${exe_suffix}")
+        if (NOT EXISTS "${_tool_path}")
+            message(FATAL_ERROR "${label}: missing installed tool ${_tool_path}")
+        endif ()
+    endforeach ()
+
+    execute_process(
+            COMMAND "${bin_dir}/viper${exe_suffix}" --version
+            RESULT_VARIABLE _viper_version_rv
+            OUTPUT_VARIABLE _viper_version_out
+            ERROR_VARIABLE _viper_version_err)
+    if (NOT _viper_version_rv EQUAL 0)
+        message(FATAL_ERROR
+                "${label}: installed viper --version failed\nstdout:\n${_viper_version_out}\nstderr:\n${_viper_version_err}")
+    endif ()
+
+    execute_process(
+            COMMAND "${bin_dir}/viperide${exe_suffix}" --version
+            RESULT_VARIABLE _viperide_version_rv
+            OUTPUT_VARIABLE _viperide_version_out
+            ERROR_VARIABLE _viperide_version_err)
+    if (NOT _viperide_version_rv EQUAL 0)
+        message(FATAL_ERROR
+                "${label}: installed viperide --version failed\nstdout:\n${_viperide_version_out}\nstderr:\n${_viperide_version_err}")
+    endif ()
+endfunction()
+
 function(viper_installer_smoke_verify_cmake_consumer cmake_bin src_dir build_dir config_name label)
     file(REMOVE_RECURSE "${src_dir}" "${build_dir}")
     file(MAKE_DIRECTORY "${src_dir}")
