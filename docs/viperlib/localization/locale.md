@@ -22,11 +22,14 @@ Immutable handle representing a BCP-47 language tag. Parsed from strings like `"
 |---|---|---|
 | `Parse(tag)` | `Locale(String)` | Canonicalize + validate; **traps** on invalid input. |
 | `TryParse(tag)` | `Locale(String)` | Returns `null` on failure instead of trapping. |
+| `TryParseOption(tag)` | `Option[Locale](String)` | Returns `Some(Locale)` on success or `None` on failure. |
 | `FromParts(lang, script, region)` | `Locale(String, String, String)` | Build from pre-split subtags. Empty script/region strings mean "absent". |
 | `Invariant()` | `Locale()` | Returns the `root` locale (universal fallback). |
 | `Equals(other)` | `Bool(Locale)` | Canonical-tag equality. |
 | `Fallbacks()` | `List[Locale]()` | Returns the walk-order fallback chain. |
 | `ToString()` | `String()` | Canonical tag string. |
+
+Prefer `TryParseOption` for new code. `TryParse` remains as a compatibility helper for code that already checks null.
 
 ### Properties
 

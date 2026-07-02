@@ -1,7 +1,7 @@
 ' =============================================================================
 ' API Audit: Viper.Text.CompiledPattern (BASIC)
 ' =============================================================================
-' Tests: New, Pattern, IsMatch, Find, FindFrom, FindPos, FindAll,
+' Tests: New, Pattern, IsMatch, Find, FindOption, FindFrom, FindFromOption, FindPos, FindPosOption, FindAll,
 '        Captures, CapturesFrom, Replace, ReplaceFirst, Split, SplitN
 ' =============================================================================
 
@@ -14,7 +14,7 @@ PRINT "Created CompiledPattern for '[0-9]+'"
 
 ' --- Pattern ---
 PRINT "--- Pattern ---"
-PRINT pat.Pattern
+PRINT Viper.Text.CompiledPattern.get_Pattern(pat)
 
 ' --- IsMatch ---
 PRINT "--- IsMatch ---"
@@ -24,15 +24,26 @@ PRINT "IsMatch 'hello': "; pat.IsMatch("hello")
 ' --- Find ---
 PRINT "--- Find ---"
 PRINT "Find 'abc123def': "; pat.Find("abc123def")
+DIM found AS OBJECT = pat.FindOption("abc123def")
+PRINT "FindOption IsSome: "; found.IsSome
+PRINT "FindOption value: "; found.UnwrapStr()
+PRINT "FindOption no match: "; pat.FindOption("abcdef").IsNone
 
 ' --- FindFrom ---
 PRINT "--- FindFrom ---"
 PRINT "FindFrom pos 6: "; pat.FindFrom("abc123def456", 6)
+DIM foundFrom AS OBJECT = pat.FindFromOption("abc123def456", 6)
+PRINT "FindFromOption IsSome: "; foundFrom.IsSome
+PRINT "FindFromOption value: "; foundFrom.UnwrapStr()
 
 ' --- FindPos ---
 PRINT "--- FindPos ---"
 PRINT "FindPos 'abc123def': "; pat.FindPos("abc123def")
 PRINT "FindPos 'abcdef': "; pat.FindPos("abcdef")
+DIM foundPos AS OBJECT = pat.FindPosOption("abc123def")
+PRINT "FindPosOption IsSome: "; foundPos.IsSome
+PRINT "FindPosOption value: "; foundPos.UnwrapI64()
+PRINT "FindPosOption no match: "; pat.FindPosOption("abcdef").IsNone
 
 ' --- FindAll ---
 PRINT "--- FindAll ---"
@@ -98,8 +109,9 @@ PRINT "Part 1: "; sn1
 ' --- Second pattern ---
 PRINT "--- Second pattern ---"
 DIM wordPat AS OBJECT = Viper.Text.CompiledPattern.New("[A-Z][a-z]+")
-PRINT wordPat.Pattern
+PRINT Viper.Text.CompiledPattern.get_Pattern(wordPat)
 PRINT "Find: "; wordPat.Find("hello World foo Bar")
+PRINT "FindOption: "; wordPat.FindOption("hello World foo Bar").UnwrapStr()
 PRINT "IsMatch 'hello': "; wordPat.IsMatch("hello")
 PRINT "IsMatch 'Hello': "; wordPat.IsMatch("Hello")
 

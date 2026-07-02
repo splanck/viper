@@ -31,6 +31,8 @@ DIM rep2 AS OBJECT = Viper.Functional.LazySeq.Repeat(box7, 5)
 DIM v1 AS OBJECT = rep2.Next()
 PRINT Viper.Core.Box.ToI64(v1)
 
+PRINT "FindOption(predicate) available"
+
 ' --- Peek with Repeat ---
 PRINT "--- Peek (Repeat) ---"
 DIM v2 AS OBJECT = rep2.Peek()

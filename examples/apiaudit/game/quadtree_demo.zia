@@ -1,6 +1,6 @@
 // quadtree_demo.zia - Comprehensive API audit for Viper.Game.Quadtree
-// Tests: New, Insert, Remove, Update, QueryRect, QueryPoint, GetResult,
-//        ResultCount, ItemCount, Clear, GetPairs, PairFirst, PairSecond
+// Tests: New, Insert, Remove, Update, QueryRectResult, QueryPointResult,
+//        QueryPairs, QueryResult, QuadtreePairResult, ItemCount, Clear
 
 module QuadtreeDemo;
 
@@ -29,25 +29,24 @@ func start() {
     SayBool(ok3);               // 1
     SayInt(qt.ItemCount);       // 3
 
-    // --- QueryRect (x, y, w, h) -> count ---
-    Say("--- QueryRect ---");
-    var found = qt.QueryRect(0, 0, 200, 200);
-    SayInt(found);              // 3 (all items in range)
-    SayInt(qt.ResultCount);     // 3
-
-    // --- GetResult ---
-    Say("--- GetResult ---");
-    var r0 = qt.GetResult(0);
+    // --- QueryRectResult (x, y, w, h) -> QueryResult ---
+    Say("--- QueryRectResult ---");
+    var result = qt.QueryRectResult(0, 0, 200, 200);
+    SayInt(result.Count);       // 3 (all items in range)
+    SayBool(result.Contains(1));
+    var r0 = result.GetId(0);
+    SayInt(r0);
     // r0 should be one of the inserted IDs (1, 2, or 3)
 
-    // --- QueryRect (narrow region) ---
-    Say("--- QueryRect narrow ---");
-    var found2 = qt.QueryRect(0, 0, 40, 40);
-    SayInt(found2);             // 1 (only item 1 at 10,10,20,20)
+    // --- QueryRectResult (narrow region) ---
+    Say("--- QueryRectResult narrow ---");
+    var result2 = qt.QueryRectResult(0, 0, 40, 40);
+    SayInt(result2.Count);      // 1 (only item 1 at 10,10,20,20)
 
-    // --- QueryPoint (x, y, radius) ---
-    Say("--- QueryPoint ---");
-    var pFound = qt.QueryPoint(15, 15, 10);
+    // --- QueryPointResult (x, y, radius) ---
+    Say("--- QueryPointResult ---");
+    var pFound = qt.QueryPointResult(15, 15, 10);
+    SayInt(pFound.Count);
     // Should find item 1 near point (15,15)
 
     // --- Update (id, x, y, w, h) ---
@@ -58,11 +57,11 @@ func start() {
 
     // --- QueryRect after move ---
     Say("--- QueryRect after move ---");
-    var found3 = qt.QueryRect(0, 0, 40, 40);
-    SayInt(found3);             // 0 (item 1 moved away)
+    var found3 = qt.QueryRectResult(0, 0, 40, 40);
+    SayInt(found3.Count);       // 0 (item 1 moved away)
 
-    var found4 = qt.QueryRect(390, 390, 30, 30);
-    SayInt(found4);             // 1 (item 1 now here)
+    var found4 = qt.QueryRectResult(390, 390, 30, 30);
+    SayInt(found4.Count);       // 1 (item 1 now here)
 
     // --- Remove ---
     Say("--- Remove ---");
@@ -75,17 +74,19 @@ func start() {
     var rem2 = qt.Remove(999);
     SayBool(rem2);              // 0
 
-    // --- GetPairs / PairFirst / PairSecond ---
-    Say("--- GetPairs ---");
+    // --- QueryPairs / PairResult ---
+    Say("--- QueryPairs ---");
     // Insert overlapping items
     qt.Insert(10, 200, 200, 50, 50);
     qt.Insert(11, 210, 210, 50, 50);
-    var pairCount = qt.GetPairs();
-    SayInt(pairCount);          // >= 1 (overlapping pair)
+    var pairs = qt.QueryPairs();
+    SayInt(pairs.Count);        // >= 1 (overlapping pair)
 
-    if pairCount > 0 {
-        var pf = qt.PairFirst(0);
-        var ps = qt.PairSecond(0);
+    if pairs.Count > 0 {
+        var pf = pairs.First(0);
+        var ps = pairs.Second(0);
+        SayInt(pf);
+        SayInt(ps);
         // pf and ps should be IDs of overlapping items
     }
 
@@ -93,8 +94,8 @@ func start() {
     Say("--- Clear ---");
     qt.Clear();
     SayInt(qt.ItemCount);       // 0
-    var found5 = qt.QueryRect(0, 0, 800, 600);
-    SayInt(found5);             // 0
+    var found5 = qt.QueryRectResult(0, 0, 800, 600);
+    SayInt(found5.Count);       // 0
 
     Say("=== Quadtree audit complete ===");
 }

@@ -14,7 +14,9 @@
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_platform.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_tilemap.h"
@@ -1597,30 +1599,78 @@ void *rt_game_scene_load_json(rt_string text) {
     SCENE_CATCH(nullptr)
 }
 
-void *rt_game_scene_load_file(rt_string path_s){SCENE_TRY{std::string path = toStd(path_s);
-SceneState missing;
-missing.sourcePath = path;
-std::ifstream in(path, std::ios::binary | std::ios::ate);
-if (!in) {
-    addDiagnostic(missing, "scene.load.file_missing", "error", "cannot open scene file");
-    missing.layers.push_back(makeLayer(missing, "base"));
-    return handleFromState(std::move(missing));
+/// @brief Convert a loaded SceneDocument into Result.Ok or Result.ErrStr.
+/// @details SceneDocument legacy load APIs return diagnostic documents on
+///          malformed user input. Result APIs treat retained error diagnostics
+///          as `Err(message)` while preserving warning-only documents as Ok.
+/// @param scene SceneDocument handle returned by a load API.
+/// @param fallback Fallback error message when the document has no LastError text.
+/// @return Owned `Viper.Result` carrying a SceneDocument or an error string.
+static void *scene_load_to_result(void *scene, const char *fallback) {
+    if (!scene)
+        return rt_result_err_str(rt_const_cstr(fallback ? fallback : "SceneDocument load failed"));
+
+    if (rt_game_scene_has_errors(scene)) {
+        rt_string err = rt_game_scene_last_error(scene);
+        void *result = NULL;
+        if (err && rt_str_len(err) > 0)
+            result = rt_result_err_str(err);
+        else
+            result =
+                rt_result_err_str(rt_const_cstr(fallback ? fallback : "SceneDocument load failed"));
+        rt_str_release_maybe(err);
+        releaseObject(scene);
+        return result;
+    }
+
+    void *result = rt_result_ok(scene);
+    releaseObject(scene);
+    return result;
 }
-std::streamoff size = in.tellg();
-if (size > kMaxJsonBytes) {
-    addDiagnostic(missing, "scene.schema.limit_exceeded", "error", "scene JSON exceeds 16 MiB");
-    missing.layers.push_back(makeLayer(missing, "base"));
-    return handleFromState(std::move(missing));
+
+/// @brief `SceneDocument.LoadJsonResult(text)` — load scene JSON as a Result.
+/// @param text Scene JSON text.
+/// @return Owned `Viper.Result` carrying a SceneDocument or an error string.
+void *rt_game_scene_load_json_result(rt_string text) {
+    void *scene = rt_game_scene_load_json(text);
+    return scene_load_to_result(scene, "SceneDocument.LoadJson failed");
 }
-in.seekg(0, std::ios::beg);
-std::ostringstream buffer;
-buffer << in.rdbuf();
-rt_string text = makeString(buffer.str());
-SceneState state = loadStateFromJson(text, path);
-rt_string_unref(text);
-return handleFromState(std::move(state));
+
+void *rt_game_scene_load_file(rt_string path_s) {
+    SCENE_TRY {
+        std::string path = toStd(path_s);
+        SceneState missing;
+        missing.sourcePath = path;
+        std::ifstream in(path, std::ios::binary | std::ios::ate);
+        if (!in) {
+            addDiagnostic(missing, "scene.load.file_missing", "error", "cannot open scene file");
+            missing.layers.push_back(makeLayer(missing, "base"));
+            return handleFromState(std::move(missing));
+        }
+        std::streamoff size = in.tellg();
+        if (size > kMaxJsonBytes) {
+            addDiagnostic(
+                missing, "scene.schema.limit_exceeded", "error", "scene JSON exceeds 16 MiB");
+            missing.layers.push_back(makeLayer(missing, "base"));
+            return handleFromState(std::move(missing));
+        }
+        in.seekg(0, std::ios::beg);
+        std::ostringstream buffer;
+        buffer << in.rdbuf();
+        rt_string text = makeString(buffer.str());
+        SceneState state = loadStateFromJson(text, path);
+        rt_string_unref(text);
+        return handleFromState(std::move(state));
+    }
+    SCENE_CATCH(nullptr)
 }
-SCENE_CATCH(nullptr)
+
+/// @brief `SceneDocument.LoadResult(path)` — load a scene file as a Result.
+/// @param path Scene file path.
+/// @return Owned `Viper.Result` carrying a SceneDocument or an error string.
+void *rt_game_scene_load_file_result(rt_string path) {
+    void *scene = rt_game_scene_load_file(path);
+    return scene_load_to_result(scene, "SceneDocument.Load failed");
 }
 
 rt_string rt_game_scene_to_json(void *scene){
@@ -2105,6 +2155,17 @@ int64_t rt_game_scene_find_object(void *scene, rt_string id) {
         return -1;
     }
     SCENE_CATCH(-1)
+}
+
+/// @brief Find an object by id and return its index as an Option.
+/// @details Sentinel-free companion to @ref rt_game_scene_find_object. A match
+///          returns `SomeI64(index)`, while absence returns None.
+/// @param scene SceneDocument handle.
+/// @param id Object id to search for.
+/// @return Opaque Viper.Option containing the object index, or None.
+void *rt_game_scene_find_object_option(void *scene, rt_string id) {
+    int64_t index = rt_game_scene_find_object(scene, id);
+    return index >= 0 ? rt_option_some_i64(index) : rt_option_none();
 }
 
 void rt_game_scene_move_object(void *scene, int64_t from, int64_t to) {

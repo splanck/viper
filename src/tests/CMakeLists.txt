@@ -607,6 +607,22 @@ viper_add_test(test_rt_animstate_named
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAnimStateNamed.cpp
         LIBS viper_runtime viper_test_common)
 
+viper_add_test(test_rt_game_result_objects
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGameResultObjects.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_data_format_result_apis
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestDataFormatResultApis.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_open_load_result_apis
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestRuntimeOpenLoadResultApis.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_search_option_apis
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestRuntimeSearchOptionApis.cpp
+        LIBS viper_runtime viper_test_common)
+
 viper_add_test(test_rt_camera_enhance
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestCameraEnhance.cpp
         LIBS viper_runtime viper_test_common)

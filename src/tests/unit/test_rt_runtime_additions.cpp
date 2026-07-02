@@ -21,6 +21,7 @@
 #include "rt_internal.h"
 #include "rt_mixgroup.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_physics2d.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
@@ -143,10 +144,48 @@ static void test_table_sorting_selection_and_header_clicks() {
     assert(rt_uitable_get_sort_descending(table) == 1);
     assert(str_eq(rt_uitable_get_cell(table, 0, 0), "C"));
 
+    void *header_click = rt_uitable_handle_click_result(table, 120, 4);
+    assert(header_click != nullptr);
+    assert(rt_table_click_result_kind(header_click) == RT_UITABLE_CLICK_HEADER);
+    assert(rt_table_click_result_is_header(header_click) == 1);
+    assert(rt_table_click_result_is_row(header_click) == 0);
+    void *header_column = rt_table_click_result_column_option(header_click);
+    assert(header_column != nullptr);
+    assert(rt_option_is_some(header_column) == 1);
+    assert(rt_option_unwrap_i64(header_column) == 1);
+    release_obj(header_column);
+    void *header_row = rt_table_click_result_row_option(header_click);
+    assert(header_row != nullptr);
+    assert(rt_option_is_none(header_row) == 1);
+    release_obj(header_row);
+    release_obj(header_click);
+
     rt_uitable_set_selected_row(table, 0);
     rt_uitable_handle_key(table, KEY_DOWN);
     assert(rt_uitable_get_selected_row(table) == 1);
-    assert(rt_uitable_handle_click(table, 10, 40) >= 0);
+    void *row_click = rt_uitable_handle_click_result(table, 10, 40);
+    assert(row_click != nullptr);
+    assert(rt_table_click_result_is_row(row_click) == 1);
+    void *row_option = rt_table_click_result_row_option(row_click);
+    assert(row_option != nullptr);
+    assert(rt_option_is_some(row_option) == 1);
+    assert(rt_option_unwrap_i64(row_option) >= 0);
+    release_obj(row_option);
+    void *row_column = rt_table_click_result_column_option(row_click);
+    assert(row_column != nullptr);
+    assert(rt_option_is_none(row_column) == 1);
+    release_obj(row_column);
+    release_obj(row_click);
+
+    void *miss_click = rt_uitable_handle_click_result(table, 400, 400);
+    assert(miss_click != nullptr);
+    assert(rt_table_click_result_is_none(miss_click) == 1);
+    void *miss_row = rt_table_click_result_row_option(miss_click);
+    assert(miss_row != nullptr);
+    assert(rt_option_is_none(miss_row) == 1);
+    release_obj(miss_row);
+    release_obj(miss_click);
+
     rt_uitable_handle_scroll(table, 10);
     assert(rt_uitable_get_scroll(table) >= 0);
     rt_uitable_remove_row(table, 1);

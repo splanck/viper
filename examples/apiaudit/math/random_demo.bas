@@ -43,6 +43,7 @@ PRINT "--- Chance ---"
 PRINT "Random.Chance(1.0) [always true]: "; Viper.Math.Random.Chance(1.0)
 PRINT "Random.Chance(0.0) [always false]: "; Viper.Math.Random.Chance(0.0)
 PRINT "Random.Chance(0.5): "; Viper.Math.Random.Chance(0.5)
+PRINT "Random.ChanceInt(0.5) [compat 0/1]: "; Viper.Math.Random.ChanceInt(0.5)
 
 ' --- Gaussian ---
 PRINT "--- Gaussian ---"

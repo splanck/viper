@@ -480,7 +480,7 @@ Last updated: 2026-06-20
 |-----------------|-------------------------------------------|
 | `rt_cipher.c`   | High-level encryption (ChaCha20-Poly1305) |
 | `rt_cipher.h`   | Cipher API declarations                   |
-| `rt_hash.c`     | Hash functions (CRC32, MD5, SHA1, SHA256) |
+| `rt_hash.c`     | Hash functions (SHA-256, HMAC-SHA256, fast hash, legacy CRC32/MD5/SHA1) |
 | `rt_hash.h`     | Hash declarations                         |
 | `rt_keyderive.c`| Key derivation (PBKDF2, HKDF)             |
 | `rt_keyderive.h`| Key derivation declarations               |

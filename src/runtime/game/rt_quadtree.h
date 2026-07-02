@@ -29,6 +29,8 @@ extern "C" {
 #endif
 
 #define RT_QUADTREE_CLASS_ID INT64_C(-0x510209)
+#define RT_GAME_QUERY_RESULT_CLASS_ID INT64_C(-0x51021D)
+#define RT_QUADTREE_PAIR_RESULT_CLASS_ID INT64_C(-0x51021E)
 
 /// Maximum items per node before splitting.
 #define RT_QUADTREE_MAX_ITEMS 8
@@ -98,6 +100,19 @@ int8_t rt_quadtree_update(
 int64_t rt_quadtree_query_rect(
     rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height);
 
+/// @brief Query items intersecting a rectangle and return a snapshot result.
+/// @details Performs the same query as rt_quadtree_query_rect, then copies the
+///          result IDs into an immutable Viper.Game.QueryResult. The returned
+///          result remains valid after later quadtree queries or mutations.
+/// @param tree The quadtree.
+/// @param x Query region X.
+/// @param y Query region Y.
+/// @param width Query region width.
+/// @param height Query region height.
+/// @return New Viper.Game.QueryResult object, or NULL on allocation failure.
+void *rt_quadtree_query_rect_result(
+    rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height);
+
 /// @brief Query items near a point within a given radius.
 /// @param tree The quadtree.
 /// @param x Center X of the search area.
@@ -106,6 +121,16 @@ int64_t rt_quadtree_query_rect(
 /// @return Number of items found (results stored internally; retrieve
 ///         with rt_quadtree_get_result()).
 int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius);
+
+/// @brief Query items near a point and return a snapshot result.
+/// @details Performs the same query as rt_quadtree_query_point, then copies the
+///          filtered result IDs into an immutable Viper.Game.QueryResult.
+/// @param tree The quadtree.
+/// @param x Center X of the search area.
+/// @param y Center Y of the search area.
+/// @param radius Search radius around the point.
+/// @return New Viper.Game.QueryResult object, or NULL on allocation failure.
+void *rt_quadtree_query_point_result(rt_quadtree tree, int64_t x, int64_t y, int64_t radius);
 
 /// @brief Get an item ID from the last query result.
 /// @param tree The quadtree.
@@ -117,6 +142,34 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index);
 /// @param tree The quadtree.
 /// @return Number of results from the most recent query.
 int64_t rt_quadtree_result_count(rt_quadtree tree);
+
+/// @brief Return the number of IDs in a QueryResult.
+/// @param result Viper.Game.QueryResult object.
+/// @return Result count, or 0 for invalid input.
+int64_t rt_game_query_result_count(void *result);
+
+/// @brief Read an item ID from a QueryResult by index.
+/// @param result Viper.Game.QueryResult object.
+/// @param index Zero-based item index.
+/// @return Item ID, or -1 if the index is invalid.
+int64_t rt_game_query_result_get_id(void *result, int64_t index);
+
+/// @brief Test whether a QueryResult contains an item ID.
+/// @param result Viper.Game.QueryResult object.
+/// @param id Item ID to search for.
+/// @return 1 when the ID exists in the result, otherwise 0.
+int8_t rt_game_query_result_contains(void *result, int64_t id);
+
+/// @brief Check whether a QueryResult is partial because storage growth failed.
+/// @param result Viper.Game.QueryResult object.
+/// @return 1 when the underlying quadtree query was truncated, otherwise 0.
+int8_t rt_game_query_result_truncated(void *result);
+
+/// @brief Copy QueryResult IDs into a new Viper.Collections.Seq.
+/// @details Each ID is boxed as an integer. The caller owns the returned Seq.
+/// @param result Viper.Game.QueryResult object.
+/// @return New Seq of boxed item IDs, or an empty Seq for invalid input.
+void *rt_game_query_result_ids(void *result);
 
 /// @brief Check whether the last query returned partial results.
 ///
@@ -140,6 +193,13 @@ int64_t rt_quadtree_item_count(rt_quadtree tree);
 ///         pairs with rt_quadtree_pair_first() and rt_quadtree_pair_second()).
 int64_t rt_quadtree_get_pairs(rt_quadtree tree);
 
+/// @brief Compute broad-phase collision pairs and return a snapshot result.
+/// @details Performs the same operation as rt_quadtree_get_pairs, then copies
+///          pair IDs into an immutable Viper.Game.QuadtreePairResult.
+/// @param tree The quadtree.
+/// @return New Viper.Game.QuadtreePairResult object, or NULL on allocation failure.
+void *rt_quadtree_query_pairs(rt_quadtree tree);
+
 /// @brief Get the first item ID of a collision pair.
 /// @param tree The quadtree.
 /// @param pair_index Pair index (0 to pair_count-1).
@@ -159,6 +219,28 @@ int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index);
 /// @param tree The quadtree.
 /// @return 1 if the last pair collection was truncated, 0 otherwise.
 int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree);
+
+/// @brief Return the number of pairs in a QuadtreePairResult.
+/// @param result Viper.Game.QuadtreePairResult object.
+/// @return Pair count, or 0 for invalid input.
+int64_t rt_quadtree_pair_result_count(void *result);
+
+/// @brief Read the first item ID from a pair result by index.
+/// @param result Viper.Game.QuadtreePairResult object.
+/// @param index Zero-based pair index.
+/// @return First item ID, or -1 if @p index is invalid.
+int64_t rt_quadtree_pair_result_first(void *result, int64_t index);
+
+/// @brief Read the second item ID from a pair result by index.
+/// @param result Viper.Game.QuadtreePairResult object.
+/// @param index Zero-based pair index.
+/// @return Second item ID, or -1 if @p index is invalid.
+int64_t rt_quadtree_pair_result_second(void *result, int64_t index);
+
+/// @brief Check whether a pair result is partial because storage growth failed.
+/// @param result Viper.Game.QuadtreePairResult object.
+/// @return 1 when the underlying pair collection was truncated, otherwise 0.
+int8_t rt_quadtree_pair_result_truncated(void *result);
 
 #ifdef __cplusplus
 }

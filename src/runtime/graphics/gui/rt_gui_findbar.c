@@ -27,6 +27,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_option.h"
 #include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
@@ -478,6 +479,16 @@ int64_t rt_findbar_find_next(void *bar) {
     return vg_findreplacebar_get_match_count(data->bar) > 0 ? 1 : 0;
 }
 
+/// @brief Advance to the next match and return its current 1-based match index.
+/// @param bar FindBar runtime wrapper.
+/// @return Viper.Option.SomeI64(index) when a match exists, otherwise Viper.Option.None().
+void *rt_findbar_find_next_option(void *bar) {
+    if (!rt_findbar_find_next(bar))
+        return rt_option_none();
+    int64_t current = rt_findbar_get_current_match(bar);
+    return current > 0 ? rt_option_some_i64(current) : rt_option_none();
+}
+
 /// @brief Move to the previous match in the bound editor.
 /// @return 1 if at least one match exists, 0 otherwise.
 int64_t rt_findbar_find_previous(void *bar) {
@@ -487,6 +498,16 @@ int64_t rt_findbar_find_previous(void *bar) {
         return 0;
     vg_findreplacebar_find_prev(data->bar);
     return vg_findreplacebar_get_match_count(data->bar) > 0 ? 1 : 0;
+}
+
+/// @brief Move to the previous match and return its current 1-based match index.
+/// @param bar FindBar runtime wrapper.
+/// @return Viper.Option.SomeI64(index) when a match exists, otherwise Viper.Option.None().
+void *rt_findbar_find_previous_option(void *bar) {
+    if (!rt_findbar_find_previous(bar))
+        return rt_option_none();
+    int64_t current = rt_findbar_get_current_match(bar);
+    return current > 0 ? rt_option_some_i64(current) : rt_option_none();
 }
 
 /// @brief Replace the current match with the replacement text.
@@ -667,10 +688,22 @@ int64_t rt_findbar_find_next(void *bar) {
     return 0;
 }
 
+/// @brief Stub: returns None (no search without graphics).
+void *rt_findbar_find_next_option(void *bar) {
+    (void)bar;
+    return rt_option_none();
+}
+
 /// @brief Stub: returns 0 (no search without graphics).
 int64_t rt_findbar_find_previous(void *bar) {
     (void)bar;
     return 0;
+}
+
+/// @brief Stub: returns None (no search without graphics).
+void *rt_findbar_find_previous_option(void *bar) {
+    (void)bar;
+    return rt_option_none();
 }
 
 /// @brief Stub: returns 0 (no replace without graphics).

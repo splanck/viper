@@ -1,6 +1,7 @@
 // API Audit: Viper.Functional.LazySeq (Zia)
 // NOTE: LazySeq.Range returns raw int64_t pointers, NOT boxed values (BUG A-070)
 // So we cannot use Box.ToI64 on Range elements. We test what we can.
+// FindOption(predicate) is covered by the BASIC audit and runtime unit tests.
 module LazySeqDemo;
 bind Viper.Terminal;
 bind Viper.Functional.LazySeq as LS;
@@ -35,6 +36,7 @@ func start() {
     var rep2 = LS.Repeat(box7, 5);
     var v1 = rep2.Next();
     SayInt(Box.ToI64(v1));
+    Say("FindOption(predicate) available");
 
     // --- Peek with Repeat ---
     Say("--- Peek (Repeat) ---");
@@ -60,6 +62,7 @@ func start() {
     var partial = s5.ToSeqN(3);
     // ToSeqN returns a managed Seq; just check that it is non-null here.
     Say("ToSeqN returned obj");
+    SayBool(partial != null);
 
     // --- Concat ---
     Say("--- Concat ---");

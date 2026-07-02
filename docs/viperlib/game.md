@@ -122,14 +122,16 @@ Tilemap copies.
 
 **Detailed docs:** [Editable Scene Documents](game/scene.md)
 
-Core methods include `LoadJson`, `Load`, `ToJson`, `Save`,
+Core methods include `LoadJsonResult`, `LoadResult`, `LoadJson`, `Load`, `ToJson`, `Save`,
 `HasErrors`, `DiagnosticRecords`, typed scene/object property accessors,
 `AssetDescriptors`, `AssetPaths`, and `BuildTilemap`.
 
-Scene loading returns diagnostics instead of trapping on ordinary user input
-errors such as malformed JSON, missing files, unsupported versions, invalid
-dimensions, and tile-count mismatches. `Diagnostics()` remains a compatibility
-`Seq<str>`; `DiagnosticRecords()` returns structured maps.
+Prefer `LoadJsonResult` and `LoadResult` when application code needs a clear
+success/failure value. The legacy `LoadJson` and `Load` methods still return
+diagnostic documents instead of trapping on ordinary user input errors such as
+malformed JSON, missing files, unsupported versions, invalid dimensions, and
+tile-count mismatches. `Diagnostics()` remains a compatibility `Seq<str>`;
+`DiagnosticRecords()` returns structured maps.
 
 Tile ID `0` is reserved for empty space. Tile ID `N > 0` maps to tileset frame
 `N - 1` when rendered by `Tilemap`. The scene document is the serialization
@@ -220,32 +222,40 @@ query a rectangle to find all overlapping IDs.
 |---|---|---|
 | `Insert(id, x, y, w, h)` | `Integer(Integer,Integer,Integer,Integer,Integer)` | Insert AABB; returns 1 on success, 0 if duplicate |
 | `Remove(id)` | `Integer(Integer)` | Remove by ID; returns 1 on success |
-| `QueryRect(x, y, w, h)` | `Integer(Integer,Integer,Integer,Integer)` | Query overlapping items; returns count |
-| `GetResult(i)` | `Integer(Integer)` | Get the i-th result ID from last query |
-| `GetResultCount()` | `Integer()` | Number of results from last query |
-| `QueryWasTruncated()` | `Integer()` | 1 if last query returned a partial result after allocation failure |
-| `GetPairs()` | `Integer()` | Collect broad-phase collision pairs; returns count |
-| `PairFirst(i)` / `PairSecond(i)` | `Integer(Integer)` | IDs of the i-th collision pair |
-| `PairsWasTruncated()` | `Integer()` | 1 if the last `GetPairs()` returned a partial result after allocation failure |
+| `QueryRectResult(x, y, w, h)` | `QueryResult(Integer,Integer,Integer,Integer)` | Query overlapping items as a stable result snapshot |
+| `QueryPointResult(x, y, radius)` | `QueryResult(Integer,Integer,Integer)` | Query circular area as a stable result snapshot |
+| `QueryPairs()` | `QuadtreePairResult()` | Collect broad-phase collision pairs as a stable snapshot |
+| `QueryRect(x, y, w, h)` | `Integer(Integer,Integer,Integer,Integer)` | Compatibility API; query overlapping items and store mutable last results |
+| `GetResult(i)` | `Integer(Integer)` | Compatibility API; get the i-th ID from the last mutable query |
+| `GetResultCount()` | `Integer()` | Compatibility API; number of IDs from the last mutable query |
+| `QueryWasTruncated()` | `Integer()` | Compatibility diagnostic for the last mutable query |
+| `GetPairs()` | `Integer()` | Compatibility API; collect pairs and store mutable last pair output |
+| `PairFirst(i)` / `PairSecond(i)` | `Integer(Integer)` | Compatibility API; IDs of the i-th mutable collision pair |
+| `PairsWasTruncated()` | `Integer()` | Compatibility diagnostic for the last mutable pair collection |
 | `ItemCount()` | `Integer()` | Total items in the tree |
 | `Destroy()` | `none()` | Free the quadtree |
 
-### Query and Pair Growth
+### Query and Pair Results
 
-`QueryRect` and `QueryPoint` grow their result buffer on demand. The historical
-`RT_QUADTREE_MAX_RESULTS` value is now only the initial reservation, so dense queries can
-return more than 256 IDs. Check `QueryWasTruncated()` after a query to detect the rare
-allocation-failure case where only a partial result could be returned:
+Prefer `QueryRectResult`, `QueryPointResult`, and `QueryPairs` for production code. They return
+immutable result objects that can be stored safely even after the quadtree is queried or mutated
+again:
 
 ```rust
-var count = tree.QueryRect(x, y, w, h);
-if tree.QueryWasTruncated() {
+var result = tree.QueryRectResult(x, y, w, h);
+if result.Truncated {
     // Handle allocation pressure: results are incomplete.
+}
+var i = 0;
+while i < result.Count {
+    HandleEntity(result.GetId(i));
+    i = i + 1;
 }
 ```
 
-`GetPairs()` also grows its pair buffer on demand. `PairsWasTruncated()` is retained for
-compatibility and reports partial pair output only if the grow operation fails.
+The compatibility `QueryRect`/`QueryPoint` and `GetPairs` APIs still grow their mutable buffers on
+demand. `QueryWasTruncated()` and `PairsWasTruncated()` remain available for old code and report
+partial output only if storage growth fails.
 
 ### Duplicate ID Guard
 

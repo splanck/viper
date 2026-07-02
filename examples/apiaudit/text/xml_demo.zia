@@ -1,8 +1,8 @@
 // =============================================================================
 // API Audit: Viper.Data.Xml - XML Processing
 // =============================================================================
-// Tests: Parse, IsValid, Element, Text, Comment, Cdata, NodeType, Tag, Content,
-//        TextContent, Attr, HasAttr, SetAttr, RemoveAttr, AttrNames, Children,
+// Tests: ParseResult, Parse, Error, IsValid, Element, Text, Comment, Cdata,
+//        NodeType, Tag, Content, TextContent, Attr, HasAttr, SetAttr, RemoveAttr, AttrNames, Children,
 //        ChildCount, ChildAt, Append, Remove, Find, FindAll, Format,
 //        FormatPretty, Escape, Unescape
 // =============================================================================
@@ -22,10 +22,24 @@ func start() {
     Say("IsValid('<broken'):");
     SayBool(Xml.IsValid("<broken"));
 
-    // --- Parse ---
-    Say("--- Parse ---");
-    var doc = Xml.Parse("<root><item id=\"1\">Hello</item><item id=\"2\">World</item></root>");
-    Say("Parse done");
+    // --- ParseResult ---
+    Say("--- ParseResult ---");
+    var parsed = Xml.ParseResult("<root><item id=\"1\">Hello</item><item id=\"2\">World</item></root>");
+    SayBool(parsed.IsOk);
+    var doc = parsed.Unwrap();
+    Say("ParseResult done");
+
+    var badParse = Xml.ParseResult("<root");
+    SayBool(badParse.IsErr);
+    Say(badParse.UnwrapErrStr());
+
+    // --- Parse / Error compatibility ---
+    Say("--- Parse / Error compatibility ---");
+    var legacyDoc = Xml.Parse("<root/>");
+    SayBool(legacyDoc != null);
+    var legacyBad = Xml.Parse("<root");
+    SayBool(legacyBad == null);
+    Say(Xml.Error());
 
     // --- NodeType ---
     Say("--- NodeType ---");
@@ -65,6 +79,7 @@ func start() {
     Say("--- Children ---");
     var kids = Xml.Children(doc);
     Say("Children returned (Seq)");
+    SayBool(kids != null);
 
     // --- Attr ---
     Say("--- Attr ---");
@@ -98,6 +113,7 @@ func start() {
     Say("--- AttrNames ---");
     var names = Xml.AttrNames(child0);
     Say("AttrNames returned");
+    SayBool(names != null);
 
     // --- Element ---
     Say("--- Element ---");
@@ -147,11 +163,16 @@ func start() {
     var found = Xml.Find(doc, "item");
     Say("Find('item') Tag:");
     Say(Xml.Tag(found));
+    var foundOption = Xml.FindOption(doc, "item");
+    SayBool(foundOption.IsSome);
+    Say(Xml.Tag(foundOption.Unwrap()));
+    SayBool(Xml.FindOption(doc, "missing").IsNone);
 
     // --- FindAll ---
     Say("--- FindAll ---");
     var allItems = Xml.FindAll(doc, "item");
     Say("FindAll('item') returned");
+    SayBool(allItems != null);
 
     // --- Format ---
     Say("--- Format ---");

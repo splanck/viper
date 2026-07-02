@@ -28,6 +28,7 @@
 #include "runtime/collections/rt_seq.h"
 #include "runtime/core/rt_string.h"
 #include "runtime/oop/rt_object.h"
+#include "runtime/oop/rt_option.h"
 #include "support/source_manager.hpp"
 
 #include <algorithm>
@@ -1771,6 +1772,7 @@ void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_pat
 int8_t rt_zia_semantic_job_is_done(void *handle);
 int8_t rt_zia_semantic_job_is_error(void *handle);
 rt_string rt_zia_semantic_job_error(void *handle);
+void *rt_zia_semantic_job_error_option(void *handle);
 int64_t rt_zia_semantic_job_kind(void *handle);
 void rt_zia_semantic_job_cancel(void *handle);
 void *rt_zia_semantic_job_completion_items(void *handle);
@@ -2160,6 +2162,28 @@ rt_string rt_zia_semantic_job_error(void *handle) {
         return rt_str_empty();
     std::lock_guard<std::mutex> lock(job->mutex);
     return toRtString(job->error);
+}
+
+/// @brief Return the semantic job error text as a Viper.Option string.
+/// @details Completed jobs with a non-empty error payload return
+///          `SomeStr(message)`. Jobs without an error, jobs that have not
+///          produced an error yet, and invalid/null handles return `None`.
+///          This keeps routine absence of an error out of the legacy empty
+///          string side channel while preserving `rt_zia_semantic_job_error`
+///          for compatibility.
+/// @param handle Opaque `SemanticJobHandle` object returned by a begin-job API.
+/// @return Owned `Viper.Option` containing the error string when present.
+void *rt_zia_semantic_job_error_option(void *handle) {
+    auto job = asSemanticJob(handle);
+    if (!job)
+        return rt_option_none();
+    std::lock_guard<std::mutex> lock(job->mutex);
+    if (job->error.empty())
+        return rt_option_none();
+    rt_string message = toRtString(job->error);
+    void *option = rt_option_some_str(message);
+    rt_str_release_maybe(message);
+    return option;
 }
 
 int64_t rt_zia_semantic_job_kind(void *handle) {

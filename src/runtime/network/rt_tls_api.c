@@ -47,6 +47,7 @@
 
 #include "rt_bytes.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_string.h"
 
 /// @brief Internal structure for Viper TLS objects.
@@ -69,6 +70,34 @@ static void rt_viper_tls_finalize(void *obj) {
         free(tls->host);
         tls->host = NULL;
     }
+}
+
+/// @brief Release a temporary TLS object after another owner has retained it.
+static void rt_viper_tls_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Return the best current TLS connection error as a Result-compatible string.
+/// @param fallback Fallback message when the TLS layer has no captured text.
+/// @return Runtime string handle suitable for rt_result_err_str().
+static rt_string rt_viper_tls_connect_error_message(const char *fallback) {
+    const char *err = rt_tls_last_error();
+    if (!err || !err[0])
+        err = fallback && fallback[0] ? fallback : "Tls.Connect failed";
+    return rt_const_cstr(err);
+}
+
+/// @brief Convert a TLS connection handle into Result.Ok or Result.ErrStr.
+/// @param conn Newly-created TLS object, or NULL on connection failure.
+/// @param fallback Error text used when the TLS layer has no detailed message.
+/// @return Opaque Viper.Result object.
+static void *rt_viper_tls_connect_to_result(void *conn, const char *fallback) {
+    if (!conn)
+        return rt_result_err_str(rt_viper_tls_connect_error_message(fallback));
+    void *result = rt_result_ok(conn);
+    rt_viper_tls_release_temp_object(conn);
+    return result;
 }
 
 static rt_viper_tls_t *rt_viper_tls_require(void *obj) {
@@ -99,6 +128,63 @@ static int rt_viper_tls_string_arg(
         return 0;
     *out = cstr;
     *out_len = (size_t)len64;
+    return 1;
+}
+
+/// @brief Validate public TLS connect arguments before invoking the socket/TLS layer.
+/// @param host Host string.
+/// @param port TCP port.
+/// @param timeout_ms Timeout in milliseconds.
+/// @param ca_file Optional CA bundle path.
+/// @param alpn Optional ALPN list.
+/// @param error_out Receives a static error message on failure.
+/// @return 1 when arguments are valid, 0 otherwise.
+static int rt_viper_tls_validate_connect_args(rt_string host,
+                                              int64_t port,
+                                              int64_t timeout_ms,
+                                              rt_string ca_file,
+                                              rt_string alpn,
+                                              const char **error_out) {
+    const char *host_cstr = NULL;
+    const char *ca_cstr = NULL;
+    const char *alpn_cstr = NULL;
+    size_t host_len = 0;
+    size_t ca_len = 0;
+    size_t alpn_len = 0;
+    if (port < 1 || port > 65535) {
+        if (error_out)
+            *error_out = "Tls.Connect: port must be in 1..65535";
+        return 0;
+    }
+    if (timeout_ms > INT_MAX) {
+        if (error_out)
+            *error_out = "Tls.Connect: timeout is too large";
+        return 0;
+    }
+    if (!rt_viper_tls_string_arg(
+            host, &host_cstr, &host_len, 0, sizeof(((rt_tls_session_t *)0)->hostname))) {
+        if (error_out)
+            *error_out = "Tls.Connect: invalid host";
+        return 0;
+    }
+    if (!rt_viper_tls_string_arg(
+            ca_file, &ca_cstr, &ca_len, 1, sizeof(((rt_tls_session_t *)0)->ca_file))) {
+        if (error_out)
+            *error_out = "Tls.Connect: invalid CA file";
+        return 0;
+    }
+    if (!rt_viper_tls_string_arg(
+            alpn, &alpn_cstr, &alpn_len, 1, sizeof(((rt_tls_session_t *)0)->alpn_protocols))) {
+        if (error_out)
+            *error_out = "Tls.Connect: invalid ALPN list";
+        return 0;
+    }
+    (void)host_cstr;
+    (void)host_len;
+    (void)ca_cstr;
+    (void)ca_len;
+    (void)alpn_cstr;
+    (void)alpn_len;
     return 1;
 }
 
@@ -180,6 +266,18 @@ void *rt_viper_tls_connect(rt_string host, int64_t port) {
     return rt_viper_tls_connect_impl(host, port, 30000, NULL, NULL, 1);
 }
 
+/// @brief Connect to a TLS server and return the outcome as a Result.
+/// @param host Hostname to connect to.
+/// @param port Port number.
+/// @return Owned `Viper.Result` carrying the TLS handle or an error string.
+void *rt_viper_tls_connect_result(rt_string host, int64_t port) {
+    const char *arg_error = NULL;
+    if (!rt_viper_tls_validate_connect_args(host, port, 30000, NULL, NULL, &arg_error))
+        return rt_result_err_str(rt_const_cstr(arg_error));
+    void *conn = rt_viper_tls_connect_impl(host, port, 30000, NULL, NULL, 1);
+    return rt_viper_tls_connect_to_result(conn, "Tls.Connect failed");
+}
+
 /// @brief Connect to a TLS server with timeout.
 /// @param host Hostname to connect to.
 /// @param port Port number.
@@ -187,6 +285,19 @@ void *rt_viper_tls_connect(rt_string host, int64_t port) {
 /// @return TLS object or NULL on error.
 void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     return rt_viper_tls_connect_impl(host, port, timeout_ms, NULL, NULL, 1);
+}
+
+/// @brief Connect to a TLS server with timeout and return a Result.
+/// @param host Hostname to connect to.
+/// @param port Port number.
+/// @param timeout_ms Timeout in milliseconds.
+/// @return Owned `Viper.Result` carrying the TLS handle or an error string.
+void *rt_viper_tls_connect_for_result(rt_string host, int64_t port, int64_t timeout_ms) {
+    const char *arg_error = NULL;
+    if (!rt_viper_tls_validate_connect_args(host, port, timeout_ms, NULL, NULL, &arg_error))
+        return rt_result_err_str(rt_const_cstr(arg_error));
+    void *conn = rt_viper_tls_connect_impl(host, port, timeout_ms, NULL, NULL, 1);
+    return rt_viper_tls_connect_to_result(conn, "Tls.ConnectFor failed");
 }
 
 /// @brief Connect to @p host:@p port with explicit verification and ALPN policy.
@@ -208,6 +319,28 @@ void *rt_viper_tls_connect_options(rt_string host,
                                    int8_t verify_cert,
                                    int64_t timeout_ms) {
     return rt_viper_tls_connect_impl(host, port, timeout_ms, ca_file, alpn, verify_cert ? 1 : 0);
+}
+
+/// @brief Connect with explicit TLS options and return a Result.
+/// @param host TLS hostname.
+/// @param port TCP port.
+/// @param ca_file Optional PEM bundle path.
+/// @param alpn Optional comma-separated ALPN list.
+/// @param verify_cert 1 to verify certificates, 0 to skip verification.
+/// @param timeout_ms Handshake timeout in milliseconds.
+/// @return Owned `Viper.Result` carrying the TLS handle or an error string.
+void *rt_viper_tls_connect_options_result(rt_string host,
+                                          int64_t port,
+                                          rt_string ca_file,
+                                          rt_string alpn,
+                                          int8_t verify_cert,
+                                          int64_t timeout_ms) {
+    const char *arg_error = NULL;
+    if (!rt_viper_tls_validate_connect_args(host, port, timeout_ms, ca_file, alpn, &arg_error))
+        return rt_result_err_str(rt_const_cstr(arg_error));
+    void *conn =
+        rt_viper_tls_connect_impl(host, port, timeout_ms, ca_file, alpn, verify_cert ? 1 : 0);
+    return rt_viper_tls_connect_to_result(conn, "Tls.ConnectOptions failed");
 }
 
 /// @brief Get the hostname of the TLS connection.

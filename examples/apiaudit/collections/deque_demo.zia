@@ -1,6 +1,6 @@
 // deque_demo.zia - Comprehensive API audit for Viper.Collections.Deque
 // Tests: New, PushFront, PushBack, PopFront, PopBack, PeekFront, PeekBack,
-//        Get, Set, Len, Cap, IsEmpty, Clear, Has, Reverse, Clone
+//        Get, Set, Len, Capacity, IsEmpty, Clear, Has, Reverse, Clone
 
 module DequeDemo;
 
@@ -65,9 +65,9 @@ func start() {
     SayBool(dq.Has(Box.Str("A")));  // 1
     SayBool(dq.Has(Box.Str("z")));  // 0 (was popped)
 
-    // --- Cap ---
-    Say("--- Cap ---");
-    SayInt(dq.Cap);  // capacity (>= Len)
+    // --- Capacity ---
+    Say("--- Capacity ---");
+    SayInt(dq.Capacity); // capacity (>= Len)
 
     // --- Reverse ---
     Say("--- Reverse ---");

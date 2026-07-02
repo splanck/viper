@@ -41,6 +41,7 @@
 #include "rt_locale_data.h"
 #include "rt_locale_manager.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 
@@ -435,6 +436,23 @@ void *rt_locale_parse(rt_string tag) {
 /// @return A fresh, GC-tracked Locale handle, or NULL if the tag is invalid.
 void *rt_locale_try_parse(rt_string tag) {
     return rt_locale_parse_internal(tag, /*strict=*/0);
+}
+
+/// @brief Attempt to parse a BCP-47 tag and return an Option.
+/// @details Returns `Some(Locale)` when the tag parses successfully and `None`
+///          for NULL, empty, or invalid input. The temporary Locale handle
+///          produced by @ref rt_locale_try_parse is released after the Option
+///          has retained it.
+/// @param tag rt_string containing the BCP-47 tag; NULL or empty returns None.
+/// @return Opaque Viper.Option containing a Locale handle, or None.
+void *rt_locale_try_parse_option(rt_string tag) {
+    void *locale = rt_locale_try_parse(tag);
+    if (!locale)
+        return rt_option_none();
+    void *option = rt_option_some(locale);
+    if (rt_obj_release_check0(locale))
+        rt_obj_free(locale);
+    return option;
 }
 
 /// @brief Construct a Locale from separate language, script, and region subtag strings.

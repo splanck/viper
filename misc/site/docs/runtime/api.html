@@ -280,7 +280,7 @@ var leading = Viper.Math.Bits.LeadZ(0x0F); // 60 leading zeros
 <tr>
 <td>`ValueType(size)`</td>
 <td>`obj(i64)`</td>
-<td>Allocate heap memory for a value type</td>
+<td>Compatibility alias; use Viper.Runtime.Unsafe.ValueType</td>
 </tr>
 </tbody></table>
 <h3 id="type-constants">Type Constants</h3>
@@ -327,12 +327,12 @@ var value = Viper.Core.Box.ToI64(boxedInt);  // 42
 <td>Parse string to 64-bit integer</td>
 </tr>
 <tr>
-<td>`ToString_Double(n)`</td>
+<td>`ToStringDouble(n)`</td>
 <td>`str(f64)`</td>
 <td>Convert float to string</td>
 </tr>
 <tr>
-<td>`ToString_Int(n)`</td>
+<td>`ToStringInt(n)`</td>
 <td>`str(i64)`</td>
 <td>Convert integer to string</td>
 </tr>
@@ -341,7 +341,7 @@ var value = Viper.Core.Box.ToI64(boxedInt);  // 42
 <pre><code data-lang="rust">
 var n = Viper.Core.Convert.ToInt64(&quot;42&quot;);        // 42
 var f = Viper.Core.Convert.ToDouble(&quot;3.14&quot;);   // 3.14
-var s = Viper.Core.Convert.ToString_Int(100);  // &quot;100&quot;
+var s = Viper.Core.Convert.ToStringInt(100);  // &quot;100&quot;
 </code></pre>
 <p>---</p>
 <h2 id="viper-time-datetime">Viper.Time.DateTime</h2>
@@ -445,7 +445,12 @@ var s = Viper.Core.Convert.ToString_Int(100);  // &quot;100&quot;
 <tr>
 <td>`TryParse(s)`</td>
 <td>`i64(str)`</td>
-<td>Try parse date/time string, return timestamp or -1</td>
+<td>Compatibility parser; returns a sentinel on failure</td>
+</tr>
+<tr>
+<td>`TryParseOption(s)`</td>
+<td>`obj<Viper.Option>(str)`</td>
+<td>Try parse date/time string; returns None on failure</td>
 </tr>
 <tr>
 <td>`Year(ts)`</td>
@@ -635,7 +640,7 @@ var result = Viper.System.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&qu
 <td>Format boolean as &quot;true&quot; or &quot;false&quot;</td>
 </tr>
 <tr>
-<td>`BoolYN(v)`</td>
+<td>`YesNo(v)`</td>
 <td>`str(i1)`</td>
 <td>Format boolean as &quot;Yes&quot; or &quot;No&quot;</td>
 </tr>
@@ -685,12 +690,12 @@ var result = Viper.System.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&qu
 <td>Format with fixed decimal places</td>
 </tr>
 <tr>
-<td>`NumPct(n, decimals)`</td>
+<td>`Percent(n, decimals)`</td>
 <td>`str(f64, i64)`</td>
 <td>Format as percentage (e.g., &quot;50.00%&quot;)</td>
 </tr>
 <tr>
-<td>`NumSci(n, decimals)`</td>
+<td>`Scientific(n, decimals)`</td>
 <td>`str(f64, i64)`</td>
 <td>Format in scientific notation</td>
 </tr>
@@ -1089,7 +1094,7 @@ var ext = Viper.IO.Path.Ext(full);   // &quot;.txt&quot;
 Viper.Diagnostics.Log.set_Level(Viper.Diagnostics.Log.get_LevelDebug);
 
 // Log messages
-Viper.Diagnostics.Log.Debug(&quot;Processing item &quot; + Viper.Core.Convert.ToString_Int(i));
+Viper.Diagnostics.Log.Debug(&quot;Processing item &quot; + Viper.Core.Convert.ToStringInt(i));
 Viper.Diagnostics.Log.Info(&quot;Server started on port 8080&quot;);
 Viper.Diagnostics.Log.Warn(&quot;Connection pool running low&quot;);
 Viper.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
@@ -1157,8 +1162,8 @@ Viper.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 Viper.Terminal.Say(&quot;OS: &quot; + Viper.System.Machine.get_Os);
-Viper.Terminal.Say(&quot;Cores: &quot; + Viper.Core.Convert.ToString_Int(Viper.System.Machine.get_Cores));
-Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToString_Int(Viper.System.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
+Viper.Terminal.Say(&quot;Cores: &quot; + Viper.Core.Convert.ToStringInt(Viper.System.Machine.get_Cores));
+Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToStringInt(Viper.System.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
 </code></pre>
 <p>---</p>
 <h2 id="viper-core-parse">Viper.Core.Parse</h2>
@@ -1241,8 +1246,13 @@ var color = Viper.Core.Parse.IntRadix(&quot;FF00FF&quot;, 16, 0);
 </tr></thead><tbody>
 <tr>
 <td>`Chance(p)`</td>
+<td>`i1(f64)`</td>
+<td>Return true with probability p (0.0-1.0), else false</td>
+</tr>
+<tr>
+<td>`ChanceInt(p)`</td>
 <td>`i64(f64)`</td>
-<td>Return 1 with probability p (0.0-1.0), else 0</td>
+<td>Compatibility 0/1 form of Chance</td>
 </tr>
 <tr>
 <td>`Dice(sides)`</td>
@@ -1694,7 +1704,7 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>Split on whitespace fields into raw array</td>
 </tr>
 </tbody></table>
-<blockquote><p>**Note**: For integer/double to string conversion, use <code>Viper.Core.Convert.ToString_Int</code> and <code>Viper.Core.Convert.ToString_Double</code>.</p></blockquote>
+<blockquote><p>**Note**: For integer/double to string conversion, use <code>Viper.Core.Convert.ToStringInt</code> and <code>Viper.Core.Convert.ToStringDouble</code>.</p></blockquote>
 <p>---</p>
 <h2 id="viper-text">Viper.Text</h2>
 <p>Text processing utilities including encoding, CSV, GUID, templates, and patterns.</p>
@@ -2963,6 +2973,16 @@ var dir = Viper.Math.Vec3.Norm(pos);
 <td>`TryPeek(heap)`</td>
 <td>`obj(obj)`</td>
 <td>Peek or return null</td>
+</tr>
+<tr>
+<td>`TryPopOption(heap)`</td>
+<td>`obj<Viper.Option>(obj)`</td>
+<td>Pop or return None when empty</td>
+</tr>
+<tr>
+<td>`TryPeekOption(heap)`</td>
+<td>`obj<Viper.Option>(obj)`</td>
+<td>Peek or return None when empty</td>
 </tr>
 <tr>
 <td>`Clear(heap)`</td>

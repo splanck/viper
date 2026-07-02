@@ -1,8 +1,8 @@
 // =============================================================================
 // API Audit: Viper.Data.Serialize - Multi-Format Serialization
 // =============================================================================
-// Tests: Parse, Format, FormatPretty, IsValid, Detect, AutoParse, Convert,
-//        FormatName, MimeType, FormatFromName
+// Tests: ParseResult, Parse, Error, Format, FormatPretty, IsValid, Detect,
+//        AutoParseResult, AutoParse, Convert, FormatName, MimeType, FormatFromName
 // =============================================================================
 
 module SerializeDemo;
@@ -73,10 +73,24 @@ func start() {
     Say("Detect(plain text unknown):");
     SayInt(Ser.Detect("plain text"));
 
-    // --- Parse ---
-    Say("--- Parse ---");
-    var doc = Ser.Parse(jsonStr, 0);
-    Say("Parse(JSON) done");
+    // --- ParseResult ---
+    Say("--- ParseResult ---");
+    var parsed = Ser.ParseResult(jsonStr, 0);
+    SayBool(parsed.IsOk);
+    var doc = parsed.Unwrap();
+    Say("ParseResult(JSON) done");
+
+    var badParse = Ser.ParseResult("{", 0);
+    SayBool(badParse.IsErr);
+    Say(badParse.UnwrapErrStr());
+
+    // --- Parse / Error compatibility ---
+    Say("--- Parse / Error compatibility ---");
+    var legacyDoc = Ser.Parse(jsonStr, 0);
+    SayBool(legacyDoc != null);
+    var legacyBad = Ser.Parse("{", 0);
+    SayBool(legacyBad == null);
+    Say(Ser.Error());
 
     // --- Format ---
     Say("--- Format ---");
@@ -88,12 +102,23 @@ func start() {
     Say("FormatPretty(doc, 0, 2):");
     Say(Ser.FormatPretty(doc, 0, 2));
 
-    // --- AutoParse ---
-    Say("--- AutoParse ---");
-    var auto = Ser.AutoParse(jsonStr);
-    Say("AutoParse done");
+    // --- AutoParseResult ---
+    Say("--- AutoParseResult ---");
+    var autoResult = Ser.AutoParseResult(jsonStr);
+    SayBool(autoResult.IsOk);
+    var auto = autoResult.Unwrap();
+    Say("AutoParseResult done");
     Say("Format auto-parsed:");
     Say(Ser.Format(auto, 0));
+
+    var autoBad = Ser.AutoParseResult("plain text");
+    SayBool(autoBad.IsErr);
+    Say(autoBad.UnwrapErrStr());
+
+    // --- AutoParse compatibility ---
+    Say("--- AutoParse compatibility ---");
+    var autoLegacy = Ser.AutoParse(jsonStr);
+    SayBool(autoLegacy != null);
 
     // --- Convert ---
     Say("--- Convert ---");

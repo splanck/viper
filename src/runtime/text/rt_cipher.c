@@ -50,8 +50,11 @@
 #include "rt_internal.h"
 #include "rt_keyderive_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_platform.h"
+#include "rt_result.h"
 
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,6 +84,188 @@ static int64_t g_cipher_nonce_counter = 0;
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
+
+typedef void *(*cipher_password_decrypt_fn)(void *ciphertext, rt_string password);
+typedef void *(*cipher_password_aad_decrypt_fn)(void *ciphertext, rt_string password, void *aad);
+typedef void *(*cipher_key_decrypt_fn)(void *ciphertext, void *key);
+typedef void *(*cipher_key_aad_decrypt_fn)(void *ciphertext, void *key, void *aad);
+
+/// @brief Release a temporary runtime object created by a decryptor.
+/// @details `Result.Ok` and `Option.Some` retain object payloads. Wrappers that
+///          move a freshly allocated plaintext object into those containers
+///          call this helper to drop the decryptor's original ownership.
+static void cipher_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Return a string handle for the active trap message or a fallback.
+/// @details The returned string is a runtime literal/constant handle suitable
+///          for passing to Result.ErrStr without transferring ownership.
+static rt_string cipher_current_error_message(const char *fallback) {
+    const char *err = rt_trap_get_error();
+    if (!err || !err[0])
+        err = fallback && fallback[0] ? fallback : "Cipher decrypt failed";
+    return rt_const_cstr(err);
+}
+
+/// @brief Wrap a freshly allocated plaintext object in `Result.Ok`.
+/// @details Returns `Err(str)` when @p plaintext is NULL. On success the
+///          Result retains @p plaintext and this helper releases the caller's
+///          temporary ownership reference.
+static void *cipher_plaintext_result(void *plaintext, const char *null_message) {
+    if (!plaintext)
+        return rt_result_err_str(rt_const_cstr(null_message));
+    void *result = rt_result_ok(plaintext);
+    cipher_release_temp_object(plaintext);
+    return result;
+}
+
+/// @brief Wrap a freshly allocated plaintext object in `Option.Some`.
+/// @details Returns `None` when @p plaintext is NULL. On success the Option
+///          retains @p plaintext and this helper releases the decryptor's
+///          temporary ownership reference.
+static void *cipher_plaintext_option(void *plaintext) {
+    if (!plaintext)
+        return rt_option_none();
+    void *option = rt_option_some(plaintext);
+    cipher_release_temp_object(plaintext);
+    return option;
+}
+
+/// @brief Run a password decryptor and convert traps/NULL into `Result`.
+static void *cipher_password_result(cipher_password_decrypt_fn fn,
+                                    void *ciphertext,
+                                    rt_string password,
+                                    const char *null_message,
+                                    const char *trap_fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = cipher_current_error_message(trap_fallback);
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    void *plaintext = fn(ciphertext, password);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_result(plaintext, null_message);
+}
+
+/// @brief Run a password decryptor and convert traps/NULL into `Option`.
+static void *cipher_password_option(cipher_password_decrypt_fn fn,
+                                    void *ciphertext,
+                                    rt_string password) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return rt_option_none();
+    }
+    void *plaintext = fn(ciphertext, password);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_option(plaintext);
+}
+
+/// @brief Run a password-plus-AAD decryptor and convert traps/NULL into `Result`.
+static void *cipher_password_aad_result(cipher_password_aad_decrypt_fn fn,
+                                        void *ciphertext,
+                                        rt_string password,
+                                        void *aad,
+                                        const char *null_message,
+                                        const char *trap_fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = cipher_current_error_message(trap_fallback);
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    void *plaintext = fn(ciphertext, password, aad);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_result(plaintext, null_message);
+}
+
+/// @brief Run a password-plus-AAD decryptor and convert traps/NULL into `Option`.
+static void *cipher_password_aad_option(cipher_password_aad_decrypt_fn fn,
+                                        void *ciphertext,
+                                        rt_string password,
+                                        void *aad) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return rt_option_none();
+    }
+    void *plaintext = fn(ciphertext, password, aad);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_option(plaintext);
+}
+
+/// @brief Run a raw-key decryptor and convert traps/NULL into `Result`.
+static void *cipher_key_result(cipher_key_decrypt_fn fn,
+                               void *ciphertext,
+                               void *key,
+                               const char *null_message,
+                               const char *trap_fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = cipher_current_error_message(trap_fallback);
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    void *plaintext = fn(ciphertext, key);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_result(plaintext, null_message);
+}
+
+/// @brief Run a raw-key decryptor and convert traps/NULL into `Option`.
+static void *cipher_key_option(cipher_key_decrypt_fn fn, void *ciphertext, void *key) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return rt_option_none();
+    }
+    void *plaintext = fn(ciphertext, key);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_option(plaintext);
+}
+
+/// @brief Run a raw-key-plus-AAD decryptor and convert traps/NULL into `Result`.
+static void *cipher_key_aad_result(cipher_key_aad_decrypt_fn fn,
+                                   void *ciphertext,
+                                   void *key,
+                                   void *aad,
+                                   const char *null_message,
+                                   const char *trap_fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = cipher_current_error_message(trap_fallback);
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    void *plaintext = fn(ciphertext, key, aad);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_result(plaintext, null_message);
+}
+
+/// @brief Run a raw-key-plus-AAD decryptor and convert traps/NULL into `Option`.
+static void *cipher_key_aad_option(cipher_key_aad_decrypt_fn fn,
+                                   void *ciphertext,
+                                   void *key,
+                                   void *aad) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return rt_option_none();
+    }
+    void *plaintext = fn(ciphertext, key, aad);
+    rt_trap_clear_recovery();
+    return cipher_plaintext_option(plaintext);
+}
 
 //=============================================================================
 // Internal Bytes Access
@@ -488,6 +673,32 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
     return rt_cipher_decrypt_aad(ciphertext, password, NULL);
 }
 
+/// @brief Decrypt password-encrypted data and return a Result.
+/// @details Converts the legacy decryptor's NULL authentication failure into
+///          `Err("Cipher.Decrypt: authentication failed")` and captures traps
+///          such as malformed ciphertext or empty password as `Err(str)`.
+///          Successful plaintext bytes are returned as `Ok(Bytes)`.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_result(void *ciphertext, rt_string password) {
+    return cipher_password_result(rt_cipher_decrypt,
+                                  ciphertext,
+                                  password,
+                                  "Cipher.Decrypt: authentication failed",
+                                  "Cipher.Decrypt failed");
+}
+
+/// @brief Attempt password-based decryption and return an Option.
+/// @details Converts authentication failure, malformed ciphertext, invalid
+///          arguments, and other decryptor traps into `None`.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt(void *ciphertext, rt_string password) {
+    return cipher_password_option(rt_cipher_decrypt, ciphertext, password);
+}
+
 /// @brief Password-derived ChaCha20-Poly1305 decryption with AAD verification.
 /// @details Inverse of rt_cipher_encrypt_aad. Validates the leading
 ///          CIPHER_PW_MAGIC, re-derives the 32-byte key from the embedded
@@ -643,6 +854,32 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     return result;
 }
 
+/// @brief Decrypt password-encrypted data with AAD and return a Result.
+/// @details Converts NULL authentication failure into an explicit Err and
+///          captures traps from the underlying decryptor as Err strings.
+/// @param ciphertext Framed ciphertext produced by rt_cipher_encrypt_aad.
+/// @param password Password string used for key derivation.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_aad_result(void *ciphertext, rt_string password, void *aad) {
+    return cipher_password_aad_result(rt_cipher_decrypt_aad,
+                                      ciphertext,
+                                      password,
+                                      aad,
+                                      "Cipher.DecryptAAD: authentication failed",
+                                      "Cipher.DecryptAAD failed");
+}
+
+/// @brief Attempt password-based AAD decryption and return an Option.
+/// @details Converts authentication failure and decryptor traps into `None`.
+/// @param ciphertext Framed ciphertext produced by rt_cipher_encrypt_aad.
+/// @param password Password string used for key derivation.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
+    return cipher_password_aad_option(rt_cipher_decrypt_aad, ciphertext, password, aad);
+}
+
 //=============================================================================
 // Key-Based Encryption
 //=============================================================================
@@ -756,6 +993,30 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
     return rt_cipher_decrypt_with_key_aad(ciphertext, key_bytes, NULL);
 }
 
+/// @brief Decrypt raw-key encrypted data and return a Result.
+/// @details Converts NULL authentication failure into an explicit Err and
+///          captures traps such as invalid key length or malformed ciphertext.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param key_bytes Bytes object containing exactly 32 bytes.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_with_key_result(void *ciphertext, void *key_bytes) {
+    return cipher_key_result(rt_cipher_decrypt_with_key,
+                             ciphertext,
+                             key_bytes,
+                             "Cipher.DecryptWithKey: authentication failed",
+                             "Cipher.DecryptWithKey failed");
+}
+
+/// @brief Attempt raw-key decryption and return an Option.
+/// @details Converts authentication failure, invalid key length, malformed
+///          ciphertext, and other decryptor traps into `None`.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param key_bytes Bytes object containing exactly 32 bytes.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt_with_key(void *ciphertext, void *key_bytes) {
+    return cipher_key_option(rt_cipher_decrypt_with_key, ciphertext, key_bytes);
+}
+
 /// @brief Raw-key ChaCha20-Poly1305 decryption with AAD verification.
 /// @details Inverse of rt_cipher_encrypt_with_key_aad. Validates the leading
 ///          CIPHER_KEY_MAGIC, runs ChaCha20-Poly1305 verify-and-decrypt with
@@ -846,6 +1107,33 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
         cipher_secure_zero(plain_data, (size_t)plain_len);
     free(plain_data);
     return result;
+}
+
+/// @brief Decrypt raw-key encrypted data with AAD and return a Result.
+/// @details Converts NULL authentication failure into an explicit Err and
+///          captures traps such as invalid key length or malformed ciphertext.
+/// @param ciphertext Framed ciphertext from rt_cipher_encrypt_with_key_aad.
+/// @param key_bytes Bytes object containing exactly 32 bytes.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_with_key_aad_result(void *ciphertext, void *key_bytes, void *aad) {
+    return cipher_key_aad_result(rt_cipher_decrypt_with_key_aad,
+                                 ciphertext,
+                                 key_bytes,
+                                 aad,
+                                 "Cipher.DecryptWithKeyAAD: authentication failed",
+                                 "Cipher.DecryptWithKeyAAD failed");
+}
+
+/// @brief Attempt raw-key AAD decryption and return an Option.
+/// @details Converts authentication failure, invalid key length, malformed
+///          ciphertext, and other decryptor traps into `None`.
+/// @param ciphertext Framed ciphertext from rt_cipher_encrypt_with_key_aad.
+/// @param key_bytes Bytes object containing exactly 32 bytes.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aad) {
+    return cipher_key_aad_option(rt_cipher_decrypt_with_key_aad, ciphertext, key_bytes, aad);
 }
 
 //=============================================================================

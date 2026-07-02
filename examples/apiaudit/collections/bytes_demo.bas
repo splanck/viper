@@ -1,5 +1,5 @@
 ' bytes_demo.bas - Comprehensive API audit for Viper.Collections.Bytes
-' Tests: New, Get, Set, Len, Fill, Find, Clone, Slice, Copy,
+' Tests: New, Get, Set, Len, Fill, Find, FindOption, Clone, Slice, Copy,
 '        ToHex, FromHex, ToBase64, FromBase64, ToStr, FromStr
 
 PRINT "=== Bytes API Audit ==="
@@ -66,6 +66,14 @@ PRINT "--- Find ---"
 PRINT hello.Find(108)    ' 2
 PRINT hello.Find(111)    ' 4
 PRINT hello.Find(99)     ' -1
+
+' --- FindOption ---
+PRINT "--- FindOption ---"
+DIM found AS OBJECT
+found = hello.FindOption(108)
+PRINT found.IsSome
+PRINT found.UnwrapI64()  ' 2
+PRINT hello.FindOption(99).IsNone
 
 ' --- Clone ---
 PRINT "--- Clone ---"

@@ -151,9 +151,21 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     const auto objTypeName = il::runtime::classifyRuntimeOwnership("Viper.Core.Object.TypeName");
     assert(objTypeName.returnsOwned);
     assert(objTypeName.mayAllocate);
+    const auto convertToStringInt =
+        il::runtime::classifyRuntimeOwnership("Viper.Core.Convert.ToStringInt");
+    assert(convertToStringInt.returnsOwned);
+    assert(convertToStringInt.mayAllocate);
+    const auto convertToStringDouble =
+        il::runtime::classifyRuntimeOwnership("Viper.Core.Convert.ToStringDouble");
+    assert(convertToStringDouble.returnsOwned);
+    assert(convertToStringDouble.mayAllocate);
     const auto parseDoubleOwn = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryNum");
     assert(parseDoubleOwn.returnsOwned);
     assert(parseDoubleOwn.mayAllocate);
+    const auto parseCanonicalDoubleOwn =
+        il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryDouble");
+    assert(parseCanonicalDoubleOwn.returnsOwned);
+    assert(parseCanonicalDoubleOwn.mayAllocate);
     const auto parseTryBool = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryBool");
     assert(parseTryBool.returnsOwned);
     assert(parseTryBool.mayAllocate);
@@ -234,6 +246,12 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     assert(parseDouble->paramTypes.size() == 1);
     assert(parseDouble->retType.kind == il::core::Type::Kind::Ptr);
     assert(parseDouble->paramTypes[0].kind == il::core::Type::Kind::Str);
+    const auto *parseCanonicalDouble =
+        il::runtime::findRuntimeSignature("Viper.Core.Parse.TryDouble");
+    assert(parseCanonicalDouble != nullptr);
+    assert(parseCanonicalDouble->paramTypes.size() == 1);
+    assert(parseCanonicalDouble->retType.kind == il::core::Type::Kind::Ptr);
+    assert(parseCanonicalDouble->paramTypes[0].kind == il::core::Type::Kind::Str);
     const auto *parseInt64 = il::runtime::findRuntimeSignature("Viper.Core.Parse.TryInt");
     assert(parseInt64 != nullptr);
     assert(parseInt64->paramTypes.size() == 1);

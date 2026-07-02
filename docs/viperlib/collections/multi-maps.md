@@ -30,7 +30,7 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 
 | Method                 | Signature              | Description                                                       |
 |------------------------|------------------------|-------------------------------------------------------------------|
-| `Put(key, value)`      | `Void(String, String)` | Add or update a bidirectional mapping; removes any old mapping    |
+| `Set(key, value)`      | `Void(String, String)` | Add or update a bidirectional mapping; removes any old mapping    |
 | `GetByKey(key)`        | `String(String)`       | Get the value associated with a key                               |
 | `GetByValue(value)`    | `String(String)`       | Get the key associated with a value (reverse lookup)              |
 | `HasKey(key)`          | `Boolean(String)`      | Check if a key exists                                             |
@@ -45,9 +45,10 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 
 - Maintains strict one-to-one relationships: updating a key to a new value removes the old value's reverse mapping
 - Both key-to-value and value-to-key lookups are O(1) average case
-- `Put` with an existing key replaces the old value and removes the old value's reverse entry
+- `Set` with an existing key replaces the old value and removes the old value's reverse entry
 - Keys and values are strings compared by full byte length; embedded NUL bytes are part of identity
-- `Put` prepares the replacement entry before removing conflicting mappings, so allocation failures do not drop the previous entry
+- `Set` prepares the replacement entry before removing conflicting mappings, so allocation failures do not drop the previous entry
+- `Put` remains available as a compatibility alias for `Set`.
 - `Keys()` and `Values()` return owning snapshots of copied strings
 
 ### Zia Example
@@ -64,8 +65,8 @@ func start() {
     var bm = BiMap.New();
 
     // Add bidirectional mappings
-    bm.Put("en", "English");
-    bm.Put("fr", "French");
+    bm.Set("en", "English");
+    bm.Set("fr", "French");
     Say("Count: " + Fmt.Int(bm.Count));                  // 2
 
     // Forward lookup (key -> value)
@@ -91,8 +92,8 @@ DIM bm AS OBJECT
 bm = Viper.Collections.BiMap.New()
 
 ' Add bidirectional mappings
-bm.Put("en", "English")
-bm.Put("fr", "French")
+bm.Set("en", "English")
+bm.Set("fr", "French")
 PRINT "Count: "; bm.Count                       ' Count: 2
 
 ' Forward lookup (key -> value)
@@ -139,7 +140,7 @@ stores a list of values for each key.
 
 | Method             | Signature              | Description                                                      |
 |--------------------|------------------------|------------------------------------------------------------------|
-| `Put(key, value)`  | `Void(String, Object)` | Add a value to the key's list (does not replace existing values) |
+| `Add(key, value)`  | `Void(String, Object)` | Add a value to the key's list (does not replace existing values) |
 | `Get(key)`         | `Seq(String)`          | Get all values for key as a Seq (empty Seq if key not found)     |
 | `GetFirst(key)`    | `Object(String)`       | Get the first value added for key                                |
 | `Has(key)`         | `Boolean(String)`      | Check if key exists                                              |
@@ -157,6 +158,7 @@ stores a list of values for each key.
 - `GetFirst` returns an owned object reference for the first value, or null when the key has no values
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
+- `Put` remains available as a compatibility alias for `Add`.
 
 ### Zia Example
 
@@ -172,11 +174,11 @@ func start() {
     var mm = MultiMap.New();
 
     // Add multiple values per key
-    mm.Put("color", Box.Str("red"));
-    mm.Put("color", Box.Str("green"));
-    mm.Put("color", Box.Str("blue"));
-    mm.Put("size", Box.Str("small"));
-    mm.Put("size", Box.Str("large"));
+    mm.Add("color", Box.Str("red"));
+    mm.Add("color", Box.Str("green"));
+    mm.Add("color", Box.Str("blue"));
+    mm.Add("size", Box.Str("small"));
+    mm.Add("size", Box.Str("large"));
 
     SayInt(mm.Count);                              // 5 (total values)
     SayInt(mm.KeyCount);                         // 2 (distinct keys)
@@ -209,11 +211,11 @@ DIM mm AS OBJECT
 mm = Viper.Collections.MultiMap.New()
 
 ' Add multiple values per key
-mm.Put("color", "red")
-mm.Put("color", "green")
-mm.Put("color", "blue")
-mm.Put("size", "small")
-mm.Put("size", "large")
+mm.Add("color", "red")
+mm.Add("color", "green")
+mm.Add("color", "blue")
+mm.Add("size", "small")
+mm.Add("size", "large")
 
 PRINT mm.Count             ' 5 (total values)
 PRINT mm.KeyCount        ' 2 (distinct keys)
@@ -634,7 +636,7 @@ Negative capacities trap.
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
-| `Cap`     | Integer | Maximum capacity (fixed at creation)      |
+| `Capacity` | Integer | Maximum capacity (fixed at creation)    |
 | `IsEmpty` | Boolean | True if the cache has no entries          |
 | `Length`     | Integer | Number of entries currently in the cache  |
 
@@ -642,7 +644,7 @@ Negative capacities trap.
 
 | Method              | Signature              | Description                                                            |
 |---------------------|------------------------|------------------------------------------------------------------------|
-| `Put(key, value)`   | `Void(String, Object)` | Add or update an entry; evicts LRU entry if at capacity                |
+| `Set(key, value)`   | `Void(String, Object)` | Add or update an entry; evicts LRU entry if at capacity                |
 | `Get(key)`          | `Object(String)`       | Get value for key and promote to most recently used; null if not found |
 | `Has(key)`          | `Boolean(String)`      | Check if key exists in the cache                                       |
 | `Peek(key)`         | `Object(String)`       | Get value for key without promoting (does not affect LRU order)        |
@@ -655,12 +657,14 @@ Negative capacities trap.
 ### Notes
 
 - `Get` promotes the accessed entry to most recently used; `Peek` does not
-- When `Put` is called at capacity, the least recently used entry is automatically evicted
+- When `Set` is called at capacity, the least recently used entry is automatically evicted
 - A capacity of `0` disables automatic eviction; entries remain until removed or cleared
-- Updating an existing key with `Put` promotes it to most recently used without eviction
+- Updating an existing key with `Set` promotes it to most recently used without eviction
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Cached values are retained while stored and released on overwrite, eviction, remove, clear, or finalization
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
+- `Cap` remains available as a compatibility alias for `Capacity`.
+- `Put` remains available as a compatibility alias for `Set`.
 
 ### Zia Example
 
@@ -674,12 +678,12 @@ bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var cache = LruCache.New(3);
-    SayInt(cache.Cap);                             // 3
+    SayInt(cache.Capacity);                        // 3
 
     // Add entries
-    cache.Put("a", Box.Str("alpha"));
-    cache.Put("b", Box.Str("beta"));
-    cache.Put("c", Box.Str("gamma"));
+    cache.Set("a", Box.Str("alpha"));
+    cache.Set("b", Box.Str("beta"));
+    cache.Set("c", Box.Str("gamma"));
     SayInt(cache.Count);                             // 3
 
     // Get promotes to MRU
@@ -689,7 +693,7 @@ func start() {
     Say(Box.ToStr(cache.Peek("c")));               // gamma
 
     // Adding a 4th entry evicts LRU (c, since Peek didn't promote it)
-    cache.Put("d", Box.Str("delta"));
+    cache.Set("d", Box.Str("delta"));
     SayBool(cache.Has("c"));                       // 0 (evicted)
     SayBool(cache.Has("d"));                       // 1
 
@@ -700,7 +704,7 @@ func start() {
     // Clear all
     cache.Clear();
     SayBool(cache.IsEmpty);                        // 1
-    SayInt(cache.Cap);                             // 3 (capacity preserved)
+    SayInt(cache.Capacity);                        // 3 (capacity preserved)
 }
 ```
 
@@ -709,12 +713,12 @@ func start() {
 ```basic
 DIM cache AS OBJECT
 cache = Viper.Collections.LruCache.New(3)
-PRINT cache.Cap          ' 3
+PRINT cache.Capacity     ' 3
 
 ' Add entries
-cache.Put("a", "alpha")
-cache.Put("b", "beta")
-cache.Put("c", "gamma")
+cache.Set("a", "alpha")
+cache.Set("b", "beta")
+cache.Set("c", "gamma")
 PRINT cache.Count          ' 3
 
 ' Get promotes to most recently used
@@ -725,13 +729,13 @@ PRINT cache.Get("b")     ' beta
 PRINT cache.Peek("c")    ' gamma
 
 ' Adding when full evicts LRU (c was not promoted by Peek)
-cache.Put("d", "delta")
+cache.Set("d", "delta")
 PRINT cache.Count          ' 3 (still at capacity)
 PRINT cache.Has("c")     ' 0 (evicted)
 PRINT cache.Has("d")     ' 1
 
 ' Update existing entry (no eviction)
-cache.Put("a", "ALPHA")
+cache.Set("a", "ALPHA")
 PRINT cache.Get("a")     ' ALPHA
 PRINT cache.Count          ' 3
 
@@ -740,14 +744,14 @@ PRINT cache.Remove("b")  ' 1
 PRINT cache.Count          ' 2
 
 ' Remove oldest (LRU) entry
-cache.Put("e", "epsilon")
+cache.Set("e", "epsilon")
 PRINT cache.RemoveOldest() ' 1
 PRINT cache.Count          ' 2
 
 ' Clear all
 cache.Clear()
 PRINT cache.IsEmpty      ' 1
-PRINT cache.Cap          ' 3
+PRINT cache.Capacity     ' 3
 ```
 
 ### Use Cases

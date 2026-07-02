@@ -37,6 +37,7 @@
 #include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -952,6 +953,18 @@ int64_t rt_bytes_find(void *obj, int64_t val) {
     }
 
     return -1;
+}
+
+/// @brief Find the first occurrence of a byte value as an Option index.
+/// @details This is the sentinel-free companion to @ref rt_bytes_find. A match
+///          returns `SomeI64(index)`, while a missing byte or NULL Bytes handle
+///          returns `None`.
+/// @param obj Bytes object pointer, or NULL.
+/// @param val Byte value to search for; only the low 8 bits are used.
+/// @return Opaque Viper.Option containing the first index, or None.
+void *rt_bytes_find_option(void *obj, int64_t val) {
+    int64_t index = rt_bytes_find(obj, val);
+    return index >= 0 ? rt_option_some_i64(index) : rt_option_none();
 }
 
 /// @brief Creates a copy of the Bytes object.

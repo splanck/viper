@@ -19,6 +19,8 @@ loads a scene and maps objects/properties into game-owned entities.
 | Method | Signature | Description |
 |---|---|---|
 | `SceneDocument.New(width, height, tileWidth, tileHeight)` | `SceneDocument(i64, i64, i64, i64)` | Create a scene with one base layer. |
+| `SceneDocument.LoadJsonResult(text)` | `Result(str)` | Load scene JSON as `Ok(SceneDocument)` or `Err(message)`. |
+| `SceneDocument.LoadResult(path)` | `Result(str)` | Read and load a scene file as `Ok(SceneDocument)` or `Err(message)`. |
 | `SceneDocument.LoadJson(text)` | `SceneDocument(str)` | Load scene JSON without trapping on malformed user input. |
 | `SceneDocument.Load(path)` | `SceneDocument(str)` | Read and load a scene file. |
 | `ToJson()` | `str()` | Emit canonical schema v1 JSON. |
@@ -37,14 +39,16 @@ removed and records an error diagnostic; an existing target is not deleted first
 | Method | Description |
 |---|---|
 | `HasErrors()` | True when retained diagnostics include an error. |
-| `LastError()` | Newest diagnostic message. |
+| `LastError()` | Compatibility diagnostic containing the newest diagnostic message. |
 | `Diagnostics()` | Compatibility `Seq<str>` of diagnostic messages. |
 | `DiagnosticRecords()` | `Seq<Map>` with `code`, `severity`, `message`, `path`, `line`, `column`, and `source`. |
 | `ClearDiagnostics()` | Clear retained diagnostics and `LastError()`. |
 
-Bad JSON, missing files, unknown versions, invalid dimensions, v1 tile count
-mismatches, and resource-limit violations return an invalid scene with
-diagnostics instead of trapping.
+Prefer `LoadJsonResult` and `LoadResult` for production code that wants loading
+to be an explicit `Ok`/`Err` value. The compatibility `LoadJson` and `Load`
+methods still return an invalid scene with diagnostics instead of trapping for
+bad JSON, missing files, unknown versions, invalid dimensions, v1 tile count
+mismatches, and resource-limit violations.
 
 Edit-time rejections, such as an over-long layer name or property key, are
 reported as warning diagnostics. They do not make `HasErrors()` true unless a
@@ -80,7 +84,7 @@ lives in typed scalar properties: `null`, bool, int, float, or string.
 | `ObjectGetInt/Str/Float/Bool(index, key, default)` | Typed property reads; incompatible kinds return the supplied default. |
 | `ObjectSetInt/Str/Float/Bool(index, key, value)` | Typed property writes. |
 | `ObjectHas(index, key)` / `ObjectKeys(index)` / `ObjectRemove(index, key)` | Inspect or remove object properties. |
-| `CountOfType(type)` / `ObjectOfType(type, n)` / `FindObject(id)` | Search helpers returning counts or indexes. |
+| `CountOfType(type)` / `ObjectOfType(type, n)` / `FindObject(id)` / `FindObjectOption(id)` | Search helpers returning counts, indexes, or `Option[Integer]`. Prefer `FindObjectOption` for new code. |
 | `MoveObject(from, to)` | Reorder objects. |
 
 Compatibility methods `SetObjectProperty`, `GetObjectProperty`, and

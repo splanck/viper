@@ -48,6 +48,8 @@
 #include "rt_morphtarget3d.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
+#include "rt_option.h"
+#include "rt_result.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"

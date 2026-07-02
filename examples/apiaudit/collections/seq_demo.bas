@@ -1,5 +1,5 @@
 ' seq_demo.bas - Comprehensive API audit for Viper.Collections.Seq
-' Tests: New, WithCapacity, Push, Pop, Get, Set, Len, Cap, IsEmpty, Find, Has,
+' Tests: New, WithCapacity, Push, Pop, Get, Set, Len, Capacity, IsEmpty, Find, FindOption, Has,
 '        Insert, Remove, Clear, Clone, First, Last, Peek, Slice, Reverse,
 '        Sort, SortDesc, Shuffle, Take, Drop, PushAll
 ' Note: Inline Viper.Core.Box.ToI64(s.Get(N)) can corrupt heap state for
@@ -19,10 +19,10 @@ PRINT "--- WithCapacity ---"
 DIM sc AS Viper.Collections.Seq
 sc = Viper.Collections.Seq.WithCapacity(10)
 PRINT sc.Count      ' 0
-PRINT sc.Cap      ' 10
+PRINT sc.Capacity ' 10
 
-' --- Push / Len / Cap ---
-PRINT "--- Push / Len / Cap ---"
+' --- Push / Len / Capacity ---
+PRINT "--- Push / Len / Capacity ---"
 s.Push(Viper.Core.Box.I64(10))
 s.Push(Viper.Core.Box.I64(20))
 s.Push(Viper.Core.Box.I64(30))
@@ -66,6 +66,11 @@ PRINT s.Find(Viper.Core.Box.I64(10))   ' 0
 PRINT s.Find(Viper.Core.Box.I64(99))   ' -1
 PRINT s.Has(Viper.Core.Box.I64(30))    ' 1
 PRINT s.Has(Viper.Core.Box.I64(99))    ' 0
+DIM found AS OBJECT
+found = s.FindOption(Viper.Core.Box.I64(10))
+PRINT found.IsSome
+PRINT found.UnwrapI64()                ' 0
+PRINT s.FindOption(Viper.Core.Box.I64(99)).IsNone
 
 ' --- Insert ---
 PRINT "--- Insert ---"

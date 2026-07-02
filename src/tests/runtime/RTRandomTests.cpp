@@ -24,6 +24,7 @@ double rt_rand_gaussian(double mean, double stddev);
 double rt_rand_exponential(double lambda);
 long long rt_rand_dice(long long sides);
 long long rt_rand_chance(double probability);
+int8_t rt_rand_chance_bool(double probability);
 }
 
 static void test_rand_range() {
@@ -172,6 +173,8 @@ static void test_rand_chance() {
         assert(rt_rand_chance(1.0) == 1);
         assert(rt_rand_chance(-0.5) == 0);
         assert(rt_rand_chance(1.5) == 1);
+        assert(rt_rand_chance_bool(0.0) == 0);
+        assert(rt_rand_chance_bool(1.0) == 1);
     }
 
     printf("  PASSED\n");

@@ -47,7 +47,7 @@ class OpenWorldSlice {
         world = World3D.New(title, width, height);
         canvas = world.Canvas;
         camera = world.Camera;
-        Canvas3D.SetDTMax(canvas, 50);
+        Canvas3D.SetMaxDeltaTime(canvas, 50);
 
         Quality.Apply(world, QualityLevel.get_Balanced());
         Lighting.Outdoor(world, Vec3.New(-0.35, -1.0, -0.25));
@@ -144,7 +144,7 @@ class OpenWorldSlice {
         return glbFixtureLoaded &&
                audioFixtureLoaded &&
                glbFixtureProp != null &&
-               world.FindEntity("FixtureGLBTriangle") != null &&
+               world.FindEntityOption("FixtureGLBTriangle").IsSome &&
                hasNode("GlbTriangle");
     }
 
@@ -174,7 +174,7 @@ class OpenWorldSlice {
     }
 
     expose func hasNode(name: String) -> Boolean {
-        return world.FindNode(name) != null;
+        return world.FindNodeOption(name).IsSome;
     }
 
     expose func setStreamCenter(x: Float, z: Float) {
@@ -260,7 +260,7 @@ class OpenWorldSlice {
         ground.AttachBody(BodyDef.StaticPlane(48.0));
         world.Spawn(ground);
 
-        var compressedMat = Material3D.NewPBR(1.0, 1.0, 1.0);
+        var compressedMat = Material3D.PBR(1.0, 1.0, 1.0);
         Material3D.SetAlbedoMap(compressedMat, compressedTexture);
         compressedTexturePanel = Prefab.BoxXYZ(1.25, 1.25, 0.10, compressedMat);
         compressedTexturePanel.Name = "NativeCompressedTexturePanel";
@@ -383,7 +383,7 @@ class OpenWorldSlice {
 
     hide func setupSkinnedAgent() {
         skinnedIkBound = false;
-        skinnedTemplate = Assets3D.LoadTemplateAsset("assets/models/skinned_agent.gltf");
+        skinnedTemplate = Prefab.LoadAsset("assets/models/skinned_agent.gltf");
         if (skinnedTemplate == null) { return; }
         skinnedAgent = skinnedTemplate.Instantiate();
         if (skinnedAgent == null) { return; }

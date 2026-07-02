@@ -1,8 +1,8 @@
 ' =============================================================================
 ' API Audit: Viper.Crypto.Cipher - Symmetric Encryption
 ' =============================================================================
-' Tests: GenerateKey, Encrypt, Decrypt, EncryptWithKey, DecryptWithKey,
-'        DeriveKey
+' Tests: GenerateKey, Encrypt, DecryptResult, TryDecrypt,
+'        EncryptWithKey, DecryptWithKeyResult, DeriveKey
 ' =============================================================================
 
 PRINT "=== API Audit: Viper.Crypto.Cipher ==="
@@ -22,8 +22,14 @@ DIM enc AS OBJECT
 enc = Viper.Crypto.Cipher.Encrypt(plain, "mypassword")
 PRINT "Encrypted successfully"
 DIM dec AS OBJECT
-dec = Viper.Crypto.Cipher.Decrypt(enc, "mypassword")
+DIM decResult AS OBJECT
+decResult = Viper.Crypto.Cipher.DecryptResult(enc, "mypassword")
+dec = decResult.Unwrap()
 PRINT "Decrypted: "; Viper.Collections.Bytes.ToStr(dec)
+
+DIM bad AS OBJECT
+bad = Viper.Crypto.Cipher.TryDecrypt(enc, "wrong-password")
+PRINT "Wrong password IsNone: "; bad.IsNone
 
 ' --- EncryptWithKey / DecryptWithKey ---
 PRINT "--- EncryptWithKey / DecryptWithKey ---"
@@ -33,7 +39,9 @@ DIM enc2 AS OBJECT
 enc2 = Viper.Crypto.Cipher.EncryptWithKey(plain2, key)
 PRINT "Encrypted with key"
 DIM dec2 AS OBJECT
-dec2 = Viper.Crypto.Cipher.DecryptWithKey(enc2, key)
+DIM dec2Result AS OBJECT
+dec2Result = Viper.Crypto.Cipher.DecryptWithKeyResult(enc2, key)
+dec2 = dec2Result.Unwrap()
 PRINT "Decrypted with key: "; Viper.Collections.Bytes.ToStr(dec2)
 
 ' --- DeriveKey ---

@@ -27,7 +27,7 @@ func spawnPin(world: Game3D.World3D, x: Float, z: Float, index: Integer) -> Game
 func runSetup(render: Boolean) -> Float {
     var world = Game3D.World3D.New("Game3D Bowling Setup", 160, 90);
     var canvas = world.Canvas;
-    Canvas3D.SetDTMax(canvas, 50);
+    Canvas3D.SetMaxDeltaTime(canvas, 50);
 
     Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
     Game3D.Lighting.Interior(world);

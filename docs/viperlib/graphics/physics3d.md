@@ -226,9 +226,9 @@ content; bodies now own a collider instead of baking all shape state directly in
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `NewBox(hx, hy, hz)` | `Collider3D(Double, Double, Double)` | Box collider with half-extents |
-| `NewSphere(radius)` | `Collider3D(Double)` | Sphere collider |
-| `NewCapsule(radius, height)` | `Collider3D(Double, Double)` | Upright capsule collider; `height` is total height including caps, and values below `2*radius` collapse to a sphere-like capsule |
+| `Box(hx, hy, hz)` | `Collider3D(Double, Double, Double)` | Box collider with half-extents |
+| `Sphere(radius)` | `Collider3D(Double)` | Sphere collider |
+| `Capsule(radius, height)` | `Collider3D(Double, Double)` | Upright capsule collider; `height` is total height including caps, and values below `2*radius` collapse to a sphere-like capsule |
 | `NewConvexHull(mesh)` | `Collider3D(Object)` | Convex-hull collider sourced from a `Mesh3D` |
 | `NewMesh(mesh)` | `Collider3D(Object)` | Static triangle-mesh collider |
 | `NewHeightfield(heightmap, sx, sy, sz)` | `Collider3D(Object, Double, Double, Double)` | Static heightfield collider from `Pixels` |

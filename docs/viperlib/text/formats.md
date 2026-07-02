@@ -87,7 +87,7 @@ PRINT valueType        ' Output: "bool"
 
 ' Format with pretty printing
 DIM config AS OBJECT = Viper.Collections.Map.New()
-config.Set("debug", Viper.Core.Box.I1(1))
+config.Set("debug", Viper.Core.Box.I1(true))
 config.Set("port", Viper.Core.Box.I64(8080))
 
 DIM output AS STRING = Viper.Text.Json.FormatPretty(config, 2)
@@ -244,12 +244,13 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 | Method          | Signature        | Description                                      |
 |-----------------|------------------|--------------------------------------------------|
 | `Next()`        | `Integer()`      | Advance to next token; returns token type         |
+| `NextResult()`  | `Result()`       | Advance to next token as `Ok(token)` or `Err(message)` |
 | `HasNext()`     | `Boolean()`      | Check if more tokens remain                       |
 | `StringValue()` | `String()`       | Get string value of current token (key/string)    |
 | `NumberValue()` | `Double()`       | Get numeric value of current token                |
 | `BoolValue()`   | `Boolean()`      | Get boolean value of current token                |
 | `Skip()`        | `Void()`         | Skip current value (object, array, or primitive)  |
-| `Error()`       | `String()`       | Get error message if token is ERROR               |
+| `Error()`       | `String()`       | Compatibility diagnostic after `Next()` returns `TOK_ERROR` |
 
 ### Token Types
 
@@ -270,11 +271,12 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 
 ### Notes
 
-- Pull-based: call `Next()` to advance to each token
+- Pull-based: call `NextResult()` to advance when parsing untrusted JSON; use `Next()` only when you want the legacy integer-token path
 - Use `Skip()` to efficiently skip over objects or arrays you don't need
 - `Depth` tracks nesting level for structural navigation
 - More memory-efficient than `Json.Parse()` for large documents
 - Tokens are consumed in order — no random access
+- `NextResult()` returns `Err(message)` on malformed JSON, avoiding a separate `Error()` side-channel read
 - The parser enforces JSON separators and container state: missing commas/colons, mismatched closers, trailing commas, and multiple top-level values produce `TOK_ERROR`
 - Number parsing rejects leading zeroes, incomplete fractions/exponents, NaN, Infinity, and overflow
 - Strings reject raw control characters and invalid UTF-16 surrogate pairs
@@ -292,7 +294,12 @@ func start() {
 
     // Token-by-token parsing
     while JS.HasNext(s) {
-        var tok = JS.Next(s);
+        var next = JS.NextResult(s);
+        if next.IsErr {
+            Say("JSON error: " + next.UnwrapErrStr());
+            return;
+        }
+        var tok = next.UnwrapI64();
         if tok == 5 { Say("Key: " + JS.StringValue(s)); }
         if tok == 6 { Say("String: " + JS.StringValue(s)); }
         if tok == 7 { SayNum(JS.NumberValue(s)); }
@@ -326,15 +333,26 @@ DIM json AS STRING = "{""name"": ""Alice"", ""scores"": [95, 87, 92]}"
 DIM stream AS OBJECT = NEW Viper.Text.JsonStream(json)
 
 DO WHILE stream.HasNext()
-    DIM tok AS INTEGER = stream.Next()
+    DIM nextToken AS OBJECT = stream.NextResult()
+    IF nextToken.IsErr THEN
+        PRINT "JSON error: "; nextToken.UnwrapErrStr()
+        END
+    END IF
+    DIM tok AS INTEGER = nextToken.UnwrapI64()
 
     SELECT CASE tok
     CASE 5  ' TOK_KEY
         DIM key AS STRING = stream.StringValue()
         IF key = "scores" THEN
             ' Process the scores array
-            stream.Next()  ' consume ARRAY_START
-            DO WHILE stream.Next() <> 4  ' until ARRAY_END
+            DIM arrayStart AS OBJECT = stream.NextResult()  ' consume ARRAY_START
+            DO WHILE TRUE
+                DIM itemToken AS OBJECT = stream.NextResult()
+                IF itemToken.IsErr THEN
+                    PRINT "JSON error: "; itemToken.UnwrapErrStr()
+                    EXIT DO
+                END IF
+                IF itemToken.UnwrapI64() = 4 THEN EXIT DO  ' TOK_ARRAY_END
                 PRINT "Score: "; stream.NumberValue()
             LOOP
         END IF
@@ -658,21 +676,24 @@ Unified serialization interface for converting data between JSON, XML, YAML, TOM
 | Method                              | Signature                        | Description                                    |
 |-------------------------------------|----------------------------------|------------------------------------------------|
 | `Parse(text, format)`               | `Object(String, Integer)`        | Parse text in specified format into a value     |
+| `ParseResult(text, format)`         | `Result(String, Integer)`        | Parse as `Ok(value)` or `Err(message)`          |
 | `Format(value, format)`             | `String(Object, Integer)`        | Format value as compact text in given format    |
 | `FormatPretty(value, format, indent)` | `String(Object, Integer, Integer)` | Format with indentation                    |
 | `IsValid(text, format)`             | `Boolean(String, Integer)`       | Check if text is valid for given format         |
 | `Detect(text)`                      | `Integer(String)`                | Auto-detect format from content (-1 if unknown) |
 | `AutoParse(text)`                   | `Object(String)`                 | Parse by auto-detecting the format              |
+| `AutoParseResult(text)`             | `Result(String)`                 | Auto-detect and parse as `Ok(value)` or `Err(message)` |
 | `Convert(text, from, to)`           | `String(String, Integer, Integer)` | Convert between formats                      |
 | `FormatName(format)`                | `String(Integer)`                | Get format name ("json", "xml", etc.)           |
 | `MimeType(format)`                  | `String(Integer)`                | Get MIME type ("application/json", etc.)        |
 | `FormatFromName(name)`              | `Integer(String)`                | Look up format by name (case-insensitive)       |
-| `Error()`                           | `String()`                       | Get last error message (empty if none)          |
+| `Error()`                           | `String()`                       | Compatibility diagnostic after legacy parse calls |
 
 ### Notes
 
 - **Auto-detection heuristics:** valid JSON objects/arrays and JSON-looking `{`/`[` text → JSON, `<` → XML, standalone `---` → YAML, valid `[section]`/`key = value` → TOML, valid `key: value` → YAML, first-line commas → CSV; unknown plain text returns `-1`
-- `Parse()` returns NULL on error; check `Error()` for details
+- Prefer `ParseResult()` and `AutoParseResult()` for user-provided input; failures are returned as `Err(message)`
+- `Parse()` and `AutoParse()` remain available for compatibility and return NULL on error; check `Error()` after those calls for details
 - `Convert()` is a convenience for `Format(Parse(text, from), to)` with built-in projections for XML, TOML, and CSV.
 - XML conversion preserves element attributes under an `@attrs` mapping and element text under `@text` when mixed with attributes or child elements.
 - All returned strings are newly allocated
@@ -683,7 +704,12 @@ Unified serialization interface for converting data between JSON, XML, YAML, TOM
 ```basic
 ' Parse JSON data
 DIM json AS STRING = "{""name"": ""Alice"", ""age"": 30}"
-DIM data AS OBJECT = Viper.Data.Serialize.Parse(json, 0)  ' FORMAT_JSON
+DIM parsed AS OBJECT = Viper.Data.Serialize.ParseResult(json, 0)  ' FORMAT_JSON
+IF parsed.IsErr THEN
+    PRINT "Parse error: "; parsed.UnwrapErrStr()
+    END
+END IF
+DIM data AS OBJECT = parsed.Unwrap()
 
 ' Convert JSON to TOML
 DIM toml AS STRING = Viper.Data.Serialize.Convert(json, 0, 3)  ' JSON → TOML
@@ -694,7 +720,11 @@ DIM unknown AS STRING = "{""key"": ""value""}"
 DIM detected AS INTEGER = Viper.Data.Serialize.Detect(unknown)
 PRINT Viper.Data.Serialize.FormatName(detected)  ' Output: "json"
 
-DIM parsed AS OBJECT = Viper.Data.Serialize.AutoParse(unknown)
+DIM autoParsed AS OBJECT = Viper.Data.Serialize.AutoParseResult(unknown)
+IF autoParsed.IsErr THEN
+    PRINT "AutoParse error: "; autoParsed.UnwrapErrStr()
+    END
+END IF
 
 ' Pretty-print as JSON
 DIM pretty AS STRING = Viper.Data.Serialize.FormatPretty(data, 0, 2)
@@ -702,7 +732,10 @@ PRINT pretty
 
 ' Validate before parsing
 IF Viper.Data.Serialize.IsValid(userInput, 0) THEN
-    DIM safe AS OBJECT = Viper.Data.Serialize.Parse(userInput, 0)
+    DIM safeResult AS OBJECT = Viper.Data.Serialize.ParseResult(userInput, 0)
+    IF safeResult.IsOk THEN
+        DIM safe AS OBJECT = safeResult.Unwrap()
+    END IF
 END IF
 ```
 
@@ -728,7 +761,8 @@ XPath-lite path queries. All node values are opaque objects.
 | Method             | Signature                | Description                                     |
 |--------------------|--------------------------|--------------------------------------------------|
 | `Parse(xml)`       | `Object(String)`         | Parse an XML string; returns document node or NULL |
-| `Error()`          | `String()`               | Last parse/operation error (empty if none)      |
+| `ParseResult(xml)` | `Result(String)`         | Parse as `Ok(document)` or `Err(message)`       |
+| `Error()`          | `String()`               | Compatibility diagnostic after legacy parse calls |
 | `IsValid(xml)`     | `Boolean(String)`        | True if the string is well-formed XML            |
 
 ### Node Creation
@@ -776,6 +810,7 @@ XPath-lite path queries. All node values are opaque objects.
 | Method            | Signature                | Description                                             |
 |-------------------|--------------------------|---------------------------------------------------------|
 | `Find(n, path)`   | `Object(Object, String)` | Find first node matching a simple path (e.g. "a/b/c")  |
+| `FindOption(n, path)` | `Option[Object](Object, String)` | Find first matching node as `Some(node)`, or `None` |
 | `FindAll(n, path)`| `Seq(Object, String)`    | Find all nodes matching the path                        |
 
 ### Mutation
@@ -799,8 +834,10 @@ XPath-lite path queries. All node values are opaque objects.
 
 ### Notes
 
-- `Parse` returns a document node on success, or NULL on error. Use `Root(doc)` to get the document element.
-- Check `Error()` after any NULL return for a diagnostic message.
+- Prefer `ParseResult` for user-provided XML; it returns `Ok(document)` or `Err(message)` without a side-channel read.
+- `Parse` remains available for compatibility and returns a document node on success or NULL on error. Use `Root(doc)` to get the document element.
+- Check `Error()` after a legacy `Parse` NULL return for a diagnostic message.
+- Prefer `FindOption()` for new search code. `Find()` remains available for compatibility with existing NULL checks.
 - XML parsing enforces one document element, matching closing tags, valid XML names, unique attributes, and valid entity references.
 - Element, attribute, comment, and CDATA creation/mutation validate XML name/content rules and report errors instead of creating malformed trees.
 - Path syntax for `Find`/`FindAll`: slash-separated tag names from the given node or its direct children (e.g. `"books/book/title"`). A path without `/` remains a recursive tag search.
@@ -819,7 +856,12 @@ bind Viper.Data.Xml as Xml;
 
 func start() {
     var src = "<catalog><book id=\"1\"><title>Viper Primer</title><price>29.99</price></book></catalog>";
-    var doc = Xml.Parse(src);
+    var parsed = Xml.ParseResult(src);
+    if parsed.IsErr {
+        Say("Parse error: " + parsed.UnwrapErrStr());
+        return;
+    }
+    var doc = parsed.Unwrap();
     var root = Xml.Root(doc);
 
     var book = Xml.Child(root, "book");
@@ -847,13 +889,14 @@ func start() {
 
 ```basic
 DIM src AS STRING = "<config><host>localhost</host><port>8080</port></config>"
-DIM doc AS OBJECT = Viper.Data.Xml.Parse(src)
+DIM parsed AS OBJECT = Viper.Data.Xml.ParseResult(src)
 
-IF doc = NULL THEN
-    PRINT "Parse error: "; Viper.Data.Xml.Error()
+IF parsed.IsErr THEN
+    PRINT "Parse error: "; parsed.UnwrapErrStr()
     END
 END IF
 
+DIM doc AS OBJECT = parsed.Unwrap()
 DIM root AS OBJECT = Viper.Data.Xml.Root(doc)
 DIM host AS STRING = Viper.Data.Xml.TextContent(Viper.Data.Xml.Child(root, "host"))
 DIM port AS STRING = Viper.Data.Xml.TextContent(Viper.Data.Xml.Child(root, "port"))
@@ -874,7 +917,8 @@ PRINT Viper.Data.Xml.FormatPretty(root, 2)
 
 ' Attribute access
 DIM items AS STRING = "<items><item key=""a"" val=""1""/><item key=""b"" val=""2""/></items>"
-DIM ir AS OBJECT = Viper.Data.Xml.Parse(items)
+DIM irResult AS OBJECT = Viper.Data.Xml.ParseResult(items)
+DIM ir AS OBJECT = irResult.Unwrap()
 DIM allItems AS OBJECT = Viper.Data.Xml.ChildrenByTag(Viper.Data.Xml.Root(ir), "item")
 FOR i = 0 TO allItems.Length - 1
     DIM it AS OBJECT = allItems.Get(i)
@@ -896,7 +940,8 @@ model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, ma
 | Method                    | Signature                        | Description                                           |
 |---------------------------|----------------------------------|-------------------------------------------------------|
 | `Parse(yaml)`             | `Object(String)`                 | Parse YAML string; returns value or NULL on error     |
-| `Error()`                 | `String()`                       | Last error message (empty string if none)             |
+| `ParseResult(yaml)`       | `Result(String)`                 | Parse as `Ok(value)` or `Err(message)`                |
+| `Error()`                 | `String()`                       | Compatibility diagnostic after legacy parse calls     |
 | `IsValid(yaml)`           | `Boolean(String)`                | True if the string is valid YAML                      |
 | `Format(obj)`             | `String(Object)`                 | Format a value as compact YAML                        |
 | `FormatIndent(obj, spaces)` | `String(Object, Integer)`      | Format with given indentation level                   |
@@ -916,6 +961,8 @@ model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, ma
 
 ### Notes
 
+- Prefer `ParseResult` for user-provided YAML; it distinguishes valid YAML null (`Ok(NULL)`) from parse failure (`Err(message)`).
+- `Parse` remains available for compatibility and returns NULL both for valid YAML null and for parse failure; check `Error()` after legacy calls when NULL is ambiguous.
 - The returned object uses the same representation as `Viper.Text.Json.Parse` — use `Map`, `Seq`, and scalar
   accessors to traverse the parsed value.
 - Explicit multi-document YAML streams separated by `---` parse as a sequence of documents.
@@ -936,7 +983,12 @@ bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var src = "name: Alice\nage: 30\nscores:\n  - 95\n  - 87\n  - 92\n";
-    var obj = Yaml.Parse(src);
+    var parsed = Yaml.ParseResult(src);
+    if parsed.IsErr {
+        Say("YAML error: " + parsed.UnwrapErrStr());
+        return;
+    }
+    var obj = parsed.Unwrap();
 
     Say("Type: " + Yaml.TypeOf(obj));  // mapping
 
@@ -958,13 +1010,14 @@ DIM src AS STRING = "server:" & Chr(10) & _
                     "  port: 9090" & Chr(10) & _
                     "  tls: false" & Chr(10)
 
-DIM cfg AS OBJECT = Viper.Data.Yaml.Parse(src)
+DIM parsed AS OBJECT = Viper.Data.Yaml.ParseResult(src)
 
-IF cfg = NULL THEN
-    PRINT "YAML error: "; Viper.Data.Yaml.Error()
+IF parsed.IsErr THEN
+    PRINT "YAML error: "; parsed.UnwrapErrStr()
     END
 END IF
 
+DIM cfg AS OBJECT = parsed.Unwrap()
 PRINT "Type: "; Viper.Data.Yaml.TypeOf(cfg)   ' mapping
 
 ' Re-format as compact YAML
@@ -976,8 +1029,11 @@ PRINT Viper.Data.Yaml.FormatIndent(cfg, 4)
 ' Validate before processing user input
 DIM userYaml AS STRING = "key: value"
 IF Viper.Data.Yaml.IsValid(userYaml) THEN
-    DIM parsed AS OBJECT = Viper.Data.Yaml.Parse(userYaml)
-    PRINT Viper.Data.Yaml.TypeOf(parsed)  ' mapping
+    DIM userParsed AS OBJECT = Viper.Data.Yaml.ParseResult(userYaml)
+    IF userParsed.IsOk THEN
+        DIM value AS OBJECT = userParsed.Unwrap()
+        PRINT Viper.Data.Yaml.TypeOf(value)  ' mapping
+    END IF
 END IF
 ```
 

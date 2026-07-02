@@ -1,8 +1,9 @@
 // =============================================================================
 // API Audit: Viper.Math.Bits - Bitwise Operations
 // =============================================================================
-// Tests: And, Or, Xor, Not, Shl, Shr, Ushr, Set, Clear, Get, Toggle,
-//        Flip, Count, LeadZ, TrailZ, Rotl, Rotr, Swap
+// Tests: And, Or, Xor, Not, Shl, Shr, ShiftRightLogical, Set, Clear, Get,
+//        Toggle, Flip, Count, CountLeadingZeros, CountTrailingZeros,
+//        RotateLeft, RotateRight, Swap
 // =============================================================================
 
 module BitsDemo;
@@ -68,12 +69,12 @@ func start() {
     Say("Bits.Shr(1, 0):");
     SayInt(Bits.Shr(1, 0));
 
-    // --- Ushr ---
-    Say("--- Ushr ---");
-    Say("Bits.Ushr(16, 2):");
-    SayInt(Bits.Ushr(16, 2));
-    Say("Bits.Ushr(-1, 60):");
-    SayInt(Bits.Ushr(-1, 60));
+    // --- ShiftRightLogical ---
+    Say("--- ShiftRightLogical ---");
+    Say("Bits.ShiftRightLogical(16, 2):");
+    SayInt(Bits.ShiftRightLogical(16, 2));
+    Say("Bits.ShiftRightLogical(-1, 60):");
+    SayInt(Bits.ShiftRightLogical(-1, 60));
 
     // --- Set ---
     Say("--- Set ---");
@@ -131,35 +132,35 @@ func start() {
     Say("Bits.Count(255):");
     SayInt(Bits.Count(255));
 
-    // --- LeadZ ---
-    Say("--- LeadZ ---");
-    Say("Bits.LeadZ(1):");
-    SayInt(Bits.LeadZ(1));
-    Say("Bits.LeadZ(256):");
-    SayInt(Bits.LeadZ(256));
+    // --- CountLeadingZeros ---
+    Say("--- CountLeadingZeros ---");
+    Say("Bits.CountLeadingZeros(1):");
+    SayInt(Bits.CountLeadingZeros(1));
+    Say("Bits.CountLeadingZeros(256):");
+    SayInt(Bits.CountLeadingZeros(256));
 
-    // --- TrailZ ---
-    Say("--- TrailZ ---");
-    Say("Bits.TrailZ(1):");
-    SayInt(Bits.TrailZ(1));
-    Say("Bits.TrailZ(8):");
-    SayInt(Bits.TrailZ(8));
-    Say("Bits.TrailZ(16):");
-    SayInt(Bits.TrailZ(16));
+    // --- CountTrailingZeros ---
+    Say("--- CountTrailingZeros ---");
+    Say("Bits.CountTrailingZeros(1):");
+    SayInt(Bits.CountTrailingZeros(1));
+    Say("Bits.CountTrailingZeros(8):");
+    SayInt(Bits.CountTrailingZeros(8));
+    Say("Bits.CountTrailingZeros(16):");
+    SayInt(Bits.CountTrailingZeros(16));
 
-    // --- Rotl ---
-    Say("--- Rotl ---");
-    Say("Bits.Rotl(1, 1):");
-    SayInt(Bits.Rotl(1, 1));
-    Say("Bits.Rotl(1, 4):");
-    SayInt(Bits.Rotl(1, 4));
+    // --- RotateLeft ---
+    Say("--- RotateLeft ---");
+    Say("Bits.RotateLeft(1, 1):");
+    SayInt(Bits.RotateLeft(1, 1));
+    Say("Bits.RotateLeft(1, 4):");
+    SayInt(Bits.RotateLeft(1, 4));
 
-    // --- Rotr ---
-    Say("--- Rotr ---");
-    Say("Bits.Rotr(2, 1):");
-    SayInt(Bits.Rotr(2, 1));
-    Say("Bits.Rotr(16, 4):");
-    SayInt(Bits.Rotr(16, 4));
+    // --- RotateRight ---
+    Say("--- RotateRight ---");
+    Say("Bits.RotateRight(2, 1):");
+    SayInt(Bits.RotateRight(2, 1));
+    Say("Bits.RotateRight(16, 4):");
+    SayInt(Bits.RotateRight(16, 4));
 
     // --- Swap ---
     Say("--- Swap ---");

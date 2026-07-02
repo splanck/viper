@@ -72,6 +72,15 @@ typedef struct {
     int8_t last_found;     ///< 1 if last search found a path.
 } rt_pathfinder_impl;
 
+/// @brief Immutable pathfinding operation result.
+typedef struct {
+    void *path;     ///< List[Seq[Integer]] waypoint path.
+    int64_t steps;  ///< Nodes expanded by the search.
+    int64_t cost;   ///< Weighted movement cost, or -1 when unavailable.
+    int64_t length; ///< Cell-to-cell path length, or -1 when not found.
+    int8_t found;   ///< 1 when a path was found.
+} rt_path_result_impl;
+
 /// @brief Flat index for (x, y) in the grid.
 static inline int32_t pf_idx(const rt_pathfinder_impl *pf, int32_t x, int32_t y) {
     return y * pf->width + x;
@@ -97,6 +106,55 @@ static rt_pathfinder_impl *checked_pathfinder(void *ptr, const char *api) {
         return NULL;
     }
     return (rt_pathfinder_impl *)ptr;
+}
+
+/// @brief Safe-cast a handle to PathResult, trapping on a class mismatch.
+/// @param ptr Candidate PathResult object.
+/// @param api Public API name for diagnostics.
+/// @return PathResult implementation, or NULL when @p ptr is NULL.
+static rt_path_result_impl *checked_path_result(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_PATH_RESULT_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_path_result_impl *)ptr;
+}
+
+/// @brief Release the retained path list inside a PathResult.
+static void path_result_finalizer(void *obj) {
+    rt_path_result_impl *result = (rt_path_result_impl *)obj;
+    if (result->path && rt_obj_release_check0(result->path))
+        rt_obj_free(result->path);
+    result->path = NULL;
+}
+
+/// @brief Create a PathResult and take ownership of @p path.
+/// @details The path reference is released by the PathResult finalizer. On
+///          allocation failure the caller still owns @p path and must release it.
+static void *path_result_new_take_path(void *path, int8_t found, int64_t steps, int64_t cost) {
+    rt_path_result_impl *result = (rt_path_result_impl *)rt_obj_new_i64(
+        RT_PATH_RESULT_CLASS_ID, (int64_t)sizeof(rt_path_result_impl));
+    if (!result)
+        return NULL;
+    result->path = path;
+    result->steps = steps;
+    result->cost = found ? cost : -1;
+    result->found = found ? 1 : 0;
+    int64_t count = path ? rt_list_len(path) : 0;
+    result->length = result->found ? (count > 0 ? count - 1 : 0) : -1;
+    rt_obj_set_finalizer(result, path_result_finalizer);
+    return result;
+}
+
+/// @brief Create an empty PathResult and release its empty path on allocation failure.
+static void *path_result_new_empty(void) {
+    void *path = rt_list_new();
+    void *result = path_result_new_take_path(path, 0, 0, -1);
+    if (!result && path && rt_obj_release_check0(path))
+        rt_obj_free(path);
+    return result;
 }
 
 /// @brief Compute a checked cell count for a rectangular pathfinder grid.
@@ -369,6 +427,49 @@ int8_t rt_pathfinder_get_last_found(void *ptr) {
     rt_pathfinder_impl *pf =
         checked_pathfinder(ptr, "Pathfinder.LastFound: expected Viper.Game.Pathfinder");
     return pf ? pf->last_found : 0;
+}
+
+//=============================================================================
+// PathResult API
+//=============================================================================
+
+int8_t rt_path_result_found(void *ptr) {
+    rt_path_result_impl *result =
+        checked_path_result(ptr, "PathResult.Found: expected Viper.Game.PathResult");
+    return result ? result->found : 0;
+}
+
+int64_t rt_path_result_steps(void *ptr) {
+    rt_path_result_impl *result =
+        checked_path_result(ptr, "PathResult.Steps: expected Viper.Game.PathResult");
+    return result ? result->steps : 0;
+}
+
+int64_t rt_path_result_cost(void *ptr) {
+    rt_path_result_impl *result =
+        checked_path_result(ptr, "PathResult.Cost: expected Viper.Game.PathResult");
+    return result ? result->cost : -1;
+}
+
+int64_t rt_path_result_step_count(void *ptr) {
+    rt_path_result_impl *result =
+        checked_path_result(ptr, "PathResult.StepCount: expected Viper.Game.PathResult");
+    return result ? result->length : -1;
+}
+
+int64_t rt_path_result_length(void *ptr) {
+    rt_path_result_impl *result =
+        checked_path_result(ptr, "PathResult.Length: expected Viper.Game.PathResult");
+    return result ? result->length : -1;
+}
+
+void *rt_path_result_path(void *ptr) {
+    rt_path_result_impl *result =
+        checked_path_result(ptr, "PathResult.Path: expected Viper.Game.PathResult");
+    if (!result || !result->path)
+        return rt_list_new();
+    rt_obj_retain_maybe(result->path);
+    return result->path;
 }
 
 //=============================================================================
@@ -772,6 +873,28 @@ void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int
     return pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, NULL);
 }
 
+void *rt_pathfinder_find_path_result(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.FindPathResult: expected Viper.Game.Pathfinder");
+    if (!pf)
+        return path_result_new_empty();
+    int64_t cost = -1;
+    void *path = NULL;
+    if (!pf_in_bounds_i64(pf, sx, sy) || !pf_in_bounds_i64(pf, gx, gy)) {
+        pf->last_found = 0;
+        pf->last_steps = 0;
+        path = rt_list_new();
+    } else {
+        path = pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, &cost);
+    }
+    if (!path)
+        path = rt_list_new();
+    void *result = path_result_new_take_path(path, pf->last_found, pf->last_steps, cost);
+    if (!result && path && rt_obj_release_check0(path))
+        rt_obj_free(path);
+    return result;
+}
+
 /// @brief Compute just the path length (number of cell-to-cell steps) from start to goal.
 /// -1 if no path exists.
 int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
@@ -879,4 +1002,18 @@ void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t targ
     free(queue);
     free(nodes);
     return result ? result : rt_list_new();
+}
+
+void *rt_pathfinder_find_nearest_result(void *ptr, int64_t sx, int64_t sy, int64_t target_value) {
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.FindNearestResult: expected Viper.Game.Pathfinder");
+    if (!pf)
+        return path_result_new_empty();
+    void *path = rt_pathfinder_find_nearest(ptr, sx, sy, target_value);
+    if (!path)
+        path = rt_list_new();
+    void *result = path_result_new_take_path(path, pf->last_found, pf->last_steps, -1);
+    if (!result && path && rt_obj_release_check0(path))
+        rt_obj_free(path);
+    return result;
 }

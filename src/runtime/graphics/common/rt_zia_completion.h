@@ -124,7 +124,8 @@ void *rt_zia_toolchain_compile(rt_string source);
 void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
 
 /// @brief Create a project language index rooted at @p root.
-/// @return Opaque Viper.Zia.ProjectIndex.ProjectIndexHandle object, or null when editor services are
+/// @return Opaque Viper.Zia.ProjectIndex.ProjectIndexHandle object, or null when editor services
+/// are
 ///         unavailable.
 void *rt_zia_project_index_new(rt_string root);
 
@@ -203,6 +204,13 @@ int8_t rt_zia_semantic_job_is_error(void *handle);
 
 /// @brief Return a completed semantic background job's error string, if any.
 rt_string rt_zia_semantic_job_error(void *handle);
+
+/// @brief Return a semantic background job's error as an Option string.
+/// @details Returns `SomeStr(message)` when the job has a non-empty error
+///          payload, otherwise `None`. This is the preferred API for new code
+///          because absence is explicit and cannot be confused with an empty
+///          error string.
+void *rt_zia_semantic_job_error_option(void *handle);
 
 /// @brief Return the numeric semantic background job kind.
 int64_t rt_zia_semantic_job_kind(void *handle);

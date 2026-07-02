@@ -232,6 +232,11 @@ void *rt_lazyseq_w_filter(void *seq, void *pred);
 void *rt_lazyseq_w_take_while(void *seq, void *pred);
 void *rt_lazyseq_w_drop_while(void *seq, void *pred);
 void *rt_lazyseq_w_find(void *seq, void *pred);
+/// @brief Find first matching lazy element as an Option wrapper for IL calls.
+/// @param seq LazySeq object.
+/// @param pred Predicate function (int8_t (*)(void *) cast to void*).
+/// @return Opaque Viper.Option containing the first matching element, or None.
+void *rt_lazyseq_w_find_option(void *seq, void *pred);
 int8_t rt_lazyseq_w_any(void *seq, void *pred);
 int8_t rt_lazyseq_w_all(void *seq, void *pred);
 

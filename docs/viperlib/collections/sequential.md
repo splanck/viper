@@ -37,6 +37,7 @@ Dynamic array that grows automatically. Stores object references.
 | `Clear()`                | `Void()`                | Removes all items from the list                                                       |
 | `Has(item)`              | `Boolean(Object)`       | Returns true if the list contains the object (reference equality)                     |
 | `Find(item)`             | `Integer(Object)`       | Returns index of the first matching object, or `-1` if not found                      |
+| `FindOption(item)`       | `Option[Integer](Object)` | Returns `Some(index)` for the first matching object, or `None` if not found        |
 | `Insert(index, item)`    | `Void(Integer, Object)` | Inserts the item at `index` (0..Count); `index == Len` appends; traps if out of range   |
 | `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object (reference equality); returns true if removed       |
 | `RemoveAt(index)`        | `Void(Integer)`         | Removes the item at the specified index                                               |
@@ -59,6 +60,7 @@ Dynamic array that grows automatically. Stores object references.
 - List retains stored objects and releases them when removed, overwritten, cleared, or finalized.
 - `Get()`, `First()`, `Last()`, and `Pop()` return owned object references, so callers can keep the result after the list changes or is released.
 - `Slice()` and `Clone()` return independent lists that retain their elements without leaking temporary `Get()` references.
+- Prefer `FindOption()` for new code. `Find()` remains available for compatibility with existing `-1` checks.
 
 ### Zia Example
 
@@ -113,7 +115,10 @@ list.Push(a)
 list.Push(c)
 list.Insert(1, b)          ' [a, b, c]
 
-PRINT list.Find(b)         ' Output: 1
+DIM found AS OBJECT = list.FindOption(b)
+IF found.IsSome THEN
+  PRINT found.UnwrapI64()  ' Output: 1
+END IF
 
 IF list.Has(a) THEN
   PRINT 1                  ' Output: 1 (true)
@@ -122,7 +127,7 @@ END IF
 IF list.Remove(a) THEN
   PRINT list.Count           ' Output: 2
 END IF
-PRINT list.Find(a)         ' Output: -1
+PRINT list.FindOption(a).IsNone  ' Output: 1
 
 ' Access by index
 PRINT list.Get(0)          ' First element
@@ -162,6 +167,7 @@ circular buffer for O(1) add and take operations.
 | `Push(value)` | `Void(Object)` | Add element to back of queue                           |
 | `Pop()`       | `Object()`     | Remove and return front element (traps if empty)       |
 | `TryPop()`    | `Object()`     | Remove and return front element, or null if empty      |
+| `TryPopOption()` | `Option[Object]()` | Remove and return front element, or `None` if empty |
 | `Peek()`      | `Object()`     | Return front element without removing (traps if empty) |
 | `Has(value)`  | `Boolean(Object)` | Check if an element is in the queue (by reference)  |
 | `Clear()`     | `Void()`       | Remove all elements                                    |
@@ -173,6 +179,7 @@ circular buffer for O(1) add and take operations.
 
 - Queue stores borrowed elements when used directly through the C runtime API unless `set_owns_elements(true)` is selected on an empty queue. Runtime conversion helpers return owning queues or owning snapshots.
 - `Pop()` and `TryPop()` return owned object references. In owning mode, the queue's retained reference is transferred to the caller.
+- Prefer `TryPopOption()` for new code. It distinguishes an empty queue from a stored null object; `TryPop()` remains as a compatibility helper.
 
 ### Zia Example
 
@@ -254,6 +261,7 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 | `Push(value)` | `Void(Object)` | Add element to top of stack                          |
 | `Pop()`       | `Object()`     | Remove and return top element (traps if empty)       |
 | `TryPop()`    | `Object()`     | Remove and return top element, or null if empty      |
+| `TryPopOption()` | `Option[Object]()` | Remove and return top element, or `None` if empty |
 | `Peek()`      | `Object()`     | Return top element without removing (traps if empty) |
 | `Has(value)`  | `Boolean(Object)` | Check if an element is on the stack (by reference) |
 | `Clear()`     | `Void()`       | Remove all elements                                  |
@@ -266,6 +274,7 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 - Stack-to-list, stack-to-seq, and iterator snapshots preserve bottom-to-top order without mutating the source stack.
 - Stack stores borrowed elements when used directly through the C runtime API unless `set_owns_elements(true)` is selected on an empty stack. Runtime conversion helpers return owning stacks or owning snapshots.
 - `Pop()` and `TryPop()` return owned object references. In owning mode, the stack's retained reference is transferred to the caller.
+- Prefer `TryPopOption()` for new code. It distinguishes an empty stack from a stored null object; `TryPop()` remains as a compatibility helper.
 - Constructor allocation failures trap cleanly instead of returning a partial stack.
 
 ### Zia Example
@@ -340,7 +349,7 @@ stacks and queues while also supporting indexed access.
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
 | `Length`  | Integer | Number of elements in the deque           |
-| `Cap`     | Integer | Current allocated capacity                |
+| `Capacity` | Integer | Current allocated capacity              |
 | `IsEmpty` | Boolean | Returns true if the deque has no elements |
 
 ### Methods
@@ -353,6 +362,8 @@ stacks and queues while also supporting indexed access.
 | `PopBack()`          | `Object()`              | Remove and return back element (traps if empty)       |
 | `TryPopFront()`      | `Object()`              | Remove and return front element, or null if empty     |
 | `TryPopBack()`       | `Object()`              | Remove and return back element, or null if empty      |
+| `TryPopFrontOption()`| `Option[Object]()`      | Remove and return front element, or `None` if empty   |
+| `TryPopBackOption()` | `Option[Object]()`      | Remove and return back element, or `None` if empty    |
 | `PeekFront()`        | `Object()`              | Return front element without removing (traps if empty)|
 | `PeekBack()`         | `Object()`              | Return back element without removing (traps if empty) |
 | `Get(index)`         | `Object(Integer)`       | Get element at index (0 = front)                      |
@@ -367,7 +378,9 @@ stacks and queues while also supporting indexed access.
 ### Notes
 
 - Deque retains stored objects and releases them when removed, overwritten, cleared, or finalized.
+- `Cap` remains available as a compatibility alias for `Capacity`.
 - `Get()`, `PeekFront()`, `PeekBack()`, `PopFront()`, `PopBack()`, `TryPopFront()`, and `TryPopBack()` return owned object references.
+- Prefer `TryPopFrontOption()` and `TryPopBackOption()` for new code. They distinguish an empty deque from a stored null object.
 - `Clone()`, `ToSeq()`, and `ToList()` return independent collections that retain their elements.
 
 ### Zia Example
@@ -461,10 +474,12 @@ elements.
 | Property  | Type      | Description                          |
 |-----------|-----------|--------------------------------------|
 | `Length`  | `Integer` | Number of elements currently stored  |
-| `Cap`     | `Integer` | Maximum capacity (fixed at creation) |
+| `Capacity` | `Integer` | Maximum capacity (fixed at creation) |
 | `IsEmpty` | `Boolean` | True if ring has no elements         |
 | `IsFull`  | `Boolean` | True if ring is at capacity          |
 | `OwnsElements` | `Boolean` | True when the ring retains/releases stored runtime objects |
+
+`Cap` remains available as a compatibility alias for `Capacity`.
 
 ### Methods
 
@@ -584,6 +599,8 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 | `Peek()`             | `Object()`             | Return highest priority element without removing (traps if empty) |
 | `TryPop()`           | `Object()`             | Remove and return highest priority element, or null if empty |
 | `TryPeek()`          | `Object()`             | Return highest priority element, or null if empty          |
+| `TryPopOption()`     | `Option[Object]()`     | Remove and return highest priority element, or `None` if empty |
+| `TryPeekOption()`    | `Option[Object]()`     | Return highest priority element, or `None` if empty        |
 | `Clear()`            | `Void()`               | Remove all elements                                        |
 | `Items()`            | `Seq()`                | Return elements in priority order as a Seq (alias for ToSeq) |
 | `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
@@ -592,6 +609,7 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 
 - Heap retains pushed object values and releases them when removed, cleared, or finalized.
 - `Pop()` and `TryPop()` transfer the heap's retained object reference to the caller. `Peek()` and `TryPeek()` return an additional owned reference without removing the item.
+- Prefer `TryPopOption()` and `TryPeekOption()` for new code. They distinguish an empty heap from a stored null object; the nullable forms remain for compatibility.
 - `Items()` and `ToSeq()` return independent owning snapshots in priority order.
 
 ### Zia Example

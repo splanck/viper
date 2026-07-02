@@ -69,7 +69,7 @@ PRINT "Info(title,msg), Warning(title,msg), Error(title,msg), Question(title,msg
 PRINT "--- FileDialog ---"
 PRINT "Open(title,dir,filter), OpenMultiple(title,dir,filter), Save(title,dir,filter,default), SelectFolder(title,dir)"
 PRINT "--- FindBar ---"
-PRINT "New(editor), SetFindText(s), GetFindText, SetReplaceText(s), GetReplaceText, SetCaseSensitive(v), SetWholeWord(v), SetRegex(v), FindNext, FindPrev, Replace, ReplaceAll, GetMatchCount, GetCurrentMatch, Focus"
+PRINT "New(editor), SetFindText(s), GetFindText, SetReplaceText(s), GetReplaceText, SetCaseSensitive(v), SetWholeWord(v), SetRegex(v), FindNextOption, FindPrevOption, FindNext, FindPrev, Replace, ReplaceAll, GetMatchCount, GetCurrentMatch, Focus"
 PRINT "--- CommandPalette ---"
 PRINT "New(parent), AddCommand(id,name,desc), AddCommandWithShortcut(id,name,desc,keys), RemoveCommand(id), Clear(), Show(), Hide(), IsVisible, SetPlaceholder(s), GetSelected, WasSelected"
 PRINT "--- Tooltip ---"

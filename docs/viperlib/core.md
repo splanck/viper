@@ -106,8 +106,8 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 | `EqI64(box,val)`    | `Boolean(Object,Integer)` | Compare boxed value to integer                         |
 | `EqF64(box,val)`    | `Boolean(Object,Double)`  | Compare boxed value to double                          |
 | `EqStr(box,val)`    | `Boolean(Object,String)`  | Compare boxed value to string                          |
-| `ValueType(size)`   | `Object(Integer)`         | Allocate a heap-owned boxed value-type payload          |
-| `ValueTypeAddField(obj, offset, kind, retainNow)` | `Void(Object, Integer, Integer, Boolean)` | Register a managed field inside a boxed value type |
+| `ValueType(size)`   | `Object(Integer)`         | Compatibility alias for `Viper.Runtime.Unsafe.ValueType` |
+| `ValueTypeAddField(obj, offset, kind, retainNow)` | `Void(Object, Integer, Integer, Boolean)` | Compatibility alias for `Viper.Runtime.Unsafe.ValueTypeAddField` |
 
 ### Notes
 
@@ -118,8 +118,8 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - The `To*Option` forms do not trap for type mismatch and return managed `Option` values, so Zia and BASIC never need output pointers.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0`/`-0.0` and all NaN payloads. Boxed NaN values compare equal to other boxed NaNs so collection hashing and equality stay compatible.
-- `ValueType(size)` is used by the compiler when boxing structs. Size `0` is valid and creates a managed empty value-type object; negative sizes trap.
-- `Viper.Core.ValueType` is the catalog/introspection class for boxed value-type payloads. The compiler copies the inline payload into heap storage, then registers managed object/string fields with `ValueTypeAddField`/`ValueType.AddField` so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. Registering the same offset with the same field kind is idempotent and does not touch the current slot's reference count; registering the same offset with a different kind traps. When `retainNow` is true, the current slot value is validated before it is retained. If the value-type object already has a finalizer, managed-field cleanup chains it instead of replacing it. User code normally does not call `ValueTypeAddField` directly.
+- `ValueType(size)` and `ValueTypeAddField(...)` are compiler/runtime hooks. New user code should call `Viper.Runtime.Unsafe.ValueType` and `Viper.Runtime.Unsafe.ValueTypeAddField` only when intentionally integrating with boxed value-type payloads.
+- `Viper.Core.ValueType` is the catalog/introspection class for boxed value-type payloads. The compiler copies the inline payload into heap storage, then registers managed object/string fields with the unsafe value-type field registration hook so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. Registering the same offset with the same field kind is idempotent and does not touch the current slot's reference count; registering the same offset with a different kind traps. When `retainNow` is true, the current slot value is validated before it is retained. If the value-type object already has a finalizer, managed-field cleanup chains it instead of replacing it.
 
 ### Zia Example
 
@@ -249,10 +249,10 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 | Method                      | Signature                           | Description                                                        |
 |-----------------------------|-------------------------------------|--------------------------------------------------------------------|
 | `TryInt(s)`                 | `Option<Integer>(String)`           | Parse integer; returns `None` if invalid                           |
-| `TryNum(s)`                 | `Option<Double>(String)`            | Parse double; returns `None` if invalid                            |
+| `TryDouble(s)`              | `Option<Double>(String)`            | Parse double; returns `None` if invalid                            |
 | `TryBool(s)`                | `Option<Boolean>(String)`           | Parse boolean; returns `None` if invalid                           |
 | `IntOr(s, default)`         | `Integer(String, Integer)`          | Parse `s` as integer; return `default` on failure                  |
-| `NumOr(s, default)`         | `Double(String, Double)`            | Parse `s` as double; return `default` on failure                   |
+| `DoubleOr(s, default)`      | `Double(String, Double)`            | Parse `s` as double; return `default` on failure                   |
 | `BoolOr(s, default)`        | `Boolean(String, Boolean)`          | Parse `s` as boolean; return `default` on failure                  |
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
@@ -260,16 +260,18 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 
 ### Notes
 
-- `TryInt`, `TryNum`, and `TryBool` return managed `Option` values. The lower-level C output-pointer helpers remain runtime-internal.
+- `TryInt`, `TryDouble`, and `TryBool` return managed `Option` values. The lower-level C output-pointer helpers remain runtime-internal.
+- `TryNum` and `NumOr` remain available as compatibility aliases for
+  `TryDouble` and `DoubleOr`.
 - Null input is treated as parse failure: `Try*` returns `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). Leading `+` and `-` signs are accepted for radix 10 only; non-decimal radices parse unsigned 64-bit bit patterns so formatted hex/binary values can round-trip.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
 - Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings. Decimal overflow and non-finite decimal results are rejected; finite underflow to zero or a subnormal value is accepted.
-### Parse.TryNum and Parse.TryInt Example
+### Parse.TryDouble and Parse.TryInt Example
 
 ```rust
-var n = Parse.TryNum("3.14")          // Some(3.14)
-var bad = Parse.TryNum("abc")         // None
+var n = Parse.TryDouble("3.14")       // Some(3.14)
+var bad = Parse.TryDouble("abc")      // None
 if bad.get_IsNone() then
     Say("Not a number")
 end if
@@ -304,7 +306,7 @@ func start() {
     Say("0xFF = " + Fmt.Int(hex));        // 255
 
     // Float parsing
-    var f = Parse.NumOr("3.14", 0.0);
+    var f = Parse.DoubleOr("3.14", 0.0);
     Say("Float: " + Fmt.Num(f));          // 3.14
 }
 ```
@@ -314,7 +316,7 @@ func start() {
 ```basic
 ' Safe parsing with defaults
 DIM n AS INTEGER = Viper.Core.Parse.IntOr(userInput, 0)
-DIM f AS DOUBLE  = Viper.Core.Parse.NumOr(userInput, 0.0)
+DIM f AS DOUBLE  = Viper.Core.Parse.DoubleOr(userInput, 0.0)
 DIM b AS INTEGER = Viper.Core.Parse.BoolOr(userInput, 0)
 
 ' Validation before use
@@ -452,11 +454,13 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 
 | Function                                       | Signature                  | Description                              |
 |------------------------------------------------|----------------------------|------------------------------------------|
-| `Viper.Core.Convert.ToString_Int(value)`            | `String(Integer)`          | Convert integer to string                |
-| `Viper.Core.Convert.ToString_Double(value)`         | `String(Double)`           | Convert double to round-trip string      |
+| `Viper.Core.Convert.ToStringInt(value)`             | `String(Integer)`          | Convert integer to string                |
+| `Viper.Core.Convert.ToStringDouble(value)`          | `String(Double)`           | Convert double to round-trip string      |
 | `Viper.Core.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer (traps on failure) |
 | `Viper.Core.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double, including `NaN` / `Inf` / `-Inf` (traps on failure) |
 | `Viper.Core.Convert.NumToInt(value)`                | `Integer(Number)`          | Convert floating-point Number to Integer (truncates/clamps) |
+
+`ToString_Int` and `ToString_Double` remain available as compatibility aliases.
 
 **Note:** `Convert.NumToInt(3.7)` returns `3`, `NaN` returns `0`, and out-of-range values clamp to the nearest signed 64-bit endpoint. This is distinct from `Convert.ToInt64(str)` which parses from a string.
 

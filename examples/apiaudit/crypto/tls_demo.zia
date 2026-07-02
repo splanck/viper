@@ -6,13 +6,17 @@ func start() {
     Say("NOTE: TLS requires actual network connections.");
     Say("Testing API surface only - connect calls may fail gracefully.");
 
-    // Tls.Connect, Tls.ConnectFor - would need a live server
+    // Tls.ConnectResult, Tls.ConnectForResult, Tls.ConnectOptionsResult - would need a live server
+    // Tls.Connect, Tls.ConnectFor - compatibility constructors
     // Tls.Host, Tls.Port, Tls.IsOpen, Tls.Send, Tls.SendStr,
     // Tls.Recv, Tls.RecvStr, Tls.Close, Tls.Error
     // These all require a connected TLS socket.
     // We document the API exists but skip live testing.
 
     Say("Tls API methods:");
+    Say("  ConnectResult(host, port) -> Result");
+    Say("  ConnectForResult(host, port, timeout_ms) -> Result");
+    Say("  ConnectOptionsResult(host, port, ca_file, alpn, verify_cert, timeout_ms) -> Result");
     Say("  Connect(host, port) -> obj");
     Say("  ConnectFor(host, port, timeout_ms) -> obj");
     Say("  get_Host -> str");

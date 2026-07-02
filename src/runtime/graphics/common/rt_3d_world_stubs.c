@@ -635,6 +635,20 @@ void *rt_navmesh3d_find_path(void *n, void *f, void *t) {
     return NULL;
 }
 
+/// @brief Stub for `NavMesh3D.FindPathOption` — A* path lookup as Option.
+/// @details Graphics-disabled builds have no baked navmesh to query, so the
+///          modern absence-aware API returns `None`.
+/// @param n NavMesh3D handle (ignored).
+/// @param f Vec3 path start (ignored).
+/// @param t Vec3 path target (ignored).
+/// @return `None`.
+void *rt_navmesh3d_find_path_option(void *n, void *f, void *t) {
+    (void)n;
+    (void)f;
+    (void)t;
+    return rt_option_none();
+}
+
 /// @brief Stub for `NavMesh3D.SamplePosition` — would normally project
 ///        an arbitrary world-space point onto the nearest walkable navmesh
 ///        polygon, returning the snapped position as a Vec3 (or NULL when

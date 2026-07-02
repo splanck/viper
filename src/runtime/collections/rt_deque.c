@@ -36,6 +36,7 @@
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
 #include "rt_object.h"
+#include "rt_option.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -551,6 +552,26 @@ void *rt_deque_try_pop_front(void *obj) {
     return val;
 }
 
+/// @brief Pop the front element as an Option, preserving NULL as a present value.
+/// @details Returns `None` only when the deque is empty. The deque retains
+///          stored values; after wrapping the transferred value in an Option,
+///          this helper releases the temporary transfer.
+/// @param obj Opaque Deque object pointer.
+/// @return `Some(value)` when an element is removed, otherwise `None`.
+void *rt_deque_try_pop_front_option(void *obj) {
+    if (!obj)
+        return rt_option_none();
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d || d->len == 0)
+        return rt_option_none();
+
+    void *value = rt_deque_try_pop_front(obj);
+    void *option = rt_option_some(value);
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    return option;
+}
+
 /// @brief Pop the back element, or return NULL if empty (no trap).
 /// @param obj Opaque Deque object pointer.
 /// @return The removed element, or NULL if empty.
@@ -570,4 +591,24 @@ void *rt_deque_try_pop_back(void *obj) {
     d->data[back] = NULL;
     d->len--;
     return val;
+}
+
+/// @brief Pop the back element as an Option, preserving NULL as a present value.
+/// @details Returns `None` only when the deque is empty. The deque retains
+///          stored values; after wrapping the transferred value in an Option,
+///          this helper releases the temporary transfer.
+/// @param obj Opaque Deque object pointer.
+/// @return `Some(value)` when an element is removed, otherwise `None`.
+void *rt_deque_try_pop_back_option(void *obj) {
+    if (!obj)
+        return rt_option_none();
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d || d->len == 0)
+        return rt_option_none();
+
+    void *value = rt_deque_try_pop_back(obj);
+    void *option = rt_option_some(value);
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    return option;
 }

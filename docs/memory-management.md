@@ -112,10 +112,10 @@ typedef struct rt_heap_hdr {
 | `rt_heap_release(payload)` | CAS-based atomic decrement. Frees (pool or system) when count reaches zero; double release and attempts to release immortal payloads trap without underflow. |
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
-| `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live object, array, or string handles before retaining and traps on raw string payloads or unsupported heap kinds. |
-| `rt_memory_release(payload)` | Public `Viper.Memory.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
-| `rt_memory_retain_str(str)` | Public `Viper.Memory.RetainStr` wrapper; validates and retains a runtime string. |
-| `rt_memory_release_str(str)` | Public `Viper.Memory.ReleaseStr` wrapper; validates and releases a runtime string. |
+| `rt_memory_retain(payload)` | Public `Viper.Runtime.Unsafe.Retain` wrapper; validates live object, array, or string handles before retaining and traps on raw string payloads or unsupported heap kinds. Compatibility name: `Viper.Memory.Retain`. |
+| `rt_memory_release(payload)` | Public `Viper.Runtime.Unsafe.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. Compatibility name: `Viper.Memory.Release`. |
+| `rt_memory_retain_str(str)` | Public `Viper.Runtime.Unsafe.RetainStr` wrapper; validates and retains a runtime string. Compatibility name: `Viper.Memory.RetainStr`. |
+| `rt_memory_release_str(str)` | Public `Viper.Runtime.Unsafe.ReleaseStr` wrapper; validates and releases a runtime string. Compatibility name: `Viper.Memory.ReleaseStr`. |
 
 Public heap helpers reject non-runtime and already-freed payloads before header
 access. That keeps stale pointers on the trap path instead of relying on
@@ -283,7 +283,9 @@ int64_t freed = rt_gc_collect();  // Run one collection pass
 rt_gc_set_threshold(1000);        // Auto-collect every 1000 allocations
 ```
 
-Exposed to Viper programs as `Viper.Memory.GC.Collect()`, `SetThreshold(n)`, and `GetThreshold()`.
+Exposed to Viper programs as `Viper.Runtime.GC.Collect()`,
+`SetThreshold(n)`, and `GetThreshold()`. The older `Viper.Memory.GC` namespace
+remains available for source and IL compatibility.
 
 ### Thread Safety
 
@@ -389,9 +391,10 @@ rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces pr
   they still release resources when they are actually freed later.
 - Finalizer traps during collection or shutdown finalizer sweeps re-raise the
   original trap after snapshot retains are balanced.
-- Finalizer traps during direct `Viper.Memory.Release()` / `rt_obj_free()` also
-  re-raise the original trap. If the object did not resurrect, the zero-ref
-  payload is still untracked, weak refs are cleared, and heap storage is freed.
+- Finalizer traps during direct `Viper.Runtime.Unsafe.Release()` /
+  `rt_obj_free()` also re-raise the original trap. If the object did not
+  resurrect, the zero-ref payload is still untracked, weak refs are cleared, and
+  heap storage is freed.
 - Managed array cleanup clears each slot before releasing it. If an element
   finalizer traps, cleanup continues with later elements, frees the zero-ref
   array, and then re-raises the first trap.
@@ -409,9 +412,10 @@ Allows finalizers to prevent deallocation by resetting the refcount. After
 skips deallocation. The caller must re-install the finalizer before returning the
 object to users.
 
-`Viper.Memory.Release()` reports this resurrected refcount to callers. A finalizer
-that calls `rt_obj_resurrect()` changes the return value from the transient zero
-to the restored live count.
+`Viper.Runtime.Unsafe.Release()` reports this resurrected refcount to callers. A
+finalizer that calls `rt_obj_resurrect()` changes the return value from the
+transient zero to the restored live count. The compatibility
+`Viper.Memory.Release()` entry point reports the same value.
 
 **Use case**: Vec2/Vec3 thread-local pool recycling. When the pool has space, the
 finalizer resurrects the object and pushes it back to the LIFO pool for reuse
@@ -558,7 +562,7 @@ result that is never released.
 ### 2. HIGH: No Automatic GC Triggering
 
 The cycle collector only runs when explicitly called via
-`Viper.Memory.GC.Collect()`. Programs that create cyclic object graphs (e.g.,
+`Viper.Runtime.GC.Collect()`. Programs that create cyclic object graphs (e.g.,
 doubly-linked lists, parent-child class references) without calling
 `GC.Collect()` will leak those cycles indefinitely.
 

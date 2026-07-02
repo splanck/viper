@@ -251,6 +251,13 @@ long long rt_rand_chance(double probability) {
     return rt_rnd() < probability ? 1 : 0;
 }
 
+/// @brief Generate an i1-compatible random boolean with the given probability.
+/// @details Uses the same deterministic RNG state and probability clamping as
+///          `rt_rand_chance`; this wrapper only narrows the ABI return type.
+int8_t rt_rand_chance_bool(double probability) {
+    return rt_rand_chance(probability) ? 1 : 0;
+}
+
 /// @brief Create a Random object with independent RNG state.
 /// @details This enables `new Viper.Math.Random(seed)` without mutating the
 ///          VM/global RNG used by static Viper.Math.Random functions.

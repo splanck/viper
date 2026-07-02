@@ -47,8 +47,12 @@
 #include "rt_crypto_module.h"
 #include "rt_internal.h"
 #include "rt_keyderive_internal.h"
+#include "rt_object.h"
+#include "rt_option.h"
+#include "rt_result.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,6 +72,134 @@ static void generate_random_bytes(uint8_t *buf, size_t len);
 #define AES_AUTH_MAGIC2 'K'
 #define AES_AUTH_MAGIC3 '1'
 #define AES_AUTH_HEADER_LEN 16
+
+typedef void *(*aes_bytes_decrypt_fn)(void *data, void *key, void *context);
+typedef rt_string (*aes_string_decrypt_fn)(void *data, rt_string password);
+
+/// @brief Release a temporary runtime object created by an AES decryptor.
+/// @details `Result.Ok` and `Option.Some` retain object payloads. Wrappers call
+///          this helper after storing a freshly allocated plaintext Bytes
+///          object so only the container owns the retained payload.
+static void aes_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Release a temporary runtime string created by an AES decryptor.
+/// @details `Result.OkStr` and `Option.SomeStr` retain string payloads, so the
+///          wrapper can drop the decryptor's original reference afterwards.
+static void aes_release_temp_string(rt_string value) {
+    if (value)
+        rt_string_unref(value);
+}
+
+/// @brief Return a runtime string for the active trap message or fallback.
+static rt_string aes_current_error_message(const char *fallback) {
+    const char *err = rt_trap_get_error();
+    if (!err || !err[0])
+        err = fallback && fallback[0] ? fallback : "AES decrypt failed";
+    return rt_const_cstr(err);
+}
+
+/// @brief Wrap a freshly allocated Bytes object as `Result.Ok`.
+static void *aes_plaintext_result(void *plaintext, const char *null_message) {
+    if (!plaintext)
+        return rt_result_err_str(rt_const_cstr(null_message));
+    void *result = rt_result_ok(plaintext);
+    aes_release_temp_object(plaintext);
+    return result;
+}
+
+/// @brief Wrap a freshly allocated Bytes object as `Option.Some`.
+static void *aes_plaintext_option(void *plaintext) {
+    if (!plaintext)
+        return rt_option_none();
+    void *option = rt_option_some(plaintext);
+    aes_release_temp_object(plaintext);
+    return option;
+}
+
+/// @brief Wrap a plaintext string as `Result.OkStr`.
+static void *aes_string_result(rt_string plaintext, const char *null_message) {
+    if (!plaintext)
+        return rt_result_err_str(rt_const_cstr(null_message));
+    void *result = rt_result_ok_str(plaintext);
+    aes_release_temp_string(plaintext);
+    return result;
+}
+
+/// @brief Wrap a plaintext string as `Option.SomeStr`.
+static void *aes_string_option(rt_string plaintext) {
+    if (!plaintext)
+        return rt_option_none();
+    void *option = rt_option_some_str(plaintext);
+    aes_release_temp_string(plaintext);
+    return option;
+}
+
+/// @brief Run a bytes decryptor and convert traps/NULL into `Result`.
+static void *aes_bytes_result(aes_bytes_decrypt_fn fn,
+                              void *data,
+                              void *key,
+                              void *context,
+                              const char *null_message,
+                              const char *trap_fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = aes_current_error_message(trap_fallback);
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    void *plaintext = fn(data, key, context);
+    rt_trap_clear_recovery();
+    return aes_plaintext_result(plaintext, null_message);
+}
+
+/// @brief Run a bytes decryptor and convert traps/NULL into `Option`.
+static void *aes_bytes_option(aes_bytes_decrypt_fn fn, void *data, void *key, void *context) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return rt_option_none();
+    }
+    void *plaintext = fn(data, key, context);
+    rt_trap_clear_recovery();
+    return aes_plaintext_option(plaintext);
+}
+
+/// @brief Run a string decryptor and convert traps into `Result`.
+static void *aes_string_decrypt_result(aes_string_decrypt_fn fn,
+                                       void *data,
+                                       rt_string password,
+                                       const char *trap_fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = aes_current_error_message(trap_fallback);
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    rt_string plaintext = fn(data, password);
+    rt_trap_clear_recovery();
+    return aes_string_result(plaintext, trap_fallback);
+}
+
+/// @brief Run a string decryptor and convert traps into `Option`.
+static void *aes_string_decrypt_option(aes_string_decrypt_fn fn,
+                                       void *data,
+                                       rt_string password) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return rt_option_none();
+    }
+    rt_string plaintext = fn(data, password);
+    rt_trap_clear_recovery();
+    return aes_string_option(plaintext);
+}
 
 /// @brief Zero out `len` bytes at `ptr` in a way that the optimizer can't elide.
 ///
@@ -1038,6 +1170,34 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
     return result;
 }
 
+/// @brief Decrypt AES-CBC data and return a Result.
+/// @details Converts invalid padding, approved-mode rejection, invalid key/IV
+///          sizes, malformed inputs, and traps into `Err(str)` while preserving
+///          successful plaintext as `Ok(Bytes)`.
+/// @param data Bytes object containing ciphertext.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param iv Bytes object containing the 16-byte initialization vector.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_aes_decrypt_result(void *data, void *key, void *iv) {
+    return aes_bytes_result(rt_aes_decrypt,
+                            data,
+                            key,
+                            iv,
+                            "AES.Decrypt: invalid padding or ciphertext",
+                            "AES.Decrypt failed");
+}
+
+/// @brief Attempt AES-CBC decryption and return an Option.
+/// @details Converts invalid padding, approved-mode rejection, malformed
+///          inputs, invalid key/IV sizes, and traps into `None`.
+/// @param data Bytes object containing ciphertext.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param iv Bytes object containing the 16-byte initialization vector.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_aes_try_decrypt(void *data, void *key, void *iv) {
+    return aes_bytes_option(rt_aes_decrypt, data, key, iv);
+}
+
 /// @brief AES-GCM authenticated encryption with magic-header framing.
 /// @details Implements `Viper.Crypto.Aes.EncryptAuth(data, key, aad)`. Generates
 ///          a fresh 12-byte nonce, prepends the AES_AUTH_HEADER and the nonce
@@ -1237,6 +1397,33 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
     aes_secure_zero(plain, (size_t)plain_len);
     free(plain);
     return result;
+}
+
+/// @brief Decrypt AES-GCM authenticated data and return a Result.
+/// @details Converts tag mismatch, malformed input, invalid key size, and traps
+///          into `Err(str)` while preserving successful plaintext as `Ok(Bytes)`.
+/// @param data Framed ciphertext produced by rt_aes_encrypt_auth.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_aes_decrypt_auth_result(void *data, void *key, void *aad) {
+    return aes_bytes_result(rt_aes_decrypt_auth,
+                            data,
+                            key,
+                            aad,
+                            "AES.DecryptAuth: authentication failed",
+                            "AES.DecryptAuth failed");
+}
+
+/// @brief Attempt AES-GCM authenticated decryption and return an Option.
+/// @details Converts authentication failure, malformed input, invalid key size,
+///          and traps into `None`.
+/// @param data Framed ciphertext produced by rt_aes_encrypt_auth.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_aes_try_decrypt_auth(void *data, void *key, void *aad) {
+    return aes_bytes_option(rt_aes_decrypt_auth, data, key, aad);
 }
 
 /// @brief Derive a 32-byte key from password using iterated SHA-256 (S-06).
@@ -1550,4 +1737,26 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
     aes_secure_zero(plain, (size_t)(total_len - 16));
     free(plain);
     return result;
+}
+
+/// @brief Decrypt an AES encrypted string and return a Result.
+/// @details Captures traps from @ref rt_aes_decrypt_str as `Err(str)` and
+///          returns all successful plaintext strings, including empty strings,
+///          as `Ok(str)`.
+/// @param data Bytes object containing encrypted string payload.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Result containing plaintext string or a diagnostic string.
+void *rt_aes_decrypt_str_result(void *data, rt_string password) {
+    return aes_string_decrypt_result(rt_aes_decrypt_str, data, password, "AES.DecryptStr failed");
+}
+
+/// @brief Attempt AES encrypted string decryption and return an Option.
+/// @details Captures traps from @ref rt_aes_decrypt_str as `None` and returns
+///          all successful plaintext strings, including empty strings, as
+///          `Some(str)`.
+/// @param data Bytes object containing encrypted string payload.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Option containing plaintext string, or None.
+void *rt_aes_try_decrypt_str(void *data, rt_string password) {
+    return aes_string_decrypt_option(rt_aes_decrypt_str, data, password);
 }

@@ -1,5 +1,5 @@
 // bimap_demo.zia - Comprehensive API audit for Viper.Collections.BiMap
-// Tests: New, Put, GetByKey, GetByValue, HasKey, HasValue,
+// Tests: New, Set, GetByKey, GetByValue, HasKey, HasValue,
 //        RemoveByKey, RemoveByValue, Keys, Values, Len, IsEmpty, Clear
 
 module BiMapDemo;
@@ -18,12 +18,12 @@ func start() {
     SayInt(bm.Count);       // 0
     SayBool(bm.IsEmpty);  // 1
 
-    // --- Put / Len ---
-    Say("--- Put / Len ---");
-    bm.Put("us", "dollar");
-    bm.Put("uk", "pound");
-    bm.Put("jp", "yen");
-    bm.Put("eu", "euro");
+    // --- Set / Len ---
+    Say("--- Set / Len ---");
+    bm.Set("us", "dollar");
+    bm.Set("uk", "pound");
+    bm.Set("jp", "yen");
+    bm.Set("eu", "euro");
     SayInt(bm.Count);       // 4
     SayBool(bm.IsEmpty);  // 0
 
@@ -46,9 +46,9 @@ func start() {
     SayBool(bm.HasValue("euro"));    // 1
     SayBool(bm.HasValue("rupee"));   // 0
 
-    // --- Put (update - overwrites old mapping) ---
-    Say("--- Put (update) ---");
-    bm.Put("us", "greenback");
+    // --- Set (update - overwrites old mapping) ---
+    Say("--- Set (update) ---");
+    bm.Set("us", "greenback");
     Say(bm.GetByKey("us"));           // greenback
     Say(bm.GetByValue("greenback")); // us
     SayBool(bm.HasValue("dollar"));  // 0 (old value removed)

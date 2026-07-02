@@ -3,6 +3,7 @@ module game3d_starter_test;
 bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
+bind Viper.Input.Key as Key;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./main";
@@ -24,7 +25,7 @@ func runStarterReplay() -> Float {
 
     var canvas = game.getCanvas();
     Canvas3D.SetInputSource(canvas, 1);
-    Canvas3D.PushSyntheticKey(canvas, Keys.get_KeyW(), true);
+    Canvas3D.PushSyntheticKey(canvas, Key.W, true);
     game.getWorld().Tick();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);

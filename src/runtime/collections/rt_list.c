@@ -41,6 +41,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_random.h"
 #include "rt_string.h"
 
@@ -508,6 +509,18 @@ int64_t rt_list_find(void *list, void *elem) {
     }
 
     return -1;
+}
+
+/// @brief Find the first index of an element as an Option index.
+/// @details Sentinel-free companion to @ref rt_list_find. A match returns
+///          `SomeI64(index)` and absence returns `None`, so callers do not need
+///          to reserve `-1` as an out-of-band value.
+/// @param list Opaque List object pointer, or NULL.
+/// @param elem Element to search for; may be NULL.
+/// @return Opaque Viper.Option containing the first index, or None.
+void *rt_list_find_option(void *list, void *elem) {
+    int64_t index = rt_list_find(list, elem);
+    return index >= 0 ? rt_option_some_i64(index) : rt_option_none();
 }
 
 /// @brief Checks whether the List contains a specific element.

@@ -1,7 +1,7 @@
 ' =============================================================================
 ' API Audit: Viper.Text.Fmt - Value Formatting
 ' =============================================================================
-' Tests: Int, IntRadix, IntPad, Num, NumFixed, NumSci, NumPct, Bool, BoolYN,
+' Tests: Int, IntRadix, IntPad, Num, NumFixed, Scientific, Percent, Bool, YesNo,
 '        Size, Hex, HexPad, Bin, Oct, IntGrouped, Currency, ToWords, Ordinal
 ' =============================================================================
 
@@ -35,26 +35,26 @@ PRINT "NumFixed(3.14159, 2): "; Viper.Text.Fmt.NumFixed(3.14159, 2)
 PRINT "NumFixed(3.14159, 4): "; Viper.Text.Fmt.NumFixed(3.14159, 4)
 PRINT "NumFixed(100.0, 0): "; Viper.Text.Fmt.NumFixed(100.0, 0)
 
-' --- NumSci ---
-PRINT "--- NumSci ---"
-PRINT "NumSci(1234.5, 2): "; Viper.Text.Fmt.NumSci(1234.5, 2)
-PRINT "NumSci(0.001, 3): "; Viper.Text.Fmt.NumSci(0.001, 3)
+' --- Scientific ---
+PRINT "--- Scientific ---"
+PRINT "Scientific(1234.5, 2): "; Viper.Text.Fmt.Scientific(1234.5, 2)
+PRINT "Scientific(0.001, 3): "; Viper.Text.Fmt.Scientific(0.001, 3)
 
-' --- NumPct ---
-PRINT "--- NumPct ---"
-PRINT "NumPct(0.756, 1): "; Viper.Text.Fmt.NumPct(0.756, 1)
-PRINT "NumPct(1.0, 0): "; Viper.Text.Fmt.NumPct(1.0, 0)
-PRINT "NumPct(0.5, 2): "; Viper.Text.Fmt.NumPct(0.5, 2)
+' --- Percent ---
+PRINT "--- Percent ---"
+PRINT "Percent(0.756, 1): "; Viper.Text.Fmt.Percent(0.756, 1)
+PRINT "Percent(1.0, 0): "; Viper.Text.Fmt.Percent(1.0, 0)
+PRINT "Percent(0.5, 2): "; Viper.Text.Fmt.Percent(0.5, 2)
 
 ' --- Bool ---
 PRINT "--- Bool ---"
 PRINT "Bool(TRUE): "; Viper.Text.Fmt.Bool(TRUE)
 PRINT "Bool(FALSE): "; Viper.Text.Fmt.Bool(FALSE)
 
-' --- BoolYN ---
-PRINT "--- BoolYN ---"
-PRINT "BoolYN(TRUE): "; Viper.Text.Fmt.BoolYN(TRUE)
-PRINT "BoolYN(FALSE): "; Viper.Text.Fmt.BoolYN(FALSE)
+' --- YesNo ---
+PRINT "--- YesNo ---"
+PRINT "YesNo(TRUE): "; Viper.Text.Fmt.YesNo(TRUE)
+PRINT "YesNo(FALSE): "; Viper.Text.Fmt.YesNo(FALSE)
 
 ' --- Size ---
 PRINT "--- Size ---"

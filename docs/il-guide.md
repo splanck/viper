@@ -849,14 +849,16 @@ names. Legacy `@rt_*` aliases are maintained for compatibility when built with `
 | `@Viper.Terminal.PrintF64` | `f64 -> void` | write float to stdout                  |
 | `@Viper.Terminal.PrintI64` | `i64 -> void` | write integer to stdout                |
 | `@Viper.Terminal.PrintStr` | `str -> void` | write string to stdout                 |
-| `@Viper.Terminal.ReadLine` | `-> str`      | read line from stdin, newline stripped |
+| `@Viper.Terminal.TryReadLine` | `-> obj<Viper.Option>` | read line from stdin; `None` on EOF |
+| `@Viper.Terminal.ReadLineResult` | `-> obj<Viper.Result>` | read line from stdin; `Err` on EOF |
+| `@Viper.Terminal.ReadLine` | `-> str`      | compatibility read line; prefer `TryReadLine` or `ReadLineResult` for EOF |
 
 ##### String Operations
 
 | Function                              | Signature                | Notes                                          |
 |---------------------------------------|--------------------------|------------------------------------------------|
-| `@Viper.Core.Convert.ToString_Double` | `f64 -> str`             | convert double to string                       |
-| `@Viper.Core.Convert.ToString_Int`    | `i64 -> str`             | convert integer to string                      |
+| `@Viper.Core.Convert.ToStringDouble`  | `f64 -> str`             | convert double to string                       |
+| `@Viper.Core.Convert.ToStringInt`     | `i64 -> str`             | convert integer to string                      |
 | `@Viper.String.Concat`                | `str × str -> str`       | concatenate strings                            |
 | `@Viper.String.get_Length`            | `str -> i64`             | length in bytes                                |
 | `@Viper.String.Mid`                   | `str × i64 -> str`       | substring from start index to end              |

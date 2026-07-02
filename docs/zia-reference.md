@@ -1901,7 +1901,9 @@ PrintI64(i);         // Print i64 (low-level)
 PrintStr(str);       // Print string (low-level)
 
 // Input
-ReadLine();          // Read a line (returns String?)
+TryReadLine();       // Read a line (returns Option<String>, None on EOF)
+ReadLineResult();    // Read a line (returns Result<String, String>)
+ReadLine();          // Compatibility API; prefer TryReadLine or ReadLineResult for EOF
 GetKey();            // Block until key press, return key string
 GetKeyTimeout(ms);   // Read key with timeout in ms (returns "" on timeout)
 InKey();             // Non-blocking key check (returns "" if no key)

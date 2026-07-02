@@ -145,6 +145,13 @@ int64_t rt_datetime_parse_time(rt_string s);
 /// @return Unix timestamp, or 0 on parse failure.
 int64_t rt_datetime_try_parse(rt_string s);
 
+/// @brief Try to parse a datetime string in any supported format as an Option.
+/// @details Returns `Some(i64)` on success and `None` on failure, preserving a
+///          valid Unix epoch timestamp (`0`) as a successful parse.
+/// @param s Input string (ISO, date-only, or time-only).
+/// @return Opaque Viper.Option object containing the parsed scalar.
+void *rt_datetime_try_parse_option(rt_string s);
+
 #ifdef __cplusplus
 }
 #endif

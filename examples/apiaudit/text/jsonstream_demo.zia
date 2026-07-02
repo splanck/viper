@@ -5,7 +5,7 @@ func start() {
     Say("=== Viper.Text.JsonStream API Audit ===");
 
     // --- New ---
-    Say("--- New / Next / TokenType ---");
+    Say("--- New / NextResult / TokenType ---");
     var stream = JS.New("{\"name\":\"Alice\",\"age\":30,\"active\":true}");
 
     // Walk through tokens
@@ -15,9 +15,14 @@ func start() {
         if hasMore == false {
             i = 100;
         } else {
-            JS.Next(stream);
-            var tt = JS.TokenType(stream);
-            SayInt(tt);
+            var next = JS.NextResult(stream);
+            if next.IsErr {
+                Say(next.UnwrapErrStr());
+                i = 100;
+            } else {
+                var tt = next.UnwrapI64();
+                SayInt(tt);
+            }
             i = i + 1;
         }
     }
@@ -74,9 +79,12 @@ func start() {
     JS.Next(s7);
     SayBool(JS.HasNext(s7));
 
-    // --- Error ---
-    Say("--- Error ---");
-    var s8 = JS.New("{\"valid\":1}");
+    // --- NextResult / Error compatibility ---
+    Say("--- NextResult / Error compatibility ---");
+    var s8 = JS.New("not json");
+    var bad = JS.NextResult(s8);
+    SayBool(bad.IsErr);
+    Say(bad.UnwrapErrStr());
     Say(JS.Error(s8));
 
     Say("=== JsonStream Demo Complete ===");

@@ -1,14 +1,14 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-02
 ---
 
 # Viper Runtime Library Reference
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-06-20
+> **Last updated:** 2026-07-02
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -23,7 +23,7 @@ implemented in C and exposed through the IL runtime system.
 | [Audio](audio.md)               | `Audio`, `Music`, `MusicGen`, `Sound`, `Synth`, `Voice` — audio playback and procedural generation |
 | [Collections](collections/README.md)   | `Bag`, `Bytes`, `Deque`, `F64Buffer`, `Heap`, `I64Buffer`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `Trie`, `WeakMap` |
 | [Core Types](core.md)           | `Box`, `Diagnostics`, `MessageBus`, `Object`, `Parse`, `String` — foundational types (`Viper.Core`) |
-| [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`           |
+| [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`; compatibility `Legacy.Aes`, `Legacy.Hash` |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
 | [Game Utilities](game/README.md)       | `AchievementTracker`, `AnimStateMachine`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Viper.Game2D.LevelDocument`, `Viper.Game2D.SceneDocument`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween`, `Typewriter`, `WorldToScreenProjection` |
@@ -31,11 +31,11 @@ implemented in C and exposed through the IL runtime system.
 | [Game3D](graphics/game3d.md) | `World3D`, `Entity3D`, `LayerMask`, `Input3D` — code-first 3D game workflow helpers |
 | [Graphics 3D & Physics](graphics/physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 | [GUI](gui/README.md)                   | `App`, `Breadcrumb`, `Button`, `ClipboardText`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
-| [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
+| [Input](input.md)               | `Action`, `Key`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
 | [Input/Output](io/README.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
 | [Mathematics](math.md)          | `BigInt`, `Bits`, `Easing`, `Mat3`, `Mat4`, `Math`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
-| [System](system.md)             | `Environment`, `Clipboard`, `Exec`, `Machine`, `Terminal`; `Viper.Memory`, `Viper.Memory.GC` |
+| [System](system.md)             | `Environment`, `Clipboard`, `Exec`, `Machine`, `Terminal`; `Viper.Runtime.Unsafe`, `Viper.Runtime.GC`, compatibility `Viper.Memory` |
 | [Text & Data](text/README.md)          | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `InvariantNumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version`; `Viper.Data`: `Serialize`, `Xml`, `Yaml` |
 | [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `Channel`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
@@ -120,10 +120,12 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                         | Type     | Description                              |
 |-----------------------------------------------|----------|------------------------------------------|
-| [`Aes`](crypto.md#vipercryptoaes)             | Static   | AES-128/256 CBC encryption               |
-| [`Cipher`](crypto.md#vipercryptocipher)       | Static   | ChaCha20-Poly1305 high-level encryption  |
-| [`Hash`](crypto.md#vipercryptohash)           | Static   | CRC32, MD5, SHA1, SHA256                 |
+| [`Aes`](crypto.md#vipercryptoaes)             | Static   | AES-GCM and password encryption with Result/Option decrypt helpers |
+| [`Cipher`](crypto.md#vipercryptocipher)       | Static   | High-level authenticated encryption with explicit failure APIs |
+| [`Hash`](crypto.md#vipercryptohash)           | Static   | SHA-256, HMAC-SHA256, fast hashes, and constant-time comparison |
 | [`KeyDerive`](crypto.md#vipercryptokeyderive) | Static   | PBKDF2-SHA256 key derivation             |
+| [`Legacy.Aes`](crypto.md#vipercryptolegacyaes) | Static  | AES-CBC compatibility helpers            |
+| [`Legacy.Hash`](crypto.md#vipercryptolegacyhash) | Static | CRC32, MD5, SHA1, and legacy HMAC compatibility helpers |
 | [`Password`](crypto.md#vipercryptopassword)   | Static   | Password hashing and verification        |
 | [`Rand`](crypto.md#vipercryptorand)           | Static   | Cryptographically secure random bytes    |
 | [`Tls`](crypto.md#vipercryptotls)             | Instance | TLS 1.3 secure socket connections        |
@@ -278,6 +280,7 @@ implemented in C and exposed through the IL runtime system.
 | Class                                         | Type     | Description                        |
 |-----------------------------------------------|----------|------------------------------------|
 | [`Action`](input.md#viperinputaction)         | Static   | Device-agnostic action mapping     |
+| [`Key`](input.md#viperinputkey)               | Static   | Canonical keyboard key codes       |
 | [`Keyboard`](input.md#viperinputkeyboard)     | Static   | Keyboard input for games and UI    |
 | [`KeyChord`](input.md#viperinputkeychord)     | Instance | Key chord and combo detection      |
 | [`Manager`](input.md#viperinputmanager)       | Instance | Unified input with debouncing      |
@@ -368,12 +371,19 @@ implemented in C and exposed through the IL runtime system.
 | [`Thread`](threads.md#viperthreadsthread)                 | Instance | OS thread handle + join/sleep/yield helpers   |
 | [`Throttler`](threads.md#viperthreadsthrottler)           | Instance | Rate-limit calls to at most once per interval |
 
+### Viper.Runtime
+
+| Class                                           | Type   | Description                                     |
+|-------------------------------------------------|--------|-------------------------------------------------|
+| [`Unsafe`](system.md#viperruntimeunsafe)       | Static | Explicit retain/release for runtime handles      |
+| [`GC`](system.md#viperruntimegc)               | Static | Garbage collector controls and statistics        |
+
 ### Viper.Memory
 
 | Class                                           | Type   | Description                                     |
 |-------------------------------------------------|--------|-------------------------------------------------|
-| [`Memory`](system.md#vipermemory)              | Static | Explicit retain/release for runtime handles      |
-| [`GC`](system.md#vipermemory-gc)               | Static | Garbage collector controls and statistics        |
+| [`Memory`](system.md#vipermemory)              | Static | Compatibility namespace for `Runtime.Unsafe`     |
+| [`GC`](system.md#vipermemory-gc)               | Static | Compatibility namespace for `Runtime.GC`         |
 
 ### Viper.Time
 

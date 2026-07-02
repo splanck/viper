@@ -296,7 +296,7 @@ Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation t
 | `Progress`       | Integer | Read   | Animation progress 0-100 within the current clip  |
 | `StateName`      | String  | Read   | Name of the current named state, or empty string  |
 | `EventFired`     | Boolean | Read   | True once when the configured event frame is reached |
-| `EventsFiredCount` | Integer | Read | Number of multi-events fired during the most recent `Update()` |
+| `EventsFiredCount` | Integer | Read | Compatibility: number of multi-events fired during the most recent `Update()` |
 
 ### Methods
 
@@ -312,7 +312,8 @@ Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation t
 | `SetEventFrame(frame)` | `Void(Integer)` | Configure a frame event |
 | `AddEvent(stateId, frame, eventId)` | `Boolean(Integer, Integer, Integer)` | Add a frame-keyed event to a specific state; returns false when `frame` is outside the state's clip |
 | `ClearEvents(stateId)` | `Void(Integer)` | Remove all multi-events from a state |
-| `EventFiredId(index)` | `Integer(Integer)` | Get an event id from the most recent update, or 0 when invalid |
+| `PollEvents()` | `AnimationEventBatch()` | Snapshot event IDs from the most recent update |
+| `EventFiredId(index)` | `Integer(Integer)` | Compatibility: get an event id from the most recent update, or 0 when invalid |
 
 ### Zia Example
 
@@ -384,7 +385,7 @@ Frame-based timeline for sequencing animation tracks, integer tweens, and marker
 | `IsFinished` | Boolean | Read | True after a non-looping timeline reaches the end |
 | `CurrentFrame` | Integer | Read | Current timeline frame |
 | `Looping` | Boolean | Write | Enable wrap-around playback |
-| `EventsFiredCount` | Integer | Read | Marker count fired by the most recent `Advance` |
+| `EventsFiredCount` | Integer | Read | Compatibility: marker count fired by the most recent `Advance` |
 
 ### Methods
 
@@ -395,12 +396,17 @@ Frame-based timeline for sequencing animation tracks, integer tweens, and marker
 | `AddMarker(frame, eventId)` | `Integer(Integer, Integer)` | Add a marker event |
 | `Play()` / `Pause()` / `Stop()` | `Void()` | Control playback |
 | `Advance(deltaFrames)` | `Void(Integer)` | Move forward and record marker events crossed |
-| `EventFiredId(index)` | `Integer(Integer)` | Read marker event IDs from the latest advance |
+| `PollEvents()` | `AnimationEventBatch()` | Snapshot marker event IDs from the latest advance |
+| `EventFiredId(index)` | `Integer(Integer)` | Compatibility: read marker event IDs from the latest advance |
 | `TrackIsActive(index)` | `Boolean(Integer)` | True if current frame is inside a track range |
 | `TrackProgress(index)` | `Double(Integer)` | Track progress from 0.0 to 1.0 |
 | `TrackPayloadA/B/C(index)` | `Integer(Integer)` | Read track payload values |
 
 `Stop()` rewinds to frame 0 and clears fired marker state. In looping mode, markers are reset when playback wraps so they can fire on later loops.
+
+`AnimationEventBatch` exposes `Count`, `GetId(index)`, `Contains(eventId)`, and `Ids()`. Prefer
+`PollEvents()` over reading `EventsFiredCount` plus `EventFiredId` because the returned batch can
+be stored safely after the animation advances again.
 
 ---
 

@@ -56,6 +56,12 @@ int64_t rt_seq_count_where_wrapper(void *seq, void *pred);
 /// @brief Find first element matching predicate (wrapper for IL).
 void *rt_seq_find_where_wrapper(void *seq, void *pred);
 
+/// @brief Find first element matching predicate as an Option (wrapper for IL).
+/// @param seq Seq object.
+/// @param pred Predicate function (int8_t (*)(void *) cast to void*).
+/// @return Opaque Viper.Option containing the first matching element, or None.
+void *rt_seq_find_where_option_wrapper(void *seq, void *pred);
+
 /// @brief Take elements while predicate is true (wrapper for IL).
 void *rt_seq_take_while_wrapper(void *seq, void *pred);
 

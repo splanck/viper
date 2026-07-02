@@ -36,6 +36,7 @@
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
@@ -102,6 +103,31 @@ static void set_error_from_string(rt_string msg, const char *fallback) {
 static void release_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+/// @brief Convert the latest serialize parse attempt into a Result.
+/// @details A NULL parse value is successful when the thread-local serialize
+///          error is empty, preserving valid null-document semantics. Non-empty
+///          error text becomes `Err(message)`.
+/// @param value Parsed value returned by a serialize parse API.
+/// @param fallback Fallback error message used only if an error has no text.
+/// @return Owned `Viper.Result` carrying @p value or an error string.
+static void *serialize_parse_value_to_result(void *value, const char *fallback) {
+    rt_string err = rt_serialize_error();
+    if (!value && err && rt_str_len(err) > 0) {
+        void *result = rt_result_err_str(err);
+        rt_str_release_maybe(err);
+        return result;
+    }
+    if (!value && has_error()) {
+        rt_str_release_maybe(err);
+        return rt_result_err_str(rt_const_cstr(fallback ? fallback : "Serialize parse failed"));
+    }
+    rt_str_release_maybe(err);
+
+    void *result = rt_result_ok(value);
+    release_obj(value);
+    return result;
 }
 
 /// @brief Return 1 if `obj` is a runtime Seq container.
@@ -568,6 +594,20 @@ void *rt_serialize_parse(rt_string text, int64_t format) {
     }
 }
 
+/// @brief `Serialize.ParseResult(text, format)` — parse into a Result object.
+///
+/// Success returns `Ok(parsedValue)`. Parse failures, nil input, and unknown
+/// formats return `Err(message)` using the same diagnostic text exposed by
+/// `Serialize.Error()`.
+///
+/// @param text Input text.
+/// @param format Serialization format enum.
+/// @return Owned `Viper.Result` carrying the parsed value or an error string.
+void *rt_serialize_parse_result(rt_string text, int64_t format) {
+    void *value = rt_serialize_parse(text, format);
+    return serialize_parse_value_to_result(value, "Serialize.Parse failed");
+}
+
 //=============================================================================
 // Unified Format
 //=============================================================================
@@ -802,6 +842,19 @@ void *rt_serialize_auto_parse(rt_string text) {
     }
 
     return rt_serialize_parse(text, format);
+}
+
+/// @brief `Serialize.AutoParseResult(text)` — detect format, parse, and return a Result.
+///
+/// Success returns `Ok(parsedValue)`. Detection failures and parse failures
+/// return `Err(message)` with the same diagnostic text exposed by
+/// `Serialize.Error()`.
+///
+/// @param text Input text.
+/// @return Owned `Viper.Result` carrying the parsed value or an error string.
+void *rt_serialize_auto_parse_result(rt_string text) {
+    void *value = rt_serialize_auto_parse(text);
+    return serialize_parse_value_to_result(value, "Serialize.AutoParse failed");
 }
 
 //=============================================================================

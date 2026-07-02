@@ -40,6 +40,8 @@ void rt_skeleton3d_compute_inverse_bind(void *skel);
 int64_t rt_skeleton3d_get_bone_count(void *skel);
 /// @brief Look up a bone index by name (-1 if not found).
 int64_t rt_skeleton3d_find_bone(void *skel, rt_string name);
+/// @brief Look up a bone index by name as Some(index), or None when absent.
+void *rt_skeleton3d_find_bone_option(void *skel, rt_string name);
 /// @brief Get the name of the bone at @p index (empty string if out of range).
 rt_string rt_skeleton3d_get_bone_name(void *skel, int64_t index);
 /// @brief Get the bind-pose matrix (Mat4) of the bone at @p index.
@@ -129,7 +131,8 @@ void rt_anim_blend3d_update(void *blend, double dt);
 int64_t rt_anim_blend3d_state_count(void *blend);
 /// @brief Internal: borrowed skeleton handle used for controller compatibility checks.
 void *rt_anim_blend3d_get_skeleton(void *blend);
-/// @brief Internal: borrowed local-transform buffer (with @p bone_count) for controller composition.
+/// @brief Internal: borrowed local-transform buffer (with @p bone_count) for controller
+/// composition.
 const float *rt_anim_blend3d_get_local_transform_data(void *blend, int32_t *bone_count);
 
 #ifdef __cplusplus

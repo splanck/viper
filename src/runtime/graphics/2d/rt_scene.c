@@ -40,6 +40,7 @@
 #include "rt_scene.h"
 #include "rt_camera.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_sprite.h"
 
@@ -874,6 +875,18 @@ void *rt_scene_node_find(void *node_ptr, rt_string name) {
     return NULL;
 }
 
+/// @brief Find a descendant node by name as an Option.
+/// @details Wraps the borrowed node returned by @ref rt_scene_node_find in
+///          `Some(node)` when found. Missing names and invalid receivers return
+///          None.
+/// @param node_ptr Starting SceneNode handle.
+/// @param name Node name to search for.
+/// @return Opaque Viper.Option containing the first matching node, or None.
+void *rt_scene_node_find_option(void *node_ptr, rt_string name) {
+    void *found = rt_scene_node_find(node_ptr, name);
+    return found ? rt_option_some(found) : rt_option_none();
+}
+
 /// @brief Detach the node from its parent, if any.
 /// @details Convenience wrapper that calls remove_child on the node's current parent.
 ///   No-op for root or unparented nodes.
@@ -1126,6 +1139,15 @@ void *rt_scene_find(void *scene_ptr, rt_string name) {
     if (!scene || !scene->root)
         return NULL;
     return rt_scene_node_find(scene->root, name);
+}
+
+/// @brief Search the scene's node tree for a matching name as an Option.
+/// @param scene_ptr SceneGraph handle.
+/// @param name Node name to search for.
+/// @return Opaque Viper.Option containing the first matching node, or None.
+void *rt_scene_find_option(void *scene_ptr, rt_string name) {
+    void *found = rt_scene_find(scene_ptr, name);
+    return found ? rt_option_some(found) : rt_option_none();
 }
 
 //=============================================================================

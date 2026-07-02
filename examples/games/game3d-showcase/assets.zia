@@ -21,10 +21,10 @@ class ShowcaseAssets {
     hide Material3D waterMarkerMat;
 
     expose func setup() {
-        cubeMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
-        beaconMesh = Mesh3D.NewSphere(0.54, 22);
-        playerBodyMesh = Mesh3D.NewCylinder(config.PLAYER_RADIUS, config.PLAYER_BODY_HEIGHT, 20);
-        playerCoreMesh = Mesh3D.NewSphere(0.36, 18);
+        cubeMesh = Mesh3D.Box(1.0, 1.0, 1.0);
+        beaconMesh = Mesh3D.Sphere(0.54, 22);
+        playerBodyMesh = Mesh3D.Cylinder(config.PLAYER_RADIUS, config.PLAYER_BODY_HEIGHT, 20);
+        playerCoreMesh = Mesh3D.Sphere(0.36, 18);
         Mesh3D.CalcTangents(cubeMesh);
 
         var stoneAlbedo = terrain.createStoneAlbedo(config.PBR_TEXTURE_SIZE);
@@ -34,14 +34,14 @@ class ShowcaseAssets {
         terrainMat = Materials.Rubber(0.58, 0.74, 0.36);
         Material3D.SetEmissiveColor(terrainMat, 0.015, 0.026, 0.008);
 
-        stoneMat = Material3D.NewPBR(0.52, 0.54, 0.57);
+        stoneMat = Material3D.PBR(0.52, 0.54, 0.57);
         Material3D.SetAlbedoMap(stoneMat, stoneAlbedo);
         Material3D.SetNormalMap(stoneMat, rockNormal);
         stoneMat.Roughness = 0.80;
         stoneMat.Metallic = 0.05;
         Material3D.SetEmissiveColor(stoneMat, 0.010, 0.012, 0.016);
 
-        pedestalMat = Material3D.NewPBR(0.46, 0.43, 0.34);
+        pedestalMat = Material3D.PBR(0.46, 0.43, 0.34);
         Material3D.SetAlbedoMap(pedestalMat, stoneAlbedo);
         Material3D.SetNormalMap(pedestalMat, rockNormal);
         pedestalMat.Roughness = 0.90;
@@ -54,7 +54,7 @@ class ShowcaseAssets {
         Material3D.SetEmissiveColor(beaconOffMat, 0.025, 0.045, 0.065);
         beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.9);
 
-        archiveMat = Material3D.NewPBR(0.78, 0.72, 0.58);
+        archiveMat = Material3D.PBR(0.78, 0.72, 0.58);
         Material3D.SetAlbedoMap(archiveMat, metalAlbedo);
         Material3D.SetNormalMap(archiveMat, rockNormal);
         archiveMat.Roughness = 0.34;

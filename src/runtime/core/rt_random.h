@@ -91,6 +91,14 @@ long long rt_rand_dice(long long sides);
 /// @details Clamped to [0, 1]. Returns 0 if p <= 0, 1 if p >= 1.
 long long rt_rand_chance(double probability);
 
+/// @brief Generate a random boolean value with the given probability.
+/// @details This is the boolean-returning public wrapper for
+///          `Viper.Math.Random.Chance`. It shares the exact sampling behavior of
+///          `rt_rand_chance` and returns an `i1`-compatible value.
+/// @param probability Probability of returning true, clamped to [0.0, 1.0].
+/// @return 1 when the chance succeeds, otherwise 0.
+int8_t rt_rand_chance_bool(double probability);
+
 /// @brief Shuffle elements in a Seq randomly.
 /// @param seq A Viper.Collections.Seq object.
 /// @details Performs Fisher-Yates shuffle using the current RNG state.

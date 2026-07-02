@@ -57,6 +57,13 @@ int64_t rt_audio_register_group(rt_string group_name);
 /// @brief Find a registered named mix group, or -1 when missing.
 int64_t rt_audio_find_group(rt_string group_name);
 
+/// @brief Find a registered named mix group as an Option id.
+/// @details Returns `SomeI64(id)` for built-in or registered groups and `None`
+///          when the name is missing, avoiding the legacy `-1` sentinel.
+/// @param group_name Group name.
+/// @return Opaque Viper.Option containing the group id, or None.
+void *rt_audio_find_group_option(rt_string group_name);
+
 /// @brief Set a named group's volume (0-100, clamped). Missing groups are registered.
 void rt_audio_set_group_volume_named(rt_string group_name, int64_t volume);
 

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-07-02
 ---
 
 # Runtime Architecture
@@ -79,7 +79,8 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.Core.Convert`          | Type conversion (ToInt64, ToDouble)                         |
 | `Viper.Core.Box`              | Boxing primitives for generic collections                   |
 | `Viper.Core.Diagnostics`      | Runtime assertions and traps                                |
-| `Viper.Crypto.Hash`           | MD5, SHA1, SHA256, CRC32 hashing                            |
+| `Viper.Crypto.Hash`           | SHA-256, HMAC-SHA256, fast hashing, and constant-time compare |
+| `Viper.Crypto.Legacy.Hash`    | CRC32, MD5, SHA1, and legacy HMAC compatibility helpers      |
 | `Viper.System.Environment`           | Command-line args, environment variables, process exit      |
 | `Viper.Graphics.Canvas`       | Window and 2D drawing                                       |
 | `Viper.Graphics.Color`        | RGB/RGBA color creation                                     |

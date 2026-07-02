@@ -1,7 +1,7 @@
 ' =============================================================================
 ' API Audit: Viper.Threads.ConcurrentQueue (BASIC)
 ' =============================================================================
-' Tests: New, Enqueue, TryDequeue, Dequeue, Peek, Len, IsEmpty, Clear
+' Tests: New, Enqueue, TryDequeueOption, Dequeue, Peek, Len, IsEmpty, Clear
 ' =============================================================================
 
 PRINT "=== API Audit: Viper.Threads.ConcurrentQueue ==="
@@ -39,11 +39,11 @@ PRINT "--- Peek ---"
 DIM front AS OBJECT = q.Peek()
 PRINT "Peek: "; Viper.Core.Box.ToStr(front)
 
-' --- TryDequeue ---
-PRINT "--- TryDequeue ---"
-DIM item1 AS OBJECT = q.TryDequeue()
-PRINT "TryDequeue: "; Viper.Core.Box.ToStr(item1)
-PRINT "Len after TryDequeue: "; q.Count
+' --- TryDequeueOption ---
+PRINT "--- TryDequeueOption ---"
+DIM item1 AS OBJECT = q.TryDequeueOption()
+PRINT "TryDequeueOption: "; Viper.Core.Box.ToStr(item1.Unwrap())
+PRINT "Len after TryDequeueOption: "; q.Count
 
 ' --- Dequeue (blocking, but queue has items) ---
 PRINT "--- Dequeue ---"
@@ -51,15 +51,15 @@ DIM item2 AS OBJECT = q.Dequeue()
 PRINT "Dequeue: "; Viper.Core.Box.ToStr(item2)
 PRINT "Len after Dequeue: "; q.Count
 
-' --- TryDequeue remaining ---
-PRINT "--- TryDequeue remaining ---"
-DIM item3 AS OBJECT = q.TryDequeue()
-PRINT "TryDequeue: "; Viper.Core.Box.ToStr(item3)
+' --- TryDequeueOption remaining ---
+PRINT "--- TryDequeueOption remaining ---"
+DIM item3 AS OBJECT = q.TryDequeueOption()
+PRINT "TryDequeueOption: "; Viper.Core.Box.ToStr(item3.Unwrap())
 
-' --- TryDequeue on empty ---
-PRINT "--- TryDequeue on empty ---"
-DIM item4 AS OBJECT = q.TryDequeue()
-PRINT "TryDequeue on empty returned (expect empty for null)"
+' --- TryDequeueOption on empty ---
+PRINT "--- TryDequeueOption on empty ---"
+DIM item4 AS OBJECT = q.TryDequeueOption()
+PRINT "TryDequeueOption empty: "; item4.IsNone
 
 ' --- Clear ---
 PRINT "--- Clear ---"

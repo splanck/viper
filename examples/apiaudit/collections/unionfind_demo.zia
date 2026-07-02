@@ -1,5 +1,5 @@
 // unionfind_demo.zia - Comprehensive API audit for Viper.Collections.UnionFind
-// Tests: New, Find, Union, Connected, Count, SetSize, Reset
+// Tests: New, Find, FindRootOption, Union, Connected, Count, SetSize, Reset
 
 module UnionFindDemo;
 
@@ -20,6 +20,10 @@ func start() {
     Say("--- Find ---");
     SayInt(uf.Find(0));     // 0 (own representative)
     SayInt(uf.Find(3));     // 3 (own representative)
+    var root = uf.FindRootOption(0);
+    SayBool(root.IsSome);
+    SayInt(root.UnwrapI64()); // 0
+    SayBool(uf.FindRootOption(99).IsNone);
 
     // --- Union ---
     Say("--- Union ---");

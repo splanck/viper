@@ -59,8 +59,50 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad);
 /// @note Traps if authentication fails or ciphertext is malformed.
 void *rt_cipher_decrypt(void *ciphertext, rt_string password);
 
+/// @brief Decrypt password-encrypted data and report failures as a Result.
+/// @details This is the production-facing companion to @ref rt_cipher_decrypt.
+///          It returns `Ok(Bytes)` for valid authenticated plaintext and
+///          `Err(str)` for authentication failure, malformed ciphertext, empty
+///          passwords, or other runtime traps raised by the legacy decryptor.
+///          Existing `Decrypt` behavior is unchanged; this wrapper simply
+///          captures its failure paths into an explicit value.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_result(void *ciphertext, rt_string password);
+
+/// @brief Attempt password-based decryption and discard diagnostic details.
+/// @details Returns `Some(Bytes)` for valid authenticated plaintext and `None`
+///          for authentication failure or any trap raised by the legacy
+///          decryptor. Use @ref rt_cipher_decrypt_result when callers need a
+///          failure message.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt(void *ciphertext, rt_string password);
+
 /// @brief Decrypt password-encrypted data while authenticating caller-supplied AAD.
 void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad);
+
+/// @brief Decrypt password-encrypted data with AAD and report failures as a Result.
+/// @details Authenticates the same additional data used at encryption time.
+///          Returns `Ok(Bytes)` on success and `Err(str)` for authentication,
+///          format, argument, or runtime-trap failures.
+/// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_aad.
+/// @param password Password string used for key derivation.
+/// @param aad Additional authenticated data; may be NULL when encryption used none.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_aad_result(void *ciphertext, rt_string password, void *aad);
+
+/// @brief Attempt password-based AAD decryption and discard diagnostic details.
+/// @details Returns `Some(Bytes)` only when both ciphertext and AAD authenticate.
+///          Authentication failure, malformed input, and legacy traps all
+///          produce `None`.
+/// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_aad.
+/// @param password Password string used for key derivation.
+/// @param aad Additional authenticated data; may be NULL when encryption used none.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt_aad(void *ciphertext, rt_string password, void *aad);
 
 //=========================================================================
 // Key-Based Encryption (for pre-derived keys)
@@ -84,8 +126,44 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key, void *aad);
 /// @note Traps only if ciphertext is malformed or the key has the wrong size.
 void *rt_cipher_decrypt_with_key(void *ciphertext, void *key);
 
+/// @brief Decrypt raw-key encrypted data and report failures as a Result.
+/// @details Returns `Ok(Bytes)` for valid authenticated plaintext and `Err(str)`
+///          for wrong keys, tampering, malformed ciphertext, invalid key size,
+///          or other traps raised by the legacy decryptor.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param key Bytes object containing exactly 32 bytes.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_with_key_result(void *ciphertext, void *key);
+
+/// @brief Attempt raw-key decryption and discard diagnostic details.
+/// @details Returns `Some(Bytes)` for valid authenticated plaintext and `None`
+///          for authentication, format, key-size, or runtime-trap failures.
+/// @param ciphertext Bytes object containing encrypted data.
+/// @param key Bytes object containing exactly 32 bytes.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt_with_key(void *ciphertext, void *key);
+
 /// @brief Decrypt key-encrypted data while authenticating caller-supplied AAD.
 void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key, void *aad);
+
+/// @brief Decrypt raw-key encrypted data with AAD and report failures as a Result.
+/// @details Authenticates the same additional data used at encryption time.
+///          Returns `Ok(Bytes)` on success and `Err(str)` for authentication,
+///          format, key-size, or runtime-trap failures.
+/// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_with_key_aad.
+/// @param key Bytes object containing exactly 32 bytes.
+/// @param aad Additional authenticated data; may be NULL when encryption used none.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_cipher_decrypt_with_key_aad_result(void *ciphertext, void *key, void *aad);
+
+/// @brief Attempt raw-key AAD decryption and discard diagnostic details.
+/// @details Returns `Some(Bytes)` only when both ciphertext and AAD authenticate.
+///          Any failure is represented as `None`.
+/// @param ciphertext Framed ciphertext produced by @ref rt_cipher_encrypt_with_key_aad.
+/// @param key Bytes object containing exactly 32 bytes.
+/// @param aad Additional authenticated data; may be NULL when encryption used none.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_cipher_try_decrypt_with_key_aad(void *ciphertext, void *key, void *aad);
 
 //=========================================================================
 // Key Generation

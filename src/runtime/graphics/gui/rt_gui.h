@@ -2694,10 +2694,24 @@ int64_t rt_findbar_is_regex(void *bar);
 /// @return 1 if found, 0 if not found.
 int64_t rt_findbar_find_next(void *bar);
 
+/// @brief Find next match and return the current match index as an Option.
+/// @details This is the sentinel-free variant of rt_findbar_find_next().
+///          Successful searches return SomeI64(current 1-based match index);
+///          misses, unbound bars, and disabled-graphics stubs return None.
+/// @param bar FindBar handle.
+/// @return Opaque Viper.Option containing an i64 match index, or None.
+void *rt_findbar_find_next_option(void *bar);
+
 /// @brief Find previous match.
 /// @param bar FindBar handle.
 /// @return 1 if found, 0 if not found.
 int64_t rt_findbar_find_previous(void *bar);
+
+/// @brief Find previous match and return the current match index as an Option.
+/// @details This is the sentinel-free variant of rt_findbar_find_previous().
+/// @param bar FindBar handle.
+/// @return Opaque Viper.Option containing an i64 match index, or None.
+void *rt_findbar_find_previous_option(void *bar);
 
 /// @brief Replace current match.
 /// @param bar FindBar handle.
@@ -3162,7 +3176,9 @@ void rt_codeeditor_insert_at_cursor(void *editor, rt_string text);
 /// @brief Advance an editor cursor (@p line, @p col) by @p offset characters through @p text,
 ///        counting newlines (UTF-8 aware: continuation bytes share their leading byte's column).
 /// @details Shared by CodeEditor.InsertAndPlaceCursor and unit-testable on its own.
-static inline void rt_codeeditor_advance_position(const char *text, int64_t offset, int64_t *line,
+static inline void rt_codeeditor_advance_position(const char *text,
+                                                  int64_t offset,
+                                                  int64_t *line,
                                                   int64_t *col) {
     if (!text || offset <= 0 || !line || !col)
         return;
@@ -3354,6 +3370,13 @@ int8_t rt_zia_semantic_job_is_error(void *handle);
 
 /// @brief Return a completed semantic background job's error string, if any.
 rt_string rt_zia_semantic_job_error(void *handle);
+
+/// @brief Return a semantic background job's error as an Option string.
+/// @details Returns `SomeStr(message)` when the job has a non-empty error
+///          payload, otherwise `None`. This is the preferred API for new code
+///          because absence is explicit and cannot be confused with an empty
+///          error string.
+void *rt_zia_semantic_job_error_option(void *handle);
 
 /// @brief Return the numeric semantic background job kind.
 int64_t rt_zia_semantic_job_kind(void *handle);

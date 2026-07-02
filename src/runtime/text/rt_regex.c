@@ -35,6 +35,7 @@
 #include "rt_regex_internal.h"
 
 #include "rt_internal.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -588,6 +589,33 @@ rt_string rt_pattern_find(rt_string text, rt_string pattern) {
     return result;
 }
 
+/// @brief Find the first regex match and return it as an Option string.
+/// @details This sentinel-free variant returns `SomeStr(match)` for any match,
+///          including a valid empty-string match, and `None` when no match
+///          exists. Invalid pattern syntax still traps like @ref rt_pattern_find.
+/// @param text Text to search.
+/// @param pattern Regex pattern string.
+/// @return Opaque Viper.Option containing the first match, or None.
+void *rt_pattern_find_option(rt_string text, rt_string pattern) {
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
+
+    compiled_pattern *cp = get_cached_pattern(pat_str);
+    int text_len = safe_rt_string_len_int(text);
+    int match_start, match_end;
+    void *option = NULL;
+
+    if (re_find_match(cp, txt_str, text_len, 0, &match_start, &match_end)) {
+        rt_string match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+        option = rt_option_some_str(match);
+        rt_str_release_maybe(match);
+    } else {
+        option = rt_option_none();
+    }
+    release_cached_pattern(cp);
+    return option;
+}
+
 /// @brief Find the first match starting at or after the given byte offset.
 rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start) {
     const char *pat_str = pattern_required(pattern);
@@ -612,6 +640,38 @@ rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
     return result;
 }
 
+/// @brief Find the first regex match at or after a byte offset as an Option string.
+/// @details Negative starts are clamped to zero. A start beyond the text length
+///          returns None. Empty matches are preserved as `SomeStr("")`.
+/// @param text Text to search.
+/// @param pattern Regex pattern string.
+/// @param start Starting byte offset.
+/// @return Opaque Viper.Option containing the first match, or None.
+void *rt_pattern_find_from_option(rt_string text, rt_string pattern, int64_t start) {
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
+
+    int text_len = safe_rt_string_len_int(text);
+    if (start < 0)
+        start = 0;
+    if (start > text_len)
+        return rt_option_none();
+
+    compiled_pattern *cp = get_cached_pattern(pat_str);
+    int match_start, match_end;
+    void *option = NULL;
+
+    if (re_find_match(cp, txt_str, text_len, (int)start, &match_start, &match_end)) {
+        rt_string match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+        option = rt_option_some_str(match);
+        rt_str_release_maybe(match);
+    } else {
+        option = rt_option_none();
+    }
+    release_cached_pattern(cp);
+    return option;
+}
+
 /// @brief Find the byte position of the first match (-1 if no match).
 int64_t rt_pattern_find_pos(rt_string text, rt_string pattern) {
     const char *pat_str = pattern_required(pattern);
@@ -625,6 +685,26 @@ int64_t rt_pattern_find_pos(rt_string text, rt_string pattern) {
         result = (int64_t)match_start;
     release_cached_pattern(cp);
     return result;
+}
+
+/// @brief Find the byte position of the first regex match as an Option index.
+/// @param text Text to search.
+/// @param pattern Regex pattern string.
+/// @return Opaque Viper.Option containing the byte index, or None.
+void *rt_pattern_find_pos_option(rt_string text, rt_string pattern) {
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
+
+    compiled_pattern *cp = get_cached_pattern(pat_str);
+    int match_start, match_end;
+    void *option = NULL;
+
+    if (re_find_match(cp, txt_str, safe_rt_string_len_int(text), 0, &match_start, &match_end))
+        option = rt_option_some_i64((int64_t)match_start);
+    else
+        option = rt_option_none();
+    release_cached_pattern(cp);
+    return option;
 }
 
 /// @brief Find all non-overlapping matches and return them as a sequence of strings.

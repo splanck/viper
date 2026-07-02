@@ -3,7 +3,8 @@
 // =============================================================================
 // Tests: Say, SayInt, SayNum, SayBool, Print, PrintInt, PrintNum,
 //        Bell, Clear, BeginBatch, EndBatch, Flush
-// NOTE: Skip interactive input functions (Ask, GetKey, ReadLine)
+// NOTE: Skip interactive input functions (TryAsk, AskResult, GetKey,
+//       TryReadLine, ReadLineResult, ReadLine)
 // =============================================================================
 
 module TerminalDemo;
@@ -82,7 +83,9 @@ func start() {
 
     // NOTE: Skipping Bell() to avoid annoying sound during testing
     // NOTE: Skipping Clear() to preserve terminal output
-    Say("(Skipping Bell and Clear to preserve output)");
+    // NOTE: Skipping TryAsk/AskResult/TryReadLine/ReadLineResult because this
+    //       audit demo must run unattended.
+    Say("(Skipping Bell, Clear, and interactive input to preserve output)");
 
     Say("=== Terminal Demo Complete ===");
 }

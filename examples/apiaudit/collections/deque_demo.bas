@@ -1,6 +1,6 @@
 ' deque_demo.bas - Comprehensive API audit for Viper.Collections.Deque
 ' Tests: New, PushFront, PushBack, PopFront, PopBack, PeekFront, PeekBack,
-'        Get, Set, Len, Cap, IsEmpty, Clear, Has, Reverse, Clone
+'        Get, Set, Len, Capacity, IsEmpty, Clear, Has, Reverse, Clone
 
 PRINT "=== Deque API Audit ==="
 
@@ -59,9 +59,9 @@ PRINT "--- Has ---"
 PRINT dq.Has(Viper.Core.Box.Str("A"))  ' 1
 PRINT dq.Has(Viper.Core.Box.Str("z"))  ' 0
 
-' --- Cap ---
-PRINT "--- Cap ---"
-PRINT dq.Cap  ' capacity (>= Len)
+' --- Capacity ---
+PRINT "--- Capacity ---"
+PRINT dq.Capacity  ' capacity (>= Len)
 
 ' --- Reverse ---
 PRINT "--- Reverse ---"

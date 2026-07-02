@@ -33,23 +33,24 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
-#include "rt_audio_fx.h"
 #include "rt_asset.h"
+#include "rt_audio_fx.h"
 #include "rt_error.h"
 #include "rt_mixgroup.h"
 #include "rt_mp3.h"
 #include "rt_object.h"
 #include "rt_ogg.h"
+#include "rt_option.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_time.h"
 #include "rt_trap.h"
 #include "rt_vorbis.h"
 
+#include "rt_audio_internal.h"
 #include <float.h>
 #include <math.h>
 #include <stddef.h>
-#include "rt_audio_internal.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -2064,6 +2065,17 @@ int64_t rt_audio_find_group(rt_string group_name) {
     return id;
 }
 
+/// @brief Find a registered named mix group as an Option id.
+/// @details Sentinel-free companion to @ref rt_audio_find_group. Built-in and
+///          registered groups return `SomeI64(id)`, while missing groups return
+///          None.
+/// @param group_name Group name.
+/// @return Opaque Viper.Option containing the group id, or None.
+void *rt_audio_find_group_option(rt_string group_name) {
+    int64_t id = rt_audio_find_group(group_name);
+    return id >= 0 ? rt_option_some_i64(id) : rt_option_none();
+}
+
 void rt_audio_set_group_volume_named(rt_string group_name, int64_t volume) {
     char name[32];
     audio_group_copy_name(name, sizeof(name), group_name);
@@ -2856,6 +2868,17 @@ int64_t rt_audio_find_group(rt_string group_name) {
     char name[32];
     audio_group_copy_name(name, sizeof(name), group_name);
     return audio_find_group_unlocked(name);
+}
+
+/// @brief Find a registered named mix group as an Option id.
+/// @details Sentinel-free companion to @ref rt_audio_find_group. Built-in and
+///          registered groups return `SomeI64(id)`, while missing groups return
+///          None.
+/// @param group_name Group name.
+/// @return Opaque Viper.Option containing the group id, or None.
+void *rt_audio_find_group_option(rt_string group_name) {
+    int64_t id = rt_audio_find_group(group_name);
+    return id >= 0 ? rt_option_some_i64(id) : rt_option_none();
 }
 
 void rt_audio_set_group_volume_named(rt_string group_name, int64_t volume) {

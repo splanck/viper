@@ -50,7 +50,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_quadtree.h"
+#include "rt_box.h"
 #include "rt_object.h"
+#include "rt_seq.h"
 #include "rt_trap.h"
 
 #include <limits.h>
@@ -105,6 +107,20 @@ struct rt_quadtree_impl {
     int8_t pairs_truncated; ///< 1 if allocation prevented complete pair results.
 };
 
+/// Immutable snapshot of a quadtree ID query.
+struct rt_game_query_result_impl {
+    int64_t *ids;
+    int64_t count;
+    int8_t truncated;
+};
+
+/// Immutable snapshot of quadtree broad-phase pairs.
+struct rt_quadtree_pair_result_impl {
+    struct qt_pair *pairs;
+    int64_t count;
+    int8_t truncated;
+};
+
 /// @brief Safe-cast a handle to the QuadTree impl, trapping @p api on a
 ///        class-id mismatch. @return The tree, or NULL if @p tree is NULL.
 static rt_quadtree checked_quadtree(rt_quadtree tree, const char *api) {
@@ -115,6 +131,99 @@ static rt_quadtree checked_quadtree(rt_quadtree tree, const char *api) {
         return NULL;
     }
     return tree;
+}
+
+/// @brief Safe-cast a handle to QueryResult.
+static struct rt_game_query_result_impl *checked_query_result(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_GAME_QUERY_RESULT_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (struct rt_game_query_result_impl *)ptr;
+}
+
+/// @brief Safe-cast a handle to QuadtreePairResult.
+static struct rt_quadtree_pair_result_impl *checked_pair_result(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_QUADTREE_PAIR_RESULT_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (struct rt_quadtree_pair_result_impl *)ptr;
+}
+
+/// @brief Finalizer that releases a QueryResult ID array.
+static void query_result_finalizer(void *obj) {
+    struct rt_game_query_result_impl *result = (struct rt_game_query_result_impl *)obj;
+    free(result->ids);
+    result->ids = NULL;
+    result->count = 0;
+}
+
+/// @brief Finalizer that releases a QuadtreePairResult pair array.
+static void pair_result_finalizer(void *obj) {
+    struct rt_quadtree_pair_result_impl *result = (struct rt_quadtree_pair_result_impl *)obj;
+    free(result->pairs);
+    result->pairs = NULL;
+    result->count = 0;
+}
+
+/// @brief Copy current quadtree query IDs into an immutable result object.
+static void *query_result_from_ids(const int64_t *ids, int64_t count, int8_t truncated) {
+    struct rt_game_query_result_impl *result = (struct rt_game_query_result_impl *)rt_obj_new_i64(
+        RT_GAME_QUERY_RESULT_CLASS_ID, (int64_t)sizeof(struct rt_game_query_result_impl));
+    if (!result)
+        return NULL;
+    result->ids = NULL;
+    result->count = 0;
+    result->truncated = truncated ? 1 : 0;
+    rt_obj_set_finalizer(result, query_result_finalizer);
+
+    if (!ids || count <= 0)
+        return result;
+    if ((uint64_t)count > SIZE_MAX / sizeof(int64_t)) {
+        result->truncated = 1;
+        return result;
+    }
+    result->ids = (int64_t *)malloc((size_t)count * sizeof(int64_t));
+    if (!result->ids) {
+        result->truncated = 1;
+        return result;
+    }
+    memcpy(result->ids, ids, (size_t)count * sizeof(int64_t));
+    result->count = count;
+    return result;
+}
+
+/// @brief Copy current quadtree broad-phase pairs into an immutable result object.
+static void *pair_result_from_pairs(const struct qt_pair *pairs, int64_t count, int8_t truncated) {
+    struct rt_quadtree_pair_result_impl *result =
+        (struct rt_quadtree_pair_result_impl *)rt_obj_new_i64(
+            RT_QUADTREE_PAIR_RESULT_CLASS_ID, (int64_t)sizeof(struct rt_quadtree_pair_result_impl));
+    if (!result)
+        return NULL;
+    result->pairs = NULL;
+    result->count = 0;
+    result->truncated = truncated ? 1 : 0;
+    rt_obj_set_finalizer(result, pair_result_finalizer);
+
+    if (!pairs || count <= 0)
+        return result;
+    if ((uint64_t)count > SIZE_MAX / sizeof(struct qt_pair)) {
+        result->truncated = 1;
+        return result;
+    }
+    result->pairs = (struct qt_pair *)malloc((size_t)count * sizeof(struct qt_pair));
+    if (!result->pairs) {
+        result->truncated = 1;
+        return result;
+    }
+    memcpy(result->pairs, pairs, (size_t)count * sizeof(struct qt_pair));
+    result->count = count;
+    return result;
 }
 
 /// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
@@ -839,6 +948,15 @@ int64_t rt_quadtree_query_rect(
     return tree->result_count;
 }
 
+void *rt_quadtree_query_rect_result(
+    rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height) {
+    tree = checked_quadtree(tree, "Quadtree.QueryRectResult: expected Viper.Game.Quadtree");
+    if (!tree)
+        return query_result_from_ids(NULL, 0, 0);
+    (void)rt_quadtree_query_rect(tree, x, y, width, height);
+    return query_result_from_ids(tree->results, tree->result_count, tree->query_truncated);
+}
+
 /// @brief Check whether the last query hit the result capacity limit.
 int8_t rt_quadtree_query_was_truncated(rt_quadtree tree) {
     tree = checked_quadtree(tree, "Quadtree.QueryWasTruncated: expected Viper.Game.Quadtree");
@@ -877,6 +995,14 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
     return filtered_count;
 }
 
+void *rt_quadtree_query_point_result(rt_quadtree tree, int64_t x, int64_t y, int64_t radius) {
+    tree = checked_quadtree(tree, "Quadtree.QueryPointResult: expected Viper.Game.Quadtree");
+    if (!tree)
+        return query_result_from_ids(NULL, 0, 0);
+    (void)rt_quadtree_query_point(tree, x, y, radius);
+    return query_result_from_ids(tree->results, tree->result_count, tree->query_truncated);
+}
+
 /// @brief Return the item ID at a given index in the most recent query result set.
 int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
     tree = checked_quadtree(tree, "Quadtree.GetResult: expected Viper.Game.Quadtree");
@@ -889,6 +1015,56 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
 int64_t rt_quadtree_result_count(rt_quadtree tree) {
     tree = checked_quadtree(tree, "Quadtree.ResultCount: expected Viper.Game.Quadtree");
     return tree ? tree->result_count : 0;
+}
+
+int64_t rt_game_query_result_count(void *ptr) {
+    struct rt_game_query_result_impl *result =
+        checked_query_result(ptr, "QueryResult.Count: expected Viper.Game.QueryResult");
+    return result ? result->count : 0;
+}
+
+int64_t rt_game_query_result_get_id(void *ptr, int64_t index) {
+    struct rt_game_query_result_impl *result =
+        checked_query_result(ptr, "QueryResult.GetId: expected Viper.Game.QueryResult");
+    if (!result || index < 0 || index >= result->count)
+        return -1;
+    return result->ids[index];
+}
+
+int8_t rt_game_query_result_contains(void *ptr, int64_t id) {
+    struct rt_game_query_result_impl *result =
+        checked_query_result(ptr, "QueryResult.Contains: expected Viper.Game.QueryResult");
+    if (!result)
+        return 0;
+    for (int64_t i = 0; i < result->count; ++i) {
+        if (result->ids[i] == id)
+            return 1;
+    }
+    return 0;
+}
+
+int8_t rt_game_query_result_truncated(void *ptr) {
+    struct rt_game_query_result_impl *result =
+        checked_query_result(ptr, "QueryResult.Truncated: expected Viper.Game.QueryResult");
+    return result ? result->truncated : 0;
+}
+
+void *rt_game_query_result_ids(void *ptr) {
+    struct rt_game_query_result_impl *result =
+        checked_query_result(ptr, "QueryResult.Ids: expected Viper.Game.QueryResult");
+    void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
+    if (!result)
+        return seq;
+    rt_seq_set_owns_elements(seq, 1);
+    for (int64_t i = 0; i < result->count; ++i) {
+        void *boxed = rt_box_i64(result->ids[i]);
+        rt_seq_push(seq, boxed);
+        if (boxed && rt_obj_release_check0(boxed))
+            rt_obj_free(boxed);
+    }
+    return seq;
 }
 
 /// @brief Get the total number of active items in the quadtree.
@@ -931,6 +1107,14 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
     return tree->pair_count;
 }
 
+void *rt_quadtree_query_pairs(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.QueryPairs: expected Viper.Game.Quadtree");
+    if (!tree)
+        return pair_result_from_pairs(NULL, 0, 0);
+    (void)rt_quadtree_get_pairs(tree);
+    return pair_result_from_pairs(tree->pairs, tree->pair_count, tree->pairs_truncated);
+}
+
 /// @brief Return the first item ID in a collision pair at the given index.
 int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index) {
     tree = checked_quadtree(tree, "Quadtree.PairFirst: expected Viper.Game.Quadtree");
@@ -953,4 +1137,32 @@ int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
 int8_t rt_quadtree_pairs_was_truncated(rt_quadtree tree) {
     tree = checked_quadtree(tree, "Quadtree.PairsWasTruncated: expected Viper.Game.Quadtree");
     return tree ? tree->pairs_truncated : 0;
+}
+
+int64_t rt_quadtree_pair_result_count(void *ptr) {
+    struct rt_quadtree_pair_result_impl *result = checked_pair_result(
+        ptr, "QuadtreePairResult.Count: expected Viper.Game.QuadtreePairResult");
+    return result ? result->count : 0;
+}
+
+int64_t rt_quadtree_pair_result_first(void *ptr, int64_t index) {
+    struct rt_quadtree_pair_result_impl *result = checked_pair_result(
+        ptr, "QuadtreePairResult.First: expected Viper.Game.QuadtreePairResult");
+    if (!result || index < 0 || index >= result->count)
+        return -1;
+    return result->pairs[index].first;
+}
+
+int64_t rt_quadtree_pair_result_second(void *ptr, int64_t index) {
+    struct rt_quadtree_pair_result_impl *result = checked_pair_result(
+        ptr, "QuadtreePairResult.Second: expected Viper.Game.QuadtreePairResult");
+    if (!result || index < 0 || index >= result->count)
+        return -1;
+    return result->pairs[index].second;
+}
+
+int8_t rt_quadtree_pair_result_truncated(void *ptr) {
+    struct rt_quadtree_pair_result_impl *result = checked_pair_result(
+        ptr, "QuadtreePairResult.Truncated: expected Viper.Game.QuadtreePairResult");
+    return result ? result->truncated : 0;
 }

@@ -26,12 +26,16 @@ Translation catalog keyed by message ID. Supports placeholder interpolation, fal
 | `FromMap(loc, map)` | `MessageBundle(Locale, Map[String, String])` | Use an existing map. |
 | `Get(key)` | `String(String)` | Traps when no bundle in the chain has `key`. |
 | `TryGet(key)` | `String(String)` | Returns `""` when missing. |
+| `TryGetOption(key)` | `Option[String](String)` | Returns `Some(value)` when present, including empty translations; `None` when missing. |
+| `GetOr(key, default)` | `String(String, String)` | Returns the resolved value or the provided fallback string. |
 | `Has(key)` | `Bool(String)` | |
 | `Format(key, vars)` | `String(String, Map[String, String])` | `{name}`-style placeholders. |
 | `FormatWith(key, values)` | `String(String, List[String])` | Positional `{0}`, `{1}`, … |
 | `Plural(key, n, vars)` | `String(String, Int, Map[String, String])` | Plural-aware lookup (see Notes). |
 | `Fallback(other)` | `MessageBundle(MessageBundle)` | Attach a fallback; traps on cycle. |
 | `Keys()` | `List[String]()` | Keys defined by this bundle (excludes fallback). |
+
+Prefer `TryGetOption` or `GetOr` for new code. `TryGet` remains available for compatibility, but its empty-string sentinel cannot distinguish a missing key from an intentional empty translation.
 
 ### Properties
 

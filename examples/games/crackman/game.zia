@@ -12,7 +12,7 @@
 //   * DEVICE-AGNOSTIC INPUT. Viper.Input.Action names actions
 //     independent of keyboard vs gamepad; the main loop queries by
 //     name (Action.Pressed("move_up")) and the runtime dispatches.
-//   * STABLE FRAME PACING. Canvas.BeginFrame + SetDTMax cap the
+//   * STABLE FRAME PACING. Canvas.BeginFrame + SetMaxDeltaTime cap the
 //     per-frame delta so a long frame doesn't produce a giant tick
 //     (would tunnel the ghost through walls).
 //   * SINGLE LOOP FOR BOTH SCREENS. Both FrontendController and
@@ -27,7 +27,7 @@
 // Uses Viper runtime features:
 // - StateMachine for app-level state transitions
 // - Action for device-agnostic input (keyboard + gamepad)
-// - Canvas.BeginFrame / SetDTMax for stable frame pacing
+// - Canvas.BeginFrame / SetMaxDeltaTime for stable frame pacing
 // - FrontendController for menu/profile/options/summary flow
 // - Session for gameplay state, rendering, and per-run events
 // - Progression for persistent leaderboard, achievements, and run summaries
@@ -80,7 +80,7 @@ class Game {
 
         canvas = Canvas.New("CRACKMAN", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
         canvas.SetFps(60);
-        canvas.SetDTMax(config.DT_MAX);
+        canvas.SetMaxDeltaTime(config.DT_MAX);
         if userSettings.isFullscreen() {
             canvas.Fullscreen();
         }

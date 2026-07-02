@@ -55,6 +55,15 @@ typedef enum {
 ///         Returns NULL on parse error (check rt_serialize_error()).
 void *rt_serialize_parse(rt_string text, int64_t format);
 
+/// @brief Parse text in the specified format into a Viper.Result.
+/// @details Returns `Ok(value)` for valid input, including valid null values
+///          that map to NULL, and `Err(message)` for invalid input, nil input,
+///          or unknown format values.
+/// @param text Input text.
+/// @param format Format enum (RT_FORMAT_JSON, etc.).
+/// @return Opaque Viper.Result object containing the parsed value or error.
+void *rt_serialize_parse_result(rt_string text, int64_t format);
+
 /// @brief Format a Viper value as text in the specified format.
 /// @param obj Value to format.
 /// @param format Format enum.
@@ -94,6 +103,14 @@ int64_t rt_serialize_detect(rt_string text);
 /// @param text Input text.
 /// @return Parsed value, or NULL on error.
 void *rt_serialize_auto_parse(rt_string text);
+
+/// @brief Parse text by auto-detecting the format and return a Viper.Result.
+/// @details Returns `Ok(value)` after successful detection and parsing, or
+///          `Err(message)` when detection fails or the detected parser rejects
+///          the input.
+/// @param text Input text.
+/// @return Opaque Viper.Result object containing the parsed value or error.
+void *rt_serialize_auto_parse_result(rt_string text);
 
 //=========================================================================
 // Round-Trip Conversion

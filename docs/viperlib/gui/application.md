@@ -230,8 +230,10 @@ If the parent widget destroys the underlying bar, the runtime wrapper disconnect
 
 | Method                      | Signature       | Description                              |
 |-----------------------------|-----------------|------------------------------------------|
-| `FindNext()`                | `Integer()`     | Find next match; returns 1 if found      |
-| `FindPrev()`                | `Integer()`     | Find previous match; returns 1 if found  |
+| `FindNextOption()`          | `Option[Integer]()` | Find next match; returns the current 1-based match index |
+| `FindPrevOption()`          | `Option[Integer]()` | Find previous match; returns the current 1-based match index |
+| `FindNext()`                | `Integer()`     | Compatibility API: returns 1 if found, 0 otherwise |
+| `FindPrev()`                | `Integer()`     | Compatibility API: returns 1 if found, 0 otherwise |
 | `Focus()`                   | `Void()`        | Focus the find input                     |
 | `GetCurrentMatch()`         | `Integer()`     | Get current match as a 1-based index, or 0 when there is no match |
 | `GetFindText()`             | `String()`      | Get search text                          |
@@ -349,7 +351,8 @@ Owns a set of commands and routes the menu item, toolbar button, keyboard shortc
 |-------------------------|---------------------|-------------------------------------------------------------------|
 | `Add(command)`          | `Void(Command)`     | Register (retain) a command; duplicates are ignored               |
 | `Count()`               | `Integer()`         | Number of registered commands                                     |
-| `Find(id)`              | `Command(String)`   | The command with that id, or `null`                               |
+| `FindOption(id)`        | `Option[Command](String)` | The command with that id, or `None`                         |
+| `Find(id)`              | `Command(String)`   | Compatibility API: the command with that id, or `null`            |
 | `BindPalette(palette)`  | `Void(CommandPalette)` | The palette whose selection routes to registered commands      |
 | `Poll()`                | `String()`          | Poll the palette and every command once; return an invoked command id (`""` if none). Each command's `WasInvoked()` is also updated |
 | `Clear()`               | `Void()`            | Release all commands                                              |
@@ -905,7 +908,8 @@ These helpers are runtime-side primitives for editor applications that need dete
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `RegisterWidget(id, type, name, x, y, w, h)` | `Void(String, String, String, Integer...)` | Register a focusable test region |
-| `FindById(id)` / `FindByName(name)` / `FindByType(type)` | `Map(String)` | Return a structured lookup record |
+| `FindByIdOption(id)` / `FindByNameOption(name)` / `FindByTypeOption(type)` | `Option[Map](String)` | Return a structured lookup record, or `None` |
+| `FindById(id)` / `FindByName(name)` / `FindByType(type)` | `Map(String)` | Compatibility API: return a structured lookup record with `found` |
 | `SendKey(key, modifiers)` | `Void(String, Integer)` | Queue a key event and update focus traversal for `Tab` |
 | `SendMouse(eventType, x, y, button)` | `Void(String, Integer, Integer, Integer)` | Queue a mouse event and focus the hit widget on `down` |
 | `Tick(frames)` | `Integer(Integer)` | Advance the harness frame counter |

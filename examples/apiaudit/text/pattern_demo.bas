@@ -15,15 +15,29 @@ PRINT "IsMatch lowercase 'Hello': "; Viper.Text.Pattern.IsMatch("Hello", "^[a-z]
 PRINT "--- Find ---"
 PRINT "Find digits: "; Viper.Text.Pattern.Find("abc123def", "[0-9]+")
 PRINT "Find word: "; Viper.Text.Pattern.Find("Hello World", "[A-Z][a-z]+")
+DIM found AS OBJECT
+found = Viper.Text.Pattern.FindOption("abc123def", "[0-9]+")
+PRINT "FindOption IsSome: "; found.IsSome
+PRINT "FindOption value: "; found.UnwrapStr()
+PRINT "FindOption no match: "; Viper.Text.Pattern.FindOption("abcdef", "[0-9]+").IsNone
 
 ' --- FindFrom ---
 PRINT "--- FindFrom ---"
 PRINT "FindFrom pos 6: "; Viper.Text.Pattern.FindFrom("abc123def456", "[0-9]+", 6)
+DIM foundFrom AS OBJECT
+foundFrom = Viper.Text.Pattern.FindFromOption("abc123def456", "[0-9]+", 6)
+PRINT "FindFromOption IsSome: "; foundFrom.IsSome
+PRINT "FindFromOption value: "; foundFrom.UnwrapStr()
 
 ' --- FindPos ---
 PRINT "--- FindPos ---"
 PRINT "FindPos digits: "; Viper.Text.Pattern.FindPos("abc123def", "[0-9]+")
 PRINT "FindPos no match: "; Viper.Text.Pattern.FindPos("abcdef", "[0-9]+")
+DIM foundPos AS OBJECT
+foundPos = Viper.Text.Pattern.FindPosOption("abc123def", "[0-9]+")
+PRINT "FindPosOption IsSome: "; foundPos.IsSome
+PRINT "FindPosOption value: "; foundPos.UnwrapI64()
+PRINT "FindPosOption no match: "; Viper.Text.Pattern.FindPosOption("abcdef", "[0-9]+").IsNone
 
 ' --- FindAll ---
 PRINT "--- FindAll ---"

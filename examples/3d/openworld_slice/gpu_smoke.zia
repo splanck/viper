@@ -27,7 +27,7 @@ func runGpuRobustnessProbe(canvas: Canvas3D) -> Boolean {
     Mesh3D.AddTriangle(mesh, 0, 1, 2);
 
     var normalMap = solidPixel(0x8080FFFF);
-    var mat = Material3D.NewPBR(0.75, 0.68, 0.45);
+    var mat = Material3D.PBR(0.75, 0.68, 0.45);
     Material3D.SetNormalMap(mat, normalMap);
 
     var face = solidPixel(0x202080FF);
@@ -67,8 +67,8 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
         return false;
     }
 
-    var mesh = Mesh3D.NewBox(1.25, 1.25, 1.25);
-    var material = Material3D.NewPBR(0.62, 0.58, 0.52);
+    var mesh = Mesh3D.Box(1.25, 1.25, 1.25);
+    var material = Material3D.PBR(0.62, 0.58, 0.52);
     var camera = Camera3D.New(50.0, 160.0 / 120.0, 0.1, 30.0);
     Camera3D.LookAt(camera,
         Vec3.New(0.0, 0.5, 5.0),
@@ -82,7 +82,7 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
         var x = -3.0 + (i % 8 + 0.0) * 0.85;
         var y = 1.2 + ((i / 8) + 0.0) * 0.45;
         var z = 2.2 - ((i % 3) + 0.0) * 0.55;
-        var light = Light3D.NewPoint(Vec3.New(x, y, z), 0.9, 0.72, 0.42, 0.03);
+        var light = Light3D.Point(Vec3.New(x, y, z), 0.9, 0.72, 0.42, 0.03);
         Light3D.SetIntensity(light, 0.7 + (i + 0.0) * 0.04);
         Canvas3D.SetLight(canvas, i, light);
         i = i + 1;
@@ -147,7 +147,7 @@ func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
     Canvas3D.SetShadowBias(canvas, 0.0022);
     Canvas3D.SetShadowCascades(canvas, 3);
 
-    var sun = Light3D.NewDirectional(Vec3.New(-0.35, -1.0, -0.25), 1.0, 0.96, 0.88);
+    var sun = Light3D.Directional(Vec3.New(-0.35, -1.0, -0.25), 1.0, 0.96, 0.88);
     Light3D.SetIntensity(sun, 1.35);
     Canvas3D.SetLight(canvas, 0, sun);
 
@@ -157,10 +157,10 @@ func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
         Vec3.New(0.0, 0.8, -5.0),
         Vec3.New(0.0, 1.0, 0.0));
 
-    var ground = Mesh3D.NewBox(8.0, 0.18, 28.0);
-    var tower = Mesh3D.NewBox(1.2, 3.4, 1.2);
-    var groundMat = Material3D.NewPBR(0.48, 0.50, 0.46);
-    var towerMat = Material3D.NewPBR(0.58, 0.50, 0.42);
+    var ground = Mesh3D.Box(8.0, 0.18, 28.0);
+    var tower = Mesh3D.Box(1.2, 3.4, 1.2);
+    var groundMat = Material3D.PBR(0.48, 0.50, 0.46);
+    var towerMat = Material3D.PBR(0.58, 0.50, 0.42);
 
     var start = Clock.TicksUs();
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);

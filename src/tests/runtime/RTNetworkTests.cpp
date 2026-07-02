@@ -25,6 +25,7 @@
 #include "rt_map.h"
 #include "rt_netutils.h"
 #include "rt_network.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -1622,6 +1623,9 @@ static void test_http_chunked() {
 static void test_http_req_builder() {
     printf("\nTesting HttpReq builder:\n");
 
+    void *null_result = rt_http_req_send_result(NULL);
+    test_result("HttpReq.SendResult(NULL) returns Result.Err", rt_result_is_err(null_result) == 1);
+
     const int port = get_free_tcp_port_ipv4();
     assert(port > 0);
     server_ready = false;
@@ -1654,6 +1658,9 @@ static void test_http_req_builder() {
 
     req = rt_http_req_set_force_http1(req, 1);
     test_result("HttpReq.SetForceHttp1 returns same object", req != nullptr);
+
+    req = rt_http_req_allow_insecure_certificates_for_testing(req);
+    test_result("HttpReq.AllowInsecureCertificatesForTesting returns same object", req != nullptr);
 
     void *res = rt_http_req_send(req);
     test_result("HttpReq.Send returns HttpRes", res != nullptr);

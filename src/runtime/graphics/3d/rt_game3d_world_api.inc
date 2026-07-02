@@ -890,6 +890,17 @@ void *rt_game3d_world_find_node(void *obj, rt_string name) {
     return world && world->scene ? rt_scene3d_find(world->scene, name) : NULL;
 }
 
+/// @brief Find a scene node by name and wrap the nullable result in an Option.
+/// @details Uses the world's current scene graph lookup; absence is represented
+///          as `None` instead of a NULL scene-node handle.
+/// @param obj World3D handle.
+/// @param name Exact scene-node name to match.
+/// @return `Some(SceneNode3D)` when a node exists, otherwise `None`.
+void *rt_game3d_world_find_node_option(void *obj, rt_string name) {
+    void *node = rt_game3d_world_find_node(obj, name);
+    return node ? rt_option_some(node) : rt_option_none();
+}
+
 /// @brief Find a spawned entity by name using the world's name index; NULL if absent.
 void *rt_game3d_world_find_entity(void *obj, rt_string name) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.findEntity: invalid world");
@@ -915,6 +926,17 @@ void *rt_game3d_world_find_entity(void *obj, rt_string name) {
             return entity;
     }
     return NULL;
+}
+
+/// @brief Find a spawned entity by name and wrap the nullable result in an Option.
+/// @details Uses the same name-index and fallback scan as
+///          `rt_game3d_world_find_entity`, while exposing absence as `None`.
+/// @param obj World3D handle.
+/// @param name Exact entity name to match.
+/// @return `Some(Entity3D)` when a spawned entity exists, otherwise `None`.
+void *rt_game3d_world_find_entity_option(void *obj, rt_string name) {
+    void *entity = rt_game3d_world_find_entity(obj, name);
+    return entity ? rt_option_some(entity) : rt_option_none();
 }
 
 /// @brief Install a camera controller (or NULL to clear); traps on a non-Game3D

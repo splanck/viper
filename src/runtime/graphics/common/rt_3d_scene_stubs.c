@@ -102,6 +102,18 @@ void *rt_scene3d_find(void *s, rt_string n) {
     return NULL;
 }
 
+/// @brief Stub for `Scene3D.FindOption` — recursive name lookup as Option.
+/// @details Graphics-disabled builds have no scene graph to search, so the
+///          modern absence-aware API returns `None`.
+/// @param s Scene3D handle (ignored).
+/// @param n Node name to search for (ignored).
+/// @return `None`.
+void *rt_scene3d_find_option(void *s, rt_string n) {
+    (void)s;
+    (void)n;
+    return rt_option_none();
+}
+
 void *rt_scene3d_query_aabb(void *s, void *min, void *max) {
     (void)s;
     (void)min;
@@ -548,6 +560,18 @@ void *rt_scene_node3d_find(void *n, rt_string name) {
     (void)n;
     (void)name;
     return NULL;
+}
+
+/// @brief Stub for `SceneNode3D.FindOption` — recursive subtree lookup as Option.
+/// @details Graphics-disabled builds have no node hierarchy to search, so the
+///          modern absence-aware API returns `None`.
+/// @param n SceneNode3D handle (ignored).
+/// @param name Node name to search for (ignored).
+/// @return `None`.
+void *rt_scene_node3d_find_option(void *n, rt_string name) {
+    (void)n;
+    (void)name;
+    return rt_option_none();
 }
 
 /// @brief Stub for `SceneNode3D.SetMesh` — bind a Mesh3D to this node so

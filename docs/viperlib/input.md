@@ -12,12 +12,39 @@ last-verified: 2026-04-09
 
 ## Contents
 
+- [Viper.Input.Key](#viperinputkey)
 - [Viper.Input.Keyboard](#viperinputkeyboard)
 - [Viper.Input.KeyChord](#viperinputkeychord)
 - [Viper.Input.Mouse](#viperinputmouse)
 - [Viper.Input.Pad](#viperinputpad)
 - [Viper.Input.Action](#viperinputaction)
 - [Viper.Input.Manager](#viperinputmanager)
+
+---
+
+## Viper.Input.Key
+
+Canonical keyboard key-code constants for input APIs.
+
+**Type:** Static constants class
+
+Use `Viper.Input.Key` anywhere an API expects an integer key code, including
+`Keyboard.IsDown`, `Keyboard.WasPressed`, `Action.BindKey`, and Game3D input
+helpers. `Keyboard.Key*` and `Game3D.Keys` remain available as compatibility
+mirrors, but new code should import `Key` for constants and keep `Keyboard` for
+state/query behavior.
+
+| Group | Properties |
+|---|---|
+| Letters | `A`-`Z` |
+| Digits | `Digit0`-`Digit9` |
+| Function keys | `F1`-`F12` |
+| Arrows | `Up`, `Down`, `Left`, `Right` |
+| Navigation | `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete` |
+| Editing | `Backspace`, `Tab`, `Enter`, `Space`, `Escape` |
+| Modifiers | `LeftShift`, `RightShift`, `LeftControl`, `RightControl`, `LeftAlt`, `RightAlt` |
+| Punctuation | `Minus`, `Equals`, `LeftBracket`, `RightBracket`, `Backslash`, `Semicolon`, `Quote`, `Grave`, `Comma`, `Period`, `Slash` |
+| Numpad | `Numpad0`-`Numpad9`, `NumpadAdd`, `NumpadSubtract`, `NumpadMultiply`, `NumpadDivide`, `NumpadEnter`, `NumpadDecimal` |
 
 ---
 
@@ -77,7 +104,8 @@ Keyboard state is updated automatically when you call `Canvas.Poll()`.
 
 ### Key Code Constants
 
-All key codes are accessed as read-only properties on the Keyboard class.
+Prefer `Viper.Input.Key` for key constants in new code. The `Keyboard.Key*`
+properties below remain as compatibility aliases for existing programs.
 
 #### Letters
 
@@ -173,6 +201,7 @@ bind Viper.Terminal;
 bind Viper.Graphics.Canvas as Canvas;
 bind Viper.Graphics.Color as Color;
 bind Viper.Input.Keyboard as KB;
+bind Viper.Input.Key as Key;
 
 func start() {
     var c = Canvas.New("Game", 800, 600);
@@ -183,16 +212,16 @@ func start() {
         c.Poll();
 
         // Movement using polling (smooth, held keys)
-        if KB.IsDown(KB.get_KeyW()) { py = py - 5; }
-        if KB.IsDown(KB.get_KeyS()) { py = py + 5; }
-        if KB.IsDown(KB.get_KeyA()) { px = px - 5; }
-        if KB.IsDown(KB.get_KeyD()) { px = px + 5; }
+        if KB.IsDown(Key.W) { py = py - 5; }
+        if KB.IsDown(Key.S) { py = py + 5; }
+        if KB.IsDown(Key.A) { px = px - 5; }
+        if KB.IsDown(Key.D) { px = px + 5; }
 
         // Action on single press
-        if KB.WasPressed(KB.get_KeySpace()) { Say("Action!"); }
+        if KB.WasPressed(Key.Space) { Say("Action!"); }
 
         // Escape to quit
-        if KB.WasPressed(KB.get_KeyEscape()) { return; }
+        if KB.WasPressed(Key.Escape) { return; }
 
         c.Clear(Color.RGB(0, 0, 0));
         c.Box(px - 10, py - 10, 20, 20, Color.RGB(255, 0, 0));
@@ -216,27 +245,27 @@ DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Movement using polling (smooth, held keys)
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyW) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Key.W) THEN
         playerY = playerY - speed
     END IF
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyS) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Key.S) THEN
         playerY = playerY + speed
     END IF
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyA) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Key.A) THEN
         playerX = playerX - speed
     END IF
-    IF Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KeyD) THEN
+    IF Viper.Input.Keyboard.IsDown(Viper.Input.Key.D) THEN
         playerX = playerX + speed
     END IF
 
     ' Action using event (single press)
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeySpace) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Space) THEN
         ' Fire weapon or jump - only triggers once per press
         PRINT "Action!"
     END IF
 
     ' Escape to quit
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Escape) THEN
         EXIT DO
     END IF
 
@@ -292,14 +321,14 @@ DO WHILE NOT canvas.ShouldClose
     inputText = inputText + typed
 
     ' Handle backspace
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyBackspace) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Backspace) THEN
         IF LEN(inputText) > 0 THEN
             inputText = LEFT$(inputText, LEN(inputText) - 1)
         END IF
     END IF
 
     ' Submit on Enter
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEnter) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Enter) THEN
         PRINT "Submitted: "; inputText
         inputText = ""
     END IF
@@ -690,7 +719,7 @@ DO WHILE NOT canvas.ShouldClose
     IF cameraPitch < -90 THEN cameraPitch = -90
 
     ' Escape to release cursor and exit
-    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
+    IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Escape) THEN
         Viper.Input.Mouse.Release()
         Viper.Input.Mouse.Show()
         EXIT DO
@@ -1229,7 +1258,7 @@ module ActionDemo;
 
 bind Viper.Terminal;
 bind Viper.Input.Action as Action;
-bind Viper.Input.Keyboard as KB;
+bind Viper.Input.Key as Key;
 bind Viper.Input.Pad as Pad;
 bind Viper.Graphics.Canvas as Canvas;
 bind Viper.Graphics.Color as Color;
@@ -1245,12 +1274,12 @@ func start() {
     Action.DefineAxis("move_y");
 
     // Bind keyboard
-    Action.BindKey("jump", KB.get_KeySpace());
-    Action.BindKey("fire", KB.get_KeyZ());
-    Action.BindKeyAxis("move_x", KB.get_KeyLeft(), -1.0);
-    Action.BindKeyAxis("move_x", KB.get_KeyRight(), 1.0);
-    Action.BindKeyAxis("move_y", KB.get_KeyUp(), -1.0);
-    Action.BindKeyAxis("move_y", KB.get_KeyDown(), 1.0);
+    Action.BindKey("jump", Key.Space);
+    Action.BindKey("fire", Key.Z);
+    Action.BindKeyAxis("move_x", Key.Left, -1.0);
+    Action.BindKeyAxis("move_x", Key.Right, 1.0);
+    Action.BindKeyAxis("move_y", Key.Up, -1.0);
+    Action.BindKeyAxis("move_y", Key.Down, 1.0);
 
     // Bind gamepad (any controller)
     Action.BindPadButton("jump", -1, Pad.get_ButtonA());
@@ -1292,12 +1321,12 @@ Viper.Input.Action.DefineAxis("move_x")
 Viper.Input.Action.DefineAxis("move_y")
 
 ' Bind keyboard
-Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KeySpace)
-Viper.Input.Action.BindKey("fire", Viper.Input.Keyboard.KeyZ)
-Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KeyLeft, -1.0)
-Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KeyRight, 1.0)
-Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KeyUp, -1.0)
-Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KeyDown, 1.0)
+Viper.Input.Action.BindKey("jump", Viper.Input.Key.Space)
+Viper.Input.Action.BindKey("fire", Viper.Input.Key.Z)
+Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Key.Left, -1.0)
+Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Key.Right, 1.0)
+Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Key.Up, -1.0)
+Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Key.Down, 1.0)
 
 ' Bind gamepad (any controller)
 Viper.Input.Action.BindPadButton("jump", -1, Viper.Input.Pad.ButtonA)
@@ -1383,14 +1412,14 @@ PRINT "Jump is bound to: "; jumpBindings
 
 ' Check for conflicts
 DIM conflict AS STRING
-conflict = Viper.Input.Action.KeyBoundTo(Viper.Input.Keyboard.KeySpace)
+conflict = Viper.Input.Action.KeyBoundTo(Viper.Input.Key.Space)
 IF conflict <> "" THEN
     PRINT "Space is already bound to: "; conflict
 END IF
 
 ' Rebind at runtime
-Viper.Input.Action.UnbindKey("jump", Viper.Input.Keyboard.KeySpace)
-Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KeyW)
+Viper.Input.Action.UnbindKey("jump", Viper.Input.Key.Space)
+Viper.Input.Action.BindKey("jump", Viper.Input.Key.W)
 ```
 
 ### Notes
@@ -1646,12 +1675,12 @@ DO WHILE running
     input.Update()
 
     ' Non-debounced: fires every frame while held
-    IF input.KeyHeld(Viper.Input.Keyboard.KeySpace) THEN
+    IF input.KeyHeld(Viper.Input.Key.Space) THEN
         FireWeapon()  ' Continuous fire
     END IF
 
     ' Debounced: fires once, then requires release or wait
-    IF input.KeyPressedDebounced(Viper.Input.Keyboard.KeyP) THEN
+    IF input.KeyPressedDebounced(Viper.Input.Key.P) THEN
         TogglePause()  ' Won't rapid-toggle
     END IF
 LOOP

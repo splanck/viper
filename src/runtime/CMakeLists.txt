@@ -112,6 +112,7 @@ set(RT_GAME_SOURCES
         game/rt_grid2d.c
         game/rt_timer.c
         game/rt_statemachine.c
+        game/rt_animation_events.c
         game/rt_animstate.c
         game/rt_animtimeline.c
         game/rt_tween.c
@@ -633,6 +634,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_grid2d.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_timer.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_statemachine.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_animation_events.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_animstate.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_animtimeline.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_tween.h

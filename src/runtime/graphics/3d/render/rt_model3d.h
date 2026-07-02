@@ -33,10 +33,18 @@ extern "C" {
 /// @brief Load a 3D model asset (mesh/material/skeleton/animation graph) from
 ///        a file. @return New Model3D handle, or NULL on failure.
 void *rt_model3d_load(rt_string path);
+/// @brief Load a 3D model asset from a file as `Result.Ok(SceneAsset)` or `Result.Err(String)`.
+/// @details This side-channel-free companion to @ref rt_model3d_load preserves the same loader
+/// behavior while returning recoverable failure diagnostics directly in the Result.
+void *rt_model3d_load_result(rt_string path);
 /// @brief Load a 3D model asset through the runtime asset manager.
 /// @details glTF/GLB assets resolve external dependencies relative to the model
 ///          asset and search mounted/embedded packages before dev filesystem files.
 void *rt_model3d_load_asset(rt_string path);
+/// @brief Load a 3D model asset through the asset manager as `Result.Ok` or `Result.Err`.
+/// @details Failure diagnostics are returned in the Result instead of requiring
+/// `AssetDiagnostics3D.LastLoadError`.
+void *rt_model3d_load_asset_result(rt_string path);
 /// @brief Internal async path: build a glTF/GLB model from preloaded root bytes.
 /// @details Takes ownership of @p preloaded_data; callers must not reuse it.
 void *rt_model3d_load_preloaded_gltf(rt_string path,
@@ -94,6 +102,8 @@ rt_string rt_model3d_get_scene_name(void *obj, int64_t index);
 
 /// @brief Find a scene-graph node by name (NULL if not found).
 void *rt_model3d_find_node(void *obj, rt_string name);
+/// @brief Find a scene-graph node by name as Some(SceneNode3D), or None when absent.
+void *rt_model3d_find_node_option(void *obj, rt_string name);
 /// @brief Instantiate the model's default node hierarchy as a Scene3D node.
 void *rt_model3d_instantiate(void *obj);
 /// @brief Instantiate the model as a complete standalone Scene3D.
@@ -104,13 +114,21 @@ void *rt_model3d_instantiate_scene_at(void *obj, int64_t index);
 /// @details This is a convenience for external animation-file workflows. The temporary
 /// Model3D is released before returning, so the caller receives a standalone retained clip.
 void *rt_model3d_load_animation(rt_string path, int64_t index);
+/// @brief Load a model file and return a skeletal Animation3D clip as `Result.Ok` or `Err`.
+void *rt_model3d_load_animation_result(rt_string path, int64_t index);
 /// @brief Load a packed model asset and return a retained skeletal Animation3D clip by index.
 void *rt_model3d_load_animation_asset(rt_string path, int64_t index);
+/// @brief Load a packed model asset and return a skeletal Animation3D clip as a Result.
+void *rt_model3d_load_animation_asset_result(rt_string path, int64_t index);
 /// @brief Load a model file and return a retained NodeAnimation3D clip by index.
 /// @details Use this for glTF object, camera, and morph-weight animation clips.
 void *rt_model3d_load_node_animation(rt_string path, int64_t index);
+/// @brief Load a model file and return a NodeAnimation3D clip as a Result.
+void *rt_model3d_load_node_animation_result(rt_string path, int64_t index);
 /// @brief Load a packed model asset and return a retained NodeAnimation3D clip by index.
 void *rt_model3d_load_node_animation_asset(rt_string path, int64_t index);
+/// @brief Load a packed model asset and return a NodeAnimation3D clip as a Result.
+void *rt_model3d_load_node_animation_asset_result(rt_string path, int64_t index);
 
 #ifdef __cplusplus
 }

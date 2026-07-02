@@ -6,6 +6,7 @@ bind Viper.Graphics;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Math;
 bind Viper.Input;
+bind Viper.Input.Key as Key;
 bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "./config";
@@ -33,7 +34,7 @@ class BaseballFieldDemo {
 
     expose func initDemo(title: String, width: Integer, height: Integer) {
         canvas = Canvas3D.New(title, width, height);
-        Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
+        Canvas3D.SetMaxDeltaTime(canvas, config.DT_MAX_MS);
         Canvas3D.ClearFog(canvas);
         Canvas3D.SetAmbient(canvas, 0.54, 0.56, 0.60);
         Canvas3D.EnableShadows(canvas, 0);
@@ -47,7 +48,7 @@ class BaseballFieldDemo {
         skybox = createSkybox();
         Canvas3D.SetSkybox(canvas, skybox);
 
-        fieldModel = SceneAsset.Load("model.obj");
+        fieldModel = SceneAsset.LoadResult("model.obj").Unwrap();
         scene = SceneGraph.New();
         fieldRoot = SceneAsset.Instantiate(fieldModel);
         normalizeFieldRoot();
@@ -83,7 +84,7 @@ class BaseballFieldDemo {
     }
 
     expose func step(dt: Float) {
-        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) {
+        if (Keyboard.WasPressed(Key.Escape)) {
             quitRequested = true;
             return;
         }
@@ -99,15 +100,15 @@ class BaseballFieldDemo {
         var fwd = 0.0;
         var right = 0.0;
         var updown = 0.0;
-        if (Keyboard.IsDown(Keyboard.get_KeyUp())) { fwd = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KeyDown())) { fwd = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KeyLeft())) { right = -1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KeyRight())) { right = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KeyPageUp())) { updown = 1.0; }
-        if (Keyboard.IsDown(Keyboard.get_KeyPageDown())) { updown = -1.0; }
+        if (Keyboard.IsDown(Key.Up)) { fwd = 1.0; }
+        if (Keyboard.IsDown(Key.Down)) { fwd = -1.0; }
+        if (Keyboard.IsDown(Key.Left)) { right = -1.0; }
+        if (Keyboard.IsDown(Key.Right)) { right = 1.0; }
+        if (Keyboard.IsDown(Key.PageUp)) { updown = 1.0; }
+        if (Keyboard.IsDown(Key.PageDown)) { updown = -1.0; }
 
         var speed = moveSpeed;
-        if (Keyboard.IsDown(Keyboard.get_KeyLeftShift())) { speed = moveSpeed * config.SPRINT_MULT; }
+        if (Keyboard.IsDown(Key.LeftShift)) { speed = moveSpeed * config.SPRINT_MULT; }
         var climb = updown * (config.UPDOWN_SPEED / config.BASE_MOVE_SPEED);
 
         Camera3D.FPSUpdate(
@@ -171,11 +172,11 @@ class BaseballFieldDemo {
     }
 
     hide func buildLights() {
-        var sun = Light3D.NewDirectional(new Vec3(-0.34, -1.0, -0.26), 1.0, 0.98, 0.94);
+        var sun = Light3D.Directional(new Vec3(-0.34, -1.0, -0.26), 1.0, 0.98, 0.94);
         Light3D.SetIntensity(sun, 0.82);
         Canvas3D.SetLight(canvas, 0, sun);
 
-        var fill = Light3D.NewDirectional(new Vec3(0.54, -0.50, 0.62), 0.54, 0.64, 0.84);
+        var fill = Light3D.Directional(new Vec3(0.54, -0.50, 0.62), 0.54, 0.64, 0.84);
         Light3D.SetIntensity(fill, 0.34);
         Canvas3D.SetLight(canvas, 1, fill);
     }

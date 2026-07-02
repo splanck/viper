@@ -3,7 +3,8 @@
 ' =============================================================================
 ' Tests: Say, SayInt, SayNum, SayBool, Print, PrintInt, PrintNum,
 '        Bell, Clear, BeginBatch, EndBatch, Flush
-' NOTE: Skip interactive input functions (Ask, GetKey, ReadLine)
+' NOTE: Skip interactive input functions (TryAsk, AskResult, GetKey,
+'       TryReadLine, ReadLineResult, ReadLine)
 ' =============================================================================
 
 PRINT "=== API Audit: Viper.Terminal ==="
@@ -72,7 +73,9 @@ PRINT
 PRINT "Flush complete"
 
 ' NOTE: Skipping Bell and Clear to preserve output
-PRINT "(Skipping Bell and Clear to preserve output)"
+' NOTE: Skipping TryAsk/AskResult/TryReadLine/ReadLineResult because this
+'       audit demo must run unattended.
+PRINT "(Skipping Bell, Clear, and interactive input to preserve output)"
 
 PRINT "=== Terminal Demo Complete ==="
 END

@@ -706,7 +706,9 @@ Console I/O operations:
 - `Viper.Terminal.PrintStr(str)->void` — Print string
 - `Viper.Terminal.PrintI64(i64)->void` — Print integer
 - `Viper.Terminal.PrintF64(f64)->void` — Print double
-- `Viper.Terminal.ReadLine()->str?` — Read line from console (returns null on EOF)
+- `Viper.Terminal.TryReadLine()->obj<Viper.Option>` — Read line from console (`None` on EOF)
+- `Viper.Terminal.ReadLineResult()->obj<Viper.Result>` — Read line from console (`Err` on EOF)
+- `Viper.Terminal.ReadLine()->str` — Compatibility read line API; prefer `TryReadLine()` or `ReadLineResult()` for EOF handling
 
 #### Viper.String
 
@@ -729,24 +731,28 @@ Type conversion:
 - `Viper.Core.Convert.ToDouble(str)->f64` — String to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
 - `Viper.Core.Convert.ToInt64(str)->i64` — String to int (throws on error)
 - `Viper.Core.Convert.NumToInt(f64)->i64` — Truncate/clamp double to int (`NaN` becomes `0`)
-- `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
-- `Viper.Core.Convert.ToString_Int(i64)->str` — Convert int64 to string
+- `Viper.Core.Convert.ToStringDouble(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
+- `Viper.Core.Convert.ToStringInt(i64)->str` — Convert int64 to string
+
+`ToString_Double` and `ToString_Int` remain available as compatibility aliases.
 
 #### Viper.Core.Parse
 
 Type parsing with explicit error handling:
 
 - `Viper.Core.Parse.TryInt(str)->obj<Viper.Option>` — Try to parse integer
-- `Viper.Core.Parse.TryNum(str)->obj<Viper.Option>` — Try to parse double
+- `Viper.Core.Parse.TryDouble(str)->obj<Viper.Option>` — Try to parse double
 - `Viper.Core.Parse.TryBool(str)->obj<Viper.Option>` — Try to parse boolean
 - `Viper.Core.Parse.IntOr(str,i64)->i64` — Parse integer or default
-- `Viper.Core.Parse.NumOr(str,f64)->f64` — Parse double or default
+- `Viper.Core.Parse.DoubleOr(str,f64)->f64` — Parse double or default
 - `Viper.Core.Parse.BoolOr(str,i1)->i1` — Parse boolean or default
 - `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
 - `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default; `+` and `-` are accepted only for decimal, prefixes are rejected
 
 Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
+`TryNum` and `NumOr` remain available as compatibility aliases for
+`TryDouble` and `DoubleOr`.
 
 #### Viper.Core.Diagnostics
 

@@ -15,7 +15,8 @@
 //
 // Ownership/Lifetime:
 //   - Heap objects are heap-allocated opaque pointers.
-//   - Elements stored in the heap are not retained; callers manage element lifetimes.
+//   - Elements stored in the heap are retained while queued. Pop transfers the
+//     retained value to the caller; peek returns an additional retained handle.
 //
 // Error conventions:
 //   - Allocation failure → returns NULL
@@ -77,10 +78,25 @@ void *rt_pqueue_peek(void *obj);
 /// @return The removed element, or NULL if empty.
 void *rt_pqueue_try_pop(void *obj);
 
+/// @brief Try to remove the highest priority element as an Option.
+/// @details Returns `None` when the heap is empty and `Some(value)` when an
+///          element is removed. A stored NULL value is represented as
+///          `Some(NULL)`, unlike @ref rt_pqueue_try_pop.
+/// @param obj Opaque Heap object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_pqueue_try_pop_option(void *obj);
+
 /// @brief Try to return the highest priority element without removing it.
 /// @param obj Opaque Heap object pointer.
 /// @return The highest priority element, or NULL if empty.
 void *rt_pqueue_try_peek(void *obj);
+
+/// @brief Try to peek the highest priority element as an Option.
+/// @details Returns `None` when the heap is empty and `Some(value)` when an
+///          element exists. A stored NULL value is represented as `Some(NULL)`.
+/// @param obj Opaque Heap object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_pqueue_try_peek_option(void *obj);
 
 /// @brief Remove all elements from the heap.
 /// @param obj Opaque Heap object pointer.

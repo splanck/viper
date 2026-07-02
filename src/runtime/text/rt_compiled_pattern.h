@@ -62,6 +62,14 @@ int8_t rt_compiled_pattern_is_match(void *obj, rt_string text);
 /// @return First matching substring, or empty string if no match.
 rt_string rt_compiled_pattern_find(void *obj, rt_string text);
 
+/// @brief Find first match as an Option string.
+/// @details Returns `SomeStr(match)` for any match, including an empty-string
+///          match, and `None` when no match exists.
+/// @param obj CompiledPattern pointer.
+/// @param text Text to search.
+/// @return Opaque Viper.Option containing the first match, or None.
+void *rt_compiled_pattern_find_option(void *obj, rt_string text);
+
 /// @brief Find first match starting at or after given position.
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
@@ -69,11 +77,24 @@ rt_string rt_compiled_pattern_find(void *obj, rt_string text);
 /// @return First matching substring at or after start, or empty string.
 rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start);
 
+/// @brief Find first match at or after given position as an Option string.
+/// @param obj CompiledPattern pointer.
+/// @param text Text to search.
+/// @param start Starting position (0-based).
+/// @return Opaque Viper.Option containing the first match, or None.
+void *rt_compiled_pattern_find_from_option(void *obj, rt_string text, int64_t start);
+
 /// @brief Find position of first match.
 /// @param obj CompiledPattern pointer.
 /// @param text Text to search.
 /// @return Start position of first match, or -1 if no match.
 int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text);
+
+/// @brief Find position of first match as an Option index.
+/// @param obj CompiledPattern pointer.
+/// @param text Text to search.
+/// @return Opaque Viper.Option containing the first position, or None.
+void *rt_compiled_pattern_find_pos_option(void *obj, rt_string text);
 
 /// @brief Find all non-overlapping matches.
 /// @param obj CompiledPattern pointer.

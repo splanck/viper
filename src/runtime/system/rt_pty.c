@@ -43,11 +43,14 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_platform.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <errno.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,7 +147,10 @@ static void pty_set_last_error(const char *message) {
 /// @brief Store a POSIX errno-based PTY diagnostic string.
 /// @param prefix Context prefix such as "posix_openpt failed".
 static void pty_set_last_errno(const char *prefix) {
-    snprintf(pty_last_error, sizeof(pty_last_error), "%s: %s", prefix ? prefix : "PTY error",
+    snprintf(pty_last_error,
+             sizeof(pty_last_error),
+             "%s: %s",
+             prefix ? prefix : "PTY error",
              strerror(errno));
 }
 
@@ -169,7 +175,8 @@ static int pty_string_cstr_view(rt_string value, const char **out_text, size_t *
     return 1;
 }
 
-static int pty_validate_string_sequence(void *items, int require_env_assignment,
+static int pty_validate_string_sequence(void *items,
+                                        int require_env_assignment,
                                         const char *trap_msg) {
     int64_t count = items ? rt_seq_len(items) : 0;
     if (count < 0)
@@ -305,8 +312,7 @@ static void free_string_vector(pty_string_vector *vector) {
 }
 
 static rt_pty_impl *pty_alloc(void) {
-    rt_pty_impl *pty =
-        (rt_pty_impl *)rt_obj_new_i64(RT_PTY_CLASS_ID, (int64_t)sizeof(rt_pty_impl));
+    rt_pty_impl *pty = (rt_pty_impl *)rt_obj_new_i64(RT_PTY_CLASS_ID, (int64_t)sizeof(rt_pty_impl));
     if (!pty) {
         pty_set_last_error("PTY allocation failed");
         rt_trap("Pty.Open: allocation failed");
@@ -352,8 +358,11 @@ static pty_close_pseudoconsole_fn pty_close_pc = NULL;
 /// @brief Store a Windows GetLastError-based PTY diagnostic string.
 /// @param prefix Context prefix such as "CreateProcessW failed".
 static void pty_set_last_win32_error(const char *prefix) {
-    snprintf(pty_last_error, sizeof(pty_last_error), "%s: Windows error %lu",
-             prefix ? prefix : "PTY error", (unsigned long)GetLastError());
+    snprintf(pty_last_error,
+             sizeof(pty_last_error),
+             "%s: Windows error %lu",
+             prefix ? prefix : "PTY error",
+             (unsigned long)GetLastError());
 }
 
 static void pty_load_conpty(void) {
@@ -455,8 +464,8 @@ static int pty_cmdline_append(char **buf, size_t *len, size_t *cap, const char *
     return 1;
 }
 
-static rt_pty_impl *pty_open_impl(rt_string program, void *args, rt_string cwd, void *env,
-                                  int64_t cols, int64_t rows) {
+static rt_pty_impl *pty_open_impl(
+    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows) {
     const char *program_text = NULL;
     const char *cwd_text = NULL;
     size_t program_len = 0, cwd_len = 0;
@@ -545,8 +554,13 @@ static rt_pty_impl *pty_open_impl(rt_string program, void *args, rt_string cwd, 
     si.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)malloc(attr_size);
     if (!si.lpAttributeList ||
         !InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &attr_size) ||
-        !UpdateProcThreadAttribute(si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hpc,
-                                   sizeof(hpc), NULL, NULL)) {
+        !UpdateProcThreadAttribute(si.lpAttributeList,
+                                   0,
+                                   PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+                                   hpc,
+                                   sizeof(hpc),
+                                   NULL,
+                                   NULL)) {
         if (si.lpAttributeList)
             free(si.lpAttributeList);
         pty_set_last_win32_error("ConPTY process attribute setup failed");
@@ -567,8 +581,8 @@ static rt_pty_impl *pty_open_impl(rt_string program, void *args, rt_string cwd, 
     if (env) {
         int64_t env_count = rt_seq_len(env);
         size_t total = 1;
-        wchar_t **wide_entries = (wchar_t **)calloc((size_t)(env_count > 0 ? env_count : 1),
-                                                    sizeof(wchar_t *));
+        wchar_t **wide_entries =
+            (wchar_t **)calloc((size_t)(env_count > 0 ? env_count : 1), sizeof(wchar_t *));
         if (wide_entries) {
             for (int64_t i = 0; i < env_count; i++) {
                 rt_string e = rt_seq_get_str(env, i);
@@ -597,9 +611,16 @@ static rt_pty_impl *pty_open_impl(rt_string program, void *args, rt_string cwd, 
 
     PROCESS_INFORMATION pi;
     memset(&pi, 0, sizeof(pi));
-    BOOL ok = CreateProcessW(NULL, wcmd, NULL, NULL, FALSE,
-                             EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, env_block,
-                             wcwd, &si.StartupInfo, &pi);
+    BOOL ok = CreateProcessW(NULL,
+                             wcmd,
+                             NULL,
+                             NULL,
+                             FALSE,
+                             EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                             env_block,
+                             wcwd,
+                             &si.StartupInfo,
+                             &pi);
     DeleteProcThreadAttributeList(si.lpAttributeList);
     free(si.lpAttributeList);
     free(wcmd);
@@ -729,8 +750,8 @@ static int64_t pty_supported(void) {
 #elif defined(__viperdos__)
 // --- ViperDOS: unsupported -------------------------------------------------
 
-static rt_pty_impl *pty_open_impl(rt_string program, void *args, rt_string cwd, void *env,
-                                  int64_t cols, int64_t rows) {
+static rt_pty_impl *pty_open_impl(
+    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows) {
     (void)program;
     (void)args;
     (void)cwd;
@@ -740,22 +761,29 @@ static rt_pty_impl *pty_open_impl(rt_string program, void *args, rt_string cwd, 
     pty_set_last_error("PTY is unsupported on ViperDOS");
     return NULL;
 }
-static void pty_drain(rt_pty_impl *pty) { (void)pty; }
+
+static void pty_drain(rt_pty_impl *pty) {
+    (void)pty;
+}
+
 static void pty_poll_internal(rt_pty_impl *pty, int wait) {
     (void)pty;
     (void)wait;
 }
+
 static void pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
     (void)pty;
     (void)cols;
     (void)rows;
 }
+
 static int64_t pty_write_impl(rt_pty_impl *pty, const char *bytes, size_t len) {
     (void)pty;
     (void)bytes;
     (void)len;
     return -1;
 }
+
 static void pty_close(rt_pty_impl *pty) {
     if (!pty || pty->destroyed)
         return;
@@ -764,7 +792,10 @@ static void pty_close(rt_pty_impl *pty) {
     pty->started = 0;
     pty->destroyed = 1;
 }
-static int64_t pty_supported(void) { return 0; }
+
+static int64_t pty_supported(void) {
+    return 0;
+}
 
 // ===========================================================================
 #else
@@ -913,8 +944,8 @@ static int64_t pty_write_impl(rt_pty_impl *pty, const char *bytes, size_t len) {
     return (int64_t)off;
 }
 
-static rt_pty_impl *pty_open_impl(rt_string program, void *args, rt_string cwd, void *env,
-                                  int64_t cols, int64_t rows) {
+static rt_pty_impl *pty_open_impl(
+    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows) {
     const char *program_text = NULL;
     const char *cwd_text = NULL;
     size_t program_len = 0, cwd_len = 0;
@@ -1079,7 +1110,9 @@ static void pty_close(rt_pty_impl *pty) {
     pty->destroyed = 1;
 }
 
-static int64_t pty_supported(void) { return 1; }
+static int64_t pty_supported(void) {
+    return 1;
+}
 
 #endif
 // ===========================================================================
@@ -1088,14 +1121,54 @@ static void pty_finalize(void *obj) {
     pty_close((rt_pty_impl *)obj);
 }
 
-void *rt_pty_open(rt_string program, void *args, rt_string cwd, void *env, int64_t cols,
-                  int64_t rows) {
+void *rt_pty_open(
+    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows) {
     pty_set_last_error(NULL);
     pty_clamp_size(&cols, &rows);
     void *handle = pty_open_impl(program, args, cwd, env, cols, rows);
     if (handle)
         pty_set_last_error(NULL);
     return handle;
+}
+
+/// @brief Wrap a PTY open attempt in a Result object.
+/// @details Validation traps from rt_pty_open() are converted into Err strings
+///          so callers can handle startup failures without consulting the
+///          process-global LastError side channel.
+/// @param program Program path.
+/// @param args Argument sequence, or NULL.
+/// @param cwd Working directory, or NULL/empty.
+/// @param env Environment sequence, or NULL.
+/// @param cols Initial terminal columns.
+/// @param rows Initial terminal rows.
+/// @return Owned `Viper.Result` carrying a PtySession or an error string.
+void *rt_pty_open_result(
+    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        const char *err = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        return rt_result_err_str(rt_const_cstr(err && err[0] ? err : "Pty.Open failed"));
+    }
+
+    void *handle = rt_pty_open(program, args, cwd, env, cols, rows);
+    rt_trap_clear_recovery();
+    if (!handle) {
+        rt_string err = rt_pty_last_error();
+        if (!err || rt_str_len(err) == 0) {
+            rt_str_release_maybe(err);
+            return rt_result_err_str(rt_const_cstr("Pty.Open failed"));
+        }
+        void *result = rt_result_err_str(err);
+        rt_str_release_maybe(err);
+        return result;
+    }
+
+    void *result = rt_result_ok(handle);
+    if (rt_obj_release_check0(handle))
+        rt_obj_free(handle);
+    return result;
 }
 
 int64_t rt_pty_is_supported(void) {

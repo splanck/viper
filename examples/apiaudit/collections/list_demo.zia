@@ -1,5 +1,5 @@
 // list_demo.zia - Comprehensive API audit for Viper.Collections.List
-// Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, Has, Insert,
+// Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, FindOption, Has, Insert,
 //        Remove, RemoveAt, Clear, Reverse, First, Last, Slice
 
 module ListDemo;
@@ -52,6 +52,10 @@ func start() {
     SayInt(list.Find(b));          // -1 (was replaced)
     SayBool(list.Has(a));           // true
     SayBool(list.Has(b));           // false
+    var found = list.FindOption(a);
+    SayBool(found.IsSome);
+    SayInt(found.UnwrapI64());      // 0
+    SayBool(list.FindOption(b).IsNone);
 
     // --- Insert ---
     Say("--- Insert ---");

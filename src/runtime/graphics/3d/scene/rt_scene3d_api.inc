@@ -147,6 +147,18 @@ void *rt_scene3d_find(void *obj, rt_string name) {
     return find_by_name(root, str);
 }
 
+/// @brief Locate a node by name and wrap the nullable result in an Option.
+/// @details This is the production-facing companion to `rt_scene3d_find`.
+///          It preserves the legacy lookup semantics but represents absence
+///          as `None`, avoiding NULL checks in application code.
+/// @param obj SceneGraph handle to search from.
+/// @param name Exact node name to match.
+/// @return `Some(SceneNode3D)` when a matching node exists, otherwise `None`.
+void *rt_scene3d_find_option(void *obj, rt_string name) {
+    void *node = rt_scene3d_find(obj, name);
+    return node ? rt_option_some(node) : rt_option_none();
+}
+
 /// @brief Add an authored PVS visibility zone AABB; returns its zero-based index, or -1.
 int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj, void *max_obj) {
     rt_scene3d *s = scene3d_checked(obj);

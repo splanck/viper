@@ -1,6 +1,6 @@
 ' heap_demo.bas - Comprehensive API audit for Viper.Collections.Heap
 ' Tests: New, NewMax, Push(priority, value), Pop, Peek, Len, IsEmpty,
-'        Clear, IsMax, TryPeek, TryPop, ToSeq
+'        Clear, IsMax, TryPeekOption, TryPopOption, ToSeq
 
 PRINT "=== Heap API Audit ==="
 
@@ -34,14 +34,14 @@ PRINT h.Pop()     ' low (priority 3)
 PRINT h.Count       ' 0
 PRINT h.IsEmpty   ' 1
 
-' --- TryPeek / TryPop (safe on empty) ---
-PRINT "--- TryPeek / TryPop ---"
+' --- TryPeekOption / TryPopOption (safe on empty) ---
+PRINT "--- TryPeekOption / TryPopOption ---"
 DIM tp AS OBJECT
-tp = h.TryPeek()
-PRINT h.IsEmpty   ' 1
+tp = h.TryPeekOption()
+PRINT tp.IsNone   ' 1
 DIM tpop AS OBJECT
-tpop = h.TryPop()
-PRINT h.IsEmpty   ' 1
+tpop = h.TryPopOption()
+PRINT tpop.IsNone ' 1
 
 ' --- NewMax (max-heap) ---
 PRINT "--- NewMax ---"

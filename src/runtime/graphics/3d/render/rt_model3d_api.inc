@@ -3,6 +3,30 @@
 // File: src/runtime/graphics/3d/render/rt_model3d_api.inc  (#included from rt_model3d.c; not a
 // standalone translation unit) Purpose: Model3D public load API, accessors, and instantiation
 //===----------------------------------------------------------------------===//
+/// @brief Convert a SceneAsset load return value into a Result.
+/// @details Successful values are retained by `Result.Ok` and then released from the local
+///          loader reference. Failures use the thread-local asset diagnostic message captured by
+///          the compatibility APIs, falling back to @p fallback when no message is available.
+/// @param value Loader return value, or NULL on recoverable failure.
+/// @param fallback Fallback error message for empty diagnostics.
+/// @return Owned `Viper.Result` carrying @p value or an error string.
+static void *model3d_load_value_to_result(void *value, const char *fallback) {
+    if (value) {
+        void *result = rt_result_ok(value);
+        model_release_local(value);
+        return result;
+    }
+
+    const char *message = rt_asset_error_get_message();
+    if (!message || message[0] == '\0')
+        return rt_result_err_str(rt_const_cstr(fallback ? fallback : "SceneAsset load failed"));
+
+    rt_string err = rt_string_from_bytes(message, strlen(message));
+    void *result = rt_result_err_str(err);
+    rt_str_release_maybe(err);
+    return result;
+}
+
 /// @brief Load a model from the filesystem (no asset-manager resolution). See header.
 void *rt_model3d_load(rt_string path) {
     rt_asset_error_begin_load();
@@ -14,6 +38,13 @@ void *rt_model3d_load(rt_string path) {
         rt_asset_error_end_load_failure();
     }
     return model;
+}
+
+/// @brief Load a model from the filesystem as `Result.Ok(SceneAsset)` or `Result.Err(String)`.
+/// @param path Filesystem path to load.
+/// @return Owned Viper.Result value.
+void *rt_model3d_load_result(rt_string path) {
+    return model3d_load_value_to_result(rt_model3d_load(path), "SceneAsset.Load failed");
 }
 
 /// @brief Load a model through the asset manager (mounted/embedded + dev fallback). See header.
@@ -28,6 +59,13 @@ void *rt_model3d_load_asset(rt_string path) {
         rt_asset_error_end_load_failure();
     }
     return model;
+}
+
+/// @brief Load a model through the asset manager as `Result.Ok(SceneAsset)` or `Result.Err`.
+/// @param path Asset path or URI to load.
+/// @return Owned Viper.Result value.
+void *rt_model3d_load_asset_result(rt_string path) {
+    return model3d_load_value_to_result(rt_model3d_load_asset(path), "SceneAsset.LoadAsset failed");
 }
 
 /// @brief Internal async path: build a glTF/GLB Model3D from worker-staged root bytes.
@@ -264,9 +302,27 @@ void *rt_model3d_load_animation(rt_string path, int64_t index) {
     return model3d_load_clip_from_model(path, index, 0, 0);
 }
 
+/// @brief Load a skeletal animation clip as a Result.
+/// @param path Filesystem model path.
+/// @param index Zero-based skeletal animation index.
+/// @return Owned Viper.Result carrying Animation3D or an error string.
+void *rt_model3d_load_animation_result(rt_string path, int64_t index) {
+    return model3d_load_value_to_result(rt_model3d_load_animation(path, index),
+                                        "SceneAsset.LoadAnimation failed");
+}
+
 /// @brief Load a packed model asset and return a retained skeletal Animation3D clip by index.
 void *rt_model3d_load_animation_asset(rt_string path, int64_t index) {
     return model3d_load_clip_from_model(path, index, 1, 0);
+}
+
+/// @brief Load a skeletal animation clip from a packed asset as a Result.
+/// @param path Asset path or URI.
+/// @param index Zero-based skeletal animation index.
+/// @return Owned Viper.Result carrying Animation3D or an error string.
+void *rt_model3d_load_animation_asset_result(rt_string path, int64_t index) {
+    return model3d_load_value_to_result(rt_model3d_load_animation_asset(path, index),
+                                        "SceneAsset.LoadAnimationAsset failed");
 }
 
 /// @brief Load a model file and return a retained NodeAnimation3D clip by index.
@@ -274,9 +330,27 @@ void *rt_model3d_load_node_animation(rt_string path, int64_t index) {
     return model3d_load_clip_from_model(path, index, 0, 1);
 }
 
+/// @brief Load a node/object animation clip as a Result.
+/// @param path Filesystem model path.
+/// @param index Zero-based node animation index.
+/// @return Owned Viper.Result carrying NodeAnimation3D or an error string.
+void *rt_model3d_load_node_animation_result(rt_string path, int64_t index) {
+    return model3d_load_value_to_result(rt_model3d_load_node_animation(path, index),
+                                        "SceneAsset.LoadNodeAnimation failed");
+}
+
 /// @brief Load a packed model asset and return a retained NodeAnimation3D clip by index.
 void *rt_model3d_load_node_animation_asset(rt_string path, int64_t index) {
     return model3d_load_clip_from_model(path, index, 1, 1);
+}
+
+/// @brief Load a node/object animation clip from a packed asset as a Result.
+/// @param path Asset path or URI.
+/// @param index Zero-based node animation index.
+/// @return Owned Viper.Result carrying NodeAnimation3D or an error string.
+void *rt_model3d_load_node_animation_asset_result(rt_string path, int64_t index) {
+    return model3d_load_value_to_result(rt_model3d_load_node_animation_asset(path, index),
+                                        "SceneAsset.LoadNodeAnimationAsset failed");
 }
 
 /// @brief Locate a node in the template subtree by exact name match. NULL if not found.
@@ -285,6 +359,18 @@ void *rt_model3d_find_node(void *obj, rt_string name) {
     if (!model || !model->template_root)
         return NULL;
     return model_find_node_safe(model->template_root, name);
+}
+
+/// @brief Locate a template node by exact name and return it as an Option.
+/// @details This is the absence-aware companion to `rt_model3d_find_node`.
+///          The found node is still part of the immutable imported template;
+///          mutate instantiated nodes rather than the template node.
+/// @param obj SceneAsset/Model3D handle.
+/// @param name Exact node name to match.
+/// @return `Some(SceneNode3D)` when the template contains the node, otherwise `None`.
+void *rt_model3d_find_node_option(void *obj, rt_string name) {
+    void *node = rt_model3d_find_node(obj, name);
+    return node ? rt_option_some(node) : rt_option_none();
 }
 
 /// @brief Clone the template into an independent SceneNode3D subtree (with synthetic root).

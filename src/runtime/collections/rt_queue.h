@@ -90,6 +90,14 @@ void *rt_queue_to_list(void *obj);
 /// @return The removed element, or NULL if empty.
 void *rt_queue_try_pop(void *obj);
 
+/// @brief Pop the front element as an Option.
+/// @details Returns `None` when the queue is empty and `Some(value)` when an
+///          element is removed. A stored NULL value is represented as
+///          `Some(NULL)`, unlike @ref rt_queue_try_pop.
+/// @param obj Opaque Queue object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_queue_try_pop_option(void *obj);
+
 /// @brief Create a shallow copy of the queue.
 /// @param obj Source Queue pointer.
 /// @return New queue with same elements in same order.

@@ -1,5 +1,5 @@
 ' bimap_demo.bas - Comprehensive API audit for Viper.Collections.BiMap
-' Tests: New, Put, GetByKey, GetByValue, HasKey, HasValue,
+' Tests: New, Set, GetByKey, GetByValue, HasKey, HasValue,
 '        RemoveByKey, RemoveByValue, Keys, Values, Len, IsEmpty, Clear
 
 PRINT "=== BiMap API Audit ==="
@@ -11,12 +11,12 @@ bm = Viper.Collections.BiMap.New()
 PRINT bm.Count       ' 0
 PRINT bm.IsEmpty   ' 1
 
-' --- Put / Len ---
-PRINT "--- Put / Len ---"
-bm.Put("us", "dollar")
-bm.Put("uk", "pound")
-bm.Put("jp", "yen")
-bm.Put("eu", "euro")
+' --- Set / Len ---
+PRINT "--- Set / Len ---"
+bm.Set("us", "dollar")
+bm.Set("uk", "pound")
+bm.Set("jp", "yen")
+bm.Set("eu", "euro")
 PRINT bm.Count       ' 4
 PRINT bm.IsEmpty   ' 0
 
@@ -39,9 +39,9 @@ PRINT bm.HasKey("ca")        ' 0
 PRINT bm.HasValue("euro")    ' 1
 PRINT bm.HasValue("rupee")   ' 0
 
-' --- Put (update) ---
-PRINT "--- Put (update) ---"
-bm.Put("us", "greenback")
+' --- Set (update) ---
+PRINT "--- Set (update) ---"
+bm.Set("us", "greenback")
 PRINT bm.GetByKey("us")           ' greenback
 PRINT bm.GetByValue("greenback")  ' us
 PRINT bm.HasValue("dollar")       ' 0

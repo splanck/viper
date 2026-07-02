@@ -29,6 +29,7 @@
 #include "rt_netutils.h"
 #include "rt_network.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_smtp.h"
 #include "rt_sse.h"
 #include "rt_string.h"
@@ -1151,15 +1152,18 @@ static void test_smtp_plain_send_sanitizes_and_dot_stuffs() {
     }
 
     void *smtp = rt_smtp_new(rt_const_cstr("127.0.0.1"), port);
-    int8_t ok = rt_smtp_send(smtp,
-                             rt_const_cstr("sender@example.com"),
-                             rt_const_cstr("dest@example.com"),
-                             rt_const_cstr("Hello\r\nInjected: yes"),
-                             rt_const_cstr(".leading line\nsecond line"));
+    void *send_result = rt_smtp_send_result(smtp,
+                                            rt_const_cstr("sender@example.com"),
+                                            rt_const_cstr("dest@example.com"),
+                                            rt_const_cstr("Hello\r\nInjected: yes"),
+                                            rt_const_cstr(".leading line\nsecond line"));
 
-    test_result("SMTP send succeeds", ok == 1);
-    test_result("SMTP last error is empty",
-                strcmp(rt_string_cstr(rt_smtp_last_error(smtp)), "") == 0);
+    test_result("SMTP SendResult succeeds", rt_result_is_ok(send_result) == 1);
+    rt_string success_error = rt_smtp_last_error(smtp);
+    test_result("SMTP last error is empty", strcmp(rt_string_cstr(success_error), "") == 0);
+    rt_str_release_maybe(success_error);
+    if (send_result && rt_obj_release_check0(send_result))
+        rt_obj_free(send_result);
 
     server.join();
 
@@ -1199,16 +1203,23 @@ static void test_smtp_requires_starttls_capability() {
 
     void *smtp = rt_smtp_new(rt_const_cstr("127.0.0.1"), port);
     rt_smtp_set_tls(smtp, 1);
-    int8_t ok = rt_smtp_send(smtp,
-                             rt_const_cstr("sender@example.com"),
-                             rt_const_cstr("dest@example.com"),
-                             rt_const_cstr("Hello"),
-                             rt_const_cstr("Body"));
+    void *send_result = rt_smtp_send_result(smtp,
+                                            rt_const_cstr("sender@example.com"),
+                                            rt_const_cstr("dest@example.com"),
+                                            rt_const_cstr("Hello"),
+                                            rt_const_cstr("Body"));
     rt_string error = rt_smtp_last_error(smtp);
+    rt_string result_error = rt_result_unwrap_err_str(send_result);
 
-    test_result("SMTP send rejects missing STARTTLS capability", ok == 0);
+    test_result("SMTP SendResult rejects missing STARTTLS capability",
+                rt_result_is_err(send_result) == 1);
     test_result("SMTP error mentions STARTTLS",
                 strstr(rt_string_cstr(error), "STARTTLS") != nullptr);
+    test_result("SMTP Result error mentions STARTTLS",
+                strstr(rt_string_cstr(result_error), "STARTTLS") != nullptr);
+    rt_str_release_maybe(error);
+    if (send_result && rt_obj_release_check0(send_result))
+        rt_obj_free(send_result);
 
     server.join();
 }

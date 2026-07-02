@@ -434,6 +434,23 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
     return path;
 }
 
+/// @brief Compute a path and wrap the optional Path3D in an Option.
+/// @details Keeps the exact path-generation behavior of `rt_navmesh3d_find_path`.
+///          Unreachable endpoints, invalid inputs, and off-mesh positions are
+///          represented as `None`.
+/// @param obj NavMesh3D handle.
+/// @param from_v Starting Vec3 in world space.
+/// @param to_v Target Vec3 in world space.
+/// @return `Some(Path3D)` when a path exists, otherwise `None`.
+void *rt_navmesh3d_find_path_option(void *obj, void *from_v, void *to_v) {
+    void *path = rt_navmesh3d_find_path(obj, from_v, to_v);
+    if (!path)
+        return rt_option_none();
+    void *option = rt_option_some(path);
+    navmesh3d_release_local(path);
+    return option;
+}
+
 /// @brief Snap `point` (Vec3) onto the nearest navmesh triangle and return the projected
 /// world-space position. Useful for pinning agent positions to walkable surface after
 /// teleports. Returns the input unchanged if no triangle is found nearby.

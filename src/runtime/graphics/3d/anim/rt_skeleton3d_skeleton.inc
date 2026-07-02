@@ -188,6 +188,18 @@ int64_t rt_skeleton3d_find_bone(void *obj, rt_string name) {
     return -1;
 }
 
+/// @brief Search for a bone by name and wrap the optional index in an Option.
+/// @details This preserves `rt_skeleton3d_find_bone` exactly, but turns the
+///          legacy `-1` sentinel into `None` for callers that want explicit
+///          absence handling.
+/// @param obj Skeleton3D handle.
+/// @param name Exact bone name to search for.
+/// @return `Some(index)` for a matching bone, otherwise `None`.
+void *rt_skeleton3d_find_bone_option(void *obj, rt_string name) {
+    int64_t index = rt_skeleton3d_find_bone(obj, name);
+    return index >= 0 ? rt_option_some_i64(index) : rt_option_none();
+}
+
 /// @brief Read the name of bone at `index`. Empty string for out-of-range or NULL.
 rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index) {
     rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);

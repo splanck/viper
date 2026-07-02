@@ -33,6 +33,7 @@
 #include "rt_internal.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_pixels.h"
 
 #include <float.h>
@@ -92,6 +93,14 @@ typedef struct {
     int8_t show_borders;
 } rt_uitable_impl;
 
+/// @brief Immutable snapshot describing the outcome of a table click.
+typedef struct {
+    void *vptr;
+    int64_t kind;
+    int64_t row;
+    int64_t column;
+} rt_table_click_result_impl;
+
 /// @brief Parse a table cell as a finite C-locale number for numeric sorting.
 /// @details Invalid or non-finite text is reported separately so the comparator
 ///          does not accidentally treat malformed values as 0.0.
@@ -116,6 +125,38 @@ static rt_uitable_impl *checked_table(void *ptr, const char *api) {
         return NULL;
     }
     return (rt_uitable_impl *)ptr;
+}
+
+/// @brief Safe-cast a handle to a TableClickResult impl.
+/// @param ptr Candidate TableClickResult object.
+/// @param api Public API name for trap diagnostics.
+/// @return The impl, or NULL if @p ptr is NULL.
+static rt_table_click_result_impl *checked_table_click_result(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_UITABLE_CLICK_RESULT_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_table_click_result_impl *)ptr;
+}
+
+/// @brief Create a TableClickResult snapshot.
+/// @param kind One of RT_UITABLE_CLICK_NONE, RT_UITABLE_CLICK_ROW, or RT_UITABLE_CLICK_HEADER.
+/// @param row Row index for row clicks; ignored for other kinds.
+/// @param column Column index for header clicks; ignored for other kinds.
+/// @return New Viper.Game.UI.TableClickResult object.
+static void *table_click_result_new(int64_t kind, int64_t row, int64_t column) {
+    rt_table_click_result_impl *result = (rt_table_click_result_impl *)rt_obj_new_i64(
+        RT_UITABLE_CLICK_RESULT_CLASS_ID, (int64_t)sizeof(rt_table_click_result_impl));
+    if (!result) {
+        rt_trap("UITable.HandleClickResult: allocation failed");
+        return NULL;
+    }
+    result->kind = kind;
+    result->row = kind == RT_UITABLE_CLICK_ROW ? row : -1;
+    result->column = kind == RT_UITABLE_CLICK_HEADER ? column : -1;
+    return result;
 }
 
 /// @brief GC finalizer: free the table's column/row/cell storage.
@@ -513,10 +554,82 @@ int64_t rt_uitable_handle_click(void *ptr, int64_t mx, int64_t my) {
     return row;
 }
 
+/// @brief Process a table click and return a structured click outcome.
+/// @details Delegates to rt_uitable_handle_click() so row selection, header
+///          sorting, and legacy LastHeaderClick state remain identical.
+/// @param ptr Opaque Viper.Game.UI.Table object.
+/// @param mx Click x-coordinate in canvas pixels.
+/// @param my Click y-coordinate in canvas pixels.
+/// @return New Viper.Game.UI.TableClickResult object.
+void *rt_uitable_handle_click_result(void *ptr, int64_t mx, int64_t my) {
+    int64_t clicked = rt_uitable_handle_click(ptr, mx, my);
+    if (clicked >= 0)
+        return table_click_result_new(RT_UITABLE_CLICK_ROW, clicked, -1);
+    if (clicked == -2) {
+        rt_uitable_impl *table =
+            checked_table(ptr, "UITable.HandleClickResult: expected Viper.Game.UI.Table");
+        int64_t column = table ? table->last_header_click : -1;
+        return table_click_result_new(RT_UITABLE_CLICK_HEADER, -1, column);
+    }
+    return table_click_result_new(RT_UITABLE_CLICK_NONE, -1, -1);
+}
+
 int64_t rt_uitable_last_header_click(void *ptr) {
     rt_uitable_impl *table =
         checked_table(ptr, "UITable.LastHeaderClick: expected Viper.Game.UI.Table");
     return table ? table->last_header_click : -1;
+}
+
+/// @brief Return the raw TableClickResult kind value.
+/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @return RT_UITABLE_CLICK_NONE, RT_UITABLE_CLICK_ROW, or RT_UITABLE_CLICK_HEADER.
+int64_t rt_table_click_result_kind(void *ptr) {
+    rt_table_click_result_impl *result = checked_table_click_result(
+        ptr, "TableClickResult.Kind: expected Viper.Game.UI.TableClickResult");
+    return result ? result->kind : RT_UITABLE_CLICK_NONE;
+}
+
+/// @brief Return whether a TableClickResult represents a miss.
+/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @return 1 for no-hit results, otherwise 0.
+int8_t rt_table_click_result_is_none(void *ptr) {
+    return rt_table_click_result_kind(ptr) == RT_UITABLE_CLICK_NONE ? 1 : 0;
+}
+
+/// @brief Return whether a TableClickResult represents a row hit.
+/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @return 1 for row-hit results, otherwise 0.
+int8_t rt_table_click_result_is_row(void *ptr) {
+    return rt_table_click_result_kind(ptr) == RT_UITABLE_CLICK_ROW ? 1 : 0;
+}
+
+/// @brief Return whether a TableClickResult represents a header hit.
+/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @return 1 for header-hit results, otherwise 0.
+int8_t rt_table_click_result_is_header(void *ptr) {
+    return rt_table_click_result_kind(ptr) == RT_UITABLE_CLICK_HEADER ? 1 : 0;
+}
+
+/// @brief Return the row index stored in a row-hit result.
+/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @return Viper.Option.SomeI64(row) for row hits, otherwise Viper.Option.None().
+void *rt_table_click_result_row_option(void *ptr) {
+    rt_table_click_result_impl *result = checked_table_click_result(
+        ptr, "TableClickResult.RowOption: expected Viper.Game.UI.TableClickResult");
+    if (!result || result->kind != RT_UITABLE_CLICK_ROW)
+        return rt_option_none();
+    return rt_option_some_i64(result->row);
+}
+
+/// @brief Return the header column index stored in a header-hit result.
+/// @param ptr Opaque Viper.Game.UI.TableClickResult object.
+/// @return Viper.Option.SomeI64(column) for header hits, otherwise Viper.Option.None().
+void *rt_table_click_result_column_option(void *ptr) {
+    rt_table_click_result_impl *result = checked_table_click_result(
+        ptr, "TableClickResult.ColumnOption: expected Viper.Game.UI.TableClickResult");
+    if (!result || result->kind != RT_UITABLE_CLICK_HEADER)
+        return rt_option_none();
+    return rt_option_some_i64(result->column);
 }
 
 void rt_uitable_handle_scroll(void *ptr, int64_t delta) {

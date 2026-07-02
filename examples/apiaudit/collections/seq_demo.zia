@@ -1,5 +1,5 @@
 // seq_demo.zia - Comprehensive API audit for Viper.Collections.Seq
-// Tests: New, WithCapacity, Push, Pop, Get, Set, Len, Cap, IsEmpty, Find, Has,
+// Tests: New, WithCapacity, Push, Pop, Get, Set, Len, Capacity, IsEmpty, Find, FindOption, Has,
 //        Insert, Remove, Clear, Clone, First, Last, Peek, Slice, Reverse,
 //        Sort, SortDesc, Shuffle, Take, Drop, PushAll
 
@@ -23,10 +23,10 @@ func start() {
     Say("--- WithCapacity ---");
     var sc = Seq.WithCapacity(10);
     SayInt(sc.Count);      // 0
-    SayInt(sc.Cap);      // 10
+    SayInt(sc.Capacity); // 10
 
-    // --- Push / Len / Cap ---
-    Say("--- Push / Len / Cap ---");
+    // --- Push / Len / Capacity ---
+    Say("--- Push / Len / Capacity ---");
     s.Push(Box.I64(10));
     s.Push(Box.I64(20));
     s.Push(Box.I64(30));
@@ -56,6 +56,10 @@ func start() {
     SayInt(s.Find(Box.I64(99)));   // -1
     SayBool(s.Has(Box.I64(30)));   // 1
     SayBool(s.Has(Box.I64(99)));   // 0
+    var found = s.FindOption(Box.I64(10));
+    SayBool(found.IsSome);
+    SayInt(found.UnwrapI64());     // 0
+    SayBool(s.FindOption(Box.I64(99)).IsNone);
 
     // --- Insert ---
     Say("--- Insert ---");

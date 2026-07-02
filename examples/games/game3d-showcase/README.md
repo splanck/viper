@@ -38,10 +38,10 @@ viper run examples/games/game3d-showcase/smoke_probe.zia
 Built on the higher-level `Viper.Game3D` world surface plus direct `Viper.Graphics3D`
 rendering, the scene exercises a broad slice of the 3D API:
 
-- **Imported models** — optional `MapleTree_1.fbx` loaded with `SceneAsset.Load` when present
+- **Imported models** — optional `MapleTree_1.fbx` loaded with `SceneAsset.LoadResult` when present
   on disk and instanced into a deterministic forest, placed by terrain slope/height
   (avoids cliffs and water)
-- **PBR materials** — stone/metal landmarks use `NewPBR` with procedural albedo + normal maps
+- **PBR materials** — stone/metal landmarks use `PBR` with procedural albedo + normal maps
   and skybox environment reflections
 - **Instanced vegetation** — wind-animated grass populated from the terrain's grass splat channel
 - **Spatial audio** — synthesized beacon hums, footsteps, and activation/victory stingers with

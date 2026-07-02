@@ -353,6 +353,30 @@ bool check_runtime_surface_names() {
         require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAssetAsync\""),
                 "Assets3D.LoadTemplateAssetAsync must use Game3D PascalCase factory naming") &&
         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.Load\""),
+                 "Prefab.Load canonical loader missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.LoadAsset\""),
+                 "Prefab.LoadAsset canonical loader missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.LoadAsync\""),
+                 "Prefab.LoadAsync canonical loader missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.LoadAssetAsync\""),
+                 "Prefab.LoadAssetAsync canonical loader missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefab\""),
+                 "Assets3D.LoadPrefab compatibility loader missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefabAsset\""),
+                 "Assets3D.LoadPrefabAsset compatibility loader missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefabAsync\""),
+                 "Assets3D.LoadPrefabAsync compatibility loader missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefabAssetAsync\""),
+                 "Assets3D.LoadPrefabAssetAsync compatibility loader missing") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.get_SceneCount\""),
                  "SceneTemplate.SceneCount getter must use Game3D PascalCase naming") &&
          ok;
@@ -404,6 +428,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetTemplate\""),
                  "AssetHandle3D.GetTemplate must use Game3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetPrefab\""),
+                 "AssetHandle3D.GetPrefab canonical loader result missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.AssetHandle3D\""),
                  "AssetHandle3D class missing") &&
          ok;
@@ -412,6 +439,12 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"LoadEntityAsync\""),
                  "Assets3D.LoadEntityAsync method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"LoadPrefabAssetAsync\""),
+                 "Assets3D.LoadPrefabAssetAsync method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetPrefab\""),
+                 "AssetHandle3D.GetPrefab method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget method missing") &&

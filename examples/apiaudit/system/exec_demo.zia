@@ -1,7 +1,7 @@
 // =============================================================================
 // API Audit: Viper.System.Exec - Process Execution
 // =============================================================================
-// Tests: Run, Capture, Shell, ShellCapture
+// Tests: Run, Capture, Shell, ShellCapture, ShellResult
 // NOTE: Use safe commands only
 // =============================================================================
 
@@ -34,6 +34,13 @@ func start() {
     Say("ShellCapture('echo captured_output'):");
     var sout = Exec.ShellCapture("echo captured_output");
     Say(sout);
+
+    // --- ShellResult ---
+    Say("--- ShellResult ---");
+    var result = Exec.ShellResult("echo result_output");
+    Say(result.Output);
+    SayInt(result.ExitCode);
+    SayBool(result.Succeeded);
 
     // Test with a command that uses shell features
     Say("--- ShellCapture with pipe ---");

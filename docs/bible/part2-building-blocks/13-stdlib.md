@@ -291,7 +291,7 @@ Say("You rolled: " + Fmt.Int(die));
 bind Viper.Math.Random as Random;
 bind Viper.Terminal;
 
-if Random.Chance(0.5) == 1 {
+if Random.Chance(0.5) {
     Say("Heads!");
 } else {
     Say("Tails!");
@@ -800,8 +800,8 @@ bind Convert = Viper.Core.Convert;
 
 Convert.ToInt64("42");        // 42
 Convert.ToDouble("3.14");     // 3.14
-Convert.ToString_Int(42);     // "42"
-Convert.ToString_Double(3.14); // "3.14"
+Convert.ToStringInt(42);      // "42"
+Convert.ToStringDouble(3.14); // "3.14"
 ```
 
 ### Error Handling
@@ -942,8 +942,8 @@ Hashing converts data into a fixed-size fingerprint. The same input always produ
 ```rust
 bind Viper.Crypto.Hash as Hash;
 
-var hash = Hash.MD5("hello");      // 32-character hex string
 var sha = Hash.SHA256("hello");    // 64-character hex string
+var mac = Hash.HmacSHA256("key", "hello");
 ```
 
 **When to use:**
@@ -951,6 +951,10 @@ var sha = Hash.SHA256("hello");    // 64-character hex string
 - Storing passwords (never store plain text!)
 - Creating cache keys
 - Detecting duplicates
+
+MD5, SHA-1, CRC32, and their legacy HMAC variants remain available through
+`Viper.Crypto.Legacy.Hash` for compatibility with old formats, but new code
+should use SHA-256, HMAC-SHA256, `Password`, `KeyDerive`, or `Cipher`.
 
 ### Encoding
 
@@ -1378,7 +1382,7 @@ The Viper standard library provides:
 | Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
 | Data | Generic collections, Viper.Collections | `list.add`, `map.set`, `set.add`, `Queue.New` |
 | System | Environment, Machine | Env.GetArgument, Env.GetVariable, Machine.Os |
-| Security | Crypto.Hash, Codec, Uuid | Hash.SHA256, Hash.MD5, Uuid.New |
+| Security | Crypto.Hash, Codec, Uuid | Hash.SHA256, Hash.HmacSHA256, Uuid.New |
 
 The standard library is your first resort when you need functionality. It's tested, optimized, and familiar to other programmers. Learning it is as important as learning the language syntax.
 

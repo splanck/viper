@@ -7,6 +7,7 @@
 
 #include "rt_animtimeline.h"
 
+#include "rt_animation_events.h"
 #include "rt_object.h"
 #include "rt_trap.h"
 
@@ -302,6 +303,14 @@ int64_t rt_animtimeline_event_fired_id(void *ptr, int64_t index) {
     if (!tl || index < 0 || index >= tl->events_fired_count)
         return 0;
     return tl->events_fired_ids[index];
+}
+
+void *rt_animtimeline_poll_events(void *ptr) {
+    rt_animtimeline_impl *tl =
+        checked_timeline(ptr, "AnimTimeline.PollEvents: expected AnimTimeline");
+    if (!tl)
+        return rt_animation_event_batch_from_ids(NULL, 0);
+    return rt_animation_event_batch_from_ids(tl->events_fired_ids, tl->events_fired_count);
 }
 
 /// @brief Bounds-checked track accessor. @return Track at @p index, or NULL.

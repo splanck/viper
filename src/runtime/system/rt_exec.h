@@ -26,6 +26,8 @@
 
 #include <stdint.h>
 
+#define RT_EXEC_COMMAND_RESULT_CLASS_ID INT64_C(-0x440203)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -74,9 +76,32 @@ rt_string rt_exec_shell_capture(rt_string command);
 /// @warning Do not pass unsanitized user input - shell injection risk.
 rt_string rt_exec_shell_full(rt_string command);
 
+/// @brief Execute a shell command and return output plus exit code together.
+/// @details This is the side-channel-free replacement for calling
+///          rt_exec_shell_full() followed by rt_exec_last_exit_code().
+/// @param command Shell command string (passed to /bin/sh -c or cmd /c).
+/// @return Opaque Viper.System.CommandResult object containing stdout and exit code.
+/// @warning Do not pass unsanitized user input - shell injection risk.
+void *rt_exec_shell_result(rt_string command);
+
 /// @brief Return the exit code from the most recent rt_exec_shell_full() call.
 /// @return Exit code (0 = success), or -1 if rt_exec_shell_full was never called.
 int64_t rt_exec_last_exit_code(void);
+
+/// @brief Return the captured stdout from a CommandResult.
+/// @param result Opaque Viper.System.CommandResult object.
+/// @return Retained runtime string containing captured stdout.
+rt_string rt_exec_command_result_output(void *result);
+
+/// @brief Return the exit code from a CommandResult.
+/// @param result Opaque Viper.System.CommandResult object.
+/// @return Process exit code, or -1 for invalid input.
+int64_t rt_exec_command_result_exit_code(void *result);
+
+/// @brief Return whether a CommandResult exited successfully.
+/// @param result Opaque Viper.System.CommandResult object.
+/// @return 1 when ExitCode is 0, otherwise 0.
+int8_t rt_exec_command_result_succeeded(void *result);
 
 #ifdef __cplusplus
 }

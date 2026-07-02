@@ -281,9 +281,9 @@ Both frontends (Zia, BASIC) share the same runtime library. Sample built-in func
 
 - **Math**: BASIC `SIN`/`COS`/`TAN`/`SQR`/`ABS`/`ROUND`/`FIX`/`POW`; Zia `Sin`/`Cos`/`Sqrt`/`Abs`/`Floor`/`Ceil`/`Pow` (under `Viper.Math.*`)
 - **String**: BASIC `LEN`/`MID$`/`LEFT$`/`RIGHT$`/`LCASE$`/`UCASE$`/`TRIM$` (concatenation uses `+`, not a function); Zia `Substring`/`Mid`/`Concat`/`Trim` on `Viper.String`
-- **I/O**: BASIC `PRINT`/`INPUT`/`LINE INPUT`/`OPEN`; Zia `Say`/`Print`/`ReadLine` under `Viper.Terminal`
+- **I/O**: BASIC `PRINT`/`INPUT`/`LINE INPUT`/`OPEN`; Zia `Say`/`Print`/`TryReadLine`/`ReadLineResult` under `Viper.Terminal`
 - **Graphics**: BASIC `COLOR`/`LOCATE`/`CLS`; Zia `Viper.Graphics.Canvas` and friends
-- **Conversion**: BASIC `STR$`/`VAL`/`CINT`/`CLNG`/`CSNG`/`CDBL`; Zia `Viper.Core.Convert.ToInt64`/`ToString_Int`/`ToString_Double`
+- **Conversion**: BASIC `STR$`/`VAL`/`CINT`/`CLNG`/`CSNG`/`CDBL`; Zia `Viper.Core.Convert.ToInt64`/`ToStringInt`/`ToStringDouble`
 
 See the respective builtin registries in `/src/frontends/zia/` and `/src/frontends/basic/builtins/`
 for language-specific function lists.

@@ -1,5 +1,5 @@
 // ring_demo.zia - Comprehensive API audit for Viper.Collections.Ring
-// Tests: New, NewDefault, Push, Pop, Peek, Get, Len, Cap, IsEmpty, IsFull, Clear
+// Tests: New, NewDefault, Push, Pop, Peek, Get, Len, Capacity, IsEmpty, IsFull, Clear
 
 module RingDemo;
 
@@ -15,7 +15,7 @@ func start() {
     Say("--- New ---");
     var r = Ring.New(3);
     SayInt(r.Count);       // 0
-    SayInt(r.Cap);       // 3
+    SayInt(r.Capacity);  // 3
     SayBool(r.IsEmpty);  // 1
     SayBool(r.IsFull);   // 0
 
@@ -70,7 +70,7 @@ func start() {
     r.Clear();
     SayInt(r.Count);              // 0
     SayBool(r.IsEmpty);         // 1
-    SayInt(r.Cap);              // 3 (capacity unchanged)
+    SayInt(r.Capacity);         // 3 (capacity unchanged)
 
     // --- NewDefault (default capacity) ---
     Say("--- NewDefault ---");

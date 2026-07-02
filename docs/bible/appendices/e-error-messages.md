@@ -1630,7 +1630,7 @@ if File.Exists("output.txt") {
 
 // Solution 2: Generate unique name
 // Generate unique name using a tick counter
-var filename = "output_" + Convert.ToString_Int(Time.Clock.Ticks()) + ".txt";
+var filename = "output_" + Convert.ToStringInt(Time.Clock.Ticks()) + ".txt";
 File.WriteAllText(filename, data);
 ```
 

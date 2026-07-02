@@ -15,6 +15,8 @@ last-verified: 2026-05-14
 - [Viper.Crypto.Aes](#vipercryptoaes)
 - [Viper.Crypto.Cipher](#vipercryptocipher)
 - [Viper.Crypto.Hash](#vipercryptohash)
+- [Viper.Crypto.Legacy.Aes](#vipercryptolegacyaes)
+- [Viper.Crypto.Legacy.Hash](#vipercryptolegacyhash)
 - [Viper.Crypto.KeyDerive](#vipercryptokeyderive)
 - [Viper.Crypto.Module](#vipercryptomodule)
 - [Viper.Crypto.Password](#vipercryptopassword)
@@ -33,17 +35,19 @@ AES utilities: authenticated AES-128-GCM/AES-256-GCM for `Bytes` and password-en
 
 | Method                              | Signature                      | Description                                                                   |
 |-------------------------------------|--------------------------------|-------------------------------------------------------------------------------|
-| `Encrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt data with AES key and initialization vector                           |
-| `Decrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt data with AES key and initialization vector                           |
 | `EncryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt bytes with AES-GCM and authenticated data                             |
 | `DecryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt AES-GCM bytes and verify authenticated data                           |
+| `DecryptAuthResult(data, key, aad)` | `Result(Bytes)`                | Decrypt AES-GCM bytes with diagnostic failure                                 |
+| `TryDecryptAuth(data, key, aad)`    | `Option(Bytes)`                | Decrypt AES-GCM bytes when failure detail is not needed                       |
 | `EncryptStr(plaintext, password)`   | `Bytes(String, String)`        | Encrypt a string with a password using PBKDF2 + AES-128-GCM                    |
 | `DecryptStr(ciphertext, password)`  | `String(Bytes, String)`        | Decrypt ciphertext to a string using the authenticated string format           |
+| `DecryptStrResult(ciphertext, password)` | `Result(String)`          | Decrypt a password-encrypted string with diagnostic failure                    |
+| `TryDecryptStr(ciphertext, password)` | `Option(String)`             | Decrypt a password-encrypted string when failure detail is not needed          |
 
 ### Notes
 
-- `EncryptAuth`/`DecryptAuth` accept a 16-byte AES-128 key or a 32-byte AES-256 key and bind the `[magic(4)][nonce(12)]` header plus caller-provided AAD into the GCM tag. Malformed frames, wrong AAD, wrong keys, and modified ciphertext return `null`.
-- `Encrypt`/`Decrypt` are legacy AES-CBC helpers. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`. Empty plaintext is valid and round-trips through PKCS7 padding. `Decrypt` returns `null` when CBC padding is invalid. CBC helpers trap in approved mode.
+- `EncryptAuth`/`DecryptAuth` accept a 16-byte AES-128 key or a 32-byte AES-256 key and bind the `[magic(4)][nonce(12)]` header plus caller-provided AAD into the GCM tag. New robust code should prefer `DecryptAuthResult` or `TryDecryptAuth` so wrong keys, wrong AAD, malformed frames, and modified ciphertext are explicit values.
+- `Encrypt`/`Decrypt` remain as AES-CBC compatibility helpers and are also available as `Viper.Crypto.Legacy.Aes.EncryptCBC` and `DecryptCBC`. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`.
 - `EncryptStr` rejects empty passwords, derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default, and authenticates its header as AAD
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
 - `DecryptStr` remains backward-compatible with older `[IV(16)][AES-CBC ciphertext]` payloads
@@ -67,8 +71,9 @@ func start() {
     var ciphertext = Aes.EncryptStr("Hello, AES!", "my-password");
     Say("Encrypted len: " + Fmt.Int(ciphertext.Length));
 
-    // Decrypt it back
-    var plaintext = Aes.DecryptStr(ciphertext, "my-password");
+    // Decrypt it back with explicit failure handling
+    var textResult = Aes.DecryptStrResult(ciphertext, "my-password");
+    var plaintext = textResult.UnwrapStr();
     Say("Decrypted: " + plaintext);
 
     // Authenticated AES with explicit key and AAD
@@ -76,7 +81,7 @@ func start() {
     var aad = Bytes.FromStr("file:v1");
     var data = Bytes.FromStr("Secret data");
     var enc = Aes.EncryptAuth(data, key, aad);
-    var dec = Aes.DecryptAuth(enc, key, aad);
+    var dec = Aes.DecryptAuthResult(enc, key, aad).Unwrap();
     Say("Round-trip: " + Bytes.ToStr(dec));
 }
 ```
@@ -86,7 +91,8 @@ func start() {
 ```basic
 ' Encrypt and decrypt a string with a password
 DIM ciphertext AS OBJECT = Viper.Crypto.Aes.EncryptStr("Hello, AES!", "my-password")
-DIM plaintext AS STRING = Viper.Crypto.Aes.DecryptStr(ciphertext, "my-password")
+DIM textResult AS OBJECT = Viper.Crypto.Aes.DecryptStrResult(ciphertext, "my-password")
+DIM plaintext AS STRING = textResult.UnwrapStr()
 PRINT "Decrypted: "; plaintext
 
 ' Authenticated AES with explicit key and AAD
@@ -94,7 +100,8 @@ DIM key AS OBJECT = Viper.Crypto.Rand.Bytes(16)   ' 128-bit AES-GCM key
 DIM aad AS OBJECT = Viper.Collections.Bytes.FromStr("file:v1")
 DIM data AS OBJECT = Viper.Collections.Bytes.FromStr("Secret data")
 DIM enc AS OBJECT = Viper.Crypto.Aes.EncryptAuth(data, key, aad)
-DIM dec AS OBJECT = Viper.Crypto.Aes.DecryptAuth(enc, key, aad)
+DIM aesResult AS OBJECT = Viper.Crypto.Aes.DecryptAuthResult(enc, key, aad)
+DIM dec AS OBJECT = aesResult.Unwrap()
 PRINT "Round-trip: "; Viper.Collections.Bytes.ToStr(dec)
 ```
 
@@ -112,12 +119,20 @@ High-level symmetric encryption with automatic key derivation. Compatibility mod
 |----------------------------------|-----------------------------|-------------------------------------------------------|
 | `Encrypt(data, password)`        | `Bytes(Bytes, String)`      | Encrypt data with password (automatic salt/nonce)     |
 | `Decrypt(data, password)`        | `Bytes(Bytes, String)`      | Decrypt password-encrypted data                       |
+| `DecryptResult(data, password)`  | `Result(Bytes)`             | Decrypt password-encrypted data with diagnostic failure |
+| `TryDecrypt(data, password)`     | `Option(Bytes)`             | Decrypt password-encrypted data without diagnostics   |
 | `EncryptAAD(data, password, aad)`| `Bytes(Bytes,String,Bytes)` | Encrypt and bind caller-provided authenticated data   |
 | `DecryptAAD(data, password, aad)`| `Bytes(Bytes,String,Bytes)` | Decrypt and verify caller-provided authenticated data |
+| `DecryptAADResult(data, password, aad)` | `Result(Bytes)`       | Decrypt AAD-bound data with diagnostic failure        |
+| `TryDecryptAAD(data, password, aad)` | `Option(Bytes)`          | Decrypt AAD-bound data without diagnostics            |
 | `EncryptWithKey(data, key)`      | `Bytes(Bytes, Bytes)`       | Encrypt data with a 32-byte key                       |
 | `DecryptWithKey(data, key)`      | `Bytes(Bytes, Bytes)`       | Decrypt key-encrypted data                            |
+| `DecryptWithKeyResult(data, key)`| `Result(Bytes)`             | Decrypt key-encrypted data with diagnostic failure    |
+| `TryDecryptWithKey(data, key)`   | `Option(Bytes)`             | Decrypt key-encrypted data without diagnostics        |
 | `EncryptWithKeyAAD(data,key,aad)`| `Bytes(Bytes,Bytes,Bytes)`  | Encrypt with a key and authenticated data             |
 | `DecryptWithKeyAAD(data,key,aad)`| `Bytes(Bytes,Bytes,Bytes)`  | Decrypt with a key and authenticated data             |
+| `DecryptWithKeyAADResult(data,key,aad)` | `Result(Bytes)`      | Decrypt key/AAD data with diagnostic failure          |
+| `TryDecryptWithKeyAAD(data,key,aad)` | `Option(Bytes)`         | Decrypt key/AAD data without diagnostics              |
 
 ### Key Management Methods
 
@@ -160,7 +175,7 @@ Approved-mode key encryption produces:
 - **Authentication Tag:** 128 bits (16 bytes)
 - **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt and a 300,000-iteration default
 - Header bytes and caller-provided AAD are authenticated by the AEAD tag
-- Decryption verifies that the AEAD backend returned exactly the expected plaintext length; malformed or truncated payloads return `null`
+- Decryption verifies that the AEAD backend returned exactly the expected plaintext length. New robust code should prefer `DecryptResult`/`DecryptAADResult`/`DecryptWithKeyResult`/`DecryptWithKeyAADResult`, or the `TryDecrypt*` forms when diagnostics are intentionally discarded.
 - `Decrypt()` remains backward-compatible with older unversioned PBKDF2/HKDF payloads; new payloads use the versioned `VCP2` format
 - Approved mode rejects compatibility and legacy ciphertext formats instead of silently decrypting with non-approved algorithms
 - Password strings use their stored byte length, so embedded `NUL` bytes are part of the password
@@ -182,6 +197,10 @@ func start() {
     var ciphertext = Cipher.Encrypt(plaintext, password);
     Say("Encrypted len: " + Fmt.Int(ciphertext.Length));
 
+    var decryptResult = Cipher.DecryptResult(ciphertext, password);
+    var decrypted = decryptResult.Unwrap();
+    Say("Decrypted: " + Bytes.ToStr(decrypted));
+
     // Generate a random encryption key
     var key = Cipher.GenerateKey();
     Say("Key len: " + Fmt.Int(key.Length));
@@ -200,8 +219,10 @@ ciphertext = Viper.Crypto.Cipher.Encrypt(plaintext, password)
 PRINT "Encrypted len: "; ciphertext.Length
 
 ' Decrypt and verify round-trip
+DIM decryptResult AS OBJECT
+decryptResult = Viper.Crypto.Cipher.DecryptResult(ciphertext, password)
 DIM decrypted AS Viper.Collections.Bytes
-decrypted = Viper.Crypto.Cipher.Decrypt(ciphertext, password)
+decrypted = decryptResult.Unwrap()
 PRINT "Decrypted: "; decrypted.ToStr()
 
 ' Generate a random encryption key
@@ -214,8 +235,10 @@ DIM plain2 AS Viper.Collections.Bytes
 plain2 = Viper.Collections.Bytes.FromStr("Key-based test")
 DIM enc2 AS Viper.Collections.Bytes
 enc2 = Viper.Crypto.Cipher.EncryptWithKey(plain2, key)
+DIM keyResult AS OBJECT
+keyResult = Viper.Crypto.Cipher.DecryptWithKeyResult(enc2, key)
 DIM dec2 AS Viper.Collections.Bytes
-dec2 = Viper.Crypto.Cipher.DecryptWithKey(enc2, key)
+dec2 = keyResult.Unwrap()
 PRINT "Key decrypt: "; dec2.ToStr()
 ```
 
@@ -230,7 +253,8 @@ DIM plaintext AS OBJECT = Viper.Collections.Bytes.FromString("Secret data")
 DIM ciphertext AS OBJECT = Viper.Crypto.Cipher.EncryptWithKey(plaintext, key)
 
 ' Decrypt with the same key
-DIM decrypted AS OBJECT = Viper.Crypto.Cipher.DecryptWithKey(ciphertext, key)
+DIM decryptResult AS OBJECT = Viper.Crypto.Cipher.DecryptWithKeyResult(ciphertext, key)
+DIM decrypted AS OBJECT = decryptResult.Unwrap()
 ```
 
 ### Key Derivation Example
@@ -261,18 +285,18 @@ Viper.IO.File.WriteAllBytes("secret.doc.enc", encrypted)
 
 ' Decrypt a file
 DIM encData AS OBJECT = Viper.IO.File.ReadAllBytes("secret.doc.enc")
-DIM decrypted AS OBJECT = Viper.Crypto.Cipher.Decrypt(encData, password)
+DIM decryptResult AS OBJECT = Viper.Crypto.Cipher.DecryptResult(encData, password)
+DIM decrypted AS OBJECT = decryptResult.Unwrap()
 Viper.IO.File.WriteAllBytes("secret.doc", decrypted)
 ```
 
 ### Error Handling
 
-Cipher operations use two failure modes:
+Cipher operations expose both compatibility and production failure shapes:
 
-- `Decrypt()` returns `NULL` when authentication fails (wrong password or corrupted ciphertext)
-- `DecryptWithKey()` returns `NULL` when authentication fails (wrong key or corrupted data)
-- `EncryptWithKey()`/`DecryptWithKey()` trap if key is not exactly 32 bytes
-- Structural misuse still traps: null ciphertext, empty password, invalid AAD objects, or malformed too-short ciphertext
+- `DecryptResult*` returns `Ok(Bytes)` on success and `Err(str)` for authentication failure, malformed ciphertext, empty passwords, invalid key size, approved-mode rejection, or other runtime traps.
+- `TryDecrypt*` returns `Some(Bytes)` on success and `None` for any failure when details are not needed.
+- Compatibility `Decrypt*` methods remain callable and may return `NULL` or trap depending on the failure.
 - Empty plaintext is allowed and produces valid ciphertext
 
 ### Security Recommendations
@@ -298,7 +322,7 @@ Cipher operations use two failure modes:
 
 ## Viper.Crypto.Hash
 
-Cryptographic hash functions, checksums, and HMAC authentication for strings and binary data.
+Modern hash and HMAC helpers for strings and binary data. Security-sensitive code should use SHA-256, HMAC-SHA256, `Password`, `KeyDerive`, or `Cipher` depending on the job. MD5, SHA-1, HMAC-MD5, HMAC-SHA1, and CRC32 remain available through `Viper.Crypto.Legacy.Hash`.
 
 **Type:** Static utility class
 
@@ -306,12 +330,6 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 
 | Method               | Signature         | Description                              |
 |----------------------|-------------------|------------------------------------------|
-| `CRC32(str)`         | `Integer(String)` | Compute CRC32 checksum of a string       |
-| `CRC32Bytes(bytes)`  | `Integer(Bytes)`  | Compute CRC32 checksum of a Bytes object |
-| `MD5(str)`           | `String(String)`  | Compute MD5 hash of a string             |
-| `MD5Bytes(bytes)`    | `String(Bytes)`   | Compute MD5 hash of a Bytes object       |
-| `SHA1(str)`          | `String(String)`  | Compute SHA1 hash of a string            |
-| `SHA1Bytes(bytes)`   | `String(Bytes)`   | Compute SHA1 hash of a Bytes object      |
 | `SHA256(str)`        | `String(String)`  | Compute SHA256 hash of a string          |
 | `SHA256Bytes(bytes)` | `String(Bytes)`   | Compute SHA256 hash of a Bytes object    |
 | `Fast(str)`          | `Integer(String)` | Compute keyed SipHash-2-4 of a string    |
@@ -324,10 +342,6 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 
 | Method                     | Signature               | Description                         |
 |----------------------------|-------------------------|-------------------------------------|
-| `HmacMD5(key, data)`       | `String(String,String)` | HMAC-MD5 with string key and data   |
-| `HmacMD5Bytes(key, data)`  | `String(Bytes,Bytes)`   | HMAC-MD5 with Bytes key and data    |
-| `HmacSHA1(key, data)`      | `String(String,String)` | HMAC-SHA1 with string key and data  |
-| `HmacSHA1Bytes(key, data)` | `String(Bytes,Bytes)`   | HMAC-SHA1 with Bytes key and data   |
 | `HmacSHA256(key, data)`    | `String(String,String)` | HMAC-SHA256 with string key and data|
 | `HmacSHA256Bytes(key, data)`| `String(Bytes,Bytes)`  | HMAC-SHA256 with Bytes key and data |
 
@@ -335,11 +349,8 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 
 | Algorithm | Output Size   | Format                    |
 |-----------|---------------|---------------------------|
-| CRC32     | 32 bits       | Integer (0 to 4294967295) |
-| MD5       | 128 bits      | 32-character hex string   |
-| SHA1      | 160 bits      | 40-character hex string   |
 | SHA256    | 256 bits      | 64-character hex string   |
-| HMAC-*    | Same as hash  | Same as underlying hash   |
+| HMAC-SHA256 | 256 bits    | 64-character hex string   |
 | Fast      | 64 bits       | Integer (i64), process-keyed SipHash |
 
 String hash and HMAC methods use the stored Viper string byte length. Embedded `NUL` bytes are hashed as data, matching the corresponding `Bytes` methods for the same byte sequence. Empty strings are valid inputs; null string references trap instead of being silently hashed as empty strings.
@@ -376,13 +387,11 @@ DIM h3 AS INTEGER = Viper.Crypto.Hash.FastInt(42)
 PRINT "Int hash:"; h3
 ```
 
-### Security Warnings
+### Security Notes
 
-- **CRC32**: NOT cryptographic. Only for error detection, not security.
-- **MD5**: Cryptographically broken. Collisions can be generated in seconds. Do NOT use for security.
-- **SHA1**: Cryptographically broken. Chosen-prefix collisions demonstrated. Do NOT use for security.
 - **SHA256**: Currently collision/preimage resistant. Do not use plain SHA256 as a password hash or as a MAC; use `Password`, `KeyDerive`, or HMAC as appropriate.
 - **ConstantTimeEquals**: Intended for same-length public-format digests and MAC tags. Length mismatch returns false before byte comparison; do not use it to hide secret lengths.
+- **Legacy algorithms**: CRC32, MD5, SHA1, HMAC-MD5, and HMAC-SHA1 are compatibility/checksum tools only. Use `Viper.Crypto.Legacy.Hash` when you must read or produce those formats.
 
 ### Zia Example
 
@@ -393,19 +402,16 @@ bind Viper.Terminal;
 bind Viper.Crypto.Hash as Hash;
 
 func start() {
-    Say("MD5: " + Hash.MD5("hello"));
-    Say("SHA1: " + Hash.SHA1("hello"));
     Say("SHA256: " + Hash.SHA256("hello"));
+    Say("HMAC-SHA256: " + Hash.HmacSHA256("key", "hello"));
 }
 ```
 
 ### BASIC Example
 
 ```basic
-' Hash strings with common algorithms
-PRINT "MD5: "; Viper.Crypto.Hash.MD5("hello")
-PRINT "SHA1: "; Viper.Crypto.Hash.SHA1("hello")
 PRINT "SHA256: "; Viper.Crypto.Hash.SHA256("hello")
+PRINT "HMAC-SHA256: "; Viper.Crypto.Hash.HmacSHA256("key", "hello")
 ```
 
 ### HMAC Example
@@ -446,9 +452,40 @@ Where:
 - K' = K if len(K) <= block_size, else K' = H(K)
 - ipad = 0x36 repeated block_size times
 - opad = 0x5c repeated block_size times
-- block_size = 64 bytes for MD5, SHA1, SHA256
+- block_size = 64 bytes for SHA256 and the legacy MD5/SHA1 HMAC variants
 
 The runtime streams HMAC input through the underlying hash context instead of buffering the whole message.
+
+---
+
+## Viper.Crypto.Legacy.Hash
+
+Compatibility hashes, checksums, and legacy HMACs. These names are intentionally separate from the modern `Viper.Crypto.Hash` examples.
+
+| Method | Signature | Use |
+|--------|-----------|-----|
+| `CRC32(str)` / `CRC32Bytes(bytes)` | `Integer(...)` | File/archive checksum and accidental-corruption detection only |
+| `MD5(str)` / `MD5Bytes(bytes)` | `String(...)` | Legacy digest formats only |
+| `SHA1(str)` / `SHA1Bytes(bytes)` | `String(...)` | Legacy digest formats only |
+| `HmacMD5(...)` / `HmacMD5Bytes(...)` | `String(...)` | Legacy protocol compatibility only |
+| `HmacSHA1(...)` / `HmacSHA1Bytes(...)` | `String(...)` | Legacy protocol compatibility only |
+
+`Viper.Crypto.Hash` still accepts the old names for compatibility, but new docs and examples use `Legacy.Hash` when an old algorithm is deliberate.
+
+---
+
+## Viper.Crypto.Legacy.Aes
+
+AES-CBC compatibility helpers. CBC mode is not authenticated and must not be used for new encrypted data formats unless another authentication layer is supplied.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `EncryptCBC(data, key, iv)` | `Bytes(Bytes,Bytes,Bytes)` | Encrypt with AES-CBC and PKCS7 padding |
+| `DecryptCBC(data, key, iv)` | `Bytes(Bytes,Bytes,Bytes)` | Compatibility raw decrypt; may return `NULL` or trap |
+| `DecryptCBCResult(data, key, iv)` | `Result(Bytes)` | AES-CBC decrypt with diagnostic failure |
+| `TryDecryptCBC(data, key, iv)` | `Option(Bytes)` | AES-CBC decrypt without diagnostics |
+
+The old `Viper.Crypto.Aes.Encrypt`, `Decrypt`, `DecryptResult`, and `TryDecrypt` names remain as compatibility aliases.
 
 ---
 
@@ -574,10 +611,14 @@ Validation-readiness controls for the zero-dependency in-tree crypto module.
 
 | Method                 | Signature  | Description                                             |
 |------------------------|------------|---------------------------------------------------------|
-| `EnableApprovedMode()` | `Boolean()`| Run module self-tests, instantiate the DRBG, and enable approved-mode policy gates |
-| `DisableApprovedMode()`| `Void()`   | Return to compatibility mode                            |
-| `IsApprovedMode()`     | `Boolean()`| Return whether approved-mode policy gates are active    |
+| `EnableApprovedModeForProcess()` | `Boolean()` | Run module self-tests, instantiate the DRBG, and enable process-wide approved-mode policy gates |
+| `DisableApprovedModeForProcess()`| `Void()`    | Return the process to compatibility mode                |
+| `IsApprovedModeForProcess()`     | `Boolean()` | Return whether process-wide approved-mode policy gates are active |
 | `Status()`             | `String()` | Return module state text such as `ready` or a self-test failure |
+
+`EnableApprovedMode`, `DisableApprovedMode`, and `IsApprovedMode` remain
+available for compatibility. New code should use the `ForProcess` names so the
+global policy scope is visible in source and generated API docs.
 
 ### Approved-Mode Behavior
 
@@ -597,7 +638,7 @@ Approved mode is a validation-readiness policy mode, not a CMVP certificate. Vip
 ### BASIC Example
 
 ```basic
-IF Viper.Crypto.Module.EnableApprovedMode() THEN
+IF Viper.Crypto.Module.EnableApprovedModeForProcess() THEN
     PRINT "Crypto module status: "; Viper.Crypto.Module.Status()
 END IF
 ```
@@ -733,6 +774,9 @@ TLS (Transport Layer Security) client for encrypted TCP connections. Uses TLS 1.
 
 **Constructors:**
 
+- `Viper.Crypto.Tls.ConnectResult(host, port)` - Connect with TLS and return `Ok(Tls)` or `Err(message)`
+- `Viper.Crypto.Tls.ConnectForResult(host, port, timeoutMs)` - Connect with timeout and return `Ok(Tls)` or `Err(message)`
+- `Viper.Crypto.Tls.ConnectOptionsResult(host, port, caFile, alpn, verifyCert, timeoutMs)` - Connect with explicit trust bundle, ALPN preferences, verification policy, and timeout as a `Result`
 - `Viper.Crypto.Tls.Connect(host, port)` - Connect with TLS to host:port
 - `Viper.Crypto.Tls.ConnectFor(host, port, timeoutMs)` - Connect with timeout
 - `Viper.Crypto.Tls.ConnectOptions(host, port, caFile, alpn, verifyCert, timeoutMs)` - Connect with explicit trust bundle, ALPN preferences, verification policy, and timeout. Pass `""` for default CA bundle or no ALPN.
@@ -765,7 +809,7 @@ TLS (Transport Layer Security) client for encrypted TCP connections. Uses TLS 1.
 | Method    | Returns | Description                                       |
 |-----------|---------|---------------------------------------------------|
 | `Close()` | void    | Close the TLS connection                          |
-| `Error()` | String  | Get last error message (empty if no error)        |
+| `Error()` | String  | Compatibility diagnostic for an existing TLS handle |
 
 ### TLS Implementation
 
@@ -791,14 +835,20 @@ The TLS implementation uses:
 
 ### Zia Example
 
-> Tls is accessible via fully-qualified calls: `Viper.Crypto.Tls.Connect(...)`, `Viper.Crypto.Tls.Send(...)`, `Viper.Crypto.Tls.Recv(...)`.
+> Tls is accessible via fully-qualified calls: `Viper.Crypto.Tls.ConnectResult(...)`, `Viper.Crypto.Tls.Send(...)`, `Viper.Crypto.Tls.Recv(...)`.
 
 ### BASIC Example
 
 ```basic
 ' Connect to HTTPS server
-DIM conn AS OBJECT = Viper.Crypto.Tls.Connect("example.com", 443)
+DIM tlsResult AS OBJECT = Viper.Crypto.Tls.ConnectResult("example.com", 443)
 
+IF tlsResult.IsErr THEN
+    PRINT "TLS Error: "; tlsResult.UnwrapErrStr()
+    END
+END IF
+
+DIM conn AS OBJECT = tlsResult.Unwrap()
 IF conn.IsOpen THEN
     PRINT "Connected to "; conn.Host; ":"; conn.Port
 
@@ -814,8 +864,6 @@ IF conn.IsOpen THEN
     PRINT response
 
     conn.Close()
-ELSE
-    PRINT "TLS Error: "; conn.Error()
 END IF
 ```
 
@@ -823,15 +871,16 @@ END IF
 
 ```basic
 ' Connect with 5 second timeout
-DIM conn AS OBJECT = Viper.Crypto.Tls.ConnectFor("slow-server.com", 443, 5000)
+DIM connResult AS OBJECT = Viper.Crypto.Tls.ConnectForResult("slow-server.com", 443, 5000)
 
-IF conn.IsOpen THEN
+IF connResult.IsOk THEN
+    DIM conn AS OBJECT = connResult.Unwrap()
     ' Connection succeeded within timeout
     conn.SendStr("Hello, TLS!")
     DIM response AS STRING = conn.RecvStr(1024)
     conn.Close()
 ELSE
-    PRINT "Connection timed out or failed: "; conn.Error()
+    PRINT "Connection timed out or failed: "; connResult.UnwrapErrStr()
 END IF
 ```
 
@@ -839,9 +888,10 @@ END IF
 
 ```basic
 ' Send and receive binary data over TLS
-DIM conn AS OBJECT = Viper.Crypto.Tls.Connect("api.example.com", 8443)
+DIM connResult AS OBJECT = Viper.Crypto.Tls.ConnectResult("api.example.com", 8443)
 
-IF conn.IsOpen THEN
+IF connResult.IsOk THEN
+    DIM conn AS OBJECT = connResult.Unwrap()
     ' Send binary packet
     DIM packet AS OBJECT = Viper.Collections.Bytes.FromHex("010203040506")
     conn.Send(packet)
@@ -859,8 +909,9 @@ END IF
 
 TLS wrapper methods use return values for routine failures:
 
-- `Connect()` / `ConnectFor()` return `NULL` on invalid input, connection failure, timeout, or TLS handshake failure
-- Certificate / hostname / handshake diagnostics are preserved in `conn.Error()` when a connection object exists
+- Prefer `ConnectResult()` / `ConnectForResult()` / `ConnectOptionsResult()` for production code; invalid input, connection failure, timeout, certificate verification failure, and TLS handshake failure return `Err(message)`
+- `Connect()` / `ConnectFor()` / `ConnectOptions()` remain available for compatibility and return `NULL` on setup failure
+- `Error()` remains available as a compatibility diagnostic for an existing connection object
 - `ConnectFor()` rejects timeout values too large to fit the runtime socket timeout
 - Host strings containing embedded `NUL` bytes are rejected instead of being truncated
 - `Send()` / `SendStr()` return a negative value if the connection is closed or invalid

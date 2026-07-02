@@ -7,6 +7,7 @@ module camctl;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
+bind Viper.Input.Key as Key;
 bind Viper.Math;
 bind "./config";
 bind "./terrain";
@@ -77,7 +78,7 @@ class ShowcaseCamera {
         var move = input.MoveAxis();
         var moveLen = Sqrt(Vec3.get_X(move) * Vec3.get_X(move) + Vec3.get_Z(move) * Vec3.get_Z(move));
         var fovTarget = config.CAMERA_FOV;
-        if (input.IsDown(Keys.get_Shift()) && moveLen > 0.001) {
+        if (input.IsDown(Key.LeftShift) && moveLen > 0.001) {
             fovTarget = config.CAMERA_FOV_SPRINT;
         }
         fov = fov + (fovTarget - fov) * 0.12;

@@ -926,7 +926,8 @@ void *rt_game3d_model_template_instantiate(void *model_template);
 void *rt_game3d_model_template_instantiate_scene_at(void *model_template, int64_t index);
 
 //=========================================================================
-// Environment / EnvHandle — environment presets and builder (Viper.Game3D.Environment3D / EnvHandle)
+// Environment / EnvHandle — environment presets and builder (Viper.Game3D.Environment3D /
+// EnvHandle)
 //=========================================================================
 
 /// @brief Apply a bright outdoor environment (sky, sun, fog) and return its handle.
@@ -1191,8 +1192,12 @@ void *rt_game3d_world_spawn_heightfield_collider(void *world,
 void rt_game3d_world_despawn(void *world, void *entity);
 /// @brief Find a scene node by name, or null if absent.
 void *rt_game3d_world_find_node(void *world, rt_string name);
+/// @brief Find a scene node by name as Some(SceneNode3D), or None when absent.
+void *rt_game3d_world_find_node_option(void *world, rt_string name);
 /// @brief Find a spawned entity by name, or null if absent.
 void *rt_game3d_world_find_entity(void *world, rt_string name);
+/// @brief Find a spawned entity by name as Some(Entity3D), or None when absent.
+void *rt_game3d_world_find_entity_option(void *world, rt_string name);
 /// @brief Install a camera controller to drive the world's camera each frame.
 void rt_game3d_world_set_camera_controller(void *world, void *controller);
 /// @brief Point the camera to look at the given target entity or point.

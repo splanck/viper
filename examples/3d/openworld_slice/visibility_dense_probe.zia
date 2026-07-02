@@ -144,15 +144,15 @@ func start() {
         Vec3.New(0.0, 1.0, 0.0));
 
     var scene = SceneGraph.New();
-    var boxMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var trunkMesh = Mesh3D.NewCylinder(0.18, 1.0, 8);
-    var crownMesh = Mesh3D.NewSphere(0.55, 8);
+    var boxMesh = Mesh3D.Box(1.0, 1.0, 1.0);
+    var trunkMesh = Mesh3D.Cylinder(0.18, 1.0, 8);
+    var crownMesh = Mesh3D.Sphere(0.55, 8);
 
-    var wallMat = Material3D.NewColor(0.42, 0.45, 0.49);
-    var cityMat = Material3D.NewColor(0.55, 0.50, 0.42);
-    var alleyMat = Material3D.NewColor(0.46, 0.58, 0.62);
-    var trunkMat = Material3D.NewColor(0.35, 0.22, 0.12);
-    var crownMat = Material3D.NewColor(0.16, 0.48, 0.24);
+    var wallMat = Material3D.FromColor(0.42, 0.45, 0.49);
+    var cityMat = Material3D.FromColor(0.55, 0.50, 0.42);
+    var alleyMat = Material3D.FromColor(0.46, 0.58, 0.62);
+    var trunkMat = Material3D.FromColor(0.35, 0.22, 0.12);
+    var crownMat = Material3D.FromColor(0.16, 0.48, 0.24);
 
     var wallCount = addProp(scene, boxMesh, wallMat, "city_occluder_wall",
                             0.0, 3.0, 0.55, 22.0, 13.0, 0.35);

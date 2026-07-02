@@ -43,8 +43,8 @@ A* pathfinding on uniform-cost 2D grids. Supports 4-way (cardinal) and 8-way (ca
 | `Height` | Integer | Read | Grid height |
 | `Diagonal` | Boolean | Write | Enable 8-way movement (default: false = 4-way) |
 | `MaxSteps` | Integer | Write | Max nodes to expand (0 = unlimited) |
-| `LastSteps` | Integer | Read | Nodes expanded in last search |
-| `LastFound` | Boolean | Read | True if last search found a path |
+| `LastSteps` | Integer | Read | Compatibility diagnostic: nodes expanded in last search |
+| `LastFound` | Boolean | Read | Compatibility diagnostic: true if last search found a path |
 
 ### Methods
 
@@ -55,9 +55,21 @@ A* pathfinding on uniform-cost 2D grids. Supports 4-way (cardinal) and 8-way (ca
 | `SetCost(x, y, cost)` | `void(Integer, Integer, Integer)` | Set movement cost (100 = normal) |
 | `GetCost(x, y)` | `Integer(Integer, Integer)` | Get movement cost |
 | `Destroy()` | `void()` | Release the pathfinder handle and its internal grid storage |
+| `FindPathResult(sx, sy, gx, gy)` | `PathResult(Integer×4)` | Find path with `Found`, `Steps`, `StepCount`, `Cost`, and `Path` in one value |
 | `FindPath(sx, sy, gx, gy)` | `List[Seq[Integer]](Integer×4)` | Find path; each waypoint is `[x, y]` |
 | `FindPathLength(sx, sy, gx, gy)` | `Integer(Integer×4)` | Get cell-to-cell step count (-1 if no path) |
+| `FindNearestResult(sx, sy, value)` | `PathResult(Integer×3)` | Find nearest matching value with a result snapshot |
 | `FindNearest(sx, sy, value)` | `List[Seq[Integer]](Integer×3)` | Find path to nearest reachable cell with the stored tile/grid value |
+
+### PathResult
+
+`PathResult` exposes `Found`, `Steps`, `StepCount`, `Cost`, and `Path`. `Path` is the same
+`List[Seq[Integer]]` waypoint shape returned by the compatibility `FindPath` API. `StepCount` is
+the cell-to-cell step count, or `-1` when no path was found. `Cost` is the weighted A* movement cost
+for `FindPathResult`; `FindNearestResult` sets it to `-1`.
+
+`Length` remains available as a compatibility alias for `StepCount`, but new code should prefer
+`StepCount` so the value is not confused with `Path.Length`.
 
 ---
 
@@ -107,7 +119,8 @@ tilemap.SetCollision(1, 1); // tile 1 = solid
 // ... set tiles ...
 
 var pf = Pathfinder.FromTilemap(tilemap);
-var path = pf.FindPath(0, 0, 19, 14);
+var result = pf.FindPathResult(0, 0, 19, 14);
+var path = result.Path;
 ```
 
 ### FromGrid2D
@@ -123,10 +136,10 @@ var pf = Pathfinder.FromGrid2D(grid);
 
 ### FindNearest
 
-`FindNearest(sx, sy, value)` performs a breadth-first search from the start cell and returns
-the full path as `List[Seq[Integer]]`, with each waypoint stored as `[x, y]`. It returns an
-empty list and sets `LastFound` false if the start is outside the grid, blocked, the step
-budget is exhausted, or no reachable matching value exists.
+`FindNearestResult(sx, sy, value)` performs a breadth-first search from the start cell and
+returns a `PathResult`. The `Path` property is a `List[Seq[Integer]]`, with each waypoint stored as
+`[x, y]`. `Found` is false when the start is outside the grid, blocked, the step budget is
+exhausted, or no reachable matching value exists. `FindNearest` remains available for compatibility.
 
 ---
 
@@ -140,9 +153,10 @@ var pf = Pathfinder.FromTilemap(levelTilemap);
 pf.Diagonal = true; // Allow diagonal movement
 
 // Find path for enemy AI
-var path = pf.FindPath(enemyTileX, enemyTileY, playerTileX, playerTileY);
+var result = pf.FindPathResult(enemyTileX, enemyTileY, playerTileX, playerTileY);
 
-if pf.LastFound {
+if result.Found {
+    var path = result.Path;
     // Path is List[Seq[Integer]], with each point as [x, y]
     // Feed to PathFollower for smooth movement
     var i = 0;

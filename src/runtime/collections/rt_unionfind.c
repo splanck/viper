@@ -38,6 +38,7 @@
 #include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_trap.h"
 
 #include <stdlib.h>
@@ -157,6 +158,17 @@ int64_t rt_unionfind_find(void *uf_ptr, int64_t x) {
     }
 
     return root;
+}
+
+/// @brief Return the representative root as a Viper.Option.
+/// @param uf_ptr UnionFind object pointer, or NULL.
+/// @param x Element index to resolve.
+/// @return Some(root) for valid elements, or None for NULL/out-of-range input.
+void *rt_unionfind_find_root_option(void *uf_ptr, int64_t x) {
+    int64_t root = rt_unionfind_find(uf_ptr, x);
+    if (root < 0)
+        return rt_option_none();
+    return rt_option_some_i64(root);
 }
 
 // ---------------------------------------------------------------------------

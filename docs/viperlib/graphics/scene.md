@@ -217,6 +217,7 @@ Local scale values are normalized to at least `1` before being stored; use `100`
 | `Draw(canvas)`                    | `Void(Canvas)`                 | Draw this node and all children to a canvas    |
 | `DrawWithCamera(canvas, camera)`  | `Void(Canvas, Camera)`         | Draw with camera transform applied             |
 | `Find(name)`                      | `SceneNode(String)`            | Find a descendant node by name                 |
+| `FindOption(name)`                | `Option[SceneNode](String)`    | Find a descendant node as `Some(node)`, or `None` |
 | `GetChild(index)`                 | `SceneNode(Integer)`           | Get child by index                             |
 | `Move(dx, dy)`                    | `Void(Integer, Integer)`       | Move the node by delta amounts                 |
 | `RemoveChild(child)`              | `Void(SceneNode)`              | Remove a child node                            |
@@ -256,8 +257,10 @@ func start() {
     SayInt(child1.WorldY);  // 220
 
     // Find by name
-    var found = root.Find("child2");
-    Say(SceneNode.get_Name(found));  // child2
+    var found = root.FindOption("child2");
+    if found.IsSome {
+        Say(SceneNode.get_Name(found.Unwrap()));  // child2
+    }
 
     // Transform inheritance
     root.SetScale(200);
@@ -306,8 +309,11 @@ body.Rotation = 45  ' Arm rotates with body
 PRINT "Arm world position: "; arm.WorldX; ", "; arm.WorldY
 
 ' Find a descendant by name
-DIM found AS Viper.Graphics2D.SceneNode
-found = body.Find("arm")
+DIM found AS OBJECT
+found = body.FindOption("arm")
+IF found.IsSome THEN
+    PRINT found.Unwrap()
+END IF
 
 ' Draw entire hierarchy to canvas
 body.Draw(canvas)
@@ -343,6 +349,7 @@ Scene APIs validate `SceneGraph`, `SceneNode`, and `Camera` handles before trave
 | `Draw(canvas)`                   | `Void(Canvas)`                 | Render all visible nodes to canvas (depth-sorted; equal depths stay stable) |
 | `DrawWithCamera(canvas, camera)` | `Void(Canvas, Camera)`         | Render all visible nodes with camera transform (depth-sorted; equal depths stay stable) |
 | `Find(name)`                     | `SceneNode(String)`            | Find a node by name                            |
+| `FindOption(name)`               | `Option[SceneNode](String)`    | Find a node as `Some(node)`, or `None`         |
 | `Remove(node)`                   | `Void(SceneNode)`              | Remove a node from the scene                   |
 | `Update()`                       | `Void()`                       | Update all nodes (advances animations)         |
 
@@ -375,8 +382,10 @@ func start() {
     SayInt(SceneNode.get_ChildCount(root));  // 2
 
     // Find by name
-    var found = scene.Find("player");
-    SayInt(SceneNode.get_X(found));  // 100
+    var found = scene.FindOption("player");
+    if found.IsSome {
+        SayInt(SceneNode.get_X(found.Unwrap()));  // 100
+    }
 
     // Update and manage
     scene.Update();

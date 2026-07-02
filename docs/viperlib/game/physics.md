@@ -515,28 +515,38 @@ Spatial partitioning data structure for efficient collision detection and spatia
 | Property      | Type                  | Description                          |
 |---------------|-----------------------|--------------------------------------|
 | `ItemCount`   | `Integer` (read-only) | Number of items in tree              |
-| `ResultCount` | `Integer` (read-only) | Number of results from last query    |
+| `ResultCount` | `Integer` (read-only) | Compatibility: number of results from last mutable query |
 
 ### Methods
 
 | Method                     | Signature          | Description                                      |
 |----------------------------|--------------------|--------------------------------------------------|
 | `Clear()`                  | `Void()`           | Remove all items                                 |
-| `GetPairs()`               | `Integer()`        | Get potential collision pairs; returns count     |
-| `GetResult(index)`         | `Integer(Integer)` | Get item ID from query results                   |
+| `QueryRectResult(x, y, w, h)` | `QueryResult(4×Int)` | Find items in rectangle as a stable result object |
+| `QueryPointResult(x, y, radius)` | `QueryResult(3×Int)` | Find nearby items as a stable result object |
+| `QueryPairs()`             | `QuadtreePairResult()` | Get potential collision pairs as a stable result object |
+| `GetPairs()`               | `Integer()`        | Compatibility: collect mutable collision pairs; returns count |
+| `GetResult(index)`         | `Integer(Integer)` | Compatibility: get item ID from mutable query results |
 | `Insert(id, x, y, w, h)`  | `Boolean(5×Int)`   | Add item with bounds                             |
-| `PairFirst(index)`         | `Integer(Integer)` | Get first ID of collision pair                   |
-| `PairSecond(index)`        | `Integer(Integer)` | Get second ID of collision pair                  |
-| `QueryPoint(x, y, radius)` | `Integer(3×Int)`   | Find items whose bounds intersect the circular search area |
-| `QueryRect(x, y, w, h)`   | `Integer(4×Int)`   | Find items in rectangle; returns count           |
-| `QueryWasTruncated()`      | `Boolean()`        | True when allocation pressure made the most recent query partial |
+| `PairFirst(index)`         | `Integer(Integer)` | Compatibility: get first ID from mutable collision pairs |
+| `PairSecond(index)`        | `Integer(Integer)` | Compatibility: get second ID from mutable collision pairs |
+| `QueryPoint(x, y, radius)` | `Integer(3×Int)`   | Compatibility: find nearby items and store mutable last results |
+| `QueryRect(x, y, w, h)`   | `Integer(4×Int)`   | Compatibility: find items in rectangle and store mutable last results |
+| `QueryWasTruncated()`      | `Boolean()`        | Compatibility diagnostic for the most recent mutable query |
 | `Remove(id)`               | `Boolean(Integer)` | Remove item by ID                                |
 | `Update(id, x, y, w, h)`  | `Boolean(5×Int)`   | Update item position/size                        |
 
 ### Notes
 
-- Query results and pair output grow on demand from their default reservations. Check `QueryWasTruncated()` or `PairsWasTruncated()` to detect the rare allocation-failure case where output is partial.
+- Prefer `QueryRectResult`, `QueryPointResult`, and `QueryPairs`; they return immutable snapshots with `Count`, indexed getters, and `Truncated`.
+- Compatibility query results and pair output grow on demand from their default reservations. Check `QueryWasTruncated()` or `PairsWasTruncated()` only when using the mutable compatibility APIs.
 - `QueryPoint()` uses circle-vs-AABB testing, so large objects can match even when their centers are outside the radius.
+
+### Result Objects
+
+`QueryResult` exposes `Count`, `GetId(index)`, `Contains(id)`, `Truncated`, and `Ids()`.
+`QuadtreePairResult` exposes `Count`, `First(index)`, `Second(index)`, and `Truncated`.
+Both copy the quadtree output at query time, so later queries or mutations do not change them.
 
 ### Zia Example
 
@@ -555,11 +565,11 @@ func start() {
     Say("Items: " + Fmt.Int(qt.get_ItemCount()));
 
     // Query for items in a region
-    var count = qt.QueryRect(50, 50, 250, 250);
-    Say("QueryRect found: " + Fmt.Int(count));
+    var result = qt.QueryRectResult(50, 50, 250, 250);
+    Say("QueryRect found: " + Fmt.Int(result.Count));
     var i = 0;
-    while i < count {
-        Say("  Result: " + Fmt.Int(qt.GetResult(i)));
+    while i < result.Count {
+        Say("  Result: " + Fmt.Int(result.GetId(i)));
         i = i + 1;
     }
 
@@ -584,19 +594,19 @@ tree.Insert(2, enemy1X * 1000, enemy1Y * 1000, 32000, 32000)
 tree.Insert(3, enemy2X * 1000, enemy2Y * 1000, 32000, 32000)
 
 ' Query for objects near player
-DIM count AS INTEGER = tree.QueryPoint(playerX * 1000, playerY * 1000, 50000)
-FOR i = 0 TO count - 1
-    DIM id AS INTEGER = tree.GetResult(i)
+DIM hits AS OBJECT = tree.QueryPointResult(playerX * 1000, playerY * 1000, 50000)
+FOR i = 0 TO hits.Count - 1
+    DIM id AS INTEGER = hits.GetId(i)
     IF id <> 1 THEN  ' Not the player
         HandleCollision(1, id)
     END IF
 NEXT
 
 ' Or get all potential collision pairs
-DIM pairCount AS INTEGER = tree.GetPairs()
-FOR i = 0 TO pairCount - 1
-    DIM id1 AS INTEGER = tree.PairFirst(i)
-    DIM id2 AS INTEGER = tree.PairSecond(i)
+DIM pairs AS OBJECT = tree.QueryPairs()
+FOR i = 0 TO pairs.Count - 1
+    DIM id1 AS INTEGER = pairs.First(i)
+    DIM id2 AS INTEGER = pairs.Second(i)
     CheckDetailedCollision(id1, id2)
 NEXT
 ```
@@ -619,9 +629,9 @@ DO WHILE slot >= 0
     DIM by AS INTEGER = bulletY(slot) * 1000
 
     ' Find enemies within bullet radius
-    DIM hits AS INTEGER = tree.QueryPoint(bx, by, 20000)
-    FOR i = 0 TO hits - 1
-        DIM enemyId AS INTEGER = tree.GetResult(i)
+    DIM hits AS OBJECT = tree.QueryPointResult(bx, by, 20000)
+    FOR i = 0 TO hits.Count - 1
+        DIM enemyId AS INTEGER = hits.GetId(i)
         IF BulletHitsEnemy(slot, enemyId) THEN
             DamageEnemy(enemyId)
             bullets.Release(slot)

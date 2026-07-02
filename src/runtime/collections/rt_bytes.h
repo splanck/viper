@@ -139,6 +139,15 @@ void rt_bytes_fill(void *obj, int64_t val);
 /// @return Index of first occurrence, or -1 if not found.
 int64_t rt_bytes_find(void *obj, int64_t val);
 
+/// @brief Find first occurrence of a byte value as an Option index.
+/// @details Returns `SomeI64(index)` when the byte is present and `None` when
+///          the byte is absent or @p obj is NULL. This preserves index 0 as a
+///          valid success value without requiring a `-1` sentinel check.
+/// @param obj Bytes object pointer, or NULL.
+/// @param val Value to find (clamped to 0-255).
+/// @return Opaque Viper.Option containing the first index, or None.
+void *rt_bytes_find_option(void *obj, int64_t val);
+
 /// @brief Create a copy of the byte array.
 /// @param obj Bytes object pointer.
 /// @return Pointer to new Bytes object with same contents.

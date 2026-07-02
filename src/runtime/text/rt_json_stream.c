@@ -34,6 +34,7 @@
 #include "rt_internal.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_string.h"
 
 #include <ctype.h>
@@ -677,6 +678,24 @@ int64_t rt_json_stream_next(void *parser) {
             set_error(s, "unexpected character");
             return RT_JSON_TOK_ERROR;
     }
+}
+
+/// @brief Advance to the next JSON token and return it as a Result.
+///
+/// Normal tokens, including END, are returned as `Ok(tokenType)`. Malformed
+/// input returns `Err(message)` using the stream's current diagnostic text.
+///
+/// @param parser Parser handle.
+/// @return Owned `Viper.Result` carrying the token type or an error string.
+void *rt_json_stream_next_result(void *parser) {
+    int64_t token = rt_json_stream_next(parser);
+    if (token != RT_JSON_TOK_ERROR)
+        return rt_result_ok_i64(token);
+
+    rt_string err = rt_json_stream_error(parser);
+    if (!err || rt_str_len(err) == 0)
+        return rt_result_err_str(rt_const_cstr("JsonStream.NextResult: parse error"));
+    return rt_result_err_str(err);
 }
 
 /// @brief Return the type of the most-recently-consumed token (RT_JSON_TOK_* enum).

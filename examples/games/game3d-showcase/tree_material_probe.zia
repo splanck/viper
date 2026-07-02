@@ -40,16 +40,18 @@ func main() {
     game.setup("Game3D Showcase Tree Material Probe", 320, 180);
 
     var world = game.getWorld();
-    var barkNode = world.FindNode("mesh_0_material_0");
-    var canopyNode = world.FindNode("mesh_1_material_1");
-    if (barkNode == null) {
+    var barkNodeOption = world.FindNodeOption("mesh_0_material_0");
+    var canopyNodeOption = world.FindNodeOption("mesh_1_material_1");
+    if (barkNodeOption.IsNone) {
         fail(game, "imported maple bark material node was not spawned");
         return;
     }
-    if (canopyNode == null) {
+    if (canopyNodeOption.IsNone) {
         fail(game, "imported maple canopy material node was not spawned");
         return;
     }
+    var barkNode = barkNodeOption.Unwrap();
+    var canopyNode = canopyNodeOption.Unwrap();
 
     var canopyMat = SceneNode.get_Material(canopyNode);
     var barkMat = SceneNode.get_Material(barkNode);

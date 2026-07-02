@@ -3105,7 +3105,7 @@ Viper.String.IndexOf      | rt_str_index_of      : i64(str,str)        // Find s
 Viper.String.FromI16      | rt_str_i16_alloc     : str(i16)            // i16 → string
 Viper.String.FromI32      | rt_str_i32_alloc     : str(i32)            // i32 → string
 Viper.Text.Fmt.Int             | rt_fmt_int           : str(i64)            // i64 → string
-Viper.Core.Convert.ToString_Double | rt_f64_to_str : str(f64)          // f64 → string
+Viper.Core.Convert.ToStringDouble | rt_f64_to_str : str(f64)           // f64 -> string
 ```
 
 > **Reference counting note:** `rt_string_ref` / `rt_string_unref` are internal C runtime helpers and are
@@ -3204,7 +3204,11 @@ Viper.Terminal.Say             | rt_term_say        : void(str)            // Pr
 Viper.Terminal.SayInt          | rt_term_say_i64    : void(i64)            // Print integer + newline
 Viper.Terminal.SayNum          | rt_term_say_f64    : void(f64)            // Print float + newline
 Viper.Terminal.InputLine       | rt_input_line      : str()                // Read line from stdin
-Viper.Terminal.ReadLine        | rt_term_read_line  : str?()               // Optional read (nullable)
+Viper.Terminal.TryReadLine     | rt_term_try_read_line : obj<Viper.Option>() // Read line, None on EOF
+Viper.Terminal.ReadLineResult  | rt_term_read_line_result : obj<Viper.Result>() // Read line, Err on EOF
+Viper.Terminal.TryAsk          | rt_term_try_ask    : obj<Viper.Option>(str) // Prompt + read, None on EOF
+Viper.Terminal.AskResult       | rt_term_ask_result : obj<Viper.Result>(str) // Prompt + read, Err on EOF
+Viper.Terminal.ReadLine        | rt_term_read_line  : str()                // Compatibility read; prefer TryReadLine/ReadLineResult for EOF
 ```
 
 There is no dedicated `rt_print_newline`; use one of the `Say*` variants (which append a newline) or

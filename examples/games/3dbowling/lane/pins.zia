@@ -100,18 +100,18 @@ class PinManager {
         resetting = false;
         resetTimer = 0.0;
 
-        pinBodyMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 0.72, config.PIN_HEIGHT * 0.78, 24);
-        pinBellyMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 1.18, 16);
-        pinBaseMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 1.10, 14);
-        pinShoulderMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 0.86, 14);
-        pinHeadMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 0.78, 14);
-        pinNeckMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 0.58, config.PIN_HEIGHT * 0.34, 18);
-        pinBandMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 0.78, 0.018, 18);
-        pinMat = Material3D.NewColor(config.PIN_COLOR_R, config.PIN_COLOR_G, config.PIN_COLOR_B);
+        pinBodyMesh = Mesh3D.Cylinder(config.PIN_RADIUS * 0.72, config.PIN_HEIGHT * 0.78, 24);
+        pinBellyMesh = Mesh3D.Sphere(config.PIN_RADIUS * 1.18, 16);
+        pinBaseMesh = Mesh3D.Sphere(config.PIN_RADIUS * 1.10, 14);
+        pinShoulderMesh = Mesh3D.Sphere(config.PIN_RADIUS * 0.86, 14);
+        pinHeadMesh = Mesh3D.Sphere(config.PIN_RADIUS * 0.78, 14);
+        pinNeckMesh = Mesh3D.Cylinder(config.PIN_RADIUS * 0.58, config.PIN_HEIGHT * 0.34, 18);
+        pinBandMesh = Mesh3D.Cylinder(config.PIN_RADIUS * 0.78, 0.018, 18);
+        pinMat = Material3D.FromColor(config.PIN_COLOR_R, config.PIN_COLOR_G, config.PIN_COLOR_B);
         Material3D.SetShininess(pinMat, config.PIN_SHININESS);
         Material3D.SetEmissiveColor(pinMat,
             config.PIN_EMISSIVE, config.PIN_EMISSIVE, config.PIN_EMISSIVE * 0.9);
-        pinNeckMat = Material3D.NewColor(config.PIN_NECK_R, config.PIN_NECK_G, config.PIN_NECK_B);
+        pinNeckMat = Material3D.FromColor(config.PIN_NECK_R, config.PIN_NECK_G, config.PIN_NECK_B);
         Material3D.SetEmissiveColor(pinNeckMat,
             config.PIN_NECK_EMISSIVE, config.PIN_NECK_EMISSIVE * 0.18, config.PIN_NECK_EMISSIVE * 0.18);
 

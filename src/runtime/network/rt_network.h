@@ -525,6 +525,15 @@ void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms);
 /// @return Same HttpReq object (for chaining).
 void *rt_http_req_set_tls_verify(void *obj, int8_t verify);
 
+/// @brief Disable HTTPS certificate and hostname verification for a local test request.
+/// @details This is intentionally named as a testing-only escape hatch. It sets the
+///          same request flag as `rt_http_req_set_tls_verify(obj, 0)` while making
+///          the insecure behavior visible in code review and generated API docs.
+///          Production HTTPS requests should leave verification enabled.
+/// @param obj HttpReq object.
+/// @return Same HttpReq object (for chaining).
+void *rt_http_req_allow_insecure_certificates_for_testing(void *obj);
+
 /// @brief Enable or disable keep-alive on this request.
 /// @param obj HttpReq object.
 /// @param keep_alive 1 to allow pooled reuse, 0 to close after the response.
@@ -556,6 +565,15 @@ void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects);
 /// @return HttpRes response object.
 /// @note Traps on connection error or timeout.
 void *rt_http_req_send(void *obj);
+
+/// @brief Execute HTTP request and return a Result-wrapped response.
+/// @details Transport setup failures, connection failures, timeouts, and other
+///          traps are captured as `Result.ErrStr`; successful HTTP exchanges,
+///          including non-2xx status codes, return `Result.Ok(HttpRes)` so the
+///          caller can inspect status, headers, and body explicitly.
+/// @param obj HttpReq object.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+void *rt_http_req_send_result(void *obj);
 
 //=========================================================================
 // HttpRes - Response (Instance Class)

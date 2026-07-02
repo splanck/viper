@@ -18,11 +18,14 @@
 #include "rt_network.h"
 #include "rt_network_http_internal.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_trap.h"
 
 #include <limits.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,6 +43,53 @@ typedef struct {
     int64_t pool_size;
     int8_t keep_alive;
 } rest_client;
+
+/// @brief Release a temporary runtime object after another owner has retained it.
+/// @details Result wrappers retain the response payload; this helper drops the
+///          raw response reference returned by `execute_request_result`.
+/// @param obj Runtime object to release, or NULL.
+static void rest_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Return the current trap message as a Result-compatible string.
+/// @details The returned string is a runtime constant and does not transfer
+///          ownership to the caller.
+/// @param fallback Message used when no trap text is active.
+/// @return Runtime string for `rt_result_err_str`.
+static rt_string rest_current_error_message(const char *fallback) {
+    const char *err = rt_trap_get_error();
+    if (!err || !err[0])
+        err = fallback && fallback[0] ? fallback : "RestClient request failed";
+    return rt_const_cstr(err);
+}
+
+/// @brief Clear receiver-scoped compatibility state after a failed request.
+/// @param client RestClient receiver, or NULL.
+static void rest_client_clear_last_response(rest_client *client) {
+    if (!client)
+        return;
+    if (client->last_response && rt_obj_release_check0(client->last_response))
+        rt_obj_free(client->last_response);
+    client->last_response = NULL;
+    client->last_status = 0;
+}
+
+/// @brief Wrap a RestClient response in `Result.Ok` or create `Result.ErrStr`.
+/// @details HTTP status codes remain data on the response object. Only missing
+///          transport responses become Err values.
+/// @param response HttpRes object returned by the request path.
+/// @param null_message Error text when @p response is NULL.
+/// @return Opaque `Viper.Result`.
+static void *rest_response_result(void *response, const char *null_message) {
+    if (!response)
+        return rt_result_err_str(
+            rt_const_cstr(null_message ? null_message : "RestClient request failed"));
+    void *result = rt_result_ok(response);
+    rest_release_temp_object(response);
+    return result;
+}
 
 /// @brief Validate and cast an opaque RestClient handle.
 /// @details Public methods use this helper when a NULL receiver is a domain
@@ -274,6 +324,51 @@ static void *execute_request(rest_client *client, void *req) {
     client->last_response = res;
     client->last_status = rt_http_res_status(res);
     return res;
+}
+
+/// @brief Send an HttpReq and return `Result<HttpRes>`.
+/// @details Converts request/transport traps into `Result.ErrStr`, releases
+///          the request in all paths, and keeps the receiver-scoped
+///          `LastResponse`/`LastStatus` compatibility state synchronized when
+///          an HTTP response is received.
+/// @param client RestClient receiver.
+/// @param req Prepared HttpReq object; ownership is consumed.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+static void *execute_request_result(rest_client *client, void *req) {
+    if (!client) {
+        rest_release_temp_object(req);
+        return rt_result_err_str(rt_const_cstr("RestClient: NULL client"));
+    }
+    if (!req) {
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(rt_const_cstr("RestClient: request allocation failed"));
+    }
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = rest_current_error_message("RestClient request failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(message);
+    }
+    void *res = rt_http_req_send(req);
+    rt_trap_clear_recovery();
+    rest_release_temp_object(req);
+
+    if (!res) {
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(rt_const_cstr("RestClient request failed"));
+    }
+
+    if (client->last_response && rt_obj_release_check0(client->last_response))
+        rt_obj_free(client->last_response);
+
+    rt_obj_retain_maybe(res);
+    client->last_response = res;
+    client->last_status = rt_http_res_status(res);
+    return rest_response_result(res, "RestClient request failed");
 }
 
 //=============================================================================
@@ -525,6 +620,27 @@ void *rt_restclient_get(void *obj, rt_string path) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `GET` to `base_url + path` and return `Result<HttpRes>`.
+void *rt_restclient_get_result(void *obj, rt_string path) {
+    if (!obj)
+        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
+    rest_client *client = (rest_client *)obj;
+
+    void *req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = rest_current_error_message("RestClient request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(message);
+    }
+    req = create_request(client, rt_const_cstr("GET"), path);
+    rt_trap_clear_recovery();
+    return execute_request_result(client, req);
+}
+
 /// @brief Send a `POST` with a string body. Caller sets Content-Type via `_set_header` if needed.
 void *rt_restclient_post(void *obj, rt_string path, rt_string body) {
     rest_client *client = rest_client_checked(obj, "RestClient: null client");
@@ -536,6 +652,28 @@ void *rt_restclient_post(void *obj, rt_string path, rt_string body) {
         return NULL;
     rt_http_req_set_body_str(req, body);
     return execute_request(client, req);
+}
+
+/// @brief Send a `POST` with a string body and return `Result<HttpRes>`.
+void *rt_restclient_post_result(void *obj, rt_string path, rt_string body) {
+    if (!obj)
+        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
+    rest_client *client = (rest_client *)obj;
+
+    void *req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = rest_current_error_message("RestClient request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(message);
+    }
+    req = create_request(client, rt_const_cstr("POST"), path);
+    rt_http_req_set_body_str(req, body);
+    rt_trap_clear_recovery();
+    return execute_request_result(client, req);
 }
 
 /// @brief Send a `PUT` with a string body.
@@ -551,6 +689,28 @@ void *rt_restclient_put(void *obj, rt_string path, rt_string body) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `PUT` with a string body and return `Result<HttpRes>`.
+void *rt_restclient_put_result(void *obj, rt_string path, rt_string body) {
+    if (!obj)
+        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
+    rest_client *client = (rest_client *)obj;
+
+    void *req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = rest_current_error_message("RestClient request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(message);
+    }
+    req = create_request(client, rt_const_cstr("PUT"), path);
+    rt_http_req_set_body_str(req, body);
+    rt_trap_clear_recovery();
+    return execute_request_result(client, req);
+}
+
 /// @brief Send a `PATCH` with a string body.
 void *rt_restclient_patch(void *obj, rt_string path, rt_string body) {
     rest_client *client = rest_client_checked(obj, "RestClient: null client");
@@ -564,6 +724,28 @@ void *rt_restclient_patch(void *obj, rt_string path, rt_string body) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `PATCH` with a string body and return `Result<HttpRes>`.
+void *rt_restclient_patch_result(void *obj, rt_string path, rt_string body) {
+    if (!obj)
+        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
+    rest_client *client = (rest_client *)obj;
+
+    void *req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = rest_current_error_message("RestClient request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(message);
+    }
+    req = create_request(client, rt_const_cstr("PATCH"), path);
+    rt_http_req_set_body_str(req, body);
+    rt_trap_clear_recovery();
+    return execute_request_result(client, req);
+}
+
 /// @brief Send a `DELETE` to `base_url + path` (no body).
 void *rt_restclient_delete(void *obj, rt_string path) {
     rest_client *client = rest_client_checked(obj, "RestClient: null client");
@@ -574,6 +756,27 @@ void *rt_restclient_delete(void *obj, rt_string path) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `DELETE` to `base_url + path` and return `Result<HttpRes>`.
+void *rt_restclient_delete_result(void *obj, rt_string path) {
+    if (!obj)
+        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
+    rest_client *client = (rest_client *)obj;
+
+    void *req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = rest_current_error_message("RestClient request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(message);
+    }
+    req = create_request(client, rt_const_cstr("DELETE"), path);
+    rt_trap_clear_recovery();
+    return execute_request_result(client, req);
+}
+
 /// @brief Send a `HEAD` request — useful for checking resource existence/headers without body.
 void *rt_restclient_head(void *obj, rt_string path) {
     rest_client *client = rest_client_checked(obj, "RestClient: null client");
@@ -582,6 +785,27 @@ void *rt_restclient_head(void *obj, rt_string path) {
 
     void *req = create_request(client, rt_const_cstr("HEAD"), path);
     return execute_request(client, req);
+}
+
+/// @brief Send a `HEAD` request and return `Result<HttpRes>`.
+void *rt_restclient_head_result(void *obj, rt_string path) {
+    if (!obj)
+        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
+    rest_client *client = (rest_client *)obj;
+
+    void *req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = rest_current_error_message("RestClient request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        return rt_result_err_str(message);
+    }
+    req = create_request(client, rt_const_cstr("HEAD"), path);
+    rt_trap_clear_recovery();
+    return execute_request_result(client, req);
 }
 
 //=============================================================================

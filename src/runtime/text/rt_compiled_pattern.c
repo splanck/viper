@@ -34,6 +34,7 @@
 #include "rt_regex_internal.h"
 
 #include "rt_internal.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -190,6 +191,32 @@ rt_string rt_compiled_pattern_find(void *obj, rt_string text) {
     return rt_const_cstr("");
 }
 
+/// @brief Find the first compiled-pattern match as an Option string.
+/// @details Returns `SomeStr(match)` for any match, including empty-string
+///          matches, and `None` when no match exists.
+/// @param obj CompiledPattern pointer.
+/// @param text Text to search.
+/// @return Opaque Viper.Option containing the first match, or None.
+void *rt_compiled_pattern_find_option(void *obj, rt_string text) {
+    if (!obj) {
+        rt_trap("CompiledPattern: null pattern object");
+        return rt_option_none();
+    }
+
+    compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
+    const char *txt_str = compiled_text_or_empty(text);
+
+    int text_len = safe_rt_string_len_int(text);
+    int match_start, match_end;
+    if (re_find_match(cpo->pattern, txt_str, text_len, 0, &match_start, &match_end)) {
+        rt_string match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+        void *option = rt_option_some_str(match);
+        rt_str_release_maybe(match);
+        return option;
+    }
+    return rt_option_none();
+}
+
 /// @brief Find the first match starting at or after the given byte offset.
 rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start) {
     if (!obj) {
@@ -213,6 +240,36 @@ rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start
     return rt_const_cstr("");
 }
 
+/// @brief Find the first compiled-pattern match at or after a byte offset as an Option string.
+/// @param obj CompiledPattern pointer.
+/// @param text Text to search.
+/// @param start Starting byte offset.
+/// @return Opaque Viper.Option containing the first match, or None.
+void *rt_compiled_pattern_find_from_option(void *obj, rt_string text, int64_t start) {
+    if (!obj) {
+        rt_trap("CompiledPattern: null pattern object");
+        return rt_option_none();
+    }
+
+    compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
+    const char *txt_str = compiled_text_or_empty(text);
+
+    int text_len = safe_rt_string_len_int(text);
+    if (start < 0)
+        start = 0;
+    if (start > text_len)
+        return rt_option_none();
+
+    int match_start, match_end;
+    if (re_find_match(cpo->pattern, txt_str, text_len, (int)start, &match_start, &match_end)) {
+        rt_string match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+        void *option = rt_option_some_str(match);
+        rt_str_release_maybe(match);
+        return option;
+    }
+    return rt_option_none();
+}
+
 /// @brief Find the byte position of the first match (-1 if no match).
 int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text) {
     if (!obj) {
@@ -229,6 +286,26 @@ int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text) {
         return (int64_t)match_start;
     }
     return -1;
+}
+
+/// @brief Find the byte position of the first compiled-pattern match as an Option index.
+/// @param obj CompiledPattern pointer.
+/// @param text Text to search.
+/// @return Opaque Viper.Option containing the first position, or None.
+void *rt_compiled_pattern_find_pos_option(void *obj, rt_string text) {
+    if (!obj) {
+        rt_trap("CompiledPattern: null pattern object");
+        return rt_option_none();
+    }
+
+    compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
+    const char *txt_str = compiled_text_or_empty(text);
+
+    int match_start, match_end;
+    if (re_find_match(
+            cpo->pattern, txt_str, safe_rt_string_len_int(text), 0, &match_start, &match_end))
+        return rt_option_some_i64((int64_t)match_start);
+    return rt_option_none();
 }
 
 /// @brief Find all non-overlapping matches and return as a sequence of strings.

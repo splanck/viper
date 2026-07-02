@@ -84,7 +84,7 @@ last-verified: 2026-05-17
 | `SavePng(path)`                       | `Integer(String)`                     | Saves canvas to PNG file (returns 1 on success)            |
 | `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
-| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime` auto-clamps to `[1, max]`; `DeltaTimeSec` reports the clamped value divided by 1000 |
+| `SetMaxDeltaTime(max)`                 | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime` auto-clamps to `[1, max]`; `DeltaTimeSec` reports the clamped value divided by 1000 |
 | `SetFps(fps)`                         | `Void(Integer)`                       | Set the target frame rate (-1 = unlimited)                 |
 | `SetPosition(x, y)`                   | `Void(Integer, Integer)`              | Move the window to screen coordinates                      |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
@@ -407,9 +407,9 @@ LOOP
 
 ### Frame Management
 
-`BeginFrame()` and `SetDTMax()` simplify the standard game loop pattern. Instead of
+`BeginFrame()` and `SetMaxDeltaTime()` simplify the standard game loop pattern. Instead of
 manually calling `Poll()` and checking `ShouldClose`, use `BeginFrame()` which combines
-both steps into a single call. `SetDTMax()` clamps the `DeltaTime`
+both steps into a single call. `SetMaxDeltaTime()` clamps the `DeltaTime`
 and `DeltaTimeSec` properties to prevent
 physics explosions after lag spikes or window drags.
 
@@ -422,10 +422,10 @@ bind Viper.Graphics.Color as Color;
 func start() {
     var c = Canvas.New("Game", 800, 600);
     c.SetFps(60);
-    c.SetDTMax(50);
+    c.SetMaxDeltaTime(50);
 
     while c.BeginFrame() != 0 {
-        var dt = c.DeltaTimeSec;  // First frame may be 0.0; with SetDTMax(50), later positive frames clamp to <= 0.05
+        var dt = c.DeltaTimeSec;  // First frame may be 0.0; with SetMaxDeltaTime(50), later positive frames clamp to <= 0.05
 
         // Game logic using dt for frame-independent movement
         c.Clear(Color.RGB(0, 0, 0));
@@ -438,8 +438,10 @@ func start() {
 **Notes:**
 - `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
 - If the platform event pump fails, `Poll()` marks `ShouldClose`, tears down the backend window, updates input actions, and returns `0` without querying stale mouse or event state.
-- Without `SetDTMax()`, `DeltaTime` is rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
-- `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first positive frame, rounded values clamp to `[1, max]`
+- Without `SetMaxDeltaTime()`, `DeltaTime` is rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
+- `SetMaxDeltaTime(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first positive frame, rounded values clamp to `[1, max]`
+- `SetDTMax()` remains available as a compatibility alias for
+  `SetMaxDeltaTime()`.
 - Prefer `DeltaTimeSec` for velocity and animation math expressed in units per second
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation
 

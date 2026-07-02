@@ -167,6 +167,14 @@ void rt_seq_clear(void *obj);
 /// @return Index of element, or -1 if not found.
 int64_t rt_seq_find(void *obj, void *val);
 
+/// @brief Find the first index of an element as an Option index.
+/// @details Returns `SomeI64(index)` when @p val is present and `None` when it
+///          is absent or @p obj is NULL.
+/// @param obj Opaque Seq object pointer, or NULL.
+/// @param val Element to find (compared by pointer equality).
+/// @return Opaque Viper.Option containing the first index, or None.
+void *rt_seq_find_option(void *obj, void *val);
+
 /// @brief Check if the sequence contains an element.
 /// @param obj Opaque Seq object pointer.
 /// @param val Element to check for (compared by pointer equality).
@@ -300,6 +308,14 @@ int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *));
 /// @return First matching element, or NULL if none found.
 /// @note O(n) worst case, but short-circuits on first match.
 void *rt_seq_find_where(void *obj, int8_t (*pred)(void *));
+
+/// @brief Find the first element satisfying a predicate as an Option.
+/// @details Preserves a found NULL element as `Some(NULL)` instead of
+///          conflating it with absence.
+/// @param obj Opaque Seq object pointer. If NULL, returns None.
+/// @param pred Predicate function. If NULL, returns first element as Some or None when empty.
+/// @return Opaque Viper.Option containing the first matching element, or None.
+void *rt_seq_find_where_option(void *obj, int8_t (*pred)(void *));
 
 /// @brief Create a new Seq with the first N elements.
 /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.

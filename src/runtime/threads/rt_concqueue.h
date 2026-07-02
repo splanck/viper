@@ -59,6 +59,14 @@ void rt_concqueue_enqueue(void *obj, void *item);
 /// @return Item or NULL if empty.
 void *rt_concqueue_try_dequeue(void *obj);
 
+/// @brief Remove item from front of queue as an Option (non-blocking).
+/// @details Returns `None` when the queue is empty and `Some(value)` when an
+///          item is removed. A queued NULL value is represented as
+///          `Some(NULL)`, unlike @ref rt_concqueue_try_dequeue.
+/// @param obj ConcurrentQueue pointer.
+/// @return Opaque Viper.Option object.
+void *rt_concqueue_try_dequeue_option(void *obj);
+
 /// @brief Remove item from front of queue (blocking).
 /// @param obj ConcurrentQueue pointer.
 /// @return Item (waits until available).

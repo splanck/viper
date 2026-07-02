@@ -211,6 +211,14 @@ void *rt_scene_node_get_parent(void *node);
 /// @return First matching node, or NULL if not found.
 void *rt_scene_node_find(void *node, rt_string name);
 
+/// @brief Find a descendant node by name as an Option.
+/// @details Returns `Some(SceneNode)` when a match exists and `None` when
+///          absent, avoiding the legacy NULL sentinel.
+/// @param node Starting node to search from.
+/// @param name Name to search for.
+/// @return Opaque Viper.Option containing the matching node, or None.
+void *rt_scene_node_find_option(void *node, rt_string name);
+
 /// @brief Remove this node from its parent.
 /// @param node The SceneNode to detach. After detaching, the node's
 ///             parent becomes NULL.
@@ -285,6 +293,14 @@ void rt_scene_remove(void *scene, void *node);
 /// @param name The name to search for in the entire scene hierarchy.
 /// @return The first matching SceneNode, or NULL if not found.
 void *rt_scene_find(void *scene, rt_string name);
+
+/// @brief Find a node in the scene by name as an Option.
+/// @details Returns `Some(SceneNode)` when a match exists and `None` when
+///          absent.
+/// @param scene The Scene object.
+/// @param name The name to search for in the entire scene hierarchy.
+/// @return Opaque Viper.Option containing the matching node, or None.
+void *rt_scene_find_option(void *scene, rt_string name);
 
 /// @brief Draw all nodes in the scene (depth-sorted).
 /// @param scene The Scene object.

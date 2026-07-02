@@ -1,0 +1,31 @@
+// API Audit: Viper.Network.SmtpClient (Zia)
+module SmtpClientDemo;
+
+bind Viper.Network;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Network.SmtpClient ===");
+    Say("NOTE: SMTP sends require a real mail server. This demo checks the API surface only.");
+
+    var smtp = SmtpClient.New("mail.example.test", 587);
+    smtp.SetTls(true);
+    smtp.SetAuth("user@example.test", "password");
+
+    if false {
+        var plain = smtp.SendResult("sender@example.test",
+                                    "dest@example.test",
+                                    "Subject",
+                                    "Body");
+        SayBool(plain.IsErr);
+
+        var html = smtp.SendHtmlResult("sender@example.test",
+                                       "dest@example.test",
+                                       "Subject",
+                                       "<p>Body</p>");
+        SayBool(html.IsErr);
+    }
+
+    smtp.Close();
+    Say("=== SmtpClient Audit Complete ===");
+}

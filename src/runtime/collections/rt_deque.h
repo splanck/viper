@@ -143,10 +143,26 @@ void rt_deque_reverse(void *obj);
 /// @return The removed element, or NULL if empty.
 void *rt_deque_try_pop_front(void *obj);
 
+/// @brief Pop the front element as an Option.
+/// @details Returns `None` when the deque is empty and `Some(value)` when an
+///          element is removed. A stored NULL value is represented as
+///          `Some(NULL)`, unlike @ref rt_deque_try_pop_front.
+/// @param obj Opaque Deque object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_deque_try_pop_front_option(void *obj);
+
 /// @brief Pop the back element, or return NULL if empty (no trap).
 /// @param obj Opaque Deque object pointer.
 /// @return The removed element, or NULL if empty.
 void *rt_deque_try_pop_back(void *obj);
+
+/// @brief Pop the back element as an Option.
+/// @details Returns `None` when the deque is empty and `Some(value)` when an
+///          element is removed. A stored NULL value is represented as
+///          `Some(NULL)`, unlike @ref rt_deque_try_pop_back.
+/// @param obj Opaque Deque object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_deque_try_pop_back_option(void *obj);
 
 /// @brief Create a shallow copy of the deque.
 /// @param obj Source Deque object pointer.

@@ -4,6 +4,7 @@ module worldsim;
 bind Viper.Game3D;
 bind Viper.Graphics3D;
 bind Viper.Core.Convert as Convert;
+bind Viper.Input.Key as Key;
 bind Viper.Math;
 bind "./config";
 bind "./terrain";
@@ -86,11 +87,11 @@ class ShowcaseWorldSim {
     }
 
     expose func installOutdoorFillLight(world: World3D) {
-        fillLight = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
+        fillLight = Light3D.Directional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
         Light3D.SetIntensity(fillLight, 0.30);
         world.AddLight(1, fillLight);
 
-        skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
+        skyFill = Light3D.Ambient(0.54, 0.62, 0.72);
         Light3D.SetIntensity(skyFill, 0.28);
         world.AddLight(2, skyFill);
     }
@@ -114,14 +115,14 @@ class ShowcaseWorldSim {
     }
 
     expose func setupSun(world: World3D, canvas: Canvas3D) {
-        sunLight = Light3D.NewDirectional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
+        sunLight = Light3D.Directional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
         Light3D.SetIntensity(sunLight, config.SUN_INTENSITY_DAY);
         world.AddLight(0, sunLight);
         Light3D.set_CastsShadows(sunLight, true);
         Canvas3D.EnableShadows(canvas, 2048);
         Canvas3D.SetShadowCascades(canvas, 3);
 
-        moonLight = Light3D.NewDirectional(new Vec3(0.30, -0.70, 0.38), 0.55, 0.62, 0.95);
+        moonLight = Light3D.Directional(new Vec3(0.30, -0.70, 0.38), 0.55, 0.62, 0.95);
         Light3D.SetIntensity(moonLight, 0.0);
         world.AddLight(9, moonLight);
     }
@@ -165,7 +166,7 @@ class ShowcaseWorldSim {
     expose func setupBeaconLights(world: World3D) {
         for i in 0..beacons.count() {
             var b = beacons.get(i);
-            var pl = Light3D.NewPoint(
+            var pl = Light3D.Point(
                 new Vec3(b.x, b.y + 2.4, b.z),
                 1.0, 0.80, 0.34, config.BEACON_LIGHT_RANGE);
             Light3D.SetIntensity(pl, 0.0);
@@ -176,7 +177,7 @@ class ShowcaseWorldSim {
     }
 
     expose func setupPlayerLight(world: World3D, playerX: Float, playerY: Float, playerZ: Float) {
-        playerLight = Light3D.NewPoint(
+        playerLight = Light3D.Point(
             new Vec3(playerX, playerY + 1.5, playerZ), 0.40, 0.72, 1.0, config.PLAYER_LIGHT_RANGE);
         Light3D.SetIntensity(playerLight, config.PLAYER_LIGHT_INTENSITY);
         world.AddLight(config.PLAYER_LIGHT_SLOT, playerLight);
@@ -203,7 +204,7 @@ class ShowcaseWorldSim {
                               playerX: Float, playerY: Float, playerZ: Float,
                               audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
         rampBeaconGlow(dt);
-        if (scanBeaconIndex >= 0 && input.IsDown(Keys.get_KeyE())) {
+        if (scanBeaconIndex >= 0 && input.IsDown(Key.E)) {
             var b = beacons.get(scanBeaconIndex);
             var dx = playerX - b.x;
             var dz = playerZ - b.z;

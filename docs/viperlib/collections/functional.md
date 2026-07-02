@@ -24,7 +24,7 @@ push/pop, insert/remove, and slicing operations.
 | Property  | Type    | Description                                    |
 |-----------|---------|------------------------------------------------|
 | `Length`  | Integer | Number of elements currently in the sequence   |
-| `Cap`     | Integer | Current allocated capacity                     |
+| `Capacity` | Integer | Current allocated capacity                   |
 | `IsEmpty` | Boolean | Returns true if the sequence has zero elements |
 
 ### Methods
@@ -43,6 +43,7 @@ push/pop, insert/remove, and slicing operations.
 | `Remove(index)`        | `Object(Integer)`       | Removes and returns the element at the specified position                             |
 | `Clear()`              | `Void()`                | Removes all elements                                                                  |
 | `Find(value)`          | `Integer(Object)`       | Returns the index of a value, or -1 if not found                                      |
+| `FindOption(value)`    | `Option[Integer](Object)` | Returns `Some(index)` for a matching value, or `None` if not found                 |
 | `Has(value)`           | `Boolean(Object)`       | Returns true if the sequence contains the value                                       |
 | `Reverse()`            | `Void()`                | Reverses the elements in place                                                        |
 | `Shuffle()`            | `Void()`                | Shuffles the elements in place (deterministic when `Viper.Math.Random.Seed` is set)   |
@@ -58,6 +59,7 @@ push/pop, insert/remove, and slicing operations.
 | `None(pred)`           | `Boolean(Function)`     | Returns true if no elements satisfy predicate (true for empty)                        |
 | `CountWhere(pred)`     | `Integer(Function)`     | Returns count of elements satisfying predicate                                        |
 | `FindWhere(pred)`      | `Object(Function)`      | Returns first element satisfying predicate, or NULL                                   |
+| `FindWhereOption(pred)`| `Option[Object](Function)` | Returns `Some(value)` for the first matching element, including stored nulls, or `None` |
 | `Take(n)`              | `Seq(Integer)`          | Returns new Seq with first n elements                                                 |
 | `Drop(n)`              | `Seq(Integer)`          | Returns new Seq skipping first n elements                                             |
 | `TakeWhile(pred)`      | `Seq(Function)`         | Returns new Seq with leading elements while predicate is true                         |
@@ -75,11 +77,13 @@ push/pop, insert/remove, and slicing operations.
 
 - Public `Seq` constructors (`new Seq()`, `Seq.New()`, `Seq.New(size)`, and `Seq.WithCapacity(cap)`) create owning sequences, so pushed strings and objects remain valid until removed or the sequence is released.
 - `Seq.New(size)` creates a sequence with `Length == size` and null-initialized slots. Use `Seq.WithCapacity(cap)` to reserve capacity without changing length.
+- `Cap` remains available as a compatibility alias for `Capacity`.
 - The lower-level C helpers `rt_seq_new` and `rt_seq_with_capacity` still create borrowed-element sequences for internal runtime views; ownership mode must be selected while the sequence is empty.
 - `Pop()` and `Remove(index)` return an owned object reference. When the sequence owns elements, the removed element's retained reference is transferred to the caller.
 - `Slice()`, `Keep()`, `Reject()`, `Take()`, and `TakeWhile()` preserve owned-element mode in the returned sequence when the source sequence owns its elements; `Apply()` always returns an owning output sequence.
 - `ToBag()` accepts raw runtime strings and boxed strings; any other element type traps.
 - `Push`, `PushAll`, and capacity growth trap on length or allocation overflow instead of wrapping.
+- Prefer `FindOption()` and `FindWhereOption()` for new code. `Find()` and `FindWhere()` remain available for compatibility with existing sentinel/null checks.
 
 ### Zia Example
 
@@ -142,7 +146,10 @@ seq.Remove(1)               ' Remove second element
 
 ' Search
 IF seq.Has(someItem) THEN
-    PRINT "Found at index: "; seq.Find(someItem)
+    DIM found AS OBJECT = seq.FindOption(someItem)
+    IF found.IsSome THEN
+        PRINT "Found at index: "; found.UnwrapI64()
+    END IF
 END IF
 
 ' Slicing
@@ -324,6 +331,7 @@ collectors.
 | `ToSeqN(n)`    | `Seq(Integer)`               | Collect at most n elements into a Seq                  |
 | `Count()`      | `Integer()`                  | Count all elements (may not terminate!)                |
 | `Find(pred)`   | `Object(Function)`           | Find first matching element; null if not found         |
+| `FindOption(pred)` | `Option[Object](Function)` | Find first matching element as `Some(value)`, or `None` |
 | `Any(pred)`    | `Boolean(Function)`          | True if any element matches                            |
 | `All(pred)`    | `Boolean(Function)`          | True if all elements match (may not terminate!)        |
 
@@ -361,8 +369,10 @@ PRINT firstTen.Count   ' Output: 10
 
 ' Find first element matching condition
 DIM firstBig AS OBJECT = Viper.Functional.LazySeq.Range(1, 1000000, 1) _
-    .Find(FUNCTION(n) RETURN n > 500)
-PRINT firstBig       ' Output: 501 (stops immediately, doesn't check all million)
+    .FindOption(FUNCTION(n) RETURN n > 500)
+IF firstBig.IsSome THEN
+    PRINT firstBig.Unwrap()  ' Output: 501 (stops immediately, doesn't check all million)
+END IF
 
 ' Check predicates
 DIM allPositive AS INTEGER = Viper.Functional.LazySeq.Range(1, 100, 1) _

@@ -43,6 +43,15 @@ extern "C" {
 ///       records an error.
 void *rt_yaml_parse(rt_string text);
 
+/// @brief Parse YAML string into a Viper.Result.
+/// @details Returns `Ok(value)` for valid YAML, including YAML null and empty
+///          documents as `Ok(NULL)`, and `Err(message)` for invalid YAML. This
+///          avoids the ambiguity of rt_yaml_parse() returning NULL for both
+///          valid null values and failures.
+/// @param text YAML text to parse.
+/// @return Opaque Viper.Result object containing the parsed value or error.
+void *rt_yaml_parse_result(rt_string text);
+
 /// @brief Get the last parse error message.
 /// @return Error message string, or empty string if no error.
 rt_string rt_yaml_error(void);

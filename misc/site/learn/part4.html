@@ -4877,8 +4877,10 @@ Http.Post(&quot;https://example.com/login&quot;, {
 <h3 id="validate-server-certificates">Validate Server Certificates</h3>
 <p>HTTPS uses certificates to prove the server is who it claims to be. Don&#x27;t disable certificate validation!</p>
 <pre><code data-lang="rust">
-// DANGEROUS: Disables security
-Http.Get(url, { verifyCertificate: false });
+// LOCAL TEST ONLY: disables security for self-signed fixtures
+var req = HttpReq.New(&quot;GET&quot;, url);
+req.AllowInsecureCertificatesForTesting();
+HttpReq.Send(req);
 // You might be talking to an attacker pretending to be the server
 
 // SAFE: Always verify (this is the default)

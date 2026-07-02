@@ -4243,7 +4243,7 @@ final LOG_FILE = &quot;processor.log&quot;;
 
 func log(message: String) {
     var ts = Time.DateTime.Now();
-    var timestamp = Convert.ToString_Int(ts);
+    var timestamp = Convert.ToStringInt(ts);
     var entry = &quot;[&quot; + timestamp + &quot;] &quot; + message + &quot;\n&quot;;
 
     try {
@@ -7540,7 +7540,7 @@ Say(&quot;You rolled: &quot; + die);
 bind Viper.Math.Random as Random;
 bind Viper.Terminal;
 
-if Random.Chance(0.5) == 1 {
+if Random.Chance(0.5) {
     Say(&quot;Heads!&quot;);
 } else {
     Say(&quot;Tails!&quot;);
@@ -7975,8 +7975,8 @@ bind Convert = Viper.Core.Convert;
 
 Convert.ToInt64(&quot;42&quot;);        // 42
 Convert.ToDouble(&quot;3.14&quot;);     // 3.14
-Convert.ToString_Int(42);     // &quot;42&quot;
-Convert.ToString_Double(3.14); // &quot;3.14&quot;
+Convert.ToStringInt(42);     // &quot;42&quot;
+Convert.ToStringDouble(3.14); // &quot;3.14&quot;
 </code></pre>
 <h3 id="error-handling">Error Handling</h3>
 <p>Parsing can fail. Handle it gracefully:</p>
@@ -8095,8 +8095,8 @@ var path = join(dir, filename);
 <pre><code data-lang="rust">
 bind Viper.Crypto.Hash as Hash;
 
-var hash = Hash.MD5(&quot;hello&quot;);      // 32-character hex string
 var sha = Hash.SHA256(&quot;hello&quot;);    // 64-character hex string
+var mac = Hash.HmacSHA256(&quot;key&quot;, &quot;hello&quot;);
 </code></pre>
 <p><strong>When to use:</strong></p>
 <ul>
@@ -8105,6 +8105,9 @@ var sha = Hash.SHA256(&quot;hello&quot;);    // 64-character hex string
 <li>Creating cache keys</li>
 <li>Detecting duplicates</li>
 </ul>
+<p>MD5, SHA-1, CRC32, and their legacy HMAC variants remain available through
+<code>Viper.Crypto.Legacy.Hash</code> for compatibility with old formats, but new code
+should use SHA-256, HMAC-SHA256, <code>Password</code>, <code>KeyDerive</code>, or <code>Cipher</code>.</p>
 <h3 id="encoding">Encoding</h3>
 <p>Base64 encoding converts binary data to text. This lives in <code>Viper.Text.Codec</code>:</p>
 <pre><code data-lang="rust">
@@ -8498,7 +8501,7 @@ var logFile = join(
 <tr>
 <td>Security</td>
 <td>Crypto.Hash, Codec, Guid</td>
-<td>Hash.SHA256, Hash.MD5, New</td>
+<td>Hash.SHA256, Hash.HmacSHA256, New</td>
 </tr>
 </tbody></table>
 <p>The standard library is your first resort when you need functionality. It&#x27;s tested, optimized, and familiar to other programmers. Learning it is as important as learning the language syntax.</p>

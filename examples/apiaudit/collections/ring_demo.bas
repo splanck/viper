@@ -1,5 +1,5 @@
 ' ring_demo.bas - Comprehensive API audit for Viper.Collections.Ring
-' Tests: New, NewDefault, Push, Pop, Peek, Get, Len, Cap, IsEmpty, IsFull, Clear
+' Tests: New, NewDefault, Push, Pop, Peek, Get, Len, Capacity, IsEmpty, IsFull, Clear
 
 PRINT "=== Ring API Audit ==="
 
@@ -8,7 +8,7 @@ PRINT "--- New ---"
 DIM r AS OBJECT
 r = Viper.Collections.Ring.New(3)
 PRINT r.Count       ' 0
-PRINT r.Cap       ' 3
+PRINT r.Capacity  ' 3
 PRINT r.IsEmpty   ' 1
 PRINT r.IsFull    ' 0
 
@@ -63,7 +63,7 @@ PRINT "--- Clear ---"
 r.Clear()
 PRINT r.Count       ' 0
 PRINT r.IsEmpty   ' 1
-PRINT r.Cap       ' 3 (capacity unchanged)
+PRINT r.Capacity  ' 3 (capacity unchanged)
 
 ' --- NewDefault (default capacity) ---
 PRINT "--- NewDefault ---"

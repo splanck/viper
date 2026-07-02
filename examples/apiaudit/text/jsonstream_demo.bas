@@ -3,19 +3,25 @@
 
 PRINT "=== Viper.Text.JsonStream API Audit ==="
 
-' --- New / Next / TokenType ---
-PRINT "--- New / Next / TokenType ---"
+' --- New / NextResult / TokenType ---
+PRINT "--- New / NextResult / TokenType ---"
 DIM stream AS OBJECT
 stream = Viper.Text.JsonStream.New("{""name"":""Alice"",""age"":30,""active"":true}")
 
 DIM i AS INTEGER
+DIM nextToken AS OBJECT
 i = 0
 DO WHILE i < 20
     IF NOT Viper.Text.JsonStream.HasNext(stream) THEN
         i = 100
     ELSE
-        Viper.Text.JsonStream.Next(stream)
-        PRINT "Token type: "; Viper.Text.JsonStream.TokenType(stream)
+        nextToken = Viper.Text.JsonStream.NextResult(stream)
+        IF nextToken.IsErr THEN
+            PRINT "Token error: "; nextToken.UnwrapErrStr()
+            i = 100
+        ELSE
+            PRINT "Token type: "; nextToken.UnwrapI64()
+        END IF
         i = i + 1
     END IF
 LOOP
@@ -78,10 +84,14 @@ PRINT "HasNext before: "; Viper.Text.JsonStream.HasNext(s7)
 Viper.Text.JsonStream.Next(s7)
 PRINT "HasNext after: "; Viper.Text.JsonStream.HasNext(s7)
 
-' --- Error ---
-PRINT "--- Error ---"
+' --- NextResult / Error compatibility ---
+PRINT "--- NextResult / Error compatibility ---"
 DIM s8 AS OBJECT
-s8 = Viper.Text.JsonStream.New("{""valid"":1}")
+s8 = Viper.Text.JsonStream.New("not json")
+DIM bad AS OBJECT
+bad = Viper.Text.JsonStream.NextResult(s8)
+PRINT "Bad NextResult IsErr: "; bad.IsErr
+PRINT "Bad NextResult Err: "; bad.UnwrapErrStr()
 PRINT "Error: "; Viper.Text.JsonStream.Error(s8)
 
 PRINT "=== JsonStream Demo Complete ==="

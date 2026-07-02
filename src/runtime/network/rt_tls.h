@@ -118,8 +118,26 @@ int rt_tls_has_buffered_data(rt_tls_session_t *session);
 /// @brief Connect to host:port with TLS, default timeout.
 void *rt_viper_tls_connect(rt_string host, int64_t port);
 
+/// @brief Connect to host:port with TLS and return a Viper.Result.
+/// @details Returns `Ok(Tls)` on success and `Err(message)` for invalid
+///          arguments, TCP setup failure, timeout, certificate verification
+///          failure, or TLS handshake failure.
+/// @param host Hostname to connect to.
+/// @param port TCP port number.
+/// @return Opaque Viper.Result object containing a TLS handle or error string.
+void *rt_viper_tls_connect_result(rt_string host, int64_t port);
+
 /// @brief Connect to host:port with TLS, custom timeout.
 void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms);
+
+/// @brief Connect to host:port with TLS and a custom timeout as a Viper.Result.
+/// @details Returns `Ok(Tls)` on success and `Err(message)` for routine
+///          connection or handshake failures.
+/// @param host Hostname to connect to.
+/// @param port TCP port number.
+/// @param timeout_ms Timeout in milliseconds; 0 uses the runtime default.
+/// @return Opaque Viper.Result object containing a TLS handle or error string.
+void *rt_viper_tls_connect_for_result(rt_string host, int64_t port, int64_t timeout_ms);
 
 /// @brief Connect with explicit CA bundle, ALPN list, verification policy, and timeout.
 void *rt_viper_tls_connect_options(rt_string host,
@@ -128,6 +146,24 @@ void *rt_viper_tls_connect_options(rt_string host,
                                    rt_string alpn,
                                    int8_t verify_cert,
                                    int64_t timeout_ms);
+
+/// @brief Connect with explicit TLS options and return a Viper.Result.
+/// @details Returns `Ok(Tls)` on success and `Err(message)` for invalid
+///          options, TCP setup failure, timeout, certificate verification
+///          failure, or TLS handshake failure.
+/// @param host TLS hostname used for TCP, SNI, and certificate verification.
+/// @param port TCP port number.
+/// @param ca_file Optional PEM bundle path, or empty for the system trust source.
+/// @param alpn Optional comma-separated ALPN preference list.
+/// @param verify_cert 1 to verify certificates, 0 to skip verification.
+/// @param timeout_ms Timeout in milliseconds; 0 uses the runtime default.
+/// @return Opaque Viper.Result object containing a TLS handle or error string.
+void *rt_viper_tls_connect_options_result(rt_string host,
+                                          int64_t port,
+                                          rt_string ca_file,
+                                          rt_string alpn,
+                                          int8_t verify_cert,
+                                          int64_t timeout_ms);
 
 /// @brief Get connected hostname.
 rt_string rt_viper_tls_host(void *obj);

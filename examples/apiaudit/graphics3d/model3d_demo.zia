@@ -26,16 +26,16 @@ func start() {
     SceneGraph.Add(scene, parent);
     SceneGraph.Save(scene, path);
 
-    var model = SceneAsset.Load(path);
+    var model = SceneAsset.LoadResult(path).Unwrap();
     Say("MeshCount = " + toString(SceneAsset.get_MeshCount(model)));
     Say("MaterialCount = " + toString(SceneAsset.get_MaterialCount(model)));
     Say("NodeCount = " + toString(SceneAsset.get_NodeCount(model)));
 
-    var templateChild = SceneAsset.FindNode(model, "child");
+    var templateChild = SceneAsset.FindNodeOption(model, "child").Unwrap();
     Say("Template child Y = " + toString(Vec3.get_Y(SceneNode.get_Position(templateChild))));
 
     var instRoot = SceneAsset.Instantiate(model);
-    var instChild = SceneNode.Find(instRoot, "child");
+    var instChild = SceneNode.FindOption(instRoot, "child").Unwrap();
     SceneNode.SetPosition(instChild, 9.0, 9.0, 9.0);
     Say("Instance child Y = " + toString(Vec3.get_Y(SceneNode.get_Position(instChild))));
     Say("Template child still Y = " + toString(Vec3.get_Y(SceneNode.get_Position(templateChild))));

@@ -19,6 +19,8 @@ last-verified: 2026-06-20
 - [Viper.System.Process](#vipersystemprocess)
 - [Viper.System.Pty](#vipersystempty)
 - [Viper.System.Machine](#vipermachine)
+- [Viper.Runtime.Unsafe](#viperruntimeunsafe)
+- [Viper.Runtime.GC](#viperruntimegc)
 - [Viper.Memory](#vipermemory)
 - [Viper.Memory.GC](#vipermemory-gc)
 - [Viper.Terminal](#viperterminal)
@@ -231,6 +233,21 @@ External command execution for running system commands and capturing output.
 | `CaptureArgs(program, args)` | `String(String, Seq)`  | Execute program with arguments, capture stdout         |
 | `Shell(command)`             | `Integer(String)`      | Run command through system shell, return exit code     |
 | `ShellCapture(command)`      | `String(String)`       | Run command through shell, capture stdout              |
+| `ShellResult(command)`       | `CommandResult(String)`| Run command through shell and return captured stdout plus exit code |
+| `ShellFull(command)`         | `String(String)`       | Legacy stdout capture paired with `LastExitCode()`     |
+| `LastExitCode()`             | `Integer()`            | Legacy exit code from the most recent `ShellFull()` call |
+
+### Viper.System.CommandResult
+
+Returned by `Exec.ShellResult(command)`.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Output` | String | Captured stdout from the shell command |
+| `ExitCode` | Integer | Normalized shell command exit code, or `-1` for launch/signalled failure |
+| `Succeeded` | Boolean | True when `ExitCode == 0` |
+
+Prefer `ShellResult()` for new shell capture code. `ShellFull()` and `LastExitCode()` remain available for compatibility, but the exit code is thread-local state and can be overwritten by a later exec call.
 
 ### Security Warning
 
@@ -260,17 +277,18 @@ bind Viper.System.Exec as Exec;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    // Capture shell command output
-    var output = Exec.ShellCapture("echo Hello from shell");
-    Say("Shell: " + output);
+    // Capture shell command output and exit status together
+    var result = Exec.ShellResult("echo Hello from shell");
+    Say("Shell: " + result.Output);
+    Say("Exit code: " + Fmt.Int(result.ExitCode));
 
     // Run a command and get exit code
     var code = Exec.Shell("true");
     Say("Exit code: " + Fmt.Int(code));
 
     // Capture program output directly
-    var result = Exec.Capture("/bin/echo");
-    Say("Echo: " + result);
+    var captured = Exec.Capture("/bin/echo");
+    Say("Echo: " + captured);
 }
 ```
 
@@ -283,9 +301,10 @@ exitCode = Viper.System.Exec.Shell("echo Hello World")
 PRINT "Exit code: "; exitCode
 
 ' Capture command output
-DIM output AS STRING
-output = Viper.System.Exec.ShellCapture("date")
-PRINT "Current date: "; output
+DIM shellResult AS OBJECT
+shellResult = Viper.System.Exec.ShellResult("date")
+PRINT "Current date: "; Viper.System.CommandResult.get_Output(shellResult)
+PRINT "Exit code: "; Viper.System.CommandResult.get_ExitCode(shellResult)
 
 ' Execute program with arguments
 DIM args AS OBJECT = Viper.Collections.Seq.New()
@@ -411,8 +430,9 @@ terminal-like IDE surfaces.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Open(program, args, cwd, env, cols, rows)` | `PtySession(String, Object, String, Object, Integer, Integer)` | Open a PTY-backed child |
+| `OpenResult(program, args, cwd, env, cols, rows)` | `Result(String, Object, String, Object, Integer, Integer)` | Open a PTY-backed child as `Ok(PtySession)` or `Err(message)` |
 | `IsSupported()` | `Boolean()` | Returns `TRUE` when the current platform can create PTYs |
-| `LastError()` | `String()` | Returns the most recent PTY startup/support diagnostic |
+| `LastError()` | `String()` | Compatibility diagnostic for legacy `Open()` / support checks |
 
 ### Handle Methods
 
@@ -429,8 +449,10 @@ terminal-like IDE surfaces.
 | `Wait()` | `Integer()` | Blocks until child exit and returns the exit code |
 | `Destroy()` | `Void()` | Closes PTY resources; terminates a still-running child |
 
-`LastError()` is useful after `IsSupported()` returns `FALSE` or `Open()`
-returns `NULL`. Existing callers can keep checking the nullable `Open()` result.
+Prefer `OpenResult()` for production code. It returns `Err(message)` for
+unsupported platforms, startup failures, and validation errors. `Open()` and
+`LastError()` remain available for compatibility; existing callers can keep
+checking the nullable `Open()` result.
 
 ---
 
@@ -531,9 +553,11 @@ END IF
 
 ---
 
-## Viper.Memory
+## Viper.Runtime.Unsafe
 
-Low-level retain/release hooks for deterministic ownership handoff. Most programs should rely on normal lexical lifetimes and class `deinit`; use these only when integrating with runtime handles that require explicit ownership control.
+Sharp retain/release hooks for deterministic ownership handoff. Most programs
+should rely on normal lexical lifetimes and class `deinit`; use these only when
+integrating with runtime handles that require explicit ownership control.
 
 **Type:** Static utility class
 
@@ -545,6 +569,12 @@ Low-level retain/release hooks for deterministic ownership handoff. Most program
 | `Release(handle)` | `Integer(Object)`| Decrement a live runtime handle; returns remaining references           |
 | `RetainStr(text)` | `Void(String)`   | String-typed retain wrapper for callers that cannot pass `String` as `Object` |
 | `ReleaseStr(text)`| `Integer(String)`| String-typed release wrapper; returns the remaining string references   |
+| `ValueType(size)` | `Object(Integer)`| Allocate a heap-owned boxed value-type payload for compiler/runtime interop |
+| `ValueTypeAddField(obj, offset, kind, retainNow)` | `Void(Object, Integer, Integer, Boolean)` | Register a managed field inside a boxed value-type payload |
+| `SetThrowMsg(message)` | `Void(String)` | Store the current throw message for compiler/runtime catch binding |
+| `ClearThrowMsg()` | `Void()` | Clear the stored throw message |
+| `SetTrapFields(kind, code, line)` | `Void(Integer, Integer, Integer)` | Store thread-local trap metadata fields before raising or lowering a trap |
+| `RaiseKind(kind, code, line)` | `Void(Integer, Integer, Integer)` | Raise a runtime trap from explicit trap metadata |
 
 ### Notes
 
@@ -554,12 +584,20 @@ Low-level retain/release hooks for deterministic ownership handoff. Most program
 - Arrays released through `Release()` run element cleanup for object, string, and boxed-value arrays before freeing the array storage.
 - Passing `Nothing` is a no-op. Passing a non-runtime, already-freed, raw string payload, or unsupported heap payload traps.
 - Reference counts are checked for overflow and underflow in release builds.
+- Value-type hooks are for compiler/runtime interop. Size `0` is valid and creates a managed empty value-type object; negative sizes trap. Field registration is idempotent for the same offset/kind and traps for conflicting field kinds.
+- Trap-state hooks are for generated code, runtime bridges, and low-level tests.
+  Applications should inspect trap data through `Viper.Diagnostics.CurrentTrap`
+  instead of setting or polling mutable trap fields. `Viper.Error.SetThrowMsg`,
+  `ClearThrowMsg`, `SetTrapFields`, and `RaiseKind` remain compatibility names
+  for these unsafe hooks.
 
 ---
 
-## Viper.Memory.GC
+## Viper.Runtime.GC
 
-Low-level garbage collector diagnostics. Provides visibility into the reference-counting GC's collection activity. Most programs do not need to call these methods directly.
+Garbage collector diagnostics and tuning controls. Provides visibility into the
+reference-counting GC's cycle-collection activity. Most programs do not need to
+call these methods directly.
 
 **Type:** Static utility class
 
@@ -591,7 +629,7 @@ Low-level garbage collector diagnostics. Provides visibility into the reference-
 module GCDemo;
 
 bind Viper.Terminal;
-bind Viper.Memory.GC as GC;
+bind Viper.Runtime.GC as GC;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -609,17 +647,41 @@ func start() {
 
 ```basic
 ' Print GC state before a large operation
-PRINT "Tracked objects: "; Viper.Memory.GC.TrackedCount()
-PRINT "Total collected: "; Viper.Memory.GC.TotalCollected()
+PRINT "Tracked objects: "; Viper.Runtime.GC.TrackedCount()
+PRINT "Total collected: "; Viper.Runtime.GC.TotalCollected()
 
 ' Run a batch operation that allocates many temporaries
 DoBatchWork()
 
 ' Force a GC sweep to reclaim cycle garbage
-DIM freed AS INTEGER = Viper.Memory.GC.Collect()
+DIM freed AS INTEGER = Viper.Runtime.GC.Collect()
 PRINT "Freed by GC: "; freed
-PRINT "GC passes: "; Viper.Memory.GC.PassCount()
+PRINT "GC passes: "; Viper.Runtime.GC.PassCount()
 ```
+
+---
+
+## Viper.Memory
+
+Compatibility namespace for `Viper.Runtime.Unsafe`.
+
+**Type:** Static utility class
+
+`Retain`, `Release`, `RetainStr`, and `ReleaseStr` remain available here for
+existing source and IL. New code should prefer `Viper.Runtime.Unsafe` because
+manual reference-count manipulation is intentionally sharp.
+
+---
+
+## Viper.Memory.GC
+
+Compatibility namespace for `Viper.Runtime.GC`.
+
+**Type:** Static utility class
+
+`Collect`, `TrackedCount`, `TotalCollected`, `PassCount`, `SetThreshold`, and
+`GetThreshold` remain available here for existing source and IL. New code should
+prefer `Viper.Runtime.GC`.
 
 ---
 
@@ -647,8 +709,12 @@ Terminal input and output operations.
 
 | Method               | Signature          | Description                                                 |
 |----------------------|--------------------|-------------------------------------------------------------|
-| `ReadLine()`         | `String?()`        | Reads a line from stdin; returns null on EOF                |
-| `Ask(prompt)`        | `String?(String)`  | Prints prompt, reads a line from stdin; null on EOF          |
+| `TryReadLine()`      | `Option<String>()` | Reads a line from stdin; returns `None` on EOF              |
+| `ReadLineResult()`   | `Result<String, String>()` | Reads a line from stdin; returns `Err` with an EOF message on EOF |
+| `TryAsk(prompt)`     | `Option<String>(String)` | Prints prompt, reads a line from stdin; returns `None` on EOF |
+| `AskResult(prompt)`  | `Result<String, String>(String)` | Prints prompt, reads a line from stdin; returns `Err` with an EOF message on EOF |
+| `ReadLine()`         | `String()`         | Compatibility API; prefer `TryReadLine` or `ReadLineResult` for EOF |
+| `Ask(prompt)`        | `String(String)`   | Compatibility API; prefer `TryAsk` or `AskResult` for EOF     |
 | `GetKey()`           | `String()`         | Blocks for a single key press and returns a 1-character string |
 | `GetKeyTimeout(ms)`  | `String(Integer)`  | Waits up to `ms` for a key; returns `""` on timeout (negative = block) |
 | `InKey()`            | `String()`         | Non-blocking key poll; returns `""` if no key is available   |
@@ -690,7 +756,7 @@ func start() {
 
 ```basic
 DIM name AS STRING
-name = Viper.Terminal.Ask("What is your name? ")
+name = Viper.Option.UnwrapOrStr(Viper.Terminal.TryAsk("What is your name? "), "there")
 Viper.Terminal.Say("Hello, " + name + "!")
 ```
 

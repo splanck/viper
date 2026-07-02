@@ -1,5 +1,5 @@
 ' bloomfilter_demo.bas - Comprehensive API audit for Viper.Collections.BloomFilter
-' Tests: New, Add, MightContain, Count, Fpr, Clear, Merge
+' Tests: New, Add, MightContain, Count, FalsePositiveRate, Clear, Merge
 
 PRINT "=== BloomFilter API Audit ==="
 
@@ -23,9 +23,9 @@ PRINT bf.MightContain("banana")   ' 1
 PRINT bf.MightContain("cherry")   ' 1
 PRINT bf.MightContain("grape")    ' 0 (probably)
 
-' --- Fpr (estimated false positive rate) ---
-PRINT "--- Fpr ---"
-PRINT bf.Fpr()       ' very low
+' --- FalsePositiveRate (estimated false positive rate) ---
+PRINT "--- FalsePositiveRate ---"
+PRINT bf.FalsePositiveRate()       ' very low
 
 ' --- Add more ---
 PRINT "--- Add more ---"

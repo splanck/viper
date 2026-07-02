@@ -1,7 +1,7 @@
 // =============================================================================
 // API Audit: Viper.Data.Yaml - YAML Processing
 // =============================================================================
-// Tests: Parse, IsValid, Format, FormatIndent, TypeOf
+// Tests: ParseResult, Parse, Error, IsValid, Format, FormatIndent, TypeOf
 // =============================================================================
 
 module YamlDemo;
@@ -17,11 +17,27 @@ func start() {
     Say("IsValid('key: value'):");
     SayBool(Yaml.IsValid("key: value"));
 
-    // --- Parse ---
-    Say("--- Parse ---");
+    // --- ParseResult ---
+    Say("--- ParseResult ---");
     var yamlStr = "name: Alice\nage: 30\nactive: true\ntags:\n  - viper\n  - lang\n";
-    var doc = Yaml.Parse(yamlStr);
-    Say("Parse done");
+    var parsed = Yaml.ParseResult(yamlStr);
+    SayBool(parsed.IsOk);
+    var doc = parsed.Unwrap();
+    Say("ParseResult done");
+
+    var nullDoc = Yaml.ParseResult("null");
+    SayBool(nullDoc.IsOk);
+    var badYaml = Yaml.ParseResult("name: [unterminated\n");
+    SayBool(badYaml.IsErr);
+    Say(badYaml.UnwrapErrStr());
+
+    // --- Parse / Error compatibility ---
+    Say("--- Parse / Error compatibility ---");
+    var legacyDoc = Yaml.Parse("name: Bob\n");
+    Say(Yaml.TypeOf(legacyDoc));
+    var legacyBad = Yaml.Parse("name: [unterminated\n");
+    SayBool(legacyBad == null);
+    Say(Yaml.Error());
 
     // --- TypeOf ---
     Say("--- TypeOf ---");
@@ -40,7 +56,7 @@ func start() {
 
     // Parse a simple scalar
     Say("--- Scalar ---");
-    var scalar = Yaml.Parse("42");
+    var scalar = Yaml.ParseResult("42").Unwrap();
     Say("TypeOf(scalar):");
     Say(Yaml.TypeOf(scalar));
     Say("Format(scalar):");
@@ -48,7 +64,7 @@ func start() {
 
     // Parse a list
     Say("--- List ---");
-    var list = Yaml.Parse("- one\n- two\n- three\n");
+    var list = Yaml.ParseResult("- one\n- two\n- three\n").Unwrap();
     Say("TypeOf(list):");
     Say(Yaml.TypeOf(list));
     Say("Format(list):");
@@ -57,7 +73,7 @@ func start() {
     // Roundtrip: format then re-parse
     Say("--- Roundtrip ---");
     var formatted = Yaml.Format(doc);
-    var reparsed = Yaml.Parse(formatted);
+    var reparsed = Yaml.ParseResult(formatted).Unwrap();
     Say("Re-format after roundtrip:");
     Say(Yaml.Format(reparsed));
 

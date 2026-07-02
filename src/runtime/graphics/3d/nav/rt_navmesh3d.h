@@ -44,6 +44,8 @@ void *rt_navmesh3d_bake_tiled(void *scene,
 /// @brief Find a path between Vec3 @p from and @p to. @return a path handle
 ///        (point list), or NULL if unreachable.
 void *rt_navmesh3d_find_path(void *navmesh, void *from, void *to);
+/// @brief Find a path between Vec3 @p from and @p to as Some(Path3D), or None if unreachable.
+void *rt_navmesh3d_find_path_option(void *navmesh, void *from, void *to);
 /// @brief Serialize a baked navmesh to a "VNAVMSH2" binary file.
 /// @details Records vertices, source/current triangles, traversal costs, blocked flags, area
 ///          labels, off-mesh links, obstacles, and agent params. Voxel heightfield source arrays

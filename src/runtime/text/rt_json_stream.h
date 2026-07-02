@@ -56,6 +56,14 @@ void *rt_json_stream_new(rt_string json);
 /// @return Token type of the next token.
 int64_t rt_json_stream_next(void *parser);
 
+/// @brief Advance to the next token and return a Viper.Result.
+/// @details Returns `Ok(tokenType)` for normal tokens and end-of-input, or
+///          `Err(message)` when malformed JSON produces an error token. This
+///          keeps tokenizer failure attached to the returned value.
+/// @param parser Parser handle.
+/// @return Opaque Viper.Result object containing the token type or error.
+void *rt_json_stream_next_result(void *parser);
+
 /// @brief Get the current token type.
 /// @param parser Parser handle.
 /// @return Current token type as int64_t.

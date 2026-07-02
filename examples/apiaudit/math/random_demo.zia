@@ -60,11 +60,13 @@ func start() {
     // --- Chance ---
     Say("--- Chance ---");
     Say("Random.Chance(1.0) [always true]:");
-    SayInt(Random.Chance(1.0));
+    SayBool(Random.Chance(1.0));
     Say("Random.Chance(0.0) [always false]:");
-    SayInt(Random.Chance(0.0));
+    SayBool(Random.Chance(0.0));
     Say("Random.Chance(0.5):");
-    SayInt(Random.Chance(0.5));
+    SayBool(Random.Chance(0.5));
+    Say("Random.ChanceInt(0.5) [compat 0/1]:");
+    SayInt(Random.ChanceInt(0.5));
 
     // --- Gaussian ---
     Say("--- Gaussian ---");

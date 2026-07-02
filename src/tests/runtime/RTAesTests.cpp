@@ -17,6 +17,8 @@
 
 #include "rt_aes.h"
 #include "rt_bytes.h"
+#include "rt_option.h"
+#include "rt_result.h"
 #include "rt_string.h"
 
 #include <assert.h>
@@ -82,6 +84,11 @@ static void test_empty_str_roundtrip(void) {
 
     rt_string decrypted = rt_aes_decrypt_str(ciphertext, password);
     check("decrypt empty roundtrip length is 0", rt_str_len(decrypted) == 0);
+
+    void *result = rt_aes_decrypt_str_result(ciphertext, password);
+    check("DecryptStrResult empty string is Ok", rt_result_is_ok(result) == 1);
+    rt_string result_text = rt_result_unwrap_str(result);
+    check("DecryptStrResult empty string length is 0", rt_str_len(result_text) == 0);
 
     rt_string_unref(decrypted);
     obj_release(ciphertext);
@@ -218,6 +225,20 @@ static void test_raw_aes128_invalid_padding_returns_null(void) {
     void *decrypted = rt_aes_decrypt(encrypted, key, iv2);
     check("invalid padding returns NULL", decrypted == NULL);
 
+    rt_string iv3_hex = S("000102030405060708090a0b0c0d0e0f");
+    void *iv3 = rt_bytes_from_hex(iv3_hex);
+    rt_string_unref(iv3_hex);
+    void *bad_result = rt_aes_decrypt_result(encrypted, key, iv3);
+    check("invalid padding DecryptResult returns Err", rt_result_is_err(bad_result) == 1);
+
+    rt_string iv4_hex = S("000102030405060708090a0b0c0d0e0f");
+    void *iv4 = rt_bytes_from_hex(iv4_hex);
+    rt_string_unref(iv4_hex);
+    void *bad_option = rt_aes_try_decrypt(encrypted, key, iv4);
+    check("invalid padding TryDecrypt returns None", rt_option_is_none(bad_option) == 1);
+
+    obj_release(iv4);
+    obj_release(iv3);
     obj_release(iv2);
     obj_release(encrypted);
     obj_release(data);
@@ -242,6 +263,12 @@ static void test_auth_malformed_frame_returns_null(void) {
 
     void *decrypted = rt_aes_decrypt_auth(ciphertext, key, NULL);
     check("malformed auth frame returns NULL", decrypted == NULL);
+
+    void *bad_result = rt_aes_decrypt_auth_result(ciphertext, key, NULL);
+    check("malformed auth frame DecryptAuthResult returns Err", rt_result_is_err(bad_result) == 1);
+
+    void *bad_option = rt_aes_try_decrypt_auth(ciphertext, key, NULL);
+    check("malformed auth frame TryDecryptAuth returns None", rt_option_is_none(bad_option) == 1);
 
     obj_release(ciphertext);
     obj_release(key);

@@ -650,7 +650,7 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 **Constructors:**
 
 - `Viper.IO.BinaryBuffer.New()` - Creates an empty buffer with default capacity
-- `Viper.IO.BinaryBuffer.NewCap(capacity)` - Creates an empty buffer with specified initial capacity
+- `Viper.IO.BinaryBuffer.NewCapacity(capacity)` - Creates an empty buffer with specified initial capacity
 - `Viper.IO.BinaryBuffer.FromBytes(data)` - Creates a buffer initialized with data from a Bytes object
 
 ### Properties
@@ -712,6 +712,7 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 - Signed integer readers sign-extend their declared width: `ReadI16*()` returns -32768..32767, `ReadI32*()` returns signed 32-bit values, and `ReadI64*()` preserves the full signed 64-bit bit pattern.
 - Unsigned readers zero-extend their declared width: `ReadU16*()` returns 0..65535 and `ReadU32*()` returns 0..4294967295.
 - Constructors and growth trap if the requested capacity exceeds the host platform's addressable allocation size.
+- `NewCap` remains available as a compatibility alias for `NewCapacity`.
 
 ### Zia Example
 
@@ -784,7 +785,7 @@ PRINT "After reset:"; buf.Length       ' Output: 0
 
 ```basic
 ' Preallocate buffer for a known packet size
-DIM buf AS OBJECT = Viper.IO.BinaryBuffer.NewCap(256)
+DIM buf AS OBJECT = Viper.IO.BinaryBuffer.NewCapacity(256)
 
 ' Build a binary protocol packet
 buf.WriteU16BE(51966)         ' Magic number

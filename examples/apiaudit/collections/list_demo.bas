@@ -1,5 +1,5 @@
 ' list_demo.bas - Comprehensive API audit for Viper.Collections.List
-' Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, Has, Insert,
+' Tests: New, Push, Pop, Get, Set, Len, IsEmpty, Find, FindOption, Has, Insert,
 '        Remove, RemoveAt, Clear, Reverse, First, Last, Slice
 
 PRINT "=== List API Audit ==="
@@ -45,6 +45,11 @@ PRINT list.Find(a)    ' 0
 PRINT list.Find(b)    ' -1 (was replaced)
 PRINT list.Has(a)     ' 1
 PRINT list.Has(b)     ' 0
+DIM found AS OBJECT
+found = list.FindOption(a)
+PRINT found.IsSome
+PRINT found.UnwrapI64()  ' 0
+PRINT list.FindOption(b).IsNone
 
 ' --- Insert ---
 PRINT "--- Insert ---"

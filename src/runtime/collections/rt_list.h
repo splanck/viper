@@ -110,6 +110,14 @@ int8_t rt_list_has(void *list, void *elem);
 /// @return Index of the first matching element, or -1 when not found.
 int64_t rt_list_find(void *list, void *elem);
 
+/// @brief Find the first index of an element as an Option index.
+/// @details Returns `SomeI64(index)` when the element is present and `None`
+///          when it is absent or @p list is NULL.
+/// @param list Opaque List object pointer, or NULL.
+/// @param elem Element to look for (may be NULL).
+/// @return Opaque Viper.Option containing the first index, or None.
+void *rt_list_find_option(void *list, void *elem);
+
 /// @brief Insert an element at a specific index, shifting elements right.
 /// @details Grows the backing storage by one and shifts elements at and after
 ///          the index to the right. Retains the inserted value. Supports

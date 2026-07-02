@@ -40,10 +40,13 @@
 #include "rt_map.h"
 #include "rt_network.h"
 #include "rt_platform.h"
+#include "rt_result.h"
+#include "rt_trap.h"
 
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -57,6 +60,42 @@
 #endif
 
 static size_t g_http_download_temp_counter = 0;
+
+/// @brief Release a temporary object after a container has retained it.
+/// @details `Result.Ok` retains the response payload; this helper drops the
+///          local ownership reference returned by `rt_http_req_send`.
+/// @param obj Runtime object to release, or NULL.
+static void http_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Return the current trap message as a Result-compatible string.
+/// @details The returned value is a runtime constant string and does not
+///          transfer ownership to the caller.
+/// @param fallback Message used when no trap text is active.
+/// @return Runtime string for use with `rt_result_err_str`.
+static rt_string http_current_error_message(const char *fallback) {
+    const char *err = rt_trap_get_error();
+    if (!err || !err[0])
+        err = fallback && fallback[0] ? fallback : "HTTP request failed";
+    return rt_const_cstr(err);
+}
+
+/// @brief Wrap an HTTP response in `Result.Ok` or produce `Result.ErrStr`.
+/// @details A NULL response indicates a transport/setup failure rather than an
+///          HTTP status; successful HTTP responses of any status code are Ok.
+/// @param response HttpRes object returned by the transport.
+/// @param null_message Error text used when @p response is NULL.
+/// @return Opaque `Viper.Result`.
+static void *http_response_result(void *response, const char *null_message) {
+    if (!response)
+        return rt_result_err_str(
+            rt_const_cstr(null_message ? null_message : "HTTP request failed"));
+    void *result = rt_result_ok(response);
+    http_release_temp_object(response);
+    return result;
+}
 
 /// @brief Build a sibling temporary path for an HTTP download target.
 /// @details The returned path appends a hidden `.viper-download-N.tmp` suffix to
@@ -82,14 +121,8 @@ static char *http_download_temp_path(const char *dest, const char *kind) {
     char *path = (char *)malloc(cap);
     if (!path)
         return NULL;
-    snprintf(path,
-             cap,
-             "%s%s%016llx-%zu.%s",
-             dest,
-             marker,
-             (unsigned long long)random_id,
-             id,
-             kind);
+    snprintf(
+        path, cap, "%s%s%016llx-%zu.%s", dest, marker, (unsigned long long)random_id, id, kind);
     return path;
 }
 
@@ -1071,6 +1104,22 @@ void *rt_http_req_set_tls_verify(void *obj, int8_t verify) {
     return obj;
 }
 
+/// @brief Disable TLS certificate verification for explicitly local/test HTTP requests.
+/// @details This wrapper is equivalent to `rt_http_req_set_tls_verify(obj, 0)`, but
+///          keeps insecure certificate handling visible in source and runtime API
+///          dumps. Do not use it for production HTTPS clients.
+/// @return `obj` (for fluent chaining).
+void *rt_http_req_allow_insecure_certificates_for_testing(void *obj) {
+    if (!obj) {
+        rt_trap("HTTP: NULL request");
+        return NULL;
+    }
+
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    req->tls_verify = 0;
+    return obj;
+}
+
 /// @brief Toggle automatic redirect following (3xx Location handling).
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_follow_redirects(void *obj, int8_t follow) {
@@ -1177,6 +1226,24 @@ void *rt_http_req_send(void *obj) {
 
     rt_http_res_t *res = do_http_request(req, req->max_redirects);
     return res;
+}
+
+/// @brief Execute a configured HttpReq and return `Result<HttpRes>`.
+/// @details This is the production-friendly companion to `rt_http_req_send`:
+///          transport/setup traps and NULL transport results are converted to
+///          `Result.ErrStr`, while received HTTP responses are returned as
+///          `Result.Ok(HttpRes)` regardless of status code.
+void *rt_http_req_send_result(void *obj) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_string message = http_current_error_message("HTTP request failed");
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    void *response = rt_http_req_send(obj);
+    rt_trap_clear_recovery();
+    return http_response_result(response, "HTTP request failed");
 }
 
 //=============================================================================

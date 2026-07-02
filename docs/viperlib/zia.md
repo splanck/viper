@@ -13,6 +13,7 @@ last-verified: 2026-05-22
 ## Contents
 
 - [Viper.Zia.Toolchain](#viperziatoolchain)
+- [Viper.Zia.SemanticJob](#viperziasemanticjob)
 - [Viper.Zia.ProjectIndex](#viperziaprojectindex)
 
 ---
@@ -93,6 +94,35 @@ func start() {
 - Use `CheckForFile` and `CompileForFile` from editors so relative `bind` paths resolve against the active document.
 - The legacy `Viper.Zia.Completion.CheckForFile` API still returns tab-delimited text for compatibility. New IDE surfaces should consume `Viper.Zia.Toolchain` instead.
 - The weak runtime stub returns empty diagnostics and a failed compile result when `fe_zia` is not linked. Native IDE builds must force-load `fe_zia` to get real compiler services.
+
+---
+
+## Viper.Zia.SemanticJob
+
+Pollable background language-service jobs returned by
+`Viper.Zia.Completion.Begin*ForFile` and `Viper.Zia.Toolchain.BeginCheckForFile`.
+
+**Type:** Static utility class operating on `SemanticJobHandle` objects
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `IsDone(job)` | `Boolean(Object)` | True when the background job has completed or the weak stub has no work to run. |
+| `IsError(job)` | `Boolean(Object)` | True when a completed job has an error payload. |
+| `ErrorOption(job)` | `Option[String](Object)` | Preferred error accessor: `SomeStr(message)` when an error exists, otherwise `None`. |
+| `Error(job)` | `String(Object)` | Compatibility accessor that returns `""` when no error is present. |
+| `Kind(job)` | `Integer(Object)` | Numeric semantic job kind. |
+| `Cancel(job)` | `Void(Object)` | Request cancellation; running work may finish later. |
+| `CompletionItems(job)` | `Seq(Object)` | Materialize completion results for completion jobs. |
+| `SignatureInfo(job)` | `Map(Object)` | Materialize signature-help results for signature jobs. |
+| `HoverInfo(job)` | `Map(Object)` | Materialize hover results for hover jobs. |
+| `Symbols(job)` | `String(Object)` | Materialize serialized symbol rows for symbol jobs. |
+| `Tokens(job)` | `String(Object)` | Materialize serialized semantic-token rows for token jobs. |
+| `Diagnostics(job)` | `Seq(Object)` | Materialize diagnostic maps for diagnostics jobs. |
+
+Prefer `ErrorOption(job)` in new editor code. It avoids treating an empty string
+as a status sentinel and matches the runtime's Option-based absence model.
 
 ---
 

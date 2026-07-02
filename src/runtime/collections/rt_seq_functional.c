@@ -93,6 +93,14 @@ void *rt_seq_find_where_wrapper(void *seq, void *pred) {
     return rt_seq_find_where(seq, (predicate_fn)pred);
 }
 
+/// @brief IL trampoline for sentinel-free `Seq.FindWhereOption`.
+/// @param seq Sequence object.
+/// @param pred Opaque predicate function pointer.
+/// @return Opaque Viper.Option containing the first matching element, or None.
+void *rt_seq_find_where_option_wrapper(void *seq, void *pred) {
+    return rt_seq_find_where_option(seq, (predicate_fn)pred);
+}
+
 void *rt_seq_take_while_wrapper(void *seq, void *pred) {
     return rt_seq_take_while(seq, (predicate_fn)pred);
 }

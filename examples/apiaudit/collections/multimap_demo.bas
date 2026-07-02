@@ -1,5 +1,5 @@
 ' multimap_demo.bas - Comprehensive API audit for Viper.Collections.MultiMap
-' Tests: New, Put, Get, GetFirst, Has, RemoveAll, Keys, Len, IsEmpty,
+' Tests: New, Add, Get, GetFirst, Has, RemoveAll, Keys, Len, IsEmpty,
 '        KeyCount, CountFor, Clear
 
 PRINT "=== MultiMap API Audit ==="
@@ -11,13 +11,13 @@ mm = Viper.Collections.MultiMap.New()
 PRINT mm.Count        ' 0
 PRINT mm.IsEmpty    ' 1
 
-' --- Put / Len ---
-PRINT "--- Put / Len ---"
-mm.Put("color", "red")
-mm.Put("color", "green")
-mm.Put("color", "blue")
-mm.Put("size", "small")
-mm.Put("size", "large")
+' --- Add / Len ---
+PRINT "--- Add / Len ---"
+mm.Add("color", "red")
+mm.Add("color", "green")
+mm.Add("color", "blue")
+mm.Add("size", "small")
+mm.Add("size", "large")
 PRINT mm.Count        ' 5
 PRINT mm.IsEmpty    ' 0
 

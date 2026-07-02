@@ -13,6 +13,7 @@
 
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -40,6 +41,7 @@ rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_symbols(rt_string source);
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
+void *rt_zia_semantic_job_error_option(void *handle);
 void rt_zia_completion_clear_cache(void);
 }
 
@@ -120,6 +122,10 @@ int main() {
     expect_contains(rt_zia_hover_for_file(source, path, 1, 0), "link fe_zia");
     expect_contains(rt_zia_symbols(source), "Zia completion unavailable\tstatus\t");
     expect_contains(rt_zia_symbols_for_file(source, path), "Zia completion unavailable\tstatus\t");
+    void *error_option = rt_zia_semantic_job_error_option(nullptr);
+    assert(error_option != nullptr);
+    assert(rt_option_is_none(error_option) == 1);
+    release_object(error_option);
 
     rt_zia_completion_clear_cache();
     rt_string_unref(path);

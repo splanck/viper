@@ -147,18 +147,18 @@ class LaneBuilder {
     hide func buildMeshes() {
         var totalLen = config.LANE_LENGTH + config.LANE_APPROACH;
 
-        laneMesh = Mesh3D.NewBox(config.LANE_WIDTH, 0.05, totalLen);
-        laneMat = Material3D.NewPBR(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
+        laneMesh = Mesh3D.Box(config.LANE_WIDTH, 0.05, totalLen);
+        laneMat = Material3D.PBR(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
         laneMat.Metallic = 0.0;
         laneMat.Roughness = 0.32;
         Material3D.SetShininess(laneMat, config.LANE_SHININESS);
-        boardMesh = Mesh3D.NewBox(config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0) * 0.92, 0.006, totalLen);
-        boardLightMat = Material3D.NewPBR(
+        boardMesh = Mesh3D.Box(config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0) * 0.92, 0.006, totalLen);
+        boardLightMat = Material3D.PBR(
             config.LANE_BOARD_LIGHT_R, config.LANE_BOARD_LIGHT_G, config.LANE_BOARD_LIGHT_B);
         boardLightMat.Metallic = 0.0;
         boardLightMat.Roughness = 0.36;
         Material3D.SetShininess(boardLightMat, config.LANE_SHININESS);
-        boardDarkMat = Material3D.NewPBR(
+        boardDarkMat = Material3D.PBR(
             config.LANE_BOARD_DARK_R, config.LANE_BOARD_DARK_G, config.LANE_BOARD_DARK_B);
         boardDarkMat.Metallic = 0.0;
         boardDarkMat.Roughness = 0.42;
@@ -166,67 +166,67 @@ class LaneBuilder {
 
         var oilLen = oilEndZ - config.OIL_START_Z;
         if (oilLen < 0.5) { oilLen = 0.5; }
-        oilMesh = Mesh3D.NewBox(config.LANE_WIDTH - 0.02, 0.005, oilLen);
-        oilMat = Material3D.NewColor(config.LANE_OIL_COLOR_R, config.LANE_OIL_COLOR_G, config.LANE_OIL_COLOR_B);
+        oilMesh = Mesh3D.Box(config.LANE_WIDTH - 0.02, 0.005, oilLen);
+        oilMat = Material3D.FromColor(config.LANE_OIL_COLOR_R, config.LANE_OIL_COLOR_G, config.LANE_OIL_COLOR_B);
         Material3D.SetShininess(oilMat, config.LANE_OIL_SHININESS);
         oilMat.Alpha = 0.34;
 
-        pinDeckMesh = Mesh3D.NewBox(config.LANE_WIDTH - 0.02, 0.008, 1.9);
-        pinDeckMat = Material3D.NewColor(config.PIN_DECK_COLOR_R, config.PIN_DECK_COLOR_G, config.PIN_DECK_COLOR_B);
+        pinDeckMesh = Mesh3D.Box(config.LANE_WIDTH - 0.02, 0.008, 1.9);
+        pinDeckMat = Material3D.FromColor(config.PIN_DECK_COLOR_R, config.PIN_DECK_COLOR_G, config.PIN_DECK_COLOR_B);
         Material3D.SetShininess(pinDeckMat, config.PIN_DECK_SHININESS);
 
-        roomFloorMesh = Mesh3D.NewBox(8.8, 0.05, totalLen + 6.0);
-        roomFloorMat = Material3D.NewColor(config.ROOM_FLOOR_R, config.ROOM_FLOOR_G, config.ROOM_FLOOR_B);
+        roomFloorMesh = Mesh3D.Box(8.8, 0.05, totalLen + 6.0);
+        roomFloorMat = Material3D.FromColor(config.ROOM_FLOOR_R, config.ROOM_FLOOR_G, config.ROOM_FLOOR_B);
         Material3D.SetShininess(roomFloorMat, 18.0);
 
-        sideLaneMesh = Mesh3D.NewBox(config.LANE_WIDTH, 0.03, totalLen + 1.2);
-        sideLaneMat = Material3D.NewColor(config.ROOM_SIDE_LANE_R, config.ROOM_SIDE_LANE_G, config.ROOM_SIDE_LANE_B);
+        sideLaneMesh = Mesh3D.Box(config.LANE_WIDTH, 0.03, totalLen + 1.2);
+        sideLaneMat = Material3D.FromColor(config.ROOM_SIDE_LANE_R, config.ROOM_SIDE_LANE_G, config.ROOM_SIDE_LANE_B);
         Material3D.SetShininess(sideLaneMat, 38.0);
 
-        sideGutterMesh = Mesh3D.NewBox(config.LANE_GUTTER_W * 2.0 + 0.12, 0.03, totalLen + 1.2);
-        sideGutterMat = Material3D.NewColor(config.ROOM_SIDE_GUTTER_R, config.ROOM_SIDE_GUTTER_G, config.ROOM_SIDE_GUTTER_B);
+        sideGutterMesh = Mesh3D.Box(config.LANE_GUTTER_W * 2.0 + 0.12, 0.03, totalLen + 1.2);
+        sideGutterMat = Material3D.FromColor(config.ROOM_SIDE_GUTTER_R, config.ROOM_SIDE_GUTTER_G, config.ROOM_SIDE_GUTTER_B);
 
-        gutterMesh = Mesh3D.NewBox(config.LANE_GUTTER_W, 0.04, totalLen);
-        gutterMat = Material3D.NewColor(config.GUTTER_COLOR_R, config.GUTTER_COLOR_G, config.GUTTER_COLOR_B);
+        gutterMesh = Mesh3D.Box(config.LANE_GUTTER_W, 0.04, totalLen);
+        gutterMat = Material3D.FromColor(config.GUTTER_COLOR_R, config.GUTTER_COLOR_G, config.GUTTER_COLOR_B);
 
-        wallMesh = Mesh3D.NewBox(0.05, config.LANE_WALL_H, totalLen);
-        wallMat = Material3D.NewColor(config.WALL_COLOR_R, config.WALL_COLOR_G, config.WALL_COLOR_B);
+        wallMesh = Mesh3D.Box(0.05, config.LANE_WALL_H, totalLen);
+        wallMat = Material3D.FromColor(config.WALL_COLOR_R, config.WALL_COLOR_G, config.WALL_COLOR_B);
 
         var backW = 8.8;
-        backWallMesh = Mesh3D.NewBox(backW, 4.2, 0.18);
-        backWallMat = Material3D.NewColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
+        backWallMesh = Mesh3D.Box(backW, 4.2, 0.18);
+        backWallMat = Material3D.FromColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
 
-        ceilingMesh = Mesh3D.NewBox(8.8, 0.08, totalLen + 2.8);
-        ceilingMat = Material3D.NewColor(0.18, 0.20, 0.25);
+        ceilingMesh = Mesh3D.Box(8.8, 0.08, totalLen + 2.8);
+        ceilingMat = Material3D.FromColor(0.18, 0.20, 0.25);
         Material3D.SetShininess(ceilingMat, 10.0);
 
-        sidePanelMesh = Mesh3D.NewBox(0.26, 3.8, totalLen + 2.8);
-        sidePanelMat = Material3D.NewColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
+        sidePanelMesh = Mesh3D.Box(0.26, 3.8, totalLen + 2.8);
+        sidePanelMat = Material3D.FromColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
         Material3D.SetShininess(sidePanelMat, 8.0);
 
-        pinsetterMesh = Mesh3D.NewBox(backW, 0.34, 0.72);
-        pinsetterMat = Material3D.NewColor(0.22, 0.20, 0.18);
+        pinsetterMesh = Mesh3D.Box(backW, 0.34, 0.72);
+        pinsetterMat = Material3D.FromColor(0.22, 0.20, 0.18);
         Material3D.SetShininess(pinsetterMat, 22.0);
 
-        approachMesh = Mesh3D.NewBox(config.LANE_WIDTH + 1.0, 0.04, config.LANE_APPROACH);
-        approachMat = Material3D.NewColor(config.APPROACH_COLOR_R, config.APPROACH_COLOR_G, config.APPROACH_COLOR_B);
+        approachMesh = Mesh3D.Box(config.LANE_WIDTH + 1.0, 0.04, config.LANE_APPROACH);
+        approachMat = Material3D.FromColor(config.APPROACH_COLOR_R, config.APPROACH_COLOR_G, config.APPROACH_COLOR_B);
 
-        foulLineMesh = Mesh3D.NewBox(config.LANE_WIDTH + 0.12, 0.06, 0.02);
-        foulLineMat = Material3D.NewColor(config.FOUL_LINE_R, config.FOUL_LINE_G, config.FOUL_LINE_B);
+        foulLineMesh = Mesh3D.Box(config.LANE_WIDTH + 0.12, 0.06, 0.02);
+        foulLineMat = Material3D.FromColor(config.FOUL_LINE_R, config.FOUL_LINE_G, config.FOUL_LINE_B);
         Material3D.SetEmissiveColor(foulLineMat, config.FOUL_LINE_EMISSIVE, 0.02, 0.02);
 
-        sweepBarMesh = Mesh3D.NewBox(config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0, 0.08, 0.15);
-        sweepBarMat = Material3D.NewColor(config.SWEEP_COLOR_R, config.SWEEP_COLOR_G, config.SWEEP_COLOR_B);
+        sweepBarMesh = Mesh3D.Box(config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0, 0.08, 0.15);
+        sweepBarMat = Material3D.FromColor(config.SWEEP_COLOR_R, config.SWEEP_COLOR_G, config.SWEEP_COLOR_B);
         Material3D.SetShininess(sweepBarMat, 40.0);
 
-        arrowMesh = Mesh3D.NewBox(0.03, 0.055, 0.15);
-        arrowMat = Material3D.NewColor(config.ARROW_COLOR_R, config.ARROW_COLOR_G, config.ARROW_COLOR_B);
+        arrowMesh = Mesh3D.Box(0.03, 0.055, 0.15);
+        arrowMat = Material3D.FromColor(config.ARROW_COLOR_R, config.ARROW_COLOR_G, config.ARROW_COLOR_B);
 
-        dotMesh = Mesh3D.NewSphere(0.012, 6);
-        dotMat = Material3D.NewColor(0.5, 0.4, 0.3);
+        dotMesh = Mesh3D.Sphere(0.012, 6);
+        dotMat = Material3D.FromColor(0.5, 0.4, 0.3);
 
-        lightMesh = Mesh3D.NewBox(0.3, 0.06, 0.16);
-        lightMat = Material3D.NewColor(config.LIGHT_FIXTURE_R, config.LIGHT_FIXTURE_G, config.LIGHT_FIXTURE_B);
+        lightMesh = Mesh3D.Box(0.3, 0.06, 0.16);
+        lightMat = Material3D.FromColor(config.LIGHT_FIXTURE_R, config.LIGHT_FIXTURE_G, config.LIGHT_FIXTURE_B);
         Material3D.SetEmissiveColor(lightMat, 0.25, 0.23, 0.18);
     }
 

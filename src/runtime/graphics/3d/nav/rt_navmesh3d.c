@@ -36,6 +36,7 @@
 #include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
+#include "rt_option.h"
 #include "rt_path3d.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"

@@ -839,7 +839,7 @@ PrintI64(42)
 <li><code>Viper.Terminal.PrintI64(i64)-&gt;void</code> — Print an integer to console</li>
 <li><code>Viper.Terminal.PrintF64(f64)-&gt;void</code> — Print a floating-point number to console</li>
 <li><code>Viper.Terminal.PrintStr(str)-&gt;void</code> — Print a string to console</li>
-<li><code>Viper.Terminal.ReadLine()-&gt;str?</code> — Read a line from console input (returns null on EOF)</li>
+<li><code>Viper.Terminal.ReadLine()-&gt;str</code> — Compatibility API; prefer <code>TryReadLine</code> or <code>ReadLineResult</code> for EOF</li>
 </ul>
 <h4 id="viper-string">Viper.String</h4>
 <p>String manipulation:</p>
@@ -858,8 +858,8 @@ PrintI64(42)
 <ul>
 <li><code>Viper.Core.Convert.ToInt64(str)-&gt;i64</code> — Convert string to integer (throws on error)</li>
 <li><code>Viper.Core.Convert.ToDouble(str)-&gt;f64</code> — Convert string to double (throws on error)</li>
-<li><code>Viper.Core.Convert.ToString_Int(i64)-&gt;str</code> — Convert integer to string</li>
-<li><code>Viper.Core.Convert.ToString_Double(f64)-&gt;str</code> — Convert double to string</li>
+<li><code>Viper.Core.Convert.ToStringInt(i64)-&gt;str</code> — Convert integer to string</li>
+<li><code>Viper.Core.Convert.ToStringDouble(f64)-&gt;str</code> — Convert double to string</li>
 </ul>
 <h4 id="viper-core-parse">Viper.Core.Parse</h4>
 <p>Type parsing (with explicit error handling):</p>

@@ -213,7 +213,8 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `ParseISO(str)`                  | `Integer(String)`           | Parse an ISO 8601 datetime string to Unix timestamp      |
 | `ParseDate(str)`                 | `Integer(String)`           | Parse a "YYYY-MM-DD" string to Unix timestamp            |
 | `ParseTime(str)`                 | `Integer(String)`           | Parse a "HH:MM:SS" string to seconds since midnight      |
-| `TryParse(str)`                  | `Integer(String)`           | Auto-detect format and parse; returns 0 on failure       |
+| `TryParse(str)`                  | `Integer(String)`           | Compatibility 0-sentinel parser; prefer `TryParseOption` |
+| `TryParseOption(str)`            | `Option[Integer](String)`   | Auto-detect format and parse; returns `None` on failure  |
 
 ### Notes
 
@@ -236,13 +237,14 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `ParseISO`   | `"2025-06-15T14:30:00Z"`, `"2025-06-15T14:30:00.123Z"`, or `"2025-06-15T14:30:00+02:00"` | Unix timestamp (seconds) |
 | `ParseDate`  | `"2025-06-15"`                        | Unix timestamp (seconds, midnight)     |
 | `ParseTime`  | `"14:30"`, `"14:30:00"`, or `"14:30:00.123"` | Seconds since midnight (0-86399) |
-| `TryParse`   | Any of the above formats              | Unix timestamp, or 0 on failure        |
+| `TryParse`   | Any of the above formats              | Compatibility 0-sentinel result        |
+| `TryParseOption` | Any of the above formats          | `Some(Integer)` on success, `None` on failure |
 
 - `ParseISO` accepts exact ISO 8601 datetime strings with optional fractional seconds and optional `Z` or numeric `+HH:MM`/`-HH:MM` offsets; `Z` and numeric offsets are interpreted as UTC instants, while no suffix means local time
 - `ParseDate` parses exact `YYYY-MM-DD` strings and returns the timestamp at local midnight
 - `ParseTime` returns seconds since midnight (not a Unix timestamp) for exact `HH:MM`, `HH:MM:SS`, or `HH:MM:SS.fraction` strings
 - Invalid calendar values, out-of-range times, and trailing characters are rejected
-- `TryParse` auto-detects the input format and returns 0 if the string cannot be parsed. A valid parse of the Unix epoch also returns 0, so callers that need to distinguish those cases should use a known format-specific parser and validate the input separately.
+- Prefer `TryParseOption` for new code. It preserves a valid Unix epoch parse as `Some(0)`, while `TryParse` remains available as the legacy 0-sentinel helper.
 
 ### Zia Example
 

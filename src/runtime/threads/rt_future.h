@@ -122,6 +122,14 @@ rt_string rt_future_get_error(void *future);
 /// @return The value, or NULL if not yet resolved or resolved with error.
 void *rt_future_try_get_val(void *future);
 
+/// @brief Try to get the value without blocking as an Option.
+/// @details Returns `Some(value)` when the future has resolved successfully and
+///          `None` when it is still pending or resolved with an error. A
+///          successful NULL value is represented as `Some(NULL)`.
+/// @param future Future object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_future_try_get_option(void *future);
+
 /// @brief Get the value with a timeout (IL-friendly).
 /// @details Blocks up to @p ms milliseconds. Returns the value if resolved,
 ///          or NULL if timed out or resolved with error.

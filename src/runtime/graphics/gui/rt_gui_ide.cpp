@@ -14,6 +14,7 @@
 #include "rt_gui.h" // self-guarding MenuItem/ToolbarItem/Shortcuts/CommandPalette accessors
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_trap.h"
@@ -592,6 +593,30 @@ void *rt_gui_test_harness_find_by_id(void *harness, rt_string id) {
     }
 }
 
+/// @brief Convert a legacy TestHarness lookup map into an Option.
+/// @details The legacy lookup always returns a Map with a `found` flag. The
+///          Option wrapper treats `found=false` as absence and releases the
+///          temporary map after the Option has retained found records.
+/// @param map Map returned by a legacy TestHarness lookup.
+/// @return Viper.Option.Some(Map) for found records, otherwise Viper.Option.None().
+static void *testHarnessLookupOption(void *map) {
+    if (!map || rt_map_get_bool(map, rt_const_cstr("found")) == 0) {
+        releaseObject(map);
+        return rt_option_none();
+    }
+    void *option = rt_option_some(map);
+    releaseObject(map);
+    return option;
+}
+
+/// @brief Find a widget by id and return an Option-wrapped record.
+/// @param harness TestHarness object.
+/// @param id Widget id to find.
+/// @return Viper.Option.Some(Map) when found, otherwise Viper.Option.None().
+void *rt_gui_test_harness_find_by_id_option(void *harness, rt_string id) {
+    return testHarnessLookupOption(rt_gui_test_harness_find_by_id(harness, id));
+}
+
 void *rt_gui_test_harness_find_by_name(void *harness, rt_string name) {
     RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), widgetToMap(nullptr));
     try {
@@ -605,6 +630,14 @@ void *rt_gui_test_harness_find_by_name(void *harness, rt_string name) {
     }
 }
 
+/// @brief Find a widget by name and return an Option-wrapped record.
+/// @param harness TestHarness object.
+/// @param name Widget name to find.
+/// @return Viper.Option.Some(Map) when found, otherwise Viper.Option.None().
+void *rt_gui_test_harness_find_by_name_option(void *harness, rt_string name) {
+    return testHarnessLookupOption(rt_gui_test_harness_find_by_name(harness, name));
+}
+
 void *rt_gui_test_harness_find_by_type(void *harness, rt_string type) {
     RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), widgetToMap(nullptr));
     try {
@@ -616,6 +649,14 @@ void *rt_gui_test_harness_find_by_type(void *harness, rt_string type) {
     } catch (const std::bad_alloc &) {
         return widgetToMap(nullptr);
     }
+}
+
+/// @brief Find a widget by type and return an Option-wrapped record.
+/// @param harness TestHarness object.
+/// @param type Widget type to find.
+/// @return Viper.Option.Some(Map) when found, otherwise Viper.Option.None().
+void *rt_gui_test_harness_find_by_type_option(void *harness, rt_string type) {
+    return testHarnessLookupOption(rt_gui_test_harness_find_by_type(harness, type));
 }
 
 void rt_gui_test_harness_send_key(void *harness, rt_string key, int64_t modifiers) {
@@ -1231,6 +1272,21 @@ void *rt_command_registry_find(void *registry, rt_string id) {
         }
     }
     return nullptr;
+}
+
+/// @brief Return a registered command as an Option.
+/// @details Wraps rt_command_registry_find(); the temporary retained command
+///          reference is released after the Option retains a found command.
+/// @param registry CommandRegistry object.
+/// @param id Command id to find.
+/// @return Viper.Option.Some(Command) when found, otherwise Viper.Option.None().
+void *rt_command_registry_find_option(void *registry, rt_string id) {
+    void *command = rt_command_registry_find(registry, id);
+    if (!command)
+        return rt_option_none();
+    void *option = rt_option_some(command);
+    releaseObject(command);
+    return option;
 }
 
 void rt_command_registry_bind_palette(void *registry, void *palette) {

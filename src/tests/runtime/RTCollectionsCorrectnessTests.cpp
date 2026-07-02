@@ -32,6 +32,7 @@
 #include "rt_multimap.h"
 #include "rt_numbuf.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_orderedmap.h"
 #include "rt_pqueue.h"
 #include "rt_queue.h"
@@ -309,6 +310,50 @@ static void test_heap_to_seq_returns_owned_snapshot() {
     assert(g_finalizer_calls == 1);
 
     release_obj(seq);
+    release_obj(heap);
+}
+
+static void test_optional_try_helpers_distinguish_empty_from_null() {
+    void *queue = rt_queue_new();
+    void *empty = rt_queue_try_pop_option(queue);
+    assert(rt_option_is_none(empty) == 1);
+    release_obj(empty);
+
+    rt_queue_push(queue, nullptr);
+    void *null_value = rt_queue_try_pop_option(queue);
+    assert(rt_option_is_some(null_value) == 1);
+    assert(rt_option_unwrap(null_value) == nullptr);
+    release_obj(null_value);
+    release_obj(queue);
+
+    void *stack = rt_stack_new();
+    rt_stack_set_owns_elements(stack, 1);
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_stack_push(stack, value);
+    release_obj(value);
+    void *some = rt_stack_try_pop_option(stack);
+    assert(rt_option_is_some(some) == 1);
+    assert(g_finalizer_calls == 0);
+    release_obj(some);
+    assert(g_finalizer_calls == 1);
+    release_obj(stack);
+
+    void *heap = rt_pqueue_new();
+    void *heap_value = new_obj();
+    rt_pqueue_push(heap, 5, heap_value);
+    release_obj(heap_value);
+    void *peeked = rt_pqueue_try_peek_option(heap);
+    assert(rt_option_is_some(peeked) == 1);
+    assert(rt_pqueue_len(heap) == 1);
+    release_obj(peeked);
+    void *popped = rt_pqueue_try_pop_option(heap);
+    assert(rt_option_is_some(popped) == 1);
+    assert(rt_pqueue_len(heap) == 0);
+    release_obj(popped);
     release_obj(heap);
 }
 
@@ -682,6 +727,7 @@ int main() {
     test_multimap_get_first_returns_owned_reference();
     test_heap_retains_values_and_transfers_on_pop();
     test_heap_to_seq_returns_owned_snapshot();
+    test_optional_try_helpers_distinguish_empty_from_null();
     test_sortedset_accessors_return_stable_strings();
     test_sortedset_null_start_range_includes_lowest_values();
     test_frozenmap_equals_uses_boxed_value_equality();

@@ -1,8 +1,8 @@
 ' =============================================================================
 ' API Audit: Viper.Data.Xml - XML Processing
 ' =============================================================================
-' Tests: Parse, IsValid, Element, Text, Comment, Cdata, NodeType, Tag, Content,
-'        TextContent, Attr, HasAttr, SetAttr, RemoveAttr, AttrNames, Children,
+' Tests: ParseResult, Parse, Error, IsValid, Element, Text, Comment, Cdata,
+'        NodeType, Tag, Content, TextContent, Attr, HasAttr, SetAttr, RemoveAttr, AttrNames, Children,
 '        ChildCount, ChildAt, Append, Remove, Find, FindAll, Format,
 '        FormatPretty, Escape, Unescape
 ' =============================================================================
@@ -14,11 +14,28 @@ PRINT "--- IsValid ---"
 PRINT "IsValid('<root/>): "; Viper.Data.Xml.IsValid("<root><item/></root>")
 PRINT "IsValid('not xml'): "; Viper.Data.Xml.IsValid("not xml")
 
-' --- Parse ---
-PRINT "--- Parse ---"
+' --- ParseResult ---
+PRINT "--- ParseResult ---"
 DIM doc AS OBJECT
-doc = Viper.Data.Xml.Parse("<root><item id=""1"">Hello</item><item id=""2"">World</item></root>")
-PRINT "Parse done"
+DIM parsed AS OBJECT
+parsed = Viper.Data.Xml.ParseResult("<root><item id=""1"">Hello</item><item id=""2"">World</item></root>")
+PRINT "ParseResult IsOk: "; parsed.IsOk
+doc = parsed.Unwrap()
+PRINT "ParseResult done"
+
+DIM badParse AS OBJECT
+badParse = Viper.Data.Xml.ParseResult("<root")
+PRINT "Bad ParseResult IsErr: "; badParse.IsErr
+PRINT "Bad ParseResult Err: "; badParse.UnwrapErrStr()
+
+' --- Parse / Error compatibility ---
+PRINT "--- Parse / Error compatibility ---"
+DIM legacyDoc AS OBJECT
+legacyDoc = Viper.Data.Xml.Parse("<root/>")
+PRINT "Legacy Parse done"
+DIM legacyBad AS OBJECT
+legacyBad = Viper.Data.Xml.Parse("<root")
+PRINT "Legacy Error: "; Viper.Data.Xml.Error()
 
 ' --- NodeType ---
 PRINT "--- NodeType ---"
@@ -110,6 +127,11 @@ PRINT "--- Find ---"
 DIM found AS OBJECT
 found = Viper.Data.Xml.Find(doc, "item")
 PRINT "Find('item') Tag: "; Viper.Data.Xml.Tag(found)
+DIM foundOption AS OBJECT
+foundOption = Viper.Data.Xml.FindOption(doc, "item")
+PRINT "FindOption IsSome: "; foundOption.IsSome
+PRINT "FindOption Tag: "; Viper.Data.Xml.Tag(foundOption.Unwrap())
+PRINT "FindOption missing: "; Viper.Data.Xml.FindOption(doc, "missing").IsNone
 
 ' --- FindAll ---
 PRINT "--- FindAll ---"

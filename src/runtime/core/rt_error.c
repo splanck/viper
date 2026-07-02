@@ -28,9 +28,13 @@
 
 #include "rt_error.h"
 
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "rt_object.h"
+#include "rt_option.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -184,6 +188,91 @@ static _Thread_local int32_t tls_trap_kind = 0;
 static _Thread_local int32_t tls_trap_code = 0;
 static _Thread_local uint64_t tls_trap_ip = 0;
 static _Thread_local int32_t tls_trap_line = -1;
+static _Thread_local int8_t tls_trap_has_current = 0;
+
+/// @brief Immutable snapshot backing `Viper.Diagnostics.TrapInfo`.
+/// @details Captures thread-local trap metadata at the moment
+///          `Viper.Diagnostics.CurrentTrap` is called. String fields are owned
+///          by the snapshot and released by @ref rt_trap_info_finalizer.
+typedef struct rt_trap_info {
+    int64_t kind;
+    int64_t code;
+    int64_t ip;
+    int64_t line;
+    rt_string kind_name;
+    rt_string message;
+    rt_string location;
+} rt_trap_info_t;
+
+/// @brief Release owned strings stored inside a TrapInfo snapshot.
+/// @param obj Opaque `rt_trap_info_t` payload allocated by @ref rt_obj_new_i64.
+static void rt_trap_info_finalizer(void *obj) {
+    rt_trap_info_t *info = (rt_trap_info_t *)obj;
+    if (!info)
+        return;
+    rt_str_release_maybe(info->kind_name);
+    rt_str_release_maybe(info->message);
+    rt_str_release_maybe(info->location);
+    info->kind_name = NULL;
+    info->message = NULL;
+    info->location = NULL;
+}
+
+/// @brief Release the caller-owned TrapInfo object reference.
+/// @details Used after wrapping a snapshot in `Option.Some`. If the Option
+///          retained the object, this drops only the temporary reference. If a
+///          later allocation failed, this frees the partially built snapshot.
+/// @param info Snapshot to release; may be NULL.
+static void rt_trap_info_release_maybe(rt_trap_info_t *info) {
+    if (info && rt_obj_release_check0(info))
+        rt_obj_free(info);
+}
+
+/// @brief Validate and cast an opaque value to a TrapInfo snapshot.
+/// @param obj Candidate runtime object.
+/// @param member Member name used in trap diagnostics.
+/// @return Valid snapshot pointer, or NULL after reporting a trap.
+static rt_trap_info_t *rt_trap_info_checked(void *obj, const char *member) {
+    if (rt_obj_is_instance(obj, RT_TRAP_INFO_CLASS_ID, sizeof(rt_trap_info_t)))
+        return (rt_trap_info_t *)obj;
+    char buffer[160];
+    snprintf(buffer,
+             sizeof(buffer),
+             "Viper.Diagnostics.TrapInfo.%s: invalid TrapInfo object",
+             member ? member : "member");
+    rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+    return NULL;
+}
+
+/// @brief Allocate a TrapInfo snapshot from the current thread-local trap state.
+/// @details Copies scalar fields and materializes string fields into owned
+///          runtime strings. The caller owns the returned object reference and
+///          must release it after wrapping or consuming it.
+/// @return Owned `rt_trap_info_t` object snapshot.
+static rt_trap_info_t *rt_trap_info_snapshot_new(void) {
+    rt_trap_info_t *info =
+        (rt_trap_info_t *)rt_obj_new_i64(RT_TRAP_INFO_CLASS_ID, (int64_t)sizeof(rt_trap_info_t));
+    if (!info)
+        return NULL;
+
+    info->kind = (int64_t)tls_trap_kind;
+    info->code = (int64_t)tls_trap_code;
+    info->ip = (int64_t)tls_trap_ip;
+    info->line = (int64_t)tls_trap_line;
+    info->kind_name = NULL;
+    info->message = NULL;
+    info->location = NULL;
+    rt_obj_set_finalizer(info, rt_trap_info_finalizer);
+
+    info->kind_name = rt_error_kind_name(tls_trap_kind);
+    const char *recovered_message = rt_trap_get_error();
+    if (recovered_message && recovered_message[0])
+        info->message = rt_const_cstr(recovered_message);
+    else
+        info->message = rt_error_message(tls_trap_kind, tls_trap_code, tls_trap_line);
+    info->location = rt_error_location(tls_trap_kind, tls_trap_code, tls_trap_line);
+    return info;
+}
 
 /// @brief Populate the thread-local trap classification fields prior to a trap.
 /// Called by Zia lowering before emitting trap instructions so `ErrGetKind/Code/Line`
@@ -192,11 +281,89 @@ void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line) {
     tls_trap_kind = kind;
     tls_trap_code = code;
     tls_trap_line = line;
+    tls_trap_has_current = 1;
 }
 
 /// @brief Record the instruction pointer at which a trap occurred (native handler use).
 void rt_trap_set_ip(uint64_t ip) {
     tls_trap_ip = ip;
+    tls_trap_has_current = 1;
+}
+
+/// @brief Return the current thread's trap snapshot as `Option<TrapInfo>`.
+void *rt_diagnostics_current_trap(void) {
+    if (!tls_trap_has_current)
+        return rt_option_none();
+
+    rt_trap_info_t *info = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Viper.Diagnostics.CurrentTrap: allocation failed");
+        rt_trap_clear_recovery();
+        rt_trap_info_release_maybe(info);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    info = rt_trap_info_snapshot_new();
+    void *option = rt_option_some(info);
+    rt_trap_clear_recovery();
+    rt_trap_info_release_maybe(info);
+    return option;
+}
+
+/// @brief Read the trap kind from a `Viper.Diagnostics.TrapInfo` snapshot.
+int64_t rt_trap_info_get_kind(void *obj) {
+    rt_trap_info_t *info = rt_trap_info_checked(obj, "Kind");
+    return info ? info->kind : 0;
+}
+
+/// @brief Read the runtime error code from a `Viper.Diagnostics.TrapInfo` snapshot.
+int64_t rt_trap_info_get_code(void *obj) {
+    rt_trap_info_t *info = rt_trap_info_checked(obj, "Code");
+    return info ? info->code : 0;
+}
+
+/// @brief Read the instruction pointer from a `Viper.Diagnostics.TrapInfo` snapshot.
+int64_t rt_trap_info_get_ip(void *obj) {
+    rt_trap_info_t *info = rt_trap_info_checked(obj, "Ip");
+    return info ? info->ip : 0;
+}
+
+/// @brief Read the source line from a `Viper.Diagnostics.TrapInfo` snapshot.
+int64_t rt_trap_info_get_line(void *obj) {
+    rt_trap_info_t *info = rt_trap_info_checked(obj, "Line");
+    return info ? info->line : -1;
+}
+
+/// @brief Read the trap kind name from a `Viper.Diagnostics.TrapInfo` snapshot.
+rt_string rt_trap_info_get_kind_name(void *obj) {
+    rt_trap_info_t *info = rt_trap_info_checked(obj, "KindName");
+    if (!info || !info->kind_name)
+        return rt_str_empty();
+    return rt_string_ref(info->kind_name);
+}
+
+/// @brief Read the message from a `Viper.Diagnostics.TrapInfo` snapshot.
+rt_string rt_trap_info_get_message(void *obj) {
+    rt_trap_info_t *info = rt_trap_info_checked(obj, "Message");
+    if (!info || !info->message)
+        return rt_str_empty();
+    return rt_string_ref(info->message);
+}
+
+/// @brief Read the formatted location from a `Viper.Diagnostics.TrapInfo` snapshot.
+rt_string rt_trap_info_get_location(void *obj) {
+    rt_trap_info_t *info = rt_trap_info_checked(obj, "Location");
+    if (!info || !info->location)
+        return rt_str_empty();
+    return rt_string_ref(info->location);
 }
 
 /// @brief Read the trap kind enum from the most recent trap on this thread.

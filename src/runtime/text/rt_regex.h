@@ -45,6 +45,15 @@ int8_t rt_pattern_is_match(rt_string text, rt_string pattern);
 /// @note Traps on invalid pattern syntax.
 rt_string rt_pattern_find(rt_string text, rt_string pattern);
 
+/// @brief Find first match of pattern in text as an Option string.
+/// @details Returns `SomeStr(match)` for any match, including an empty-string
+///          match, and `None` when no match exists.
+/// @param text Text to search.
+/// @param pattern Regex pattern string.
+/// @return Opaque Viper.Option containing the first match, or None.
+/// @note Traps on invalid pattern syntax.
+void *rt_pattern_find_option(rt_string text, rt_string pattern);
+
 /// @brief Find first match starting at or after given position.
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
@@ -53,12 +62,27 @@ rt_string rt_pattern_find(rt_string text, rt_string pattern);
 /// @note Traps on invalid pattern syntax.
 rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start);
 
+/// @brief Find first match at or after a position as an Option string.
+/// @param text Text to search.
+/// @param pattern Regex pattern string.
+/// @param start Starting position (0-based).
+/// @return Opaque Viper.Option containing the first match, or None.
+/// @note Traps on invalid pattern syntax.
+void *rt_pattern_find_from_option(rt_string text, rt_string pattern, int64_t start);
+
 /// @brief Find position of first match.
 /// @param text Text to search.
 /// @param pattern Regex pattern string.
 /// @return Start position of first match, or -1 if no match.
 /// @note Traps on invalid pattern syntax.
 int64_t rt_pattern_find_pos(rt_string text, rt_string pattern);
+
+/// @brief Find position of first match as an Option index.
+/// @param text Text to search.
+/// @param pattern Regex pattern string.
+/// @return Opaque Viper.Option containing the first position, or None.
+/// @note Traps on invalid pattern syntax.
+void *rt_pattern_find_pos_option(rt_string text, rt_string pattern);
 
 /// @brief Find all non-overlapping matches.
 /// @param text Text to search.

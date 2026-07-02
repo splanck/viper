@@ -358,7 +358,7 @@ class Game {
     expose func run() {
         canvas = Canvas.New("XENOSCAPE: The Descent", SCREEN_W, SCREEN_H);
         canvas.SetFps(60);
-        canvas.SetDTMax(DT_MAX);
+        canvas.SetMaxDeltaTime(DT_MAX);
 
         while canvas.BeginFrame() != 0 {
             dt = canvas.DeltaTime;

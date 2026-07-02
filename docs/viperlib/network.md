@@ -809,7 +809,7 @@ The HTTP client transparently supports HTTPS URLs using TLS 1.3:
 - **Modern encryption** - TLS 1.3 with ChaCha20-Poly1305 cipher suite and X25519 key exchange
 - **Certificate verification enabled by default** - Server certificates are validated against the runtime trust source: Windows uses CryptoAPI, while macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles. Hostname is verified against the certificate's SubjectAltName DNS names (with RFC 6125 wildcard support) or CommonName as fallback. The server's CertificateVerify signature over the handshake transcript is checked in-tree, proving possession of the private key. The TLS ClientHello advertises only verifier-backed schemes: ECDSA P-256 and RSA-PSS SHA-256/384/512; ECDSA P-384 is intentionally not advertised yet.
 - **SNI behavior** - DNS hostnames are sent in the TLS SNI extension. IP literals are still verified against certificate IP SANs, but they are not sent in SNI.
-- **To disable verification (insecure):** Use `HttpReq` and call `.SetTlsVerify(false)` — not recommended for production.
+- **To disable verification for a local test only:** Use `HttpReq.AllowInsecureCertificatesForTesting()` and keep that code out of production.
 - **For custom TLS:** Use `Viper.Crypto.Tls` directly when you need lower-level TLS control, or use `HttpReq` with `SetTimeout()` for request-level timeout control.
 
 ```basic
@@ -854,7 +854,8 @@ HTTP request builder for advanced requests with custom headers and options.
 
 | Method                    | Returns | Description                                  |
 |---------------------------|---------|----------------------------------------------|
-| `Send()`                  | HttpRes | Execute the request and return response      |
+| `Send()`                  | HttpRes | Execute the request and return response; traps on transport/setup failure |
+| `SendResult()`            | Result  | Execute the request as `Result<HttpRes>`     |
 | `SetBody(data)`           | HttpReq | Set request body as Bytes (chainable)        |
 | `SetBodyStr(text)`        | HttpReq | Set request body as string (chainable)       |
 | `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
@@ -862,8 +863,9 @@ HTTP request builder for advanced requests with custom headers and options.
 | `SetKeepAlive(enabled)`   | HttpReq | Allow or disable pooled keep-alive reuse     |
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
 | `SetTlsVerify(enabled)`   | HttpReq | Enable or disable HTTPS certificate verification |
+| `AllowInsecureCertificatesForTesting()` | HttpReq | Disable HTTPS verification for local test fixtures only |
 
-> **TLS configuration:** Certificate verification is enabled by default (`verify_cert=1`). To disable verification (insecure, not recommended for production): call `.SetTlsVerify(false)` on the `HttpReq` before calling `Send()`. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
+> **TLS configuration:** Certificate verification is enabled by default. Production code should keep it enabled. For local self-signed test fixtures only, call `.AllowInsecureCertificatesForTesting()` before `Send()`; the older `.SetTlsVerify(false)` form remains available for compatibility but is marked unsafe in API metadata. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
 >
 > **HTTP/2 control:** HTTPS requests advertise `h2,http/1.1` by default and use HTTP/2 automatically when the server selects it. Call `.SetForceHttp1(true)` when you need HTTP/1.1-specific behavior or want to suppress HTTP/2 ALPN negotiation for a particular request.
 >
@@ -871,7 +873,7 @@ HTTP request builder for advanced requests with custom headers and options.
 
 ### Zia Example
 
-> HttpReq is accessible via `bind Viper.Network.HttpReq as HttpReq;`. Call `HttpReq.New(method, url)` to create a request, configure with `SetHeader`/`SetBody`, then call `Send()`. Requires network access.
+> HttpReq is accessible via `bind Viper.Network.HttpReq as HttpReq;`. Call `HttpReq.New(method, url)` to create a request, configure with `SetHeader`/`SetBody`, then call `SendResult()` for production error handling. `Send()` remains available for scripts that prefer trapping on transport failure. Requires network access.
 
 ### BASIC Example
 
@@ -882,6 +884,22 @@ req.SetHeader("Accept", "application/json")
 req.SetHeader("X-API-Key", "my-secret-key")
 req.SetTimeout(10000)  ' 10 seconds
 
+DIM sendResult AS OBJECT = req.SendResult()
+IF sendResult.IsOk THEN
+    DIM res AS OBJECT = sendResult.Unwrap()
+    IF res.IsOk() THEN
+        PRINT "Response: "; res.BodyStr()
+    ELSE
+        PRINT "HTTP status: "; res.Status; " "; res.StatusText
+    END IF
+ELSE
+    PRINT "Transport error: "; sendResult.UnwrapErrStr()
+END IF
+```
+
+### Scripting Send
+
+```basic
 DIM res AS OBJECT = req.Send()
 IF res.IsOk() THEN
     PRINT "Response: "; res.BodyStr()
@@ -906,7 +924,8 @@ DIM res AS OBJECT = Viper.Network.HttpReq.New("POST", "http://api.example.com/su
 
 ## Viper.Network.HttpRes
 
-HTTP response object returned by `HttpReq.Send()`.
+HTTP response object returned by `HttpReq.Send()` or by unwrapping
+`HttpReq.SendResult()`.
 
 **Type:** Instance class
 
@@ -1414,16 +1433,26 @@ and base URL configuration across multiple requests.
 
 ### Raw HTTP Methods
 
-Returns `HttpRes` response object for manual handling.
+`*Result` methods are the production-friendly path: transport/setup failures
+return `Result.ErrStr`, while any received HTTP response returns
+`Result.Ok(HttpRes)` so callers can inspect status, headers, and body. The
+shorter methods remain available for scripts that prefer trapping on transport
+failure.
 
 | Method                    | Returns | Description                                    |
 |---------------------------|---------|------------------------------------------------|
 | `Delete(path)`            | HttpRes | DELETE request                                 |
+| `DeleteResult(path)`      | Result  | DELETE request as `Result<HttpRes>`            |
 | `Get(path)`               | HttpRes | GET request to path                            |
+| `GetResult(path)`         | Result  | GET request as `Result<HttpRes>`               |
 | `Head(path)`              | HttpRes | HEAD request (headers only)                    |
+| `HeadResult(path)`        | Result  | HEAD request as `Result<HttpRes>`              |
 | `Patch(path, body)`       | HttpRes | PATCH request with string body                 |
+| `PatchResult(path, body)` | Result  | PATCH request as `Result<HttpRes>`             |
 | `Post(path, body)`        | HttpRes | POST request with string body                  |
+| `PostResult(path, body)`  | Result  | POST request as `Result<HttpRes>`              |
 | `Put(path, body)`         | HttpRes | PUT request with string body                   |
+| `PutResult(path, body)`   | Result  | PUT request as `Result<HttpRes>`               |
 
 ### JSON Convenience Methods
 
@@ -1437,13 +1466,17 @@ Automatically sets `Content-Type` and `Accept` headers for JSON, parses response
 | `PostJson(path, json)`     | Object  | POST JSON body, return parsed response or null       |
 | `PutJson(path, json)`      | Object  | PUT JSON body, return parsed response or null        |
 
-### Error Handling Methods
+### Compatibility Diagnostics
 
 | Method           | Returns | Description                                          |
 |------------------|---------|------------------------------------------------------|
 | `LastOk()`       | Boolean | True if last status was 200-299                      |
 | `LastResponse()` | HttpRes | Last response object (null if none)                  |
 | `LastStatus()`   | Integer | HTTP status code of last request (0 if none)         |
+
+`LastStatus`, `LastResponse`, and `LastOk` are receiver-scoped compatibility
+diagnostics. New code should store the response returned by `*Result` instead
+of reading mutable last-state after a request.
 
 ### Zia Example
 
@@ -1484,9 +1517,16 @@ api.SetHeader("User-Agent", "MyApp/1.0")
 api.SetTimeout(15000)  ' 15 seconds
 
 ' Make requests - base URL is prepended automatically
-DIM res AS OBJECT = api.Get("/users")
-IF res.IsOk() THEN
-    PRINT "Users: "; res.BodyStr()
+DIM result AS OBJECT = api.GetResult("/users")
+IF result.IsOk THEN
+    DIM res AS OBJECT = result.Unwrap()
+    IF res.IsOk() THEN
+        PRINT "Users: "; res.BodyStr()
+    ELSE
+        PRINT "HTTP status: "; res.Status
+    END IF
+ELSE
+    PRINT "Transport error: "; result.UnwrapErrStr()
 END IF
 ```
 
@@ -1557,24 +1597,22 @@ DIM deleted AS OBJECT = api.DeleteJson("/posts/1")
 DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
 
 ' Make a request that might fail
-DIM result AS OBJECT = api.GetJson("/nonexistent")
+DIM result AS OBJECT = api.GetResult("/nonexistent")
 
-IF result IS NULL THEN
-    ' Check what went wrong
-    IF api.LastStatus() = 404 THEN
+IF result.IsErr THEN
+    PRINT "Transport error: "; result.UnwrapErrStr()
+ELSE
+    DIM res AS OBJECT = result.Unwrap()
+    IF res.Status = 404 THEN
         PRINT "Resource not found"
-    ELSE IF api.LastStatus() = 401 THEN
+    ELSE IF res.Status = 401 THEN
         PRINT "Authentication required"
-    ELSE IF api.LastStatus() >= 500 THEN
-        PRINT "Server error: "; api.LastStatus()
+    ELSE IF res.Status >= 500 THEN
+        PRINT "Server error: "; res.Status
+    ELSE IF NOT res.IsOk() THEN
+        PRINT "Request failed with status: "; res.Status
     ELSE
-        PRINT "Request failed with status: "; api.LastStatus()
-    END IF
-
-    ' Access full response if needed
-    DIM res AS OBJECT = api.LastResponse()
-    IF res IS NOT NULL THEN
-        PRINT "Error body: "; res.BodyStr()
+        PRINT "Response: "; res.BodyStr()
     END IF
 END IF
 ```
@@ -1604,7 +1642,8 @@ DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
 - **Authentication:** Built-in support for Bearer tokens and HTTP Basic auth
 - **Timeout:** Configurable timeout (default 30 seconds)
 - **JSON helpers:** Automatic serialization/deserialization for JSON APIs
-- **Last request tracking:** `LastResponse()` returns the most recent response object; it is replaced on every new request. `LastStatus()` returns the HTTP status code; `LastOk()` returns true for 2xx responses.
+- **Result-returning requests:** `GetResult`, `PostResult`, `PutResult`, `PatchResult`, `DeleteResult`, and `HeadResult` return `Result<HttpRes>` so transport failures and HTTP status handling stay explicit.
+- **Last request tracking:** `LastResponse()` returns the most recent response object; it is replaced on every new request. `LastStatus()` returns the HTTP status code; `LastOk()` returns true for 2xx responses. These are compatibility diagnostics; prefer storing the response from `*Result`.
 
 > **Lifecycle note:** The RestClient owns its headers map and last response. Resources are released automatically when the client object is garbage-collected. `LastResponse()` is only valid until the next request is made; keep only the data you need from the response object across requests.
 
@@ -2208,15 +2247,21 @@ Simple SMTP client for sending emails with optional AUTH LOGIN and negotiated ST
 |--------|---------|-------------|
 | `SetAuth(username, password)` | void | Set AUTH LOGIN credentials |
 | `SetTls(enable)` | void | Enable/disable TLS |
-| `Send(from, to, subject, body)` | Boolean | Send plain text email |
-| `SendHtml(from, to, subject, html)` | Boolean | Send HTML email |
+| `SendResult(from, to, subject, body)` | Result | Send plain text email as `OkI64(1)` or `ErrStr(message)` |
+| `SendHtmlResult(from, to, subject, html)` | Result | Send HTML email as `OkI64(1)` or `ErrStr(message)` |
+| `Send(from, to, subject, body)` | Boolean | Compatibility API: send plain text email, then inspect `LastError` on failure |
+| `SendHtml(from, to, subject, html)` | Boolean | Compatibility API: send HTML email, then inspect `LastError` on failure |
 | `Close()` | void | Close the connection |
 
 ### Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `LastError` | String | Most recent error message |
+| `LastError` | String | Compatibility diagnostic for the most recent failed Boolean send |
+
+Prefer `SendResult(...)` and `SendHtmlResult(...)` in new code. They keep the
+SMTP or transport error message attached to the send operation and avoid
+depending on mutable `LastError` state.
 
 ### Runtime Notes
 

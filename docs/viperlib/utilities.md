@@ -33,14 +33,15 @@ Type conversion utilities.
 | `ToInt64(text)`          | `Integer(String)` | Parses a string as a 64-bit integer              |
 | `ToDouble(text)`         | `Double(String)`  | Parses a string as a double-precision float      |
 | `NumToInt(value)`        | `Integer(Double)` | Converts a floating-point value to integer (truncates) |
-| `ToString_Int(value)`    | `String(Integer)` | Converts an integer to its string representation |
-| `ToString_Double(value)` | `String(Double)`  | Converts a double to its string representation   |
+| `ToStringInt(value)`     | `String(Integer)` | Converts an integer to its string representation |
+| `ToStringDouble(value)`  | `String(Double)`  | Converts a double to its string representation   |
 
 ### Conversion Rules
 
 - `ToInt64` parses decimal integer text with optional leading/trailing ASCII whitespace.
 - `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. It also accepts the formatter's non-finite spellings: `NaN`, `Inf`, and `-Inf`. C-style hexadecimal floats such as `0x1p4`, overflow, embedded NUL bytes, and non-whitespace trailing characters are rejected.
-- `ToString_Double` uses locale-independent round-trip precision for finite values, and emits `NaN`, `Inf`, or `-Inf` for non-finite values, so text it emits can be parsed back through `ToDouble`.
+- `ToStringDouble` uses locale-independent round-trip precision for finite values, and emits `NaN`, `Inf`, or `-Inf` for non-finite values, so text it emits can be parsed back through `ToDouble`.
+- `ToString_Int` and `ToString_Double` remain available as compatibility aliases.
 - Embedded NUL bytes and non-whitespace trailing characters are rejected.
 - `NumToInt` truncates finite values toward zero. `NaN` converts to `0`; values outside the signed 64-bit range clamp to the nearest endpoint.
 
@@ -55,15 +56,15 @@ bind Viper.Core.Convert as Convert;
 func start() {
     // Parse string to integer
     var n = Convert.ToInt64("12345");
-    Say("Parsed: " + Convert.ToString_Int(n + 1));  // Output: Parsed: 12346
+    Say("Parsed: " + Convert.ToStringInt(n + 1));   // Output: Parsed: 12346
 
     // Parse string to double
     var d = Convert.ToDouble("3.14159");
-    Say("Pi: " + Convert.ToString_Double(d));        // Output: Pi: 3.14159
+    Say("Pi: " + Convert.ToStringDouble(d));         // Output: Pi: 3.14159
 
     // Convert back to string
-    Say(Convert.ToString_Int(42));                   // Output: 42
-    Say(Convert.ToString_Double(2.5));               // Output: 2.5
+    Say(Convert.ToStringInt(42));                    // Output: 42
+    Say(Convert.ToStringDouble(2.5));                // Output: 2.5
 }
 ```
 
@@ -82,8 +83,8 @@ d = Viper.Core.Convert.ToDouble("3.14159")
 PRINT d * 2  ' Output: 6.28318
 
 ' Convert back to string
-PRINT Viper.Core.Convert.ToString_Int(42)      ' Output: "42"
-PRINT Viper.Core.Convert.ToString_Double(2.5)  ' Output: "2.5"
+PRINT Viper.Core.Convert.ToStringInt(42)       ' Output: "42"
+PRINT Viper.Core.Convert.ToStringDouble(2.5)   ' Output: "2.5"
 ```
 
 ---
@@ -103,10 +104,10 @@ String formatting utilities for converting values to formatted strings.
 | `IntPad(value, width, pad)` | `String(Integer, Integer, String)` | Format integer with padding              |
 | `Num(value)`                | `String(Double)`                   | Format number with default precision     |
 | `NumFixed(value, decimals)` | `String(Double, Integer)`          | Format number with fixed decimal places  |
-| `NumSci(value, decimals)`   | `String(Double, Integer)`          | Format number in scientific notation     |
-| `NumPct(value, decimals)`   | `String(Double, Integer)`          | Format number as percentage              |
+| `Scientific(value, decimals)` | `String(Double, Integer)`        | Format number in scientific notation     |
+| `Percent(value, decimals)`    | `String(Double, Integer)`        | Format number as percentage              |
 | `Bool(value)`               | `String(Boolean)`                  | Format as "true" or "false"              |
-| `BoolYN(value)`             | `String(Boolean)`                  | Format as "yes" or "no"                  |
+| `YesNo(value)`              | `String(Boolean)`                  | Format as "yes" or "no"                  |
 | `Size(bytes)`               | `String(Integer)`                  | Format byte count as human-readable size |
 | `Hex(value)`                | `String(Integer)`                  | Format as lowercase hex                  |
 | `HexPad(value, width)`      | `String(Integer, Integer)`         | Format as hex with zero-padding          |
@@ -121,7 +122,8 @@ String formatting utilities for converting values to formatted strings.
 
 - Numeric formatting is locale-stable: decimal output uses `.` even when the process locale uses another separator.
 - `Num` emits enough significant digits for finite values to round-trip through the `Viper.Core.Parse` numeric helpers.
-- Signed zero formats as zero in `Num`, `NumFixed`, `NumSci`, `NumPct`, and `Currency`.
+- Signed zero formats as zero in `Num`, `NumFixed`, `Scientific`, `Percent`, and `Currency`.
+- `NumSci`, `NumPct`, and `BoolYN` remain available as compatibility aliases.
 - `IntPad` defaults to space padding when the pad string is null, empty, or does not start with a valid UTF-8 character. It uses the first full UTF-8 character from valid pad strings and supports widths beyond 255 subject to allocation limits.
 - `Size` chooses units using integer byte thresholds, then promotes near-boundary rounded displays so output does not show values such as `1024.0 PB`.
 - `IntGrouped` preserves the full separator byte sequence and defaults to `","` only when the separator is null or empty.
@@ -151,7 +153,7 @@ func start() {
 
     // Boolean formatting
     Say("Bool: " + Fmt.Bool(true));          // Output: Bool: true
-    Say("YesNo: " + Fmt.BoolYN(false));      // Output: YesNo: no
+    Say("YesNo: " + Fmt.YesNo(false));       // Output: YesNo: no
 
     // Size formatting
     Say("Size: " + Fmt.Size(1048576));       // Output: Size: 1.0 MB
@@ -169,12 +171,12 @@ PRINT Viper.Text.Fmt.IntPad(42, 5, "0")      ' Output: "00042"
 ' Number formatting
 PRINT Viper.Text.Fmt.Num(2.5)                ' Output: "2.5"
 PRINT Viper.Text.Fmt.NumFixed(3.14159, 2)    ' Output: "3.14"
-PRINT Viper.Text.Fmt.NumSci(1234.5, 2)       ' Output: "1.23e+03"
-PRINT Viper.Text.Fmt.NumPct(0.756, 1)        ' Output: "75.6%"
+PRINT Viper.Text.Fmt.Scientific(1234.5, 2)   ' Output: "1.23e+03"
+PRINT Viper.Text.Fmt.Percent(0.756, 1)       ' Output: "75.6%"
 
 ' Boolean formatting
 PRINT Viper.Text.Fmt.Bool(TRUE)              ' Output: "true"
-PRINT Viper.Text.Fmt.BoolYN(FALSE)           ' Output: "no"
+PRINT Viper.Text.Fmt.YesNo(FALSE)            ' Output: "no"
 
 ' Size formatting (auto-scales to KB, MB, GB, etc.)
 PRINT Viper.Text.Fmt.Size(1024)              ' Output: "1.0 KB"
@@ -291,10 +293,10 @@ graceful error handling.
 | Method                           | Signature                           | Description                               |
 |----------------------------------|-------------------------------------|-------------------------------------------|
 | `TryInt(text)`                   | `Option<Integer>(String)`           | Parse integer or return `None`       |
-| `TryNum(text)`                   | `Option<Double>(String)`            | Parse double or return `None`        |
+| `TryDouble(text)`                | `Option<Double>(String)`            | Parse double or return `None`        |
 | `TryBool(text)`                  | `Option<Boolean>(String)`           | Parse boolean or return `None`       |
 | `IntOr(text, default)`           | `Integer(String, Integer)`          | Parse integer or return default           |
-| `NumOr(text, default)`           | `Double(String, Double)`            | Parse double or return default            |
+| `DoubleOr(text, default)`        | `Double(String, Double)`            | Parse double or return default            |
 | `BoolOr(text, default)`          | `Boolean(String, Boolean)`          | Parse boolean or return default           |
 | `IsInt(text)`                    | `Boolean(String)`                   | Check if string is a valid integer        |
 | `IsNum(text)`                    | `Boolean(String)`                   | Check if string is a valid number         |
@@ -305,6 +307,8 @@ graceful error handling.
 - The `Try*` parser forms return managed `Option`
   objects. Raw output-pointer helpers are runtime-internal and are not part of
   the Zia or BASIC source surface.
+- `TryNum` and `NumOr` remain available as compatibility aliases for
+  `TryDouble` and `DoubleOr`.
 - **Boolean parsing** accepts (case-insensitive):
     - True: `"true"`, `"yes"`, `"1"`, `"on"`
     - False: `"false"`, `"no"`, `"0"`, `"off"`
@@ -329,7 +333,7 @@ func start() {
     var port = Viper.Core.Parse.IntOr("8080", 3000);
     Say("Port: " + Fmt.Int(port));             // Output: Port: 8080
 
-    var timeout = Viper.Core.Parse.NumOr("invalid", 30.0);
+    var timeout = Viper.Core.Parse.DoubleOr("invalid", 30.0);
     Say("Timeout: " + Fmt.Num(timeout));       // Output: Timeout: 30
 
     // Validate input
@@ -355,7 +359,7 @@ func start() {
 ```basic
 ' Parse with default fallback
 DIM port AS INTEGER = Viper.Core.Parse.IntOr(portStr, 8080)
-DIM timeout AS DOUBLE = Viper.Core.Parse.NumOr(timeoutStr, 30.0)
+DIM timeout AS DOUBLE = Viper.Core.Parse.DoubleOr(timeoutStr, 30.0)
 DIM verbose AS INTEGER = Viper.Core.Parse.BoolOr(verboseStr, FALSE)
 
 ' Validate before use

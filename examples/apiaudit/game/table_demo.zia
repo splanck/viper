@@ -1,0 +1,46 @@
+// API Audit: Viper.Game.UI.Table and TableClickResult (Zia)
+module GameUITableDemo;
+
+bind Viper.Game.UI;
+bind Viper.Terminal;
+
+func start() {
+    Say("=== API Audit: Viper.Game.UI.Table ===");
+
+    var table = Table.New(0, 0, 220, 96);
+    table.AddColumn("Name", 100, 0);
+    table.AddColumn("Score", 80, 0);
+    table.SetColumnSortable(1, true, true);
+
+    var rowA = table.AddRow();
+    var rowB = table.AddRow();
+    table.SetCell(rowA, 0, "Alice");
+    table.SetCell(rowA, 1, "10");
+    table.SetCell(rowB, 0, "Bob");
+    table.SetCell(rowB, 1, "30");
+
+    Say("--- Header click result ---");
+    var headerClick = table.HandleClickResult(120, 4);
+    SayBool(headerClick.IsHeader);
+    SayBool(headerClick.IsRow);
+    var headerColumn = headerClick.ColumnOption();
+    SayBool(headerColumn.IsSome);
+    SayInt(headerColumn.UnwrapI64());
+
+    Say("--- Row click result ---");
+    var rowClick = table.HandleClickResult(10, 40);
+    SayBool(rowClick.IsRow);
+    SayBool(rowClick.IsHeader);
+    var selectedRow = rowClick.RowOption();
+    SayBool(selectedRow.IsSome);
+    SayInt(selectedRow.UnwrapI64());
+
+    Say("--- Miss click result ---");
+    var missClick = table.HandleClickResult(400, 400);
+    SayBool(missClick.IsNone);
+    SayBool(missClick.RowOption().IsNone);
+    SayBool(missClick.ColumnOption().IsNone);
+
+    SayInt(table.RowCount);
+    Say("=== Table Audit Complete ===");
+}

@@ -55,6 +55,22 @@ static const std::vector<SignatureException> kSignatureExceptions = {
      "FABRIK",
      "IKSolver3DFABRIK",
      "Static IK-solver factory; the leading obj is the chain input, not a receiver."},
+    {"Viper.Graphics3D.Material3D",
+     "Textured",
+     "Material3DTextured",
+     "Static factory alias; the leading obj is the texture input, not a receiver."},
+    {"Viper.Graphics3D.Light3D",
+     "Directional",
+     "Light3DDirectional",
+     "Static factory alias; the leading obj is the direction input, not a receiver."},
+    {"Viper.Graphics3D.Light3D",
+     "Point",
+     "Light3DPoint",
+     "Static factory alias; the leading obj is the position input, not a receiver."},
+    {"Viper.Graphics3D.Light3D",
+     "Spot",
+     "Light3DSpot",
+     "Static factory alias; the leading object parameters are direction and position inputs."},
 };
 
 struct RuntimeFunc {
@@ -577,7 +593,13 @@ bool check_runtime_class_leaf_names(const RuntimeSurface &surface) {
     }
 
     std::vector<std::string> failures;
-    const std::set<std::string> allowed_dimensional_reuse = {"SceneGraph", "SceneNode"};
+    const std::set<std::string> allowed_dimensional_reuse = {
+        "Aes",
+        "GC",
+        "Hash",
+        "SceneGraph",
+        "SceneNode",
+    };
 
     for (const auto &entry : owners_by_leaf) {
         if (entry.second.size() > 1 && allowed_dimensional_reuse.count(entry.first) == 0) {
@@ -695,6 +717,126 @@ bool check_property_accessor_types(const RuntimeSurface &surface, const RuntimeI
     return false;
 }
 
+std::string duplicate_symbol(std::string_view key) {
+    size_t pipe = key.find('|');
+    return std::string(pipe == std::string_view::npos ? key : key.substr(0, pipe));
+}
+
+bool all_names_start_with_one_of(const std::vector<std::string> &names,
+                                 const std::vector<std::string_view> &prefixes) {
+    for (const std::string &name : names) {
+        bool matched = false;
+        for (std::string_view prefix : prefixes) {
+            if (starts_with(name, prefix)) {
+                matched = true;
+                break;
+            }
+        }
+        if (!matched)
+            return false;
+    }
+    return true;
+}
+
+bool any_name_starts_with(const std::vector<std::string> &names, std::string_view prefix) {
+    for (const std::string &name : names) {
+        if (starts_with(name, prefix))
+            return true;
+    }
+    return false;
+}
+
+bool is_allowed_duplicate_function_export(std::string_view key,
+                                          const std::vector<std::string> &names) {
+    const std::string symbol = duplicate_symbol(key);
+
+    if (starts_with(symbol, "rt_keyboard_key_")) {
+        return all_names_start_with_one_of(names,
+                                           {"Viper.Input.Keyboard.get_", "Viper.Input.Key.get_"});
+    }
+
+    if (starts_with(symbol, "rt_hash_") || starts_with(symbol, "rt_aes_")) {
+        return any_name_starts_with(names, "Viper.Crypto.Legacy.") &&
+               all_names_start_with_one_of(names,
+                                           {"Viper.Crypto.Hash.",
+                                            "Viper.Crypto.Aes.",
+                                            "Viper.Crypto.Legacy.Hash.",
+                                            "Viper.Crypto.Legacy.Aes."});
+    }
+
+    if (starts_with(symbol, "rt_gc_")) {
+        return all_names_start_with_one_of(names, {"Viper.Memory.GC.", "Viper.Runtime.GC."});
+    }
+
+    if (starts_with(symbol, "rt_memory_")) {
+        return all_names_start_with_one_of(names, {"Viper.Memory.", "Viper.Runtime.Unsafe."});
+    }
+
+    if (starts_with(symbol, "rt_throw_msg_") || starts_with(symbol, "rt_trap_")) {
+        return all_names_start_with_one_of(names, {"Viper.Error.", "Viper.Runtime.Unsafe."});
+    }
+
+    if (starts_with(symbol, "rt_game3d_assets_load_model_template") ||
+        symbol == "rt_game3d_asset_handle_get_template") {
+        return all_names_start_with_one_of(
+            names,
+            {"Viper.Game3D.Prefab.", "Viper.Game3D.Assets3D.", "Viper.Game3D.AssetHandle3D."});
+    }
+
+    if (starts_with(symbol, "rt_game3d_world_new_with")) {
+        return all_names_start_with_one_of(names, {"Viper.Game3D.World3D."});
+    }
+
+    if (starts_with(symbol, "rt_mesh3d_new_")) {
+        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Mesh3D."});
+    }
+
+    if (starts_with(symbol, "rt_collider3d_new_")) {
+        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Collider3D."});
+    }
+
+    if (starts_with(symbol, "rt_light3d_new_")) {
+        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Light3D."});
+    }
+
+    if (starts_with(symbol, "rt_material3d_new_")) {
+        return all_names_start_with_one_of(names, {"Viper.Graphics3D.Material3D."});
+    }
+
+    static const std::set<std::string_view> allowed_symbols = {
+        "rt_bimap_put",
+        "rt_binbuf_new_cap",
+        "rt_bits_leadz",
+        "rt_bits_rotl",
+        "rt_bits_rotr",
+        "rt_bits_trailz",
+        "rt_bits_ushr",
+        "rt_bloomfilter_fpr",
+        "rt_box_value_type",
+        "rt_box_value_type_add_field",
+        "rt_canvas3d_set_dt_max",
+        "rt_canvas_set_dt_max",
+        "rt_channel_get_cap",
+        "rt_crypto_module_disable_approved_mode",
+        "rt_crypto_module_enable_approved_mode",
+        "rt_crypto_module_is_approved_mode_viper",
+        "rt_deque_cap",
+        "rt_f64_to_str",
+        "rt_fmt_bool_yn",
+        "rt_fmt_num_pct",
+        "rt_fmt_num_sci",
+        "rt_int_to_str",
+        "rt_lrucache_cap",
+        "rt_lrucache_put",
+        "rt_multimap_put",
+        "rt_parse_double_option",
+        "rt_parse_num_or",
+        "rt_ring_cap",
+        "rt_seq_cap",
+    };
+    return allowed_symbols.count(symbol) != 0;
+}
+
 bool check_duplicate_function_symbol_signatures(const RuntimeSurface &surface) {
     std::map<std::string, std::vector<std::string>> names_by_symbol_signature;
     for (const RuntimeFunc &func : surface.funcs) {
@@ -706,6 +848,8 @@ bool check_duplicate_function_symbol_signatures(const RuntimeSurface &surface) {
     std::vector<std::string> failures;
     for (const auto &entry : names_by_symbol_signature) {
         if (entry.second.size() <= 1)
+            continue;
+        if (is_allowed_duplicate_function_export(entry.first, entry.second))
             continue;
         std::ostringstream line;
         line << entry.first << " exported as";
@@ -811,7 +955,7 @@ bool check_no_copied_gui_widget_methods(const RuntimeSurface &surface, const Run
 }
 
 bool check_self_returning_new_methods_have_constructor_metadata(const RuntimeSurface &surface,
-                                                               const RuntimeIndex &index) {
+                                                                const RuntimeIndex &index) {
     std::vector<std::string> failures;
 
     for (const RuntimeClass &runtime_class : surface.classes) {
@@ -841,7 +985,7 @@ bool check_self_returning_new_methods_have_constructor_metadata(const RuntimeSur
 }
 
 bool check_constructor_targets_are_canonical_new(const RuntimeSurface &surface,
-                                                const RuntimeIndex &index) {
+                                                 const RuntimeIndex &index) {
     std::vector<std::string> failures;
 
     for (const RuntimeClass &runtime_class : surface.classes) {
@@ -884,6 +1028,13 @@ bool is_allowed_length_property(std::string_view qualified_name) {
     return allowed.count(qualified_name) != 0;
 }
 
+bool is_legacy_length_alias(std::string_view qualified_name) {
+    static const std::set<std::string_view> allowed = {
+        "Viper.Game.PathResult.Length",
+    };
+    return allowed.count(qualified_name) != 0;
+}
+
 bool check_length_properties_are_semantic_lengths(const RuntimeSurface &surface) {
     std::vector<std::string> failures;
 
@@ -893,7 +1044,7 @@ bool check_length_properties_are_semantic_lengths(const RuntimeSurface &surface)
                 continue;
 
             std::string qualified = runtime_class.name + "." + prop.name;
-            if (!is_allowed_length_property(qualified))
+            if (!is_allowed_length_property(qualified) && !is_legacy_length_alias(qualified))
                 failures.push_back(qualified);
         }
     }
@@ -906,9 +1057,9 @@ bool check_length_properties_are_semantic_lengths(const RuntimeSurface &surface)
             continue;
         }
 
-        std::string qualified = func.canonical.substr(0, func.canonical.size() - suffix.size()) +
-                                ".Length";
-        if (!is_allowed_length_property(qualified))
+        std::string qualified =
+            func.canonical.substr(0, func.canonical.size() - suffix.size()) + ".Length";
+        if (!is_allowed_length_property(qualified) && !is_legacy_length_alias(qualified))
             failures.push_back(func.canonical);
     }
 

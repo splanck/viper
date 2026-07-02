@@ -125,21 +125,21 @@ class Ball {
         ballType = config.BALL_MEDIUM;
         applyBallStats();
 
-        ballMesh = Mesh3D.NewSphere(config.BALL_RADIUS, 16);
-        ballMat = Material3D.NewPBR(colorR, colorG, colorB);
+        ballMesh = Mesh3D.Sphere(config.BALL_RADIUS, 16);
+        ballMat = Material3D.PBR(colorR, colorG, colorB);
         ballMat.Metallic = 0.04;
         ballMat.Roughness = 0.18;
         Material3D.SetShininess(ballMat, config.BALL_SHININESS);
-        ballHoleMesh = Mesh3D.NewSphere(config.BALL_RADIUS * 0.16, 8);
-        ballHoleMat = Material3D.NewColor(0.015, 0.018, 0.022);
+        ballHoleMesh = Mesh3D.Sphere(config.BALL_RADIUS * 0.16, 8);
+        ballHoleMat = Material3D.FromColor(0.015, 0.018, 0.022);
         Material3D.SetShininess(ballHoleMat, 18.0);
-        guideMesh = Mesh3D.NewSphere(0.034, 8);
-        guideMat = Material3D.NewColor(0.05, 0.92, 0.96);
+        guideMesh = Mesh3D.Sphere(0.034, 8);
+        guideMat = Material3D.FromColor(0.05, 0.92, 0.96);
         Material3D.SetEmissiveColor(guideMat, 0.08, 0.34, 0.36);
         guideMat.Alpha = 0.82;
-        targetMesh = Mesh3D.NewSphere(0.082, 12);
-        targetHaloMesh = Mesh3D.NewSphere(0.038, 8);
-        targetMat = Material3D.NewColor(1.0, 0.82, 0.22);
+        targetMesh = Mesh3D.Sphere(0.082, 12);
+        targetHaloMesh = Mesh3D.Sphere(0.038, 8);
+        targetMat = Material3D.FromColor(1.0, 0.82, 0.22);
         Material3D.SetEmissiveColor(targetMat, 0.18, 0.12, 0.02);
 
         recreateBody();

@@ -1,8 +1,8 @@
 // =============================================================================
 // API Audit: Viper.Core.Convert + Viper.Core.Parse
 // =============================================================================
-// Tests Convert: ToDouble, ToInt, ToInt64, ToString_Int, ToString_Double, NumToInt
-// Tests Parse: IntOr, NumOr, BoolOr, IsInt, IsNum, IntRadix
+// Tests Convert: ToDouble, ToInt, ToInt64, ToStringInt, ToStringDouble, NumToInt
+// Tests Parse: IntOr, DoubleOr, BoolOr, IsInt, IsNum, IntRadix
 // =============================================================================
 
 module ConvertDemo;
@@ -37,23 +37,23 @@ func start() {
     Say("ToInt64('-999'):");
     SayInt(Conv.ToInt64("-999"));
 
-    // --- Convert.ToString_Int ---
-    Say("--- Convert.ToString_Int ---");
-    Say("ToString_Int(42):");
-    Say(Conv.ToString_Int(42));
-    Say("ToString_Int(0):");
-    Say(Conv.ToString_Int(0));
-    Say("ToString_Int(-7):");
-    Say(Conv.ToString_Int(-7));
+    // --- Convert.ToStringInt ---
+    Say("--- Convert.ToStringInt ---");
+    Say("ToStringInt(42):");
+    Say(Conv.ToStringInt(42));
+    Say("ToStringInt(0):");
+    Say(Conv.ToStringInt(0));
+    Say("ToStringInt(-7):");
+    Say(Conv.ToStringInt(-7));
 
-    // --- Convert.ToString_Double ---
-    Say("--- Convert.ToString_Double ---");
-    Say("ToString_Double(3.14):");
-    Say(Conv.ToString_Double(3.14));
-    Say("ToString_Double(0.0):");
-    Say(Conv.ToString_Double(0.0));
-    Say("ToString_Double(-1.5):");
-    Say(Conv.ToString_Double(-1.5));
+    // --- Convert.ToStringDouble ---
+    Say("--- Convert.ToStringDouble ---");
+    Say("ToStringDouble(3.14):");
+    Say(Conv.ToStringDouble(3.14));
+    Say("ToStringDouble(0.0):");
+    Say(Conv.ToStringDouble(0.0));
+    Say("ToStringDouble(-1.5):");
+    Say(Conv.ToStringDouble(-1.5));
 
     // --- Convert.NumToInt ---
     Say("--- Convert.NumToInt ---");
@@ -77,12 +77,12 @@ func start() {
     Say("IntOr('', 0):");
     SayInt(Parse.IntOr("", 0));
 
-    // --- Parse.NumOr ---
-    Say("--- Parse.NumOr ---");
-    Say("NumOr('3.14', 0.0):");
-    SayNum(Parse.NumOr("3.14", 0.0));
-    Say("NumOr('xyz', 99.9):");
-    SayNum(Parse.NumOr("xyz", 99.9));
+    // --- Parse.DoubleOr ---
+    Say("--- Parse.DoubleOr ---");
+    Say("DoubleOr('3.14', 0.0):");
+    SayNum(Parse.DoubleOr("3.14", 0.0));
+    Say("DoubleOr('xyz', 99.9):");
+    SayNum(Parse.DoubleOr("xyz", 99.9));
 
     // --- Parse.BoolOr ---
     Say("--- Parse.BoolOr ---");

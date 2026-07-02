@@ -42,6 +42,7 @@
 #include "rt_locale_manager.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_plural_rules.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -368,6 +369,48 @@ rt_string rt_message_bundle_try_get(void *self, rt_string key) {
         return rt_string_from_bytes("", 0);
     rt_string r = bundle_lookup(as_bundle(self), key, 0);
     return r ? r : rt_string_from_bytes("", 0);
+}
+
+/// @brief Resolve a message key or return a retained default string.
+/// @details This modern fallback helper keeps the legacy @ref rt_message_bundle_try_get
+///          contract intact while avoiding its empty-string sentinel. A resolved
+///          bundle entry is returned with the retained reference supplied by
+///          @ref bundle_lookup. If no entry resolves, @p default_value is
+///          retained and returned; NULL defaults produce an allocated empty
+///          string so callers always receive an owned rt_string.
+/// @param self MessageBundle handle; NULL skips directly to the default.
+/// @param key Lookup key; NULL skips directly to the default.
+/// @param default_value Caller-provided fallback string, or NULL for empty.
+/// @return Retained string containing the resolved message or fallback value.
+rt_string rt_message_bundle_get_or(void *self, rt_string key, rt_string default_value) {
+    if (self && key) {
+        rt_string r = bundle_lookup(as_bundle(self), key, 0);
+        if (r)
+            return r;
+    }
+    if (default_value)
+        return rt_string_ref(default_value);
+    return rt_string_from_bytes("", 0);
+}
+
+/// @brief Resolve a message key as an Option.
+/// @details Returns `Some(str)` for any resolved value, including an explicitly
+///          empty translation string, and `None` when no bundle in the fallback
+///          chain contains the key. The retained string returned by
+///          @ref bundle_lookup is released after @ref rt_option_some_str has
+///          retained its own copy for the Option payload.
+/// @param self MessageBundle handle.
+/// @param key Lookup key.
+/// @return Opaque Viper.Option containing a string, or None.
+void *rt_message_bundle_try_get_option(void *self, rt_string key) {
+    if (!self || !key)
+        return rt_option_none();
+    rt_string r = bundle_lookup(as_bundle(self), key, 0);
+    if (!r)
+        return rt_option_none();
+    void *option = rt_option_some_str(r);
+    rt_string_unref(r);
+    return option;
 }
 
 int8_t rt_message_bundle_has(void *self, rt_string key) {

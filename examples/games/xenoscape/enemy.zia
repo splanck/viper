@@ -2009,13 +2009,13 @@ class EnemyManager {
     }
 
     // Check if player overlaps any active enemy. Returns enemy handle or -1.
-    // Uses Quadtree.QueryRect for O(log n) spatial lookup.
-    // Quadtree uses center-based coordinates: QueryRect(cx, cy, w, h).
+    // Uses Quadtree.QueryRectResult for O(log n) spatial lookup.
+    // Quadtree uses center-based coordinates: QueryRectResult(cx, cy, w, h).
     expose func checkPlayerHit(px: Integer, py: Integer) -> Integer {
-        var found = qtree.QueryRect(px + PLAYER_W / 2, py + PLAYER_H / 2, PLAYER_W, PLAYER_H);
+        var found = qtree.QueryRectResult(px + PLAYER_W / 2, py + PLAYER_H / 2, PLAYER_W, PLAYER_H);
         var qi = 0;
-        while qi < found {
-            var handle = qtree.GetResult(qi);
+        while qi < found.Count {
+            var handle = found.GetId(qi);
             if pool.IsActive(handle) {
                 return handle;
             }
@@ -2041,13 +2041,13 @@ class EnemyManager {
     }
 
     // Check if player bullet overlaps any enemy. Returns enemy handle or -1.
-    // Uses Quadtree.QueryRect for O(log n) spatial lookup.
-    // Quadtree uses center-based coordinates: QueryRect(cx, cy, w, h).
+    // Uses Quadtree.QueryRectResult for O(log n) spatial lookup.
+    // Quadtree uses center-based coordinates: QueryRectResult(cx, cy, w, h).
     expose func checkBulletHit(bx2: Integer, by2: Integer, bw: Integer, bh: Integer) -> Integer {
-        var found = qtree.QueryRect(bx2 + bw / 2, by2 + bh / 2, bw, bh);
+        var found = qtree.QueryRectResult(bx2 + bw / 2, by2 + bh / 2, bw, bh);
         var qi = 0;
-        while qi < found {
-            var handle = qtree.GetResult(qi);
+        while qi < found.Count {
+            var handle = found.GetId(qi);
             if pool.IsActive(handle) {
                 return handle;
             }

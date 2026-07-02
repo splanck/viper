@@ -18,6 +18,7 @@
 #include "viper/runtime/rt.h"
 
 #include "rt_datetime.h"
+#include "rt_option.h"
 #include "rt_string.h"
 #include "rt_timezone.h"
 
@@ -137,6 +138,11 @@ static void test_parsing(void) {
           rt_datetime_parse_iso(rt_const_cstr("1970-01-01T00:00:00Z")) == 0);
     check("TryParse accepts epoch ISO",
           rt_datetime_try_parse(rt_const_cstr("1970-01-01T00:00:00Z")) == 0);
+    void *epoch_option = rt_datetime_try_parse_option(rt_const_cstr("1970-01-01T00:00:00Z"));
+    check("TryParseOption preserves epoch as Some(0)",
+          rt_option_is_some(epoch_option) == 1 && rt_option_unwrap_i64(epoch_option) == 0);
+    void *invalid_option = rt_datetime_try_parse_option(rt_const_cstr("not-a-date"));
+    check("TryParseOption rejects invalid input as None", rt_option_is_none(invalid_option) == 1);
     parsed = rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00.999Z"));
     roundtrip = rt_datetime_to_iso(parsed);
     check("ParseISO accepts fractional UTC seconds",

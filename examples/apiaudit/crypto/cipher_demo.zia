@@ -1,8 +1,8 @@
 // =============================================================================
 // API Audit: Viper.Crypto.Cipher - Symmetric Encryption
 // =============================================================================
-// Tests: GenerateKey, Encrypt, Decrypt, EncryptWithKey, DecryptWithKey,
-//        DeriveKey
+// Tests: GenerateKey, Encrypt, DecryptResult, TryDecrypt,
+//        EncryptWithKey, DecryptWithKeyResult, DeriveKey
 // =============================================================================
 
 module CipherDemo;
@@ -24,16 +24,21 @@ func start() {
     var plain = Bytes.FromStr("secret message");
     var enc = Cipher.Encrypt(plain, "mypassword");
     Say("Encrypted successfully");
-    var dec = Cipher.Decrypt(enc, "mypassword");
+    var decResult = Cipher.DecryptResult(enc, "mypassword");
+    var dec = decResult.Unwrap();
     Say("Decrypted:");
     Say(Bytes.ToStr(dec));
+
+    var bad = Cipher.TryDecrypt(enc, "wrong-password");
+    Say("Wrong password returns None:");
+    SayBool(bad.IsNone);
 
     // --- EncryptWithKey / DecryptWithKey ---
     Say("--- EncryptWithKey / DecryptWithKey ---");
     var plain2 = Bytes.FromStr("key-based secret");
     var enc2 = Cipher.EncryptWithKey(plain2, key);
     Say("Encrypted with key");
-    var dec2 = Cipher.DecryptWithKey(enc2, key);
+    var dec2 = Cipher.DecryptWithKeyResult(enc2, key).Unwrap();
     Say("Decrypted with key:");
     Say(Bytes.ToStr(dec2));
 

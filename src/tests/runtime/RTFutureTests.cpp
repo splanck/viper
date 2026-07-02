@@ -13,6 +13,7 @@
 #include "rt_future.h"
 #include "rt_heap.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -115,6 +116,8 @@ static void test_future_try_get_empty() {
 
     test_result(result == 0, "try_get_empty: should return 0 when not done");
     test_result(out == NULL, "try_get_empty: should clear out on pending future");
+    void *option = rt_future_try_get_option(future);
+    test_result(rt_option_is_none(option) == 1, "try_get_option_empty: should return None");
 }
 
 static void test_future_try_get_error_clears_out() {
@@ -142,6 +145,20 @@ static void test_future_try_get_value() {
 
     test_result(result == 1, "try_get_value: should return 1 when done");
     test_result(out == &value, "try_get_value: should return correct value");
+    void *option = rt_future_try_get_option(future);
+    test_result(rt_option_is_some(option) == 1 && rt_option_unwrap(option) == &value,
+                "try_get_option_value: should return Some(value)");
+}
+
+static void test_future_try_get_option_null_value() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+
+    rt_promise_set(promise, NULL);
+
+    void *option = rt_future_try_get_option(future);
+    test_result(rt_option_is_some(option) == 1, "try_get_option_null: should return Some");
+    test_result(rt_option_unwrap(option) == NULL, "try_get_option_null: payload should be NULL");
 }
 
 static void test_future_get_immediate() {
@@ -745,6 +762,7 @@ int main() {
     test_future_try_get_empty();
     test_future_try_get_error_clears_out();
     test_future_try_get_value();
+    test_future_try_get_option_null_value();
     test_future_get_immediate();
 
     // Wait tests

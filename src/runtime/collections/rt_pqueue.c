@@ -37,6 +37,7 @@
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 
 #include <stdlib.h>
@@ -363,6 +364,28 @@ void *rt_pqueue_try_pop(void *obj) {
     return val;
 }
 
+/// @brief Remove the highest-priority item as an Option.
+/// @details Returns `None` when the heap is empty and `Some(value)` otherwise.
+///          Heap storage owns a retained reference to each pushed value; after
+///          wrapping the transferred value in an Option, this helper releases
+///          the temporary transfer so the Option owns the result.
+/// @param obj Opaque Heap object pointer.
+/// @return `Some(value)` when an item is removed, otherwise `None`.
+void *rt_pqueue_try_pop_option(void *obj) {
+    if (!obj)
+        return rt_option_none();
+
+    rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h || h->len == 0)
+        return rt_option_none();
+
+    void *value = rt_pqueue_try_pop(obj);
+    void *option = rt_option_some(value);
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    return option;
+}
+
 /// @brief Like `_peek` but returns NULL on an empty queue instead of trapping.
 void *rt_pqueue_try_peek(void *obj) {
     if (!obj)
@@ -378,6 +401,28 @@ void *rt_pqueue_try_peek(void *obj) {
     void *val = h->items[0].value;
     rt_obj_retain_maybe(val);
     return val;
+}
+
+/// @brief Return the highest-priority item as an Option without removing it.
+/// @details Returns `None` when the heap is empty and `Some(value)` otherwise.
+///          The underlying peek helper returns a retained reference; this
+///          wrapper releases that temporary transfer after the Option has
+///          retained the value.
+/// @param obj Opaque Heap object pointer.
+/// @return `Some(value)` when an item exists, otherwise `None`.
+void *rt_pqueue_try_peek_option(void *obj) {
+    if (!obj)
+        return rt_option_none();
+
+    rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h || h->len == 0)
+        return rt_option_none();
+
+    void *value = rt_pqueue_try_peek(obj);
+    void *option = rt_option_some(value);
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    return option;
 }
 
 /// @brief Reset the queue to empty (length 0). Capacity is preserved.

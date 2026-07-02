@@ -125,7 +125,7 @@ func probeRunFramesOnly() -> Boolean {
 func runScenario(title: String, render: Boolean) -> Float {
     var world = Game3D.World3D.New(title, 128, 96);
     var canvas = world.Canvas;
-    Canvas3D.SetDTMax(canvas, 50);
+    Canvas3D.SetMaxDeltaTime(canvas, 50);
 
     Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
     Game3D.Lighting.Outdoor(world, Math.Vec3.New(-0.4, -1.0, -0.25));
@@ -145,7 +145,7 @@ func runScenario(title: String, render: Boolean) -> Float {
     ground.AttachBody(Game3D.BodyDef.StaticPlane(28.0));
     world.Spawn(ground);
 
-    var crateMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var crateMesh = Mesh3D.Box(1.0, 1.0, 1.0);
     spawnProp(world, "MetalCrate", crateMesh, metalMat, -2.2, 0.55, -1.4, 1.0);
     spawnProp(world, "Beacon", crateMesh, glowMat, 1.8, 0.65, -1.0, 0.35);
 

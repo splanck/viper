@@ -35,6 +35,7 @@
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -522,6 +523,29 @@ void *rt_stack_try_pop(void *obj) {
         stack_release_value(value);
     }
     return value;
+}
+
+/// @brief Pop the top element as an Option, preserving NULL as a present value.
+/// @details Returns `None` only when the stack is empty. If the top element is a
+///          literal NULL pointer, this returns `Some(NULL)`. For owning stacks,
+///          the retained transfer returned by @ref rt_stack_try_pop is released
+///          after the Option has retained the value.
+/// @param obj Opaque Stack object pointer.
+/// @return `Some(value)` when an element is removed, otherwise `None`.
+void *rt_stack_try_pop_option(void *obj) {
+    if (!obj)
+        return rt_option_none();
+
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
+    if (!stack || stack->len == 0)
+        return rt_option_none();
+
+    int8_t owns_elements = stack->owns_elements;
+    void *value = rt_stack_try_pop(obj);
+    void *option = rt_option_some(value);
+    if (owns_elements && value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    return option;
 }
 
 /// @brief Create a shallow copy of the stack.

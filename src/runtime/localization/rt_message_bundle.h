@@ -76,6 +76,19 @@ rt_string rt_message_bundle_get(void *self, rt_string key);
 /// @brief Non-trapping variant: returns empty string when unresolved.
 rt_string rt_message_bundle_try_get(void *self, rt_string key);
 
+/// @brief Resolve @p key or return a caller-provided default string.
+/// @details The returned string is always retained for the caller: a resolved
+///          bundle value is returned from the lookup chain, while
+///          @p default_value is retained before returning when the key is
+///          missing. A NULL default produces an allocated empty string.
+rt_string rt_message_bundle_get_or(void *self, rt_string key, rt_string default_value);
+
+/// @brief Resolve @p key as an Option.
+/// @details Returns `Some(str)` when the key is present, including when the
+///          translation is the empty string, and `None` when the key cannot be
+///          resolved through the bundle or fallback chain.
+void *rt_message_bundle_try_get_option(void *self, rt_string key);
+
 /// @brief Check whether @p key resolves in this bundle or its chain.
 int8_t rt_message_bundle_has(void *self, rt_string key);
 

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTHashTests.cpp
-// Purpose: Validate Viper.Crypto.Hash runtime functions for MD5, SHA1, SHA256, CRC32.
+// Purpose: Validate modern and legacy-compatible Viper crypto hash runtime functions.
 // Key invariants: Hash outputs match known test vectors; all outputs are lowercase hex.
 // Links: docs/viperlib.md
 

@@ -730,6 +730,7 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 | `Audio.GetGroupVolume(group)` | `Integer(Integer)` | Get group volume (100 if invalid group) |
 | `Audio.RegisterGroup(name)` | `Integer(String)` | Register or find a named group. Built-ins `music` and `sfx` return 0 and 1 |
 | `Audio.FindGroup(name)` | `Integer(String)` | Return a named group id, or -1 |
+| `Audio.FindGroupOption(name)` | `Option[Integer](String)` | Return a named group id as `Some(id)`, or `None` |
 | `Audio.SetGroupVolumeNamed(name, vol)` | `Void(String, Integer)` | Register if needed, then set volume |
 | `Audio.GetGroupVolumeNamed(name)` | `Integer(String)` | Get a named group volume, or 100 if missing |
 | `Audio.GroupName(group)` | `String(Integer)` | Return a registered group name, or empty string |

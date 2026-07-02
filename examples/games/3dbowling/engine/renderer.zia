@@ -64,7 +64,7 @@ class Renderer {
     /// @brief One-time setup with explicit dimensions for headless smoke probes.
     expose func initRendererWithSize(startQuality: Integer, width: Integer, height: Integer) {
         canvas = Canvas3D.New(config.WINDOW_TITLE, width, height);
-        Canvas3D.SetDTMax(canvas, 50);
+        Canvas3D.SetMaxDeltaTime(canvas, 50);
         Canvas3D.SetOcclusionCulling(canvas, true);
         Say("Backend: " + canvas.Backend);
 
@@ -74,20 +74,20 @@ class Renderer {
         Canvas3D.SetSkybox(canvas, alleySkybox);
 
         var mainDir = new Vec3(config.LIGHT_MAIN_DIR_X, config.LIGHT_MAIN_DIR_Y, config.LIGHT_MAIN_DIR_Z);
-        sunLight = Light3D.NewDirectional(mainDir,
+        sunLight = Light3D.Directional(mainDir,
             config.LIGHT_MAIN_R, config.LIGHT_MAIN_G, config.LIGHT_MAIN_B);
         Light3D.SetIntensity(sunLight, 1.08);
         Canvas3D.SetLight(canvas, 0, sunLight);
 
         var fillDir = new Vec3(config.LIGHT_FILL_DIR_X, config.LIGHT_FILL_DIR_Y, config.LIGHT_FILL_DIR_Z);
-        fillLight = Light3D.NewDirectional(fillDir,
+        fillLight = Light3D.Directional(fillDir,
             config.LIGHT_FILL_R, config.LIGHT_FILL_G, config.LIGHT_FILL_B);
         Light3D.SetIntensity(fillLight, 0.84);
         Canvas3D.SetLight(canvas, 1, fillLight);
 
         var spotPos = new Vec3(config.LIGHT_SPOT_X, config.LIGHT_SPOT_Y, config.LIGHT_SPOT_Z);
         var spotDir = new Vec3(0.0, -0.55, 1.0);
-        pinSpot = Light3D.NewSpot(spotPos, spotDir,
+        pinSpot = Light3D.Spot(spotPos, spotDir,
             config.LIGHT_SPOT_R, config.LIGHT_SPOT_G, config.LIGHT_SPOT_B,
             config.LIGHT_SPOT_ATTENUATION,
             config.LIGHT_SPOT_INNER_ANGLE, config.LIGHT_SPOT_OUTER_ANGLE);
@@ -95,12 +95,12 @@ class Renderer {
         Canvas3D.SetLight(canvas, 2, pinSpot);
 
         var laneGlowPos = new Vec3(0.0, 4.35, 6.2);
-        lanePractical = Light3D.NewPoint(laneGlowPos, 0.92, 0.96, 1.0, 0.035);
+        lanePractical = Light3D.Point(laneGlowPos, 0.92, 0.96, 1.0, 0.035);
         Light3D.SetIntensity(lanePractical, 0.78);
         Canvas3D.SetLight(canvas, 3, lanePractical);
 
         var deckFillPos = new Vec3(-0.78, 2.9, 16.2);
-        deckFill = Light3D.NewPoint(deckFillPos, 0.78, 0.90, 1.0, 0.045);
+        deckFill = Light3D.Point(deckFillPos, 0.78, 0.90, 1.0, 0.045);
         Light3D.SetIntensity(deckFill, 1.22);
         Canvas3D.SetLight(canvas, 4, deckFill);
 

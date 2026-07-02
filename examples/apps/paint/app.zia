@@ -34,6 +34,7 @@ module app;
 
 bind Viper.Graphics;
 bind Viper.Input;
+bind Viper.Input.Key as Key;
 bind Viper.Core.Convert;
 bind Viper.GUI as GUI;
 bind Viper.Game;
@@ -155,7 +156,7 @@ class PaintApp {
         // Create the graphics window
         gfx = new Canvas(config.WINDOW_TITLE, appWidth, appHeight);
         gfx.SetFps(runtimeSettings.targetFps);
-        gfx.SetDTMax(50);
+        gfx.SetMaxDeltaTime(50);
 
         // Initialize drawing canvas
         canvas = new canvas.DrawingCanvas();
@@ -539,13 +540,13 @@ class PaintApp {
             if typed != "" {
                 textTool.appendText(typed);
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KeyBackspace()) {
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Backspace) {
                 textTool.backspace();
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KeyEnter()) {
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Enter) {
                 textTool.requestCommit();
             }
-            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KeyEscape()) {
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
                 textTool.cancel();
             }
             return;

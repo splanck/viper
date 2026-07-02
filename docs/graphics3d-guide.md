@@ -108,11 +108,11 @@ func start() {
     var up = Vec3.New(0.0, 1.0, 0.0);
     Camera3D.LookAt(cam, eye, target, up);
 
-    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var mat = Material3D.NewColor(0.8, 0.2, 0.2);
+    var box = Mesh3D.Box(1.0, 1.0, 1.0);
+    var mat = Material3D.FromColor(0.8, 0.2, 0.2);
 
     var light_dir = Vec3.New(-1.0, -1.0, -0.5);
-    var light = Light3D.NewDirectional(light_dir, 1.0, 1.0, 1.0);
+    var light = Light3D.Directional(light_dir, 1.0, 1.0, 1.0);
     Canvas3D.SetLight(canvas, 0, light);
     Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.1);
 
@@ -140,9 +140,9 @@ DIM canvas AS Canvas3D = Canvas3D.New("My 3D App", 640, 480)
 DIM cam AS Camera3D = Camera3D.New(60.0, 640.0/480.0, 0.1, 100.0)
 cam.LookAt(Vec3.New(0, 2, 5), Vec3.Zero(), Vec3.New(0, 1, 0))
 
-DIM box AS Mesh3D = Mesh3D.NewBox(1.0, 1.0, 1.0)
-DIM mat AS Material3D = Material3D.NewColor(0.8, 0.2, 0.2)
-DIM light AS Light3D = Light3D.NewDirectional(Vec3.New(-1,-1,-0.5), 1, 1, 1)
+DIM box AS Mesh3D = Mesh3D.Box(1.0, 1.0, 1.0)
+DIM mat AS Material3D = Material3D.FromColor(0.8, 0.2, 0.2)
+DIM light AS Light3D = Light3D.Directional(Vec3.New(-1,-1,-0.5), 1, 1, 1)
 
 canvas.SetLight(0, light)
 canvas.SetAmbient(0.1, 0.1, 0.1)
@@ -249,7 +249,7 @@ The rendering surface. Creates a window and manages the render loop.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetBackfaceCull(enabled)` | `void(i1)` | Toggle backface culling (default: on) |
-| `SetDTMax(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death (`ms <= 0` disables the cap; default cap is 100ms) |
+| `SetMaxDeltaTime(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death (`ms <= 0` disables the cap; default cap is 100ms) |
 | `SetQuality(profile)` | `void(i64)` | Apply a backend-safe post-FX profile: `0` performance, `1` balanced, `2` cinematic |
 | `SetInputSource(mode)` | `void(i64)` | Select input source: `0` live, `1` synthetic, `2` live plus synthetic |
 | `PushSyntheticKey(key, down)` | `void(i64, i1)` | Queue a synthetic keyboard transition for the next synthetic frame |
@@ -374,10 +374,10 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
     Camera3D.LookAt(cam, Vec3.New(0.0, 2.0, 5.0), Vec3.Zero(), Vec3.New(0.0, 1.0, 0.0));
 
-    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var mat = Material3D.NewColor(0.8, 0.2, 0.2);
+    var box = Mesh3D.Box(1.0, 1.0, 1.0);
+    var mat = Material3D.FromColor(0.8, 0.2, 0.2);
 
-    var light = Light3D.NewDirectional(Vec3.New(-1.0, -1.0, -0.5), 1.0, 1.0, 1.0);
+    var light = Light3D.Directional(Vec3.New(-1.0, -1.0, -0.5), 1.0, 1.0, 1.0);
     Canvas3D.SetLight(canvas, 0, light);
     Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.1);
 
@@ -429,12 +429,15 @@ overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
 | `New()` | `obj()` | Create empty mesh |
-| `NewBox(sx, sy, sz)` | `obj(f64, f64, f64)` | Axis-aligned box (24 vertices, 12 triangles) |
-| `NewSphere(radius, segments)` | `obj(f64, i64)` | UV sphere (min 4 segments) |
-| `NewPlane(sx, sz)` | `obj(f64, f64)` | XZ plane facing +Y (4 vertices, 2 triangles) |
-| `NewCylinder(radius, height, segments)` | `obj(f64, f64, i64)` | Cylinder with caps (min 3 segments) |
+| `Box(sx, sy, sz)` | `obj(f64, f64, f64)` | Axis-aligned box (24 vertices, 12 triangles) |
+| `Sphere(radius, segments)` | `obj(f64, i64)` | UV sphere (min 4 segments) |
+| `Plane(sx, sz)` | `obj(f64, f64)` | XZ plane facing +Y (4 vertices, 2 triangles) |
+| `Cylinder(radius, height, segments)` | `obj(f64, f64, i64)` | Cylinder with caps (min 3 segments) |
 | `FromOBJ(path)` | `obj(str)` | Load Wavefront OBJ file |
 | `FromSTL(path)` | `obj(str)` | Load STL file (binary or ASCII) |
+
+`NewBox`, `NewSphere`, `NewPlane`, and `NewCylinder` remain available as
+compatibility aliases for the shape factories.
 
 ### Properties
 
@@ -492,10 +495,10 @@ func start() {
     Mesh3D.AddTriangle(mesh, 0, 1, 2);
 
     // Primitives
-    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var sphere = Mesh3D.NewSphere(0.5, 16);
-    var plane = Mesh3D.NewPlane(10.0, 10.0);
-    var cyl = Mesh3D.NewCylinder(0.5, 2.0, 12);
+    var box = Mesh3D.Box(1.0, 1.0, 1.0);
+    var sphere = Mesh3D.Sphere(0.5, 16);
+    var plane = Mesh3D.Plane(10.0, 10.0);
+    var cyl = Mesh3D.Cylinder(0.5, 2.0, 12);
 
     // File loading
     var model = Mesh3D.FromOBJ("assets/model.obj");
@@ -509,11 +512,11 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewBox` takes full extents, while collider boxes use half-extents. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles. These public append validation traps do not poison the mesh; valid later appends can continue without `Clear()`. Allocation failures and importer failures still mark the build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats. Normal-mapped draws with missing or degenerate tangents generate finite tangents on the queued geometry snapshot; backend shaders still safe-normalize zero normals.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `Box` takes full extents, while collider boxes use half-extents. `Plane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles. These public append validation traps do not poison the mesh; valid later appends can continue without `Clear()`. Allocation failures and importer failures still mark the build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats. Normal-mapped draws with missing or degenerate tangents generate finite tangents on the queued geometry snapshot; backend shaders still safe-normalize zero normals.
 
 **Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
 
-**OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, locale-independent decimal parsing, and arbitrary n-gons through ear-clipping triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `Mesh3D.FromOBJ` is a geometry-only loader: `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened into one mesh. Use `SceneAsset.Load(".obj")` when you want `mtllib`/`usemtl` material groups preserved as separate model nodes and materials.
+**OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, locale-independent decimal parsing, and arbitrary n-gons through ear-clipping triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `Mesh3D.FromOBJ` is a geometry-only loader: `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened into one mesh. Use `SceneAsset.LoadResult(".obj")` when you want `mtllib`/`usemtl` material groups preserved as separate model nodes and materials.
 
 **STL loader:** Auto-detects binary vs ASCII format, streams exact binary STL payloads without buffering the full file, and computes normals for valid triangles.
 
@@ -554,7 +557,7 @@ Perspective or orthographic camera with view and projection matrices.
 | `FPSInit()` | `void()` | Extract yaw/pitch from current view matrix |
 | `FPSUpdate(mdx, mdy, fwd, right, up, speed, dt)` | `void(f64, f64, f64, f64, f64, f64, f64)` | FPS mouse look + WASD movement |
 
-`Yaw`, `Pitch`, `Orbit`, and `Light3D.NewSpot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
+`Yaw`, `Pitch`, `Orbit`, and `Light3D.Spot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
 `Canvas3D.Begin(canvas, camera)` uses the active output's aspect ratio (window or bound `RenderTarget3D`) when building that frame's projection, so perspective remains correct across resizes and RTT passes without mutating the camera object's stored projection/aspect.
 Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, `ScreenToRay()`, and `ScreenToRayOrigin()` results remain usable.
 
@@ -597,16 +600,19 @@ func start() {
 
 Surface appearance for meshes, models, decals, and other 3D drawables.
 
-`Material3D` is now PBR-first. The default legacy Blinn-Phong path still exists for compatibility and for custom shading-model hooks, but new content should usually start with `NewPBR`.
+`Material3D` is now PBR-first. The default legacy Blinn-Phong path still exists for compatibility and for custom shading-model hooks, but new content should usually start with `PBR`.
 
 ### Constructors
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
 | `New()` | `obj()` | Default white material |
-| `NewColor(r, g, b)` | `obj(f64, f64, f64)` | Colored material (0.0-1.0 per channel) |
-| `NewTextured(texture)` | `obj(obj)` | Material with `Pixels` or `TextureAsset3D` texture |
-| `NewPBR(r, g, b)` | `obj(f64, f64, f64)` | Metallic/roughness material with albedo color |
+| `FromColor(r, g, b)` | `obj(f64, f64, f64)` | Colored material (0.0-1.0 per channel) |
+| `Textured(texture)` | `obj(obj)` | Material with `Pixels` or `TextureAsset3D` texture |
+| `PBR(r, g, b)` | `obj(f64, f64, f64)` | Metallic/roughness material with albedo color |
+
+`NewColor`, `NewTextured`, and `NewPBR` remain available as compatibility
+aliases for these factories.
 
 ### Properties
 
@@ -653,11 +659,11 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 ### Workflow Notes
 
-- `NewPBR` and `SetShadingModel(2)` select the metallic/roughness workflow directly.
+- `PBR` and `SetShadingModel(2)` select the metallic/roughness workflow directly.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
-- `NewTextured` and texture map setters accept `Pixels` handles or `TextureAsset3D` handles with either an RGBA8 fallback or retained native compressed mip blocks. Compressed-only assets render on backends that advertise the matching `bc7`, `astc`, or `etc2` capability and otherwise behave as an unbound texture until a fallback-capable mip is resident. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
+- `Textured` and texture map setters accept `Pixels` handles or `TextureAsset3D` handles with either an RGBA8 fallback or retained native compressed mip blocks. Compressed-only assets render on backends that advertise the matching `bc7`, `astc`, or `etc2` capability and otherwise behave as an unbound texture until a fallback-capable mip is resident. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage. Masked materials also cast alpha-tested shadows on the software, Metal, OpenGL, and D3D11 backends.
@@ -706,7 +712,7 @@ representative ETC2 RGBA8/EAC, and ASTC LDR void-extent mips into `Pixels` fallb
 `SetResidentMipRange` updates mip residency telemetry and selects the first
 resident RGBA8 mip as the active fallback resolved by materials at draw time;
 negative arguments trap, `mipCount` clamps to the available range, and a zero
-count releases all resident telemetry/fallback binding. `Material3D.NewTextured`, `SetTexture`,
+count releases all resident telemetry/fallback binding. `Material3D.Textured`, `SetTexture`,
 `SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
 `SetSpecularMap`, and `SetEmissiveMap` accept texture assets directly when they
 have an RGBA8 fallback or native compressed mip blocks. BC3/BC7/ASTC/ETC2
@@ -727,7 +733,7 @@ module MaterialDemo;
 bind Viper.Graphics3D.Material3D;
 
 func start() {
-    var base = Material3D.NewPBR(0.8, 0.6, 0.4);
+    var base = Material3D.PBR(0.8, 0.6, 0.4);
     Material3D.set_Metallic(base, 0.7);
     Material3D.set_Roughness(base, 0.3);
     Material3D.set_AmbientOcclusion(base, 0.9);
@@ -738,7 +744,7 @@ func start() {
     var inst = Material3D.MakeInstance(base);
     Material3D.set_Roughness(inst, 0.75);
 
-    var legacy = Material3D.NewColor(0.4, 0.6, 1.0);
+    var legacy = Material3D.FromColor(0.4, 0.6, 1.0);
     Material3D.SetShadingModel(legacy, 1);     // Toon
     Material3D.SetCustomParam(legacy, 0, 3.0); // 3 bands
 }
@@ -752,10 +758,13 @@ Light sources for the scene. Up to 16 lights simultaneously.
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `NewDirectional(direction, r, g, b)` | `obj(obj, f64, f64, f64)` | Sun-like light from a direction (Vec3) |
-| `NewPoint(position, r, g, b, attenuation)` | `obj(obj, f64, f64, f64, f64)` | Local point light with distance falloff |
-| `NewSpot(pos, dir, r, g, b, atten, inner, outer)` | `obj(obj, obj, f64, f64, f64, f64, f64, f64)` | Spot light with cone falloff (angles in degrees) |
-| `NewAmbient(r, g, b)` | `obj(f64, f64, f64)` | Uniform ambient light |
+| `Directional(direction, r, g, b)` | `obj(obj, f64, f64, f64)` | Sun-like light from a direction (Vec3) |
+| `Point(position, r, g, b, attenuation)` | `obj(obj, f64, f64, f64, f64)` | Local point light with distance falloff |
+| `Spot(pos, dir, r, g, b, atten, inner, outer)` | `obj(obj, obj, f64, f64, f64, f64, f64, f64)` | Spot light with cone falloff (angles in degrees) |
+| `Ambient(r, g, b)` | `obj(f64, f64, f64)` | Uniform ambient light |
+
+`NewDirectional`, `NewPoint`, `NewSpot`, and `NewAmbient` remain available as
+compatibility aliases.
 
 ### Methods
 
@@ -791,19 +800,19 @@ func start() {
     var canvas = Canvas3D.New("Lights", 800, 600);
 
     // Directional sunlight
-    var sun = Light3D.NewDirectional(Vec3.New(-1.0, -1.0, -0.5), 1.0, 0.95, 0.8);
+    var sun = Light3D.Directional(Vec3.New(-1.0, -1.0, -0.5), 1.0, 0.95, 0.8);
 
     // Point light at position with falloff
-    var torch = Light3D.NewPoint(Vec3.New(3.0, 2.0, 0.0), 1.0, 0.6, 0.2, 10.0);
+    var torch = Light3D.Point(Vec3.New(3.0, 2.0, 0.0), 1.0, 0.6, 0.2, 10.0);
     Light3D.SetIntensity(torch, 2.0);
 
     // Spot light (flashlight)
-    var spot = Light3D.NewSpot(
+    var spot = Light3D.Spot(
         Vec3.New(0.0, 5.0, 0.0), Vec3.New(0.0, -1.0, 0.0),
         1.0, 1.0, 1.0, 15.0, 20.0, 35.0);
 
     // Ambient fill
-    var ambient = Light3D.NewAmbient(0.1, 0.1, 0.15);
+    var ambient = Light3D.Ambient(0.1, 0.1, 0.15);
 
     // Bind lights to canvas
     Canvas3D.SetLight(canvas, 0, sun);
@@ -862,7 +871,7 @@ func start() {
     var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
     var target = RenderTarget3D.New(256, 256);
     var screen_mat = Material3D.New();
-    var screen_mesh = Mesh3D.NewPlane(2.0, 2.0);
+    var screen_mesh = Mesh3D.Plane(2.0, 2.0);
 
     // Render scene to offscreen target
     Canvas3D.SetRenderTarget(canvas, target);
@@ -932,7 +941,7 @@ func start() {
     Canvas3D.SetSkybox(canvas, skybox);
 
     // Use same cubemap for material environment reflections
-    var chrome = Material3D.NewColor(0.9, 0.9, 0.9);
+    var chrome = Material3D.FromColor(0.9, 0.9, 0.9);
     Material3D.SetEnvMap(chrome, skybox);
     Material3D.set_Reflectivity(chrome, 0.8);
 }
@@ -1057,24 +1066,24 @@ func start() {
     var trunk = SceneNode.New();
     SceneNode.set_Name(trunk, "trunk");
     SceneNode.SetPosition(trunk, 0.0, 0.0, 0.0);
-    SceneNode.set_Mesh(trunk, Mesh3D.NewCylinder(0.3, 3.0, 8));
-    SceneNode.set_Material(trunk, Material3D.NewColor(0.4, 0.25, 0.1));
+    SceneNode.set_Mesh(trunk, Mesh3D.Cylinder(0.3, 3.0, 8));
+    SceneNode.set_Material(trunk, Material3D.FromColor(0.4, 0.25, 0.1));
 
     // Child node (branches)
     var branch = SceneNode.New();
     SceneNode.set_Name(branch, "branch");
     SceneNode.SetPosition(branch, 0.0, 2.5, 0.0);
-    SceneNode.set_Mesh(branch, Mesh3D.NewSphere(1.5, 12));
-    SceneNode.set_Material(branch, Material3D.NewColor(0.1, 0.6, 0.1));
+    SceneNode.set_Mesh(branch, Mesh3D.Sphere(1.5, 12));
+    SceneNode.set_Material(branch, Material3D.FromColor(0.1, 0.6, 0.1));
 
     // LOD: use low-poly sphere at distance
-    SceneNode.AddLOD(branch, 20.0, Mesh3D.NewSphere(1.5, 4));
+    SceneNode.AddLOD(branch, 20.0, Mesh3D.Sphere(1.5, 4));
 
     SceneNode.AddChild(trunk, branch);
     SceneGraph.Add(scene, trunk);
 
     // Find node by name
-    var found = SceneGraph.Find(scene, "branch");
+    var found = SceneGraph.FindOption(scene, "branch");
 
     // Render loop
     while (Canvas3D.get_ShouldClose(canvas) == 0) {
@@ -1132,16 +1141,23 @@ Current scope:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, or `.stl` into a `SceneAsset` |
-| `LoadAsset(path)` | `obj(str)` | Load through `Viper.IO.Assets`; `.gltf` external buffers/images resolve relative to the model asset |
+| `LoadResult(path)` | `obj<Viper.Result>(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, or `.stl` as `Ok(SceneAsset)` or `Err(message)` |
+| `LoadAssetResult(path)` | `obj<Viper.Result>(str)` | Load through `Viper.IO.Assets` as `Ok(SceneAsset)` or `Err(message)`; `.gltf` external buffers/images resolve relative to the model asset |
+| `Load(path)` | `obj(str)` | Compatibility loader that returns `null` on routine content failure |
+| `LoadAsset(path)` | `obj(str)` | Compatibility asset-store loader that returns `null` on routine content failure |
 | `GetMesh(index)` | `obj(i64)` | Get a shared `Mesh3D` by index |
 | `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
 | `GetSkeleton(index)` | `obj(i64)` | Get a shared `Skeleton3D` by index |
 | `GetAnimation(index)` | `obj(i64)` | Get a shared `Animation3D` by index |
+| `LoadAnimationResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a skeletal animation clip as `Ok(Animation3D)` or `Err(message)` |
+| `LoadAnimationAssetResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a skeletal animation clip through `Viper.IO.Assets` |
+| `LoadNodeAnimationResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a node animation clip as `Ok(NodeAnimation3D)` or `Err(message)` |
+| `LoadNodeAnimationAssetResult(path, index)` | `obj<Viper.Result>(str, i64)` | Load a node animation clip through `Viper.IO.Assets` |
 | `GetCameraCount(sceneIndex)` | `i64(i64)` | Number of imported cameras in a scene |
 | `GetCamera(sceneIndex, index)` | `obj(i64, i64)` | Get an imported `Camera3D`, or `null` when absent/out of range |
 | `GetSceneName(index)` | `str(i64)` | Get the immutable scene name, or `""` when out of range |
 | `FindNode(name)` | `obj(str)` | Find a template `SceneNode` by name inside the imported hierarchy |
+| `FindNodeOption(name)` | `obj<Viper.Option>(str)` | Find a template `SceneNode` as `Some(node)`, or `None` |
 | `Instantiate()` | `obj()` | Clone the template hierarchy into a fresh `SceneNode` subtree |
 | `InstantiateScene()` | `obj()` | Create a fresh `SceneGraph` and attach cloned top-level imported nodes below its root |
 | `InstantiateSceneAt(index)` | `obj(i64)` | Create a fresh `SceneGraph` for an immutable scene index |
@@ -1151,7 +1167,9 @@ Current scope:
 - Imported meshes, materials, skeletons, and animations are shared across instances.
 - OBJ-backed models preserve `mtllib`/`usemtl` material groups as synthesized template nodes with matching `Material3D` handles when the referenced `.mtl` is available; missing materials fall back to a default white material. Multiple `mtllib` entries on one line are supported, and common MTL maps such as `map_Kd`, `map_Ks`, `map_Ke`, and `map_Bump` / `bump` are resolved safely relative to the MTL file.
 - `Instantiate()` clones nodes and transforms only. The returned node is a synthetic root group that owns the imported top-level nodes.
-- Mutating an instantiated node does not mutate the template returned by `FindNode`.
+- Prefer `LoadResult()` / `LoadAssetResult()` for new code. `Load()` and `LoadAsset()` remain available for compatibility with existing `null` checks.
+- Prefer `FindNodeOption()` for new code. `FindNode()` remains available for compatibility with existing `null` checks.
+- Mutating an instantiated node does not mutate the template returned by `FindNode` / `FindNodeOption`.
 - `InstantiateScene()` is the easiest way to drop an imported asset into a fresh scene while preserving node names and hierarchy.
 - glTF imports order immutable scenes with the active/default scene at index `0` and secondary glTF scene roots after it. `GetSceneName(index)` preserves authored scene names where available and falls back to `"default"`/`"scene_N"`.
 - glTF cameras reachable from each imported scene populate `GetCameraCount(sceneIndex)` and `GetCamera(sceneIndex, index)` as standalone `Camera3D` handles with node world transforms applied.
@@ -1166,8 +1184,8 @@ bind Viper.Graphics3D;
 bind Viper.Terminal;
 
 func start() {
-    var model = SceneAsset.Load("tree.gltf");
-    var templateNode = SceneAsset.FindNode(model, "Trunk");
+    var model = SceneAsset.LoadResult("tree.gltf").Unwrap();
+    var templateNode = SceneAsset.FindNodeOption(model, "Trunk").Unwrap();
     var instanceRoot = SceneAsset.Instantiate(model);
     var scene = SceneAsset.InstantiateScene(model);
     var indexedScene = SceneAsset.InstantiateSceneAt(model, 0);
@@ -1184,7 +1202,7 @@ func start() {
 }
 ```
 
-For game-facing asset loading, prefer `SceneAsset.Load` for loose filesystem files during early development and `SceneAsset.LoadAsset` for code that should also work from embedded or mounted `.vpa` packages. `LoadAsset` accepts both plain asset paths such as `"assets/tree.glb"` and explicit URIs such as `"asset://tree.glb"`; mounted assets are checked before the development filesystem fallback. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
+For game-facing asset loading, prefer `SceneAsset.LoadResult` for loose filesystem files during early development and `SceneAsset.LoadAssetResult` for code that should also work from embedded or mounted `.vpa` packages. `LoadAssetResult` accepts both plain asset paths such as `"assets/tree.glb"` and explicit URIs such as `"asset://tree.glb"`; mounted assets are checked before the development filesystem fallback. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
 
 Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
@@ -1226,7 +1244,11 @@ Bone hierarchy for skeletal animation.
 | `AddBone(name, parentIdx, bindPose)` | `i64(str, i64, obj)` | Add bone (returns index). parentIdx=-1 for root. bindPose is Mat4 |
 | `ComputeInverseBind()` | `void()` | Compute inverse bind matrices (call after all bones added) |
 | `FindBone(name)` | `i64(str)` | Find bone index by name (-1 if not found) |
+| `FindBoneOption(name)` | `obj<Viper.Option>(str)` | Find bone index by name as `Some(index)`, or `None` |
 | `GetBoneName(index)` | `str(i64)` | Get bone name by index |
+
+Prefer `FindBoneOption()` for new code. `FindBone()` remains available for
+compatibility with existing `-1` checks.
 
 Bones must be added in topological order (parent before child). Max 256 bones per skeleton.
 Add all bones before binding the skeleton to a mesh or creating an `AnimPlayer3D`, `AnimBlend3D`,
@@ -1409,8 +1431,8 @@ func start() {
     var canvas = Canvas3D.New("Morph Demo", 800, 600);
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
-    var mesh = Mesh3D.NewSphere(1.0, 16);
-    var mat = Material3D.NewColor(0.8, 0.6, 0.5);
+    var mesh = Mesh3D.Sphere(1.0, 16);
+    var mat = Material3D.FromColor(0.8, 0.6, 0.5);
 
     // Create morph targets
     var morph = MorphTarget3D.New(Mesh3D.get_VertexCount(mesh));
@@ -1440,7 +1462,7 @@ func start() {
 
 ## FBX Loader
 
-Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700), with a minimal ASCII FBX geometry fallback for simple `Vertices`/`PolygonVertexIndex` assets. For instantiation-ready imported assets, prefer `SceneAsset.Load("asset.fbx")`.
+Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700), with a minimal ASCII FBX geometry fallback for simple `Vertices`/`PolygonVertexIndex` assets. For instantiation-ready imported assets, prefer `SceneAsset.LoadResult("asset.fbx")`.
 
 ### Constructor
 
@@ -1504,13 +1526,13 @@ func start() {
 }
 ```
 
-Supports zlib-compressed array properties, negative polygon indices, arbitrary n-gon triangulation, LayerElementNormal/UV mapping modes, LayerElementMaterial polygon assignments, default materials for materialless meshes, common FBX transform properties, embedded Texture/Video PNG/JPEG/GIF payloads, external texture references, and Z-up to Y-up coordinate conversion. `SceneAsset.Load("asset.fbx")` adapts these extracted resources into an instantiable scene asset and preserves authored FBX `Model` hierarchy when the file contains object connections.
+Supports zlib-compressed array properties, negative polygon indices, arbitrary n-gon triangulation, LayerElementNormal/UV mapping modes, LayerElementMaterial polygon assignments, default materials for materialless meshes, common FBX transform properties, embedded Texture/Video PNG/JPEG/GIF payloads, external texture references, and Z-up to Y-up coordinate conversion. `SceneAsset.LoadResult("asset.fbx")` adapts these extracted resources into an instantiable scene asset and preserves authored FBX `Model` hierarchy when the file contains object connections.
 
 ---
 
 ## GLTF Loader
 
-Low-level extractor API for meshes and materials from glTF 2.0 files. `SceneAsset.Load` uses the same loader internally and preserves the active-scene node hierarchy for instantiation.
+Low-level extractor API for meshes and materials from glTF 2.0 files. `SceneAsset.LoadResult` uses the same loader internally and preserves the active-scene node hierarchy for instantiation.
 
 ### Functions
 
@@ -1552,7 +1574,7 @@ func start() {
 }
 ```
 
-**Note:** GLTF is class-backed in the runtime catalog and also works as a low-level extractor helper. It preserves the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `SceneAsset.Load`.
+**Note:** GLTF is class-backed in the runtime catalog and also works as a low-level extractor helper. It preserves the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `SceneAsset.LoadResult`.
 
 Supported glTF material fidelity:
 - Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`. PBR base-color and emissive textures are decoded from sRGB to linear before lighting on software, Metal, D3D11, and OpenGL.
@@ -2083,13 +2105,16 @@ wrappers for simple cases.
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `NewBox(hx, hy, hz)` | `obj(f64, f64, f64)` | Box collider with half-extents |
-| `NewSphere(radius)` | `obj(f64)` | Sphere collider |
-| `NewCapsule(radius, height)` | `obj(f64, f64)` | Capsule collider authored along local Y; `height` is total height including caps, and values below `2*radius` collapse to a sphere-like capsule |
+| `Box(hx, hy, hz)` | `obj(f64, f64, f64)` | Box collider with half-extents |
+| `Sphere(radius)` | `obj(f64)` | Sphere collider |
+| `Capsule(radius, height)` | `obj(f64, f64)` | Capsule collider authored along local Y; `height` is total height including caps, and values below `2*radius` collapse to a sphere-like capsule |
 | `NewConvexHull(mesh)` | `obj(obj)` | Convex-hull collider sourced from a `Mesh3D` |
 | `NewMesh(mesh)` | `obj(obj)` | Static triangle-mesh collider |
 | `NewHeightfield(heightmap, sx, sy, sz)` | `obj(obj, f64, f64, f64)` | Static heightfield collider from `Pixels` |
 | `NewCompound()` | `obj()` | Empty compound collider for child composition |
+
+`NewBox`, `NewSphere`, and `NewCapsule` remain available as compatibility
+aliases for collider factories.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
@@ -2461,7 +2486,7 @@ bind Viper.Math.Vec3;
 func start() {
     var canvas = Canvas3D.New("Decals", 800, 600);
 
-    var bullet_mat = Material3D.NewTextured(bulletHolePixels);
+    var bullet_mat = Material3D.Textured(bulletHolePixels);
     Material3D.set_Alpha(bullet_mat, 0.9);
 
     var decal = Decal3D.New(
@@ -2610,7 +2635,7 @@ func start() {
     Terrain3D.GeneratePerlin(terrain, noise, 0.02, 6, 0.5);
 
     // Material and splatting
-    Terrain3D.SetMaterial(terrain, Material3D.NewColor(0.3, 0.5, 0.2));
+    Terrain3D.SetMaterial(terrain, Material3D.FromColor(0.3, 0.5, 0.2));
     Terrain3D.SetLayerTexture(terrain, 0, grassPixels);
     Terrain3D.SetLayerTexture(terrain, 1, rockPixels);
     Terrain3D.SetLayerScale(terrain, 0, 10.0);
@@ -2702,8 +2727,8 @@ func start() {
     var canvas = Canvas3D.New("Instancing", 800, 600);
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
-    var tree = Mesh3D.NewCylinder(0.2, 2.0, 6);
-    var mat = Material3D.NewColor(0.3, 0.5, 0.1);
+    var tree = Mesh3D.Cylinder(0.2, 2.0, 6);
+    var mat = Material3D.FromColor(0.3, 0.5, 0.1);
     var batch = InstanceBatch3D.New(tree, mat);
 
     // Place 100 trees
@@ -2749,6 +2774,7 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `FindPath(start, goal)` | `obj(obj, obj)` | A* pathfinding (Vec3 start/goal, returns waypoint list) |
+| `FindPathOption(start, goal)` | `obj<Viper.Option>(obj, obj)` | A* pathfinding as `Some(path)`, or `None` |
 | `SamplePosition(position)` | `obj(obj)` | Snap position to nearest point on navmesh (Vec3) |
 | `IsWalkable(position)` | `i1(obj)` | Check if Vec3 position is on the navmesh |
 | `AddOffMeshLink(from, to, bidirectional)` | `i1(obj, obj, i1)` | Add a directed or bidirectional traversal edge between walkable points |
@@ -2766,7 +2792,10 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | `SetMaxSlope(degrees)` | `void(f64)` | Update walkability slope threshold |
 | `DebugDraw(canvas)` | `void(obj)` | Visualize navmesh wireframe on Canvas3D |
 
-`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `SceneGraph`, applies each node's world transform, and runs the voxel baker. `BakeTiled()` keeps retained voxel-cell source data for each tile; `RebuildTile()` refreshes only the requested tile's geometry, heights, and blocked state from that retained source instead of running a whole-scene bake. `SetMaxSlope()` refilters preserved source triangles. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
+Prefer `FindPathOption()` for new code. `FindPath()` remains available for
+compatibility with existing `null` checks.
+
+`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `SceneGraph`, applies each node's world transform, and runs the voxel baker. `BakeTiled()` keeps retained voxel-cell source data for each tile; `RebuildTile()` refreshes only the requested tile's geometry, heights, and blocked state from that retained source instead of running a whole-scene bake. `SetMaxSlope()` refilters preserved source triangles. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` / `FindPathOption()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
 
 `AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `SetOffMeshLinkMetadata()` records the link kind, traversal-cost multiplier, and state flags; link cost contributes to A* and the final `LastPathCost`. `SetArea()` tags polygons whose exact XZ footprint intersects a finite volume, `GetArea()` / `GetTraversalCost()` query that metadata, and polygon traversal costs weight A* edges. `AddObstacle()` stores a finite world-space AABB and removes polygons whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacle adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still refilter the preserved source mesh. This remains polygon-level AABB carving rather than clipped sub-polygons; `NavAgent3D` covers local crowd avoidance.
 
@@ -2790,7 +2819,7 @@ func start() {
     var start = Vec3.New(0.0, 0.0, 0.0);
     var goal = Vec3.New(20.0, 0.0, 15.0);
     NavMesh3D.AddOffMeshLink(nav, Vec3.New(4.0, 0.0, 2.0), Vec3.New(8.0, 0.0, 2.0), true);
-    var path = NavMesh3D.FindPath(nav, start, goal);
+    var path = NavMesh3D.FindPathOption(nav, start, goal);
 
     // Snap a position to the navmesh
     var snapped = NavMesh3D.SamplePosition(nav, Vec3.New(5.0, 2.0, 5.0));
@@ -2860,7 +2889,7 @@ bind Viper.Math;
 bind Viper.Terminal;
 
 func start() {
-    var mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var mesh = Mesh3D.Plane(20.0, 20.0);
     var nav = NavMesh3D.Build(mesh, 0.4, 1.8);
     var agent = NavAgent3D.New(nav, 0.4, 1.8);
     var node = SceneNode.New();
@@ -3450,7 +3479,7 @@ Backend correctness rules are shared where possible: skinning weights are normal
 ## Performance Tips
 
 - **Triangle budget:** Software renderer handles ~50K triangles at 30fps (640x480). GPU backends handle 1M+ at 60fps.
-- **Mesh generators:** `NewSphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
+- **Mesh generators:** `Sphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
 - **Lights:** Each additional light adds computation. Use 1-3 lights for best performance.
 - **Backface culling:** Enabled by default. Disable only for double-sided geometry (leaves, glass).
 - **Non-uniform scaling:** All 3D backends use inverse-transpose normal transforms, so non-uniform scale preserves lighting direction consistently across software, Metal, OpenGL, and D3D11.

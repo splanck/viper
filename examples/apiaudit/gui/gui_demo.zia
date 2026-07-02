@@ -72,7 +72,7 @@ func start() {
     Say("--- FileDialog ---");
     Say("Open(title,dir,filter), OpenMultiple(title,dir,filter), Save(title,dir,filter,default), SelectFolder(title,dir)");
     Say("--- FindBar ---");
-    Say("New(editor), SetFindText(s), GetFindText, SetReplaceText(s), GetReplaceText, SetCaseSensitive(v), SetWholeWord(v), SetRegex(v), FindNext, FindPrev, Replace, ReplaceAll, GetMatchCount, GetCurrentMatch, Focus");
+    Say("New(editor), SetFindText(s), GetFindText, SetReplaceText(s), GetReplaceText, SetCaseSensitive(v), SetWholeWord(v), SetRegex(v), FindNextOption, FindPrevOption, FindNext, FindPrev, Replace, ReplaceAll, GetMatchCount, GetCurrentMatch, Focus");
     Say("--- CommandPalette ---");
     Say("New(parent), AddCommand(id,name,desc), AddCommandWithShortcut(id,name,desc,keys), RemoveCommand(id), Clear(), Show(), Hide(), IsVisible, SetPlaceholder(s), GetSelected, WasSelected");
     Say("--- Tooltip ---");

@@ -43,6 +43,7 @@
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_physics3d.h"
 #include "rt_pixels_internal.h"
 #include "rt_quat.h"
@@ -328,10 +329,12 @@ static void scene3d_repair_node_transform(rt_scene_node3d *node) {
 
 extern void *rt_anim_controller3d_consume_root_motion_rotation(void *obj);
 
+// clang-format off
 #include "rt_scene3d_helpers.inc"
 #include "rt_scene3d_cull.inc"
 #include "rt_scene3d_api.inc"
 #include "rt_scene3d_lod.inc"
+// clang-format on
 //=============================================================================
 
 #else

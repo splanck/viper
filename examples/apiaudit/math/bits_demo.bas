@@ -1,8 +1,9 @@
 ' =============================================================================
 ' API Audit: Viper.Math.Bits - Bitwise Operations (BASIC)
 ' =============================================================================
-' Tests: And, Or, Xor, Not, Shl, Shr, Ushr, Set, Clear, Get, Toggle,
-'        Flip, Count, LeadZ, TrailZ, Rotl, Rotr, Swap
+' Tests: And, Or, Xor, Not, Shl, Shr, ShiftRightLogical, Set, Clear, Get,
+'        Toggle, Flip, Count, CountLeadingZeros, CountTrailingZeros,
+'        RotateLeft, RotateRight, Swap
 ' =============================================================================
 
 PRINT "=== API Audit: Viper.Math.Bits ==="
@@ -44,10 +45,10 @@ PRINT "Bits.Shr(16, 2): "; Viper.Math.Bits.Shr(16, 2)
 PRINT "Bits.Shr(256, 4): "; Viper.Math.Bits.Shr(256, 4)
 PRINT "Bits.Shr(1, 0): "; Viper.Math.Bits.Shr(1, 0)
 
-' --- Ushr ---
-PRINT "--- Ushr ---"
-PRINT "Bits.Ushr(16, 2): "; Viper.Math.Bits.Ushr(16, 2)
-PRINT "Bits.Ushr(-1, 60): "; Viper.Math.Bits.Ushr(-1, 60)
+' --- ShiftRightLogical ---
+PRINT "--- ShiftRightLogical ---"
+PRINT "Bits.ShiftRightLogical(16, 2): "; Viper.Math.Bits.ShiftRightLogical(16, 2)
+PRINT "Bits.ShiftRightLogical(-1, 60): "; Viper.Math.Bits.ShiftRightLogical(-1, 60)
 
 ' --- Set ---
 PRINT "--- Set ---"
@@ -86,26 +87,26 @@ PRINT "Bits.Count(1): "; Viper.Math.Bits.Count(1)
 PRINT "Bits.Count(7): "; Viper.Math.Bits.Count(7)
 PRINT "Bits.Count(255): "; Viper.Math.Bits.Count(255)
 
-' --- LeadZ ---
-PRINT "--- LeadZ ---"
-PRINT "Bits.LeadZ(1): "; Viper.Math.Bits.LeadZ(1)
-PRINT "Bits.LeadZ(256): "; Viper.Math.Bits.LeadZ(256)
+' --- CountLeadingZeros ---
+PRINT "--- CountLeadingZeros ---"
+PRINT "Bits.CountLeadingZeros(1): "; Viper.Math.Bits.CountLeadingZeros(1)
+PRINT "Bits.CountLeadingZeros(256): "; Viper.Math.Bits.CountLeadingZeros(256)
 
-' --- TrailZ ---
-PRINT "--- TrailZ ---"
-PRINT "Bits.TrailZ(1): "; Viper.Math.Bits.TrailZ(1)
-PRINT "Bits.TrailZ(8): "; Viper.Math.Bits.TrailZ(8)
-PRINT "Bits.TrailZ(16): "; Viper.Math.Bits.TrailZ(16)
+' --- CountTrailingZeros ---
+PRINT "--- CountTrailingZeros ---"
+PRINT "Bits.CountTrailingZeros(1): "; Viper.Math.Bits.CountTrailingZeros(1)
+PRINT "Bits.CountTrailingZeros(8): "; Viper.Math.Bits.CountTrailingZeros(8)
+PRINT "Bits.CountTrailingZeros(16): "; Viper.Math.Bits.CountTrailingZeros(16)
 
-' --- Rotl ---
-PRINT "--- Rotl ---"
-PRINT "Bits.Rotl(1, 1): "; Viper.Math.Bits.Rotl(1, 1)
-PRINT "Bits.Rotl(1, 4): "; Viper.Math.Bits.Rotl(1, 4)
+' --- RotateLeft ---
+PRINT "--- RotateLeft ---"
+PRINT "Bits.RotateLeft(1, 1): "; Viper.Math.Bits.RotateLeft(1, 1)
+PRINT "Bits.RotateLeft(1, 4): "; Viper.Math.Bits.RotateLeft(1, 4)
 
-' --- Rotr ---
-PRINT "--- Rotr ---"
-PRINT "Bits.Rotr(2, 1): "; Viper.Math.Bits.Rotr(2, 1)
-PRINT "Bits.Rotr(16, 4): "; Viper.Math.Bits.Rotr(16, 4)
+' --- RotateRight ---
+PRINT "--- RotateRight ---"
+PRINT "Bits.RotateRight(2, 1): "; Viper.Math.Bits.RotateRight(2, 1)
+PRINT "Bits.RotateRight(16, 4): "; Viper.Math.Bits.RotateRight(16, 4)
 
 ' --- Swap ---
 PRINT "--- Swap ---"

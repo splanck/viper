@@ -1436,9 +1436,9 @@ Always use `https://` for anything sensitive: logins, personal data, financial i
 HTTPS uses certificates to prove the server is who it claims to be. Don't disable certificate validation!
 
 ```rust
-// DANGEROUS: Disables security
+// LOCAL TEST ONLY: disables security for self-signed fixtures
 var req = HttpReq.New("GET", url);
-req.SetTlsVerify(false);
+req.AllowInsecureCertificatesForTesting();
 HttpReq.Send(req);
 // You might be talking to an attacker pretending to be the server
 

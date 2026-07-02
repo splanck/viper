@@ -1,6 +1,6 @@
 // heap_demo.zia - Comprehensive API audit for Viper.Collections.Heap
 // Tests: New, NewMax, Push(priority, value), Pop, Peek, Len, IsEmpty,
-//        Clear, IsMax, TryPeek, TryPop, ToSeq
+//        Clear, IsMax, TryPeekOption, TryPopOption, ToSeq
 
 module HeapDemo;
 
@@ -41,12 +41,13 @@ func start() {
     SayInt(h.Count);              // 0
     SayBool(h.IsEmpty);         // 1
 
-    // --- TryPeek / TryPop (safe on empty) ---
-    Say("--- TryPeek / TryPop ---");
-    var tp = h.TryPeek();
-    // tp should be null on empty heap
+    // --- TryPeekOption / TryPopOption (safe on empty) ---
+    Say("--- TryPeekOption / TryPopOption ---");
+    var tp = h.TryPeekOption();
+    SayBool(tp.IsNone);          // 1
     SayBool(h.IsEmpty);         // 1
-    var tpop = h.TryPop();
+    var tpop = h.TryPopOption();
+    SayBool(tpop.IsNone);       // 1
     SayBool(h.IsEmpty);         // 1
 
     // --- NewMax (max-heap) ---

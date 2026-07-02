@@ -21,14 +21,17 @@ Regular expression pattern matching for text search and manipulation.
 
 | Method                                | Signature                   | Description                                        |
 |---------------------------------------|-----------------------------|----------------------------------------------------|
-| `IsMatch(pattern, text)`              | `Boolean(String, String)`   | Test if pattern matches anywhere in text           |
-| `Find(pattern, text)`                 | `String(String, String)`    | Find first match, or empty string if none          |
-| `FindFrom(pattern, text, start)`      | `String(String, String, Integer)` | Find first match at or after start position  |
-| `FindPos(pattern, text)`              | `Integer(String, String)`   | Find position of first match, or -1 if none        |
-| `FindAll(pattern, text)`              | `Seq(String, String)`       | Find all non-overlapping matches                   |
-| `Replace(pattern, text, replacement)` | `String(String, String, String)` | Replace all matches with replacement         |
-| `ReplaceFirst(pattern, text, replacement)` | `String(String, String, String)` | Replace first match only                |
-| `Split(pattern, text)`                | `Seq(String, String)`       | Split text by pattern matches                      |
+| `IsMatch(text, pattern)`              | `Boolean(String, String)`   | Test if pattern matches anywhere in text           |
+| `Find(text, pattern)`                 | `String(String, String)`    | Find first match, or empty string if none          |
+| `FindOption(text, pattern)`           | `Option[String](String, String)` | Find first match as `Some(match)`, including empty-string matches, or `None` |
+| `FindFrom(text, pattern, start)`      | `String(String, String, Integer)` | Find first match at or after start position  |
+| `FindFromOption(text, pattern, start)` | `Option[String](String, String, Integer)` | Find first match at or after start as `Some(match)`, or `None` |
+| `FindPos(text, pattern)`              | `Integer(String, String)`   | Find position of first match, or -1 if none        |
+| `FindPosOption(text, pattern)`        | `Option[Integer](String, String)` | Find position of first match as `Some(index)`, or `None` |
+| `FindAll(text, pattern)`              | `Seq(String, String)`       | Find all non-overlapping matches                   |
+| `Replace(text, pattern, replacement)` | `String(String, String, String)` | Replace all matches with replacement         |
+| `ReplaceFirst(text, pattern, replacement)` | `String(String, String, String)` | Replace first match only                |
+| `Split(text, pattern)`                | `Seq(String, String)`       | Split text by pattern matches                      |
 | `Escape(text)`                        | `String(String)`            | Escape special regex characters for literal matching |
 
 ### Supported Regex Syntax
@@ -71,6 +74,7 @@ The following advanced regex features are not implemented:
 - Pattern matching uses runtime string byte length, so embedded `NUL` bytes in text can be matched and returned.
 - Match positions and `FindFrom` start values are byte offsets.
 - The regex cache is safe for concurrent users of cached patterns; in-use compiled entries are not evicted.
+- Prefer `FindOption()`, `FindFromOption()`, and `FindPosOption()` for new code. The legacy string-returning forms cannot distinguish no match from a valid empty-string match.
 
 ### Zia Example
 
@@ -81,21 +85,27 @@ bind Viper.Terminal;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    // Note: Pattern functions take (pattern, text) order
-    Say("Match: " + Fmt.Bool(Viper.Text.Pattern.IsMatch("[a-z]+[0-9]+", "hello123")));
-    Say("Find: " + Viper.Text.Pattern.Find("[0-9]+", "Price is $42.50"));
-    Say("Replace: " + Viper.Text.Pattern.Replace("[0-9]+", "foo 123 bar 456", "#"));
+    // Pattern functions take (text, pattern) order
+    Say("Match: " + Fmt.Bool(Viper.Text.Pattern.IsMatch("hello123", "[a-z]+[0-9]+")));
+    var found = Viper.Text.Pattern.FindOption("Price is $42.50", "[0-9]+");
+    if found.IsSome {
+        Say("Find: " + found.UnwrapStr());
+    }
+    Say("Replace: " + Viper.Text.Pattern.Replace("foo 123 bar 456", "[0-9]+", "#"));
 }
 ```
 
 ### BASIC Example
 
 ```basic
-' Match test - BASIC arg order is (text, pattern)
+' Match test - argument order is (text, pattern)
 PRINT "Match: "; Viper.Text.Pattern.IsMatch("hello123", "[a-z]+[0-9]+")
 
 ' Find first match
-PRINT "Find: "; Viper.Text.Pattern.Find("Price is $42.50", "[0-9]+")
+DIM found AS OBJECT = Viper.Text.Pattern.FindOption("Price is $42.50", "[0-9]+")
+IF found.IsSome THEN
+    PRINT "Find: "; found.UnwrapStr()
+END IF
 
 ' Replace all matches
 PRINT "Replace: "; Viper.Text.Pattern.Replace("foo 123 bar 456", "[0-9]+", "#")
@@ -108,20 +118,24 @@ PRINT "Replace: "; Viper.Text.Pattern.Replace("foo 123 bar 456", "[0-9]+", "#")
 DIM text AS STRING = "Hello, World!"
 
 ' Check if pattern matches
-IF Viper.Text.Pattern.IsMatch("\w+", text) THEN
+IF Viper.Text.Pattern.IsMatch(text, "\w+") THEN
     PRINT "Contains word characters"
 END IF
 
 ' Find first match
-DIM word AS STRING = Viper.Text.Pattern.Find("[A-Z][a-z]+", text)
-PRINT word  ' Output: "Hello"
+DIM word AS OBJECT = Viper.Text.Pattern.FindOption(text, "[A-Z][a-z]+")
+IF word.IsSome THEN
+    PRINT word.UnwrapStr()  ' Output: "Hello"
+END IF
 
 ' Find position
-DIM pos AS INTEGER = Viper.Text.Pattern.FindPos("World", text)
-PRINT pos  ' Output: 7
+DIM pos AS OBJECT = Viper.Text.Pattern.FindPosOption(text, "World")
+IF pos.IsSome THEN
+    PRINT pos.UnwrapI64()  ' Output: 7
+END IF
 
 ' Find all matches
-DIM words AS OBJECT = Viper.Text.Pattern.FindAll("\w+", text)
+DIM words AS OBJECT = Viper.Text.Pattern.FindAll(text, "\w+")
 PRINT words.Count  ' Output: 2 (Hello, World)
 ```
 
@@ -129,15 +143,15 @@ PRINT words.Count  ' Output: 2 (Hello, World)
 
 ```basic
 ' Replace all digits with X
-DIM result AS STRING = Viper.Text.Pattern.Replace("\d+", "abc123def456", "X")
+DIM result AS STRING = Viper.Text.Pattern.Replace("abc123def456", "\d+", "X")
 PRINT result  ' Output: "abcXdefX"
 
 ' Replace first match only
-result = Viper.Text.Pattern.ReplaceFirst("\d+", "abc123def456", "X")
+result = Viper.Text.Pattern.ReplaceFirst("abc123def456", "\d+", "X")
 PRINT result  ' Output: "abcXdef456"
 
 ' Remove all whitespace
-result = Viper.Text.Pattern.Replace("\s+", "hello   world  test", "")
+result = Viper.Text.Pattern.Replace("hello   world  test", "\s+", "")
 PRINT result  ' Output: "helloworldtest"
 ```
 
@@ -145,14 +159,14 @@ PRINT result  ' Output: "helloworldtest"
 
 ```basic
 ' Split by whitespace
-DIM parts AS OBJECT = Viper.Text.Pattern.Split("\s+", "hello   world  test")
+DIM parts AS OBJECT = Viper.Text.Pattern.Split("hello   world  test", "\s+")
 PRINT parts.Count  ' Output: 3
 PRINT parts.Get(0) ' Output: "hello"
 PRINT parts.Get(1) ' Output: "world"
 PRINT parts.Get(2) ' Output: "test"
 
 ' Split by comma
-parts = Viper.Text.Pattern.Split(",", "a,b,c,d")
+parts = Viper.Text.Pattern.Split("a,b,c,d", ",")
 PRINT parts.Count  ' Output: 4
 ```
 
@@ -215,8 +229,11 @@ strings to avoid recompilation overhead.
 |------------------------------------|------------------------------|----------------------------------------------------|
 | `IsMatch(text)`                    | `Boolean(String)`            | Test if pattern matches anywhere in text           |
 | `Find(text)`                       | `String(String)`             | Find first match, or empty string if none          |
+| `FindOption(text)`                 | `Option[String](String)`     | Find first match as `Some(match)`, including empty-string matches, or `None` |
 | `FindFrom(text, start)`            | `String(String, Integer)`    | Find first match at or after start position        |
+| `FindFromOption(text, start)`      | `Option[String](String, Integer)` | Find first match at or after start as `Some(match)`, or `None` |
 | `FindPos(text)`                    | `Integer(String)`            | Find position of first match, or -1 if none        |
+| `FindPosOption(text)`              | `Option[Integer](String)`    | Find position of first match as `Some(index)`, or `None` |
 | `FindAll(text)`                    | `Seq(String)`                | Find all non-overlapping matches                   |
 | `Captures(text)`                   | `Seq(String)`                | Get capture groups from first match                |
 | `CapturesFrom(text, start)`        | `Seq(String, Integer)`       | Get capture groups starting from position          |
@@ -232,6 +249,10 @@ The `Captures` and `CapturesFrom` methods return a Seq containing:
 - Index 1+: Captured groups in order of opening parentheses
 
 If there is no match, an empty Seq is returned.
+
+Prefer the Option-returning `Find*Option()` methods for branchable search code. The legacy
+`Find()` and `FindFrom()` methods return an empty string for no match, which is ambiguous
+when the pattern itself can match an empty string.
 
 ### Notes
 

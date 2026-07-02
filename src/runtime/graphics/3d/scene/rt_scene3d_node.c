@@ -24,6 +24,7 @@
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_physics3d.h"
 #include "rt_pixels_internal.h"
 #include "rt_quat.h"
@@ -448,7 +449,7 @@ static int8_t scene_node3d_try_add_child_impl(rt_scene_node3d *parent,
      * scanning every descendant of large child subtrees on reparent. */
     int32_t ancestor_guard = 0;
     for (rt_scene_node3d *ancestor = parent; ancestor;
-        ancestor = scene_node_ref(ancestor->parent)) {
+         ancestor = scene_node_ref(ancestor->parent)) {
         if (++ancestor_guard > RT_SCENE3D_MAX_ANCESTOR_DEPTH) {
             if (trap_on_reject)
                 rt_trap("SceneNode3D.AddChild: hierarchy is too deep");
@@ -591,6 +592,18 @@ void *rt_scene_node3d_find(void *obj, rt_string name) {
     if (!s)
         return NULL;
     return find_by_name(node, s);
+}
+
+/// @brief Search a subtree by name and wrap the nullable result in an Option.
+/// @details Keeps the same traversal and validation behavior as
+///          `rt_scene_node3d_find`, while exposing absence through `None` for
+///          modern public runtime callers.
+/// @param obj SceneNode3D subtree root.
+/// @param name Exact node name to match.
+/// @return `Some(SceneNode3D)` when a matching descendant exists, otherwise `None`.
+void *rt_scene_node3d_find_option(void *obj, rt_string name) {
+    void *node = rt_scene_node3d_find(obj, name);
+    return node ? rt_option_some(node) : rt_option_none();
 }
 
 /*==========================================================================
@@ -917,8 +930,7 @@ void *rt_scene_node3d_get_animator(void *obj) {
 /// @brief Currently bound node animator handle (NULL if none).
 void *rt_scene_node3d_get_node_animator(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? rt_g3d_checked_or_null(node->bound_node_animator,
-                                         RT_G3D_NODEANIMATOR3D_CLASS_ID)
+    return node ? rt_g3d_checked_or_null(node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID)
                 : NULL;
 }
 

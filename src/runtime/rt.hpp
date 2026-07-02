@@ -160,6 +160,38 @@ rt_string rt_term_ask(rt_string prompt);
 /// @brief Read a line of input from stdin.
 rt_string rt_term_read_line(void);
 
+/// @brief Read a line of input from stdin as an Option.
+/// @details Returns an opaque `Viper.Option` object. The object is `Some(String)`
+///          when a line is read and `None` when stdin reaches EOF before any
+///          bytes are available. Allocation failures and overlong input still
+///          trap, matching @ref rt_input_line.
+/// @return Opaque `Viper.Option` object containing the line or `None`.
+void *rt_term_try_read_line(void);
+
+/// @brief Print a prompt and read a line of input from stdin as an Option.
+/// @details The prompt is flushed before reading. Returns an opaque
+///          `Viper.Option` object containing `Some(String)` for a line and
+///          `None` for EOF before input. Fatal input errors still trap.
+/// @param prompt Runtime string to display before reading input; may be NULL.
+/// @return Opaque `Viper.Option` object containing the line or `None`.
+void *rt_term_try_ask(rt_string prompt);
+
+/// @brief Read a line of input from stdin as a Result.
+/// @details Returns an opaque `Viper.Result` object containing `Ok(String)` for
+///          a line and `Err(String)` for EOF before input. Fatal input errors
+///          still trap because they indicate runtime failure rather than normal
+///          end-of-input.
+/// @return Opaque `Viper.Result` object containing the line or EOF error.
+void *rt_term_read_line_result(void);
+
+/// @brief Print a prompt and read a line of input from stdin as a Result.
+/// @details The prompt is flushed before reading. Returns an opaque
+///          `Viper.Result` object containing `Ok(String)` for a line and
+///          `Err(String)` for EOF before input. Fatal input errors still trap.
+/// @param prompt Runtime string to display before reading input; may be NULL.
+/// @return Opaque `Viper.Result` object containing the line or EOF error.
+void *rt_term_ask_result(rt_string prompt);
+
 /// @brief Report EOF status for the specified channel.
 /// @param ch Numeric channel identifier previously passed to OPEN.
 /// @return -1 when the next read would hit EOF, 0 otherwise, or an error code on failure.

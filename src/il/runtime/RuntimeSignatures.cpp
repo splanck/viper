@@ -48,6 +48,7 @@
 #include "rt_achievement.h"
 #include "rt_action.h"
 #include "rt_aes.h"
+#include "rt_animation_events.h"
 #include "rt_animcontroller3d.h"
 #include "rt_archive.h"
 #include "rt_args.h"

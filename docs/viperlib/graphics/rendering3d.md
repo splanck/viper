@@ -18,15 +18,23 @@ For the higher-level code-first game workflow, see [Game3D](game3d.md).
 level rendering, physics, input, audio, and final-frame contracts documented
 here.
 
-## Asset Load Diagnostics
+## Asset Load Results and Diagnostics
 
-Script-facing content loaders do not trap for bad or missing content. Missing
-files, unreadable files, wrong magic bytes, truncated payloads, corrupt
-structure, unsupported formats, and excessive content sizes return `null` and
-record diagnostics on `Viper.Graphics3D.AssetDiagnostics3D`. Traps remain reserved for
-programmer errors such as `null` or invalid argument handles. Successful partial
-degradation, such as an OBJ material whose albedo texture is missing, returns
-the loaded asset and records warnings.
+Script-facing content loaders do not trap for bad or missing content. For new
+code, prefer the Result-returning SceneAsset APIs:
+`SceneAsset.LoadResult`, `LoadAssetResult`, `LoadAnimationResult`,
+`LoadAnimationAssetResult`, `LoadNodeAnimationResult`, and
+`LoadNodeAnimationAssetResult`. Missing files, unreadable files, wrong magic
+bytes, truncated payloads, corrupt structure, unsupported formats, invalid clip
+indexes, and excessive content sizes return `Err(message)`. Successful loads
+return `Ok(value)`. Traps remain reserved for programmer errors such as `null` or
+invalid argument handles.
+
+The older `SceneAsset.Load*` calls remain available and return `null` for routine
+content failures. They also record compatibility diagnostics on
+`Viper.Graphics3D.AssetDiagnostics3D`. Successful partial degradation, such as an
+OBJ material whose albedo texture is missing, returns the loaded asset and
+records warnings.
 
 `AssetDiagnostics3D.LastLoadError` is empty after a fully successful load. When a loader
 returns `null`, `AssetDiagnostics3D.LastLoadErrorCode` is one of:
@@ -47,7 +55,9 @@ Warnings are per outer load, append-only, and capped. Use
 
 | Loader | Content failure behavior | Partial degradation |
 |--------|--------------------------|---------------------|
-| `SceneAsset.Load(path)` / `SceneAsset.LoadAsset(path)` | Returns `null` and sets `AssetDiagnostics3D.LastLoadError` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
+| `SceneAsset.LoadResult(path)` / `LoadAssetResult(path)` | Returns `Err(message)` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
+| `SceneAsset.LoadAnimationResult(path, index)` / `LoadNodeAnimationResult(path, index)` and asset variants | Returns `Err(message)` for failed asset loads or absent/out-of-range animation clips | Preserves lower-level warnings from dependency loads |
+| `SceneAsset.Load(path)` / `LoadAsset(path)` | Compatibility APIs: return `null` and set `AssetDiagnostics3D.LastLoadError` for routine content failures | Same warnings as the Result variants |
 | `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
@@ -436,12 +446,17 @@ transforms.
 | `Add(node)` / `Remove(node)` | `Void(Object)` | Attach or detach root-level nodes |
 | `TryAdd(node)` | `Boolean(Object)` | Add a node and report validation/allocation failure |
 | `Find(name)` | `SceneNode(String)` | Search the scene by node name |
+| `FindOption(name)` | `Option[SceneNode](String)` | Search the scene by node name as `Some(node)`, or `None` |
 | `QueryAABB(min, max)` | `Seq(SceneNode)(Vec3, Vec3)` | Return visible mesh nodes whose world AABB intersects the box |
 | `QuerySphere(center, radius)` | `Seq(SceneNode)(Vec3, Double)` | Return visible mesh nodes whose world AABB intersects the sphere |
 | `RaycastNodes(origin, direction, maxDistance)` | `SceneNode(Vec3, Vec3, Double)` | Return the closest visible mesh node hit by the ray |
 | `Draw(canvas, camera)` | `Void(Object, Object)` | Draw visible node meshes |
 | `SyncBindings(dt)` | `Void(Double)` | Push physics, animation, and binding transforms |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift every root-level subtree by `-delta` while leaving the root unchanged |
+
+Prefer `FindOption()` for new code. `Find()` remains available for compatibility
+with existing `null` checks. `SceneNode.FindOption(name)` provides the same
+absence-aware search for a subtree.
 
 The query methods are backed by the SceneGraph BVH spatial index, with the
 deterministic flat walk kept as the internal parity fallback. Transform-only
@@ -610,9 +625,9 @@ sprite draws.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `NewColor(r, g, b)` | `Object(Double, Double, Double)` | Create a diffuse-color material |
-| `NewTextured(texture)` | `Object(Object)` | Create a material with a base `Pixels` or `TextureAsset3D` texture |
-| `NewPBR(r, g, b)` | `Object(Double, Double, Double)` | Create a PBR material |
+| `FromColor(r, g, b)` | `Object(Double, Double, Double)` | Create a diffuse-color material |
+| `Textured(texture)` | `Object(Object)` | Create a material with a base `Pixels` or `TextureAsset3D` texture |
+| `PBR(r, g, b)` | `Object(Double, Double, Double)` | Create a PBR material |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set diffuse/base color |
 | `SetTexture(texture)` / `SetAlbedoMap(texture)` | `Void(Object)` | Bind or clear the base-color texture slot |
 | `SetNormalMap(texture)` | `Void(Object)` | Bind or clear a tangent-space normal map |
@@ -757,6 +772,18 @@ Ray queries normalize non-zero directions internally. Zero-length or non-finite 
 
 High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` assets. OBJ imports preserve safe relative `mtllib`/`usemtl` material groups as separate template nodes; STL imports synthesize one default-material mesh node.
 
+#### Load Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `LoadResult(path)` | `Result[SceneAsset](String)` | Load from the filesystem as `Ok(SceneAsset)` or `Err(message)` |
+| `LoadAssetResult(path)` | `Result[SceneAsset](String)` | Load through `Viper.IO.Assets` as `Ok(SceneAsset)` or `Err(message)` |
+| `LoadAnimationResult(path, index)` | `Result[Animation3D](String, Integer)` | Load an imported skeletal animation clip as `Ok(Animation3D)` or `Err(message)` |
+| `LoadAnimationAssetResult(path, index)` | `Result[Animation3D](String, Integer)` | Load a skeletal animation clip through `Viper.IO.Assets` |
+| `LoadNodeAnimationResult(path, index)` | `Result[NodeAnimation3D](String, Integer)` | Load an imported node animation clip as `Ok(NodeAnimation3D)` or `Err(message)` |
+| `LoadNodeAnimationAssetResult(path, index)` | `Result[NodeAnimation3D](String, Integer)` | Load a node animation clip through `Viper.IO.Assets` |
+| `Load(path)` / `LoadAsset(path)` | `SceneAsset(String)` | Compatibility loaders that return `null` for routine content failures |
+
 #### Scene and Camera Methods
 
 | Method | Signature | Description |
@@ -768,6 +795,20 @@ High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`
 | `InstantiateSceneAt(model, index)` | `Object(Object, Integer)` | Clone a scene by index as a fresh `SceneGraph` |
 
 glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `SceneAsset` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state. FBX imports preserve authored model hierarchy where available and split polygon material assignments into instantiable material-specific mesh nodes.
+
+#### Lookup and Instancing Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `FindNode(name)` | `SceneNode(Object, String)` | Find a template node by name, or `null` |
+| `FindNodeOption(name)` | `Option[SceneNode](Object, String)` | Find a template node as `Some(node)`, or `None` |
+| `Instantiate()` | `SceneNode(Object)` | Clone the template hierarchy into a fresh node subtree |
+| `InstantiateScene()` | `SceneGraph(Object)` | Clone the default scene as a standalone scene graph |
+| `InstantiateSceneAt(index)` | `SceneGraph(Object, Integer)` | Clone an immutable scene by index |
+
+Prefer `FindNodeOption()` for new code. `FindNode()` remains available for
+compatibility with existing `null` checks. Mutating an instantiated node does not
+mutate the immutable template node returned by either lookup API.
 
 ---
 
@@ -793,7 +834,11 @@ Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model
 | `AddBone(name, parentIndex, localTransform)` | `Integer(String, Integer, Object)` | Add a named bone with a local transform and parent index |
 | `ComputeInverseBind()` | `Void()` | Pre-compute inverse bind pose matrices after all bones are added |
 | `FindBone(name)` | `Integer(String)` | Return the bone index, or `-1` if not found |
+| `FindBoneOption(name)` | `Option[Integer](String)` | Return `Some(index)` for a matching bone, or `None` |
 | `GetBoneName(index)` | `String(Integer)` | Return the name of bone at `index` |
+
+Prefer `FindBoneOption()` for new code. `FindBone()` remains available for
+compatibility with existing `-1` checks.
 
 Skinning weights are normalized consistently across CPU and GPU draw paths. Missing palettes copy
 vertices through unchanged, and unused backend bone-palette slots are treated as identity transforms.
@@ -1279,6 +1324,7 @@ ambiguous.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `FindPath(start, end)` | `Object(Object, Object)` | Return a `Seq[Vec3]` of waypoints from `start` to `end`, or `Nothing` |
+| `FindPathOption(start, end)` | `Option[Path3D](Object, Object)` | Return `Some(path)` when a route exists, or `None` |
 | `SamplePosition(pos)` | `Object(Object)` | Snap `pos` to the nearest walkable position |
 | `IsWalkable(pos)` | `Boolean(Object)` | True when `pos` is on the walkable surface |
 | `Export(path)` | `Boolean(String)` | Serialize the baked navmesh to a `VNAVMSH2` binary file; returns false on write failure |
@@ -1297,6 +1343,9 @@ ambiguous.
 | `RebuildTile(tileX, tileZ)` | `Boolean(Integer, Integer)` | Rebuild one retained tiled-bake voxel source tile |
 | `SetMaxSlope(degrees)` | `Void(Double)` | Override the maximum walkable slope angle |
 | `DebugDraw(canvas3D)` | `Void(Object)` | Draw the navmesh wireframe for debugging |
+
+Prefer `FindPathOption()` for new path queries. `FindPath()` remains available
+for compatibility with existing `null` checks.
 
 `Bake` flattens every `Mesh3D` attached under a `SceneGraph` through each node's
 world transform and runs the voxel baker. `BakeTiled` keeps retained voxel-cell

@@ -4,6 +4,7 @@ module Minimal3DTest;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Input;
+bind Viper.Input.Key as Key;
 bind Viper.Terminal;
 
 func start() {
@@ -30,7 +31,7 @@ func start() {
     var frame = 0;
     while (Canvas3D.get_ShouldClose(canvas) == 0) {
         Canvas3D.Poll(canvas);
-        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) { break; }
+        if (Keyboard.WasPressed(Key.Escape)) { break; }
 
         Canvas3D.Clear(canvas, 0.1, 0.1, 0.15);
         Canvas3D.Begin(canvas, camera);

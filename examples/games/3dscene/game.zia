@@ -5,6 +5,7 @@ bind Viper.Graphics3D;
 bind Viper.Graphics;
 bind Viper.Math;
 bind Viper.Input;
+bind Viper.Input.Key as Key;
 bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "./config";
@@ -89,7 +90,7 @@ class SceneGame {
 
     expose func initDemo(title: String, width: Integer, height: Integer) {
         canvas = Canvas3D.New(title, width, height);
-        Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
+        Canvas3D.SetMaxDeltaTime(canvas, config.DT_MAX_MS);
         Canvas3D.SetFog(
             canvas, config.FOG_NEAR, config.FOG_FAR, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
         Canvas3D.EnableShadows(canvas, 1);
@@ -101,10 +102,10 @@ class SceneGame {
         var aspect = (width + 0.0) / (height + 0.0);
         camera = Camera3D.New(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
 
-        planeMesh = Mesh3D.NewPlane(1.0, 1.0);
-        boxMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
-        sphereMesh = Mesh3D.NewSphere(1.0, 22);
-        cylinderMesh = Mesh3D.NewCylinder(0.5, 1.0, 20);
+        planeMesh = Mesh3D.Plane(1.0, 1.0);
+        boxMesh = Mesh3D.Box(1.0, 1.0, 1.0);
+        sphereMesh = Mesh3D.Sphere(1.0, 22);
+        cylinderMesh = Mesh3D.Cylinder(0.5, 1.0, 20);
 
         skybox = createSkybox();
         Canvas3D.SetSkybox(canvas, skybox);
@@ -138,7 +139,7 @@ class SceneGame {
     }
 
     expose func step(dt: Float) {
-        if (Keyboard.WasPressed(Keyboard.get_KeyEscape())) {
+        if (Keyboard.WasPressed(Key.Escape)) {
             quitRequested = true;
             return;
         }
@@ -162,7 +163,7 @@ class SceneGame {
     }
 
     hide func buildMaterials() {
-        floorMat = Material3D.NewPBR(0.18, 0.24, 0.31);
+        floorMat = Material3D.PBR(0.18, 0.24, 0.31);
         Material3D.SetAlbedoMap(floorMat, createFloorTexture(floorTextureSize()));
         floorMat.Metallic = 0.16;
         floorMat.Roughness = 0.28;
@@ -170,20 +171,20 @@ class SceneGame {
         Material3D.SetEnvMap(floorMat, skybox);
         Material3D.SetEmissiveColor(floorMat, 0.02, 0.05, 0.08);
 
-        chromeMat = Material3D.NewPBR(0.92, 0.96, 1.0);
+        chromeMat = Material3D.PBR(0.92, 0.96, 1.0);
         chromeMat.Metallic = 1.0;
         chromeMat.Roughness = 0.06;
         chromeMat.Reflectivity = 0.95;
         Material3D.SetEnvMap(chromeMat, skybox);
 
-        goldMat = Material3D.NewPBR(0.96, 0.78, 0.32);
+        goldMat = Material3D.PBR(0.96, 0.78, 0.32);
         goldMat.Metallic = 0.90;
         goldMat.Roughness = 0.18;
         goldMat.Reflectivity = 0.60;
         Material3D.SetEnvMap(goldMat, skybox);
         Material3D.SetEmissiveColor(goldMat, 0.10, 0.05, 0.01);
 
-        cyanMat = Material3D.NewPBR(0.34, 0.72, 1.0);
+        cyanMat = Material3D.PBR(0.34, 0.72, 1.0);
         cyanMat.Metallic = 0.34;
         cyanMat.Roughness = 0.16;
         cyanMat.Reflectivity = 0.36;
@@ -191,14 +192,14 @@ class SceneGame {
         Material3D.SetEmissiveColor(cyanMat, 0.08, 0.18, 0.30);
         cyanMat.EmissiveIntensity = 1.5;
 
-        glowMat = Material3D.NewPBR(0.62, 0.88, 1.0);
+        glowMat = Material3D.PBR(0.62, 0.88, 1.0);
         glowMat.Metallic = 0.08;
         glowMat.Roughness = 0.06;
         Material3D.SetEmissiveColor(glowMat, 0.34, 0.68, 1.0);
         glowMat.EmissiveIntensity = 2.8;
         glowMat.Reflectivity = 0.10;
 
-        glassMat = Material3D.NewPBR(0.78, 0.90, 1.0);
+        glassMat = Material3D.PBR(0.78, 0.90, 1.0);
         glassMat.Metallic = 0.02;
         glassMat.Roughness = 0.04;
         glassMat.AlphaMode = 2;
@@ -209,7 +210,7 @@ class SceneGame {
         Material3D.SetEmissiveColor(glassMat, 0.04, 0.10, 0.18);
         glassMat.EmissiveIntensity = 0.9;
 
-        darkMat = Material3D.NewPBR(0.12, 0.15, 0.18);
+        darkMat = Material3D.PBR(0.12, 0.15, 0.18);
         darkMat.Metallic = 0.14;
         darkMat.Roughness = 0.62;
         darkMat.Reflectivity = 0.05;
@@ -217,19 +218,19 @@ class SceneGame {
     }
 
     hide func buildLights() {
-        sunLight = Light3D.NewDirectional(new Vec3(-0.28, -1.0, -0.16), 1.0, 0.98, 0.92);
+        sunLight = Light3D.Directional(new Vec3(-0.28, -1.0, -0.16), 1.0, 0.98, 0.92);
         Light3D.SetIntensity(sunLight, 1.08);
         Canvas3D.SetLight(canvas, 0, sunLight);
 
-        rimLight = Light3D.NewDirectional(new Vec3(0.62, -0.55, 0.50), 0.48, 0.64, 0.98);
+        rimLight = Light3D.Directional(new Vec3(0.62, -0.55, 0.50), 0.48, 0.64, 0.98);
         Light3D.SetIntensity(rimLight, 0.54);
         Canvas3D.SetLight(canvas, 1, rimLight);
 
-        coreLight = Light3D.NewPoint(new Vec3(0.0, 4.2, 0.0), 0.46, 0.76, 1.0, 0.04);
+        coreLight = Light3D.Point(new Vec3(0.0, 4.2, 0.0), 0.46, 0.76, 1.0, 0.04);
         Light3D.SetIntensity(coreLight, 1.35);
         Canvas3D.SetLight(canvas, 2, coreLight);
 
-        warmLight = Light3D.NewPoint(new Vec3(0.0, 1.8, 0.0), 1.0, 0.78, 0.42, 0.05);
+        warmLight = Light3D.Point(new Vec3(0.0, 1.8, 0.0), 1.0, 0.78, 0.42, 0.05);
         Light3D.SetIntensity(warmLight, 0.92);
         Canvas3D.SetLight(canvas, 3, warmLight);
     }

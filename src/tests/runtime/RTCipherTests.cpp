@@ -14,6 +14,8 @@
 
 #include "rt_bytes.h"
 #include "rt_cipher.h"
+#include "rt_option.h"
+#include "rt_result.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -154,6 +156,37 @@ static void test_password_decrypt_rejects_invalid_auth() {
     rt_bytes_set(tampered, last_index, rt_bytes_get(tampered, last_index) ^ 0x01);
     void *corrupt = rt_cipher_decrypt(tampered, password);
     test_result("Tampered ciphertext returns NULL", corrupt == NULL);
+
+    printf("\n");
+}
+
+static void test_decrypt_result_and_option_wrappers() {
+    printf("Testing Cipher Result/Option decrypt wrappers:\n");
+
+    void *plain = make_bytes_str("Result wrapper plaintext");
+    rt_string password = rt_const_cstr("correct-password");
+    rt_string wrong_password = rt_const_cstr("wrong-password");
+
+    void *encrypted = rt_cipher_encrypt(plain, password);
+    test_result("Encrypted payload created", encrypted != NULL);
+
+    void *result = rt_cipher_decrypt_result(encrypted, password);
+    test_result("DecryptResult returns Ok", rt_result_is_ok(result) == 1);
+    void *decrypted = rt_result_unwrap(result);
+    test_result("DecryptResult payload matches", bytes_equal(plain, decrypted));
+
+    void *bad_result = rt_cipher_decrypt_result(encrypted, wrong_password);
+    test_result("DecryptResult wrong password returns Err", rt_result_is_err(bad_result) == 1);
+
+    void *bad_option = rt_cipher_try_decrypt(encrypted, wrong_password);
+    test_result("TryDecrypt wrong password returns None", rt_option_is_none(bad_option) == 1);
+
+    void *key = rt_cipher_generate_key();
+    void *key_encrypted = rt_cipher_encrypt_with_key(plain, key);
+    void *key_result = rt_cipher_decrypt_with_key_result(key_encrypted, key);
+    test_result("DecryptWithKeyResult returns Ok", rt_result_is_ok(key_result) == 1);
+    test_result("DecryptWithKeyResult payload matches",
+                bytes_equal(plain, rt_result_unwrap(key_result)));
 
     printf("\n");
 }
@@ -353,6 +386,7 @@ int main() {
 
     test_password_encrypt_decrypt_roundtrip();
     test_password_decrypt_rejects_invalid_auth();
+    test_decrypt_result_and_option_wrappers();
     test_key_based_encrypt_decrypt();
     test_key_derivation();
     test_encryption_randomness();

@@ -16,14 +16,15 @@
 #include "rt_blendtree3d.h"
 #include "rt_internal.h"
 #include "rt_navmesh3d.h"
+#include "rt_option.h"
 #include "rt_path3d.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include <cassert>
 #include <climits>
 #include <cmath>
-#include <cstdint>
 #include <csetjmp>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -178,6 +179,10 @@ static void test_navmesh_find_path() {
     void *to = rt_vec3_new(3.0, 0.0, 3.0);
     void *path = rt_navmesh3d_find_path(nm, from, to);
     EXPECT_TRUE(path != nullptr, "Path found on plane");
+    void *path_option = rt_navmesh3d_find_path_option(nm, from, to);
+    EXPECT_TRUE(rt_option_is_some(path_option) == 1, "FindPathOption returns Some on plane");
+    EXPECT_TRUE(rt_path3d_get_point_count(rt_option_unwrap(path_option)) >= 2,
+                "FindPathOption unwraps a path with at least 2 points");
     if (path) {
         EXPECT_TRUE(rt_path3d_get_point_count(path) >= 2, "Path has at least 2 points");
     }
@@ -911,12 +916,10 @@ static void test_navmesh_export_import_roundtrip() {
     void *link_to = rt_vec3_new(8.0, 0.0, 8.0);
     EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, link_from, link_to, 1) == 1,
                 "source navmesh stores an off-mesh link before export");
-    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(
-                    nm, 0, rt_const_cstr("jump"), 3.5, 77) == 1,
+    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(nm, 0, rt_const_cstr("jump"), 3.5, 77) == 1,
                 "source navmesh stores off-mesh link metadata before export");
-    EXPECT_TRUE(rt_navmesh3d_add_obstacle(nm,
-                                          rt_vec3_new(40.0, -1.0, 40.0),
-                                          rt_vec3_new(41.0, 1.0, 41.0)) == 1,
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(
+                    nm, rt_vec3_new(40.0, -1.0, 40.0), rt_vec3_new(41.0, 1.0, 41.0)) == 1,
                 "source navmesh stores an obstacle before export");
 
     rt_string path = rt_const_cstr("/tmp/viper_navmesh_export_roundtrip.vnav");
@@ -968,9 +971,8 @@ static void test_navmesh_export_import_roundtrip() {
 
     void *blocked_nm = rt_navmesh3d_build(rt_mesh3d_new_plane(20.0, 20.0), 0.4, 1.8);
     EXPECT_TRUE(blocked_nm != nullptr, "blocked-state source navmesh builds");
-    EXPECT_TRUE(rt_navmesh3d_add_obstacle(blocked_nm,
-                                          rt_vec3_new(-20.0, -1.0, -20.0),
-                                          rt_vec3_new(20.0, 1.0, 20.0)) == 1,
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(
+                    blocked_nm, rt_vec3_new(-20.0, -1.0, -20.0), rt_vec3_new(20.0, 1.0, 20.0)) == 1,
                 "source navmesh can export carved blocked state");
     rt_string blocked_path = rt_const_cstr("/tmp/viper_navmesh_export_blocked.vnav");
     EXPECT_TRUE(rt_navmesh3d_export(blocked_nm, blocked_path) == 1,
@@ -1006,12 +1008,10 @@ static void test_navmesh_getters_clamp_corrupt_private_counts() {
     void *link_to = rt_vec3_new(8.0, 0.0, 8.0);
     EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, link_from, link_to, 1) == 1,
                 "NavMesh corrupt getters: source stores an off-mesh link");
-    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(
-                    nm, 0, rt_const_cstr("jump"), 3.5, 77) == 1,
+    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(nm, 0, rt_const_cstr("jump"), 3.5, 77) == 1,
                 "NavMesh corrupt getters: source stores off-mesh metadata");
-    EXPECT_TRUE(rt_navmesh3d_add_obstacle(nm,
-                                          rt_vec3_new(40.0, -1.0, 40.0),
-                                          rt_vec3_new(41.0, 1.0, 41.0)) == 1,
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(
+                    nm, rt_vec3_new(40.0, -1.0, 40.0), rt_vec3_new(41.0, 1.0, 41.0)) == 1,
                 "NavMesh corrupt getters: source stores an obstacle");
 
     auto *view = static_cast<NavMesh3DTestLayout *>(nm);

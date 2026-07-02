@@ -203,6 +203,25 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 - [ADR-0016](adr/0016-pty-runtime-surface.md) — PTY runtime surface
 - [ADR-0017](adr/0017-string-lines-runtime-function.md) — String lines runtime function
 - [ADR-0025](adr/0025-windows-release-installer-workflow.md) — Windows release installer workflow
+- [ADR-0027](adr/0027-runtime-api-contract-metadata.md) — Runtime API contract metadata dump
+- [ADR-0028](adr/0028-terminal-option-result-input-apis.md) — Terminal Option and Result input APIs
+- [ADR-0029](adr/0029-diagnostics-current-trap-api.md) — Diagnostics current trap API
+- [ADR-0030](adr/0030-runtime-memory-and-gc-namespaces.md) — Runtime memory and GC namespaces
+- [ADR-0031](adr/0031-core-parse-double-aliases.md) — Core parse double aliases
+- [ADR-0032](adr/0032-math-bits-full-name-aliases.md) — Math bits full-name aliases
+- [ADR-0033](adr/0033-core-convert-string-aliases.md) — Core convert string aliases
+- [ADR-0034](adr/0034-capacity-aliases.md) — Capacity aliases
+- [ADR-0035](adr/0035-bloomfilter-false-positive-rate-alias.md) — BloomFilter false positive rate alias
+- [ADR-0036](adr/0036-format-and-frame-abbreviation-aliases.md) — Format and frame abbreviation aliases
+- [ADR-0037](adr/0037-collection-write-verb-aliases.md) — Collection write verb aliases
+- [ADR-0038](adr/0038-graphics-factory-aliases.md) — Graphics factory aliases
+- [ADR-0039](adr/0039-option-failure-aliases.md) — Option failure aliases
+- [ADR-0040](adr/0040-input-key-namespace.md) — Input key namespace
+- [ADR-0041](adr/0041-crypto-result-and-legacy-apis.md) — Crypto Result APIs and legacy namespaces
+- [ADR-0042](adr/0042-http-tls-verification-bypass-api.md) — HTTP TLS verification bypass API
+- [ADR-0043](adr/0043-random-chance-boolean-api.md) — Random Chance boolean API
+- [ADR-0044](adr/0044-crypto-module-process-policy-api.md) — Crypto module process policy API
+- [ADR-0045](adr/0045-boxed-value-type-unsafe-api.md) — Boxed value-type unsafe API
 
 ---
 

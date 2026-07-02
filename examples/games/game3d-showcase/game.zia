@@ -3,6 +3,7 @@ module game;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
+bind Viper.Input.Key as Key;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./config";
@@ -49,13 +50,13 @@ class Game3DShowcase {
     hide Boolean skyIsNight;
 
     expose func setup(title: String, width: Integer, height: Integer) {
-        world = World3D.NewWithHorizontalCamera(
+        world = World3D.WithHorizontalCamera(
             title, width, height, config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
         canvas = world.Canvas;
         camera = world.Camera;
         input = world.Input;
         input.LookSensitivity = config.CAMERA_MOUSE_SENS;
-        Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
+        Canvas3D.SetMaxDeltaTime(canvas, config.DT_MAX_MS);
         validateConfig();
 
         player = new ShowcasePlayer();
@@ -142,7 +143,7 @@ class Game3DShowcase {
         if (stepDt > config.DT_MAX_SEC) { stepDt = config.DT_MAX_SEC; }
         worldTime = worldTime + stepDt;
 
-        if (input.Pressed(Keys.get_Escape())) { quitRequested = true; return; }
+        if (input.Pressed(Key.Escape)) { quitRequested = true; return; }
         handleToggles();
         camCtl.updateLook(input);
         camCtl.updateFov(input);
@@ -157,7 +158,7 @@ class Game3DShowcase {
         // before updateBeacons reads it for the hold-E scan-to-activate.
         sim.updateScanner(canvas, camera);
         sim.updateBeacons(stepDt, world, camera, input, player.getX(), player.getY(), player.getZ(), audioSys, effectsSys);
-        sim.pushBoulders(stepDt, player.getX(), player.getZ(), input.Pressed(Keys.get_KeyF()));
+        sim.pushBoulders(stepDt, player.getX(), player.getZ(), input.Pressed(Key.F));
         sim.updateDynamicLights(player.getX(), player.getY(), player.getZ());
         sim.updateTimeOfDay(world, worldTime);
         updateSkybox();
@@ -250,17 +251,17 @@ class Game3DShowcase {
             if (qualityLevel > 2) { qualityLevel = 0; }
             Canvas3D.SetQuality(canvas, qualityLevel);
         }
-        if (input.Pressed(Keys.get_Ctrl())) {
+        if (input.Pressed(Key.LeftControl)) {
             if (debugOn) { debugOn = false; } else { debugOn = true; }
         }
-        if (input.Pressed(Keys.get_KeyF11())) {
+        if (input.Pressed(Key.F11)) {
             Canvas3D.ToggleFullscreen(canvas);
             fullscreenOn = canvas.IsFullscreen;
         }
-        if (input.Pressed(Keys.get_KeyV())) {
+        if (input.Pressed(Key.V)) {
             camCtl.toggleMode();
         }
-        if (input.Pressed(Keys.get_KeyH())) {
+        if (input.Pressed(Key.H)) {
             if (helpOn) { helpOn = false; } else { helpOn = true; }
         }
     }

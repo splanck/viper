@@ -86,24 +86,26 @@ namespace detail {
 
     if (name == "rt_str_release" || name == "rt_str_release_maybe" ||
         name == "rt_memory_release_str" || name == "Viper.String.ReleaseMaybe" ||
-        name == "Viper.Memory.ReleaseStr") {
+        name == "Viper.Memory.ReleaseStr" || name == "Viper.Runtime.Unsafe.ReleaseStr") {
         effects.consumedArgMask = 0b1;
         return effects;
     }
 
     if (name == "rt_str_retain" || name == "rt_str_retain_maybe" ||
         name == "rt_memory_retain_str" || name == "Viper.String.RetainMaybe" ||
-        name == "Viper.Memory.RetainStr") {
+        name == "Viper.Memory.RetainStr" || name == "Viper.Runtime.Unsafe.RetainStr") {
         effects.retainedArgMask = 0b1;
         return effects;
     }
 
-    if (name == "rt_memory_release" || name == "Viper.Memory.Release") {
+    if (name == "rt_memory_release" || name == "Viper.Memory.Release" ||
+        name == "Viper.Runtime.Unsafe.Release") {
         effects.consumedArgMask = 0b1;
         return effects;
     }
 
-    if (name == "rt_memory_retain" || name == "Viper.Memory.Retain") {
+    if (name == "rt_memory_retain" || name == "Viper.Memory.Retain" ||
+        name == "Viper.Runtime.Unsafe.Retain") {
         effects.retainedArgMask = 0b1;
         return effects;
     }
@@ -121,7 +123,12 @@ namespace detail {
         name == "rt_str_rtrim" || name == "rt_str_trim" || name == "rt_str_ucase" ||
         name == "rt_str_lcase" || name == "rt_str_chr" || name == "rt_args_get" ||
         name == "rt_cmdline" || name == "rt_getkey_str" || name == "rt_inkey_str" ||
-        name == "rt_term_read_line" || name == "rt_term_ask" || name == "Viper.String.Left" ||
+        name == "rt_term_read_line" || name == "rt_term_ask" || name == "rt_term_try_read_line" ||
+        name == "rt_term_try_ask" || name == "rt_term_read_line_result" ||
+        name == "rt_term_ask_result" || name == "Viper.Terminal.TryReadLine" ||
+        name == "Viper.Terminal.TryAsk" || name == "Viper.Terminal.ReadLineResult" ||
+        name == "Viper.Terminal.AskResult" || name == "rt_message_bundle_get_or" ||
+        name == "Viper.Localization.MessageBundle.GetOr" || name == "Viper.String.Left" ||
         name == "Viper.String.Right" || name == "Viper.String.Mid2" ||
         name == "Viper.String.Mid3" || name == "Viper.String.LTrim" ||
         name == "Viper.String.RTrim" || name == "Viper.String.Trim" ||
@@ -296,6 +303,12 @@ namespace detail {
     }
 
     if (name == "rt_unbox_str" || name == "Viper.Core.Box.ToStr" ||
+        ((detail::startsWith(name, "rt_cipher_") || detail::startsWith(name, "rt_aes_")) &&
+         (detail::contains(name, "_decrypt") &&
+          (detail::endsWith(name, "_result") || detail::contains(name, "_try_")))) ||
+        (detail::startsWith(name, "Viper.Crypto.") &&
+         (detail::contains(name, ".Decrypt") || detail::contains(name, ".TryDecrypt")) &&
+         (detail::endsWith(name, "Result") || detail::contains(name, ".TryDecrypt"))) ||
         name == "rt_box_to_i64_option" || name == "rt_box_to_f64_option" ||
         name == "rt_box_to_i1_option" || name == "rt_box_to_str_option" ||
         name == "Viper.Core.Box.ToI64Option" || name == "Viper.Core.Box.ToF64Option" ||
@@ -304,9 +317,51 @@ namespace detail {
         name == "rt_obj_type_name" || name == "Viper.Core.Object.TypeName" ||
         name == "Viper.Core.Object.get_TypeName" || name == "rt_parse_double_option" ||
         name == "rt_parse_int64_option" || name == "rt_parse_bool_option" ||
-        name == "Viper.Core.Parse.TryNum" || name == "Viper.Core.Parse.TryInt" ||
-        name == "Viper.Core.Parse.TryBool" ||
-        name == "Viper.Core.Convert.ToString_Int" || name == "Viper.Core.Convert.ToString_Double") {
+        name == "Viper.Core.Parse.TryNum" || name == "Viper.Core.Parse.TryDouble" ||
+        name == "Viper.Core.Parse.TryInt" || name == "Viper.Core.Parse.TryBool" ||
+        name == "rt_datetime_try_parse_option" ||
+        name == "Viper.Time.DateTime.TryParseOption" ||
+        name == "rt_queue_try_pop_option" ||
+        name == "Viper.Collections.Queue.TryPopOption" ||
+        name == "rt_stack_try_pop_option" ||
+        name == "Viper.Collections.Stack.TryPopOption" ||
+        name == "rt_pqueue_try_pop_option" ||
+        name == "Viper.Collections.Heap.TryPopOption" ||
+        name == "rt_pqueue_try_peek_option" ||
+        name == "Viper.Collections.Heap.TryPeekOption" ||
+        name == "rt_deque_try_pop_front_option" ||
+        name == "Viper.Collections.Deque.TryPopFrontOption" ||
+        name == "rt_deque_try_pop_back_option" ||
+        name == "Viper.Collections.Deque.TryPopBackOption" ||
+        name == "rt_concqueue_try_dequeue_option" ||
+        name == "Viper.Threads.ConcurrentQueue.TryDequeueOption" ||
+        name == "rt_channel_try_recv_option" ||
+        name == "Viper.Threads.Channel.TryRecvOption" ||
+        name == "rt_future_try_get_option" ||
+        name == "Viper.Threads.Future.TryGetOption" ||
+        name == "rt_locale_try_parse_option" ||
+        name == "Viper.Localization.Locale.TryParseOption" ||
+        name == "rt_message_bundle_try_get_option" ||
+        name == "Viper.Localization.MessageBundle.TryGetOption" ||
+        name == "rt_numformat_try_parse_decimal" ||
+        name == "Viper.Localization.NumberFormat.TryParseDecimal" ||
+        name == "rt_numformat_try_parse_integer" ||
+        name == "Viper.Localization.NumberFormat.TryParseInteger" ||
+        name == "rt_numformat_try_parse_currency" ||
+        name == "Viper.Localization.NumberFormat.TryParseCurrency" ||
+        name == "rt_promise_get_future" || name == "Viper.Threads.Promise.GetFuture" ||
+        name == "rt_async_run" || name == "Viper.Threads.Async.Run" ||
+        name == "rt_async_run_owned" || name == "Viper.Threads.Async.RunOwned" ||
+        name == "rt_async_run_cancellable" || name == "Viper.Threads.Async.RunCancellable" ||
+        name == "rt_async_run_cancellable_owned" ||
+        name == "Viper.Threads.Async.RunCancellableOwned" || name == "rt_async_delay" ||
+        name == "Viper.Threads.Async.Delay" || name == "rt_async_all" ||
+        name == "Viper.Threads.Async.All" || name == "rt_async_any" ||
+        name == "Viper.Threads.Async.Any" || name == "rt_async_map" ||
+        name == "Viper.Threads.Async.Map" || name == "rt_async_map_owned" ||
+        name == "Viper.Threads.Async.MapOwned" ||
+        name == "Viper.Core.Convert.ToString_Int" || name == "Viper.Core.Convert.ToString_Double" ||
+        name == "Viper.Core.Convert.ToStringInt" || name == "Viper.Core.Convert.ToStringDouble") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;

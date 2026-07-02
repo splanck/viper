@@ -27,6 +27,8 @@
 #include "rt_string.h"
 #include <stdint.h>
 
+#define RT_TRAP_INFO_CLASS_ID INT64_C(-0x440301)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -119,6 +121,50 @@ void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line);
 /// @brief Store the native instruction pointer associated with the most recent trap.
 /// @param ip Native return address captured at the trap site.
 void rt_trap_set_ip(uint64_t ip);
+
+/// @brief Return the current thread's trap snapshot as `Option<TrapInfo>`.
+/// @details Returns `None` when no trap metadata has been recorded on the
+///          current thread. Otherwise returns `Some(TrapInfo)` containing a
+///          read-only copy of the kind, code, instruction pointer, source line,
+///          message, kind name, and formatted location currently stored by the
+///          trap machinery.
+/// @return Opaque `Viper.Option` object containing `Viper.Diagnostics.TrapInfo`.
+void *rt_diagnostics_current_trap(void);
+
+/// @brief Read the trap kind from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @param obj Opaque `TrapInfo` object.
+/// @return Canonical trap kind integer.
+int64_t rt_trap_info_get_kind(void *obj);
+
+/// @brief Read the runtime error code from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @param obj Opaque `TrapInfo` object.
+/// @return Runtime `Err_*` code or zero when none was recorded.
+int64_t rt_trap_info_get_code(void *obj);
+
+/// @brief Read the instruction pointer from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @param obj Opaque `TrapInfo` object.
+/// @return Native instruction pointer value or zero when unavailable.
+int64_t rt_trap_info_get_ip(void *obj);
+
+/// @brief Read the source line from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @param obj Opaque `TrapInfo` object.
+/// @return Source line number, or -1 when unavailable.
+int64_t rt_trap_info_get_line(void *obj);
+
+/// @brief Read the trap kind name from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @param obj Opaque `TrapInfo` object.
+/// @return Owned runtime string containing the stable kind name.
+rt_string rt_trap_info_get_kind_name(void *obj);
+
+/// @brief Read the message from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @param obj Opaque `TrapInfo` object.
+/// @return Owned runtime string containing the trap message.
+rt_string rt_trap_info_get_message(void *obj);
+
+/// @brief Read the formatted location from a `Viper.Diagnostics.TrapInfo` snapshot.
+/// @param obj Opaque `TrapInfo` object.
+/// @return Owned runtime string containing the location, or an empty string.
+rt_string rt_trap_info_get_location(void *obj);
 
 /// @brief Retrieve the last trap's kind classification.
 int64_t rt_trap_get_kind(void);

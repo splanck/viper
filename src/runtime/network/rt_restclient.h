@@ -93,12 +93,29 @@ void rt_restclient_set_pool_size(void *obj, int64_t max_size);
 /// @return HttpRes response object.
 void *rt_restclient_get(void *obj, rt_string path);
 
+/// @brief Perform GET request and return a Result-wrapped HttpRes.
+/// @details Transport/setup failures become `Result.ErrStr`; any received HTTP
+///          response, including 4xx/5xx, is returned as `Result.Ok(HttpRes)`.
+/// @param obj RestClient object.
+/// @param path Path relative to base URL.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+void *rt_restclient_get_result(void *obj, rt_string path);
+
 /// @brief Perform POST request with body.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @param body Request body as string.
 /// @return HttpRes response object.
 void *rt_restclient_post(void *obj, rt_string path, rt_string body);
+
+/// @brief Perform POST request with body and return a Result-wrapped HttpRes.
+/// @details Transport/setup failures become `Result.ErrStr`; HTTP status stays
+///          on the response object for explicit caller handling.
+/// @param obj RestClient object.
+/// @param path Path relative to base URL.
+/// @param body Request body as string.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+void *rt_restclient_post_result(void *obj, rt_string path, rt_string body);
 
 /// @brief Perform PUT request with body.
 /// @param obj RestClient object.
@@ -107,6 +124,13 @@ void *rt_restclient_post(void *obj, rt_string path, rt_string body);
 /// @return HttpRes response object.
 void *rt_restclient_put(void *obj, rt_string path, rt_string body);
 
+/// @brief Perform PUT request with body and return a Result-wrapped HttpRes.
+/// @param obj RestClient object.
+/// @param path Path relative to base URL.
+/// @param body Request body as string.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+void *rt_restclient_put_result(void *obj, rt_string path, rt_string body);
+
 /// @brief Perform PATCH request with body.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
@@ -114,17 +138,36 @@ void *rt_restclient_put(void *obj, rt_string path, rt_string body);
 /// @return HttpRes response object.
 void *rt_restclient_patch(void *obj, rt_string path, rt_string body);
 
+/// @brief Perform PATCH request with body and return a Result-wrapped HttpRes.
+/// @param obj RestClient object.
+/// @param path Path relative to base URL.
+/// @param body Request body as string.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+void *rt_restclient_patch_result(void *obj, rt_string path, rt_string body);
+
 /// @brief Perform DELETE request.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @return HttpRes response object.
 void *rt_restclient_delete(void *obj, rt_string path);
 
+/// @brief Perform DELETE request and return a Result-wrapped HttpRes.
+/// @param obj RestClient object.
+/// @param path Path relative to base URL.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+void *rt_restclient_delete_result(void *obj, rt_string path);
+
 /// @brief Perform HEAD request.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @return HttpRes response object.
 void *rt_restclient_head(void *obj, rt_string path);
+
+/// @brief Perform HEAD request and return a Result-wrapped HttpRes.
+/// @param obj RestClient object.
+/// @param path Path relative to base URL.
+/// @return Opaque `Viper.Result` containing `Ok(HttpRes)` or `Err(String)`.
+void *rt_restclient_head_result(void *obj, rt_string path);
 
 //=============================================================================
 // HTTP Methods - JSON Convenience

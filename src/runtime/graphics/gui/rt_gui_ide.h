@@ -23,7 +23,7 @@ extern "C" {
 #define RT_GUI_VIRTUAL_LIST_CLASS_ID INT64_C(-0x475549564c495354)
 #define RT_GUI_VIRTUAL_TREE_CLASS_ID INT64_C(-0x4755495654524545)
 #define RT_GUI_COMMAND_STATE_CLASS_ID INT64_C(-0x475549434d445354)
-#define RT_GUI_COMMAND_CLASS_ID INT64_C(-0x475549434f4d4e44)    // tag "GUICOMND"
+#define RT_GUI_COMMAND_CLASS_ID INT64_C(-0x475549434f4d4e44)          // tag "GUICOMND"
 #define RT_GUI_COMMAND_REGISTRY_CLASS_ID INT64_C(-0x475549434d445247) // tag "GUICMDRG"
 
 // --- Headless GUI test harness: register synthetic widgets, drive input, and
@@ -47,10 +47,19 @@ void rt_gui_test_harness_register_widget(void *harness,
                                          int64_t h);
 /// @brief Find a registered widget record by exact id (NULL if none).
 void *rt_gui_test_harness_find_by_id(void *harness, rt_string id);
+/// @brief Find a registered widget record by exact id as an Option.
+/// @details Returns Some(Map) when found and None when no matching widget exists.
+void *rt_gui_test_harness_find_by_id_option(void *harness, rt_string id);
 /// @brief Find the first registered widget record with the given name (NULL if none).
 void *rt_gui_test_harness_find_by_name(void *harness, rt_string name);
+/// @brief Find the first registered widget record with the given name as an Option.
+/// @details Returns Some(Map) when found and None when no matching widget exists.
+void *rt_gui_test_harness_find_by_name_option(void *harness, rt_string name);
 /// @brief Find the first registered widget record of the given type (NULL if none).
 void *rt_gui_test_harness_find_by_type(void *harness, rt_string type);
+/// @brief Find the first registered widget record of the given type as an Option.
+/// @details Returns Some(Map) when found and None when no matching widget exists.
+void *rt_gui_test_harness_find_by_type_option(void *harness, rt_string type);
 /// @brief Inject a key event (@p key plus a modifier bitmask) into the harness.
 void rt_gui_test_harness_send_key(void *harness, rt_string key, int64_t modifiers);
 /// @brief Inject a mouse event of @p event_type at (@p x, @p y) for the given button.
@@ -156,26 +165,32 @@ void rt_command_set_checked(void *command, int8_t checked);
 int8_t rt_command_is_checked(void *command);
 /// @brief Bind a Viper.GUI.MenuItem the command should read (clicks) and drive (enabled/checked).
 void rt_command_bind_menu_item(void *command, void *item);
-/// @brief Bind a Viper.GUI.ToolbarItem the command should read (clicks) and drive (enabled/toggled).
+/// @brief Bind a Viper.GUI.ToolbarItem the command should read (clicks) and drive
+/// (enabled/toggled).
 void rt_command_bind_toolbar_item(void *command, void *item);
 /// @brief Poll a standalone command: read bound menu/toolbar/shortcut, push state to bound
 ///        widgets, and return 1 if invoked this frame (disabled commands never report invoked).
 int8_t rt_command_poll(void *command);
 /// @brief Return the invoked flag computed by the most recent command- or registry-level poll.
 int8_t rt_command_was_invoked(void *command);
-/// @brief Snapshot the command as a Map (id, title, shortcut, enabled, checkable, checked, invoked).
+/// @brief Snapshot the command as a Map (id, title, shortcut, enabled, checkable, checked,
+/// invoked).
 void *rt_command_snapshot(void *command);
 
 // --- Command registry: owns a set of commands and routes menu/toolbar/shortcut/palette
 //     to them in a single per-frame poll. ---
 /// @brief Create an empty command registry.
 void *rt_command_registry_new(void);
-/// @brief Add (retain) a command to the registry; ignored if @p command is not a Command or already present.
+/// @brief Add (retain) a command to the registry; ignored if @p command is not a Command or already
+/// present.
 void rt_command_registry_add(void *registry, void *command);
 /// @brief Return the number of commands in the registry.
 int64_t rt_command_registry_count(void *registry);
 /// @brief Return the command with id @p id (a retained reference), or NULL if none.
 void *rt_command_registry_find(void *registry, rt_string id);
+/// @brief Return the command with id @p id as an Option.
+/// @details Returns Some(Command) when found and None when no registered command matches.
+void *rt_command_registry_find_option(void *registry, rt_string id);
 /// @brief Bind the Viper.GUI.CommandPalette whose selection routes to registered commands.
 void rt_command_registry_bind_palette(void *registry, void *palette);
 /// @brief Poll the palette once and every command (menu/toolbar/shortcut/palette); push state.

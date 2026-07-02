@@ -97,6 +97,7 @@ bind Viper.Time.DateTime as DateTime;
 bind "./types";
 bind "../io/json";
 bind Viper.Crypto.Hash as CryptoHash;
+bind Viper.Crypto.Legacy.Hash as LegacyHash;
 bind Viper.Text.Pattern as Pattern;
 bind Viper.Text.StringBuilder as SB;//=============================================================================
 // DATE/TIME HELPER FUNCTIONS
@@ -617,7 +618,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         var s = arg.toString();
-        var hash = CryptoHash.MD5(s);
+        var hash = LegacyHash.MD5(s);
         return sqlText(String.ToLower(hash));
     }
 

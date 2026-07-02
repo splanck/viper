@@ -43,6 +43,7 @@
 
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_platform.h" // RT_WEAK (weak-symbol linkage, compiler-abstracted)
 #include "rt_seq.h"
 
@@ -507,6 +508,16 @@ RT_WEAK int8_t rt_zia_semantic_job_is_error(void *handle) {
 RT_WEAK rt_string rt_zia_semantic_job_error(void *handle) {
     (void)handle;
     return rt_str_empty();
+}
+
+/// @brief Weak stub: null async jobs have no error text option.
+/// @details The weak bridge has no background analyzer and therefore cannot
+///          produce a semantic job failure payload. Returning `None` keeps the
+///          Option-returning API side-channel-free in binaries that omit
+///          `fe_zia`.
+RT_WEAK void *rt_zia_semantic_job_error_option(void *handle) {
+    (void)handle;
+    return rt_option_none();
 }
 
 /// @brief Weak stub: null async jobs have no kind.

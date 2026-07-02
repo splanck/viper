@@ -18,9 +18,10 @@ PRINT "--- SetTimeout ---"
 rc.SetTimeout(5000)
 
 PRINT "NOTE: HTTP methods (Get, Post, Put, etc.) require live server."
-PRINT "Full method list: Get(path), Post(path,body), Put(path,body), Patch(path,body), Delete(path), Head(path)"
+PRINT "Raw methods: Get(path), Post(path,body), Put(path,body), Patch(path,body), Delete(path), Head(path)"
+PRINT "Result methods: GetResult(path), PostResult(path,body), PutResult(path,body), PatchResult(path,body), DeleteResult(path), HeadResult(path)"
 PRINT "JSON methods: GetJson(path), PostJson(path,obj), PutJson(path,obj), PatchJson(path,obj), DeleteJson(path)"
-PRINT "Response props: LastStatus(), LastResponse(), LastOk()"
+PRINT "Compatibility diagnostics: LastStatus(), LastResponse(), LastOk()"
 PRINT "Auth methods: SetAuthBearer(token), SetAuthBasic(user,pass), ClearAuth()"
 PRINT "Config: BaseUrl prop, SetHeader(k,v), DelHeader(k), SetTimeout(ms)"
 

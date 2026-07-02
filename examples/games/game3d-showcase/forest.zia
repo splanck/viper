@@ -4,7 +4,6 @@ module forest;
 bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
-bind Viper.Graphics3D.AssetDiagnostics3D as AssetDiagnostics3D;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
@@ -51,33 +50,59 @@ class ShowcaseForest {
     }
 
     hide func loadTreeModel() -> SceneAsset {
-        var model = SceneAsset.LoadAsset(config.TREE_MODEL_PATH);
-        if (not treeBad(model)) {
-            reportTreeLoadSuccess("asset", config.TREE_MODEL_PATH, model);
-            return model;
+        var model: SceneAsset = null;
+        var loaded = SceneAsset.LoadAssetResult(config.TREE_MODEL_PATH);
+        if (loaded.IsOk) {
+            model = loaded.Unwrap();
+            if (treeBad(model)) {
+                reportTreeLoadFailure(config.TREE_MODEL_PATH, "loaded asset contained no meshes");
+            } else {
+                reportTreeLoadSuccess("asset", config.TREE_MODEL_PATH, model);
+                return model;
+            }
+        } else {
+            reportTreeLoadFailure(config.TREE_MODEL_PATH, loaded.UnwrapErrStr());
         }
-        reportTreeLoadFailure(config.TREE_MODEL_PATH);
 
-        model = SceneAsset.Load(config.TREE_MODEL_PATH);
-        if (not treeBad(model)) {
-            reportTreeLoadSuccess("model", config.TREE_MODEL_PATH, model);
-            return model;
+        loaded = SceneAsset.LoadResult(config.TREE_MODEL_PATH);
+        if (loaded.IsOk) {
+            model = loaded.Unwrap();
+            if (treeBad(model)) {
+                reportTreeLoadFailure(config.TREE_MODEL_PATH, "loaded asset contained no meshes");
+            } else {
+                reportTreeLoadSuccess("model", config.TREE_MODEL_PATH, model);
+                return model;
+            }
+        } else {
+            reportTreeLoadFailure(config.TREE_MODEL_PATH, loaded.UnwrapErrStr());
         }
-        reportTreeLoadFailure(config.TREE_MODEL_PATH);
 
-        model = SceneAsset.Load(config.TREE_MODEL_PATH_ALT);
-        if (not treeBad(model)) {
-            reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_ALT, model);
-            return model;
+        loaded = SceneAsset.LoadResult(config.TREE_MODEL_PATH_ALT);
+        if (loaded.IsOk) {
+            model = loaded.Unwrap();
+            if (treeBad(model)) {
+                reportTreeLoadFailure(config.TREE_MODEL_PATH_ALT, "loaded asset contained no meshes");
+            } else {
+                reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_ALT, model);
+                return model;
+            }
+        } else {
+            reportTreeLoadFailure(config.TREE_MODEL_PATH_ALT, loaded.UnwrapErrStr());
         }
-        reportTreeLoadFailure(config.TREE_MODEL_PATH_ALT);
 
-        model = SceneAsset.Load(config.TREE_MODEL_PATH_FROM_BIN);
-        if (not treeBad(model)) {
-            reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_FROM_BIN, model);
-            return model;
+        loaded = SceneAsset.LoadResult(config.TREE_MODEL_PATH_FROM_BIN);
+        if (loaded.IsOk) {
+            model = loaded.Unwrap();
+            if (treeBad(model)) {
+                reportTreeLoadFailure(config.TREE_MODEL_PATH_FROM_BIN, "loaded asset contained no meshes");
+            } else {
+                reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_FROM_BIN, model);
+                return model;
+            }
+        } else {
+            reportTreeLoadFailure(config.TREE_MODEL_PATH_FROM_BIN, loaded.UnwrapErrStr());
         }
-        reportTreeLoadFailure(config.TREE_MODEL_PATH_FROM_BIN);
+
         return null;
     }
 
@@ -89,8 +114,7 @@ class ShowcaseForest {
             + " scenes=" + toString(SceneAsset.get_SceneCount(model)) + ".");
     }
 
-    hide func reportTreeLoadFailure(path: String) {
-        var msg = AssetDiagnostics3D.get_LastLoadError();
+    hide func reportTreeLoadFailure(path: String, msg: String) {
         if (msg == "") {
             Terminal.Say("Forest: tree model path unavailable: " + path);
         } else {
@@ -282,8 +306,8 @@ class ShowcaseForest {
     // trunks and canopy lobes are drawn from these batches (hardware instancing)
     // instead of spawning a scene entity per part.
     hide func buildInstanceBatches() {
-        unitCylinder = Mesh3D.NewCylinder(1.0, 1.0, 18);
-        unitSphere = Mesh3D.NewSphere(1.0, 22);
+        unitCylinder = Mesh3D.Cylinder(1.0, 1.0, 18);
+        unitSphere = Mesh3D.Sphere(1.0, 22);
         trunkBatch = InstanceBatch3D.New(unitCylinder, barkMat);
         lobeBatches = [];
         for i in 0..treeMats.count() {
@@ -307,7 +331,7 @@ class ShowcaseForest {
         treeMats.add(makeFoliage(0.28, 0.58, 0.20));
         treeMats.add(makeFoliage(0.74, 0.56, 0.18));
         treeMats.add(makeFoliage(0.68, 0.32, 0.14));
-        barkMat = Material3D.NewPBR(0.38, 0.23, 0.12);
+        barkMat = Material3D.PBR(0.38, 0.23, 0.12);
         Material3D.SetAlbedoMap(barkMat, createBarkAlbedo(64));
         Material3D.SetNormalMap(barkMat, createBarkNormal(64));
         barkMat.Roughness = 0.88;
@@ -391,7 +415,7 @@ class ShowcaseForest {
     }
 
     hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {
-        var m = Material3D.NewPBR(r, g, b);
+        var m = Material3D.PBR(r, g, b);
         Material3D.SetAlbedoMap(m, createLeafAlbedo(64, r, g, b));
         Material3D.SetNormalMap(m, createLeafNormal(64));
         m.Roughness = 0.94;

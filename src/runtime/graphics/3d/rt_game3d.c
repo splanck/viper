@@ -57,6 +57,7 @@
 #include "rt_model3d.h"
 #include "rt_navmesh3d.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_parallel.h"
 #include "rt_particles3d.h"
 #include "rt_path.h"
@@ -320,8 +321,8 @@ static int game3d_parse_linux_maps_hex_address(const char **cursor, uintptr_t *o
 /// @brief Parse one `/proc/self/maps` line and test whether it contains @p needle
 ///   inside an executable mapping.
 /// @details Linux exposes process mappings as hex address ranges followed by permission flags. On
-///          success it returns non-zero and writes the executable range into @p out_start/@p out_end
-///          so the caller can cache it for later callbacks.
+///          success it returns non-zero and writes the executable range into @p out_start/@p
+///          out_end so the caller can cache it for later callbacks.
 static int game3d_linux_maps_line_contains_executable_callback(const char *line,
                                                                uintptr_t needle,
                                                                uintptr_t *out_start,

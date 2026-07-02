@@ -42,7 +42,9 @@
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_option.h"
 #include "rt_output.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
@@ -903,4 +905,118 @@ rt_string rt_term_ask(rt_string prompt) {
 /// @return Newly allocated runtime string containing the input line.
 rt_string rt_term_read_line(void) {
     return rt_input_line();
+}
+
+/// @brief Wrap an owned terminal input line in an Option object.
+/// @details A non-null line becomes `Some(line)`. EOF is represented as `None`.
+///          The Option constructor retains the string payload, so this helper
+///          releases the caller-owned input reference before returning. If the
+///          Option allocation traps, the owned line is still released before the
+///          trap is re-raised.
+/// @param line Owned runtime string returned by @ref rt_input_line, or NULL on EOF.
+/// @return Opaque `Viper.Option` object containing the line, or `None` on EOF.
+static void *rt_term_line_to_option(rt_string line) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Viper.Terminal.TryReadLine: option allocation failed");
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(line);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    void *option = line ? rt_option_some_str(line) : rt_option_none();
+    rt_trap_clear_recovery();
+    rt_str_release_maybe(line);
+    return option;
+}
+
+/// @brief Wrap an owned terminal input line in a Result object.
+/// @details A non-null line becomes `Ok(line)`. EOF is represented as
+///          `Err(eof_message)`, making the failure explicit without trapping.
+///          The Result constructor retains the string payload, so this helper
+///          releases any owned temporary strings before returning. Allocation or
+///          retain failures are re-raised as runtime traps after cleanup.
+/// @param line Owned runtime string returned by @ref rt_input_line, or NULL on EOF.
+/// @param eof_message Null-terminated diagnostic used for the EOF Err value.
+/// @return Opaque `Viper.Result` object containing `Ok(line)` or `Err(message)`.
+static void *rt_term_line_to_result(rt_string line, const char *eof_message) {
+    rt_string err_message = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Viper.Terminal.ReadLineResult: result allocation failed");
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(line);
+        rt_str_release_maybe(err_message);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    void *result = NULL;
+    if (line) {
+        result = rt_result_ok_str(line);
+    } else {
+        err_message = rt_const_cstr(eof_message);
+        result = rt_result_err_str(err_message);
+    }
+
+    rt_trap_clear_recovery();
+    rt_str_release_maybe(line);
+    rt_str_release_maybe(err_message);
+    return result;
+}
+
+/// @brief Read a line from stdin as an Option.
+/// @details Returns `Some(String)` when a line is read and `None` when stdin is
+///          at EOF before any bytes are available. I/O allocation failures and
+///          overlong input still trap, matching @ref rt_input_line.
+/// @return Opaque `Viper.Option` object containing the input line or `None`.
+void *rt_term_try_read_line(void) {
+    return rt_term_line_to_option(rt_input_line());
+}
+
+/// @brief Print a prompt and read a line from stdin as an Option.
+/// @details The prompt is flushed before reading. Returns `Some(String)` when a
+///          line is read and `None` when stdin is at EOF before any bytes are
+///          available. Fatal input errors still trap.
+/// @param prompt Runtime string to display before reading input; may be NULL.
+/// @return Opaque `Viper.Option` object containing the input line or `None`.
+void *rt_term_try_ask(rt_string prompt) {
+    rt_print_str(prompt);
+    rt_output_flush();
+    return rt_term_line_to_option(rt_input_line());
+}
+
+/// @brief Read a line from stdin as a Result.
+/// @details Returns `Ok(String)` when a line is read and `Err(String)` when
+///          stdin is at EOF before any bytes are available. Fatal input errors
+///          still trap because they indicate runtime failure rather than normal
+///          end-of-input.
+/// @return Opaque `Viper.Result` object containing the input line or EOF error.
+void *rt_term_read_line_result(void) {
+    return rt_term_line_to_result(rt_input_line(), "Viper.Terminal.ReadLine: EOF before input");
+}
+
+/// @brief Print a prompt and read a line from stdin as a Result.
+/// @details The prompt is flushed before reading. Returns `Ok(String)` when a
+///          line is read and `Err(String)` when stdin is at EOF before any bytes
+///          are available. Fatal input errors still trap.
+/// @param prompt Runtime string to display before reading input; may be NULL.
+/// @return Opaque `Viper.Result` object containing the input line or EOF error.
+void *rt_term_ask_result(rt_string prompt) {
+    rt_print_str(prompt);
+    rt_output_flush();
+    return rt_term_line_to_result(rt_input_line(), "Viper.Terminal.Ask: EOF before input");
 }

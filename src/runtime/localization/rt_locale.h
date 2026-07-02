@@ -93,6 +93,13 @@ void *rt_locale_parse(rt_string tag);
 /// @return New Locale handle or NULL.
 void *rt_locale_try_parse(rt_string tag);
 
+/// @brief Parse a BCP-47 tag as an Option.
+/// @details Returns `Some(Locale)` for valid tags and `None` for NULL, empty,
+///          or invalid input.
+/// @param tag Input string; may be NULL.
+/// @return Opaque Viper.Option object.
+void *rt_locale_try_parse_option(rt_string tag);
+
 /// @brief Build a Locale from pre-split subtag components.
 /// @details Each subtag is validated independently; script and region may
 ///          be empty strings to indicate absence. Canonicalization is

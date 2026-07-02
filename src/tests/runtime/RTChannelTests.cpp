@@ -20,6 +20,7 @@ extern "C" {
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_trap.h"
 
 void rt_trap_set_recovery(jmp_buf *buf);
@@ -293,8 +294,15 @@ static void test_managed_value_wrappers() {
     void *b = make_obj();
 
     assert(rt_channel_try_recv_val(ch) == NULL);
+    void *empty = rt_channel_try_recv_option(ch);
+    assert(rt_option_is_none(empty) == 1);
     assert(rt_channel_try_send(ch, a) == 1);
     assert(rt_channel_try_recv_val(ch) == a);
+
+    assert(rt_channel_try_send(ch, NULL) == 1);
+    void *null_value = rt_channel_try_recv_option(ch);
+    assert(rt_option_is_some(null_value) == 1);
+    assert(rt_option_unwrap(null_value) == NULL);
 
     assert(rt_channel_recv_for_val(ch, 5) == NULL);
     assert(rt_channel_try_send(ch, b) == 1);

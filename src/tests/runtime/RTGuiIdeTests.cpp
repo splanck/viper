@@ -13,6 +13,8 @@
 #include "rt_gui.h"
 #include "rt_internal.h"
 #include "rt_map.h"
+#include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -54,6 +56,23 @@ int main() {
                                         120);
     void *found = rt_gui_test_harness_find_by_id(h, rt_const_cstr("editor"));
     assert(rt_map_get_bool(found, rt_const_cstr("found")) == 1);
+    void *foundOpt = rt_gui_test_harness_find_by_id_option(h, rt_const_cstr("editor"));
+    assert(rt_option_is_some(foundOpt) == 1);
+    assert(rt_map_get_bool(rt_option_unwrap(foundOpt), rt_const_cstr("found")) == 1);
+    if (foundOpt && rt_obj_release_check0(foundOpt))
+        rt_obj_free(foundOpt);
+    void *missingOpt = rt_gui_test_harness_find_by_id_option(h, rt_const_cstr("missing"));
+    assert(rt_option_is_none(missingOpt) == 1);
+    if (missingOpt && rt_obj_release_check0(missingOpt))
+        rt_obj_free(missingOpt);
+    void *nameOpt = rt_gui_test_harness_find_by_name_option(h, rt_const_cstr("Search Results"));
+    assert(rt_option_is_some(nameOpt) == 1);
+    if (nameOpt && rt_obj_release_check0(nameOpt))
+        rt_obj_free(nameOpt);
+    void *typeOpt = rt_gui_test_harness_find_by_type_option(h, rt_const_cstr("List"));
+    assert(rt_option_is_some(typeOpt) == 1);
+    if (typeOpt && rt_obj_release_check0(typeOpt))
+        rt_obj_free(typeOpt);
     rt_gui_test_harness_send_mouse(h, rt_const_cstr("down"), 20, 20, 1);
     assert(take(rt_gui_test_harness_get_focus(h)) == "editor");
     assert(rt_gui_test_harness_tick(h, 3) == 3);
@@ -131,7 +150,8 @@ int main() {
     assert(rt_command_is_checkable(build) == 0);
     assert(rt_command_is_checked(build) == 0);
     assert(rt_command_was_invoked(build) == 0);
-    rt_command_set_shortcut(build, rt_const_cstr("Ctrl+B")); // stored even with no app to register with
+    rt_command_set_shortcut(build,
+                            rt_const_cstr("Ctrl+B")); // stored even with no app to register with
     assert(take(rt_command_get_shortcut(build)) == "Ctrl+B");
     rt_command_set_checkable(build, 1);
     rt_command_set_checked(build, 1);
@@ -162,6 +182,16 @@ int main() {
     assert(foundRun != NULL);
     assert(take(rt_command_get_id(foundRun)) == "run");
     assert(rt_command_registry_find(registry, rt_const_cstr("missing")) == NULL);
+    void *foundRunOption = rt_command_registry_find_option(registry, rt_const_cstr("run"));
+    assert(rt_option_is_some(foundRunOption) == 1);
+    assert(take(rt_command_get_id(rt_option_unwrap(foundRunOption))) == "run");
+    if (foundRunOption && rt_obj_release_check0(foundRunOption))
+        rt_obj_free(foundRunOption);
+    void *missingCommandOption =
+        rt_command_registry_find_option(registry, rt_const_cstr("missing"));
+    assert(rt_option_is_none(missingCommandOption) == 1);
+    if (missingCommandOption && rt_obj_release_check0(missingCommandOption))
+        rt_obj_free(missingCommandOption);
     // No palette bound and nothing invoked: poll returns the empty string.
     assert(take(rt_command_registry_poll(registry)).empty());
     rt_command_registry_clear(registry);

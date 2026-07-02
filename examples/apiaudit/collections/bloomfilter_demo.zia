@@ -1,5 +1,5 @@
 // bloomfilter_demo.zia - Comprehensive API audit for Viper.Collections.BloomFilter
-// Tests: New, Add, MightContain, Count, Fpr, Clear, Merge
+// Tests: New, Add, MightContain, Count, FalsePositiveRate, Clear, Merge
 
 module BloomFilterDemo;
 
@@ -32,9 +32,9 @@ func start() {
     // "grape" should most likely return 0
     SayBool(bf.MightContain("grape"));  // 0 (probably)
 
-    // --- Fpr (estimated false positive rate) ---
-    Say("--- Fpr ---");
-    SayNum(bf.Fpr());       // should be very low (near 0.0)
+    // --- FalsePositiveRate (estimated false positive rate) ---
+    Say("--- FalsePositiveRate ---");
+    SayNum(bf.FalsePositiveRate()); // should be very low (near 0.0)
 
     // --- Add more items ---
     Say("--- Add more ---");

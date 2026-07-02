@@ -1027,7 +1027,7 @@ final LOG_FILE = "processor.log";
 
 func log(message: String) {
     var ts = DateTime.Now();
-    var timestamp = Convert.ToString_Int(ts);
+    var timestamp = Convert.ToStringInt(ts);
     var entry = "[" + timestamp + "] " + message + "\n";
 
     try {

@@ -47,10 +47,18 @@ extern "C" {
 #define RT_GAMEBUTTON_CLASS_ID INT64_C(-0x510106)
 #define RT_UITEXTINPUT_CLASS_ID INT64_C(-0x510107)
 #define RT_UITABLE_CLASS_ID INT64_C(-0x510108)
+#define RT_UITABLE_CLICK_RESULT_CLASS_ID INT64_C(-0x51010D)
 #define RT_UIMODAL_CLASS_ID INT64_C(-0x510109)
 #define RT_UISLIDER_CLASS_ID INT64_C(-0x51010A)
 #define RT_UIDROPDOWN_CLASS_ID INT64_C(-0x51010B)
 #define RT_UITOOLTIP_CLASS_ID INT64_C(-0x51010C)
+
+/// Click result kind for a table click that did not hit a row or header.
+#define RT_UITABLE_CLICK_NONE INT64_C(0)
+/// Click result kind for a table click that selected a body row.
+#define RT_UITABLE_CLICK_ROW INT64_C(1)
+/// Click result kind for a table click that hit a column header.
+#define RT_UITABLE_CLICK_HEADER INT64_C(2)
 
 //=========================================================================
 // UILabel — Positioned text with optional BitmapFont
@@ -328,10 +336,46 @@ int64_t rt_uitable_get_scroll(void *table);
 void rt_uitable_set_selected_row(void *table, int64_t row);
 /// @brief Get the selected row index (-1 if none).
 int64_t rt_uitable_get_selected_row(void *table);
-/// @brief Process a click at (mx, my); @return the clicked row index or -1.
+/// @brief Process a click at (mx, my); @return the clicked row index, -2 for a header click, or -1.
 int64_t rt_uitable_handle_click(void *table, int64_t mx, int64_t my);
+/// @brief Process a click at (mx, my) and return a structured snapshot.
+/// @details This is the sentinel-free replacement for rt_uitable_handle_click()
+///          plus rt_uitable_last_header_click(). It performs the same state
+///          updates as rt_uitable_handle_click(): row clicks select rows and
+///          sortable header clicks toggle sort order.
+/// @param table Opaque Viper.Game.UI.Table object.
+/// @param mx Click x-coordinate in canvas pixels.
+/// @param my Click y-coordinate in canvas pixels.
+/// @return Opaque Viper.Game.UI.TableClickResult object.
+void *rt_uitable_handle_click_result(void *table, int64_t mx, int64_t my);
 /// @brief Index of the column header last clicked (for sort toggling), or -1.
 int64_t rt_uitable_last_header_click(void *table);
+/// @brief Return the click kind stored in a Viper.Game.UI.TableClickResult.
+/// @param result Opaque TableClickResult object.
+/// @return One of RT_UITABLE_CLICK_NONE, RT_UITABLE_CLICK_ROW, or RT_UITABLE_CLICK_HEADER.
+int64_t rt_table_click_result_kind(void *result);
+/// @brief Query whether a TableClickResult represents no hit.
+/// @param result Opaque TableClickResult object.
+/// @return 1 when the click hit neither a row nor a header, otherwise 0.
+int8_t rt_table_click_result_is_none(void *result);
+/// @brief Query whether a TableClickResult represents a body row hit.
+/// @param result Opaque TableClickResult object.
+/// @return 1 when the click selected a row, otherwise 0.
+int8_t rt_table_click_result_is_row(void *result);
+/// @brief Query whether a TableClickResult represents a header hit.
+/// @param result Opaque TableClickResult object.
+/// @return 1 when the click hit a column header, otherwise 0.
+int8_t rt_table_click_result_is_header(void *result);
+/// @brief Return the selected row as an Option.
+/// @details Row clicks return Some(row). Header clicks and misses return None.
+/// @param result Opaque TableClickResult object.
+/// @return Opaque Viper.Option containing an i64 row index, or None.
+void *rt_table_click_result_row_option(void *result);
+/// @brief Return the clicked header column as an Option.
+/// @details Header clicks return Some(column). Row clicks and misses return None.
+/// @param result Opaque TableClickResult object.
+/// @return Opaque Viper.Option containing an i64 column index, or None.
+void *rt_table_click_result_column_option(void *result);
 /// @brief Scroll the view by @p delta rows.
 void rt_uitable_handle_scroll(void *table, int64_t delta);
 /// @brief Process a key press (row navigation).

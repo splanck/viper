@@ -2,12 +2,13 @@
 // API Audit: Viper.Core.Box - Value Boxing/Unboxing
 // =============================================================================
 // Tests: I64, F64, I1, Str, ToI64, ToF64, ToI1, ToStr, Type, EqI64, EqF64,
-//        EqStr, ValueType
+//        EqStr; Viper.Runtime.Unsafe.ValueType compatibility hook
 // =============================================================================
 
 module BoxDemo;
 bind Viper.Terminal;
 bind Viper.Core.Box as Box;
+bind Viper.Runtime.Unsafe as Unsafe;
 func start() {
     Say("=== API Audit: Viper.Core.Box ===");
 
@@ -39,16 +40,16 @@ func start() {
 
     // --- Box I1 (Boolean) ---
     Say("--- Box I1 ---");
-    var bb = Box.I1(1);
-    Say("Box.I1(1) created");
+    var bb = Box.I1(true);
+    Say("Box.I1(true) created");
     Say("ToI1:");
-    SayInt(Box.ToI1(bb));
+    SayBool(Box.ToI1(bb));
     Say("Type (expect 2 for i1):");
     SayInt(Box.Type(bb));
 
-    var bb0 = Box.I1(0);
-    Say("Box.I1(0) ToI1:");
-    SayInt(Box.ToI1(bb0));
+    var bb0 = Box.I1(false);
+    Say("Box.I1(false) ToI1:");
+    SayBool(Box.ToI1(bb0));
 
     // --- Box Str ---
     Say("--- Box Str ---");
@@ -64,14 +65,14 @@ func start() {
     SayBool(Box.EqStr(bs, "world"));
 
     // --- ValueType ---
-    Say("--- ValueType ---");
-    var vt0 = Box.ValueType(0);
+    Say("--- Unsafe ValueType ---");
+    var vt0 = Unsafe.ValueType(0);
     Say("ValueType(0) - i64 type obj created");
-    var vt1 = Box.ValueType(1);
+    var vt1 = Unsafe.ValueType(1);
     Say("ValueType(1) - f64 type obj created");
-    var vt2 = Box.ValueType(2);
+    var vt2 = Unsafe.ValueType(2);
     Say("ValueType(2) - i1 type obj created");
-    var vt3 = Box.ValueType(3);
+    var vt3 = Unsafe.ValueType(3);
     Say("ValueType(3) - str type obj created");
 
     Say("=== Box Demo Complete ===");

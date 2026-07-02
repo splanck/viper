@@ -44,6 +44,27 @@ void *rt_aes_encrypt(void *data, void *key, void *iv);
 /// @return Bytes object containing plaintext, or NULL when padding is invalid
 void *rt_aes_decrypt(void *data, void *key, void *iv);
 
+/// @brief Decrypt AES-CBC data and report failures as a Result.
+/// @details Compatibility wrapper for @ref rt_aes_decrypt. Returns
+///          `Ok(Bytes)` for valid plaintext and `Err(str)` for invalid padding,
+///          malformed input, approved-mode rejection, invalid key/IV sizes, or
+///          traps raised by the legacy decryptor.
+/// @param data Bytes object containing ciphertext.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param iv Bytes object containing the 16-byte initialization vector.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_aes_decrypt_result(void *data, void *key, void *iv);
+
+/// @brief Attempt AES-CBC decryption and discard diagnostic details.
+/// @details Returns `Some(Bytes)` for valid plaintext and `None` for invalid
+///          padding, malformed input, approved-mode rejection, invalid key/IV
+///          sizes, or traps raised by the legacy decryptor.
+/// @param data Bytes object containing ciphertext.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param iv Bytes object containing the 16-byte initialization vector.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_aes_try_decrypt(void *data, void *key, void *iv);
+
 /// @brief Encrypt data using AES-128-GCM or AES-256-GCM with optional authenticated data.
 /// @param key Bytes object containing key (16 bytes for AES-128, 32 for AES-256).
 /// @return Bytes object: [magic(4)][nonce(12)][ciphertext][tag(16)].
@@ -51,6 +72,26 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad);
 
 /// @brief Decrypt data produced by rt_aes_encrypt_auth.
 void *rt_aes_decrypt_auth(void *data, void *key, void *aad);
+
+/// @brief Decrypt AES-GCM authenticated data and report failures as a Result.
+/// @details Compatibility wrapper for @ref rt_aes_decrypt_auth. Returns
+///          `Ok(Bytes)` when the ciphertext and optional AAD authenticate, and
+///          `Err(str)` for tag mismatch, malformed input, invalid key sizes, or
+///          traps raised by the legacy decryptor.
+/// @param data Framed ciphertext produced by @ref rt_aes_encrypt_auth.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Result containing plaintext bytes or a diagnostic string.
+void *rt_aes_decrypt_auth_result(void *data, void *key, void *aad);
+
+/// @brief Attempt AES-GCM authenticated decryption and discard diagnostic details.
+/// @details Returns `Some(Bytes)` only when ciphertext and AAD authenticate.
+///          Any failure is represented as `None`.
+/// @param data Framed ciphertext produced by @ref rt_aes_encrypt_auth.
+/// @param key Bytes object containing a 16-byte or 32-byte AES key.
+/// @param aad Additional authenticated data; may be NULL.
+/// @return Opaque Viper.Option containing plaintext bytes, or None.
+void *rt_aes_try_decrypt_auth(void *data, void *key, void *aad);
 
 /// @brief Encrypt string using PBKDF2-derived AES-128-GCM.
 /// @param data String to encrypt
@@ -66,6 +107,23 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password);
 /// @param password Password string used for key derivation
 /// @return Decrypted string
 rt_string rt_aes_decrypt_str(void *data, rt_string password);
+
+/// @brief Decrypt an AES encrypted string and report failures as a Result.
+/// @details Compatibility wrapper for @ref rt_aes_decrypt_str. Returns
+///          `Ok(str)` for valid plaintext and `Err(str)` for authentication,
+///          format, password, or runtime-trap failures.
+/// @param data Bytes object containing encrypted string payload.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Result containing a plaintext string or diagnostic string.
+void *rt_aes_decrypt_str_result(void *data, rt_string password);
+
+/// @brief Attempt AES encrypted string decryption and discard diagnostic details.
+/// @details Returns `Some(str)` for valid plaintext and `None` when decryption
+///          fails or the legacy decryptor traps.
+/// @param data Bytes object containing encrypted string payload.
+/// @param password Password string used for key derivation.
+/// @return Opaque Viper.Option containing plaintext string, or None.
+void *rt_aes_try_decrypt_str(void *data, rt_string password);
 
 #ifdef __cplusplus
 }

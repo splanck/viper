@@ -90,6 +90,14 @@ void *rt_stack_to_list(void *obj);
 /// @return The removed element, or NULL if empty.
 void *rt_stack_try_pop(void *obj);
 
+/// @brief Pop the top element as an Option.
+/// @details Returns `None` when the stack is empty and `Some(value)` when an
+///          element is removed. A stored NULL value is represented as
+///          `Some(NULL)`, unlike @ref rt_stack_try_pop.
+/// @param obj Opaque Stack object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_stack_try_pop_option(void *obj);
+
 /// @brief Create a shallow copy of the stack.
 /// @param obj Source Stack pointer.
 /// @return New stack with same elements in same order.

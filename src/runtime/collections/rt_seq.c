@@ -38,6 +38,7 @@
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_random.h"
 #include "rt_seq_internal.h"
 #include "rt_string.h"
@@ -1209,6 +1210,17 @@ int64_t rt_seq_find(void *obj, void *val) {
     }
 
     return -1;
+}
+
+/// @brief Find the first index of an element as an Option index.
+/// @details Sentinel-free companion to @ref rt_seq_find. A match returns
+///          `SomeI64(index)` and absence returns `None`.
+/// @param obj Opaque Seq object pointer, or NULL.
+/// @param val Element to search for; may be NULL.
+/// @return Opaque Viper.Option containing the first index, or None.
+void *rt_seq_find_option(void *obj, void *val) {
+    int64_t index = rt_seq_find(obj, val);
+    return index >= 0 ? rt_option_some_i64(index) : rt_option_none();
 }
 
 /// @brief Checks whether the Seq contains a specific element.

@@ -175,8 +175,8 @@ func runNativeCompressedUploadProbe() -> String {
     var nativeCompressedBytes = TextureAsset3D.get_ResidentBytes(texture);
     var nativeRawRgbaBytes = 4 * 4 * 4;
 
-    var mesh = Mesh3D.NewPlane(1.0, 1.0);
-    var material = Material3D.NewPBR(1.0, 1.0, 1.0);
+    var mesh = Mesh3D.Plane(1.0, 1.0);
+    var material = Material3D.PBR(1.0, 1.0, 1.0);
     Material3D.SetShadingModel(material, 3);
     Material3D.SetAlbedoMap(material, texture);
     var camera = Camera3D.NewOrtho(2.0, 1.0, 0.1, 20.0);
@@ -283,7 +283,7 @@ func start() {
     Game3D.Assets3D.ClearCache();
 
     var blockingStart = Clock.TicksUs();
-    var blockingTemplate: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplateAsset(path);
+    var blockingTemplate: Game3D.SceneTemplate = Game3D.Prefab.LoadAsset(path);
     var blockingUs = Clock.TicksUs() - blockingStart;
     if (blockingTemplate == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
@@ -305,7 +305,7 @@ func start() {
 
     Game3D.Assets3D.SetUploadBudget(0);
     var asyncStart = Clock.TicksUs();
-    var asyncHandle: Game3D.AssetHandle3D = Game3D.Assets3D.LoadTemplateAssetAsync(path);
+    var asyncHandle: Game3D.AssetHandle3D = Game3D.Prefab.LoadAssetAsync(path);
     var asyncCreateUs = Clock.TicksUs() - asyncStart;
     if (asyncHandle == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
@@ -357,7 +357,7 @@ func start() {
              asyncHandle.Error);
         return;
     }
-    if (asyncHandle.GetTemplate() == null) {
+    if (asyncHandle.GetPrefab() == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
         fail("ready async handle did not expose a template");
         return;

@@ -86,12 +86,18 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
         bool hasNumToInt = false;
         bool hasToStringInt = false;
         bool hasToStringDouble = false;
+        bool hasCanonicalToStringInt = false;
+        bool hasCanonicalToStringDouble = false;
         for (const auto &m : it->methods) {
             hasToInt64 = hasToInt64 || std::string(m.name) == "ToInt64";
             hasToDouble = hasToDouble || std::string(m.name) == "ToDouble";
             hasNumToInt = hasNumToInt || std::string(m.name) == "NumToInt";
             hasToStringInt = hasToStringInt || std::string(m.name) == "ToString_Int";
             hasToStringDouble = hasToStringDouble || std::string(m.name) == "ToString_Double";
+            hasCanonicalToStringInt =
+                hasCanonicalToStringInt || std::string(m.name) == "ToStringInt";
+            hasCanonicalToStringDouble =
+                hasCanonicalToStringDouble || std::string(m.name) == "ToStringDouble";
             EXPECT_NE(std::string(m.name), "ToInt");
         }
         EXPECT_TRUE(hasToInt64);
@@ -99,6 +105,8 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
         EXPECT_TRUE(hasNumToInt);
         EXPECT_TRUE(hasToStringInt);
         EXPECT_TRUE(hasToStringDouble);
+        EXPECT_TRUE(hasCanonicalToStringInt);
+        EXPECT_TRUE(hasCanonicalToStringDouble);
     };
 
     requireConvertClass("Viper.Core.Convert");
@@ -142,6 +150,14 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     auto tsd = midx.find("Viper.Core.Convert", "ToString_Double", 1);
     ASSERT_TRUE(tsd.has_value());
     EXPECT_EQ(tsd->target, std::string("Viper.Core.Convert.ToString_Double"));
+
+    auto canonicalTsi = midx.find("Viper.Core.Convert", "ToStringInt", 1);
+    ASSERT_TRUE(canonicalTsi.has_value());
+    EXPECT_EQ(canonicalTsi->target, std::string("Viper.Core.Convert.ToStringInt"));
+
+    auto canonicalTsd = midx.find("Viper.Core.Convert", "ToStringDouble", 1);
+    ASSERT_TRUE(canonicalTsd.has_value());
+    EXPECT_EQ(canonicalTsd->target, std::string("Viper.Core.Convert.ToStringDouble"));
 }
 
 TEST(RuntimeClassParseBinding, CatalogContainsCanonicalParseMethods) {

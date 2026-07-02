@@ -5,6 +5,6 @@ func start() {
     Say("NOTE: Graphics classes require a canvas/window. API surface test only.");
     Say("Constructor: New()");
     Say("Properties: get_Root, get_NodeCount");
-    Say("Methods: AddNode(node), RemoveNode(node), Update(dt)");
+    Say("Methods: AddNode(node), RemoveNode(node), Find(name), FindOption(name), Update(dt)");
     Say("=== Scene Audit Complete (API surface only) ===");
 }

@@ -33,6 +33,8 @@
 
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_option.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
@@ -53,6 +55,12 @@
 
 /// @brief Last parse error message (thread-local to avoid concurrent parse clobbering).
 static _Thread_local char xml_last_error[256] = {0};
+
+/// @brief Release a temporary runtime object after another owner has retained it.
+static void xml_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
 
 //=============================================================================
 // Forward Declarations
@@ -1328,6 +1336,31 @@ void *rt_xml_parse(rt_string text) {
     return parse_document(cstr, len);
 }
 
+/// @brief `Xml.ParseResult(text)` — parse XML source into a Result.
+///
+/// Successful parses return `Ok(document)`. Malformed or empty input returns
+/// `Err(message)` with the same diagnostic text exposed by `Xml.Error()`.
+///
+/// @param text UTF-8 XML source.
+/// @return Owned `Viper.Result` carrying either the document node or an error string.
+void *rt_xml_parse_result(rt_string text) {
+    void *doc = rt_xml_parse(text);
+    if (!doc) {
+        rt_string err = rt_xml_error();
+        if (!err || rt_str_len(err) == 0) {
+            rt_str_release_maybe(err);
+            return rt_result_err_str(rt_const_cstr("XML parse error"));
+        }
+        void *result = rt_result_err_str(err);
+        rt_str_release_maybe(err);
+        return result;
+    }
+
+    void *result = rt_result_ok(doc);
+    xml_release_temp_object(doc);
+    return result;
+}
+
 /// @brief `Xml.Error()` — return the last parse error message on this thread.
 ///
 /// Empty when the most recent parse succeeded. Errors are thread-local
@@ -2252,6 +2285,23 @@ void *rt_xml_find(void *node, rt_string tag) {
         return first;
     }
     return find_first_iterative(node, target);
+}
+
+/// @brief `XmlNode.FindOption(tag)` — first matching descendant as an Option.
+/// @details Wraps the retained node returned by @ref rt_xml_find in
+///          `Some(node)` and releases the temporary reference after the Option
+///          retains it. Absence, invalid receivers, and NULL tags return None.
+/// @param node Starting XML node.
+/// @param tag Tag name or simple slash-separated path.
+/// @return Opaque Viper.Option containing the first matching node, or None.
+void *rt_xml_find_option(void *node, rt_string tag) {
+    void *found = rt_xml_find(node, tag);
+    if (!found)
+        return rt_option_none();
+    void *option = rt_option_some(found);
+    if (rt_obj_release_check0(found))
+        rt_obj_free(found);
+    return option;
 }
 
 //=============================================================================

@@ -37,6 +37,7 @@
 #include "rt_heap.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_quat.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
@@ -73,12 +74,14 @@ static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t
     return 0;
 }
 
+// clang-format off
 #include "rt_skeleton3d_matrix.inc"
 #include "rt_skeleton3d_skeleton.inc"
 #include "rt_skeleton3d_animation.inc"
 #include "rt_skeleton3d_player.inc"
 #include "rt_skeleton3d_skinning.inc"
 #include "rt_skeleton3d_blend.inc"
+// clang-format on
 #else
 typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

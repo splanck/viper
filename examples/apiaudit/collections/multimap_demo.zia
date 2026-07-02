@@ -1,5 +1,5 @@
 // multimap_demo.zia - Comprehensive API audit for Viper.Collections.MultiMap
-// Tests: New, Put, Get, GetFirst, Has, RemoveAll, Keys, Len, IsEmpty,
+// Tests: New, Add, Get, GetFirst, Has, RemoveAll, Keys, Len, IsEmpty,
 //        KeyCount, CountFor, Clear
 
 module MultiMapDemo;
@@ -18,13 +18,13 @@ func start() {
     SayInt(mm.Count);        // 0
     SayBool(mm.IsEmpty);   // 1
 
-    // --- Put / Len ---
-    Say("--- Put / Len ---");
-    mm.Put("color", Box.Str("red"));
-    mm.Put("color", Box.Str("green"));
-    mm.Put("color", Box.Str("blue"));
-    mm.Put("size", Box.Str("small"));
-    mm.Put("size", Box.Str("large"));
+    // --- Add / Len ---
+    Say("--- Add / Len ---");
+    mm.Add("color", Box.Str("red"));
+    mm.Add("color", Box.Str("green"));
+    mm.Add("color", Box.Str("blue"));
+    mm.Add("size", Box.Str("small"));
+    mm.Add("size", Box.Str("large"));
     SayInt(mm.Count);        // 5 (total values)
     SayBool(mm.IsEmpty);   // 0
 

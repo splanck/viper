@@ -71,6 +71,14 @@ void rt_animtimeline_advance(void *tl, int64_t delta_frames);
 int64_t rt_animtimeline_events_fired_count(void *tl);
 /// @brief Marker id of the @p index-th event fired during the last advance().
 int64_t rt_animtimeline_event_fired_id(void *tl, int64_t index);
+/// @brief Snapshot marker IDs fired by the most recent advance().
+/// @details Returns an immutable Viper.Game.AnimationEventBatch whose contents
+///          are independent from later Advance(), Play(), Stop(), or looping
+///          state changes. This is the composable replacement for reading
+///          EventsFiredCount and EventFiredId from mutable state.
+/// @param tl AnimTimeline object.
+/// @return New Viper.Game.AnimationEventBatch object, or NULL on allocation failure.
+void *rt_animtimeline_poll_events(void *tl);
 /// @brief True if the track at @p track_index is active at the current frame.
 int8_t rt_animtimeline_track_is_active(void *tl, int64_t track_index);
 /// @brief Normalized [0,1] progress of the track at @p track_index.

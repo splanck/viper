@@ -43,12 +43,12 @@ Bit manipulation utilities for working with 64-bit integers at the bit level.
 | `Not(val)`         | `i64(i64)`      | Bitwise NOT (complement)               |
 | `Shl(val, count)`  | `i64(i64, i64)` | Logical shift left                     |
 | `Shr(val, count)`  | `i64(i64, i64)` | Arithmetic shift right (sign-extended) |
-| `Ushr(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill)        |
-| `Rotl(val, count)` | `i64(i64, i64)` | Rotate left                            |
-| `Rotr(val, count)` | `i64(i64, i64)` | Rotate right                           |
+| `ShiftRightLogical(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill) |
+| `RotateLeft(val, count)` | `i64(i64, i64)` | Rotate left                            |
+| `RotateRight(val, count)` | `i64(i64, i64)` | Rotate right                           |
 | `Count(val)`       | `i64(i64)`      | Population count (number of 1 bits)    |
-| `LeadZ(val)`       | `i64(i64)`      | Count leading zeros                    |
-| `TrailZ(val)`      | `i64(i64)`      | Count trailing zeros                   |
+| `CountLeadingZeros(val)` | `i64(i64)` | Count leading zeros                    |
+| `CountTrailingZeros(val)` | `i64(i64)` | Count trailing zeros                   |
 | `Flip(val)`        | `i64(i64)`      | Reverse all 64 bits                    |
 | `Swap(val)`        | `i64(i64)`      | Byte swap (endian swap)                |
 | `Get(val, bit)`    | `i1(i64, i64)`  | Get bit at position (0-63)             |
@@ -62,23 +62,26 @@ Bit manipulation utilities for working with 64-bit integers at the bit level.
 
 - **Shl** — Logical shift left. Shifts bits left, filling with zeros on the right.
 - **Shr** — Arithmetic shift right. Shifts bits right, preserving the sign bit (sign-extended).
-- **Ushr** — Logical shift right. Shifts bits right, filling with zeros on the left.
+- **ShiftRightLogical** — Logical shift right. Shifts bits right, filling with zeros on the left.
 
-Shift counts are clamped: negative counts or counts >= 64 return 0 (for Shl/Ushr) or the sign bit extended (for Shr with
-negative values).
+Shift counts are clamped: negative counts or counts >= 64 return 0 (for
+Shl/ShiftRightLogical) or the sign bit extended (for Shr with negative values).
 
 #### Rotate Operations
 
-- **Rotl** — Rotate left. Bits shifted out on the left wrap around to the right.
-- **Rotr** — Rotate right. Bits shifted out on the right wrap around to the left.
+- **RotateLeft** — Rotate left. Bits shifted out on the left wrap around to the right.
+- **RotateRight** — Rotate right. Bits shifted out on the right wrap around to the left.
 
 Rotate counts are normalized to 0-63 (count MOD 64).
 
 #### Bit Counting
 
 - **Count** — Population count (popcount). Returns the number of 1 bits.
-- **LeadZ** — Count leading zeros. Returns 64 for zero, 0 for negative values.
-- **TrailZ** — Count trailing zeros. Returns 64 for zero.
+- **CountLeadingZeros** — Count leading zeros. Returns 64 for zero, 0 for negative values.
+- **CountTrailingZeros** — Count trailing zeros. Returns 64 for zero.
+
+Compatibility aliases remain available for existing code: `Ushr`, `Rotl`,
+`Rotr`, `LeadZ`, and `TrailZ`.
 
 #### Single Bit Operations
 
@@ -100,7 +103,7 @@ func start() {
     Say("Xor: " + Fmt.Int(Bits.Xor(12, 10)));     // 6
     Say("Shl: " + Fmt.Int(Bits.Shl(1, 4)));       // 16
     Say("Count: " + Fmt.Int(Bits.Count(255)));     // 8
-    Say("LeadZ: " + Fmt.Int(Bits.LeadZ(1)));       // 63
+    Say("Leading zeros: " + Fmt.Int(Bits.CountLeadingZeros(1))); // 63
 }
 ```
 
@@ -318,7 +321,8 @@ Random number generation with uniform and distribution-based functions.
 | `Gaussian(mean, stddev)`   | `Double(Double, Double)` | Returns a normally distributed random value         |
 | `Exponential(lambda)`      | `Double(Double)`       | Returns an exponentially distributed random value     |
 | `Dice(sides)`              | `Integer(Integer)`     | Simulates a dice roll, returns [1, sides]             |
-| `Chance(probability)`      | `Integer(Double)`      | Returns 1 with probability p, otherwise 0             |
+| `Chance(probability)`      | `Boolean(Double)`      | Returns true with probability p, otherwise false      |
+| `ChanceInt(probability)`   | `Integer(Double)`      | Compatibility 0/1 form of `Chance`                   |
 | `Shuffle(seq)`             | `Void(Seq)`            | Randomly shuffles a sequence in place                 |
 
 ### Zia Example
@@ -374,7 +378,7 @@ waitTime = Viper.Math.Random.Exponential(0.5)  ' mean = 2.0
 PRINT "Wait: "; waitTime
 
 ' 70% chance of success
-IF Viper.Math.Random.Chance(0.7) = 1 THEN
+IF Viper.Math.Random.Chance(0.7) THEN
     PRINT "Success!"
 ELSE
     PRINT "Failed."

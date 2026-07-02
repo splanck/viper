@@ -286,6 +286,28 @@ static void test_shell_full_empty() {
     assert(code == 0);
 }
 
+static void test_shell_result_success() {
+    rt_string cmd = make_string("echo result_ok");
+    void *result = rt_exec_shell_result(cmd);
+    assert(result != nullptr);
+    rt_string output = rt_exec_command_result_output(result);
+    assert(output != nullptr);
+    assert(strstr(rt_string_cstr(output), "result_ok") != nullptr);
+    assert(rt_exec_command_result_exit_code(result) == 0);
+    assert(rt_exec_command_result_succeeded(result) == 1);
+}
+
+static void test_shell_result_exit_code() {
+    rt_string cmd = make_string("echo result_fail; exit 9");
+    void *result = rt_exec_shell_result(cmd);
+    assert(result != nullptr);
+    rt_string output = rt_exec_command_result_output(result);
+    assert(output != nullptr);
+    assert(strstr(rt_string_cstr(output), "result_fail") != nullptr);
+    assert(rt_exec_command_result_exit_code(result) == 9);
+    assert(rt_exec_command_result_succeeded(result) == 0);
+}
+
 static void test_last_exit_code_initial() {
     // Before any ShellFull call, last exit code is -1
     // (We can't reset the TLS state between tests, so just call it after
@@ -460,6 +482,8 @@ int main() {
     test_shell_full_exit_code();
     test_shell_full_with_stderr_merge();
     test_shell_full_empty();
+    test_shell_result_success();
+    test_shell_result_exit_code();
     test_last_exit_code_initial();
 
     // Streaming Process handle coverage.

@@ -19,6 +19,7 @@ last-verified: 2026-05-15
 - [Viper.Game.UI.MenuList](#vipergameuimenulist)
 - [Viper.Game.UI.HudTextInput](#vipergameuihudtextinput)
 - [Viper.Game.UI.Table](#vipergameuitable)
+- [Viper.Game.UI.TableClickResult](#vipergameuitableclickresult)
 - [Viper.Game.UI.Modal](#vipergameuimodal)
 - [Viper.Game.UI.HudSlider](#vipergameuihudslider)
 - [Viper.Game.UI.HudDropdown](#vipergameuihuddropdown)
@@ -255,14 +256,41 @@ Sortable table widget for compact scoreboards, inventories, debug panels, and se
 | `AddRow()` / `RemoveRow(row)` / `ClearRows()` | `Integer()` / `Void(...)` | Manage rows |
 | `SetCell(row, col, text)` / `GetCell(row, col)` | `Void(...)` / `String(...)` | Manage cell text |
 | `SortBy(col, descending)` | `Void(Integer, Boolean)` | Stable sort by a sortable column |
-| `HandleClick(x, y)` | `Integer(Integer, Integer)` | Select a row, return -2 for header clicks, -1 for no hit |
-| `LastHeaderClick()` | `Integer()` | Last clicked header column |
+| `HandleClickResult(x, y)` | `TableClickResult(Integer, Integer)` | Select a row or toggle a sortable header and return a structured click outcome |
+| `HandleClick(x, y)` | `Integer(Integer, Integer)` | Compatibility API: row index, `-2` for header clicks, `-1` for no hit |
+| `LastHeaderClick()` | `Integer()` | Compatibility API: last clicked header column, or `-1` |
 | `HandleScroll(delta)` / `HandleKey(key)` | `Void(Integer)` | Update scroll/selection |
 | `Draw(canvas)` | `Void(Canvas)` | Render the table |
+
+Prefer `HandleClickResult(x, y)` in new code. It performs the same state updates as
+`HandleClick(x, y)`, including row selection and sortable-header toggles, but returns
+the row/header outcome without sentinel values or a `LastHeaderClick()` side channel.
 
 Tables start with room for 16 columns and 512 rows, then grow their column, row, and cell
 storage on demand. Cell text is copied into fixed-size per-cell storage and clipped on
 UTF-8 codepoint boundaries.
+
+---
+
+## Viper.Game.UI.TableClickResult
+
+Structured result object returned by `Table.HandleClickResult(x, y)`.
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Kind` | Integer | Read | `0` no hit, `1` row, `2` header |
+| `IsNone` | Boolean | Read | True when the click missed table rows and headers |
+| `IsRow` | Boolean | Read | True when the click selected a body row |
+| `IsHeader` | Boolean | Read | True when the click hit a column header |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `RowOption()` | `Option[Integer]()` | Selected row index, or `None` for header/miss |
+| `ColumnOption()` | `Option[Integer]()` | Header column index, or `None` for row/miss |
 
 ---
 

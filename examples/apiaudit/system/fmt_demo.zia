@@ -1,7 +1,7 @@
 // =============================================================================
 // API Audit: Viper.Text.Fmt - Value Formatting
 // =============================================================================
-// Tests: Int, IntRadix, IntPad, Num, NumFixed, NumSci, NumPct, Bool, BoolYN,
+// Tests: Int, IntRadix, IntPad, Num, NumFixed, Scientific, Percent, Bool, YesNo,
 //        Size, Hex, HexPad, Bin, Oct, IntGrouped, Currency, ToWords, Ordinal
 // =============================================================================
 
@@ -52,21 +52,21 @@ func start() {
     Say("NumFixed(100.0, 0):");
     Say(Fmt.NumFixed(100.0, 0));
 
-    // --- NumSci ---
-    Say("--- NumSci ---");
-    Say("NumSci(1234.5, 2):");
-    Say(Fmt.NumSci(1234.5, 2));
-    Say("NumSci(0.001, 3):");
-    Say(Fmt.NumSci(0.001, 3));
+    // --- Scientific ---
+    Say("--- Scientific ---");
+    Say("Scientific(1234.5, 2):");
+    Say(Fmt.Scientific(1234.5, 2));
+    Say("Scientific(0.001, 3):");
+    Say(Fmt.Scientific(0.001, 3));
 
-    // --- NumPct ---
-    Say("--- NumPct ---");
-    Say("NumPct(0.756, 1):");
-    Say(Fmt.NumPct(0.756, 1));
-    Say("NumPct(1.0, 0):");
-    Say(Fmt.NumPct(1.0, 0));
-    Say("NumPct(0.5, 2):");
-    Say(Fmt.NumPct(0.5, 2));
+    // --- Percent ---
+    Say("--- Percent ---");
+    Say("Percent(0.756, 1):");
+    Say(Fmt.Percent(0.756, 1));
+    Say("Percent(1.0, 0):");
+    Say(Fmt.Percent(1.0, 0));
+    Say("Percent(0.5, 2):");
+    Say(Fmt.Percent(0.5, 2));
 
     // --- Bool ---
     Say("--- Bool ---");
@@ -75,12 +75,12 @@ func start() {
     Say("Bool(false):");
     Say(Fmt.Bool(1 == 0));
 
-    // --- BoolYN ---
-    Say("--- BoolYN ---");
-    Say("BoolYN(true):");
-    Say(Fmt.BoolYN(1 == 1));
-    Say("BoolYN(false):");
-    Say(Fmt.BoolYN(1 == 0));
+    // --- YesNo ---
+    Say("--- YesNo ---");
+    Say("YesNo(true):");
+    Say(Fmt.YesNo(1 == 1));
+    Say("YesNo(false):");
+    Say(Fmt.YesNo(1 == 0));
 
     // --- Size ---
     Say("--- Size ---");

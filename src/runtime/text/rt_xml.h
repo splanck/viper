@@ -57,6 +57,15 @@ typedef enum {
 /// @note Call rt_xml_error() to get error message on parse failure.
 void *rt_xml_parse(rt_string text);
 
+/// @brief Parse XML string into a Viper.Result.
+/// @details Returns `Ok(document)` for well-formed XML and `Err(message)` for
+///          malformed or empty input. The returned Result retains the parsed
+///          document, allowing callers to handle failures without reading the
+///          thread-local rt_xml_error() side channel.
+/// @param text XML text to parse.
+/// @return Opaque Viper.Result object containing the parsed document or error.
+void *rt_xml_parse_result(rt_string text);
+
 /// @brief Get the last parse error message.
 /// @return Error message string, or empty string if no error.
 rt_string rt_xml_error(void);
@@ -236,6 +245,14 @@ void *rt_xml_find_all(void *node, rt_string tag);
 /// @param tag Tag name to match recursively, or slash-separated element path.
 /// @return First matching element, or NULL if not found.
 void *rt_xml_find(void *node, rt_string tag);
+
+/// @brief Find first element by tag name or path as an Option.
+/// @details Returns `Some(node)` when a match exists and `None` when absent,
+///          avoiding the legacy NULL sentinel.
+/// @param node Starting node.
+/// @param tag Tag name to match recursively, or slash-separated element path.
+/// @return Opaque Viper.Option containing the first matching element, or None.
+void *rt_xml_find_option(void *node, rt_string tag);
 
 //=========================================================================
 // Formatting

@@ -1,8 +1,8 @@
 ' =============================================================================
 ' API Audit: Viper.Core.Convert + Viper.Core.Parse
 ' =============================================================================
-' Tests Convert: ToDouble, ToInt, ToInt64, ToString_Int, ToString_Double, NumToInt
-' Tests Parse: IntOr, NumOr, BoolOr, IsInt, IsNum, IntRadix
+' Tests Convert: ToDouble, ToInt, ToInt64, ToStringInt, ToStringDouble, NumToInt
+' Tests Parse: IntOr, DoubleOr, BoolOr, IsInt, IsNum, IntRadix
 ' =============================================================================
 
 PRINT "=== API Audit: Viper.Core.Convert + Parse ==="
@@ -24,17 +24,17 @@ PRINT "--- Convert.ToInt64 ---"
 PRINT "ToInt64('1000000'): "; Viper.Core.Convert.ToInt64("1000000")
 PRINT "ToInt64('-999'): "; Viper.Core.Convert.ToInt64("-999")
 
-' --- Convert.ToString_Int ---
-PRINT "--- Convert.ToString_Int ---"
-PRINT "ToString_Int(42): "; Viper.Core.Convert.ToString_Int(42)
-PRINT "ToString_Int(0): "; Viper.Core.Convert.ToString_Int(0)
-PRINT "ToString_Int(-7): "; Viper.Core.Convert.ToString_Int(-7)
+' --- Convert.ToStringInt ---
+PRINT "--- Convert.ToStringInt ---"
+PRINT "ToStringInt(42): "; Viper.Core.Convert.ToStringInt(42)
+PRINT "ToStringInt(0): "; Viper.Core.Convert.ToStringInt(0)
+PRINT "ToStringInt(-7): "; Viper.Core.Convert.ToStringInt(-7)
 
-' --- Convert.ToString_Double ---
-PRINT "--- Convert.ToString_Double ---"
-PRINT "ToString_Double(3.14): "; Viper.Core.Convert.ToString_Double(3.14)
-PRINT "ToString_Double(0.0): "; Viper.Core.Convert.ToString_Double(0.0)
-PRINT "ToString_Double(-1.5): "; Viper.Core.Convert.ToString_Double(-1.5)
+' --- Convert.ToStringDouble ---
+PRINT "--- Convert.ToStringDouble ---"
+PRINT "ToStringDouble(3.14): "; Viper.Core.Convert.ToStringDouble(3.14)
+PRINT "ToStringDouble(0.0): "; Viper.Core.Convert.ToStringDouble(0.0)
+PRINT "ToStringDouble(-1.5): "; Viper.Core.Convert.ToStringDouble(-1.5)
 
 ' --- Convert.NumToInt ---
 PRINT "--- Convert.NumToInt ---"
@@ -52,10 +52,10 @@ PRINT "IntOr('123', -1): "; Viper.Core.Parse.IntOr("123", -1)
 PRINT "IntOr('abc', -1): "; Viper.Core.Parse.IntOr("abc", -1)
 PRINT "IntOr('', 0): "; Viper.Core.Parse.IntOr("", 0)
 
-' --- Parse.NumOr ---
-PRINT "--- Parse.NumOr ---"
-PRINT "NumOr('3.14', 0.0): "; Viper.Core.Parse.NumOr("3.14", 0.0)
-PRINT "NumOr('xyz', 99.9): "; Viper.Core.Parse.NumOr("xyz", 99.9)
+' --- Parse.DoubleOr ---
+PRINT "--- Parse.DoubleOr ---"
+PRINT "DoubleOr('3.14', 0.0): "; Viper.Core.Parse.DoubleOr("3.14", 0.0)
+PRINT "DoubleOr('xyz', 99.9): "; Viper.Core.Parse.DoubleOr("xyz", 99.9)
 
 ' --- Parse.BoolOr ---
 PRINT "--- Parse.BoolOr ---"

@@ -37,6 +37,7 @@
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -550,6 +551,30 @@ void *rt_queue_try_pop(void *obj) {
         queue_release_value(val);
     }
     return val;
+}
+
+/// @brief Pop the front element as an Option, preserving NULL as a present value.
+/// @details This is the explicit optional variant of @ref rt_queue_try_pop. It
+///          returns `None` only when the queue has no element to pop; if the
+///          queue contains a literal NULL value, the result is `Some(NULL)`.
+///          For owning queues, the temporary retained transfer from
+///          @ref rt_queue_try_pop is released after the Option has retained it.
+/// @param obj Opaque Queue object pointer.
+/// @return `Some(value)` when an element is removed, otherwise `None`.
+void *rt_queue_try_pop_option(void *obj) {
+    if (!obj)
+        return rt_option_none();
+
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
+    if (!q || q->len == 0)
+        return rt_option_none();
+
+    int8_t owns_elements = q->owns_elements;
+    void *value = rt_queue_try_pop(obj);
+    void *option = rt_option_some(value);
+    if (owns_elements && value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    return option;
 }
 
 /// @brief Create a shallow copy of the queue.

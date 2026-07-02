@@ -35,6 +35,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_datetime.h"
+#include "rt_option.h"
 #include "rt_platform.h"
 #include "rt_trap.h"
 
@@ -1277,14 +1278,17 @@ int64_t rt_datetime_parse_time(rt_string s) {
     return dt_parse_time_impl(s, &result) ? result : -1;
 }
 
-/// @brief Attempt to parse a datetime string in any supported format.
-/// @details Tries formats in order of specificity: ISO 8601 (YYYY-MM-DDTHH:MM:SS),
-///          date-only (YYYY-MM-DD), then time-only (HH:MM or HH:MM:SS). Returns
-///          the first successful parse. This is the most forgiving entry point
-///          for user-supplied date strings.
+/// @brief Shared implementation for parsing any supported DateTime input.
+/// @details Tries formats in order of specificity: ISO 8601
+///          (YYYY-MM-DDTHH:MM:SS), date-only (YYYY-MM-DD), then time-only
+///          (HH:MM or HH:MM:SS). The boolean return lets modern Option APIs
+///          distinguish a valid Unix epoch timestamp (`0`) from failure.
 /// @param s Runtime string to parse.
-/// @return Unix timestamp on success, or 0 on parse failure.
-int64_t rt_datetime_try_parse(rt_string s) {
+/// @param out Receives the parsed timestamp or seconds-since-midnight on success.
+/// @return 1 when parsing succeeds, 0 when the input is empty or unsupported.
+static int8_t dt_try_parse_any(rt_string s, int64_t *out) {
+    if (out)
+        *out = 0;
     size_t len = 0;
     const char *str = dt_cstr_without_embedded_nul(s, &len);
     if (!str || len == 0)
@@ -1292,21 +1296,54 @@ int64_t rt_datetime_try_parse(rt_string s) {
 
     if (len >= 19) {
         int64_t result;
-        if (dt_parse_iso_impl(s, &result))
-            return result;
+        if (dt_parse_iso_impl(s, &result)) {
+            if (out)
+                *out = result;
+            return 1;
+        }
     }
 
     if (len == 10 && str[4] == '-' && str[7] == '-') {
         int64_t result;
-        if (dt_parse_date_impl(s, &result))
-            return result;
+        if (dt_parse_date_impl(s, &result)) {
+            if (out)
+                *out = result;
+            return 1;
+        }
     }
 
     if (len >= 5 && str[2] == ':') {
         int64_t result;
-        if (dt_parse_time_impl(s, &result))
-            return result;
+        if (dt_parse_time_impl(s, &result)) {
+            if (out)
+                *out = result;
+            return 1;
+        }
     }
 
     return 0;
+}
+
+/// @brief Attempt to parse a datetime string in any supported format.
+/// @details Legacy sentinel-returning form. Returns the first successful parse,
+///          but still returns `0` on failure, so it cannot distinguish failure
+///          from a valid Unix epoch timestamp. Prefer
+///          @ref rt_datetime_try_parse_option for new public APIs.
+/// @param s Runtime string to parse.
+/// @return Unix timestamp on success, or 0 on parse failure.
+int64_t rt_datetime_try_parse(rt_string s) {
+    int64_t result = 0;
+    return dt_try_parse_any(s, &result) ? result : 0;
+}
+
+/// @brief Attempt to parse a datetime string and return an Option.
+/// @details Returns `Some(i64)` for any supported input, including the Unix
+///          epoch timestamp `0`, and `None` for empty, malformed, or
+///          embedded-NUL input. This is the non-ambiguous replacement for the
+///          legacy sentinel-returning @ref rt_datetime_try_parse helper.
+/// @param s Runtime string to parse.
+/// @return Opaque Viper.Option containing the parsed timestamp or time value.
+void *rt_datetime_try_parse_option(rt_string s) {
+    int64_t result = 0;
+    return dt_try_parse_any(s, &result) ? rt_option_some_i64(result) : rt_option_none();
 }

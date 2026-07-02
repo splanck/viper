@@ -30,8 +30,22 @@ extern "C" {
 /// @param rows Initial terminal rows (clamped to [1,4096]; 0 -> 24).
 /// @return PTY session handle, or NULL when a PTY could not be created
 ///         (including platforms without PTY support — see rt_pty_is_supported).
-void *rt_pty_open(rt_string program, void *args, rt_string cwd, void *env, int64_t cols,
-                  int64_t rows);
+void *rt_pty_open(
+    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows);
+
+/// @brief Open a PTY-backed child process and return a Viper.Result.
+/// @details Returns `Ok(PtySession)` when the child session starts and
+///          `Err(message)` when the platform lacks PTY support, startup fails,
+///          or validation traps would have been raised by rt_pty_open().
+/// @param program Program path as a runtime string.
+/// @param args Seq of argument strings, or NULL for no arguments.
+/// @param cwd Working directory, or empty/NULL to inherit.
+/// @param env Seq of KEY=value strings, or NULL to inherit the environment.
+/// @param cols Initial terminal columns (clamped to [1,4096]; 0 -> 80).
+/// @param rows Initial terminal rows (clamped to [1,4096]; 0 -> 24).
+/// @return Opaque Viper.Result object containing a PTY session or error string.
+void *rt_pty_open_result(
+    rt_string program, void *args, rt_string cwd, void *env, int64_t cols, int64_t rows);
 
 /// @brief Return TRUE when the runtime can create PTY sessions on this platform.
 /// @note Always true on POSIX; on Windows it reflects ConPTY availability

@@ -40,7 +40,7 @@ var ENT_HEADER_SIZE: Integer = 14;
 // --- Helper Functions ---
 
 func intToStr(n: Integer) -> String {
-    return Convert.ToString_Int(n);
+    return Convert.ToStringInt(n);
 }
 
 func strToInt(s: String) -> Integer {

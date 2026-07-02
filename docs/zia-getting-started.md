@@ -518,7 +518,8 @@ SayInt(42);             // Print integer with newline
 PrintInt(42);           // Print integer without newline
 
 // Input
-var line = ReadLine();          // Read a line (returns String?, null on EOF)
+var line = TryReadLine();       // Read a line (returns Option<String>, None on EOF)
+var result = ReadLineResult();  // Read a line (returns Result<String, String>)
 var key = GetKey();             // Wait for key press (blocking)
 var keyTimeout = GetKeyTimeout(100);  // With timeout (ms), "" on timeout
 var peek = InKey();             // Non-blocking key check, "" if no key

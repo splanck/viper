@@ -41,6 +41,15 @@ void *rt_unionfind_new(int64_t n);
 /// @return Representative element of x's set.
 int64_t rt_unionfind_find(void *uf, int64_t x);
 
+/// @brief Find the representative root as an Option index.
+/// @details This is the sentinel-free public API for callers that need to
+///          distinguish an invalid element from a valid root. It preserves the
+///          path-compression behavior of rt_unionfind_find.
+/// @param uf Union-Find object, or NULL.
+/// @param x Element index (0-based).
+/// @return Opaque Viper.Option containing the representative root, or None.
+void *rt_unionfind_find_root_option(void *uf, int64_t x);
+
 /// @brief Merge the sets containing x and y.
 /// @param uf Union-Find object.
 /// @param x First element index.

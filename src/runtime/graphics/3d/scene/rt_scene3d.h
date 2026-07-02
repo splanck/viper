@@ -52,6 +52,8 @@ int8_t rt_scene3d_try_add(void *scene, void *node);
 void rt_scene3d_remove(void *scene, void *node);
 /// @brief Recursively search the scene for a node whose name matches @p name (NULL if none).
 void *rt_scene3d_find(void *scene, rt_string name);
+/// @brief Recursively search the scene and return Some(SceneNode3D) on match, None on absence.
+void *rt_scene3d_find_option(void *scene, rt_string name);
 /// @brief Return visible mesh nodes whose world-space AABB intersects @p min/@p max.
 void *rt_scene3d_query_aabb(void *scene, void *min, void *max);
 /// @brief Return visible mesh nodes whose world-space AABB intersects @p center/@p radius.
@@ -121,6 +123,8 @@ void *rt_scene_node3d_get_child(void *node, int64_t index);
 void *rt_scene_node3d_get_parent(void *node);
 /// @brief Recursively search this subtree for a node whose name matches @p name.
 void *rt_scene_node3d_find(void *node, rt_string name);
+/// @brief Recursively search this subtree and return Some(SceneNode3D) on match, None on absence.
+void *rt_scene_node3d_find_option(void *node, rt_string name);
 /// @brief Bind a Mesh3D for rendering at this node's world transform.
 void rt_scene_node3d_set_mesh(void *node, void *mesh);
 /// @brief Get the bound Mesh3D (NULL if this is a transform-only node).

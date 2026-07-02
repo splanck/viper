@@ -32,6 +32,7 @@
 #include "rt_lazyseq.h"
 #include "rt_heap.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include <limits.h>
 #include <stdlib.h>
@@ -1028,6 +1029,19 @@ void *rt_lazyseq_w_drop_while(void *seq, void *pred) {
 void *rt_lazyseq_w_find(void *seq, void *pred) {
     int8_t found;
     return rt_lazyseq_find((rt_lazyseq)seq, (int8_t (*)(void *))pred, &found);
+}
+
+/// @brief IL trampoline for `rt_lazyseq_find` that preserves absence as Option.None.
+/// @details The legacy wrapper discards the found flag and therefore cannot
+///          distinguish a found NULL element from no match. This wrapper uses
+///          the found flag to return `Some(value)` or `None`.
+/// @param seq LazySeq object.
+/// @param pred Opaque predicate function pointer.
+/// @return Opaque Viper.Option containing the first matching element, or None.
+void *rt_lazyseq_w_find_option(void *seq, void *pred) {
+    int8_t found = 0;
+    void *value = rt_lazyseq_find((rt_lazyseq)seq, (int8_t (*)(void *))pred, &found);
+    return found ? rt_option_some(value) : rt_option_none();
 }
 
 /// @brief IL trampoline for `rt_lazyseq_any`.

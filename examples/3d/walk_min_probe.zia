@@ -3,6 +3,7 @@ module walk_min_probe;
 bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
+bind Viper.Input.Key as Key;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./walk_min";
@@ -121,7 +122,7 @@ func assertWalksGrounded(game: WalkMinGame, canvas: Canvas3D) -> Boolean {
     Canvas3D.SetInputSource(canvas, 1);
     var before = player.Position;
 
-    Canvas3D.PushSyntheticKey(canvas, Keys.get_KeyW(), true);
+    Canvas3D.PushSyntheticKey(canvas, Key.W, true);
     game.getWorld().Tick();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);

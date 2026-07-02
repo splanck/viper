@@ -35,6 +35,7 @@
 #include "rt_map.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_yaml_internal.h"
@@ -1393,6 +1394,29 @@ void *rt_yaml_parse(rt_string text) {
     if (explicit_documents)
         return documents;
     return first_document;
+}
+
+/// @brief `Yaml.ParseResult(text)` — parse YAML source into a Result.
+///
+/// A valid YAML document returns `Ok(value)`. YAML null and empty documents are
+/// valid and therefore return `Ok(NULL)`. Invalid YAML returns `Err(message)`.
+///
+/// @param text YAML source text.
+/// @return Owned `Viper.Result` carrying either a parsed value or an error string.
+void *rt_yaml_parse_result(rt_string text) {
+    void *value = rt_yaml_parse(text);
+    rt_string err = rt_yaml_error();
+    const int has_parse_error = !value && err && rt_str_len(err) > 0;
+    if (has_parse_error) {
+        void *result = rt_result_err_str(err);
+        rt_str_release_maybe(err);
+        return result;
+    }
+    rt_str_release_maybe(err);
+
+    void *result = rt_result_ok(value);
+    yaml_release(value);
+    return result;
 }
 
 /// @brief `Yaml.Error()` — return the last parse error on this thread, or "" if none.

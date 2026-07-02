@@ -2,6 +2,7 @@ module game3d_starter;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
+bind Viper.Input.Key as Key;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
 
@@ -17,7 +18,7 @@ class StarterGame {
     expose func setup(title: String, width: Integer, height: Integer) {
         world = World3D.New(title, width, height);
         canvas = world.Canvas;
-        Canvas3D.SetDTMax(canvas, 50);
+        Canvas3D.SetMaxDeltaTime(canvas, 50);
 
         Quality.Apply(world, QualityLevel.get_Balanced());
         Lighting.Outdoor(world, Vec3.New(-0.35, -1.0, -0.25));
@@ -83,7 +84,7 @@ class StarterGame {
     expose func step(dt: Float) {
         elapsed = elapsed + dt;
         var input = world.Input;
-        if (input.Pressed(Keys.get_Escape())) {
+        if (input.Pressed(Key.Escape)) {
             quitRequested = true;
             return;
         }

@@ -35,6 +35,7 @@
 #include "rt_future.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_platform.h"
 #include "rt_string_internal.h"
 #include "rt_threads.h"
@@ -1061,6 +1062,58 @@ void *rt_future_try_get_val(void *obj) {
         future_retain_object_or_cleanup(result, obj, "Future.TryGetVal: value retain failed");
     future_release_object(obj);
     return result;
+}
+
+/// @brief Non-blocking value fetch as an Option.
+/// @details Returns `Some(value)` when the future has completed successfully
+///          and `None` when it is pending or rejected. This function reads the
+///          promise state directly so a successful NULL payload can be returned
+///          as `Some(NULL)` and so owned payloads can be balanced after the
+///          Option has retained them.
+/// @param obj Future object pointer.
+/// @return Opaque Viper.Option object containing the successful value, or None.
+void *rt_future_try_get_option(void *obj) {
+    future_impl *f = future_require(obj, 0);
+    if (!f)
+        return rt_option_none();
+    rt_obj_retain_maybe(obj);
+
+    promise_impl *p = f->promise;
+    void *result = NULL;
+    int8_t owns_value = 0;
+    int8_t success = 0;
+
+#if RT_PLATFORM_WINDOWS
+    EnterCriticalSection(&p->mutex);
+    success = p->done && !p->is_error;
+    if (success) {
+        result = p->value;
+        owns_value = p->owns_value;
+    }
+    LeaveCriticalSection(&p->mutex);
+#else
+    pthread_mutex_lock(&p->mutex);
+    success = p->done && !p->is_error;
+    if (success) {
+        result = p->value;
+        owns_value = p->owns_value;
+    }
+    pthread_mutex_unlock(&p->mutex);
+#endif
+
+    if (!success) {
+        future_release_object(obj);
+        return rt_option_none();
+    }
+
+    if (result && owns_value)
+        future_retain_object_or_cleanup(result, obj, "Future.TryGetOption: value retain failed");
+    future_release_object(obj);
+
+    void *option = rt_option_some(result);
+    if (result && owns_value && rt_obj_release_check0(result))
+        rt_obj_free(result);
+    return option;
 }
 
 /// @brief Bounded-wait variant of `try_get_val`. Waits up to `ms` for the future to resolve;

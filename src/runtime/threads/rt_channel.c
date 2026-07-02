@@ -33,6 +33,7 @@
 #include "rt_channel.h"
 
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_threads.h"
 
 #include <limits.h>
@@ -835,6 +836,24 @@ void *rt_channel_try_recv_val(void *channel) {
     if (!rt_channel_try_recv(channel, &out))
         return NULL;
     return out;
+}
+
+/// @brief Managed ABI wrapper for TryRecv returning an Option.
+/// @details Uses the boolean result from @ref rt_channel_try_recv so a
+///          transmitted NULL value is distinguishable from "no value
+///          available". The received retained transfer is released after the
+///          Option has retained it.
+/// @param channel Channel object pointer.
+/// @return `Some(value)` when an item is received, otherwise `None`.
+void *rt_channel_try_recv_option(void *channel) {
+    void *out = NULL;
+    if (!rt_channel_try_recv(channel, &out))
+        return rt_option_none();
+
+    void *option = rt_option_some(out);
+    if (out && rt_obj_release_check0(out))
+        rt_obj_free(out);
+    return option;
 }
 
 /// @brief Receive with a timeout. Returns 1 and sets *out if received, 0 on timeout/close.

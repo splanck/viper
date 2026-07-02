@@ -12,9 +12,69 @@ last-verified: 2026-04-09
 
 ## Contents
 
+- [Viper.Diagnostics](#viperdiagnostics)
+- [Viper.Diagnostics.TrapInfo](#viperdiagnosticstrapinfo)
 - [Viper.Core.Diagnostics](#vipercorediagnostics)
 - [Viper.Debug.Protocol](#viperdebugprotocol)
 - [Viper.Time.Stopwatch](time.md#vipertimestopwatch)
+
+---
+
+## Viper.Diagnostics
+
+Read-only runtime diagnostic helpers.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `CurrentTrap()` | `Option<TrapInfo>()` | Return a snapshot of the current thread's latest trap metadata, or `None` when no trap was recorded |
+
+`CurrentTrap()` is the modern, read-only diagnostics surface for trap metadata.
+It preserves the existing low-level `Viper.Error.*` compatibility hooks while
+giving applications and tools an explicit `Option` result instead of requiring
+them to poll individual mutable trap fields. New code should not mutate trap
+state directly; compiler/runtime interop hooks live under
+`Viper.Runtime.Unsafe`.
+
+---
+
+## Viper.Diagnostics.TrapInfo
+
+Immutable snapshot of trap metadata captured by `Viper.Diagnostics.CurrentTrap()`.
+
+**Type:** Runtime object
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Kind` | `Integer` | Canonical trap-kind integer |
+| `Code` | `Integer` | Runtime `Err_*` code, or `0` when none was recorded |
+| `Ip` | `Integer` | Native instruction pointer, or `0` when unavailable |
+| `Line` | `Integer` | Source line number, or `-1` when unavailable |
+| `KindName` | `String` | Stable trap kind name such as `Overflow` or `RuntimeError` |
+| `Message` | `String` | Trap message or default message for the trap kind |
+| `Location` | `String` | Formatted location such as `line 12`, or empty when unavailable |
+
+### Zia Example
+
+```rust
+module TrapInfoDemo;
+
+bind Viper.Diagnostics as Diagnostics;
+bind Viper.Option as Option;
+bind Viper.Terminal;
+
+func start() {
+    var trap = Diagnostics.CurrentTrap();
+    if trap.IsNone {
+        Say("No trap has been recorded on this thread.");
+    }
+}
+```
 
 ---
 

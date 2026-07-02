@@ -138,6 +138,15 @@ int64_t rt_animstate_events_fired_count(void *asm_);
 /// @brief Return the event id at index from the most recent Update(), or 0 if invalid.
 int64_t rt_animstate_event_fired_id(void *asm_, int64_t index);
 
+/// @brief Snapshot event IDs fired by the most recent Update().
+/// @details Returns an immutable Viper.Game.AnimationEventBatch whose contents
+///          are independent from subsequent calls to Update(), Transition(), or
+///          ClearEvents(). This is the composable replacement for reading
+///          EventsFiredCount and EventFiredId from mutable state.
+/// @param asm_ AnimStateMachine object.
+/// @return New Viper.Game.AnimationEventBatch object, or NULL on allocation failure.
+void *rt_animstate_poll_events(void *asm_);
+
 #ifdef __cplusplus
 }
 #endif

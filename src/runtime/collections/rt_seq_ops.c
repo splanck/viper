@@ -32,6 +32,7 @@
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_seq_internal.h"
 #include "rt_string.h"
@@ -642,6 +643,33 @@ void *rt_seq_find_where(void *obj, int8_t (*pred)(void *)) {
     }
 
     return NULL;
+}
+
+/// @brief Find the first element satisfying a predicate as an Option value.
+/// @details Unlike @ref rt_seq_find_where, this preserves a found NULL element
+///          as `Some(NULL)`. A NULL predicate selects the first element when
+///          the sequence is non-empty, matching the legacy helper's documented
+///          behavior.
+/// @param obj Opaque Seq object pointer, or NULL.
+/// @param pred Predicate function; NULL selects the first element.
+/// @return Opaque Viper.Option containing the first matching element, or None.
+void *rt_seq_find_where_option(void *obj, int8_t (*pred)(void *)) {
+    if (!obj)
+        return rt_option_none();
+
+    rt_seq_impl *seq = as_seq(obj, "Seq.FindWhereOption: invalid Seq object");
+    if (seq->len == 0)
+        return rt_option_none();
+
+    if (!pred)
+        return rt_option_some(seq->items[0]);
+
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (pred(seq->items[i]))
+            return rt_option_some(seq->items[i]);
+    }
+
+    return rt_option_none();
 }
 
 /// @brief Create a new Seq with the first N elements.

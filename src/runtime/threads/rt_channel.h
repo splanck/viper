@@ -81,6 +81,14 @@ int8_t rt_channel_try_recv(void *channel, void **out);
 /// @return Received item, or NULL if empty/closed.
 void *rt_channel_try_recv_val(void *channel);
 
+/// @brief Managed ABI wrapper for TryRecv returning an Option.
+/// @details Returns `None` when no item is immediately available and
+///          `Some(value)` when an item is received. A transmitted NULL value is
+///          represented as `Some(NULL)`, unlike @ref rt_channel_try_recv_val.
+/// @param channel Channel object pointer.
+/// @return Opaque Viper.Option object.
+void *rt_channel_try_recv_option(void *channel);
+
 /// @brief Receive with a timeout.
 /// @details Blocks up to @p ms milliseconds for an item.
 /// @param channel Channel object pointer.

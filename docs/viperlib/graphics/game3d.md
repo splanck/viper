@@ -78,7 +78,7 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `LayerMask` | Bitmask helper for collision and gameplay filtering |
 | `BodyDef` | Runtime body recipe used by `Entity3D.attachBody` for common static, dynamic, trigger, and CCD bodies |
 | `Collision3DEvent` | Entity-aware wrapper around raw `Graphics3D.CollisionEvent3D` enter/stay/exit records |
-| `Assets3D` / `SceneTemplate` | Filesystem and package-aware model loading with cached reusable model templates |
+| `Assets3D` / `Prefab` / `SceneTemplate` | Filesystem and package-aware model loading with cached reusable prefab templates |
 | `Animator3D` | Game3D wrapper over `Graphics3D.AnimController3D` for play/crossfade/state-time/events/root-motion attachment |
 | `Input3D` | Named keyboard, mouse, movement-axis, and look-axis helper over the runtime input state |
 | `Sound3D` | World-owned audio helper with camera-follow listener, loading, 2D, positional, and attached-source playback |
@@ -205,8 +205,10 @@ feature is toggled back off. `g3d_bounded_no_regression_probe` also runs the
 existing `walk_min.zia` bounded sample with scale flags explicitly off and
 checks exact final-frame pixel and captured-state parity.
 
-`World3D.NewWithCamera(title, width, height, fov, near, far)` uses the same
+`World3D.WithCamera(title, width, height, fov, near, far)` uses the same
 defaults with custom camera projection values.
+`NewWithCamera` and `NewWithHorizontalCamera` remain available as compatibility
+aliases.
 
 ---
 
@@ -416,9 +418,12 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_probe`,
 hierarchy, which is the preferred bridge for imported or procedurally assembled
 subtrees that should move through Game3D spawning without cloning. If the root
 node has a non-empty name, the wrapper entity inherits it so
-`World3D.findEntity(name)` and `World3D.findNode(name)` agree on the imported
-root. Raw child nodes stay raw scene nodes: they render and participate in scene
-lookup as part of the subtree, but they are not separate Game3D entities.
+`World3D.findEntityOption(name)` and `World3D.findNodeOption(name)` agree on the
+imported root and return `Some(value)` or `None`. The older `findEntity(name)`
+and `findNode(name)` methods remain available for compatibility with existing
+`null` checks. Raw child nodes stay raw scene nodes: they render and participate
+in scene lookup as part of the subtree, but they are not separate Game3D
+entities.
 Transform helpers sanitize non-finite numbers before touching the node and update
 an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 
@@ -484,7 +489,7 @@ var crate = Game3D.Assets3D.LoadEntity("assets/crate.glb");
 Game3D.Entity3D.setPosition(crate, 0.0, 0.5, -3.0);
 Game3D.World3D.spawn(world, crate);
 
-var enemyTemplate = Game3D.Assets3D.LoadTemplateAsset("models/enemy.glb");
+var enemyTemplate = Game3D.Prefab.LoadAsset("models/enemy.glb");
 var enemy = Game3D.SceneTemplate.instantiate(enemyTemplate);
 Game3D.World3D.spawn(world, enemy);
 ```
@@ -493,12 +498,16 @@ Game3D.World3D.spawn(world, enemy);
 |--------|---------|
 | `LoadEntity(path)` | Load a filesystem/development scene asset and return a group `Entity3D` |
 | `LoadEntityAsset(assetPath)` | Load through the asset resolver first, with filesystem fallback for development |
-| `LoadTemplate(path)` | Load or reuse a cached filesystem `SceneTemplate` |
-| `LoadTemplateAsset(assetPath)` | Load or reuse a cached package-aware `SceneTemplate` |
+| `Prefab.Load(path)` | Load or reuse a cached filesystem prefab represented by a `SceneTemplate` |
+| `Prefab.LoadAsset(assetPath)` | Load or reuse a cached package-aware prefab represented by a `SceneTemplate` |
+| `Assets3D.LoadPrefab(path)` | Asset-loader namespace alias for `Prefab.Load` |
+| `Assets3D.LoadPrefabAsset(assetPath)` | Asset-loader namespace alias for `Prefab.LoadAsset` |
 | `LoadEntityAsync(path)` | Return an `AssetHandle3D` for a filesystem/development entity |
 | `LoadEntityAssetAsync(assetPath)` | Return an `AssetHandle3D` for a package-aware entity |
-| `LoadTemplateAsync(path)` | Return an `AssetHandle3D` for a cached filesystem `SceneTemplate` |
-| `LoadTemplateAssetAsync(assetPath)` | Return an `AssetHandle3D` for a cached package-aware `SceneTemplate` |
+| `Prefab.LoadAsync(path)` | Return an `AssetHandle3D` for a cached filesystem prefab |
+| `Prefab.LoadAssetAsync(assetPath)` | Return an `AssetHandle3D` for a cached package-aware prefab |
+| `Assets3D.LoadPrefabAsync(path)` | Asset-loader namespace alias for `Prefab.LoadAsync` |
+| `Assets3D.LoadPrefabAssetAsync(assetPath)` | Asset-loader namespace alias for `Prefab.LoadAssetAsync` |
 | `SetResidencyBudget(bytes)` | Bound the shared template cache by estimated resident bytes; negative means unlimited |
 | `GetResidentBytes()` | Report estimated resident bytes held by the shared template cache |
 | `SetResidencyHint(template, priority, distance)` | Bias cached-template eviction so higher-priority and nearer templates survive pressure first |
@@ -509,16 +518,21 @@ Game3D.World3D.spawn(world, enemy);
 | `ClearCache()` | Release cached template entries and prevent older preload jobs from repopulating the cache |
 | `SceneTemplate.instantiate()` | Clone the template root subtree into a group `Entity3D` |
 
+`Assets3D.LoadTemplate*` and `AssetHandle3D.getTemplate()` remain compatibility
+names. New code should use `Prefab.Load*`, `Assets3D.LoadPrefab*`, and
+`AssetHandle3D.getPrefab()` so the object lifecycle reads as asset -> prefab ->
+entity -> world.
+
 Loaded entities are groups whose backing node is the instantiated model root.
 The raw imported child nodes remain under that root and are not separate
 Game3D child entities. Despawning the group removes the whole subtree from the
 scene. If the imported root has a skeletal animation controller, `entity.anim`
 is populated with a `Game3D.Animator3D` wrapper.
 
-`LoadEntityAsset` and `LoadTemplateAsset` use the runtime asset resolver, so
+`LoadEntityAsset` and `Prefab.LoadAsset` use the runtime asset resolver, so
 mounted packages and `asset://` paths work the same way as lower-level
-`SceneAsset.LoadAsset`. Relative glTF buffers and textures resolve relative to the
-model asset.
+`SceneAsset.LoadAssetResult`. Relative glTF buffers and textures resolve
+relative to the model asset.
 
 Filesystem template cache keys are canonicalized to absolute paths when
 possible, and concurrent requests for the same key share the in-flight load
@@ -527,14 +541,14 @@ cache condition variable rather than polling while another thread finishes an
 import.
 
 `AssetHandle3D` exposes `ready`, `progress`, `error`, `cancel()`,
-`getEntity()`, and `getTemplate()`. Handles start with `ready == false` and
+`getEntity()`, and `getPrefab()`. Handles start with `ready == false` and
 `progress == 0.0`; first observation through `ready`, `progress`, `error`,
-`getEntity()`, or `getTemplate()` services the process-wide asset commit queue
+`getEntity()`, or `getPrefab()` services the process-wide asset commit queue
 and starts worker staging/loading for valid uncached model requests. While the
 worker is running, `ready` remains false and repeated observations keep draining
 committed results. On success, progress becomes `1.0` and `error == ""`. Entity loaders
-return an entity from `getEntity()` and `null` from `getTemplate()`; template
-loaders do the inverse. Cached template handles can complete immediately on
+return an entity from `getEntity()` and `null` from `getPrefab()`; prefab
+loaders do the inverse. Cached prefab handles can complete immediately on
 first observation.
 
 Missing filesystem paths and missing asset-manager paths become terminal
@@ -546,7 +560,7 @@ failures complete through the worker/commit path with `"failed to load model"` o
 the handle terminal with `error == "cancelled"` and no result. Calling `cancel()`
 on a completed handle is a no-op, which keeps retrieved results stable.
 
-Async handles accept the same model extensions as blocking `SceneAsset.Load`:
+Async handles accept the same model extensions as blocking `SceneAsset.LoadResult`:
 `.gltf`, `.glb`, `.fbx`, `.obj`, `.stl`, and `.vscn`. glTF/GLB assets use the
 worker preload path described below; the other formats are validated by the
 handle and completed through the main-thread commit path so callers can use one
@@ -1003,24 +1017,24 @@ frame.
 | `lookAxis()` | Mouse look as `Vec2`, scaled by `lookSensitivity` |
 | `captureMouse()` / `releaseMouse()` | Forward to the active mouse capture policy |
 
-Use `Game3D.Keys` and `Game3D.MouseButtons` instead of hard-coded integer input
-codes in game code. `Game3D.Keys` covers the full keyboard, each exposed as a
-read-only `i64` key code (e.g. `Keys.get_KeyV()`):
+Use `Viper.Input.Key` and `Game3D.MouseButtons` instead of hard-coded integer
+input codes in game code. `Viper.Input.Key` is the canonical key-code namespace
+for all runtime input APIs:
 
 | Group | Members |
 | --- | --- |
-| Letters | `KeyA`–`KeyZ` |
-| Digits | `Key0`–`Key9` |
-| Function | `KeyF1`–`KeyF12` |
+| Letters | `A`-`Z` |
+| Digits | `Digit0`-`Digit9` |
+| Function | `F1`-`F12` |
 | Arrows | `Up`, `Down`, `Left`, `Right` |
 | Navigation / editing | `Space`, `Escape`, `Enter`, `Tab`, `Backspace`, `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown` |
-| Modifiers | `Shift`, `Ctrl`, `Alt` (left by default) plus explicit `LShift`, `RShift`, `LCtrl`, `RCtrl`, `LAlt`, `RAlt` |
-| Punctuation | `Quote`, `Comma`, `Minus`, `Period`, `Slash`, `Semicolon`, `Equals`, `LBracket`, `RBracket`, `Backslash`, `Grave` |
-| Numpad | `Num0`–`Num9`, `NumAdd`, `NumSub`, `NumMul`, `NumDiv`, `NumDot`, `NumEnter` |
+| Modifiers | `LeftShift`, `RightShift`, `LeftControl`, `RightControl`, `LeftAlt`, `RightAlt` |
+| Punctuation | `Quote`, `Comma`, `Minus`, `Period`, `Slash`, `Semicolon`, `Equals`, `LeftBracket`, `RightBracket`, `Backslash`, `Grave` |
+| Numpad | `Numpad0`-`Numpad9`, `NumpadAdd`, `NumpadSubtract`, `NumpadMultiply`, `NumpadDivide`, `NumpadDecimal`, `NumpadEnter` |
 
-The same key codes are also available application-wide through
-`Viper.Input.Keyboard`; `Game3D.Keys` is the Game3D-facing mirror so game code
-that already binds `Viper.Game3D` needs no extra import.
+The same key codes remain available through `Viper.Input.Keyboard.Key*` and
+`Viper.Game3D.Keys` for compatibility. New examples should import
+`Viper.Input.Key` and reserve `Keyboard` for key state queries.
 
 ---
 

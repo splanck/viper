@@ -75,14 +75,11 @@ class PromptResult {
 // =========================================================================
 
 // Read a line from stdin, trimmed. Returns empty string on EOF so callers
-// don't have to unwrap null everywhere. Delegation verbs flow through here
+// don't have to handle absence everywhere. Delegation verbs flow through here
 // untouched so prompts can scan for them.
 func readLineTrimmed() -> String {
-    var raw = Terminal.ReadLine();
-    if raw == null {
-        return "";
-    }
-    return raw!.Trim();
+    var raw = Terminal.TryReadLine();
+    return raw.UnwrapOrStr("").Trim();
 }
 
 // Parse a line as a non-negative integer. Returns -1 if the line is empty

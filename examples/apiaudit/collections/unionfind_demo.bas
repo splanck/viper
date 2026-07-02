@@ -1,5 +1,5 @@
 ' unionfind_demo.bas - Comprehensive API audit for Viper.Collections.UnionFind
-' Tests: New, Find, Union, Connected, Count, SetSize, Reset
+' Tests: New, Find, FindRootOption, Union, Connected, Count, SetSize, Reset
 
 PRINT "=== UnionFind API Audit ==="
 
@@ -13,6 +13,11 @@ PRINT uf.Count       ' 6
 PRINT "--- Find ---"
 PRINT uf.Find(0)     ' 0
 PRINT uf.Find(3)     ' 3
+DIM root AS OBJECT
+root = uf.FindRootOption(0)
+PRINT root.IsSome
+PRINT root.UnwrapI64()  ' 0
+PRINT uf.FindRootOption(99).IsNone
 
 ' --- Union ---
 PRINT "--- Union ---"

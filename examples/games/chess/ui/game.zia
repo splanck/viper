@@ -3,6 +3,7 @@ module game;
 bind Viper.Graphics;
 bind Viper.Terminal;
 bind Action = Viper.Input.Action;
+bind Key = Viper.Input.Key;
 bind Keyboard = Viper.Input.Keyboard;
 bind Mouse = Viper.Input.Mouse;
 bind Pad = Viper.Input.Pad;
@@ -296,18 +297,18 @@ class ChessGame {
         Action.Clear();
 
         Action.Define(ACT_NEW_GAME);
-        Action.BindKey(ACT_NEW_GAME, Keyboard.get_KeyN());
+        Action.BindKey(ACT_NEW_GAME, Key.N);
 
         Action.Define(ACT_BACK);
-        Action.BindKey(ACT_BACK, Keyboard.get_KeyEscape());
+        Action.BindKey(ACT_BACK, Key.Escape);
 
         Action.Define(ACT_CONFIRM);
-        Action.BindKey(ACT_CONFIRM, Keyboard.get_KeyEnter());
-        Action.BindKey(ACT_CONFIRM, Keyboard.get_KeySpace());
+        Action.BindKey(ACT_CONFIRM, Key.Enter);
+        Action.BindKey(ACT_CONFIRM, Key.Space);
 
         Action.Define(ACT_UNDO);
-        bindUndoChord(Keyboard.get_KeyLeftControl());
-        bindUndoChord(Keyboard.get_KeyRightControl());
+        bindUndoChord(Key.LeftControl);
+        bindUndoChord(Key.RightControl);
 
         Action.BindPadButton(ACT_CONFIRM, -1, Pad.get_ButtonA());
         Action.BindPadButton(ACT_BACK, -1, Pad.get_ButtonB());
@@ -318,7 +319,7 @@ class ChessGame {
     hide func bindUndoChord(ctrlKey: Integer) {
         var undoChord = Seq.New();
         Seq.Push(undoChord, ctrlKey);
-        Seq.Push(undoChord, Keyboard.get_KeyZ());
+        Seq.Push(undoChord, Key.Z);
         Action.BindChord(ACT_UNDO, undoChord);
     }
 
@@ -410,7 +411,7 @@ class ChessGame {
     ///        Canvas.SetFps caps presentation at 120 FPS.
     expose func run() {
         canvas.SetFps(120);
-        canvas.SetDTMax(50);
+        canvas.SetMaxDeltaTime(50);
 
         while canvas.BeginFrame() != 0 {
             flow.Update();

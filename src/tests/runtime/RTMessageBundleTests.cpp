@@ -17,6 +17,7 @@
 #include "rt_locale.h"
 #include "rt_map.h"
 #include "rt_message_bundle.h"
+#include "rt_option.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -138,16 +139,33 @@ static void test_from_map_basic() {
 
 static void test_try_get_missing() {
     printf("Testing MessageBundle.TryGet on missing key:\n");
-    const char *pairs[] = {"hello", "hi", nullptr};
+    const char *pairs[] = {"hello", "hi", "empty", "", nullptr};
     void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
 
     rt_string missing = S("gone");
     test_result("TryGet(missing) = \"\"", eq(rt_message_bundle_try_get(b, missing), ""));
+    void *missing_option = rt_message_bundle_try_get_option(b, missing);
+    test_result("TryGetOption(missing) = None", rt_option_is_none(missing_option) == 1);
+    rt_string fallback = S("fallback");
+    test_result("GetOr(missing) = fallback",
+                eq(rt_message_bundle_get_or(b, missing, fallback), "fallback"));
+    rt_string_unref(fallback);
     rt_string_unref(missing);
 
     rt_string existing = S("hello");
     test_result("TryGet(existing) = \"hi\"", eq(rt_message_bundle_try_get(b, existing), "hi"));
+    void *existing_option = rt_message_bundle_try_get_option(b, existing);
+    test_result("TryGetOption(existing) = Some(\"hi\")",
+                rt_option_is_some(existing_option) == 1 &&
+                    strcmp(rt_string_cstr(rt_option_unwrap_str(existing_option)), "hi") == 0);
     rt_string_unref(existing);
+
+    rt_string empty = S("empty");
+    void *empty_option = rt_message_bundle_try_get_option(b, empty);
+    test_result("TryGetOption(empty translation) = Some(\"\")",
+                rt_option_is_some(empty_option) == 1 &&
+                    rt_str_len(rt_option_unwrap_str(empty_option)) == 0);
+    rt_string_unref(empty);
 }
 
 static void test_has() {

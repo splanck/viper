@@ -28,6 +28,7 @@
 #include "rt_internal.h"
 #include "rt_network_internal.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_string.h"
 #include "rt_tls.h"
 
@@ -132,6 +133,29 @@ static void clear_error(rt_smtp_impl *s) {
         return;
     free(s->last_error);
     s->last_error = NULL;
+}
+
+/// @brief Convert the legacy Boolean send outcome plus cached error into Result.
+/// @details Successful sends return OkI64(1). Failed sends copy the receiver's
+///          last error into ErrStr; when the legacy path produced no diagnostic
+///          (for example a NULL receiver), @p fallback supplies a stable message.
+/// @param ok Legacy Boolean outcome from rt_smtp_send() or rt_smtp_send_html().
+/// @param obj SmtpClient receiver used to read LastError.
+/// @param fallback Message used when LastError is empty.
+/// @return Opaque Viper.Result containing OkI64(1) or ErrStr(message).
+static void *smtp_send_result_from_bool(int8_t ok, void *obj, const char *fallback) {
+    if (ok)
+        return rt_result_ok_i64(1);
+    rt_string error = rt_smtp_last_error(obj);
+    rt_string message = error;
+    const char *message_text = rt_string_cstr(message);
+    if (!message_text || message_text[0] == '\0') {
+        rt_str_release_maybe(error);
+        message = rt_const_cstr(fallback && fallback[0] ? fallback : "SmtpClient send failed");
+    }
+    void *result = rt_result_err_str(message);
+    rt_str_release_maybe(message);
+    return result;
 }
 
 /// @brief Tear down whichever transport is active (TLS or plain TCP). Idempotent and ordering-safe:
@@ -916,6 +940,19 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
     return result == 0 ? 1 : 0;
 }
 
+/// @brief Send a plain-text SMTP message and return Result instead of LastError state.
+/// @param obj Opaque Viper.Network.SmtpClient object.
+/// @param from Sender mailbox path.
+/// @param to Recipient mailbox path.
+/// @param subject Message subject.
+/// @param body Plain-text message body.
+/// @return Viper.Result.OkI64(1) on success or Viper.Result.ErrStr(message) on failure.
+void *rt_smtp_send_result(
+    void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
+    int8_t ok = rt_smtp_send(obj, from, to, subject, body);
+    return smtp_send_result_from_bool(ok, obj, "SmtpClient.SendResult: send failed");
+}
+
 /// @brief Identical to `rt_smtp_send` but the body is sent with `Content-Type: text/html`. Caller
 /// is responsible for any HTML escaping; the runtime only sanitizes header values, not body
 /// content.
@@ -944,6 +981,19 @@ int8_t rt_smtp_send_html(
     if (result == 0)
         clear_error(s);
     return result == 0 ? 1 : 0;
+}
+
+/// @brief Send an HTML SMTP message and return Result instead of LastError state.
+/// @param obj Opaque Viper.Network.SmtpClient object.
+/// @param from Sender mailbox path.
+/// @param to Recipient mailbox path.
+/// @param subject Message subject.
+/// @param html_body HTML message body.
+/// @return Viper.Result.OkI64(1) on success or Viper.Result.ErrStr(message) on failure.
+void *rt_smtp_send_html_result(
+    void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
+    int8_t ok = rt_smtp_send_html(obj, from, to, subject, html_body);
+    return smtp_send_result_from_bool(ok, obj, "SmtpClient.SendHtmlResult: send failed");
 }
 
 /// @brief Return the last failure message (cleared on the next successful send). Empty rt_string

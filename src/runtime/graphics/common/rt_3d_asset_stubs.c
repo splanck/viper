@@ -1228,6 +1228,18 @@ int64_t rt_skeleton3d_find_bone(void *s, rt_string n) {
     return -1;
 }
 
+/// @brief Stub for `Skeleton3D.FindBoneOption` — named bone lookup as Option.
+/// @details Graphics-disabled builds have no skeleton data, so this returns
+///          `None` instead of the legacy `-1` sentinel.
+/// @param s Skeleton3D handle (ignored).
+/// @param n Bone name to search for (ignored).
+/// @return `None`.
+void *rt_skeleton3d_find_bone_option(void *s, rt_string n) {
+    (void)s;
+    (void)n;
+    return rt_option_none();
+}
+
 /// @brief Stub for `Skeleton3D.BoneName(i)` — get the name of the `i`th
 ///        bone (as set during `AddBone`).
 ///
@@ -1995,10 +2007,29 @@ void *rt_model3d_load(rt_string p) {
     return NULL;
 }
 
+/// @brief Stub for `SceneAsset.LoadResult` in graphics-disabled builds.
+/// @details Result-returning APIs do not need a secondary side channel, so disabled builds report
+///          unavailable graphics support as `Err(String)`.
+/// @param p Filesystem path to the asset file (ignored).
+/// @return `Err("SceneAsset.Load: graphics support not compiled in")`.
+void *rt_model3d_load_result(rt_string p) {
+    (void)p;
+    return rt_result_err_str(rt_const_cstr("SceneAsset.Load: graphics support not compiled in"));
+}
+
 void *rt_model3d_load_asset(rt_string p) {
     (void)p;
     rt_graphics_unavailable_("Model3D.LoadAsset: graphics support not compiled in");
     return NULL;
+}
+
+/// @brief Stub for `SceneAsset.LoadAssetResult` in graphics-disabled builds.
+/// @param p Asset path or URI (ignored).
+/// @return `Err("SceneAsset.LoadAsset: graphics support not compiled in")`.
+void *rt_model3d_load_asset_result(rt_string p) {
+    (void)p;
+    return rt_result_err_str(
+        rt_const_cstr("SceneAsset.LoadAsset: graphics support not compiled in"));
 }
 
 /// @brief Stub for `Model3D.MeshCount` — number of meshes in the loaded
@@ -2150,12 +2181,34 @@ void *rt_model3d_load_animation(rt_string path, int64_t index) {
     return NULL;
 }
 
+/// @brief Stub for `SceneAsset.LoadAnimationResult` in graphics-disabled builds.
+/// @param path Model path (ignored).
+/// @param index Animation index (ignored).
+/// @return `Err("SceneAsset.LoadAnimation: graphics support not compiled in")`.
+void *rt_model3d_load_animation_result(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    return rt_result_err_str(
+        rt_const_cstr("SceneAsset.LoadAnimation: graphics support not compiled in"));
+}
+
 /// @brief Stub for `Model3D.LoadAnimationAsset`.
 void *rt_model3d_load_animation_asset(rt_string path, int64_t index) {
     (void)path;
     (void)index;
     rt_graphics_unavailable_("Model3D.LoadAnimationAsset: graphics support not compiled in");
     return NULL;
+}
+
+/// @brief Stub for `SceneAsset.LoadAnimationAssetResult` in graphics-disabled builds.
+/// @param path Asset path or URI (ignored).
+/// @param index Animation index (ignored).
+/// @return `Err("SceneAsset.LoadAnimationAsset: graphics support not compiled in")`.
+void *rt_model3d_load_animation_asset_result(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    return rt_result_err_str(
+        rt_const_cstr("SceneAsset.LoadAnimationAsset: graphics support not compiled in"));
 }
 
 /// @brief Stub for `Model3D.LoadNodeAnimation`.
@@ -2166,12 +2219,34 @@ void *rt_model3d_load_node_animation(rt_string path, int64_t index) {
     return NULL;
 }
 
+/// @brief Stub for `SceneAsset.LoadNodeAnimationResult` in graphics-disabled builds.
+/// @param path Model path (ignored).
+/// @param index Node animation index (ignored).
+/// @return `Err("SceneAsset.LoadNodeAnimation: graphics support not compiled in")`.
+void *rt_model3d_load_node_animation_result(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    return rt_result_err_str(
+        rt_const_cstr("SceneAsset.LoadNodeAnimation: graphics support not compiled in"));
+}
+
 /// @brief Stub for `Model3D.LoadNodeAnimationAsset`.
 void *rt_model3d_load_node_animation_asset(rt_string path, int64_t index) {
     (void)path;
     (void)index;
     rt_graphics_unavailable_("Model3D.LoadNodeAnimationAsset: graphics support not compiled in");
     return NULL;
+}
+
+/// @brief Stub for `SceneAsset.LoadNodeAnimationAssetResult` in graphics-disabled builds.
+/// @param path Asset path or URI (ignored).
+/// @param index Node animation index (ignored).
+/// @return `Err("SceneAsset.LoadNodeAnimationAsset: graphics support not compiled in")`.
+void *rt_model3d_load_node_animation_asset_result(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    return rt_result_err_str(
+        rt_const_cstr("SceneAsset.LoadNodeAnimationAsset: graphics support not compiled in"));
 }
 
 /// @brief Stub for `Model3D.FindNode(name)` — recursive name lookup
@@ -2187,6 +2262,18 @@ void *rt_model3d_find_node(void *m, rt_string name) {
     (void)m;
     (void)name;
     return NULL;
+}
+
+/// @brief Stub for `SceneAsset.FindNodeOption` — template node lookup as Option.
+/// @details Graphics-disabled builds have no imported model hierarchy, so this
+///          returns `None`.
+/// @param m SceneAsset/Model3D handle (ignored).
+/// @param name Node name to search for (ignored).
+/// @return `None`.
+void *rt_model3d_find_node_option(void *m, rt_string name) {
+    (void)m;
+    (void)name;
+    return rt_option_none();
 }
 
 /// @brief Stub for `Model3D.Instantiate` — would normally clone the

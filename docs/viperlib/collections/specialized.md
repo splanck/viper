@@ -209,13 +209,15 @@ expected number of elements and desired false positive rate
 | `Add(str)`          | `Void(String)`       | Add a string to the filter                                     |
 | `MightContain(str)` | `Boolean(String)`    | Check if string might be in the filter (false positives possible) |
 | `Clear()`           | `Void()`             | Remove all elements from the filter                            |
-| `Fpr()`             | `Float()`            | Get the estimated current false positive rate                  |
+| `FalsePositiveRate()` | `Float()`          | Get the estimated current false positive rate                  |
 | `Merge(other)`      | `Integer(BloomFilter)` | Merge another filter's bits into this one; returns 1 on success |
 
 ### Notes
 
 - `MightContain` returning true means the element *may* be present; returning false means it is *definitely* not present
-- `Fpr()` estimates the current false positive rate from the fraction of bits currently set, so duplicate additions do not inflate the estimate
+- `FalsePositiveRate()` estimates the current false positive rate from the fraction of bits currently set, so duplicate additions do not inflate the estimate
+- `Fpr()` remains available as a compatibility alias for
+  `FalsePositiveRate()`.
 - `Merge` combines two filters that were created with the same capacity and false positive rate parameters. Merging a filter with itself is a no-op that leaves `Count` unchanged.
 - After `Clear()`, `MightContain` returns false for all elements
 - Invalid false-positive rates such as NaN, infinity, or values outside `(0, 1)` are sanitized to a safe default
@@ -277,7 +279,7 @@ PRINT bf.MightContain("apple")       ' 1 (true - definitely added)
 PRINT bf.MightContain("grape")       ' 0 (probably not present)
 
 ' Current false positive rate
-PRINT bf.Fpr()                       ' Very low (near 0.0)
+PRINT bf.FalsePositiveRate()         ' Very low (near 0.0)
 
 ' Merge two filters
 DIM bf2 AS OBJECT
@@ -474,7 +476,8 @@ elements belong to the same group and supports merging groups.
 
 | Method                | Signature                  | Description                                                     |
 |-----------------------|----------------------------|-----------------------------------------------------------------|
-| `Find(x)`            | `Integer(Integer)`         | Find the representative (root) of element x's set               |
+| `Find(x)`            | `Integer(Integer)`         | Find the representative (root) of element x's set, or `-1` for an invalid element |
+| `FindRootOption(x)`  | `Option[Integer](Integer)` | Find the representative root as `Some(root)`, or `None` for an invalid element |
 | `Union(x, y)`        | `Integer(Integer, Integer)`| Merge the sets containing x and y; returns 1 if merged, 0 if already same set |
 | `Connected(x, y)`    | `Boolean(Integer, Integer)`| Check if x and y are in the same set                            |
 | `SetSize(x)`         | `Integer(Integer)`         | Get the size of the set containing element x                    |
@@ -484,6 +487,7 @@ elements belong to the same group and supports merging groups.
 
 - Elements are identified by integers from 0 to size-1
 - Uses path compression and union by rank for near-O(1) amortized operations
+- Prefer `FindRootOption()` for new code that accepts user-provided element indexes. `Find()` remains available for compatibility with existing `-1` checks.
 - `Union` returns 0 if the elements are already in the same set (no operation performed)
 - `Reset` restores the structure to its initial state with `Count` equal to size
 
@@ -519,6 +523,11 @@ func start() {
     SayInt(uf.SetSize(0));                       // 4 ({0,1,2,3})
     SayInt(uf.SetSize(4));                       // 1 ({4} alone)
 
+    var root = uf.FindRootOption(3);
+    if root.IsSome {
+        SayInt(root.UnwrapI64());                // representative root
+    }
+
     // Reset to individual sets
     uf.Reset();
     SayInt(uf.Count);                            // 6
@@ -534,8 +543,11 @@ uf = Viper.Collections.UnionFind.New(6)
 PRINT uf.Count               ' 6 (each element is its own set)
 
 ' Find representative
-PRINT uf.Find(0)             ' 0 (own representative)
-PRINT uf.Find(3)             ' 3
+DIM root AS OBJECT = uf.FindRootOption(0)
+IF root.IsSome THEN
+    PRINT root.UnwrapI64()   ' 0 (own representative)
+END IF
+PRINT uf.Find(3)             ' 3 (legacy -1 sentinel form)
 
 ' Merge sets
 PRINT uf.Union(0, 1)         ' 1 (merged)
@@ -747,6 +759,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 | `ToBase64()`                             | `String()`                | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
 | `Fill(value)`                            | `Void(Integer)`           | Set all bytes to value                                                |
 | `Find(value)`                            | `Integer(Integer)`        | Find first occurrence (-1 if not found)                               |
+| `FindOption(value)`                      | `Option[Integer](Integer)` | Find first occurrence as `Some(index)`, or `None` if not found        |
 | `Clone()`                                | `Bytes()`                 | Create independent copy                                               |
 | `ReadI16LE(offset)`                      | `Integer(Integer)`        | Read 16-bit signed integer at offset (little-endian)                  |
 | `ReadI16BE(offset)`                      | `Integer(Integer)`        | Read 16-bit signed integer at offset (big-endian)                     |
@@ -767,6 +780,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 - `Copy()` traps when source or destination arguments are not Bytes objects, when ranges overflow, or when ranges exceed bounds.
 - `ReadI16*()` and `ReadI32*()` sign-extend into the returned Integer. Values with the high bit set return negative numbers.
 - Negative byte-array lengths trap. Raw byte inputs larger than the maximum runtime `Bytes` length, or null raw inputs with non-zero length, are rejected before allocation.
+- Prefer `FindOption()` for new code. `Find()` remains available for compatibility with existing `-1` checks.
 
 ### Zia Example
 
@@ -831,7 +845,10 @@ slice = data.Slice(1, 3)  ' Bytes at indices 1 and 2
 PRINT slice.Length           ' Output: 2
 
 ' Find a byte
-PRINT data.Find(190)     ' Output: 2
+DIM found AS OBJECT = data.FindOption(190)
+IF found.IsSome THEN
+    PRINT found.UnwrapI64()  ' Output: 2
+END IF
 
 ' Fill with a value
 data.Fill(0)

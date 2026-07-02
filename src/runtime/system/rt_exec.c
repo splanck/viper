@@ -35,6 +35,7 @@
 #include "rt_exec.h"
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -74,6 +75,56 @@ extern char **environ;
 
 /// @brief Thread-local exit code from the most recent rt_exec_shell_full() call.
 static _Thread_local int64_t tl_last_exit_code = -1;
+
+/// @brief Immutable result object returned by Exec.ShellResult.
+typedef struct {
+    void *vptr;
+    rt_string output;
+    int64_t exit_code;
+} rt_exec_command_result_impl;
+
+/// @brief Checked cast for CommandResult accessors.
+/// @param obj Candidate runtime object.
+/// @param api Public API name for trap diagnostics.
+/// @return CommandResult implementation pointer, or NULL after trapping.
+static rt_exec_command_result_impl *checked_command_result(void *obj, const char *api) {
+    if (!rt_obj_is_instance(
+            obj, RT_EXEC_COMMAND_RESULT_CLASS_ID, (int64_t)sizeof(rt_exec_command_result_impl))) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_exec_command_result_impl *)obj;
+}
+
+/// @brief Finalizer for CommandResult output ownership.
+/// @param obj CommandResult object.
+static void command_result_finalizer(void *obj) {
+    rt_exec_command_result_impl *result = (rt_exec_command_result_impl *)obj;
+    if (!result)
+        return;
+    rt_str_release_maybe(result->output);
+    result->output = NULL;
+}
+
+/// @brief Create a CommandResult from an owned output string.
+/// @param output Owned runtime string; ownership transfers to the result.
+/// @param exit_code Process exit code to store.
+/// @return New CommandResult object, or NULL after trapping on allocation failure.
+static void *command_result_new_owned(rt_string output, int64_t exit_code) {
+    if (!output)
+        output = rt_string_from_bytes("", 0);
+    rt_exec_command_result_impl *result = (rt_exec_command_result_impl *)rt_obj_new_i64(
+        RT_EXEC_COMMAND_RESULT_CLASS_ID, (int64_t)sizeof(rt_exec_command_result_impl));
+    if (!result) {
+        rt_str_release_maybe(output);
+        rt_trap("Exec.ShellResult: memory allocation failed");
+        return NULL;
+    }
+    result->output = output;
+    result->exit_code = exit_code;
+    rt_obj_set_finalizer(result, command_result_finalizer);
+    return result;
+}
 
 /// @brief Extract a runtime string as a C-string-safe byte view.
 /// @details Execution APIs eventually cross OS interfaces that treat NUL bytes
@@ -1248,6 +1299,31 @@ rt_string rt_exec_shell_full(rt_string command) {
     return full_result;
 }
 
+void *rt_exec_shell_result(rt_string command) {
+    rt_string output = rt_exec_shell_full(command);
+    return command_result_new_owned(output, tl_last_exit_code);
+}
+
 int64_t rt_exec_last_exit_code(void) {
     return tl_last_exit_code;
+}
+
+rt_string rt_exec_command_result_output(void *ptr) {
+    rt_exec_command_result_impl *result =
+        checked_command_result(ptr, "CommandResult.Output: expected Viper.System.CommandResult");
+    if (!result || !result->output)
+        return rt_string_from_bytes("", 0);
+    return rt_string_ref(result->output);
+}
+
+int64_t rt_exec_command_result_exit_code(void *ptr) {
+    rt_exec_command_result_impl *result =
+        checked_command_result(ptr, "CommandResult.ExitCode: expected Viper.System.CommandResult");
+    return result ? result->exit_code : -1;
+}
+
+int8_t rt_exec_command_result_succeeded(void *ptr) {
+    rt_exec_command_result_impl *result =
+        checked_command_result(ptr, "CommandResult.Succeeded: expected Viper.System.CommandResult");
+    return (result && result->exit_code == 0) ? 1 : 0;
 }

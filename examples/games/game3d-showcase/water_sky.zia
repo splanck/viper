@@ -49,7 +49,7 @@ class ShowcaseWaterSky {
         Water3D.AddWave(water, 0.55, -0.25, 2.4, 0.055, 6.5);
 
         lakeMesh = createLakeSurfaceMesh(56);
-        lakeMat = Material3D.NewPBR(0.02, 0.52, 0.86);
+        lakeMat = Material3D.PBR(0.02, 0.52, 0.86);
         Material3D.SetAlbedoMap(lakeMat, waterTex);
         Material3D.SetNormalMap(lakeMat, waterNormal);
         lakeMat.Roughness = 0.18;
@@ -339,7 +339,7 @@ class ShowcaseWaterSky {
     }
 
     hide func setupReeds(land: Terrain3D) {
-        saplingMesh = Mesh3D.NewCylinder(config.REED_RADIUS, config.REED_HEIGHT, 6);
+        saplingMesh = Mesh3D.Cylinder(config.REED_RADIUS, config.REED_HEIGHT, 6);
         saplingMat = Materials.Rubber(0.21, 0.38, 0.16);
         Material3D.SetEmissiveColor(saplingMat, 0.004, 0.010, 0.003);
         reedXs = [];

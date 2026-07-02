@@ -34,6 +34,7 @@
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_threads.h"
 #include "rt_trap.h"
 
@@ -480,6 +481,45 @@ void *rt_concqueue_try_dequeue(void *obj) {
     free(node);
     concqueue_release_object(obj);
     return value;
+}
+
+/// @brief Non-blocking dequeue as an Option.
+/// @details Returns `None` only when the queue is empty. This wrapper removes
+///          the node while holding the queue lock so a queued NULL value can be
+///          returned as `Some(NULL)`. The node's retained value transfer is
+///          released after the Option has retained it.
+/// @param obj ConcurrentQueue pointer.
+/// @return Opaque Viper.Option object containing the dequeued value, or None.
+void *rt_concqueue_try_dequeue_option(void *obj) {
+    if (!obj)
+        return rt_option_none();
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return rt_option_none();
+    rt_obj_retain_maybe(obj);
+
+    CQ_LOCK(cq);
+    if (!cq->head) {
+        CQ_UNLOCK(cq);
+        concqueue_release_object(obj);
+        return rt_option_none();
+    }
+
+    cq_node *node = cq->head;
+    cq->head = node->next;
+    if (!cq->head)
+        cq->tail = NULL;
+    cq->count--;
+    CQ_UNLOCK(cq);
+
+    void *value = node->value;
+    free(node);
+    concqueue_release_object(obj);
+
+    void *option = rt_option_some(value);
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    return option;
 }
 
 /// @brief Blocking dequeue: wait indefinitely until an item is enqueued or the queue is closed.

@@ -1,6 +1,6 @@
 // lrucache_demo.zia - Comprehensive API audit for Viper.Collections.LruCache
-// Tests: New, Put, Get, Peek, Has, Remove, RemoveOldest, Keys, Values,
-//        Len, Cap, IsEmpty, Clear
+// Tests: New, Set, Get, Peek, Has, Remove, RemoveOldest, Keys, Values,
+//        Len, Capacity, IsEmpty, Clear
 
 module LruCacheDemo;
 
@@ -16,14 +16,14 @@ func start() {
     Say("--- New ---");
     var cache = LruCache.New(3);
     SayInt(cache.Count);       // 0
-    SayInt(cache.Cap);       // 3
+    SayInt(cache.Capacity);  // 3
     SayBool(cache.IsEmpty);  // 1
 
-    // --- Put / Len ---
-    Say("--- Put / Len ---");
-    cache.Put("a", Box.Str("alpha"));
-    cache.Put("b", Box.Str("beta"));
-    cache.Put("c", Box.Str("gamma"));
+    // --- Set / Len ---
+    Say("--- Set / Len ---");
+    cache.Set("a", Box.Str("alpha"));
+    cache.Set("b", Box.Str("beta"));
+    cache.Set("c", Box.Str("gamma"));
     SayInt(cache.Count);       // 3
     SayBool(cache.IsEmpty);  // 0
 
@@ -41,21 +41,21 @@ func start() {
     Say("--- Peek ---");
     Say(Box.ToStr(cache.Peek("c")));  // gamma
 
-    // --- Put (eviction: LRU is evicted when at capacity) ---
-    Say("--- Put (eviction) ---");
+    // --- Set (eviction: LRU is evicted when at capacity) ---
+    Say("--- Set (eviction) ---");
     // Access order: a was accessed by Get, b was accessed by Get, c by Peek
     // But Peek does not promote, so c may be LRU if access didn't change order.
     // After Get("a") and Get("b"), "a" and "b" are most recent.
     // c was only accessed by Peek (no promotion).
-    cache.Put("d", Box.Str("delta"));
+    cache.Set("d", Box.Str("delta"));
     SayInt(cache.Count);               // 3 (still at capacity)
     SayBool(cache.Has("c"));         // 0 (c was LRU, evicted)
     SayBool(cache.Has("d"));         // 1
     Say(Box.ToStr(cache.Get("d")));  // delta
 
-    // --- Put (update existing) ---
-    Say("--- Put (update) ---");
-    cache.Put("a", Box.Str("ALPHA"));
+    // --- Set (update existing) ---
+    Say("--- Set (update) ---");
+    cache.Set("a", Box.Str("ALPHA"));
     Say(Box.ToStr(cache.Get("a")));  // ALPHA
     SayInt(cache.Count);               // 3 (no new entry)
 
@@ -78,7 +78,7 @@ func start() {
 
     // --- RemoveOldest ---
     Say("--- RemoveOldest ---");
-    cache.Put("e", Box.Str("epsilon"));
+    cache.Set("e", Box.Str("epsilon"));
     SayInt(cache.Count);                // 3
     SayBool(cache.RemoveOldest());    // 1
     SayInt(cache.Count);                // 2
@@ -88,7 +88,7 @@ func start() {
     cache.Clear();
     SayInt(cache.Count);                // 0
     SayBool(cache.IsEmpty);           // 1
-    SayInt(cache.Cap);                // 3
+    SayInt(cache.Capacity);           // 3
 
     Say("=== LruCache audit complete ===");
 }

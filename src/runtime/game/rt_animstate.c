@@ -27,6 +27,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_animstate.h"
+#include "rt_animation_events.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -597,4 +598,12 @@ int64_t rt_animstate_event_fired_id(void *asm_, int64_t index) {
     if (!a || index < 0 || index >= a->events_fired_count)
         return 0;
     return a->events_fired_ids[index];
+}
+
+void *rt_animstate_poll_events(void *asm_) {
+    animstate_impl *a = checked_animstate(
+        asm_, "AnimStateMachine.PollEvents: expected Viper.Game.AnimStateMachine");
+    if (!a)
+        return rt_animation_event_batch_from_ids(NULL, 0);
+    return rt_animation_event_batch_from_ids(a->events_fired_ids, a->events_fired_count);
 }

@@ -11,6 +11,7 @@ module playerctl;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
+bind Viper.Input.Key as Key;
 bind Viper.Math;
 bind "./config";
 bind "./terrain";
@@ -59,7 +60,7 @@ class ShowcasePlayer {
                        audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
         // Sprint is gated on stamina: hold Shift to sprint until it drains, then
         // it regenerates while you walk.
-        var wantSprint = input.IsDown(Keys.get_Shift());
+        var wantSprint = input.IsDown(Key.LeftShift);
         var sprinting = wantSprint && stamina > 0.0;
         var spd = config.PLAYER_MOVE_SPEED;
         if (sprinting) { spd = spd * config.PLAYER_SPRINT_MULT; }

@@ -15,6 +15,7 @@
 #include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_locale_manager.h"
+#include "rt_option.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -402,6 +403,16 @@ static void test_try_parse_returns_null() {
     void *loc2 = rt_locale_try_parse(empty);
     rt_string_unref(empty);
     test_result("TryParse(\"\") returns NULL", loc2 == nullptr);
+
+    rt_string invalid_option_tag = S("!@#");
+    void *invalid_option = rt_locale_try_parse_option(invalid_option_tag);
+    rt_string_unref(invalid_option_tag);
+    test_result("TryParseOption(\"!@#\") returns None", rt_option_is_none(invalid_option) == 1);
+
+    rt_string valid_option_tag = S("en-US");
+    void *valid_option = rt_locale_try_parse_option(valid_option_tag);
+    rt_string_unref(valid_option_tag);
+    test_result("TryParseOption(\"en-US\") returns Some", rt_option_is_some(valid_option) == 1);
 }
 
 //=============================================================================

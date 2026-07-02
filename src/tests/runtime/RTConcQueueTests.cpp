@@ -9,6 +9,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_string.h"
 #include "rt_threads.h"
 #include "rt_trap.h"
@@ -73,6 +74,13 @@ static void test_enqueue_dequeue() {
 static void test_try_dequeue_empty() {
     void *q = rt_concqueue_new();
     assert(rt_concqueue_try_dequeue(q) == NULL);
+    void *empty = rt_concqueue_try_dequeue_option(q);
+    assert(rt_option_is_none(empty) == 1);
+
+    rt_concqueue_enqueue(q, NULL);
+    void *null_value = rt_concqueue_try_dequeue_option(q);
+    assert(rt_option_is_some(null_value) == 1);
+    assert(rt_option_unwrap(null_value) == NULL);
 }
 
 static void test_peek() {

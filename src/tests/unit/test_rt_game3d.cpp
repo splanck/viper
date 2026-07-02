@@ -42,6 +42,7 @@
 #include "rt_model3d.h"
 #include "rt_navmesh3d.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_particles3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
@@ -1095,13 +1096,26 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("Muzzle")) ==
                     rt_game3d_entity_get_node(child),
                 "findNode sees child scene node");
+    void *muzzle_option = rt_game3d_world_find_node_option(world, rt_const_cstr("Muzzle"));
+    EXPECT_TRUE(rt_option_is_some(muzzle_option) == 1,
+                "World3D.FindNodeOption returns Some for child scene node");
+    EXPECT_TRUE(rt_option_unwrap(muzzle_option) == rt_game3d_entity_get_node(child),
+                "World3D.FindNodeOption unwraps child scene node");
     EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Player")) == parent,
                 "findEntity returns registered entity");
+    void *player_option = rt_game3d_world_find_entity_option(world, rt_const_cstr("Player"));
+    EXPECT_TRUE(rt_option_is_some(player_option) == 1,
+                "World3D.FindEntityOption returns Some for registered entity");
+    EXPECT_TRUE(rt_option_unwrap(player_option) == parent,
+                "World3D.FindEntityOption unwraps registered entity");
     rt_game3d_entity_set_name(parent, rt_const_cstr("Hero"));
     EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Hero")) == parent,
                 "findEntity index updates after rename");
     EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Player")) == nullptr,
                 "findEntity index drops old names after rename");
+    EXPECT_TRUE(
+        rt_option_is_none(rt_game3d_world_find_entity_option(world, rt_const_cstr("Player"))) == 1,
+        "World3D.FindEntityOption returns None for stale entity names");
     rt_game3d_world_on_resize(world, 96, 72);
     EXPECT_EQ_INT(rt_canvas3d_get_width(rt_game3d_world_get_canvas(world)),
                   96,
@@ -3159,8 +3173,7 @@ static bool test_phase4_assets3d_model_templates() {
         rt_thread_sleep(5);
     }
     void *preloaded_handle = rt_game3d_assets_load_model_template_async(path);
-    EXPECT_TRUE(preloaded_handle != nullptr,
-                "LoadTemplateAsync returns a handle after Preload");
+    EXPECT_TRUE(preloaded_handle != nullptr, "LoadTemplateAsync returns a handle after Preload");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(preloaded_handle) != 0,
                 "Assets3D.Preload warms the template cache through world commit draining");
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(preloaded_handle) != nullptr,

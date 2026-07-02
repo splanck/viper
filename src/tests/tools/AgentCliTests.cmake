@@ -182,8 +182,249 @@ endif ()
 if (NOT _api_out MATCHES "\"functions\":" OR NOT _api_out MATCHES "\"classes\":")
     message(FATAL_ERROR "--dump-runtime-api missing top-level sections")
 endif ()
+if (NOT _api_out MATCHES "\"schema_version\":2" OR NOT _api_out MATCHES "\"signature_dialect\":\"runtime-def-v1\"")
+    message(FATAL_ERROR "--dump-runtime-api missing schema metadata")
+endif ()
+if (NOT _api_out MATCHES "\"fallibility\":" OR NOT _api_out MATCHES "\"class_kind\":")
+    message(FATAL_ERROR "--dump-runtime-api missing production contract metadata")
+endif ()
 if (NOT _api_out MATCHES "Viper.Terminal.Say")
     message(FATAL_ERROR "--dump-runtime-api missing canonical function entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Diagnostics.CurrentTrap" OR
+    NOT _api_out MATCHES "Viper.Diagnostics.TrapInfo")
+    message(FATAL_ERROR "--dump-runtime-api missing diagnostics trap snapshot entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Runtime.Unsafe.Retain" OR
+    NOT _api_out MATCHES "Viper.Runtime.Unsafe.SetThrowMsg" OR
+    NOT _api_out MATCHES "Viper.Runtime.Unsafe.SetTrapFields" OR
+    NOT _api_out MATCHES "Viper.Runtime.GC.Collect")
+    message(FATAL_ERROR "--dump-runtime-api missing runtime namespace memory entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Core.Parse.TryDouble" OR
+    NOT _api_out MATCHES "Viper.Core.Parse.DoubleOr")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical parse double entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Core.Convert.ToStringInt" OR
+    NOT _api_out MATCHES "Viper.Core.Convert.ToStringDouble")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical convert string entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Collections.Seq.get_Capacity" OR
+    NOT _api_out MATCHES "Viper.Threads.Channel.get_Capacity" OR
+    NOT _api_out MATCHES "Viper.IO.BinaryBuffer.NewCapacity")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical capacity entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Collections.BloomFilter.FalsePositiveRate")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical BloomFilter rate entry")
+endif ()
+if (NOT _api_out MATCHES "Viper.Text.Fmt.Scientific" OR
+    NOT _api_out MATCHES "Viper.Text.Fmt.Percent" OR
+    NOT _api_out MATCHES "Viper.Text.Fmt.YesNo")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical formatting entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Collections.LruCache.Set" OR
+    NOT _api_out MATCHES "Viper.Collections.BiMap.Set" OR
+    NOT _api_out MATCHES "Viper.Collections.MultiMap.Add")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical collection write entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Graphics3D.Mesh3D.Box" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.Material3D.FromColor" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.Light3D.Directional" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.Collider3D.Capsule" OR
+    NOT _api_out MATCHES "Viper.Game3D.World3D.WithHorizontalCamera")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical factory entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Collections.Queue.TryPopOption" OR
+    NOT _api_out MATCHES "Viper.Collections.Heap.TryPeekOption" OR
+    NOT _api_out MATCHES "Viper.Collections.Deque.TryPopBackOption" OR
+    NOT _api_out MATCHES "Viper.Threads.Promise.GetFuture.*obj<Viper.Threads.Future>" OR
+    NOT _api_out MATCHES "Viper.Threads.Async.Delay.*obj<Viper.Threads.Future>" OR
+    NOT _api_out MATCHES "Viper.Threads.Channel.TryRecvOption" OR
+    NOT _api_out MATCHES "Viper.Threads.Future.TryGetOption" OR
+    NOT _api_out MATCHES "Viper.Time.DateTime.TryParseOption" OR
+    NOT _api_out MATCHES "Viper.Localization.MessageBundle.TryGetOption" OR
+    NOT _api_out MATCHES "Viper.Localization.MessageBundle.GetOr" OR
+    NOT _api_out MATCHES "Viper.Localization.Locale.TryParseOption" OR
+    NOT _api_out MATCHES "Viper.Collections.Bytes.FindOption" OR
+    NOT _api_out MATCHES "Viper.Collections.UnionFind.FindRootOption" OR
+    NOT _api_out MATCHES "Viper.Collections.Seq.FindWhereOption" OR
+    NOT _api_out MATCHES "Viper.Text.Pattern.FindOption" OR
+    NOT _api_out MATCHES "Viper.Data.Xml.FindOption" OR
+    NOT _api_out MATCHES "Viper.Graphics2D.SceneGraph.FindOption" OR
+    NOT _api_out MATCHES "Viper.Sound.Audio.FindGroupOption" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneGraph.FindOption" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneNode.FindOption" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.Skeleton3D.FindBoneOption" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.FindNodeOption" OR
+    NOT _api_out MATCHES "Viper.Game3D.World3D.FindNodeOption" OR
+    NOT _api_out MATCHES "Viper.Game3D.World3D.FindEntityOption" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.NavMesh3D.FindPathOption" OR
+    NOT _api_out MATCHES "Viper.GUI.FindBar.FindNextOption" OR
+    NOT _api_out MATCHES "Viper.GUI.TestHarness.FindByIdOption" OR
+    NOT _api_out MATCHES "Viper.GUI.CommandRegistry.FindOption" OR
+    NOT _api_out MATCHES "Viper.Game.UI.TableClickResult.RowOption" OR
+    NOT _api_out MATCHES "Viper.Game.UI.TableClickResult.ColumnOption")
+    message(FATAL_ERROR "--dump-runtime-api missing modern Option-returning failure entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Graphics.Canvas.SetMaxDeltaTime" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.Canvas3D.SetMaxDeltaTime")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical frame delta entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Input.Key" OR
+    NOT _api_out MATCHES "Viper.Input.Key.get_A" OR
+    NOT _api_out MATCHES "Viper.Input.Key.get_LeftShift" OR
+    NOT _api_out MATCHES "Viper.Input.Key.get_NumpadDecimal")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical input key entries")
+endif ()
+if (NOT _api_out MATCHES "\"name\":\"Viper.Math.Random.Chance\"[^\\n]*\"signature\":\"i1\\(f64\\)\"" OR
+    NOT _api_out MATCHES "Viper.Math.Random.ChanceInt")
+    message(FATAL_ERROR "--dump-runtime-api missing boolean Random.Chance or integer compatibility row")
+endif ()
+if (NOT _api_out MATCHES "Viper.Crypto.Module.EnableApprovedModeForProcess" OR
+    NOT _api_out MATCHES "Viper.Crypto.Module.DisableApprovedModeForProcess" OR
+    NOT _api_out MATCHES "Viper.Crypto.Module.IsApprovedModeForProcess")
+    message(FATAL_ERROR "--dump-runtime-api missing process-scoped Crypto.Module policy rows")
+endif ()
+if (NOT _api_out MATCHES "Viper.Runtime.Unsafe.ValueType" OR
+    NOT _api_out MATCHES "Viper.Runtime.Unsafe.ValueTypeAddField")
+    message(FATAL_ERROR "--dump-runtime-api missing unsafe boxed value-type rows")
+endif ()
+if (NOT _api_out MATCHES "Viper.Game3D.Prefab.Load" OR
+    NOT _api_out MATCHES "Viper.Game3D.Prefab.LoadAsset" OR
+    NOT _api_out MATCHES "Viper.Game3D.Assets3D.LoadPrefab" OR
+    NOT _api_out MATCHES "Viper.Game3D.Assets3D.LoadPrefabAsset" OR
+    NOT _api_out MATCHES "Viper.Game3D.AssetHandle3D.GetPrefab")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical Game3D prefab loading rows")
+endif ()
+if (NOT _api_out MATCHES "Viper.Network.HttpReq.SendResult" OR
+    NOT _api_out MATCHES "Viper.Network.RestClient.GetResult" OR
+    NOT _api_out MATCHES "Viper.Network.RestClient.PostResult" OR
+    NOT _api_out MATCHES "Viper.Network.SmtpClient.SendResult" OR
+    NOT _api_out MATCHES "Viper.Network.SmtpClient.SendHtmlResult" OR
+    NOT _api_out MATCHES "Viper.Network.RestClient.HeadResult")
+    message(FATAL_ERROR "--dump-runtime-api missing network Result-returning HTTP rows")
+endif ()
+if (NOT _api_out MATCHES "Viper.Text.JsonStream.NextResult" OR
+    NOT _api_out MATCHES "Viper.Data.Xml.ParseResult" OR
+    NOT _api_out MATCHES "Viper.Data.Yaml.ParseResult" OR
+    NOT _api_out MATCHES "Viper.Data.Serialize.ParseResult" OR
+    NOT _api_out MATCHES "Viper.Data.Serialize.AutoParseResult")
+    message(FATAL_ERROR "--dump-runtime-api missing Result-returning data format parse rows")
+endif ()
+if (NOT _api_out MATCHES "Viper.Crypto.Tls.ConnectResult" OR
+    NOT _api_out MATCHES "Viper.Crypto.Tls.ConnectForResult" OR
+    NOT _api_out MATCHES "Viper.Crypto.Tls.ConnectOptionsResult" OR
+    NOT _api_out MATCHES "Viper.System.Pty.OpenResult" OR
+    NOT _api_out MATCHES "Viper.Zia.SemanticJob.ErrorOption" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadResult" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadAssetResult" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadAnimationResult" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadAnimationAssetResult" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult" OR
+    NOT _api_out MATCHES "Viper.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult" OR
+    NOT _api_out MATCHES "Viper.Game2D.SceneDocument.LoadResult" OR
+    NOT _api_out MATCHES "Viper.Game2D.SceneDocument.LoadJsonResult")
+    message(FATAL_ERROR "--dump-runtime-api missing Result-returning connect/open/load rows")
+endif ()
+if (NOT _api_out MATCHES "Viper.Crypto.Cipher.DecryptResult" OR
+    NOT _api_out MATCHES "Viper.Crypto.Cipher.TryDecryptWithKeyAAD" OR
+    NOT _api_out MATCHES "Viper.Crypto.Aes.DecryptAuthResult" OR
+    NOT _api_out MATCHES "Viper.Crypto.Aes.TryDecryptStr" OR
+    NOT _api_out MATCHES "Viper.Network.HttpReq.AllowInsecureCertificatesForTesting" OR
+    NOT _api_out MATCHES "Viper.Crypto.Legacy.Hash.MD5" OR
+    NOT _api_out MATCHES "Viper.Crypto.Legacy.Aes.DecryptCBCResult")
+    message(FATAL_ERROR "--dump-runtime-api missing modern crypto failure/legacy entries")
+endif ()
+if (NOT _api_out MATCHES "\"migration_target\":\"Viper.Math.Bits.CountLeadingZeros\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Math.Random.Chance\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Crypto.Module.EnableApprovedModeForProcess\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Runtime.Unsafe.ValueType\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Runtime.Unsafe.SetThrowMsg\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game3D.Prefab.Load\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game3D.AssetHandle3D.GetPrefab\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Network.RestClient.GetResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Network.SmtpClient.SendResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game.Pathfinder.FindPathResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game.PathResult.get_StepCount\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game.Quadtree.QueryRectResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game.Quadtree.QueryPairs\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game.AnimStateMachine.PollEvents\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Text.JsonStream.NextResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Data.Xml.ParseResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Data.Yaml.ParseResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Data.Serialize.ParseResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Crypto.Tls.ConnectResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.System.Pty.OpenResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Zia.SemanticJob.ErrorOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneAsset.LoadResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneAsset.LoadAssetResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneAsset.LoadAnimationResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneAsset.LoadAnimationAssetResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game2D.SceneDocument.LoadResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.System.Exec.ShellResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Collections.Queue.TryPopOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Threads.Channel.TryRecvOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Time.DateTime.TryParseOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Localization.Locale.TryParseOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Collections.Bytes.FindOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Collections.UnionFind.FindRootOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Collections.Seq.FindWhereOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Text.Pattern.FindOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Data.Xml.FindOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics2D.SceneGraph.FindOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Sound.Audio.FindGroupOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneGraph.FindOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneNode.FindOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.Skeleton3D.FindBoneOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.SceneAsset.FindNodeOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game3D.World3D.FindNodeOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game3D.World3D.FindEntityOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Graphics3D.NavMesh3D.FindPathOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Game.UI.Table.HandleClickResult\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.GUI.FindBar.FindNextOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.GUI.TestHarness.FindByIdOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.GUI.CommandRegistry.FindOption\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Crypto.Legacy.Hash.MD5\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Network.HttpReq.AllowInsecureCertificatesForTesting\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Input.Key\"")
+    message(FATAL_ERROR "--dump-runtime-api missing migration-target metadata")
+endif ()
+if (NOT _api_out MATCHES "Viper.Math.Bits.CountLeadingZeros" OR
+    NOT _api_out MATCHES "Viper.Math.Bits.RotateLeft" OR
+    NOT _api_out MATCHES "Viper.Math.Bits.ShiftRightLogical")
+    message(FATAL_ERROR "--dump-runtime-api missing canonical math bit entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Terminal.TryReadLine" OR
+    NOT _api_out MATCHES "Viper.Terminal.ReadLineResult")
+    message(FATAL_ERROR "--dump-runtime-api missing modern terminal input entries")
+endif ()
+if (NOT _api_out MATCHES "Viper.Game.Pathfinder.FindPathResult" OR
+    NOT _api_out MATCHES "Viper.Game.PathResult.get_Found" OR
+    NOT _api_out MATCHES "Viper.Game.PathResult.get_StepCount" OR
+    NOT _api_out MATCHES "Viper.Game.Quadtree.QueryRectResult" OR
+    NOT _api_out MATCHES "Viper.Game.QueryResult.GetId" OR
+    NOT _api_out MATCHES "Viper.Game.Quadtree.QueryPairs" OR
+    NOT _api_out MATCHES "Viper.Game.QuadtreePairResult.First" OR
+    NOT _api_out MATCHES "Viper.Game.UI.Table.HandleClickResult" OR
+    NOT _api_out MATCHES "Viper.Game.UI.TableClickResult.get_IsHeader" OR
+    NOT _api_out MATCHES "Viper.Game.AnimStateMachine.PollEvents" OR
+    NOT _api_out MATCHES "Viper.Game.AnimationEventBatch.GetId")
+    message(FATAL_ERROR "--dump-runtime-api missing game result snapshot entries")
+endif ()
+if (_api_out MATCHES "str\\?")
+    message(FATAL_ERROR "--dump-runtime-api should not expose undocumented nullable suffix signatures")
+endif ()
+if (NOT _api_out MATCHES "\\{\"name\":\"Viper.Terminal.ReadLine\"[^\\n]*\"signature\":\"string\\(\\)\"" OR
+    NOT _api_out MATCHES "\\{\"name\":\"Viper.Terminal.Ask\"[^\\n]*\"signature\":\"string\\(string\\)\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Terminal.TryReadLine\"" OR
+    NOT _api_out MATCHES "\"migration_target\":\"Viper.Terminal.TryAsk\"")
+    message(FATAL_ERROR "--dump-runtime-api missing terminal compatibility signature or migration metadata")
+endif ()
+if (NOT _api_out MATCHES "\"fallibility\":\"option\"" OR
+    NOT _api_out MATCHES "\"fallibility\":\"result\"")
+    message(FATAL_ERROR "--dump-runtime-api missing Option/Result fallibility metadata")
 endif ()
 
 # ===== --dump-opcodes =====

@@ -33,8 +33,32 @@ void rt_smtp_set_auth(void *client, rt_string username, rt_string password);
 void rt_smtp_set_tls(void *client, int8_t enable);
 /// @brief Send a plain-text email. Returns 1 on success, 0 on any SMTP/network error.
 int8_t rt_smtp_send(void *client, rt_string from, rt_string to, rt_string subject, rt_string body);
+/// @brief Send a plain-text email and return a Result instead of using LastError.
+/// @details This performs the same SMTP session as rt_smtp_send(). Success is
+///          returned as OkI64(1); SMTP, network, and validation failures are
+///          returned as ErrStr(message). Use this in new code instead of calling
+///          rt_smtp_send() and then rt_smtp_last_error().
+/// @param client Opaque Viper.Network.SmtpClient object.
+/// @param from Sender mailbox path.
+/// @param to Recipient mailbox path.
+/// @param subject Email subject; CR/LF are sanitized before DATA.
+/// @param body Plain-text message body.
+/// @return Opaque Viper.Result object containing OkI64(1) or ErrStr(message).
+void *rt_smtp_send_result(
+    void *client, rt_string from, rt_string to, rt_string subject, rt_string body);
 /// @brief Send an HTML-format email (Content-Type: text/html). Returns 1 on success.
 int8_t rt_smtp_send_html(
+    void *client, rt_string from, rt_string to, rt_string subject, rt_string html_body);
+/// @brief Send an HTML email and return a Result instead of using LastError.
+/// @details Mirrors rt_smtp_send_html() with a side-channel-free result shape.
+///          Success is OkI64(1); failures are ErrStr(message).
+/// @param client Opaque Viper.Network.SmtpClient object.
+/// @param from Sender mailbox path.
+/// @param to Recipient mailbox path.
+/// @param subject Email subject; CR/LF are sanitized before DATA.
+/// @param html_body HTML message body; callers remain responsible for escaping.
+/// @return Opaque Viper.Result object containing OkI64(1) or ErrStr(message).
+void *rt_smtp_send_html_result(
     void *client, rt_string from, rt_string to, rt_string subject, rt_string html_body);
 /// @brief Get the last SMTP error message (response code + text), empty if no error.
 rt_string rt_smtp_last_error(void *client);

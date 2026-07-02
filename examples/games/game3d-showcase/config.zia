@@ -37,7 +37,7 @@ var CAMERA_INVERT_Y: Boolean = false;  // set true to invert vertical mouse look
 // the player's head and aims a free look vector, so you can look right at the sky.
 var CAMERA_FP_EYE_HEIGHT: Float = 1.55; // eye height above the player's ground Y
 var CAMERA_FP_PITCH_LIMIT: Float = 1.50; // ~+-86 deg free-look pitch clamp
-// The view toggle is bound to the V key in game.zia via Keys.get_KeyV().
+// The view toggle is bound to the V key in game.zia via Viper.Input.Key.V.
 
 var PLAYER_MOVE_SPEED: Float = 9.2;
 var PLAYER_SPRINT_MULT: Float = 1.75;

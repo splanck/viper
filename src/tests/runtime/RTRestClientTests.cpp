@@ -25,6 +25,7 @@
 #include "rt_network.h"
 #include "rt_object.h"
 #include "rt_restclient.h"
+#include "rt_result.h"
 #include "rt_string.h"
 
 #include <atomic>
@@ -429,6 +430,11 @@ static void test_last_ok_null() {
     test_result(ok == 0, "last_ok_null: should return false for NULL");
 }
 
+static void test_get_result_null_client() {
+    void *result = rt_restclient_get_result(NULL, rt_const_cstr("items"));
+    test_result(rt_result_is_err(result) == 1, "get_result_null_client: should return Err");
+}
+
 //=============================================================================
 // Lifecycle / Finalizer Tests
 //=============================================================================
@@ -484,7 +490,9 @@ static void test_restclient_keepalive_reuse() {
     test_result(rt_restclient_get_keep_alive(client) == 1,
                 "rest_keepalive: keepalive should default on");
 
-    void *res1 = rt_restclient_get(client, rt_const_cstr("items"));
+    void *result1 = rt_restclient_get_result(client, rt_const_cstr("items"));
+    test_result(rt_result_is_ok(result1) == 1, "rest_keepalive: GetResult should succeed");
+    void *res1 = rt_result_unwrap(result1);
     test_result(rt_http_res_status(res1) == 200, "rest_keepalive: first request should succeed");
 
     void *res2 = rt_restclient_get(client, rt_const_cstr("items"));
@@ -599,6 +607,7 @@ int main() {
     test_last_status_null();
     test_last_response_null();
     test_last_ok_null();
+    test_get_result_null_client();
 
     // Lifecycle / finalizer regression (RC-1)
     test_restclient_many_instances();

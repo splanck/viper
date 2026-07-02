@@ -16,6 +16,7 @@
 #include "rt.hpp"
 #include "rt_canvas3d.h"
 #include "rt_internal.h"
+#include "rt_option.h"
 #include "rt_skeleton3d.h"
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
@@ -98,6 +99,12 @@ static void test_skeleton_find_bone() {
     EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr("hand")) == 2, "FindBone('hand') = 2");
     EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr("missing")) == -1,
                 "FindBone('missing') = -1");
+    void *arm_option = rt_skeleton3d_find_bone_option(skel, rt_const_cstr("arm"));
+    EXPECT_TRUE(rt_option_is_some(arm_option) == 1, "FindBoneOption('arm') returns Some");
+    EXPECT_TRUE(rt_option_unwrap_i64(arm_option) == 1, "FindBoneOption('arm') unwraps index 1");
+    EXPECT_TRUE(rt_option_is_none(rt_skeleton3d_find_bone_option(skel, rt_const_cstr("missing"))) ==
+                    1,
+                "FindBoneOption('missing') returns None");
 }
 
 static void test_skeleton_find_bone_uses_canonical_long_names() {
@@ -217,6 +224,7 @@ static void test_skeleton_animation_repairs_corrupt_counts() {
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     EXPECT_TRUE(mv != nullptr, "AnimPlayer3D returns matrix after repaired playback");
     if (mv)
@@ -392,15 +400,11 @@ static void test_player_loop() {
     EXPECT_NEAR(rt_anim_player3d_get_time(player), 0.5, 0.01, "Time wraps to 0.5");
 
     rt_anim_player3d_set_time(player, 2.25);
-    EXPECT_NEAR(rt_anim_player3d_get_time(player),
-                0.25,
-                0.01,
-                "Looping SetTime wraps positive seeks");
+    EXPECT_NEAR(
+        rt_anim_player3d_get_time(player), 0.25, 0.01, "Looping SetTime wraps positive seeks");
     rt_anim_player3d_set_time(player, -0.25);
-    EXPECT_NEAR(rt_anim_player3d_get_time(player),
-                0.75,
-                0.01,
-                "Looping SetTime wraps negative seeks");
+    EXPECT_NEAR(
+        rt_anim_player3d_get_time(player), 0.75, 0.01, "Looping SetTime wraps negative seeks");
 }
 
 static void test_player_reverse_timing_and_bad_handles() {
@@ -430,10 +434,8 @@ static void test_player_reverse_timing_and_bad_handles() {
     rt_anim_player3d_set_speed(player, 1.0);
     rt_anim_player3d_set_time(player, 0.25);
     rt_anim_player3d_update(player, -1.0);
-    EXPECT_NEAR(rt_anim_player3d_get_time(player),
-                0.25,
-                0.01,
-                "AnimPlayer3D ignores negative delta time");
+    EXPECT_NEAR(
+        rt_anim_player3d_get_time(player), 0.25, 0.01, "AnimPlayer3D ignores negative delta time");
 
     rt_animation3d_set_looping(anim, 0);
     rt_anim_player3d_play(player, anim);
@@ -783,10 +785,8 @@ static void test_anim_blend_long_state_names_use_canonical_lookup() {
     rt_anim_blend3d_update(blend, 0.0);
 
     rt_anim_blend3d *impl = (rt_anim_blend3d *)blend;
-    EXPECT_NEAR(impl->states[0].weight,
-                1.0,
-                0.001,
-                "AnimBlend3D.SetWeightByName canonicalizes long names");
+    EXPECT_NEAR(
+        impl->states[0].weight, 1.0, 0.001, "AnimBlend3D.SetWeightByName canonicalizes long names");
     EXPECT_NEAR(impl->bone_palette[3],
                 3.0,
                 0.05,
@@ -936,17 +936,21 @@ static void test_animation_retarget_matches_bone_names() {
 
 static void test_non_topological_parent_order_evaluates_hierarchy() {
     void *skel = rt_skeleton3d_new();
-    rt_skeleton3d_add_bone(skel, rt_const_cstr("child_first"), -1, rt_mat4_translate(2.0, 0.0, 0.0));
-    rt_skeleton3d_add_bone(skel, rt_const_cstr("parent_second"), 0, rt_mat4_translate(3.0, 0.0, 0.0));
+    rt_skeleton3d_add_bone(
+        skel, rt_const_cstr("child_first"), -1, rt_mat4_translate(2.0, 0.0, 0.0));
+    rt_skeleton3d_add_bone(
+        skel, rt_const_cstr("parent_second"), 0, rt_mat4_translate(3.0, 0.0, 0.0));
     auto *impl = static_cast<rt_skeleton3d *>(skel);
     impl->bones[0].parent_index = 1;
     impl->bones[1].parent_index = -1;
     rt_skeleton3d_compute_inverse_bind(skel);
 
     void *player = rt_anim_player3d_new(skel);
+
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *child_bind = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     EXPECT_NEAR(child_bind->m[3],
                 5.0,
@@ -977,9 +981,11 @@ static void test_cyclic_parent_indices_degrade_to_finite_pose() {
     rt_skeleton3d_compute_inverse_bind(skel);
 
     void *player = rt_anim_player3d_new(skel);
+
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *a = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     mat4_view *b = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 1);
     EXPECT_TRUE(a != nullptr && b != nullptr,

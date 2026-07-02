@@ -765,6 +765,7 @@ Promise which is used to set the value.
 |-----------------|---------------------|------------------------------------------------------|
 | `Get()`         | `Object()`          | Block until resolved, return value (traps on error)  |
 | `TryGet()`      | `Object()`          | Non-blocking get: returns value if resolved, NULL otherwise |
+| `TryGetOption()`| `Option[Object]()`  | Non-blocking get: returns `Some(value)` if resolved, `None` if pending or errored |
 | `GetFor(ms)`    | `Object(Integer)`   | Timed get: returns value if resolved within `ms` milliseconds, NULL on timeout |
 | `Wait()`        | `Void()`            | Block until resolved (value or error)                |
 | `WaitFor(ms)`   | `Boolean(Integer)`  | Wait with timeout, returns true if resolved          |
@@ -1481,6 +1482,7 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 | `Enqueue(item)`      | `Void(Object)`        | Add item to back of queue (thread-safe)                          |
 | `Dequeue()`          | `Object()`            | Remove item from front (blocks until available)                  |
 | `TryDequeue()`       | `Object()`            | Remove item from front (non-blocking); returns NULL if empty     |
+| `TryDequeueOption()` | `Option[Object]()`    | Remove item from front (non-blocking); returns `None` if empty   |
 | `DequeueTimeout(ms)` | `Object(Integer)`     | Remove item with timeout; returns NULL if timeout expires        |
 | `Peek()`             | `Object()`            | Peek at front item without removing; returns NULL if empty       |
 | `Clear()`            | `Void()`              | Remove all items (thread-safe)                                   |
@@ -1491,6 +1493,7 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 - FIFO order is guaranteed.
 - `Dequeue` blocks until an item is available or the queue is closed and drained.
 - `TryDequeue` returns NULL immediately if the queue is empty.
+- Prefer `TryDequeueOption` for new code. It distinguishes an empty queue from a queued null object.
 - `Peek` returns a stable retained reference to the current front item, or NULL if empty.
 - `Dequeue`, `TryDequeue`, and `DequeueTimeout` transfer the queue's retained item reference to the caller. At the C ABI layer, callers release returned runtime-managed values.
 - `Close()` wakes blocked `Dequeue`/`DequeueTimeout` calls; once the queue is empty they return NULL.
@@ -1519,8 +1522,11 @@ func start() {
     // Peek (non-destructive)
     Say("Peek: " + Fmt.Int(Box.ToI64(q.Peek())));
 
-    // TryDequeue (non-blocking)
-    Say("TryDequeue: " + Fmt.Int(Box.ToI64(q.TryDequeue())));
+    // TryDequeueOption (non-blocking)
+    var next = q.TryDequeueOption();
+    if next.IsSome {
+        Say("TryDequeueOption: " + Fmt.Int(Box.ToI64(next.Unwrap())));
+    }
 
     // Dequeue (blocking, but items available)
     Say("Dequeue: " + Fmt.Int(Box.ToI64(q.Dequeue())));
@@ -1551,8 +1557,11 @@ PRINT "Len: "; q.Length
 ' Peek (non-destructive)
 PRINT "Peek: "; Viper.Core.Box.ToI64(q.Peek())
 
-' TryDequeue (non-blocking)
-PRINT "TryDequeue: "; Viper.Core.Box.ToI64(q.TryDequeue())
+' TryDequeueOption (non-blocking)
+DIM next AS OBJECT = q.TryDequeueOption()
+IF next.IsSome THEN
+    PRINT "TryDequeueOption: "; Viper.Core.Box.ToI64(next.Unwrap())
+END IF
 
 ' Dequeue (blocking, but items available)
 PRINT "Dequeue: "; Viper.Core.Box.ToI64(q.Dequeue())
@@ -1590,6 +1599,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 | `SendFor(item, ms)`     | `Boolean(Object, Integer)`   | Send with timeout; returns false if timed out or closed      |
 | `Recv()`                | `Object()`                   | Receive item, blocking if empty; returns NULL if closed and empty |
 | `TryRecv()`             | `Object()`                   | Try to receive without blocking; returns NULL if empty       |
+| `TryRecvOption()`       | `Option[Object]()`           | Try to receive without blocking; returns `None` if empty     |
 | `RecvFor(ms)`           | `Object(Integer)`            | Receive with timeout; returns NULL if timed out or closed    |
 | `Close()`               | `Void()`                     | Close the channel; wakes all blocked senders/receivers       |
 
@@ -1598,7 +1608,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 | Property   | Type                   | Description                           |
 |------------|------------------------|---------------------------------------|
 | `Length`      | `Integer` (read-only)  | Number of items currently in channel  |
-| `Cap`      | `Integer` (read-only)  | Channel capacity (0 for synchronous)  |
+| `Capacity` | `Integer` (read-only)  | Channel capacity (0 for synchronous)  |
 | `IsClosed` | `Boolean` (read-only)  | True if the channel has been closed   |
 | `IsEmpty`  | `Boolean` (read-only)  | True if the channel contains no items |
 | `IsFull`   | `Boolean` (read-only)  | True if the channel is at capacity    |
@@ -1609,10 +1619,12 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 - A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
 - On a synchronous channel, `TrySend()` succeeds only when a receiver is already waiting, publishes one retained handoff value, and returns without waiting for the receiver to acknowledge consumption.
 - On a synchronous channel, `TryRecv()` is strictly non-blocking. It only consumes an already-published handoff value; it does not wait to rendezvous with a merely waiting sender. Use `Recv()` or `RecvFor()` for rendezvous receives.
+- Prefer `TryRecvOption()` for new code. It distinguishes no available item from a transmitted null object.
 - At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks only an already-queued value without consuming or releasing it; it does not advertise a merely waiting synchronous sender as available.
 - `IsFull` means a send would block. For synchronous channels it is false when a receiver is already waiting and no handoff value is queued.
 - `SendFor` includes both the wait for a receiver/space and the synchronous handoff acknowledgement in its timeout budget.
 - `Send` traps if the channel is closed.
+- `Cap` remains available as a compatibility alias for `Capacity`.
 
 ### Zia Example
 
@@ -1626,7 +1638,7 @@ bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var ch = Channel.New(8);
-    Say("Cap: " + Fmt.Int(ch.get_Cap()));      // 8
+    Say("Capacity: " + Fmt.Int(ch.get_Capacity())); // 8
     Say("IsEmpty: " + Fmt.Bool(ch.get_IsEmpty()));  // true
 
     // Send items
@@ -1640,7 +1652,10 @@ func start() {
 
     // Receive items
     Say("Recv: " + Fmt.Int(Box.ToI64(ch.Recv())));    // 1
-    Say("Recv: " + Fmt.Int(Box.ToI64(ch.Recv())));    // 2
+    var maybe = ch.TryRecvOption();
+    if maybe.IsSome {
+        Say("TryRecvOption: " + Fmt.Int(Box.ToI64(maybe.Unwrap()))); // 2
+    }
 
     // Close channel
     ch.Close();
@@ -1681,8 +1696,10 @@ PRINT "Len: "; ch.Length     ' Output: 5
 PRINT "IsFull: "; ch.IsFull  ' Output: 0 (cap 16, only 5 items)
 
 ' Non-blocking receive
-DIM item AS OBJECT = ch.Recv()
-PRINT "Recv: "; Viper.Core.Box.ToI64(item)  ' Output: 10
+DIM item AS OBJECT = ch.TryRecvOption()
+IF item.IsSome THEN
+    PRINT "TryRecvOption: "; Viper.Core.Box.ToI64(item.Unwrap())  ' Output: 10
+END IF
 
 ' Timeout-based receive (100ms)
 DIM timed AS OBJECT = ch.RecvFor(100)

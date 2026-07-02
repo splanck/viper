@@ -1,7 +1,7 @@
 ' =============================================================================
 ' API Audit: Viper.Threads.Channel (BASIC)
 ' =============================================================================
-' Tests: New, Send, TrySend, Recv, Close, Len, Cap, IsClosed,
+' Tests: New, Send, TrySend, Recv, TryRecvOption, Close, Len, Capacity, IsClosed,
 '        IsEmpty, IsFull
 ' Note: Channel has no RT_CLASS so we use function-style calls.
 ' =============================================================================
@@ -13,9 +13,9 @@ PRINT "--- New ---"
 DIM ch AS OBJECT = Viper.Threads.Channel.New(3)
 PRINT "Created channel with capacity 3"
 
-' --- Cap ---
-PRINT "--- Cap ---"
-PRINT "Cap: "; Viper.Threads.Channel.get_Cap(ch)
+' --- Capacity ---
+PRINT "--- Capacity ---"
+PRINT "Capacity: "; Viper.Threads.Channel.get_Capacity(ch)
 
 ' --- Len (initial) ---
 PRINT "--- Len (initial) ---"
@@ -65,9 +65,10 @@ DIM item1 AS OBJECT = Viper.Threads.Channel.Recv(ch)
 PRINT "Recv: "; Viper.Core.Box.ToStr(item1)
 PRINT "Len after Recv: "; Viper.Threads.Channel.get_Count(ch)
 
-' --- Recv more ---
-DIM item2 AS OBJECT = Viper.Threads.Channel.Recv(ch)
-PRINT "Recv: "; Viper.Core.Box.ToStr(item2)
+' --- TryRecvOption ---
+PRINT "--- TryRecvOption ---"
+DIM item2 AS OBJECT = Viper.Threads.Channel.TryRecvOption(ch)
+PRINT "TryRecvOption: "; Viper.Core.Box.ToStr(item2.Unwrap())
 
 ' --- Drain remaining ---
 PRINT "--- Drain remaining ---"
@@ -96,7 +97,7 @@ PRINT "Recv I64: "; Viper.Core.Box.ToI64(recv1)
 ' --- Channel capacity 1 ---
 PRINT "--- Channel capacity 1 ---"
 DIM ch3 AS OBJECT = Viper.Threads.Channel.New(1)
-PRINT "Cap: "; Viper.Threads.Channel.get_Cap(ch3)
+PRINT "Capacity: "; Viper.Threads.Channel.get_Capacity(ch3)
 Viper.Threads.Channel.Send(ch3, Viper.Core.Box.Str("single"))
 PRINT "IsFull: "; Viper.Threads.Channel.get_IsFull(ch3)
 DIM s AS OBJECT = Viper.Threads.Channel.Recv(ch3)

@@ -35,11 +35,11 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 | Method | Signature | Description |
 |---|---|---|
 | `ParseDecimal(s)` | `Float(String)` | Strict-or-lenient decimal parse; traps on failure. |
-| `TryParseDecimal(s)` | `Optional[Float](String)` | Returns None on failure, no trap. |
+| `TryParseDecimal(s)` | `Option[Float](String)` | Returns `None` on failure, no trap. |
 | `ParseInteger(s)` | `Int(String)` | Rejects fractional input. |
-| `TryParseInteger(s)` | `Optional[Int](String)` | |
+| `TryParseInteger(s)` | `Option[Int](String)` | Returns `None` on failure, no trap. |
 | `ParseCurrency(s)` | `Float(String)` | Strips optional leading/trailing symbol. |
-| `TryParseCurrency(s)` | `Optional[Float](String)` | |
+| `TryParseCurrency(s)` | `Option[Float](String)` | Returns `None` on failure, no trap. |
 
 ### Properties
 
