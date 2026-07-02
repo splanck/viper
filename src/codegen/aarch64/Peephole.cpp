@@ -108,7 +108,8 @@ static std::unordered_map<std::string, std::vector<std::size_t>> buildPredecesso
         };
         const auto isConditionalBranch = [](const MInstr &instr) {
             return instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz ||
-                   instr.opc == MOpcode::Cbnz;
+                   instr.opc == MOpcode::Cbnz || instr.opc == MOpcode::Tbz ||
+                   instr.opc == MOpcode::Tbnz;
         };
         if (block.instrs.empty()) {
             addFallthrough();
@@ -739,7 +740,8 @@ static void forwardLayoutSuccessorStoreLoad(MFunction &fn, PeepholeStats &stats)
                     break;
                 }
                 if ((mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz ||
-                     mi.opc == MOpcode::Cbnz) &&
+                     mi.opc == MOpcode::Cbnz || mi.opc == MOpcode::Tbz ||
+                     mi.opc == MOpcode::Tbnz) &&
                     mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label &&
                     mi.ops[1].label == succBlock.name) {
                     reachesSucc = true;
@@ -768,7 +770,8 @@ static void forwardLayoutSuccessorStoreLoad(MFunction &fn, PeepholeStats &stats)
 
             if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
                 instr.opc == MOpcode::Ret || instr.opc == MOpcode::Cbz ||
-                instr.opc == MOpcode::Cbnz)
+                instr.opc == MOpcode::Cbnz || instr.opc == MOpcode::Tbz ||
+                instr.opc == MOpcode::Tbnz || instr.opc == MOpcode::JumpTable)
                 continue;
 
             if (instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
@@ -945,6 +948,10 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
         // Pass 1.6 / 1.65 / 1.7 / 1.8: instruction-level fusions.
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
             if (ph::tryCbzCbnzFusion(instrs, i, stats) && i > 0)
+                --i;
+        }
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
+            if (ph::tryTbzTbnzFusion(instrs, i, stats, &block.carriedExitRegs) && i > 0)
                 --i;
         }
         for (std::size_t i = 0; i < instrs.size(); ++i) {

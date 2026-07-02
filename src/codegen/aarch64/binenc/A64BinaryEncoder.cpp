@@ -271,7 +271,17 @@ static void validateOperandCount(const MInstr &mi) {
         case MOpcode::AddOvfRI:
         case MOpcode::SubOvfRI:
         case MOpcode::MulOvfRRR:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
             requireOperandCount(mi, 3);
+            return;
+        case MOpcode::JumpTable:
+            // Variadic: index, table name, then >=1 case label.
+            if (mi.ops.size() < 3) {
+                throw std::runtime_error(
+                    "AArch64 binary encoder: JumpTable needs an index, a table name, "
+                    "and at least one case");
+            }
             return;
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
@@ -747,7 +757,7 @@ size_t A64BinaryEncoder::measureInstructionSize(
     std::unordered_set<size_t> *discoveredLongConditionalBranches) {
     validateOperandCount(mi);
 
-    auto conditionalBranchSize = [&](const std::string &target) {
+    auto conditionalBranchSize = [&](const std::string &target, unsigned dispBits) {
         if (target.empty())
             throw std::runtime_error(
                 "AArch64 binary encoder: conditional branch label must not be empty");
@@ -760,7 +770,7 @@ size_t A64BinaryEncoder::measureInstructionSize(
         if (it == knownLabelOffsets.end())
             return size_t{4};
         const int64_t delta = checkedOffsetDelta(it->second, currentOffset, "conditional branch");
-        if (fitsBranchDispWords(delta, 19))
+        if (fitsBranchDispWords(delta, dispBits))
             return size_t{4};
         if (discoveredLongConditionalBranches)
             discoveredLongConditionalBranches->insert(instructionOrdinal);
@@ -887,10 +897,18 @@ size_t A64BinaryEncoder::measureInstructionSize(
         }
 
         case MOpcode::BCond:
-            return conditionalBranchSize(getLabel(mi.ops[1]));
+            return conditionalBranchSize(getLabel(mi.ops[1]), 19);
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
-            return conditionalBranchSize(getLabel(mi.ops[1]));
+            return conditionalBranchSize(getLabel(mi.ops[1]), 19);
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
+            // tbz/tbnz reach only +/-32KB (imm14); relax to the long form sooner.
+            return conditionalBranchSize(getLabel(mi.ops[1]), 14);
+
+        case MOpcode::JumpTable:
+            // adr + ldrsw + add + br, then one 4-byte word per case label.
+            return 16 + 4 * (mi.ops.size() - 2);
 
         default:
             return 4;
@@ -961,7 +979,8 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(
     size_t ordinal = 0;
     for (const auto &bb : fn.blocks) {
         for (const auto &mi : bb.instrs) {
-            if (mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz)
+            if (mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz ||
+                mi.opc == MOpcode::Tbz || mi.opc == MOpcode::Tbnz)
                 allLongConditionalBranches.insert(ordinal);
             ++ordinal;
         }
@@ -1030,6 +1049,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       ABIFormat abi) {
     labelOffsets_.clear();
     pendingBranches_.clear();
+    pendingTableEntries_.clear();
     longConditionalBranchOrdinals_.clear();
     currentInstructionOrdinal_ = 0;
     lastEstimatedFunctionSize_ = 0;
@@ -1061,7 +1081,8 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         for (const auto &bb : fn.blocks) {
             for (const auto &mi : bb.instrs) {
                 if (mi.opc == MOpcode::Br || mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz ||
-                    mi.opc == MOpcode::Cbnz || mi.opc == MOpcode::Bl)
+                    mi.opc == MOpcode::Cbnz || mi.opc == MOpcode::Tbz ||
+                    mi.opc == MOpcode::Tbnz || mi.opc == MOpcode::Bl)
                     ++branchCount;
             }
         }
@@ -1124,6 +1145,15 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                     delta, 26, "branch", "the +/-128MB B/BL range", pb.target, fn.name);
                 word &= ~0x03FFFFFFu;
                 word |= (static_cast<uint32_t>(imm26) & 0x3FFFFFF);
+            } else if (pb.kind == MOpcode::Tbz || pb.kind == MOpcode::Tbnz) {
+                const int32_t imm14 = checkedBranchDispWords(delta,
+                                                             14,
+                                                             "conditional branch",
+                                                             "the +/-32KB tbz/tbnz range",
+                                                             pb.target,
+                                                             fn.name);
+                word &= ~(0x3FFFu << 5);
+                word |= ((static_cast<uint32_t>(imm14) & 0x3FFF) << 5);
             } else {
                 const int32_t imm19 = checkedBranchDispWords(delta,
                                                              19,
@@ -1136,6 +1166,18 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             }
 
             text.patch32LE(pb.offset, word);
+        }
+
+        // Resolve jump-table entry words: offset(case) - tableStart.
+        for (const auto &te : pendingTableEntries_) {
+            auto it = labelOffsets_.find(te.caseLabel);
+            if (it == labelOffsets_.end()) {
+                throw std::runtime_error(
+                    "AArch64 binary encoder: unresolved jump-table target '" + te.caseLabel +
+                    "' in function '" + fn.name + "'");
+            }
+            const int64_t delta = checkedOffsetDelta(it->second, te.tableStart, "jump-table entry");
+            text.patch32LE(te.patchOffset, static_cast<uint32_t>(static_cast<int32_t>(delta)));
         }
 
         const size_t actualSize = text.currentOffset() - funcStartOffset;
@@ -1831,6 +1873,9 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::BCond:
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
+        case MOpcode::JumpTable:
         case MOpcode::Bl:
         case MOpcode::Blr:
             encodeBranchInstr(mi, cs);
@@ -2408,6 +2453,88 @@ void A64BinaryEncoder::encodeBranchInstr(const MInstr &mi, objfile::CodeSection 
                     pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbnz});
                     emit32(kCbnz | rt, cs);
                 }
+            }
+            return;
+        }
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz: {
+            const uint32_t rt = hwGPR(getReg(mi.ops[0]));
+            std::string target = getSanitizedNonEmptyLabel(mi.ops[1], "AArch64 tbz/tbnz");
+            const int64_t bitVal = mi.ops[2].imm;
+            if (bitVal < 0 || bitVal > 63)
+                throw std::runtime_error(
+                    "AArch64 binary encoder: tbz/tbnz bit number out of range");
+            const uint32_t bit = static_cast<uint32_t>(bitVal);
+            const uint32_t base = mi.opc == MOpcode::Tbz ? kTbz : kTbnz;
+            const uint32_t inverse = mi.opc == MOpcode::Tbz ? kTbnz : kTbz;
+            const uint32_t bitFields = ((bit >> 5) << 31) | ((bit & 0x1F) << 19);
+            const bool forceLong =
+                longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
+            auto it = labelOffsets_.find(target);
+            if (it != labelOffsets_.end()) {
+                const int64_t delta =
+                    checkedOffsetDelta(it->second, cs.currentOffset(), "conditional branch");
+                if (!forceLong && fitsBranchDispWords(delta, 14)) {
+                    const int32_t imm14 =
+                        checkedBranchDispWords(delta,
+                                               14,
+                                               "conditional branch",
+                                               "the +/-32KB tbz/tbnz range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(base | bitFields | ((static_cast<uint32_t>(imm14) & 0x3FFF) << 5) | rt,
+                           cs);
+                } else {
+                    emit32(inverse | bitFields | (2u << 5) | rt, cs);
+                    const int64_t farDelta =
+                        checkedOffsetDelta(it->second, cs.currentOffset(), "branch");
+                    const int32_t imm26 =
+                        checkedBranchDispWords(farDelta,
+                                               26,
+                                               "branch",
+                                               "the +/-128MB B/BL range",
+                                               target,
+                                               currentFn_ ? currentFn_->name : "<unknown>");
+                    emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
+                }
+            } else {
+                if (forceLong) {
+                    emit32(inverse | bitFields | (2u << 5) | rt, cs);
+                    pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Br});
+                    emit32(kBr, cs); // placeholder for the long-form branch target
+                } else {
+                    pendingBranches_.push_back({cs.currentOffset(), target, mi.opc});
+                    emit32(base | bitFields | rt, cs); // placeholder with Rt and bit set
+                }
+            }
+            return;
+        }
+        case MOpcode::JumpTable: {
+            // [0]=index (use), [1]=table name (text-asm only), [2..]=case
+            // labels. The dispatch tail runs in the reserved X16/X17 scratch
+            // registers:
+            //   adr x16, #16 ; ldrsw x17, [x16, idx, lsl #2]
+            //   add x17, x17, x16 ; br x17 ; <4-byte anchor-relative entries>
+            const uint32_t idx = hwGPR(getReg(mi.ops[0]));
+            constexpr uint32_t tA = 16;
+            constexpr uint32_t tB = 17;
+
+            // The table begins four instructions past the adr.
+            constexpr uint32_t kTableByteOffset = 16;
+            const uint32_t immlo = kTableByteOffset & 0x3u;
+            const uint32_t immhi = (kTableByteOffset >> 2) & 0x7FFFFu;
+            emit32(kAdr | (immlo << 29) | (immhi << 5) | tA, cs);
+            emit32(kLdrswRegLsl2 | (idx << 16) | (tA << 5) | tB, cs);
+            emit32(kAddShifted | (tA << 16) | (tB << 5) | tB, cs);
+            emit32(kBrReg | (tB << 5), cs);
+
+            const size_t tableStart = cs.currentOffset();
+            for (std::size_t i = 2; i < mi.ops.size(); ++i) {
+                pendingTableEntries_.push_back(
+                    {cs.currentOffset(),
+                     getSanitizedNonEmptyLabel(mi.ops[i], "AArch64 jump table"),
+                     tableStart});
+                emit32(0, cs);
             }
             return;
         }

@@ -359,7 +359,7 @@ static std::optional<AddressValue> deriveTrackedAddressValue(
     }
 }
 
-/// @brief Return true if @p opc terminates a basic block (Ret/Br/BCond/Cbz/Cbnz).
+/// @brief Return true if @p opc terminates a basic block (Ret/Br/BCond/Cbz/Cbnz/Tbz/Tbnz).
 static bool isTerminator(MOpcode opc) noexcept {
     switch (opc) {
         case MOpcode::Ret:
@@ -367,6 +367,9 @@ static bool isTerminator(MOpcode opc) noexcept {
         case MOpcode::BCond:
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
+        case MOpcode::JumpTable:
             return true;
         default:
             return false;

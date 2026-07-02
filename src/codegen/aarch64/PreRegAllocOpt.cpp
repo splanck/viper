@@ -57,6 +57,9 @@ namespace {
         case MOpcode::BCond:
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
+        case MOpcode::JumpTable:
         case MOpcode::Ret:
             return true;
         default:

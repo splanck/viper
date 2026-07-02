@@ -84,7 +84,7 @@ TEST(AArch64OpcodeDef, OpcodeCount) {
 TEST(AArch64OpcodeDef, FirstAndLastOpcode) {
     auto opcodes = allOpcodes();
     EXPECT_EQ(opcodes.front(), MOpcode::MovRR);
-    EXPECT_EQ(opcodes.back(), MOpcode::MulOvfRRR);
+    EXPECT_EQ(opcodes.back(), MOpcode::JumpTable);
 }
 
 TEST(AArch64OpcodeDef, ImmediateAluRoles) {

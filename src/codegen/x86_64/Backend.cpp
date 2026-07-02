@@ -119,7 +119,7 @@ std::size_t mirInstructionCount(const MFunction &fn) {
 ///          any in-block JMP/JCC/RET/UD2.
 [[nodiscard]] bool isControlTerminatorForSplit(MOpcode opcode) noexcept {
     return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET ||
-           opcode == MOpcode::UD2;
+           opcode == MOpcode::JUMPTABLE || opcode == MOpcode::UD2;
 }
 
 /// @brief Return true if @p label starts with the synthetic ".Lsplit" prefix

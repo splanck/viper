@@ -732,6 +732,10 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         if (opts_.run_native) {
             const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
             result.exit_code = rc == -1 ? 1 : rc;
+            if (opts_.output_obj_path.empty()) {
+                std::error_code ec;
+                std::filesystem::remove(exe, ec);
+            }
         }
 
         return finish();
@@ -798,6 +802,10 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     if (opts_.run_native) {
         const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
         result.exit_code = rc == -1 ? 1 : rc;
+        if (opts_.output_obj_path.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(exe, ec);
+        }
     }
 
     return finish();

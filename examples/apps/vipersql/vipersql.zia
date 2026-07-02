@@ -285,12 +285,12 @@ func runRepl() {
     var running = true;
     while running {
         Terminal.Print("sql> ");
-        var rawInput = Terminal.ReadLine();
-        if rawInput == null {
+        var rawInput = Terminal.TryReadLine();
+        if rawInput.IsNone {
             running = false;
             continue;
         }
-        var input = rawInput!;
+        var input = rawInput.UnwrapStr();
 
         if input == "exit" || input == "quit" {
             running = false;

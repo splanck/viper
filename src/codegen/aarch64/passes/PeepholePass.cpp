@@ -38,7 +38,7 @@ namespace {
 /// @brief Return true if @p opcode is any branch instruction (conditional or unconditional).
 [[nodiscard]] bool isBranchTargetOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::Br || opcode == MOpcode::BCond || opcode == MOpcode::Cbz ||
-           opcode == MOpcode::Cbnz;
+           opcode == MOpcode::Cbnz || opcode == MOpcode::Tbz || opcode == MOpcode::Tbnz;
 }
 
 /// @brief Return true when VIPER_CODEGEN_STATS is set to a non-zero value.
@@ -67,7 +67,8 @@ struct MirStats {
 /// @brief Return true if @p opcode is any branch or return (Br/BCond/Cbz/Cbnz/Ret).
 [[nodiscard]] bool isBranchOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::Br || opcode == MOpcode::BCond || opcode == MOpcode::Cbz ||
-           opcode == MOpcode::Cbnz || opcode == MOpcode::Ret;
+           opcode == MOpcode::Cbnz || opcode == MOpcode::Tbz || opcode == MOpcode::Tbnz ||
+           opcode == MOpcode::Ret;
 }
 
 /// @brief Return true if @p opcode is any load instruction (LDR/LDP variants).

@@ -184,6 +184,12 @@ class AsmEmitter {
     /// \return AT&T format 32-bit register (e.g., "%eax", "%r8d").
     [[nodiscard]] static std::string formatReg32(const OpReg &reg, const TargetInfo &target);
 
+    /// \brief Format a register as its 16-bit variant.
+    /// \param reg Register operand.
+    /// \param target Target information for register naming.
+    /// \return AT&T format 16-bit register (e.g., "%ax", "%r8w").
+    [[nodiscard]] static std::string formatReg16(const OpReg &reg, const TargetInfo &target);
+
     /// \brief Format an immediate operand.
     /// \param imm Immediate operand containing integer value.
     /// \return AT&T format immediate (e.g., "$42", "$-1").
@@ -248,6 +254,10 @@ enum class OperandOrder {
     I,         ///< Single immediate operand.
     R_R,       ///< Destination register with register source.
     R_R32,     ///< Destination register with register source (32-bit operands).
+    R32_I,     ///< 32-bit destination register with immediate source.
+    R_R16,     ///< Destination register with register source (16-bit operands).
+    R16_I,     ///< 16-bit destination register with immediate source.
+    MOVSX16_RR, ///< movswq: 16-bit source register, 64-bit destination register.
     R_M,       ///< Destination register with memory source.
     M_R,       ///< Destination memory with register source.
     R_I,       ///< Destination register with immediate source.
@@ -255,6 +265,7 @@ enum class OperandOrder {
     R_R_R,     ///< Three operands following src2, src1, dest ordering.
     SHIFT,     ///< Shift/rotate with specialised count formatting.
     MOVZX_RR8, ///< movzbq-like instruction requiring 8-bit source formatting.
+    MOVSXD_RR, ///< movslq: 32-bit source register, 64-bit destination register.
     LEA,       ///< LEA with custom source handling.
     CALL,      ///< CALL-style operand formatting.
     JUMP,      ///< JMP-style operand formatting.

@@ -100,7 +100,14 @@ class X64BinaryEncoder {
     void encodeRegReg(MOpcode op, PhysReg dst, PhysReg src, objfile::CodeSection &cs);
 
     /// Encode reg-imm ALU instructions (ADDri, ANDri, CMPri, etc.).
-    void encodeRegImm(MOpcode op, PhysReg dst, int64_t imm, objfile::CodeSection &cs);
+    /// @param rexW False for 32-bit and 16-bit operand-size forms.
+    /// @param prefix66 True for 16-bit operand-size forms (ADDri16).
+    void encodeRegImm(MOpcode op,
+                      PhysReg dst,
+                      int64_t imm,
+                      objfile::CodeSection &cs,
+                      bool rexW = true,
+                      bool prefix66 = false);
 
     /// Encode shift instructions with immediate count.
     void encodeShiftImm(MOpcode op, PhysReg dst, int64_t count, objfile::CodeSection &cs);
@@ -219,11 +226,23 @@ class X64BinaryEncoder {
         std::string target;     ///< Target label name.
     };
 
+    /// @brief Record of a jump-table entry word awaiting label resolution.
+    /// @details Each entry is patched to offset(case) - tableStart once all
+    ///          labels of the function are known.
+    struct PendingTableEntry {
+        size_t patchOffset = 0; ///< Offset in CodeSection of the 4-byte entry.
+        std::string caseLabel;  ///< Case target label name.
+        size_t tableStart = 0;  ///< Byte offset of the table's first entry.
+    };
+
     /// Label name -> byte offset in CodeSection.
     LabelOffsetMap labelOffsets_;
 
     /// Forward references needing patching.
     std::vector<PendingBranch> pendingBranches_;
+
+    /// Jump-table entry words needing patching.
+    std::vector<PendingTableEntry> pendingTableEntries_;
 
     /// Whether JMP/JCC may use rel8 short forms during this function.
     bool shortBranchRelaxationEnabled_ = true;

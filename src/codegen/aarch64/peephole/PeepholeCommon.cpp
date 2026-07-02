@@ -126,6 +126,11 @@ bool definesReg(const MInstr &instr, const MOperand &reg) noexcept {
                 return true;
             break;
 
+        // JumpTable clobbers only the reserved X16/X17 scratch registers,
+        // which never carry values across instructions.
+        case MOpcode::JumpTable:
+            break;
+
         // --- Instructions that don't define registers ---
         case MOpcode::PhiStoreGPR:
         case MOpcode::PhiStoreFPR:
@@ -140,6 +145,8 @@ bool definesReg(const MInstr &instr, const MOperand &reg) noexcept {
         case MOpcode::Ret:
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
         case MOpcode::StrRegFpImm:
         case MOpcode::Str8RegFpImm:
         case MOpcode::Str16RegFpImm:
@@ -287,6 +294,9 @@ bool usesReg(const MInstr &instr, const MOperand &reg) noexcept {
             break;
 
         case MOpcode::Cbz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
+        case MOpcode::JumpTable:
             if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
                 return true;
             break;
@@ -509,6 +519,11 @@ std::pair<bool, bool> classifyOperand(const MInstr &instr, std::size_t idx) noex
             return {false, false};
 
         case MOpcode::Cbz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
+            return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
+
+        case MOpcode::JumpTable:
             return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
 
         case MOpcode::Blr:
@@ -581,6 +596,11 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
             if (instr.ops.size() >= 2 && isPhysReg(instr.ops[1]))
                 knownConsts.erase(instr.ops[1].reg.idOrPhys);
             break;
+        case MOpcode::JumpTable:
+            // Clobbers the reserved X16/X17 scratch registers.
+            knownConsts.erase(16);
+            knownConsts.erase(17);
+            break;
         default:
             break;
     }
@@ -617,6 +637,9 @@ bool hasSideEffects(const MInstr &instr) noexcept {
         case MOpcode::Ret:
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
+        case MOpcode::JumpTable:
         case MOpcode::SubSpImm:
         case MOpcode::AddSpImm:
         case MOpcode::CmpRR:
@@ -633,6 +656,9 @@ bool hasSideEffects(const MInstr &instr) noexcept {
         case MOpcode::Ldr16RegBaseImm:
         case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
         case MOpcode::LdpRegFpImm:
         case MOpcode::LdpFprFpImm:
         case MOpcode::AdrPage:

@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace viper::codegen::x64::lowering {
@@ -305,6 +306,62 @@ void emitSubWidthOverflowCheck(MIRBuilder &builder,
     builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(doneLabel)}));
 }
 
+/// @brief Lower a sub-width overflow-checked add/sub/mul via native narrow flags.
+/// @details A 32-bit or 16-bit ALU op sets OF at the target width directly, so
+///          the widen-compute-narrow-compare dance is unnecessary: compute at
+///          the narrow width (input high bits are ignored), branch to the
+///          overflow trap on OF, and restore the canonical sign-extended
+///          64-bit form with the matching MOVSX. When the right operand is an
+///          in-range immediate and an immediate opcode is available, it is
+///          used directly.
+/// @param instr IL checked-arithmetic instruction (resultBits 32 or 16).
+/// @param builder Active MIR builder.
+/// @param emit EmitCommon helper bound to @p builder.
+/// @param rrOpc Narrow reg-reg opcode (ADDrr32/SUBrr32/IMULrr32/ADDrr16/...).
+/// @param riOpc Narrow reg-imm opcode, or MOpcode::LABEL as "none" sentinel.
+/// @param movsxOpc Sign-extending re-widen opcode (MOVSXD or MOVSXrr16).
+/// @param immMin Lowest immediate the reg-imm form encodes.
+/// @param immMax Highest immediate the reg-imm form encodes.
+/// @param prefix Label prefix for the trap/done labels.
+void emitNarrowCheckedOp(const ILInstr &instr,
+                         MIRBuilder &builder,
+                         EmitCommon &emit,
+                         MOpcode rrOpc,
+                         MOpcode riOpc,
+                         MOpcode movsxOpc,
+                         int64_t immMin,
+                         int64_t immMax,
+                         const char *prefix) {
+    // Condition code 12 = "o" (overflow), matching LowerOvf.
+    constexpr int64_t kCondOverflow = 12;
+
+    const Operand lhs =
+        emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+    builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(dest), emit.clone(lhs)}));
+
+    Operand rhsRaw = builder.makeOperandForValue(instr.ops[1], RegClass::GPR);
+    const auto *imm = std::get_if<OpImm>(&rhsRaw);
+    if (riOpc != MOpcode::LABEL && imm != nullptr && imm->val >= immMin && imm->val <= immMax) {
+        builder.append(MInstr::make(riOpc, {emit.clone(dest), makeImmOperand(imm->val)}));
+    } else {
+        const Operand rhs = emit.materialiseGpr(std::move(rhsRaw));
+        builder.append(MInstr::make(rrOpc, {emit.clone(dest), emit.clone(rhs)}));
+    }
+
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string trapLabel = std::string(prefix) + "_trap_" + std::to_string(labelId);
+    const std::string doneLabel = std::string(prefix) + "_done_" + std::to_string(labelId);
+    builder.append(
+        MInstr::make(MOpcode::JCC, {makeImmOperand(kCondOverflow), makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::JMP, {makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(trapLabel)}));
+    emitTrapRaiseError(builder, kErrOverflow);
+    builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(movsxOpc, {emit.clone(dest), emit.clone(dest)}));
+}
+
 /// @brief Materialise an XMM operand holding @p bits as a 64-bit IEEE-754 value.
 /// @details Builds the constant by loading the bit pattern into a GPR and then
 ///          using @c MOVQrx to transfer it into an XMM register. Avoids a
@@ -473,6 +530,30 @@ void emitAddOvf(const ILInstr &instr, MIRBuilder &builder) {
         if (instr.resultId < 0 || instr.ops.size() < 2) {
             phaseAUnsupported("iadd.ovf: missing operands");
         }
+        if (instr.resultBits == 32) {
+            emitNarrowCheckedOp(instr,
+                                builder,
+                                emit,
+                                MOpcode::ADDrr32,
+                                MOpcode::ADDri32,
+                                MOpcode::MOVSXD,
+                                std::numeric_limits<int32_t>::min(),
+                                std::numeric_limits<int32_t>::max(),
+                                ".Liadd_ovf32");
+            return;
+        }
+        if (instr.resultBits == 16) {
+            emitNarrowCheckedOp(instr,
+                                builder,
+                                emit,
+                                MOpcode::ADDrr16,
+                                MOpcode::ADDri16,
+                                MOpcode::MOVSXrr16,
+                                std::numeric_limits<int16_t>::min(),
+                                std::numeric_limits<int16_t>::max(),
+                                ".Liadd_ovf16");
+            return;
+        }
         const Operand lhs =
             emitSignExtendedToWidth(builder,
                                     emit,
@@ -501,6 +582,30 @@ void emitSubOvf(const ILInstr &instr, MIRBuilder &builder) {
         if (instr.resultId < 0 || instr.ops.size() < 2) {
             phaseAUnsupported("isub.ovf: missing operands");
         }
+        if (instr.resultBits == 32) {
+            emitNarrowCheckedOp(instr,
+                                builder,
+                                emit,
+                                MOpcode::SUBrr32,
+                                MOpcode::LABEL,
+                                MOpcode::MOVSXD,
+                                0,
+                                0,
+                                ".Lisub_ovf32");
+            return;
+        }
+        if (instr.resultBits == 16) {
+            emitNarrowCheckedOp(instr,
+                                builder,
+                                emit,
+                                MOpcode::SUBrr16,
+                                MOpcode::LABEL,
+                                MOpcode::MOVSXrr16,
+                                0,
+                                0,
+                                ".Lisub_ovf16");
+            return;
+        }
         const Operand lhs =
             emitSignExtendedToWidth(builder,
                                     emit,
@@ -528,6 +633,30 @@ void emitMulOvf(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultBits < 64) {
         if (instr.resultId < 0 || instr.ops.size() < 2) {
             phaseAUnsupported("imul.ovf: missing operands");
+        }
+        if (instr.resultBits == 32) {
+            emitNarrowCheckedOp(instr,
+                                builder,
+                                emit,
+                                MOpcode::IMULrr32,
+                                MOpcode::LABEL,
+                                MOpcode::MOVSXD,
+                                0,
+                                0,
+                                ".Limul_ovf32");
+            return;
+        }
+        if (instr.resultBits == 16) {
+            emitNarrowCheckedOp(instr,
+                                builder,
+                                emit,
+                                MOpcode::IMULrr16,
+                                MOpcode::LABEL,
+                                MOpcode::MOVSXrr16,
+                                0,
+                                0,
+                                ".Limul_ovf16");
+            return;
         }
         const Operand lhs =
             emitSignExtendedToWidth(builder,

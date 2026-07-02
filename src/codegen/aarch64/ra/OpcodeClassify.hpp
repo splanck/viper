@@ -133,7 +133,8 @@ inline bool isRet(MOpcode opc) {
 /// @param opc The machine opcode to check.
 /// @return True for branches and returns.
 inline bool isTerminator(MOpcode opc) {
-    return isBranch(opc) || opc == MOpcode::Cbz || opc == MOpcode::Cbnz || isRet(opc);
+    return isBranch(opc) || opc == MOpcode::Cbz || opc == MOpcode::Cbnz || opc == MOpcode::Tbz ||
+           opc == MOpcode::Tbnz || opc == MOpcode::JumpTable || isRet(opc);
 }
 
 /// @brief Check if an opcode is a memory load instruction.

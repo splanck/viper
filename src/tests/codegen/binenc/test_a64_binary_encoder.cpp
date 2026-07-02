@@ -1535,6 +1535,11 @@ int main() {
                 case MOpcode::Cbz:
                 case MOpcode::Cbnz:
                     return MInstr{opc, {x0, label("target")}};
+                case MOpcode::Tbz:
+                case MOpcode::Tbnz:
+                    return MInstr{opc, {x0, label("target"), imm(3)}};
+                case MOpcode::JumpTable:
+                    return MInstr{opc, {x0, label(".Ljt"), label("target")}};
                 case MOpcode::Bl:
                     return MInstr{opc, {label("target")}};
                 case MOpcode::Blr:
@@ -1648,9 +1653,9 @@ int main() {
             }
         };
 
-        // Iterate all opcodes from MovRR (0) to MulOvfRRR (last).
+        // Iterate all opcodes from MovRR (0) to JumpTable (last).
         constexpr int kFirstOpcode = static_cast<int>(MOpcode::MovRR);
-        constexpr int kLastOpcode = static_cast<int>(MOpcode::MulOvfRRR);
+        constexpr int kLastOpcode = static_cast<int>(MOpcode::JumpTable);
         int encodedCount = 0;
         int pseudoCount = 0;
 
@@ -1700,11 +1705,11 @@ int main() {
         }
 
         // Verify we covered the expected counts.
-        CHECK(pseudoCount == 5);   // 5 pseudo-opcodes
-        CHECK(encodedCount == 98); // 103 total - 5 pseudo = 98 real opcodes
+        CHECK(pseudoCount == 5);    // 5 pseudo-opcodes
+        CHECK(encodedCount == 101); // 106 total - 5 pseudo = 101 real opcodes
 
-        if (encodedCount == 98 && pseudoCount == 5)
-            std::cout << "  Encoding coverage: " << encodedCount << "/98 opcodes OK, "
+        if (encodedCount == 101 && pseudoCount == 5)
+            std::cout << "  Encoding coverage: " << encodedCount << "/101 opcodes OK, "
                       << pseudoCount << " pseudo-opcodes skipped.\n";
     }
 

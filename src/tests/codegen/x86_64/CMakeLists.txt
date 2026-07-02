@@ -38,6 +38,7 @@ set(_viper_codegen_x86_64_pure_tests
         regalloc_stress
         fp_stress
         udiv_pow2
+        i32_checked_ovf
         object_only_cli)
 
 set(_viper_codegen_x86_64_native_tests

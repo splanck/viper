@@ -11,7 +11,9 @@
 //          AArch64 peephole optimizer.
 //
 // Key invariants:
-//   - Copy propagation does not propagate through ABI registers.
+//   - Copy propagation rewrites an ABI-register use only when the copy origin
+//     is a non-ABI register (disable with VIPER_NO_ABI_COPYFWD=1); origins are
+//     never chased through ABI registers.
 //   - DCE conservatively marks callee-saved and ABI registers as live at exit.
 //
 // Ownership/Lifetime:
@@ -28,6 +30,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
@@ -44,7 +47,9 @@ namespace {
 ///          cannot inherit state from before a control-flow edge.
 [[nodiscard]] bool isControlBoundary(MOpcode opc) noexcept {
     return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Ret ||
-           opc == MOpcode::Bl || opc == MOpcode::Blr || opc == MOpcode::Cbz || opc == MOpcode::Cbnz;
+           opc == MOpcode::Bl || opc == MOpcode::Blr || opc == MOpcode::Cbz ||
+           opc == MOpcode::Cbnz || opc == MOpcode::Tbz || opc == MOpcode::Tbnz ||
+           opc == MOpcode::JumpTable;
 }
 
 /// @brief Return true if @p opc is a memory access through an arbitrary base register.
@@ -157,14 +162,24 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats) {
                 continue;
 
             auto [isUse, isDef] = classifyOperand(instr, i);
-            if (isUse && !isDef && !isABIReg(op)) {
-                uint32_t key = regKey(op);
-                auto it = copyOrigin.find(key);
-                if (it != copyOrigin.end() && !samePhysReg(op, it->second)) {
-                    op = it->second;
-                    ++propagated;
-                }
+            if (!isUse || isDef)
+                continue;
+            uint32_t key = regKey(op);
+            auto it = copyOrigin.find(key);
+            if (it == copyOrigin.end() || samePhysReg(op, it->second))
+                continue;
+            // ABI registers (x0-x7 / v0-v7) carry arguments and return values;
+            // rewriting a use of one is safe only when the recorded origin is a
+            // non-ABI register (calls already clear the copy map, so the origin
+            // cannot have been clobbered by argument setup).
+            if (isABIReg(op)) {
+                static const bool noAbiCopyFwd =
+                    std::getenv("VIPER_NO_ABI_COPYFWD") != nullptr;
+                if (noAbiCopyFwd || isABIReg(it->second))
+                    continue;
             }
+            op = it->second;
+            ++propagated;
         }
 
         // Invalidate definitions
@@ -416,11 +431,12 @@ void addUniqueSucc(std::vector<std::size_t> &succs,
         succs.push_back(it->second);
 }
 
-/// @brief Test whether @p instr is a conditional branch (`B.cond`/`CBZ`/`CBNZ`).
+/// @brief Test whether @p instr is a conditional branch (`B.cond`/`CBZ`/`CBNZ`/`TBZ`/`TBNZ`).
 /// @param instr Machine instruction to classify.
 /// @return True if @p instr's opcode is one of the conditional-branch forms.
 [[nodiscard]] bool isConditionalBranch(const MInstr &instr) noexcept {
-    return instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz || instr.opc == MOpcode::Cbnz;
+    return instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz ||
+           instr.opc == MOpcode::Cbnz || instr.opc == MOpcode::Tbz || instr.opc == MOpcode::Tbnz;
 }
 
 /// @brief Test whether @p opcode writes the NZCV flags.
@@ -474,7 +490,13 @@ void addUniqueSucc(std::vector<std::size_t> &succs,
         if (last.opc == MOpcode::Br && !last.ops.empty() &&
             last.ops[0].kind == MOperand::Kind::Label)
             addUniqueSucc(succs[bi], labelToIndex, last.ops[0].label);
-        else if (last.opc != MOpcode::Ret && !isNoReturnCall(last))
+        else if (last.opc == MOpcode::JumpTable) {
+            // Case labels start at operand 2; no fallthrough.
+            for (std::size_t k = 2; k < last.ops.size(); ++k) {
+                if (last.ops[k].kind == MOperand::Kind::Label)
+                    addUniqueSucc(succs[bi], labelToIndex, last.ops[k].label);
+            }
+        } else if (last.opc != MOpcode::Ret && !isNoReturnCall(last))
             addFallthrough();
     }
     return succs;
@@ -755,9 +777,10 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
                 // through within this instruction list, so instructions after
                 // it may still read the ALU destination — the boundary proves
                 // nothing. Only give up the scan for unconditional transfers.
-                const bool conditional = instrs[j].opc == MOpcode::BCond ||
-                                         instrs[j].opc == MOpcode::Cbz ||
-                                         instrs[j].opc == MOpcode::Cbnz;
+                const bool conditional =
+                    instrs[j].opc == MOpcode::BCond || instrs[j].opc == MOpcode::Cbz ||
+                    instrs[j].opc == MOpcode::Cbnz || instrs[j].opc == MOpcode::Tbz ||
+                    instrs[j].opc == MOpcode::Tbnz;
                 if (!conditional)
                     break;
                 if (usesReg(instrs[j], aluDst)) {

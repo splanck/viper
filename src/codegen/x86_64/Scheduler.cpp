@@ -204,6 +204,7 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
         case MOpcode::RET:
         case MOpcode::JMP:
         case MOpcode::JCC:
+        case MOpcode::JUMPTABLE:
         case MOpcode::UD2:
         case MOpcode::PUSH:
         case MOpcode::POP:
@@ -248,6 +249,13 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
         case MOpcode::MOVmr:
         case MOpcode::MOVSDmr:
         case MOpcode::MOVUPSmr:
+        case MOpcode::ADDrm:
+        case MOpcode::SUBrm:
+        case MOpcode::ANDrm:
+        case MOpcode::ORrm:
+        case MOpcode::XORrm:
+        case MOpcode::CMPrm:
+        case MOpcode::IMULrm:
             return true;
         case MOpcode::MOVrm:
         case MOpcode::MOVSDrm:
@@ -269,6 +277,13 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
         case MOpcode::MOVmr:
         case MOpcode::MOVSDmr:
         case MOpcode::MOVUPSmr:
+        case MOpcode::ADDrm:
+        case MOpcode::SUBrm:
+        case MOpcode::ANDrm:
+        case MOpcode::ORrm:
+        case MOpcode::XORrm:
+        case MOpcode::CMPrm:
+        case MOpcode::IMULrm:
         case MOpcode::LEA:
             return false;
         default:

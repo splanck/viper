@@ -75,7 +75,18 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
                 case MOpcode::BCond:
                 case MOpcode::Cbz:
                 case MOpcode::Cbnz:
+                case MOpcode::Tbz:
+                case MOpcode::Tbnz:
                     return Desc{Desc::Kind::Cond, condTarget(mi)};
+                case MOpcode::JumpTable: {
+                    // Case labels start at operand 2 ([0]=index, [1]=name).
+                    Desc desc{Desc::Kind::Multi, nullptr};
+                    for (std::size_t k = 2; k < mi.ops.size(); ++k) {
+                        if (mi.ops[k].kind == MOperand::Kind::Label)
+                            desc.multiTargets.push_back(&mi.ops[k].label);
+                    }
+                    return desc;
+                }
                 case MOpcode::Ret:
                     return Desc{Desc::Kind::Return, nullptr};
                 default:

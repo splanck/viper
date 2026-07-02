@@ -385,6 +385,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
             test_codegen_arm64_leaf_func
             test_codegen_arm64_native_asm
             test_codegen_arm64_benchmark_regressions
+            test_codegen_arm64_tbz_fusion
     )
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_cmd_test(${_test}

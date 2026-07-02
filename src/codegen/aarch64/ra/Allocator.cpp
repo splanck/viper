@@ -264,6 +264,12 @@ void LinearAllocator::assignPinnedSlots() {
     };
     std::unordered_map<int, SlotStats> stats;
     std::unordered_set<int> disqualified;
+    // Taking a frame address (AddFpImm at offset B) lets derived pointers
+    // reach every slot between the object's base and fp ([B, 0)): aggregate
+    // fields and array elements are addressed at non-negative deltas from
+    // their base, and those accesses bypass the rewritable FpImm forms. Any
+    // candidate at or above the lowest address-taken offset is poisoned.
+    int minAddrTakenOff = INT_MAX;
     for (std::size_t bi = 0; bi < blockCount; ++bi) {
         double blockWeight = 1.0;
         for (unsigned d = 0; d < loopDepth[bi]; ++d) {
@@ -301,10 +307,18 @@ void LinearAllocator::assignPinnedSlots() {
                 case MOpcode::Str16RegFpImm:
                 case MOpcode::Ldr32RegFpImm:
                 case MOpcode::Str32RegFpImm:
-                case MOpcode::AddFpImm:
                     for (const auto &op : ins.ops) {
                         if (op.kind == MOperand::Kind::Imm) {
                             disqualified.insert(static_cast<int>(op.imm));
+                        }
+                    }
+                    break;
+                case MOpcode::AddFpImm:
+                    for (const auto &op : ins.ops) {
+                        if (op.kind == MOperand::Kind::Imm) {
+                            const int base = static_cast<int>(op.imm);
+                            disqualified.insert(base);
+                            minAddrTakenOff = std::min(minAddrTakenOff, base);
                         }
                     }
                     break;
@@ -333,7 +347,7 @@ void LinearAllocator::assignPinnedSlots() {
     std::vector<std::pair<int, const SlotStats *>> ranked;
     for (const auto &[off, entry] : stats) {
         if (off == 0 || !entry.written || entry.weight < kMinPinWeight ||
-            disqualified.count(off)) {
+            disqualified.count(off) || off >= minAddrTakenOff) {
             continue;
         }
         ranked.emplace_back(off, &entry);

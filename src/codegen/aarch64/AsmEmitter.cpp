@@ -1325,6 +1325,31 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
             os << "  cbz " << rn(getReg(mi.ops[0])) << ", " << sanitizeLabel(mi.ops[1].label)
                << "\n";
             return;
+        case MOpcode::Tbz:
+            os << "  tbz " << rn(getReg(mi.ops[0])) << ", #" << mi.ops[2].imm << ", "
+               << sanitizeLabel(mi.ops[1].label) << "\n";
+            return;
+        case MOpcode::Tbnz:
+            os << "  tbnz " << rn(getReg(mi.ops[0])) << ", #" << mi.ops[2].imm << ", "
+               << sanitizeLabel(mi.ops[1].label) << "\n";
+            return;
+        case MOpcode::JumpTable: {
+            // [0]=index, [1]=table name, [2..]=case labels. The dispatch tail
+            // runs in the reserved X16/X17 scratch registers; the table is
+            // emitted inline after the br with entries anchored to its start.
+            const std::string tbl = sanitizeLabel(mi.ops[1].label);
+            const std::string idx = rn(getReg(mi.ops[0]));
+            os << "  adr x16, " << tbl << "\n";
+            os << "  ldrsw x17, [x16, " << idx << ", lsl #2]\n";
+            os << "  add x17, x17, x16\n";
+            os << "  br x17\n";
+            os << "  .p2align 2\n";
+            os << tbl << ":\n";
+            for (std::size_t i = 2; i < mi.ops.size(); ++i) {
+                os << "  .long " << sanitizeLabel(mi.ops[i].label) << " - " << tbl << "\n";
+            }
+            return;
+        }
         case MOpcode::LslvRRR:
             emitLslvRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
             return;

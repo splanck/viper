@@ -127,6 +127,44 @@ namespace {
             return "MOVZXrr8";
         case MOpcode::MOVZXrr32:
             return "MOVZXrr32";
+        case MOpcode::ADDrr32:
+            return "ADDrr32";
+        case MOpcode::SUBrr32:
+            return "SUBrr32";
+        case MOpcode::IMULrr32:
+            return "IMULrr32";
+        case MOpcode::ADDri32:
+            return "ADDri32";
+        case MOpcode::CMPrr32:
+            return "CMPrr32";
+        case MOpcode::MOVSXD:
+            return "MOVSXD";
+        case MOpcode::ADDrr16:
+            return "ADDrr16";
+        case MOpcode::SUBrr16:
+            return "SUBrr16";
+        case MOpcode::IMULrr16:
+            return "IMULrr16";
+        case MOpcode::ADDri16:
+            return "ADDri16";
+        case MOpcode::MOVSXrr16:
+            return "MOVSXrr16";
+        case MOpcode::ADDrm:
+            return "ADDrm";
+        case MOpcode::SUBrm:
+            return "SUBrm";
+        case MOpcode::ANDrm:
+            return "ANDrm";
+        case MOpcode::ORrm:
+            return "ORrm";
+        case MOpcode::XORrm:
+            return "XORrm";
+        case MOpcode::CMPrm:
+            return "CMPrm";
+        case MOpcode::IMULrm:
+            return "IMULrm";
+        case MOpcode::JUMPTABLE:
+            return "JUMPTABLE";
         case MOpcode::TESTrr:
             return "TESTrr";
         case MOpcode::JMP:

@@ -120,8 +120,17 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
                         case MOpcode::BCond:
                         case MOpcode::Cbz:
                         case MOpcode::Cbnz:
+                        case MOpcode::Tbz:
+                        case MOpcode::Tbnz:
                             if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
                                 remapBB(mi.ops[1].label);
+                            break;
+                        case MOpcode::JumpTable:
+                            // Case labels start at operand 2.
+                            for (std::size_t li = 2; li < mi.ops.size(); ++li) {
+                                if (mi.ops[li].kind == MOperand::Kind::Label)
+                                    remapBB(mi.ops[li].label);
+                            }
                             break;
                         default:
                             break;

@@ -84,7 +84,8 @@ namespace {
 ///          unavailable to the fused branch.
 [[nodiscard]] bool isControlBarrier(MOpcode opc) noexcept {
     return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
-           opc == MOpcode::Cbnz || opc == MOpcode::Ret || opc == MOpcode::Bl ||
+           opc == MOpcode::Cbnz || opc == MOpcode::Tbz || opc == MOpcode::Tbnz ||
+           opc == MOpcode::JumpTable || opc == MOpcode::Ret || opc == MOpcode::Bl ||
            opc == MOpcode::Blr;
 }
 
@@ -225,6 +226,148 @@ bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStat
     instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx + 1));
     ++stats.cbzFusions;
     return true;
+}
+
+/// @brief Fold `AND Xd, Xn, #(1<<b)` + `CBZ/CBNZ Xd, label` into `TBZ/TBNZ Xn, #b, label`.
+/// @details A single-bit mask followed by a compare-to-zero branch tests exactly
+///          one bit, which TBZ/TBNZ does directly. Fusion requires the mask
+///          destination to be dead after the branch: an in-block deadness scan
+///          plus the carried-exit-register check for invisible successor uses.
+///          When `Xd == Xn` the erased AND leaves the source unmodified, which
+///          is still correct — the bit test reads the original value.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the single-bit AND candidate.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @param carriedExitRegs Optional sorted list of registers carried live across
+///        the enclosing block's exit (see tryCsetBranchFusion).
+/// @return True if the fusion was applied at @p idx.
+bool tryTbzTbnzFusion(std::vector<MInstr> &instrs,
+                      std::size_t idx,
+                      PeepholeStats &stats,
+                      const std::vector<uint16_t> *carriedExitRegs) {
+    if (idx + 1 >= instrs.size())
+        return false;
+
+    const auto &andInstr = instrs[idx];
+    if (andInstr.opc != MOpcode::AndRI || andInstr.ops.size() != 3)
+        return false;
+    if (!isPhysReg(andInstr.ops[0]) || !isPhysReg(andInstr.ops[1]) ||
+        andInstr.ops[2].kind != MOperand::Kind::Imm)
+        return false;
+
+    const MOperand dstReg = andInstr.ops[0];
+    const MOperand srcReg = andInstr.ops[1];
+    if (dstReg.reg.cls != RegClass::GPR || srcReg.reg.cls != RegClass::GPR)
+        return false;
+
+    const uint64_t mask = static_cast<uint64_t>(andInstr.ops[2].imm);
+    if (mask == 0 || (mask & (mask - 1)) != 0)
+        return false;
+    unsigned bit = 0;
+    for (uint64_t m = mask; (m & 1) == 0; m >>= 1)
+        ++bit;
+
+    // Locate the compare-to-zero branch consuming the mask result. Phi-edge
+    // copies and constant materialisations commonly sit between the AND and
+    // its branch, so scan forward rather than requiring adjacency. The source
+    // register is read at the branch position after fusion, so any
+    // redefinition of it (or of the mask result) aborts the scan.
+    if (carriedExitRegs != nullptr &&
+        std::binary_search(carriedExitRegs->begin(), carriedExitRegs->end(), dstReg.reg.idOrPhys))
+        return false;
+
+    // Verify the mask result is dead after position @p after, then rewrite
+    // instrs[brIdx] into the bit-test branch and erase the now-dead inputs
+    // (highest index first so earlier indices stay valid).
+    constexpr std::size_t kNoTst = static_cast<std::size_t>(-1);
+    const auto finishFusion = [&](std::size_t brIdx,
+                                  std::size_t after,
+                                  MOpcode fusedOpc,
+                                  const MOperand &labelOp,
+                                  std::size_t tstIdx) -> bool {
+        for (std::size_t k = after; k < instrs.size(); ++k) {
+            const auto &later = instrs[k];
+            if (isControlBarrier(later.opc))
+                break;
+            if (definesReg(later, dstReg))
+                break;
+            if (usesReg(later, dstReg))
+                return false;
+        }
+        instrs[brIdx] =
+            MInstr{fusedOpc, {srcReg, labelOp, MOperand::immOp(static_cast<int64_t>(bit))}};
+        if (tstIdx != kNoTst)
+            instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(tstIdx));
+        instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));
+        ++stats.cbzFusions;
+        return true;
+    };
+
+    const auto writesFlags = [](MOpcode opc) {
+        switch (opc) {
+            case MOpcode::CmpRR:
+            case MOpcode::CmpRI:
+            case MOpcode::TstRR:
+            case MOpcode::FCmpRR:
+            case MOpcode::AddsRRR:
+            case MOpcode::SubsRRR:
+            case MOpcode::AddsRI:
+            case MOpcode::SubsRI:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    for (std::size_t j = idx + 1; j < instrs.size(); ++j) {
+        const auto &next = instrs[j];
+
+        // Shape (a): an already-fused compare-to-zero branch on the mask.
+        if ((next.opc == MOpcode::Cbz || next.opc == MOpcode::Cbnz) && next.ops.size() == 2 &&
+            isPhysReg(next.ops[0]) && samePhysReg(next.ops[0], dstReg) &&
+            next.ops[1].kind == MOperand::Kind::Label) {
+            const MOpcode fusedOpc = next.opc == MOpcode::Cbz ? MOpcode::Tbz : MOpcode::Tbnz;
+            return finishFusion(j, j + 1, fusedOpc, next.ops[1], kNoTst);
+        }
+
+        // Shape (b): `tst dst, dst` … `b.eq/b.ne` — the form ISel emits for
+        // i1 branches. Phi-edge copies routinely sit between the flag write
+        // and the branch, so scan forward from the tst for the consumer,
+        // aborting on anything that rewrites NZCV or the involved registers.
+        if (next.opc == MOpcode::TstRR && next.ops.size() == 2 && isPhysReg(next.ops[0]) &&
+            samePhysReg(next.ops[0], dstReg) && samePhysReg(next.ops[1], dstReg)) {
+            for (std::size_t m = j + 1; m < instrs.size(); ++m) {
+                const auto &bc = instrs[m];
+                if (bc.opc == MOpcode::BCond && bc.ops.size() == 2 &&
+                    bc.ops[0].kind == MOperand::Kind::Cond &&
+                    bc.ops[1].kind == MOperand::Kind::Label && bc.ops[0].cond != nullptr) {
+                    MOpcode fusedOpc;
+                    if (std::strcmp(bc.ops[0].cond, "eq") == 0)
+                        fusedOpc = MOpcode::Tbz;
+                    else if (std::strcmp(bc.ops[0].cond, "ne") == 0)
+                        fusedOpc = MOpcode::Tbnz;
+                    else
+                        return false;
+                    return finishFusion(m, m + 1, fusedOpc, bc.ops[1], /*tstIdx=*/j);
+                }
+                if (isControlBarrier(bc.opc) || writesFlags(bc.opc))
+                    return false;
+                if (definesReg(bc, dstReg) || definesReg(bc, srcReg))
+                    return false;
+                if (usesReg(bc, dstReg))
+                    return false;
+            }
+            return false;
+        }
+
+        if (isControlBarrier(next.opc))
+            return false;
+        if (definesReg(next, dstReg) || definesReg(next, srcReg))
+            return false;
+        if (usesReg(next, dstReg))
+            return false;
+    }
+    return false;
 }
 
 /// @brief Fold `CSET Xd, cond` + `CBZ Xd, label` (or `CBNZ`) into `B.cond label`.

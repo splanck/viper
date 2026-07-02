@@ -43,6 +43,14 @@ namespace viper::codegen::aarch64::peephole {
                                     std::size_t idx,
                                     PeepholeStats &stats);
 
+/// @brief Try to fuse a single-bit and+cbz/cbnz into tbz/tbnz.
+/// @param carriedExitRegs Optional sorted list of physical registers carried
+///        live across the enclosing block's exit (see tryCsetBranchFusion).
+[[nodiscard]] bool tryTbzTbnzFusion(std::vector<MInstr> &instrs,
+                                    std::size_t idx,
+                                    PeepholeStats &stats,
+                                    const std::vector<uint16_t> *carriedExitRegs = nullptr);
+
 /// @brief Try to fuse cset+cbnz/cbz into a single b.cond instruction.
 /// @param carriedExitRegs Optional sorted list of physical registers carried
 ///        live across the enclosing block's exit without any in-block use

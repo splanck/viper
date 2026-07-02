@@ -237,6 +237,18 @@ class A64BinaryEncoder {
     /// Forward references needing patching.
     std::vector<PendingBranch> pendingBranches_;
 
+    /// @brief Record of a jump-table entry word awaiting label resolution.
+    /// @details Patched to offset(case) - tableStart once every label of the
+    ///          function is known.
+    struct PendingTableEntry {
+        size_t patchOffset = 0; ///< Byte offset of the 4-byte entry word.
+        std::string caseLabel;  ///< Case target label name.
+        size_t tableStart = 0;  ///< Byte offset of the table's first entry.
+    };
+
+    /// Jump-table entry words needing patching.
+    std::vector<PendingTableEntry> pendingTableEntries_;
+
     /// Whether this function's prologue uses a FramePlan (has callee-saved or locals).
     bool usePlan_{false};
 

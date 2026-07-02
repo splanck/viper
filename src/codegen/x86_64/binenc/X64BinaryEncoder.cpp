@@ -678,6 +678,7 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       bool emitWin64Unwind) {
     // Reset per-function state.
     pendingBranches_.clear();
+    pendingTableEntries_.clear();
     // Win64/COFF images do not benefit enough from branch compaction to justify
     // repeated size-relaxation passes on large demo modules. Use near branches
     // there; keep rel8 relaxation for smaller non-COFF objects.
@@ -744,6 +745,18 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
         const int64_t disp = checkedOffsetDelta(it->second, nextIp, "internal branch");
         const int32_t rel = checkedRel32(disp, "internal branch");
         text.patch32LE(pb.patchOffset, static_cast<uint32_t>(rel));
+    }
+
+    // Resolve jump-table entry words: offset(case) - tableStart.
+    for (const auto &te : pendingTableEntries_) {
+        auto it = labelOffsets_.find(te.caseLabel);
+        if (it == labelOffsets_.end()) {
+            throw std::runtime_error("x86-64 binary encoder: unresolved jump-table target '" +
+                                     te.caseLabel + "' in function '" + fn.name + "'");
+        }
+        const int64_t disp = checkedOffsetDelta(it->second, te.tableStart, "jump-table entry");
+        const int32_t rel = checkedRel32(disp, "jump-table entry");
+        text.patch32LE(te.patchOffset, static_cast<uint32_t>(rel));
     }
 
     const size_t actualSize = text.currentOffset() - funcStartOffset;
@@ -883,7 +896,16 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::IMULrr:
         case MOpcode::CMOVNErr:
         case MOpcode::XORrr32:
-        case MOpcode::MOVZXrr32: {
+        case MOpcode::MOVZXrr32:
+        case MOpcode::ADDrr32:
+        case MOpcode::SUBrr32:
+        case MOpcode::IMULrr32:
+        case MOpcode::CMPrr32:
+        case MOpcode::MOVSXD:
+        case MOpcode::ADDrr16:
+        case MOpcode::SUBrr16:
+        case MOpcode::IMULrr16:
+        case MOpcode::MOVSXrr16: {
             requireOps(2);
             PhysReg dst = gprFromOperand(ops[0], "GPR reg-reg destination");
             PhysReg src = gprFromOperand(ops[1], "GPR reg-reg source");
@@ -901,6 +923,20 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             PhysReg dst = gprFromOperand(ops[0], "GPR reg-imm destination");
             int64_t imm = immFromOperand(ops[1]);
             encodeRegImm(op, dst, imm, text);
+            return;
+        }
+        case MOpcode::ADDri32: {
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "GPR reg-imm destination");
+            int64_t imm = immFromOperand(ops[1]);
+            encodeRegImm(op, dst, imm, text, /*rexW=*/false);
+            return;
+        }
+        case MOpcode::ADDri16: {
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "GPR reg-imm destination");
+            int64_t imm = immFromOperand(ops[1]);
+            encodeRegImm(op, dst, imm, text, /*rexW=*/false, /*prefix66=*/true);
             return;
         }
 
@@ -967,9 +1003,15 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             return;
         }
         case MOpcode::MOVmr: // load: MOVmr reg, [mem]
-        {
+        case MOpcode::ADDrm: // reg <- reg op [mem]
+        case MOpcode::SUBrm:
+        case MOpcode::ANDrm:
+        case MOpcode::ORrm:
+        case MOpcode::XORrm:
+        case MOpcode::CMPrm:
+        case MOpcode::IMULrm: {
             requireOps(2);
-            PhysReg dst = gprFromOperand(ops[0], "MOVmr destination");
+            PhysReg dst = gprFromOperand(ops[0], "memory-operand GPR destination");
             const auto &mem = memFromOperand(ops[1]);
             encodeMemOp(op, dst, mem, text);
             return;
@@ -1094,6 +1136,55 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             return;
         }
 
+        case MOpcode::JUMPTABLE: {
+            // Operands: [0]=index reg (use), [1]=table name label (text-asm
+            // only), [2..]=case labels. The dispatch tail runs in the
+            // reserved R10/R11 scratch registers, which never carry live
+            // values across instruction boundaries.
+            if (ops.size() < 3) {
+                throw std::runtime_error(
+                    "x86-64 binary encoder: JUMPTABLE needs an index, a table label, "
+                    "and at least one case");
+            }
+            const PhysReg idx = gprFromOperand(ops[0], "JUMPTABLE index");
+            const PhysReg tblReg = PhysReg::R10;
+            const PhysReg entReg = PhysReg::R11;
+
+            OpMem entryMem{};
+            entryMem.base = OpReg{true, RegClass::GPR, static_cast<uint16_t>(tblReg)};
+            entryMem.index = OpReg{true, RegClass::GPR, static_cast<uint16_t>(idx)};
+            entryMem.scale = 4;
+            entryMem.disp = 0;
+            entryMem.hasIndex = true;
+
+            // Size the tail (movslq + add + jmp) into scratch so the LEA's
+            // RIP displacement to the inline table is a plain constant.
+            objfile::CodeSection scratch;
+            encodeMemOp(MOpcode::MOVSXD, entReg, entryMem, scratch);
+            encodeRegReg(MOpcode::ADDrr, entReg, tblReg, scratch);
+            encodeBranchReg(MOpcode::JMP, entReg, scratch);
+            const size_t tailSize = scratch.currentOffset();
+
+            // lea tblReg, [rip + tailSize]  — the table follows the jmp.
+            const auto hwDst = hwEncode(tblReg);
+            text.emit8(computeRex(true, hwDst.rexBit != 0, false, false));
+            text.emit8(0x8D);
+            text.emit8(makeModRM(0b00, hwDst.bits3, 0b101));
+            text.emit32LE(static_cast<uint32_t>(tailSize));
+
+            encodeMemOp(MOpcode::MOVSXD, entReg, entryMem, text);
+            encodeRegReg(MOpcode::ADDrr, entReg, tblReg, text);
+            encodeBranchReg(MOpcode::JMP, entReg, text);
+
+            const size_t tableStart = text.currentOffset();
+            for (std::size_t i = 2; i < ops.size(); ++i) {
+                pendingTableEntries_.push_back(
+                    {text.currentOffset(), labelFromOperand(ops[i]).name, tableStart});
+                text.emit32LE(0);
+            }
+            return;
+        }
+
         case MOpcode::CALL: {
             requireOps(1);
             // CALL handles label specially (direct internal vs. PLT external), so
@@ -1155,8 +1246,22 @@ void X64BinaryEncoder::encodeRegReg(MOpcode op,
     const auto &regField = info.regIsDst ? hwDst : hwSrc;
     const auto &rmField = info.regIsDst ? hwSrc : hwDst;
 
-    // REX.W for 64-bit; selected opcodes intentionally write 32-bit destinations.
-    bool rexW = (op != MOpcode::XORrr32 && op != MOpcode::MOVZXrr32);
+    // 16-bit operand size uses the 0x66 legacy prefix, emitted before REX.
+    // MOVSXrr16 does not take it: movswq's source width is opcode-implied and
+    // its destination is the full 64-bit register.
+    const bool is16 =
+        (op == MOpcode::ADDrr16 || op == MOpcode::SUBrr16 || op == MOpcode::IMULrr16);
+    if (is16) {
+        cs.emit8(0x66);
+    }
+
+    // REX.W for 64-bit; selected opcodes intentionally operate at 32-bit or
+    // 16-bit width (their flag semantics come from the narrow op). MOVSXD and
+    // MOVSXrr16 keep REX.W: they read a narrow source but write the full
+    // 64-bit destination.
+    bool rexW = (op != MOpcode::XORrr32 && op != MOpcode::MOVZXrr32 && op != MOpcode::ADDrr32 &&
+                 op != MOpcode::SUBrr32 && op != MOpcode::IMULrr32 && op != MOpcode::CMPrr32 &&
+                 !is16);
 
     if (needsRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0)) {
         cs.emit8(computeRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0));
@@ -1177,20 +1282,36 @@ void X64BinaryEncoder::encodeRegReg(MOpcode op,
 void X64BinaryEncoder::encodeRegImm(MOpcode op,
                                     PhysReg dst,
                                     int64_t imm,
-                                    objfile::CodeSection &cs) {
+                                    objfile::CodeSection &cs,
+                                    bool rexW,
+                                    bool prefix66) {
     const auto hw = hwEncode(dst);
     uint8_t ext = regImmExt(op);
 
-    // REX.W prefix.
-    if (needsRex(true, false, false, hw.rexBit != 0)) {
-        cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
+    // 16-bit operand size: legacy 0x66 prefix precedes REX.
+    if (prefix66) {
+        cs.emit8(0x66);
     }
 
-    // Choose short (83 + imm8) or long (81 + imm32) form.
+    // REX prefix (REX.W only for 64-bit forms).
+    if (needsRex(rexW, false, false, hw.rexBit != 0)) {
+        cs.emit8(computeRex(rexW, false, false, hw.rexBit != 0));
+    }
+
+    // Choose short (83 + imm8) or long (81 + imm32; imm16 under 0x66) form.
     if (imm >= -128 && imm <= 127) {
         cs.emit8(0x83);
         cs.emit8(makeModRM(0b11, ext, hw.bits3));
         cs.emit8(static_cast<uint8_t>(static_cast<int8_t>(imm)));
+    } else if (prefix66) {
+        if (imm < std::numeric_limits<int16_t>::min() ||
+            imm > std::numeric_limits<int16_t>::max()) {
+            throw std::runtime_error(
+                "x86-64 binary encoder: reg-immediate ALU operand exceeds 16-bit encoding range");
+        }
+        cs.emit8(0x81);
+        cs.emit8(makeModRM(0b11, ext, hw.bits3));
+        cs.emit16LE(static_cast<uint16_t>(static_cast<int16_t>(imm)));
     } else {
         if (imm < std::numeric_limits<int32_t>::min() ||
             imm > std::numeric_limits<int32_t>::max()) {
@@ -1365,6 +1486,7 @@ void X64BinaryEncoder::encodeMemOp(MOpcode op,
         throw std::runtime_error("x86-64 binary encoder: memory GPR operand must be a GPR");
     const auto hwReg = hwEncode(reg);
     uint8_t opByte;
+    uint8_t opByte2 = 0;
 
     switch (op) {
         case MOpcode::MOVrm:
@@ -1373,6 +1495,31 @@ void X64BinaryEncoder::encodeMemOp(MOpcode op,
         case MOpcode::MOVmr:
             opByte = 0x8B;
             break; // load
+        case MOpcode::ADDrm:
+            opByte = 0x03;
+            break; // reg <- reg + [mem]
+        case MOpcode::SUBrm:
+            opByte = 0x2B;
+            break;
+        case MOpcode::ANDrm:
+            opByte = 0x23;
+            break;
+        case MOpcode::ORrm:
+            opByte = 0x0B;
+            break;
+        case MOpcode::XORrm:
+            opByte = 0x33;
+            break;
+        case MOpcode::CMPrm:
+            opByte = 0x3B;
+            break;
+        case MOpcode::IMULrm:
+            opByte = 0x0F;
+            opByte2 = 0xAF;
+            break;
+        case MOpcode::MOVSXD:
+            opByte = 0x63; // movslq reg, [mem]
+            break;
         default:
             throw std::runtime_error("x86-64 binary encoder: opcode '" +
                                      std::to_string(static_cast<int>(op)) +
@@ -1386,7 +1533,7 @@ void X64BinaryEncoder::encodeMemOp(MOpcode op,
                        /*rexW=*/true,
                        /*mandatoryPrefix=*/0,
                        opByte,
-                       0);
+                       opByte2);
 }
 
 // === LEA ===

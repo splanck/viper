@@ -48,12 +48,15 @@ struct BranchDesc {
         Cond,     ///< Conditional branch: adds @c target, keeps scanning,
                   ///< and requests fallthrough if it ends the block.
         Uncond,   ///< Unconditional branch: adds @c target and ends the scan.
+        Multi,    ///< Multi-way transfer (jump table): adds every entry of
+                  ///< @c multiTargets and ends the scan.
         Return,   ///< Function return: no successors, ends the scan.
         NoReturn, ///< Trap / no-return call: no successors, ends the scan.
     };
 
     Kind kind{Kind::None};
     const std::string *target{nullptr}; ///< Branch target label, if any.
+    std::vector<const std::string *> multiTargets{}; ///< Targets for Kind::Multi.
 };
 
 /// @brief Extract per-block successor index lists from MIR blocks.
@@ -102,6 +105,16 @@ std::vector<std::vector<std::size_t>> extractSuccessors(
                 case BranchDesc::Kind::Uncond:
                     if (desc.target != nullptr) {
                         auto it = blockIndex.find(*desc.target);
+                        if (it != blockIndex.end())
+                            out.push_back(it->second);
+                    }
+                    endedExplicitly = true;
+                    break;
+                case BranchDesc::Kind::Multi:
+                    for (const std::string *target : desc.multiTargets) {
+                        if (target == nullptr)
+                            continue;
+                        auto it = blockIndex.find(*target);
                         if (it != blockIndex.end())
                             out.push_back(it->second);
                     }

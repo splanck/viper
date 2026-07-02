@@ -124,6 +124,27 @@ enum class MOpcode {
     SETcc,        ///< Set byte on condition code.
     MOVZXrr8,     ///< Zero-extend an 8-bit low-byte register to 64-bit.
     MOVZXrr32,    ///< Zero-extend a 32-bit register to 64-bit using a 32-bit write.
+    ADDrr32,      ///< 32-bit register add (flags reflect 32-bit width; dest zero-extends).
+    SUBrr32,      ///< 32-bit register subtract (32-bit flags; dest zero-extends).
+    IMULrr32,     ///< 32-bit signed multiply (32-bit OF/CF; dest zero-extends).
+    ADDri32,      ///< 32-bit register-immediate add (32-bit flags; dest zero-extends).
+    CMPrr32,      ///< Compare registers at 32-bit width.
+    MOVSXD,       ///< Sign-extend a 32-bit register into a 64-bit register (movslq).
+    ADDrr16,      ///< 16-bit register add (flags reflect 16-bit width; 0x66 prefix).
+    SUBrr16,      ///< 16-bit register subtract (16-bit flags; 0x66 prefix).
+    IMULrr16,     ///< 16-bit signed multiply (16-bit OF/CF; 0x66 prefix).
+    ADDri16,      ///< 16-bit register-immediate add (16-bit flags; 0x66 prefix).
+    MOVSXrr16,    ///< Sign-extend a 16-bit register into a 64-bit register (movswq).
+    ADDrm,        ///< Add a memory operand into a register (reg <- reg + [mem]).
+    SUBrm,        ///< Subtract a memory operand from a register.
+    ANDrm,        ///< Bitwise AND a memory operand into a register.
+    ORrm,         ///< Bitwise OR a memory operand into a register.
+    XORrm,        ///< Bitwise XOR a memory operand into a register.
+    CMPrm,        ///< Compare a register with a memory operand.
+    IMULrm,       ///< Signed multiply a register by a memory operand.
+    JUMPTABLE,    ///< Jump-table data pseudo: [table label, anchor label, case labels...].
+                  ///< Emits no text bytes; the encoder materialises the entries
+                  ///< (offset(case) - offset(anchor)) into rodata.
     TESTrr,       ///< Bitwise test between registers.
     JMP,          ///< Unconditional jump.
     JCC,          ///< Conditional jump.

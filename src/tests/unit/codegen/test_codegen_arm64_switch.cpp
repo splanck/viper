@@ -85,6 +85,35 @@ TEST(Arm64CLI, SwitchMany) {
     il << "func @g(%x:i32) -> i64 {\n";
     il << "entry(%x:i32):\n";
     il << "  switch.i32 %x, ^Ld";
+    // Sparse values keep the density below the jump-table threshold so the
+    // balanced decision tree stays covered.
+    for (int i = 0; i < 8; ++i)
+        il << ", " << (i * 10) << " -> ^L" << i;
+    il << "\n";
+    for (int i = 0; i < 8; ++i) {
+        il << "L" << i << "():\n";
+        il << "  ret " << (100 + i) << "\n";
+    }
+    il << "Ld():\n  ret 0\n}\n";
+    writeFile(in, il.str());
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    // Large sparse switches use helper labels for the binary-search tree.
+    EXPECT_NE(asmText.find("switch_tree"), std::string::npos);
+    EXPECT_NE(asmText.find("switch_left"), std::string::npos);
+    EXPECT_NE(asmText.find("switch_right"), std::string::npos);
+    EXPECT_NE(asmText.find("b LLd"), std::string::npos);
+}
+
+TEST(Arm64CLI, SwitchDenseUsesJumpTable) {
+    const std::string in = outPath("arm64_switch_dense.il");
+    const std::string out = outPath("arm64_switch_dense.s");
+    std::ostringstream il;
+    il << "il 0.1\n";
+    il << "func @g(%x:i32) -> i64 {\n";
+    il << "entry(%x:i32):\n";
+    il << "  switch.i32 %x, ^Ld";
     for (int i = 0; i < 8; ++i)
         il << ", " << i << " -> ^L" << i;
     il << "\n";
@@ -97,11 +126,14 @@ TEST(Arm64CLI, SwitchMany) {
     const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
     ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Large switches should use helper labels for the binary-search decision tree.
-    EXPECT_NE(asmText.find("switch_tree"), std::string::npos);
-    EXPECT_NE(asmText.find("switch_left"), std::string::npos);
-    EXPECT_NE(asmText.find("switch_right"), std::string::npos);
-    EXPECT_NE(asmText.find("b LLd"), std::string::npos);
+    // Contiguous cases dispatch through the inline jump table: unsigned
+    // bounds check, adr/ldrsw/br tail, and anchor-relative entries.
+    EXPECT_NE(asmText.find(".Ljt_"), std::string::npos);
+    EXPECT_NE(asmText.find("ldrsw x17"), std::string::npos);
+    EXPECT_NE(asmText.find("br x17"), std::string::npos);
+    EXPECT_NE(asmText.find(".long "), std::string::npos);
+    EXPECT_NE(asmText.find("b.hs"), std::string::npos);
+    EXPECT_EQ(asmText.find("switch_tree"), std::string::npos);
 }
 
 TEST(Arm64CLI, SwitchDefaultOnly) {

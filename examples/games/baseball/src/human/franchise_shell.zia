@@ -404,11 +404,7 @@ class FranchiseShell {
     }
 
     hide func simNDays() {
-        var raw = Terminal.Ask("Days to simulate: ");
-        var text = "";
-        if raw != null {
-            text = raw!;
-        }
+        var text = Terminal.TryAsk("Days to simulate: ").UnwrapOrStr("");
         var days = prompts.parseInteger(text);
         if days < 1 {
             Terminal.Say("(invalid day count)");
@@ -477,20 +473,12 @@ class FranchiseShell {
     hide func startNewCareer() -> Boolean {
         Terminal.Say("");
         Terminal.Say("--- New Career ---");
-        var nameText = Terminal.Ask("Manager name: ");
-        var managerName = "";
-        if nameText != null {
-            managerName = nameText!;
-        }
+        var managerName = Terminal.TryAsk("Manager name: ").UnwrapOrStr("");
         if managerName == "" {
             managerName = "Skipper";
         }
 
-        var idText = Terminal.Ask("Save slot id (no spaces): ");
-        var sid = "";
-        if idText != null {
-            sid = idText!;
-        }
+        var sid = Terminal.TryAsk("Save slot id (no spaces): ").UnwrapOrStr("");
         if sid == "" {
             sid = "default_career";
         }

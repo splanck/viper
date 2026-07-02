@@ -79,6 +79,13 @@ class ISel {
     /// IMULOvfrr (overflow-checked) is intentionally left untouched.
     /// @param func The machine function to optimize.
     void lowerMulToLea(MFunction &func) const;
+
+    /// @brief Collapse MOVrr+SHLri+MOVrr+ADDrr value chains into a single LEA.
+    /// @details `d = x + (y << k)` becomes `LEA d, [x + y * 2^k]` for k in
+    /// 1..3 when the shifted temp has no other use and no consumer reads the
+    /// ADD's flag write.
+    /// @param func The machine function to optimize.
+    void synthesizeValueLea(MFunction &func) const;
 };
 
 } // namespace viper::codegen::x64

@@ -969,6 +969,10 @@ void ISel::lowerArithmetic(MFunction &func) const {
     // before folding LEA addresses into memory operands.
     lowerMulToLea(func);
 
+    // Collapse shift-and-add value computations into a single LEA so the
+    // synthesized address can then participate in the memory folds below.
+    synthesizeValueLea(func);
+
     // After normalising arithmetic, fold trivial address computations into
     // users to reduce register pressure and improve addressing modes.
     foldLeaIntoMem(func);
@@ -1379,6 +1383,141 @@ void ISel::lowerMulToLea(MFunction &func) const {
             toErase.push_back(def.defIdx);
         }
 
+        eraseInstructionsReverse(block, toErase);
+    }
+}
+
+/// \brief Collapse shift-and-add value chains into a single LEA.
+/// \details Matches the adjacent quadruple the lowering emits for
+///          `d = x + (y << k)`:
+///            MOVrr t, y / SHLri t, #k / MOVrr d, x / ADDrr d, t
+///          and rewrites the ADDrr into `LEA d, [x + y * 2^k]`, erasing the
+///          three feeder instructions. Requires k in 1..3 (SIB-encodable), the
+///          shifted temp to have no other use, distinct registers where the
+///          rewrite would otherwise read a clobbered value, and no consumer of
+///          the ADDrr's flag write (LEA does not set flags).
+void ISel::synthesizeValueLea(MFunction &func) const {
+    (void)target_;
+    const auto isVirtGprOp = [](const OpReg &r) { return !r.isPhys && r.cls == RegClass::GPR; };
+
+    for (auto &block : func.blocks) {
+        auto &instrs = block.instructions;
+        std::vector<std::size_t> toErase;
+
+        // Shape A (what the lowering emits when the add reuses the shifted
+        // register): MOVrr t, y / SHLri t, #k / ADDrr t, x
+        //   → LEA t, [x + y * 2^k]
+        for (std::size_t i = 0; i + 2 < instrs.size(); ++i) {
+            const MInstr &movT = instrs[i];
+            const MInstr &shl = instrs[i + 1];
+            MInstr &add = instrs[i + 2];
+            if (movT.opcode != MOpcode::MOVrr || shl.opcode != MOpcode::SHLri ||
+                add.opcode != MOpcode::ADDrr)
+                continue;
+            if (movT.operands.size() < 2 || shl.operands.size() < 2 || add.operands.size() < 2)
+                continue;
+            const auto *t = std::get_if<OpReg>(&movT.operands[0]);
+            const auto *y = std::get_if<OpReg>(&movT.operands[1]);
+            const auto *shlDst = std::get_if<OpReg>(&shl.operands[0]);
+            const auto *k = std::get_if<OpImm>(&shl.operands[1]);
+            const auto *addDst = std::get_if<OpReg>(&add.operands[0]);
+            const auto *x = std::get_if<OpReg>(&add.operands[1]);
+            if (!t || !y || !shlDst || !k || !addDst || !x)
+                continue;
+            if (!isVirtGprOp(*t) || !isVirtGprOp(*y) || !isVirtGprOp(*x))
+                continue;
+            if (shlDst->idOrPhys != t->idOrPhys || addDst->idOrPhys != t->idOrPhys)
+                continue;
+            if (k->val < 1 || k->val > 3)
+                continue;
+            // The LEA reads x and y where the ADD stood; neither may alias
+            // the temp the erased feeders wrote.
+            if (t->idOrPhys == x->idOrPhys || t->idOrPhys == y->idOrPhys)
+                continue;
+            if (flagsReadBeforeClobber(instrs, i + 2))
+                continue;
+
+            OpMem leaMem{};
+            leaMem.base = *x;
+            leaMem.index = *y;
+            leaMem.scale = static_cast<uint8_t>(1U << static_cast<unsigned>(k->val));
+            leaMem.disp = 0;
+            leaMem.hasIndex = true;
+
+            add.opcode = MOpcode::LEA;
+            add.operands[1] = Operand{leaMem};
+            add.operands.resize(2);
+            toErase.push_back(i);
+            toErase.push_back(i + 1);
+            i += 2;
+        }
+        eraseInstructionsReverse(block, toErase);
+        toErase.clear();
+
+        // Shape B (separate destination copy):
+        // MOVrr t, y / SHLri t, #k / MOVrr d, x / ADDrr d, t
+        //   → LEA d, [x + y * 2^k]
+        for (std::size_t i = 0; i + 3 < instrs.size(); ++i) {
+            const MInstr &movT = instrs[i];
+            const MInstr &shl = instrs[i + 1];
+            const MInstr &movD = instrs[i + 2];
+            MInstr &add = instrs[i + 3];
+
+            if (movT.opcode != MOpcode::MOVrr || shl.opcode != MOpcode::SHLri ||
+                movD.opcode != MOpcode::MOVrr || add.opcode != MOpcode::ADDrr)
+                continue;
+            if (movT.operands.size() < 2 || shl.operands.size() < 2 || movD.operands.size() < 2 ||
+                add.operands.size() < 2)
+                continue;
+
+            const auto *t = std::get_if<OpReg>(&movT.operands[0]);
+            const auto *y = std::get_if<OpReg>(&movT.operands[1]);
+            const auto *shlDst = std::get_if<OpReg>(&shl.operands[0]);
+            const auto *k = std::get_if<OpImm>(&shl.operands[1]);
+            const auto *d = std::get_if<OpReg>(&movD.operands[0]);
+            const auto *x = std::get_if<OpReg>(&movD.operands[1]);
+            const auto *addDst = std::get_if<OpReg>(&add.operands[0]);
+            const auto *addSrc = std::get_if<OpReg>(&add.operands[1]);
+            if (!t || !y || !shlDst || !k || !d || !x || !addDst || !addSrc)
+                continue;
+
+            const auto isVirtGpr = [](const OpReg &r) {
+                return !r.isPhys && r.cls == RegClass::GPR;
+            };
+            if (!isVirtGpr(*t) || !isVirtGpr(*y) || !isVirtGpr(*d) || !isVirtGpr(*x))
+                continue;
+            if (shlDst->idOrPhys != t->idOrPhys || addDst->idOrPhys != d->idOrPhys ||
+                addSrc->idOrPhys != t->idOrPhys)
+                continue;
+            if (k->val < 1 || k->val > 3)
+                continue;
+            // The LEA reads x and y at the ADD's position; the erased MOVrr
+            // d, x must not have clobbered either, and the temp must be
+            // distinct from every surviving register.
+            if (d->idOrPhys == y->idOrPhys || t->idOrPhys == d->idOrPhys ||
+                t->idOrPhys == x->idOrPhys || t->idOrPhys == y->idOrPhys)
+                continue;
+            if (countVirtualRegisterUsesInFunction(func, t->idOrPhys) != 2)
+                continue;
+            if (flagsReadBeforeClobber(instrs, i + 3))
+                continue;
+
+            OpMem leaMem{};
+            leaMem.base = *x;
+            leaMem.index = *y;
+            leaMem.scale = static_cast<uint8_t>(1U << static_cast<unsigned>(k->val));
+            leaMem.disp = 0;
+            leaMem.hasIndex = true;
+
+            add.opcode = MOpcode::LEA;
+            add.operands[1] = Operand{leaMem};
+            add.operands.resize(2);
+
+            toErase.push_back(i);
+            toErase.push_back(i + 1);
+            toErase.push_back(i + 2);
+            i += 3;
+        }
         eraseInstructionsReverse(block, toErase);
     }
 }

@@ -68,7 +68,8 @@ bool fallsThroughToNext(const MBasicBlock &block) {
     }
 
     const MOpcode last = block.instructions.back().opcode;
-    return last != MOpcode::JMP && last != MOpcode::RET && last != MOpcode::UD2;
+    return last != MOpcode::JMP && last != MOpcode::RET && last != MOpcode::UD2 &&
+           last != MOpcode::JUMPTABLE;
 }
 
 OpLabel *singleLabelOperand(MInstr &instr) noexcept {

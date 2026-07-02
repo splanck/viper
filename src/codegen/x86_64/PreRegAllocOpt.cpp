@@ -26,6 +26,7 @@
 #include "codegen/common/PreRAForwardCopy.hpp"
 #include "codegen/x86_64/OperandRoles.hpp"
 
+#include <cstdlib>
 #include <variant>
 
 namespace viper::codegen::x64 {
@@ -51,6 +52,7 @@ namespace {
         case MOpcode::JMP:
         case MOpcode::JCC:
         case MOpcode::LABEL:
+        case MOpcode::JUMPTABLE:
         case MOpcode::UD2:
         case MOpcode::PUSH:
         case MOpcode::POP:
@@ -180,14 +182,144 @@ struct X64PreRATraits {
 
 } // namespace
 
+namespace {
+
+/// @brief Map a reg-reg ALU opcode onto its memory-operand (rm) form.
+[[nodiscard]] MOpcode memFormFor(MOpcode opcode) noexcept {
+    switch (opcode) {
+        case MOpcode::ADDrr:
+            return MOpcode::ADDrm;
+        case MOpcode::SUBrr:
+            return MOpcode::SUBrm;
+        case MOpcode::ANDrr:
+            return MOpcode::ANDrm;
+        case MOpcode::ORrr:
+            return MOpcode::ORrm;
+        case MOpcode::XORrr:
+            return MOpcode::XORrm;
+        case MOpcode::IMULrr:
+            return MOpcode::IMULrm;
+        case MOpcode::CMPrr:
+            return MOpcode::CMPrm;
+        default:
+            return MOpcode::LABEL; // sentinel: no memory form
+    }
+}
+
+/// @brief Predicate: does @p opcode write to memory?
+[[nodiscard]] bool isStoreOpcode(MOpcode opcode) noexcept {
+    return opcode == MOpcode::MOVrm || opcode == MOpcode::MOVSDrm || opcode == MOpcode::MOVUPSrm;
+}
+
+/// @brief Predicate: does @p op mention virtual GPR @p reg (directly or via a memory operand)?
+[[nodiscard]] bool operandMentionsReg(const Operand &op, const OpReg &reg) noexcept {
+    if (const auto *r = std::get_if<OpReg>(&op))
+        return sameReg(*r, reg);
+    if (const auto *m = std::get_if<OpMem>(&op))
+        return memUsesReg(*m, reg);
+    return false;
+}
+
+/// @brief Count every mention of @p reg across @p fn except @p skip.
+[[nodiscard]] std::size_t countMentionsExcept(const MFunction &fn,
+                                              const OpReg &reg,
+                                              const MInstr *skip) noexcept {
+    std::size_t count = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (&instr == skip)
+                continue;
+            for (const auto &op : instr.operands) {
+                if (operandMentionsReg(op, reg))
+                    ++count;
+            }
+        }
+    }
+    return count;
+}
+
+/// @brief Fuse a single-use MOVmr load into a following reg-reg ALU consumer.
+/// @details `MOVmr vX, [mem]` + `ALUrr vD, vX` becomes `ALUrm vD, [mem]` when
+///          the load result has no other use and nothing between the pair can
+///          change the loaded value: any store, call, or boundary opcode
+///          aborts the scan, as does a redefinition of the loaded register or
+///          of the address's base/index registers.
+/// @param fn Function rewritten in place.
+/// @return Number of loads folded away.
+std::size_t runLoadAluFusion(MFunction &fn) {
+    if (std::getenv("VIPER_NO_LOAD_FUSE") != nullptr)
+        return 0;
+
+    std::size_t fused = 0;
+    for (auto &block : fn.blocks) {
+        auto &instrs = block.instructions;
+        for (std::size_t i = 0; i < instrs.size(); ++i) {
+            const MInstr &load = instrs[i];
+            if (load.opcode != MOpcode::MOVmr || load.operands.size() < 2)
+                continue;
+            const auto *dst = std::get_if<OpReg>(&load.operands[0]);
+            const auto *mem = std::get_if<OpMem>(&load.operands[1]);
+            if (!dst || !mem || dst->isPhys || dst->cls != RegClass::GPR)
+                continue;
+
+            // The loaded value must have exactly one mention beyond its own
+            // definition: the consumer's use.
+            if (countMentionsExcept(fn, *dst, &load) != 1)
+                continue;
+
+            for (std::size_t j = i + 1; j < instrs.size(); ++j) {
+                MInstr &consumer = instrs[j];
+                const MOpcode memForm = memFormFor(consumer.opcode);
+                if (memForm != MOpcode::LABEL && consumer.operands.size() == 2) {
+                    const auto *src = std::get_if<OpReg>(&consumer.operands[1]);
+                    if (src != nullptr && sameReg(*src, *dst)) {
+                        consumer.opcode = memForm;
+                        consumer.operands[1] = *mem;
+                        instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(i));
+                        ++fused;
+                        --i;
+                        break;
+                    }
+                }
+
+                if (isStoreOpcode(consumer.opcode) || consumer.opcode == MOpcode::CALL ||
+                    isNonCallBoundaryOpcode(consumer.opcode))
+                    break;
+
+                // A redefinition of the loaded register or of the address's
+                // base/index registers invalidates the pending fold.
+                bool clobbered = false;
+                for (std::size_t oi = 0; oi < consumer.operands.size() && !clobbered; ++oi) {
+                    if (!operandRoles(consumer, oi).second)
+                        continue;
+                    const auto *defReg = std::get_if<OpReg>(&consumer.operands[oi]);
+                    if (defReg == nullptr)
+                        continue;
+                    if (sameReg(*defReg, *dst) || sameReg(*defReg, mem->base) ||
+                        (mem->hasIndex && sameReg(*defReg, mem->index)))
+                        clobbered = true;
+                }
+                if (clobbered)
+                    break;
+            }
+        }
+    }
+    return fused;
+}
+
+} // namespace
+
 /// @brief Top-level entry point for pre-register-allocation MIR cleanup.
 /// @details Delegates to the shared template: identity copies are removed and
-///          single-use virtual-to-virtual copies are forwarded. Returning a
+///          single-use virtual-to-virtual copies are forwarded, then
+///          single-use loads are folded into their ALU consumers. Returning a
 ///          count lets callers report the reduction in statistics output.
 /// @param fn Function to rewrite in place.
 /// @return Number of MIR instructions removed.
 std::size_t runPreRegAllocOpt(MFunction &fn) {
-    return common::runPreRAForwardCopy<X64PreRATraits>(fn);
+    std::size_t removed = common::runPreRAForwardCopy<X64PreRATraits>(fn);
+    removed += runLoadAluFusion(fn);
+    return removed;
 }
 
 } // namespace viper::codegen::x64

@@ -335,6 +335,172 @@ int main() {
         CHECK(bytesMatch(bytes, {0x45, 0x31, 0xC0}));
     }
 
+    // --- 32-bit ALU family (no REX.W; flags set at 32-bit width) ---
+
+    // addl %edx, %eax -> 01 D0
+    {
+        auto bytes = encodeOne(MOpcode::ADDrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 2);
+        CHECK(bytesMatch(bytes, {0x01, 0xD0}));
+    }
+
+    // addl %edx, %r8d -> REX.B only: 41 01 D0
+    {
+        auto bytes = encodeOne(MOpcode::ADDrr32, {gpr(PhysReg::R8), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x41, 0x01, 0xD0}));
+    }
+
+    // subl %edx, %eax -> 29 D0
+    {
+        auto bytes = encodeOne(MOpcode::SUBrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 2);
+        CHECK(bytesMatch(bytes, {0x29, 0xD0}));
+    }
+
+    // cmpl %edx, %eax -> 39 D0
+    {
+        auto bytes = encodeOne(MOpcode::CMPrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 2);
+        CHECK(bytesMatch(bytes, {0x39, 0xD0}));
+    }
+
+    // imull %edx, %eax -> 0F AF C2 (reg=dst direction)
+    {
+        auto bytes = encodeOne(MOpcode::IMULrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x0F, 0xAF, 0xC2}));
+    }
+
+    // movslq %edx, %rax -> 48 63 C2 (keeps REX.W: 64-bit destination)
+    {
+        auto bytes = encodeOne(MOpcode::MOVSXD, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x48, 0x63, 0xC2}));
+    }
+
+    // addl $7, %eax -> short form, no REX: 83 C0 07
+    {
+        auto bytes = encodeOne(MOpcode::ADDri32, {gpr(PhysReg::RAX), imm(7)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x83, 0xC0, 0x07}));
+    }
+
+    // addl $1000, %eax -> long form: 81 C0 E8 03 00 00
+    {
+        auto bytes = encodeOne(MOpcode::ADDri32, {gpr(PhysReg::RAX), imm(1000)});
+        CHECK(bytes.size() == 6);
+        CHECK(bytesMatch(bytes, {0x81, 0xC0, 0xE8, 0x03, 0x00, 0x00}));
+    }
+
+    // --- 16-bit ALU family (0x66 prefix; flags set at 16-bit width) ---
+
+    // addw %dx, %ax -> 66 01 D0
+    {
+        auto bytes = encodeOne(MOpcode::ADDrr16, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x66, 0x01, 0xD0}));
+    }
+
+    // addw %dx, %r8w -> 66 prefix before REX.B: 66 41 01 D0
+    {
+        auto bytes = encodeOne(MOpcode::ADDrr16, {gpr(PhysReg::R8), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x66, 0x41, 0x01, 0xD0}));
+    }
+
+    // subw %dx, %ax -> 66 29 D0
+    {
+        auto bytes = encodeOne(MOpcode::SUBrr16, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x66, 0x29, 0xD0}));
+    }
+
+    // imulw %dx, %ax -> 66 0F AF C2 (reg=dst direction)
+    {
+        auto bytes = encodeOne(MOpcode::IMULrr16, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x66, 0x0F, 0xAF, 0xC2}));
+    }
+
+    // movswq %dx, %rax -> 48 0F BF C2 (REX.W, no 0x66: source width is opcode-implied)
+    {
+        auto bytes = encodeOne(MOpcode::MOVSXrr16, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x48, 0x0F, 0xBF, 0xC2}));
+    }
+
+    // addw $7, %ax -> short form keeps imm8: 66 83 C0 07
+    {
+        auto bytes = encodeOne(MOpcode::ADDri16, {gpr(PhysReg::RAX), imm(7)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x66, 0x83, 0xC0, 0x07}));
+    }
+
+    // addw $1000, %ax -> long form takes imm16 under 0x66: 66 81 C0 E8 03
+    {
+        auto bytes = encodeOne(MOpcode::ADDri16, {gpr(PhysReg::RAX), imm(1000)});
+        CHECK(bytes.size() == 5);
+        CHECK(bytesMatch(bytes, {0x66, 0x81, 0xC0, 0xE8, 0x03}));
+    }
+
+    // --- Memory-operand ALU (reg <- reg op [mem]) ---
+
+    // addq (%rax), %rcx -> 48 03 08 (reg=RCX in ModRM.reg, base=RAX)
+    {
+        auto bytes = encodeOne(MOpcode::ADDrm, {gpr(PhysReg::RCX), mem(PhysReg::RAX, 0)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x48, 0x03, 0x08}));
+    }
+
+    // cmpq 8(%rax), %rcx -> 48 3B 48 08 (disp8)
+    {
+        auto bytes = encodeOne(MOpcode::CMPrm, {gpr(PhysReg::RCX), mem(PhysReg::RAX, 8)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x48, 0x3B, 0x48, 0x08}));
+    }
+
+    // imulq (%rax), %rcx -> two-byte opcode: 48 0F AF 08
+    {
+        auto bytes = encodeOne(MOpcode::IMULrm, {gpr(PhysReg::RCX), mem(PhysReg::RAX, 0)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x48, 0x0F, 0xAF, 0x08}));
+    }
+
+    // --- JUMPTABLE: lea/movslq/add/jmp tail + inline anchor-relative table ---
+    {
+        MFunction fn;
+        fn.name = "jt";
+        MBasicBlock dispatch;
+        dispatch.label = ".Ldispatch";
+        dispatch.append(MInstr::make(
+            MOpcode::JUMPTABLE,
+            {gpr(PhysReg::RCX), Operand{OpLabel{".Ljt_0"}}, Operand{OpLabel{".Ltarget"}}}));
+        MBasicBlock target;
+        target.label = ".Ltarget";
+        target.append(MInstr::make(MOpcode::RET, {}));
+        fn.addBlock(std::move(dispatch));
+        fn.addBlock(std::move(target));
+
+        X64BinaryEncoder enc;
+        CodeSection text, rodata;
+        enc.encodeFunction(fn, text, rodata, false);
+        const auto &bytes = text.bytes();
+        CHECK(bytes.size() == 22);
+        // leaq 10(%rip), %r10 — displacement equals the fixed tail size.
+        CHECK(bytesMatch(bytes, {0x4C, 0x8D, 0x15, 0x0A, 0x00, 0x00, 0x00}, 0));
+        // movslq (%r10,%rcx,4), %r11
+        CHECK(bytesMatch(bytes, {0x4D, 0x63, 0x1C, 0x8A}, 7));
+        // addq %r10, %r11
+        CHECK(bytesMatch(bytes, {0x4D, 0x01, 0xD3}, 11));
+        // jmp *%r11
+        CHECK(bytesMatch(bytes, {0x41, 0xFF, 0xE3}, 14));
+        // Table entry: offset(.Ltarget)=21 minus tableStart=17 -> 4.
+        CHECK(bytesMatch(bytes, {0x04, 0x00, 0x00, 0x00}, 17));
+        // ret at .Ltarget
+        CHECK(bytes[21] == 0xC3);
+    }
+
     // ================================================================
     // 6. IMULrr: reversed direction (reg=dst, r/m=src)
     // ================================================================

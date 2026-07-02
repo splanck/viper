@@ -23,6 +23,7 @@
 
 #include <cassert>
 #include <optional>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -30,6 +31,15 @@ using namespace il::core;
 
 namespace il::frontends::basic::lower {
 
+namespace {
+bool containsBasicName(const std::unordered_set<std::string> &names, std::string_view needle) {
+    for (const auto &name : names) {
+        if (string_utils::iequals(name, needle))
+            return true;
+    }
+    return false;
+}
+} // namespace
 
 /// @brief Construct an emitter bound to the enclosing lowering context.
 ///
@@ -382,7 +392,7 @@ void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
     for (auto &[name, info] : lowerer_.symbols) {
         if (!info.referenced || !info.slotId || !info.isArray)
             continue;
-        if (paramNames.contains(name))
+        if (containsBasicName(paramNames, name))
             continue;
         Value slot = Value::temp(*info.slotId);
         Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
@@ -406,7 +416,7 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
     for (auto &[name, info] : lowerer_.symbols) {
         if (!info.referenced || !info.slotId || !info.isArray)
             continue;
-        if (!paramNames.contains(name))
+        if (!containsBasicName(paramNames, name))
             continue;
         Value slot = Value::temp(*info.slotId);
         Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
@@ -607,7 +617,7 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
             continue;
         if (string_utils::iequals(name, "ME"))
             continue;
-        if (paramNames.contains(name))
+        if (containsBasicName(paramNames, name))
             continue;
         if (!info.slotId)
             continue;
@@ -636,7 +646,7 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
             continue;
         if (string_utils::iequals(name, "ME"))
             continue;
-        if (!paramNames.contains(name))
+        if (!containsBasicName(paramNames, name))
             continue;
         // Skip BYREF parameters (callee does not own storage)
         if (info.isByRefParam)

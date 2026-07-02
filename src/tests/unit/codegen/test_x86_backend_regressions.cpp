@@ -605,10 +605,14 @@ TEST(X86BackendRegressions, SubWidthCheckedAddEmitsRangeCheck) {
 
     const CodegenResult result = compile(fn);
     ASSERT_TRUE(result.errors.empty());
-    EXPECT_NE(result.asmText.find("addq"), std::string::npos);
-    EXPECT_NE(result.asmText.find("shlq $48"), std::string::npos);
-    EXPECT_NE(result.asmText.find("sarq $48"), std::string::npos);
-    EXPECT_NE(result.asmText.find(".Liadd_ovf_trap_"), std::string::npos);
+    // The 16-bit fast path checks overflow via native 16-bit flags: addw sets
+    // OF at the target width, jo reaches the trap, and movswq restores the
+    // canonical sign-extended form. The widen/shift range check is gone.
+    EXPECT_NE(result.asmText.find("addw"), std::string::npos);
+    EXPECT_NE(result.asmText.find("jo "), std::string::npos);
+    EXPECT_NE(result.asmText.find("movswq"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("shlq $48"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Liadd_ovf16_trap_"), std::string::npos);
     EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
 }
 
@@ -978,19 +982,19 @@ TEST(X86BackendRegressions, LargerSwitchUsesBalancedDecisionLabels) {
                        {val(ILValue::Kind::I64, 0),
                         imm(0),
                         label("c0"),
-                        imm(1),
+                        imm(10),
                         label("c1"),
-                        imm(2),
+                        imm(20),
                         label("c2"),
-                        imm(3),
+                        imm(30),
                         label("c3"),
-                        imm(4),
+                        imm(40),
                         label("c4"),
-                        imm(5),
+                        imm(50),
                         label("c5"),
-                        imm(6),
+                        imm(60),
                         label("c6"),
-                        imm(7),
+                        imm(70),
                         label("c7"),
                         label("def")})};
 
@@ -1013,8 +1017,53 @@ TEST(X86BackendRegressions, LargerSwitchUsesBalancedDecisionLabels) {
 
     const CodegenResult result = compile(fn);
     ASSERT_TRUE(result.errors.empty());
+    // Sparse cases (density below the jump-table threshold) keep the
+    // balanced compare tree.
     EXPECT_NE(result.asmText.find(".Lswitch_left_"), std::string::npos);
     EXPECT_NE(result.asmText.find(".Lswitch_right_"), std::string::npos);
+    EXPECT_EQ(result.asmText.find(".Ljt_"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, DenseSwitchUsesJumpTable) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+
+    std::vector<ILValue> switchOps{val(ILValue::Kind::I64, 0)};
+    for (int i = 0; i < 8; ++i) {
+        switchOps.push_back(imm(i));
+        switchOps.push_back(label(("c" + std::to_string(i)).c_str()));
+    }
+    switchOps.push_back(label("def"));
+    entry.instrs = {op("switch_i32", switchOps)};
+
+    std::vector<ILBlock> blocks;
+    blocks.push_back(entry);
+    for (int i = 0; i < 8; ++i) {
+        ILBlock caseBlock{};
+        caseBlock.name = "c" + std::to_string(i);
+        caseBlock.instrs = {op("ret", {imm(100 + i)})};
+        blocks.push_back(std::move(caseBlock));
+    }
+    ILBlock def{};
+    def.name = "def";
+    def.instrs = {op("ret", {imm(0)})};
+    blocks.push_back(std::move(def));
+
+    ILFunction fn{};
+    fn.name = "switch_dense";
+    fn.blocks = std::move(blocks);
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    // Contiguous cases dispatch through the inline jump table: one unsigned
+    // bounds check, the table label, and anchor-relative entries.
+    EXPECT_NE(result.asmText.find(".Ljt_"), std::string::npos);
+    EXPECT_NE(result.asmText.find("movslq"), std::string::npos);
+    EXPECT_NE(result.asmText.find("jmp *"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".long "), std::string::npos);
+    EXPECT_EQ(result.asmText.find(".Lswitch_left_"), std::string::npos);
 }
 
 TEST(X86BackendRegressions, CheckedSignedDivisionIncludesOverflowTrap) {
@@ -1978,8 +2027,10 @@ TEST(X86BackendRegressions, SibFoldRequiresAddressDefsBeforeMemoryUse) {
     const OpMem *mem = firstMemOperand(block.instructions.front());
     ASSERT_TRUE(mem != nullptr);
     EXPECT_FALSE(mem->hasIndex);
-    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
-    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
+    // The value chain itself legally collapses into an LEA; the guarded
+    // property is that the earlier memory use keeps its original address.
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::LEA));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::SHLri));
 }
 
 TEST(X86BackendRegressions, SibFoldUsesPostDefReadCounts) {
@@ -2232,8 +2283,10 @@ TEST(X86BackendRegressions, SibFoldRejectsRedefinedAddResultBeforeMemoryUse) {
     isel.lowerArithmetic(fn);
 
     const auto &block = fn.blocks.front();
-    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
-    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
+    // The value chain collapses into an LEA; the guarded property is that the
+    // load keeps reading the REDEFINED address (vreg 4, no index) — the LEA's
+    // addressing mode must not leak past the redefinition.
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::LEA));
     const OpMem *mem = firstMemOperand(block.instructions.back());
     ASSERT_TRUE(mem != nullptr);
     EXPECT_FALSE(mem->hasIndex);
@@ -2269,10 +2322,17 @@ TEST(X86BackendRegressions, SibFoldDoesNotEraseAddResultUsedInLaterBlock) {
     isel.lowerArithmetic(fn);
 
     const auto &block = fn.blocks.front();
-    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
-    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
-    ASSERT_GT(block.instructions.size(), 4u);
-    const OpMem *mem = firstMemOperand(block.instructions[4]);
+    // The value chain collapses into an LEA that still DEFINES the address
+    // register consumed by the later block; the load's operand must stay a
+    // plain base (the two-use address register blocks the LEA-into-mem fold).
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::LEA));
+    const OpMem *mem = nullptr;
+    for (const auto &instr : block.instructions) {
+        if (instr.opcode == MOpcode::MOVmr) {
+            mem = firstMemOperand(instr);
+            break;
+        }
+    }
     ASSERT_TRUE(mem != nullptr);
     EXPECT_FALSE(mem->hasIndex);
 }

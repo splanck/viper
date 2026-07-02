@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <string>
 
@@ -368,6 +369,57 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
         }
         builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{defLabel}));
         return;
+    }
+
+    // Dense case sets dispatch through an inline jump table: one unsigned
+    // bounds check plus an indirect jump replaces the O(log N) compare tree.
+    constexpr std::size_t kMinJumpTableCases = 6;
+    constexpr int64_t kMaxJumpTableSpan = 4096;
+    constexpr double kMinJumpTableDensity = 0.5;
+    if (cases.size() >= kMinJumpTableCases && std::getenv("VIPER_NO_JUMP_TABLES") == nullptr) {
+        const int64_t lo = cases.front().value;
+        const int64_t hi = cases.back().value;
+        const int64_t span = hi - lo + 1;
+        if (span <= kMaxJumpTableSpan &&
+            static_cast<double>(cases.size()) >=
+                kMinJumpTableDensity * static_cast<double>(span)) {
+            EmitCommon emitJt(builder);
+            // Values below lo wrap to huge unsigned values, so a single
+            // unsigned compare covers both bounds. With lo == 0 the scrutinee
+            // IS the table index; a bare copy here would tempt copy
+            // forwarding into splitting the compare and the dispatch onto
+            // different registers.
+            Operand idx = emitJt.clone(scrutinee);
+            if (lo != 0) {
+                const VReg idxReg = builder.makeTempVReg(RegClass::GPR);
+                idx = makeVRegOperand(idxReg.cls, idxReg.id);
+                builder.append(
+                    MInstr::make(MOpcode::MOVrr, {emitJt.clone(idx), emitJt.clone(scrutinee)}));
+                builder.append(
+                    MInstr::make(MOpcode::ADDri, {emitJt.clone(idx), makeImmOperand(-lo)}));
+            }
+            builder.append(
+                MInstr::make(MOpcode::CMPri, {emitJt.clone(idx), makeImmOperand(span)}));
+            builder.append(MInstr::make(
+                MOpcode::JCC, {makeImmOperand(7 /* ae */), emitJt.clone(defLabel)}));
+
+            // The dispatch tail uses the reserved R10/R11 scratch registers,
+            // so only the index needs allocation.
+            const std::string tblName =
+                ".Ljt_" + std::to_string(builder.lower().nextLocalLabelId());
+            std::vector<Operand> jtOps{emitJt.clone(idx), makeLabelOperand(tblName)};
+            std::size_t ci = 0;
+            for (int64_t v = lo; v <= hi; ++v) {
+                if (ci < cases.size() && cases[ci].value == v) {
+                    jtOps.push_back(emitJt.clone(cases[ci].label));
+                    ++ci;
+                } else {
+                    jtOps.push_back(emitJt.clone(defLabel));
+                }
+            }
+            builder.append(MInstr::make(MOpcode::JUMPTABLE, std::move(jtOps)));
+            return;
+        }
     }
 
     emitSwitchTree(cases, 0, cases.size(), scrutinee, defLabel, builder);

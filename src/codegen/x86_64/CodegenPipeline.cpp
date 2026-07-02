@@ -727,6 +727,10 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
         const int runExit = runExecutable(exePath, out, err);
         result.exit_code = (runExit == -1) ? 1 : runExit;
+        if (opts_.output_obj_path.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(exePath, ec);
+        }
         return finish();
     }
 
@@ -841,6 +845,10 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         result.exit_code = 1;
     } else {
         result.exit_code = runExit;
+    }
+    if (opts_.output_obj_path.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(exePath, ec);
     }
     return finish();
 }

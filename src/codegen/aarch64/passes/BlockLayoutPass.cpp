@@ -35,12 +35,14 @@ namespace viper::codegen::aarch64::passes {
 
 namespace {
 
-/// @brief Return true if @p opc is a conditional branch (BCond, Cbz, Cbnz).
+/// @brief Return true if @p opc is a conditional branch (BCond, Cbz, Cbnz, Tbz, Tbnz).
 static bool isConditionalBranch(MOpcode opc) {
     switch (opc) {
         case MOpcode::BCond:
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
+        case MOpcode::Tbz:
+        case MOpcode::Tbnz:
             return true;
         default:
             return false;

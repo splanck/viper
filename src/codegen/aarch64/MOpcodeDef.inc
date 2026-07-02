@@ -152,5 +152,14 @@ VIPER_MIR_OPCODE(SubOvfRRR)
 VIPER_MIR_OPCODE(AddOvfRI)
 VIPER_MIR_OPCODE(SubOvfRI)
 VIPER_MIR_OPCODE(MulOvfRRR)
+// --- Test-bit-and-branch (peephole-created): tbz/tbnz reg, #bit, label ---
+// Operands: [0]=reg (use), [1]=label, [2]=bit immediate — label kept at
+// index 1 so every Cbz/Cbnz label-position assumption applies unchanged.
+VIPER_MIR_OPCODE(Tbz)
+VIPER_MIR_OPCODE(Tbnz)
+// --- Jump-table dispatch terminator: adr/ldrsw/add/br + inline table ---
+// Operands: [0]=index (use), [1]=address temp (def), [2]=entry temp (def),
+// [3]=table name label (text-asm only), [4..]=case labels.
+VIPER_MIR_OPCODE(JumpTable)
 
 #undef VIPER_MIR_OPCODE

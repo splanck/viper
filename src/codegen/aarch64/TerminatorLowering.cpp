@@ -33,6 +33,7 @@
 #include "OpcodeMappings.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 
@@ -622,6 +623,60 @@ static void lowerSwitchI32(
         if (cases[ci - 1].value == cases[ci].value) {
             throw std::runtime_error("AArch64 terminator lowering: duplicate switch_i32 case " +
                                      std::to_string(cases[ci].value));
+        }
+    }
+
+    // Dense case sets dispatch through an inline jump table: one unsigned
+    // bounds check plus an indirect branch replaces the compare tree. Case
+    // labels already point at the dedicated phi-edge blocks built above.
+    constexpr std::size_t kMinJumpTableCases = 6;
+    constexpr int64_t kMaxJumpTableSpan = 4095; // SubRI/CmpRI immediate ceiling
+    constexpr double kMinJumpTableDensity = 0.5;
+    if (cases.size() > 3 && cases.size() >= kMinJumpTableCases &&
+        std::getenv("VIPER_NO_JUMP_TABLES") == nullptr) {
+        const int64_t lo = cases.front().value;
+        const int64_t hi = cases.back().value;
+        const int64_t span = hi - lo + 1;
+        if (lo >= 0 && lo <= 4095 && span <= kMaxJumpTableSpan &&
+            static_cast<double>(cases.size()) >=
+                kMinJumpTableDensity * static_cast<double>(span)) {
+            // With lo == 0 the scrutinee IS the table index; a bare copy here
+            // would tempt copy forwarding into splitting the compare and the
+            // dispatch onto different registers.
+            uint16_t idxV = sv;
+            if (lo != 0) {
+                idxV = allocateNextVReg(nextVRegId);
+                outBB.instrs.push_back(MInstr{MOpcode::SubRI,
+                                              {MOperand::vregOp(RegClass::GPR, idxV),
+                                               MOperand::vregOp(RegClass::GPR, sv),
+                                               MOperand::immOp(lo)}});
+            }
+            outBB.instrs.push_back(MInstr{
+                MOpcode::CmpRI,
+                {MOperand::vregOp(RegClass::GPR, idxV), MOperand::immOp(span)}});
+            outBB.instrs.push_back(
+                MInstr{MOpcode::BCond,
+                       {MOperand::condOp("hs"), MOperand::labelOp(defaultBranchLabel)}});
+
+            // The dispatch tail uses the reserved X16/X17 scratch registers,
+            // so only the index needs allocation.
+            // The leading ".L" keeps the label assembler-local (a non-local
+            // label would start a new Mach-O atom, and adr cannot reference
+            // across atoms).
+            std::vector<MOperand> jtOps{
+                MOperand::vregOp(RegClass::GPR, idxV),
+                MOperand::labelOp(".Ljt_" + outBB.name + "_" + std::to_string(blockIndex))};
+            std::size_t ci = 0;
+            for (int64_t v = lo; v <= hi; ++v) {
+                if (ci < cases.size() && cases[ci].value == v) {
+                    jtOps.push_back(MOperand::labelOp(cases[ci].branchLabel));
+                    ++ci;
+                } else {
+                    jtOps.push_back(MOperand::labelOp(defaultBranchLabel));
+                }
+            }
+            outBB.instrs.push_back(MInstr{MOpcode::JumpTable, std::move(jtOps)});
+            return;
         }
     }
 

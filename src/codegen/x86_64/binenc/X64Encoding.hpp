@@ -204,6 +204,24 @@ inline RegRegOp regRegOpcode(MOpcode op) {
             return {0x31, 0, false};
         case MOpcode::MOVZXrr32:
             return {0x89, 0, false};
+        case MOpcode::ADDrr32:
+            return {0x01, 0, false};
+        case MOpcode::SUBrr32:
+            return {0x29, 0, false};
+        case MOpcode::CMPrr32:
+            return {0x39, 0, false};
+        case MOpcode::IMULrr32:
+            return {0x0F, 0xAF, true}; // reg=dst, r/m=src
+        case MOpcode::MOVSXD:
+            return {0x63, 0, true}; // movslq: reg=dst, r/m=src (keeps REX.W)
+        case MOpcode::ADDrr16:
+            return {0x01, 0, false}; // with 0x66 operand-size prefix
+        case MOpcode::SUBrr16:
+            return {0x29, 0, false}; // with 0x66 operand-size prefix
+        case MOpcode::IMULrr16:
+            return {0x0F, 0xAF, true}; // with 0x66 operand-size prefix
+        case MOpcode::MOVSXrr16:
+            return {0x0F, 0xBF, true}; // movswq: reg=dst, r/m=src (keeps REX.W, no 0x66)
         default:
             VIPER_ICE("not a reg-reg GPR opcode");
     }
@@ -213,6 +231,8 @@ inline RegRegOp regRegOpcode(MOpcode op) {
 inline uint8_t regImmExt(MOpcode op) {
     switch (op) {
         case MOpcode::ADDri:
+        case MOpcode::ADDri32:
+        case MOpcode::ADDri16:
             return 0; // /0
         case MOpcode::ORri:
             return 1; // /1

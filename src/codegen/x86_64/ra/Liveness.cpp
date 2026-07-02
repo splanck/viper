@@ -68,6 +68,15 @@ viper::codegen::ra::BranchDesc classifyControlFlow(const MInstr &instr) {
             return Desc{Desc::Kind::Cond, firstLabelOperand(instr)};
         case MOpcode::JMP:
             return Desc{Desc::Kind::Uncond, firstLabelOperand(instr)};
+        case MOpcode::JUMPTABLE: {
+            // Case labels start at operand 2 ([0]=index, [1]=table name).
+            Desc desc{Desc::Kind::Multi, nullptr};
+            for (std::size_t i = 2; i < instr.operands.size(); ++i) {
+                if (const auto *label = std::get_if<OpLabel>(&instr.operands[i]))
+                    desc.multiTargets.push_back(&label->name);
+            }
+            return desc;
+        }
         case MOpcode::RET:
             return Desc{Desc::Kind::Return, nullptr};
         case MOpcode::UD2:

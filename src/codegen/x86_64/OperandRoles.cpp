@@ -43,6 +43,8 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
         case MOpcode::LEA:
         case MOpcode::MOVZXrr8:
         case MOpcode::MOVZXrr32:
+        case MOpcode::MOVSXD:
+        case MOpcode::MOVSXrr16:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         case MOpcode::MOVQrx:
@@ -76,6 +78,20 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
         case MOpcode::SARri:
         case MOpcode::SARrc:
         case MOpcode::IMULrr:
+        case MOpcode::ADDrr32:
+        case MOpcode::SUBrr32:
+        case MOpcode::IMULrr32:
+        case MOpcode::ADDri32:
+        case MOpcode::ADDrr16:
+        case MOpcode::SUBrr16:
+        case MOpcode::IMULrr16:
+        case MOpcode::ADDri16:
+        case MOpcode::ADDrm:
+        case MOpcode::SUBrm:
+        case MOpcode::ANDrm:
+        case MOpcode::ORrm:
+        case MOpcode::XORrm:
+        case MOpcode::IMULrm:
         case MOpcode::CMOVNErr:
         case MOpcode::FADD:
         case MOpcode::FSUB:
@@ -105,6 +121,8 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
             return {false, false};
 
         case MOpcode::CMPrr:
+        case MOpcode::CMPrr32:
+        case MOpcode::CMPrm:
         case MOpcode::TESTrr:
         case MOpcode::UCOMIS:
             return {idx <= 1, false};
@@ -130,8 +148,17 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
 
         case MOpcode::CALL:
             return {idx == 0, false};
-        case MOpcode::RET:
         case MOpcode::JMP:
+            // An indirect jump reads its register target; label targets have
+            // no register semantics.
+            return {idx == 0 && std::holds_alternative<OpReg>(instr.operands[idx]), false};
+
+        case MOpcode::JUMPTABLE:
+            // [0]=index (use); the remaining operands are labels. The
+            // dispatch temps are the reserved R10/R11 scratch registers.
+            return {idx == 0, false};
+
+        case MOpcode::RET:
         case MOpcode::JCC:
         case MOpcode::LABEL:
         case MOpcode::UD2:
@@ -181,6 +208,22 @@ bool definesEFlags(MOpcode opcode) noexcept {
         case MOpcode::XORri:
         case MOpcode::XORrr32:
         case MOpcode::SUBrr:
+        case MOpcode::ADDrr32:
+        case MOpcode::SUBrr32:
+        case MOpcode::IMULrr32:
+        case MOpcode::ADDri32:
+        case MOpcode::CMPrr32:
+        case MOpcode::ADDrr16:
+        case MOpcode::SUBrr16:
+        case MOpcode::IMULrr16:
+        case MOpcode::ADDri16:
+        case MOpcode::ADDrm:
+        case MOpcode::SUBrm:
+        case MOpcode::ANDrm:
+        case MOpcode::ORrm:
+        case MOpcode::XORrm:
+        case MOpcode::CMPrm:
+        case MOpcode::IMULrm:
         case MOpcode::SHLri:
         case MOpcode::SHLrc:
         case MOpcode::SHRri:
@@ -238,6 +281,7 @@ bool hasObservableSideEffects(MOpcode opcode) noexcept {
         case MOpcode::SUBOvfrr:
         case MOpcode::IMULOvfrr:
         case MOpcode::PX_COPY:
+        case MOpcode::JUMPTABLE:
             return true;
         case MOpcode::MOVrr:
         case MOpcode::MOVri:
@@ -269,6 +313,24 @@ bool hasObservableSideEffects(MOpcode opcode) noexcept {
         case MOpcode::TESTrr:
         case MOpcode::MOVZXrr8:
         case MOpcode::MOVZXrr32:
+        case MOpcode::ADDrr32:
+        case MOpcode::SUBrr32:
+        case MOpcode::IMULrr32:
+        case MOpcode::ADDri32:
+        case MOpcode::CMPrr32:
+        case MOpcode::MOVSXD:
+        case MOpcode::ADDrr16:
+        case MOpcode::SUBrr16:
+        case MOpcode::IMULrr16:
+        case MOpcode::ADDri16:
+        case MOpcode::MOVSXrr16:
+        case MOpcode::ADDrm:
+        case MOpcode::SUBrm:
+        case MOpcode::ANDrm:
+        case MOpcode::ORrm:
+        case MOpcode::XORrm:
+        case MOpcode::CMPrm:
+        case MOpcode::IMULrm:
         case MOpcode::FADD:
         case MOpcode::FSUB:
         case MOpcode::FMUL:

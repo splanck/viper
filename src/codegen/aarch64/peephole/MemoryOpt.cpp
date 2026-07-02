@@ -237,7 +237,9 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
                 break;
 
             if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond || next.opc == MOpcode::Ret ||
-                next.opc == MOpcode::Cbz || next.opc == MOpcode::Cbnz)
+                next.opc == MOpcode::Cbz || next.opc == MOpcode::Cbnz ||
+                next.opc == MOpcode::Tbz || next.opc == MOpcode::Tbnz ||
+                next.opc == MOpcode::JumpTable)
                 break;
 
             if (isBaseRelativeMemory(next.opc))

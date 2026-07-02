@@ -165,12 +165,19 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
         return {true, false};     // all others are use-only
     }
 
-    // Cbz / Cbnz: cbz/cbnz reg, label => branch if reg is zero/nonzero
-    // Operands: [0]=reg (use), [1]=label
-    if (ins.opc == MOpcode::Cbz || ins.opc == MOpcode::Cbnz) {
+    // Cbz / Cbnz / Tbz / Tbnz: branch on register zero-test or bit-test.
+    // Operands: [0]=reg (use), [1]=label, [2]=bit immediate (Tbz/Tbnz only)
+    if (ins.opc == MOpcode::Cbz || ins.opc == MOpcode::Cbnz || ins.opc == MOpcode::Tbz ||
+        ins.opc == MOpcode::Tbnz) {
         if (idx == 0)
             return {true, false}; // reg is use
-        return {false, false};    // label is neither
+        return {false, false};    // label/immediate are neither
+    }
+
+    // JumpTable: [0]=index (use); remaining operands are labels. The
+    // dispatch temps are the reserved X16/X17 scratch registers.
+    if (ins.opc == MOpcode::JumpTable) {
+        return {idx == 0, false};
     }
 
     // Blr reads a register call target. Direct Bl carries only a label operand.

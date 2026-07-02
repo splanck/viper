@@ -45,11 +45,12 @@ namespace viper::codegen::x64 {
 namespace {
 
 /// @brief AT&T register names indexed by [width][PhysReg index].
-/// @details Width slot 0 = 8-bit (byte), slot 1 = 32-bit (long). 64-bit names
-///          are produced by asmfmt::fmt_reg; this table covers only the GPR
-///          aliases that x86 exposes for narrower operand sizes. Entries
-///          beyond index 15 are unused (XMM regs are not aliased like GPRs).
-constexpr std::array<std::array<const char *, 16>, 2> kGprAliasNames = {{
+/// @details Width slot 0 = 8-bit (byte), slot 1 = 32-bit (long), slot 2 =
+///          16-bit (word). 64-bit names are produced by asmfmt::fmt_reg; this
+///          table covers only the GPR aliases that x86 exposes for narrower
+///          operand sizes. Entries beyond index 15 are unused (XMM regs are
+///          not aliased like GPRs).
+constexpr std::array<std::array<const char *, 16>, 3> kGprAliasNames = {{
     // 8-bit  (lo byte): RAX..RSP then R8..R15
     {"%al",
      "%bl",
@@ -84,6 +85,23 @@ constexpr std::array<std::array<const char *, 16>, 2> kGprAliasNames = {{
      "%r15d",
      "%ebp",
      "%esp"},
+    // 16-bit (word)
+    {"%ax",
+     "%bx",
+     "%cx",
+     "%dx",
+     "%si",
+     "%di",
+     "%r8w",
+     "%r9w",
+     "%r10w",
+     "%r11w",
+     "%r12w",
+     "%r13w",
+     "%r14w",
+     "%r15w",
+     "%bp",
+     "%sp"},
 }};
 
 /// @brief Build an @ref OperandPattern from up to three operand kind slots.
@@ -241,6 +259,11 @@ enum : std::uint16_t {
     kFmtCond = 1U << 6U,
     kFmtSetcc = 1U << 7U,
     kFmtReg32 = 1U << 8U,
+    kFmtReg32Imm = 1U << 9U, ///< Immediate + 32-bit register destination.
+    kFmtMovsxd = 1U << 10U,  ///< 32-bit source register, 64-bit destination (movslq).
+    kFmtReg16 = 1U << 11U,   ///< Both operands printed as 16-bit registers.
+    kFmtReg16Imm = 1U << 12U, ///< Immediate + 16-bit register destination.
+    kFmtMovsx16 = 1U << 13U,  ///< 16-bit source register, 64-bit destination (movswq).
 };
 
 struct OpFmt {
@@ -664,6 +687,38 @@ void AsmEmitter::emitInstruction(std::ostream &os,
         return;
     }
 
+    if (instr.opcode == MOpcode::JUMPTABLE) {
+        // Operands: [0]=index reg, [1]=table label, [2..]=case labels. The
+        // dispatch tail runs in the reserved R10/R11 scratch registers; the
+        // table is emitted inline right after the indirect jump with entries
+        // anchored to the table start.
+        if (instr.operands.size() < 3) {
+            throw std::runtime_error("x86-64 asm emitter: JUMPTABLE operand shortfall");
+        }
+        const auto *idx = std::get_if<OpReg>(&instr.operands[0]);
+        const auto *name = std::get_if<OpLabel>(&instr.operands[1]);
+        if (!idx || !name) {
+            throw std::runtime_error("x86-64 asm emitter: JUMPTABLE operand shapes invalid");
+        }
+        const std::string tblName = formatSymbolReference(name->name, format);
+        const std::string idxReg = formatOperand(instr.operands[0], target, format);
+        os << "  leaq " << tblName << "(%rip), %r10\n";
+        os << "  movslq (%r10," << idxReg << ",4), %r11\n";
+        os << "  addq %r10, %r11\n";
+        os << "  jmp *%r11\n";
+        os << "  .p2align 2\n";
+        os << tblName << ":\n";
+        for (std::size_t i = 2; i < instr.operands.size(); ++i) {
+            const auto *caseLabel = std::get_if<OpLabel>(&instr.operands[i]);
+            if (caseLabel == nullptr) {
+                throw std::runtime_error("x86-64 asm emitter: JUMPTABLE case must be a label");
+            }
+            os << "  .long " << formatSymbolReference(caseLabel->name, format) << " - " << tblName
+               << '\n';
+        }
+        return;
+    }
+
     if (instr.opcode == MOpcode::PX_COPY) {
         std::string line;
         const auto estimate = 12U + instr.operands.size() * 24U;
@@ -774,6 +829,81 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                 "x86-64 asm emitter: 32-bit GPR operation requires GPR operands");
         }
         os << ' ' << formatReg32(*src, target) << ", " << formatReg32(*dest, target) << '\n';
+        return;
+    }
+
+    if ((flags & kFmtReg32Imm) != 0U) {
+        if (operands.size() < 2) {
+            os << " #<missing>\n";
+            return;
+        }
+        const auto *dest = std::get_if<OpReg>(&operands[0]);
+        if (!dest || dest->cls != RegClass::GPR) {
+            throw std::runtime_error(
+                "x86-64 asm emitter: 32-bit reg-imm operation requires a GPR destination");
+        }
+        os << ' ';
+        emitOperand(operands[1], os, target, format);
+        os << ", " << formatReg32(*dest, target) << '\n';
+        return;
+    }
+
+    if ((flags & kFmtMovsxd) != 0U) {
+        if (operands.size() < 2) {
+            os << " #<missing>\n";
+            return;
+        }
+        const auto *dest = std::get_if<OpReg>(&operands[0]);
+        const auto *src = std::get_if<OpReg>(&operands[1]);
+        if (!dest || !src || dest->cls != RegClass::GPR || src->cls != RegClass::GPR) {
+            throw std::runtime_error("x86-64 asm emitter: MOVSXD requires GPR operands");
+        }
+        os << ' ' << formatReg32(*src, target) << ", " << formatReg(*dest, target) << '\n';
+        return;
+    }
+
+    if ((flags & kFmtReg16) != 0U) {
+        if (operands.size() < 2) {
+            os << " #<missing>\n";
+            return;
+        }
+        const auto *dest = std::get_if<OpReg>(&operands[0]);
+        const auto *src = std::get_if<OpReg>(&operands[1]);
+        if (!dest || !src || dest->cls != RegClass::GPR || src->cls != RegClass::GPR) {
+            throw std::runtime_error(
+                "x86-64 asm emitter: 16-bit GPR operation requires GPR operands");
+        }
+        os << ' ' << formatReg16(*src, target) << ", " << formatReg16(*dest, target) << '\n';
+        return;
+    }
+
+    if ((flags & kFmtReg16Imm) != 0U) {
+        if (operands.size() < 2) {
+            os << " #<missing>\n";
+            return;
+        }
+        const auto *dest = std::get_if<OpReg>(&operands[0]);
+        if (!dest || dest->cls != RegClass::GPR) {
+            throw std::runtime_error(
+                "x86-64 asm emitter: 16-bit reg-imm operation requires a GPR destination");
+        }
+        os << ' ';
+        emitOperand(operands[1], os, target, format);
+        os << ", " << formatReg16(*dest, target) << '\n';
+        return;
+    }
+
+    if ((flags & kFmtMovsx16) != 0U) {
+        if (operands.size() < 2) {
+            os << " #<missing>\n";
+            return;
+        }
+        const auto *dest = std::get_if<OpReg>(&operands[0]);
+        const auto *src = std::get_if<OpReg>(&operands[1]);
+        if (!dest || !src || dest->cls != RegClass::GPR || src->cls != RegClass::GPR) {
+            throw std::runtime_error("x86-64 asm emitter: MOVSXrr16 requires GPR operands");
+        }
+        os << ' ' << formatReg16(*src, target) << ", " << formatReg(*dest, target) << '\n';
         return;
     }
 
@@ -1004,6 +1134,18 @@ std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target) 
     const auto idx = static_cast<std::size_t>(reg.idOrPhys);
     if (idx < kGprAliasNames[1].size())
         return kGprAliasNames[1][idx];
+    return formatReg(reg, target);
+}
+
+std::string AsmEmitter::formatReg16(const OpReg &reg, const TargetInfo &target) {
+    if (!reg.isPhys) {
+        std::ostringstream os;
+        os << "%v" << static_cast<unsigned>(reg.idOrPhys) << ".w";
+        return os.str();
+    }
+    const auto idx = static_cast<std::size_t>(reg.idOrPhys);
+    if (idx < kGprAliasNames[2].size())
+        return kGprAliasNames[2][idx];
     return formatReg(reg, target);
 }
 

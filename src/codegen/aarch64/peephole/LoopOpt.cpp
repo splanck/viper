@@ -40,8 +40,9 @@ namespace {
         return mi.ops[0].label;
     if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
         return mi.ops[1].label;
-    if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) && mi.ops.size() >= 2 &&
-        mi.ops[1].kind == MOperand::Kind::Label)
+    if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz || mi.opc == MOpcode::Tbz ||
+         mi.opc == MOpcode::Tbnz) &&
+        mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
         return mi.ops[1].label;
     return {};
 }
@@ -130,7 +131,8 @@ std::size_t hoistLoopConstants(MFunction &fn) {
                opc == MOpcode::StpRegFpImm || opc == MOpcode::StpFprFpImm ||
                opc == MOpcode::CmpRR || opc == MOpcode::CmpRI || opc == MOpcode::TstRR ||
                opc == MOpcode::FCmpRR || opc == MOpcode::Br || opc == MOpcode::BCond ||
-               opc == MOpcode::Cbz || opc == MOpcode::Cbnz || opc == MOpcode::Ret ||
+               opc == MOpcode::Cbz || opc == MOpcode::Cbnz || opc == MOpcode::Tbz ||
+               opc == MOpcode::Tbnz || opc == MOpcode::JumpTable || opc == MOpcode::Ret ||
                opc == MOpcode::Bl || opc == MOpcode::Blr || opc == MOpcode::SubSpImm ||
                opc == MOpcode::AddSpImm || opc == MOpcode::PhiStoreGPR ||
                opc == MOpcode::PhiStoreFPR;
@@ -314,7 +316,8 @@ std::size_t hoistLoopConstants(MFunction &fn) {
                 if (tgtIt != nameToIdx.end() && tgtIt->second == loop.header)
                     reachesHeader = true;
                 if (lastInstr.opc == MOpcode::BCond || lastInstr.opc == MOpcode::Cbz ||
-                    lastInstr.opc == MOpcode::Cbnz)
+                    lastInstr.opc == MOpcode::Cbnz || lastInstr.opc == MOpcode::Tbz ||
+                    lastInstr.opc == MOpcode::Tbnz)
                     reachesHeader = true;
             }
 
@@ -389,7 +392,8 @@ std::size_t hoistLoopConstants(MFunction &fn) {
         while (insertIdx > 0) {
             const auto opc = preInstrs[insertIdx - 1].opc;
             if (opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
-                opc == MOpcode::Cbnz || opc == MOpcode::Ret)
+                opc == MOpcode::Cbnz || opc == MOpcode::Tbz || opc == MOpcode::Tbnz ||
+                opc == MOpcode::JumpTable || opc == MOpcode::Ret)
                 --insertIdx;
             else
                 break;
@@ -515,7 +519,8 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
     // Helper: check if instruction is a branch or terminator.
     auto isTerminator = [](MOpcode opc) -> bool {
         return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
-               opc == MOpcode::Cbnz || opc == MOpcode::Ret;
+               opc == MOpcode::Cbnz || opc == MOpcode::Tbz || opc == MOpcode::Tbnz ||
+               opc == MOpcode::JumpTable || opc == MOpcode::Ret;
     };
 
     // Build predecessors and dominators so layout-created backward branches to

@@ -428,12 +428,12 @@ func runInteractive(config: ClientConfig) {
             Terminal.Print(config.database + "=> ");
         }
 
-        var rawInput = Terminal.ReadLine();
-        if rawInput == null {
+        var rawInput = Terminal.TryReadLine();
+        if rawInput.IsNone {
             running = false;
             continue;
         }
-        var input = rawInput!;
+        var input = rawInput.UnwrapStr();
 
         // Empty line
         if input == "" && inMultiline == false {

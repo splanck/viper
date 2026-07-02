@@ -21,7 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-static constexpr std::array<OpFmt, 53> kOpFmt = {{
+static constexpr std::array<OpFmt, 71> kOpFmt = {{
     {MOpcode::MOVrr, "movq", 2U, 0U},
     {MOpcode::MOVrm, "movq", 2U, 0U},
     {MOpcode::MOVmr, "movq", 2U, 0U},
@@ -55,6 +55,24 @@ static constexpr std::array<OpFmt, 53> kOpFmt = {{
     {MOpcode::SETcc, "set", 2U, static_cast<std::uint8_t>(kFmtCond | kFmtSetcc)},
     {MOpcode::MOVZXrr8, "movzbq", 2U, kFmtMovzx8},
     {MOpcode::MOVZXrr32, "movl", 2U, kFmtReg32},
+    {MOpcode::ADDrr32, "addl", 2U, kFmtReg32},
+    {MOpcode::SUBrr32, "subl", 2U, kFmtReg32},
+    {MOpcode::IMULrr32, "imull", 2U, kFmtReg32},
+    {MOpcode::CMPrr32, "cmpl", 2U, kFmtReg32},
+    {MOpcode::ADDri32, "addl", 2U, kFmtReg32Imm},
+    {MOpcode::MOVSXD, "movslq", 2U, kFmtMovsxd},
+    {MOpcode::ADDrr16, "addw", 2U, kFmtReg16},
+    {MOpcode::SUBrr16, "subw", 2U, kFmtReg16},
+    {MOpcode::IMULrr16, "imulw", 2U, kFmtReg16},
+    {MOpcode::ADDri16, "addw", 2U, kFmtReg16Imm},
+    {MOpcode::MOVSXrr16, "movswq", 2U, kFmtMovsx16},
+    {MOpcode::ADDrm, "addq", 2U, 0U},
+    {MOpcode::SUBrm, "subq", 2U, 0U},
+    {MOpcode::ANDrm, "andq", 2U, 0U},
+    {MOpcode::ORrm, "orq", 2U, 0U},
+    {MOpcode::XORrm, "xorq", 2U, 0U},
+    {MOpcode::CMPrm, "cmpq", 2U, 0U},
+    {MOpcode::IMULrm, "imulq", 2U, 0U},
     {MOpcode::TESTrr, "testq", 2U, 0U},
     {MOpcode::JMP, "jmp", 1U, kFmtJump},
     {MOpcode::JCC, "j", 2U, static_cast<std::uint8_t>(kFmtJump | kFmtCond)},

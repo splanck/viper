@@ -1246,6 +1246,14 @@ function(viper_add_basic_integration_tests)
             -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_boolean_method_return.expect
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
+    # Regression: object parameters are borrowed, including objects with array fields.
+    viper_add_ctest(basic_oop_object_param_borrowed
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_object_param_borrowed.bas
+            -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_object_param_borrowed.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
     # BUG-094: 2D integer array field in class stores distinct values across columns (dotted access)
     # viper_add_ctest(basic_oop_int_array2d_field
     #         ${CMAKE_COMMAND}
