@@ -1,175 +1,412 @@
 # Viper: The Case for a New Kind of Game Development Platform
 
 *Internal overview — business strategy, technical foundation, and investment case*
-*Last updated: 2026-05-04*
+*Last updated: 2026-07-01*
+
+**Guiding principles of this document: full disclosure and transparency.** Every claim
+in it is verifiable against the repository, and the case against Viper is presented
+with the same care as the case for it. If this document ever reads as advocacy rather
+than analysis, it has failed at its job. The external messaging built from it should
+inherit the same standard: we win by being the platform whose claims get *stronger*
+when a skeptic checks them.
 
 ---
 
 ## The Premise
 
-Every game development platform on the market today is an engine built on top of someone else's everything else. Unity runs on Mono. Godot vendors over fifty third-party libraries — FreeType for fonts, Jolt for physics, mbedTLS for networking, libpng, libwebp, zlib, PCRE2, ICU, and dozens more. Unreal bundles hundreds of dependencies from OpenSSL to PhysX to Google's ICU library. The engines are impressive. The foundations are borrowed.
+Every mainstream game development platform is an engine built on top of someone else's
+everything else. Unity runs on Mono/.NET. Godot vendors over fifty third-party
+libraries. Unreal bundles hundreds, and both lean on external compilers and linkers.
+The engines are impressive. The foundations are borrowed.
 
-Viper is different. It owns the entire stack: the language, the compiler, the optimizer, the assembler, the linker, the bytecode VM, the native code generators, the runtime library, the graphics engine, the physics, the audio, the GUI framework, the game engine, and the IDE. Every line of code that executes when you build and run a Viper program was written for Viper. There are no vendored libraries. There is no third-party directory. There is no dependency tree.
+Viper owns the entire stack: the languages, the compiler, the optimizer, the
+assembler, the linker, the bytecode VM, the native code generators, the runtime
+library, the graphics engine, the physics, the audio, the GUI framework, the game
+engine, and the IDE. There is no vendored code and no third-party directory.
 
-This is not a philosophical choice made for its own sake. It is the foundation of a business with a durable competitive moat, a compelling product story, and a differentiated position in a market currently experiencing significant disruption.
+Full ownership is not, by itself, something customers pay for — that point is argued
+honestly in the risks section below. What it *buys* is the product experience that
+customers do pay for: install one tool, write source files, run one command, get a
+native binary that runs anywhere with nothing to install. And it buys a property that
+matters more every year: a project that is **100% code**, with no opaque editor
+state, which makes it unusually legible to both humans and AI coding agents.
 
 ---
 
 ## What Has Been Built
 
-In roughly eight and a half months — from a standing start on August 28, 2025 — the following has been produced.
+From a standing start on August 28, 2025 — roughly ten months of development,
+with commits on 286 of the first 308 days.
 
 ### The Scale
 
-Using the project's own SLOC counter (`./scripts/count_sloc.sh`), the codebase as of May 4, 2026 contains **541,963 production source lines of code** across 2,994 source files, with an additional 225,370 lines of tests and 187,757 lines of demo applications written in the platform's own languages. The overall project — production, tests, demos, build system, documentation — exceeds 950,000 SLOC. At roughly 160 commits per month sustained over the project's life, with 4,480 total commits, this represents an extraordinary pace of solo development.
+Using the project's own counter (`./scripts/count_sloc.sh`, run 2026-07-01):
+**663,761 production SLOC** across 3,398 source files, plus 255,111 lines of tests,
+165,011 lines of demo applications written in the platform's own languages, and
+25,568 lines of ViperIDE. Overall: just over 1.1 million SLOC, produced across
+4,976 commits — an average of roughly 490 commits per month sustained for ten months.
+
+### How It Was Built — Full Disclosure
+
+Viper is developed by one engineer directing AI coding agents at scale. That fact is
+disclosed here, will be disclosed in public messaging, and is a strength to be owned
+rather than a caveat to be buried. Ten months of daily architectural direction,
+spec authorship, review, and debugging is the engineering; the agents are the
+workforce. What kept a million-line AI-assisted codebase coherent is a discipline
+stack that most human teams don't maintain: a normative IL specification, 24
+architecture decision records with implementation traceability, conventional-commit
+hygiene, golden-file regression tests, fuzz harnesses, and a hard rule that the VM
+and native backends produce identical output for every defined program. The process
+is itself a demonstration of the platform's own thesis: when everything is code and
+the specs are explicit, AI-assisted development works at scale.
 
 ### Two Complete Language Compilers
 
-Viper provides two language frontends that share the same compilation infrastructure.
+**Zia** is a modern, statically typed language in the tradition of Swift and Kotlin:
+classes, structs, interfaces with dynamic dispatch, generics with constraints,
+lambdas and closures, pattern matching with exhaustiveness checking, optional types
+with null-safety operators, structured exception handling, enums, properties, and
+modules. It is complete end-to-end: every AST expression and statement kind has a
+lowering implementation.
 
-**Zia** is a modern, statically typed language in the tradition of Swift and Kotlin. It has classes, structs, interfaces with dynamic dispatch, single inheritance, generics with type constraints, lambdas and closures, pattern matching with exhaustiveness checking, optional types with null safety operators (`?.`, `??`, `!`), async/await, structured exception handling, enums, properties, and destructors. The Zia compiler is complete end-to-end: every expression kind and statement kind defined in the AST has a corresponding lowering implementation, verified by direct source inspection.
+**Viper BASIC** is an OOP-extended classic BASIC — classes, interfaces, inheritance,
+properties, structured exception handling — that remains backward-compatible with
+traditional syntax (`GOTO`, `GOSUB`, `FOR...TO...STEP`, `SELECT CASE`,
+`ON ERROR GOTO`). It is the education on-ramp and the nostalgia bridge.
 
-**Viper BASIC** is an OOP-extended classic BASIC with classes, interfaces, inheritance, virtual and override methods, properties, structured exception handling, traditional file I/O channels, and backward-compatible syntax including `GOTO`, `GOSUB`, `FOR...TO...STEP`, `SELECT CASE`, and `ON ERROR GOTO`. The depth of BASIC is demonstrated by what has been built with it: a complete relational database implementation with its own lexer, parser, schema manager, index system, and query executor — all written in Viper BASIC. If the language can host a working SQL engine, it can handle anything a game requires.
-
-Both languages compile through the same intermediate language, share the same optimizer, execute on the same VM, and produce output through the same native backends. A project can include files from both languages.
+Both languages compile through the same intermediate language, share one optimizer,
+one VM, and the same native backends. A project can mix files from both.
 
 ### A Real Compiler Pipeline
 
-The IL at the center of the platform is an 83-opcode, strongly typed, SSA-form intermediate language with a full multi-pass optimizer covering dead code elimination, constant folding and propagation, global value numbering, loop-invariant code motion, loop unrolling, function inlining, and more. Above the IL sits a full verification pass that rejects malformed programs before they reach the backend.
+At the center is an 83-opcode, strongly typed, SSA-form intermediate language with a
+normative written specification (IL v0.2.0), a thorough verifier that rejects
+malformed programs before they reach a backend, and a registered O1/O2 optimizer
+pipeline: SSA promotion, SCCP, global value numbering, LICM, loop transforms,
+inlining, devirtualization, and cleanup passes.
 
-Below the IL are two native code generation backends. The x86-64 backend uses a rule-driven IL-to-MIR lowering pass, a register allocator, a post-allocation instruction scheduler, and a peephole optimizer. The AArch64 backend handles the full 83-opcode IL surface — verified directly in source — with a coalescing register allocator. Both backends include their own assemblers that emit binary machine code directly.
+Below the IL sit two native backends — x86-64 and AArch64 — each with rule-driven
+lowering, a real register allocator, scheduling, and peephole optimization, and each
+emitting binary machine code through its own assembler.
 
 ### A Real Linker
 
-Viper's linker is not a wrapper around the system's `ld`. It is a complete, from-scratch linker that reads object files in three formats and writes native executables for three operating systems. The source includes complete writers for Linux (ELF), macOS (Mach-O), and Windows (PE/COFF), alongside symbol resolution, relocation application, section merging, and an Identical Code Folding optimization pass. macOS code signing is handled natively. A `viper build` command goes from source code to a native binary on any supported platform without invoking any external tool.
+Viper's linker is not a wrapper around the system `ld`. It reads three object formats
+and writes native executables for three operating systems — ELF (Linux),
+Mach-O (macOS, with native code signing), and PE/COFF (Windows) — with symbol
+resolution, relocation, section merging, and identical-code-folding. `viper build`
+goes from source to a runnable native binary on any supported platform without
+invoking a single external tool.
 
-### A 252,000-Line Runtime Library
+### The Runtime Library
 
-The runtime is the heart of the platform's practical value, and at 252,118 SLOC it is the largest single component. It covers collections, strings, networking (HTTP, HTTPS, WebSocket, TCP, UDP, DNS, TLS — all custom), cryptography (AES, AES-GCM, SHA families, HMAC, HKDF, PBKDF2, ECDSA), audio, 2D and 3D graphics, a physics engine, pathfinding, a 47-widget GUI framework, a game engine with skeletal animation and an asset pipeline, a localization system, threading and synchronization, file I/O, a regex engine, JSON/XML/CSV/TOML parsers, an HTTP router, and more.
+The runtime is the largest single component of the platform and the heart of its
+practical value: collections, strings and text processing, structured data
+(JSON/XML/CSV/TOML), a regex engine, networking (HTTP, HTTPS, WebSocket, TCP, UDP,
+DNS), 2D and 3D graphics with four rendering backends, a physics engine, pathfinding,
+skeletal animation, an asset pipeline with glTF/FBX import, audio with spatial mixing
+and effect chains, a 47-widget GUI framework, localization, threading, and file I/O.
+All of it implemented in-tree, all of it callable identically from both languages,
+and all of it inventoried live via `viper --dump-runtime-api`.
 
-Every one of these capabilities is implemented directly in the Viper source tree. None of it is imported from an external library. When a CVE is disclosed in OpenSSL, it is not Viper's problem. When a breaking change ships in Jolt Physics, it is not Viper's problem. The platform has no upstream exposure because it has no upstream.
+### Engineering Quality — Verifiable
+
+- **1,740 tests** across 70 categories: unit, golden-file, end-to-end, conformance,
+  and differential tests that assert VM output equals native output.
+- **Determinism as a spec-level guarantee**: one program produces identical results
+  on the tree-walking VM, the bytecode engines, and native builds.
+- **24 ADRs** documenting architectural decisions with links to the implementing
+  code and tests.
+- **11 tagged releases** in ten months, each with detailed, metrics-backed release
+  notes.
+- Machine-readable tooling designed for editors and AI agents: `viper check`,
+  `viper eval`, `viper explain`, LSP and MCP servers for both languages.
 
 ### Real Software, Not Toys
 
-The platform's maturity is demonstrated by what has been built with it. The examples directory contains a full IDE, a PostgreSQL-compatible SQL database engine written in Zia, a drawing application, a web server, a Telnet client, and an archive utility. Eighteen game examples span both Zia and BASIC, from a chess engine with AI to a Metroidvania-style sidescroller (XENOSCAPE: 30 source files, 21,242 lines of Zia) to full 3D examples including bowling, baseball, and a 3D world renderer.
-
-A full IDE. A PostgreSQL-compatible database. A Metroidvania with multiple bosses. An AI chess engine. A SQL engine in BASIC. These are the things that make a skeptic pause.
+The examples tree contains a full IDE (with debugger, git integration, and an
+integrated terminal), a PostgreSQL-compatible SQL database engine written in ~85,000
+lines of Zia, a drawing application, a multi-threaded web server, and 18 games —
+from an AI chess engine to a 21,000-line Metroidvania (XENOSCAPE) to 3D titles
+including bowling and an open-world rendering showcase. These are the artifacts that
+make a skeptic pause, and every one of them builds and runs from the public tree.
 
 ---
 
 ## Why Viper Is Different
 
-### Nobody Else Owns the Whole Stack
+Honesty about the competitive landscape requires naming *both* groups of competitors,
+because they attack from opposite directions.
 
-Here is what every major game development platform owns versus what it borrows:
+### Versus the editor-centric engines (Unity, Unreal, Godot)
 
-| Platform | What they built | What they borrowed |
-|---|---|---|
-| Unity | Engine, editor | C# language, Mono/.NET runtime, IL2CPP |
-| Godot | Engine, GDScript VM | 50+ vendored libraries |
-| Unreal | Engine, editor | C++ via LLVM/MSVC, hundreds of third-party libs |
-| **Viper** | **Everything** | **Nothing** |
+Most of a game built in these engines is not code: scene files, prefabs, serialized
+component hierarchies, inspector-configured values living in editor-managed formats.
+Viper games are 100% code — every scene, entity, behavior, and configuration value is
+a Zia or BASIC source file. A human can read the whole project; so can an AI agent,
+with no blind spots and no editor-state opacity. Viper ships LSP and MCP servers
+today, so the AI-assisted workflow is present infrastructure, not a roadmap item.
 
-No other game development platform on Earth can make this claim. Not because the claim is hard to defend — no one else has built the whole stack from scratch, so the comparison is uncontested.
+Stated with appropriate care: this is a **head start, not a law of physics**. Godot's
+scene format is already text; every incumbent is racing to become AI-legible; agents
+are improving at serialized formats. The durable claim is that Viper was designed
+code-first from day one and will never carry editor-state legacy — not that
+competitors can never respond.
 
-### Zero Dependencies Is a Product Feature
+### Versus the code-first frameworks (Bevy, MonoGame, LÖVE, raylib)
 
-The absence of external libraries is not a technical curiosity. It has direct, concrete value for the developers and organizations who build on the platform.
+This is the honest competitive neighborhood, and the previous version of this
+document failed to name it. These frameworks already offer code-first game
+development, they are free, and they have mature communities. Viper's differentiation
+against them is different in kind:
 
-For independent developers, a Viper game ships as one binary file. There is no runtime to install, no dynamic libraries to bundle, no platform-specific package to manage. The game runs because the binary is self-contained.
+- **They are libraries; Viper is a platform.** A Bevy or MonoGame project begins with
+  toolchain assembly: install a compiler ecosystem, manage a dependency graph, wire
+  up asset handling, choose and integrate libraries for audio, networking, UI, and
+  physics. Viper is one install: language, compiler, engine, IDE, debugger, and a
+  batteries-included runtime, with `viper build` producing a self-contained native
+  binary. The zero-setup, zero-ceremony experience is the product.
+- **An integrated IDE with a VM debugger** — step, inspect locals, evaluate watch
+  expressions — which none of the code-first frameworks provide as a first-party
+  experience.
+- **Two languages on one runtime**, including the only serious modern BASIC with a
+  real 3D engine behind it — a genuinely unoccupied niche with proven nostalgic and
+  educational demand (the QB64/BlitzBasic/Pico-8 lineage).
 
-For commercial studios, every external library in the engine is a liability. It needs to be audited for security vulnerabilities. It needs to be tracked for license compliance. It needs to be updated when its maintainers issue patches. Studios with IP legal teams do this work continuously, and it costs real time and money. A platform with zero external dependencies eliminates this category of work entirely.
+### The one-binary story
 
-For enterprise customers, a dependency audit of Viper's runtime is an audit of one codebase with one license. Compare that to auditing FreeType, mbedTLS, zlib, libpng, libwebp, Jolt, PCRE2, and forty more projects for a single Godot-based product.
+For an independent developer, a Viper game ships as a single self-contained
+executable per platform: no runtime to install, no DLLs to bundle, no packaging
+matrix. For anyone who has shipped a game off the beaten path of the big engines,
+this is a felt, daily-life advantage — and it is the *customer-facing* expression of
+the zero-dependency architecture.
 
-### Code-First Development Is the Future of AI-Assisted Work
+---
 
-Every mainstream game engine has a problem it did not design for: the AI coding agent. AI tools work on code. They read files, understand relationships, generate new source, refactor across a codebase. They do all of this fluently when the thing they are working on is code.
+## The Case Against Viper — Risks, Stated Plainly
 
-But most of a game built in Unity, Unreal, or Godot is not code in any meaningful sense. Scene files are complex YAML-like structures. Prefabs are serialized component hierarchies. Blueprints are binary. Inspector-configured values — which contain a significant portion of a game's actual behavior — live in editor-managed formats that no AI tool was trained to read or generate fluently.
+Full disclosure means this section carries the same weight as everything above it.
+These are the reasons Viper could fail as a business, in rough order of severity.
 
-Viper games are 100% code. Every scene, every entity, every behavior, every configuration value is a Zia or BASIC source file. An AI agent can read the entire project, reason about every relationship, generate new files, and refactor across the codebase with no blind spots and no editor-state opacity.
+**1. The new-language barrier is the tallest wall.** Adopting Viper means learning
+Zia — leaving behind an existing language, its libraries, its Stack Overflow corpus,
+and its asset ecosystems. Historically, this is what killed most engine-with-its-own-
+language businesses. The honest mitigations: BASIC as a familiar on-ramp for one
+audience segment; the reality that AI agents flatten new-language learning curves
+(an agent with the LSP/MCP servers and the machine-readable diagnostics is fluent in
+Zia immediately, and so, therefore, is its user); and a deliberately small,
+conventional language design. These mitigations are real but unproven at market
+scale. This risk must be addressed head-on in messaging, not hidden.
 
-The platform already ships both a Language Server Protocol server and a Model Context Protocol server. The infrastructure for AI-assisted development is not a roadmap item — it is present now. The workflow where an AI agent contributes meaningfully to a large percentage of a game's development is achievable today with Viper in a way that is structurally impossible with editor-centric platforms.
+**2. Bus factor of one.** The platform is maintained by a single person. Prospective
+adopters betting a commercial project on Viper will ask what happens if the
+maintainer stops. Mitigations: the GPL guarantees the code can never be taken away
+from the community; the specification, ADR, and test discipline make the codebase
+unusually maintainable by others; and building a second maintainer and a contributor
+base is an explicit near-term goal. But today, this is a fair and serious objection.
 
-In 2026, AI-assisted development is a standard part of professional software work. A platform designed for it from the ground up — by requiring everything to be code — is in a position that platforms designed a decade ago cannot easily replicate.
+**3. Desktop-only targets.** Viper compiles for Linux, macOS, and Windows. There is
+no console support (Switch/PlayStation/Xbox require proprietary NDA'd toolchains that
+conflict with the zero-dependency philosophy and are, at minimum, distant work) and
+no mobile support. A large share of indie revenue lives on exactly those platforms.
+Viper's honest near-term market is desktop — Steam and itch.io — and messaging must
+not imply otherwise.
 
-### One Command, No Toolchain Ceremony
+**4. Ecosystem cold start.** No asset store, no third-party tutorials, no library
+ecosystem, no answers corpus, no hiring pool. Every platform starts here, but
+incumbents' network effects are the single hardest moat to cross. The dogfooding
+games, the free documentation book, and the education channel are the plan for
+seeding an ecosystem — and that plan takes years, not quarters.
 
-A developer installs Viper. They write a file. They run `viper build`. They get a native binary. There is no "install LLVM," no "configure your linker path," no "make sure you have the Windows SDK." The platform carries its own assembler and linker. It produces the right binary format for whatever platform it runs on. The developer experience is as close to frictionless as a native compilation toolchain can be.
+**5. Zero dependencies is a permanent tax as well as a story.** Owning the whole
+stack means every bug in every subsystem is ours alone, forever, with no upstream
+maintainers sharing the load. The same property that eliminates upstream churn also
+forgoes upstream help. This is a deliberate trade, and the discipline record so far
+(1,740 tests, differential VM-vs-native checking, 24 ADRs) is the evidence it can be
+carried — but the cost compounds with every capability added, and it should temper
+enthusiasm for further runtime breadth.
+
+**6. The market segment most likely to switch is price-sensitive.** The developers
+who left Unity in 2023 predominantly went to Godot — which is free. Viper's paid
+tiers bet that a meaningful slice of this market will pay modest, predictable prices
+for a more integrated, more trustworthy experience. That bet is plausible
+(Pico-8 and the Blitz lineage proved paid niche tooling works) but it is a bet, and
+the free tier must be genuinely excellent for the paid tiers to feel fair rather
+than extractive.
+
+**7. Support burden arrives with the first paying customer.** A platform business is
+a support business. At solo scale, paid licenses create obligations that compete
+directly with development time. Sequencing (community first, paid tiers only when
+support is sustainable) and a second person on community/support are the plan; until
+then, this constrains how fast revenue should be turned on.
+
+**8. Pre-1.0 surface instability.** APIs, diagnostics, and IL rules are still
+evolving (the tree is 0.2.x). Early adopters will experience breaking changes. The
+version-cadence commitment below is the mitigation, but it only takes effect at v1.0
+— and declaring v1.0 prematurely would be worse than waiting.
+
+**9. AI-authorship perception.** Some of the developer audience is reflexively
+skeptical of AI-built software. The mitigation is this document's founding principle:
+disclose it, explain the discipline stack that makes it trustworthy, and let the
+verifiable artifacts — the tests, the shipped games, the reproducible builds — carry
+the argument. Transparency converts this from a scandal-in-waiting into a
+differentiator; concealment would do the opposite.
+
+---
+
+## License Model
+
+Viper is licensed under the **GNU GPL v3 for everyone**, with a **commercial license
+available for closed-source distribution**. This is classic dual licensing, and its
+mechanics deserve a transparent explanation, because the model only builds trust if
+it is explained precisely and honestly:
+
+- **Everything is GPL-3, always.** The compiler, the runtime, the IDE — full source,
+  forever. This is already the repository's license; nothing is being taken away,
+  relicensed, or moved behind a wall. The free tier is not a limited edition; it is
+  the entire platform.
+- **Compiled programs statically link Viper's runtime.** Under the GPL, a distributed
+  game containing the GPL runtime must itself be licensed GPL-3 — source available to
+  its players. Important honesty note: the GPL does **not** forbid selling. Anyone
+  may sell a GPL'd game commercially; what they cannot do is keep its source closed,
+  and anyone may redistribute it. Open-source game developers therefore need nothing
+  from us, ever.
+- **The commercial license is a runtime-linking exception** that permits distributing
+  closed-source programs built with Viper. That is the entire product: hobbyists,
+  learners, educators, and open-source developers use everything free; developers
+  shipping proprietary games buy a license.
+
+Two structural prerequisites, both non-negotiable before launch:
+
+- **A contributor license agreement from the first outside contribution.** Dual
+  licensing is only possible while the copyright is unified. Today one person owns
+  100% of it; a single merged community patch without a CLA would permanently
+  compromise the ability to grant commercial exceptions. The CLA must exist before
+  the community does.
+- **Professional legal review of the exception wording** before it is announced.
+  Runtime-exception language is subtle, and retrofitting it after customers exist is
+  far more expensive than getting it right once.
+
+### Tiers
+
+- **Open / Community** — free for everyone, forever, full platform, GPL terms.
+  Games built on it are GPL and may be sold or given away.
+- **Indie** — one-time purchase per major version (anchor: **$69**), grants the
+  closed-source distribution exception for a solo developer. Upgrades to the next
+  major version at roughly half price. One purchase decision, no subscription — a
+  deliberate contrast with the model that broke trust at Unity.
+- **Studio** — annual license for small teams: 3 seats at $500/year; Studio+ at
+  $1,200/year for 10 seats.
+- **Education** — 30 classroom seats at $200/year, priced so an institution can
+  approve it without escalation. (Classroom use rarely requires the exception at all
+  — this tier sells support, curriculum alignment, and institutional legitimacy.)
+- **Enterprise** — negotiated, for publishers or companies embedding the platform.
+
+### The cadence commitment
+
+The indie model rests entirely on buyers knowing what they bought. A publicly
+committed major-version cadence of **18–24 months**, with all minor and patch
+releases free within a major version, converts the one-time purchase from an
+ambiguous promise into a concrete value proposition. This commitment is a product
+feature and belongs in the launch messaging — and it should only be made when v1.0
+is genuinely ready to carry it.
 
 ---
 
 ## The Business Strategy
 
-### Market Positioning
+### Positioning
 
-Viper enters the market as a **game development platform**, not a game engine. The distinction matters. An engine is a tool you borrow to build your game. A platform is a foundation you build on — something with depth, composability, and long-term sustainability.
+Viper enters as a **game development platform**, not another engine: one integrated,
+fully-owned stack where everything is code, one command produces one binary, and the
+whole system is legible to humans and AI agents alike. The pitch leads with the
+developer experience; full stack ownership is the explanation, not the headline.
+The platform's general-purpose depth — the database engine, networking, GUI — is a
+discovery that deepens commitment, not the opening argument.
 
-The game development market is currently in disruption. Unity's 2023 pricing crisis drove significant developer migration to alternatives. Godot absorbed much of that movement but operates on a volunteer-based open source foundation with uncertain long-term funding. Unreal remains dominant in AAA but is structurally inaccessible to most independent developers due to complexity and revenue share requirements. A meaningful segment of the market is actively looking for something better — and "better" is not being defined purely as "cheaper." After the Unity crisis, developers are also looking for something more trustworthy.
+### The Dogfooding Games
 
-Viper's pitch is not incremental improvement. It is a structurally different answer to the question of what a game development platform should be: own your stack, ship one binary, write everything in code, never worry about upstream again.
+The most important marketing artifact is not a video or a blog post; it is a shipped
+commercial game. A **baseball manager simulation** — simulation-heavy, data-heavy,
+modest art budget, deep systems — will be developed entirely in Viper and sold on
+Steam as a real commercial product with private source. Its genre is chosen to
+exercise the runtime comprehensively (collections, serialization, AI simulation, UI)
+within a solo-buildable scope. Every production problem it surfaces is fixed before
+external developers ever hit it — a loop already proven by the 3D showcase demo,
+whose development log converted directly into compiler and runtime fixes.
 
-The platform's general-purpose capabilities — the SQL database engine, the full networking stack, the cryptographic library, the GUI framework — are genuine competitive advantages, particularly for the commercial and enterprise tiers. But they are not the primary marketing surface. The game development audience is the growth channel. The general-purpose story surfaces naturally as developers discover the depth of the platform.
-
-### License Model
-
-Viper uses a **source-available commercial license**. The distinction from "open source" is intentional and important — true open source permits commercial use without restriction, which eliminates the basis for a commercial tier. Source-available means the source is readable and auditable, non-commercial use is free, and commercial use requires a license. This model is understood and accepted in the developer community when communicated clearly and honestly.
-
-**Community** — free for non-commercial use. Students, hobbyists, educators, and anyone building something that does not generate revenue. Full platform access, no time limits, no feature restrictions. This tier builds the community, feeds the ecosystem, and creates the ambient presence that makes commercial tiers feel safe to buy into.
-
-**Indie** — a one-time purchase per major version, targeting solo developers shipping commercial products. The proposed anchor price is $69 per major version, with upgrade pricing for existing license holders at approximately half. This is a single purchase decision, not an ongoing obligation — a deliberate contrast with the subscription models that drove significant negative sentiment around Unity.
-
-**Studio** — an annual license for a small commercial team. Three seats at $500 per year covers the typical small studio. A Studio+ tier at $1,200 per year for ten seats covers studios that have grown beyond that.
-
-**Education** — an annual license covering a classroom. Thirty seats at $200 per year makes the platform accessible to universities, coding bootcamps, and schools while generating sustainable revenue from institutional buyers who have purchasing processes set up for exactly this kind of tool.
-
-**Enterprise** — negotiated pricing for large studios, publishers, or companies embedding the platform in a product. The zero-dependency, single-vendor story is particularly compelling here; enterprise buyers have legal and security teams who understand what it means to audit fifty upstream libraries every quarter.
-
-One additional element of the license model is critical to get right before launch: **major version cadence**. The entire indie pricing structure rests on developers trusting that they know what they are buying. A publicly committed cadence of 18 to 24 months per major version transforms the one-time purchase from an ambiguous promise into a concrete value proposition. Minor and patch releases within a major version are always free. This commitment is as much a product feature as any technical capability, and it needs to be established in the launch messaging.
-
-### The Dogfooding Game
-
-The platform's most important near-term marketing artifact is not a video or a blog post. It is a shipped commercial game.
-
-A baseball manager simulation game will be developed entirely in Viper and sold on Steam as a standalone commercial product. The game's IP and source code remain private — this is a revenue-generating commercial product, not a showcase. But its existence as a purchasable, reviewable product on a major platform does something no demo can do: it proves that Viper ships real, sellable software.
-
-The choice of genre is deliberate. A baseball manager simulation is simulation-heavy and data-heavy, with manageable art asset requirements and deep gameplay systems. It exercises the platform's runtime library comprehensively — collections, serialization, data management, AI simulation — and pushes the game engine abstractions in ways that surface real production issues. Every problem encountered during its development is a problem fixed before external developers encounter it.
-
-Alongside the closed-source commercial game, a separate, openly developed showcase project will demonstrate the AI-assisted development workflow publicly — transparent commits, visible AI collaboration, documented process. Its purpose is not to impress with gameplay but to show concretely what development looks like when an AI agent can participate in 100% of the work because everything is code.
+Alongside it, a separate **openly developed showcase game** demonstrates the
+AI-assisted workflow in public: transparent commits, visible agent collaboration,
+documented process. Its job is not gameplay excellence; it is to show concretely
+what development looks like when an agent can participate in 100% of the work
+because 100% of the work is code.
 
 ### Growth Path
 
-The initial audience is independent game developers, reached through the communities where they already spend time: Reddit's game development communities, itch.io, game development Discord servers, game jam circuits. The entry point is the demo reel — gameplay footage from the platform's existing games, followed immediately by the Zia source code and the one-command build. Show the game first. Show that it was built in Zia second. Show the stack third. Lead with the outcome, not the technology.
+The initial audience is independent desktop game developers, reached where they
+already are: game-dev Reddit, itch.io, Discord communities, and game jams. The entry
+artifact is the demo reel — gameplay first, then the source that produced it, then
+the one-command build. **Show the game first. Show the code second. Show the stack
+third.**
 
-The broader developer community — Hacker News, programming language forums, compiler communities — finds the zero-dependency story and the velocity story intrinsically interesting. They become amplifiers and, in time, contributors to the ecosystem.
+The broader systems-programming community (Hacker News, language and compiler
+circles) finds the from-scratch story intrinsically interesting and becomes the
+amplifier channel. The education market is reached through BASIC plus the IDE plus
+native compilation — a complete, motivating pipeline from first line of code to a
+shipped playable game, priced for frictionless institutional purchase. The free
+documentation book creates the SEO and credibility foundation; a game jam, once
+installation is zero-friction, is the community capstone.
 
-The education market is accessed through the BASIC frontend. The combination of an approachable language, a real game engine, a complete IDE, and native compilation on every major OS creates a proposition that is genuinely unusual in coding education. Students writing BASIC who compile to native binaries and ship playable games have a more motivating and more complete experience than any JavaScript-in-a-browser curriculum. The education tier pricing is deliberately set so that an institution can approve it without escalation.
+### The Moat, Stated Honestly
 
-Hosting the platform's documentation as a free online book — structured as a path from first line of code to first shipped game — creates the SEO foundation and the educational credibility that both consumer and institutional buyers respond to. A game jam, once the developer experience reaches zero-friction installation, is the community-building capstone: even a small jam produces games, testimonials, and real-world feedback that no internal testing generates.
+Three compounding advantages, each with its honest limit:
 
-### The Competitive Moat
-
-Platform businesses are hard to displace once they have a community, an ecosystem, and a body of work built on them. Viper's moat compounds from three sources.
-
-The zero-dependency architecture is genuinely difficult to replicate. A competitor cannot add "no external dependencies" to an existing engine the way they might add a feature. It requires rebuilding every borrowed component from scratch — years of engineering work. That gap grows with every capability added to the Viper runtime.
-
-The code-first design advantage compounds as AI tooling improves. A platform built for AI-assisted development before that was a standard requirement will continue to be better positioned than platforms retrofitting it afterward. Every improvement in AI coding tools widens Viper's advantage over editor-centric platforms, not narrows it.
-
-The commercial games built on the platform create compounding credibility. Each shipped game is evidence. A developer deciding whether to adopt the platform in two years will look at the commercial products built on it today and make a different calculation than they would looking at an empty track record.
+- **Integration.** The one-install, one-command, batteries-included experience is
+  years of work to replicate and is the hardest thing for both library-style
+  frameworks and editor-centric engines to match. Limit: integration is a moat only
+  while the pieces stay excellent; it decays if breadth outruns maintenance.
+- **Code-first + AI legibility.** A structural head start that compounds as agent
+  tooling improves. Limit: incumbents are actively closing this gap; the advantage
+  has a window, not a guarantee.
+- **Shipped games.** Each commercial title built on the platform is compounding
+  credibility no marketing can buy. Limit: this moat exists only after the games
+  ship, and shipping good games is its own hard business.
 
 ---
 
-## The Opportunity
+## The Opportunity — Sized From the Bottom Up
 
-The game development tools market generates billions of dollars annually. The independent developer segment — the most likely early adopters — numbers in the millions worldwide with a demonstrated willingness to pay for tools that improve their workflow and give them more control over their output.
+The honest math, replacing the top-down market hand-wave:
 
-Viper does not need to displace Unity or Unreal to be a significant business. A platform that captures a meaningful share of the independent developer market, establishes a presence in education, and earns the confidence of commercial studios looking for a more sustainable foundation is a growing, defensible business.
+- At the **$69** indie anchor, 1,000 licenses ≈ $69K; education at $200/year needs
+  institutional counts in the dozens to matter; studio tiers require a trust level
+  that follows, not precedes, a v1.0 and shipped games.
+- A **modest success** — an engaged niche community, several hundred indie licenses
+  a year, a handful of education customers, plus revenue from the dogfooded games —
+  is a five-figure annual side business that fully funds the project's costs and
+  proves the model.
+- A **solid success** — thousands of cumulative licenses, a real education footprint,
+  early studio adoption — is a low-six-figure business that supports full-time work
+  and a small team.
+- A **seven-figure outcome** almost certainly requires one of two events: a hit game
+  built on the platform (the path by which most engines historically earned their
+  standing), or meaningful studio/enterprise adoption post-1.0. It is the tail
+  outcome, planned for but not depended on. Every stage of this ladder is worth
+  reaching even if the next rung never arrives — that is what makes the plan
+  survivable.
 
-The platform is further along than any external observer would expect from eight and a half months of development. The core engineering — the languages, the compiler pipeline, the VM, the native backends, the linker, the runtime library — is substantially complete. What stands between the current state and a v1.0 launch is not more feature work. It is product work: committing publicly to the API surface and version cadence, building and shipping the baseball game, polishing the developer experience to zero-friction installation, and establishing the launch narrative before anyone else frames the conversation.
+The platform is further along than any external observer would expect from ten
+months of development, and the remaining distance to v1.0 is product work, not
+research: freezing the API surface, committing to the cadence, shipping the baseball
+game, polishing installation to zero friction, and establishing the launch narrative
+— in our own words, with full disclosure, before anyone else frames it for us.
 
-The platform exists. The code is real. The games run. The work now is going to market.
+The platform exists. The code is real. The games run. The claims survive inspection.
+The work now is going to market — transparently.
 
 ---
 
-*SLOC figures from `./scripts/count_sloc.sh --all` run 2026-05-04. Structural and technical claims verified by direct source inspection of the live codebase.*
+*SLOC figures from `./scripts/count_sloc.sh` run 2026-07-01 (production 663,761 /
+test 255,111 / demo 165,011 / ViperIDE 25,568 / source files 3,398). Commit and
+cadence figures from the repository history (4,976 commits, 2025-08-28 through
+2026-07-01). Opcode, test, ADR, and release counts verified by direct inspection.*
