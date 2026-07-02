@@ -697,6 +697,14 @@ function(viper_add_il_utils_test)
     viper_add_ctest(test_il_check_opt test_il_check_opt)
 
     viper_add_test(
+            test_il_int_range_analysis
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_IntRangeAnalysis.cpp)
+    target_link_libraries(
+            test_il_int_range_analysis PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform
+            il_api)
+    viper_add_ctest(test_il_int_range_analysis test_il_int_range_analysis)
+
+    viper_add_test(
             test_il_late_cleanup
             ${VIPER_TESTS_DIR}/unit/il/transform/test_LateCleanup.cpp)
     target_link_libraries(

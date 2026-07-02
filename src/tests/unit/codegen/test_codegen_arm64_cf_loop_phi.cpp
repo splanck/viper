@@ -5,6 +5,10 @@
 // Purpose: Verify loop lowering with loop-carried block params.
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
+#include <cstdlib>
+#ifdef _WIN32
+#include "tests/common/PosixCompat.h"
+#endif
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -70,6 +74,16 @@ TEST(Arm64CLI, CF_Loop_Phi) {
 }
 
 TEST(Arm64CLI, CF_Loop_Phi_PairedHeaderLoads) {
+    // This test validates the ldp pairing of loop-header slot reloads on the
+    // legacy slot path. Global slot pinning keeps these values in callee-saved
+    // registers (no header loads at all), so disable it for this compile.
+    setenv("VIPER_NO_GLOBAL_RA", "1", 1);
+    struct EnvReset {
+        ~EnvReset() {
+            unsetenv("VIPER_NO_GLOBAL_RA");
+        }
+    } envReset;
+
     const std::string in = outPath("arm64_cf_loop_pair.il");
     const std::string out = outPath("arm64_cf_loop_pair.s");
     const std::string il = "il 0.2.0\n"

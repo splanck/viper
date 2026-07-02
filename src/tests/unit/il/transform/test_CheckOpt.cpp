@@ -32,6 +32,7 @@
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/IntRangeAnalysis.hpp"
 
 #include <cassert>
 #include <limits>
@@ -86,6 +87,9 @@ il::transform::AnalysisRegistry createRegistry() {
     registry.registerFunctionAnalysis<il::transform::LivenessInfo>(
         "liveness",
         [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
+    registry.registerFunctionAnalysis<viper::analysis::IntRangeInfo>(
+        "int-ranges",
+        [](Module &, Function &fnRef) { return viper::analysis::computeIntRanges(fnRef); });
     return registry;
 }
 

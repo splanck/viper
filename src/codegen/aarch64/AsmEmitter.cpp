@@ -1259,6 +1259,51 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
         case MOpcode::StrFprBaseImm:
             emitStrFprToBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
             return;
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl: {
+            // ldr/str Rt, [Xn, Xm, lsl #k] — scaled register-offset form.
+            const bool isLoad = mi.opc == MOpcode::LdrRegBaseRegLsl ||
+                                mi.opc == MOpcode::Ldr32RegBaseRegLsl ||
+                                mi.opc == MOpcode::LdrFprBaseRegLsl;
+            const bool is32 = mi.opc == MOpcode::Ldr32RegBaseRegLsl ||
+                              mi.opc == MOpcode::Str32RegBaseRegLsl;
+            const bool isFpr = mi.opc == MOpcode::LdrFprBaseRegLsl ||
+                               mi.opc == MOpcode::StrFprBaseRegLsl;
+            const long long shift = getImm(mi.ops[3]);
+            os << (isLoad ? "  ldr " : "  str ");
+            if (isFpr) {
+                printD(os, getReg(mi.ops[0]));
+            } else if (is32) {
+                const char *xn = rn(getReg(mi.ops[0]));
+                os << 'w' << (xn + 1);
+            } else {
+                os << rn(getReg(mi.ops[0]));
+            }
+            os << ", [" << rn(getReg(mi.ops[1])) << ", " << rn(getReg(mi.ops[2]));
+            if (shift != 0)
+                os << ", lsl #" << shift;
+            os << "]\n";
+            return;
+        }
+        case MOpcode::AddRRRLsl:
+        case MOpcode::SubRRRLsl:
+        case MOpcode::AndRRRLsl:
+        case MOpcode::OrrRRRLsl:
+        case MOpcode::EorRRRLsl: {
+            const char *mnemonic = mi.opc == MOpcode::AddRRRLsl   ? "add"
+                                   : mi.opc == MOpcode::SubRRRLsl ? "sub"
+                                   : mi.opc == MOpcode::AndRRRLsl ? "and"
+                                   : mi.opc == MOpcode::OrrRRRLsl ? "orr"
+                                                                  : "eor";
+            os << "  " << mnemonic << ' ' << rn(getReg(mi.ops[0])) << ", "
+               << rn(getReg(mi.ops[1])) << ", " << rn(getReg(mi.ops[2])) << ", lsl #"
+               << getImm(mi.ops[3]) << "\n";
+            return;
+        }
         case MOpcode::TstRR:
             emitTstRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
             return;

@@ -95,6 +95,7 @@ class A64BinaryEncoder {
     void encodeConditionalInstr(const MInstr &mi, objfile::CodeSection &cs);
     void encodeFpRelLdStInstr(const MInstr &mi, objfile::CodeSection &cs);
     void encodeBaseRelLdStInstr(const MInstr &mi, objfile::CodeSection &cs);
+    void encodeRegOffsetLdStInstr(const MInstr &mi, objfile::CodeSection &cs);
     void encodeLdStPairInstr(const MInstr &mi, objfile::CodeSection &cs);
     void encodeSpOpInstr(const MInstr &mi, objfile::CodeSection &cs);
     void encodeAddFpImmInstr(const MInstr &mi, objfile::CodeSection &cs);

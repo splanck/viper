@@ -15,6 +15,7 @@
 
 #include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
+#include "il/analysis/IntRangeAnalysis.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
 #include "il/analysis/Dominators.hpp"
@@ -27,7 +28,6 @@
 #include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -41,14 +41,13 @@ using namespace il::core;
 namespace il::transform {
 namespace {
 using il::utils::addOverflows;
-using il::utils::addRanges;
-using il::utils::exactRange;
 using il::utils::IntRange;
-using il::utils::mergeIncomingRange;
 using il::utils::mulOverflows;
-using il::utils::mulRanges;
 using il::utils::subOverflows;
-using il::utils::subRanges;
+using viper::analysis::applyRangeTransfer;
+using viper::analysis::IntRangeInfo;
+using viper::analysis::RangeMap;
+using viper::analysis::rangeForValue;
 
 /// @brief Check if an opcode is a check operation that can be optimized.
 bool isCheckOpcode(Opcode op) {
@@ -99,246 +98,6 @@ std::optional<Opcode> plainOpcodeForOverflow(Opcode op) {
     }
 }
 
-std::optional<IntRange> rangeForValue(const Value &value,
-                                      const std::unordered_map<unsigned, IntRange> &ranges) {
-    if (value.kind == Value::Kind::ConstInt)
-        return exactRange(value.i64);
-    if (value.kind != Value::Kind::Temp)
-        return std::nullopt;
-    auto it = ranges.find(value.id);
-    if (it == ranges.end())
-        return std::nullopt;
-    return it->second;
-}
-
-bool deriveCompareBranchRange(const Instr &cmp,
-                              size_t branchIndex,
-                              Value &constrainedValue,
-                              IntRange &range) {
-    if (cmp.operands.size() != 2)
-        return false;
-
-    Opcode op = cmp.op;
-    Value variable;
-    int64_t constant = 0;
-
-    if (cmp.operands[0].kind == Value::Kind::Temp &&
-        cmp.operands[1].kind == Value::Kind::ConstInt) {
-        variable = cmp.operands[0];
-        constant = cmp.operands[1].i64;
-    } else if (cmp.operands[0].kind == Value::Kind::ConstInt &&
-               cmp.operands[1].kind == Value::Kind::Temp) {
-        variable = cmp.operands[1];
-        constant = cmp.operands[0].i64;
-        switch (op) {
-            case Opcode::SCmpLT:
-                op = Opcode::SCmpGT;
-                break;
-            case Opcode::SCmpLE:
-                op = Opcode::SCmpGE;
-                break;
-            case Opcode::SCmpGT:
-                op = Opcode::SCmpLT;
-                break;
-            case Opcode::SCmpGE:
-                op = Opcode::SCmpLE;
-                break;
-            default:
-                break;
-        }
-    } else {
-        return false;
-    }
-
-    if (variable.kind != Value::Kind::Temp)
-        return false;
-
-    IntRange fact;
-    const bool trueBranch = branchIndex == 0;
-    switch (op) {
-        case Opcode::SCmpLT:
-            if (trueBranch) {
-                if (constant == std::numeric_limits<int64_t>::min())
-                    return false;
-                fact.upper = constant - 1;
-            } else {
-                fact.lower = constant;
-            }
-            break;
-        case Opcode::SCmpLE:
-            if (trueBranch) {
-                fact.upper = constant;
-            } else {
-                if (constant == std::numeric_limits<int64_t>::max())
-                    return false;
-                fact.lower = constant + 1;
-            }
-            break;
-        case Opcode::SCmpGT:
-            if (trueBranch) {
-                if (constant == std::numeric_limits<int64_t>::max())
-                    return false;
-                fact.lower = constant + 1;
-            } else {
-                fact.upper = constant;
-            }
-            break;
-        case Opcode::SCmpGE:
-            if (trueBranch) {
-                fact.lower = constant;
-            } else {
-                if (constant == std::numeric_limits<int64_t>::min())
-                    return false;
-                fact.upper = constant - 1;
-            }
-            break;
-        case Opcode::ICmpEq:
-            if (!trueBranch)
-                return false;
-            fact = exactRange(constant);
-            break;
-        default:
-            return false;
-    }
-
-    constrainedValue = variable;
-    range = fact;
-    return true;
-}
-
-std::unordered_map<unsigned, IntRange> edgeRangesForTarget(const BasicBlock &pred,
-                                                           const Instr &term,
-                                                           size_t branchIndex,
-                                                           const BasicBlock &target) {
-    std::unordered_map<unsigned, IntRange> facts;
-    if (term.labels.size() <= branchIndex)
-        return facts;
-
-    if (branchIndex < term.brArgs.size()) {
-        const auto &args = term.brArgs[branchIndex];
-        for (size_t i = 0; i < args.size() && i < target.params.size(); ++i)
-            if (args[i].kind == Value::Kind::ConstInt)
-                facts[target.params[i].id] = exactRange(args[i].i64);
-    }
-
-    if (term.op != Opcode::CBr || term.operands.size() != 1)
-        return facts;
-
-    const Value &cond = term.operands.front();
-    if (cond.kind != Value::Kind::Temp)
-        return facts;
-
-    const Instr *cmp = nullptr;
-    for (const auto &instr : pred.instructions) {
-        if (instr.result && *instr.result == cond.id) {
-            cmp = &instr;
-            break;
-        }
-    }
-    if (!cmp)
-        return facts;
-
-    Value constrained;
-    IntRange range;
-    if (!deriveCompareBranchRange(*cmp, branchIndex, constrained, range))
-        return facts;
-
-    facts[constrained.id] = range;
-
-    if (branchIndex >= term.brArgs.size())
-        return facts;
-
-    const auto &args = term.brArgs[branchIndex];
-    for (size_t i = 0; i < args.size() && i < target.params.size(); ++i) {
-        if (valueEquals(args[i], constrained))
-            facts[target.params[i].id] = range;
-    }
-
-    return facts;
-}
-
-std::unordered_map<unsigned, IntRange> collectIncomingRanges(const Function &function,
-                                                             const BasicBlock &target) {
-    std::unordered_map<unsigned, IntRange> merged;
-    bool sawPred = false;
-
-    for (const auto &pred : function.blocks) {
-        if (pred.instructions.empty())
-            continue;
-        const Instr &term = pred.instructions.back();
-        for (size_t branchIndex = 0; branchIndex < term.labels.size(); ++branchIndex) {
-            if (term.labels[branchIndex] != target.label)
-                continue;
-
-            auto edgeFacts = edgeRangesForTarget(pred, term, branchIndex, target);
-            if (!sawPred) {
-                merged = std::move(edgeFacts);
-                sawPred = true;
-                continue;
-            }
-
-            for (auto it = merged.begin(); it != merged.end();) {
-                auto rhs = edgeFacts.find(it->first);
-                if (rhs == edgeFacts.end()) {
-                    it = merged.erase(it);
-                    continue;
-                }
-                auto combined = mergeIncomingRange(it->second, rhs->second);
-                if (!combined) {
-                    it = merged.erase(it);
-                    continue;
-                }
-                it->second = *combined;
-                ++it;
-            }
-        }
-    }
-
-    return merged;
-}
-
-std::optional<IntRange> computeInstructionRange(
-    const Instr &instr, const std::unordered_map<unsigned, IntRange> &ranges) {
-    if (instr.operands.size() >= 2) {
-        auto lhs = rangeForValue(instr.operands[0], ranges);
-        auto rhs = rangeForValue(instr.operands[1], ranges);
-        switch (instr.op) {
-            case Opcode::Add:
-            case Opcode::IAddOvf:
-                if (lhs && rhs)
-                    return addRanges(*lhs, *rhs);
-                break;
-            case Opcode::Sub:
-            case Opcode::ISubOvf:
-                if (lhs && rhs)
-                    return subRanges(*lhs, *rhs);
-                break;
-            case Opcode::Mul:
-            case Opcode::IMulOvf:
-                if (lhs && rhs)
-                    return mulRanges(*lhs, *rhs);
-                break;
-            case Opcode::And: {
-                if (instr.operands[1].kind == Value::Kind::ConstInt && instr.operands[1].i64 >= 0) {
-                    return IntRange{0, instr.operands[1].i64};
-                }
-                if (instr.operands[0].kind == Value::Kind::ConstInt && instr.operands[0].i64 >= 0) {
-                    return IntRange{0, instr.operands[0].i64};
-                }
-                break;
-            }
-            case Opcode::LShr:
-                if (instr.operands[1].kind == Value::Kind::ConstInt && instr.operands[1].i64 > 0 &&
-                    instr.operands[1].i64 < 64) {
-                    return IntRange{0, std::numeric_limits<int64_t>::max()};
-                }
-                break;
-            default:
-                break;
-        }
-    }
-    return std::nullopt;
-}
 
 /// @brief Try to strength-reduce an overflow-checked arithmetic op to its plain
 ///        counterpart when both operands are constant and the operation is known
@@ -721,6 +480,10 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     auto &domTree =
         analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
+    // Fetch value ranges before this pass mutates anything. Later phases only
+    // rewrite opcodes in place until Phase 1, so the facts stay valid where
+    // Phase 0.6 consumes them.
+    const auto &rangeInfo = analysis.getFunctionResult<IntRangeInfo>(kAnalysisIntRanges, function);
 
     bool changed = false;
 
@@ -771,17 +534,98 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     // =========================================================================
     // Phase 0.6: Range-backed overflow elimination
     // =========================================================================
-    // Seed simple integer ranges from comparison-controlled incoming edges and
-    // propagate them through straight-line arithmetic. This catches hot counted
-    // loop bodies where the header condition proves the induction increment is
-    // safe (for example, `%i < 50_000_000` before `%i + 1`) while keeping the
-    // proof syntactically visible to the verifier.
+    // Seed each block from the whole-function value-range analysis (computed
+    // before any of this pass's mutations) and walk the block applying the
+    // shared range transfer function. Three rewrites fire from range proofs:
+    //   - overflow ops whose result range is computable demote to plain ops;
+    //   - idx.chk whose index is provably inside constant bounds is deleted;
+    //   - checked div/rem whose divisor range excludes the trap values demote.
+    std::vector<std::pair<BasicBlock *, size_t>> rangeErase;
     for (auto &block : function.blocks) {
-        auto ranges = collectIncomingRanges(function, block);
+        RangeMap ranges;
+        if (const RangeMap *seeded = rangeInfo.entryFor(block.label))
+            ranges = *seeded;
 
-        for (auto &instr : block.instructions) {
-            std::optional<IntRange> resultRange = computeInstructionRange(instr, ranges);
+        for (size_t instrIdx = 0; instrIdx < block.instructions.size(); ++instrIdx) {
+            Instr &instr = block.instructions[instrIdx];
 
+            // Provably in-bounds idx.chk: delete the check. The result is the
+            // normalized index (idx - lo); substitution is only performed for
+            // lo == 0 where it equals the index operand, and only for I64
+            // results (the same type guard as the trivially-true path below).
+            if (instr.op == Opcode::IdxChk && instr.operands.size() >= 3 &&
+                instr.operands[1].kind == Value::Kind::ConstInt &&
+                instr.operands[2].kind == Value::Kind::ConstInt) {
+                const int64_t lo = instr.operands[1].i64;
+                const int64_t hi = instr.operands[2].i64;
+                auto idxRange = rangeForValue(instr.operands[0], ranges);
+                if (idxRange && idxRange->lower && idxRange->upper && lo < hi &&
+                    *idxRange->lower >= lo && *idxRange->upper <= hi - 1) {
+                    const bool hasUses = instr.result && useInfo.hasUses(*instr.result);
+                    // The spec fixes idx.chk's semantic result type to i64; an
+                    // unannotated instruction parses with a Void placeholder
+                    // type, which substitution treats the same as i64.
+                    const bool resultTypeIsI64 = instr.type.kind == Type::Kind::I64 ||
+                                                 instr.type.kind == Type::Kind::Void;
+                    if (!hasUses) {
+                        rangeErase.push_back({&block, instrIdx});
+                        changed = true;
+                        continue;
+                    }
+                    if (lo == 0 && resultTypeIsI64) {
+                        useInfo.replaceAllUses(*instr.result, instr.operands[0]);
+                        rangeErase.push_back({&block, instrIdx});
+                        changed = true;
+                        continue;
+                    }
+                }
+            }
+
+            // Checked div/rem with a range-proven safe divisor. The divisor
+            // range must exclude 0 (all four ops); the signed forms also trap
+            // on INT64_MIN / -1, so demotion additionally needs the divisor
+            // range to exclude -1 or the dividend range to exclude INT64_MIN.
+            if (instr.op == Opcode::SDivChk0 || instr.op == Opcode::UDivChk0 ||
+                instr.op == Opcode::SRemChk0 || instr.op == Opcode::URemChk0) {
+                auto divisorRange = rangeForValue(instr.operands[1], ranges);
+                if (divisorRange && canDemoteToPlainI64(instr)) {
+                    const bool excludesZero =
+                        (divisorRange->lower && *divisorRange->lower > 0) ||
+                        (divisorRange->upper && *divisorRange->upper < 0);
+                    bool safeToDemote = excludesZero;
+                    if (safeToDemote &&
+                        (instr.op == Opcode::SDivChk0 || instr.op == Opcode::SRemChk0)) {
+                        const bool excludesMinusOne =
+                            (divisorRange->lower && *divisorRange->lower > -1) ||
+                            (divisorRange->upper && *divisorRange->upper < -1);
+                        auto dividendRange = rangeForValue(instr.operands[0], ranges);
+                        const bool dividendNotMin =
+                            dividendRange && dividendRange->lower &&
+                            *dividendRange->lower > std::numeric_limits<int64_t>::min();
+                        safeToDemote = excludesMinusOne || dividendNotMin;
+                    }
+                    if (safeToDemote) {
+                        switch (instr.op) {
+                            case Opcode::SDivChk0:
+                                instr.op = Opcode::SDiv;
+                                break;
+                            case Opcode::UDivChk0:
+                                instr.op = Opcode::UDiv;
+                                break;
+                            case Opcode::SRemChk0:
+                                instr.op = Opcode::SRem;
+                                break;
+                            default:
+                                instr.op = Opcode::URem;
+                                break;
+                        }
+                        stampPlainI64ResultType(instr);
+                        changed = true;
+                    }
+                }
+            }
+
+            std::optional<IntRange> resultRange = applyRangeTransfer(instr, ranges);
             if (resultRange) {
                 if (auto plainOp = plainOpcodeForOverflow(instr.op)) {
                     if (canDemoteToPlainI64(instr)) {
@@ -790,14 +634,13 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
                         changed = true;
                     }
                 }
-                if (instr.result)
-                    ranges[*instr.result] = *resultRange;
-                continue;
             }
-
-            if (instr.result)
-                ranges.erase(*instr.result);
         }
+    }
+    // Erase deleted checks back-to-front so recorded indices stay valid.
+    for (auto it = rangeErase.rbegin(); it != rangeErase.rend(); ++it) {
+        auto &instructions = it->first->instructions;
+        instructions.erase(instructions.begin() + static_cast<std::ptrdiff_t>(it->second));
     }
 
     // =========================================================================

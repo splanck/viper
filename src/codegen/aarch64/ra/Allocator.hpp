@@ -111,6 +111,23 @@ class LinearAllocator {
     // Set when the previous instruction was a call to rt_arr_obj_get
     bool pendingGetBarrier_{false};
 
+    /// @brief Frame slots pinned to callee-saved registers for the whole
+    ///        function (tier 1 of the two-tier allocation scheme).
+    /// @details AArch64 lowering routes block params and cross-block temps
+    ///          through FP-relative slots (PhiStore + block-entry loads).
+    ///          Pinning maps the hottest of those slots onto callee-saved
+    ///          registers; every ldr/str against a pinned slot rewrites into a
+    ///          register move, which the copy-propagation peephole then folds.
+    std::unordered_map<int, PhysReg> pinnedSlotGPR_{};
+    std::unordered_map<int, PhysReg> pinnedSlotFPR_{};
+
+    /// @brief Choose and reserve pinned slots (weights from loop depth).
+    void assignPinnedSlots();
+
+    /// @brief Rewrite a pinned-slot ldr/str/PhiStore into a register move.
+    /// @return True when @p ins was rewritten.
+    bool rewritePinnedSlotAccess(MInstr &ins);
+
     /// Argument registers removed from the free pools because call marshalling
     /// has already written them; returned to the pools after the next call.
     std::vector<PhysReg> reservedForCall_;

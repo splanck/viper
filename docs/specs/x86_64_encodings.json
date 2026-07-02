@@ -350,6 +350,32 @@
       ]
     },
     {
+      "opcode": "MULr",
+      "mnemonic": "mulq",
+      "form": "Unary",
+      "order": "DIRECT",
+      "pattern": [
+        "RegOrMem"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
+    },
+    {
+      "opcode": "IMULr",
+      "mnemonic": "imulq",
+      "form": "Unary",
+      "order": "DIRECT",
+      "pattern": [
+        "RegOrMem"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
+    },
+    {
       "opcode": "XORrr32",
       "mnemonic": "xorl",
       "form": "RegReg",

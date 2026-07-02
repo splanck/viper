@@ -12,6 +12,11 @@
 
 #include "tests/TestHarness.hpp"
 
+#include <cstdlib>
+#ifdef _WIN32
+#include "tests/common/PosixCompat.h"
+#endif
+
 #include "codegen/x86_64/AsmEmitter.hpp"
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/FrameLowering.hpp"
@@ -1542,6 +1547,17 @@ TEST(X86BackendRegressions, RegAllocDoesNotAllocateFixedScratchRegisters) {
 }
 
 TEST(X86BackendRegressions, CoalescerPreservesSpilledMemorySourceCycles) {
+    // This test exercises the coalescer's spilled-memory cycle resolution,
+    // which only engages when cross-block values hold spill homes. Global
+    // pinning would keep both values in callee-saved registers and bypass the
+    // path under test, so disable it for this allocation.
+    setenv("VIPER_NO_GLOBAL_RA", "1", 1);
+    struct EnvReset {
+        ~EnvReset() {
+            unsetenv("VIPER_NO_GLOBAL_RA");
+        }
+    } envReset;
+
     MFunction fn{};
     fn.name = "px_copy_spilled_swap";
 

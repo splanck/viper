@@ -931,7 +931,9 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- Division ---
         case MOpcode::IDIVrm:
-        case MOpcode::DIVrm: {
+        case MOpcode::DIVrm:
+        case MOpcode::MULr:
+        case MOpcode::IMULr: {
             requireOps(1);
             // Operand can be reg or mem. Pipeline always uses reg after expansion.
             if (std::holds_alternative<OpReg>(ops[0])) {
@@ -939,7 +941,10 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             } else {
                 // Memory operand for div — encode as unary with memory.
                 const auto &mem = memFromOperand(ops[0]);
-                uint8_t ext = (op == MOpcode::IDIVrm) ? 7 : 6;
+                uint8_t ext = (op == MOpcode::IDIVrm)  ? 7
+                              : (op == MOpcode::DIVrm) ? 6
+                              : (op == MOpcode::IMULr) ? 5
+                                                       : 4;
                 emitWithMemOperand(ext,
                                    0,
                                    mem,
@@ -1240,7 +1245,10 @@ void X64BinaryEncoder::encodeDiv(MOpcode op, PhysReg src, objfile::CodeSection &
     if (!isGPR(src))
         throw std::runtime_error("x86-64 binary encoder: division source must be a GPR");
     const auto hw = hwEncode(src);
-    uint8_t ext = (op == MOpcode::IDIVrm) ? 7 : 6;
+    const uint8_t ext = (op == MOpcode::IDIVrm)  ? 7
+                        : (op == MOpcode::DIVrm) ? 6
+                        : (op == MOpcode::IMULr) ? 5
+                                                 : 4;
 
     if (needsRex(true, false, false, hw.rexBit != 0)) {
         cs.emit8(computeRex(true, false, false, hw.rexBit != 0));

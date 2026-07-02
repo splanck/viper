@@ -35,7 +35,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -326,6 +325,14 @@ const std::vector<SuccessCase> &successCases() {
         // internal traps), while the bytecode VM formats its own — so the fixture does
         // not compare message content, only that the opcode executes.
         {"err_get_msg_exec.il", 7, ""},
+        // Reduced-iteration codegen-quality kernels (see examples/il/benchmarks/).
+        {"kernel_loop_sum.il", 84, ""},
+        {"kernel_array_traverse.il", 232, ""},
+        {"kernel_checked_arith.il", 56, ""},
+        {"kernel_div_const.il", 231, ""},
+        {"kernel_switch_dispatch.il", 9, ""},
+        {"kernel_call_leaf.il", 126, ""},
+        {"kernel_select_diamond.il", 13, ""},
     };
     return cases;
 }

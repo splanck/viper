@@ -22,6 +22,8 @@
 
 #include "MachineIR.hpp"
 
+#include "codegen/common/MagicDivision.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <limits>
@@ -314,6 +316,139 @@ struct DivOpcodeKind {
     return true;
 }
 
+/// @brief Try replacing a div/rem by a non-trivial constant with a
+///        magic-multiply sequence (Hacker's Delight §10), avoiding the 20-40
+///        cycle IDIV/DIV entirely.
+/// @details Handles signed divisors |d| >= 2 (including signed powers of two
+///          via the bias-shift sequence) and unsigned non-power-of-2 divisors
+///          >= 3 (unsigned powers of two are handled by
+///          tryLowerDivByPowerOfTwo). Checked forms qualify too: a non-zero
+///          constant divisor satisfies the div0 check statically, and d != -1
+///          rules out the INT_MIN / -1 overflow. The emitted sequence mirrors
+///          the AArch64 peephole's proven expansions.
+/// @return true if the pseudo was rewritten in place (and @p instrIdx points
+///         at the last emitted instruction).
+[[nodiscard]] bool tryLowerDivByMagic(MBasicBlock &block,
+                                      std::size_t &instrIdx,
+                                      const DivOpcodeKind &kind,
+                                      const MInstr &candidate,
+                                      const Operand &dividendOp,
+                                      const Operand &divisorOp) {
+    // The sequence reads the dividend several times; require a register.
+    if (!std::holds_alternative<OpReg>(dividendOp))
+        return false;
+    auto constVal = findVRegConstant(block, instrIdx, divisorOp);
+    if (!constVal)
+        return false;
+    const int64_t divisor = *constVal;
+
+    const Operand dest = cloneOperand(candidate.operands[0]);
+    const Operand dividend = cloneOperand(dividendOp);
+    const Operand rax = makePhysRegOperand(PhysReg::RAX);
+    const Operand rdx = makePhysRegOperand(PhysReg::RDX);
+    const Operand r10 = makePhysRegOperand(PhysReg::R10);
+    const Operand r11 = makePhysRegOperand(PhysReg::R11);
+
+    std::vector<MInstr> seq;
+    const auto emit2 = [&](MOpcode op, const Operand &a, const Operand &b) {
+        seq.push_back(MInstr::make(op, std::vector<Operand>{cloneOperand(a), cloneOperand(b)}));
+    };
+    const auto emitShift = [&](MOpcode op, const Operand &reg, int amount) {
+        seq.push_back(MInstr::make(
+            op, std::vector<Operand>{cloneOperand(reg), makeImmOperand(amount)}));
+    };
+
+    // Emits quotient computation; returns the operand holding the quotient.
+    Operand quotient = rdx;
+    if (kind.isSigned) {
+        if (divisor == 0 || divisor == 1 || divisor == -1 ||
+            divisor == std::numeric_limits<int64_t>::min())
+            return false;
+        const int64_t absDivisor = divisor < 0 ? -divisor : divisor;
+        const int log = log2IfPowerOf2(absDivisor);
+        if (log >= 1) {
+            // Signed power of two: bias by (2^k - 1) for negative dividends,
+            // then arithmetic shift.
+            emit2(MOpcode::MOVrr, r11, dividend);
+            emitShift(MOpcode::SARri, r11, 63);
+            emitShift(MOpcode::SHRri, r11, 64 - log);
+            emit2(MOpcode::ADDrr, r11, dividend);
+            emitShift(MOpcode::SARri, r11, log);
+            quotient = r11;
+        } else {
+            const viper::codegen::MagicNumber magic =
+                viper::codegen::computeSignedMagic(absDivisor);
+            if (magic.multiplier == 0)
+                return false;
+            emit2(MOpcode::MOVrr, rax, dividend);
+            seq.push_back(MInstr::make(
+                MOpcode::MOVri,
+                std::vector<Operand>{cloneOperand(r11), makeImmOperand(magic.multiplier)}));
+            seq.push_back(
+                MInstr::make(MOpcode::IMULr, std::vector<Operand>{cloneOperand(r11)}));
+            if (magic.needsAdd)
+                emit2(MOpcode::ADDrr, rdx, dividend);
+            if (magic.shift > 0)
+                emitShift(MOpcode::SARri, rdx, magic.shift);
+            emit2(MOpcode::MOVrr, r11, dividend);
+            emitShift(MOpcode::SHRri, r11, 63);
+            emit2(MOpcode::ADDrr, rdx, r11);
+            quotient = rdx;
+        }
+        if (divisor < 0) {
+            // Negate: r10 = 0 - q.
+            seq.push_back(MInstr::make(
+                MOpcode::MOVri, std::vector<Operand>{cloneOperand(r10), makeImmOperand(0)}));
+            emit2(MOpcode::SUBrr, r10, quotient);
+            quotient = r10;
+        }
+    } else {
+        const uint64_t unsignedDivisor = static_cast<uint64_t>(divisor);
+        if (unsignedDivisor <= 1)
+            return false;
+        const auto magic = viper::codegen::computeUnsignedMagic(unsignedDivisor);
+        if (!magic.has_value())
+            return false; // powers of two take the shift path
+        emit2(MOpcode::MOVrr, rax, dividend);
+        seq.push_back(MInstr::make(
+            MOpcode::MOVri,
+            std::vector<Operand>{cloneOperand(r11),
+                                 makeImmOperand(static_cast<int64_t>(magic->multiplier))}));
+        seq.push_back(MInstr::make(MOpcode::MULr, std::vector<Operand>{cloneOperand(r11)}));
+        if (magic->needsAdd) {
+            emit2(MOpcode::MOVrr, r11, dividend);
+            emit2(MOpcode::SUBrr, r11, rdx);
+            emitShift(MOpcode::SHRri, r11, 1);
+            emit2(MOpcode::ADDrr, rdx, r11);
+        }
+        if (magic->shift > 0)
+            emitShift(MOpcode::SHRri, rdx, static_cast<int>(magic->shift));
+        quotient = rdx;
+    }
+
+    if (kind.isDiv) {
+        emit2(MOpcode::MOVrr, dest, quotient);
+    } else {
+        // remainder = dividend - quotient * divisor (low 64 bits are sign
+        // agnostic).
+        emit2(MOpcode::MOVrr, rax, quotient);
+        seq.push_back(MInstr::make(
+            MOpcode::MOVri, std::vector<Operand>{cloneOperand(r10), makeImmOperand(divisor)}));
+        emit2(MOpcode::IMULrr, rax, r10);
+        emit2(MOpcode::MOVrr, dest, dividend);
+        emit2(MOpcode::SUBrr, dest, rax);
+    }
+
+    block.instructions.erase(block.instructions.begin() +
+                             static_cast<std::ptrdiff_t>(instrIdx));
+    block.instructions.insert(block.instructions.begin() +
+                                  static_cast<std::ptrdiff_t>(instrIdx),
+                              std::make_move_iterator(seq.begin()),
+                              std::make_move_iterator(seq.end()));
+    instrIdx += seq.size() - 1U;
+    return true;
+}
+
 /// @brief Emit the INT_MIN / -1 overflow guard for a checked signed div/rem.
 /// @details For checked div the overflow path jumps to the trap label; for
 ///          checked rem the result is forced to 0 and control jumps to
@@ -439,6 +574,10 @@ void lowerSignedDivRem(MFunction &fn) {
                 throw std::runtime_error("x86-64 div lowering: pseudo divisor must be a register");
 
             if (tryLowerDivByPowerOfTwo(
+                    fn.blocks[blockIdx], instrIdx, kind, candidate, dividendOp, divisorOp))
+                continue;
+
+            if (tryLowerDivByMagic(
                     fn.blocks[blockIdx], instrIdx, kind, candidate, dividendOp, divisorOp))
                 continue;
 

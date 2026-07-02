@@ -25,6 +25,7 @@
 #include "il/verify/InstructionChecker.hpp"
 
 #include "il/core/BasicBlock.hpp"
+#include "il/analysis/IntRangeAnalysis.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
@@ -41,7 +42,6 @@
 #include "il/verify/TypeInference.hpp"
 #include "support/diag_expected.hpp"
 
-#include <algorithm>
 #include <array>
 #include <limits>
 #include <optional>
@@ -607,6 +607,24 @@ std::optional<IntRange> computeInstructionRange(
     return std::nullopt;
 }
 
+/// @brief Compute whole-function range facts holding just before @p ctx.instr.
+/// @details Seeds the block from the fixpoint value-range analysis and replays
+///          the block's instructions up to (not including) the checked one.
+///          This is the same prover CheckOpt uses to justify demotions, so
+///          every demotion the optimizer performs re-verifies here.
+viper::analysis::RangeMap globalRangesBeforeInstruction(const VerifyCtx &ctx) {
+    const viper::analysis::IntRangeInfo info = viper::analysis::computeIntRanges(ctx.fn);
+    viper::analysis::RangeMap ranges;
+    if (const viper::analysis::RangeMap *seeded = info.entryFor(ctx.block.label))
+        ranges = *seeded;
+    for (const Instr &instr : ctx.block.instructions) {
+        if (&instr == &ctx.instr)
+            break;
+        viper::analysis::applyRangeTransfer(instr, ranges);
+    }
+    return ranges;
+}
+
 bool isVerifiedCheckedArithmeticDemotion(const VerifyCtx &ctx) {
     if (!(ctx.instr.op == Opcode::Add || ctx.instr.op == Opcode::Sub ||
           ctx.instr.op == Opcode::Mul)) {
@@ -615,8 +633,11 @@ bool isVerifiedCheckedArithmeticDemotion(const VerifyCtx &ctx) {
 
     auto ranges = collectIncomingRanges(ctx);
     for (const Instr &instr : ctx.block.instructions) {
-        if (&instr == &ctx.instr)
-            return computeInstructionRange(ctx.instr, ranges).has_value();
+        if (&instr == &ctx.instr) {
+            if (computeInstructionRange(ctx.instr, ranges).has_value())
+                return true;
+            break;
+        }
 
         if (auto resultRange = computeInstructionRange(instr, ranges)) {
             if (instr.result)
@@ -626,7 +647,10 @@ bool isVerifiedCheckedArithmeticDemotion(const VerifyCtx &ctx) {
         }
     }
 
-    return false;
+    // Local block facts were not enough; retry with the whole-function
+    // value-range fixpoint (the prover CheckOpt's demotions rely on).
+    viper::analysis::RangeMap globalRanges = globalRangesBeforeInstruction(ctx);
+    return viper::analysis::applyRangeTransfer(ctx.instr, globalRanges).has_value();
 }
 
 const Instr *findLocalDefBefore(const BasicBlock &block, const Instr &limit, unsigned id) {
@@ -745,6 +769,37 @@ bool isVerifiedCheckedSubDemotion(const VerifyCtx &ctx) {
 ///          constant, with the signed division MIN/-1 overflow case also proven
 ///          impossible. Keep plain op acceptance limited to that syntactic proof
 ///          so frontends still have to emit the checked opcodes.
+/// @brief Accept a plain div/rem whose divisor is range-proven safe.
+/// @details Mirrors CheckOpt's range-backed demotion: the divisor's value
+///          range must exclude 0, and the signed forms additionally need the
+///          divisor range to exclude -1 or the dividend range to exclude
+///          INT64_MIN (the INT64_MIN / -1 overflow case).
+bool isRangeProvenDivRemDemotion(const VerifyCtx &ctx) {
+    if (ctx.instr.operands.size() != 2)
+        return false;
+
+    viper::analysis::RangeMap ranges = globalRangesBeforeInstruction(ctx);
+    auto divisorRange = viper::analysis::rangeForValue(ctx.instr.operands[1], ranges);
+    if (!divisorRange)
+        return false;
+
+    const bool excludesZero = (divisorRange->lower && *divisorRange->lower > 0) ||
+                              (divisorRange->upper && *divisorRange->upper < 0);
+    if (!excludesZero)
+        return false;
+
+    if (ctx.instr.op == Opcode::SDiv || ctx.instr.op == Opcode::SRem) {
+        const bool excludesMinusOne = (divisorRange->lower && *divisorRange->lower > -1) ||
+                                      (divisorRange->upper && *divisorRange->upper < -1);
+        auto dividendRange = viper::analysis::rangeForValue(ctx.instr.operands[0], ranges);
+        const bool dividendNotMin = dividendRange && dividendRange->lower &&
+                                    *dividendRange->lower > std::numeric_limits<int64_t>::min();
+        if (!excludesMinusOne && !dividendNotMin)
+            return false;
+    }
+    return true;
+}
+
 bool isVerifiedCheckedDivRemDemotion(const VerifyCtx &ctx) {
     switch (ctx.instr.op) {
         case Opcode::SDiv:
@@ -756,8 +811,13 @@ bool isVerifiedCheckedDivRemDemotion(const VerifyCtx &ctx) {
             return false;
     }
 
-    if (ctx.instr.operands.size() != 2 || ctx.instr.operands[1].kind != Value::Kind::ConstInt)
+    if (ctx.instr.operands.size() != 2 || ctx.instr.operands[1].kind != Value::Kind::ConstInt) {
+        if (isRangeProvenDivRemDemotion(ctx)) {
+            ctx.types.recordResult(ctx.instr, resolveResultType(ctx, getInstructionSpec(ctx.instr.op)));
+            return true;
+        }
         return false;
+    }
 
     const int64_t divisor = ctx.instr.operands[1].i64;
     if (divisor == 0)

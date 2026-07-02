@@ -23,10 +23,12 @@
 #include "Allocator.hpp"
 
 #include "Coalescer.hpp"
+#include "codegen/common/ra/GlobalPinning.hpp"
 #include "codegen/x86_64/OperandRoles.hpp"
 
 #include <algorithm>
 #include <cassert>
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -119,7 +121,8 @@ std::vector<PhysClobber> collectPhysicalClobbers(const MInstr &instr) {
 
     if (instr.opcode == MOpcode::CQO) {
         addPhysClobber(clobbers, PhysReg::RDX);
-    } else if (instr.opcode == MOpcode::IDIVrm || instr.opcode == MOpcode::DIVrm) {
+    } else if (instr.opcode == MOpcode::IDIVrm || instr.opcode == MOpcode::DIVrm ||
+               instr.opcode == MOpcode::MULr || instr.opcode == MOpcode::IMULr) {
         addPhysClobber(clobbers, PhysReg::RAX);
         addPhysClobber(clobbers, PhysReg::RDX);
     }
@@ -198,7 +201,40 @@ AllocationResult LinearScanAllocator::run() {
     // vregs.
     liveness_.run(func_);
 
+    // Classify vreg-free blocks (trap/abort stubs) once: carry decisions treat
+    // edges into them as transparent because they never read a carried value.
+    blockReadsNoVRegs_.assign(func_.blocks.size(), 1);
+    for (std::size_t bi = 0; bi < func_.blocks.size(); ++bi) {
+        for (const auto &instr : func_.blocks[bi].instructions) {
+            bool readsVReg = false;
+            for (const auto &operand : instr.operands) {
+                if (const auto *reg = std::get_if<OpReg>(&operand); reg && !reg->isPhys) {
+                    readsVReg = true;
+                    break;
+                }
+                if (const auto *mem = std::get_if<OpMem>(&operand); mem && !mem->base.isPhys) {
+                    readsVReg = true;
+                    break;
+                }
+            }
+            if (readsVReg) {
+                blockReadsNoVRegs_[bi] = 0;
+                break;
+            }
+        }
+    }
+
     crossBlockSpillVRegs_.clear();
+    pinnedGlobals_.clear();
+
+    // Tier 1: pin the hottest cross-block vregs to callee-saved registers for
+    // their entire lifetime so they never round-trip through spill slots at
+    // block boundaries. Must run before the spill-home pre-pass below so
+    // pinned vregs are excluded from it. VIPER_NO_GLOBAL_RA=1 disables the
+    // tier for triage.
+    if (std::getenv("VIPER_NO_GLOBAL_RA") == nullptr) {
+        assignPinnedGlobals();
+    }
 
     // Pre-pass: mark vregs that cross non-carryable CFG boundaries as needing
     // spill homes. Straight-line single-predecessor successors can carry values
@@ -209,6 +245,9 @@ AllocationResult LinearScanAllocator::run() {
             continue;
         }
         for (uint16_t vreg : liveness_.liveOut(bi)) {
+            if (pinnedGlobals_.count(vreg)) {
+                continue;
+            }
             crossBlockSpillVRegs_.insert(vreg);
             const auto *interval = intervals_.lookup(vreg);
             RegClass cls = interval ? interval->cls : RegClass::GPR;
@@ -232,13 +271,228 @@ AllocationResult LinearScanAllocator::run() {
     return result_;
 }
 
+void LinearScanAllocator::assignPinnedGlobals() {
+    const std::size_t blockCount = func_.blocks.size();
+    if (blockCount == 0) {
+        return;
+    }
+
+    // Pinnable pool: callee-saved GPRs, minus reserved registers. Callee-saved
+    // registers survive calls by ABI and are never implicit clobber targets
+    // (CQO/IDIV touch RAX/RDX; shifts touch RCX), so a pinned value is safe
+    // everywhere without extra bookkeeping. SysV has no callee-saved XMM, so
+    // floating-point values are not pinnable on this target.
+    std::vector<PhysReg> pool;
+    for (PhysReg reg : target_.calleeSavedGPR) {
+        if (!isReservedGPR(reg)) {
+            pool.push_back(reg);
+        }
+    }
+    if (pool.empty()) {
+        return;
+    }
+
+    // Candidates: the vregs the spill-home pre-pass would demote to memory —
+    // GPR values live across a non-carryable boundary.
+    std::unordered_set<uint16_t> candidateSet;
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        if (canCarryIntoNextBlock(bi)) {
+            continue;
+        }
+        for (uint16_t vreg : liveness_.liveOut(bi)) {
+            const auto *interval = intervals_.lookup(vreg);
+            if (interval && interval->cls == RegClass::XMM) {
+                continue;
+            }
+            candidateSet.insert(vreg);
+        }
+    }
+    if (candidateSet.empty()) {
+        return;
+    }
+
+    // Expand to the copy-closure: a GPR vreg connected to a candidate by a
+    // register copy joins the set, so whole loop-carried chains coalesce onto
+    // one pinned register and the connecting copies become identity moves.
+    std::vector<std::pair<uint16_t, uint16_t>> allCopyPairs;
+    for (const auto &block : func_.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode == MOpcode::PX_COPY) {
+                for (std::size_t oi = 0; oi + 1 < instr.operands.size(); oi += 2) {
+                    const auto *dst = std::get_if<OpReg>(&instr.operands[oi]);
+                    const auto *src = std::get_if<OpReg>(&instr.operands[oi + 1]);
+                    if (dst && src && !dst->isPhys && !src->isPhys &&
+                        dst->cls == RegClass::GPR && src->cls == RegClass::GPR) {
+                        allCopyPairs.emplace_back(dst->idOrPhys, src->idOrPhys);
+                    }
+                }
+            } else if (instr.opcode == MOpcode::MOVrr && instr.operands.size() >= 2) {
+                const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+                const auto *src = std::get_if<OpReg>(&instr.operands[1]);
+                if (dst && src && !dst->isPhys && !src->isPhys) {
+                    allCopyPairs.emplace_back(dst->idOrPhys, src->idOrPhys);
+                }
+            }
+        }
+    }
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (const auto &[dst, src] : allCopyPairs) {
+            const bool hasDst = candidateSet.count(dst) != 0;
+            const bool hasSrc = candidateSet.count(src) != 0;
+            if (hasDst == hasSrc) {
+                continue;
+            }
+            candidateSet.insert(hasDst ? src : dst);
+            grew = true;
+        }
+    }
+
+    // One scan collects, per candidate: per-block use counts (weight input)
+    // and per-block first/last access half-positions (copy-coalescing input).
+    std::unordered_map<uint16_t, std::vector<uint32_t>> useCounts;
+    struct AccessSpan {
+        uint32_t first{std::numeric_limits<uint32_t>::max()};
+        uint32_t last{0};
+    };
+    std::unordered_map<uint16_t, std::unordered_map<std::size_t, AccessSpan>> accessSpans;
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        const auto &instructions = func_.blocks[bi].instructions;
+        for (std::size_t ii = 0; ii < instructions.size(); ++ii) {
+            const MInstr &instr = instructions[ii];
+            for (std::size_t oi = 0; oi < instr.operands.size(); ++oi) {
+                const auto *reg = std::get_if<OpReg>(&instr.operands[oi]);
+                if (!reg || reg->isPhys || !candidateSet.count(reg->idOrPhys)) {
+                    continue;
+                }
+                auto [it, inserted] =
+                    useCounts.try_emplace(reg->idOrPhys, std::vector<uint32_t>(blockCount, 0));
+                ++it->second[bi];
+
+                const auto [isUse, isDef] = operandRoles(instr, oi);
+                auto &span = accessSpans[reg->idOrPhys][bi];
+                const uint32_t base = static_cast<uint32_t>(ii) * 2U;
+                if (isUse) {
+                    span.first = std::min(span.first, base);
+                    span.last = std::max(span.last, base);
+                }
+                if (isDef) {
+                    span.first = std::min(span.first, base + 1U);
+                    span.last = std::max(span.last, base + 1U);
+                }
+            }
+        }
+    }
+
+    // Loop depths from the liveness CFG drive the spill weights.
+    std::vector<std::vector<std::size_t>> succs(blockCount);
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        succs[bi] = liveness_.successors(bi);
+    }
+    const std::vector<unsigned> loopDepth = viper::codegen::ra::computeLoopDepths(succs);
+
+    std::vector<viper::codegen::ra::GlobalPinCandidate> candidates;
+    candidates.reserve(candidateSet.size());
+    for (uint16_t vreg : candidateSet) {
+        viper::codegen::ra::GlobalPinCandidate candidate;
+        candidate.vreg = vreg;
+        candidate.liveBlocks.assign(blockCount, 0);
+        const auto countsIt = useCounts.find(vreg);
+        const auto spansIt = accessSpans.find(vreg);
+        for (std::size_t bi = 0; bi < blockCount; ++bi) {
+            const bool liveIn = liveness_.liveIn(bi).count(vreg) != 0;
+            const bool liveOut = liveness_.liveOut(bi).count(vreg) != 0;
+            const bool accessed =
+                spansIt != accessSpans.end() && spansIt->second.count(bi) != 0;
+            if (!liveIn && !liveOut && !accessed) {
+                continue;
+            }
+            candidate.liveBlocks[bi] = 1;
+
+            viper::codegen::ra::BlockSegment segment;
+            if (liveIn) {
+                segment.start = 0;
+            } else if (accessed) {
+                segment.start = spansIt->second.at(bi).first;
+            }
+            if (liveOut) {
+                segment.end = std::numeric_limits<uint32_t>::max();
+            } else if (accessed) {
+                segment.end = spansIt->second.at(bi).last;
+            }
+            candidate.segments.emplace(bi, segment);
+
+            double blockWeight = 1.0;
+            for (unsigned d = 0; d < loopDepth[bi]; ++d) {
+                blockWeight *= 10.0;
+            }
+            const uint32_t uses = countsIt != useCounts.end() ? countsIt->second[bi] : 0;
+            candidate.weight += blockWeight * (1.0 + uses);
+        }
+        candidates.push_back(std::move(candidate));
+    }
+
+    // Merge copy-connected chains (loop param <-> loop temp) so each chain
+    // occupies a single register and the connecting copies become identities.
+    const auto alias = viper::codegen::ra::coalescePinChains(candidates, allCopyPairs);
+
+    auto assignment = viper::codegen::ra::assignGlobalPins(std::move(candidates), pool, blockCount);
+    if (assignment.pinned.empty()) {
+        return;
+    }
+
+    auto pinVreg = [&](uint16_t vreg, PhysReg phys) {
+        pinnedGlobals_.emplace(vreg, phys);
+        auto &state = stateFor(RegClass::GPR, vreg);
+        state.hasPhys = true;
+        state.phys = phys;
+        state.pinnedGlobal = true;
+        result_.vregToPhys[vreg] = phys;
+    };
+    for (const auto &[vreg, phys] : assignment.pinned) {
+        pinVreg(vreg, phys);
+    }
+    for (const auto &[member, root] : alias) {
+        auto rootPin = assignment.pinned.find(root);
+        if (rootPin != assignment.pinned.end()) {
+            pinVreg(member, rootPin->second);
+        }
+    }
+
+    // Pinned registers belong to their candidates for the whole function;
+    // remove them from the local free pool.
+    freeGPR_.erase(std::remove_if(freeGPR_.begin(),
+                                  freeGPR_.end(),
+                                  [&](PhysReg reg) {
+                                      return std::find(assignment.usedRegs.begin(),
+                                                       assignment.usedRegs.end(),
+                                                       reg) != assignment.usedRegs.end();
+                                  }),
+                   freeGPR_.end());
+}
+
 bool LinearScanAllocator::canCarryIntoNextBlock(std::size_t blockIdx) const {
     if (blockIdx + 1 >= func_.blocks.size()) {
         return false;
     }
 
+    // The fallthrough successor must be the next block in layout order with
+    // this block as its only predecessor. Additional successors are permitted
+    // when they never read a virtual register (trap/abort blocks): control
+    // that reaches them terminates without observing any carried value, so
+    // registers can stay live across the edge to the fallthrough.
     const auto &succs = liveness_.successors(blockIdx);
-    if (succs.size() != 1 || succs.front() != blockIdx + 1) {
+    bool fallthroughFound = false;
+    for (std::size_t succ : succs) {
+        if (succ == blockIdx + 1) {
+            fallthroughFound = true;
+            continue;
+        }
+        if (succ >= func_.blocks.size() || !blockReadsNoVRegs_[succ]) {
+            return false;
+        }
+    }
+    if (!fallthroughFound) {
         return false;
     }
 
@@ -897,6 +1151,12 @@ void LinearScanAllocator::processRegOperand(OpReg &reg,
     }
 
     auto &state = stateFor(reg.cls, reg.idOrPhys);
+    if (state.pinnedGlobal) {
+        // Pinned globals hold their register for the whole function: no
+        // loads, stores, active-set membership, or pool interaction.
+        reg = makePhysReg(state.cls, static_cast<uint16_t>(state.phys));
+        return;
+    }
     if (state.spill.needsSpill) {
         if (state.hasPhys && state.cachedInBlock) {
             // Already cached this block — reuse the register without reloading.

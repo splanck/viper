@@ -57,6 +57,8 @@ namespace {
         case MOpcode::CQO:
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
+        case MOpcode::MULr:
+        case MOpcode::IMULr:
         case MOpcode::PX_COPY:
         case MOpcode::SELECT_GPR:
         case MOpcode::SELECT_XMM:

@@ -116,6 +116,8 @@ enum class MOpcode {
     CQO,          ///< Sign-extend RAX into RDX:RAX.
     IDIVrm,       ///< Signed divide RDX:RAX by the given operand.
     DIVrm,        ///< Unsigned divide RDX:RAX by the given operand.
+    MULr,         ///< Unsigned multiply: RDX:RAX <- RAX * operand (high half in RDX).
+    IMULr,        ///< Signed multiply: RDX:RAX <- RAX * operand (high half in RDX).
     XORrr32,      ///< 32-bit XOR to zero register.
     CMPrr,        ///< Compare registers.
     CMPri,        ///< Compare register with immediate.

@@ -52,6 +52,11 @@ struct VirtualAllocation {
     SpillPlan spill{};
     bool cachedInBlock{
         false}; ///< True when a cross-block vreg has been loaded into a register this block.
+    /// True when the vreg is pinned to one physical register for its whole
+    /// lifetime by the global pre-pass. Pinned vregs never enter the active
+    /// sets, never spill, and never release their register; operand rewriting
+    /// substitutes the pinned register directly.
+    bool pinnedGlobal{false};
     /// Cached LiveIntervals lookup. Intervals are immutable during allocation,
     /// so the per-instruction expiry scan can reuse one lookup per vreg
     /// instead of re-hashing on every instruction.
@@ -107,6 +112,14 @@ class LinearScanAllocator {
     std::size_t currentInstrIdx_{0}; ///< Current instruction index for liveness checks.
     std::unordered_set<uint16_t>
         crossBlockSpillVRegs_{}; ///< Vregs that cross a non-carryable CFG boundary.
+
+    /// @brief Whole-lifetime register pins chosen by the global pre-pass.
+    std::unordered_map<uint16_t, PhysReg> pinnedGlobals_{};
+
+    /// @brief Per-block flag: block reads no virtual registers (trap stubs).
+    /// @details Such blocks are transparent for register carrying: an edge
+    ///          into them cannot observe a stale carried value.
+    std::vector<char> blockReadsNoVRegs_{};
 
     /// @brief Argument registers reserved during call setup, with their class.
     struct ReservedReg {
@@ -232,6 +245,15 @@ class LinearScanAllocator {
     /// @param block The block that was just processed.
     /// @param blockIdx Index of the block (for liveOut lookup).
     void releaseActiveForBlock(MBasicBlock &block, std::size_t blockIdx);
+
+    /// @brief Pin hot cross-block vregs to callee-saved registers for their
+    ///        whole lifetime (tier 1 of the two-tier allocation scheme).
+    /// @details Candidates are the vregs the cross-block pre-pass would give
+    ///          memory homes. Each pinned vreg holds one callee-saved register
+    ///          everywhere, so no block-boundary spills, reloads, or edge
+    ///          resolution are needed; the pinned registers are removed from
+    ///          the local free pools. GPR-only: SysV has no callee-saved XMM.
+    void assignPinnedGlobals();
 
     /// @brief Check whether the next block can reuse live registers directly.
     /// @details Carrying values in registers across block boundaries is only safe

@@ -575,7 +575,10 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
             fp_cast_round cast_round_to_even idxchk_normalize i1_bool_flow call_two_args
             string_print print_i64 branch_join_value i16_narrow_store unsigned_compare
             fcmp_ord_nan fcmp_uno_nan err_get_msg_exec switch_i32 eh_catch_return
-            global_scalar_load_store)
+            global_scalar_load_store
+            kernel_loop_sum kernel_array_traverse kernel_checked_arith
+            kernel_div_const kernel_switch_dispatch kernel_call_leaf
+            kernel_select_diamond)
     foreach (_prog IN LISTS _VIPER_DIFF_CORPUS)
         viper_add_ctest(differential_${_prog}
                 ${CMAKE_COMMAND}

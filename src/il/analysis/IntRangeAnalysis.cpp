@@ -1,0 +1,720 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/analysis/IntRangeAnalysis.cpp
+// Purpose: Forward value-range dataflow over IL SSA with bounded widening.
+// Key invariants:
+//   - Every recorded range is a sound over-approximation of the values a temp
+//     can hold at that program point.
+//   - Post-conditions of trapping checks (idx.chk, narrowing casts) are only
+//     recorded for the fall-through continuation, which is the only path on
+//     which execution proceeds.
+// Ownership/Lifetime:
+//   - Pure computation; the returned IntRangeInfo owns all of its storage.
+// Links: il/analysis/IntRangeAnalysis.hpp, il/transform/CheckOpt.cpp, il/verify/InstructionChecker.cpp
+//
+//===----------------------------------------------------------------------===//
+
+#include "il/analysis/IntRangeAnalysis.hpp"
+
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Opcode.hpp"
+#include "il/core/Value.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+using namespace il::core;
+
+namespace viper::analysis {
+
+using ::il::utils::addRanges;
+using ::il::utils::exactRange;
+using ::il::utils::intersectRanges;
+using ::il::utils::IntRange;
+using ::il::utils::mergeIncomingRange;
+using ::il::utils::mulRanges;
+using ::il::utils::subRanges;
+
+std::optional<IntRange> rangeForValue(const Value &value, const RangeMap &ranges) {
+    if (value.kind == Value::Kind::ConstInt)
+        return exactRange(value.i64);
+    if (value.kind != Value::Kind::Temp)
+        return std::nullopt;
+    auto it = ranges.find(value.id);
+    if (it == ranges.end())
+        return std::nullopt;
+    return it->second;
+}
+
+bool deriveCompareBranchRange(const Instr &cmp,
+                              size_t branchIndex,
+                              Value &constrainedValue,
+                              IntRange &range) {
+    if (cmp.operands.size() != 2)
+        return false;
+
+    Opcode op = cmp.op;
+    Value variable;
+    int64_t constant = 0;
+
+    if (cmp.operands[0].kind == Value::Kind::Temp &&
+        cmp.operands[1].kind == Value::Kind::ConstInt) {
+        variable = cmp.operands[0];
+        constant = cmp.operands[1].i64;
+    } else if (cmp.operands[0].kind == Value::Kind::ConstInt &&
+               cmp.operands[1].kind == Value::Kind::Temp) {
+        variable = cmp.operands[1];
+        constant = cmp.operands[0].i64;
+        switch (op) {
+            case Opcode::SCmpLT:
+                op = Opcode::SCmpGT;
+                break;
+            case Opcode::SCmpLE:
+                op = Opcode::SCmpGE;
+                break;
+            case Opcode::SCmpGT:
+                op = Opcode::SCmpLT;
+                break;
+            case Opcode::SCmpGE:
+                op = Opcode::SCmpLE;
+                break;
+            default:
+                break;
+        }
+    } else {
+        return false;
+    }
+
+    if (variable.kind != Value::Kind::Temp)
+        return false;
+
+    IntRange fact;
+    const bool trueBranch = branchIndex == 0;
+    switch (op) {
+        case Opcode::SCmpLT:
+            if (trueBranch) {
+                if (constant == std::numeric_limits<int64_t>::min())
+                    return false;
+                fact.upper = constant - 1;
+            } else {
+                fact.lower = constant;
+            }
+            break;
+        case Opcode::SCmpLE:
+            if (trueBranch) {
+                fact.upper = constant;
+            } else {
+                if (constant == std::numeric_limits<int64_t>::max())
+                    return false;
+                fact.lower = constant + 1;
+            }
+            break;
+        case Opcode::SCmpGT:
+            if (trueBranch) {
+                if (constant == std::numeric_limits<int64_t>::max())
+                    return false;
+                fact.lower = constant + 1;
+            } else {
+                fact.upper = constant;
+            }
+            break;
+        case Opcode::SCmpGE:
+            if (trueBranch) {
+                fact.lower = constant;
+            } else {
+                if (constant == std::numeric_limits<int64_t>::min())
+                    return false;
+                fact.upper = constant - 1;
+            }
+            break;
+        case Opcode::ICmpEq:
+            if (!trueBranch)
+                return false;
+            fact = exactRange(constant);
+            break;
+        default:
+            return false;
+    }
+
+    constrainedValue = variable;
+    range = fact;
+    return true;
+}
+
+namespace {
+
+/// @brief Inclusive value range of a narrowing-cast target type.
+std::optional<IntRange> narrowTypeRange(Type::Kind kind, bool isUnsigned) {
+    switch (kind) {
+        case Type::Kind::I16:
+            return isUnsigned ? IntRange{0, 65535} : IntRange{-32768, 32767};
+        case Type::Kind::I32:
+            return isUnsigned ? IntRange{0, 4294967295LL}
+                              : IntRange{std::numeric_limits<int32_t>::min(),
+                                         std::numeric_limits<int32_t>::max()};
+        default:
+            return std::nullopt;
+    }
+}
+
+/// @brief Intersect a temp's recorded range in place with a new fact.
+void refineTemp(RangeMap &ranges, const Value &value, const IntRange &fact) {
+    if (value.kind != Value::Kind::Temp)
+        return;
+    auto it = ranges.find(value.id);
+    if (it == ranges.end()) {
+        ranges[value.id] = fact;
+        return;
+    }
+    if (auto tighter = intersectRanges(it->second, fact))
+        it->second = *tighter;
+}
+
+/// @brief True when the compare-family opcode always yields a 0/1 result.
+bool producesBool(Opcode op) {
+    switch (op) {
+        case Opcode::SCmpLT:
+        case Opcode::SCmpLE:
+        case Opcode::SCmpGT:
+        case Opcode::SCmpGE:
+        case Opcode::UCmpLT:
+        case Opcode::UCmpLE:
+        case Opcode::UCmpGT:
+        case Opcode::UCmpGE:
+        case Opcode::ICmpEq:
+        case Opcode::ICmpNe:
+        case Opcode::FCmpEQ:
+        case Opcode::FCmpNE:
+        case Opcode::FCmpLT:
+        case Opcode::FCmpLE:
+        case Opcode::FCmpGT:
+        case Opcode::FCmpGE:
+        case Opcode::FCmpOrd:
+        case Opcode::FCmpUno:
+        case Opcode::Zext1:
+        case Opcode::Trunc1:
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace
+
+std::optional<IntRange> applyRangeTransfer(const Instr &instr, RangeMap &ranges) {
+    std::optional<IntRange> result;
+    // For add/sub, `stored` differs from `result`: addRanges/subRanges treat a
+    // missing bound as the int64 extreme, so a partially-bounded input yields
+    // pseudo-bounds like INT64_MIN+k. Those are TRUE (they prove the checked
+    // op cannot trap, which is what the returned `result` communicates), but
+    // recording them would make loop-carried bounds creep by a constant every
+    // fixpoint sweep and prevent convergence. The recorded state therefore
+    // keeps a bound only when both contributing operand sides were bounded.
+    std::optional<IntRange> stored;
+    bool storedIsResult = true;
+
+    if (producesBool(instr.op)) {
+        result = IntRange{0, 1};
+    } else if (instr.operands.size() >= 2) {
+        auto lhs = rangeForValue(instr.operands[0], ranges);
+        auto rhs = rangeForValue(instr.operands[1], ranges);
+        const Value &lhsValue = instr.operands[0];
+        const Value &rhsValue = instr.operands[1];
+        switch (instr.op) {
+            case Opcode::Add:
+            case Opcode::IAddOvf:
+                if (lhs && rhs) {
+                    // `result` is the trap-freedom proof (nullopt when the
+                    // extreme-endpoint arithmetic could overflow). The stored
+                    // state is computed per side from the REAL bounds only:
+                    // checked ops trap instead of wrapping and plain ops are
+                    // verifier-proven non-wrapping, so each independently
+                    // supported bound is sound even when the other side (and
+                    // hence the proof) is unavailable.
+                    result = addRanges(*lhs, *rhs);
+                    storedIsResult = false;
+                    stored = IntRange{};
+                    if (lhs->lower && rhs->lower)
+                        stored->lower = ::il::utils::addCheckedValue(*lhs->lower, *rhs->lower);
+                    if (lhs->upper && rhs->upper)
+                        stored->upper = ::il::utils::addCheckedValue(*lhs->upper, *rhs->upper);
+                    if (!stored->lower && !stored->upper)
+                        stored.reset();
+                }
+                break;
+            case Opcode::Sub:
+            case Opcode::ISubOvf:
+                if (lhs && rhs) {
+                    result = subRanges(*lhs, *rhs);
+                    storedIsResult = false;
+                    stored = IntRange{};
+                    if (lhs->lower && rhs->upper)
+                        stored->lower = ::il::utils::subCheckedValue(*lhs->lower, *rhs->upper);
+                    if (lhs->upper && rhs->lower)
+                        stored->upper = ::il::utils::subCheckedValue(*lhs->upper, *rhs->lower);
+                    if (!stored->lower && !stored->upper)
+                        stored.reset();
+                }
+                break;
+            case Opcode::Mul:
+            case Opcode::IMulOvf:
+                // mulRanges requires both sides fully bounded, so its result
+                // never contains placeholder-derived bounds.
+                if (lhs && rhs)
+                    result = mulRanges(*lhs, *rhs);
+                break;
+            case Opcode::And:
+                if (rhsValue.kind == Value::Kind::ConstInt && rhsValue.i64 >= 0)
+                    result = IntRange{0, rhsValue.i64};
+                else if (lhsValue.kind == Value::Kind::ConstInt && lhsValue.i64 >= 0)
+                    result = IntRange{0, lhsValue.i64};
+                break;
+            case Opcode::LShr:
+                if (rhsValue.kind == Value::Kind::ConstInt && rhsValue.i64 > 0 &&
+                    rhsValue.i64 < 64) {
+                    const uint64_t max = ~0ULL >> static_cast<uint64_t>(rhsValue.i64);
+                    result = IntRange{0, static_cast<int64_t>(max)};
+                }
+                break;
+            case Opcode::AShr:
+                if (rhsValue.kind == Value::Kind::ConstInt && rhsValue.i64 >= 0 &&
+                    rhsValue.i64 < 64 && lhs && lhs->lower && lhs->upper) {
+                    result = IntRange{*lhs->lower >> rhsValue.i64, *lhs->upper >> rhsValue.i64};
+                }
+                break;
+            case Opcode::Shl:
+                if (rhsValue.kind == Value::Kind::ConstInt && rhsValue.i64 >= 0 &&
+                    rhsValue.i64 < 63 && lhs && lhs->lower && lhs->upper && *lhs->lower >= 0 &&
+                    *lhs->upper <= (std::numeric_limits<int64_t>::max() >> rhsValue.i64)) {
+                    result = IntRange{*lhs->lower << rhsValue.i64, *lhs->upper << rhsValue.i64};
+                }
+                break;
+            case Opcode::UDivChk0:
+            case Opcode::UDiv:
+                // Unsigned quotient by a constant >= 2 fits in the non-negative
+                // signed range regardless of the dividend's bit pattern.
+                if (rhsValue.kind == Value::Kind::ConstInt && rhsValue.i64 >= 2) {
+                    const uint64_t max = ~0ULL / static_cast<uint64_t>(rhsValue.i64);
+                    result = IntRange{0, static_cast<int64_t>(max)};
+                }
+                break;
+            case Opcode::URemChk0:
+            case Opcode::URem:
+                if (rhsValue.kind == Value::Kind::ConstInt && rhsValue.i64 > 0)
+                    result = IntRange{0, rhsValue.i64 - 1};
+                break;
+            case Opcode::SRemChk0:
+            case Opcode::SRem:
+                if (rhsValue.kind == Value::Kind::ConstInt &&
+                    rhsValue.i64 != std::numeric_limits<int64_t>::min() && rhsValue.i64 != 0) {
+                    const int64_t mag = rhsValue.i64 < 0 ? -rhsValue.i64 : rhsValue.i64;
+                    if (lhs && lhs->lower && *lhs->lower >= 0)
+                        result = IntRange{0, mag - 1};
+                    else
+                        result = IntRange{-(mag - 1), mag - 1};
+                }
+                break;
+            case Opcode::SDivChk0:
+            case Opcode::SDiv:
+                if (rhsValue.kind == Value::Kind::ConstInt && rhsValue.i64 > 0 && lhs &&
+                    lhs->lower && lhs->upper) {
+                    result = IntRange{*lhs->lower / rhsValue.i64, *lhs->upper / rhsValue.i64};
+                }
+                break;
+            case Opcode::IdxChk:
+                // idx.chk idx, lo, hi traps unless lo <= idx < hi and returns the
+                // normalized index idx - lo. On fall-through both facts hold.
+                if (instr.operands.size() >= 3 &&
+                    instr.operands[1].kind == Value::Kind::ConstInt &&
+                    instr.operands[2].kind == Value::Kind::ConstInt) {
+                    const int64_t lo = instr.operands[1].i64;
+                    const int64_t hi = instr.operands[2].i64;
+                    if (lo < hi) {
+                        result = IntRange{0, hi - lo - 1};
+                        refineTemp(ranges, instr.operands[0], IntRange{lo, hi - 1});
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+    } else if (instr.operands.size() == 1) {
+        switch (instr.op) {
+            case Opcode::CastSiNarrowChk:
+            case Opcode::CastUiNarrowChk: {
+                const bool isUnsigned = instr.op == Opcode::CastUiNarrowChk;
+                auto typeRange = narrowTypeRange(instr.type.kind, isUnsigned);
+                if (typeRange) {
+                    result = typeRange;
+                    if (auto operand = rangeForValue(instr.operands[0], ranges))
+                        if (auto tighter = intersectRanges(*operand, *typeRange))
+                            result = tighter;
+                    // The operand itself is known in-range after the check passes.
+                    refineTemp(ranges, instr.operands[0], *typeRange);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    if (instr.result) {
+        const std::optional<IntRange> &toStore = storedIsResult ? result : stored;
+        if (toStore)
+            ranges[*instr.result] = *toStore;
+        else
+            ranges.erase(*instr.result);
+    }
+    return result;
+}
+
+namespace {
+
+/// @brief Compute the fact map carried by one CFG edge.
+/// @param pred Source block whose exit state is @p outState.
+/// @param term Terminator of @p pred.
+/// @param branchIndex Index of the edge within the terminator's label list.
+/// @param target Destination block (for param binding).
+/// @param outState Exit range state of @p pred.
+RangeMap edgeFacts(const BasicBlock &pred,
+                   const Instr &term,
+                   size_t branchIndex,
+                   const BasicBlock &target,
+                   const RangeMap &outState) {
+    RangeMap facts = outState;
+
+    // Branch-condition refinement for conditional branches.
+    if (term.op == Opcode::CBr && term.operands.size() == 1 &&
+        term.operands.front().kind == Value::Kind::Temp) {
+        const unsigned condId = term.operands.front().id;
+        const Instr *cmp = nullptr;
+        for (const auto &instr : pred.instructions) {
+            if (instr.result && *instr.result == condId) {
+                cmp = &instr;
+                break;
+            }
+        }
+        if (cmp) {
+            Value constrained;
+            IntRange range;
+            if (deriveCompareBranchRange(*cmp, branchIndex, constrained, range)) {
+                auto it = facts.find(constrained.id);
+                if (it != facts.end()) {
+                    if (auto tighter = intersectRanges(it->second, range))
+                        it->second = *tighter;
+                } else {
+                    facts[constrained.id] = range;
+                }
+            }
+        }
+    }
+
+    // Bind branch arguments to the target's block params. Every param is
+    // explicitly bound or erased so no stale fact from a previous loop
+    // iteration survives on the back edge.
+    if (branchIndex < term.brArgs.size()) {
+        const auto &args = term.brArgs[branchIndex];
+        for (size_t i = 0; i < target.params.size(); ++i) {
+            const unsigned paramId = target.params[i].id;
+            if (i < args.size()) {
+                if (auto range = rangeForValue(args[i], facts)) {
+                    facts[paramId] = *range;
+                    continue;
+                }
+            }
+            facts.erase(paramId);
+        }
+    } else {
+        for (const auto &param : target.params)
+            facts.erase(param.id);
+    }
+
+    return facts;
+}
+
+bool rangesEqual(const IntRange &lhs, const IntRange &rhs) {
+    return lhs.lower == rhs.lower && lhs.upper == rhs.upper;
+}
+
+bool mapsEqual(const RangeMap &lhs, const RangeMap &rhs) {
+    if (lhs.size() != rhs.size())
+        return false;
+    for (const auto &[id, range] : lhs) {
+        auto it = rhs.find(id);
+        if (it == rhs.end() || !rangesEqual(range, it->second))
+            return false;
+    }
+    return true;
+}
+
+/// @brief Pointwise union merge; keys absent on either side are dropped.
+RangeMap mergeMaps(const RangeMap &lhs, const RangeMap &rhs) {
+    RangeMap merged;
+    for (const auto &[id, range] : lhs) {
+        auto it = rhs.find(id);
+        if (it == rhs.end())
+            continue;
+        if (auto combined = mergeIncomingRange(range, it->second))
+            merged[id] = *combined;
+    }
+    return merged;
+}
+
+} // namespace
+
+IntRangeInfo computeIntRanges(const Function &fn) {
+    IntRangeInfo info;
+    if (fn.blocks.empty())
+        return info;
+
+    const size_t blockCount = fn.blocks.size();
+    std::unordered_map<std::string, size_t> indexOf;
+    indexOf.reserve(blockCount);
+    for (size_t i = 0; i < blockCount; ++i)
+        indexOf[fn.blocks[i].label] = i;
+
+    // Reverse post-order over the label CFG so predecessors are usually
+    // processed before successors within a sweep. Targets of back edges (loop
+    // headers) are recorded as the only widening points: widening anywhere
+    // else would erase branch refinements that single-pred blocks legally
+    // recover from their (eventually stable) predecessors.
+    std::vector<size_t> rpo;
+    rpo.reserve(blockCount);
+    std::vector<char> isWideningPoint(blockCount, 0);
+    {
+        std::vector<char> seen(blockCount, 0);
+        std::vector<char> onStack(blockCount, 0);
+        std::vector<std::pair<size_t, size_t>> stack; // (block, next successor)
+        stack.emplace_back(0, 0);
+        seen[0] = 1;
+        onStack[0] = 1;
+        while (!stack.empty()) {
+            auto &[blockIdx, succPos] = stack.back();
+            const BasicBlock &block = fn.blocks[blockIdx];
+            const Instr *term =
+                block.instructions.empty() ? nullptr : &block.instructions.back();
+            const size_t succCount = term ? term->labels.size() : 0;
+            if (succPos < succCount) {
+                const std::string &label = term->labels[succPos];
+                ++succPos;
+                auto it = indexOf.find(label);
+                if (it == indexOf.end())
+                    continue;
+                if (onStack[it->second])
+                    isWideningPoint[it->second] = 1;
+                if (!seen[it->second]) {
+                    seen[it->second] = 1;
+                    onStack[it->second] = 1;
+                    stack.emplace_back(it->second, 0);
+                }
+                continue;
+            }
+            rpo.push_back(blockIdx);
+            onStack[blockIdx] = 0;
+            stack.pop_back();
+        }
+        std::reverse(rpo.begin(), rpo.end());
+    }
+
+    std::vector<RangeMap> entry(blockCount);
+    std::vector<char> reached(blockCount, 0);
+    // Per-bound change counters and sticky widening state. Widening decisions
+    // are made per (block, temp, side): only the bound that keeps moving is
+    // discarded, so a stable lower bound survives an upper bound that creeps
+    // by one per sweep (the common counted-loop shape).
+    std::vector<std::unordered_map<unsigned, unsigned>> lowerChanges(blockCount);
+    std::vector<std::unordered_map<unsigned, unsigned>> upperChanges(blockCount);
+    std::vector<std::unordered_set<unsigned>> widenedLower(blockCount);
+    std::vector<std::unordered_set<unsigned>> widenedUpper(blockCount);
+    reached[0] = 1;
+
+    constexpr unsigned kWidenAfterUpdates = 3;
+    constexpr unsigned kMaxSweeps = 24;
+
+    // Edge facts flowing into each block, rebuilt every sweep so entries are a
+    // FRESH merge over the current in-edges. Merging into the previous entry
+    // instead would union in stale history and erode branch refinements.
+    std::vector<std::vector<RangeMap>> incoming(blockCount);
+
+    // One dataflow sweep. In widening mode, oscillating bounds at loop headers
+    // are stripped (sticky) so the ascent terminates. In narrowing mode the
+    // stripping is disabled: entries are recomputed honestly from the
+    // converged state, which recovers bounds that stabilized after their
+    // widening (monotonicity keeps every narrowing iterate sound).
+    auto runSweep = [&](bool widening) -> bool {
+        bool changed = false;
+
+        for (auto &edges : incoming)
+            edges.clear();
+
+        // Phase A: push every reached block's exit state along its out-edges.
+        // Blocks first reached during this sweep must NOT propagate yet: their
+        // entry is still empty, and pushing empty-seeded facts would bake
+        // missing bounds into successors that later sweeps cannot recover
+        // (edge merges drop any key absent on one incoming edge).
+        const std::vector<char> canPropagate = reached;
+        for (size_t blockIdx : rpo) {
+            if (!canPropagate[blockIdx])
+                continue;
+            const BasicBlock &block = fn.blocks[blockIdx];
+            if (block.instructions.empty())
+                continue;
+
+            RangeMap out = entry[blockIdx];
+            for (const auto &instr : block.instructions)
+                applyRangeTransfer(instr, out);
+
+            const Instr &term = block.instructions.back();
+            for (size_t branchIndex = 0; branchIndex < term.labels.size(); ++branchIndex) {
+                auto succIt = indexOf.find(term.labels[branchIndex]);
+                if (succIt == indexOf.end())
+                    continue;
+                const size_t succIdx = succIt->second;
+                incoming[succIdx].push_back(
+                    edgeFacts(block, term, branchIndex, fn.blocks[succIdx], out));
+                if (!reached[succIdx]) {
+                    reached[succIdx] = 1;
+                    changed = true;
+                }
+            }
+        }
+
+        // Phase B: recompute each entry as the merge of its current in-edges.
+        for (size_t blockIdx : rpo) {
+            // The function entry has an implicit caller edge with no facts, so
+            // its entry state is pinned empty regardless of back edges.
+            if (blockIdx == 0 || incoming[blockIdx].empty())
+                continue;
+
+            RangeMap fresh = incoming[blockIdx].front();
+            for (size_t i = 1; i < incoming[blockIdx].size(); ++i)
+                fresh = mergeMaps(fresh, incoming[blockIdx][i]);
+
+            if (widening) {
+                // Strip bounds that were widened away in earlier sweeps.
+                for (auto it = fresh.begin(); it != fresh.end();) {
+                    if (widenedLower[blockIdx].count(it->first))
+                        it->second.lower.reset();
+                    if (widenedUpper[blockIdx].count(it->first))
+                        it->second.upper.reset();
+                    if (!it->second.lower && !it->second.upper) {
+                        it = fresh.erase(it);
+                        continue;
+                    }
+                    ++it;
+                }
+            }
+
+            if (mapsEqual(fresh, entry[blockIdx]))
+                continue;
+            if (const char *dbg = std::getenv("VIPER_DEBUG_INTRANGES"); dbg && dbg[0] == '2') {
+                std::fprintf(stderr, "  [sweep %s] block %s changed:", widening ? "W" : "N",
+                             fn.blocks[blockIdx].label.c_str());
+                for (const auto &[id, range] : fresh)
+                    std::fprintf(stderr, " t%u=[%s,%s]", id,
+                                 range.lower ? std::to_string(*range.lower).c_str() : "-inf",
+                                 range.upper ? std::to_string(*range.upper).c_str() : "+inf");
+                std::fprintf(stderr, "\n");
+            }
+            if (widening && isWideningPoint[blockIdx]) {
+                // Count changes per bound; a bound that moves more than the
+                // grace budget is part of an unstable chain and is widened
+                // away (sticky) so the ascent terminates. Bounds that stayed
+                // stable keep their counters at zero and survive.
+                for (auto it = fresh.begin(); it != fresh.end();) {
+                    auto old = entry[blockIdx].find(it->first);
+                    if (old != entry[blockIdx].end()) {
+                        if (it->second.lower != old->second.lower &&
+                            ++lowerChanges[blockIdx][it->first] > kWidenAfterUpdates) {
+                            widenedLower[blockIdx].insert(it->first);
+                            it->second.lower.reset();
+                        }
+                        if (it->second.upper != old->second.upper &&
+                            ++upperChanges[blockIdx][it->first] > kWidenAfterUpdates) {
+                            widenedUpper[blockIdx].insert(it->first);
+                            it->second.upper.reset();
+                        }
+                    }
+                    if (!it->second.lower && !it->second.upper) {
+                        it = fresh.erase(it);
+                        continue;
+                    }
+                    ++it;
+                }
+                if (mapsEqual(fresh, entry[blockIdx]))
+                    continue;
+            }
+            entry[blockIdx] = std::move(fresh);
+            changed = true;
+        }
+
+        return changed;
+    };
+
+    bool converged = false;
+    for (unsigned sweep = 0; sweep < kMaxSweeps; ++sweep) {
+        if (!runSweep(/*widening=*/true)) {
+            converged = true;
+            break;
+        }
+    }
+
+    // Narrowing: recover bounds that stabilized after being widened (e.g. a
+    // rotated loop header whose latch compare caps the induction variable —
+    // the header is the widening point, so the ascent stripped the very bound
+    // the latch refinement provides). Bounded sweep count; each iterate stays
+    // a sound over-approximation by monotonicity of the transfer functions.
+    if (converged) {
+        constexpr unsigned kNarrowSweeps = 2;
+        for (unsigned sweep = 0; sweep < kNarrowSweeps; ++sweep) {
+            if (!runSweep(/*widening=*/false))
+                break;
+        }
+    }
+
+    // Debug observability: VIPER_DEBUG_INTRANGES=1 dumps convergence status and
+    // per-block entry facts to stderr.
+    if (std::getenv("VIPER_DEBUG_INTRANGES")) {
+        std::fprintf(stderr, "[int-ranges] fn=%s converged=%d\n", fn.name.c_str(),
+                     converged ? 1 : 0);
+        for (size_t i = 0; i < blockCount; ++i) {
+            if (!reached[i])
+                continue;
+            std::fprintf(stderr, "  block %s:", fn.blocks[i].label.c_str());
+            for (const auto &[id, range] : entry[i]) {
+                std::fprintf(stderr, " t%u=[%s,%s]", id,
+                             range.lower ? std::to_string(*range.lower).c_str() : "-inf",
+                             range.upper ? std::to_string(*range.upper).c_str() : "+inf");
+            }
+            std::fprintf(stderr, "\n");
+        }
+    }
+
+    // A non-converged iterate UNDER-approximates the final union (bounds may
+    // still be growing), so consuming it could wrongly prove a check safe.
+    // Returning no facts is the only sound fallback.
+    if (!converged)
+        return info;
+
+    for (size_t i = 0; i < blockCount; ++i) {
+        if (reached[i])
+            info.blockEntry.emplace(fn.blocks[i].label, std::move(entry[i]));
+    }
+    return info;
+}
+
+} // namespace viper::analysis

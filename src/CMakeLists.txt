@@ -154,6 +154,7 @@ target_link_libraries(viper_il_verify
         il_runtime
         viper_il_io
         PRIVATE
+        il_analysis
         viper_common_opts
 )
 target_include_directories(viper_il_verify PUBLIC
@@ -188,6 +189,7 @@ add_library(il_analysis STATIC
         il/analysis/CFG.cpp
         il/analysis/CallGraph.cpp
         il/analysis/Dominators.cpp
+        il/analysis/IntRangeAnalysis.cpp
         il/analysis/MemorySSA.cpp)
 target_link_libraries(il_analysis PUBLIC viper_il_core PRIVATE viper_common_opts)
 target_include_directories(il_analysis PUBLIC

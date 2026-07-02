@@ -31,6 +31,7 @@
 
 #include "../TargetAArch64.hpp"
 #include "PeepholeCommon.hpp"
+#include "codegen/common/MagicDivision.hpp"
 
 #include <algorithm>
 #include <array>
@@ -64,64 +65,8 @@ namespace {
 /// The SMULH instruction computes the upper 64 bits of x * M, giving us
 /// floor(x * M / 2^64). Combined with a post-shift of S, this yields the
 /// quotient.
-struct MagicNumber {
-    long long multiplier{0}; ///< Magic multiplier M (signed 64-bit).
-    int shift{0};            ///< Post-shift amount S (arithmetic shift right).
-    bool needsAdd{false};    ///< True if we need to add the dividend after SMULH
-                             ///< (when the multiplier overflows signed 64-bit).
-};
-
-/// @brief Magic number parameters for unsigned division by constant.
-struct UnsignedMagicNumber {
-    uint64_t multiplier{0}; ///< Magic multiplier M.
-    unsigned shift{0};      ///< Post-shift amount.
-    bool needsAdd{false};   ///< True when the libdivide-style add fixup is required.
-};
-
-/// @brief Compute floor(log2(value)) for a non-zero 64-bit integer.
-[[nodiscard]] unsigned floorLog2U64(uint64_t value) noexcept {
-    unsigned log = 0;
-    while ((uint64_t{1} << (log + 1)) <= value && log < 63)
-        ++log;
-    return log;
-}
-
-/// @brief Divide a 128-bit unsigned integer (hi:lo) by a 64-bit divisor.
-/// @param hi      Upper 64 bits of the numerator.
-/// @param lo      Lower 64 bits of the numerator.
-/// @param divisor 64-bit unsigned divisor.
-/// @param rem     Output: remainder of the division.
-/// @return 64-bit quotient.
-[[nodiscard]] uint64_t divU128ByU64(uint64_t hi,
-                                    uint64_t lo,
-                                    uint64_t divisor,
-                                    uint64_t &rem) noexcept {
-#if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_AMD64))
-    unsigned __int64 remainder = 0;
-    const unsigned __int64 quotient = _udiv128(hi, lo, divisor, &remainder);
-    rem = remainder;
-    return quotient;
-#elif defined(_MSC_VER) && !defined(__clang__)
-    uint64_t quotient = 0;
-    rem = 0;
-    for (int bit = 127; bit >= 0; --bit) {
-        const uint64_t nextBit = (bit >= 64) ? ((hi >> (bit - 64)) & 1u) : ((lo >> bit) & 1u);
-        const uint64_t carry = rem >> 63;
-        rem = (rem << 1) | nextBit;
-        if (carry || rem >= divisor) {
-            rem -= divisor;
-            if (bit < 64)
-                quotient |= uint64_t{1} << bit;
-        }
-    }
-    return quotient;
-#else
-    const unsigned __int128 numerator =
-        (static_cast<unsigned __int128>(hi) << 64) | static_cast<unsigned __int128>(lo);
-    rem = static_cast<uint64_t>(numerator % divisor);
-    return static_cast<uint64_t>(numerator / divisor);
-#endif
-}
+using viper::codegen::MagicNumber;
+using viper::codegen::UnsignedMagicNumber;
 
 /// @brief Select the first candidate register that does not conflict with any operand in @p avoid.
 /// @param candidates Ordered list of scratch register candidates to try.
@@ -178,65 +123,7 @@ struct UnsignedMagicNumber {
 /// @param d The divisor (must be >= 2).
 /// @return Magic number parameters, or empty if d is not suitable.
 [[maybe_unused]] [[nodiscard]] MagicNumber computeSignedMagic(long long d) noexcept {
-    MagicNumber result{};
-
-    if (d < 2)
-        return result;
-
-    // Use unsigned arithmetic for the computation.
-    const auto ud = static_cast<uint64_t>(d);
-
-    // Two's complement range for 64-bit: 2^63
-    constexpr uint64_t twoP63 = static_cast<uint64_t>(1) << 63;
-
-    // nc = floor((2^63 - 1 - ((2^63) % d)) -- the "magic" threshold
-    const uint64_t rem = twoP63 % ud;
-    const uint64_t nc = twoP63 - 1 - rem;
-
-    int p = 63;                     // p starts at 63 (we'll increment)
-    uint64_t q1 = twoP63 / nc;      // quotient of 2^p / nc
-    uint64_t r1 = twoP63 - q1 * nc; // remainder of 2^p / nc
-    uint64_t q2 = twoP63 / ud;      // quotient of 2^p / d  (adjusted for sign)
-    uint64_t r2 = twoP63 - q2 * ud; // remainder of 2^p / d
-
-    // Iterate to find the right p
-    for (;;) {
-        ++p;
-        // Update q1, r1 for 2^p / nc
-        q1 = 2 * q1;
-        r1 = 2 * r1;
-        if (r1 >= nc) {
-            q1 += 1;
-            r1 -= nc;
-        }
-        // Update q2, r2 for 2^p / d
-        q2 = 2 * q2;
-        r2 = 2 * r2;
-        if (r2 >= ud) {
-            q2 += 1;
-            r2 -= ud;
-        }
-
-        const uint64_t delta = ud - r2;
-        if (q1 < delta || (q1 == delta && r1 == 0))
-            continue;
-
-        break;
-    }
-
-    result.multiplier = static_cast<long long>(q2 + 1);
-    result.shift = p - 64;
-
-    // If the multiplier would overflow signed 64-bit (i.e., q2+1 >= 2^63),
-    // we need to subtract 2^64 from the multiplier and add the dividend
-    // after SMULH to compensate.
-    if (static_cast<uint64_t>(result.multiplier) >= twoP63) {
-        // Encode as a negative multiplier and set needsAdd flag.
-        // smulh(x, M-2^64) + x == smulh(x, M) since smulh adds the "lost" 2^64*x.
-        result.needsAdd = true;
-    }
-
-    return result;
+    return viper::codegen::computeSignedMagic(d);
 }
 
 /// @brief Compute the magic number for unsigned division by a non-power-of-2 constant.
@@ -248,31 +135,7 @@ struct UnsignedMagicNumber {
 /// @param d The unsigned divisor; must be > 1 and not a power of 2.
 /// @return Magic number parameters, or nullopt if @p d is unsuitable.
 [[nodiscard]] std::optional<UnsignedMagicNumber> computeUnsignedMagic(uint64_t d) noexcept {
-    if (d <= 1)
-        return std::nullopt;
-    if ((d & (d - 1)) == 0)
-        return std::nullopt;
-
-    const unsigned floorLog2 = floorLog2U64(d);
-    uint64_t rem = 0;
-    uint64_t proposed = divU128ByU64(uint64_t{1} << floorLog2, 0, d, rem);
-    const uint64_t e = d - rem;
-
-    UnsignedMagicNumber result{};
-    result.shift = floorLog2;
-    if (e < (uint64_t{1} << floorLog2)) {
-        result.multiplier = proposed + 1;
-        result.needsAdd = false;
-        return result;
-    }
-
-    proposed += proposed;
-    const uint64_t twiceRem = rem + rem;
-    if (twiceRem >= d || twiceRem < rem)
-        proposed += 1;
-    result.multiplier = proposed + 1;
-    result.needsAdd = true;
-    return result;
+    return viper::codegen::computeUnsignedMagic(d);
 }
 
 } // namespace

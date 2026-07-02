@@ -276,6 +276,17 @@ static void validateOperandCount(const MInstr &mi) {
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
         case MOpcode::Csel:
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl:
+        case MOpcode::AddRRRLsl:
+        case MOpcode::SubRRRLsl:
+        case MOpcode::AndRRRLsl:
+        case MOpcode::OrrRRRLsl:
+        case MOpcode::EorRRRLsl:
             requireOperandCount(mi, 4);
             return;
     }
@@ -1753,6 +1764,38 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             encodeBaseRelLdStInstr(mi, cs);
             return;
 
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl:
+            encodeRegOffsetLdStInstr(mi, cs);
+            return;
+
+        case MOpcode::AddRRRLsl:
+        case MOpcode::SubRRRLsl:
+        case MOpcode::AndRRRLsl:
+        case MOpcode::OrrRRRLsl:
+        case MOpcode::EorRRRLsl: {
+            // Shifted-register data-processing: the base templates carry
+            // shift type LSL(00) with amount 0; the amount lives in imm6
+            // (bits 15-10).
+            const uint32_t tmpl = mi.opc == MOpcode::AddRRRLsl   ? kAddRRR
+                                  : mi.opc == MOpcode::SubRRRLsl ? kSubRRR
+                                  : mi.opc == MOpcode::AndRRRLsl ? kAndRRR
+                                  : mi.opc == MOpcode::OrrRRRLsl ? kOrrRRR
+                                                                 : kEorRRR;
+            const auto amount = static_cast<uint32_t>(getImm(mi.ops[3])) & 63U;
+            emit32(encode3Reg(tmpl,
+                              hwGPR(getReg(mi.ops[0])),
+                              hwGPR(getReg(mi.ops[1])),
+                              hwGPR(getReg(mi.ops[2]))) |
+                       (amount << 10),
+                   cs);
+            return;
+        }
+
         case MOpcode::LdpRegFpImm:
         case MOpcode::StpRegFpImm:
         case MOpcode::LdpFprFpImm:
@@ -2004,6 +2047,36 @@ void A64BinaryEncoder::encodeBaseRelLdStInstr(const MInstr &mi, objfile::CodeSec
         : (mi.opc == MOpcode::Ldr32RegBaseImm || mi.opc == MOpcode::Str32RegBaseImm) ? 4
                                                                                      : 8;
     encodeScalarLdSt(rt, base, offset, isLoad, false, bytes, cs);
+}
+
+void A64BinaryEncoder::encodeRegOffsetLdStInstr(const MInstr &mi, objfile::CodeSection &cs) {
+    // LDR/STR (register offset): size(2) 111 V 00 opc(2) 1 Rm option(011=LSL)
+    // S 10 Rn Rt. S=1 selects a shift equal to log2(access size); S=0 selects
+    // no shift. Those are the only legal amounts for this form.
+    const bool isLoad = mi.opc == MOpcode::LdrRegBaseRegLsl ||
+                        mi.opc == MOpcode::Ldr32RegBaseRegLsl ||
+                        mi.opc == MOpcode::LdrFprBaseRegLsl;
+    const bool is32 = mi.opc == MOpcode::Ldr32RegBaseRegLsl ||
+                      mi.opc == MOpcode::Str32RegBaseRegLsl;
+    const bool isFpr = mi.opc == MOpcode::LdrFprBaseRegLsl ||
+                       mi.opc == MOpcode::StrFprBaseRegLsl;
+    const uint32_t rt = isFpr ? hwFPR(getReg(mi.ops[0])) : hwGPR(getReg(mi.ops[0]));
+    const uint32_t rn = hwGPR(getReg(mi.ops[1]));
+    const uint32_t rm = hwGPR(getReg(mi.ops[2]));
+    const long long shift = getImm(mi.ops[3]);
+    const long long expected = is32 ? 2 : 3;
+    if (shift != 0 && shift != expected) {
+        throw std::runtime_error("AArch64 encoder: register-offset load/store shift must be 0 or "
+                                 "log2(size)");
+    }
+    const uint32_t size = is32 ? 0b10U : 0b11U;
+    const uint32_t v = isFpr ? 1U : 0U;
+    const uint32_t opc = isLoad ? 0b01U : 0b00U;
+    const uint32_t sBit = shift == 0 ? 0U : 1U;
+    const uint32_t word = (size << 30) | (0b111U << 27) | (v << 26) | (opc << 22) | (1U << 21) |
+                          (rm << 16) | (0b011U << 13) | (sBit << 12) | (0b10U << 10) | (rn << 5) |
+                          rt;
+    emit32(word, cs);
 }
 
 void A64BinaryEncoder::encodeLdStPairInstr(const MInstr &mi, objfile::CodeSection &cs) {

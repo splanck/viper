@@ -215,4 +215,32 @@ inline std::optional<IntRange> mergeIncomingRange(const IntRange &lhs, const Int
     return merged;
 }
 
+/// @brief Intersect two range facts that are simultaneously known for a value.
+/// @details The intersection keeps the tighter bound on each side. Used when a
+///          flow fact meets a branch-condition fact on the same CFG edge. An
+///          empty intersection (lower > upper) means the edge is infeasible;
+///          the caller may still use the result soundly because no execution
+///          reaches the target with that value.
+/// @param lhs First known range fact.
+/// @param rhs Second known range fact.
+/// @return Intersected fact, or std::nullopt when neither side is bounded.
+inline std::optional<IntRange> intersectRanges(const IntRange &lhs, const IntRange &rhs) {
+    IntRange out;
+    if (lhs.lower && rhs.lower)
+        out.lower = std::max(*lhs.lower, *rhs.lower);
+    else if (lhs.lower)
+        out.lower = lhs.lower;
+    else if (rhs.lower)
+        out.lower = rhs.lower;
+    if (lhs.upper && rhs.upper)
+        out.upper = std::min(*lhs.upper, *rhs.upper);
+    else if (lhs.upper)
+        out.upper = lhs.upper;
+    else if (rhs.upper)
+        out.upper = rhs.upper;
+    if (!out.lower && !out.upper)
+        return std::nullopt;
+    return out;
+}
+
 } // namespace il::utils

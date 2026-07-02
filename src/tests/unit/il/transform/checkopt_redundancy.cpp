@@ -12,6 +12,7 @@
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/IntRangeAnalysis.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -37,6 +38,9 @@ il::transform::AnalysisRegistry makeRegistry() {
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
         "loop-info",
         [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
+    registry.registerFunctionAnalysis<viper::analysis::IntRangeInfo>(
+        "int-ranges",
+        [](Module &, Function &fn) { return viper::analysis::computeIntRanges(fn); });
     return registry;
 }
 } // namespace

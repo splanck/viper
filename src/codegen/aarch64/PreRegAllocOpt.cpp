@@ -28,7 +28,14 @@
 
 #include "codegen/aarch64/PreRegAllocOpt.hpp"
 
+#include "codegen/aarch64/ra/OpcodeClassify.hpp"
+#include "codegen/aarch64/ra/OperandRoles.hpp"
 #include "codegen/common/PreRAForwardCopy.hpp"
+
+#include <cstdint>
+#include <cstdlib>
+#include <unordered_map>
+#include <vector>
 
 namespace viper::codegen::aarch64 {
 namespace {
@@ -84,6 +91,14 @@ namespace {
         case MOpcode::Ldr16RegBaseImm:
         case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
+        case MOpcode::AddRRRLsl:
+        case MOpcode::SubRRRLsl:
+        case MOpcode::AndRRRLsl:
+        case MOpcode::OrrRRRLsl:
+        case MOpcode::EorRRRLsl:
         case MOpcode::AddFpImm:
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
@@ -221,10 +236,229 @@ struct A64PreRATraits {
     }
 };
 
+/// @brief Fold shift+add address arithmetic into scaled addressing forms.
+/// @details Rewrites, within a block and over single-def/single-use vregs:
+///            lsl t, x, #k ; add p, base, t ; ldr d, [p, #0]
+///              -> ldr d, [base, x, lsl #k]       (k in {0, log2(size)})
+///            lsl t, x, #k ; add d, y, t
+///              -> add d, y, x, lsl #k            (any k)
+///          plus the str / 32-bit / FPR load-store variants and the
+///          sub/and/orr/eor shifted-operand forms. Def/use counts are taken
+///          over the whole function so deleting the feeding instructions can
+///          never orphan another consumer.
+std::size_t runAddressingFolds(MFunction &fn) {
+    // Whole-function def/use counts per GPR vreg.
+    std::unordered_map<uint16_t, unsigned> defCount;
+    std::unordered_map<uint16_t, unsigned> useCount;
+    for (const auto &bb : fn.blocks) {
+        for (const auto &mi : bb.instrs) {
+            for (std::size_t oi = 0; oi < mi.ops.size(); ++oi) {
+                const auto &op = mi.ops[oi];
+                if (op.kind != MOperand::Kind::Reg || op.reg.isPhys ||
+                    op.reg.cls != RegClass::GPR)
+                    continue;
+                const auto [isUse, isDef] = ra::operandRoles(mi, oi);
+                if (isUse)
+                    ++useCount[op.reg.idOrPhys];
+                if (isDef)
+                    ++defCount[op.reg.idOrPhys];
+            }
+        }
+    }
+    const auto singleDefUse = [&](uint16_t vreg) {
+        auto d = defCount.find(vreg);
+        auto u = useCount.find(vreg);
+        return d != defCount.end() && d->second == 1 && u != useCount.end() && u->second == 1;
+    };
+    const auto vregOf = [](const MOperand &op) -> uint16_t {
+        return op.reg.idOrPhys;
+    };
+    const auto isVGpr = [](const MOperand &op) {
+        return op.kind == MOperand::Kind::Reg && !op.reg.isPhys && op.reg.cls == RegClass::GPR;
+    };
+
+    std::size_t folded = 0;
+    for (auto &bb : fn.blocks) {
+        struct ShiftDef {
+            std::size_t idx{};
+            MOperand src{};
+            long long amount{};
+        };
+        struct AddrDef {
+            std::size_t idx{};
+            std::size_t shiftIdx{};
+            MOperand base{};
+            MOperand index{};
+            long long amount{};
+        };
+        std::unordered_map<uint16_t, ShiftDef> shiftDefs;
+        std::unordered_map<uint16_t, AddrDef> addrDefs;
+        std::vector<char> removed(bb.instrs.size(), 0);
+
+        // Invalidate any recorded pattern whose inputs are redefined.
+        const auto invalidateOnDef = [&](const MInstr &mi) {
+            for (std::size_t oi = 0; oi < mi.ops.size(); ++oi) {
+                const auto [isUse, isDef] = ra::operandRoles(mi, oi);
+                (void)isUse;
+                if (!isDef || mi.ops[oi].kind != MOperand::Kind::Reg)
+                    continue;
+                const auto &defReg = mi.ops[oi].reg;
+                for (auto it = shiftDefs.begin(); it != shiftDefs.end();) {
+                    if ((defReg.isPhys == it->second.src.reg.isPhys &&
+                         defReg.cls == it->second.src.reg.cls &&
+                         defReg.idOrPhys == it->second.src.reg.idOrPhys) ||
+                        (!defReg.isPhys && defReg.cls == RegClass::GPR &&
+                         defReg.idOrPhys == it->first)) {
+                        it = shiftDefs.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                for (auto it = addrDefs.begin(); it != addrDefs.end();) {
+                    const auto &entry = it->second;
+                    const auto matches = [&](const MOperand &src) {
+                        return defReg.isPhys == src.reg.isPhys && defReg.cls == src.reg.cls &&
+                               defReg.idOrPhys == src.reg.idOrPhys;
+                    };
+                    if (matches(entry.base) || matches(entry.index) ||
+                        (!defReg.isPhys && defReg.cls == RegClass::GPR &&
+                         defReg.idOrPhys == it->first)) {
+                        it = addrDefs.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+        };
+
+        for (std::size_t i = 0; i < bb.instrs.size(); ++i) {
+            MInstr &mi = bb.instrs[i];
+
+            // Load/store through a single-use shift+add address: fold to the
+            // scaled register-offset form when the amount is legal.
+            const bool isBaseLd = mi.opc == MOpcode::LdrRegBaseImm ||
+                                  mi.opc == MOpcode::Ldr32RegBaseImm ||
+                                  mi.opc == MOpcode::LdrFprBaseImm;
+            const bool isBaseSt = mi.opc == MOpcode::StrRegBaseImm ||
+                                  mi.opc == MOpcode::Str32RegBaseImm ||
+                                  mi.opc == MOpcode::StrFprBaseImm;
+            if ((isBaseLd || isBaseSt) && mi.ops.size() >= 3 && isVGpr(mi.ops[1]) &&
+                mi.ops[2].kind == MOperand::Kind::Imm && mi.ops[2].imm == 0) {
+                auto addrIt = addrDefs.find(vregOf(mi.ops[1]));
+                if (addrIt != addrDefs.end()) {
+                    const bool is32 = mi.opc == MOpcode::Ldr32RegBaseImm ||
+                                      mi.opc == MOpcode::Str32RegBaseImm;
+                    const long long legal = is32 ? 2 : 3;
+                    const long long amount = addrIt->second.amount;
+                    if (amount == 0 || amount == legal) {
+                        MOpcode replacement = MOpcode::LdrRegBaseRegLsl;
+                        if (mi.opc == MOpcode::StrRegBaseImm)
+                            replacement = MOpcode::StrRegBaseRegLsl;
+                        else if (mi.opc == MOpcode::Ldr32RegBaseImm)
+                            replacement = MOpcode::Ldr32RegBaseRegLsl;
+                        else if (mi.opc == MOpcode::Str32RegBaseImm)
+                            replacement = MOpcode::Str32RegBaseRegLsl;
+                        else if (mi.opc == MOpcode::LdrFprBaseImm)
+                            replacement = MOpcode::LdrFprBaseRegLsl;
+                        else if (mi.opc == MOpcode::StrFprBaseImm)
+                            replacement = MOpcode::StrFprBaseRegLsl;
+                        const AddrDef entry = addrIt->second;
+                        mi.opc = replacement;
+                        mi.ops = {mi.ops[0], entry.base, entry.index, MOperand::immOp(entry.amount)};
+                        removed[entry.idx] = 1;
+                        removed[entry.shiftIdx] = 1;
+                        addrDefs.erase(addrIt);
+                        ++folded;
+                        invalidateOnDef(mi);
+                        continue;
+                    }
+                }
+            }
+
+            // Shift feeding an add: remember the pair as an address candidate
+            // (a later load/store may absorb it) — or fold the ALU directly.
+            if (mi.opc == MOpcode::AddRRR && mi.ops.size() >= 3 && isVGpr(mi.ops[0]) &&
+                mi.ops[1].kind == MOperand::Kind::Reg && isVGpr(mi.ops[2])) {
+                auto shiftIt = shiftDefs.find(vregOf(mi.ops[2]));
+                if (shiftIt != shiftDefs.end() && singleDefUse(vregOf(mi.ops[2]))) {
+                    const ShiftDef entry = shiftIt->second;
+                    shiftDefs.erase(shiftIt);
+                    // Invalidate BEFORE recording: this add's def must clear
+                    // stale entries keyed by its destination, not the fresh
+                    // candidate recorded below.
+                    invalidateOnDef(mi);
+                    if (singleDefUse(vregOf(mi.ops[0]))) {
+                        // Candidate address computation; defer to a load fold.
+                        addrDefs[vregOf(mi.ops[0])] =
+                            AddrDef{i, entry.idx, mi.ops[1], entry.src, entry.amount};
+                    } else {
+                        // Fold the shift into the add's second operand.
+                        mi.opc = MOpcode::AddRRRLsl;
+                        mi.ops = {mi.ops[0], mi.ops[1], entry.src, MOperand::immOp(entry.amount)};
+                        removed[entry.idx] = 1;
+                        ++folded;
+                    }
+                    continue;
+                }
+            }
+
+            // Sub/And/Orr/Eor with a single-use shifted second operand.
+            if ((mi.opc == MOpcode::SubRRR || mi.opc == MOpcode::AndRRR ||
+                 mi.opc == MOpcode::OrrRRR || mi.opc == MOpcode::EorRRR) &&
+                mi.ops.size() >= 3 && isVGpr(mi.ops[2])) {
+                auto shiftIt = shiftDefs.find(vregOf(mi.ops[2]));
+                if (shiftIt != shiftDefs.end() && singleDefUse(vregOf(mi.ops[2]))) {
+                    const ShiftDef entry = shiftIt->second;
+                    mi.opc = mi.opc == MOpcode::SubRRR   ? MOpcode::SubRRRLsl
+                             : mi.opc == MOpcode::AndRRR ? MOpcode::AndRRRLsl
+                             : mi.opc == MOpcode::OrrRRR ? MOpcode::OrrRRRLsl
+                                                         : MOpcode::EorRRRLsl;
+                    mi.ops = {mi.ops[0], mi.ops[1], entry.src, MOperand::immOp(entry.amount)};
+                    removed[entry.idx] = 1;
+                    ++folded;
+                    shiftDefs.erase(shiftIt);
+                    invalidateOnDef(mi);
+                    continue;
+                }
+            }
+
+            // Record fresh shift defs AFTER matching so a shift never feeds
+            // itself; calls and other clobbers invalidate via operand defs.
+            if (ra::isCall(mi.opc)) {
+                shiftDefs.clear();
+                addrDefs.clear();
+                continue;
+            }
+            invalidateOnDef(mi);
+            if (mi.opc == MOpcode::LslRI && mi.ops.size() >= 3 && isVGpr(mi.ops[0]) &&
+                mi.ops[1].kind == MOperand::Kind::Reg &&
+                mi.ops[2].kind == MOperand::Kind::Imm && mi.ops[2].imm >= 0 &&
+                mi.ops[2].imm < 64) {
+                shiftDefs[vregOf(mi.ops[0])] = ShiftDef{i, mi.ops[1], mi.ops[2].imm};
+            }
+        }
+
+        if (folded > 0) {
+            std::vector<MInstr> kept;
+            kept.reserve(bb.instrs.size());
+            for (std::size_t i = 0; i < bb.instrs.size(); ++i) {
+                if (!removed[i])
+                    kept.push_back(std::move(bb.instrs[i]));
+            }
+            bb.instrs = std::move(kept);
+        }
+    }
+    return folded;
+}
+
 } // namespace
 
 std::size_t runPreRegAllocOpt(MFunction &fn) {
-    return common::runPreRAForwardCopy<A64PreRATraits>(fn);
+    const std::size_t forwarded = common::runPreRAForwardCopy<A64PreRATraits>(fn);
+    // VIPER_NO_ADDR_FOLDS=1 disables the addressing folds for triage.
+    if (std::getenv("VIPER_NO_ADDR_FOLDS") != nullptr)
+        return forwarded;
+    return forwarded + runAddressingFolds(fn);
 }
 
 } // namespace viper::codegen::aarch64

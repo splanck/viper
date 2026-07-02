@@ -16,7 +16,6 @@
 
 #include <cstdlib>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <utility>
 
@@ -183,7 +182,8 @@ int main() {
         }
     }
 
-    // Test 3: plain udiv with a proven non-zero non-power-of-two divisor must not keep a trap.
+    // Test 3: plain udiv with a constant non-power-of-two divisor strength-
+    // reduces to a magic multiply — no hardware divide and no trap.
     {
         const ILModule module = makeUnsignedDivModule("udiv", 10, "udiv_plain_nonpow2");
         const CodegenResult result = emitModuleToAssembly(module, {});
@@ -197,13 +197,18 @@ int main() {
             std::cerr << "Plain udiv should not emit a div0 trap:\n" << result.asmText;
             return EXIT_FAILURE;
         }
-        if (result.asmText.find("divq") == std::string::npos) {
-            std::cerr << "Plain non-pow2 udiv should still lower to divq:\n" << result.asmText;
+        if (result.asmText.find("mulq") == std::string::npos ||
+            result.asmText.find("divq") != std::string::npos) {
+            std::cerr << "Plain non-pow2 udiv should lower to a magic multiply:\n"
+                      << result.asmText;
             return EXIT_FAILURE;
         }
     }
 
-    // Test 4: checked udiv with the same divisor still keeps the runtime guard.
+    // Test 4: checked udiv with a constant non-zero divisor satisfies the
+    // div0 check statically, so it takes the same magic-multiply path with no
+    // runtime guard. (Variable-divisor checked division keeps its trap; see
+    // test_div_trap.)
     {
         const ILModule module = makeUnsignedDivModule("udiv.chk0", 10, "udiv_checked_nonpow2");
         const CodegenResult result = emitModuleToAssembly(module, {});
@@ -213,9 +218,10 @@ int main() {
             return EXIT_FAILURE;
         }
 
-        if (result.asmText.find("rt_trap_div0") == std::string::npos ||
-            result.asmText.find("divq") == std::string::npos) {
-            std::cerr << "Checked non-pow2 udiv should emit divq with div0 trap:\n"
+        if (result.asmText.find("rt_trap_div0") != std::string::npos ||
+            result.asmText.find("mulq") == std::string::npos ||
+            result.asmText.find("divq") != std::string::npos) {
+            std::cerr << "Checked const-divisor udiv should use magic multiply, no trap:\n"
                       << result.asmText;
             return EXIT_FAILURE;
         }

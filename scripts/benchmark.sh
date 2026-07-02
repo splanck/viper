@@ -65,6 +65,7 @@ Options:
   --no-vm                Skip VM benchmarks
   --no-reference         Skip C/Rust/Lua/Python/Java/C# reference benchmarks
   --viper-only           Run the curated Viper regression lane (VM + host native only)
+  --native-only          Run only native codegen modes (skip VM and references)
   --programs GLOB        Only run programs matching this glob (e.g. "fib*")
   -q, --quiet            Suppress progress output
   -h, --help             Show this help message
@@ -81,6 +82,7 @@ while [[ $# -gt 0 ]]; do
         --no-vm) NO_VM=1; shift ;;
         --no-reference) NO_REFERENCE=1; shift ;;
         --viper-only) VIPER_ONLY=1; NO_REFERENCE=1; shift ;;
+        --native-only) NO_VM=1; NO_REFERENCE=1; shift ;;
         --programs) PROGRAMS_GLOB="$2"; shift 2 ;;
         -q|--quiet) QUIET=1; shift ;;
         -h|--help) usage ;;

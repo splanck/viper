@@ -55,11 +55,10 @@ TEST(Arm64CLI, ArrayAccess_LoadIndex) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect: lsl for scaling, add for pointer arithmetic, ldr from computed address
-    EXPECT_NE(asmText.find("lsl "), std::string::npos);
-    EXPECT_NE(asmText.find(" add "), std::string::npos);
+    // The addressing fold emits the scaled register-offset form directly:
+    // ldr xT, [xBase, xIdx, lsl #3] — no separate shift or pointer add.
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
-    EXPECT_NE(asmText.find("[x"), std::string::npos);
+    EXPECT_NE(asmText.find(", lsl #3]"), std::string::npos);
 }
 
 // Test: store to base[idx] where element size is 8
@@ -78,11 +77,10 @@ TEST(Arm64CLI, ArrayAccess_StoreIndex) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect: lsl for scaling, add for pointer arithmetic, str to computed address
-    EXPECT_NE(asmText.find("lsl "), std::string::npos);
-    EXPECT_NE(asmText.find(" add "), std::string::npos);
+    // The addressing fold emits the scaled register-offset store directly:
+    // str xV, [xBase, xIdx, lsl #3] — no separate shift or pointer add.
     EXPECT_NE(asmText.find("str x"), std::string::npos);
-    EXPECT_NE(asmText.find("[x"), std::string::npos);
+    EXPECT_NE(asmText.find(", lsl #3]"), std::string::npos);
 }
 
 // Test: load from base with constant offset (field access)

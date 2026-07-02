@@ -109,6 +109,10 @@ namespace {
             return "CQO";
         case MOpcode::IDIVrm:
             return "IDIVrm";
+        case MOpcode::MULr:
+            return "MULr";
+        case MOpcode::IMULr:
+            return "IMULr";
         case MOpcode::DIVrm:
             return "DIVrm";
         case MOpcode::XORrr32:

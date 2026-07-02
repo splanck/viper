@@ -2,8 +2,12 @@
 
 ## Overview
 
-The Viper benchmark suite measures execution time across 9 stress programs,
+The Viper benchmark suite measures execution time across 16 stress programs,
 comparing Viper's native codegen against C, Rust, Lua, Python, Java, and C#.
+Nine are cross-language stress programs with reference implementations; seven
+are codegen-quality kernels that each isolate one native code generation path
+(register allocation, addressing modes, checked arithmetic, switch dispatch,
+call overhead, constant division, branchy selects).
 
 ## What Is Measured
 
@@ -90,6 +94,35 @@ output. **Timing comparisons are not meaningful when return values differ.**
 | redundant_stress | 50M        | Constant propagation + CSE             |
 | string_stress    | 500K       | String concatenation + length          |
 | udiv_stress      | 50M        | Integer division by powers of 2        |
+
+### Codegen-Quality Kernels
+
+These kernels have no cross-language reference implementations; they exist to
+measure specific native code generation paths and to catch regressions in
+them. Each records its expected exit-code checksum in a header comment.
+
+| Kernel           | Iterations | Codegen path it isolates               |
+|------------------|------------|----------------------------------------|
+| loop_sum         | 200M       | Cross-block register allocation (loop-carried values) |
+| array_traverse   | 20M loads  | Scaled-index addressing + bounds checks |
+| checked_arith    | 50M        | Overflow-checked arithmetic cost        |
+| switch_dispatch  | 50M        | Dense 16-case switch lowering           |
+| call_leaf        | 20M        | Call overhead + caller-saved traffic (callee too branchy to inline) |
+| div_const        | 20M        | Signed/unsigned division by constants   |
+| select_diamond   | 100M       | Unpredictable branches / if-conversion  |
+
+## Native-Only Lane
+
+`scripts/benchmark.sh --native-only` skips the VM, bytecode, and reference
+modes and times only the native codegen backends. This is the fast iteration
+lane for codegen work; a full run including VM modes validates cross-mode
+checksum agreement.
+
+On Apple Silicon, native-arm64 timing is authoritative. x86-64 executables do
+not run on this host, so x86-64 timing requires an x86 machine (or Rosetta 2,
+with the translation caveat noted in results); x86-64 correctness is still
+validated locally through the emit-link-run and VM-vs-native differential
+test suites.
 
 ## Reproducibility
 

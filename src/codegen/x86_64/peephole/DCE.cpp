@@ -188,6 +188,10 @@ void collectImplicitUses(const MInstr &instr,
             addReg(liveRegs, static_cast<uint16_t>(PhysReg::RAX));
             addReg(liveRegs, static_cast<uint16_t>(PhysReg::RDX));
             break;
+        case MOpcode::MULr:
+        case MOpcode::IMULr:
+            addReg(liveRegs, static_cast<uint16_t>(PhysReg::RAX));
+            break;
         default:
             break;
     }

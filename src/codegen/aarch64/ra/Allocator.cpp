@@ -31,12 +31,14 @@
 #include "OpcodeClassify.hpp"
 #include "OperandRoles.hpp"
 #include "RegClassify.hpp"
+#include "codegen/common/ra/GlobalPinning.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <climits>
+#include <cstdlib>
 #include <initializer_list>
 #include <stdexcept>
 #include <utility>
@@ -187,6 +189,13 @@ LinearAllocator::LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn),
 AllocationResult LinearAllocator::run() {
     blockExitStates_.resize(fn_.blocks.size());
 
+    // Tier 1: pin the hottest phi/cross-block frame slots to callee-saved
+    // registers so their loads and stores become register moves.
+    // VIPER_NO_GLOBAL_RA=1 disables the tier for triage.
+    if (std::getenv("VIPER_NO_GLOBAL_RA") == nullptr) {
+        assignPinnedSlots();
+    }
+
     for (std::size_t bi = 0; bi < fn_.blocks.size(); ++bi) {
         currentBlockIdx_ = bi;
         restoreFromPredecessor(bi);
@@ -198,6 +207,244 @@ AllocationResult LinearAllocator::run() {
     recordCalleeSavedUsage();
 
     return AllocationResult{};
+}
+
+void LinearAllocator::assignPinnedSlots() {
+    const std::size_t blockCount = fn_.blocks.size();
+    if (blockCount == 0) {
+        return;
+    }
+
+    // Loop depths weight slot traffic (a slot touched in a nested loop beats
+    // one touched at function scope).
+    std::vector<std::vector<std::size_t>> succs(blockCount);
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        succs[bi] = liveness_.successors(bi);
+    }
+    const std::vector<unsigned> loopDepth = viper::codegen::ra::computeLoopDepths(succs);
+
+    // Calls inside a loop defeat pinning: every callee activation (and every
+    // iteration around the call) pays the enlarged prologue/epilogue for the
+    // pinned callee-saved registers, which costs more than the slot traffic
+    // it saves. Calls outside loops (entry-block runtime setup) are fine.
+    //
+    // Exception frames defeat pinning entirely: rt_native_eh_push is a
+    // setjmp-style snapshot, so a throw restores callee-saved registers to
+    // their push-time values while frame memory keeps its current values.
+    // Values pinned to registers after the push would be silently rolled
+    // back on the exception path.
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        const bool inLoop = loopDepth[bi] != 0;
+        for (const auto &ins : fn_.blocks[bi].instrs) {
+            if (!isCall(ins.opc)) {
+                continue;
+            }
+            if (inLoop) {
+                return;
+            }
+            for (const auto &op : ins.ops) {
+                if (op.kind == MOperand::Kind::Label &&
+                    op.label.find("rt_native_eh_push") != std::string::npos) {
+                    return;
+                }
+            }
+        }
+    }
+
+    // Gather per-offset access statistics for the slot-shaped opcodes. Any
+    // candidate offset that also appears as an immediate anywhere else
+    // (address-of via AddFpImm, unrelated constants — conservatively assume
+    // the worst) is disqualified: pinning requires that every access to the
+    // slot flows through the rewritable forms below. Slots never written by
+    // this function (caller-populated stack params) are also excluded.
+    struct SlotStats {
+        double weight{0.0};
+        bool written{false};
+        bool fpr{false};
+    };
+    std::unordered_map<int, SlotStats> stats;
+    std::unordered_set<int> disqualified;
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        double blockWeight = 1.0;
+        for (unsigned d = 0; d < loopDepth[bi]; ++d) {
+            blockWeight *= 10.0;
+        }
+        for (const auto &ins : fn_.blocks[bi].instrs) {
+            const bool isSlotAccess =
+                (ins.opc == MOpcode::LdrRegFpImm || ins.opc == MOpcode::StrRegFpImm ||
+                 ins.opc == MOpcode::LdrFprFpImm || ins.opc == MOpcode::StrFprFpImm ||
+                 ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR) &&
+                ins.ops.size() >= 2 && ins.ops[0].kind == MOperand::Kind::Reg &&
+                ins.ops[1].kind == MOperand::Kind::Imm;
+            if (isSlotAccess) {
+                const int off = static_cast<int>(ins.ops[1].imm);
+                auto &entry = stats[off];
+                entry.weight += blockWeight;
+                const bool isStore = ins.opc == MOpcode::StrRegFpImm ||
+                                     ins.opc == MOpcode::StrFprFpImm ||
+                                     ins.opc == MOpcode::PhiStoreGPR ||
+                                     ins.opc == MOpcode::PhiStoreFPR;
+                if (isStore) {
+                    entry.written = true;
+                }
+                entry.fpr = ins.opc == MOpcode::LdrFprFpImm || ins.opc == MOpcode::StrFprFpImm ||
+                            ins.opc == MOpcode::PhiStoreFPR;
+                continue;
+            }
+            // Only other FP-relative forms disqualify an offset: sub-word
+            // accesses, address-of (AddFpImm), and pair forms reach the slot
+            // in ways the rewriter cannot redirect to a register.
+            switch (ins.opc) {
+                case MOpcode::Ldr8RegFpImm:
+                case MOpcode::Str8RegFpImm:
+                case MOpcode::Ldr16RegFpImm:
+                case MOpcode::Str16RegFpImm:
+                case MOpcode::Ldr32RegFpImm:
+                case MOpcode::Str32RegFpImm:
+                case MOpcode::AddFpImm:
+                    for (const auto &op : ins.ops) {
+                        if (op.kind == MOperand::Kind::Imm) {
+                            disqualified.insert(static_cast<int>(op.imm));
+                        }
+                    }
+                    break;
+                case MOpcode::LdpRegFpImm:
+                case MOpcode::StpRegFpImm:
+                case MOpcode::LdpFprFpImm:
+                case MOpcode::StpFprFpImm:
+                    for (const auto &op : ins.ops) {
+                        if (op.kind == MOperand::Kind::Imm) {
+                            disqualified.insert(static_cast<int>(op.imm));
+                            disqualified.insert(static_cast<int>(op.imm) + 8);
+                        }
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // Only loop-resident slots are worth a callee-saved register: pinning a
+    // straight-line slot trades two memory ops for a bigger prologue and a
+    // burned register. Weight >= 10 requires at least one access at loop
+    // depth >= 1.
+    constexpr double kMinPinWeight = 10.0;
+    std::vector<std::pair<int, const SlotStats *>> ranked;
+    for (const auto &[off, entry] : stats) {
+        if (off == 0 || !entry.written || entry.weight < kMinPinWeight ||
+            disqualified.count(off)) {
+            continue;
+        }
+        ranked.emplace_back(off, &entry);
+    }
+    if (ranked.empty()) {
+        return;
+    }
+    std::sort(ranked.begin(), ranked.end(), [](const auto &a, const auto &b) {
+        if (a.second->weight != b.second->weight)
+            return a.second->weight > b.second->weight;
+        return a.first < b.first; // deterministic tie-break
+    });
+
+    // Pinnable pools: callee-saved registers currently present in the free
+    // pools (never the reserved scratch registers, which are not pool
+    // members). Each pinned register is removed from its pool for the whole
+    // function and recorded as used so the prologue saves it.
+    auto pinFrom = [&](std::deque<PhysReg> &pool, const std::vector<PhysReg> &calleeSaved,
+                       int off, PhysReg &outReg) {
+        for (auto it = pool.begin(); it != pool.end(); ++it) {
+            if (std::find(calleeSaved.begin(), calleeSaved.end(), *it) == calleeSaved.end()) {
+                continue;
+            }
+            outReg = *it;
+            pool.erase(it);
+            (void)off;
+            return true;
+        }
+        return false;
+    };
+
+    for (const auto &[off, entry] : ranked) {
+        PhysReg reg{};
+        if (entry->fpr) {
+            if (!pinFrom(pools_.fprFree, ti_.calleeSavedFPR, off, reg)) {
+                continue;
+            }
+            pinnedSlotFPR_.emplace(off, reg);
+            pools_.calleeUsedFPR[static_cast<std::size_t>(reg)] = true;
+        } else {
+            if (!pinFrom(pools_.gprFree, ti_.calleeSavedGPR, off, reg)) {
+                continue;
+            }
+            pinnedSlotGPR_.emplace(off, reg);
+            pools_.calleeUsed[static_cast<std::size_t>(reg)] = true;
+        }
+    }
+
+    if (std::getenv("VIPER_DEBUG_PINSLOTS")) {
+        std::fprintf(stderr, "[pin-slots] fn=%s\n", fn_.name.c_str());
+        for (const auto &[off, entry] : ranked) {
+            const bool pinnedG = pinnedSlotGPR_.count(off) != 0;
+            const bool pinnedF = pinnedSlotFPR_.count(off) != 0;
+            std::fprintf(stderr, "  off=%d weight=%.0f fpr=%d pinned=%d\n", off, entry->weight,
+                         entry->fpr ? 1 : 0, (pinnedG || pinnedF) ? 1 : 0);
+        }
+        for (int off : disqualified) {
+            if (stats.count(off))
+                std::fprintf(stderr, "  off=%d DISQUALIFIED\n", off);
+        }
+    }
+}
+
+bool LinearAllocator::rewritePinnedSlotAccess(MInstr &ins) {
+    if (ins.ops.size() < 2 || ins.ops[1].kind != MOperand::Kind::Imm) {
+        return false;
+    }
+    const int off = static_cast<int>(ins.ops[1].imm);
+
+    switch (ins.opc) {
+        case MOpcode::LdrRegFpImm: {
+            auto it = pinnedSlotGPR_.find(off);
+            if (it == pinnedSlotGPR_.end())
+                return false;
+            // ldr dst, [fp, #off]  ->  mov dst, pin
+            ins.opc = MOpcode::MovRR;
+            ins.ops[1] = MOperand::regOp(it->second);
+            return true;
+        }
+        case MOpcode::StrRegFpImm:
+        case MOpcode::PhiStoreGPR: {
+            auto it = pinnedSlotGPR_.find(off);
+            if (it == pinnedSlotGPR_.end())
+                return false;
+            // str src, [fp, #off]  ->  mov pin, src
+            ins.opc = MOpcode::MovRR;
+            ins.ops[1] = ins.ops[0];
+            ins.ops[0] = MOperand::regOp(it->second);
+            return true;
+        }
+        case MOpcode::LdrFprFpImm: {
+            auto it = pinnedSlotFPR_.find(off);
+            if (it == pinnedSlotFPR_.end())
+                return false;
+            ins.opc = MOpcode::FMovRR;
+            ins.ops[1] = MOperand::regOp(it->second);
+            return true;
+        }
+        case MOpcode::StrFprFpImm:
+        case MOpcode::PhiStoreFPR: {
+            auto it = pinnedSlotFPR_.find(off);
+            if (it == pinnedSlotFPR_.end())
+                return false;
+            ins.opc = MOpcode::FMovRR;
+            ins.ops[1] = ins.ops[0];
+            ins.ops[0] = MOperand::regOp(it->second);
+            return true;
+        }
+        default:
+            return false;
+    }
 }
 
 // =========================================================================
@@ -974,6 +1221,10 @@ void LinearAllocator::retireCallOperandAfterCall(uint16_t vreg, RegClass cls) {
 }
 
 void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten) {
+    // Pinned-slot accesses become register moves before any other handling;
+    // the move's vreg operand then materializes through the normal path.
+    rewritePinnedSlotAccess(ins);
+
     const bool isPhiStore = (ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR);
     const bool phiSrcIsFPR = (ins.opc == MOpcode::PhiStoreFPR);
 

@@ -63,6 +63,12 @@ namespace {
         case MOpcode::Str16RegBaseImm:
         case MOpcode::Str32RegBaseImm:
         case MOpcode::StrFprBaseImm:
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl:
             return true;
         default:
             return false;
@@ -744,8 +750,22 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
 
         bool aluDstDead = true;
         for (std::size_t j = movIdx + 1; j < instrs.size(); ++j) {
-            if (isControlBoundary(instrs[j].opc))
-                break;
+            if (isControlBoundary(instrs[j].opc)) {
+                // A conditional branch (b.cc trap guard, cbz/cbnz) falls
+                // through within this instruction list, so instructions after
+                // it may still read the ALU destination — the boundary proves
+                // nothing. Only give up the scan for unconditional transfers.
+                const bool conditional = instrs[j].opc == MOpcode::BCond ||
+                                         instrs[j].opc == MOpcode::Cbz ||
+                                         instrs[j].opc == MOpcode::Cbnz;
+                if (!conditional)
+                    break;
+                if (usesReg(instrs[j], aluDst)) {
+                    aluDstDead = false;
+                    break;
+                }
+                continue;
+            }
             if (usesReg(instrs[j], aluDst)) {
                 aluDstDead = false;
                 break;
@@ -783,29 +803,43 @@ std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats)
     std::unordered_set<int64_t> loadedOffsets;
     for (const auto &bb : fn.blocks) {
         for (const auto &mi : bb.instrs) {
-            if (mi.opc == MOpcode::LdrRegFpImm && mi.ops.size() >= 2 &&
-                mi.ops[1].kind == MOperand::Kind::Imm) {
+            if ((mi.opc == MOpcode::LdrRegFpImm || mi.opc == MOpcode::LdrFprFpImm) &&
+                mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm) {
                 loadedOffsets.insert(mi.ops[1].imm);
             }
-            if (mi.opc == MOpcode::LdpRegFpImm && mi.ops.size() >= 3 &&
-                mi.ops[2].kind == MOperand::Kind::Imm) {
+            if ((mi.opc == MOpcode::LdpRegFpImm || mi.opc == MOpcode::LdpFprFpImm) &&
+                mi.ops.size() >= 3 && mi.ops[2].kind == MOperand::Kind::Imm) {
                 loadedOffsets.insert(mi.ops[2].imm);
                 loadedOffsets.insert(mi.ops[2].imm + 8);
             }
         }
     }
 
-    // Step 2: Remove stores to offsets that are never loaded.
+    // Step 2: Remove stores to offsets that are never loaded. Pair stores
+    // (stp) qualify only when BOTH covered slots are eligible and unloaded —
+    // spill stores frequently reach this pass already merged into pairs.
     std::size_t removed = 0;
+    const auto deadSingle = [&](int64_t off) {
+        return eligibleOffsets.count(off) != 0 && loadedOffsets.count(off) == 0;
+    };
     for (auto &bb : fn.blocks) {
         bb.instrs.erase(std::remove_if(bb.instrs.begin(),
                                        bb.instrs.end(),
                                        [&](const MInstr &mi) {
-                                           if (mi.opc == MOpcode::StrRegFpImm &&
+                                           if ((mi.opc == MOpcode::StrRegFpImm ||
+                                                mi.opc == MOpcode::StrFprFpImm) &&
                                                mi.ops.size() >= 2 &&
                                                mi.ops[1].kind == MOperand::Kind::Imm &&
-                                               eligibleOffsets.count(mi.ops[1].imm) != 0 &&
-                                               !loadedOffsets.count(mi.ops[1].imm)) {
+                                               deadSingle(mi.ops[1].imm)) {
+                                               ++removed;
+                                               return true;
+                                           }
+                                           if ((mi.opc == MOpcode::StpRegFpImm ||
+                                                mi.opc == MOpcode::StpFprFpImm) &&
+                                               mi.ops.size() >= 3 &&
+                                               mi.ops[2].kind == MOperand::Kind::Imm &&
+                                               deadSingle(mi.ops[2].imm) &&
+                                               deadSingle(mi.ops[2].imm + 8)) {
                                                ++removed;
                                                return true;
                                            }

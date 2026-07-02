@@ -528,6 +528,22 @@ if (NOT TARGET test_x86_backend_regressions)
     viper_add_ctest(test_x86_backend_regressions test_x86_backend_regressions)
 endif ()
 
+if (NOT TARGET test_x86_global_ra)
+    viper_add_test(
+            test_x86_global_ra
+            ${VIPER_TESTS_DIR}/unit/codegen/test_x86_global_ra.cpp)
+    target_link_libraries(test_x86_global_ra PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_x86_global_ra test_x86_global_ra)
+endif ()
+
+if (NOT TARGET test_magic_division)
+    viper_add_test(
+            test_magic_division
+            ${VIPER_TESTS_DIR}/unit/codegen/test_magic_division.cpp)
+    target_link_libraries(test_magic_division PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_magic_division test_magic_division)
+endif ()
+
 if (NOT TARGET test_codegen_review_x64_frame)
     viper_add_test(
             test_codegen_review_x64_frame

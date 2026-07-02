@@ -21,7 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-static constexpr std::array<OpFmt, 51> kOpFmt = {{
+static constexpr std::array<OpFmt, 53> kOpFmt = {{
     {MOpcode::MOVrr, "movq", 2U, 0U},
     {MOpcode::MOVrm, "movq", 2U, 0U},
     {MOpcode::MOVmr, "movq", 2U, 0U},
@@ -47,6 +47,8 @@ static constexpr std::array<OpFmt, 51> kOpFmt = {{
     {MOpcode::CQO, "cqto", 0U, 0U},
     {MOpcode::IDIVrm, "idivq", 1U, kFmtDirect},
     {MOpcode::DIVrm, "divq", 1U, kFmtDirect},
+    {MOpcode::MULr, "mulq", 1U, kFmtDirect},
+    {MOpcode::IMULr, "imulq", 1U, kFmtDirect},
     {MOpcode::XORrr32, "xorl", 2U, kFmtReg32},
     {MOpcode::CMPrr, "cmpq", 2U, 0U},
     {MOpcode::CMPri, "cmpq", 2U, 0U},

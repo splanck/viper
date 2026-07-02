@@ -1577,6 +1577,25 @@ int main() {
                 case MOpcode::StrFprBaseImm:
                     return MInstr{opc, {d0, x1, imm(0)}};
 
+                // Scaled register-offset load/store: rt, base, index, lsl#k
+                case MOpcode::LdrRegBaseRegLsl:
+                case MOpcode::StrRegBaseRegLsl:
+                    return MInstr{opc, {x0, x1, x2, imm(3)}};
+                case MOpcode::Ldr32RegBaseRegLsl:
+                case MOpcode::Str32RegBaseRegLsl:
+                    return MInstr{opc, {x0, x1, x2, imm(2)}};
+                case MOpcode::LdrFprBaseRegLsl:
+                case MOpcode::StrFprBaseRegLsl:
+                    return MInstr{opc, {d0, x1, x2, imm(3)}};
+
+                // Shifted-operand ALU: dst, a, b, lsl#k
+                case MOpcode::AddRRRLsl:
+                case MOpcode::SubRRRLsl:
+                case MOpcode::AndRRRLsl:
+                case MOpcode::OrrRRRLsl:
+                case MOpcode::EorRRRLsl:
+                    return MInstr{opc, {x0, x1, x2, imm(3)}};
+
                 // SP-relative store (for outgoing args)
                 case MOpcode::StrRegSpImm:
                     return MInstr{opc, {x0, imm(0)}};
@@ -1682,10 +1701,10 @@ int main() {
 
         // Verify we covered the expected counts.
         CHECK(pseudoCount == 5);   // 5 pseudo-opcodes
-        CHECK(encodedCount == 87); // 92 total - 5 pseudo = 87 real opcodes
+        CHECK(encodedCount == 98); // 103 total - 5 pseudo = 98 real opcodes
 
-        if (encodedCount == 87 && pseudoCount == 5)
-            std::cout << "  Encoding coverage: " << encodedCount << "/87 opcodes OK, "
+        if (encodedCount == 98 && pseudoCount == 5)
+            std::cout << "  Encoding coverage: " << encodedCount << "/98 opcodes OK, "
                       << pseudoCount << " pseudo-opcodes skipped.\n";
     }
 

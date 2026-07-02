@@ -77,6 +77,10 @@ void addOperandMemRegs(RegMask &mask, const Operand &op) noexcept {
             mask |= regBit(static_cast<uint16_t>(PhysReg::RAX));
             mask |= regBit(static_cast<uint16_t>(PhysReg::RDX));
             break;
+        case MOpcode::MULr:
+        case MOpcode::IMULr:
+            mask |= regBit(static_cast<uint16_t>(PhysReg::RAX));
+            break;
         default:
             break;
     }
@@ -100,6 +104,8 @@ void addOperandMemRegs(RegMask &mask, const Operand &op) noexcept {
             break;
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
+        case MOpcode::MULr:
+        case MOpcode::IMULr:
             mask |= regBit(static_cast<uint16_t>(PhysReg::RAX));
             mask |= regBit(static_cast<uint16_t>(PhysReg::RDX));
             break;

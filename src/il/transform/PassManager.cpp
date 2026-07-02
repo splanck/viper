@@ -25,16 +25,15 @@
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/IntRangeAnalysis.hpp"
 #include "il/analysis/MemorySSA.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/ArrayFastPathOpt.hpp"
 #include "il/transform/CheckOpt.hpp"
 #include "il/transform/Devirtualize.hpp"
-#include "il/transform/EHOpt.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/LateCleanup.hpp"
-#include "il/transform/LoopRotate.hpp"
 #include "il/transform/LoopUnroll.hpp"
 #include "il/transform/OwnershipOpt.hpp"
 #include "il/transform/PipelineExecutor.hpp"
@@ -89,6 +88,12 @@ PassManager::PassManager() {
         kAnalysisMemorySSA, [](core::Module &module, core::Function &fn) {
             viper::analysis::BasicAA aa(module, fn);
             return viper::analysis::computeMemorySSA(fn, aa);
+        });
+    // Integer value ranges: whole-function forward dataflow used by CheckOpt
+    // to prove overflow, bounds, and divide-by-zero checks redundant.
+    analysisRegistry_.registerFunctionAnalysis<viper::analysis::IntRangeInfo>(
+        kAnalysisIntRanges, [](core::Module &, core::Function &fn) {
+            return viper::analysis::computeIntRanges(fn);
         });
 
     addSimplifyCFG(false); // Register simplify-cfg pass (non-aggressive by default)
@@ -154,6 +159,13 @@ PassManager::PassManager() {
     // (to propagate constants through inlined code from call sites).
     // mem2reg runs before loop optimizers so stack-promoted induction variables
     // and scalar temporaries are visible to SCCP/LICM/loop cleanup.
+    // Ordering notes:
+    //   - reassociate runs BEFORE earlycse/gvn so canonicalized expression
+    //     trees feed CSE (running it after leaves redundancies unmatched).
+    //   - check-opt is followed by loop-simplify+licm: deleted/hoisted checks
+    //     unlock loop-invariant hoisting that was blocked by trapping ops.
+    //   - a bounded second scalar group (sccp..simplify-cfg) catches
+    //     second-order opportunities exposed by inlining and loop opts.
     registerPipeline("O2",
                      {"simplify-cfg",
                       "mem2reg",
@@ -164,8 +176,12 @@ PassManager::PassManager() {
                       "indvars",
                       "loop-unroll",
                       "simplify-cfg",
+                      "reassociate", // Canonicalize before CSE and inlining
+                      "earlycse",
                       "sccp", // Pre-inline SCCP: simplify callees
                       "check-opt",
+                      "loop-simplify",
+                      "licm", // Re-hoist after check-opt removed trapping blockers
                       "eh-opt",
                       "dce",
                       "simplify-cfg",
@@ -180,17 +196,28 @@ PassManager::PassManager() {
                       "loop-rotate",
                       "indvars",
                       "loop-unroll",
+                      "reassociate", // Canonicalize loop-opt output for GVN/CSE
+                      "gvn",
+                      "earlycse",
                       "check-opt",
+                      "loop-simplify",
+                      "licm",
                       "runtime-fastpath",
                       "array-fastpath",
                       "ownership-opt",
                       "peephole",
                       "check-opt",
-                      "dce", // Clean up after second SCCP
+                      "dce",
                       "simplify-cfg",
+                      // Bounded second scalar iteration: inlining + loop opts
+                      // expose constants and redundancies the first pass missed.
+                      "sccp",
+                      "constfold",
+                      "peephole",
                       "gvn",
-                      "reassociate",
                       "earlycse",
+                      "dce",
+                      "simplify-cfg",
                       "dse",
                       "dce",
                       "late-cleanup"});

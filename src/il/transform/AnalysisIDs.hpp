@@ -63,4 +63,8 @@ inline constexpr const char *kAnalysisBasicAA = "basic-aa";
 /// @see viper::analysis::MemorySSA
 inline constexpr const char *kAnalysisMemorySSA = "memory-ssa";
 
+/// @brief Identifier for the integer value-range analysis.
+/// @see il::transform::IntRangeInfo
+inline constexpr const char *kAnalysisIntRanges = "int-ranges";
+
 } // namespace il::transform

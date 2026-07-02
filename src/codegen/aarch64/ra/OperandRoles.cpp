@@ -48,6 +48,17 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
             break;
     }
 
+    // Shifted-operand ALU: dst = a op (b << k); ops[3] is the shift amount.
+    if (ins.opc == MOpcode::AddRRRLsl || ins.opc == MOpcode::SubRRRLsl ||
+        ins.opc == MOpcode::AndRRRLsl || ins.opc == MOpcode::OrrRRRLsl ||
+        ins.opc == MOpcode::EorRRRLsl) {
+        if (idx == 0)
+            return {false, true};
+        if (idx == 1 || idx == 2)
+            return {true, false};
+        return {false, false};
+    }
+
     // AArch64 3-address ALU: dst = lhs op rhs
     // Operand 0 is def-only (not read by the instruction).
     if (isThreeAddrRRR(ins.opc)) {
@@ -95,6 +106,10 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
              ins.opc == MOpcode::LdrFprBaseImm) &&
             idx == 1)
             return {true, false};
+        if ((ins.opc == MOpcode::LdrRegBaseRegLsl || ins.opc == MOpcode::Ldr32RegBaseRegLsl ||
+             ins.opc == MOpcode::LdrFprBaseRegLsl) &&
+            (idx == 1 || idx == 2))
+            return {true, false};
         return {false, false};
     }
 
@@ -105,6 +120,10 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
              ins.opc == MOpcode::Str16RegBaseImm || ins.opc == MOpcode::Str32RegBaseImm ||
              ins.opc == MOpcode::StrFprBaseImm) &&
             idx == 1)
+            return {true, false};
+        if ((ins.opc == MOpcode::StrRegBaseRegLsl || ins.opc == MOpcode::Str32RegBaseRegLsl ||
+             ins.opc == MOpcode::StrFprBaseRegLsl) &&
+            (idx == 1 || idx == 2))
             return {true, false};
         return {false, false};
     }

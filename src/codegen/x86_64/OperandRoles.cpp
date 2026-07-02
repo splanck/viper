@@ -121,6 +121,8 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
 
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
+        case MOpcode::MULr:
+        case MOpcode::IMULr:
             return {idx == 0, false};
 
         case MOpcode::CQO:
@@ -192,6 +194,8 @@ bool definesEFlags(MOpcode opcode) noexcept {
         case MOpcode::UCOMIS:
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
+        case MOpcode::MULr:
+        case MOpcode::IMULr:
             return true;
         default:
             return false;
@@ -219,6 +223,8 @@ bool hasObservableSideEffects(MOpcode opcode) noexcept {
         case MOpcode::UD2:
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
+        case MOpcode::MULr:
+        case MOpcode::IMULr:
         case MOpcode::DIVS64rr:
         case MOpcode::REMS64rr:
         case MOpcode::DIVS64Chk0rr:

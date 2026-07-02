@@ -41,6 +41,14 @@ bool definesReg(const MInstr &instr, const MOperand &reg) noexcept {
         case MOpcode::FMovRI:
         case MOpcode::FMovGR:
         // --- Integer arithmetic (dest = ops[0]) ---
+        case MOpcode::AddRRRLsl:
+        case MOpcode::SubRRRLsl:
+        case MOpcode::AndRRRLsl:
+        case MOpcode::OrrRRRLsl:
+        case MOpcode::EorRRRLsl:
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
@@ -142,6 +150,9 @@ bool definesReg(const MInstr &instr, const MOperand &reg) noexcept {
         case MOpcode::Str16RegBaseImm:
         case MOpcode::Str32RegBaseImm:
         case MOpcode::StrFprBaseImm:
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl:
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
         case MOpcode::StpRegFpImm:
@@ -243,6 +254,29 @@ bool usesReg(const MInstr &instr, const MOperand &reg) noexcept {
                 return true;
             break;
 
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl:
+            for (std::size_t i = 0; i < instr.ops.size() && i <= 2; ++i) {
+                if (samePhysReg(instr.ops[i], reg))
+                    return true;
+            }
+            break;
+
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
+        case MOpcode::AddRRRLsl:
+        case MOpcode::SubRRRLsl:
+        case MOpcode::AndRRRLsl:
+        case MOpcode::OrrRRRLsl:
+        case MOpcode::EorRRRLsl:
+            if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
+                return true;
+            if (instr.ops.size() >= 3 && samePhysReg(instr.ops[2], reg))
+                return true;
+            break;
+
         case MOpcode::LdrRegBaseImm:
         case MOpcode::Ldr8RegBaseImm:
         case MOpcode::Ldr16RegBaseImm:
@@ -315,6 +349,33 @@ bool usesReg(const MInstr &instr, const MOperand &reg) noexcept {
 
 std::pair<bool, bool> classifyOperand(const MInstr &instr, std::size_t idx) noexcept {
     switch (instr.opc) {
+        case MOpcode::LdrRegBaseRegLsl:
+        case MOpcode::Ldr32RegBaseRegLsl:
+        case MOpcode::LdrFprBaseRegLsl:
+            if (idx == 0)
+                return {false, true};
+            if (idx == 1 || idx == 2)
+                return {true, false};
+            return {false, false};
+
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl:
+            if (idx <= 2)
+                return {true, false};
+            return {false, false};
+
+        case MOpcode::AddRRRLsl:
+        case MOpcode::SubRRRLsl:
+        case MOpcode::AndRRRLsl:
+        case MOpcode::OrrRRRLsl:
+        case MOpcode::EorRRRLsl:
+            if (idx == 0)
+                return {false, true};
+            if (idx == 1 || idx == 2)
+                return {true, false};
+            return {false, false};
+
         case MOpcode::MovRR:
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
@@ -532,6 +593,9 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
 
 bool hasSideEffects(const MInstr &instr) noexcept {
     switch (instr.opc) {
+        case MOpcode::StrRegBaseRegLsl:
+        case MOpcode::Str32RegBaseRegLsl:
+        case MOpcode::StrFprBaseRegLsl:
         case MOpcode::StrRegFpImm:
         case MOpcode::Str8RegFpImm:
         case MOpcode::Str16RegFpImm:

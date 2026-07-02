@@ -144,7 +144,9 @@ inline bool isMemLd(MOpcode opc) {
            opc == MOpcode::Ldr8RegFpImm || opc == MOpcode::Ldr8RegBaseImm ||
            opc == MOpcode::Ldr16RegFpImm || opc == MOpcode::Ldr16RegBaseImm ||
            opc == MOpcode::Ldr32RegFpImm || opc == MOpcode::Ldr32RegBaseImm ||
-           opc == MOpcode::LdrFprFpImm || opc == MOpcode::LdrFprBaseImm;
+           opc == MOpcode::LdrFprFpImm || opc == MOpcode::LdrFprBaseImm ||
+           opc == MOpcode::LdrRegBaseRegLsl || opc == MOpcode::Ldr32RegBaseRegLsl ||
+           opc == MOpcode::LdrFprBaseRegLsl;
 }
 
 /// @brief Check if an opcode is a memory store instruction.
@@ -156,7 +158,9 @@ inline bool isMemSt(MOpcode opc) {
            opc == MOpcode::Str16RegFpImm || opc == MOpcode::Str16RegBaseImm ||
            opc == MOpcode::Str32RegFpImm || opc == MOpcode::Str32RegBaseImm ||
            opc == MOpcode::StrRegSpImm || opc == MOpcode::StrFprFpImm ||
-           opc == MOpcode::StrFprBaseImm || opc == MOpcode::StrFprSpImm;
+           opc == MOpcode::StrFprBaseImm || opc == MOpcode::StrFprSpImm ||
+           opc == MOpcode::StrRegBaseRegLsl || opc == MOpcode::Str32RegBaseRegLsl ||
+           opc == MOpcode::StrFprBaseRegLsl;
 }
 
 } // namespace viper::codegen::aarch64::ra
