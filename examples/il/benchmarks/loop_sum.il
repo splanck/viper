@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // loop_sum: cross-block register allocation litmus.
 // Three accumulators plus the induction variable are live across the

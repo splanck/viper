@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // array_traverse: addressing-mode and bounds-check litmus.
 // Repeatedly walks a 1024-element i64 buffer with an idx.chk before every

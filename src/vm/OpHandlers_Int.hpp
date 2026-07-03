@@ -734,4 +734,19 @@ VM::ExecResult handleUCmpGE(VM &vm,
                             const il::core::BasicBlock *&bb,
                             size_t &ip);
 
+/// @brief Execute the @c select opcode choosing between two same-typed values.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue or trap status.
+VM::ExecResult handleSelect(VM &vm,
+                            Frame &fr,
+                            const il::core::Instr &in,
+                            const VM::BlockMap &blocks,
+                            const il::core::BasicBlock *&bb,
+                            size_t &ip);
+
 } // namespace il::vm::detail::integer

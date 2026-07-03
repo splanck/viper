@@ -67,6 +67,16 @@ enum class OwnershipCallKind { None, Retain, Release };
 }
 
 [[nodiscard]] bool mayBlockRetainReleasePair(const Instr &instr, const Value &retained) {
+    // Known-neutral runtime helpers borrow every argument: they read handles
+    // without touching any reference count and cannot re-enter user code, so
+    // they neither need the pair's +1 nor can they disturb the value's other
+    // owners — even when the retained value is one of their arguments.
+    if (instr.op == Opcode::Call) {
+        const CallEffects effects = classifyCallEffects(instr);
+        if (effects.knownNeutral)
+            return false;
+    }
+
     if (instrUsesValue(instr, retained))
         return true;
 
@@ -107,6 +117,7 @@ enum class OwnershipCallKind { None, Retain, Release };
         case Opcode::ConstF64:
         case Opcode::ConstNull:
         case Opcode::GAddr:
+        case Opcode::Select:
             return false;
         case Opcode::Call: {
             const CallEffects effects = classifyCallEffects(instr);

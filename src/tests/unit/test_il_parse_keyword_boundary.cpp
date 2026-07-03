@@ -22,7 +22,7 @@
 
 int main() {
     {
-        constexpr const char *kProgram = R"(il 0.2.0
+        constexpr const char *kProgram = R"(il 0.3.0
 function @main() -> void {
 entry:
   ret
@@ -43,7 +43,7 @@ entry:
     }
 
     {
-        constexpr const char *kProgram = R"(il 0.2.0
+        constexpr const char *kProgram = R"(il 0.3.0
 func @main() -> void {
 entry:
   br extern_label

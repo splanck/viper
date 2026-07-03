@@ -11,7 +11,8 @@ var CLEAR_B: Float = 0.96;
 var DT_MAX_MS: Integer = 50;
 var DT_MAX_SEC: Float = 0.05;
 
-var CAMERA_FOV: Float = 60.0;
+// Authored as horizontal FOV; converted by Camera3D.NewHorizontalFov in game.zia.
+var CAMERA_FOV: Float = 64.0;
 var CAMERA_NEAR: Float = 0.1;
 var CAMERA_FAR: Float = 180.0;
 var CAMERA_RADIUS: Float = 14.5;

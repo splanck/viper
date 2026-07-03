@@ -42,7 +42,7 @@ func main() {
     engine.Setup(shell.editorRow);
 
     // --- Test A: every language highlights without crashing -----------------
-    var ilText = "il 0.2.0\nfunc @main() -> i64 {\n  %x = iadd.ovf 1, 2  # note\n  ret %x\n}\n";
+    var ilText = "il 0.3.0\nfunc @main() -> i64 {\n  %x = iadd.ovf 1, 2  # note\n  ret %x\n}\n";
     if highlightCalls(shell, engine, "viper", ilText) <= 0 {
         fail(shell, "viper highlighter did not run");
         return;

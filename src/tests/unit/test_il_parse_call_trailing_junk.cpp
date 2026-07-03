@@ -22,7 +22,7 @@
 
 int main() {
     {
-        constexpr const char *kProgram = R"(il 0.2.0
+        constexpr const char *kProgram = R"(il 0.3.0
 extern @foo() -> void
 func @main() -> void {
 entry:
@@ -45,7 +45,7 @@ entry:
     }
 
     {
-        constexpr const char *kProgram = R"(il 0.2.0
+        constexpr const char *kProgram = R"(il 0.3.0
 func @main() -> void {
 entry:
   call.indirect @foo() junk
@@ -66,7 +66,7 @@ entry:
     }
 
     {
-        constexpr const char *kProgram = R"(il 0.2.0
+        constexpr const char *kProgram = R"(il 0.3.0
 extern @foo(i64) -> i64
 func @main() -> void {
 entry:

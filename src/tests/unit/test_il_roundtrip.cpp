@@ -70,7 +70,7 @@ static void assertF64BitExact(double d) {
     std::snprintf(literal, sizeof literal, "%.17g", d); // round-trippable injection form
     // Carry the constant as the first fadd operand (the proven literal-operand idiom);
     // firstConstFloat returns that operand value, unaffected by the +0.0.
-    const std::string text = std::string("il 0.2.0\nfunc @f() -> f64 {\nentry:\n  %r = fadd ") +
+    const std::string text = std::string("il 0.3.0\nfunc @f() -> f64 {\nentry:\n  %r = fadd ") +
                              literal + ", 0.0\n  ret %r\n}\n";
     const double parsed = firstConstFloat(text);
 
@@ -126,7 +126,7 @@ int main() {
             s2.pop_back();
         assert(s1 == s2);
     }
-    assertRoundTrip(R"(il 0.2.0
+    assertRoundTrip(R"(il 0.3.0
 func @explicit_param_forward(%t40:i1) -> i64 {
 entry(%t40:i1):
   cbr %t40, carrier(42), exit

@@ -42,7 +42,7 @@ TEST(Arm64CLI, CF_Loop_Phi) {
     const std::string in = outPath("arm64_cf_loop.il");
     const std::string out = outPath("arm64_cf_loop.s");
     // Sum 1..10 using loop-carried phi
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  br loop(0, 0)\n"
@@ -86,7 +86,7 @@ TEST(Arm64CLI, CF_Loop_Phi_PairedHeaderLoads) {
 
     const std::string in = outPath("arm64_cf_loop_pair.il");
     const std::string out = outPath("arm64_cf_loop_pair.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  br loop(0, 0)\n"

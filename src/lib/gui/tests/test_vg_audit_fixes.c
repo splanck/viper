@@ -2805,9 +2805,17 @@ static vg_widget_vtable_t g_overlay_count_vtable = {
 /// @brief R7 — scrollview's internal overlay pass does not trigger an extra paint_overlay call on
 /// children.
 TEST(scrollview_internal_overlay_children_are_not_repainted_by_global_pass) {
-    vg_widget_t *root = vg_widget_create(VG_WIDGET_SCROLLVIEW);
+    // A bare vg_widget_create() allocation tagged VG_WIDGET_SCROLLVIEW is a
+    // land-mine: destroy (and any other path) downcasts by type and writes
+    // scrollview fields past the base-sized allocation (ASan-caught in
+    // clear_interactive_state_recursive). Keep the default vtable so the
+    // dummy paint surface is never dereferenced, but give the widget full
+    // scrollview-sized storage.
+    vg_scrollview_t *storage = (vg_scrollview_t *)calloc(1, sizeof(vg_scrollview_t));
+    ASSERT_NOT_NULL(storage);
+    vg_widget_init(&storage->base, VG_WIDGET_SCROLLVIEW, NULL);
+    vg_widget_t *root = &storage->base;
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
-    ASSERT_NOT_NULL(root);
     ASSERT_NOT_NULL(child);
     child->vtable = &g_overlay_count_vtable;
     vg_widget_add_child(root, child);

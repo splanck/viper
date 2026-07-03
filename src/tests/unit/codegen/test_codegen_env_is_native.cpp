@@ -31,7 +31,7 @@ using namespace viper::tools::ilc;
 
 namespace {
 
-constexpr const char kIlSource[] = R"(il 0.2.0
+constexpr const char kIlSource[] = R"(il 0.3.0
 
 extern @Viper.System.Environment.IsNative() -> i1
 

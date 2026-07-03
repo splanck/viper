@@ -28,7 +28,7 @@
 #endif
 
 int main() {
-    constexpr std::array<const char *, 9> files = {PARSE_ROUNDTRIP_DIR "/checked-arith.il",
+    constexpr std::array<const char *, 10> files = {PARSE_ROUNDTRIP_DIR "/checked-arith.il",
                                                    PARSE_ROUNDTRIP_DIR "/checked-divrem.il",
                                                    PARSE_ROUNDTRIP_DIR "/cast-checks.il",
                                                    PARSE_ROUNDTRIP_DIR "/errors_eh.il",
@@ -36,6 +36,7 @@ int main() {
                                                    PARSE_ROUNDTRIP_DIR "/err_access.il",
                                                    PARSE_ROUNDTRIP_DIR "/target_directive.il",
                                                    PARSE_ROUNDTRIP_DIR "/trap_newline.il",
+                                                   PARSE_ROUNDTRIP_DIR "/select.il",
                                                    SWITCH_GOLDEN};
 
     for (const char *path : files) {

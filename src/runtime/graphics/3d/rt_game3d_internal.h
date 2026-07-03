@@ -45,26 +45,26 @@
 #define RT_GAME3D_DEFAULT_MOVE_SPEED 6.0           ///< Default controller move speed (units/sec).
 #define RT_GAME3D_DEFAULT_LOOK_SENSITIVITY 0.01    ///< Default mouse-look degrees per pixel.
 #define RT_GAME3D_DEFAULT_JUMP_SPEED 5.5           ///< Default jump launch speed (units/sec).
-#define RT_GAME3D_DEFAULT_GRAVITY -20.0            ///< Default character gravity (units/sec²).
-#define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0      ///< Default follow-camera smoothing factor.
-#define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0   ///< Default audio full-volume radius.
-#define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0  ///< Default audio silence radius.
-#define RT_GAME3D_AUDIO_DISTANCE_MAX 1000000000.0  ///< Max finite audio attenuation radius.
-#define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100         ///< Default master audio volume (0–100).
-#define RT_GAME3D_PI 3.14159265358979323846        ///< Pi (avoids relying on non-portable M_PI).
-#define RT_GAME3D_ANIM_EVENT_MAX 64                ///< Max animation events buffered per update.
-#define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8      ///< Fixed-loop spiral-of-death guard.
-#define RT_GAME3D_COORD_ABS_MAX 1000000000000.0    ///< Max finite world coordinate accepted.
-#define RT_GAME3D_SCALE_ABS_MAX 1000000.0          ///< Max absolute node/body scale.
-#define RT_GAME3D_ANGLE_DEG_ABS_MAX 1000000.0      ///< Max finite Euler/orbit angle in degrees.
-#define RT_GAME3D_CONTROLLER_SPEED_MAX 1000000.0   ///< Max controller speed/jump velocity.
-#define RT_GAME3D_LOOK_SENSITIVITY_MAX 1000.0      ///< Max mouse-look sensitivity.
-#define RT_GAME3D_DAMPING_MAX 1000.0               ///< Max camera damping factor.
-#define RT_GAME3D_ANIM_BLEND_TIME_MAX 1000000.0    ///< Max animation transition duration.
-#define RT_GAME3D_ANIM_STEP_MAX 1.0                ///< Max single Game3D animator update step.
-#define RT_GAME3D_ANIM_SPEED_ABS_MAX 1000000.0     ///< Max animation playback speed multiplier.
-#define RT_GAME3D_EFFECT_STEP_MAX 10.0             ///< Max single EffectRegistry3D update step.
-#define RT_GAME3D_EFFECT_LIFETIME_MAX 86400.0      ///< Max effect auto-expire lifetime.
+#define RT_GAME3D_DEFAULT_GRAVITY 20.0            ///< Default downward character gravity magnitude.
+#define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0     ///< Default follow-camera smoothing factor.
+#define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0  ///< Default audio full-volume radius.
+#define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0 ///< Default audio silence radius.
+#define RT_GAME3D_AUDIO_DISTANCE_MAX 1000000000.0 ///< Max finite audio attenuation radius.
+#define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100        ///< Default master audio volume (0–100).
+#define RT_GAME3D_PI 3.14159265358979323846       ///< Pi (avoids relying on non-portable M_PI).
+#define RT_GAME3D_ANIM_EVENT_MAX 64               ///< Max animation events buffered per update.
+#define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8     ///< Fixed-loop spiral-of-death guard.
+#define RT_GAME3D_COORD_ABS_MAX 1000000000000.0   ///< Max finite world coordinate accepted.
+#define RT_GAME3D_SCALE_ABS_MAX 1000000.0         ///< Max absolute node/body scale.
+#define RT_GAME3D_ANGLE_DEG_ABS_MAX 1000000.0     ///< Max finite Euler/orbit angle in degrees.
+#define RT_GAME3D_CONTROLLER_SPEED_MAX 1000000.0  ///< Max controller speed/jump velocity.
+#define RT_GAME3D_LOOK_SENSITIVITY_MAX 1000.0     ///< Max mouse-look sensitivity.
+#define RT_GAME3D_DAMPING_MAX 1000.0              ///< Max camera damping factor.
+#define RT_GAME3D_ANIM_BLEND_TIME_MAX 1000000.0   ///< Max animation transition duration.
+#define RT_GAME3D_ANIM_STEP_MAX 1.0               ///< Max single Game3D animator update step.
+#define RT_GAME3D_ANIM_SPEED_ABS_MAX 1000000.0    ///< Max animation playback speed multiplier.
+#define RT_GAME3D_EFFECT_STEP_MAX 10.0            ///< Max single EffectRegistry3D update step.
+#define RT_GAME3D_EFFECT_LIFETIME_MAX 86400.0     ///< Max effect auto-expire lifetime.
 #ifndef RT_GAME3D_MODEL_CACHE_KEY_MAX
 #define RT_GAME3D_MODEL_CACHE_KEY_MAX 4096 ///< Max bytes snapshotted for model cache/load paths.
 #endif

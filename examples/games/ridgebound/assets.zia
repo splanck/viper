@@ -1,4 +1,4 @@
-// assets.zia - Shared meshes and materials for the Game3D showcase.
+// assets.zia - Shared meshes and materials for Ridgebound.
 module assets;
 
 bind Viper.Game3D;
@@ -6,7 +6,7 @@ bind Viper.Graphics3D;
 bind "./config";
 bind "./terrain";
 
-class ShowcaseAssets {
+class RidgeboundAssets {
     hide Mesh3D cubeMesh;
     hide Mesh3D beaconMesh;
     hide Mesh3D playerBodyMesh;

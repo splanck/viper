@@ -25,7 +25,7 @@ using namespace il::core;
 
 TEST(IL, CallIndirectRoundTrip) {
     // Textual IL with a zero-arg callee and an indirect call.
-    const char *text = R"(il 0.2.0
+    const char *text = R"(il 0.3.0
 func @callee() -> i64 {
 entry:
   ret 7

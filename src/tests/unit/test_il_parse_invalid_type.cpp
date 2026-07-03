@@ -20,7 +20,7 @@
 
 int main() {
     {
-        const char *src = R"(il 0.2.0
+        const char *src = R"(il 0.3.0
 extern @foo(i128) -> i64
 )";
         std::istringstream in(src);
@@ -36,7 +36,7 @@ extern @foo(i128) -> i64
     }
 
     {
-        const char *src = R"(il 0.2.0
+        const char *src = R"(il 0.3.0
 
 func @main() -> void {
 entry:

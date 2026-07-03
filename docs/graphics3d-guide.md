@@ -528,7 +528,8 @@ Perspective or orthographic camera with view and projection matrices.
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `New(fov, aspect, near, far)` | `obj(f64, f64, f64, f64)` | Create perspective camera (fov in degrees) |
+| `New(fov, aspect, near, far)` | `obj(f64, f64, f64, f64)` | Create perspective camera with a vertical FOV in degrees |
+| `NewHorizontalFov(fov, aspect, near, far)` | `obj(f64, f64, f64, f64)` | Create perspective camera from a horizontal FOV in degrees |
 | `NewOrtho(size, aspect, near, far)` | `obj(f64, f64, f64, f64)` | Create orthographic camera (size = half-height in world units) |
 
 ### Properties
@@ -548,6 +549,7 @@ Perspective or orthographic camera with view and projection matrices.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `LookAt(eye, target, up)` | `void(obj, obj, obj)` | Point camera from eye toward target (Vec3 args) |
+| `SetHorizontalFov(fov)` | `void(f64)` | Set perspective FOV from a horizontal aperture in degrees |
 | `Orbit(target, distance, yaw, pitch)` | `void(obj, f64, f64, f64)` | Orbit around target (angles in degrees) |
 | `ScreenToRay(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return a normalized world-space pick direction (Vec3). Perspective rays should pair it with `ScreenToRayOrigin()` or `GetPosition()`. Orthographic cameras return their forward direction. During active `Shake`, the ray matches the shaken render pose. |
 | `ScreenToRayOrigin(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return the matching world-space pick origin (Vec3). Perspective cameras return the shaken render eye; orthographic cameras return the unprojected near-plane point for that screen pixel. |
@@ -558,6 +560,7 @@ Perspective or orthographic camera with view and projection matrices.
 | `FPSUpdate(mdx, mdy, fwd, right, up, speed, dt)` | `void(f64, f64, f64, f64, f64, f64, f64)` | FPS mouse look + WASD movement |
 
 `Yaw`, `Pitch`, `Orbit`, and `Light3D.Spot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
+Use `NewHorizontalFov` or `SetHorizontalFov` for game cameras authored with familiar horizontal FOV values; the runtime converts them to the vertical FOV stored in `Fov` using the camera aspect ratio, which avoids edge stretching from passing a horizontal value to `New`.
 `Canvas3D.Begin(canvas, camera)` uses the active output's aspect ratio (window or bound `RenderTarget3D`) when building that frame's projection, so perspective remains correct across resizes and RTT passes without mutating the camera object's stored projection/aspect.
 Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, `ScreenToRay()`, and `ScreenToRayOrigin()` results remain usable.
 

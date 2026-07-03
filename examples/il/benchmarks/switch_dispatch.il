@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // switch_dispatch: dense-switch lowering litmus.
 // A 16-case dense switch.i32 dispatched 50M times with a rotating key.

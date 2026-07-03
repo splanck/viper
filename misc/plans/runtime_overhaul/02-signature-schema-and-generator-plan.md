@@ -38,7 +38,7 @@ Add explicit schema metadata to `--dump-runtime-api`:
 
 ```json
 {
-  "version": "0.2.99-snapshot",
+  "version": "0.2.99.20260702",
   "schema_version": 1,
   "signature_dialect": "runtime-def-v1",
   "functions": [

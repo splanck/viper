@@ -29,6 +29,11 @@ struct RuntimeOwnershipEffects {
     std::uint64_t ownedOutArgMask{0}; ///< Pointer args that receive an owned reference.
     bool returnsOwned{false};         ///< Result is an owned string/reference handle.
     bool mayAllocate{false};          ///< Helper may allocate runtime-managed storage.
+    bool knownNeutral{false};         ///< Helper borrows every argument, performs no
+                                      ///< retain/release on any handle, and cannot
+                                      ///< re-enter user code. Stronger than the mere
+                                      ///< absence of masks (which may just mean
+                                      ///< "unclassified").
 
     /// @brief Query whether the helper consumes argument @p index.
     [[nodiscard]] constexpr bool consumesArg(unsigned index) const noexcept {
@@ -76,6 +81,19 @@ namespace detail {
 ///          high-level runtime namespace aliases produced by frontends.
 [[nodiscard]] inline RuntimeOwnershipEffects classifyRuntimeOwnership(std::string_view name) {
     RuntimeOwnershipEffects effects{};
+
+    // High-traffic string helpers that only borrow: they read their arguments,
+    // never retain, release, or store any handle, and never call back into
+    // user code. Optimizers may hoist retain/release traffic across them.
+    if (name == "rt_print_str" || name == "rt_str_len" || name == "rt_str_eq" ||
+        name == "rt_str_cmp" || name == "rt_str_cmp_nocase" || name == "rt_str_is_empty" ||
+        name == "rt_str_starts_with" || name == "rt_str_ends_with" || name == "rt_str_index_of" ||
+        name == "Viper.Terminal.PrintStr" || name == "Viper.String.get_Length" ||
+        name == "Viper.String.Equals" || name == "Viper.String.Cmp" ||
+        name == "Viper.String.CmpNoCase") {
+        effects.knownNeutral = true;
+        return effects;
+    }
 
     if (name == "rt_str_concat" || name == "Viper.String.Concat") {
         effects.consumedArgMask = 0b11;
@@ -319,26 +337,19 @@ namespace detail {
         name == "rt_parse_int64_option" || name == "rt_parse_bool_option" ||
         name == "Viper.Core.Parse.TryNum" || name == "Viper.Core.Parse.TryDouble" ||
         name == "Viper.Core.Parse.TryInt" || name == "Viper.Core.Parse.TryBool" ||
-        name == "rt_datetime_try_parse_option" ||
-        name == "Viper.Time.DateTime.TryParseOption" ||
-        name == "rt_queue_try_pop_option" ||
-        name == "Viper.Collections.Queue.TryPopOption" ||
-        name == "rt_stack_try_pop_option" ||
-        name == "Viper.Collections.Stack.TryPopOption" ||
-        name == "rt_pqueue_try_pop_option" ||
-        name == "Viper.Collections.Heap.TryPopOption" ||
-        name == "rt_pqueue_try_peek_option" ||
-        name == "Viper.Collections.Heap.TryPeekOption" ||
+        name == "rt_datetime_try_parse_option" || name == "Viper.Time.DateTime.TryParseOption" ||
+        name == "rt_queue_try_pop_option" || name == "Viper.Collections.Queue.TryPopOption" ||
+        name == "rt_stack_try_pop_option" || name == "Viper.Collections.Stack.TryPopOption" ||
+        name == "rt_pqueue_try_pop_option" || name == "Viper.Collections.Heap.TryPopOption" ||
+        name == "rt_pqueue_try_peek_option" || name == "Viper.Collections.Heap.TryPeekOption" ||
         name == "rt_deque_try_pop_front_option" ||
         name == "Viper.Collections.Deque.TryPopFrontOption" ||
         name == "rt_deque_try_pop_back_option" ||
         name == "Viper.Collections.Deque.TryPopBackOption" ||
         name == "rt_concqueue_try_dequeue_option" ||
         name == "Viper.Threads.ConcurrentQueue.TryDequeueOption" ||
-        name == "rt_channel_try_recv_option" ||
-        name == "Viper.Threads.Channel.TryRecvOption" ||
-        name == "rt_future_try_get_option" ||
-        name == "Viper.Threads.Future.TryGetOption" ||
+        name == "rt_channel_try_recv_option" || name == "Viper.Threads.Channel.TryRecvOption" ||
+        name == "rt_future_try_get_option" || name == "Viper.Threads.Future.TryGetOption" ||
         name == "rt_locale_try_parse_option" ||
         name == "Viper.Localization.Locale.TryParseOption" ||
         name == "rt_message_bundle_try_get_option" ||
@@ -359,9 +370,9 @@ namespace detail {
         name == "Viper.Threads.Async.All" || name == "rt_async_any" ||
         name == "Viper.Threads.Async.Any" || name == "rt_async_map" ||
         name == "Viper.Threads.Async.Map" || name == "rt_async_map_owned" ||
-        name == "Viper.Threads.Async.MapOwned" ||
-        name == "Viper.Core.Convert.ToString_Int" || name == "Viper.Core.Convert.ToString_Double" ||
-        name == "Viper.Core.Convert.ToStringInt" || name == "Viper.Core.Convert.ToStringDouble") {
+        name == "Viper.Threads.Async.MapOwned" || name == "Viper.Core.Convert.ToString_Int" ||
+        name == "Viper.Core.Convert.ToString_Double" || name == "Viper.Core.Convert.ToStringInt" ||
+        name == "Viper.Core.Convert.ToStringDouble") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;

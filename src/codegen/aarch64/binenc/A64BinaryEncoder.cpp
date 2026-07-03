@@ -286,6 +286,7 @@ static void validateOperandCount(const MInstr &mi) {
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
         case MOpcode::Csel:
+        case MOpcode::FCsel:
         case MOpcode::LdrRegBaseRegLsl:
         case MOpcode::StrRegBaseRegLsl:
         case MOpcode::Ldr32RegBaseRegLsl:
@@ -1775,6 +1776,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
 
         case MOpcode::Cset:
         case MOpcode::Csel:
+        case MOpcode::FCsel:
             encodeConditionalInstr(mi, cs);
             return;
 
@@ -2025,6 +2027,14 @@ void A64BinaryEncoder::encodeConditionalInstr(const MInstr &mi, objfile::CodeSec
         const uint32_t cc = getCondCode(mi.ops[1]);
         // csinc Xd, XZR, XZR, invert(cond)
         emit32(kCset | (invertCond(cc) << 12) | rd, cs);
+        return;
+    }
+    if (mi.opc == MOpcode::FCsel) {
+        const uint32_t rd = hwFPR(getReg(mi.ops[0]));
+        const uint32_t rn = hwFPR(getReg(mi.ops[1]));
+        const uint32_t rm = hwFPR(getReg(mi.ops[2]));
+        const uint32_t cc = getCondCode(mi.ops[3]);
+        emit32(kFCsel | (rm << 16) | (cc << 12) | (rn << 5) | rd, cs);
         return;
     }
     // Csel

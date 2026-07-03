@@ -125,7 +125,7 @@ void testStringOwnershipMetadata() {
 }
 
 void testO2DoesNotHoistOwnedConstStr() {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 extern @rt_str_concat(str, str) -> str
 extern @rt_str_len(str) -> i64
 extern @rt_str_release_maybe(str) -> void
@@ -162,7 +162,7 @@ exit(%out:i64):
 }
 
 void testO2StrengthReducesCheckedUnsignedPowerOfTwoDivRem() {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main(%x:i64) -> i64 {
 entry(%x:i64):
   %q = udiv.chk0 %x, 8
@@ -182,7 +182,7 @@ entry(%x:i64):
 }
 
 void testO2InlineUsesSmallCfgBudget() {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @choose(%x:i64) -> i64 {
 entry(%x:i64):
   %cond = scmp_gt %x, 0
@@ -207,7 +207,7 @@ entry:
 }
 
 void testO2InlineMapsEntryParamsByPosition() {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @add1(i64 %x) -> i64 {
 entry(%x0:i64):
   %r = iadd.ovf %x0, 1
@@ -224,7 +224,7 @@ entry:
 }
 
 void testO2ExpandsSignedPowerOfTwoRemainder() {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main(%x:i64) -> i64 {
 entry(%x:i64):
   %r = srem.chk0 %x, 2

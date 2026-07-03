@@ -121,7 +121,7 @@ endif ()
 set(_installed_il "${_tmp_root}/installer-native-smoke.il")
 set(_installed_exe "${_tmp_root}/installer-native-smoke.exe")
 file(WRITE "${_installed_il}" [=[
-il 0.2.0
+il 0.3.0
 
 extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "INSTALLER-NATIVE-SMOKE"

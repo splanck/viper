@@ -89,7 +89,7 @@ TEST(NativeAsmArm64, RuntimeCallPrintI64) {
     const std::string in = outPath("nasm_print_i64.il");
     const std::string exe = outPath("nasm_print_i64_exe");
     writeFile(in,
-              "il 0.2.0\n"
+              "il 0.3.0\n"
               "extern @rt_print_i64(i64) -> void\n"
               "func @main() -> i64 {\n"
               "entry:\n"
@@ -108,7 +108,7 @@ TEST(NativeAsmArm64, StringRodata) {
     const std::string in = outPath("nasm_str.il");
     const std::string exe = outPath("nasm_str_exe");
     writeFile(in,
-              "il 0.2.0\n"
+              "il 0.3.0\n"
               "extern @rt_print_str(str) -> void\n"
               "global const str @.L0 = \"HELLO\"\n"
               "func @main() -> i64 {\n"
@@ -299,7 +299,7 @@ TEST(NativeAsmArm64, EquivBasicReturn) {
 TEST(NativeAsmArm64, OverflowArithmetic) {
     const std::string in = outPath("nasm_ovf.il");
     writeFile(in,
-              "il 0.2.0\n"
+              "il 0.3.0\n"
               "func @main() -> i64 {\n"
               "entry:\n"
               "  %a = iadd.ovf 20, 22\n"
@@ -314,7 +314,7 @@ TEST(NativeAsmArm64, OverflowArithmetic) {
 TEST(NativeAsmArm64, FloatingPoint) {
     const std::string in = outPath("nasm_fp.il");
     writeFile(in,
-              "il 0.2.0\n"
+              "il 0.3.0\n"
               "func @main() -> i64 {\n"
               "entry:\n"
               "  %a = const.f64 3.14\n"

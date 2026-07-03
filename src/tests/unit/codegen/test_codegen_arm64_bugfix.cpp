@@ -36,7 +36,7 @@ TEST(Arm64Bugfix, VoidMainExitZero) {
     const std::string in = outPath("arm64_bugfix_void_main.il");
     // A void main that calls a runtime function leaving a non-zero value in x0.
     // Before the fix, this would exit with whatever rt_term_say left in x0.
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "extern @Viper.Terminal.Say(str) -> void\n"
                            "global const str @.msg = \"hello\"\n"
                            "func @main() -> void {\n"
@@ -57,7 +57,7 @@ TEST(Arm64Bugfix, BoolReturnMasked) {
     const std::string in = outPath("arm64_bugfix_bool_return.il");
     // Calls rt_str_eq which returns bool (i1). If the masking works,
     // the comparison and conditional branch should function correctly.
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "extern @Viper.String.Equals(str, str) -> i1\n"
                            "global const str @.a = \"hello\"\n"
                            "global const str @.b = \"hello\"\n"
@@ -327,7 +327,7 @@ TEST(Arm64Bugfix, CurrentInstructionDefNotEvictedUnderPressure) {
 /// with SCvtF. The comparison then failed for every tree site.
 TEST(Arm64Bugfix, ForwardDefinedF64BlockParamReloadKeepsFprClass) {
     const std::string in = outPath("arm64_bugfix_forward_f64_block_param.il");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  %seed = const.f64 1.5\n"
@@ -354,7 +354,7 @@ TEST(Arm64Bugfix, ForwardDefinedF64BlockParamReloadKeepsFprClass) {
 /// stale `-1` value and tripping array bounds checks.
 TEST(Arm64Bugfix, SchedulerPreservesAliasedBaseRegisterStores) {
     const std::string in = outPath("arm64_bugfix_scheduler_alias_base.il");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "extern @rt_obj_new_i64(i64, i64) -> ptr\n"
                            "extern @rt_arr_i64_new(i64) -> ptr\n"
                            "extern @rt_arr_i64_len(ptr) -> i64\n"

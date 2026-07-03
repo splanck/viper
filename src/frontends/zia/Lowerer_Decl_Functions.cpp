@@ -297,6 +297,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
         // Create slot and store the parameter value
         createSlot(decl.params[i].name, ilParamType);
         storeToSlot(decl.params[i].name, Value::temp(blockParams[i].id), ilParamType);
+        if (ilParamType.kind == Type::Kind::Str) // params are borrowed; the slot owns +1
+            emitCall(runtime::kStrRetainMaybe, {Value::temp(blockParams[i].id)});
         localTypes_[decl.params[i].name] = paramType;
     }
 
@@ -321,6 +323,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
 
     // Add implicit return if needed (use the correct default value for each type).
     if (!isTerminated()) {
+        releaseLocalStringSlots(); // param slots own +1; body block released its own
         if (ilReturnType.kind == Type::Kind::Void) {
             emitRetVoid();
         } else {
@@ -479,6 +482,8 @@ void Lowerer::lowerAsyncFunctionDecl(FunctionDecl &decl,
 
             createSlot(decl.params[i].name, ilParamType);
             storeToSlot(decl.params[i].name, unpacked, ilParamType);
+            if (ilParamType.kind == Type::Kind::Str) // env values are borrowed; the slot owns +1
+                emitCall(runtime::kStrRetainMaybe, {unpacked});
             localTypes_[decl.params[i].name] = paramType;
         }
 
@@ -594,6 +599,8 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
         // Create slot and store the parameter value
         createSlot(decl->params[i].name, ilParamType);
         storeToSlot(decl->params[i].name, Value::temp(blockParams[i].id), ilParamType);
+        if (ilParamType.kind == Type::Kind::Str) // params are borrowed; the slot owns +1
+            emitCall(runtime::kStrRetainMaybe, {Value::temp(blockParams[i].id)});
         localTypes_[decl->params[i].name] = paramType;
     }
 
@@ -604,6 +611,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
 
     // Add implicit return if needed
     if (!isTerminated()) {
+        releaseLocalStringSlots(); // param slots own +1; body block released its own
         if (ilReturnType.kind == Type::Kind::Void) {
             emitRetVoid();
         } else {
@@ -838,12 +846,15 @@ void Lowerer::lowerInterfaceDefaultMethodDecl(MethodDecl &decl, const std::strin
         Type ilParamType = mapType(paramType);
         createSlot(decl.params[i].name, ilParamType);
         storeToSlot(decl.params[i].name, Value::temp(blockParams[i + 1].id), ilParamType);
+        if (ilParamType.kind == Type::Kind::Str) // params are borrowed; the slot owns +1
+            emitCall(runtime::kStrRetainMaybe, {Value::temp(blockParams[i + 1].id)});
         localTypes_[decl.params[i].name] = paramType;
     }
 
     lowerStmt(decl.body.get());
 
     if (!isTerminated()) {
+        releaseLocalStringSlots(); // param slots own +1; body block released its own
         if (ilReturnType.kind == Type::Kind::Void) {
             emitRetVoid();
         } else {
@@ -973,6 +984,8 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
             createSlot(decl.params[i].name, ilParamType);
             storeToSlot(
                 decl.params[i].name, Value::temp(blockParams[i + paramOffset].id), ilParamType);
+            if (ilParamType.kind == Type::Kind::Str) // params are borrowed; the slot owns +1
+                emitCall(runtime::kStrRetainMaybe, {Value::temp(blockParams[i + paramOffset].id)});
             // Store parameter type for expression lowering
             localTypes_[decl.params[i].name] = paramType;
         }
@@ -985,6 +998,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 
     // Add implicit return if needed (Bug #5 fix: use correct default value for each type)
     if (!isTerminated()) {
+        releaseLocalStringSlots(); // param slots own +1; body block released its own
         if (ilReturnType.kind == Type::Kind::Void) {
             emitRetVoid();
         } else {
@@ -1142,6 +1156,8 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
         if (paramIdx < blockParams.size()) {
             createSlot(decl.setterParam, ilPropType);
             storeToSlot(decl.setterParam, Value::temp(blockParams[paramIdx].id), ilPropType);
+            if (ilPropType.kind == Type::Kind::Str) // setter param is borrowed; the slot owns +1
+                emitCall(runtime::kStrRetainMaybe, {Value::temp(blockParams[paramIdx].id)});
             localTypes_[decl.setterParam] = propType;
         }
 
@@ -1150,6 +1166,7 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
 
         // Add implicit return void
         if (!isTerminated()) {
+            releaseLocalStringSlots(); // setter param slot owns +1
             emitRetVoid();
         }
 

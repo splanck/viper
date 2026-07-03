@@ -57,7 +57,7 @@ std::string findBuildDir() {
 }
 
 constexpr const char *kFibIL = R"(
-il 0.2.0
+il 0.3.0
 
 func @fib(i64 %n) -> i64 {
 entry(%n:i64):

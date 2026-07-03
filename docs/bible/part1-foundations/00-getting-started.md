@@ -438,7 +438,7 @@ zia --version
 ```text
 zia v0.2.7-dev
 Zia Compiler
-IL version: 0.2.0
+IL version: 0.3.0
 ```
 
 (The exact version number will vary depending on when you built Viper.)

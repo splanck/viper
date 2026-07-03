@@ -2443,7 +2443,7 @@ static bool test_character_controller_syncs_world_position_under_parent() {
                 0.0001,
                 "character jump getter sanitizes corrupt private state");
     EXPECT_NEAR(rt_game3d_character_controller_get_gravity(controller),
-                -20.0,
+                20.0,
                 0.0001,
                 "character gravity getter sanitizes corrupt private state");
     controller_view->character = wrong_ref;
@@ -2460,7 +2460,7 @@ static bool test_character_controller_syncs_world_position_under_parent() {
     controller_view->entity = saved_entity;
     controller_view->speed = 6.0;
     controller_view->jump_speed = 5.5;
-    controller_view->gravity = -20.0;
+    controller_view->gravity = 20.0;
 
     rt_game3d_character_controller_teleport(controller, 14.0, 0.0, 0.0);
     void *world_pos = rt_scene_node3d_get_world_position(rt_game3d_entity_get_node(child));
@@ -2618,6 +2618,101 @@ static bool test_first_person_character_controller_same_frame_motion() {
         rt_vec3_z(camera_pos), rt_vec3_z(after), 0.0001, "camera lateUpdate follows character z");
     EXPECT_TRUE(rt_vec3_y(camera_pos) > rt_vec3_y(after),
                 "camera lateUpdate places the eye above the character");
+
+    rt_canvas3d_clear_synthetic_input(canvas);
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_character_controller_gravity_and_planar_input() {
+    TEST("CharacterController3D gravity falls downward and planar input ignores vertical keys");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Character Gravity Unit"), 80, 60);
+    void *canvas = rt_game3d_world_get_canvas(world);
+    void *input = rt_game3d_world_get_input(world);
+    void *camera = rt_game3d_world_get_camera(world);
+
+    void *ground = rt_game3d_entity_new();
+    void *ground_body = rt_body3d_new_aabb(10.0, 0.5, 10.0, 0.0);
+    rt_game3d_entity_attach_body(ground, ground_body);
+    rt_game3d_entity_set_position(ground, 0.0, -0.5, 0.0);
+    rt_game3d_world_spawn(world, ground);
+
+    void *player = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(player, 0.0, 3.0, 0.0);
+    rt_game3d_world_spawn(world, player);
+
+    void *controller = rt_game3d_character_controller_new(world, player, 0.32, 1.8, 70.0);
+    rt_game3d_character_controller_set_gravity(controller, 20.0);
+    rt_camera3d_look_at(
+        camera, rt_vec3_new(0.0, 1.8, 6.0), rt_vec3_new(0.0, 1.8, 0.0), rt_vec3_new(0.0, 1.0, 0.0));
+
+    void *before_fall = rt_game3d_entity_position(player);
+    double max_y = rt_vec3_y(before_fall);
+    for (int i = 0; i < 20; ++i) {
+        rt_game3d_character_controller_update(controller, input, camera, 0.05);
+        void *pos = rt_game3d_entity_position(player);
+        if (rt_vec3_y(pos) > max_y)
+            max_y = rt_vec3_y(pos);
+    }
+    void *after_fall = rt_game3d_entity_position(player);
+    EXPECT_TRUE(rt_vec3_y(after_fall) < rt_vec3_y(before_fall) - 0.5,
+                "positive gravity moves an airborne character downward");
+    EXPECT_TRUE(max_y <= rt_vec3_y(before_fall) + 0.0001,
+                "positive gravity never accelerates the character upward");
+
+    rt_game3d_character_controller_teleport(controller, 0.0, 1.0, 0.0);
+    for (int i = 0; i < 10 && rt_game3d_character_controller_grounded(controller) == 0; ++i)
+        rt_game3d_character_controller_update(controller, input, camera, 0.05);
+    EXPECT_TRUE(rt_game3d_character_controller_grounded(controller) != 0,
+                "character settles onto the floor");
+
+    rt_game3d_character_controller_set_speed(controller, 10.0);
+    rt_canvas3d_clear_synthetic_input(canvas);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_w(), 1);
+    rt_canvas3d_advance_synthetic_frame(canvas);
+    rt_game3d_input_update(input);
+    void *before_w = rt_game3d_entity_position(player);
+    rt_game3d_character_controller_update(controller, input, camera, 0.1);
+    void *after_w = rt_game3d_entity_position(player);
+    double w_distance = rt_vec3_z(before_w) - rt_vec3_z(after_w);
+
+    rt_canvas3d_clear_synthetic_input(canvas);
+    rt_game3d_input_update(input);
+    rt_game3d_character_controller_teleport(controller, 0.0, 1.0, 0.0);
+    for (int i = 0; i < 10 && rt_game3d_character_controller_grounded(controller) == 0; ++i)
+        rt_game3d_character_controller_update(controller, input, camera, 0.05);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_w(), 1);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_lshift(), 1);
+    rt_canvas3d_advance_synthetic_frame(canvas);
+    rt_game3d_input_update(input);
+    void *before_shift = rt_game3d_entity_position(player);
+    rt_game3d_character_controller_update(controller, input, camera, 0.1);
+    void *after_shift = rt_game3d_entity_position(player);
+    double shift_distance = rt_vec3_z(before_shift) - rt_vec3_z(after_shift);
+    EXPECT_NEAR(shift_distance,
+                w_distance,
+                0.001,
+                "holding Shift does not reduce walking controller planar speed");
+
+    rt_canvas3d_clear_synthetic_input(canvas);
+    rt_game3d_input_update(input);
+    rt_game3d_character_controller_teleport(controller, 0.0, 1.0, 0.0);
+    for (int i = 0; i < 10 && rt_game3d_character_controller_grounded(controller) == 0; ++i)
+        rt_game3d_character_controller_update(controller, input, camera, 0.05);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_w(), 1);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_space(), 1);
+    rt_canvas3d_advance_synthetic_frame(canvas);
+    rt_game3d_input_update(input);
+    void *before_space = rt_game3d_entity_position(player);
+    rt_game3d_character_controller_update(controller, input, camera, 0.1);
+    void *after_space = rt_game3d_entity_position(player);
+    double space_distance = rt_vec3_z(before_space) - rt_vec3_z(after_space);
+    EXPECT_NEAR(space_distance,
+                w_distance,
+                0.001,
+                "holding Space preserves walking controller planar speed while jumping");
+    EXPECT_TRUE(rt_vec3_y(after_space) > rt_vec3_y(before_space),
+                "Space still launches the character upward");
 
     rt_canvas3d_clear_synthetic_input(canvas);
     rt_game3d_world_destroy(world);
@@ -5696,6 +5791,7 @@ int main() {
     ok = test_character_controller_syncs_world_position_under_parent() && ok;
     ok = test_orbit_and_follow_controllers() && ok;
     ok = test_first_person_character_controller_same_frame_motion() && ok;
+    ok = test_character_controller_gravity_and_planar_input() && ok;
     ok = test_phase3_material_presets_and_prefabs() && ok;
     ok = test_phase3_world_presets_environment_and_debug() && ok;
     ok = test_phase4_assets3d_model_templates() && ok;

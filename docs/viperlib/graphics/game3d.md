@@ -206,9 +206,10 @@ existing `walk_min.zia` bounded sample with scale flags explicitly off and
 checks exact final-frame pixel and captured-state parity.
 
 `World3D.WithCamera(title, width, height, fov, near, far)` uses the same
-defaults with custom camera projection values.
-`NewWithCamera` and `NewWithHorizontalCamera` remain available as compatibility
-aliases.
+defaults with custom vertical-FOV camera projection values.
+`World3D.WithHorizontalCamera(title, width, height, fov, near, far)` accepts a
+horizontal FOV and converts it for the runtime camera projection. `NewWithCamera`
+and `NewWithHorizontalCamera` remain available as compatibility aliases.
 
 ---
 
@@ -1080,9 +1081,13 @@ Game3D.World3D.setCameraController(world, fps);
 ```
 
 `CharacterController3D` exposes `speed`, `jumpSpeed`, `gravity`, `teleport(x,y,z)`,
-and `grounded()`. It owns a lower-level `Viper.Graphics3D.Character3D`, binds it
-to the world's physics world, moves it with swept-slide collision, and mirrors
-the character position back to its Game3D entity.
+and `grounded()`. `gravity` is a positive downward acceleration magnitude;
+negative values are accepted as the same magnitude for compatibility. The
+controller owns a lower-level `Viper.Graphics3D.Character3D`, binds it to the
+world's physics world, moves it with swept-slide collision, and mirrors the
+character position back to its Game3D entity. Walking movement uses only
+W/A/S/D or arrow keys for planar X/Z movement; Space is jump, and Shift/Ctrl are
+left available for application actions such as sprint.
 
 `OrbitController.New(world, target)` takes either a `Vec3` target position or an
 `Entity3D` target. Entity targets are resolved to world position during

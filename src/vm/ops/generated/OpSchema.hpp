@@ -1292,6 +1292,21 @@ inline constexpr std::array<OpSchemaEntry, il::core::kNumOpcodes> kOpSchema = {
             il::core::VMDispatch::Trap,
             true,
         },
+        {
+            "select",
+            il::core::ResultArity::One,
+            il::core::TypeCategory::InstrType,
+            static_cast<uint8_t>(3),
+            static_cast<uint8_t>(3),
+            {il::core::TypeCategory::I1,
+             il::core::TypeCategory::InstrType,
+             il::core::TypeCategory::InstrType},
+            false,
+            static_cast<uint8_t>(0),
+            false,
+            il::core::VMDispatch::Select,
+            true,
+        },
     },
 };
 

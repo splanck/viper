@@ -98,6 +98,81 @@ TEST(RealWorldPerfPasses, RuntimeOwnershipClassifiesArrayAndObjectHelpers) {
     const auto msgSub = il::runtime::classifyRuntimeOwnership("Viper.Core.MessageBus.Subscribe");
     EXPECT_TRUE(msgSub.retainsArg(1));
     EXPECT_TRUE(msgSub.retainsArg(2));
+
+    // Known-neutral helpers: borrow all args, no refcount motion, no user code.
+    EXPECT_TRUE(il::runtime::classifyRuntimeOwnership("rt_print_str").knownNeutral);
+    EXPECT_TRUE(il::runtime::classifyRuntimeOwnership("rt_str_len").knownNeutral);
+    EXPECT_TRUE(il::runtime::classifyRuntimeOwnership("rt_str_eq").knownNeutral);
+    // Consuming/allocating helpers must never classify as neutral.
+    EXPECT_FALSE(il::runtime::classifyRuntimeOwnership("rt_str_concat").knownNeutral);
+    EXPECT_FALSE(il::runtime::classifyRuntimeOwnership("rt_str_release_maybe").knownNeutral);
+    // Unknown callees stay unclassified, not neutral.
+    EXPECT_FALSE(il::runtime::classifyRuntimeOwnership("user_function").knownNeutral);
+}
+
+namespace {
+
+/// @brief Build retain(s); <call>(s); release(s); ret 0 for pair-elision tests.
+Module makeRetainCallReleaseModule(std::string callee,
+                                   Type calleeRetTy,
+                                   std::optional<unsigned> calleeResult) {
+    Module module;
+    Function fn = makeFunction("retain_call_release", Type(Type::Kind::I64));
+    Param strParam;
+    strParam.name = "s";
+    strParam.type = Type(Type::Kind::Str);
+    strParam.id = 0;
+    fn.params.push_back(strParam);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.instructions.push_back(
+        makeCall("rt_str_retain_maybe", Type(Type::Kind::Void), {Value::temp(0)}));
+    entry.instructions.push_back(
+        makeCall(std::move(callee), calleeRetTy, {Value::temp(0)}, calleeResult));
+    entry.instructions.push_back(
+        makeCall("rt_str_release_maybe", Type(Type::Kind::Void), {Value::temp(0)}));
+    entry.instructions.push_back(makeRet(Value::constInt(0)));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.valueNames.resize(calleeResult ? *calleeResult + 1 : 1);
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
+} // namespace
+
+TEST(RealWorldPerfPasses, OwnershipOptRemovesPairAcrossNeutralBorrowingCall) {
+    // rt_print_str borrows its argument and touches no reference counts, so
+    // the surrounding retain/release pair is a no-op and can be removed even
+    // though the call uses the retained value.
+    Module module =
+        makeRetainCallReleaseModule("rt_print_str", Type(Type::Kind::Void), std::nullopt);
+    runPass(module, "ownership-opt");
+    const Function &out = module.functions.front();
+    EXPECT_FALSE(hasCallNamed(out, "rt_str_retain_maybe"));
+    EXPECT_FALSE(hasCallNamed(out, "rt_str_release_maybe"));
+    EXPECT_TRUE(hasCallNamed(out, "rt_print_str"));
+}
+
+TEST(RealWorldPerfPasses, OwnershipOptKeepsPairAcrossConsumingCall) {
+    // rt_str_concat consumes its arguments — the pair's +1 is load-bearing.
+    Module module = makeRetainCallReleaseModule("rt_str_concat", Type(Type::Kind::Str), 1u);
+    runPass(module, "ownership-opt");
+    const Function &out = module.functions.front();
+    EXPECT_TRUE(hasCallNamed(out, "rt_str_retain_maybe"));
+    EXPECT_TRUE(hasCallNamed(out, "rt_str_release_maybe"));
+}
+
+TEST(RealWorldPerfPasses, OwnershipOptKeepsPairAcrossUnknownCall) {
+    // An unclassified callee could release the value's other owners; block.
+    Module module =
+        makeRetainCallReleaseModule("user_helper", Type(Type::Kind::Void), std::nullopt);
+    runPass(module, "ownership-opt");
+    const Function &out = module.functions.front();
+    EXPECT_TRUE(hasCallNamed(out, "rt_str_retain_maybe"));
+    EXPECT_TRUE(hasCallNamed(out, "rt_str_release_maybe"));
 }
 
 TEST(RealWorldPerfPasses, OwnershipOptRemovesLocalRetainReleasePair) {

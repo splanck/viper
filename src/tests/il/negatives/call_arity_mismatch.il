@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 func @callee(%x:i64) -> void {
 entry(%x:i64):
   ret

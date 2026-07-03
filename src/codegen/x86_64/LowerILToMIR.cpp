@@ -29,6 +29,8 @@
 #include "Unsupported.hpp"
 #include "codegen/common/FrameLayoutUtils.hpp"
 #include "codegen/common/ICE.hpp"
+#include "codegen/common/StringRetainPolicy.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -313,6 +315,133 @@ void LowerILToMIR::resetFunctionState() {
     blockInfo_.clear();
     callPlans_.clear();
     nextStackLocalSlot_ = 0;
+    strLoadRetainElidable_.clear();
+    strCallRetainElidable_.clear();
+}
+
+void LowerILToMIR::computeStrLoadRetainElidable(const ILFunction &func) {
+    if (!viper::codegen::shouldElideLoadRetainForRelease())
+        return;
+
+    const auto isDirectCall = [](const ILInstr &ins) {
+        return ins.opcode == "call" && !ins.ops.empty() &&
+               ins.ops.front().kind == ILValue::Kind::LABEL;
+    };
+    const auto isReleaseCall = [&](const ILInstr &ins) {
+        return isDirectCall(ins) && viper::codegen::isStringReleaseCallee(ins.ops.front().label);
+    };
+    // Borrowed argument of a registered runtime helper (see StringRetainPolicy.hpp).
+    const auto isBorrowedRuntimeArg = [&](const ILInstr &ins, std::size_t opIdx) {
+        if (!isDirectCall(ins) || opIdx == 0 ||
+            il::runtime::findRuntimeSignature(ins.ops.front().label) == nullptr)
+            return false;
+        const auto effects = il::runtime::classifyRuntimeOwnership(ins.ops.front().label);
+        const unsigned argIdx = static_cast<unsigned>(opIdx - 1);
+        return !effects.consumesArg(argIdx) && !effects.retainsArg(argIdx);
+    };
+
+    for (const auto &block : func.blocks) {
+        for (std::size_t li = 0; li < block.instrs.size(); ++li) {
+            const auto &instr = block.instrs[li];
+            if (instr.opcode != "load" || instr.resultId < 0 ||
+                instr.resultKind != ILValue::Kind::STR)
+                continue;
+            unsigned uses = 0;
+            bool releaseOnly = true;
+            bool borrowOnlyInBlock = true;
+            std::size_t lastUseIdx = li;
+            for (const auto &useBlock : func.blocks) {
+                for (std::size_t ii = 0; ii < useBlock.instrs.size(); ++ii) {
+                    const auto &useInstr = useBlock.instrs[ii];
+                    for (std::size_t oi = 0; oi < useInstr.ops.size(); ++oi) {
+                        const auto &op = useInstr.ops[oi];
+                        if (op.id != instr.resultId || op.kind == ILValue::Kind::LABEL)
+                            continue;
+                        ++uses;
+                        if (!isReleaseCall(useInstr))
+                            releaseOnly = false;
+                        if (&useBlock != &block || ii <= li || !isBorrowedRuntimeArg(useInstr, oi))
+                            borrowOnlyInBlock = false;
+                        else
+                            lastUseIdx = std::max(lastUseIdx, ii);
+                    }
+                }
+                for (const auto &edge : useBlock.terminatorEdges) {
+                    for (int argId : edge.argIds) {
+                        if (argId == instr.resultId) {
+                            ++uses;
+                            releaseOnly = false;
+                            borrowOnlyInBlock = false;
+                        }
+                    }
+                }
+            }
+            if (uses == 0)
+                continue;
+            if (uses == 1 && releaseOnly) {
+                strLoadRetainElidable_.insert(instr.resultId);
+                continue;
+            }
+            if (!borrowOnlyInBlock)
+                continue;
+            // Borrow window: nothing between the load and the last use may
+            // drop the slot's own reference.
+            bool windowSafe = true;
+            for (std::size_t ii = li + 1; ii <= lastUseIdx && windowSafe; ++ii) {
+                const auto &mid = block.instrs[ii];
+                if (mid.opcode == "store" && !mid.ops.empty() && mid.ops.size() >= 2 &&
+                    mid.ops[1].kind == ILValue::Kind::STR)
+                    windowSafe = false;
+                if (isReleaseCall(mid))
+                    windowSafe = false;
+            }
+            if (windowSafe)
+                strLoadRetainElidable_.insert(instr.resultId);
+        }
+    }
+
+    // Call results: the callee's transferred reference covers exactly ONE
+    // spend (consuming runtime arg, explicit release, ret, or branch arg —
+    // the latter counted as two so the retain is kept). Elide the defensive
+    // retain only when the callee transfers and the spends fit.
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instrs) {
+            if (instr.opcode != "call" || instr.resultId < 0 ||
+                instr.resultKind != ILValue::Kind::STR || !isDirectCall(instr))
+                continue;
+            if (!viper::codegen::shouldElideStringResultRetain(instr.ops.front().label))
+                continue;
+            unsigned spends = 0;
+            for (const auto &useBlock : func.blocks) {
+                for (const auto &useInstr : useBlock.instrs) {
+                    for (std::size_t oi = 0; oi < useInstr.ops.size(); ++oi) {
+                        const auto &op = useInstr.ops[oi];
+                        if (op.id != instr.resultId || op.kind == ILValue::Kind::LABEL)
+                            continue;
+                        if (useInstr.opcode == "ret") {
+                            ++spends;
+                        } else if (isReleaseCall(useInstr)) {
+                            ++spends;
+                        } else if (isDirectCall(useInstr) && oi > 0 &&
+                                   il::runtime::findRuntimeSignature(useInstr.ops.front().label) !=
+                                       nullptr &&
+                                   il::runtime::classifyRuntimeOwnership(useInstr.ops.front().label)
+                                       .consumesArg(static_cast<unsigned>(oi - 1))) {
+                            ++spends;
+                        }
+                    }
+                }
+                for (const auto &edge : useBlock.terminatorEdges) {
+                    for (int argId : edge.argIds) {
+                        if (argId == instr.resultId)
+                            spends += 2; // unknown downstream spending
+                    }
+                }
+            }
+            if (spends <= 1)
+                strCallRetainElidable_.insert(instr.resultId);
+        }
+    }
 }
 
 /// @brief Hand out the next module-wide unique local-label id.
@@ -683,6 +812,7 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
 /// @return Machine function containing the lowered instructions.
 MFunction LowerILToMIR::lower(const ILFunction &func) {
     resetFunctionState();
+    computeStrLoadRetainElidable(func);
 
     MFunction result{};
     result.name = func.name;

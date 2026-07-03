@@ -43,7 +43,7 @@ static std::string readFile(const std::string &path) {
 TEST(Arm64CLI, Select_ConstArms) {
     const std::string in = outPath("arm64_select_const.il");
     const std::string out = outPath("arm64_select_const.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @f(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
                            "  %cond = scmp_gt %x, 0\n"
@@ -77,7 +77,7 @@ TEST(Arm64CLI, Select_ConstArms) {
 TEST(Arm64CLI, Select_LoadArms) {
     const std::string in = outPath("arm64_select_load.il");
     const std::string out = outPath("arm64_select_load.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @g(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
                            "  %a = alloca 8\n"

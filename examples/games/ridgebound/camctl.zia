@@ -12,7 +12,7 @@ bind Viper.Math;
 bind "./config";
 bind "./terrain";
 
-class ShowcaseCamera {
+class RidgeboundCamera {
     hide Camera3D cam;
     hide Vec3 eye;
     hide Vec3 target;
@@ -40,6 +40,7 @@ class ShowcaseCamera {
     }
 
     expose func getYaw() -> Float { return yaw; }
+    expose func getEyeY() -> Float { return Vec3.get_Y(eye); }
 
     // First-person state is queried by the orchestrator (to hide the player body)
     // and flipped by the view-toggle key each time it is pressed.
@@ -83,6 +84,29 @@ class ShowcaseCamera {
         }
         fov = fov + (fovTarget - fov) * 0.12;
         Camera3D.SetHorizontalFov(cam, fov);
+    }
+
+    expose func applyFovNow() {
+        fov = config.CAMERA_FOV;
+        Camera3D.SetHorizontalFov(cam, fov);
+    }
+
+    expose func titleView(worldTime: Float, land: Terrain3D) {
+        firstPerson = false;
+        var cx = terrain.terrainWorldMaxX() * 0.50;
+        var cz = terrain.terrainWorldMaxZ() * 0.50;
+        var drift = Sin(worldTime * 0.24) * 1.4;
+        var eyeX = cx - 13.0 + drift;
+        var eyeZ = cz - 31.0 + Cos(worldTime * 0.18) * 1.1;
+        var eyeGround = terrain.sampleGround(land, eyeX, eyeZ);
+        var targetX = cx + 2.0 + Sin(worldTime * 0.16) * 1.0;
+        var targetZ = cz + 6.0;
+        var targetGround = terrain.sampleGround(land, targetX, targetZ);
+        eye.Set(eyeX, eyeGround + 8.8 + Sin(worldTime * 0.31) * 0.35, eyeZ);
+        target.Set(targetX, targetGround + 2.4, targetZ);
+        up.Set(0.0, 1.0, 0.0);
+        Camera3D.SetHorizontalFov(cam, 62.0);
+        Camera3D.LookAt(cam, eye, target, up);
     }
 
     // Orbit the eye behind the player pivot, clamp to world bounds, and keep the

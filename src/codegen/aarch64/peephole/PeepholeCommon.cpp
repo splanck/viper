@@ -103,6 +103,7 @@ bool definesReg(const MInstr &instr, const MOperand &reg) noexcept {
         // --- Conditional select/set (dest = ops[0]) ---
         case MOpcode::Cset:
         case MOpcode::Csel:
+        case MOpcode::FCsel:
         // --- Flag-setting arithmetic (dest = ops[0]) ---
         case MOpcode::AddsRRR:
         case MOpcode::SubsRRR:
@@ -333,6 +334,7 @@ bool usesReg(const MInstr &instr, const MOperand &reg) noexcept {
             break;
 
         case MOpcode::Csel:
+        case MOpcode::FCsel:
             if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
             if (instr.ops.size() >= 3 && samePhysReg(instr.ops[2], reg))
@@ -487,6 +489,7 @@ std::pair<bool, bool> classifyOperand(const MInstr &instr, std::size_t idx) noex
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
 
         case MOpcode::Csel:
+        case MOpcode::FCsel:
             if (idx == 0)
                 return {false, true};
             if (idx == 1 || idx == 2)
@@ -586,6 +589,7 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
         case MOpcode::Csel:
+        case MOpcode::FCsel:
             if (!instr.ops.empty() && isPhysReg(instr.ops[0]))
                 knownConsts.erase(instr.ops[0].reg.idOrPhys);
             break;
@@ -740,6 +744,7 @@ std::optional<MOperand> getDefinedReg(const MInstr &instr) noexcept {
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
         case MOpcode::Csel:
+        case MOpcode::FCsel:
         case MOpcode::LdpRegFpImm:
         case MOpcode::LdpFprFpImm:
             if (!instr.ops.empty() && isPhysReg(instr.ops[0]))

@@ -295,7 +295,7 @@ TEST_END()
 TEST_BEGIN(OverflowArithmetic)
 const std::string in = outPath("nasm_ovf.il");
 writeFile(in,
-          "il 0.2.0\n"
+          "il 0.3.0\n"
           "func @main() -> i64 {\n"
           "entry:\n"
           "  %a = iadd.ovf 20, 22\n"
@@ -311,7 +311,7 @@ TEST_END()
 TEST_BEGIN(FloatingPoint)
 const std::string in = outPath("nasm_fp.il");
 writeFile(in,
-          "il 0.2.0\n"
+          "il 0.3.0\n"
           "func @main() -> i64 {\n"
           "entry:\n"
           "  %a = const.f64 3.14\n"

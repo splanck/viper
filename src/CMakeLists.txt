@@ -205,6 +205,7 @@ add_library(il_transform STATIC
         il/transform/CheckOpt.cpp
         il/transform/ArrayFastPathOpt.cpp
         il/transform/Devirtualize.cpp
+        il/transform/IfConvert.cpp
         il/transform/LateCleanup.cpp
         il/transform/Inline.cpp
         il/transform/OwnershipOpt.cpp

@@ -31,7 +31,7 @@ func buildPostFX(canvas: Canvas3D) {
     Canvas3D.SetPostFX(canvas, fx);
 }
 
-class ShowcaseEffects {
+class RidgeboundEffects {
     hide Particles3D fireflies;
     hide Particles3D mist;
     hide Particles3D sprintDust;

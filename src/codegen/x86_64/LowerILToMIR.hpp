@@ -229,6 +229,21 @@ class LowerILToMIR {
     /// @brief Query whether @p callee is a user-defined variadic function in the current module.
     [[nodiscard]] bool isKnownVarArgCallee(std::string_view callee) const;
 
+    /// @brief True when the string load producing @p resultId may skip its
+    ///        defensive retain: its only use is an explicit release call
+    ///        (see StringRetainPolicy.hpp).
+    [[nodiscard]] bool isStrLoadRetainElidable(int resultId) const {
+        return strLoadRetainElidable_.count(resultId) != 0;
+    }
+
+    /// @brief True when the string call result @p resultId may skip its
+    ///        defensive retain: the callee transfers ownership and the
+    ///        result's reference-spending uses fit in that one transferred
+    ///        reference (see StringRetainPolicy.hpp).
+    [[nodiscard]] bool isStrCallRetainElidable(int resultId) const {
+        return strCallRetainElidable_.count(resultId) != 0;
+    }
+
     /// @brief Return the next per-function local label id and advance the counter.
     /// @details Used for internal labels (trap sites, conversion branches) that need
     ///          unique names within a function. Resets to 0 at the start of each function
@@ -252,6 +267,11 @@ class LowerILToMIR {
     uint32_t nextLocalLabel_{0};
     int nextStackLocalSlot_{0};
     std::unordered_set<std::string> knownVarArgCallees_{};
+    std::unordered_set<int> strLoadRetainElidable_{};
+    std::unordered_set<int> strCallRetainElidable_{};
+
+    /// @brief Populate strLoadRetainElidable_ for @p func (see StringRetainPolicy.hpp).
+    void computeStrLoadRetainElidable(const ILFunction &func);
 
     /// @brief Reset all per-function lowering state (vreg counter, maps, call plans).
     void resetFunctionState();

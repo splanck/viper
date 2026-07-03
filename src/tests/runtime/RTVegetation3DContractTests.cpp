@@ -193,7 +193,11 @@ extern "C" void rt_mesh3d_clear(void *m) {
 }
 
 extern "C" void *rt_material3d_new(void) {
-    void *mat = std::calloc(1, 64); // opaque to vegetation; only identity matters
+    // Sized generously: vegetation writes real rt_material3d fields (e.g.
+    // double_sided) through this handle, so the fixture must cover the full
+    // struct, not just an identity-sized stub (ASan caught a 64-byte stub
+    // overflowing once the double-sided write landed).
+    void *mat = std::calloc(1, 1024);
     track(g_materials, &g_material_count, 128, mat);
     return mat;
 }

@@ -200,6 +200,12 @@ LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr,
                 consumeDeferred(assignValue);
                 return {destPtr, Type(Type::Kind::Ptr)};
             }
+            if (assignType.kind == Type::Kind::Str && isOwnedStringSlot(ident->name)) {
+                // Slot-ownership discipline: owned temps move in, borrowed
+                // values are retained, and the displaced occupant is released.
+                storeOwnedStringToSlot(ident->name, assignValue, /*releaseDisplaced=*/true);
+                return {assignValue, assignType};
+            }
             storeToSlot(ident->name, assignValue, assignType);
             // The assigned value is consumed by the slot — don't release
             consumeDeferred(assignValue);

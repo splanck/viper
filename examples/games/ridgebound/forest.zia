@@ -11,7 +11,7 @@ bind "./config";
 bind "./terrain";
 bind "./mathutil";
 
-class ShowcaseForest {
+class RidgeboundForest {
     hide List[Material3D] treeMats;
     hide Material3D barkMat;
     hide List[Float] beaconXs;

@@ -150,7 +150,7 @@ try {
     $exe = Join-Path $work "installer-native-smoke.exe"
     Remove-Item Env:VIPER_LIB_PATH -ErrorAction SilentlyContinue
     Set-Content -LiteralPath $il -Encoding ASCII -Value @"
-il 0.2.0
+il 0.3.0
 
 extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "INSTALLER-NATIVE-SMOKE"

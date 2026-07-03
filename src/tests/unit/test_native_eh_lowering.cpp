@@ -245,7 +245,7 @@ TEST(NativeEHLowering, ResumeLabelValidatesSiteTokenBeforeBranch) {
 }
 
 TEST(NativeEHLowering, HandlerHelperTrapFromErrUsesOuterNativeSite) {
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "extern @may_throw() -> void\n"
                            "func @f() -> void {\n"
                            "entry:\n"

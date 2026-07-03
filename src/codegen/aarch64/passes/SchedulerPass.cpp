@@ -403,6 +403,7 @@ static bool usesFlags(MOpcode opc) noexcept {
         case MOpcode::BCond:
         case MOpcode::Cset:
         case MOpcode::Csel:
+        case MOpcode::FCsel:
             return true;
         default:
             return false;

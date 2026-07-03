@@ -458,7 +458,7 @@ Prints the IL module immediately after lowering from the AST, before any optimiz
 
 ```il
 === IL after lowering ===
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.SayInt(i64) -> void
 func @main() -> void {
 entry_0:

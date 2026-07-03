@@ -386,6 +386,10 @@ function(viper_add_il_core_tests)
     target_link_libraries(test_il_verify_trap PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
     viper_add_ctest(test_il_verify_trap test_il_verify_trap)
 
+    viper_add_test(test_il_verify_select ${_VIPER_IL_UNIT_DIR}/test_il_verify_select.cpp)
+    target_link_libraries(test_il_verify_select PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    viper_add_ctest(test_il_verify_select test_il_verify_select)
+
     viper_add_test(test_il_verify_forward_call ${_VIPER_IL_UNIT_DIR}/test_il_verify_forward_call.cpp)
     target_link_libraries(test_il_verify_forward_call PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
     viper_add_ctest(test_il_verify_forward_call test_il_verify_forward_call)
@@ -703,6 +707,14 @@ function(viper_add_il_utils_test)
             test_il_int_range_analysis PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform
             il_api)
     viper_add_ctest(test_il_int_range_analysis test_il_int_range_analysis)
+
+    viper_add_test(
+            test_il_if_convert
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_IfConvert.cpp)
+    target_link_libraries(
+            test_il_if_convert PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform
+            il_api)
+    viper_add_ctest(test_il_if_convert test_il_if_convert)
 
     viper_add_test(
             test_il_late_cleanup

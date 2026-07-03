@@ -18,7 +18,7 @@ bind "./terrain";
 bind "./audio";
 bind "./postfx";
 
-class ShowcasePlayer {
+class RidgeboundPlayer {
     hide Entity3D entity;
     hide CharacterController3D controller;
     hide Character3D character;
@@ -35,9 +35,10 @@ class ShowcasePlayer {
         entity = Entity3D.New();
         entity.Name = "player";
         entity.Layer = Layers.get_Dynamic();
-        // Spawn slightly above the ground so the first physics step settles the
-        // capsule onto the terrain instead of starting interpenetrated.
-        entity.SetPosition(sx, sy + 1.2, sz);
+        // Character3D.Position is the capsule center; keep a tiny clearance over
+        // the sampled terrain instead of the old magic airborne offset.
+        var centerY = sy + config.PLAYER_CAPSULE_HEIGHT * 0.5 + 0.05;
+        entity.SetPosition(sx, centerY, sz);
         world.Spawn(entity);
 
         controller = CharacterController3D.New(
@@ -54,10 +55,23 @@ class ShowcasePlayer {
         stamina = 1.0;
     }
 
+    expose func respawn(land: Terrain3D) {
+        var sx = terrain.terrainWorldMaxX() * 0.50;
+        var sz = terrain.terrainWorldMaxZ() * 0.50;
+        var sy = terrain.sampleGround(land, sx, sz);
+        var centerY = sy + config.PLAYER_CAPSULE_HEIGHT * 0.5 + 0.05;
+        controller.Teleport(sx, centerY, sz);
+        px = sx;
+        py = sy;
+        pz = sz;
+        stepPhase = 0.0;
+        stamina = 1.0;
+    }
+
     // Drive the character (camera-relative move + gravity + jump), then mirror
     // its position back and fire footstep sfx/dust on the accumulated distance.
     expose func update(dt: Float, input: Input3D, camera: Camera3D,
-                       audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+                       audioObj: RidgeboundAudio, effectsObj: RidgeboundEffects) {
         // Sprint is gated on stamina: hold Shift to sprint until it drains, then
         // it regenerates while you walk.
         var wantSprint = input.IsDown(Key.LeftShift);
@@ -84,6 +98,8 @@ class ShowcasePlayer {
         if (nz > maxZ) { nz = maxZ; clamped = true; }
         if (clamped) { controller.Teleport(nx, ny, nz); }
 
+        var feetY = ny - config.PLAYER_CAPSULE_HEIGHT * 0.5;
+
         var dx = nx - px;
         var dz = nz - pz;
         var moved = Sqrt(dx * dx + dz * dz);
@@ -92,7 +108,7 @@ class ShowcasePlayer {
         // math is all relative to the feet/ground, so report the feet Y (center
         // minus half the capsule height) so the camera sits at the same height
         // it did before the migration.
-        py = ny - config.PLAYER_CAPSULE_HEIGHT * 0.5;
+        py = feetY;
         pz = nz;
 
         stepPhase = stepPhase + moved;

@@ -94,7 +94,7 @@ void runCheckOpt(Module &module) {
     manager.invalidateAfterFunctionPass(preserved, module.functions.front());
 }
 
-const char *const kCountedLoop = R"(il 0.2.0
+const char *const kCountedLoop = R"(il 0.3.0
 func @main() -> i64 {
 entry:
   br loop(0, 0)
@@ -113,7 +113,7 @@ exit(%res: i64):
 
 // Rotated (do-while) shape: body self-loops with the latch compare at the end,
 // matching what loop-rotate produces at O2.
-const char *const kRotatedLoop = R"(il 0.2.0
+const char *const kRotatedLoop = R"(il 0.3.0
 func @main() -> i64 {
 entry:
   br body(0, 1)
@@ -147,7 +147,7 @@ TEST(IntRangeAnalysis, CountedLoopGuardBoundsInductionVariable) {
 TEST(IntRangeAnalysis, UnboundedAccumulatorNeverGetsFiniteBound) {
     // %sum accumulates %i without a mask: its true range grows without bound,
     // so a finite upper bound at the loop header would be UNSOUND.
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   br loop(0, 0)
@@ -207,7 +207,7 @@ TEST(CheckOptRanges, DemotesRotatedLoopDivAndArithmetic) {
 }
 
 TEST(CheckOptRanges, DeletesProvablyInBoundsIdxChk) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   br loop(0, 0)
@@ -233,7 +233,7 @@ exit(%res: i64):
 TEST(CheckOptRanges, KeepsIdxChkWhenBoundsTooTight) {
     // Index reaches 1023 but the check demands < 1000: deleting it would drop
     // a real trap.
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   br loop(0, 0)
@@ -255,7 +255,7 @@ exit(%res: i64):
 }
 
 TEST(CheckOptRanges, DemotesBranchGuardedDivisor) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main(%x: i64, %d: i64) -> i64 {
 entry(%x: i64, %d: i64):
   %pos = scmp_gt %d, 0
@@ -276,7 +276,7 @@ fallback(%x1: i64):
 }
 
 TEST(CheckOptRanges, KeepsUnguardedVariableDivisor) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main(%x: i64, %d: i64) -> i64 {
 entry(%x: i64, %d: i64):
   %q = sdiv.chk0 %x, %d
@@ -287,10 +287,43 @@ entry(%x: i64, %d: i64):
     EXPECT_EQ(countOpcode(module.functions.front(), Opcode::SDivChk0), 1u);
 }
 
+TEST(CheckOptRanges, SelectUnionOfBoundedArmsDemotesAdd) {
+    // The select's range is the union of its arm ranges: [4096,4096] and
+    // [0,8191] join to [0,8191], which proves the add cannot overflow. This is
+    // the fact IfConvert relies on when it folds a clamping branch to select.
+    Module module = parseModule(R"(il 0.3.0
+func @main(%c: i1, %x: i64) -> i64 {
+entry(%c: i1, %x: i64):
+  %m = and %x, 8191
+  %v = select i64, %c, 4096, %m
+  %s = iadd.ovf %v, 1
+  ret %s
+}
+)");
+    runCheckOpt(module);
+    EXPECT_EQ(countOpcode(module.functions.front(), Opcode::IAddOvf), 0u);
+    auto verified = il::verify::Verifier::verify(module);
+    EXPECT_TRUE(static_cast<bool>(verified));
+}
+
+TEST(CheckOptRanges, SelectWithUnboundedArmKeepsCheckedAdd) {
+    // One arm unbounded -> the union is unbounded -> no demotion.
+    Module module = parseModule(R"(il 0.3.0
+func @main(%c: i1, %x: i64) -> i64 {
+entry(%c: i1, %x: i64):
+  %v = select i64, %c, %x, 4096
+  %s = iadd.ovf %v, 1
+  ret %s
+}
+)");
+    runCheckOpt(module);
+    EXPECT_EQ(countOpcode(module.functions.front(), Opcode::IAddOvf), 1u);
+}
+
 TEST(VerifierRanges, RejectsUnprovablePlainAdd) {
     // Plain add of two unbounded params must still be rejected: the analysis
     // has no facts, so neither the local nor the global prover accepts it.
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main(%a: i64, %b: i64) -> i64 {
 entry(%a: i64, %b: i64):
   %s = add %a, %b

@@ -276,10 +276,13 @@ TEST(X64CallABI, StringCallResultsScheduleRetainHelper) {
     fn.blocks = {entry};
 
     const MFunction mir = lowering.lower(fn);
-    ASSERT_EQ(lowering.callPlans().size(), 2u);
+    // One plan: the call itself. @get_str is an IL-defined callee, so its
+    // result arrives with a transferred owned reference, and the single `ret`
+    // spend fits in it — the defensive retain is elided
+    // (StringRetainPolicy.hpp). The double-consume case that NEEDS the
+    // retain is covered by StringCallResultRetainKeptForDoubleConsume below.
+    ASSERT_EQ(lowering.callPlans().size(), 1u);
     EXPECT_EQ(lowering.callPlans()[0].callee, "get_str");
-    EXPECT_EQ(lowering.callPlans()[1].callee, "rt_str_retain_maybe");
-    ASSERT_EQ(lowering.callPlans()[1].args.size(), 1u);
 
     ASSERT_FALSE(mir.blocks.empty());
     std::vector<const MInstr *> calls;
@@ -287,9 +290,42 @@ TEST(X64CallABI, StringCallResultsScheduleRetainHelper) {
         if (instr.opcode == MOpcode::CALL)
             calls.push_back(&instr);
     }
-    ASSERT_EQ(calls.size(), 2u);
-    ASSERT_LT(calls[1]->callPlanId, lowering.callPlans().size());
-    EXPECT_EQ(lowering.callPlans()[calls[1]->callPlanId].callee, "rt_str_retain_maybe");
+    ASSERT_EQ(calls.size(), 1u);
+}
+
+TEST(X64CallABI, StringCallResultRetainKeptForDoubleConsume) {
+    // concat(%s, %s) spends the transferred reference twice — the defensive
+    // retain must survive or the second consume underflows (BUG-NAT-005).
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILInstr call{};
+    call.opcode = "call";
+    call.resultId = 0;
+    call.resultKind = ILValue::Kind::STR;
+    call.ops = {makeLabel("get_str")};
+
+    ILInstr concat{};
+    concat.opcode = "call";
+    concat.resultId = 1;
+    concat.resultKind = ILValue::Kind::STR;
+    concat.ops = {makeLabel("rt_str_concat"),
+                  makeValue(ILValue::Kind::STR, 0),
+                  makeValue(ILValue::Kind::STR, 0)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {call, concat, makeRet(makeValue(ILValue::Kind::STR, 1))};
+
+    ILFunction fn{};
+    fn.name = "double_consume";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 3u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "get_str");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "rt_str_retain_maybe");
+    EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_concat");
 }
 
 TEST(X64CallABI, Win64LabelCallArgsMaterialiseIntoRegisters) {
@@ -369,11 +405,14 @@ TEST(X64CallABI, StringLoadsRetainBeforeConsumingCalls) {
     fn.blocks = {entry};
 
     (void)lowering.lower(fn);
-    ASSERT_EQ(lowering.callPlans().size(), 4u);
+    // Three plans: the load-path retain (protects the slot's reference from
+    // the consuming concat), the concat itself, and the release. The concat
+    // RESULT retain is elided because rt_str_concat transfers ownership
+    // (StringRetainPolicy.hpp).
+    ASSERT_EQ(lowering.callPlans().size(), 3u);
     EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_retain_maybe");
     EXPECT_EQ(lowering.callPlans()[1].callee, "rt_str_concat");
-    EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_retain_maybe");
-    EXPECT_EQ(lowering.callPlans()[3].callee, "rt_str_release_maybe");
+    EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_release_maybe");
     ASSERT_EQ(lowering.callPlans()[0].args.size(), 1u);
     EXPECT_FALSE(lowering.callPlans()[0].args[0].isImm);
 }

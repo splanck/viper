@@ -807,7 +807,8 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls) {
         builder().append(MInstr::make(MOpcode::MOVSDmr, std::vector<Operand>{clone(dest), mem}));
     }
 
-    if (instr.resultKind == ILValue::Kind::STR)
+    if (instr.resultKind == ILValue::Kind::STR &&
+        !builder().lower().isStrLoadRetainElidable(instr.resultId))
         emitRetainStringVReg(builder(), destReg);
 }
 

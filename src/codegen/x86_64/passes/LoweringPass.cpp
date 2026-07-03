@@ -824,6 +824,11 @@ class ModuleAdapter {
                 adaptIdxChk(source, out);
                 break;
 
+            // Value selection
+            case il::core::Opcode::Select:
+                adaptSelect(source, out);
+                break;
+
             // Switch
             case il::core::Opcode::SwitchI32:
                 adaptSwitchI32(source, out, block);
@@ -1038,6 +1043,17 @@ class ModuleAdapter {
         setResultKind(out, instr, instr.type);
         out.opcode = "idx_chk";
         convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64}, out);
+    }
+
+    /// @brief Adapt the IL `select` opcode (ternary value choice).
+    /// @details Operand 0 is the i1 condition; operands 1-2 are the arms in
+    ///          the instruction's own type, which also fixes GPR vs XMM
+    ///          lowering downstream.
+    void adaptSelect(const il::core::Instr &instr, ILInstr &out) {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "select";
+        const ILValue::Kind armKind = out.resultKind;
+        convertOperands(instr, {ILValue::Kind::I64, armKind, armKind}, out);
     }
 
     /// @brief Adapt the IL `switch_i32` opcode.

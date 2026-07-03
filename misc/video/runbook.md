@@ -97,7 +97,7 @@ VM did: same program, two engines, identical output."
 ## 6. The spectacle — real programs (DRY-RUN THESE FIRST)
 All are runnable projects (`viper.project` present):
 ```sh
-viper run examples/games/game3d-showcase   # terrain, water, skybox, PBR, post-FX
+viper run examples/games/ridgebound   # Ridgebound: terrain, water, skybox, PBR, post-FX
 viper run examples/games/xenoscape          # Metroid-style sidescroller
 viper run examples/games/3dbowling          # physics-driven 3D
 viper run examples/games/chess              # alpha-beta AI + drag-drop GUI

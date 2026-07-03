@@ -56,7 +56,7 @@ int main() {
     TempFile input{".il"};
     {
         std::ofstream ofs(input.path);
-        ofs << "il 0.2.0\n";
+        ofs << "il 0.3.0\n";
         ofs << "func @main() -> i64 {\n";
         ofs << "entry:\n";
         ofs << "  %ptr = alloca 8\n";
@@ -144,7 +144,7 @@ int main() {
     TempFile invalid{".invalid.il"};
     {
         std::ofstream ofs(invalid.path);
-        ofs << "il 0.2.0\n";
+        ofs << "il 0.3.0\n";
         ofs << "func @main(%x: i64) -> i64 {\n";
         ofs << "entry:\n";
         ofs << "  %y = sub %x, 1\n";

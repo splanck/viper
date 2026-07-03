@@ -51,7 +51,9 @@ struct UnsignedMagicNumber {
 /// @brief Compute floor(log2(value)) for a non-zero 64-bit integer.
 [[nodiscard]] inline unsigned floorLog2U64(uint64_t value) noexcept {
     unsigned log = 0;
-    while ((uint64_t{1} << (log + 1)) <= value && log < 63)
+    // Guard BEFORE the shift: (1 << 64) is undefined behavior, and the old
+    // operand order evaluated the shift first once log hit 63 (UBSan-caught).
+    while (log < 63 && (uint64_t{1} << (log + 1)) <= value)
         ++log;
     return log;
 }
@@ -160,8 +162,7 @@ struct UnsignedMagicNumber {
 ///          overflows 64 bits.
 /// @param d The unsigned divisor; must be > 1 and not a power of 2.
 /// @return Magic parameters, or nullopt when @p d is unsuitable.
-[[nodiscard]] inline std::optional<UnsignedMagicNumber>
-computeUnsignedMagic(uint64_t d) noexcept {
+[[nodiscard]] inline std::optional<UnsignedMagicNumber> computeUnsignedMagic(uint64_t d) noexcept {
     if (d <= 1)
         return std::nullopt;
     if ((d & (d - 1)) == 0)

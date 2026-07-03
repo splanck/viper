@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 func @fact(%n: i64) -> i64 {
 entry(%n: i64):

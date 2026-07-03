@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // Inlining stress test.
 // Small helper functions called in a tight loop.  At -O0 each call traverses

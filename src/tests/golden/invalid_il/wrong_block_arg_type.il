@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 func @wrong_block_arg_type() -> void {
 entry:
   br next(1.0)

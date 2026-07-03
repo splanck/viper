@@ -483,7 +483,7 @@ cmake --build build
 **Output (IL text format):**
 
 ```il
-il 0.2.0
+il 0.3.0
 
 extern @Viper.Terminal.PrintI64(i64) -> void
 
@@ -496,7 +496,7 @@ entry:
 
 **Understanding the IL output:**
 
-- `il 0.2.0` — IL version header (required by spec)
+- `il 0.3.0` — IL version header (required by spec)
 - `extern @Viper.Terminal.PrintI64(i64) -> void` — External function declaration (implemented in C runtime)
 - `func @main() -> i64 { ... }` — Function definition with signature
 - `entry:` — Basic block label

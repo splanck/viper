@@ -1432,6 +1432,23 @@ IL_OPCODE(Trap,
           makeParseSpec(),
           makeParseSpec(),
           makeParseSpec())
+IL_OPCODE(Select,
+          "select",
+          ResultArity::One,
+          TypeCategory::InstrType,
+          3,
+          3,
+          TypeCategory::I1,
+          TypeCategory::InstrType,
+          TypeCategory::InstrType,
+          false,
+          0,
+          false,
+          VM_DISPATCH(Select),
+          makeParseSpec(OperandParseKind::TypeImmediate, "type"),
+          makeParseSpec(OperandParseKind::Value),
+          makeParseSpec(OperandParseKind::Value),
+          makeParseSpec(OperandParseKind::Value))
 
 #undef IL_OPCODE
 #ifdef IL_VM_DISPATCH_DEFINED_DEFAULT

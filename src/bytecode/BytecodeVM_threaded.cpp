@@ -625,6 +625,12 @@ L_IDX_CHK: {
     DISPATCH();
 }
 
+L_SELECT:
+    // Whole-slot copy so integer and floating payloads both pass.
+    sp[-3] = (sp[-3].i64 != 0) ? sp[-2] : sp[-1];
+    sp -= 2;
+    DISPATCH();
+
     // Float Arithmetic
 L_ADD_F64:
     sp[-2].f64 += sp[-1].f64;

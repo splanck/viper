@@ -591,7 +591,7 @@ type.
 **`il`** — Specify IL version (header directive at top of file).
 
 ```llvm
-il 0.2.0
+il 0.3.0
 ```
 
 **`lshr`** — Logical shift right; fills with zeros (unsigned shift).

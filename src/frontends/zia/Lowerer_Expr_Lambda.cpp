@@ -183,6 +183,8 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
             // Create a slot for mutable captured variables
             createSlot(info.name, info.type);
             storeToSlot(info.name, capturedVal, info.type);
+            if (info.type.kind == Type::Kind::Str) // env value is borrowed; the slot owns +1
+                emitCall(runtime::kStrRetainMaybe, {capturedVal});
             localTypes_[info.name] = info.semType ? info.semType : types::unknown();
         }
     }
@@ -196,6 +198,8 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
             Type ilParamType = mapType(paramType);
             createSlot(expr->params[i].name, ilParamType);
             storeToSlot(expr->params[i].name, Value::temp(blockParams[paramIdx].id), ilParamType);
+            if (ilParamType.kind == Type::Kind::Str) // params are borrowed; the slot owns +1
+                emitCall(runtime::kStrRetainMaybe, {Value::temp(blockParams[paramIdx].id)});
             localTypes_[expr->params[i].name] = paramType;
         }
     }
@@ -218,11 +222,13 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     // Return the body result
     if (ilReturnType.kind == Type::Kind::Void) {
         if (!blockMgr_.isTerminated()) {
+            releaseLocalStringSlots(); // capture/param slots own +1
             emitRetVoid();
         }
     } else {
         if (!blockMgr_.isTerminated()) {
             if (returnType && returnType->kind == TypeKindSem::Unit) {
+                releaseLocalStringSlots();
                 emitRet(Value::null());
             } else {
                 Value returnValue = bodyResult.value;
@@ -234,6 +240,13 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
                             returnValue = emitOptionalWrap(bodyResult.value, innerType);
                     }
                 }
+                if (ilReturnType.kind == Type::Kind::Str) {
+                    // Mint the caller's reference when the value is borrowed
+                    // (a slot load) — the slot releases just below.
+                    if (!consumeDeferred(returnValue))
+                        emitCall(runtime::kStrRetainMaybe, {returnValue});
+                }
+                releaseLocalStringSlots(); // capture/param slots own +1
                 emitRet(returnValue);
             }
         }

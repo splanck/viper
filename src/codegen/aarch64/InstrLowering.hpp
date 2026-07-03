@@ -205,6 +205,18 @@ bool lowerIdxChk(const il::core::Instr &ins,
                  LoweringContext &ctx,
                  MBasicBlock &out);
 
+/// @brief Lower the ternary `select` opcode to a conditional select.
+/// @details Generates: cmp cond, #0 followed by csel (integer) or fcsel (f64).
+/// @param ins The IL select instruction to lower.
+/// @param bb The IL basic block containing the instruction.
+/// @param ctx Lowering context for register allocation and frame state.
+/// @param out The output MIR basic block receiving the lowered sequence.
+/// @return True on success, false on lowering failure.
+bool lowerSelect(const il::core::Instr &ins,
+                 const il::core::BasicBlock &bb,
+                 LoweringContext &ctx,
+                 MBasicBlock &out);
+
 /// @brief Lower signed remainder (srem) without zero-check.
 /// @details Generates: sdiv tmp, lhs, rhs; msub dst, tmp, rhs, lhs
 /// @param ins The IL srem instruction to lower.

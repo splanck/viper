@@ -1483,6 +1483,7 @@ bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
             delta = -1;
             break;
         case BCOpcode::IDX_CHK:
+        case BCOpcode::SELECT:
             required = 3;
             delta = -2;
             break;
@@ -2220,6 +2221,12 @@ void BytecodeVM::run() {
                 sp_ -= 2;
                 break;
             }
+
+            case BCOpcode::SELECT:
+                // Whole-slot copy so integer and floating payloads both pass.
+                sp_[-3] = (sp_[-3].i64 != 0) ? sp_[-2] : sp_[-1];
+                sp_ -= 2;
+                break;
 
             //==================================================================
             // Float Arithmetic

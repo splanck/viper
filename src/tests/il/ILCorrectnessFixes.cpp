@@ -93,7 +93,7 @@ size_t countOpcode(const Function &fn, Opcode opcode) {
 } // namespace
 
 TEST(ILCorrectness, ParserAcceptsInlineCommentsAndScalarGlobals) {
-    Module module = parseModule(R"(il 0.2.0 # version comment
+    Module module = parseModule(R"(il 0.3.0 # version comment
 global const str @.msg = "http://example/#frag" # string comment
 global const i64 @.answer = 42 # scalar comment
 func @main() -> i64 {
@@ -118,7 +118,7 @@ entry:
 }
 
 TEST(ILCorrectness, ParserAcceptsImportAndStringGlobalTrailingComments) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func import @helper() -> i64 // imported from another module
 global const str @s = "hello"// string comment
 global const str @semi = "world"; semicolon comment
@@ -133,7 +133,7 @@ global const str @semi = "world"; semicolon comment
 }
 
 TEST(ILCorrectness, ParserRejectsJunkBeforeCallCallee) {
-    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+    EXPECT_TRUE(parseFailsWith(R"(il 0.3.0
 func @callee() -> void {
 entry:
   ret
@@ -148,7 +148,7 @@ entry:
 }
 
 TEST(ILCorrectness, VmInitializesScalarGlobals) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 global i64 @counter = 41
 func @main() -> i64 {
 entry:
@@ -165,7 +165,7 @@ entry:
 }
 
 TEST(ILCorrectness, VerifierRejectsBadGlobalReferences) {
-    Module missing = parseModule(R"(il 0.2.0
+    Module missing = parseModule(R"(il 0.3.0
 func @main() -> str {
 entry:
   %s = const_str @missing
@@ -174,7 +174,7 @@ entry:
 )");
     EXPECT_TRUE(verifyFailsWith(missing, "unknown string global @missing"));
 
-    Module wrongKind = parseModule(R"(il 0.2.0
+    Module wrongKind = parseModule(R"(il 0.3.0
 global i64 @n = 1
 func @main() -> str {
 entry:
@@ -184,7 +184,7 @@ entry:
 )");
     EXPECT_TRUE(verifyFailsWith(wrongKind, "const.str operand must name a string global"));
 
-    Module stringGAddr = parseModule(R"(il 0.2.0
+    Module stringGAddr = parseModule(R"(il 0.3.0
 global const str @s = "x"
 func @main() -> ptr {
 entry:
@@ -196,7 +196,7 @@ entry:
 }
 
 TEST(ILCorrectness, DirectGlobalAddressRequiresAddressMaterializationForMemory) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 global i64 @counter = 7
 func @main() -> i64 {
 entry:
@@ -208,7 +208,7 @@ entry:
 }
 
 TEST(ILCorrectness, TrapKindAcceptsErrorOperandAndRejectsLegacyMnemonicOperand) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 global const str @msg = "boom"
 func @main(i32 %code) -> i64 {
 entry:
@@ -222,7 +222,7 @@ entry:
     const std::string text = il::io::Serializer::toString(module);
     EXPECT_CONTAINS(text, "trap.kind %err");
 
-    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+    EXPECT_TRUE(parseFailsWith(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %kind = trap.kind DivideByZero
@@ -337,7 +337,7 @@ TEST(ILCorrectness, VerifierTableMarksPlainDivRemAsTrapping) {
 }
 
 TEST(ILCorrectness, ExternCallAttributesRequireMetadata) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 extern @host_value() -> i64
 func @main() -> i64 {
 entry:
@@ -480,7 +480,7 @@ TEST(ILCorrectness, VerifierRejectsPartialFixedBranchArgumentBundles) {
 }
 
 TEST(ILCorrectness, FunctionAttributesRoundTripAndDriveCallMetadata) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @helper() -> i64 [nothrow, readonly, pure] {
 entry:
   ret 7
@@ -509,7 +509,7 @@ entry:
 }
 
 TEST(ILCorrectness, ParserAcceptsCommaDelimitedOperandsWithoutWhitespace) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -522,7 +522,7 @@ entry:
 }
 
 TEST(ILCorrectness, VariadicCallsRejectUnsupportedExtraArgumentTypes) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @sink(i64 %x, ...) -> void {
 entry:
   ret
@@ -559,7 +559,7 @@ TEST(ILCorrectness, RuntimeStringArrayRegistryUsesStringElements) {
 }
 
 TEST(ILCorrectness, NothrowRejectsPotentiallyTrappingMemoryOperations) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 [nothrow] {
 entry:
   %p = alloca 8
@@ -570,7 +570,7 @@ entry:
 }
 
 TEST(ILCorrectness, ExplicitCallIndirectSignaturesAreCheckedAndSerialized) {
-    Module ok = parseModule(R"(il 0.2.0
+    Module ok = parseModule(R"(il 0.3.0
 func @main(ptr %fn, i64 %x) -> i64 {
 entry:
   %r = call.indirect [i64(i64)] %fn(%x)
@@ -581,7 +581,7 @@ entry:
     const std::string text = il::io::Serializer::toString(ok);
     EXPECT_CONTAINS(text, "call.indirect [i64(i64)] %fn(%x)");
 
-    Module bad = parseModule(R"(il 0.2.0
+    Module bad = parseModule(R"(il 0.3.0
 func @main(ptr %fn) -> i64 {
 entry:
   %r = call.indirect [i64(i64)] %fn(null)
@@ -592,7 +592,7 @@ entry:
 }
 
 TEST(ILCorrectness, PointerCallIndirectRequiresSignatureAndResultBinding) {
-    Module noSignature = parseModule(R"(il 0.2.0
+    Module noSignature = parseModule(R"(il 0.3.0
 func @main(ptr %fn) -> i64 {
 entry(%fn:ptr):
   %r = call.indirect %fn()
@@ -602,7 +602,7 @@ entry(%fn:ptr):
     EXPECT_TRUE(verifyFailsWith(noSignature,
                                 "call.indirect through pointer requires an explicit signature"));
 
-    Module missingResult = parseModule(R"(il 0.2.0
+    Module missingResult = parseModule(R"(il 0.3.0
 func @main(ptr %fn) -> i64 {
 entry(%fn:ptr):
   call.indirect [i64()] %fn()
@@ -614,7 +614,7 @@ entry(%fn:ptr):
 }
 
 TEST(ILCorrectness, VerifierKeepsPtrAndStrTypesDistinct) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 global const str @s = "hello"
 func @sink(ptr %p) -> void {
 entry(%p:ptr):
@@ -640,7 +640,7 @@ TEST(ILCorrectness, RuntimeObjectParametersAcceptStringHandles) {
     EXPECT_NE(sig->objectParamMask & 0x1u, 0u);
     EXPECT_NE(sig->objectParamMask & 0x4u, 0u);
 
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 global const str @k = "key"
 global const str @v = "value"
 func @main() -> i64 {
@@ -655,7 +655,7 @@ entry:
 }
 
 TEST(ILCorrectness, DiscardingOwnedRuntimeReturnsIsRejected) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   call @rt_str_empty()
@@ -666,7 +666,7 @@ entry:
 }
 
 TEST(ILCorrectness, RuntimeF64ArrayHelpersAreVerified) {
-    Module ok = parseModule(R"(il 0.2.0
+    Module ok = parseModule(R"(il 0.3.0
 func @main() -> f64 {
 entry:
   %a = call @rt_arr_f64_new(2)
@@ -678,7 +678,7 @@ entry:
 )");
     EXPECT_TRUE(il::verify::Verifier::verify(ok).hasValue());
 
-    Module bad = parseModule(R"(il 0.2.0
+    Module bad = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %a = call @rt_arr_f64_new(2)
@@ -690,7 +690,7 @@ entry:
 }
 
 TEST(ILCorrectness, GepAllowsSignedOffsetsButRejectsStaticOutOfBoundsOffsets) {
-    Module negativeWithinBounds = parseModule(R"(il 0.2.0
+    Module negativeWithinBounds = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 32
@@ -702,7 +702,7 @@ entry:
 )");
     EXPECT_TRUE(il::verify::Verifier::verify(negativeWithinBounds).hasValue());
 
-    Module negativeOutOfBounds = parseModule(R"(il 0.2.0
+    Module negativeOutOfBounds = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -712,7 +712,7 @@ entry:
 )");
     EXPECT_TRUE(verifyFailsWith(negativeOutOfBounds, "gep offset outside alloca"));
 
-    Module onePast = parseModule(R"(il 0.2.0
+    Module onePast = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -722,7 +722,7 @@ entry:
 )");
     EXPECT_TRUE(il::verify::Verifier::verify(onePast).hasValue());
 
-    Module onePastLoad = parseModule(R"(il 0.2.0
+    Module onePastLoad = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -735,7 +735,7 @@ entry:
 }
 
 TEST(ILCorrectness, StackLoadStoreBoundsUseAccessWidth) {
-    Module loadTooWide = parseModule(R"(il 0.2.0
+    Module loadTooWide = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -746,7 +746,7 @@ entry:
 )");
     EXPECT_TRUE(verifyFailsWith(loadTooWide, "load exceeds alloca bounds"));
 
-    Module storeTooWide = parseModule(R"(il 0.2.0
+    Module storeTooWide = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -759,7 +759,7 @@ entry:
 }
 
 TEST(ILCorrectness, I64RuntimeArrayReleaseLifetimeIsTracked) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %a = call @rt_arr_i64_new(4)
@@ -772,7 +772,7 @@ entry:
 }
 
 TEST(ILCorrectness, ParserRejectsInstructionsAfterTerminators) {
-    const char *text = R"(il 0.2.0
+    const char *text = R"(il 0.3.0
 func @main() -> i64 {
 entry:
   ret 0
@@ -787,7 +787,7 @@ entry:
 }
 
 TEST(ILCorrectness, ConstFoldPreservesSgnF64NaN) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> f64 {
 entry:
   %v = call @rt_sgn_f64(NaN)
@@ -915,7 +915,7 @@ TEST(ILCorrectness, ParamCanonicalizationSkipsMalformedEdgesWithoutAsserting) {
 }
 
 TEST(ILCorrectness, IntegerLiteralParsingIsConsistentAcrossOperandsAndGlobals) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 global i64 @hex = 0x10
 global i64 @bin = 0b1010
 func @main() -> i64 {
@@ -935,7 +935,7 @@ entry:
 }
 
 TEST(ILCorrectness, ExternAndImportAttributesRoundTripAndValidateCalls) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 extern @host_value() -> i64 [nothrow, readonly, pure]
 func import @foreign(ptr %p) -> void [nothrow, readonly]
 func @main(ptr %p) -> i64 {
@@ -961,7 +961,7 @@ entry(%p:ptr):
 }
 
 TEST(ILCorrectness, ExternParametersRejectInternalOnlyTypes) {
-    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+    EXPECT_TRUE(parseFailsWith(R"(il 0.3.0
 extern @bad(void) -> void
 )",
                                "unsupported extern parameter type"));
@@ -979,7 +979,7 @@ TEST(ILCorrectness, StringGlobalsRequireInitializersInVerifier) {
 }
 
 TEST(ILCorrectness, LocalAndExternEffectsDriveOptimizationAndAA) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 extern @read_host(ptr) -> i64 [nothrow, readonly]
 func @pure_local(i64 %x) -> i64 [nothrow, pure] {
 entry(%x:i64):
@@ -1002,7 +1002,7 @@ entry(%p:ptr):
 }
 
 TEST(ILCorrectness, StackPointersCanBeBorrowedByDirectCallsButNotEscaped) {
-    Module borrowed = parseModule(R"(il 0.2.0
+    Module borrowed = parseModule(R"(il 0.3.0
 func @sink(ptr %p) -> void {
 entry(%p:ptr):
   ret
@@ -1016,7 +1016,7 @@ entry:
 )");
     EXPECT_TRUE(il::verify::Verifier::verify(borrowed).hasValue());
 
-    Module returned = parseModule(R"(il 0.2.0
+    Module returned = parseModule(R"(il 0.3.0
 func @main() -> ptr {
 entry:
   %p = alloca 8
@@ -1025,7 +1025,7 @@ entry:
 )");
     EXPECT_TRUE(verifyFailsWith(returned, "returning alloca-derived pointer"));
 
-    Module indirect = parseModule(R"(il 0.2.0
+    Module indirect = parseModule(R"(il 0.3.0
 func @main(ptr %fn) -> i64 {
 entry(%fn:ptr):
   %p = alloca 8
@@ -1037,7 +1037,7 @@ entry(%fn:ptr):
 }
 
 TEST(ILCorrectness, ParserRejectsMissingCommasAndEmptyIndirectCallee) {
-    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+    EXPECT_TRUE(parseFailsWith(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %v = iadd.ovf 1 2
@@ -1046,7 +1046,7 @@ entry:
 )",
                                "missing comma"));
 
-    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+    EXPECT_TRUE(parseFailsWith(R"(il 0.3.0
 func @main(i64 %x) -> i64 {
 entry(%x:i64):
   %r = call.indirect [i64(i64)] (%x)
@@ -1057,7 +1057,7 @@ entry(%x:i64):
 }
 
 TEST(ILCorrectness, DirectCallsDoNotCoerceIntegerLiteralsToF64) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @takes_f64(f64 %x) -> void {
 entry(%x:f64):
   ret
@@ -1072,7 +1072,7 @@ entry:
 }
 
 TEST(ILCorrectness, SwitchI32AcceptsFittingIntegerLiterals) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   switch.i32 1, ^default, 1 -> ^one
@@ -1123,7 +1123,7 @@ TEST(ILCorrectness, SerializerMarksMalformedOperands) {
 }
 
 TEST(ILCorrectness, RuntimeOwnershipMetadataDrivesReleaseChecks) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %obj = call @rt_obj_new_i64(0, 8)
@@ -1136,7 +1136,7 @@ entry:
 }
 
 TEST(ILCorrectness, RuntimeOwnershipAllowsObjectFinalizationAfterReleaseCheck) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @Klass.destroy(ptr %self) -> void {
 entry(%self:ptr):
   ret
@@ -1159,7 +1159,7 @@ entry:
 }
 
 TEST(ILCorrectness, RuntimeOwnershipOnlyLinearizesExplicitReleases) {
-    Module concat = parseModule(R"(il 0.2.0
+    Module concat = parseModule(R"(il 0.3.0
 global const str @a = "a"
 global const str @b = "b"
 func @main() -> str {
@@ -1173,7 +1173,7 @@ entry:
 )");
     EXPECT_TRUE(il::verify::Verifier::verify(concat).hasValue());
 
-    Module releaseTwice = parseModule(R"(il 0.2.0
+    Module releaseTwice = parseModule(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %s:str = call @rt_str_empty()
@@ -1186,7 +1186,7 @@ entry:
 }
 
 TEST(ILCorrectness, DceKeepsPotentiallyTrappingAllocas) {
-    Module module = parseModule(R"(il 0.2.0
+    Module module = parseModule(R"(il 0.3.0
 func @main(i64 %n) -> i64 {
 entry(%n:i64):
   %p = alloca %n

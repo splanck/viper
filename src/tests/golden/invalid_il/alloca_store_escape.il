@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 extern @rt_modvar_addr_ptr(str) -> ptr
 global const str @.slot = "slot"

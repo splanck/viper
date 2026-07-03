@@ -117,6 +117,7 @@ inline const VM::OpcodeHandlerTable &opcodeHandlers() {
         &il::vm::detail::handleResumeLabel,
         &il::vm::detail::handleEhEntry,
         &il::vm::detail::handleTrap,
+        &il::vm::detail::handleSelect,
     };
 
     // Compile-time verification that handler table covers all opcodes.

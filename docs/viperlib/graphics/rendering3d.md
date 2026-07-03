@@ -524,7 +524,9 @@ proxy, so it works on the same draw path as other meshes.
 3D perspective or orthographic camera with smooth follow, orbit, and screen-to-ray projection.
 
 **Type:** Instance (obj)
-**Constructor:** `Camera3D.New(fov, near, far)`
+**Constructors:** `Camera3D.New(fov, aspect, near, far)`,
+`Camera3D.NewHorizontalFov(fov, aspect, near, far)`,
+`Camera3D.NewOrtho(size, aspect, near, far)`
 
 #### Properties
 
@@ -541,6 +543,7 @@ proxy, so it works on the same draw path as other meshes.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `LookAt(pos, target, up)` | `Void(Object, Object, Object)` | Orient camera from a position toward a target using an up vector |
+| `SetHorizontalFov(fov)` | `Void(Double)` | Convert a horizontal FOV in degrees to the camera's stored vertical FOV |
 | `Orbit(pivot, yaw, pitch, distance)` | `Void(Object, Double, Double, Double)` | Position and orient camera on a sphere around `pivot` |
 | `ScreenToRay(sx, sy, screenW, screenH)` | `Object(Integer, Integer, Integer, Integer)` | Return a normalized `Vec3` direction from a screen pixel |
 | `Shake(amplitude, frequency, duration)` | `Void(Double, Double, Double)` | Start a procedural camera shake |
@@ -549,6 +552,9 @@ proxy, so it works on the same draw path as other meshes.
 
 Camera positions and FPS-style movement inputs are clamped to the runtime's safe world range before
 view/projection matrices are generated. Non-finite position components fall back to `0.0`.
+For game cameras, prefer `NewHorizontalFov` or `SetHorizontalFov` when the authored
+value is a horizontal FOV; passing that value to `New` treats it as vertical FOV
+and can produce visibly stretched edges on wide windows.
 `SmoothFollow` and `SmoothLookAt` keep FPS-style yaw/pitch state synchronized with the resulting view.
 For per-frame camera, listener, light, and particle update paths, reuse `Vec3`
 instances with `Set(x, y, z)`, `SetX/Y/Z`, `CopyFrom(other)`, or writable

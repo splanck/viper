@@ -979,9 +979,9 @@ void rt_game3d_character_controller_set_speed(void *controller, double speed);
 double rt_game3d_character_controller_get_jump_speed(void *controller);
 /// @brief Set the initial jump speed in units/second.
 void rt_game3d_character_controller_set_jump_speed(void *controller, double jump_speed);
-/// @brief Get the downward gravity acceleration in units/second².
+/// @brief Get the downward gravity acceleration magnitude in units/second².
 double rt_game3d_character_controller_get_gravity(void *controller);
-/// @brief Set the downward gravity acceleration in units/second².
+/// @brief Set the downward gravity acceleration magnitude in units/second².
 void rt_game3d_character_controller_set_gravity(void *controller, double gravity);
 /// @brief Advance the controller using input and camera orientation over `dt` seconds.
 void rt_game3d_character_controller_update(void *controller, void *input, void *camera, double dt);

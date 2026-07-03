@@ -37,7 +37,7 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 
 | Project | Description | Highlights |
 |---------|-------------|------------|
-| [Game3D Showcase](games/game3d-showcase/) | Open-world 3D runtime showcase | Game3D world loop, procedural terrain, water, skybox, PBR materials, post-FX, final overlay |
+| [Ridgebound](games/ridgebound/) | Open-world Game3D sample | Game3D world loop, procedural terrain, water, skybox, PBR materials, beacon objectives, post-FX, final overlay |
 | [Chess](games/chess/) | Chess with AI opponent | Iterative deepening, alpha-beta, quiescence search, transposition table, drag-and-drop GUI |
 | [XENOSCAPE](games/xenoscape/) | Metroidvania sidescroller | 25+ enemies, 10 levels, parallax, particles, lighting, abilities, saves, VAPS Windows demo packaging (17K LOC) |
 | [Crackman](games/crackman/) | Maze chase game with ghost AI | BFS pathfinding, scatter/chase/frightened modes, [Canvas](../docs/viperlib/graphics/canvas.md) rendering |

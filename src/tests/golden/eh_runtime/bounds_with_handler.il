@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 extern @rt_print_str(str) -> void
 
 global const str @.L0 = "continued"

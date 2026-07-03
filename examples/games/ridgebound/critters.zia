@@ -10,7 +10,7 @@ bind "./mathutil";
 
 bind Viper.Game3D.Layers;
 
-class ShowcaseCritters {
+class RidgeboundCritters {
     hide Mesh3D critterMesh;
     hide Skeleton3D critterSkel;
     hide AnimController3D critterCtrl;

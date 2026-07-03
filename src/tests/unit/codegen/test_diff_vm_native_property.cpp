@@ -188,7 +188,7 @@ bool isNativeAvailable() {
     return g_selectedBackend != Backend::None;
 }
 
-constexpr const char kMaterialAnisotropyRoundTripIl[] = R"(il 0.2.0
+constexpr const char kMaterialAnisotropyRoundTripIl[] = R"(il 0.3.0
 extern @Viper.Graphics3D.Material3D.New() -> ptr
 extern @Viper.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
 extern @Viper.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64

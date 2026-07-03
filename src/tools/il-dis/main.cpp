@@ -658,6 +658,7 @@ uint32_t disassembleInstruction(const bc::BytecodeModule &module,
         case bc::BCOpcode::ARR_F64_SET_FAST:
         case bc::BCOpcode::STR_RETAIN:
         case bc::BCOpcode::STR_RELEASE:
+        case bc::BCOpcode::SELECT:
         case bc::BCOpcode::OPCODE_COUNT:
             break;
     }

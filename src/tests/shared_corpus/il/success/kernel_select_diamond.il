@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // Reduced-iteration variant of examples/il/benchmarks/select_diamond.il for the
 // VM<->native differential and shared-corpus gates.

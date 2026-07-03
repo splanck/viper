@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 func @unterminated() -> void {
 entry:
   ret

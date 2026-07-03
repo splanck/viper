@@ -174,7 +174,7 @@ int main() {
     }
 
     {
-        Module module = parseModuleOrDie("il 0.2.0\n"
+        Module module = parseModuleOrDie("il 0.3.0\n"
                                          "func @typed_catch_continuation() -> void {\n"
                                          "entry:\n"
                                          "  eh.push ^dispatch\n"
@@ -193,7 +193,7 @@ int main() {
     }
 
     {
-        Module module = parseModuleOrDie("il 0.2.0\n"
+        Module module = parseModuleOrDie("il 0.3.0\n"
                                          "func @direct_handler_entry(Error %err, ResumeTok %fake) "
                                          "-> void {\n"
                                          "entry:\n"
@@ -208,7 +208,7 @@ int main() {
     }
 
     {
-        Module module = parseModuleOrDie("il 0.2.0\n"
+        Module module = parseModuleOrDie("il 0.3.0\n"
                                          "func @mismatched_handler_token(Error %outerErr, "
                                          "ResumeTok %fake) -> void {\n"
                                          "entry:\n"
@@ -227,7 +227,7 @@ int main() {
     }
 
     {
-        Module module = parseModuleOrDie("il 0.2.0\n"
+        Module module = parseModuleOrDie("il 0.3.0\n"
                                          "func @resume_token_escape() -> ResumeTok {\n"
                                          "entry:\n"
                                          "  eh.push ^handler\n"

@@ -207,6 +207,9 @@ BC_OPCODE(ARR_F64_SET_FAST, 0xDD) // Direct unchecked f64 array store: arr, idx,
 BC_OPCODE(STR_RETAIN, 0xE0)  // Increment the reference count of a string handle.
 BC_OPCODE(STR_RELEASE, 0xE1) // Decrement the reference count of a string handle.
 
+// Value Selection
+BC_OPCODE(SELECT, 0xE2) // Ternary select: pops cond, tval, fval; pushes the chosen value.
+
 // Sentinel value — not a real opcode, no dispatch handler.
 BC_OPCODE_TRAP(OPCODE_COUNT, 0xFF) // Sentinel / total opcode count marker.
 

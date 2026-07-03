@@ -1379,17 +1379,79 @@ void Lowerer::deferRelease(Value v, bool isString) {
     deferredTemps_.push_back({v, isString, blockMgr_.currentBlockIndex()});
 }
 
-void Lowerer::consumeDeferred(Value v) {
+bool Lowerer::consumeDeferred(Value v) {
     if (v.kind != Value::Kind::Temp)
-        return;
+        return false;
 
     // Remove the LAST matching entry (most recently deferred)
     for (auto it = deferredTemps_.rbegin(); it != deferredTemps_.rend(); ++it) {
         if (it->value.kind == Value::Kind::Temp && it->value.id == v.id) {
             // Convert reverse iterator to forward iterator for erase
             deferredTemps_.erase(std::next(it).base());
-            return;
+            return true;
         }
+    }
+    return false;
+}
+
+bool Lowerer::isOwnedStringSlot(const std::string &name) const {
+    if (slots_.find(name) == slots_.end())
+        return false;
+    auto typeIt = localTypes_.find(name);
+    if (typeIt == localTypes_.end() || !typeIt->second)
+        return false;
+    // Optional<String> slots also hold (nullable) string handles.
+    return const_cast<Lowerer *>(this)->mapType(typeIt->second).kind == Type::Kind::Str;
+}
+
+void Lowerer::releaseLocalStringSlots() {
+    if (isTerminated())
+        return;
+    // Deterministic order: sort names (unordered_map iteration order varies).
+    std::vector<std::string> names;
+    for (const auto &[name, slot] : slots_) {
+        if (isOwnedStringSlot(name))
+            names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    for (const auto &name : names) {
+        Value handle = loadFromSlot(name, Type(Type::Kind::Str));
+        emitCall(kStrReleaseMaybe, {handle});
+    }
+}
+
+void Lowerer::releaseOwnedStringSlot(const std::string &name) {
+    if (isTerminated() || !isOwnedStringSlot(name))
+        return;
+    Value handle = loadFromSlot(name, Type(Type::Kind::Str));
+    emitCall(kStrReleaseMaybe, {handle});
+}
+
+void Lowerer::storeOwnedStringToSlot(const std::string &name, Value value, bool releaseDisplaced) {
+    // Owned temporaries move their transferred reference into the slot;
+    // borrowed values mint the slot's reference with a retain.
+    const bool owned = consumeDeferred(value);
+    if (!owned)
+        emitCall(kStrRetainMaybe, {value});
+    if (releaseDisplaced) {
+        Value displaced = loadFromSlot(name, Type(Type::Kind::Str));
+        emitCall(kStrReleaseMaybe, {displaced});
+    }
+    storeToSlot(name, value, Type(Type::Kind::Str));
+}
+
+void Lowerer::releaseBlockStringSlots(const std::unordered_map<std::string, Value> &liveBefore) {
+    if (isTerminated())
+        return;
+    std::vector<std::string> names;
+    for (const auto &[name, slot] : slots_) {
+        if (liveBefore.find(name) == liveBefore.end() && isOwnedStringSlot(name))
+            names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    for (const auto &name : names) {
+        Value handle = loadFromSlot(name, Type(Type::Kind::Str));
+        emitCall(kStrReleaseMaybe, {handle});
     }
 }
 

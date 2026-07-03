@@ -187,7 +187,7 @@ function(viper_installer_smoke_verify_native_codegen cmake_bin viper_bin tmp_roo
     set(_installed_exe "${tmp_root}/installed_runtime_smoke${_exe_suffix}")
 
     file(WRITE "${_installed_il}" [=[
-il 0.2.0
+il 0.3.0
 
 extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "Hello, installed Viper!"

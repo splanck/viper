@@ -105,7 +105,7 @@ TEST(Arm64CLI, CBrOnCompareImm) {
 TEST(Arm64CLI, CBrOnNonEntryCompareAvoidsBoolMaterialization) {
     const std::string in = outPath("arm64_cbr_nonentry_compare.il");
     const std::string out = outPath("arm64_cbr_nonentry_compare.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @id(%x:i64) -> i64 {\n"
                            "entry(%x:i64):\n"
                            "  ret %x\n"
@@ -165,7 +165,7 @@ TEST(Arm64CLI, CBrSameTargetMultiArg_SystemAsm) {
 TEST(Arm64CLI, CBrDifferentTargetsUseTakenEdgeBlocks) {
     const std::string in = outPath("arm64_cbr_diff_targets_edges.il");
     const std::string out = outPath("arm64_cbr_diff_targets_edges.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  %cond = scmp_gt 5, 3\n"
@@ -191,7 +191,7 @@ TEST(Arm64CLI, CBrBranchLadderRunNative) {
     const std::string in = outPath("arm64_cbr_branch_ladder.il");
     const std::string exe = outPath("arm64_cbr_branch_ladder");
     // Keep the checksum below 256 so the native process exit status preserves it.
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  br loop(0, 0)\n"
@@ -230,7 +230,7 @@ TEST(Arm64CLI, CBrBranchLadderRunNative) {
 TEST(Arm64CLI, CBrBranchLadderReducesLoopJoinReloads) {
     const std::string in = outPath("arm64_cbr_branch_ladder_asm.il");
     const std::string out = outPath("arm64_cbr_branch_ladder_asm.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  br loop(0, 0)\n"
@@ -274,7 +274,7 @@ TEST(Arm64CLI, CBrBranchLadderReducesLoopJoinReloads) {
 TEST(Arm64CLI, CBrMixedFallthroughJoinRunNative) {
     const std::string in = outPath("arm64_cbr_mixed_fallthrough_join.il");
     const std::string exe = outPath("arm64_cbr_mixed_fallthrough_join");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  br loop(0, 0)\n"

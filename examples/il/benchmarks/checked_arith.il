@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // checked_arith: overflow-check cost litmus.
 // Dense iadd.ovf/imul.ovf/isub.ovf chains on operands masked into small,

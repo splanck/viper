@@ -184,9 +184,9 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
     if (ins.opc == MOpcode::Blr)
         return {idx == 0, false};
 
-    // Csel: csel dst, trueReg, falseReg, cond
+    // Csel / FCsel: csel dst, trueReg, falseReg, cond
     // Operands: [0]=dst (def), [1]=trueReg (use), [2]=falseReg (use), [3]=cond
-    if (ins.opc == MOpcode::Csel) {
+    if (ins.opc == MOpcode::Csel || ins.opc == MOpcode::FCsel) {
         if (idx == 0)
             return {false, true}; // dst is def-only
         if (idx == 1 || idx == 2)

@@ -673,6 +673,7 @@ std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &st
             case MOpcode::BCond:
             case MOpcode::Cset:
             case MOpcode::Csel:
+            case MOpcode::FCsel:
                 return true;
             default:
                 return false;

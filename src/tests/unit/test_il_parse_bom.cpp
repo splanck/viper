@@ -22,7 +22,7 @@
 
 int main() {
     {
-        const char src[] = "\xEF\xBB\xBFil 0.2.0\n"
+        const char src[] = "\xEF\xBB\xBFil 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  ret 0\n"
@@ -41,7 +41,7 @@ int main() {
     }
 
     {
-        const char src[] = "    il 0.2.0\n"
+        const char src[] = "    il 0.3.0\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  ret 0\n"

@@ -46,7 +46,7 @@ namespace {
 // A loop whose body branches on one bit of the induction variable: the mask
 // result has no other use, so the and+tst+b.cond chain must fuse to a single
 // test-bit branch at -O2.
-const char *kBitBranchLoop = "il 0.2.0\n"
+const char *kBitBranchLoop = "il 0.3.0\n"
                              "\n"
                              "func @main() -> i64 {\n"
                              "entry:\n"

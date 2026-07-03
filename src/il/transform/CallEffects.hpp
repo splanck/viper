@@ -46,6 +46,8 @@ struct CallEffects {
     std::uint64_t ownedOutArgMask = 0; ///< Pointer args that receive an owned reference.
     bool returnsOwned = false;         ///< Call returns an owned reference/string handle.
     bool mayAllocate = false;          ///< Call may allocate runtime-managed storage.
+    bool knownNeutral = false;         ///< Callee borrows all args, touches no reference
+                                       ///< counts, and cannot re-enter user code.
 
     /// @brief Returns true if the call can be safely eliminated when its result is unused.
     [[nodiscard]] constexpr bool canEliminateIfUnused() const noexcept {
@@ -86,6 +88,7 @@ inline void applyRuntimeOwnership(CallEffects &effects,
     effects.ownedOutArgMask |= ownership.ownedOutArgMask;
     effects.returnsOwned = effects.returnsOwned || ownership.returnsOwned;
     effects.mayAllocate = effects.mayAllocate || ownership.mayAllocate;
+    effects.knownNeutral = effects.knownNeutral || ownership.knownNeutral;
 }
 
 inline void applyEffectAttrs(CallEffects &effects, const il::core::EffectAttrs &attrs) {

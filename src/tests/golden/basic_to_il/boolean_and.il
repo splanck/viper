@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64

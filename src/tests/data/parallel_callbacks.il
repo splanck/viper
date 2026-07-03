@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 extern @Viper.Threads.Pool.Submit(ptr, ptr, ptr) -> i1
 extern @Viper.Threads.Parallel.DefaultPool() -> ptr
 extern @Viper.Threads.Parallel.For(i64, i64, ptr) -> void

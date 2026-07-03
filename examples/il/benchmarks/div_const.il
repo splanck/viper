@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // div_const: constant-division strength-reduction litmus.
 // Signed and unsigned division/remainder by non-power-of-2 constants

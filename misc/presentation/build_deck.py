@@ -667,7 +667,7 @@ def slide_il():
         "}",
     ]
     il = [
-        "il 0.2.0",
+        "il 0.3.0",
         "global const str @.L0 = \"HELLO\"",
         "func @main() -> void {",
         "entry_0:",
@@ -926,7 +926,7 @@ def slide_showcase():
          "Experimental SQL database engine + client"),
         ("Chess", "Zia", "Alpha-beta AI, drag-and-drop GUI"),
         ("3D Bowling", "Zia", "Physics-driven, multi-mode camera"),
-        ("Game3D Showcase", "Zia", "Terrain · water · PBR · post-FX"),
+        ("Ridgebound", "Zia", "Terrain · water · PBR · post-FX"),
         ("Crackman", "Zia", "Maze chase with ghost AI"),
         ("Paint", "Zia", "Layers, undo/redo, full tool set"),
         ("+ more", "23 total", "6 apps · 17 games/demos"),

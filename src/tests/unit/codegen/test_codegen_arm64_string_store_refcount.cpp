@@ -186,8 +186,8 @@ TEST(Arm64StringStore, CallReturnedStringIsRetained) {
     // @get_str returns a string; @concat passes that result directly to
     // rt_str_concat without an intervening alloca store.
     // Use explicit type annotations so the codegen sees Kind::Str on the
-    // call instructions and can emit rt_str_retain_maybe (requires il 0.2.0).
-    const std::string il = "il 0.2.0\n"
+    // call instructions and can emit rt_str_retain_maybe (requires il 0.3.0).
+    const std::string il = "il 0.3.0\n"
                            "extern @rt_str_concat(str, str) -> str\n"
                            "extern @get_str() -> str\n"
                            "func @concat_with_call_result() -> str {\n"
@@ -210,7 +210,7 @@ TEST(Arm64StringStore, CallReturnedStringIsRetained) {
 TEST(Arm64StringStore, ExplicitOverwriteKeepsSingleRefcountSequence) {
     const std::string in = outPath("arm64_str_explicit_overwrite.il");
     const std::string out = outPath("arm64_str_explicit_overwrite.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "extern @rt_str_release_maybe(str) -> void\n"
                            "extern @rt_str_retain_maybe(str) -> void\n"
                            "func @overwrite(%slot:ptr, %b:str) -> i64 {\n"
@@ -226,7 +226,11 @@ TEST(Arm64StringStore, ExplicitOverwriteKeepsSingleRefcountSequence) {
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_release_maybe")), 1u);
-    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 2u);
+    // One retain: the explicit rt_str_retain_maybe(%b). The %old load's
+    // defensive retain is elided because its only use is the release call —
+    // keeping it would turn the displaced-value release into a native no-op
+    // and leak the old string (StringRetainPolicy.hpp).
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 1u);
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
     EXPECT_NE(asmText.find("str x"), std::string::npos);
 }
@@ -234,7 +238,7 @@ TEST(Arm64StringStore, ExplicitOverwriteKeepsSingleRefcountSequence) {
 TEST(Arm64StringStore, LoadReturnedStringRetained) {
     const std::string in = outPath("arm64_str_load_retained.il");
     const std::string out = outPath("arm64_str_load_retained.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "func @get(%slot:ptr) -> str {\n"
                            "entry(%slot:ptr):\n"
                            "  %v: str = load str, %slot\n"
@@ -250,7 +254,7 @@ TEST(Arm64StringStore, LoadReturnedStringRetained) {
 TEST(Arm64StringStore, LoadedStringRetainedBeforeConsumingConcat) {
     const std::string in = outPath("arm64_str_load_concat.il");
     const std::string out = outPath("arm64_str_load_concat.s");
-    const std::string il = "il 0.2.0\n"
+    const std::string il = "il 0.3.0\n"
                            "extern @rt_str_concat(str, str) -> str\n"
                            "extern @rt_str_release_maybe(str) -> void\n"
                            "func @dup(%slot:ptr) -> i64 {\n"
@@ -264,6 +268,33 @@ TEST(Arm64StringStore, LoadedStringRetainedBeforeConsumingConcat) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
+    // Exactly one retain: the load-path retain that protects the slot's
+    // reference from the consuming concat. The concat RESULT retain is elided
+    // because rt_str_concat transfers ownership (StringRetainPolicy.hpp).
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 1u);
+}
+
+TEST(Arm64StringStore, ElisionHatchRestoresCallResultRetain) {
+    const std::string in = outPath("arm64_str_load_concat_hatch.il");
+    const std::string out = outPath("arm64_str_load_concat_hatch.s");
+    const std::string il = "il 0.3.0\n"
+                           "extern @rt_str_concat(str, str) -> str\n"
+                           "extern @rt_str_release_maybe(str) -> void\n"
+                           "func @dup(%slot:ptr) -> i64 {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %v: str = load str, %slot\n"
+                           "  %r: str = call @rt_str_concat(%v, %v)\n"
+                           "  call @rt_str_release_maybe(%r)\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    setenv("VIPER_NO_RETAIN_ELIDE", "1", 1);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    unsetenv("VIPER_NO_RETAIN_ELIDE");
+    ASSERT_EQ(rc, 0);
+    const std::string asmText = readFile(out);
+    // Hatch restores the historical behavior: load retain + result retain.
     EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 2u);
 }
 

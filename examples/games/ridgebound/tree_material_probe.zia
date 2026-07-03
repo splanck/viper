@@ -8,7 +8,7 @@ bind Viper.Math;
 bind Viper.Terminal as Terminal;
 bind "./game";
 
-func fail(game: Game3DShowcase, msg: String) {
+func fail(game: RidgeboundGame, msg: String) {
     Terminal.Say("FAIL: " + msg);
     game.destroy();
 }
@@ -36,8 +36,8 @@ func colorDistance(a: Material3D, b: Material3D) -> Float {
 func main() {
     Diagnostics3D.Reset();
 
-    var game = new Game3DShowcase();
-    game.setup("Game3D Showcase Tree Material Probe", 320, 180);
+    var game = new RidgeboundGame();
+    game.setup("Ridgebound Tree Material Probe", 320, 180);
 
     var world = game.getWorld();
     var barkNodeOption = world.FindNodeOption("mesh_0_material_0");

@@ -10,7 +10,7 @@ to ADR 0006, and drift is guarded by CTest.
 
 Three IL documents overlap:
 
-- `docs/il-guide.md` is the normative IL v0.2.0 guide; `#reference` is authoritative.
+- `docs/il-guide.md` is the normative IL v0.3.0 guide; `#reference` is authoritative.
 - `docs/il-quickstart.md` is an intro tour.
 - `docs/il-reference.md` is an instruction catalog with examples.
 

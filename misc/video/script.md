@@ -10,7 +10,7 @@ spectacle → scale reveal.* Demo commands live in `runbook.md` (all verified).
 ---
 
 ## ACT 0 — Cold open (0:00–0:20)
-**SCREEN:** No narration. 8s montage — Game3D Showcase (terrain/water/skybox),
+**SCREEN:** No narration. 8s montage — Ridgebound (terrain/water/skybox),
 a flash of XENOSCAPE, the chess GUI. Hard cut to a blank dark terminal.
 **VO (over the cut):** "Everything you just saw — the language it's written in,
 the compiler, the optimizer, the engine that renders it — was built from scratch.
@@ -66,7 +66,7 @@ interactive client. None of this pulls in a third-party library — it's all the
 Viper runtime."
 **SCREEN:** XENOSCAPE gameplay (60fps cut).
 **VO:** "A Metroid-style game — bosses, abilities, save files."
-**SCREEN:** Game3D Showcase — slow pan over terrain, water reflections, skybox, PBR.
+**SCREEN:** Ridgebound — slow pan over terrain, water reflections, skybox, PBR.
 **VO:** "And a full 3D runtime — terrain, water, a skybox, physically based
 materials, post-processing. The same toolchain that compiled `hello world` a minute
 ago is rendering this."
@@ -107,7 +107,7 @@ Thanks for watching."
 
 ## Thumbnail
 Split frame: **left** = the clean IL (`imul.ovf %t1, %t1 / ret`) on a dark
-terminal; **right** = the 3D Showcase. Overlay text: **"FROM SCRATCH — NO LLVM"**.
+terminal; **right** = Ridgebound. Overlay text: **"FROM SCRATCH — NO LLVM"**.
 Face optional; the code/game contrast is the hook.
 
 ## Distribution

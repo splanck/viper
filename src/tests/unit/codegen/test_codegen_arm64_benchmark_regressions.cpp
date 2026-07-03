@@ -52,7 +52,7 @@ int runArm64(std::vector<std::string> args) {
 
 TEST(Arm64BenchmarkRegressions, O2StringLoopPreservesOwnedConstStrLifetime) {
     const std::string in = outPath("arm64_bench_string_o2.il");
-    const std::string il = R"(il 0.2.0
+    const std::string il = R"(il 0.3.0
 extern @rt_str_concat(str, str) -> str
 extern @rt_str_len(str) -> i64
 extern @rt_str_release_maybe(str) -> void
@@ -84,7 +84,7 @@ exit(%out:i64):
 
 TEST(Arm64BenchmarkRegressions, O2CheckedUnsignedDivLoopVerifiesAndRuns) {
     const std::string in = outPath("arm64_bench_udiv_o2.il");
-    const std::string il = R"(il 0.2.0
+    const std::string il = R"(il 0.3.0
 func @main() -> i64 {
 entry:
   br loop(1, 0)

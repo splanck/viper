@@ -69,6 +69,7 @@ using integer::handleShl;
 using integer::handleSRem;
 using integer::handleSRemChk0;
 using integer::handleSub;
+using integer::handleSelect;
 using integer::handleSubImpl;
 using integer::handleTruncOrZext1;
 using integer::handleUCmpGE;

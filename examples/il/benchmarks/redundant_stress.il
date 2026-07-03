@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // Redundant computation and constant propagation stress test.
 // SCCP folds constant expressions to immediate values, reducing the number of

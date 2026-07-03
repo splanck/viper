@@ -31,6 +31,7 @@
 #include "OpcodeMappings.hpp"
 #include "codegen/common/CallArgLayout.hpp"
 #include "codegen/common/ScalarBits.hpp"
+#include "codegen/common/StringRetainPolicy.hpp"
 
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -128,7 +129,8 @@ static bool resolveFrameAddress(const il::core::Value &value,
         return false;
 
     if (const auto localOffset = fb.tryLocalOffset(value.id)) {
-        if ((*localOffset > 0 && offsetOut > std::numeric_limits<long long>::max() - *localOffset) ||
+        if ((*localOffset > 0 &&
+             offsetOut > std::numeric_limits<long long>::max() - *localOffset) ||
             (*localOffset < 0 && offsetOut < std::numeric_limits<long long>::min() - *localOffset))
             return false;
         offsetOut += *localOffset;
@@ -372,9 +374,8 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
             const long long stackOffset = static_cast<long long>(stackOffsetBytes);
             const MOpcode storeOpc =
                 (loc.cls == CallArgClass::FPR) ? MOpcode::StrFprSpImm : MOpcode::StrRegSpImm;
-            seq.prefix.push_back(
-                MInstr{storeOpc,
-                       {MOperand::vregOp(valueClass, valueVReg), MOperand::immOp(stackOffset)}});
+            seq.prefix.push_back(MInstr{
+                storeOpc, {MOperand::vregOp(valueClass, valueVReg), MOperand::immOp(stackOffset)}});
         }
     }
 
@@ -392,7 +393,10 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
 ///          reference count; for I1 returns, masks to canonical 0/1.
 /// @return The vreg holding the captured (and possibly retained/masked) result,
 ///         or 0 if the instruction has no result.
+[[nodiscard]] unsigned countStringSpendingUses(const il::core::Function &fn, unsigned resultId);
+
 uint16_t captureCallResult(const il::core::Instr &ins,
+                           const il::core::Function &fn,
                            const TargetInfo &ti,
                            MBasicBlock &out,
                            std::unordered_map<unsigned, uint16_t> &tempVReg,
@@ -413,7 +417,12 @@ uint16_t captureCallResult(const il::core::Instr &ins,
 
     out.instrs.push_back(MInstr{
         MOpcode::MovRR, {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(ti.intReturnReg)}});
-    if (ins.type.kind == il::core::Type::Kind::Str) {
+    const bool retainElidable =
+        ins.type.kind == il::core::Type::Kind::Str && ins.result &&
+        viper::codegen::shouldElideStringResultRetain(
+            ins.op == il::core::Opcode::Call ? std::string_view(ins.callee) : std::string_view{}) &&
+        countStringSpendingUses(fn, *ins.result) <= 1;
+    if (ins.type.kind == il::core::Type::Kind::Str && !retainElidable) {
         out.instrs.push_back(
             MInstr{MOpcode::MovRR,
                    {MOperand::regOp(ti.intReturnReg), MOperand::vregOp(RegClass::GPR, dst)}});
@@ -425,6 +434,131 @@ uint16_t captureCallResult(const il::core::Instr &ins,
         return masked;
     }
     return dst;
+}
+
+/// @brief Index of @p ins within @p bb (StableList has no pointer arithmetic).
+[[nodiscard]] std::size_t indexOfInstr(const il::core::BasicBlock &bb, const il::core::Instr &ins) {
+    for (std::size_t i = 0; i < bb.instructions.size(); ++i) {
+        if (&bb.instructions[i] == &ins)
+            return i;
+    }
+    return 0;
+}
+
+/// @brief Count the reference-spending uses of string temp @p resultId.
+/// @details The ownership transferred by a string-returning call covers
+///          exactly ONE spend: a consuming runtime-call argument, an explicit
+///          release, a `ret` (transfer to the caller), or a branch argument
+///          (unknown downstream spending, counted conservatively as two so
+///          the retain is kept). The defensive call-result retain may only be
+///          elided when total spends fit in the transferred reference —
+///          `concat(%s, %s)` spends twice and MUST keep the retain.
+[[nodiscard]] unsigned countStringSpendingUses(const il::core::Function &fn, unsigned resultId) {
+    unsigned spends = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &ins : block.instructions) {
+            for (std::size_t oi = 0; oi < ins.operands.size(); ++oi) {
+                const auto &op = ins.operands[oi];
+                if (op.kind != il::core::Value::Kind::Temp || op.id != resultId)
+                    continue;
+                if (ins.op == il::core::Opcode::Ret) {
+                    ++spends;
+                } else if (ins.op == il::core::Opcode::Call) {
+                    if (viper::codegen::isStringReleaseCallee(ins.callee)) {
+                        ++spends;
+                    } else if (il::runtime::findRuntimeSignature(ins.callee) != nullptr &&
+                               il::runtime::classifyRuntimeOwnership(ins.callee)
+                                   .consumesArg(static_cast<unsigned>(oi))) {
+                        ++spends;
+                    }
+                }
+            }
+            for (const auto &argList : ins.brArgs) {
+                for (const auto &arg : argList) {
+                    if (arg.kind == il::core::Value::Kind::Temp && arg.id == resultId)
+                        spends += 2; // unknown downstream spending: keep the retain
+                }
+            }
+        }
+    }
+    return spends;
+}
+
+/// @brief True when @p ins is a call whose argument @p argIdx is borrowed:
+///        a registered runtime helper that neither consumes nor retains it.
+[[nodiscard]] bool isBorrowedRuntimeArg(const il::core::Instr &ins, std::size_t argIdx) {
+    if (ins.op != il::core::Opcode::Call ||
+        il::runtime::findRuntimeSignature(ins.callee) == nullptr)
+        return false;
+    const auto effects = il::runtime::classifyRuntimeOwnership(ins.callee);
+    return !effects.consumesArg(static_cast<unsigned>(argIdx)) &&
+           !effects.retainsArg(static_cast<unsigned>(argIdx));
+}
+
+/// @brief True when the string load @p resultId needs no defensive retain.
+/// @details Two elidable shapes (see StringRetainPolicy.hpp):
+///          1. The only use is an explicit release call — the retain+release
+///             pair would be a native no-op that leaks the displaced value.
+///          2. Every use is a borrowed argument of a registered runtime
+///             helper in the load's own block, with no release call or
+///             string store between the load and the last use — the slot's
+///             own reference keeps the value alive through the window
+///             (runtime helpers cannot touch local slots, and consuming
+///             argument positions always keep their own load retain).
+[[nodiscard]] bool strLoadRetainElidable(const il::core::Function &fn,
+                                         const il::core::BasicBlock &loadBlock,
+                                         std::size_t loadIdx,
+                                         unsigned resultId) {
+    if (!viper::codegen::shouldElideLoadRetainForRelease())
+        return false;
+
+    unsigned uses = 0;
+    bool releaseOnly = true;
+    bool borrowOnlyInBlock = true;
+    std::size_t lastUseIdx = loadIdx;
+    for (const auto &block : fn.blocks) {
+        for (std::size_t ii = 0; ii < block.instructions.size(); ++ii) {
+            const auto &ins = block.instructions[ii];
+            for (std::size_t oi = 0; oi < ins.operands.size(); ++oi) {
+                const auto &op = ins.operands[oi];
+                if (op.kind != il::core::Value::Kind::Temp || op.id != resultId)
+                    continue;
+                ++uses;
+                if (!(ins.op == il::core::Opcode::Call &&
+                      viper::codegen::isStringReleaseCallee(ins.callee)))
+                    releaseOnly = false;
+                if (&block != &loadBlock || ii <= loadIdx || !isBorrowedRuntimeArg(ins, oi))
+                    borrowOnlyInBlock = false;
+                else
+                    lastUseIdx = std::max(lastUseIdx, ii);
+            }
+            for (const auto &argList : ins.brArgs) {
+                for (const auto &arg : argList) {
+                    if (arg.kind == il::core::Value::Kind::Temp && arg.id == resultId) {
+                        ++uses;
+                        releaseOnly = false;
+                        borrowOnlyInBlock = false;
+                    }
+                }
+            }
+        }
+    }
+    if (uses == 0)
+        return false;
+    if (uses == 1 && releaseOnly)
+        return true;
+    if (!borrowOnlyInBlock)
+        return false;
+    // Borrow window: nothing between the load and the last use may drop the
+    // slot's own reference.
+    for (std::size_t ii = loadIdx + 1; ii <= lastUseIdx; ++ii) {
+        const auto &ins = loadBlock.instructions[ii];
+        if (ins.op == il::core::Opcode::Store && ins.type.kind == il::core::Type::Kind::Str)
+            return false;
+        if (ins.op == il::core::Opcode::Call && viper::codegen::isStringReleaseCallee(ins.callee))
+            return false;
+    }
+    return true;
 }
 
 /// @brief Bump the refcount on a runtime-string vreg via `bl rt_str_retain_maybe`.
@@ -1532,6 +1666,70 @@ bool lowerIdxChk(const il::core::Instr &ins,
 }
 
 //===----------------------------------------------------------------------===//
+// Ternary select
+//===----------------------------------------------------------------------===//
+
+bool lowerSelect(const il::core::Instr &ins,
+                 const il::core::BasicBlock &bb,
+                 LoweringContext &ctx,
+                 MBasicBlock &out) {
+    // select type, %cond, %tval, %fval — both arms are plain values.
+    if (!ins.result || ins.operands.size() < 3)
+        return false;
+
+    uint16_t condV = 0, tV = 0, fV = 0;
+    RegClass condCls = RegClass::GPR, tCls = RegClass::GPR, fCls = RegClass::GPR;
+    if (!materializeValueToVReg(ins.operands[0],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                condV,
+                                condCls))
+        return false;
+    if (!materializeValueToVReg(ins.operands[1],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                tV,
+                                tCls))
+        return false;
+    if (!materializeValueToVReg(ins.operands[2],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                fV,
+                                fCls))
+        return false;
+
+    out.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, condV), MOperand::immOp(0)}});
+
+    const bool isFloat = ins.type.kind == il::core::Type::Kind::F64;
+    const RegClass cls = isFloat ? RegClass::FPR : RegClass::GPR;
+    const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
+    ctx.tempVReg[*ins.result] = dst;
+    ctx.tempRegClass[*ins.result] = cls;
+    out.instrs.push_back(MInstr{isFloat ? MOpcode::FCsel : MOpcode::Csel,
+                                {MOperand::vregOp(cls, dst),
+                                 MOperand::vregOp(cls, tV),
+                                 MOperand::vregOp(cls, fV),
+                                 MOperand::condOp("ne")}});
+    return true;
+}
+
+//===----------------------------------------------------------------------===//
 // Signed Remainder (srem) - no zero-check
 //===----------------------------------------------------------------------===//
 
@@ -2088,7 +2286,8 @@ bool lowerLoad(const il::core::Instr &ins,
             const MOpcode loadOpc = gprLoadOpcodeForType(ins.type.kind, /*frameRelative=*/true);
             out.instrs.push_back(
                 MInstr{loadOpc, {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(off)}});
-            if (ins.type.kind == il::core::Type::Kind::Str)
+            if (ins.type.kind == il::core::Type::Kind::Str &&
+                !strLoadRetainElidable(ctx.fn, bb, indexOfInstr(bb, ins), *ins.result))
                 retainStringVReg(out, dst);
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
             ctx.tempVReg[*ins.result] = isBool ? emitMaskedI1Value(out, dst, ctx.nextVRegId) : dst;
@@ -2112,7 +2311,8 @@ bool lowerLoad(const il::core::Instr &ins,
                                         {MOperand::vregOp(RegClass::GPR, dst),
                                          MOperand::vregOp(RegClass::GPR, vbase),
                                          MOperand::immOp(off)}});
-            if (ins.type.kind == il::core::Type::Kind::Str)
+            if (ins.type.kind == il::core::Type::Kind::Str &&
+                !strLoadRetainElidable(ctx.fn, bb, indexOfInstr(bb, ins), *ins.result))
                 retainStringVReg(out, dst);
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
             ctx.tempVReg[*ins.result] = isBool ? emitMaskedI1Value(out, dst, ctx.nextVRegId) : dst;
@@ -2202,8 +2402,8 @@ bool lowerCall(const il::core::Instr &ins,
         for (auto &mi : seq.postfix)
             out.instrs.push_back(std::move(mi));
         if (ins.result) {
-            const uint16_t dst =
-                captureCallResult(ins, ctx.ti, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId);
+            const uint16_t dst = captureCallResult(
+                ins, ctx.fn, ctx.ti, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId);
             if (isDirectCallee(ins, "rt_arr_obj_get")) {
                 const int off = ctx.fb.ensureSpill(dst);
                 out.instrs.push_back(
@@ -2270,7 +2470,7 @@ bool lowerCallIndirect(const il::core::Instr &ins,
         out.instrs.push_back(std::move(mi));
 
     if (ins.result)
-        captureCallResult(ins, ctx.ti, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId);
+        captureCallResult(ins, ctx.fn, ctx.ti, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId);
     return true;
 }
 

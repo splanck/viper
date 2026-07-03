@@ -21,7 +21,7 @@
 #include <sstream>
 
 int main() {
-    static constexpr const char *kSource = R"(il 0.2.0
+    static constexpr const char *kSource = R"(il 0.3.0
 func @caller() -> void {
 entry:
   call @callee()

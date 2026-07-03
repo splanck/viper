@@ -136,7 +136,7 @@ signatures.
 Example:
 
 ```llvm
-il 0.2.0
+il 0.3.0
 func @main() -> i64 {
 entry:
   %v0 = iadd.ovf 2, 2
@@ -394,7 +394,7 @@ largest impact on throughput. Current optimizations and future improvements:
 
 ### Compatibility & versioning
 
-Modules declare an IL version (current: `il 0.2.0`) at the top. The runtime ABI is versioned; breaking changes require
+Modules declare an IL version (current: `il 0.3.0`) at the top. The runtime ABI is versioned; breaking changes require
 bumping the IL version and updating consumers.
 
 ### Namespaces and libraries

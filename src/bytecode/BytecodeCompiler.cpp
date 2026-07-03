@@ -741,6 +741,18 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             storeResult(instr);
             break;
 
+        // Value selection
+        case Opcode::Select:
+            // Push operands: cond, true value, false value
+            requireOperandCount(instr, 3);
+            pushValue(instr.operands[0]);
+            pushValue(instr.operands[1]);
+            pushValue(instr.operands[2]);
+            emit(BCOpcode::SELECT);
+            popStack(2); // Consumes 3, produces 1
+            storeResult(instr);
+            break;
+
         // Exception handling
         case Opcode::EhPush:
             // Push exception handler - emit opcode with placeholder for handler PC

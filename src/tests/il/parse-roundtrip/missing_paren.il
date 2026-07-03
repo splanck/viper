@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 extern @no_paren -> i32
 
 func @main() -> i32 {

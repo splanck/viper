@@ -1072,6 +1072,21 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         VerifyStrategy::Default,
         nullptr,
     },
+    // Select: ternary select between two same-typed values
+    {
+        il::core::ResultArity::One,
+        il::core::TypeCategory::InstrType,
+        static_cast<uint8_t>(3),
+        static_cast<uint8_t>(3),
+        {il::core::TypeCategory::I1,
+         il::core::TypeCategory::InstrType,
+         il::core::TypeCategory::InstrType},
+        false,
+        static_cast<uint8_t>(0),
+        false,
+        VerifyStrategy::Default,
+        nullptr,
+    },
 }};
 
 } // namespace

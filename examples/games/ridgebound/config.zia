@@ -1,7 +1,7 @@
-// config.zia - Tunables for the Game3D open-world showcase.
+// config.zia - Tunables for Ridgebound, the Game3D open-world sample.
 module config;
 
-var WINDOW_TITLE: String = "Game3D Open World Showcase";
+var WINDOW_TITLE: String = "Ridgebound: The Five Beacons";
 var WINDOW_WIDTH: Integer = 1280;
 var WINDOW_HEIGHT: Integer = 720;
 
@@ -12,7 +12,7 @@ var CLEAR_B: Float = 0.88;
 var DT_MAX_MS: Integer = 50;
 var DT_MAX_SEC: Float = 0.05;
 
-var CAMERA_FOV: Float = 72.0;
+var CAMERA_FOV: Float = 66.0;
 var CAMERA_NEAR: Float = 0.1;
 var CAMERA_FAR: Float = 420.0;
 var CAMERA_DISTANCE: Float = 10.4;
@@ -124,12 +124,12 @@ var HUD_DANGER: Integer = 0xFF7D66;
 // MapleTree_1.fbx native AABB is ~623 x 664 x 490 model units, base at Y~=0,
 // so a uniform scale near 0.013 yields an ~8.6 world-unit-tall tree.
 // Two candidate paths so the model resolves whether the demo is run from the
-// repo root (`viper run examples/games/game3d-showcase/`) or from this folder.
+// repo root (`viper run examples/games/ridgebound/`) or from this folder.
 var TREE_MODEL_PATH: String = "MapleTree_1.fbx";
-var TREE_MODEL_PATH_ALT: String = "examples/games/game3d-showcase/MapleTree_1.fbx";
+var TREE_MODEL_PATH_ALT: String = "examples/games/ridgebound/MapleTree_1.fbx";
 // Relative to the executable's own directory (examples/bin -> examples/games/...),
 // so a standalone binary resolves the model no matter the working directory.
-var TREE_MODEL_PATH_FROM_BIN: String = "../games/game3d-showcase/MapleTree_1.fbx";
+var TREE_MODEL_PATH_FROM_BIN: String = "../games/ridgebound/MapleTree_1.fbx";
 var FOREST_CELL: Float = 8.0;          // candidate-site grid spacing (world units)
 var FOREST_MARGIN: Float = 10.0;       // keep trees away from the terrain edge
 var FOREST_MAX: Integer = 130;         // hard cap on hill-forest instances
@@ -221,13 +221,13 @@ var SHAKE_ALL: Float = 0.55;
 // --- Authored post-FX + quality + debug (recommendation #10) ----------------
 // NOTE: AddColorGrade's first arg (brightness) is an ADDITIVE offset near 0.0,
 // not a multiplier — values like 1.0 blow the frame out to pure white.
-var POSTFX_BLOOM_THRESHOLD: Float = 0.72;
-var POSTFX_BLOOM_INTENSITY: Float = 0.50;
+var POSTFX_BLOOM_THRESHOLD: Float = 0.78;
+var POSTFX_BLOOM_INTENSITY: Float = 0.42;
 var POSTFX_COLORGRADE_BRIGHT: Float = 0.0;
-var POSTFX_COLORGRADE_CONTRAST: Float = 1.22;
-var POSTFX_COLORGRADE_SAT: Float = 1.30;
-var POSTFX_VIGNETTE_RADIUS: Float = 0.92;
-var POSTFX_VIGNETTE_SOFT: Float = 0.12;
+var POSTFX_COLORGRADE_CONTRAST: Float = 1.12;
+var POSTFX_COLORGRADE_SAT: Float = 1.16;
+var POSTFX_VIGNETTE_RADIUS: Float = 0.96;
+var POSTFX_VIGNETTE_SOFT: Float = 0.28;
 // Depth-of-field (focus distance / focus range / blur strength) + motion blur.
 var POSTFX_DOF_FOCUS: Float = 26.0;
 var POSTFX_DOF_RANGE: Float = 44.0;
@@ -236,7 +236,7 @@ var POSTFX_MOTIONBLUR_STRENGTH: Float = 0.32;
 var POSTFX_MOTIONBLUR_SAMPLES: Integer = 6;
 
 // Sprint FOV "kick" target (resting FOV is CAMERA_FOV).
-var CAMERA_FOV_SPRINT: Float = 80.0;
+var CAMERA_FOV_SPRINT: Float = 74.0;
 
 // --- Wind-swayed reeds (recommendation #9, uses Canvas3D.DrawMeshWind) ---------
 var REED_COUNT: Integer = 28;

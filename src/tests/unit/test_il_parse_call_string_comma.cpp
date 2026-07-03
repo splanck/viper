@@ -22,7 +22,7 @@
 #include <sstream>
 
 int main() {
-    const char *src = R"VIPER(il 0.2.0
+    const char *src = R"VIPER(il 0.3.0
 extern @print(str) -> void
 func @main() -> void {
 entry:

@@ -1,4 +1,4 @@
-// hud.zia - Game3D showcase overlay and debug panel.
+// hud.zia - Ridgebound overlay and debug panel.
 module hud;
 
 bind Viper.Game3D;
@@ -9,14 +9,14 @@ bind "./config";
 bind "./minimap";
 bind "./worldsim";
 
-class ShowcaseHud {
-    expose func draw(canvas: Canvas3D, map: ShowcaseMinimap, sim: ShowcaseWorldSim,
+class RidgeboundHud {
+    expose func draw(canvas: Canvas3D, map: RidgeboundMinimap, sim: RidgeboundWorldSim,
                      playerX: Float, playerZ: Float, stamina: Float, helpOn: Boolean, debugOn: Boolean) {
         var w = canvas.Width;
         var h = canvas.Height;
         var total = sim.getBeaconCount();
         var statusColor = config.HUD_WARN;
-        var statusText = "Seek the ridge beacons.";
+        var statusText = "Restore the ridge network.";
 
         if (sim.getBeaconsLit() >= total) {
             statusColor = config.HUD_GOOD;
@@ -36,15 +36,15 @@ class ShowcaseHud {
             config.HUD_PANEL);
         Canvas3D.DrawRect2D(
             canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
-        Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Space jump | Mouse look", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Sprint | V view | Esc", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(sim.getBeaconsLit()) + " / " + toString(total), statusColor);
+        Canvas3D.DrawText2D(canvas, 24, 28, "RIDGEBOUND", config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, 24, 52, "Restore the ridge.", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 72, "Link five beacons.", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 104, "Beacons linked: " + toString(sim.getBeaconsLit()) + " / " + toString(total), statusColor);
         Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
 
         map.draw(canvas, w - 172, h - 172, 144, 144, playerX, playerZ,
             sim.getBeaconXs(), sim.getBeaconZs(), sim.getBeaconState());
-        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(canvas.Fps) + "    H = controls", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(canvas.Fps), config.HUD_MUTED);
 
         Canvas3D.DrawCrosshair(canvas, config.HUD_ACCENT, 10);
         if (sim.getScanLabel() != "") {
@@ -106,7 +106,7 @@ class ShowcaseHud {
         var y = 14;
         Canvas3D.DrawRect2D(canvas, x, y, 282, 262, config.HUD_PANEL);
         Canvas3D.DrawRect2D(canvas, x, y, 282, 3, config.HUD_ACCENT);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  Space=quality", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  RMB=quality", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + canvas.Backend, config.HUD_TEXT);
         Canvas3D.DrawText2D(canvas, x + 10, y + 56, "FPS: " + toString(canvas.Fps), config.HUD_TEXT);
         Canvas3D.DrawText2D(canvas, x + 10, y + 74, "Draws: " + toString(canvas.DrawCount), config.HUD_TEXT);

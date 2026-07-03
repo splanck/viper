@@ -386,6 +386,20 @@ void printLoadOperands(const Instr &instr, std::ostream &os, const SerializeCont
     printValue(os, instr.operands[0], ctx);
 }
 
+/// @brief Emit operands for select instructions including the arm type.
+/// @param instr Instruction providing the condition and both arms.
+/// @param os Stream receiving serialized operands.
+/// @param ctx Serialization context with value name mappings.
+void printSelectOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
+    os << ' ' << instr.type.toString();
+    if (!requireOperands(instr, os, ctx, 3, "missing operands"))
+        return;
+    for (const auto &operand : instr.operands) {
+        os << ", ";
+        printValue(os, operand, ctx);
+    }
+}
+
 /// @brief Emit operands for store instructions including type annotation.
 /// @param instr Instruction providing the destination and value.
 /// @param os Stream receiving serialized operands.
@@ -507,6 +521,7 @@ const Formatter &formatterFor(Opcode op) {
         table[toIndex(Opcode::CBr)] = &printCBrOperands;
         table[toIndex(Opcode::SwitchI32)] = &printSwitchI32Operands;
         table[toIndex(Opcode::Load)] = &printLoadOperands;
+        table[toIndex(Opcode::Select)] = &printSelectOperands;
         table[toIndex(Opcode::Store)] = &printStoreOperands;
         table[toIndex(Opcode::TrapKind)] = &printTrapKindOperand;
         table[toIndex(Opcode::TrapFromErr)] = &printTrapFromErrOperands;
@@ -629,7 +644,8 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) 
         } else if (info.resultType == TypeCategory::Dynamic && in.type.kind != Type::Kind::Void) {
             os << ':' << in.type.toString();
         } else if (info.resultType == TypeCategory::InstrType && in.op != Opcode::Load &&
-                   in.type.kind != Type::Kind::Void && in.type.kind != Type::Kind::I64) {
+                   in.op != Opcode::Select && in.type.kind != Type::Kind::Void &&
+                   in.type.kind != Type::Kind::I64) {
             os << ':' << in.type.toString();
         }
         os << " = ";

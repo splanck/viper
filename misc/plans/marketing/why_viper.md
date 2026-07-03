@@ -39,7 +39,7 @@ Both languages compile through the same intermediate language, share one optimiz
 
 ### A Real Compiler Pipeline
 
-At the center is an 83-opcode, strongly typed, SSA-form intermediate language with a normative written specification (IL v0.2.0), a thorough verifier that rejects malformed programs before they reach a backend, and a registered O1/O2 optimizer pipeline: SSA promotion, SCCP, global value numbering, LICM, loop transforms, inlining, devirtualization, and cleanup passes.
+At the center is an 83-opcode, strongly typed, SSA-form intermediate language with a normative written specification (IL v0.3.0), a thorough verifier that rejects malformed programs before they reach a backend, and a registered O1/O2 optimizer pipeline: SSA promotion, SCCP, global value numbering, LICM, loop transforms, inlining, devirtualization, and cleanup passes.
 
 Below the IL sit two native backends — x86-64 and AArch64 — each with rule-driven lowering, a real register allocator, scheduling, and peephole optimization, and each emitting binary machine code through its own assembler.
 

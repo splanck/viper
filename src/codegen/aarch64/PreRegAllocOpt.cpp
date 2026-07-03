@@ -130,6 +130,7 @@ namespace {
         case MOpcode::AddPageOff:
         case MOpcode::MAddRRRR:
         case MOpcode::Csel:
+        case MOpcode::FCsel:
         case MOpcode::AddsRRR:
         case MOpcode::SubsRRR:
         case MOpcode::AddsRI:

@@ -292,7 +292,7 @@ zia> .type "hello"
 String
 
 zia> .il 2 + 3
-il 0.2.0
+il 0.3.0
 func @main() -> void {
 entry_0:
   %t0 = iadd.ovf 2, 3

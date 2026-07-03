@@ -312,7 +312,7 @@ struct NativeRunResult {
 }
 
 [[nodiscard]] NativeRunResult runDivTrapNative() {
-    constexpr std::string_view kDivTrapProgram = R"(il 0.2.0
+    constexpr std::string_view kDivTrapProgram = R"(il 0.3.0
 
 func @main() -> i64 {
 entry:
@@ -325,7 +325,7 @@ entry:
 }
 
 [[nodiscard]] NativeRunResult runCheckedRemainderNative() {
-    constexpr std::string_view kRemainderProgram = R"(il 0.2.0
+    constexpr std::string_view kRemainderProgram = R"(il 0.3.0
 
 func @main() -> i64 {
 entry:

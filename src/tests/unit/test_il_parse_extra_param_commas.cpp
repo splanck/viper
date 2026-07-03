@@ -22,7 +22,7 @@
 #include <string>
 
 int main() {
-    const std::string source = R"(il 0.2.0
+    const std::string source = R"(il 0.3.0
 func @main(i32 %a,, i32 %b) -> i32 {
   ret %a
 })";

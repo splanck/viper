@@ -1,7 +1,7 @@
 # CLAUDE.md — AI Agent Operating Guide for Viper
 
 **Project:** IL-based Compiler Toolchain (Frontends → IL → VM → Codegen)
-**Spec Authority:** `/docs/il-guide.md#reference` (IL v0.2.0), `/docs/architecture.md`, `/docs/codemap.md`
+**Spec Authority:** `/docs/il-guide.md#reference` (IL v0.3.0), `/docs/architecture.md`, `/docs/codemap.md`
 
 **Permissions:** File/network access within Viper project scope. May download/install tools needed for Viper development work.
 

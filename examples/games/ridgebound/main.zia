@@ -1,4 +1,4 @@
-// main.zia - Entry point for the Game3D open-world showcase.
+// main.zia - Entry point for Ridgebound.
 module main;
 
 bind Viper.System.Environment as Env;
@@ -20,8 +20,11 @@ func hasArg(wanted: String) -> Boolean {
 // packaged binary verify (incl. embedded-asset loading) without opening the
 // interactive window or capturing the mouse.
 func runSmoke() {
-    var game = new Game3DShowcase();
+    var game = new RidgeboundGame();
     game.setup(config.WINDOW_TITLE, 960, 540);
+    game.step(0.016);
+    game.renderFrame();
+    game.startGameplayForSmoke();
     var i = 0;
     while (i < 3) {
         game.step(0.016);
@@ -38,7 +41,7 @@ func start() {
         runSmoke();
         return;
     }
-    var game = new Game3DShowcase();
+    var game = new RidgeboundGame();
     game.setup(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
     game.run();
     game.destroy();

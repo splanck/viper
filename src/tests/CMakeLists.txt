@@ -1298,64 +1298,64 @@ if (WIN32)
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 
-add_test(NAME zia_smoke_game3d_showcase
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
-set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+add_test(NAME zia_smoke_ridgebound
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
+set_tests_properties(zia_smoke_ridgebound PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
         TIMEOUT 90)
-set(VIPER_GAME3D_SHOWCASE_MAPLE_ASSET
-        "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/MapleTree_1.fbx")
-if (EXISTS "${VIPER_GAME3D_SHOWCASE_MAPLE_ASSET}")
-    add_test(NAME zia_smoke_game3d_showcase_tree_materials
-            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/tree_material_probe.zia"
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
-    set_tests_properties(zia_smoke_game3d_showcase_tree_materials PROPERTIES
+set(VIPER_RIDGEBOUND_MAPLE_ASSET
+        "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/MapleTree_1.fbx")
+if (EXISTS "${VIPER_RIDGEBOUND_MAPLE_ASSET}")
+    add_test(NAME zia_smoke_ridgebound_tree_materials
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/tree_material_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
+    set_tests_properties(zia_smoke_ridgebound_tree_materials PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "zia;smoke;graphics3d;requires_display"
             TIMEOUT 45)
 endif ()
-add_test(NAME zia_smoke_game3d_showcase_tree_fallback_materials
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/tree_fallback_material_probe.zia"
+add_test(NAME zia_smoke_ridgebound_tree_fallback_materials
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/tree_fallback_material_probe.zia"
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
-set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIES
+set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
         TIMEOUT 300)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+    set_tests_properties(zia_smoke_ridgebound PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
-    if (TEST zia_smoke_game3d_showcase_tree_materials)
-        set_property(TEST zia_smoke_game3d_showcase_tree_materials PROPERTY
+    if (TEST zia_smoke_ridgebound_tree_materials)
+        set_property(TEST zia_smoke_ridgebound_tree_materials PROPERTY
                 ENVIRONMENT "VIPER_3D_BACKEND=software")
     endif ()
-    set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIES
+    set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 if (WIN32)
-    set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+    set_tests_properties(zia_smoke_ridgebound PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
-    if (TEST zia_smoke_game3d_showcase_tree_materials)
-        set_property(TEST zia_smoke_game3d_showcase_tree_materials PROPERTY
+    if (TEST zia_smoke_ridgebound_tree_materials)
+        set_property(TEST zia_smoke_ridgebound_tree_materials PROPERTY
                 ENVIRONMENT "VIPER_3D_BACKEND=software")
     endif ()
-    set_tests_properties(zia_smoke_game3d_showcase_tree_fallback_materials PROPERTIES
+    set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
-    add_test(NAME zia_smoke_game3d_showcase_d3d11
-            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
-    set_tests_properties(zia_smoke_game3d_showcase_d3d11 PROPERTIES
+    add_test(NAME zia_smoke_ridgebound_d3d11
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
+    set_tests_properties(zia_smoke_ridgebound_d3d11 PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
             ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
             TIMEOUT 180)
 endif ()
 if (APPLE)
-    add_test(NAME zia_smoke_game3d_showcase_software
-            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
-    set_tests_properties(zia_smoke_game3d_showcase_software PROPERTIES
+    add_test(NAME zia_smoke_ridgebound_software
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
+    set_tests_properties(zia_smoke_ridgebound_software PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "zia;smoke;graphics3d;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
@@ -1468,7 +1468,7 @@ set(VIPER_DISPLAY_TESTS
         zia_smoke_3dbowling
         zia_smoke_3dbowling_aim
         zia_smoke_3dscene
-        zia_smoke_game3d_showcase
+        zia_smoke_ridgebound
         zia_smoke_3dbaseball
         zia_smoke_3dbowling_overlay
         zia_smoke_3dbowling_title_postfx

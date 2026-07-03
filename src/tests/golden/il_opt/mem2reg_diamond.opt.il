@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 func @main() -> i64 {
 entry:
   %t1 = icmp_eq 0, 0

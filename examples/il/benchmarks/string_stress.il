@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 extern @Viper.String.Concat(str, str) -> str
 extern @Viper.String.get_Length(str) -> i64

@@ -1421,6 +1421,15 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
             os << "  csel " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "
                << rn(getReg(mi.ops[2])) << ", " << mi.ops[3].cond << "\n";
             return;
+        case MOpcode::FCsel:
+            os << "  fcsel ";
+            printDReg(os, getReg(mi.ops[0]));
+            os << ", ";
+            printDReg(os, getReg(mi.ops[1]));
+            os << ", ";
+            printDReg(os, getReg(mi.ops[2]));
+            os << ", " << mi.ops[3].cond << "\n";
+            return;
         case MOpcode::LdpRegFpImm:
             if (!isPairImm7Offset(getImm(mi.ops[2]))) {
                 emitLdrFromFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));

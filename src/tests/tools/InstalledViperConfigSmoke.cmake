@@ -176,7 +176,7 @@ set(_installed_il "${_tmp_root}/installed_runtime_smoke.il")
 set(_installed_exe "${_tmp_root}/installed_runtime_smoke${_exe_suffix}")
 
 file(WRITE "${_installed_il}" [=[
-il 0.2.0
+il 0.3.0
 
 extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "Hello, installed Viper!"

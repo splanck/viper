@@ -430,7 +430,37 @@ class Lowerer {
 
     /// @brief Remove a value from the deferred list (it was consumed by a
     ///        store-to-slot or return, so it must NOT be released).
-    void consumeDeferred(Value v);
+    /// @return true when a deferred entry was removed — i.e. the value carried
+    ///         a transferred owned reference that the consumer now holds.
+    bool consumeDeferred(Value v);
+
+    /// @brief True when @p name is a user-declared local whose slot holds an
+    ///        owned string reference (slot-ownership invariant).
+    bool isOwnedStringSlot(const std::string &name) const;
+
+    /// @brief Release every visible user-declared string slot (function exit).
+    /// @details Every named string slot owns one reference (params retain at
+    ///          bind, declarations/assignments retain on store), so function
+    ///          exit releases each one exactly once. Internal slots (match,
+    ///          loop machinery, __zia_return) keep move semantics and are
+    ///          excluded by keying on localTypes_.
+    void releaseLocalStringSlots();
+
+    /// @brief Release string slots created inside the current lexical block.
+    /// @param liveBefore Slot names visible before the block was entered.
+    void releaseBlockStringSlots(const std::unordered_map<std::string, Value> &liveBefore);
+
+    /// @brief Store a string value into a slot under the slot-ownership
+    ///        discipline: the slot ends up owning exactly one reference.
+    /// @details Owned temporaries (deferred call results) move in — their
+    ///          deferred entry is consumed. Borrowed values (slot loads,
+    ///          params, tuple fields) are retained. When @p releaseDisplaced
+    ///          is true the previous occupant is released first; pass false
+    ///          for freshly created (zeroed) slots.
+    void storeOwnedStringToSlot(const std::string &name, Value value, bool releaseDisplaced);
+
+    /// @brief Release the owned reference of one string slot (before removeSlot).
+    void releaseOwnedStringSlot(const std::string &name);
 
     /// @brief Check if a semantic type is refcounted and needs release.
     bool needsRelease(TypeRef type) const;

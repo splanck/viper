@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // Unsigned division stress test.
 // Each udiv.chk0 by a power of 2 can be strength-reduced to a logical shift

@@ -68,6 +68,7 @@ ASAN_DIR="${BUILD_DIR_BASE}_asan_full"
 cmake -S "${REPO_ROOT}" -B "${ASAN_DIR}" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DIL_SANITIZE_ADDRESS=ON \
+    -DVIPER_INSTALL_VIPERIDE=OFF \
     -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_C_COMPILER=clang \
     > /dev/null 2>&1
@@ -93,6 +94,7 @@ UBSAN_DIR="${BUILD_DIR_BASE}_ubsan_full"
 cmake -S "${REPO_ROOT}" -B "${UBSAN_DIR}" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DIL_SANITIZE_UNDEFINED=ON \
+    -DVIPER_INSTALL_VIPERIDE=OFF \
     -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_C_COMPILER=clang \
     > /dev/null 2>&1
@@ -119,6 +121,7 @@ if $RUN_TSAN; then
     cmake -S "${REPO_ROOT}" -B "${TSAN_DIR}" \
         -DCMAKE_BUILD_TYPE=Debug \
         -DIL_SANITIZE_THREAD=ON \
+        -DVIPER_INSTALL_VIPERIDE=OFF \
         -DCMAKE_CXX_COMPILER=clang++ \
         -DCMAKE_C_COMPILER=clang \
         > /dev/null 2>&1

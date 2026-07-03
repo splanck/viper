@@ -400,6 +400,8 @@ bool lowerInstruction(const il::core::Instr &ins,
             return lowerURemChk0(ins, bbIn, ctx, bbOut());
         case Opcode::IdxChk:
             return lowerIdxChk(ins, bbIn, ctx, bbOut());
+        case Opcode::Select:
+            return lowerSelect(ins, bbIn, ctx, bbOut());
         case Opcode::SRem:
             return lowerSRem(ins, bbIn, ctx, bbOut());
         case Opcode::URem:

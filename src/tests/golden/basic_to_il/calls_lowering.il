@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.Text.Char.IsIdentifierStart(str) -> i1
 extern @Viper.Text.Char.IsIdentifierPart(str) -> i1

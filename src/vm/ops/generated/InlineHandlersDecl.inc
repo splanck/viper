@@ -83,6 +83,7 @@ void inline_handle_ConstStr(ExecState &st);
 void inline_handle_GAddr(ExecState &st);
 void inline_handle_ConstNull(ExecState &st);
 void inline_handle_ConstF64(ExecState &st);
+void inline_handle_Select(ExecState &st);
 void inline_handle_Call(ExecState &st);
 void inline_handle_CallIndirect(ExecState &st);
 void inline_handle_SwitchI32(ExecState &st);

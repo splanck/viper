@@ -228,6 +228,20 @@ std::optional<IntRange> applyRangeTransfer(const Instr &instr, RangeMap &ranges)
 
     if (producesBool(instr.op)) {
         result = IntRange{0, 1};
+    } else if (instr.op == Opcode::Select && instr.operands.size() == 3) {
+        // The result is one of the two arms, so its range is the union of
+        // the arm ranges. Operand 0 is the condition and contributes nothing.
+        auto tRange = rangeForValue(instr.operands[1], ranges);
+        auto fRange = rangeForValue(instr.operands[2], ranges);
+        if (tRange && fRange) {
+            IntRange unionRange{};
+            if (tRange->lower && fRange->lower)
+                unionRange.lower = std::min(*tRange->lower, *fRange->lower);
+            if (tRange->upper && fRange->upper)
+                unionRange.upper = std::max(*tRange->upper, *fRange->upper);
+            if (unionRange.lower || unionRange.upper)
+                result = unionRange;
+        }
     } else if (instr.operands.size() >= 2) {
         auto lhs = rangeForValue(instr.operands[0], ranges);
         auto rhs = rangeForValue(instr.operands[1], ranges);

@@ -29,6 +29,7 @@
 #include "OperandUtils.hpp"
 #include "Unsupported.hpp"
 
+#include "codegen/common/StringRetainPolicy.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
@@ -173,11 +174,17 @@ void emitRetainStringResultCall(const VReg &resultVReg, MIRBuilder &builder) {
 ///            the low byte is meaningful; @c MOVZXrr8 zero-extends.
 ///          - All other GPR kinds use @c MOVrr.
 ///          When the result kind is @c STR, the captured value is also
-///          retained via @ref emitRetainStringResultCall.
+///          retained via @ref emitRetainStringResultCall — unless the callee
+///          is known to transfer an owned reference, in which case the
+///          defensive retain is elided (see StringRetainPolicy.hpp).
 /// @param instr Original IL call instruction (used to consult result kind).
 /// @param resultVReg Virtual register that will hold the captured value.
 /// @param builder Active MIR builder.
-void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBuilder &builder) {
+/// @param callee Direct callee name, or empty for indirect calls.
+void emitCapturedCallResult(const ILInstr &instr,
+                            const VReg &resultVReg,
+                            MIRBuilder &builder,
+                            std::string_view callee = {}) {
     const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
     if (instr.resultKind == ILValue::Kind::F64) {
         const Operand retReg =
@@ -193,7 +200,9 @@ void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBui
         builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
     }
 
-    if (instr.resultKind == ILValue::Kind::STR)
+    (void)callee;
+    if (instr.resultKind == ILValue::Kind::STR &&
+        !builder.lower().isStrCallRetainElidable(instr.resultId))
         emitRetainStringResultCall(resultVReg, builder);
 }
 
@@ -236,7 +245,7 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(makePlannedCall(builder.makeLabelOperand(instr.ops[0]), callPlanId));
 
     if (hasResult)
-        emitCapturedCallResult(instr, resultVReg, builder);
+        emitCapturedCallResult(instr, resultVReg, builder, instr.ops.front().label);
 }
 
 /// @brief Lower an IL call.indirect instruction into the backend call plan.

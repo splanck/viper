@@ -337,6 +337,11 @@ void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr) {
             inline_handle_ConstF64(state);
             break;
         }
+        case il::core::Opcode::Select: {
+            traceInstruction(instr, state.fr);
+            inline_handle_Select(state);
+            break;
+        }
         case il::core::Opcode::Call: {
             traceInstruction(instr, state.fr);
             inline_handle_Call(state);

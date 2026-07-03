@@ -7,7 +7,7 @@ and documents the agent-facing toolchain surface.
 
 ## Ground Rules
 
-- **Spec first.** `/docs/il-guide.md#reference` (IL v0.2.0) is normative.
+- **Spec first.** `/docs/il-guide.md#reference` (IL v0.3.0) is normative.
   ADRs are required for IL opcode, grammar, verifier-rule, cross-layer
   dependency, runtime C ABI surface, `docs/il-guide.md#reference`, and
   `.github/workflows/*` changes.

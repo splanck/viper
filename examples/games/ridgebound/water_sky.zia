@@ -10,7 +10,7 @@ bind "./config";
 bind "./terrain";
 bind "./mathutil";
 
-class ShowcaseWaterSky {
+class RidgeboundWaterSky {
     hide Water3D water;
     hide CubeMap3D skybox;
     hide CubeMap3D nightSkybox;

@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // Reduced-iteration variant of examples/il/benchmarks/switch_dispatch.il for the
 // VM<->native differential and shared-corpus gates.

@@ -22,7 +22,7 @@
 #include <unordered_map>
 
 int main() {
-    const char *source = R"(il 0.2.0
+    const char *source = R"(il 0.3.0
 global const str @nl = "\n"
 global const str @tab = "tab:\t"
 global const str @quote = "quote:\""

@@ -37,7 +37,7 @@ class Landmark {
     expose String name;
 }
 
-class ShowcaseWorldSim {
+class RidgeboundWorldSim {
     hide Light3D sunLight;
     hide Light3D fillLight;
     hide Light3D skyFill;
@@ -176,6 +176,24 @@ class ShowcaseWorldSim {
         }
     }
 
+    expose func resetProgress() {
+        beaconsLit = 0;
+        sanctuaryDone = false;
+        scanLabel = "";
+        scanDist = 0.0;
+        scanBeaconIndex = -1;
+        scanProgress = 0.0;
+        for i in 0..beacons.count() {
+            var b = beacons.get(i);
+            b.state = 0;
+            b.litProgress = 0.0;
+            if (b.light != null) {
+                Light3D.SetIntensity(b.light, 0.0);
+                Light3D.set_Enabled(b.light, false);
+            }
+        }
+    }
+
     expose func setupPlayerLight(world: World3D, playerX: Float, playerY: Float, playerZ: Float) {
         playerLight = Light3D.Point(
             new Vec3(playerX, playerY + 1.5, playerZ), 0.40, 0.72, 1.0, config.PLAYER_LIGHT_RANGE);
@@ -202,7 +220,7 @@ class ShowcaseWorldSim {
     // lighting the ridge is a deliberate act instead of an accidental fly-by.
     expose func updateBeacons(dt: Float, world: World3D, camera: Camera3D, input: Input3D,
                               playerX: Float, playerY: Float, playerZ: Float,
-                              audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+                              audioObj: RidgeboundAudio, effectsObj: RidgeboundEffects) {
         rampBeaconGlow(dt);
         if (scanBeaconIndex >= 0 && input.IsDown(Key.E)) {
             var b = beacons.get(scanBeaconIndex);
@@ -225,7 +243,7 @@ class ShowcaseWorldSim {
 
     hide func activateBeacon(world: World3D, camera: Camera3D, i: Integer,
                              playerX: Float, playerY: Float, playerZ: Float,
-                             audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+                             audioObj: RidgeboundAudio, effectsObj: RidgeboundEffects) {
         var b = beacons.get(i);
         if (b.state != 0) { return; }
         b.state = 1;
@@ -241,7 +259,7 @@ class ShowcaseWorldSim {
     }
 
     expose func updateObjective(camera: Camera3D, playerX: Float, playerY: Float, playerZ: Float,
-                                audioObj: ShowcaseAudio) {
+                                audioObj: RidgeboundAudio) {
         if (sanctuaryDone == false && homeTrigger != null && beaconsLit >= beacons.count()) {
             objectiveProbePos.Set(playerX, playerY + 1.0, playerZ);
             if (Trigger3D.Contains(homeTrigger, objectiveProbePos)) {
@@ -480,7 +498,7 @@ class ShowcaseWorldSim {
         }
     }
 
-    hide func onBeaconLit(camera: Camera3D, i: Integer, audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+    hide func onBeaconLit(camera: Camera3D, i: Integer, audioObj: RidgeboundAudio, effectsObj: RidgeboundEffects) {
         var b = beacons.get(i);
         if (b.light != null) {
             // Enable at zero and let updateBeacons ramp the intensity in, so the

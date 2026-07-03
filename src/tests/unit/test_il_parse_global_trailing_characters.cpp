@@ -20,7 +20,7 @@
 #include <sstream>
 
 int main() {
-    const char *src = R"(il 0.2.0
+    const char *src = R"(il 0.3.0
 global const str @greeting = "hello" junk
 )";
     std::istringstream in(src);

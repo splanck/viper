@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 func @narrow_cast(%f:f64) -> i64 {
 entry(%f:f64):

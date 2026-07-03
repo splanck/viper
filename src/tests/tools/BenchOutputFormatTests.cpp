@@ -85,7 +85,7 @@ int main() {
     // --- Watchdog: a non-terminating IL program must abort on the step budget and skip the
     //     remaining strategies instead of hanging. A small explicit cap keeps the test fast. ---
     {
-        static const char kInfiniteSource[] = R"(il 0.2.0
+        static const char kInfiniteSource[] = R"(il 0.3.0
 
 func @main() -> i64 {
 entry:

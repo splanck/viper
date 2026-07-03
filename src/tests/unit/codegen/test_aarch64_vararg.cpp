@@ -322,6 +322,11 @@ TEST(AArch64Vararg, CallReturnedStringUsesGenericRetainSemantics) {
     const MFunction mir = lowering.lowerFunction(fn);
     ASSERT_FALSE(mir.blocks.empty());
 
+    // @get_str is an IL-defined callee: its result carries a transferred
+    // owned reference, and the single `ret` spend fits in it, so the
+    // defensive retain is elided (StringRetainPolicy.hpp). Double-consume
+    // shapes that NEED the retain are covered by
+    // Arm64StringStore.CallReturnedStringIsRetained.
     bool sawRetain = false;
     for (const auto &mi : mir.blocks.front().instrs) {
         if (mi.opc != MOpcode::Bl || mi.ops.empty() || mi.ops[0].kind != MOperand::Kind::Label)
@@ -332,7 +337,7 @@ TEST(AArch64Vararg, CallReturnedStringUsesGenericRetainSemantics) {
         }
     }
 
-    EXPECT_TRUE(sawRetain);
+    EXPECT_FALSE(sawRetain);
 }
 
 TEST(AArch64Vararg, BoolCallResultIsNormalizedBeforeReturn) {

@@ -48,7 +48,7 @@
 <p>Comprehensive guide to Viper&#x27;s Intermediate Language (IL), covering everything from quickstart to advanced topics. This</p>
 <p>document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked</p>
 <p>examples for IL v0.2.</p>
-<blockquote><p>**Note:** This guide documents IL v0.2.0. See the version header in your IL files for compatibility.</p></blockquote>
+<blockquote><p>**Note:** This guide documents IL v0.3.0. See the version header in your IL files for compatibility.</p></blockquote>
 <p>---</p>
 <h2 id="table-of-contents">Table of Contents</h2>
 <ol>
@@ -81,7 +81,7 @@
 <p><strong>Why a separate IL?</strong></p>
 <ul>
 <li><strong>Decoupling</strong>: Frontends evolve independently from the VM</li>
-<li><strong>Stability</strong>: IL version headers (<code>il 0.2.0</code>) ensure compatibility</li>
+<li><strong>Stability</strong>: IL version headers (<code>il 0.3.0</code>) ensure compatibility</li>
 <li><strong>Inspectability</strong>: Textual format is easy to read and debug</li>
 <li><strong>Optimization</strong>: Centralized place for analysis and transforms</li>
 <li><strong>Multi-language</strong>: Multiple frontends share one runtime</li>
@@ -89,7 +89,7 @@
 <h3 id="program-structure">Program structure</h3>
 <p>An IL module is plain text. Its top‑level layout is:</p>
 <ol>
-<li>**Version line** – <code>il 0.2.0</code> pins the expected IL grammar version.</li>
+<li>**Version line** – <code>il 0.3.0</code> pins the expected IL grammar version.</li>
 <li>**Extern declarations** – <code>extern @name(signature) -&gt; ret</code> describes functions provided by the runtime or other</li>
 </ul>
 <p>modules.</p>
@@ -112,7 +112,7 @@
 <p>Create a file <code>first.il</code> with the contents:</p>
 <pre><code data-lang="llvm">
 # Print the number 4 and exit.
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
@@ -131,7 +131,7 @@ viper -run first.il
 <p><strong>Line by line</strong></p>
 <ul>
 <li><code># Print the number 4 and exit.</code> – comments start with <code>#</code> and are ignored by the VM.</li>
-<li><code>il 0.2.0</code> – required version header that pins the expected IL grammar version.</li>
+<li><code>il 0.3.0</code> – required version header that pins the expected IL grammar version.</li>
 <li><code>extern @Viper.Terminal.PrintI64(i64) -&gt; void</code> – declare a runtime function taking an <code>i64</code> and returning <code>void</code>.</li>
 <li><code>func @main() -&gt; i64 {</code> – define the <code>@main</code> function that returns an <code>i64</code> exit code.</li>
 <li><code>entry:</code> – the initial basic block label.</li>
@@ -148,12 +148,12 @@ viper -run first.il
 <p>if you need to load legacy IL.</p>
 <p><strong>What just happened?</strong> <code>Viper.Terminal.PrintI64</code> is supplied by the runtime and prints its argument. Every function ends</p>
 <p>with a terminator such as <code>ret</code> giving the program&#x27;s exit code.</p>
-<p><strong>Gotcha:</strong> Every module must start with a version line (e.g., <code>il 0.2.0</code>).</p>
+<p><strong>Gotcha:</strong> Every module must start with a version line (e.g., <code>il 0.3.0</code>).</p>
 <h3 id="values-and-types">Values and types</h3>
 <p>IL is statically typed and uses SSA-style virtual registers (<code>%v0</code>, <code>%t1</code>, ...). Primitive types include <code>i1</code> (bool),</p>
 <p><code>i16</code>, <code>i32</code>, <code>i64</code>, <code>f64</code>, <code>ptr</code>, and <code>str</code>, plus specialized types <code>error</code> and <code>resumetok</code> for exception handling.</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
@@ -177,7 +177,7 @@ entry:
 <h3 id="locals-params-and-calls">Locals, params, and calls</h3>
 <p>Functions declare typed parameters. Values are passed and returned explicitly.</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintI64(i64) -&gt; void
 func @add(i64 %a, i64 %b) -&gt; i64 {
 entry:
@@ -205,7 +205,7 @@ entry:
 <p><strong>Gotcha:</strong> Arguments are immutable; use <code>alloca</code> + <code>store</code> if you need a mutable local.</p>
 <h3 id="arithmetic-and-comparisons">Arithmetic and comparisons</h3>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
@@ -227,7 +227,7 @@ entry:
 <h3 id="control-flow">Control flow</h3>
 <p>Blocks end with a terminator. <code>cbr</code> chooses a target based on an <code>i1</code> value.</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
@@ -261,7 +261,7 @@ done:
 <h3 id="strings-and-text">Strings and text</h3>
 <p>Strings live in globals and use <code>Viper.Terminal.PrintStr</code> for output.</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintStr(str) -&gt; void
 global const str @.msg = &quot;hello&quot;  # immutable global
 func @main() -&gt; i64 {
@@ -284,7 +284,7 @@ entry:
 <h3 id="errors-and-exit-codes">Errors and exit codes</h3>
 <p>Returning a non-zero <code>i64</code> sets the process exit code. <code>trap</code> reports an error and aborts.</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 func @main() -&gt; i64 {
 entry:
   trap                    # aborts execution
@@ -307,7 +307,7 @@ entry:
 </code></pre>
 <p>Lowered IL:</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
@@ -343,7 +343,7 @@ entry:
 </ul>
 <h3 id="common-mistakes">Common mistakes</h3>
 <ul>
-<li>Forgetting the version line (<code>il 0.2.0</code>).</li>
+<li>Forgetting the version line (<code>il 0.3.0</code>).</li>
 <li>Missing terminators at the end of blocks.</li>
 <li>Mismatched types in instructions or extern calls.</li>
 </ul>
@@ -351,14 +351,14 @@ entry:
 <p>&lt;a id=&quot;reference&quot;&gt;&lt;/a&gt;</p>
 <h2 id="reference">Reference</h2>
 <h3 id="normative-scope">Normative scope</h3>
-<p>The current IL v0.2.0 specification builds on the design principles established in earlier versions: IL acts as the &quot;thin waist&quot;</p>
+<p>The current IL v0.3.0 specification builds on the design principles established in earlier versions: IL acts as the &quot;thin waist&quot;</p>
 <p>between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the</p>
 <p>type system intentionally small (<code>i1</code>, <code>i64</code>, <code>f64</code>, <code>ptr</code>, <code>str</code>, <code>void</code>). The material below supersedes earlier</p>
 <p>drafts (including v0.1.x) while remaining source-compatible with modules written for those versions. Numeric promotion</p>
 <p>semantics are specified in [specs/numerics.md](specs/numerics.md) and the unified trap/handler model is</p>
 <p>defined in [specs/errors.md](specs/errors.md); both documents are normative for all front ends and the</p>
 <p>VM.</p>
-<h3 id="il-reference-v0-2-0">IL Reference (v0.2.0)</h3>
+<h3 id="il-reference-v0-3-0">IL Reference (v0.3.0)</h3>
 <blockquote><p>Start here: [IL Quickstart](#quickstart) for a hands-on introduction.</p></blockquote>
 <h4 id="overview">Overview</h4>
 <p>Viper IL is the project’s &quot;thin waist&quot; intermediate language designed to sit between diverse front ends and back ends.</p>
@@ -374,12 +374,12 @@ entry:
 <h4 id="module-function-syntax">Module &amp; Function Syntax</h4>
 <p>An IL module is a set of declarations and function definitions. It starts with a version line:</p>
 <pre><code data-lang="text">
-il 0.2.0
+il 0.3.0
 </code></pre>
 <p>An optional <code>target &quot;...&quot;</code> metadata line may follow. The VM ignores it, but native back ends can use it as advisory</p>
 <p>information.</p>
 <pre><code data-lang="text">
-il 0.2.0
+il 0.3.0
 target &quot;x86_64-sysv&quot;
 </code></pre>
 <p>See [examples/il](../examples/il/) for complete programs.</p>
@@ -392,7 +392,7 @@ entry:
 </code></pre>
 <p>##### Minimal Function</p>
 <pre><code data-lang="text">
-il 0.2.0
+il 0.3.0
 func @main() -&gt; i64 {
 entry:
   ret 0
@@ -425,7 +425,7 @@ func import @BasicHelper(i64 %n) -&gt; i64
 <p>Externs reference runtime-provided functions (C ABI), while <code>import</code> references</p>
 <p>functions defined in other IL modules.</p>
 <pre><code data-lang="text">
-il 0.2.0
+il 0.3.0
 extern @Viper.Terminal.PrintI64(i64) -&gt; void
 func @main() -&gt; i64 {
 entry:
@@ -436,7 +436,7 @@ entry:
 <p>##### Global Constants</p>
 <p>Module-level constants bind a symbol to immutable data such as strings.</p>
 <pre><code data-lang="text">
-il 0.2.0
+il 0.3.0
 global const str @.msg = &quot;hi&quot;
 func @main() -&gt; i64 {
 entry:
@@ -521,7 +521,7 @@ entry:
 <p>parameters; each predecessor must supply matching arguments. Omitting the argument list is shorthand for passing no</p>
 <p>values (for example, <code>br next</code> is the same as <code>br next()</code>).</p>
 <pre><code data-lang="text">
-il 0.2.0
+il 0.3.0
 func @loop(i64 %n) -&gt; i64 {
 entry:
   br body(%n, 0)
@@ -614,7 +614,7 @@ entry:
 <p>Neither checks for division by zero; use <code>sdiv.chk0</code> or <code>srem.chk0</code> for checked variants that trap on zero divisors.</p>
 <p>Front ends such as BASIC map <code>\</code> to <code>sdiv.chk0</code> and <code>MOD</code> to <code>srem.chk0</code>.</p>
 <pre><code data-lang="text">
-il 0.2.0
+il 0.3.0
 func @main() -&gt; i64 {
 entry:
   %t0 = add 2, 3
@@ -1725,7 +1725,7 @@ or_join_0:
 <h4 id="example-diamond">Example (diamond)</h4>
 <p>Input IL:</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 func @main() -&gt; i64 {
 entry:
   %t0 = alloca 8
@@ -1744,7 +1744,7 @@ Join:
 </code></pre>
 <p>After <code>mem2reg</code>:</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 func @main() -&gt; i64 {
 entry:
   %t1 = icmp_eq 0, 0
@@ -1762,7 +1762,7 @@ Join(%a0:i64):
 <h4 id="example-loop">Example (loop)</h4>
 <p>Input IL:</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 func @main() -&gt; i64 {
 entry:
   %t0 = alloca 8
@@ -1781,7 +1781,7 @@ Exit:
 </code></pre>
 <p>After <code>mem2reg</code>:</p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 func @main() -&gt; i64 {
 entry:
   br L1(0)
@@ -1802,7 +1802,7 @@ Exit(%a1:i64):
 <h2 id="examples">Examples</h2>
 <h3 id="basic-to-il-examples">BASIC to IL Examples</h3>
 <p>The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 lines each) with their fully lowered IL</p>
-<p>modules. The examples below update that material to IL v0.2.0 while preserving the original teaching intent.</p>
+<p>modules. The examples below update that material to IL v0.3.0 while preserving the original teaching intent.</p>
 <p><strong>Legacy Notation:</strong> The examples in this section use legacy <code>@rt_*</code> function names for compatibility. These work when</p>
 <p>the runtime is built with <code>-DVIPER_RUNTIME_NS_DUAL=ON</code> (the current default). New code should use the canonical</p>
 <p><code>@Viper.*</code> names documented in the Runtime ABI section above. For example:</p>
@@ -1827,7 +1827,7 @@ Exit(%a1:i64):
 </code></pre>
 <p><strong>IL</strong></p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @rt_print_str(str) -&gt; void
 extern @rt_print_i64(i64) -&gt; void
 global const str @.L0 = &quot;HELLO&quot;
@@ -1877,7 +1877,7 @@ done:
 </code></pre>
 <p><strong>IL</strong></p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @rt_print_str(str) -&gt; void
 extern @rt_print_i64(i64) -&gt; void
 global const str @.L0 = &quot;SUM 1..10&quot;
@@ -1929,7 +1929,7 @@ done:
 </code></pre>
 <p><strong>IL</strong></p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @rt_print_str(str) -&gt; void
 extern @rt_print_i64(i64) -&gt; void
 global const str @.L0 = &quot;TABLE 5x5&quot;
@@ -1989,7 +1989,7 @@ outer_done:
 </code></pre>
 <p><strong>IL</strong></p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @rt_print_str(str) -&gt; void
 extern @rt_print_i64(i64) -&gt; void
 extern @rt_input_line() -&gt; str
@@ -2046,7 +2046,7 @@ done:
 </code></pre>
 <p><strong>IL</strong></p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @rt_print_str(str) -&gt; void
 extern @rt_print_i64(i64) -&gt; void
 extern @rt_str_len(str) -&gt; i64
@@ -2113,7 +2113,7 @@ exit:
 </code></pre>
 <p><strong>IL</strong></p>
 <pre><code data-lang="llvm">
-il 0.2.0
+il 0.3.0
 extern @rt_alloc(i64) -&gt; ptr
 extern @rt_print_f64(f64) -&gt; void
 extern @rt_print_str(str) -&gt; void

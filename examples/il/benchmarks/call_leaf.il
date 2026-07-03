@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // call_leaf: call-overhead and caller-saved-register litmus.
 // A hot loop calling a small leaf function 20M times. The callee has six

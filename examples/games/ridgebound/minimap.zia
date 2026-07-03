@@ -9,7 +9,7 @@ bind "./config";
 bind "./terrain";
 bind "./mathutil";
 
-class ShowcaseMinimap {
+class RidgeboundMinimap {
     hide Pixels minimapBase;
 
     expose func build(land: Terrain3D) {

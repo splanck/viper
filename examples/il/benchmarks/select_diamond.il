@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 // select_diamond: if-conversion / conditional-select litmus.
 // Data-dependent min and clamp diamonds with a pseudo-random condition

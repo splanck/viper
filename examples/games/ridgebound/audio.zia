@@ -7,7 +7,7 @@ bind Viper.Sound;
 bind "./config";
 bind "./terrain";
 
-class ShowcaseAudio {
+class RidgeboundAudio {
     hide Sound3D audio;
     hide Sound chimeClip;
     hide Sound humClip;

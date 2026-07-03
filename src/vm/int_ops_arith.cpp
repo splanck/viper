@@ -488,4 +488,32 @@ VM::ExecResult handleAShr(VM &vm,
     (void)ip;
     return ops::applyBinary(vm, fr, in, ArithmeticShiftRightOp{});
 }
+
+/// @brief Execute the @c select opcode choosing between two same-typed values.
+/// @details Both arms are plain values (no short-circuit): the condition slot
+///          picks operand 1 when non-zero and operand 2 otherwise, and the
+///          chosen slot is stored unmodified so integer and floating payloads
+///          both pass through.
+/// @param vm Virtual machine instance executing the opcode.
+/// @param fr Active frame providing operand storage.
+/// @param in Instruction describing the selection.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction index within the block (unused).
+/// @return Execution result describing whether interpretation should continue.
+VM::ExecResult handleSelect(VM &vm,
+                            Frame &fr,
+                            const il::core::Instr &in,
+                            const VM::BlockMap &blocks,
+                            const il::core::BasicBlock *&bb,
+                            size_t &ip) {
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    const Slot cond = VMAccess::eval(vm, fr, in.operands[0]);
+    const Slot chosen = VMAccess::eval(vm, fr, in.operands[cond.i64 != 0 ? 1 : 2]);
+    ops::storeResult(fr, in, chosen);
+    return {};
+}
 } // namespace il::vm::detail::integer

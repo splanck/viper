@@ -359,9 +359,19 @@ static void test_http_server_response_filters_managed_and_injected_headers(void)
         rt_http_server_test_build_response(200, "{}", 2, header_names, header_values, 3, &resp_len);
     ASSERT(resp != NULL);
     if (resp) {
-        ASSERT(strstr(resp, "Connection: keep-alive\r\n") == NULL);
-        ASSERT(strstr(resp, "X-Good: ok\r\n") != NULL);
-        ASSERT(strstr(resp, "X-Injected: yes\r\n") == NULL);
+        // The builder returns bytes + length, NOT a C string; strstr on the
+        // raw buffer reads past the allocation (ASan-caught). Search a
+        // NUL-terminated copy instead.
+        char *resp_z = (char *)malloc(resp_len + 1);
+        ASSERT(resp_z != NULL);
+        if (resp_z) {
+            memcpy(resp_z, resp, resp_len);
+            resp_z[resp_len] = '\0';
+            ASSERT(strstr(resp_z, "Connection: keep-alive\r\n") == NULL);
+            ASSERT(strstr(resp_z, "X-Good: ok\r\n") != NULL);
+            ASSERT(strstr(resp_z, "X-Injected: yes\r\n") == NULL);
+            free(resp_z);
+        }
     }
     free(resp);
 }

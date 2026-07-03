@@ -95,7 +95,7 @@ int64_t runCrossLayer(const std::string &src) {
 //=============================================================================
 
 TEST(MemoryConformance, AllocaStoreLoadRoundTrip) {
-    const int64_t result = runCrossLayer(R"(il 0.2.0
+    const int64_t result = runCrossLayer(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -109,7 +109,7 @@ entry:
 
 TEST(MemoryConformance, GepOffsetStoreLoad) {
     // Store two i64s into a 16-byte slot at offsets 0 and 8; read back offset 8.
-    const int64_t result = runCrossLayer(R"(il 0.2.0
+    const int64_t result = runCrossLayer(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %base = alloca 16
@@ -124,7 +124,7 @@ entry:
 }
 
 TEST(MemoryConformance, MultiStoreLastWins) {
-    const int64_t result = runCrossLayer(R"(il 0.2.0
+    const int64_t result = runCrossLayer(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -139,7 +139,7 @@ entry:
 
 TEST(MemoryConformance, NarrowStoreLoadPreservesLowBits) {
     // Store a value, reload, and mask to confirm sub-word memory traffic agrees.
-    const int64_t result = runCrossLayer(R"(il 0.2.0
+    const int64_t result = runCrossLayer(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -158,7 +158,7 @@ entry:
 TEST(EhConformance, DivByZeroCaughtReturnsKind) {
     // eh.push installs a handler; the checked divide raises; the handler reads the
     // trap kind and returns it. VM and native must agree on the caught kind.
-    const int64_t result = runCrossLayer(R"(il 0.2.0
+    const int64_t result = runCrossLayer(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   eh.push ^handler
@@ -179,7 +179,7 @@ handler(%err: Error, %tok: ResumeTok):
 
 TEST(EhConformance, OverflowCaughtReturnsKind) {
     // A different trap source (checked add overflow) routed through the handler.
-    const int64_t result = runCrossLayer(R"(il 0.2.0
+    const int64_t result = runCrossLayer(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   eh.push ^handler
@@ -199,7 +199,7 @@ handler(%err: Error, %tok: ResumeTok):
 
 TEST(EhConformance, NoTrapHandlerSkipped) {
     // With no trap raised, eh.pop unwinds the handler and normal flow returns 5.
-    const int64_t result = runCrossLayer(R"(il 0.2.0
+    const int64_t result = runCrossLayer(R"(il 0.3.0
 func @main() -> i64 {
 entry:
   eh.push ^handler

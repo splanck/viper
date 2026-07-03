@@ -459,6 +459,13 @@ LBL_ConstF64 : {
     DISPATCH_NEXT_FAST();
 }
 
+LBL_Select : {
+    vm.inline_handle_Select(state);
+    if (state.exitRequested) [[unlikely]]
+        goto LBL_SLOW_PATH;
+    DISPATCH_NEXT_FAST();
+}
+
 LBL_Call : {
     vm.inline_handle_Call(state);
     if (state.exitRequested) [[unlikely]]

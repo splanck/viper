@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 func @f(%arg:i32) -> void {
 entry(%arg:i32):
   switch.i32 %arg, ^default(%arg) junk, 0 -> ^case0(%arg)

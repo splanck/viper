@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 func @f() -> i64 {
 entry:
   br next(1

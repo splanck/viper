@@ -1,4 +1,4 @@
-# Runtime / API Bug Log — game3d-showcase enhancement work
+# Runtime / API Bug Log — ridgebound enhancement work
 
 A running record of Viper compiler / runtime / 3D-API issues found while extending this demo.
 Each entry: date, severity, area, symptom, repro, workaround/status.
@@ -24,7 +24,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   `Trap @main...: DomainError (code=0): FBX.Load: cannot open file` (statements after never run).
 - **Workaround:** Historical: probe with `Viper.IO.File.Exists(path)` before loading. Now obsolete —
   the demo's `spawnForest` relies on the `null` return to try candidate paths
-  (`MapleTree_1.fbx`, then `examples/games/game3d-showcase/MapleTree_1.fbx`) and uses whichever loads,
+  (`MapleTree_1.fbx`, then `examples/games/ridgebound/MapleTree_1.fbx`) and uses whichever loads,
   so the forest resolves whether the demo is run from the repo root or from inside the folder.
 - **Status:** Resolved 2026-06-04. `SceneAsset.Load` now routes FBX files through a recoverable FBX
   loader and returns `null` for missing/unreadable/unrecognized FBX files. Direct `FBX.Load` remains
@@ -150,7 +150,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 - **Severity:** P1 (wrong native output under optimization)
 - **Area:** native AArch64 codegen — IL-to-MIR cross-block temp reloads
   (`src/codegen/aarch64/LowerILToMIR.cpp`)
-- **Symptom:** `game3d-showcase` plants **0** maples in a `-O1` native binary but **152** at `-O0`
+- **Symptom:** `ridgebound` plants **0** maples in a `-O1` native binary but **152** at `-O0`
   and **152** interpreted. All inputs are byte-identical across native/interpreted (model
   `meshes=3`, terrain height `14.41`, `hash01` values, every `config` constant), and
   `canPlantTree(...)` returns `true` when called standalone — yet inside the optimized
@@ -159,7 +159,7 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   before its defining block had populated `tempRegClass`, so lowering defaulted it to GPR and emitted
   `LdrRegFpImm` + `SCvtF` instead of `LdrFprFpImm`. That converted the raw double bits to a huge
   numeric value and made the floating-point bounds checks fail.
-- **Repro:** `viper build examples/games/game3d-showcase -o /tmp/g3d -O1` → "planted 0";
+- **Repro:** `viper build examples/games/ridgebound -o /tmp/g3d -O1` → "planted 0";
   same with `-O0` → "planted 152".
 - **Workaround:** Historical: build the showcase at `-O0`.
 - **Status:** Fixed 2026-06-04. `LowerILToMIR` now seeds temp register classes from the whole IL

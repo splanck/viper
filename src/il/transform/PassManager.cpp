@@ -32,6 +32,7 @@
 #include "il/transform/ArrayFastPathOpt.hpp"
 #include "il/transform/CheckOpt.hpp"
 #include "il/transform/Devirtualize.hpp"
+#include "il/transform/IfConvert.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/LateCleanup.hpp"
 #include "il/transform/LoopUnroll.hpp"
@@ -121,6 +122,7 @@ PassManager::PassManager() {
     registerArrayFastPathOptPass(passRegistry_);
     registerRuntimeFastPathOptPass(passRegistry_);
     registerDevirtualizePass(passRegistry_);
+    registerIfConvertPass(passRegistry_);
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
@@ -216,6 +218,10 @@ PassManager::PassManager() {
                       "peephole",
                       "gvn",
                       "earlycse",
+                      // If-conversion runs after every check-opt so branch-
+                      // derived range proofs are already consumed, and before
+                      // the final cleanup so emptied blocks fold away.
+                      "if-conv",
                       "dce",
                       "simplify-cfg",
                       "dse",

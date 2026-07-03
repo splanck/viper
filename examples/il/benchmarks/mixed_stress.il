@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 func @helper(i64 %x) -> i64 {
 entry(%x0: i64):

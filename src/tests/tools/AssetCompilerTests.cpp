@@ -80,11 +80,11 @@ TEST(AssetCompiler, SanitizesPackOutputName) {
     fs::remove_all(root, ec);
 }
 
-TEST(AssetCompiler, Game3DShowcaseRequiredAssetsArePresent) {
+TEST(AssetCompiler, RidgeboundRequiredAssetsArePresent) {
 #if defined(VIPER_SOURCE_DIR)
-    fs::path output = makeTempRoot("viper_game3d_showcase_asset_compiler");
+    fs::path output = makeTempRoot("viper_ridgebound_asset_compiler");
     auto project = il::tools::common::resolveProject(
-        (fs::path(VIPER_SOURCE_DIR) / "examples" / "games" / "game3d-showcase").string());
+        (fs::path(VIPER_SOURCE_DIR) / "examples" / "games" / "ridgebound").string());
     ASSERT_TRUE(project);
 
     std::string err;
@@ -101,7 +101,8 @@ TEST(VpaWriter, RejectsDuplicateEntries) {
     const uint8_t data[] = {'x'};
     viper::asset::VpaWriter writer;
     writer.addEntry("assets/a.txt", data, sizeof(data), false);
-    EXPECT_THROWS(writer.addEntry("assets/a.txt", data, sizeof(data), false), std::invalid_argument);
+    EXPECT_THROWS(writer.addEntry("assets/a.txt", data, sizeof(data), false),
+                  std::invalid_argument);
 }
 
 TEST(VpaWriter, RejectsUnsafeNames) {

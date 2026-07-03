@@ -33,7 +33,7 @@ debugging.
 Create a file `hello.il`:
 
 ```llvm
-il 0.2.0
+il 0.3.0
 
 extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "Hello, Viper IL!"
@@ -80,7 +80,7 @@ Hello, Viper IL!
 Every IL file starts with a version declaration:
 
 ```llvm
-il 0.2.0
+il 0.3.0
 ```
 
 This pins the expected IL grammar version.

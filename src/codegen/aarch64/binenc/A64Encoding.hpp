@@ -279,6 +279,7 @@ inline constexpr uint32_t kCbnz = 0xB5000000;  // cbnz Xt, label
 inline constexpr uint32_t kTbz = 0x36000000;   // tbz Rt, #bit, label (b5 in bit 31)
 inline constexpr uint32_t kTbnz = 0x37000000;  // tbnz Rt, #bit, label (b5 in bit 31)
 inline constexpr uint32_t kAdr = 0x10000000;   // adr Xd, label (+/-1MB byte offset)
+inline constexpr uint32_t kFCsel = 0x1E600C00; // fcsel Dd, Dn, Dm, cond
 inline constexpr uint32_t kBrReg = 0xD61F0000; // br Xn (register-indirect branch)
 inline constexpr uint32_t kLdrswRegLsl2 = 0xB8A07800; // ldrsw Xt, [Xn, Xm, lsl #2]
 inline constexpr uint32_t kAddShifted = 0x8B000000;   // add Xd, Xn, Xm

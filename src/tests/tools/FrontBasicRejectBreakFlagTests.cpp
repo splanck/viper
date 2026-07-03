@@ -27,7 +27,12 @@ bool gCompileCalled = false;
 
 namespace il::frontends::basic {
 
-void DiagnosticEmitter::printAll(std::ostream &) const {}
+// NOTE: DiagnosticEmitter::printAll is deliberately NOT stubbed here. The
+// real definition's archive member (DiagnosticEmitter.cpp.o) gets pulled
+// into this link by other references, and a local stub would be a duplicate
+// strong symbol (the ASan/Debug build diagnosed exactly that). The real
+// printAll on an emitter with no recorded diagnostics prints nothing, which
+// is all this mock flow needs.
 
 bool BasicCompilerResult::succeeded() const {
     return false;

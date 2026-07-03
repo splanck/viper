@@ -39,7 +39,7 @@ struct CliScenario {
 };
 
 const std::array<CliScenario, 3> kScenarios = {{{"BranchPrint",
-                                                 {R"(il 0.2.0
+                                                 {R"(il 0.3.0
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 
@@ -64,7 +64,7 @@ exit:
                                                   {}},
                                                  {false, std::nullopt}},
                                                 {"BranchPrintSpecialChar",
-                                                 {R"(il 0.2.0
+                                                 {R"(il 0.3.0
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 
@@ -89,7 +89,7 @@ exit:
                                                   {}},
                                                  {false, std::nullopt}},
                                                 {"Material3DAnisotropyRoundTrip",
-                                                 {R"(il 0.2.0
+                                                 {R"(il 0.3.0
 extern @Viper.Graphics3D.Material3D.New() -> ptr
 extern @Viper.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
 extern @Viper.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64

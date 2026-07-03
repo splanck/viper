@@ -72,6 +72,31 @@ static int game3d_entity_validate_controller_world(rt_game3d_entity *entity,
                                                    rt_game3d_world *world,
                                                    const char *api_name);
 
+/// @brief Compute walking-controller X/Z input without Space/Shift/Ctrl vertical keys.
+static void game3d_input_planar_move_axis_components(rt_game3d_input *input,
+                                                     double *out_x,
+                                                     double *out_z) {
+    double x = 0.0;
+    double z = 0.0;
+    if (game3d_input_key_down(input, rt_keyboard_key_d()) ||
+        game3d_input_key_down(input, rt_keyboard_key_right()))
+        x += 1.0;
+    if (game3d_input_key_down(input, rt_keyboard_key_a()) ||
+        game3d_input_key_down(input, rt_keyboard_key_left()))
+        x -= 1.0;
+    if (game3d_input_key_down(input, rt_keyboard_key_w()) ||
+        game3d_input_key_down(input, rt_keyboard_key_up()))
+        z += 1.0;
+    if (game3d_input_key_down(input, rt_keyboard_key_s()) ||
+        game3d_input_key_down(input, rt_keyboard_key_down()))
+        z -= 1.0;
+    game3d_normalize_xz(&x, &z, 0.0, 0.0);
+    if (out_x)
+        *out_x = x;
+    if (out_z)
+        *out_z = z;
+}
+
 /// @brief GC finalizer for a character controller: release its world, entity, and
 ///   underlying character references.
 static void game3d_character_controller_finalize(void *obj) {
@@ -363,7 +388,7 @@ double rt_game3d_character_controller_get_gravity(void *obj) {
                       : 0.0;
 }
 
-/// @brief Set the gravity acceleration (non-finite resets to the default).
+/// @brief Set the downward gravity acceleration magnitude (non-finite resets to the default).
 void rt_game3d_character_controller_set_gravity(void *obj, double gravity) {
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.set_gravity: invalid controller");
@@ -373,10 +398,10 @@ void rt_game3d_character_controller_set_gravity(void *obj, double gravity) {
 }
 
 /// @brief Advance the character one frame from input and camera orientation.
-/// @details Builds a camera-relative move vector from the WASD axis (clamped to unit
-///   length), integrates jump/gravity against the grounded state, moves the Character3D
-///   by `dt` (itself clamped), and syncs the result back onto the entity. Traps on
-///   invalid input or a non-Camera3D camera.
+/// @details Builds a camera-relative X/Z move vector from WASD/arrow keys
+///   (clamped to unit length), integrates jump/downward gravity against the grounded
+///   state, moves the Character3D by `dt` (itself clamped), and syncs the result
+///   back onto the entity. Traps on invalid input or a non-Camera3D camera.
 void rt_game3d_character_controller_update(void *obj, void *input_obj, void *camera, double dt) {
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.update: invalid controller");
@@ -393,14 +418,12 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
     controller->vertical_velocity =
         game3d_clamp_abs_or(controller->vertical_velocity, 0.0, RT_GAME3D_CONTROLLER_SPEED_MAX);
     double move_x = 0.0;
-    double move_y = 0.0;
     double move_z = 0.0;
-    game3d_input_move_axis_components((rt_game3d_input *)input_obj, &move_x, &move_y, &move_z);
+    game3d_input_planar_move_axis_components((rt_game3d_input *)input_obj, &move_x, &move_z);
     void *forward = rt_camera3d_get_forward(camera);
     void *right = rt_camera3d_get_right(camera);
 
     move_x = game3d_finite_or(move_x, 0.0);
-    move_y = game3d_finite_or(move_y, 0.0);
     move_z = game3d_finite_or(move_z, 0.0);
     double move_len = sqrt(move_x * move_x + move_z * move_z);
     if (isfinite(move_len) && move_len > 1.0) {
@@ -423,10 +446,10 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
     if (grounded) {
         if (controller->vertical_velocity < 0.0)
             controller->vertical_velocity = -0.5;
-        if (rt_game3d_input_pressed(input_obj, rt_game3d_key_space()) || move_y > 0.5)
+        if (rt_game3d_input_pressed(input_obj, rt_game3d_key_space()))
             controller->vertical_velocity = jump_speed;
     } else {
-        controller->vertical_velocity += gravity * dt;
+        controller->vertical_velocity -= gravity * dt;
         controller->vertical_velocity = game3d_clamp(controller->vertical_velocity, -100.0, 100.0);
     }
 

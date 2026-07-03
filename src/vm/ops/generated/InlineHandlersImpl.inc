@@ -465,6 +465,13 @@ void VM::inline_handle_ConstF64(ExecState &st) {
     handleInlineResult(st, exec);
 }
 
+void VM::inline_handle_Select(ExecState &st) {
+    assert(st.currentInstr && "currentInstr set by dispatch loop");
+    const Instr &instr = *st.currentInstr;
+    ExecResult exec = il::vm::detail::handleSelect(*this, st.fr, instr, *st.blocks, st.bb, st.ip);
+    handleInlineResult(st, exec);
+}
+
 void VM::inline_handle_Call(ExecState &st) {
     assert(st.currentInstr && "currentInstr set by dispatch loop");
     const Instr &instr = *st.currentInstr;

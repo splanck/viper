@@ -13,7 +13,7 @@
 
 **[Zia](docs/zia-reference.md)** is the flagship language: a modern, statically typed language with classes, generics, enums, lambdas, modules, pattern matching, and direct access to the Viper runtime. A **[BASIC](docs/basic-reference.md)** frontend is included for education, compatibility experiments, and quick prototypes.
 
-> **Status:** Pre-alpha, active development. The current source tree is `0.2.99-snapshot`; the IL reference is `0.2.0`. APIs, diagnostics, IL rules, and tooling are still evolving.
+> **Status:** Pre-alpha, active development. The current source tree is `0.2.99.20260702`; the IL reference is `0.3.0`. APIs, diagnostics, IL rules, and tooling are still evolving.
 
 ---
 
@@ -25,7 +25,7 @@
 - [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.7-dev.zip)
 - [Release notes](docs/release_notes/Viper_Release_Notes_0_2_7.md)
 
-**In development:** `0.2.99-snapshot` on `master`. See the [draft v0.2.99 release notes](docs/release_notes/Viper_Release_Notes_0_2_99.md).
+**In development:** `0.2.99.20260702` on `master`. See the [draft v0.2.99 release notes](docs/release_notes/Viper_Release_Notes_0_2_99.md).
 
 ```sh
 git clone https://github.com/splanck/viper.git
@@ -86,7 +86,7 @@ See the [Getting Started Guide](docs/getting-started.md) for platform-specific s
 |-----------|-------------|
 | **[Zia](docs/zia-reference.md)** | Statically typed application language with classes, generics, modules, lambdas, enums, and pattern matching |
 | **[BASIC](docs/basic-reference.md)** | Educational and prototyping frontend that lowers to the same IL |
-| **[Viper IL](docs/il-guide.md)** | Typed, block-structured SSA-style IR with a normative `0.2.0` reference |
+| **[Viper IL](docs/il-guide.md)** | Typed, block-structured SSA-style IR with a normative `0.3.0` reference |
 | **[Optimizer](docs/il-passes.md)** | Registered O1/O2 pipelines covering SSA promotion, SCCP, GVN, LICM, loop cleanup, inlining, devirtualization, runtime fast paths, and cleanup passes |
 | **[VM](docs/vm.md)** | IL execution engine for fast bring-up, tests, debugging, and step-budgeted runs |
 | **[Native backends](docs/backend.md)** | AArch64 and x86-64 code generators with backend optimization, register allocation, assembly emission, and executable output |
@@ -118,7 +118,7 @@ The [examples](examples/README.md) tree includes applications, games, 3D scenes,
 | [Crackman](examples/games/crackman/) | Maze chase game with pathfinding and mode-driven AI |
 | [XENOSCAPE](examples/games/xenoscape/) | Metroidvania-style sidescroller with abilities, enemies, levels, and saves |
 | [3D Bowling](examples/games/3dbowling/) | Physics-driven 3D bowling with camera modes |
-| [Game3D Showcase](examples/games/game3d-showcase/) | Open-world 3D runtime demo with terrain, water, skybox, PBR materials, and post-FX |
+| [Ridgebound](examples/games/ridgebound/) | Open-world Game3D sample with terrain, water, skybox, PBR materials, beacon objectives, and post-FX |
 
 ```sh
 viper run examples/games/chess/
@@ -190,7 +190,7 @@ func start() {
 **Representative IL:**
 
 ```llvm
-il 0.2.0
+il 0.3.0
 extern @Viper.Text.Fmt.Int(i64) -> str
 extern @Viper.Terminal.Say(str) -> void
 global const str @.L0 = "HELLO"

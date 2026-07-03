@@ -128,7 +128,7 @@ if (NOT _fixed_oob_err MATCHES "error\\[V-ZIA-BOUNDS\\]" OR
 endif ()
 
 set(_gaddr_il "${TEST_WORK_DIR}/bytecode_gaddr_unknown_global.il")
-file(WRITE "${_gaddr_il}" "il 0.2.0\n"
+file(WRITE "${_gaddr_il}" "il 0.3.0\n"
         "func @main() -> ptr {\n"
         "entry:\n"
         "  %p = gaddr @missing\n"

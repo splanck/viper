@@ -113,7 +113,7 @@ fi
 ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
-    "game3d-showcase:${GAMES_DIR}/game3d-showcase"
+    "ridgebound:${GAMES_DIR}/ridgebound"
     "crackman:${GAMES_DIR}/crackman"
     "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"
@@ -174,7 +174,7 @@ run_demo() {
     fi
 
     case "$name" in
-        3dbowling|game3d-showcase|vipersql|xenoscape)
+        3dbowling|ridgebound|vipersql|xenoscape)
             timeout_secs=10
             ;;
     esac

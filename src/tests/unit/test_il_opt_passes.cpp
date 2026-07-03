@@ -62,7 +62,7 @@ int main() {
 
     {
         std::ofstream ofs(input.path);
-        ofs << "il 0.2.0\n";
+        ofs << "il 0.3.0\n";
         ofs << "extern @rt_abs_i64(i64) -> i64\n";
         ofs << "func @main() -> i64 {\n";
         ofs << "entry:\n";

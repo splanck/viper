@@ -111,7 +111,7 @@ func bumpHeight(x: Integer, y: Integer, size: Integer) -> Float {
     return (n + 0.0) / 23.0;
 }
 
-class ShowcaseTerrain {
+class RidgeboundTerrain {
     hide Terrain3D land;
     hide Pixels splatMap;
     hide Pixels heightmap;
@@ -121,7 +121,7 @@ class ShowcaseTerrain {
         land = Terrain3D.New(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
         // Retain the heightmap Pixels so a matching physics heightfield collider
         // can be built from the exact same data (see game.zia setup).
-        heightmap = createShowcaseHeightmap(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
+        heightmap = createRidgeboundHeightmap(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
         Terrain3D.SetHeightmap(land, heightmap);
         Terrain3D.SetScale(
             land, config.TERRAIN_SCALE_X, config.TERRAIN_SCALE_Y, config.TERRAIN_SCALE_Z);
@@ -247,7 +247,7 @@ class ShowcaseTerrain {
         return tex;
     }
 
-    hide func createShowcaseHeightmap(width: Integer, depth: Integer) -> Pixels {
+    hide func createRidgeboundHeightmap(width: Integer, depth: Integer) -> Pixels {
         var heights = Pixels.New(width, depth);
         var noise = PerlinNoise.New(42);
         var lastX = width - 1;
@@ -257,14 +257,14 @@ class ShowcaseTerrain {
             for (var px: Integer = 0; px < width; px = px + 1) {
                 var nx = (px + 0.0) / (lastX + 0.0);
                 var nz = (pz + 0.0) / (lastZ + 0.0);
-                heights.Set(px, pz, heightPixel(sampleShowcaseHeight(noise, nx, nz)));
+                heights.Set(px, pz, heightPixel(sampleRidgeboundHeight(noise, nx, nz)));
             }
         }
 
         return heights;
     }
 
-    hide func sampleShowcaseHeight(noise: PerlinNoise, nx: Float, nz: Float) -> Float {
+    hide func sampleRidgeboundHeight(noise: PerlinNoise, nx: Float, nz: Float) -> Float {
         var rolling = noise01(
             noise,
             nx * config.TERRAIN_NOISE_SCALE,

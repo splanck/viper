@@ -1540,6 +1540,9 @@ int main() {
                     return MInstr{opc, {x0, label("target"), imm(3)}};
                 case MOpcode::JumpTable:
                     return MInstr{opc, {x0, label(".Ljt"), label("target")}};
+                case MOpcode::FCsel:
+                    return MInstr{opc, {fpr(PhysReg::V0), fpr(PhysReg::V1), fpr(PhysReg::V2),
+                                        cond("ne")}};
                 case MOpcode::Bl:
                     return MInstr{opc, {label("target")}};
                 case MOpcode::Blr:
@@ -1706,10 +1709,10 @@ int main() {
 
         // Verify we covered the expected counts.
         CHECK(pseudoCount == 5);    // 5 pseudo-opcodes
-        CHECK(encodedCount == 101); // 106 total - 5 pseudo = 101 real opcodes
+        CHECK(encodedCount == 102); // 107 total - 5 pseudo = 102 real opcodes
 
-        if (encodedCount == 101 && pseudoCount == 5)
-            std::cout << "  Encoding coverage: " << encodedCount << "/101 opcodes OK, "
+        if (encodedCount == 102 && pseudoCount == 5)
+            std::cout << "  Encoding coverage: " << encodedCount << "/102 opcodes OK, "
                       << pseudoCount << " pseudo-opcodes skipped.\n";
     }
 

@@ -1,4 +1,4 @@
-il 0.2.0
+il 0.3.0
 
 global i64 @counter = 41
 
