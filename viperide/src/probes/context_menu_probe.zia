@@ -1,10 +1,16 @@
 module context_menu_probe;
 
-// Phase 1 regression probe for the context-menu overhaul. It verifies the two
-// new context menus are constructed and idle, and exercises the tab-menu
-// multi-close helpers + GetDocument bounds against a real DocumentManager.
-// Assertions are made on DocumentManager state (deterministic, display-light);
-// the menus themselves are GUI overlays that only react inside the frame loop.
+// ============================================================================
+// MODULE: context_menu_probe
+// PURPOSE: Regression probe for editor/tree/tab context-menu construction.
+//
+// WHERE-THIS-FITS: Context menus are UI surfaces, while command handlers own the
+//          actual behavior. This probe checks construction and deterministic
+//          document-manager side effects without depending on pointer input.
+//
+// TEACHING-NOTE: Context-menu tests should separate menu availability from
+//          command behavior so routing regressions are easy to locate.
+// ============================================================================
 
 bind "../ui/app_shell";
 bind "../core/document_manager";

@@ -26,6 +26,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_action.h"
+#include "rt_canvas3d_clusters.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics_internal.h"
 #include "rt_heap.h"
@@ -1341,6 +1342,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->last_light_snapshot);
     c->last_light_snapshot = NULL;
     c->last_light_snapshot_valid = 0;
+    free(c->cluster_tables);
+    c->cluster_tables = NULL;
+    c->cluster_table_count = 0;
     free(c->sort_cmds);
     c->sort_cmds = NULL;
     c->sort_capacity = 0;
@@ -1532,6 +1536,16 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
         }
     }
     vgfx_set_gpu_present(c->gfx_win, c->backend != &vgfx3d_software_backend);
+
+    /* Plan 07: clustered forward+ defaults on for GPU backends (identified by the
+     * present_postfx hook; software keeps the 16-light flat path and its perf
+     * profile). VIPER_3D_CLUSTERS=0 is the bisection escape hatch. */
+    {
+        const char *clusters_env = getenv("VIPER_3D_CLUSTERS");
+        if (!(clusters_env && clusters_env[0] == '0' && clusters_env[1] == '\0') &&
+            c->backend->present_postfx)
+            c->clustered_lighting = 1;
+    }
 
     vgfx_set_resize_callback(c->gfx_win, rt_canvas3d_on_resize, c);
 
@@ -2214,22 +2228,34 @@ int64_t rt_canvas3d_get_light_count(void *obj) {
 /// @brief Enable the clustered-lighting path only when advertised by the backend.
 void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    const char *clusters_env;
     if (!c)
         return;
     if (!enabled) {
         c->clustered_lighting = 0;
         return;
     }
+    clusters_env = getenv("VIPER_3D_CLUSTERS");
+    if (clusters_env && clusters_env[0] == '0' && clusters_env[1] == '\0') {
+        c->clustered_lighting = 0; /* env kill switch wins over explicit enables */
+        return;
+    }
     if (!rt_canvas3d_backend_supports(c, rt_const_cstr("clustered-lighting"))) {
         c->clustered_lighting = 0;
-        rt_trap("Canvas3D.SetClusteredLighting: clustered lighting is not supported by this "
+        rt_trap("Canvas3D.ClusteredLighting: clustered lighting is not supported by this "
                 "backend");
         return;
     }
     c->clustered_lighting = 1;
 }
 
-/// @brief Report the active lighting budget; current non-clustered path is fixed at 16.
+/// @brief Report whether the clustered-lighting path is currently enabled.
+int8_t rt_canvas3d_get_clustered_lighting(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return (c && c->clustered_lighting) ? 1 : 0;
+}
+
+/// @brief Report the active lighting budget: 64 when clustered lighting is on, else 16.
 int64_t rt_canvas3d_get_max_active_lights(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return canvas3d_active_light_limit(c);

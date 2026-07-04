@@ -1,15 +1,22 @@
 module terminal_open_probe;
 
+// ============================================================================
+// MODULE: terminal_open_probe
+// PURPOSE: Display-backed probe for opening the integrated terminal panel.
+//
+// WHERE-THIS-FITS: AppShell owns the Terminal tab and panel widgets; the terminal
+//          controller owns PTY lifecycle. This probe validates the shell surface
+//          exists and can become visible.
+//
+// TEACHING-NOTE: UI availability probes should check handles, initial hidden
+//          state, and the visible transition separately.
+// ============================================================================
+
 bind "../ui/app_shell";
 bind "../terminal/terminal_controller";
 
 bind Viper.GUI as GUI;
 bind Terminal = Viper.Terminal;
-
-// Headless probe for opening the integrated terminal (sub-phase 5D). Verifies
-// the View > Terminal menu item and the terminal panel exist, the panel starts
-// hidden, and ShowTerminalPanel() reveals it — i.e. there IS a way to open the
-// terminal and it works.
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();

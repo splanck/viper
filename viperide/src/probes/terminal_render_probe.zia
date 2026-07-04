@@ -18,6 +18,18 @@ bind "../ui/app_shell";
 bind Viper.GUI as GUI;
 bind Terminal = Viper.Terminal;
 
+// ============================================================================
+// MODULE: terminal_render_probe
+// PURPOSE: Display-backed probe for OutputPane terminal-mode rendering.
+//
+// WHERE-THIS-FITS: TerminalController owns PTY session state, while OutputPane
+//          owns escape handling and visible terminal text. This probe focuses on
+//          rendering behavior after terminal bytes are appended.
+//
+// TEACHING-NOTE: Terminal rendering is intentionally limited. Probe the supported
+//          subset explicitly and keep full-screen TUI behavior out of scope.
+// ============================================================================
+
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
     Terminal.Say("RESULT: fail " + reason);

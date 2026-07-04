@@ -285,6 +285,14 @@ static void gl_bind_context_uniform_blocks(gl_context_t *ctx) {
         gl.UniformBlockBinding(ctx->program, prev_main_block, 1);
     if (shadow_block != GL_INVALID_INDEX)
         gl.UniformBlockBinding(ctx->shadow_program, shadow_block, 0);
+    {
+        GLuint offsets_block = gl.GetUniformBlockIndex(ctx->program, "ClusterOffsets");
+        GLuint indices_block = gl.GetUniformBlockIndex(ctx->program, "ClusterIndices");
+        if (offsets_block != GL_INVALID_INDEX)
+            gl.UniformBlockBinding(ctx->program, offsets_block, 2);
+        if (indices_block != GL_INVALID_INDEX)
+            gl.UniformBlockBinding(ctx->program, indices_block, 3);
+    }
 }
 
 /// @brief Generate VAOs, buffers, UBOs, and morph texture-buffer handles for the context.
@@ -302,6 +310,8 @@ static int gl_generate_context_objects(gl_context_t *ctx) {
     gl.GenBuffers(1, &ctx->prev_instance_vbo);
     gl.GenBuffers(1, &ctx->bone_ubo);
     gl.GenBuffers(1, &ctx->prev_bone_ubo);
+    gl.GenBuffers(1, &ctx->cluster_offsets_ubo);
+    gl.GenBuffers(1, &ctx->cluster_indices_ubo);
     gl.GenBuffers(1, &ctx->morph_buffer);
     gl.GenBuffers(1, &ctx->morph_normal_buffer);
     gl.GenBuffers(1, &ctx->skybox_vbo);
@@ -345,6 +355,18 @@ static int gl_init_streaming_buffers(gl_context_t *ctx) {
     gl.BufferData(
         GL_UNIFORM_BUFFER, (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES, NULL, GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
+    gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->cluster_offsets_ubo);
+    gl.BufferData(GL_UNIFORM_BUFFER,
+                  (GLsizeiptr)((sizeof(((vgfx3d_cluster_table_t *)0)->offsets) + 15u) & ~15u),
+                  NULL,
+                  GL_DYNAMIC_DRAW);
+    gl.BindBufferBase(GL_UNIFORM_BUFFER, 2, ctx->cluster_offsets_ubo);
+    gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->cluster_indices_ubo);
+    gl.BufferData(GL_UNIFORM_BUFFER,
+                  (GLsizeiptr)((sizeof(((vgfx3d_cluster_table_t *)0)->indices) + 15u) & ~15u),
+                  NULL,
+                  GL_DYNAMIC_DRAW);
+    gl.BindBufferBase(GL_UNIFORM_BUFFER, 3, ctx->cluster_indices_ubo);
     return gl_upload_ok();
 }
 
@@ -480,6 +502,10 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->bone_ubo);
     if (ctx->prev_bone_ubo)
         gl.DeleteBuffers(1, &ctx->prev_bone_ubo);
+    if (ctx->cluster_offsets_ubo)
+        gl.DeleteBuffers(1, &ctx->cluster_offsets_ubo);
+    if (ctx->cluster_indices_ubo)
+        gl.DeleteBuffers(1, &ctx->cluster_indices_ubo);
     if (ctx->morph_buffer)
         gl.DeleteBuffers(1, &ctx->morph_buffer);
     if (ctx->instance_vbo)
@@ -764,6 +790,10 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteBuffers(1, &ctx->bone_ubo);
     if (ctx->prev_bone_ubo)
         gl.DeleteBuffers(1, &ctx->prev_bone_ubo);
+    if (ctx->cluster_offsets_ubo)
+        gl.DeleteBuffers(1, &ctx->cluster_offsets_ubo);
+    if (ctx->cluster_indices_ubo)
+        gl.DeleteBuffers(1, &ctx->cluster_indices_ubo);
     if (ctx->morph_buffer)
         gl.DeleteBuffers(1, &ctx->morph_buffer);
     if (ctx->instance_vbo)

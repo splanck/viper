@@ -1,5 +1,17 @@
 module phase0_phase1_probe;
 
+// ============================================================================
+// MODULE: phase0_phase1_probe
+// PURPOSE: Headless regression coverage for core IDE model and command helpers.
+//
+// WHERE-THIS-FITS: This probe exercises early ViperIDE slices: documents,
+//          settings/session persistence, command registry, language gates,
+//          project helpers, and workspace edit safety.
+//
+// TEACHING-NOTE: Keep phase probes deterministic and file-system isolated. They
+//          should validate model contracts without depending on visual rendering.
+// ============================================================================
+
 bind "../commands/command_registry";
 bind "../commands/edit_commands";
 bind "../commands/file_commands";

@@ -1,5 +1,51 @@
 # Plan 07 — Clustered Forward+ Light Culling (CPU Froxel Binning)
 
+> **Status (2026-07-03): IMPLEMENTED (with one documented scope change: `VGFX3D_MAX_LIGHTS` stays 64).**
+>
+> - **Binning core** (`render/rt_canvas3d_clusters.c/.h`): 16×9×24 froxel grid,
+>   exponential Z slicing, influence radius from `intensity/(1+atten·d²) = 1/255`
+>   (zero attenuation ⇒ unbounded sentinel), conservative projected-AABB XY rects
+>   (any behind-eye corner ⇒ full-row coverage), u16 prefix-sum offsets + index
+>   list capped at `VGFX3D_MAX_CLUSTER_LIGHT_INDICES` (8192) with order-stable
+>   per-cluster truncation and an overflow counter (`c->cluster_overflow_total`).
+>   Tables live in a revision-keyed ring of 4 on the canvas, invalidated at frame
+>   Begin (binning is camera-dependent); draws carry `cmd->cluster_table` next to
+>   the plan-04 `lights_revision` stamp. `build_light_params` now emits
+>   directional/ambient lights first (the "global prefix" the shader loops flatly)
+>   — order-independent sum, so flat-path output is unchanged.
+> - **Shaders** (all three GPU backends; MSL verified via the offline harness,
+>   GLSL/HLSL code-complete under the Linux/Windows waivers): light-loop bodies are
+>   untouched; a prologue maps the loop counter through the per-cluster index list
+>   (`i = k < globalCount ? k : indices[clusterStart + k - globalCount]`), gated by
+>   a `clusterGlobalCount >= 0` uniform so the flat path costs one comparison.
+>   Metal: `ClusterTable` at fragment buffer 3 (4-deep `MTLBuffer` ring keyed by
+>   revision, keys dropped each `begin_frame`; zeroed dummy bound when off).
+>   GL: two std140 UBOs at bindings 2/3 (u16 pairs packed in `uvec4` lanes — the
+>   little-endian u16 array uploads as-is; indices UBO = 16384 B = the GL 3.3
+>   min-spec block size). D3D11: cbuffers b6/b7, same uint4 packing; per-frame
+>   re-upload is inherited from the existing DISCARD gate.
+> - **Control**: clustering defaults ON for GPU backends at canvas creation
+>   (identified by the `present_postfx` hook; software keeps the flat 16-light
+>   path). New `Canvas3D.ClusteredLighting` property (get/set) *replaces* the old
+>   `SetClusteredLighting` method — the qualified-surface audit forbids a method
+>   that duplicates a writable property; `VIPER_3D_CLUSTERS=0` env kill switch.
+> - **Scope change:** the planned 64 → 256 `VGFX3D_MAX_LIGHTS` raise is dropped.
+>   The GL backend passes lights as loose uniform arrays (~13 scalars/vec3s per
+>   light); 256 lights exceed the GL 3.3 min-spec 1024 fragment uniform components
+>   by an order of magnitude, and moving the light array into a UBO is a bigger
+>   refactor than this plan warrants. 64 clustered lights already covers the
+>   many-light demos; revisit with a PerLights UBO port if a real scene needs more.
+> - **Tests** (`test_rt_canvas3d`, 253/253 green): slice/radius math; binning
+>   conservativeness (6-light fixture swept over 12 log-spaced depths × 7×7 screen
+>   points — every light contributing ≥1/255 at a sample must appear in that
+>   sample's cluster list); overflow truncation (3 unbounded lights vs the 8192
+>   cap: exact overflow count, monotone offsets, deterministic rebuild);
+>   revision-keyed ring + backend gating; globals-first light ordering.
+> - CPU cost: binning is one pass over lights × touched froxels with u16 writes —
+>   worst case (64 full-screen lights) is bounded by the 8192-entry cap; typical
+>   scenes touch a few hundred entries. No per-frame cost when lights are
+>   unchanged and no draw stamps a new revision (tables are revision-cached).
+
 ## 1. Objective & scope
 
 Lighting cost is O(pixels × lights): the fragment shader loops over up to 64 lights for every pixel (`uLightCount` brute force). Many-light scenes — the "Unity-level" town at night, particle-lit caves — are either capped or slow. Add clustered forward+ lighting: bin lights into a view-space froxel grid on the CPU each frame, upload per-cluster light index lists, and have the shader loop only its cluster's lights. CPU binning (not GPU compute) keeps determinism and works within the existing backend model.

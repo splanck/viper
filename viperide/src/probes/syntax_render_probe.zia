@@ -1,11 +1,16 @@
 module syntax_render_probe;
 
-// Phase 2 regression probe for the rendering-breadth work:
-//   * every language (zia / basic / viper / il) installs a highlighter that
-//     actually runs during paint (GetSyntaxHighlightCallCount > 0);
-//   * the widened SetTokenColor accepts the new + out-of-range token indices;
-//   * the indent-guide flag round-trips (new editor ABI);
-//   * TabBar.GetTabIndexAt resolves a point to a tab index.
+// ============================================================================
+// MODULE: syntax_render_probe
+// PURPOSE: Display-backed regression probe for CodeEditor syntax rendering.
+//
+// WHERE-THIS-FITS: ViperIDE selects editor languages and relies on CodeEditor to
+//          run the matching highlighter during paint. This probe validates that
+//          editor-facing rendering contract across supported language modes.
+//
+// TEACHING-NOTE: Rendering probes should assert observable counters and state,
+//          not pixel-perfect output, unless the visual contract truly requires it.
+// ============================================================================
 
 bind "../ui/app_shell";
 bind "../editor/editor_engine";

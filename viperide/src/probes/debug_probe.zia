@@ -1,9 +1,16 @@
 module debug_probe;
 
-// Phase 4 — first automated debugger probe. Drives the IDE's own DebugSession
-// client against the real out-of-process adapter (`viper run --debug-adapter`),
-// exactly as the running IDE does: launch → run to a breakpoint → inspect
-// locals → step over → continue to exit. Requires `--viper-bin <path>`.
+// ============================================================================
+// MODULE: debug_probe
+// PURPOSE: End-to-end probe for ViperIDE's DebugSession adapter client.
+//
+// WHERE-THIS-FITS: Drives the same out-of-process `viper run --debug-adapter`
+//          path that the IDE uses: launch, breakpoint stop, locals, stepping,
+//          evaluation, and termination. Requires `--viper-bin <path>`.
+//
+// TEACHING-NOTE: Debugging is asynchronous. This probe should assert eventual
+//          state changes through polling instead of assuming immediate replies.
+// ============================================================================
 
 bind "../build/debug_session";
 bind "../build/breakpoints";

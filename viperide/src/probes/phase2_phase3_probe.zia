@@ -1,5 +1,18 @@
 module phase2_phase3_probe;
 
+// ============================================================================
+// MODULE: phase2_phase3_probe
+// PURPOSE: Headless regression coverage for build/run/debug boundary helpers.
+//
+// WHERE-THIS-FITS: This probe checks RunConfig, BuildSystem parsing/timing,
+//          breakpoint stores, project manifest behavior, and scene data contracts
+//          without launching the whole IDE shell.
+//
+// TEACHING-NOTE: Boundary probes should preserve public compatibility wrappers.
+//          If production code moves to a leaf helper, keep this probe on the
+//          caller-facing API unless the caller contract intentionally changes.
+// ============================================================================
+
 bind "../build/build_system";
 bind "../build/breakpoints";
 bind "../build/debug_session";

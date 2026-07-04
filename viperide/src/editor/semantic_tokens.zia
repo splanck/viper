@@ -17,6 +17,19 @@ bind Obj = Viper.Core.Object;
 bind Convert = Viper.Core.Convert;
 bind Threads = Viper.Threads;
 
+// ============================================================================
+// MODULE: semantic_tokens
+// PURPOSE: Apply compiler-classified semantic colors to the active Zia editor.
+//
+// WHERE-THIS-FITS: The lexical highlighter runs in CodeEditor; this controller
+//          schedules Zia semantic-token jobs after edits and overlays resolved
+//          symbol kinds such as fields, parameters, functions, and types.
+//
+// TEACHING-NOTE: Semantic coloring is useful only when it stays stale-safe.
+//          Always debounce, tie results to the editor revision, and ignore token
+//          kinds that should keep the lexical color.
+// ============================================================================
+
 // Token types — mirror vg_syntax_token_type / CodeEditor.SetTokenColor indices.
 final TOK_DEFAULT = 0;
 final TOK_TYPE = 2;

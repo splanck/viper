@@ -955,6 +955,13 @@ typedef struct {
     float occlusion_depth_margin;
     int32_t occlusion_rect_expand_cells;
     int8_t clustered_lighting;
+    /* Plan 07: revision-keyed froxel table ring (vgfx3d_cluster_table_t[count],
+     * lazily allocated; entries are invalidated at frame Begin because binning
+     * is camera-dependent). */
+    void *cluster_tables;
+    int32_t cluster_table_count;
+    int32_t cluster_table_cursor;
+    int64_t cluster_overflow_total; /* lifetime truncated cluster entries (diagnostics) */
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
     int32_t last_frustum_culled_draw_count;
@@ -1191,6 +1198,8 @@ int canvas3d_queue_screen_rect(
 int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float h, void *pixels);
 /// @brief Internal: register the Canvas3D Game.UI widget draw-ops binding (ADR 0065).
 void canvas3d_register_gameui_ops(void);
+/* Plan 07: clustered forward+ binning — declarations live in
+ * rt_canvas3d_clusters.h (they use backend types this header stays free of). */
 /// @brief Internal: queue a screen-space rounded rectangle as a triangle fan (Plan 08).
 int canvas3d_queue_screen_round_rect(rt_canvas3d *c,
                                      float x,

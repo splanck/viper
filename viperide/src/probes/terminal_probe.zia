@@ -1,5 +1,17 @@
 module terminal_probe;
 
+// ============================================================================
+// MODULE: terminal_probe
+// PURPOSE: Headless probe for TerminalSession and PTY command output.
+//
+// WHERE-THIS-FITS: TerminalSession is the thin Zia wrapper around the runtime PTY
+//          object. This probe avoids AppShell and validates the process/session
+//          boundary directly.
+//
+// TEACHING-NOTE: PTYs are platform-dependent. Skip cleanly when unsupported, but
+//          assert deterministic output when the runtime says PTYs are available.
+// ============================================================================
+
 bind "../terminal/terminal_session";
 
 bind Terminal = Viper.Terminal;
@@ -9,11 +21,6 @@ bind Env = Viper.System.Environment;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
 bind Clock = Viper.Time.Clock;
-
-// Headless probe for the integrated terminal session layer (sub-phase 5D). Runs
-// a deterministic command through a PtySession via terminal_session and asserts
-// its output is captured. Skips cleanly when PTYs are unsupported (e.g. older
-// Windows / ViperDOS), so it is green on every backend.
 
 func main() {
     if Pty.IsSupported() == false {

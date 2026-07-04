@@ -279,7 +279,7 @@ lights.
 | `SetDefaultLighting()` | `Void()` | Install conservative key/fill/ambient defaults |
 | `LightCount` | `Integer` | Count active enabled canvas-slot lights |
 | `MaxActiveLights` | `Integer` | Current active-light budget for the selected lighting path |
-| `SetClusteredLighting(enabled)` | `Void(Boolean)` | Enable clustered/forward+ lighting only when the backend advertises support |
+| `ClusteredLighting` | `Boolean` property | Clustered forward+ lighting; defaults on for GPU backends, enabling it on an unsupported backend traps |
 | `SetAmbient(r, g, b)` | `Void(Double, Double, Double)` | Set ambient color |
 | `IblEnabled` | `Boolean` (read/write) | Light PBR ambient from the skybox environment via image-based lighting |
 | `IblIntensity` | `Double` (read/write) | Scale the environment-lighting contribution (default `1.0`, clamped to `[0, 8]`) |

@@ -19,6 +19,18 @@ final KIND_REFERENCE = 5;
 final KIND_SCENE = 6;
 final KIND_SYMBOL = 7;
 
+// ============================================================================
+// MODULE: locations
+// PURPOSE: Structured navigation targets for clickable IDE rows.
+//
+// WHERE-THIS-FITS: Search, Problems, References, build output, symbols, and scene
+//          surfaces store location ids here. UI rows display text, but navigation
+//          uses the structured record behind that row.
+//
+// TEACHING-NOTE: Never parse rendered row text to navigate. Add a Location kind
+//          when a new panel has clickable results, then store that id on the row.
+// ============================================================================
+
 class Location {
     expose Integer id;
     expose String filePath;

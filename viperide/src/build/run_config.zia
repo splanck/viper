@@ -15,6 +15,19 @@ final KIND_CURRENT_FILE = "current-file";
 final KIND_PROJECT_ENTRY = "project-entry";
 final KIND_CUSTOM = "custom";
 
+// ============================================================================
+// MODULE: run_config
+// PURPOSE: Convert an active document/project manifest into build/run argv.
+//
+// WHERE-THIS-FITS: Command handlers ask this module what to run; BuildSystem
+//          owns process launch. Keeping target selection here prevents build
+//          commands from duplicating project-entry and custom-argv policy.
+//
+// TEACHING-NOTE: Build and run commands are argument vectors, not shell strings.
+//          Preserve quoting and `{target}` expansion here so process code can
+//          execute exactly what the project model describes.
+// ============================================================================
+
 class RunConfig {
     expose String name;
     expose String action;

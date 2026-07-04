@@ -1,10 +1,16 @@
 module diagnostic;
 
 // ============================================================================
-// Diagnostic — represents a compiler error or warning
-// ============================================================================
-// Severity levels: 0=error, 1=warning, 2=info
-// Populated by BuildSystem.ParseBuildOutput() from compiler output lines.
+// MODULE: diagnostic
+// PURPOSE: Shared compiler diagnostic record for build output and Problems.
+//
+// WHERE-THIS-FITS: BuildSystem and live diagnostics convert toolchain output
+//          into this model before UI panels, status text, or navigation consume
+//          it.
+//
+// TEACHING-NOTE: Diagnostics are data, not display strings. Keep severity, range,
+//          code, notes, and fix-it metadata structured so UI surfaces can change
+//          without losing navigation or actions.
 // ============================================================================
 
 final SEV_ERROR   = 0;

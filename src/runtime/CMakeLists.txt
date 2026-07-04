@@ -293,6 +293,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/render/rt_canvas3d.c
         graphics/3d/render/rt_canvas3d_overlay.c
         graphics/3d/render/rt_canvas3d_gameui.c
+        graphics/3d/render/rt_canvas3d_clusters.c
         graphics/3d/render/rt_canvas3d_tempmgr.c
         graphics/3d/render/rt_canvas3d_snapshot.c
         graphics/3d/render/rt_canvas3d_motion.c

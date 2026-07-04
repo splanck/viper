@@ -1,10 +1,16 @@
 module formatting_probe;
 
-// Phase 3 formatter regression probe (pure string-in/string-out — no display).
-//   * Zia: braces inside block comments / strings must not skew indentation,
-//     and block-comment interiors are preserved verbatim.
-//   * BASIC: keyword-driven indentation for nested FOR/IF/ELSE, single-line IF
-//     does not open a block, and closers dedent.
+// ============================================================================
+// MODULE: formatting_probe
+// PURPOSE: Pure string-in/string-out regression probe for document formatting.
+//
+// WHERE-THIS-FITS: Formatting commands orchestrate editor replacement, while
+//          zia/formatters.zia owns deterministic text transforms. This probe
+//          stays on the transform surface so failures are easy to isolate.
+//
+// TEACHING-NOTE: Formatter tests should cover trivia, strings, comments, and
+//          range boundaries because those are where simple indentation rules fail.
+// ============================================================================
 
 bind "../commands/edit_commands";
 bind Str = Viper.String;

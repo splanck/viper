@@ -1,15 +1,22 @@
 module activity_bar_probe;
 
+// ============================================================================
+// MODULE: activity_bar_probe
+// PURPOSE: Display-backed probe for left-rail activity bar view switching.
+//
+// WHERE-THIS-FITS: AppShell builds the activity bar widgets and ActivityBar owns
+//          the active Explorer/Source Control view state. This probe mirrors the
+//          main.zia wiring without launching the full app loop.
+//
+// TEACHING-NOTE: View-switch probes should assert both controller state and
+//          widget visibility so the UI and model stay synchronized.
+// ============================================================================
+
 bind "../ui/app_shell";
 bind "../ui/activity_bar";
 
 bind Viper.GUI as GUI;
 bind Terminal = Viper.Terminal;
-
-// Headless probe for the activity bar (sub-phase 5A). Verifies that the shell
-// builds with the restructured left side (activity bar + swappable view stack)
-// and that the ActivityBar controller switches the visible left view and keeps
-// its activeView state in sync. Mirrors the wiring main.zia performs.
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();

@@ -286,8 +286,8 @@ static HRESULT d3d11_compile_context_shaders(d3d11_shader_blobs_t *blobs) {
         d3d11_bloom_shader_source, "PSBloomDown", "ps_5_0", &blobs->ps_bloom_down);
     if (FAILED(hr))
         return hr;
-    hr = d3d11_compile_shader(
-        d3d11_bloom_shader_source, "PSBloomUp", "ps_5_0", &blobs->ps_bloom_up);
+    hr =
+        d3d11_compile_shader(d3d11_bloom_shader_source, "PSBloomUp", "ps_5_0", &blobs->ps_bloom_up);
     if (FAILED(hr))
         return hr;
     return d3d11_compile_shader(d3d11_taa_shader_source, "PSTAAResolve", "ps_5_0", &blobs->ps_taa);
@@ -564,6 +564,22 @@ static HRESULT d3d11_create_context_buffers(d3d11_context_t *ctx) {
         d3d11_log_hresult("CreateBuffer(cbPerLights)", hr);
         return hr;
     }
+    hr = d3d11_create_constant_buffer(
+        ctx,
+        (uint32_t)((sizeof(((vgfx3d_cluster_table_t *)0)->offsets) + 15u) & ~15u),
+        &ctx->cb_cluster_offsets);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbClusterOffsets)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(
+        ctx,
+        (uint32_t)((sizeof(((vgfx3d_cluster_table_t *)0)->indices) + 15u) & ~15u),
+        &ctx->cb_cluster_indices);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbClusterIndices)", hr);
+        return hr;
+    }
     hr = d3d11_create_constant_buffer(ctx, VGFX3D_D3D11_BONE_PALETTE_BYTES, &ctx->cb_bones);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbBones)", hr);
@@ -800,6 +816,8 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->cb_prev_bones);
     SAFE_RELEASE(ctx->cb_bones);
     SAFE_RELEASE(ctx->cb_per_lights);
+    SAFE_RELEASE(ctx->cb_cluster_offsets);
+    SAFE_RELEASE(ctx->cb_cluster_indices);
     SAFE_RELEASE(ctx->cb_per_material);
     SAFE_RELEASE(ctx->cb_per_scene);
     SAFE_RELEASE(ctx->cb_per_object);

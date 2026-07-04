@@ -1,5 +1,18 @@
 module console_search_probe;
 
+// ============================================================================
+// MODULE: console_search_probe
+// PURPOSE: Regression probe for output panels, console helpers, search, and
+//          Quick Open scoring/navigation behavior.
+//
+// WHERE-THIS-FITS: This probe validates user-facing tool-panel behavior without
+//          routing through the full main loop. It constructs focused controllers
+//          and uses real temporary files where path behavior matters.
+//
+// TEACHING-NOTE: Search rows carry structured location ids. Probe assertions
+//          should check both displayed rows and the data needed for navigation.
+// ============================================================================
+
 bind "../ui/app_shell";
 bind "../ui/ide_overlays";
 bind "../commands/search_commands";

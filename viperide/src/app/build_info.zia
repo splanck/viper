@@ -16,6 +16,18 @@ bind Path = Viper.IO.Path;
 bind Env = Viper.System.Environment;
 bind Str = Viper.String;
 
+// ============================================================================
+// MODULE: build_info
+// PURPOSE: Resolve standalone ViperIDE build metadata for About/status surfaces.
+//
+// WHERE-THIS-FITS: The IDE can run from source or as a generated native binary.
+//          This helper reads the optional sidecar/environment metadata that lets
+//          users identify which binary they are actually running.
+//
+// TEACHING-NOTE: Build metadata is diagnostic context, not feature behavior. Keep
+//          missing metadata explicit so source-run workflows do not look broken.
+// ============================================================================
+
 final BUILD_INFO_FILENAME = "viperide.buildinfo";
 
 /// @brief Return the expected standalone-build metadata sidecar path.

@@ -1081,6 +1081,13 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->frame_serial++;
     canvas3d_prune_motion_history(c);
     canvas3d_reset_frame_submission_stats(c);
+    /* Plan 07: froxel tables are camera-dependent — invalidate the revision ring
+     * so this frame's first stamped draw rebuilds against the new view. */
+    if (c->cluster_tables) {
+        vgfx3d_cluster_table_t *ring = (vgfx3d_cluster_table_t *)c->cluster_tables;
+        for (int32_t ci = 0; ci < c->cluster_table_count; ci++)
+            ring[ci].lights_revision = 0;
+    }
     c->draw_count = 0;
     c->frame_is_2d = 0;
     c->last_draw_count = 0;
@@ -1360,6 +1367,9 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     /* Build light params */
     dd->light_count = build_light_params(c, dd->lights, canvas3d_active_light_limit(c));
     dd->cmd.lights_revision = canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count);
+    /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
+    dd->cmd.cluster_table = canvas3d_cluster_table_for_revision(
+        c, dd->lights, dd->light_count, dd->cmd.lights_revision);
     dd->ambient[0] = c->ambient[0];
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];

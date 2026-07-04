@@ -82,6 +82,9 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         return;
 
     ctx->frame_serial++;
+    /* Plan 07: cluster tables are camera-dependent; a light revision surviving
+     * into a new frame does not imply the same froxel contents. */
+    ctx->uploaded_cluster_revision = 0;
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
     memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));

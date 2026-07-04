@@ -1,5 +1,6 @@
 module debug_session;
 
+bind "bounded_output";
 bind "breakpoints";
 
 bind Process = Viper.System.Process;
@@ -330,23 +331,9 @@ class DebugSession {
     /// @param text Newly read process output.
     /// @return Combined buffer, trimmed to MAX_DEBUG_OUTPUT_CHARS when needed.
     hide func AppendBoundedOutput(existing: String, text: String) -> String {
-        var combined = existing + text;
-        var textLen = Str.get_Length(text);
-        if textLen >= MAX_DEBUG_OUTPUT_CHARS {
-            return "[debug output truncated]\n"
-                + Str.Mid(text, textLen - MAX_DEBUG_OUTPUT_CHARS + 1);
-        }
-        var existingLen = Str.get_Length(existing);
-        var keepExisting = MAX_DEBUG_OUTPUT_CHARS - textLen;
-        if existingLen > keepExisting {
-            return "[debug output truncated]\n"
-                + Str.Mid(existing, existingLen - keepExisting + 1) + text;
-        }
-        if Str.get_Length(combined) <= MAX_DEBUG_OUTPUT_CHARS {
-            return combined;
-        }
-        return "[debug output truncated]\n"
-            + Str.Mid(combined, Str.get_Length(combined) - MAX_DEBUG_OUTPUT_CHARS + 1);
+        return bounded_output.Append(existing, text,
+                                     "[debug output truncated]\n",
+                                     MAX_DEBUG_OUTPUT_CHARS);
     }
 
     hide func handleEvent(jsonText: String) {

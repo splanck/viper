@@ -1,5 +1,17 @@
 module multi_root_file_tree_probe;
 
+// ============================================================================
+// MODULE: multi_root_file_tree_probe
+// PURPOSE: Headless probe for multi-root workspace file discovery.
+//
+// WHERE-THIS-FITS: ProjectManager owns the primary root, extra roots, ignore
+//          checks, and aggregate Quick Open/search cache. This probe verifies
+//          cache membership across multiple temporary roots.
+//
+// TEACHING-NOTE: Multi-root behavior should always check root ownership rather
+//          than assuming the primary project owns every workspace path.
+// ============================================================================
+
 bind "../ui/app_shell";
 bind "../core/project_manager";
 
@@ -10,11 +22,6 @@ bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
 bind Str = Viper.String;
-
-// Headless probe for multi-root workspaces (sub-phase 5B). Opens one root, then
-// adds a second via AddFolderToWorkspace, and verifies the aggregate Quick-Open
-// cache draws files from BOTH roots (which exercises AllRoots + the root-aware
-// ShouldExcludePath used while scanning each root), plus duplicate-add is a no-op.
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();

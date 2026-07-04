@@ -1290,8 +1290,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Reflectivity\""),
                  "Material3D.Reflectivity property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetClusteredLighting\""),
-                 "Canvas3D.SetClusteredLighting must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.set_ClusteredLighting\""),
+                 "Canvas3D.ClusteredLighting property setter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_MaxActiveLights\""),
                  "Canvas3D.MaxActiveLights getter must use Graphics3D PascalCase naming") &&
@@ -1354,8 +1354,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetImpostor\""),
                  "SceneNode.SetImpostor must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"SetClusteredLighting\""),
-                 "Canvas3D.SetClusteredLighting method missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"ClusteredLighting\""),
+                 "Canvas3D.ClusteredLighting property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetShadowCascades\""),
                  "Canvas3D.SetShadowCascades method missing") &&

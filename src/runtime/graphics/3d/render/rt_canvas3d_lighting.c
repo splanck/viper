@@ -82,24 +82,40 @@ int32_t canvas3d_active_light_limit(rt_canvas3d *c) {
 ///   GPU backends expect a packed array — this routine bridges the two. Stops
 ///   when either every slot has been visited or `max` entries have been
 ///   written, whichever comes first.
+///   Plan 07: the output is ordered with directional/ambient lights first (the
+///   "global" prefix the clustered shader loops flatly) followed by point/spot
+///   lights (looped via per-cluster index lists). Shading is an order-independent
+///   sum, so the flat path's output is unchanged by the reorder; within each
+///   group the original slot order is preserved so revision stamps stay stable.
 /// @return The number of lights actually copied into `out`.
 int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
     int32_t count = 0;
     if (!c || !out || max <= 0)
         return 0;
-    for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
-        const rt_light3d *l = c->lights[i];
-        if (!l || !l->enabled)
-            continue;
-        canvas3d_copy_light_params(c, l, &out[count]);
-        count++;
-    }
-    for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && count < max; i++) {
-        const rt_light3d *l = c->scene_lights[i];
-        if (!l || !l->enabled)
-            continue;
-        canvas3d_copy_light_params(c, l, &out[count]);
-        count++;
+    for (int pass = 0; pass < 2 && count < max; pass++) {
+        const int want_global = (pass == 0);
+        for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
+            const rt_light3d *l = c->lights[i];
+            int32_t type;
+            if (!l || !l->enabled)
+                continue;
+            type = canvas3d_sanitize_light_type(l->type);
+            if ((type == 0 || type == 2) != want_global)
+                continue;
+            canvas3d_copy_light_params(c, l, &out[count]);
+            count++;
+        }
+        for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && count < max; i++) {
+            const rt_light3d *l = c->scene_lights[i];
+            int32_t type;
+            if (!l || !l->enabled)
+                continue;
+            type = canvas3d_sanitize_light_type(l->type);
+            if ((type == 0 || type == 2) != want_global)
+                continue;
+            canvas3d_copy_light_params(c, l, &out[count]);
+            count++;
+        }
     }
     return count;
 }

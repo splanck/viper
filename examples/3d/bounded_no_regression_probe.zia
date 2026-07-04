@@ -48,7 +48,7 @@ func scaleFlagsOff(game: WalkMinGame) {
     var canvas = game.getCanvas();
     world.FloatingOrigin = false;
     Canvas3D.SetOcclusionCulling(canvas, false);
-    Canvas3D.SetClusteredLighting(canvas, false);
+    canvas.ClusteredLighting = false;
     Canvas3D.SetShadowCascades(canvas, 1);
     Canvas3D.SetTextureUploadBudget(canvas, -1);
 }

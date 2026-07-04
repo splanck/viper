@@ -1,10 +1,16 @@
 module semantic_tokens_probe;
 
-// Phase 5 regression probe for semantic highlighting.
-//   * Test A: the Zia Tokens job classifies a parameter, a field, a type, and a
-//     local variable distinctly (the in-process compiler-backed classification).
-//   * Test B: the CodeEditor semantic overlay applies and survives out-of-range
-//     input without crashing, and the editor still highlights.
+// ============================================================================
+// MODULE: semantic_tokens_probe
+// PURPOSE: Regression probe for compiler-backed semantic highlighting.
+//
+// WHERE-THIS-FITS: The runtime token job classifies Zia source, while CodeEditor
+//          applies semantic spans on top of lexical highlighting. This probe
+//          exercises both layers through their public IDE-facing APIs.
+//
+// TEACHING-NOTE: Semantic-token tests must include stale/out-of-range spans
+//          because editors routinely receive results for old buffer revisions.
+// ============================================================================
 
 bind "../ui/app_shell";
 bind "../editor/editor_engine";

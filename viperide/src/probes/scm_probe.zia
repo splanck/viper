@@ -1,5 +1,17 @@
 module scm_probe;
 
+// ============================================================================
+// MODULE: scm_probe
+// PURPOSE: Headless probe for the lightweight Git command layer.
+//
+// WHERE-THIS-FITS: scm_git.zia wraps blocking Git commands while scm_view.zia
+//          owns UI state. This probe covers command-layer behavior in a temporary
+//          repository without constructing the Source Control view.
+//
+// TEACHING-NOTE: Source-control probes must use real Git paths because quoting,
+//          status parsing, staging, and commits are external-process contracts.
+// ============================================================================
+
 bind "../scm/scm_git";
 
 bind Terminal = Viper.Terminal;
@@ -9,11 +21,6 @@ bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
 bind Str = Viper.String;
-
-// Headless probe for the git command layer (sub-phase 5C). Creates a real temp
-// git repo and exercises status parsing + stage + commit + branch through
-// scm_git.Git. Skips cleanly (RESULT: ok) when `git` is not on PATH, so it is
-// safe in any environment.
 
 func gitConfig(dir: String, key: String, val: String) {
     var a = Seq.New();

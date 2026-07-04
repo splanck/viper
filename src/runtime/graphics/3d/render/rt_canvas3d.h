@@ -150,6 +150,7 @@ void rt_canvas3d_set_default_lighting(void *obj);
 int64_t rt_canvas3d_get_light_count(void *obj);
 /// @brief Enable clustered/forward+ lighting when the backend advertises support.
 void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled);
+int8_t rt_canvas3d_get_clustered_lighting(void *obj);
 /// @brief Current maximum active light count for the selected lighting path.
 int64_t rt_canvas3d_get_max_active_lights(void *obj);
 /// @brief Set the ambient light color applied to all lit materials.

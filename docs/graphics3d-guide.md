@@ -755,7 +755,7 @@ func start() {
 
 ## Light3D
 
-Light sources for the scene. Up to 16 lights simultaneously.
+Light sources for the scene. The software backend applies up to 16 lights simultaneously; GPU backends (Metal, Direct3D 11, OpenGL) apply up to 64 via clustered forward+ lighting (see below).
 
 ### Constructors
 
@@ -829,6 +829,15 @@ func start() {
 `Canvas3D.SetLight()` retains the assigned light until you replace that slot or clear it with `null`, and traps before mutation for invalid slot indices or non-`Light3D` objects.
 Spot-light inner and outer cone angles are sanitized to remain finite and strictly separated before
 their cosines are sent to the software and GPU backends, avoiding undefined falloff at equal cones.
+
+### Clustered forward+ lighting
+
+GPU backends cull point and spot lights against a 16×9×24 view-space froxel grid each frame (CPU binning, deterministic), so each pixel only evaluates the lights that can actually reach it. Directional and ambient lights always apply globally. This raises the active light budget from 16 to 64 on GPU backends and keeps many-light scenes fast; the software backend keeps the flat 16-light path.
+
+- Clustering is on by default wherever `canvas.BackendSupports("clustered-lighting")` is true. Toggle it with the `ClusteredLighting` property; enabling it on an unsupported backend traps.
+- Per-cluster light lists are capped at 8192 total entries per frame; pathological scenes (many unbounded point lights covering the whole view) truncate later lights per cluster deterministically rather than failing.
+- Point/spot lights with zero attenuation have no distance falloff and bin into every froxel they face — prefer a non-zero attenuation so culling can help.
+- The environment variable `VIPER_3D_CLUSTERS=0` disables clustering process-wide (bisection escape hatch).
 
 **Lighting model:** Blinn-Phong with per-vertex (software) or per-pixel (GPU) shading. Includes diffuse and specular components.
 

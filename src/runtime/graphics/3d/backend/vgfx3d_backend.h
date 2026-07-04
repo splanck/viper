@@ -104,6 +104,10 @@ typedef struct {
                                  draw was queued with; consecutive draws sharing a
                                  stamp let backends skip re-uploading scene/light
                                  constants (0 = unknown, always upload) */
+    const void *cluster_table; /* vgfx3d_cluster_table_t built for this draw's light
+                                  snapshot, or NULL for the flat light loop. Backends
+                                  re-upload cluster buffers under the same
+                                  lights_revision gate as the light constants. */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
     const void *splat_map;       /* RGBA weight texture (NULL = not terrain) */
     const void *splat_layers[4]; /* Layer textures */
@@ -258,6 +262,37 @@ typedef struct {
 
 #define VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC 0
 #define VGFX3D_SHADOW_PROJECTION_PERSPECTIVE 1
+
+/*==========================================================================
+ * Clustered forward+ light culling (Plan 07)
+ *=========================================================================*/
+
+#define VGFX3D_CLUSTER_DIM_X 16
+#define VGFX3D_CLUSTER_DIM_Y 9
+#define VGFX3D_CLUSTER_DIM_Z 24
+#define VGFX3D_CLUSTER_COUNT (VGFX3D_CLUSTER_DIM_X * VGFX3D_CLUSTER_DIM_Y * VGFX3D_CLUSTER_DIM_Z)
+#define VGFX3D_MAX_CLUSTER_LIGHT_INDICES 8192
+
+/// @brief CPU-binned froxel light table consumed by GPU backends.
+/// @details Built by the canvas per light-snapshot revision (the same stamp that
+///   gates scene/light constant uploads): the flattened light array is sorted so
+///   directional/ambient lights form a global prefix of length
+///   `global_light_count`, and every point/spot light's bounding sphere is
+///   conservatively rasterized into a 16x9x24 view froxel grid with exponential
+///   Z slicing over [znear, zfar]. `offsets` holds prefix sums into `indices`
+///   (light-array indices) per cluster in X-major, then Y, then Z order:
+///   cluster = x + y*DIM_X + z*DIM_X*DIM_Y. Per-cluster truncation on index
+///   overflow is order-stable and counted in `overflow_count` (never UB).
+typedef struct {
+    uint32_t lights_revision;   /* snapshot revision this table matches (0 = invalid) */
+    int32_t global_light_count; /* directional/ambient prefix length in the light array */
+    int32_t binned_light_count; /* point/spot lights considered for binning */
+    int32_t overflow_count;     /* dropped cluster entries (diagnostics; 0 in practice) */
+    float znear;
+    float zfar;
+    uint16_t offsets[VGFX3D_CLUSTER_COUNT + 1];
+    uint16_t indices[VGFX3D_MAX_CLUSTER_LIGHT_INDICES];
+} vgfx3d_cluster_table_t;
 
 /// @brief One light passed to submit_draw: kind (directional/point/ambient/spot), an
 ///   optional shadow-map slot index, direction/position/color/intensity/attenuation, and

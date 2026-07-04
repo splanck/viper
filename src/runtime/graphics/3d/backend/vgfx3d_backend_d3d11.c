@@ -151,6 +151,10 @@ typedef struct {
     float sh[9][4];      /* SH-9 RGB irradiance, one coefficient per float4 */
     /* Plan 06 shadow knobs: x = slope-bias factor, y = strength, z = tap count. */
     float shadow_filter[4];
+    /* Plan 07: x/y = viewport size, z/w = znear/zfar; global count -1 = flat loop. */
+    float cluster_params[4];
+    int32_t cluster_global_count;
+    float _cluster_pad1[3];
 } d3d_per_scene_t;
 
 typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
@@ -325,6 +329,9 @@ typedef struct {
     ID3D11Buffer *cb_per_scene;
     ID3D11Buffer *cb_per_material;
     ID3D11Buffer *cb_per_lights;
+    /* Plan 07: froxel table (u16 data packed as uint4 lanes, two u16 per uint). */
+    ID3D11Buffer *cb_cluster_offsets;
+    ID3D11Buffer *cb_cluster_indices;
     ID3D11Buffer *cb_bones;
     ID3D11Buffer *cb_prev_bones;
     ID3D11Buffer *cb_skybox;
@@ -560,8 +567,10 @@ static void d3d11_destroy_bloom_targets(d3d11_context_t *ctx);
 static void d3d11_destroy_taa_targets(d3d11_context_t *ctx);
 static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
 static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
-static ID3D11ShaderResourceView *
-d3d11_encode_bloom_chain(d3d11_context_t *ctx, int32_t width, int32_t height, float threshold);
+static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
+                                                          int32_t width,
+                                                          int32_t height,
+                                                          float threshold);
 static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
                                                        ID3D11ShaderResourceView *source_srv,
                                                        int32_t width,

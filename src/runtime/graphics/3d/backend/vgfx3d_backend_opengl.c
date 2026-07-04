@@ -637,6 +637,9 @@ typedef struct {
 
     GLuint bone_ubo;
     GLuint prev_bone_ubo;
+    /* Plan 07: clustered forward+ froxel table (u16 data packed as std140 uvec4). */
+    GLuint cluster_offsets_ubo;
+    GLuint cluster_indices_ubo;
 
     GLuint morph_buffer;
     GLuint morph_tbo;
@@ -761,6 +764,9 @@ typedef struct {
     float ibl_intensity;
     float ibl_sh[27];
     uint32_t uploaded_lights_revision; /* last light snapshot sent to the main program */
+    /* Plan 07: cluster tables are camera-dependent, so unlike the light snapshot
+     * this key is dropped every begin_frame (same revision != same froxels). */
+    uint32_t uploaded_cluster_revision;
     float clearR, clearG, clearB;
     int8_t current_pass_is_overlay;
     int8_t gpu_postfx_enabled;
@@ -791,6 +797,7 @@ typedef struct {
     GLint uTextureUvTransform0, uTextureUvTransform1;
     GLint uShadowCount, uShadowBias;
     GLint uShadowSlopeBias, uShadowStrength, uShadowSampleCount;
+    GLint uClusterGlobalCount, uClusterParams;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
@@ -937,8 +944,10 @@ static void destroy_bloom_targets(gl_context_t *ctx);
 static void destroy_taa_targets(gl_context_t *ctx);
 static int ensure_bloom_targets(gl_context_t *ctx, int32_t w, int32_t h);
 static int ensure_taa_targets(gl_context_t *ctx, int32_t w, int32_t h);
-static GLuint
-gl_encode_bloom_chain(gl_context_t *ctx, int32_t width, int32_t height, float threshold);
+static GLuint gl_encode_bloom_chain(gl_context_t *ctx,
+                                    int32_t width,
+                                    int32_t height,
+                                    float threshold);
 static GLuint gl_encode_taa_pass(gl_context_t *ctx,
                                  GLuint source_tex,
                                  int32_t width,
@@ -1136,19 +1145,19 @@ static int load_gl(void) {
 #define LOAD(name)                                                                                 \
     gl.name = (__typeof__(gl.name))dlsym(gl.lib, "gl" #name);                                      \
     if (!gl.name) {                                                                                \
-        missing_symbol = "gl" #name;                                                              \
+        missing_symbol = "gl" #name;                                                               \
         goto fail;                                                                                 \
     }
 #define LOADX(name)                                                                                \
     glx.name = (__typeof__(glx.name))dlsym(gl.lib, "glX" #name);                                   \
     if (!glx.name) {                                                                               \
-        missing_symbol = "glX" #name;                                                             \
+        missing_symbol = "glX" #name;                                                              \
         goto fail;                                                                                 \
     }
 #define LOADP(name)                                                                                \
     gl.name = (__typeof__(gl.name))glx.GetProcAddress((const unsigned char *)"gl" #name);          \
     if (!gl.name) {                                                                                \
-        missing_symbol = "gl" #name;                                                              \
+        missing_symbol = "gl" #name;                                                               \
         goto fail;                                                                                 \
     }
 
@@ -1268,18 +1277,17 @@ static int load_gl(void) {
     gl_dispatch_unlock();
     return 0;
 
-fail:
-    {
-        const char *debug = getenv("VIPER_OPENGL_DEBUG");
-        if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0) {
-            const char *err = dlerror();
-            fprintf(stderr,
-                    "[OpenGL] missing required symbol %s%s%s\n",
-                    missing_symbol ? missing_symbol : "<unknown>",
-                    err ? ": " : "",
-                    err ? err : "");
-        }
+fail: {
+    const char *debug = getenv("VIPER_OPENGL_DEBUG");
+    if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0) {
+        const char *err = dlerror();
+        fprintf(stderr,
+                "[OpenGL] missing required symbol %s%s%s\n",
+                missing_symbol ? missing_symbol : "<unknown>",
+                err ? ": " : "",
+                err ? err : "");
     }
+}
     gl_unload_partial_dispatch();
     gl_dispatch_unlock();
     return -1;

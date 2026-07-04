@@ -16,6 +16,19 @@ bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 bind Str = Viper.String;
 
+// ============================================================================
+// MODULE: session
+// PURPOSE: Persist and restore ViperIDE workspace session state.
+//
+// WHERE-THIS-FITS: Settings chooses the INI path; DocumentManager, ProjectManager,
+//          and EditorTabs own live state. SessionManager translates between those
+//          models and durable `[session]`, `[recent]`, and recovery sections.
+//
+// TEACHING-NOTE: Session restore must be conservative because it runs at startup
+//          and protects user work. Keep recovery text bounded, keep unknown INI
+//          keys intact, and prefer explicit per-document fields over display text.
+// ============================================================================
+
 final MAX_RECENT_PROJECTS = 10;
 final MAX_RECENT_FILES = 20;
 final MAX_SESSION_RECOVERY_CHARS = 200000;

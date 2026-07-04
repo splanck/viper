@@ -1757,6 +1757,11 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
         include_lights ? build_light_params(c, dd->lights, canvas3d_active_light_limit(c)) : 0;
     dd->cmd.lights_revision =
         include_lights ? canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count) : 0;
+    /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
+    dd->cmd.cluster_table =
+        include_lights ? canvas3d_cluster_table_for_revision(
+                             c, dd->lights, dd->light_count, dd->cmd.lights_revision)
+                       : NULL;
     dd->sort_key = canvas3d_sanitize_sort_key(sort_key, dd->requires_blend);
     dd->stable_sort_id = (uintptr_t)cmd->geometry_key ^ (uintptr_t)cmd->texture ^
                          ((uintptr_t)cmd->texture_asset << 1) ^ ((uintptr_t)instance_matrices << 2);

@@ -1,5 +1,17 @@
 module editor_hot_path_probe;
 
+// ============================================================================
+// MODULE: editor_hot_path_probe
+// PURPOSE: Display-backed performance guard for large editor-buffer workflows.
+//
+// WHERE-THIS-FITS: EditorEngine and semantic controllers must avoid full-buffer
+//          copies or layout scans during simple cursor movement. This probe
+//          creates representative large buffers and checks those counters.
+//
+// TEACHING-NOTE: Performance probes encode user experience requirements. When a
+//          controller gains work on the typing path, add a bounded counter here.
+// ============================================================================
+
 bind "../ui/app_shell";
 bind "../core/document_manager";
 bind "../core/project_manager";

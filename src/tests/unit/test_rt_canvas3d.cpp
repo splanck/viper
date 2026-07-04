@@ -55,6 +55,7 @@
 #include <vector>
 
 extern "C" {
+#include "rt_canvas3d_clusters.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
@@ -1618,8 +1619,7 @@ static void test_textureasset3d_bc1_bc4_bc5_software_decode() {
             EXPECT_TRUE(pixels != nullptr, "BC1 fallback pixels decoded");
             if (pixels) {
                 int64_t texel = rt_pixels_get(pixels, 0, 0);
-                EXPECT_TRUE((uint64_t)texel == 0xFF0000FFull,
-                            "BC1 fallback texel0 is opaque red");
+                EXPECT_TRUE((uint64_t)texel == 0xFF0000FFull, "BC1 fallback texel0 is opaque red");
             }
             if (rt_obj_release_check0(asset))
                 rt_obj_free(asset);
@@ -2403,6 +2403,346 @@ static void test_material_texture_presence_getters() {
     EXPECT_EQ(rt_material3d_get_has_metallic_roughness_map(m), 0);
     EXPECT_EQ(rt_material3d_get_has_ao_map(m), 0);
     EXPECT_EQ(rt_material3d_get_has_env_map(m), 0);
+    PASS();
+}
+
+//=============================================================================
+// Clustered forward+ binning tests (Plan 07)
+//=============================================================================
+
+static void test_cluster_slice_and_radius_math() {
+    TEST("Cluster froxel slice + light radius math (Plan 07)");
+    /* Z slices: clamped at the ends, monotone in between. */
+    EXPECT_EQ(canvas3d_cluster_z_slice(0.05f, 0.1f, 100.0f), 0);
+    EXPECT_EQ(canvas3d_cluster_z_slice(0.1f, 0.1f, 100.0f), 0);
+    EXPECT_EQ(canvas3d_cluster_z_slice(100.0f, 0.1f, 100.0f), VGFX3D_CLUSTER_DIM_Z - 1);
+    EXPECT_EQ(canvas3d_cluster_z_slice(1000.0f, 0.1f, 100.0f), VGFX3D_CLUSTER_DIM_Z - 1);
+    {
+        int32_t prev = 0;
+        for (float d = 0.1f; d <= 100.0f; d *= 1.5f) {
+            int32_t s = canvas3d_cluster_z_slice(d, 0.1f, 100.0f);
+            EXPECT_TRUE(s >= prev, "Z slice is monotone in depth");
+            prev = s;
+        }
+    }
+    /* Radius: zero-intensity lights vanish; zero attenuation is unbounded. */
+    EXPECT_TRUE(canvas3d_cluster_light_radius(0.0f, 1.0f) == 0.0f,
+                "Zero intensity has zero influence radius");
+    EXPECT_TRUE(canvas3d_cluster_light_radius(1.0f, 0.0f) < 0.0f, "Zero attenuation is unbounded");
+    /* intensity/(1 + k r^2) == 1/255 at the returned radius. */
+    {
+        float r = canvas3d_cluster_light_radius(1.0f, 0.5f);
+        float atten = 1.0f / (1.0f + 0.5f * r * r);
+        EXPECT_TRUE(std::fabs(atten - 1.0f / 255.0f) < 1e-4f,
+                    "Radius solves the attenuation threshold");
+    }
+    EXPECT_TRUE(canvas3d_cluster_light_is_global(0) && canvas3d_cluster_light_is_global(2) &&
+                    !canvas3d_cluster_light_is_global(1) && !canvas3d_cluster_light_is_global(3),
+                "Directional/ambient are global; point/spot bin");
+    PASS();
+}
+
+extern "C" int32_t build_light_params(const rt_canvas3d *c,
+                                      vgfx3d_light_params_t *out,
+                                      int32_t max);
+
+static void cluster_noop_present_postfx(void *ctx, const vgfx3d_postfx_chain_t *chain) {
+    (void)ctx;
+    (void)chain;
+}
+
+static void cluster_noop_begin_frame(void *ctx, const vgfx3d_camera_params_t *cam) {
+    (void)ctx;
+    (void)cam;
+}
+
+static void cluster_noop_submit_draw(void *ctx,
+                                     vgfx_window_t win,
+                                     const vgfx3d_draw_cmd_t *cmd,
+                                     const vgfx3d_light_params_t *lights,
+                                     int32_t light_count,
+                                     const float *ambient,
+                                     int8_t wireframe,
+                                     int8_t backface_cull) {
+    (void)ctx;
+    (void)win;
+    (void)cmd;
+    (void)lights;
+    (void)light_count;
+    (void)ambient;
+    (void)wireframe;
+    (void)backface_cull;
+}
+
+static void cluster_noop_end_frame(void *ctx) {
+    (void)ctx;
+}
+
+/// Begin a mock-backend 3D frame so the canvas carries real cached camera state.
+static vgfx3d_backend_t *cluster_test_begin_frame(rt_canvas3d *canvas, void **out_cam) {
+    vgfx3d_backend_t *backend = (vgfx3d_backend_t *)calloc(1, sizeof(vgfx3d_backend_t));
+    backend->name = "opengl";
+    backend->begin_frame = cluster_noop_begin_frame;
+    backend->submit_draw = cluster_noop_submit_draw;
+    backend->end_frame = cluster_noop_end_frame;
+    memset(canvas, 0, sizeof(*canvas));
+    canvas->backend = backend;
+    canvas->gfx_win = (vgfx_window_t)1;
+    *out_cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    rt_canvas3d_begin(canvas, *out_cam);
+    return backend;
+}
+
+static void cluster_test_make_point_light(
+    vgfx3d_light_params_t *l, float x, float y, float z, float intensity, float attenuation) {
+    memset(l, 0, sizeof(*l));
+    l->type = 1;
+    l->shadow_index = -1;
+    l->position[0] = x;
+    l->position[1] = y;
+    l->position[2] = z;
+    l->color[0] = l->color[1] = l->color[2] = 1.0f;
+    l->intensity = intensity;
+    l->attenuation = attenuation;
+}
+
+static void test_cluster_table_binning_is_conservative() {
+    TEST("Cluster binning is conservative: no in-range light is missing (Plan 07)");
+    rt_canvas3d canvas;
+    void *cam = nullptr;
+    (void)cluster_test_begin_frame(&canvas, &cam);
+
+    vgfx3d_light_params_t lights[6];
+    memset(lights, 0, sizeof(lights));
+    /* Globals-first prefix: one directional, one ambient. */
+    lights[0].type = 0;
+    lights[0].direction[1] = -1.0f;
+    lights[0].intensity = 1.0f;
+    lights[0].shadow_index = -1;
+    lights[1].type = 2;
+    lights[1].intensity = 0.2f;
+    lights[1].shadow_index = -1;
+    /* Local lights: tight, medium, wide, and behind the camera (all bounded so
+     * the fixture stays under the index cap; unbounded lights get their own
+     * overflow test below). */
+    cluster_test_make_point_light(&lights[2], 0.0f, 1.0f, -8.0f, 2.0f, 8.0f);
+    cluster_test_make_point_light(&lights[3], 5.0f, 0.5f, -30.0f, 4.0f, 4.0f);
+    cluster_test_make_point_light(&lights[4], -3.0f, 2.0f, -15.0f, 1.5f, 2.0f);
+    cluster_test_make_point_light(&lights[5], 0.0f, 0.0f, 12.0f, 3.0f, 4.0f); /* behind */
+
+    vgfx3d_cluster_table_t *table =
+        (vgfx3d_cluster_table_t *)calloc(1, sizeof(vgfx3d_cluster_table_t));
+    canvas3d_build_cluster_table(&canvas, lights, 6, 7u, table);
+
+    EXPECT_EQ(table->lights_revision, 7u);
+    EXPECT_EQ(table->global_light_count, 2);
+    EXPECT_EQ(table->binned_light_count, 4);
+    EXPECT_EQ(table->overflow_count, 0);
+    /* Prefix-sum integrity. */
+    {
+        int ok = 1;
+        for (int32_t ci = 0; ci < VGFX3D_CLUSTER_COUNT; ci++)
+            if (table->offsets[ci] > table->offsets[ci + 1])
+                ok = 0;
+        EXPECT_TRUE(ok, "Cluster offsets are monotone prefix sums");
+        EXPECT_TRUE(table->offsets[VGFX3D_CLUSTER_COUNT] <= VGFX3D_MAX_CLUSTER_LIGHT_INDICES,
+                    "Cluster index total stays within the cap");
+    }
+
+    /* Conservativeness sweep: any local light contributing more than 1/255 at a
+     * visible sample point must appear in that point's cluster list. */
+    {
+        int violations = 0;
+        int samples = 0;
+        for (int gz = 0; gz < 12; gz++) {
+            float depth = 0.15f * powf(100.0f / 0.15f, (float)gz / 11.0f);
+            for (int gy = -3; gy <= 3; gy++) {
+                for (int gx = -3; gx <= 3; gx++) {
+                    /* Sample points fan out in front of the default camera (-Z). */
+                    float p[3] = {(float)gx * depth * 0.15f, (float)gy * depth * 0.15f, -depth};
+                    float ndc_x;
+                    float ndc_y;
+                    {
+                        const float *vp = canvas.cached_vp;
+                        float cx = vp[0] * p[0] + vp[1] * p[1] + vp[2] * p[2] + vp[3];
+                        float cy = vp[4] * p[0] + vp[5] * p[1] + vp[6] * p[2] + vp[7];
+                        float cw = vp[12] * p[0] + vp[13] * p[1] + vp[14] * p[2] + vp[15];
+                        if (cw <= 1e-6f)
+                            continue;
+                        ndc_x = cx / cw;
+                        ndc_y = cy / cw;
+                    }
+                    float u = ndc_x * 0.5f + 0.5f;
+                    float v = 0.5f - ndc_y * 0.5f;
+                    float view_depth =
+                        (p[0] - canvas.cached_cam_pos[0]) * canvas.cached_cam_forward[0] +
+                        (p[1] - canvas.cached_cam_pos[1]) * canvas.cached_cam_forward[1] +
+                        (p[2] - canvas.cached_cam_pos[2]) * canvas.cached_cam_forward[2];
+                    if (u < 0.001f || u > 0.999f || v < 0.001f || v > 0.999f)
+                        continue;
+                    if (view_depth <= table->znear * 1.01f || view_depth >= table->zfar * 0.99f)
+                        continue;
+                    samples++;
+                    int32_t cidx = canvas3d_cluster_index_for_point(
+                        u, v, view_depth, table->znear, table->zfar);
+                    for (int32_t li = table->global_light_count; li < 6; li++) {
+                        float dx = p[0] - lights[li].position[0];
+                        float dy = p[1] - lights[li].position[1];
+                        float dz = p[2] - lights[li].position[2];
+                        float d2 = dx * dx + dy * dy + dz * dz;
+                        float atten = lights[li].intensity / (1.0f + lights[li].attenuation * d2);
+                        if (atten < (1.0f / 255.0f) * 1.05f)
+                            continue; /* negligible (margin avoids float edges) */
+                        int found = 0;
+                        for (uint16_t k = table->offsets[cidx]; k < table->offsets[cidx + 1]; k++) {
+                            if (table->indices[k] == (uint16_t)li) {
+                                found = 1;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            if (violations < 5)
+                                fprintf(stderr,
+                                        "VIOL li=%d u=%.3f v=%.3f d=%.2f cidx=%d off=[%u,%u) "
+                                        "atten=%.4f p=(%.1f,%.1f,%.1f)\n",
+                                        li,
+                                        u,
+                                        v,
+                                        view_depth,
+                                        cidx,
+                                        table->offsets[cidx],
+                                        table->offsets[cidx + 1],
+                                        atten,
+                                        p[0],
+                                        p[1],
+                                        p[2]);
+                            violations++;
+                        }
+                    }
+                }
+            }
+        }
+        EXPECT_TRUE(samples > 100, "Conservativeness sweep visited a meaningful sample set");
+        EXPECT_EQ(violations, 0);
+    }
+
+    /* Determinism: rebuilding produces a byte-identical table. */
+    {
+        vgfx3d_cluster_table_t *again =
+            (vgfx3d_cluster_table_t *)calloc(1, sizeof(vgfx3d_cluster_table_t));
+        canvas3d_build_cluster_table(&canvas, lights, 6, 7u, again);
+        EXPECT_TRUE(memcmp(table, again, sizeof(*table)) == 0, "Binning is deterministic");
+        free(again);
+    }
+
+    rt_canvas3d_end(&canvas);
+    free(table);
+    PASS();
+}
+
+static void test_cluster_table_overflow_truncates_deterministically() {
+    TEST("Cluster index overflow truncates deterministically (Plan 07)");
+    rt_canvas3d canvas;
+    void *cam = nullptr;
+    (void)cluster_test_begin_frame(&canvas, &cam);
+
+    /* Three unbounded lights demand 3 * 3456 entries against the 8192 cap. */
+    vgfx3d_light_params_t lights[3];
+    memset(lights, 0, sizeof(lights));
+    cluster_test_make_point_light(&lights[0], 0.0f, 0.0f, -5.0f, 1.0f, 0.0f);
+    cluster_test_make_point_light(&lights[1], 2.0f, 0.0f, -9.0f, 1.0f, 0.0f);
+    cluster_test_make_point_light(&lights[2], -2.0f, 1.0f, -20.0f, 1.0f, 0.0f);
+
+    vgfx3d_cluster_table_t *table =
+        (vgfx3d_cluster_table_t *)calloc(1, sizeof(vgfx3d_cluster_table_t));
+    canvas3d_build_cluster_table(&canvas, lights, 3, 9u, table);
+
+    EXPECT_EQ(table->overflow_count, 3 * VGFX3D_CLUSTER_COUNT - VGFX3D_MAX_CLUSTER_LIGHT_INDICES);
+    EXPECT_EQ((int)table->offsets[VGFX3D_CLUSTER_COUNT], VGFX3D_MAX_CLUSTER_LIGHT_INDICES);
+    {
+        int ok = 1;
+        for (int32_t ci = 0; ci < VGFX3D_CLUSTER_COUNT; ci++)
+            if (table->offsets[ci] > table->offsets[ci + 1])
+                ok = 0;
+        EXPECT_TRUE(ok, "Offsets stay monotone under truncation");
+        for (int32_t k = 0; k < VGFX3D_MAX_CLUSTER_LIGHT_INDICES; k++)
+            if (table->indices[k] > 2)
+                ok = 0;
+        EXPECT_TRUE(ok, "Truncated index stream stays in range");
+    }
+    {
+        vgfx3d_cluster_table_t *again =
+            (vgfx3d_cluster_table_t *)calloc(1, sizeof(vgfx3d_cluster_table_t));
+        canvas3d_build_cluster_table(&canvas, lights, 3, 9u, again);
+        EXPECT_TRUE(memcmp(table, again, sizeof(*table)) == 0,
+                    "Truncation is order-stable and deterministic");
+        free(again);
+    }
+
+    rt_canvas3d_end(&canvas);
+    free(table);
+    PASS();
+}
+
+static void test_cluster_table_ring_and_gating() {
+    TEST("Cluster table ring keys by revision and gates by backend (Plan 07)");
+    rt_canvas3d canvas;
+    void *cam = nullptr;
+    vgfx3d_backend_t *mock_backend = cluster_test_begin_frame(&canvas, &cam);
+
+    vgfx3d_light_params_t lights[2];
+    memset(lights, 0, sizeof(lights));
+    cluster_test_make_point_light(&lights[0], 0.0f, 1.0f, -5.0f, 1.0f, 1.0f);
+    cluster_test_make_point_light(&lights[1], 2.0f, 1.0f, -9.0f, 1.0f, 1.0f);
+
+    /* Flat-loop backend (no GPU postfx hook): never builds tables. */
+    canvas.clustered_lighting = 1;
+    EXPECT_TRUE(canvas3d_cluster_table_for_revision(&canvas, lights, 2, 5u) == NULL,
+                "Backends without GPU postfx keep the flat loop");
+
+    /* GPU-like backend: tables build and key by revision. */
+    mock_backend->present_postfx = cluster_noop_present_postfx;
+    canvas.clustered_lighting = 0;
+    EXPECT_TRUE(canvas3d_cluster_table_for_revision(&canvas, lights, 2, 5u) == NULL,
+                "Clustering disabled keeps the flat loop");
+    canvas.clustered_lighting = 1;
+    const vgfx3d_cluster_table_t *t5 = canvas3d_cluster_table_for_revision(&canvas, lights, 2, 5u);
+    const vgfx3d_cluster_table_t *t5b = canvas3d_cluster_table_for_revision(&canvas, lights, 2, 5u);
+    const vgfx3d_cluster_table_t *t6 = canvas3d_cluster_table_for_revision(&canvas, lights, 2, 6u);
+    EXPECT_TRUE(t5 != NULL && t5 == t5b, "Same revision reuses the cached table");
+    EXPECT_TRUE(t6 != NULL && t6 != t5, "New revision gets its own table");
+    EXPECT_EQ(t5->lights_revision, 5u);
+    EXPECT_EQ(t6->lights_revision, 6u);
+    EXPECT_EQ(t5->global_light_count, 0);
+    EXPECT_EQ(t5->binned_light_count, 2);
+
+    rt_canvas3d_end(&canvas);
+    free(canvas.cluster_tables);
+    canvas.cluster_tables = NULL;
+    PASS();
+}
+
+static void test_build_light_params_sorts_globals_first() {
+    TEST("build_light_params orders directional/ambient before point/spot (Plan 07)");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+
+    void *point = rt_light3d_new_point(rt_vec3_new(1.0, 2.0, 3.0), 1.0, 0.0, 0.0, 0.5);
+    void *dir = rt_light3d_new_directional(rt_vec3_new(0.0, -1.0, 0.0), 0.0, 1.0, 0.0);
+    void *ambient = rt_light3d_new_ambient(0.1, 0.1, 0.1);
+    canvas.lights[0] = (rt_light3d *)point;
+    canvas.lights[1] = (rt_light3d *)dir;
+    canvas.lights[2] = (rt_light3d *)ambient;
+
+    vgfx3d_light_params_t out[8];
+    int32_t count = build_light_params(&canvas, out, 8);
+    EXPECT_EQ(count, 3);
+    EXPECT_EQ(out[0].type, 0); /* directional first */
+    EXPECT_EQ(out[1].type, 2); /* then ambient */
+    EXPECT_EQ(out[2].type, 1); /* locals last */
+    /* Identity survives the reorder (shadow patching matches by identity). */
+    EXPECT_TRUE(out[0].identity == (uintptr_t)dir && out[2].identity == (uintptr_t)point,
+                "Reordered entries keep their light identities");
     PASS();
 }
 
@@ -7880,6 +8220,11 @@ int main() {
     test_material_null_safety();
 
     /* Light3D */
+    test_cluster_slice_and_radius_math();
+    test_cluster_table_binning_is_conservative();
+    test_cluster_table_overflow_truncates_deterministically();
+    test_cluster_table_ring_and_gating();
+    test_build_light_params_sorts_globals_first();
     test_light_directional();
     test_light_point();
     test_light_ambient();

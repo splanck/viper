@@ -1,5 +1,17 @@
 module file_tree_probe;
 
+// ============================================================================
+// MODULE: file_tree_probe
+// PURPOSE: Display-backed probe for project explorer and document close flows.
+//
+// WHERE-THIS-FITS: ProjectManager owns tree data and DocumentManager owns open
+//          buffers. This probe verifies explorer actions keep those models in
+//          sync through real temporary workspace paths.
+//
+// TEACHING-NOTE: File-tree behavior depends on path data stored on nodes, not on
+//          labels. Probe the path/model state rather than decorative text.
+// ============================================================================
+
 bind "../ui/app_shell";
 bind "../core/project_manager";
 bind "../core/document_manager";

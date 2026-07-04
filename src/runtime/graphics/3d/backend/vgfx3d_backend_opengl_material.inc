@@ -183,7 +183,8 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
                          GL_TEXTURE_WRAP_T,
                          (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_t[slot]
                                                                : cmd->texture_wrap_t));
-        gl.TexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint)(filter == GL_NEAREST ? GL_NEAREST : GL_LINEAR));
+        gl.TexParameteri(
+            target, GL_TEXTURE_MIN_FILTER, (GLint)(filter == GL_NEAREST ? GL_NEAREST : GL_LINEAR));
         gl.TexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint)filter);
         if (anisotropy > 1)
             gl.TexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
@@ -239,6 +240,28 @@ static void upload_light_uniforms(gl_context_t *ctx,
 /// PBR scalars, custom params, fog, shadow toggles, light array, and
 /// the morph + skinning state. Effectively the GL counterpart of the
 /// D3D11 backend's per-object/per-scene/per-material cbuffer fills.
+/// @brief Upload one CPU froxel table into the cluster UBOs (or select the flat loop).
+/// @details The u16 offset/index arrays are little-endian, which is exactly the
+///          std140 uvec4 lane layout the shader unpacks (two u16 per uint lane),
+///          so the tables upload as-is with no repacking pass.
+static void gl_upload_cluster_table(gl_context_t *ctx, const vgfx3d_cluster_table_t *table) {
+    if (!table || !ctx->cluster_offsets_ubo || !ctx->cluster_indices_ubo) {
+        gl.Uniform1i(ctx->uClusterGlobalCount, -1);
+        return;
+    }
+    gl.Uniform1i(ctx->uClusterGlobalCount, table->global_light_count);
+    gl.Uniform4f(ctx->uClusterParams,
+                 (float)(ctx->rtt_active ? ctx->rtt_width : ctx->width),
+                 (float)(ctx->rtt_active ? ctx->rtt_height : ctx->height),
+                 table->znear,
+                 table->zfar);
+    gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->cluster_offsets_ubo);
+    gl.BufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr)sizeof(table->offsets), table->offsets);
+    gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->cluster_indices_ubo);
+    gl.BufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr)sizeof(table->indices), table->indices);
+    gl.BindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
 static void upload_main_uniforms(gl_context_t *ctx,
                                  const vgfx3d_draw_cmd_t *cmd,
                                  const vgfx3d_light_params_t *lights,
@@ -360,6 +383,10 @@ static void upload_main_uniforms(gl_context_t *ctx,
     if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_lights_revision) {
         upload_light_uniforms(ctx, lights, light_count);
         ctx->uploaded_lights_revision = cmd->lights_revision;
+    }
+    if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_cluster_revision) {
+        gl_upload_cluster_table(ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+        ctx->uploaded_cluster_revision = cmd->lights_revision;
     }
 
     bind_morph_payload(ctx,
@@ -551,7 +578,8 @@ static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *ch
         return gl_draw_texture_to_target(
             ctx, ctx->scene_color_tex, ctx->postfx_readback_fbo, GL_COLOR_ATTACHMENT0, w, h, NULL);
     }
-    return gl_draw_texture_to_target(ctx, ctx->scene_color_tex, 0, ctx->default_draw_buffer, w, h, NULL);
+    return gl_draw_texture_to_target(
+        ctx, ctx->scene_color_tex, 0, ctx->default_draw_buffer, w, h, NULL);
 }
 
 /// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.
@@ -685,6 +713,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uShadowSlopeBias);
     U(uShadowStrength);
     U(uShadowSampleCount);
+    U(uClusterGlobalCount);
+    U(uClusterParams);
     U(uUseInstancing);
     U(uHasPrevModelMatrix);
     U(uHasPrevInstanceMatrices);

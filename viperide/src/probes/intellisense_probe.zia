@@ -1,5 +1,19 @@
 module intellisense_probe;
 
+// ============================================================================
+// MODULE: intellisense_probe
+// PURPOSE: Broad regression probe for completion, diagnostics, hover, signature
+//          help, symbols, inlay hints, and semantic project-index behavior.
+//
+// WHERE-THIS-FITS: This is an executable probe, not production IDE logic. It
+//          exercises controllers through the same public surfaces used by the app
+//          and reports RESULT lines for the test harness.
+//
+// TEACHING-NOTE: Large probes should still read as grouped scenarios. Keep helper
+//          assertions close to the behavior they validate, and move new focused
+//          coverage into smaller probes when a section grows.
+// ============================================================================
+
 bind "../ui/app_shell";
 bind "../editor/editor_engine";
 bind "../editor/completion";

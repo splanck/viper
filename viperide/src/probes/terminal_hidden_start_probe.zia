@@ -16,6 +16,19 @@ bind "../terminal/terminal_controller";
 
 bind Terminal = Viper.Terminal;
 
+// ============================================================================
+// MODULE: terminal_hidden_start_probe
+// PURPOSE: Regression probe for starting terminal sessions while panel-hidden.
+//
+// WHERE-THIS-FITS: TerminalController can lazily start and pump a PTY even when
+//          the bottom Terminal panel is not visible yet. This probe guards that
+//          lifecycle path.
+//
+// TEACHING-NOTE: Hidden controllers still need explicit pumping. Probe both
+//          visibility state and session state so UI and process lifetimes do not
+//          drift apart.
+// ============================================================================
+
 /// @brief Report a probe failure and destroy the shell.
 /// @param shell App shell created by the probe.
 /// @param reason Human-readable failure reason.

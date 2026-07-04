@@ -3,6 +3,19 @@ module quick_fixes;
 bind Map = Viper.Collections.Map;
 bind Str = Viper.String;
 
+// ============================================================================
+// MODULE: quick_fixes
+// PURPOSE: Interpret diagnostic records into user-visible quick-fix actions.
+//
+// WHERE-THIS-FITS: LiveDiagnostics and diagnostic edit commands use this module
+//          to classify structured toolchain records without embedding diagnostic
+//          string matching in UI controllers.
+//
+// TEACHING-NOTE: Diagnostic actions should be deterministic and conservative.
+//          Return "No quick fix" unless the diagnostic shape is known and the
+//          resulting source edit is safe to explain before applying.
+// ============================================================================
+
 expose func ProblemActionForDiagnosticRecord(record: Any) -> String {
     if record == null { return "No quick fix"; }
     if Map.GetBool(record, "hasFixit") {

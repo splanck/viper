@@ -316,6 +316,7 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
 /// the dedicated PerLights cbuffer via `prepare_light_data`. This
 /// struct holds the everything-else scene constants.
 static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
+                                     const vgfx3d_draw_cmd_t *cmd,
                                      const vgfx3d_light_params_t *lights,
                                      int32_t light_count,
                                      const float *ambient,
@@ -370,6 +371,31 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
         vgfx3d_d3d11_clamp_float_param(ctx->shadow_strength, 0.0f, 1.0f, 0.85f);
     scene_data->shadow_filter[2] =
         (float)(ctx->shadow_quality <= 0 ? 4 : (ctx->shadow_quality == 1 ? 8 : 16));
+    {
+        const vgfx3d_cluster_table_t *cluster =
+            (const vgfx3d_cluster_table_t *)(cmd ? cmd->cluster_table : NULL);
+        scene_data->cluster_global_count = cluster ? cluster->global_light_count : -1;
+        scene_data->cluster_params[0] = (float)(ctx->rtt_active ? ctx->rtt_width : ctx->width);
+        scene_data->cluster_params[1] = (float)(ctx->rtt_active ? ctx->rtt_height : ctx->height);
+        scene_data->cluster_params[2] = cluster ? cluster->znear : 0.0f;
+        scene_data->cluster_params[3] = cluster ? cluster->zfar : 0.0f;
+    }
+}
+
+/// @brief Upload one CPU froxel table into the cluster cbuffers (no-op when the
+///        draw carries none; clusterGlobalCount = -1 keeps the shader on the
+///        flat loop). u16 arrays are little-endian, matching the uint4 lanes.
+static HRESULT d3d11_upload_cluster_table(d3d11_context_t *ctx,
+                                          const vgfx3d_cluster_table_t *table) {
+    HRESULT hr;
+    if (!table || !ctx->cb_cluster_offsets || !ctx->cb_cluster_indices)
+        return S_OK;
+    hr = d3d11_update_constant_buffer(
+        ctx, ctx->cb_cluster_offsets, table->offsets, sizeof(table->offsets));
+    if (FAILED(hr))
+        return hr;
+    return d3d11_update_constant_buffer(
+        ctx, ctx->cb_cluster_indices, table->indices, sizeof(table->indices));
 }
 
 /// @brief Resolve whether a draw uses IBL environment lighting, producing the
@@ -791,6 +817,8 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cb_per_scene);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 2, 1, &ctx->cb_per_material);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 3, 1, &ctx->cb_per_lights);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 6, 1, &ctx->cb_cluster_offsets);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 7, 1, &ctx->cb_cluster_indices);
     d3d11_bind_common_state(ctx, cmd);
 
     vs_srvs[0] = ctx->current_morph_srv;
@@ -968,13 +996,13 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
     srvs[12] = cmd->has_splat
                    ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[3], &resources->textures[8])
                    : NULL;
-    srvs[13] = (cmd->env_map &&
-                (vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f) > 0.0001f ||
-                 (cmd->ibl_env && ctx->ibl_enabled &&
-                  ((const rt_cubemap3d *)cmd->env_map)->ibl_ready)))
-                   ? d3d11_get_or_create_cubemap_srv(
-                         ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
-                   : NULL;
+    srvs[13] =
+        (cmd->env_map &&
+         (vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f) > 0.0001f ||
+          (cmd->ibl_env && ctx->ibl_enabled && ((const rt_cubemap3d *)cmd->env_map)->ibl_ready)))
+            ? d3d11_get_or_create_cubemap_srv(
+                  ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
+            : NULL;
     srvs[14] = d3d11_get_or_create_material_srv(
         ctx,
         cmd->metallic_roughness_map_asset,
@@ -1076,7 +1104,7 @@ static void d3d11_submit_draw(void *ctx_ptr,
     /* Scene + light constants only change with the queued light-snapshot
      * revision; DISCARD-mapped buffers keep earlier draws consistent. */
     if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_lights_revision) {
-        d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
+        d3d11_prepare_scene_data(ctx, cmd, lights, light_count, ambient, &scene_data);
         d3d11_prepare_light_data(
             lights, scene_data.light_count, scene_data.shadow_count, light_data);
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
@@ -1087,6 +1115,11 @@ static void d3d11_submit_draw(void *ctx_ptr,
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
         if (FAILED(hr)) {
             d3d11_log_hresult("Map(cbPerLights)", hr);
+            return;
+        }
+        hr = d3d11_upload_cluster_table(ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbCluster)", hr);
             return;
         }
         ctx->uploaded_lights_revision = cmd->lights_revision;
@@ -1204,7 +1237,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     /* Scene + light constants only change with the queued light-snapshot
      * revision; DISCARD-mapped buffers keep earlier draws consistent. */
     if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_lights_revision) {
-        d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
+        d3d11_prepare_scene_data(ctx, cmd, lights, light_count, ambient, &scene_data);
         d3d11_prepare_light_data(
             lights, scene_data.light_count, scene_data.shadow_count, light_data);
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
@@ -1215,6 +1248,11 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
         if (FAILED(hr)) {
             d3d11_log_hresult("Map(cbPerLights)", hr);
+            return;
+        }
+        hr = d3d11_upload_cluster_table(ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbCluster)", hr);
             return;
         }
         ctx->uploaded_lights_revision = cmd->lights_revision;

@@ -23,6 +23,19 @@ bind Viper.GUI as GUI;
 bind Input = Viper.Input;
 bind Str = Viper.String;
 
+// ============================================================================
+// MODULE: debug_breakpoint_overlay
+// PURPOSE: Non-modal editor for breakpoint conditions and logpoint messages.
+//
+// WHERE-THIS-FITS: Debug command routing opens this overlay, main-loop lifecycle
+//          code pumps it, and BreakpointStore persistence stays outside the UI
+//          surface.
+//
+// TEACHING-NOTE: Overlays should capture intent, not perform side effects. This
+//          module returns action ids and form values; command/lifecycle code owns
+//          applying those values to the model and debug adapter.
+// ============================================================================
+
 final DEBUG_BP_ACTION_NONE: Integer = 0;
 final DEBUG_BP_ACTION_CONDITION: Integer = 1;
 final DEBUG_BP_ACTION_LOGPOINT: Integer = 2;

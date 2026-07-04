@@ -88,7 +88,7 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
         i = i + 1;
     }
 
-    Canvas3D.SetClusteredLighting(canvas, false);
+    canvas.ClusteredLighting = false;
     var fallbackStart = Clock.TicksUs();
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, camera);
@@ -101,7 +101,7 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
         return false;
     }
 
-    Canvas3D.SetClusteredLighting(canvas, true);
+    canvas.ClusteredLighting = true;
     if (canvas.MaxActiveLights < 24 ||
         canvas.LightCount != 24) {
         fail("clustered lighting did not expose the many-light budget");

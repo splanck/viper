@@ -8,6 +8,19 @@ bind Clock = Viper.Time.Clock;
 bind File = Viper.IO.File;
 bind Log = Viper.Diagnostics.Log;
 
+// ============================================================================
+// MODULE: perf_monitor
+// PURPOSE: Optional frame/controller performance counters for ViperIDE dogfood.
+//
+// WHERE-THIS-FITS: main.zia starts and ends frame spans, editor controllers add
+//          their own elapsed-time buckets, and this monitor periodically writes
+//          a compact log when enabled through environment variables.
+//
+// TEACHING-NOTE: Instrumentation must stay opt-in and cheap when disabled. Keep
+//          counters centralized so hot-path probes can reason about what was
+//          measured without reading every controller.
+// ============================================================================
+
 class PerfMonitor {
     expose Boolean enabled;
     expose String logPath;
