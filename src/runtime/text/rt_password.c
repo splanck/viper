@@ -76,13 +76,20 @@ static void password_secure_zero(void *ptr, size_t len) {
 
 /// @brief Extract a raw byte pointer and byte count from an rt_string password.
 ///        Traps on NULL or invalid string handles. A real empty password is valid.
-static const uint8_t *password_string_bytes(rt_string password, size_t *len) {
+static const uint8_t *password_string_bytes(rt_string password, size_t *len, int *ok) {
+    if (ok)
+        *ok = 0;
     if (!len) {
         rt_trap("Password: internal length pointer is null");
         return (const uint8_t *)"";
     }
     if (!password) {
         rt_trap("Password: password is null");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+    if (!rt_string_is_handle((const void *)password)) {
+        rt_trap("Password: invalid password string handle");
         *len = 0;
         return (const uint8_t *)"";
     }
@@ -95,6 +102,8 @@ static const uint8_t *password_string_bytes(rt_string password, size_t *len) {
     }
     if (len64 == 0) {
         *len = 0;
+        if (ok)
+            *ok = 1;
         return (const uint8_t *)"";
     }
 
@@ -106,6 +115,8 @@ static const uint8_t *password_string_bytes(rt_string password, size_t *len) {
     }
 
     *len = (size_t)len64;
+    if (ok)
+        *ok = 1;
     return (const uint8_t *)pwd;
 }
 
@@ -372,9 +383,9 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     }
 
     size_t pwd_len;
-    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-    if (!pwd) {
-        rt_trap("Password.HashIters: password is null");
+    int pwd_ok;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok) {
         return rt_const_cstr("");
     }
 
@@ -448,9 +459,9 @@ rt_string rt_password_hash_scrypt_params(rt_string password,
     }
 
     size_t pwd_len;
-    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-    if (!pwd) {
-        rt_trap("Password.HashScrypt: password is null");
+    int pwd_ok;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok) {
         return rt_const_cstr("");
     }
 
@@ -583,8 +594,9 @@ static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
         return 0;
 
     size_t pwd_len;
-    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-    if (!pwd) {
+    int pwd_ok;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok) {
         password_secure_zero(salt, salt_len);
         free(salt);
         password_secure_zero(expected, expected_len);
@@ -665,8 +677,9 @@ static int password_verify_scrypt(rt_string password, const char *hash_str) {
         return 0;
 
     size_t pwd_len;
-    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-    if (!pwd) {
+    int pwd_ok;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok) {
         password_secure_zero(salt, salt_len);
         free(salt);
         password_secure_zero(expected, expected_len);

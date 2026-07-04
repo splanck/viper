@@ -72,6 +72,12 @@ static void store64_le(uint8_t out[8], uint64_t value) {
         out[i] = (uint8_t)(value >> (8 * i));
 }
 
+/// @brief Load a 32-bit little-endian word from an unaligned byte buffer.
+static uint32_t load32_le(const uint8_t in[4]) {
+    return ((uint32_t)in[0]) | ((uint32_t)in[1] << 8) | ((uint32_t)in[2] << 16) |
+           ((uint32_t)in[3] << 24);
+}
+
 /// @brief Return non-zero if both lengths can be safely multiplied by 8 to get bit counts.
 /// GCM length block encodes aad_len and ct_len in bits as 64-bit big-endian values;
 /// overflow would silently produce a wrong tag.
@@ -282,8 +288,11 @@ void rt_sha256(const void *data, size_t len, uint8_t digest[32]) {
         rt_trap("SHA256: digest output is null");
         return;
     }
+    const uint8_t *ptr = rt_crypto_checked_input(data, len, "SHA256: input buffer is null");
+    if (!ptr)
+        return;
     rt_sha256_init(&ctx);
-    rt_sha256_update(&ctx, data, len);
+    rt_sha256_update(&ctx, ptr, len);
     rt_sha256_final(&ctx, digest);
 }
 
@@ -497,8 +506,11 @@ void rt_sha384(const void *data, size_t len, uint8_t digest[48]) {
         rt_trap("SHA384: digest output is null");
         return;
     }
+    const uint8_t *ptr = rt_crypto_checked_input(data, len, "SHA384: input buffer is null");
+    if (!ptr)
+        return;
     sha512_family_init(&ctx, 1);
-    sha512_family_update(&ctx, data, len);
+    sha512_family_update(&ctx, ptr, len);
     sha512_family_final(&ctx, digest, 48);
 }
 
@@ -509,8 +521,11 @@ void rt_sha512(const void *data, size_t len, uint8_t digest[64]) {
         rt_trap("SHA512: digest output is null");
         return;
     }
+    const uint8_t *ptr = rt_crypto_checked_input(data, len, "SHA512: input buffer is null");
+    if (!ptr)
+        return;
     sha512_family_init(&ctx, 0);
-    sha512_family_update(&ctx, data, len);
+    sha512_family_update(&ctx, ptr, len);
     sha512_family_final(&ctx, digest, 64);
 }
 
@@ -677,6 +692,18 @@ void rt_hmac_sha512(
 /// — TLS 1.3 relies on this for the early-secret derivation.
 void rt_hkdf_extract(
     const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[32]) {
+    if (!prk) {
+        rt_trap("HKDF-Extract: output buffer is null");
+        return;
+    }
+    if (!salt && salt_len > 0) {
+        rt_trap("HKDF-Extract: salt buffer is null");
+        return;
+    }
+    if (!ikm && ikm_len > 0) {
+        rt_trap("HKDF-Extract: input key material buffer is null");
+        return;
+    }
     if (salt == NULL || salt_len == 0) {
         uint8_t zero_salt[32] = {0};
         rt_hmac_sha256(zero_salt, 32, ikm, ikm_len, prk);
@@ -813,6 +840,18 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
 ///          cipher-suite family.
 void rt_hkdf_extract_sha384(
     const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[48]) {
+    if (!prk) {
+        rt_trap("HKDF-SHA384-Extract: output buffer is null");
+        return;
+    }
+    if (!salt && salt_len > 0) {
+        rt_trap("HKDF-SHA384-Extract: salt buffer is null");
+        return;
+    }
+    if (!ikm && ikm_len > 0) {
+        rt_trap("HKDF-SHA384-Extract: input key material buffer is null");
+        return;
+    }
     if (salt == NULL || salt_len == 0) {
         uint8_t zero_salt[48] = {0};
         rt_hmac_sha384(zero_salt, sizeof(zero_salt), ikm, ikm_len, prk);
@@ -1063,34 +1102,24 @@ typedef struct {
 /// final additive `pad`. The accumulator `h` starts at zero.
 static void poly1305_init(poly1305_ctx *ctx, const uint8_t key[32]) {
     // r (first 16 bytes, clamped)
-    ctx->r[0] = ((uint32_t)key[0] | ((uint32_t)key[1] << 8) | ((uint32_t)key[2] << 16) |
-                 ((uint32_t)key[3] << 24)) &
-                0x0FFFFFFF;
-    ctx->r[1] = (((uint32_t)key[3] >> 2) | ((uint32_t)key[4] << 6) | ((uint32_t)key[5] << 14) |
-                 ((uint32_t)key[6] << 22)) &
-                0x0FFFFFFC;
-    ctx->r[2] = (((uint32_t)key[6] >> 4) | ((uint32_t)key[7] << 4) | ((uint32_t)key[8] << 12) |
-                 ((uint32_t)key[9] << 20)) &
-                0x0FFFFFFC;
-    ctx->r[3] = (((uint32_t)key[9] >> 6) | ((uint32_t)key[10] << 2) | ((uint32_t)key[11] << 10) |
-                 ((uint32_t)key[12] << 18)) &
-                0x0FFFFFFC;
-    ctx->r[4] = (((uint32_t)key[12] >> 8) | ((uint32_t)key[13]) | ((uint32_t)key[14] << 8) |
-                 ((uint32_t)key[15] << 16)) &
-                0x00FFFFFC;
+    uint32_t t0 = load32_le(key);
+    uint32_t t1 = load32_le(key + 4);
+    uint32_t t2 = load32_le(key + 8);
+    uint32_t t3 = load32_le(key + 12);
+    ctx->r[0] = t0 & 0x3ffffff;
+    ctx->r[1] = ((t0 >> 26) | (t1 << 6)) & 0x3ffff03;
+    ctx->r[2] = ((t1 >> 20) | (t2 << 12)) & 0x3ffc0ff;
+    ctx->r[3] = ((t2 >> 14) | (t3 << 18)) & 0x3f03fff;
+    ctx->r[4] = (t3 >> 8) & 0x00fffff;
 
     // h = 0
     ctx->h[0] = ctx->h[1] = ctx->h[2] = ctx->h[3] = ctx->h[4] = 0;
 
     // pad (last 16 bytes)
-    ctx->pad[0] = (uint32_t)key[16] | ((uint32_t)key[17] << 8) | ((uint32_t)key[18] << 16) |
-                  ((uint32_t)key[19] << 24);
-    ctx->pad[1] = (uint32_t)key[20] | ((uint32_t)key[21] << 8) | ((uint32_t)key[22] << 16) |
-                  ((uint32_t)key[23] << 24);
-    ctx->pad[2] = (uint32_t)key[24] | ((uint32_t)key[25] << 8) | ((uint32_t)key[26] << 16) |
-                  ((uint32_t)key[27] << 24);
-    ctx->pad[3] = (uint32_t)key[28] | ((uint32_t)key[29] << 8) | ((uint32_t)key[30] << 16) |
-                  ((uint32_t)key[31] << 24);
+    ctx->pad[0] = load32_le(key + 16);
+    ctx->pad[1] = load32_le(key + 20);
+    ctx->pad[2] = load32_le(key + 24);
+    ctx->pad[3] = load32_le(key + 28);
 
     ctx->buffer_len = 0;
 }

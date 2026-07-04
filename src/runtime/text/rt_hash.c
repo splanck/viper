@@ -79,13 +79,20 @@ static int hash_require_service(rt_crypto_module_service_t service, const char *
 /// @brief Extract a raw byte pointer and byte count from an rt_string.
 ///        Returns an empty buffer for real zero-length strings, but traps on
 ///        NULL or invalid string objects so they are not silently hashed as "".
-static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
+static const uint8_t *hash_string_bytes(rt_string str, size_t *len, int *ok) {
+    if (ok)
+        *ok = 0;
     if (!len) {
         rt_trap("Hash: internal length pointer is null");
         return (const uint8_t *)"";
     }
     if (!str) {
         rt_trap("Hash: string must not be null");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+    if (!rt_string_is_handle((const void *)str)) {
+        rt_trap("Hash: invalid string handle");
         *len = 0;
         return (const uint8_t *)"";
     }
@@ -97,6 +104,8 @@ static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
     }
     if (len64 == 0) {
         *len = 0;
+        if (ok)
+            *ok = 1;
         return (const uint8_t *)"";
     }
 
@@ -108,6 +117,8 @@ static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
     }
 
     *len = (size_t)len64;
+    if (ok)
+        *ok = 1;
     return (const uint8_t *)cstr;
 }
 
@@ -121,10 +132,18 @@ static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
 /// @param len Receives the byte length on success, or zero on failure.
 /// @param context Public API name used in trap messages.
 /// @return Borrowed immutable byte pointer valid for the duration of the call.
-static const uint8_t *hash_bytes_data(void *bytes, size_t *len, const char *context) {
+static const uint8_t *hash_bytes_data(void *bytes, size_t *len, const char *context, int *ok) {
     const char *api = context ? context : "Hash.Bytes";
+    if (ok)
+        *ok = 0;
     if (!len) {
         rt_trap("Hash.Bytes: internal length pointer is null");
+        return (const uint8_t *)"";
+    }
+
+    if (bytes && !rt_bytes_is_bytes(bytes)) {
+        rt_trap(api);
+        *len = 0;
         return (const uint8_t *)"";
     }
 
@@ -136,8 +155,11 @@ static const uint8_t *hash_bytes_data(void *bytes, size_t *len, const char *cont
     }
 
     *len = (size_t)len64;
-    if (*len == 0)
+    if (*len == 0) {
+        if (ok)
+            *ok = 1;
         return (const uint8_t *)"";
+    }
 
     const uint8_t *data = rt_bytes_data_const(bytes);
     if (!data) {
@@ -145,6 +167,8 @@ static const uint8_t *hash_bytes_data(void *bytes, size_t *len, const char *cont
         *len = 0;
         return (const uint8_t *)"";
     }
+    if (ok)
+        *ok = 1;
     return data;
 }
 
@@ -704,7 +728,10 @@ rt_string rt_hash_md5(rt_string str) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.MD5 is disabled in approved mode"))
         return rt_const_cstr("");
     size_t len;
-    const uint8_t *data = hash_string_bytes(str, &len);
+    int ok;
+    const uint8_t *data = hash_string_bytes(str, &len, &ok);
+    if (!ok)
+        return rt_const_cstr("");
 
     uint8_t digest[16];
     compute_md5(data, len, digest);
@@ -742,7 +769,11 @@ rt_string rt_hash_md5_bytes(void *bytes) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.MD5Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t len;
-    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.MD5Bytes: invalid Bytes object");
+    int ok;
+    const uint8_t *data =
+        hash_bytes_data(bytes, &len, "Hash.MD5Bytes: invalid Bytes object", &ok);
+    if (!ok)
+        return rt_const_cstr("");
     uint8_t digest[16];
     compute_md5(data, len, digest);
     return rt_codec_hex_enc_bytes(digest, 16);
@@ -792,7 +823,10 @@ rt_string rt_hash_sha1(rt_string str) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_SHA1, "Hash.SHA1 is disabled in approved mode"))
         return rt_const_cstr("");
     size_t len;
-    const uint8_t *data = hash_string_bytes(str, &len);
+    int ok;
+    const uint8_t *data = hash_string_bytes(str, &len, &ok);
+    if (!ok)
+        return rt_const_cstr("");
 
     uint8_t digest[20];
     compute_sha1(data, len, digest);
@@ -830,7 +864,11 @@ rt_string rt_hash_sha1_bytes(void *bytes) {
                               "Hash.SHA1Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t len;
-    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.SHA1Bytes: invalid Bytes object");
+    int ok;
+    const uint8_t *data =
+        hash_bytes_data(bytes, &len, "Hash.SHA1Bytes: invalid Bytes object", &ok);
+    if (!ok)
+        return rt_const_cstr("");
     uint8_t digest[20];
     compute_sha1(data, len, digest);
     return rt_codec_hex_enc_bytes(digest, 20);
@@ -893,7 +931,10 @@ rt_string rt_hash_sha1_bytes(void *bytes) {
 /// @see rt_hash_md5 For legacy/checksum uses (NOT secure)
 rt_string rt_hash_sha256(rt_string str) {
     size_t len;
-    const uint8_t *data = hash_string_bytes(str, &len);
+    int ok;
+    const uint8_t *data = hash_string_bytes(str, &len, &ok);
+    if (!ok)
+        return rt_const_cstr("");
 
     uint8_t hash[32];
     compute_sha256(data, len, hash);
@@ -938,7 +979,11 @@ rt_string rt_hash_sha256(rt_string str) {
 /// @see rt_hash_md5_bytes For legacy/checksum uses (NOT secure)
 rt_string rt_hash_sha256_bytes(void *bytes) {
     size_t len;
-    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.SHA256Bytes: invalid Bytes object");
+    int ok;
+    const uint8_t *data =
+        hash_bytes_data(bytes, &len, "Hash.SHA256Bytes: invalid Bytes object", &ok);
+    if (!ok)
+        return rt_const_cstr("");
     uint8_t hash[32];
     compute_sha256(data, len, hash);
     return rt_codec_hex_enc_bytes(hash, 32);
@@ -1003,7 +1048,10 @@ int64_t rt_hash_crc32(rt_string str) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_CRC32, "Hash.CRC32 is disabled in approved mode"))
         return 0;
     size_t len;
-    const uint8_t *data = hash_string_bytes(str, &len);
+    int ok;
+    const uint8_t *data = hash_string_bytes(str, &len, &ok);
+    if (!ok)
+        return 0;
 
     return (int64_t)rt_crc32_compute(data, len);
 }
@@ -1050,7 +1098,11 @@ int64_t rt_hash_crc32_bytes(void *bytes) {
                               "Hash.CRC32Bytes is disabled in approved mode"))
         return 0;
     size_t len;
-    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.CRC32Bytes: invalid Bytes object");
+    int ok;
+    const uint8_t *data =
+        hash_bytes_data(bytes, &len, "Hash.CRC32Bytes: invalid Bytes object", &ok);
+    if (!ok)
+        return 0;
     uint32_t result = rt_crc32_compute(data, len);
     return (int64_t)result;
 }
@@ -1254,8 +1306,11 @@ rt_string rt_hash_hmac_md5(rt_string key, rt_string data) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.HmacMD5 is disabled in approved mode"))
         return rt_const_cstr("");
     size_t key_len, data_len;
-    const uint8_t *key_data = hash_string_bytes(key, &key_len);
-    const uint8_t *msg_data = hash_string_bytes(data, &data_len);
+    int key_ok, data_ok;
+    const uint8_t *key_data = hash_string_bytes(key, &key_len, &key_ok);
+    const uint8_t *msg_data = hash_string_bytes(data, &data_len, &data_ok);
+    if (!key_ok || !data_ok)
+        return rt_const_cstr("");
 
     uint8_t digest[16];
     hmac_md5_raw(key_data, key_len, msg_data, data_len, digest);
@@ -1268,10 +1323,13 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data) {
                               "Hash.HmacMD5Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t key_len, data_len;
+    int key_ok, data_ok;
     const uint8_t *key_data =
-        hash_bytes_data(key, &key_len, "Hash.HmacMD5Bytes: invalid key Bytes object");
+        hash_bytes_data(key, &key_len, "Hash.HmacMD5Bytes: invalid key Bytes object", &key_ok);
     const uint8_t *msg_data =
-        hash_bytes_data(data, &data_len, "Hash.HmacMD5Bytes: invalid data Bytes object");
+        hash_bytes_data(data, &data_len, "Hash.HmacMD5Bytes: invalid data Bytes object", &data_ok);
+    if (!key_ok || !data_ok)
+        return rt_const_cstr("");
 
     uint8_t digest[16];
     hmac_md5_raw(key_data, key_len, msg_data, data_len, digest);
@@ -1284,8 +1342,11 @@ rt_string rt_hash_hmac_sha1(rt_string key, rt_string data) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_SHA1, "Hash.HmacSHA1 is disabled in approved mode"))
         return rt_const_cstr("");
     size_t key_len, data_len;
-    const uint8_t *key_data = hash_string_bytes(key, &key_len);
-    const uint8_t *msg_data = hash_string_bytes(data, &data_len);
+    int key_ok, data_ok;
+    const uint8_t *key_data = hash_string_bytes(key, &key_len, &key_ok);
+    const uint8_t *msg_data = hash_string_bytes(data, &data_len, &data_ok);
+    if (!key_ok || !data_ok)
+        return rt_const_cstr("");
 
     uint8_t digest[20];
     hmac_sha1_raw(key_data, key_len, msg_data, data_len, digest);
@@ -1298,10 +1359,14 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data) {
                               "Hash.HmacSHA1Bytes is disabled in approved mode"))
         return rt_const_cstr("");
     size_t key_len, data_len;
+    int key_ok, data_ok;
     const uint8_t *key_data =
-        hash_bytes_data(key, &key_len, "Hash.HmacSHA1Bytes: invalid key Bytes object");
+        hash_bytes_data(key, &key_len, "Hash.HmacSHA1Bytes: invalid key Bytes object", &key_ok);
     const uint8_t *msg_data =
-        hash_bytes_data(data, &data_len, "Hash.HmacSHA1Bytes: invalid data Bytes object");
+        hash_bytes_data(
+            data, &data_len, "Hash.HmacSHA1Bytes: invalid data Bytes object", &data_ok);
+    if (!key_ok || !data_ok)
+        return rt_const_cstr("");
 
     uint8_t digest[20];
     hmac_sha1_raw(key_data, key_len, msg_data, data_len, digest);
@@ -1312,8 +1377,11 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data) {
 /// @brief Compute HMAC-SHA256 of string data with string key.
 rt_string rt_hash_hmac_sha256(rt_string key, rt_string data) {
     size_t key_len, data_len;
-    const uint8_t *key_data = hash_string_bytes(key, &key_len);
-    const uint8_t *msg_data = hash_string_bytes(data, &data_len);
+    int key_ok, data_ok;
+    const uint8_t *key_data = hash_string_bytes(key, &key_len, &key_ok);
+    const uint8_t *msg_data = hash_string_bytes(data, &data_len, &data_ok);
+    if (!key_ok || !data_ok)
+        return rt_const_cstr("");
 
     uint8_t digest[32];
     rt_hash_hmac_sha256_raw(key_data, key_len, msg_data, data_len, digest);
@@ -1323,10 +1391,14 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data) {
 /// @brief Compute HMAC-SHA256 of Bytes data with Bytes key.
 rt_string rt_hash_hmac_sha256_bytes(void *key, void *data) {
     size_t key_len, data_len;
+    int key_ok, data_ok;
     const uint8_t *key_data =
-        hash_bytes_data(key, &key_len, "Hash.HmacSHA256Bytes: invalid key Bytes object");
+        hash_bytes_data(key, &key_len, "Hash.HmacSHA256Bytes: invalid key Bytes object", &key_ok);
     const uint8_t *msg_data =
-        hash_bytes_data(data, &data_len, "Hash.HmacSHA256Bytes: invalid data Bytes object");
+        hash_bytes_data(
+            data, &data_len, "Hash.HmacSHA256Bytes: invalid data Bytes object", &data_ok);
+    if (!key_ok || !data_ok)
+        return rt_const_cstr("");
 
     uint8_t digest[32];
     rt_hash_hmac_sha256_raw(key_data, key_len, msg_data, data_len, digest);
@@ -1364,8 +1436,11 @@ static int8_t fixed_time_eq(const uint8_t *a, size_t a_len, const uint8_t *b, si
 /// @return 1 if the strings are byte-for-byte equal, 0 otherwise.
 int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
     size_t a_len, b_len;
-    const uint8_t *a_data = hash_string_bytes(a, &a_len);
-    const uint8_t *b_data = hash_string_bytes(b, &b_len);
+    int a_ok, b_ok;
+    const uint8_t *a_data = hash_string_bytes(a, &a_len, &a_ok);
+    const uint8_t *b_data = hash_string_bytes(b, &b_len, &b_ok);
+    if (!a_ok || !b_ok)
+        return 0;
     return fixed_time_eq(a_data, a_len, b_data, b_len);
 }
 
@@ -1376,10 +1451,15 @@ int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
 /// @return 1 if the buffers are byte-for-byte equal, 0 otherwise.
 int8_t rt_hash_constant_time_equals_bytes(void *a, void *b) {
     size_t a_len, b_len;
+    int a_ok, b_ok;
     const uint8_t *a_data =
-        hash_bytes_data(a, &a_len, "Hash.ConstantTimeEqualsBytes: invalid first Bytes object");
+        hash_bytes_data(
+            a, &a_len, "Hash.ConstantTimeEqualsBytes: invalid first Bytes object", &a_ok);
     const uint8_t *b_data =
-        hash_bytes_data(b, &b_len, "Hash.ConstantTimeEqualsBytes: invalid second Bytes object");
+        hash_bytes_data(
+            b, &b_len, "Hash.ConstantTimeEqualsBytes: invalid second Bytes object", &b_ok);
+    if (!a_ok || !b_ok)
+        return 0;
     return fixed_time_eq(a_data, a_len, b_data, b_len);
 }
 
@@ -1396,7 +1476,10 @@ int64_t rt_hash_fast(rt_string str) {
     if (!hash_require_service(RT_CRYPTO_SERVICE_SIPHASH, "Hash.Fast is disabled in approved mode"))
         return 0;
     size_t len;
-    const uint8_t *data = hash_string_bytes(str, &len);
+    int ok;
+    const uint8_t *data = hash_string_bytes(str, &len, &ok);
+    if (!ok)
+        return 0;
     return (int64_t)rt_fnv1a(data, len);
 }
 
@@ -1408,7 +1491,11 @@ int64_t rt_hash_fast_bytes(void *bytes) {
                               "Hash.FastBytes is disabled in approved mode"))
         return 0;
     size_t len;
-    const uint8_t *data = hash_bytes_data(bytes, &len, "Hash.FastBytes: invalid Bytes object");
+    int ok;
+    const uint8_t *data =
+        hash_bytes_data(bytes, &len, "Hash.FastBytes: invalid Bytes object", &ok);
+    if (!ok)
+        return 0;
     if (len == 0)
         return (int64_t)rt_fnv1a("", 0);
     int64_t result = (int64_t)rt_fnv1a(data, len);

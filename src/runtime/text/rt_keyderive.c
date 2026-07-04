@@ -51,9 +51,16 @@
 ///          zero-length string is still accepted and represented by a stable
 ///          empty buffer. The returned pointer is borrowed; caller must not
 ///          free it.
-static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
+static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len, int *ok) {
+    if (ok)
+        *ok = 0;
     if (!password) {
         rt_trap("KeyDerive: password must not be null");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+    if (!rt_string_is_handle((const void *)password)) {
+        rt_trap("KeyDerive: invalid password string handle");
         *len = 0;
         return (const uint8_t *)"";
     }
@@ -65,6 +72,8 @@ static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
     }
     if (len64 == 0) {
         *len = 0;
+        if (ok)
+            *ok = 1;
         return (const uint8_t *)"";
     }
 
@@ -76,6 +85,8 @@ static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
     }
 
     *len = (size_t)len64;
+    if (ok)
+        *ok = 1;
     return (const uint8_t *)pwd_cstr;
 }
 
@@ -88,10 +99,18 @@ static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
 /// @param len Receives salt length on success; set to zero on failure.
 /// @param context Prefix used in trap messages, e.g. "PBKDF2" or "scrypt".
 /// @return Borrowed salt byte pointer, or a stable empty pointer after reporting a trap.
-static const uint8_t *keyderive_salt_bytes(void *salt, size_t *len, const char *context) {
+static const uint8_t *keyderive_salt_bytes(void *salt, size_t *len, const char *context, int *ok) {
     if (len)
         *len = 0;
+    if (ok)
+        *ok = 0;
     const char *name = context ? context : "KeyDerive";
+    if (salt && !rt_bytes_is_bytes(salt)) {
+        char msg[96];
+        snprintf(msg, sizeof(msg), "%s: salt must be a Bytes object", name);
+        rt_trap(msg);
+        return (const uint8_t *)"";
+    }
     int64_t len64 = salt ? rt_bytes_len(salt) : 0;
     if (len64 <= 0) {
         char msg[96];
@@ -114,6 +133,8 @@ static const uint8_t *keyderive_salt_bytes(void *salt, size_t *len, const char *
     }
     if (len)
         *len = (size_t)len64;
+    if (ok)
+        *ok = 1;
     return data;
 }
 
@@ -540,10 +561,14 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
     }
 
     size_t pwd_len;
-    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
+    int pwd_ok;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok)
+        return NULL;
 
-    salt_data = keyderive_salt_bytes(salt, &salt_len, "PBKDF2");
-    if (!salt_data || salt_len == 0)
+    int salt_ok;
+    salt_data = keyderive_salt_bytes(salt, &salt_len, "PBKDF2", &salt_ok);
+    if (!salt_ok || !salt_data || salt_len == 0)
         return NULL;
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
@@ -597,10 +622,14 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     }
 
     size_t pwd_len;
-    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
+    int pwd_ok;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok)
+        return rt_str_empty();
 
-    salt_data = keyderive_salt_bytes(salt, &salt_len, "PBKDF2");
-    if (!salt_data || salt_len == 0)
+    int salt_ok;
+    salt_data = keyderive_salt_bytes(salt, &salt_len, "PBKDF2", &salt_ok);
+    if (!salt_ok || !salt_data || salt_len == 0)
         return rt_str_empty();
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
@@ -677,11 +706,15 @@ void *rt_keyderive_scrypt_sha256(
         return NULL;
 
     size_t pwd_len;
-    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
+    int pwd_ok;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok)
+        return NULL;
 
     size_t salt_len;
-    const uint8_t *salt_data = keyderive_salt_bytes(salt, &salt_len, "scrypt");
-    if (!salt_data || salt_len == 0)
+    int salt_ok;
+    const uint8_t *salt_data = keyderive_salt_bytes(salt, &salt_len, "scrypt", &salt_ok);
+    if (!salt_ok || !salt_data || salt_len == 0)
         return NULL;
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
@@ -719,11 +752,15 @@ rt_string rt_keyderive_scrypt_sha256_str(
         return rt_str_empty();
 
     size_t pwd_len;
-    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
+    int pwd_ok;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len, &pwd_ok);
+    if (!pwd_ok)
+        return rt_str_empty();
 
     size_t salt_len;
-    const uint8_t *salt_data = keyderive_salt_bytes(salt, &salt_len, "scrypt");
-    if (!salt_data || salt_len == 0)
+    int salt_ok;
+    const uint8_t *salt_data = keyderive_salt_bytes(salt, &salt_len, "scrypt", &salt_ok);
+    if (!salt_ok || !salt_data || salt_len == 0)
         return rt_str_empty();
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
