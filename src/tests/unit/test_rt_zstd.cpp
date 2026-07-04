@@ -12,7 +12,7 @@
 //   budget).
 //
 // Key invariants:
-//   - Every fixture decodes byte-identically to its plaintext twin.
+//   - Every fixture decodes to stable expected plaintext bytes or digest.
 //   - Corrupt or truncated frames return 0 without crashing or leaking.
 //   - max_output is honored as a hard budget.
 //
@@ -80,25 +80,80 @@ static std::string fixture_path(const char *name) {
 #endif
 }
 
-/// Round-trip one fixture pair: <stem>.zst must decode to <stem>.bin exactly.
+static uint64_t fnv1a64(const uint8_t *data, size_t len) {
+    uint64_t hash = 1469598103934665603ULL;
+    for (size_t i = 0; i < len; ++i) {
+        hash ^= data[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+static bool expected_fixture_bytes(const char *stem, std::vector<uint8_t> &expected) {
+    if (std::strcmp(stem, "text") == 0) {
+        static const char phrase[] = "the quick brown fox jumps over the lazy dog. ";
+        const size_t phrase_len = sizeof(phrase) - 1;
+        expected.reserve(phrase_len * 40);
+        for (int i = 0; i < 40; ++i)
+            expected.insert(expected.end(), phrase, phrase + phrase_len);
+        return true;
+    }
+    if (std::strcmp(stem, "bytes") == 0) {
+        expected.resize(256 * 64);
+        for (size_t i = 0; i < expected.size(); ++i)
+            expected[i] = static_cast<uint8_t>(i & 0xFFu);
+        return true;
+    }
+    if (std::strcmp(stem, "tiny") == 0) {
+        expected = {'h', 'i'};
+        return true;
+    }
+    if (std::strcmp(stem, "empty") == 0) {
+        expected.clear();
+        return true;
+    }
+    return false;
+}
+
+static bool expected_fixture_summary(const char *stem, size_t &len, uint64_t &hash) {
+    if (std::strcmp(stem, "mixed") == 0) {
+        len = 5276;
+        hash = 0x6ABC1835B722875BULL;
+        return true;
+    }
+
+    std::vector<uint8_t> expected;
+    if (!expected_fixture_bytes(stem, expected))
+        return false;
+    len = expected.size();
+    hash = fnv1a64(expected.data(), expected.size());
+    return true;
+}
+
+/// Round-trip one fixture: <stem>.zst must decode to its stable expected payload.
 static void roundtrip_case(const char *stem) {
     std::string label = std::string("fixture '") + stem + "' decodes byte-identically";
     TEST(label.c_str());
     std::vector<uint8_t> compressed;
     std::vector<uint8_t> expected;
+    size_t expected_len = 0;
+    uint64_t expected_hash = 0;
+    const bool has_expected_bytes = expected_fixture_bytes(stem, expected);
     EXPECT_TRUE(read_file(fixture_path((std::string(stem) + ".zst").c_str()), compressed),
                 "compressed fixture readable");
-    EXPECT_TRUE(read_file(fixture_path((std::string(stem) + ".bin").c_str()), expected),
-                "plaintext fixture readable");
+    EXPECT_TRUE(expected_fixture_summary(stem, expected_len, expected_hash), "known fixture stem");
 
     uint8_t *out = nullptr;
     size_t out_len = 0;
-    int ok = rt_zstd_decompress_raw(
-        compressed.data(), compressed.size(), 1u << 24, &out, &out_len);
+    int ok = rt_zstd_decompress_raw(compressed.data(), compressed.size(), 1u << 24, &out, &out_len);
     EXPECT_TRUE(ok == 1, "decompression succeeds");
-    EXPECT_TRUE(out_len == expected.size(), "decoded length matches");
-    EXPECT_TRUE(out_len == 0 || std::memcmp(out, expected.data(), out_len) == 0,
-                "decoded bytes match");
+    EXPECT_TRUE(out_len == expected_len, "decoded length matches");
+    if (has_expected_bytes) {
+        EXPECT_TRUE(out_len == 0 || std::memcmp(out, expected.data(), out_len) == 0,
+                    "decoded bytes match");
+    } else {
+        EXPECT_TRUE(fnv1a64(out, out_len) == expected_hash, "decoded hash matches");
+    }
     free(out);
     PASS();
 }
@@ -150,16 +205,18 @@ static void test_rejects_checksum_mismatch() {
 static void test_honors_output_budget() {
     TEST("max_output is a hard budget");
     std::vector<uint8_t> compressed;
-    std::vector<uint8_t> expected;
+    size_t expected_len = 0;
+    uint64_t expected_hash = 0;
     EXPECT_TRUE(read_file(fixture_path("bytes.zst"), compressed), "fixture readable");
-    EXPECT_TRUE(read_file(fixture_path("bytes.bin"), expected), "plaintext readable");
+    EXPECT_TRUE(expected_fixture_summary("bytes", expected_len, expected_hash),
+                "known fixture stem");
     uint8_t *out = nullptr;
     size_t out_len = 0;
     EXPECT_TRUE(rt_zstd_decompress_raw(
-                    compressed.data(), compressed.size(), expected.size() - 1, &out, &out_len) == 0,
+                    compressed.data(), compressed.size(), expected_len - 1, &out, &out_len) == 0,
                 "one byte under the real size fails");
     EXPECT_TRUE(rt_zstd_decompress_raw(
-                    compressed.data(), compressed.size(), expected.size(), &out, &out_len) == 1,
+                    compressed.data(), compressed.size(), expected_len, &out, &out_len) == 1,
                 "exact budget succeeds");
     free(out);
     PASS();

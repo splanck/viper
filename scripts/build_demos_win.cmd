@@ -128,6 +128,7 @@ if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 if %CLEAN%==1 (
     echo Cleaning existing binaries...
     del /q "%BIN_DIR%\*" 2>nul
+    for /d %%D in ("%BIN_DIR%\*") do rmdir /s /q "%%~fD" 2>nul
 )
 
 echo === Zia Demos ===
@@ -187,6 +188,8 @@ if /i "%NAME%"=="vipersql" (
 )
 "%VIPER%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% !DEMO_BUILD_FLAGS! -o "%EXE_FILE%" 2>nul
 if errorlevel 1 goto :build_demo_failed
+call :stage_demo_assets "%PROJECT_DIR%"
+if errorlevel 1 goto :build_demo_asset_failed
 echo   OK
 echo   Built: %EXE_FILE%
 echo   Finished: %DATE% %TIME%
@@ -201,6 +204,69 @@ echo   Finished: %DATE% %TIME%
 set /a FAILED+=1
 echo.
 goto :eof
+
+:build_demo_asset_failed
+echo   FAILED
+echo   Finished: %DATE% %TIME%
+set /a FAILED+=1
+echo.
+goto :eof
+
+REM ============================================
+REM Stage assets declared in a demo's viper.project.
+REM ============================================
+:stage_demo_assets
+set "ASSET_PROJECT_DIR=%~1"
+if not exist "%ASSET_PROJECT_DIR%\viper.project" exit /b 0
+
+for /f "usebackq tokens=1,2,*" %%A in ("%ASSET_PROJECT_DIR%\viper.project") do (
+    if /I "%%A"=="asset" (
+        call :stage_demo_asset "%ASSET_PROJECT_DIR%" "%%~B" "%%~C"
+        if errorlevel 1 exit /b 1
+    )
+)
+exit /b 0
+
+:stage_demo_asset
+set "ASSET_PROJECT_DIR=%~1"
+set "ASSET_SOURCE_REL=%~2"
+set "ASSET_TARGET_REL=%~3"
+if "%ASSET_SOURCE_REL%"=="" exit /b 0
+if "%ASSET_TARGET_REL%"=="" set "ASSET_TARGET_REL=."
+
+set "ASSET_SOURCE=%ASSET_PROJECT_DIR%\%ASSET_SOURCE_REL%"
+if not exist "%ASSET_SOURCE%" (
+    echo   ERROR: Asset not found: %ASSET_SOURCE_REL%
+    exit /b 1
+)
+
+if exist "!ASSET_SOURCE!\" (
+    if /I "!ASSET_TARGET_REL!"=="." (
+        set "ASSET_DEST=%BIN_DIR%"
+    ) else (
+        set "ASSET_DEST=%BIN_DIR%\!ASSET_TARGET_REL!"
+    )
+    if not exist "!ASSET_DEST!" mkdir "!ASSET_DEST!"
+    robocopy "!ASSET_SOURCE!" "!ASSET_DEST!" /E /NFL /NDL /NJH /NJS /NP >nul
+    if errorlevel 8 (
+        echo   ERROR: Failed to copy asset directory: !ASSET_SOURCE_REL!
+        exit /b 1
+    )
+    exit /b 0
+)
+
+if /I "!ASSET_TARGET_REL!"=="." (
+    set "ASSET_DEST=%BIN_DIR%"
+) else (
+    set "ASSET_DEST=%BIN_DIR%\!ASSET_TARGET_REL!"
+)
+if not exist "!ASSET_DEST!" mkdir "!ASSET_DEST!"
+copy /Y "!ASSET_SOURCE!" "!ASSET_DEST!\" >nul
+if errorlevel 1 (
+    echo   ERROR: Failed to copy asset file: !ASSET_SOURCE_REL!
+    exit /b 1
+)
+exit /b 0
 
 REM ============================================
 REM Ensure a Viper tool/runtime build exists for the requested demo arch.

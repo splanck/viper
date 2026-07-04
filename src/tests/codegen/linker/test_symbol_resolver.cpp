@@ -142,6 +142,39 @@ static std::vector<uint8_t> writeElfObjectWithGlobals(const std::string &path,
     return readBinaryFile(path);
 }
 
+static void appendLE16(std::vector<uint8_t> &out, uint16_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+}
+
+static void appendLE32(std::vector<uint8_t> &out, uint32_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+}
+
+static std::vector<uint8_t> makeCoffImportLibraryMember(const std::string &symbol,
+                                                        const std::string &dll) {
+    std::vector<uint8_t> payload;
+    payload.insert(payload.end(), symbol.begin(), symbol.end());
+    payload.push_back(0);
+    payload.insert(payload.end(), dll.begin(), dll.end());
+    payload.push_back(0);
+
+    std::vector<uint8_t> out;
+    appendLE16(out, 0);      // Sig1
+    appendLE16(out, 0xFFFF); // Sig2
+    appendLE16(out, 0);      // Version
+    appendLE16(out, 0x8664); // Machine: AMD64
+    appendLE32(out, 0);      // TimeDateStamp
+    appendLE32(out, static_cast<uint32_t>(payload.size()));
+    appendLE16(out, 0);       // OrdinalOrHint
+    appendLE16(out, 1u << 2); // IMPORT_NAME
+    out.insert(out.end(), payload.begin(), payload.end());
+    return out;
+}
+
 int main() {
     std::filesystem::create_directories("build/test-out");
 
@@ -437,6 +470,32 @@ int main() {
         CHECK(err.str().empty());
         CHECK(globalSyms[strongLess].objIndex == 0);
         CHECK(globalSyms[nullopt].objIndex == 0);
+    }
+
+    // --- MSVC CRT helper imports remain dynamic when no archive defines them ---
+    {
+        auto obj = makeObj("crt_helpers.obj", {".text"});
+        addSymbol(obj, "main", 1, ObjSymbol::Global);
+        addSymbol(obj, "__intrinsic_setjmp", 0, ObjSymbol::Undefined);
+        addSymbol(obj, "_callnewh", 0, ObjSymbol::Undefined);
+        addSymbol(obj, "_free_dbg", 0, ObjSymbol::Undefined);
+        addSymbol(obj, "_rotl", 0, ObjSymbol::Undefined);
+
+        std::vector<ObjFile> initObjs = {obj};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(dynamicSyms.count("__intrinsic_setjmp") == 1);
+        CHECK(dynamicSyms.count("_callnewh") == 1);
+        CHECK(dynamicSyms.count("_free_dbg") == 1);
+        CHECK(dynamicSyms.count("_rotl") == 1);
     }
 
     // --- MSVC STL RTTI/vftable duplicates are pick-any ---
@@ -764,6 +823,27 @@ int main() {
         CHECK(err.str().find("expected a static/archive definition") != std::string::npos);
     }
 
+    // --- MSVC STL object-code helpers must come from msvcprt archives ---
+    {
+        auto obj = makeObj("main.obj", {".text"});
+        addSymbol(obj, "main", 1, ObjSymbol::Global);
+        addSymbol(obj, "__std_find_trivial_1", 0, ObjSymbol::Undefined);
+
+        std::vector<ObjFile> initObjs = {obj};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(!ok);
+        CHECK(dynamicSyms.empty());
+        CHECK(err.str().find("undefined symbol '__std_find_trivial_1'") != std::string::npos);
+        CHECK(err.str().find("expected a static/archive definition") != std::string::npos);
+    }
+
     // --- Local symbols don't participate in resolution ---
     {
         auto obj1 = makeObj("a.o", {".text"});
@@ -1008,6 +1088,44 @@ int main() {
         CHECK(globalSyms["target_func"].objIndex == 2);
     }
 
+    // --- COFF import-library members are skipped when retrying archive candidates ---
+    {
+        auto user = makeObj("msvc_import_member_user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        addSymbol(user, "__std_find_trivial_1", 0, ObjSymbol::Undefined);
+
+        auto importBytes = makeCoffImportLibraryMember("__std_find_trivial_1", "MSVCP140.dll");
+        CHECK(isCoffImportLibraryMember(importBytes.data(), importBytes.size()));
+
+        auto targetBytes = writeElfObjectWithGlobals("build/test-out/msvcprt_static_helper.o",
+                                                     {"__std_find_trivial_1"});
+
+        Archive archive;
+        archive.path = "msvcprt.lib";
+        archive.data = importBytes;
+        archive.data.insert(archive.data.end(), targetBytes.begin(), targetBytes.end());
+        archive.members.push_back({"MSVCP140.dll", 0, importBytes.size()});
+        archive.members.push_back({"find_trivial.obj", importBytes.size(), targetBytes.size()});
+        archive.symbolIndex["__std_find_trivial_1"] = 0;
+        archive.symbolCandidates["__std_find_trivial_1"] = {0, 1};
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 2);
+        CHECK(globalSyms["__std_find_trivial_1"].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms["__std_find_trivial_1"].objIndex == 1);
+        CHECK(dynamicSyms.empty());
+    }
+
     // --- Windows runtime duplicate exceptions do not mask arbitrary archive conflicts ---
     {
         auto user = makeObj("user.obj", {".text"});
@@ -1248,8 +1366,13 @@ int main() {
             std::unordered_set<std::string> dynamicSyms;
             std::ostringstream err;
 
-            const bool ok = resolveSymbols(
-                initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+            const bool ok = resolveSymbols(initObjs,
+                                           archives,
+                                           globalSyms,
+                                           allObjects,
+                                           dynamicSyms,
+                                           err,
+                                           LinkPlatform::Windows);
             diagnostic = err.str();
             return ok;
         };

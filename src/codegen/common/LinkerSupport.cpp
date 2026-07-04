@@ -218,6 +218,89 @@ std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &b
     return buildDir / subdir / archive;
 }
 
+static std::string cmakeCacheValue(const std::filesystem::path &buildDir, std::string_view key) {
+    if (buildDir.empty())
+        return {};
+    std::ifstream cache(buildDir / "CMakeCache.txt");
+    if (!cache.is_open())
+        return {};
+
+    const std::string prefix(key);
+    std::string line;
+    while (std::getline(cache, line)) {
+        const auto eq = line.find('=');
+        if (eq == std::string::npos)
+            continue;
+        const auto colon = line.find(':');
+        const auto keyEnd = colon == std::string::npos ? eq : colon;
+        if (keyEnd == prefix.size() && line.compare(0, keyEnd, prefix) == 0)
+            return line.substr(eq + 1);
+    }
+    return {};
+}
+
+static std::optional<std::filesystem::path> windowsMsvcToolsetFromInstance(
+    const std::filesystem::path &instance, std::string_view arch) {
+    if (instance.empty())
+        return std::nullopt;
+
+    const auto toolsRoot = instance / "VC" / "Tools" / "MSVC";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(toolsRoot, ec))
+        return std::nullopt;
+
+    std::vector<std::filesystem::path> versions;
+    for (const auto &entry : std::filesystem::directory_iterator(toolsRoot, ec)) {
+        if (ec)
+            break;
+        if (!entry.is_directory(ec))
+            continue;
+        versions.push_back(entry.path());
+    }
+    std::sort(versions.begin(), versions.end());
+
+    for (auto it = versions.rbegin(); it != versions.rend(); ++it) {
+        const auto libDir = *it / "lib" / std::filesystem::path(std::string(arch));
+        if (std::filesystem::is_directory(libDir, ec))
+            return *it;
+    }
+    return std::nullopt;
+}
+
+static std::optional<std::filesystem::path> windowsMsvcToolsetFromEnv(std::string_view arch) {
+    if (const char *env = std::getenv("VCToolsInstallDir")) {
+        const std::filesystem::path root(env);
+        std::error_code ec;
+        if (std::filesystem::is_directory(root / "lib" / std::filesystem::path(std::string(arch)),
+                                          ec))
+            return root;
+    }
+    return std::nullopt;
+}
+
+static std::optional<std::filesystem::path> windowsMsvcToolsetFromCMakeCache(
+    const std::filesystem::path &buildDir, std::string_view arch) {
+    const std::string instance = cmakeCacheValue(buildDir, "CMAKE_GENERATOR_INSTANCE");
+    if (auto toolset = windowsMsvcToolsetFromInstance(instance, arch))
+        return toolset;
+
+    const std::filesystem::path ar = cmakeCacheValue(buildDir, "CMAKE_AR");
+    if (ar.empty())
+        return std::nullopt;
+
+    auto cur = ar.parent_path();
+    while (!cur.empty()) {
+        if (cur.filename() == "MSVC")
+            break;
+        const auto libDir = cur / "lib" / std::filesystem::path(std::string(arch));
+        std::error_code ec;
+        if (std::filesystem::is_directory(libDir, ec))
+            return cur;
+        cur = cur.parent_path();
+    }
+    return std::nullopt;
+}
+
 /// @brief Return the platform's standard library search dirs for installed Viper.
 /// @details macOS uses /usr/local/viper/lib; Linux walks the usual /usr/{,local}
 ///          tree; Windows returns an empty list (everything is co-located).
@@ -506,6 +589,56 @@ bool writeTextFile(const std::filesystem::path &path, std::string_view text, std
         return false;
     }
     return true;
+}
+
+std::vector<std::filesystem::path> windowsMsvcCxxRuntimeArchives(
+    const std::filesystem::path &buildDir, std::string_view arch, bool debugRuntime) {
+    std::vector<std::filesystem::path> archives;
+    if constexpr (!viper::platform::kHostWindows) {
+        (void)buildDir;
+        (void)arch;
+        (void)debugRuntime;
+        return archives;
+    }
+
+    const std::string archDir = arch == "arm64" ? "arm64" : "x64";
+    const std::vector<std::string> archiveNames =
+        debugRuntime ? std::vector<std::string>{"msvcprtd.lib", "msvcrtd.lib"}
+                     : std::vector<std::string>{"msvcprt.lib", "msvcrt.lib"};
+
+    std::vector<std::filesystem::path> toolsets;
+    if (auto envToolset = windowsMsvcToolsetFromEnv(archDir))
+        toolsets.push_back(*envToolset);
+    if (auto cacheToolset = windowsMsvcToolsetFromCMakeCache(buildDir, archDir))
+        toolsets.push_back(*cacheToolset);
+
+    for (const auto &archiveName : archiveNames) {
+        for (const auto &toolset : toolsets) {
+            const auto archive = toolset / "lib" / archDir / archiveName;
+            if (fileExists(archive)) {
+                archives.push_back(archive);
+                break;
+            }
+        }
+    }
+    return archives;
+}
+
+bool windowsArchivePathsUseDebugRuntime(const std::vector<std::string> &archivePaths) {
+    for (const auto &path : archivePaths) {
+        std::string lower = path;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (lower.find("\\debug\\") != std::string::npos ||
+            lower.find("/debug/") != std::string::npos ||
+            lower.rfind("msvcrtd.lib") != std::string::npos ||
+            lower.rfind("ucrtd.lib") != std::string::npos ||
+            lower.rfind("vcruntimed.lib") != std::string::npos ||
+            lower.rfind("msvcprtd.lib") != std::string::npos)
+            return true;
+    }
+    return false;
 }
 
 std::optional<std::filesystem::path> findBuildDir() {

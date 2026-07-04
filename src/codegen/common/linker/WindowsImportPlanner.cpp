@@ -63,12 +63,13 @@ std::string stripLeadingUnderscores(const std::string &name) {
 ///          out of the Windows import planner.
 bool isLinuxMathSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kMath = {
-        "acos",  "acosf", "asin",   "asinf",    "atan",      "atan2", "atan2f", "atanf",  "cbrt",
-        "cbrtf", "ceil",  "ceilf",  "copysign", "copysignf", "cos",   "cosf",   "cosh",   "exp",
-        "expf",  "fabs",  "fabsf",  "floor",    "floorf",    "fmax",  "fmaxf",  "fmin",   "fmaxl",
-        "fminf", "fminl", "fmod",   "fmodf",    "hypot",     "ldexp", "log",    "log10",  "log2",
-        "logf",  "lrint", "lrintf", "nan",      "pow",       "powf",  "round",  "roundf", "sin",
-        "sinf",  "sinh",  "sqrt",   "sqrtf",    "tan",       "tanf",  "tanh",   "trunc",  "truncf",
+        "acos",  "acosf", "asin", "asinf", "atan",     "atan2",     "atan2f", "atanf",
+        "cbrt",  "cbrtf", "ceil", "ceilf", "copysign", "copysignf", "cos",    "cosf",
+        "cosh",  "exp",   "expf", "exp2f", "fabs",     "fabsf",     "floor",  "floorf",
+        "fmax",  "fmaxf", "fmin", "fmaxl", "fminf",    "fminl",     "fmod",   "fmodf",
+        "hypot", "ldexp", "log",  "log10", "log2",     "logf",      "lrint",  "lrintf",
+        "nan",   "pow",   "powf", "round", "roundf",   "sin",       "sinf",   "sinh",
+        "sqrt",  "sqrtf", "tan",  "tanf",  "tanh",     "trunc",     "truncf",
     };
     return kMath.count(name) != 0;
 }
@@ -154,36 +155,49 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "AcquireSRWLockShared",
         "ReleaseSRWLockExclusive",
         "ReleaseSRWLockShared",
+        "AreFileApisANSI",
         "QueryPerformanceCounter",
         "VirtualQuery",
         "WideCharToMultiByte",
         "Beep",
         "CloseHandle",
         "CancelIo",
+        "CopyFile2",
         "CreateEventA",
-        "CreateFileA",
-        "CreateFileW",
-        "CreateWaitableTimerExW",
+        "CreateDirectoryExW",
         "CreateDirectoryW",
+        "CreateFileA",
+        "CreateFile2",
+        "CreateFileW",
+        "CreateHardLinkW",
         "CreatePipe",
         "CreateProcessA",
         "CreateProcessW",
+        "CreateSymbolicLinkW",
         "CreateThread",
+        "CreateWaitableTimerExW",
         "DeleteProcThreadAttributeList",
         "DeleteFileW",
+        "DeviceIoControl",
         "FindClose",
         "FindFirstFileA",
+        "FindFirstFileExW",
         "FindFirstFileW",
         "FindNextFileA",
         "FindNextFileW",
+        "FormatMessageA",
         "GetFileAttributesA",
         "GetFileAttributesW",
         "GetFileAttributesExW",
+        "GetDiskFreeSpaceExW",
         "GetFileSizeEx",
         "GetConsoleMode",
         "GetExitCodeProcess",
         "GetFileInformationByHandle",
+        "GetFileInformationByHandleEx",
+        "GetFinalPathNameByHandleW",
         "GetFullPathNameW",
+        "GetLocaleInfoEx",
         "GetLogicalDrives",
         "GetOverlappedResult",
         "GetThreadId",
@@ -204,12 +218,18 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "SetConsoleCP",
         "SetConsoleMode",
         "SetConsoleOutputCP",
+        "SetFileAttributesW",
+        "SetFileInformationByHandle",
+        "SetFileTime",
         "ResetEvent",
         "SetEvent",
         "SetHandleInformation",
         "SetWaitableTimer",
         "Sleep",
         "SleepConditionVariableCS",
+        "SleepConditionVariableSRW",
+        "TryAcquireSRWLockExclusive",
+        "TryAcquireSRWLockShared",
         "UpdateProcThreadAttribute",
         "WaitForMultipleObjects",
         "WaitForSingleObject",
@@ -332,13 +352,16 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "_Exit",
         "_exit",
         "__acrt_iob_func",
+        "___lc_codepage_func",
         "acrt_iob_func",
         "__local_stdio_printf_options",
         "__local_stdio_scanf_options",
         "__stdio_common_vfprintf",
         "stdio_common_vfprintf",
         "__stdio_common_vsprintf",
+        "__stdio_common_vsprintf_s",
         "stdio_common_vsprintf",
+        "stdio_common_vsprintf_s",
         "__stdio_common_vsscanf",
         "stdio_common_vsscanf",
         "_vfprintf_l",
@@ -357,8 +380,10 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "beginthreadex",
         "_beginthreadex",
         "bsearch",
+        "_callnewh",
         "calloc_dbg",
         "calloc",
+        "callnewh",
         "cbrt",
         "cbrtf",
         "ceil",
@@ -371,6 +396,10 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "cos",
         "cosf",
         "create_locale",
+        "_cexit",
+        "_configure_narrow_argv",
+        "_crt_atexit",
+        "_crt_at_quick_exit",
         "dclass",
         "difftime64",
         "_difftime64",
@@ -380,10 +409,14 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "dtest",
         "_dtest",
         "fdsign",
+        "_initialize_narrow_environment",
+        "_initialize_onexit_table",
         "ldsign",
         "dup",
         "dup2",
         "errno",
+        "_execute_onexit_table",
+        "exp2f",
         "exit",
         "fabs",
         "fabsf",
@@ -475,6 +508,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "read",
         "realloc",
         "remove",
+        "_register_onexit_function",
         "rename",
         "rewind",
         "rint",
@@ -491,6 +525,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "sqrt",
         "sqrtf",
         "sscanf",
+        "_seh_filter_dll",
         "strcat",
         "strcat_s",
         "strchr",
@@ -520,6 +555,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "tanf",
         "time",
         "time64",
+        "terminate",
         "tmpfile",
         "tmpnam",
         "tolower",
@@ -568,13 +604,26 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "wassert",
         "_byteswap_uint64",
         "byteswap_uint64",
+        "_rotl",
+        "_rotl64",
+        "_rotr",
+        "_rotr64",
         "_wcsnicmp",
         "wcsnicmp",
         "_wchmod",
         "wchmod",
     };
-    static const std::unordered_set<std::string> debugOnlyUcrt = {
-        "_CrtDbgReport", "_CrtDbgReportW", "CrtDbgReport"};
+    static const std::unordered_set<std::string> debugOnlyUcrt = {"_CrtDbgReport",
+                                                                  "_CrtDbgReportW",
+                                                                  "CrtDbgReport",
+                                                                  "_calloc_dbg",
+                                                                  "calloc_dbg",
+                                                                  "_free_dbg",
+                                                                  "free_dbg",
+                                                                  "_malloc_dbg",
+                                                                  "malloc_dbg",
+                                                                  "_realloc_dbg",
+                                                                  "realloc_dbg"};
     static const std::unordered_set<std::string> msvcrt = {"_setjmpex", "setjmpex"};
 
     if (kernel32.count(name) || kernel32.count(stripped)) {
@@ -635,13 +684,18 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         name == "__RTDynamicCast" || name == "_CxxThrowException" || name == "__CxxFrameHandler3" ||
         name == "__CxxFrameHandler4" || name == "__std_exception_copy" ||
         name == "__std_exception_destroy" || name == "__std_type_info_compare" ||
-        name == "_purecall" || name == "terminate" || stripped == "__C_specific_handler" ||
-        stripped == "__C_specific_handler_noexcept" || stripped == "__current_exception" ||
-        stripped == "__current_exception_context" || stripped == "RTDynamicCast" ||
-        stripped == "CxxThrowException" || stripped == "CxxFrameHandler3" ||
-        stripped == "CxxFrameHandler4" || stripped == "std_exception_copy" ||
-        stripped == "std_exception_destroy" || stripped == "std_type_info_compare" ||
-        stripped == "purecall" || stripped == "terminate" ||
+        name == "__std_type_info_destroy_list" || name == "__std_type_info_hash" ||
+        name == "__std_type_info_name" || name == "__std_terminate" ||
+        name == "__intrinsic_setjmp" || name == "__intrinsic_setjmpex" || name == "_purecall" ||
+        stripped == "__C_specific_handler" || stripped == "__C_specific_handler_noexcept" ||
+        stripped == "__current_exception" || stripped == "__current_exception_context" ||
+        stripped == "RTDynamicCast" || stripped == "CxxThrowException" ||
+        stripped == "CxxFrameHandler3" || stripped == "CxxFrameHandler4" ||
+        stripped == "std_exception_copy" || stripped == "std_exception_destroy" ||
+        stripped == "std_type_info_compare" || stripped == "std_type_info_destroy_list" ||
+        stripped == "std_type_info_hash" || stripped == "std_type_info_name" ||
+        stripped == "std_terminate" || stripped == "intrinsic_setjmp" ||
+        stripped == "intrinsic_setjmpex" || stripped == "purecall" ||
         hasPrefixEither(name, stripped, "_Init_thread_") ||
         hasPrefixEither(name, stripped, "Init_thread_") || name.rfind("__vcrt_", 0) == 0 ||
         stripped.rfind("__vcrt_", 0) == 0) {
@@ -655,9 +709,32 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         hasPrefixEither(name, stripped, "_Query_perf_") ||
         hasPrefixEither(name, stripped, "Query_perf_") ||
         hasPrefixEither(name, stripped, "_Smtx_") || hasPrefixEither(name, stripped, "Smtx_") ||
-        hasPrefixEither(name, stripped, "_Thrd_") || hasPrefixEither(name, stripped, "Thrd_") ||
-        hasPrefixEither(name, stripped, "__std_") || hasPrefixEither(name, stripped, "std_")) {
+        hasPrefixEither(name, stripped, "_Thrd_") || hasPrefixEither(name, stripped, "Thrd_")) {
         dllName = debugRuntime ? "MSVCP140D.dll" : "MSVCP140.dll";
+        return true;
+    }
+
+    if (hasPrefixEither(name, stripped, "__std_smf_") ||
+        hasPrefixEither(name, stripped, "std_smf_")) {
+        dllName = debugRuntime ? "MSVCP140_2D.dll" : "MSVCP140_2.dll";
+        return true;
+    }
+
+    if (hasPrefixEither(name, stripped, "__std_atomic_") ||
+        hasPrefixEither(name, stripped, "std_atomic_") ||
+        hasPrefixEither(name, stripped, "__std_tzdb_") ||
+        hasPrefixEither(name, stripped, "std_tzdb_") ||
+        name == "__std_acquire_shared_mutex_for_instance" ||
+        stripped == "std_acquire_shared_mutex_for_instance" ||
+        name == "__std_release_shared_mutex_for_instance" ||
+        stripped == "std_release_shared_mutex_for_instance" ||
+        name == "__std_parallel_algorithms_hw_threads" ||
+        stripped == "std_parallel_algorithms_hw_threads" ||
+        hasPrefixEither(name, stripped, "__std_execution_") ||
+        hasPrefixEither(name, stripped, "std_execution_") ||
+        name == "__std_wait_for_threadpool_work_callbacks" ||
+        stripped == "std_wait_for_threadpool_work_callbacks") {
+        dllName = debugRuntime ? "MSVCP140D_ATOMIC_WAIT.dll" : "MSVCP140_ATOMIC_WAIT.dll";
         return true;
     }
 

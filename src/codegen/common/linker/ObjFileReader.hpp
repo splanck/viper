@@ -124,6 +124,13 @@ inline constexpr size_t kMaxObjMaterializedBytes = 4ULL * 1024 * 1024 * 1024;
 /// Detect the object file format from magic bytes.
 ObjFileFormat detectFormat(const uint8_t *data, size_t size);
 
+/// @brief Detect a COFF short import-library member.
+/// @details MSVC import archives can contain pseudo-members that describe DLL
+///          imports rather than relocatable object code. They begin like a COFF
+///          BigObj header (`0, 0xffff`) but must not be passed to the COFF
+///          object reader.
+bool isCoffImportLibraryMember(const uint8_t *data, size_t size);
+
 /// Read an object file from raw bytes.
 /// @param data  Raw bytes of the object file.
 /// @param size  Size in bytes.

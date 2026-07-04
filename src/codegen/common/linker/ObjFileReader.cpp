@@ -22,6 +22,40 @@
 
 namespace viper::codegen::linker {
 
+static uint16_t readLE16(const uint8_t *p) {
+    return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
+}
+
+static uint32_t readLE32(const uint8_t *p) {
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+bool isCoffImportLibraryMember(const uint8_t *data, size_t size) {
+    static constexpr size_t kImportObjectHeaderSize = 20;
+    static constexpr uint16_t kImageFileMachineAmd64 = 0x8664;
+    static constexpr uint16_t kImageFileMachineArm64 = 0xAA64;
+
+    if (data == nullptr || size < kImportObjectHeaderSize)
+        return false;
+
+    if (readLE16(data) != 0 || readLE16(data + 2) != 0xFFFF)
+        return false;
+
+    const uint16_t machine = readLE16(data + 6);
+    if (machine != kImageFileMachineAmd64 && machine != kImageFileMachineArm64)
+        return false;
+
+    const uint32_t payloadSize = readLE32(data + 12);
+    if (payloadSize > size - kImportObjectHeaderSize)
+        return false;
+
+    const uint16_t typeInfo = readLE16(data + 18);
+    const uint16_t importType = typeInfo & 0x3;
+    const uint16_t importNameType = (typeInfo >> 2) & 0x7;
+    return importType <= 2 && importNameType <= 4;
+}
+
 ObjFileFormat detectFormat(const uint8_t *data, size_t size) {
     if (size < 4)
         return ObjFileFormat::Unknown;
@@ -41,6 +75,8 @@ ObjFileFormat detectFormat(const uint8_t *data, size_t size) {
         const uint16_t sectionCount =
             static_cast<uint16_t>(data[2]) | (static_cast<uint16_t>(data[3]) << 8);
         if (machine == 0 && sectionCount == 0xFFFF)
+            return ObjFileFormat::COFF;
+        if (machine == 0 && sectionCount != 0)
             return ObjFileFormat::COFF;
         if (machine == 0x8664 || machine == 0xAA64)
             return ObjFileFormat::COFF;

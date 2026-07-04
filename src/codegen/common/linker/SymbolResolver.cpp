@@ -257,6 +257,17 @@ static bool isMsvcGeneratedConstantSymbol(const std::string &name) {
            name.rfind("__ymm@", 0) == 0;
 }
 
+static bool isMsvcStaticStdHelperSymbol(const std::string &name) {
+    return name.rfind("__std_count_trivial_", 0) == 0 || name.rfind("__std_find_", 0) == 0 ||
+           name.rfind("__std_find_end_", 0) == 0 || name.rfind("__std_find_first_", 0) == 0 ||
+           name.rfind("__std_find_last_", 0) == 0 || name.rfind("__std_find_not_", 0) == 0 ||
+           name.rfind("__std_fs_", 0) == 0 || name.rfind("__std_min_", 0) == 0 ||
+           name.rfind("__std_min_element_", 0) == 0 || name.rfind("__std_mismatch_", 0) == 0 ||
+           name.rfind("__std_remove_", 0) == 0 || name.rfind("__std_replace_copy_", 0) == 0 ||
+           name.rfind("__std_reverse_trivially_swappable_", 0) == 0 ||
+           name.rfind("__std_search_", 0) == 0 || name.rfind("__std_system_error_", 0) == 0;
+}
+
 static bool getComdatDefinition(const ObjFile &obj,
                                 size_t objIdx,
                                 const ObjSymbol &sym,
@@ -519,7 +530,7 @@ static bool preferArchiveDefinition(const std::string &name, LinkPlatform platfo
         name == "mainCRTStartup" || name == "WinMainCRTStartup" || name == "wmainCRTStartup" ||
         name == "wWinMainCRTStartup" || name == "__security_check_cookie" ||
         name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
-        name == "__GSHandlerCheck_EH4" || name == "__chkstk")
+        name == "__GSHandlerCheck_EH4" || name == "__chkstk" || isMsvcStaticStdHelperSymbol(name))
         return true;
 
     return name.find("__scrt_") != std::string::npos ||
@@ -648,6 +659,15 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     err << "error: archive member '" << ar.members[memberIdx].name
                         << "' has no object data\n";
                     return false;
+                }
+
+                if (isCoffImportLibraryMember(memberData.data, memberData.size)) {
+                    extractedMembers.insert(key);
+                    if (++extractedCount > maxArchiveExtractions) {
+                        err << "error: symbol resolution exceeded archive extraction bound\n";
+                        return false;
+                    }
+                    continue;
                 }
 
                 ObjFile memberObj;

@@ -90,6 +90,20 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
 std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName);
 
+/// @brief Return MSVC C++ runtime archives needed by Windows native links.
+/// @details The dynamic MSVC runtime exports many STL entry points, but some
+///          `__std_*` helpers are object-code members of msvcprt.lib/msvcprtd.lib.
+///          Those helper objects can depend on C runtime support objects from
+///          msvcrt.lib/msvcrtd.lib, such as CPU-dispatch state.
+///          Viper's in-process linker must search that archive before it
+///          generates import thunks, otherwise binaries can import non-exported
+///          helper names and fail during Windows loader startup.
+std::vector<std::filesystem::path> windowsMsvcCxxRuntimeArchives(
+    const std::filesystem::path &buildDir, std::string_view arch, bool debugRuntime);
+
+/// @brief Heuristically detect whether Windows archive paths use debug CRTs.
+bool windowsArchivePathsUseDebugRuntime(const std::vector<std::string> &archivePaths);
+
 /// @brief Static-archive closure pulled in when a codegen'd binary embeds the
 ///        Zia editor-service bridge. These are demand-driven (added to the
 ///        regular archive list, not force-loaded): only the members the
