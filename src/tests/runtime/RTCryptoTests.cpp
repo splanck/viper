@@ -34,6 +34,38 @@
 extern "C" void rt_trap_set_recovery(jmp_buf *buf);
 extern "C" void rt_trap_clear_recovery(void);
 extern "C" const char *rt_trap_get_error(void);
+extern "C" void rt_abort(const char *msg);
+
+namespace {
+static bool g_returning_trap_enabled = false;
+static int g_returning_trap_count = 0;
+static char g_returning_trap_last[256];
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    if (!g_returning_trap_enabled)
+        rt_abort(msg);
+    g_returning_trap_count++;
+    snprintf(g_returning_trap_last,
+             sizeof(g_returning_trap_last),
+             "%s",
+             msg ? msg : "Unknown trap");
+}
+
+static void reset_returning_trap_probe() {
+    g_returning_trap_enabled = true;
+    g_returning_trap_count = 0;
+    g_returning_trap_last[0] = '\0';
+}
+
+static void finish_returning_trap_probe() {
+    g_returning_trap_enabled = false;
+}
+
+static bool returning_trap_seen(const char *message_substr) {
+    return g_returning_trap_count == 1 && message_substr &&
+           strstr(g_returning_trap_last, message_substr) != nullptr;
+}
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -79,6 +111,14 @@ static bool bytes_equal(void *bytes, const uint8_t *expected, size_t len) {
         return false;
     for (size_t i = 0; i < len; i++) {
         if ((uint8_t)rt_bytes_get(bytes, (int64_t)i) != expected[i])
+            return false;
+    }
+    return true;
+}
+
+static bool bytes_are_value(const uint8_t *bytes, size_t len, uint8_t value) {
+    for (size_t i = 0; i < len; i++) {
+        if (bytes[i] != value)
             return false;
     }
     return true;
@@ -523,6 +563,92 @@ static void test_crypto_input_validation() {
     printf("\n");
 }
 
+static void test_returning_trap_crypto_guards() {
+    printf("Testing returning trap crypto guards:\n");
+
+    void *salt = make_bytes_str("salt");
+    void *plain = make_bytes_str("plain");
+    void *not_bytes = (void *)rt_const_cstr("not bytes");
+    uint8_t zero_key_data[16] = {0};
+    uint8_t zero_iv_data[16] = {0};
+    void *aes_key = make_bytes(zero_key_data, sizeof(zero_key_data));
+    void *aes_iv = make_bytes(zero_iv_data, sizeof(zero_iv_data));
+
+    reset_returning_trap_probe();
+    rt_string hash = rt_hash_sha256(nullptr);
+    bool hash_ok = returning_trap_seen("Hash: string must not be null") &&
+                   strcmp(rt_string_cstr(hash), "") == 0;
+    finish_returning_trap_probe();
+    test_result("Hash NULL string stops after returning trap", hash_ok);
+
+    reset_returning_trap_probe();
+    rt_string invalid_string_hash = rt_hash_sha256((rt_string)plain);
+    bool invalid_string_ok = returning_trap_seen("invalid string handle") &&
+                             strcmp(rt_string_cstr(invalid_string_hash), "") == 0;
+    finish_returning_trap_probe();
+    test_result("Hash invalid string handle stops after returning trap", invalid_string_ok);
+
+    reset_returning_trap_probe();
+    rt_string byte_hash = rt_hash_sha256_bytes(not_bytes);
+    bool byte_hash_ok = returning_trap_seen("invalid Bytes object") &&
+                        strcmp(rt_string_cstr(byte_hash), "") == 0;
+    finish_returning_trap_probe();
+    test_result("Hash invalid Bytes stops after returning trap", byte_hash_ok);
+
+    reset_returning_trap_probe();
+    rt_string key = rt_keyderive_pbkdf2_sha256_str(nullptr, salt, 100000, 16);
+    bool key_ok = returning_trap_seen("password must not be null") &&
+                  strcmp(rt_string_cstr(key), "") == 0;
+    finish_returning_trap_probe();
+    test_result("KeyDerive NULL password stops after returning trap", key_ok);
+
+    reset_returning_trap_probe();
+    rt_string pwd_hash = rt_password_hash_with_iterations(nullptr, 100000);
+    bool pwd_hash_ok =
+        returning_trap_seen("password is null") && strcmp(rt_string_cstr(pwd_hash), "") == 0;
+    finish_returning_trap_probe();
+    test_result("Password.HashIters NULL password stops after returning trap", pwd_hash_ok);
+
+    reset_returning_trap_probe();
+    void *cipher = rt_cipher_encrypt_with_key_aad(plain, not_bytes, nullptr);
+    bool cipher_ok = returning_trap_seen("key must be a Bytes object") && cipher == nullptr;
+    finish_returning_trap_probe();
+    test_result("Cipher invalid key Bytes stops after returning trap", cipher_ok);
+
+    reset_returning_trap_probe();
+    void *aes_cipher = rt_aes_encrypt(not_bytes, aes_key, aes_iv);
+    bool aes_ok = returning_trap_seen("plaintext must be a Bytes object") && aes_cipher == nullptr;
+    finish_returning_trap_probe();
+    test_result("AES CBC invalid plaintext stops after returning trap", aes_ok);
+
+    reset_returning_trap_probe();
+    void *aes_str_cipher = rt_aes_encrypt_str(nullptr, rt_const_cstr("pw"));
+    bool aes_str_ok = returning_trap_seen("plaintext is null") && aes_str_cipher == nullptr;
+    finish_returning_trap_probe();
+    test_result("AES string NULL plaintext stops after returning trap", aes_str_ok);
+
+    reset_returning_trap_probe();
+    uint8_t digest[32];
+    memset(digest, 0xa5, sizeof(digest));
+    rt_sha256(nullptr, 1, digest);
+    bool sha_ok =
+        returning_trap_seen("input buffer is null") && bytes_are_value(digest, sizeof(digest), 0xa5);
+    finish_returning_trap_probe();
+    test_result("SHA one-shot preserves output after returning trap", sha_ok);
+
+    reset_returning_trap_probe();
+    uint8_t ikm[1] = {1};
+    uint8_t prk[32];
+    memset(prk, 0xa5, sizeof(prk));
+    rt_hkdf_extract(nullptr, 1, ikm, sizeof(ikm), prk);
+    bool hkdf_ok =
+        returning_trap_seen("salt buffer is null") && bytes_are_value(prk, sizeof(prk), 0xa5);
+    finish_returning_trap_probe();
+    test_result("HKDF extract preserves output after returning trap", hkdf_ok);
+
+    printf("\n");
+}
+
 static void test_constant_time_equals_and_passwords() {
     printf("Testing constant-time compare and Password:\n");
 
@@ -748,6 +874,46 @@ static void test_aead_tamper_detection() {
     printf("Testing AEAD tamper detection:\n");
 
     {
+        static const uint8_t key[32] = {
+            0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87,
+            0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f,
+            0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97,
+            0x98, 0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f};
+        static const uint8_t nonce[12] = {
+            0x07, 0x00, 0x00, 0x00, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47};
+        static const uint8_t aad[12] = {
+            0x50, 0x51, 0x52, 0x53, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7};
+        static const char plaintext[] =
+            "Ladies and Gentlemen of the class of '99: If I could offer you only one tip "
+            "for the future, sunscreen would be it.";
+        static const uint8_t expected[] = {
+            0xd3, 0x1a, 0x8d, 0x34, 0x64, 0x8e, 0x60, 0xdb, 0x7b, 0x86, 0xaf, 0xbc,
+            0x53, 0xef, 0x7e, 0xc2, 0xa4, 0xad, 0xed, 0x51, 0x29, 0x6e, 0x08, 0xfe,
+            0xa9, 0xe2, 0xb5, 0xa7, 0x36, 0xee, 0x62, 0xd6, 0x3d, 0xbe, 0xa4, 0x5e,
+            0x8c, 0xa9, 0x67, 0x12, 0x82, 0xfa, 0xfb, 0x69, 0xda, 0x92, 0x72, 0x8b,
+            0x1a, 0x71, 0xde, 0x0a, 0x9e, 0x06, 0x0b, 0x29, 0x05, 0xd6, 0xa5, 0xb6,
+            0x7e, 0xcd, 0x3b, 0x36, 0x92, 0xdd, 0xbd, 0x7f, 0x2d, 0x77, 0x8b, 0x8c,
+            0x98, 0x03, 0xae, 0xe3, 0x28, 0x09, 0x1b, 0x58, 0xfa, 0xb3, 0x24, 0xe4,
+            0xfa, 0xd6, 0x75, 0x94, 0x55, 0x85, 0x80, 0x8b, 0x48, 0x31, 0xd7, 0xbc,
+            0x3f, 0xf4, 0xde, 0xf0, 0x8e, 0x4b, 0x7a, 0x9d, 0xe5, 0x76, 0xd2, 0x65,
+            0x86, 0xce, 0xc6, 0x4b, 0x61, 0x16, 0x1a, 0xe1, 0x0b, 0x59, 0x4f, 0x09,
+            0xe2, 0x6a, 0x7e, 0x90, 0x2e, 0xcb, 0xd0, 0x60, 0x06, 0x91};
+        uint8_t ciphertext[sizeof(expected)];
+        uint8_t opened[sizeof(plaintext) - 1];
+
+        size_t cipher_len = rt_chacha20_poly1305_encrypt(
+            key, nonce, aad, sizeof(aad), plaintext, sizeof(plaintext) - 1, ciphertext);
+        test_result("ChaCha20-Poly1305 RFC 8439 vector encrypt",
+                    cipher_len == sizeof(expected) &&
+                        memcmp(ciphertext, expected, sizeof(expected)) == 0);
+        test_result("ChaCha20-Poly1305 RFC 8439 vector decrypt",
+                    rt_chacha20_poly1305_decrypt(
+                        key, nonce, aad, sizeof(aad), ciphertext, sizeof(ciphertext), opened) ==
+                            (long)sizeof(opened) &&
+                        memcmp(opened, plaintext, sizeof(opened)) == 0);
+    }
+
+    {
         uint8_t key[32];
         uint8_t nonce[12];
         memset(key, 0x11, sizeof(key));
@@ -960,6 +1126,7 @@ int main() {
     test_string_inputs_preserve_embedded_nul();
     test_pbkdf2_sha256();
     test_crypto_input_validation();
+    test_returning_trap_crypto_guards();
     test_constant_time_equals_and_passwords();
     test_high_level_aead_wrappers();
     test_crypto_rand();

@@ -213,9 +213,16 @@ static void aes_secure_zero(void *ptr, size_t len) {
 
 /// @brief Extract a raw byte pointer and byte count from a required rt_string.
 ///        Returns an empty C string and sets *len = 0 for real zero-length input.
-static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *null_message) {
+static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *null_message, int *ok) {
+    if (ok)
+        *ok = 0;
     if (!str) {
         rt_trap(null_message);
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+    if (!rt_string_is_handle((const void *)str)) {
+        rt_trap("AES: invalid string handle");
         *len = 0;
         return (const uint8_t *)"";
     }
@@ -227,6 +234,8 @@ static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *n
     }
     if (len64 == 0) {
         *len = 0;
+        if (ok)
+            *ok = 1;
         return (const uint8_t *)"";
     }
 
@@ -238,6 +247,8 @@ static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *n
     }
 
     *len = (size_t)len64;
+    if (ok)
+        *ok = 1;
     return (const uint8_t *)cstr;
 }
 
@@ -273,6 +284,10 @@ static int aes_combine_aad(const uint8_t *header,
         rt_trap("AES: invalid AAD output pointer");
         return 0;
     }
+    if (aad_obj && !rt_bytes_is_bytes(aad_obj)) {
+        rt_trap("AES: AAD must be a Bytes object");
+        return 0;
+    }
     int64_t user_len64 = aad_obj ? rt_bytes_len(aad_obj) : 0;
     if (user_len64 < 0) {
         rt_trap("AES: invalid AAD length");
@@ -280,6 +295,10 @@ static int aes_combine_aad(const uint8_t *header,
     }
     size_t user_len = (size_t)user_len64;
     const uint8_t *user = user_len > 0 ? rt_bytes_data_const(aad_obj) : NULL;
+    if (user_len > 0 && !user) {
+        rt_trap("AES: invalid AAD data");
+        return 0;
+    }
     if (user_len == 0) {
         *aad_out = header_len > 0 ? header : NULL;
         *aad_len_out = header_len;
@@ -1024,6 +1043,18 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
         rt_trap("AES: IV is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(data)) {
+        rt_trap("AES: plaintext must be a Bytes object");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(key)) {
+        rt_trap("AES: key must be a Bytes object");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(iv)) {
+        rt_trap("AES: IV must be a Bytes object");
+        return NULL;
+    }
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -1032,9 +1063,23 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
     // Validate key length
     int nk, nr;
     if (key_len == 16) {
+        if (!key_raw) {
+            if (data_raw)
+                free(data_raw);
+            if (iv_raw)
+                free(iv_raw);
+            return NULL;
+        }
         nk = 4;
         nr = 10;
     } else if (key_len == 32) {
+        if (!key_raw) {
+            if (data_raw)
+                free(data_raw);
+            if (iv_raw)
+                free(iv_raw);
+            return NULL;
+        }
         nk = 8;
         nr = 14;
     } else {
@@ -1063,10 +1108,33 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
         rt_trap("AES: IV must be exactly 16 bytes");
         return NULL;
     }
+    if (!iv_raw) {
+        if (data_raw)
+            free(data_raw);
+        if (key_raw) {
+            aes_secure_zero(key_raw, key_len);
+            free(key_raw);
+        }
+        return NULL;
+    }
+    if (data_len > 0 && !data_raw) {
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        free(iv_raw);
+        return NULL;
+    }
 
     // Encrypt
     size_t cipher_len;
     uint8_t *cipher = aes_cbc_encrypt(data_raw, data_len, key_raw, iv_raw, nk, nr, &cipher_len);
+    if (!cipher) {
+        free(data_raw);
+        if (key_raw)
+            aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        free(iv_raw);
+        return NULL;
+    }
 
     // Create result
     void *result = rt_bytes_from_raw(cipher, cipher_len);
@@ -1107,6 +1175,18 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
         rt_trap("AES: IV is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(data)) {
+        rt_trap("AES: ciphertext must be a Bytes object");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(key)) {
+        rt_trap("AES: key must be a Bytes object");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(iv)) {
+        rt_trap("AES: IV must be a Bytes object");
+        return NULL;
+    }
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -1115,9 +1195,23 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
     // Validate key length
     int nk, nr;
     if (key_len == 16) {
+        if (!key_raw) {
+            if (data_raw)
+                free(data_raw);
+            if (iv_raw)
+                free(iv_raw);
+            return NULL;
+        }
         nk = 4;
         nr = 10;
     } else if (key_len == 32) {
+        if (!key_raw) {
+            if (data_raw)
+                free(data_raw);
+            if (iv_raw)
+                free(iv_raw);
+            return NULL;
+        }
         nk = 8;
         nr = 14;
     } else {
@@ -1144,6 +1238,17 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
         if (iv_raw)
             free(iv_raw);
         rt_trap("AES: IV must be exactly 16 bytes");
+        return NULL;
+    }
+    if (!iv_raw || (data_len > 0 && !data_raw)) {
+        if (data_raw)
+            free(data_raw);
+        if (key_raw) {
+            aes_secure_zero(key_raw, key_len);
+            free(key_raw);
+        }
+        if (iv_raw)
+            free(iv_raw);
         return NULL;
     }
 
@@ -1221,6 +1326,14 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
         rt_trap("AES.Auth: key is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(data)) {
+        rt_trap("AES.Auth: plaintext must be a Bytes object");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(key)) {
+        rt_trap("AES.Auth: key must be a Bytes object");
+        return NULL;
+    }
     size_t data_len, key_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -1231,6 +1344,14 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
             free(key_raw);
         }
         rt_trap("AES.Auth: key must be exactly 16 or 32 bytes");
+        return NULL;
+    }
+    if (!key_raw || (data_len > 0 && !data_raw)) {
+        free(data_raw);
+        if (key_raw) {
+            aes_secure_zero(key_raw, key_len);
+            free(key_raw);
+        }
         return NULL;
     }
     if (data_len > SIZE_MAX - AES_AUTH_HEADER_LEN - 16) {
@@ -1326,6 +1447,14 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
         rt_trap("AES.Auth: key is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(data)) {
+        rt_trap("AES.Auth: ciphertext must be a Bytes object");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(key)) {
+        rt_trap("AES.Auth: key must be a Bytes object");
+        return NULL;
+    }
     size_t data_len, key_len;
     uint8_t *encoded = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -1336,6 +1465,14 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
             free(key_raw);
         }
         rt_trap("AES.Auth: key must be exactly 16 or 32 bytes");
+        return NULL;
+    }
+    if (!key_raw || (data_len > 0 && !encoded)) {
+        free(encoded);
+        if (key_raw) {
+            aes_secure_zero(key_raw, key_len);
+            free(key_raw);
+        }
         return NULL;
     }
     if (!encoded || data_len < AES_AUTH_HEADER_LEN + 16 || encoded[0] != AES_AUTH_MAGIC0 ||
@@ -1530,8 +1667,12 @@ static int aes_is_gcm_string_payload(const uint8_t *data, size_t len) {
 void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     size_t plain_len;
     size_t pass_len;
-    const uint8_t *data_bytes = aes_string_bytes(data, &plain_len, "AES: plaintext is null");
-    const uint8_t *pass_bytes = aes_string_bytes(password, &pass_len, "AES: password is null");
+    int data_ok;
+    int pass_ok;
+    const uint8_t *data_bytes =
+        aes_string_bytes(data, &plain_len, "AES: plaintext is null", &data_ok);
+    const uint8_t *pass_bytes =
+        aes_string_bytes(password, &pass_len, "AES: password is null", &pass_ok);
     uint8_t salt[16];
     uint8_t nonce[12];
     uint8_t key[16];
@@ -1540,6 +1681,8 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     uint8_t *out;
     void *result;
 
+    if (!data_ok || !pass_ok)
+        return NULL;
     if (pass_len == 0) {
         rt_trap("AES: password is empty");
         return NULL;
@@ -1617,9 +1760,17 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
         rt_trap("AES: encrypted data is null");
         return rt_const_cstr("");
     }
-    const uint8_t *pass_bytes = aes_string_bytes(password, &pass_len, "AES: password is null");
+    int pass_ok;
+    const uint8_t *pass_bytes =
+        aes_string_bytes(password, &pass_len, "AES: password is null", &pass_ok);
+    if (!pass_ok)
+        return rt_const_cstr("");
     if (pass_len == 0) {
         rt_trap("AES: password is empty");
+        return rt_const_cstr("");
+    }
+    if (!rt_bytes_is_bytes(data)) {
+        rt_trap("AES: encrypted data must be a Bytes object");
         return rt_const_cstr("");
     }
 
@@ -1669,6 +1820,7 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
             aes_secure_zero(encoded, (size_t)total_len);
             free(encoded);
             rt_trap("AES: memory allocation failed");
+            return rt_const_cstr("");
         }
 
         plain_len = rt_aes128_gcm_decrypt(

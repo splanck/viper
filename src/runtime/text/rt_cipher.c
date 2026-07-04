@@ -53,6 +53,7 @@
 #include "rt_option.h"
 #include "rt_platform.h"
 #include "rt_result.h"
+#include "rt_string.h"
 
 #include <setjmp.h>
 #include <stdint.h>
@@ -273,11 +274,19 @@ static void *cipher_key_aad_option(cipher_key_aad_decrypt_fn fn,
 
 /// @brief Read the raw byte buffer pointer from a Bytes object handle (NULL-safe).
 static inline uint8_t *bytes_data(void *obj) {
+    if (obj && !rt_bytes_is_bytes(obj)) {
+        rt_trap("Cipher: invalid Bytes object");
+        return NULL;
+    }
     return rt_bytes_data(obj);
 }
 
 /// @brief Read the byte length from a Bytes object handle (NULL -> 0).
 static inline int64_t bytes_len(void *obj) {
+    if (obj && !rt_bytes_is_bytes(obj)) {
+        rt_trap("Cipher: invalid Bytes object");
+        return -1;
+    }
     return rt_bytes_len(obj);
 }
 
@@ -328,9 +337,21 @@ static void cipher_secure_zero(void *ptr, size_t len) {
 /// @brief Extract a C string pointer and byte length from an rt_string password.
 ///        Calls rt_trap with @p op if the password handle is NULL.
 ///        Returns an empty string and sets *len = 0 for zero-length input.
-static const char *cipher_password_bytes(rt_string password, size_t *len, const char *op) {
+static const char *cipher_password_bytes(rt_string password, size_t *len, const char *op, int *ok) {
+    if (len)
+        *len = 0;
+    if (ok)
+        *ok = 0;
+    if (!len) {
+        rt_trap("Cipher: internal password length pointer is null");
+        return "";
+    }
     if (!password) {
         rt_trap(op);
+        return "";
+    }
+    if (!rt_string_is_handle((const void *)password)) {
+        rt_trap("Cipher: invalid password string handle");
         return "";
     }
 
@@ -341,6 +362,8 @@ static const char *cipher_password_bytes(rt_string password, size_t *len, const 
     }
     if (len64 == 0) {
         *len = 0;
+        if (ok)
+            *ok = 1;
         return "";
     }
 
@@ -351,6 +374,8 @@ static const char *cipher_password_bytes(rt_string password, size_t *len, const 
     }
 
     *len = (size_t)len64;
+    if (ok)
+        *ok = 1;
     return pwd;
 }
 
@@ -512,6 +537,12 @@ static uint8_t *combine_aad(const uint8_t *header,
     }
     size_t user_len = (size_t)user_len64;
     const uint8_t *user = user_len > 0 ? bytes_data(aad_obj) : NULL;
+    if (user_len > 0 && !user) {
+        rt_trap("Cipher: invalid AAD data");
+        if (aad_len_out)
+            *aad_len_out = SIZE_MAX;
+        return NULL;
+    }
 
     if (user_len == 0) {
         *aad_out = header_len > 0 ? header : NULL;
@@ -581,9 +612,17 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
         rt_trap("Cipher.Encrypt: plaintext is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(plaintext)) {
+        rt_trap("Cipher.Encrypt: plaintext must be a Bytes object");
+        return NULL;
+    }
 
     size_t pwd_len;
-    const char *pwd = cipher_password_bytes(password, &pwd_len, "Cipher.Encrypt: password is null");
+    int pwd_ok;
+    const char *pwd =
+        cipher_password_bytes(password, &pwd_len, "Cipher.Encrypt: password is null", &pwd_ok);
+    if (!pwd_ok)
+        return NULL;
     if (pwd_len == 0) {
         rt_trap("Cipher.Encrypt: password is empty");
         return NULL;
@@ -591,12 +630,16 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
 
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
+    if (plain_len < 0 || (plain_len > 0 && !plain_data))
+        return NULL;
     int approved = rt_crypto_module_is_approved_mode();
     int64_t out_len =
         cipher_checked_output_len(plain_len,
                                   CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE,
                                   approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
                                   "Cipher.Encrypt: plaintext length is invalid");
+    if (out_len == 0)
+        return NULL;
 
     // Generate random salt and nonce
     uint8_t salt[CIPHER_SALT_SIZE];
@@ -609,7 +652,15 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
 
     void *result = cipher_bytes_new_or_trap(out_len, "Cipher.Encrypt: allocation failed");
+    if (!result) {
+        cipher_secure_zero(key, sizeof(key));
+        return NULL;
+    }
     uint8_t *out_data = bytes_data(result);
+    if (!out_data) {
+        cipher_secure_zero(key, sizeof(key));
+        return NULL;
+    }
 
     memcpy(
         out_data, approved ? CIPHER_PW_APPROVED_MAGIC : CIPHER_PW_MAGIC, sizeof(CIPHER_PW_MAGIC));
@@ -716,9 +767,17 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         rt_trap("Cipher.Decrypt: ciphertext is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(ciphertext)) {
+        rt_trap("Cipher.Decrypt: ciphertext must be a Bytes object");
+        return NULL;
+    }
 
     size_t pwd_len;
-    const char *pwd = cipher_password_bytes(password, &pwd_len, "Cipher.Decrypt: password is null");
+    int pwd_ok;
+    const char *pwd =
+        cipher_password_bytes(password, &pwd_len, "Cipher.Decrypt: password is null", &pwd_ok);
+    if (!pwd_ok)
+        return NULL;
     if (pwd_len == 0) {
         rt_trap("Cipher.Decrypt: password is empty");
         return NULL;
@@ -916,28 +975,50 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
         rt_trap("Cipher.EncryptWithKey: plaintext is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(plaintext)) {
+        rt_trap("Cipher.EncryptWithKey: plaintext must be a Bytes object");
+        return NULL;
+    }
 
-    if (!key_bytes || bytes_len(key_bytes) != CIPHER_KEY_SIZE) {
+    if (!key_bytes) {
+        rt_trap("Cipher.EncryptWithKey: key must be exactly 32 bytes");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(key_bytes)) {
+        rt_trap("Cipher.EncryptWithKey: key must be a Bytes object");
+        return NULL;
+    }
+    if (bytes_len(key_bytes) != CIPHER_KEY_SIZE) {
         rt_trap("Cipher.EncryptWithKey: key must be exactly 32 bytes");
         return NULL;
     }
 
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
+    if (plain_len < 0 || (plain_len > 0 && !plain_data))
+        return NULL;
     const uint8_t *key = bytes_data(key_bytes);
+    if (!key)
+        return NULL;
     int approved = rt_crypto_module_is_approved_mode();
     int64_t out_len =
         cipher_checked_output_len(plain_len,
                                   CIPHER_KEY_HEADER_SIZE + CIPHER_TAG_SIZE,
                                   approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
                                   "Cipher.EncryptWithKey: plaintext length is invalid");
+    if (out_len == 0)
+        return NULL;
 
     // Generate random nonce
     uint8_t nonce[CIPHER_NONCE_SIZE];
     cipher_random_nonce(nonce);
 
     void *result = cipher_bytes_new_or_trap(out_len, "Cipher.EncryptWithKey: allocation failed");
+    if (!result)
+        return NULL;
     uint8_t *out_data = bytes_data(result);
+    if (!out_data)
+        return NULL;
 
     memcpy(out_data,
            approved ? CIPHER_KEY_APPROVED_MAGIC : CIPHER_KEY_MAGIC,
@@ -1032,8 +1113,20 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
         rt_trap("Cipher.DecryptWithKey: ciphertext is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(ciphertext)) {
+        rt_trap("Cipher.DecryptWithKey: ciphertext must be a Bytes object");
+        return NULL;
+    }
 
-    if (!key_bytes || bytes_len(key_bytes) != CIPHER_KEY_SIZE) {
+    if (!key_bytes) {
+        rt_trap("Cipher.DecryptWithKey: key must be exactly 32 bytes");
+        return NULL;
+    }
+    if (!rt_bytes_is_bytes(key_bytes)) {
+        rt_trap("Cipher.DecryptWithKey: key must be a Bytes object");
+        return NULL;
+    }
+    if (bytes_len(key_bytes) != CIPHER_KEY_SIZE) {
         rt_trap("Cipher.DecryptWithKey: key must be exactly 32 bytes");
         return NULL;
     }
@@ -1147,7 +1240,12 @@ void *rt_cipher_try_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void
 /// @return Bytes object containing 32 cryptographically random bytes.
 void *rt_cipher_generate_key(void) {
     void *key = cipher_bytes_new_or_trap(CIPHER_KEY_SIZE, "Cipher.GenerateKey: allocation failed");
-    rt_crypto_random_bytes(bytes_data(key), CIPHER_KEY_SIZE);
+    if (!key)
+        return NULL;
+    uint8_t *key_data = bytes_data(key);
+    if (!key_data)
+        return NULL;
+    rt_crypto_random_bytes(key_data, CIPHER_KEY_SIZE);
     return key;
 }
 
@@ -1167,10 +1265,17 @@ void *rt_cipher_derive_key(rt_string password, void *salt_bytes) {
         rt_trap("Cipher.DeriveKey: salt is null");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(salt_bytes)) {
+        rt_trap("Cipher.DeriveKey: salt must be a Bytes object");
+        return NULL;
+    }
 
     size_t pwd_len;
+    int pwd_ok;
     const char *pwd =
-        cipher_password_bytes(password, &pwd_len, "Cipher.DeriveKey: password is null");
+        cipher_password_bytes(password, &pwd_len, "Cipher.DeriveKey: password is null", &pwd_ok);
+    if (!pwd_ok)
+        return NULL;
     if (pwd_len == 0) {
         rt_trap("Cipher.DeriveKey: password is empty");
         return NULL;
@@ -1184,7 +1289,12 @@ void *rt_cipher_derive_key(rt_string password, void *salt_bytes) {
     }
 
     void *key = cipher_bytes_new_or_trap(CIPHER_KEY_SIZE, "Cipher.DeriveKey: allocation failed");
-    derive_key_pbkdf2(pwd, pwd_len, salt, (size_t)salt_len, bytes_data(key));
+    if (!key)
+        return NULL;
+    uint8_t *key_data = bytes_data(key);
+    if (!key_data)
+        return NULL;
+    derive_key_pbkdf2(pwd, pwd_len, salt, (size_t)salt_len, key_data);
 
     return key;
 }
