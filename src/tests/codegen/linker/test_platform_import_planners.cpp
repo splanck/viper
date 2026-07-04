@@ -32,6 +32,16 @@ bool importPlanHasDll(const WindowsImportPlan &plan, const std::string &dll) {
     });
 }
 
+bool importPlanDllHasFunction(const WindowsImportPlan &plan,
+                              const std::string &dll,
+                              const std::string &function) {
+    for (const auto &entry : plan.imports) {
+        if (entry.dllName == dll)
+            return contains(entry.functions, function);
+    }
+    return false;
+}
+
 bool objHasSymbol(const ObjFile &obj, const std::string &name) {
     return std::any_of(obj.symbols.begin(), obj.symbols.end(), [&](const ObjSymbol &sym) {
         return sym.name == name;
@@ -51,17 +61,16 @@ uint32_t dylibOrdinalForPath(const MacImportPlan &plan, const std::string &path)
 TEST(PlatformImportPlanners, LinuxPlannerClassifiesNeededLibraries) {
     LinuxImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planLinuxImports(
-        {"cbrtf",
-         "cos",
-         "dlopen",
-         "exp10",
-         "pthread_create",
-         "XOpenDisplay",
-         "snd_pcm_open",
-         "__once_proxy"},
-        plan,
-        err));
+    ASSERT_TRUE(planLinuxImports({"cbrtf",
+                                  "cos",
+                                  "dlopen",
+                                  "exp10",
+                                  "pthread_create",
+                                  "XOpenDisplay",
+                                  "snd_pcm_open",
+                                  "__once_proxy"},
+                                 plan,
+                                 err));
     EXPECT_EQ(std::vector<std::string>({"libc.so.6",
                                         "libm.so.6",
                                         "libdl.so.2",
@@ -212,21 +221,57 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     WindowsImportPlan plan;
     std::ostringstream err;
     ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64,
-                                        {"ExitProcess",
+                                       {"ExitProcess",
                                         "InitializeCriticalSectionAndSpinCount",
                                         "CreateWindowExW",
                                         "CreateWaitableTimerExW",
                                         "SetWaitableTimer",
+                                        "GetDiskFreeSpaceExW",
+                                        "CopyFile2",
+                                        "FormatMessageA",
+                                        "GetLocaleInfoEx",
+                                        "CreateDirectoryExW",
+                                        "DeviceIoControl",
+                                        "TryAcquireSRWLockShared",
+                                        "SetFileInformationByHandle",
+                                        "CreateHardLinkW",
+                                        "AreFileApisANSI",
+                                        "SetFileAttributesW",
+                                        "FindFirstFileExW",
+                                        "GetFinalPathNameByHandleW",
+                                        "SetFileTime",
+                                        "CreateFile2",
+                                        "GetFileInformationByHandleEx",
+                                        "CreateSymbolicLinkW",
+                                        "SleepConditionVariableSRW",
+                                        "TryAcquireSRWLockExclusive",
                                         "D3D11CreateDevice",
                                         "cbrtf",
                                         "cos",
+                                        "exp2f",
                                         "__RTDynamicCast",
                                         "_Init_thread_header",
                                         "_Smtx_lock_exclusive",
-                                        "__std_find_trivial_1",
+                                        "__std_type_info_name",
+                                        "__std_smf_beta",
+                                        "__std_atomic_wait_direct",
                                         "fsetpos",
                                         "_invalid_parameter",
+                                        "_callnewh",
+                                        "_initialize_onexit_table",
+                                        "_cexit",
+                                        "_configure_narrow_argv",
+                                        "___lc_codepage_func",
+                                        "_register_onexit_function",
+                                        "_seh_filter_dll",
+                                        "_crt_atexit",
+                                        "_initialize_narrow_environment",
+                                        "_execute_onexit_table",
+                                        "_crt_at_quick_exit",
+                                        "__stdio_common_vsprintf_s",
+                                        "_rotl",
                                         "_beginthreadex",
+                                        "__intrinsic_setjmp",
                                         "terminate",
                                         "__imp_ExitProcess"},
                                        false,
@@ -239,9 +284,32 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanHasDll(plan, "ucrtbase.dll"));
     EXPECT_TRUE(importPlanHasDll(plan, "VCRUNTIME140.dll"));
     EXPECT_TRUE(importPlanHasDll(plan, "MSVCP140.dll"));
+    EXPECT_TRUE(importPlanHasDll(plan, "MSVCP140_2.dll"));
+    EXPECT_TRUE(importPlanHasDll(plan, "MSVCP140_ATOMIC_WAIT.dll"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "terminate"));
+    EXPECT_FALSE(importPlanDllHasFunction(plan, "VCRUNTIME140.dll", "terminate"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp_ExitProcess"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "ExitProcess"));
     EXPECT_TRUE(plan.obj.sections.size() >= 2);
+}
+
+TEST(PlatformImportPlanners, WindowsPlannerMapsDebugOnlyUcrtImports) {
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64, {"_free_dbg"}, true, plan, err));
+
+    EXPECT_TRUE(importPlanHasDll(plan, "ucrtbased.dll"));
+    EXPECT_TRUE(objHasSymbol(plan.obj, "__imp__free_dbg"));
+    EXPECT_TRUE(objHasSymbol(plan.obj, "_free_dbg"));
+}
+
+TEST(PlatformImportPlanners, WindowsPlannerRejectsStaticOnlyMsvcStdHelperImports) {
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    EXPECT_FALSE(
+        generateWindowsImports(LinkArch::X86_64, {"__std_find_trivial_1"}, false, plan, err));
+    EXPECT_NE(std::string::npos, err.str().find("__std_find_trivial_1"));
+    EXPECT_NE(std::string::npos, err.str().find("no DLL mapping"));
 }
 
 int main(int argc, char **argv) {

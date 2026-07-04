@@ -51,6 +51,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -325,7 +326,9 @@ int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::
 ///          components are present in the link context. The GUI support library
 ///          also pulls in viper_text_core because CodeEditor uses the shared
 ///          text-buffer C ABI.
-void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::string> &archives) {
+void collectNativeLinkArchives(const common::LinkContext &ctx,
+                               std::optional<bool> windowsDebugRuntime,
+                               std::vector<std::string> &archives) {
     std::unordered_set<std::string> seenArchives;
 
     auto appendIfExists = [&](const std::filesystem::path &path) {
@@ -379,6 +382,15 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
         for (int i = 0; i < static_cast<int>(RtComponent::Count); ++i)
             appendComponent(static_cast<RtComponent>(i));
     }
+
+    if constexpr (viper::platform::kHostWindows) {
+        const bool useDebugRuntime =
+            windowsDebugRuntime.value_or(common::windowsArchivePathsUseDebugRuntime(archives));
+        for (const auto &archive :
+             common::windowsMsvcCxxRuntimeArchives(ctx.buildDir, "x64", useDebugRuntime)) {
+            appendIfExists(archive);
+        }
+    }
 }
 
 /// @brief Link @p objPath into @p exePath using Viper's in-process linker.
@@ -407,7 +419,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linkOpts.fastLink = fastLink;
     linkOpts.preserveDebugSections = preserveDebugSections;
     linkOpts.windowsDebugRuntime = windowsDebugRuntime;
-    collectNativeLinkArchives(ctx, linkOpts.archivePaths);
+    collectNativeLinkArchives(ctx, windowsDebugRuntime, linkOpts.archivePaths);
     if (ctx.needsZiaFrontend) {
         const auto ziaEditorLib = common::supportLibraryPath(ctx.buildDir, "zia_editor_services");
         if (common::fileExists(ziaEditorLib))

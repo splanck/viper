@@ -465,7 +465,8 @@ bool readCoffObj(
     obj.name = name;
     obj.machine = machine;
     obj.symbols.assign(1, ObjSymbol{});
-    if (machine != coff::IMAGE_FILE_MACHINE_AMD64 && machine != coff::IMAGE_FILE_MACHINE_ARM64) {
+    if (machine != 0 && machine != coff::IMAGE_FILE_MACHINE_AMD64 &&
+        machine != coff::IMAGE_FILE_MACHINE_ARM64) {
         err << "error: " << name << ": unsupported COFF machine\n";
         return false;
     }

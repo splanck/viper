@@ -12,8 +12,9 @@ OUT_DIR="${VIPER_IDE_OUT_DIR:-$IDE_DIR/bin}"
 OUTPUT_FILE="${VIPER_IDE_OUTPUT:-$OUT_DIR/viperide}"
 COMPAT_OUTPUT_FILE="${VIPER_IDE_COMPAT_OUTPUT:-$BUILD_DIR/viperide/viperide}"
 SKIP_COMPAT_COPY="${VIPER_IDE_SKIP_COMPAT_COPY:-0}"
-
-VIPER="$BUILD_DIR/src/tools/viper/viper"
+VIPER_BUILD_TYPE="${VIPER_BUILD_TYPE:-Debug}"
+VIPER=""
+VIPER_IS_WINDOWS=0
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -56,6 +57,64 @@ done
 if [[ ! -d "$IDE_DIR" ]]; then
     echo -e "${RED}Error: ViperIDE source not found at $IDE_DIR${NC}"
     exit 1
+fi
+
+resolve_viper_tool() {
+    local candidate
+    local candidates=(
+        "$BUILD_DIR/src/tools/viper/viper"
+        "$BUILD_DIR/src/tools/viper/viper.exe"
+        "$BUILD_DIR/src/tools/viper/$VIPER_BUILD_TYPE/viper.exe"
+        "$BUILD_DIR/src/tools/viper/Debug/viper.exe"
+        "$BUILD_DIR/src/tools/viper/Release/viper.exe"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            VIPER="$candidate"
+            if [[ "$candidate" == *.exe ]]; then
+                VIPER_IS_WINDOWS=1
+            fi
+            return 0
+        fi
+    done
+    return 1
+}
+
+windows_path() {
+    local path="$1"
+    if command -v wslpath >/dev/null 2>&1; then
+        wslpath -w "$path"
+        return 0
+    fi
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "$path"
+        return 0
+    fi
+    printf '%s\n' "$path"
+}
+
+path_for_viper() {
+    if [[ $VIPER_IS_WINDOWS -eq 1 ]]; then
+        windows_path "$1"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
+if ! resolve_viper_tool; then
+    echo -e "${RED}Error: viper tool not found under $BUILD_DIR/src/tools/viper${NC}"
+    echo "Run './scripts/build_viper_mac.sh', './scripts/build_viper_linux.sh', or './scripts/build_viper_win.cmd' first"
+    exit 1
+fi
+
+if [[ $VIPER_IS_WINDOWS -eq 1 ]]; then
+    if [[ -z "${VIPER_IDE_OUTPUT:-}" && "$OUTPUT_FILE" == "$OUT_DIR/viperide" ]]; then
+        OUTPUT_FILE="$OUT_DIR/viperide.exe"
+    fi
+    if [[ -z "${VIPER_IDE_COMPAT_OUTPUT:-}" && "$COMPAT_OUTPUT_FILE" == "$BUILD_DIR/viperide/viperide" ]]; then
+        COMPAT_OUTPUT_FILE="$BUILD_DIR/viperide/viperide.exe"
+    fi
 fi
 
 if [[ ! -x "$VIPER" ]]; then
@@ -119,8 +178,12 @@ build_linux() {
 
 build_native() {
     local target_arch="$1"
+    local ide_arg output_arg build_dir_arg
+    ide_arg="$(path_for_viper "$IDE_DIR")"
+    output_arg="$(path_for_viper "$OUTPUT_FILE")"
+    build_dir_arg="$(path_for_viper "$BUILD_DIR")"
     echo -n "  Viper build (--arch $target_arch)... "
-    if ! "$VIPER" build "$IDE_DIR" --arch "$target_arch" -o "$OUTPUT_FILE" 2>"$FRONTEND_ERR"; then
+    if ! VIPER_BUILD_DIR="$build_dir_arg" "$VIPER" build "$ide_arg" --arch "$target_arch" -o "$output_arg" 2>"$FRONTEND_ERR"; then
         echo -e "${RED}FAILED${NC}"
         head -40 "$FRONTEND_ERR"
         return 1

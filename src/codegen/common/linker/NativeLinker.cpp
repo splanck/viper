@@ -366,7 +366,9 @@ bool validateInputObjects(const std::vector<ObjFile> &objects,
                 << archName(arch) << " output\n";
             return false;
         }
-        if (obj.machine != wantMachine) {
+        const bool allowUnknownWindowsCoff = platform == LinkPlatform::Windows &&
+                                             obj.format == ObjFileFormat::COFF && obj.machine == 0;
+        if (obj.machine != wantMachine && !allowUnknownWindowsCoff) {
             err << "error: " << obj.name << ": machine 0x" << std::hex << obj.machine << std::dec
                 << " does not match target " << archName(arch) << "\n";
             return false;

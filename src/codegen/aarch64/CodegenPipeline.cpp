@@ -51,6 +51,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
@@ -203,6 +204,7 @@ static int linkToExe(const std::string &asmPath,
 /// @param archives Output list; entries are absolute paths appended in dependency order.
 static void collectNativeLinkArchives(const common::LinkContext &ctx,
                                       TargetPlatform targetPlatform,
+                                      std::optional<bool> windowsDebugRuntime,
                                       std::vector<std::string> &archives) {
     std::unordered_set<std::string> seenArchives;
 
@@ -247,6 +249,15 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
         for (int i = 0; i < static_cast<int>(RtComponent::Count); ++i)
             appendComponent(static_cast<RtComponent>(i));
     }
+
+    if (targetLinkPlatform(targetPlatform) == linker::LinkPlatform::Windows) {
+        const bool useDebugRuntime =
+            windowsDebugRuntime.value_or(common::windowsArchivePathsUseDebugRuntime(archives));
+        for (const auto &archive :
+             common::windowsMsvcCxxRuntimeArchives(ctx.buildDir, "arm64", useDebugRuntime)) {
+            appendIfExists(archive);
+        }
+    }
 }
 
 /// @brief Link a single .o file into a native executable using the Viper native linker.
@@ -290,7 +301,7 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.preserveDebugSections = preserveDebugSections;
     linkOpts.windowsDebugRuntime = windowsDebugRuntime;
     linkOpts.extraObjPaths = extraObjects;
-    collectNativeLinkArchives(ctx, targetPlatform, linkOpts.archivePaths);
+    collectNativeLinkArchives(ctx, targetPlatform, windowsDebugRuntime, linkOpts.archivePaths);
     if (ctx.needsZiaFrontend) {
         const auto ziaEditorLib = common::supportLibraryPath(ctx.buildDir, "zia_editor_services");
         if (common::fileExists(ziaEditorLib))

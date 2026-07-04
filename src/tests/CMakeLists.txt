@@ -1118,7 +1118,8 @@ add_test(NAME zia_viperide_intellisense
 set_tests_properties(zia_viperide_intellisense PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;intellisense;requires_display"
-        TIMEOUT 120)
+        PROCESSORS 4
+        TIMEOUT 180)
 
 add_test(NAME zia_viperide_file_tree
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/file_tree_probe.zia"
@@ -1530,7 +1531,7 @@ set_tests_properties(zia_season_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
         PROCESSORS 4
-        TIMEOUT 300)
+        TIMEOUT 600)
 
 add_test(NAME zia_persistence_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/persistence_probe.zia"

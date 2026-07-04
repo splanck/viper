@@ -97,6 +97,41 @@ bool usesDebugWindowsRuntimeArchives(const std::vector<std::filesystem::path> &a
     return false;
 }
 
+bool addArchiveObjectDefinitionsOnly(const std::filesystem::path &archivePath,
+                                     std::unordered_set<std::string> &defined,
+                                     std::ostream &err) {
+    Archive archive;
+    if (!readArchive(archivePath.string(), archive, err))
+        return false;
+
+    for (const auto &member : archive.members) {
+        const auto memberBytes = extractMember(archive, member);
+        if (memberBytes.empty())
+            continue;
+        if (isCoffImportLibraryMember(memberBytes.data(), memberBytes.size()))
+            continue;
+
+        ObjFile obj;
+        std::ostringstream objErr;
+        if (!readObjFile(memberBytes.data(),
+                         memberBytes.size(),
+                         archive.path + "(" + member.name + ")",
+                         obj,
+                         objErr)) {
+            continue;
+        }
+
+        std::unordered_set<std::string> memberUndefined;
+        SymbolOriginMap memberUndefinedOrigins;
+        addObjectSymbols(obj,
+                         archive.path + "(" + member.name + ")",
+                         defined,
+                         memberUndefined,
+                         memberUndefinedOrigins);
+    }
+    return true;
+}
+
 } // namespace
 
 TEST(LinkerRuntimeImportAudit, HostRuntimeArchivesUseKnownDynamicImports) {
@@ -130,6 +165,18 @@ TEST(LinkerRuntimeImportAudit, HostRuntimeArchivesUseKnownDynamicImports) {
             ASSERT_TRUE(objErr.str().empty());
             addObjectSymbols(
                 obj, archive.path + "(" + member.name + ")", defined, undefined, undefinedOrigins);
+        }
+    }
+
+    if (detectLinkPlatform() == LinkPlatform::Windows) {
+        const std::string archName = detectLinkArch() == LinkArch::AArch64 ? "arm64" : "x64";
+        const bool debugRuntime = usesDebugWindowsRuntimeArchives(archives);
+        for (const auto &archivePath :
+             windowsMsvcCxxRuntimeArchives(*buildDir, archName, debugRuntime)) {
+            std::ostringstream err;
+            if (!addArchiveObjectDefinitionsOnly(archivePath, defined, err))
+                std::cerr << err.str();
+            ASSERT_TRUE(err.str().empty());
         }
     }
 

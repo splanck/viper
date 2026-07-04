@@ -237,6 +237,39 @@ static std::vector<uint8_t> makeSyntheticCoffBssWithBogusRawData() {
     return obj;
 }
 
+static std::vector<uint8_t> makeSyntheticCoffUnknownMachine() {
+    constexpr uint32_t kScnCntCode = 0x00000020;
+    constexpr uint32_t kScnMemExecute = 0x20000000;
+    constexpr uint32_t kScnMemRead = 0x40000000;
+
+    std::vector<uint8_t> obj;
+    obj.reserve(20 + 40 + 1 + 4);
+
+    appendLE16(obj, 0);           // Machine: IMAGE_FILE_MACHINE_UNKNOWN.
+    appendLE16(obj, 1);           // NumberOfSections
+    appendLE32(obj, 0);           // TimeDateStamp
+    appendLE32(obj, 20 + 40 + 1); // PointerToSymbolTable
+    appendLE32(obj, 0);           // NumberOfSymbols
+    appendLE16(obj, 0);           // SizeOfOptionalHeader
+    appendLE16(obj, 0);           // Characteristics
+
+    const std::string name = ".text";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < name.size() ? static_cast<uint8_t>(name[i]) : 0);
+    appendLE32(obj, 1);       // VirtualSize
+    appendLE32(obj, 0);       // VirtualAddress
+    appendLE32(obj, 1);       // SizeOfRawData
+    appendLE32(obj, 20 + 40); // PointerToRawData
+    appendLE32(obj, 0);       // PointerToRelocations
+    appendLE32(obj, 0);       // PointerToLinenumbers
+    appendLE16(obj, 0);       // NumberOfRelocations
+    appendLE16(obj, 0);       // NumberOfLinenumbers
+    appendLE32(obj, kScnCntCode | kScnMemExecute | kScnMemRead);
+    obj.push_back(0xC3);
+    appendLE32(obj, 4); // Empty string table.
+    return obj;
+}
+
 static std::vector<uint8_t> makeSyntheticBigObj() {
     constexpr uint16_t kMachineAmd64 = 0x8664;
     constexpr uint32_t kScnCntCode = 0x00000020;
@@ -634,6 +667,21 @@ static void runPortableArchiveReaderTests() {
         CHECK(obj.symbols.size() == 2);
         CHECK(obj.symbols[1].name == "func");
         CHECK(obj.symbols[1].sectionIndex == 1);
+    }
+
+    // --- MSVC CRT machine-unknown COFF members are still regular objects ---
+    {
+        const auto bytes = makeSyntheticCoffUnknownMachine();
+        ObjFile obj;
+        std::ostringstream err;
+        CHECK(detectFormat(bytes.data(), bytes.size()) == ObjFileFormat::COFF);
+        CHECK(readObjFile(bytes.data(), bytes.size(), "synthetic-machine-unknown.obj", obj, err));
+        CHECK(err.str().empty());
+        CHECK(obj.format == ObjFileFormat::COFF);
+        CHECK(obj.machine == 0);
+        CHECK(obj.sections.size() == 2);
+        CHECK(obj.sections[1].name == ".text");
+        CHECK(obj.sections[1].data.size() == 1);
     }
 
     // --- Standard COFF high-bit section numbers are real sections, not negative specials ---
