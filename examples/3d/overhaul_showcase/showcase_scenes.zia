@@ -1,0 +1,207 @@
+// ============================================================================
+// overhaul_showcase scenes — menu + play scenes and the game shell
+// ============================================================================
+// Bound by main.zia (interactive) and probe.zia (headless verification).
+// ============================================================================
+
+bind "../../games/lib/gamebase3d";
+bind "../../games/lib/iscene3d";
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Game.UI.Panel as Panel;
+bind Viper.Game.UI.Bar as Bar;
+bind Viper.Game.UI.HudLabel as HudLabel;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+// --- Menu scene: widget-drawn title card ------------------------------------
+
+class MenuScene implements IScene3D {
+    hide SceneGame game;
+    hide Panel card;
+    hide HudLabel title;
+    hide HudLabel prompt;
+    hide Integer marquee;
+
+    expose func bindGame(owner: SceneGame) {
+        game = owner;
+        card = Panel.New(36, 52, 300, 78, 0x101C2C, 210);
+        card.CornerRadius = 8;
+        title = HudLabel.New(56, 68, "3D OVERHAUL SHOWCASE", 0xFFFFFF);
+        prompt = HudLabel.New(56, 92, "press ENTER to enter the scene", 0xA8C0FF);
+        marquee = 0;
+    }
+
+    expose func onEnter(world: World3D) {
+        world.SetAmbient(0.22, 0.24, 0.3);
+    }
+
+    expose func onExit(world: World3D) { }
+
+    expose func update(world: World3D, dt: Number) {
+        marquee = marquee + 2;
+        if marquee > 520 {
+            marquee = 0;
+        }
+        var input: Input3D = world.Input;
+        if input.Pressed(Keys.Enter) {
+            game.startPlay();
+        }
+    }
+
+    expose func drawOverlay(world: World3D) {
+        var canvas: Canvas3D = world.Canvas;
+        // The same Game.UI widgets 2D games use, drawn straight onto Canvas3D.
+        card.Draw(canvas);
+        title.Draw(canvas);
+        prompt.Draw(canvas);
+        // New overlay primitives: clip-rect marquee + rounded frame.
+        Canvas3D.DrawRoundFrame2D(canvas, 36, 150, 300, 26, 8, 0x3D5A80, 0.9);
+        Canvas3D.SetClipRect2D(canvas, 44, 154, 284, 18);
+        Canvas3D.DrawText2DScaled(
+            canvas, 340 - marquee, 158,
+            "IBL * TAA * BLOOM * POISSON SHADOWS * WIDGETS", 0x8EF0C6, 1.0);
+        Canvas3D.ClearClipRect2D(canvas);
+    }
+}
+
+// --- Play scene: IBL material spread, shadows, postfx, HUD widgets ----------
+
+class PlayScene implements IScene3D {
+    hide SceneGame game;
+    hide Boolean built;
+    hide Panel hud;
+    hide Bar energy;
+    hide HudLabel caption;
+    hide Integer pulseTick;
+
+    expose func bindGame(owner: SceneGame) {
+        game = owner;
+        built = false;
+        hud = Panel.New(10, 10, 220, 58, 0x0C1420, 190);
+        hud.CornerRadius = 6;
+        energy = Bar.New(20, 40, 200, 10, 0x46E08A, 0x1C2A38);
+        caption = HudLabel.New(20, 20, "IBL + TAA + widget HUD", 0xE8F0FF);
+        pulseTick = 0;
+    }
+
+    expose func onEnter(world: World3D) {
+        world.SetAmbient(0.08, 0.09, 0.12);
+        Lighting.Outdoor(world, Vec3.New(-0.45, -1.0, -0.3));
+
+        // New environment lighting path: gradient sky drives SH-9 diffuse +
+        // GGX-prefiltered specular on every PBR material below.
+        Environment3D.Sunset(world);
+        world.IblEnabled = true;
+        world.IblIntensity = 1.15;
+
+        var canvas: Canvas3D = world.Canvas;
+        // New shadow quality knobs: near-black shadows, 16-tap Poisson PCF.
+        Canvas3D.SetShadowStrength(canvas, 0.92);
+        Canvas3D.SetShadowQuality(canvas, 2);
+
+        // New post stack: mip-chain bloom + ACES; TAA when the backend can,
+        // FXAA otherwise — and bind-time validation instead of trapping.
+        var fx = PostFX3D.New();
+        fx.AddBloom(0.72, 0.3, 5);
+        fx.AddTonemap(2, 1.05);
+        if Canvas3D.BackendSupports(canvas, "taa") {
+            fx.AddTAA(0.9);
+        } else {
+            fx.AddFXAA();
+        }
+        Canvas3D.SetPostFX(canvas, fx);
+        if fx.LastError != "" {
+            Terminal.Say("postfx fallback: " + fx.LastError);
+        }
+
+        if built == false {
+            var ground: Entity3D = Prefab.Ground(16.0, Materials.Rubber(0.24, 0.28, 0.34));
+            world.Spawn(ground);
+
+            // Metallic/roughness spread — the row that shows IBL working:
+            // same base color, roughness sweeping 0.05 -> 0.85.
+            var i: Integer = 0;
+            while i < 5 {
+                var rough: Number = 0.05 + 0.2 * i;
+                var ball: Entity3D = Prefab.Sphere(0.45, 28, Materials.Metal(0.92, 0.9, 0.35 + rough * 0.0));
+                var mat: Material3D = ball.Material;
+                mat.Roughness = rough;
+                mat.Metallic = 1.0;
+                ball.SetPosition(-3.0 + 1.5 * i, 0.9, -1.5);
+                world.Spawn(ball);
+                i = i + 1;
+            }
+
+            // Behavior3D presets: zero per-frame entity code.
+            var orbiter: Entity3D = Prefab.Sphere(0.4, 24, Materials.Emissive(1.0, 0.75, 0.25, 3.0));
+            orbiter.AttachBehavior(Behavior3D.New().AddOrbit(0.0, 1.6, 0.0, 3.2, 50.0));
+            world.Spawn(orbiter);
+
+            var spinner: Entity3D = Prefab.Box(1.1, Materials.Plastic(0.2, 0.55, 0.9));
+            spinner.SetPosition(2.6, 1.1, 1.4);
+            spinner.AttachBehavior(Behavior3D.New().AddSpin(0.0, 1.0, 0.0, 40.0));
+            world.Spawn(spinner);
+
+            var bobber: Entity3D = Prefab.Sphere(0.3, 20, Materials.Metal(0.95, 0.6, 0.2));
+            bobber.SetPosition(-2.4, 1.4, 1.6);
+            bobber.AttachBehavior(Behavior3D.New().AddSineFloat(0.4, 1.6));
+            world.Spawn(bobber);
+
+            built = true;
+        }
+
+        var camera: Camera3D = world.Camera;
+        Camera3D.LookAt(
+            camera, Vec3.New(0.0, 3.2, 8.5), Vec3.New(0.0, 1.0, -0.4), Vec3.New(0.0, 1.0, 0.0));
+    }
+
+    expose func onExit(world: World3D) { }
+
+    expose func update(world: World3D, dt: Number) {
+        pulseTick = pulseTick + 1;
+        if pulseTick >= 120 {
+            pulseTick = 0;
+        }
+        var ramp: Integer = pulseTick;
+        if ramp > 60 {
+            ramp = 120 - ramp;
+        }
+        energy.SetValue(35 + ramp, 100);
+        var input: Input3D = world.Input;
+        if input.Pressed(Keys.Escape) {
+            game.backToMenu();
+        }
+    }
+
+    expose func drawOverlay(world: World3D) {
+        var canvas: Canvas3D = world.Canvas;
+        hud.Draw(canvas);
+        caption.Draw(canvas);
+        energy.Draw(canvas);
+    }
+}
+
+// --- Game shell --------------------------------------------------------------
+
+class SceneGame extends GameBase3D {
+    hide MenuScene menu;
+    hide PlayScene play;
+
+    override expose func onInit() {
+        menu = new MenuScene();
+        menu.bindGame(self);
+        play = new PlayScene();
+        play.bindGame(self);
+        self.setScene(menu);
+    }
+
+    expose func startPlay() {
+        self.transitionTo(play, 0x000000, 0.35);
+    }
+
+    expose func backToMenu() {
+        self.transitionTo(menu, 0x000000, 0.35);
+    }
+}

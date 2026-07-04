@@ -136,6 +136,7 @@ typedef struct {
     void *material;
     void *body;
     void *anim;
+    void *behavior;
     int64_t layer;
     int64_t collision_mask_bits;
     rt_string name;
@@ -5760,10 +5761,98 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
     PASS();
 }
 
+/// Behavior3D presets drive spawned entities deterministically each simulation
+/// step: orbit and sine write position, spin writes rotation, chase closes
+/// distance and respects range, lifetime despawns.
+static bool test_behavior3d_presets_drive_entities() {
+    TEST("Behavior3D presets drive entities through StepSimulation");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Behavior Unit"), 64, 48);
+    EXPECT_TRUE(world != NULL, "world created");
+
+    /* Orbit: r=3 about (0,2,0) at 90 deg/s -> after 1s at angle pi/2: (0,2,3). */
+    void *orbiter = rt_game3d_entity_new();
+    rt_game3d_entity_attach_behavior(
+        orbiter, rt_game3d_behavior_add_orbit(rt_game3d_behavior_new(), 0.0, 2.0, 0.0, 3.0, 90.0));
+    rt_game3d_world_spawn(world, orbiter);
+
+    /* Sine float: base y=1, amplitude 0.5, speed pi/2 -> after 1s y = 1.5. */
+    void *floater = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(floater, 4.0, 1.0, 0.0);
+    rt_game3d_entity_attach_behavior(
+        floater,
+        rt_game3d_behavior_add_sine_float(rt_game3d_behavior_new(), 0.5, 1.5707963267948966));
+    rt_game3d_world_spawn(world, floater);
+
+    /* Spin: 90 deg/s about +Y -> after 1s quat = (0, sin45, 0, cos45). */
+    void *spinner = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(spinner, -4.0, 0.0, 0.0);
+    rt_game3d_entity_attach_behavior(
+        spinner, rt_game3d_behavior_add_spin(rt_game3d_behavior_new(), 0.0, 1.0, 0.0, 90.0));
+    rt_game3d_world_spawn(world, spinner);
+
+    /* Chase: from origin toward (0,0,10) at 2 u/s with range 1 -> after 1s z=2. */
+    void *target = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(target, 0.0, 0.0, 10.0);
+    rt_game3d_world_spawn(world, target);
+    void *chaser = rt_game3d_entity_new();
+    rt_game3d_entity_set_position(chaser, 0.0, 0.0, 0.0);
+    rt_game3d_entity_attach_behavior(
+        chaser, rt_game3d_behavior_add_chase(rt_game3d_behavior_new(), target, 2.0, 1.0));
+    rt_game3d_world_spawn(world, chaser);
+
+    /* Lifetime: despawn after 0.5s. */
+    void *ephemeral = rt_game3d_entity_new();
+    rt_game3d_entity_attach_behavior(
+        ephemeral, rt_game3d_behavior_add_lifetime(rt_game3d_behavior_new(), 0.5));
+    rt_game3d_world_spawn(world, ephemeral);
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(ephemeral) == 1, "ephemeral entity spawned");
+
+    for (int i = 0; i < 20; i++)
+        rt_game3d_world_step_simulation(world, 0.05); /* exactly 1.0s */
+
+    {
+        void *pos = rt_game3d_entity_world_position(orbiter);
+        EXPECT_NEAR(rt_vec3_x(pos), 0.0, 1e-4, "orbit x after quarter turn");
+        EXPECT_NEAR(rt_vec3_y(pos), 2.0, 1e-6, "orbit keeps center height");
+        EXPECT_NEAR(rt_vec3_z(pos), 3.0, 1e-4, "orbit z after quarter turn");
+    }
+    {
+        void *pos = rt_game3d_entity_world_position(floater);
+        EXPECT_NEAR(rt_vec3_y(pos), 1.5, 1e-4, "sine float peaks at base + amplitude");
+        EXPECT_NEAR(rt_vec3_x(pos), 4.0, 1e-6, "sine float leaves x untouched");
+    }
+    {
+        void *node = rt_game3d_entity_get_node(spinner);
+        void *rot = rt_scene_node3d_get_rotation(node);
+        EXPECT_TRUE(rot != NULL, "spinner rotation readable");
+        EXPECT_NEAR(rt_quat_y(rot), 0.70710678, 1e-3, "spin yaw quaternion y at 90 degrees");
+        EXPECT_NEAR(rt_quat_w(rot), 0.70710678, 1e-3, "spin yaw quaternion w at 90 degrees");
+    }
+    {
+        void *pos = rt_game3d_entity_world_position(chaser);
+        EXPECT_NEAR(rt_vec3_z(pos), 2.0, 1e-4, "chase advances speed*time toward target");
+    }
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(ephemeral) == 0, "lifetime behavior despawns");
+
+    /* Chase stops at range: from z=7 it may only advance to range 1 (z=9),
+     * even with 1.5s of travel budget (speed 2 would otherwise reach z=10). */
+    rt_game3d_entity_set_position(chaser, 0.0, 0.0, 7.0);
+    for (int i = 0; i < 30; i++)
+        rt_game3d_world_step_simulation(world, 0.05);
+    {
+        void *pos = rt_game3d_entity_world_position(chaser);
+        EXPECT_NEAR(rt_vec3_z(pos), 9.0, 1e-4, "chase stops at the requested range");
+    }
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 int main() {
     set_software_backend_env();
     bool ok = true;
     ok = test_layermasks_and_constants() && ok;
+    ok = test_behavior3d_presets_drive_entities() && ok;
     ok = test_world_worker_controls() && ok;
     ok = test_input_axes() && ok;
     ok = test_input_update_snapshots_frame_state() && ok;

@@ -1,0 +1,124 @@
+module command_context;
+
+bind "../app/command_palette_controller";
+bind "../app/file_watch_controller";
+bind "../app/workspace_watcher";
+bind "../build/breakpoints";
+bind "../build/build_system";
+bind "../build/debug_session";
+bind "../commands/command_registry";
+bind "../commands/search_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/session";
+bind "../core/settings";
+bind "../editor/diagnostics";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../editor/project_index";
+bind "../editor/signature";
+bind "../editor/symbols";
+bind "../services/locations";
+bind "../terminal/terminal_controller";
+bind "../ui/app_shell";
+bind "../ui/debug_breakpoint_overlay";
+bind "../ui/explorer_actions";
+bind "../ui/ide_overlays";
+
+// ============================================================================
+// MODULE: command_context
+// PURPOSE: Named dependency bundle for command routing.
+//
+// WHERE-THIS-FITS: main.zia constructs long-lived IDE controllers, while
+//          main_command_dispatcher.zia routes per-frame command triggers. This
+//          context is the boundary between those layers: main fills it once after
+//          setup, and the dispatcher reads named fields each frame.
+//
+// TEACHING-NOTE: Long positional parameter lists are easy to call incorrectly
+//          and hard to review. A small context object makes dependencies
+//          searchable, self-documenting, and extensible without forcing every
+//          dispatch helper to change signature at once.
+// ============================================================================
+
+/// @brief Stable set of controllers and services needed by command routing.
+/// @details The fields are intentionally public because this is not business
+///          state; it is wiring. Command handlers should still own their own
+///          behavior and should not mutate the context itself after startup.
+class CommandContext {
+    // Shell and editor state.
+    expose app_shell.AppShell shell;
+    expose document_manager.DocumentManager docMgr;
+    expose project_manager.ProjectManager projMgr;
+    expose editor_engine.EditorEngine engine;
+    expose editor_tabs.EditorTabs tabs;
+
+    // Execution, debugging, terminal, and project-watch services.
+    expose build_system.BuildSystem buildSys;
+    expose debug_session.DebugSession dbgSession;
+    expose terminal_controller.TerminalController terminalCtrl;
+    expose file_watch_controller.FileWatchController fileWatchCtrl;
+    expose workspace_watcher.WorkspaceWatcherState workspaceWatcherState;
+    expose project_index.ProjectIndexer indexer;
+    expose breakpoints.BreakpointStore breakpointStore;
+
+    // Cross-cutting application services.
+    expose session.SessionManager sessionMgr;
+    expose locations.LocationStore locStore;
+    expose command_registry.CommandRegistry commandRegistry;
+    expose command_palette_controller.CommandPaletteController paletteCtrl;
+    expose settings.SettingsManager appSettings;
+
+    // Overlays and language-tool controllers.
+    expose explorer_actions.ExplorerActionOverlay explorerOverlay;
+    expose debug_breakpoint_overlay.DebugBreakpointOverlay debugOverlay;
+    expose ide_overlays.IdeOverlays overlays;
+    expose diagnostics.LiveDiagnostics liveDiag;
+    expose symbols.SymbolOutline symbolOutline;
+    expose signature.SignatureController sigCtrl;
+    expose search_commands.SearchController searcher;
+
+    /// @brief Initialize the context with empty references.
+    /// @details main.zia assigns each field after constructing the matching
+    ///          subsystem. The explicit null initialization makes missing wiring
+    ///          easy to diagnose when probes create partial contexts.
+    expose func init() {
+        shell = null;
+        docMgr = null;
+        projMgr = null;
+        engine = null;
+        tabs = null;
+        buildSys = null;
+        dbgSession = null;
+        terminalCtrl = null;
+        fileWatchCtrl = null;
+        workspaceWatcherState = null;
+        indexer = null;
+        breakpointStore = null;
+        sessionMgr = null;
+        locStore = null;
+        commandRegistry = null;
+        paletteCtrl = null;
+        appSettings = null;
+        explorerOverlay = null;
+        debugOverlay = null;
+        overlays = null;
+        liveDiag = null;
+        symbolOutline = null;
+        sigCtrl = null;
+        searcher = null;
+    }
+}
+
+/// @brief Return true when the dispatcher has the minimum wiring to run.
+/// @param ctx Context assembled by main.zia.
+/// @return True when core editor, project, and shell services are present.
+/// @details This is deliberately a coarse guard. Individual command families
+///          still check their specific optional services before running.
+expose func IsReady(ctx: CommandContext) -> Boolean {
+    if ctx == null { return false; }
+    return ctx.shell != null
+       and ctx.docMgr != null
+       and ctx.projMgr != null
+       and ctx.engine != null
+       and ctx.tabs != null;
+}

@@ -978,6 +978,39 @@ void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
                        m[15]);
 }
 
+/// @brief Extract a bone's model-space position + rotation from the final pose.
+/// @details Position comes from the composited global matrix's translation
+///          column; rotation is the scale-normalized quaternion via
+///          `controller_get_final_rotation`. Model-space means relative to the
+///          skinned model's root — callers compose with the owning node's world
+///          transform for world-space sockets. Returns 1 on success, 0 when the
+///          controller/skeleton/pose is missing or the bone index is invalid.
+int rt_anim_controller3d_get_bone_pose(void *obj,
+                                       int64_t bone_index,
+                                       double *out_pos,
+                                       double *out_quat) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    rt_skeleton3d *skeleton = controller_skeleton_ref(controller);
+    const float *m;
+
+    if (out_pos)
+        out_pos[0] = out_pos[1] = out_pos[2] = 0.0;
+    if (out_quat) {
+        out_quat[0] = out_quat[1] = out_quat[2] = 0.0;
+        out_quat[3] = 1.0;
+    }
+    if (!controller || !skeleton || !controller->final_globals || !out_pos || !out_quat)
+        return 0;
+    if (bone_index < 0 || bone_index >= controller_safe_bone_count(skeleton))
+        return 0;
+    m = &controller->final_globals[bone_index * 16];
+    out_pos[0] = (double)m[3];
+    out_pos[1] = (double)m[7];
+    out_pos[2] = (double)m[11];
+    controller_get_final_rotation(controller, (int32_t)bone_index, out_quat);
+    return 1;
+}
+
 /// @brief Borrow the Skeleton3D handle backing this controller.
 void *rt_anim_controller3d_get_skeleton(void *obj) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);

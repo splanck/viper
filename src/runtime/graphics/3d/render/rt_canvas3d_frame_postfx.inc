@@ -43,6 +43,8 @@ static int canvas3d_frame_needs_motion_vectors(const rt_canvas3d *c) {
         if (effect->type == VGFX3D_POSTFX_EFFECT_MOTION_BLUR &&
             effect->snapshot.motion_blur_enabled)
             return 1;
+        if (effect->type == VGFX3D_POSTFX_EFFECT_TAA && effect->snapshot.taa_enabled)
+            return 1;
     }
     return 0;
 }

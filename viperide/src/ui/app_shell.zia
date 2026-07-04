@@ -2,6 +2,7 @@ module app_shell;
 
 bind "../commands/command_registry";
 bind "../editor/language_service";
+bind "../ui/output_cache";
 bind "../ui/status_bar_model";
 bind "../ui/tool_panel_model";
 bind "../ui/tool_panel_text";
@@ -21,10 +22,7 @@ final TOOL_SOURCE_COL = 10;
 final TOOL_LOCATION_COL = 24;
 final TOOL_CODE_COL = 10;
 final TOOL_ACTION_COL = 18;
-final MAX_BUILD_OUTPUT_CACHE_CHARS = 250000;
 final MAX_OUTPUT_ROW_COUNT = 5000;
-final OUTPUT_CACHE_TRUNCATED_PREFIX = "[output truncated]\n";
-final OUTPUT_ROWS_TRUNCATED_MARKER = "[older output rows hidden]";
 
 // ============================================================================
 // MODULE: app_shell
@@ -1194,18 +1192,18 @@ class AppShell {
         if lastBuildOutput != "" and Str.EndsWith(lastBuildOutput, "\n")
            and Str.StartsWith(output, lastBuildOutput) {
             var delta = Str.Mid(output, Str.get_Length(lastBuildOutput) + 1);
-            if UsesRawOutputPane() {
+            if output_cache.ShouldUseRawPane(outputFilterText, outputWrapLines) {
                 AppendBuildOutput(delta);
             } else {
-                RenderOutputRows(output);
-                lastBuildOutput = output;
+                lastBuildOutput = output_cache.Bound("", output);
+                RenderOutputRows(lastBuildOutput);
                 ShowOutputPanel();
             }
             return;
         }
 
-        lastBuildOutput = BoundOutputCache("", output);
-        if UsesRawOutputPane() {
+        lastBuildOutput = output_cache.Bound("", output);
+        if output_cache.ShouldUseRawPane(outputFilterText, outputWrapLines) {
             RenderOutputPane(lastBuildOutput);
         } else {
             RenderOutputRows(lastBuildOutput);
@@ -1221,9 +1219,9 @@ class AppShell {
     expose func AppendBuildOutput(output: String) {
         if output == "" { return; }
         var previousLen = Str.get_Length(lastBuildOutput);
-        lastBuildOutput = BoundOutputCache(lastBuildOutput, output);
-        var trimmed = previousLen + Str.get_Length(output) > MAX_BUILD_OUTPUT_CACHE_CHARS;
-        if UsesRawOutputPane() {
+        lastBuildOutput = output_cache.Bound(lastBuildOutput, output);
+        var trimmed = output_cache.AppendWouldTrim(previousLen, output);
+        if output_cache.ShouldUseRawPane(outputFilterText, outputWrapLines) {
             UseOutputPane();
             if trimmed {
                 RenderOutputPane(lastBuildOutput);
@@ -1264,41 +1262,6 @@ class AppShell {
             RenderOutputRows(lastBuildOutput);
         }
         ShowOutputPanel();
-    }
-
-    /// @brief Append to the cached build output while preserving a bounded tail.
-    /// @details The visible raw pane and row renderer both use this cache for
-    ///          filtering, copying, and repainting. Bounding it keeps long-running
-    ///          jobs from accumulating unbounded UI-side strings even when the
-    ///          BuildSystem has already trimmed its own model.
-    /// @param existing Current cached output.
-    /// @param text New output text.
-    /// @return Combined output, trimmed from the front when too large.
-    hide func BoundOutputCache(existing: String,
-                               text: String) -> String {
-        var combined = existing + text;
-        var textLen = Str.get_Length(text);
-        if textLen >= MAX_BUILD_OUTPUT_CACHE_CHARS {
-            return OUTPUT_CACHE_TRUNCATED_PREFIX
-                + Str.Mid(text, textLen - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
-        }
-        var existingLen = Str.get_Length(existing);
-        var keepExisting = MAX_BUILD_OUTPUT_CACHE_CHARS - textLen;
-        if existingLen > keepExisting {
-            return OUTPUT_CACHE_TRUNCATED_PREFIX
-                + Str.Mid(existing, existingLen - keepExisting + 1) + text;
-        }
-        if Str.get_Length(combined) <= MAX_BUILD_OUTPUT_CACHE_CHARS {
-            return combined;
-        }
-        return OUTPUT_CACHE_TRUNCATED_PREFIX
-            + Str.Mid(combined, Str.get_Length(combined) - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
-    }
-
-    /// @brief Return whether build output can be rendered as raw appended text.
-    /// @return True when no row-level filtering or wrapping is active.
-    hide func UsesRawOutputPane() -> Boolean {
-        return outputFilterText == "" and outputWrapLines == false;
     }
 
     /// @brief Render complete build output into the raw multiline text pane.
@@ -1428,7 +1391,7 @@ class AppShell {
 
     expose func SetOutputFilter(filter: String) {
         outputFilterText = Str.ToLower(Str.Trim(filter));
-        if UsesRawOutputPane() {
+        if output_cache.ShouldUseRawPane(outputFilterText, outputWrapLines) {
             RenderOutputPane(lastBuildOutput);
             if lastBuildOutput != "" {
                 ShowOutputPanel();
@@ -1447,7 +1410,7 @@ class AppShell {
 
     expose func ToggleOutputWrap() -> Boolean {
         outputWrapLines = outputWrapLines == false;
-        if UsesRawOutputPane() {
+        if output_cache.ShouldUseRawPane(outputFilterText, outputWrapLines) {
             RenderOutputPane(lastBuildOutput);
             if lastBuildOutput != "" {
                 ShowOutputPanel();
@@ -1516,7 +1479,11 @@ class AppShell {
             return null;
         }
         EnsureOutputRowCapacity();
-        var wrapColumn = OutputWrapColumn();
+        var windowWidth = 0;
+        if app != null {
+            windowWidth = app.GetWidth();
+        }
+        var wrapColumn = output_cache.WrapColumn(windowWidth);
         if outputWrapLines == false or Str.get_Length(line) <= wrapColumn {
             var item = outputListBox.AddItem(line);
             RegisterOutputRow(item, line);
@@ -1588,22 +1555,6 @@ class AppShell {
             outputVirtualList.SetRowId(outputRenderedRowCount - 1,
                                        "out:" + outputRenderedRowCount + ":" + Str.get_Length(text));
         }
-    }
-
-    /// @brief Compute an approximate output wrap width for the current window.
-    /// @details Output rows are still rendered through ListBox, so the IDE does
-    ///          not have text-measurement per row here. This heuristic tracks the
-    ///          current window width and clamps to readable bounds, avoiding the
-    ///          old fixed 160-character behavior on small and wide layouts.
-    /// @return Character count used for wrapped output chunks.
-    hide func OutputWrapColumn() -> Integer {
-        var col = 160;
-        if app != null {
-            col = app.GetWidth() / 8;
-        }
-        if col < 80 { col = 80; }
-        if col > 220 { col = 220; }
-        return col;
     }
 
     expose func ClearProblemsPanel() {

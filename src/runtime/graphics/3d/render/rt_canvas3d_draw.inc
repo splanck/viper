@@ -188,11 +188,40 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     return 1;
 }
 
+/// @brief Intersect a screen-space rect with the overlay clip rect (Plan 08).
+/// @return 0 when the rect is fully clipped away, 1 when (possibly trimmed) drawable.
+static int canvas3d_overlay_clip_rect(const rt_canvas3d *c, float *x, float *y, float *w, float *h) {
+    float x0;
+    float y0;
+    float x1;
+    float y1;
+    if (!c || !c->overlay_clip_active)
+        return 1;
+    x0 = *x > c->overlay_clip_x ? *x : c->overlay_clip_x;
+    y0 = *y > c->overlay_clip_y ? *y : c->overlay_clip_y;
+    x1 = (*x + *w) < (c->overlay_clip_x + c->overlay_clip_w) ? (*x + *w)
+                                                             : (c->overlay_clip_x +
+                                                                c->overlay_clip_w);
+    y1 = (*y + *h) < (c->overlay_clip_y + c->overlay_clip_h) ? (*y + *h)
+                                                             : (c->overlay_clip_y +
+                                                                c->overlay_clip_h);
+    if (x1 <= x0 || y1 <= y0)
+        return 0;
+    *x = x0;
+    *y = y0;
+    *w = x1 - x0;
+    *h = y1 - y0;
+    return 1;
+}
+
 /// @brief Convenience wrapper: queue a screen-space rectangle as two triangles.
 int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a) {
     vgfx3d_vertex_t verts[4];
     static const uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
+
+    if (!canvas3d_overlay_clip_rect(c, &x, &y, &w, &h))
+        return 1; /* fully clipped away — not an error */
 
     memset(verts, 0, sizeof(verts));
     verts[0].pos[0] = x;
@@ -211,6 +240,80 @@ int canvas3d_queue_screen_rect(
         verts[i].color[3] = a;
     }
     return canvas3d_queue_screen_geometry(c, verts, 4, indices, 6, r, g, b, a);
+}
+
+/// @brief Queue a screen-space rounded rectangle as a triangle fan (Plan 08).
+/// @details The perimeter walks four quarter-arcs (6 segments each) between the straight
+///          edges and fans around the rect center — convex, so the fan is exact. The
+///          radius clamps to half the smaller dimension. Fully-outside shapes are culled
+///          against the overlay clip rect by bounding box (partial overlap draws
+///          unclipped; the fan is not trimmed edge-exactly).
+int canvas3d_queue_screen_round_rect(rt_canvas3d *c,
+                                     float x,
+                                     float y,
+                                     float w,
+                                     float h,
+                                     float radius,
+                                     float r,
+                                     float g,
+                                     float b,
+                                     float a) {
+    enum { RR_SEG = 6 };
+    vgfx3d_vertex_t verts[1 + 4 * (RR_SEG + 1)];
+    uint32_t indices[4 * (RR_SEG + 1) * 3];
+    int32_t perim = 0;
+    const float half_min = (w < h ? w : h) * 0.5f;
+
+    if (!c || w <= 0.0f || h <= 0.0f)
+        return 0;
+    if (!isfinite(radius) || radius < 0.0f)
+        radius = 0.0f;
+    if (radius > half_min)
+        radius = half_min;
+    if (radius < 0.5f)
+        return canvas3d_queue_screen_rect(c, x, y, w, h, r, g, b, a);
+
+    if (c->overlay_clip_active) {
+        float bx = x;
+        float by = y;
+        float bw = w;
+        float bh = h;
+        if (!canvas3d_overlay_clip_rect(c, &bx, &by, &bw, &bh))
+            return 1; /* fully outside the clip rect */
+    }
+
+    /* Corner centers in draw order: TL, TR, BR, BL; each quarter-arc spans 90 deg. */
+    {
+        const float ccx[4] = {x + radius, x + w - radius, x + w - radius, x + radius};
+        const float ccy[4] = {y + radius, y + radius, y + h - radius, y + h - radius};
+        const float start_ang[4] = {3.14159265f, 4.71238898f, 0.0f, 1.57079633f};
+
+        memset(verts, 0, sizeof(verts));
+        verts[0].pos[0] = x + w * 0.5f;
+        verts[0].pos[1] = y + h * 0.5f;
+        for (int corner = 0; corner < 4; corner++) {
+            for (int s = 0; s <= RR_SEG; s++) {
+                float ang = start_ang[corner] + 1.57079633f * (float)s / (float)RR_SEG;
+                vgfx3d_vertex_t *v = &verts[1 + perim];
+                v->pos[0] = ccx[corner] + cosf(ang) * radius;
+                v->pos[1] = ccy[corner] + sinf(ang) * radius;
+                perim++;
+            }
+        }
+        for (int i = 0; i <= perim; i++) {
+            verts[i].normal[2] = 1.0f;
+            verts[i].color[0] = r;
+            verts[i].color[1] = g;
+            verts[i].color[2] = b;
+            verts[i].color[3] = a;
+        }
+        for (int i = 0; i < perim; i++) {
+            indices[i * 3 + 0] = 0;
+            indices[i * 3 + 1] = (uint32_t)(1 + i);
+            indices[i * 3 + 2] = (uint32_t)(1 + ((i + 1) % perim));
+        }
+    }
+    return canvas3d_queue_screen_geometry(c, verts, 1 + perim, indices, perim * 3, r, g, b, a);
 }
 
 /// @brief Retain a GC object (material/texture) referenced by a final-overlay draw.
@@ -270,7 +373,16 @@ void canvas3d_release_tracked_final_overlay_temp_object(rt_canvas3d *c, void *ob
 ///          upload/sampling is identical across backends. The material is retained for
 ///          the frame (or until the final overlay replays, for HUD draws) so the
 ///          deferred command's resolved texture stays valid through submission.
-int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float h, void *pixels) {
+int canvas3d_queue_screen_image_uv(rt_canvas3d *c,
+                                   float x,
+                                   float y,
+                                   float w,
+                                   float h,
+                                   void *pixels,
+                                   float u0,
+                                   float v0,
+                                   float u1,
+                                   float v1) {
     vgfx3d_vertex_t verts[4];
     static const uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
     size_t vertex_bytes;
@@ -284,6 +396,33 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
     if (!c || !c->in_frame || !pixels || w <= 0.0f || h <= 0.0f)
         return 0;
 
+    /* Plan 08: clip the destination rect and remap the sampled UV sub-range so the
+     * visible portion keeps its texel mapping. */
+    if (c->overlay_clip_active) {
+        float cx = x;
+        float cy = y;
+        float cw = w;
+        float ch = h;
+        if (!canvas3d_overlay_clip_rect(c, &cx, &cy, &cw, &ch))
+            return 1; /* fully clipped away — not an error */
+        {
+            float fx0 = (cx - x) / w;
+            float fy0 = (cy - y) / h;
+            float fx1 = (cx + cw - x) / w;
+            float fy1 = (cy + ch - y) / h;
+            float du = u1 - u0;
+            float dv = v1 - v0;
+            u1 = u0 + du * fx1;
+            v1 = v0 + dv * fy1;
+            u0 = u0 + du * fx0;
+            v0 = v0 + dv * fy0;
+        }
+        x = cx;
+        y = cy;
+        w = cw;
+        h = ch;
+    }
+
     memset(verts, 0, sizeof(verts));
     verts[0].pos[0] = x;
     verts[0].pos[1] = y;
@@ -293,14 +432,14 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
     verts[2].pos[1] = y + h;
     verts[3].pos[0] = x;
     verts[3].pos[1] = y + h;
-    verts[0].uv[0] = 0.0f;
-    verts[0].uv[1] = 0.0f;
-    verts[1].uv[0] = 1.0f;
-    verts[1].uv[1] = 0.0f;
-    verts[2].uv[0] = 1.0f;
-    verts[2].uv[1] = 1.0f;
-    verts[3].uv[0] = 0.0f;
-    verts[3].uv[1] = 1.0f;
+    verts[0].uv[0] = u0;
+    verts[0].uv[1] = v0;
+    verts[1].uv[0] = u1;
+    verts[1].uv[1] = v0;
+    verts[2].uv[0] = u1;
+    verts[2].uv[1] = v1;
+    verts[3].uv[0] = u0;
+    verts[3].uv[1] = v1;
     for (int i = 0; i < 4; i++) {
         verts[i].normal[2] = 1.0f;
         verts[i].color[0] = 1.0f;
@@ -392,6 +531,11 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
     return 1;
 }
 
+/// @brief Queue a screen-space textured quad sampling `pixels` over the full UV range.
+int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float h, void *pixels) {
+    return canvas3d_queue_screen_image_uv(c, x, y, w, h, pixels, 0.0f, 0.0f, 1.0f, 1.0f);
+}
+
 /// @brief Queue a screen-space line as a thin quad (tessellated triangles).
 ///
 /// Width is in screen pixels. The endpoints define the centerline;
@@ -422,6 +566,42 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
         thickness = 1.0f;
     if (thickness > 4096.0f)
         thickness = 4096.0f;
+
+    /* Plan 08: Liang-Barsky clip of the centerline against the overlay clip rect. */
+    if (c && c->overlay_clip_active) {
+        float t0 = 0.0f;
+        float t1 = 1.0f;
+        float ldx = x1 - x0;
+        float ldy = y1 - y0;
+        const float p[4] = {-ldx, ldx, -ldy, ldy};
+        const float q[4] = {x0 - c->overlay_clip_x,
+                            c->overlay_clip_x + c->overlay_clip_w - x0,
+                            y0 - c->overlay_clip_y,
+                            c->overlay_clip_y + c->overlay_clip_h - y0};
+        for (int e = 0; e < 4; e++) {
+            if (p[e] == 0.0f) {
+                if (q[e] < 0.0f)
+                    return 1; /* parallel and outside — fully clipped */
+            } else {
+                float t = q[e] / p[e];
+                if (p[e] < 0.0f) {
+                    if (t > t1)
+                        return 1;
+                    if (t > t0)
+                        t0 = t;
+                } else {
+                    if (t < t0)
+                        return 1;
+                    if (t < t1)
+                        t1 = t;
+                }
+            }
+        }
+        x1 = x0 + ldx * t1;
+        y1 = y0 + ldy * t1;
+        x0 = x0 + ldx * t0;
+        y0 = y0 + ldy * t0;
+    }
 
     dx = x1 - x0;
     dy = y1 - y0;
@@ -600,14 +780,20 @@ void rt_canvas3d_draw_rect_3d(
     (void)canvas3d_queue_screen_rect(c, (float)x, (float)y, (float)w, (float)h, r, g, b, 1.0f);
 }
 
-/// @brief Draw text through the 3D pipeline using the 5×7 bitmap font.
-/// Each character's "on" pixels are rendered as 2×2 quads batched into one mesh.
-void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
+/// @brief Draw text through the 3D pipeline using the 5×7 bitmap font at a size multiplier.
+/// Each character's "on" pixels are rendered as (2×user_scale)² quads batched into one
+/// mesh; dots are clipped against the overlay clip rect at emission time (Plan 08).
+void rt_canvas3d_draw_text_3d_scaled(
+    void *obj, int64_t x, int64_t y, rt_string text, int64_t color, double user_scale) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c || !text)
         return;
     if (!c->in_frame || !c->backend)
         return;
+    if (!isfinite(user_scale) || user_scale <= 0.0)
+        user_scale = 1.0;
+    if (user_scale > 64.0)
+        user_scale = 64.0;
 
     const char *str = rt_string_cstr(text);
     if (!str)
@@ -702,7 +888,7 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
     if (!ensure_text_capacity(c, vertex_count, index_count))
         return;
 
-    float scale = 2.0f; /* pixel size for each font dot */
+    float scale = 2.0f * (float)user_scale; /* pixel size for each font dot */
     float cx = (float)x;
     int32_t quad_idx = 0;
 
@@ -717,8 +903,16 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
                 if (glyph[row] & (1 << (4 - col))) {
                     float px = cx + col * scale;
                     float py = (float)y + row * scale;
-                    int32_t vi = quad_idx * 4;
-                    int32_t ii = quad_idx * 6;
+                    float pw = scale;
+                    float ph = scale;
+                    int32_t vi;
+                    int32_t ii;
+
+                    if (!canvas3d_overlay_clip_rect(c, &px, &py, &pw, &ph))
+                        continue; /* dot fully outside the overlay clip rect */
+
+                    vi = quad_idx * 4;
+                    ii = quad_idx * 6;
 
                     /* 4 vertices for this pixel quad */
                     for (int v = 0; v < 4; v++) {
@@ -731,12 +925,12 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
                     }
                     c->text_vertices[vi + 0].pos[0] = px;
                     c->text_vertices[vi + 0].pos[1] = py;
-                    c->text_vertices[vi + 1].pos[0] = px + scale;
+                    c->text_vertices[vi + 1].pos[0] = px + pw;
                     c->text_vertices[vi + 1].pos[1] = py;
-                    c->text_vertices[vi + 2].pos[0] = px + scale;
-                    c->text_vertices[vi + 2].pos[1] = py + scale;
+                    c->text_vertices[vi + 2].pos[0] = px + pw;
+                    c->text_vertices[vi + 2].pos[1] = py + ph;
                     c->text_vertices[vi + 3].pos[0] = px;
-                    c->text_vertices[vi + 3].pos[1] = py + scale;
+                    c->text_vertices[vi + 3].pos[1] = py + ph;
 
                     c->text_indices[ii + 0] = (uint32_t)vi;
                     c->text_indices[ii + 1] = (uint32_t)(vi + 1);
@@ -751,8 +945,15 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
         cx += 6.0f * scale; /* char width + 1px spacing */
     }
 
+    if (quad_idx <= 0)
+        return; /* every dot was clipped away */
     (void)canvas3d_queue_screen_geometry(
-        c, c->text_vertices, vertex_count, c->text_indices, index_count, r, g, b, 1.0f);
+        c, c->text_vertices, quad_idx * 4, c->text_indices, quad_idx * 6, r, g, b, 1.0f);
+}
+
+/// @brief Draw text through the 3D pipeline using the 5×7 bitmap font at the default size.
+void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
+    rt_canvas3d_draw_text_3d_scaled(obj, x, y, text, color, 1.0);
 }
 
 /// @brief Begin a 3D rendering frame with the given camera.
@@ -849,6 +1050,14 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     params.fog_color[2] = c->fog_color[2];
     params.load_existing_color = 0;
     params.load_existing_depth = 0;
+    if (c->ibl_enabled && c->skybox && c->skybox->ibl_ready) {
+        params.ibl_enabled = 1;
+        params.ibl_intensity = c->ibl_intensity;
+        memcpy(params.ibl_sh, c->skybox->ibl_sh, sizeof(params.ibl_sh));
+    }
+    params.shadow_strength = c->shadow_strength;
+    params.shadow_slope_bias = c->shadow_slope_bias;
+    params.shadow_quality = c->shadow_quality;
 
     /* Cache camera position for transparency sort key computation */
     c->cached_cam_pos[0] = params.position[0];
@@ -1132,6 +1341,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
                                     dd->cmd.prev_model_matrix,
                                     &dd->cmd.has_prev_model_matrix);
     canvas3d_fill_material_cmd(mat, &dd->cmd);
+    canvas3d_apply_ibl_env(c, &dd->cmd);
     if (suppress_normal_map)
         canvas3d_disable_cmd_normal_map(&dd->cmd);
 
@@ -1149,6 +1359,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
 
     /* Build light params */
     dd->light_count = build_light_params(c, dd->lights, canvas3d_active_light_limit(c));
+    dd->cmd.lights_revision = canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count);
     dd->ambient[0] = c->ambient[0];
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];

@@ -178,6 +178,41 @@ static void load_preset_standard_movement(void) {
     bind_pad_button_axis_to("move_y", VIPER_PAD_DOWN, 1.0);
 }
 
+/// @brief Preset: first/third-person 3D controls — WASD movement axes, jump,
+///   sprint, crouch, interact, fire/aim, pause; left stick + face buttons on pad.
+static void load_preset_fps3d(void) {
+    define_action_cstr("jump", 0);
+    define_action_cstr("sprint", 0);
+    define_action_cstr("crouch", 0);
+    define_action_cstr("interact", 0);
+    define_action_cstr("fire", 0);
+    define_action_cstr("aim", 0);
+    define_action_cstr("pause", 0);
+    define_action_cstr("move_x", 1);
+    define_action_cstr("move_y", 1);
+
+    bind_key_to("jump", VIPER_KEY_SPACE);
+    bind_key_to("sprint", VIPER_KEY_LSHIFT);
+    bind_key_to("crouch", VIPER_KEY_LCTRL);
+    bind_key_to("interact", VIPER_KEY_E);
+    bind_key_to("pause", VIPER_KEY_ESCAPE);
+    rt_action_bind_mouse(rt_const_cstr("fire"), VIPER_MOUSE_BUTTON_LEFT);
+    rt_action_bind_mouse(rt_const_cstr("aim"), VIPER_MOUSE_BUTTON_RIGHT);
+
+    bind_pad_to("jump", VIPER_PAD_A);
+    bind_pad_to("sprint", VIPER_PAD_LB);
+    bind_pad_to("crouch", VIPER_PAD_B);
+    bind_pad_to("interact", VIPER_PAD_X);
+    bind_pad_to("pause", VIPER_PAD_START);
+
+    bind_key_axis_to("move_x", VIPER_KEY_A, -1.0);
+    bind_key_axis_to("move_x", VIPER_KEY_D, 1.0);
+    bind_key_axis_to("move_y", VIPER_KEY_W, -1.0);
+    bind_key_axis_to("move_y", VIPER_KEY_S, 1.0);
+    bind_pad_axis_to("move_x", VIPER_AXIS_LEFT_X, 1.0);
+    bind_pad_axis_to("move_y", VIPER_AXIS_LEFT_Y, 1.0);
+}
+
 /// @brief Preset: arrow/D-pad navigation + Enter/Space + Esc → `menu_*`/`confirm`/`back`.
 static void load_preset_menu_navigation(void) {
     define_action_cstr("menu_up", 0);
@@ -319,6 +354,8 @@ static void load_preset_topdown(void) {
 ///   - `"menu_navigation"` — menu_up/down/left/right + confirm + back.
 ///   - `"platformer"` — left/right + jump + shoot + pause + axis.
 ///   - `"topdown"` — 4-directional + fire + pause + axis variant.
+///   - `"fps3d"` — 3D first/third-person: move axes, jump/sprint/crouch,
+///     interact, mouse fire/aim, pause; pad face buttons + left stick.
 /// Auto-initializes the action system if not already done. Returns
 /// 0 if `name` doesn't match any preset.
 int8_t rt_action_load_preset(rt_string preset_name) {
@@ -346,6 +383,10 @@ int8_t rt_action_load_preset(rt_string preset_name) {
     }
     if (len == 7 && memcmp(data, "topdown", 7) == 0) {
         load_preset_topdown();
+        return 1;
+    }
+    if (len == 5 && memcmp(data, "fps3d", 5) == 0) {
+        load_preset_fps3d();
         return 1;
     }
 

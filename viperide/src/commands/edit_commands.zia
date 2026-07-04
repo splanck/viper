@@ -11,7 +11,9 @@ bind "../services/workspace_edits";
 bind "../services/text_utils";
 bind "../commands/file_commands";
 bind "../commands/comment_commands";
-bind "../editor/quick_fixes";
+bind "../commands/diagnostic_edit_commands";
+bind "../commands/editor_document_edit";
+bind "../commands/source_transform_commands";
 bind "../zia/bind_utils";
 bind "../zia/formatters";
 bind "../zia/identifier_utils";
@@ -26,7 +28,6 @@ bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 bind Map = Viper.Collections.Map;
-bind ZiaToolchain = Viper.Zia.Toolchain;
 
 final SEMANTIC_QUERY_PUMP_FILES = 32;
 
@@ -730,7 +731,7 @@ func handleToggleLineComment(shell: app_shell.AppShell,
         }
         var toggled = ToggleLineCommentRangeText(source, startLine, endLine, marker);
         if toggled != source {
-            ReplaceWholeDocument(engine, toggled);
+            editor_document_edit.ReplaceWholeDocument(engine, toggled);
             file_commands.SaveEditorState(docMgr, engine);
             if doc != null { doc!.isModified = true; }
         }
@@ -888,489 +889,117 @@ func handleMoveLineDown(shell: app_shell.AppShell,
 func handleOrganizeBinds(shell: app_shell.AppShell,
                          docMgr: document_manager.DocumentManager,
                          engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Organize Binds is available for Zia files");
-        shell.SetStatusLeft("Organize Binds unavailable");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var organized = OrganizeZiaBindsText(source);
-    if organized == source {
-        shell.SetStatusLeft("Binds already organized");
-        return;
-    }
-
-    var lastLine = engine.editor.LineCount - 1;
-    if lastLine < 0 { return; }
-    var last = engine.editor.GetLine(lastLine);
-    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.get_Length(last));
-    engine.editor.InsertAtCursor(organized);
-    shell.SetStatusLeft("Organized Zia binds");
+    source_transform_commands.handleOrganizeBinds(shell, docMgr, engine);
 }
 
 func handleInlineLocalVariable(shell: app_shell.AppShell,
                                docMgr: document_manager.DocumentManager,
                                engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Inline Local Variable is only available for Zia files");
-        shell.SetStatusLeft("Inline Local unavailable");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var inlined = InlineLocalVariableText(source, engine.editor.CursorLine);
-    if inlined == source {
-        GUI.Toast.Info("Place the cursor on a simple local variable declaration");
-        shell.SetStatusLeft("Inline Local unavailable");
-        return;
-    }
-
-    ReplaceWholeDocument(engine, inlined);
-    file_commands.SaveEditorState(docMgr, engine);
-    doc!.isModified = true;
-    shell.SetStatusLeft("Inlined local variable");
+    source_transform_commands.handleInlineLocalVariable(shell, docMgr, engine);
 }
 
 func handleExtractLocalVariable(shell: app_shell.AppShell,
                                 docMgr: document_manager.DocumentManager,
                                 engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Extract Local Variable is only available for Zia files");
-        shell.SetStatusLeft("Extract Local unavailable");
-        return;
-    }
-    if !engine.editor.CursorHasSelection(0) {
-        GUI.Toast.Info("Select an expression to extract");
-        shell.SetStatusLeft("Extract Local needs a selection");
-        return;
-    }
-
-    var name = Str.Trim(GUI.MessageBox.Prompt("Extract Local Variable", "Variable name:"));
-    if IsValidIdentifier(name) == false {
-        GUI.Toast.Info("Enter a valid new local variable name");
-        shell.SetStatusLeft("Extract Local unavailable");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var extracted = ExtractLocalVariableText(source,
-                                             engine.editor.GetSelectionStartLineAt(0),
-                                             engine.editor.GetSelectionStartColAt(0),
-                                             engine.editor.GetSelectionEndLineAt(0),
-                                             engine.editor.GetSelectionEndColAt(0),
-                                             name);
-    if extracted == source {
-        GUI.Toast.Info("Select a single-line expression inside a Zia function");
-        shell.SetStatusLeft("Extract Local unavailable");
-        return;
-    }
-
-    ReplaceWholeDocument(engine, extracted);
-    file_commands.SaveEditorState(docMgr, engine);
-    doc!.isModified = true;
-    shell.SetStatusLeft("Extracted local variable " + name);
+    source_transform_commands.handleExtractLocalVariable(shell, docMgr, engine);
 }
 
 func handleExtractFunction(shell: app_shell.AppShell,
                            docMgr: document_manager.DocumentManager,
                            engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Extract Function is only available for Zia files");
-        shell.SetStatusLeft("Extract Function unavailable");
-        return;
-    }
-    if !engine.editor.CursorHasSelection(0) {
-        GUI.Toast.Info("Select complete statement lines to extract");
-        shell.SetStatusLeft("Extract Function needs a selection");
-        return;
-    }
-
-    var name = Str.Trim(GUI.MessageBox.Prompt("Extract Function", "Function name:"));
-    if IsValidIdentifier(name) == false {
-        GUI.Toast.Info("Enter a valid new function name");
-        shell.SetStatusLeft("Extract Function unavailable");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var extracted = ExtractFunctionText(source,
-                                        engine.editor.GetSelectionStartLineAt(0),
-                                        engine.editor.GetSelectionStartColAt(0),
-                                        engine.editor.GetSelectionEndLineAt(0),
-                                        engine.editor.GetSelectionEndColAt(0),
-                                        name);
-    if extracted == source {
-        GUI.Toast.Info("Select complete Zia statements that do not capture locals");
-        shell.SetStatusLeft("Extract Function unavailable");
-        return;
-    }
-
-    ReplaceWholeDocument(engine, extracted);
-    file_commands.SaveEditorState(docMgr, engine);
-    doc!.isModified = true;
-    shell.SetStatusLeft("Extracted function " + name);
+    source_transform_commands.handleExtractFunction(shell, docMgr, engine);
 }
 
 func handleTrimTrailingWhitespace(shell: app_shell.AppShell,
                                   docMgr: document_manager.DocumentManager,
                                   engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null {
-        GUI.Toast.Info("No active document");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var trimmed = TrimTrailingWhitespaceText(source);
-    if trimmed == source {
-        shell.SetStatusLeft("No trailing whitespace");
-        return;
-    }
-
-    ReplaceWholeDocument(engine, trimmed);
-    file_commands.SaveEditorState(docMgr, engine);
-    var active = docMgr.GetActive();
-    if active != null {
-        active!.isModified = true;
-    }
-    shell.SetStatusLeft("Trimmed trailing whitespace");
+    source_transform_commands.handleTrimTrailingWhitespace(shell, docMgr, engine);
 }
 
 func handleFormatDocument(shell: app_shell.AppShell,
                           docMgr: document_manager.DocumentManager,
                           engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null {
-        GUI.Toast.Info("No active document");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var formatted = FormatDocumentText(doc!.language, source,
-                                       engine.editor.GetTabSize(),
-                                       engine.editor.GetInsertSpaces() != 0);
-    if formatted == "" and source != "" {
-        handleFormatUnavailable(shell);
-        return;
-    }
-    if formatted == source {
-        shell.SetStatusLeft("Document already formatted");
-        return;
-    }
-
-    ReplaceWholeDocument(engine, formatted);
-    file_commands.SaveEditorState(docMgr, engine);
-    doc!.isModified = true;
-    shell.SetStatusLeft("Formatted document");
+    source_transform_commands.handleFormatDocument(shell, docMgr, engine);
 }
 
 func handleFormatSelection(shell: app_shell.AppShell,
                            docMgr: document_manager.DocumentManager,
                            engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null {
-        GUI.Toast.Info("No active document");
-        return;
-    }
-    if !engine.editor.CursorHasSelection(0) {
-        GUI.Toast.Info("No selection to format");
-        shell.SetStatusLeft("Format Selection needs a selection");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var startLine = engine.editor.GetSelectionStartLineAt(0);
-    var endLine = engine.editor.GetSelectionEndLineAt(0);
-    var endCol = engine.editor.GetSelectionEndColAt(0);
-    if endLine > startLine and endCol == 0 {
-        endLine = endLine - 1;
-    }
-    var formatted = FormatDocumentRangeText(doc!.language, source, startLine, endLine,
-                                            engine.editor.GetTabSize(),
-                                            engine.editor.GetInsertSpaces() != 0);
-    if formatted == "" and source != "" {
-        handleFormatUnavailable(shell);
-        return;
-    }
-    if formatted == source {
-        shell.SetStatusLeft("Selection already formatted");
-        return;
-    }
-
-    ReplaceWholeDocument(engine, formatted);
-    file_commands.SaveEditorState(docMgr, engine);
-    doc!.isModified = true;
-    shell.SetStatusLeft("Formatted selection");
+    source_transform_commands.handleFormatSelection(shell, docMgr, engine);
 }
 
 func handleSuppressDiagnostic(shell: app_shell.AppShell,
                               docMgr: document_manager.DocumentManager,
                               engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Suppress Warning is only available for Zia files");
-        shell.SetStatusLeft("Suppress Warning unavailable");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var records = ZiaToolchain.CheckForFile(source, doc!.filePath);
-    var targetLine = engine.editor.CursorLine + 1;
-    var code = SuppressibleDiagnosticCodeAt(records, targetLine);
-    if code == "" {
-        shell.SetStatusLeft("No suppressible warning at cursor");
-        return;
-    }
-
-    var lineText = engine.editor.GetLine(engine.editor.CursorLine);
-    var indentLen = LeadingWhitespaceLength(lineText);
-    var indent = "";
-    if indentLen > 0 {
-        indent = Str.Left(lineText, indentLen);
-    }
-    engine.editor.SetCursor(engine.editor.CursorLine, 0);
-    engine.editor.InsertAtCursor(indent + "// @suppress(" + code + ")\n");
-    shell.SetStatusLeft("Suppressed warning " + code);
+    diagnostic_edit_commands.handleSuppressDiagnostic(shell, docMgr, engine);
 }
 
 func handleApplyDiagnosticFix(shell: app_shell.AppShell,
                               docMgr: document_manager.DocumentManager,
                               engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Diagnostic fix-its are only available for Zia files");
-        shell.SetStatusLeft("Apply Fix-It unavailable");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var records = ZiaToolchain.CheckForFile(source, doc!.filePath);
-    var targetLine = engine.editor.CursorLine + 1;
-    var fix = DiagnosticFixItAt(records, targetLine);
-    if fix == null {
-        shell.SetStatusLeft("No diagnostic fix-it at cursor");
-        return;
-    }
-
-    var startLine = Map.GetInt(fix, "fixitStartLine") - 1;
-    var startCol = Map.GetInt(fix, "fixitStartColumn") - 1;
-    var endLine = Map.GetInt(fix, "fixitEndLine") - 1;
-    var endCol = Map.GetInt(fix, "fixitEndColumn") - 1;
-    if startLine < 0 { startLine = targetLine - 1; }
-    if endLine < startLine { endLine = startLine; }
-    if startCol < 0 { startCol = 0; }
-    if endCol < startCol { endCol = startCol; }
-
-    engine.editor.SetCursorSelection(0, startLine, startCol, endLine, endCol);
-    engine.editor.InsertAtCursor(Map.GetStr(fix, "fixitReplacement"));
-    file_commands.SaveEditorState(docMgr, engine);
-    doc!.isModified = true;
-
-    var label = Map.GetStr(fix, "fixitMessage");
-    if label == "" { label = "Applied diagnostic fix-it"; }
-    shell.SetStatusLeft(label);
+    diagnostic_edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine);
 }
 
 func handleCreateMissingBind(shell: app_shell.AppShell,
                              docMgr: document_manager.DocumentManager,
                              engine: editor_engine.EditorEngine,
                              projMgr: project_manager.ProjectManager) {
-    if engine == null or engine.editor == null { return; }
-    var doc = docMgr.GetActive();
-    if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Create Missing Bind is only available for Zia files");
-        shell.SetStatusLeft("Create Missing Bind unavailable");
-        return;
-    }
-
-    var source = engine.GetTextSnapshot();
-    var records = ZiaToolchain.CheckForFile(source, doc!.filePath);
-    var targetLine = engine.editor.CursorLine + 1;
-    var name = MissingRuntimeBindIdentifierAt(records, targetLine);
-    var updated = source;
-    var status = "";
-
-    if name != "" {
-        updated = CreateMissingRuntimeBindText(source, name);
-        if updated == source {
-            shell.SetStatusLeft("Runtime bind already exists");
-            return;
-        }
-        status = "Added " + quick_fixes.RuntimeBindLineForIdentifier(name);
-    } else {
-        name = MissingUndefinedIdentifierAt(records, targetLine);
-        var bindPath = ProjectBindPathForIdentifier(name, doc!.filePath, projMgr, docMgr);
-        if bindPath == "" {
-            shell.SetStatusLeft("No safe missing bind at cursor");
-            return;
-        }
-        updated = CreateMissingProjectBindText(source, bindPath);
-        if updated == source {
-            shell.SetStatusLeft("Project bind already exists");
-            return;
-        }
-        status = "Added bind \"" + bindPath + "\";";
-    }
-
-    var cursorLine = engine.editor.CursorLine;
-    var cursorCol = engine.editor.CursorCol;
-    ReplaceWholeDocument(engine, updated);
-    engine.editor.SetCursor(cursorLine + 1, cursorCol);
-    file_commands.SaveEditorState(docMgr, engine);
-    doc!.isModified = true;
-    shell.SetStatusLeft(status);
+    diagnostic_edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr);
 }
 
 func DiagnosticFixItAt(records: Any,
                        targetLine: Integer) -> Any {
-    if records == null { return null; }
-    var i = 0;
-    while i < Seq.get_Count(records) {
-        var record = Seq.Get(records, i);
-        i = i + 1;
-        if Map.GetBool(record, "hasFixit") {
-            if Map.GetInt(record, "line") == targetLine {
-                return record;
-            }
-        }
-    }
-    return null;
+    return diagnostic_edit_commands.DiagnosticFixItAt(records, targetLine);
 }
 
 func MissingRuntimeBindIdentifierAt(records: Any,
                                     targetLine: Integer) -> String {
-    if records == null { return ""; }
-    var i = 0;
-    while i < Seq.get_Count(records) {
-        var record = Seq.Get(records, i);
-        i = i + 1;
-        var name = quick_fixes.MissingRuntimeBindIdentifierForRecord(record);
-        if name != "" {
-            if Map.GetInt(record, "line") == targetLine {
-                return name;
-            }
-        }
-    }
-    return "";
+    return diagnostic_edit_commands.MissingRuntimeBindIdentifierAt(records, targetLine);
 }
 
 func MissingUndefinedIdentifierAt(records: Any,
                                   targetLine: Integer) -> String {
-    if records == null { return ""; }
-    var i = 0;
-    while i < Seq.get_Count(records) {
-        var record = Seq.Get(records, i);
-        i = i + 1;
-        var name = quick_fixes.UndefinedIdentifierForRecord(record);
-        if name != "" {
-            if Map.GetInt(record, "line") == targetLine {
-                return name;
-            }
-        }
-    }
-    return "";
+    return diagnostic_edit_commands.MissingUndefinedIdentifierAt(records, targetLine);
 }
 
 expose func CreateMissingRuntimeBindText(source: String,
                                          identifier: String) -> String {
-    var bindLine = quick_fixes.RuntimeBindLineForIdentifier(identifier);
-    if bindLine == "" { return source; }
-    if SourceHasBindAlias(source, identifier) { return source; }
-    return InsertTopBindLineText(source, bindLine);
+    return diagnostic_edit_commands.CreateMissingRuntimeBindText(source, identifier);
 }
 
 expose func CreateMissingProjectBindText(source: String,
                                          bindPath: String) -> String {
-    if bindPath == "" { return source; }
-    if SourceHasFileBind(source, bindPath) { return source; }
-    return InsertTopBindLineText(source, "bind \"" + bindPath + "\";");
+    return diagnostic_edit_commands.CreateMissingProjectBindText(source, bindPath);
 }
 
 func InsertTopBindLineText(source: String,
                            bindLine: String) -> String {
-    return bind_utils.InsertTopBindLineText(source, bindLine);
+    return diagnostic_edit_commands.InsertTopBindLineText(source, bindLine);
 }
 
 func ProjectBindPathForIdentifier(identifier: String,
                                   importingPath: String,
                                   projMgr: project_manager.ProjectManager,
                                   docMgr: document_manager.DocumentManager) -> String {
-    if identifier == "" or importingPath == "" { return ""; }
-    if projMgr == null or projMgr.project == null or projMgr.project.isOpen == false {
-        return "";
-    }
-
-    var candidatePath = "";
-    var matches = 0;
-    var i = 0;
-    while i < projMgr.CachedFileCount() {
-        var filePath = projMgr.CachedFileAt(i);
-        i = i + 1;
-        if IsProjectBindCandidate(filePath, importingPath, identifier, docMgr) {
-            candidatePath = filePath;
-            matches = matches + 1;
-            if matches > 1 { return ""; }
-        }
-    }
-
-    if docMgr != null {
-        var d = 0;
-        while d < docMgr.GetCount() {
-            var doc = docMgr.documents.get(d);
-            d = d + 1;
-            if doc.filePath == "" or doc.filePath == importingPath { continue; }
-            if Str.ToLower(Path.Ext(doc.filePath)) != ".zia" { continue; }
-            if ProjectFileDefinesIdentifier(doc.content, identifier) {
-                if candidatePath != doc.filePath {
-                    candidatePath = doc.filePath;
-                    matches = matches + 1;
-                    if matches > 1 { return ""; }
-                }
-            }
-        }
-    }
-
-    if matches != 1 { return ""; }
-    return RelativeProjectBindPath(Path.Dir(importingPath), candidatePath);
+    return diagnostic_edit_commands.ProjectBindPathForIdentifier(identifier,
+                                                                 importingPath,
+                                                                 projMgr,
+                                                                 docMgr);
 }
 
 func IsProjectBindCandidate(filePath: String,
                             importingPath: String,
                             identifier: String,
                             docMgr: document_manager.DocumentManager) -> Boolean {
-    if filePath == "" or filePath == importingPath { return false; }
-    if Str.ToLower(Path.Ext(filePath)) != ".zia" { return false; }
-    var content = "";
-    if docMgr != null {
-        var idx = docMgr.FindByPath(filePath);
-        if idx >= 0 {
-            content = docMgr.documents.get(idx).content;
-        }
-    }
-    if content == "" and IO.File.Exists(filePath) {
-        content = IO.File.ReadAllText(filePath);
-    }
-    if content == "" { return false; }
-    return ProjectFileDefinesIdentifier(content, identifier);
+    return diagnostic_edit_commands.IsProjectBindCandidate(filePath,
+                                                           importingPath,
+                                                           identifier,
+                                                           docMgr);
 }
 
 expose func ProjectFileDefinesIdentifier(source: String,
                                          identifier: String) -> Boolean {
-    return bind_utils.ProjectFileDefinesIdentifier(source, identifier);
+    return diagnostic_edit_commands.ProjectFileDefinesIdentifier(source, identifier);
 }
 
 func TopLevelZiaDeclarationName(trimmed: String) -> String {
@@ -1383,7 +1012,7 @@ func ReadIdentifierAt(text: String, startPos: Integer) -> String {
 
 func RelativeProjectBindPath(importingDir: String,
                              targetPath: String) -> String {
-    return bind_utils.RelativeBindPath(importingDir, targetPath, "./" + Path.Name(targetPath), true);
+    return diagnostic_edit_commands.RelativeProjectBindPath(importingDir, targetPath);
 }
 
 func ProjectNormalizeAbsPath(path: String) -> String {
@@ -1396,12 +1025,12 @@ func ProjectNormalizeBindSeparators(path: String) -> String {
 
 func SourceHasBindAlias(source: String,
                         identifier: String) -> Boolean {
-    return bind_utils.SourceHasBindAlias(source, identifier);
+    return diagnostic_edit_commands.SourceHasBindAlias(source, identifier);
 }
 
 func SourceHasFileBind(source: String,
                        bindPath: String) -> Boolean {
-    return bind_utils.SourceHasFileBind(source, bindPath);
+    return diagnostic_edit_commands.SourceHasFileBind(source, bindPath);
 }
 
 func StripTrailingCr(line: String) -> String {
@@ -1409,24 +1038,11 @@ func StripTrailingCr(line: String) -> String {
 }
 
 func SuppressibleDiagnosticCodeAt(records: Any, targetLine: Integer) -> String {
-    if records == null { return ""; }
-    var i = 0;
-    while i < Seq.get_Count(records) {
-        var record = Seq.Get(records, i);
-        i = i + 1;
-        if Map.GetInt(record, "severity") == 1
-           and Map.GetInt(record, "line") == targetLine {
-            var code = Map.GetStr(record, "code");
-            if IsSuppressibleDiagnosticCode(code) {
-                return code;
-            }
-        }
-    }
-    return "";
+    return diagnostic_edit_commands.SuppressibleDiagnosticCodeAt(records, targetLine);
 }
 
 func IsSuppressibleDiagnosticCode(code: String) -> Boolean {
-    return Str.get_Length(code) >= 2 and Str.Left(code, 1) == "W";
+    return diagnostic_edit_commands.IsSuppressibleDiagnosticCode(code);
 }
 
 expose func OrganizeZiaBindsText(source: String) -> String {
@@ -1518,20 +1134,6 @@ func IsZiaBindLine(trimmed: String) -> Boolean {
 
 func LeadingWhitespaceLength(text: String) -> Integer {
     return text_utils.LeadingWhitespaceLength(text);
-}
-
-func ReplaceWholeDocument(engine: editor_engine.EditorEngine,
-                          text: String) {
-    var lastLine = engine.editor.LineCount - 1;
-    if lastLine < 0 { return; }
-    var last = engine.editor.GetLine(lastLine);
-    engine.editor.SetCursorSelection(0, 0, 0, lastLine, Str.get_Length(last));
-    engine.editor.InsertAtCursor(text);
-}
-
-func handleFormatUnavailable(shell: app_shell.AppShell) {
-    GUI.Toast.Info("No formatter is available for this language yet");
-    shell.SetStatusLeft("Format command unavailable");
 }
 
 func SelectWordAt(engine: editor_engine.EditorEngine,

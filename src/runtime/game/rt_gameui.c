@@ -178,6 +178,20 @@ int8_t ui_validate_canvas(void *canvas, const char *api) {
     return 1;
 }
 
+/// @brief Resolve a Draw-call canvas (2D Canvas or Canvas3D) into a draw-ops table.
+/// @details ADR 0065: widgets are canvas-polymorphic — the same widget draws on the
+///          2D Canvas and on Canvas3D via the ops table Canvas3D registers at init.
+///          Unknown handles trap with @p api exactly like `ui_validate_canvas`.
+int8_t ui_resolve_draw_ops(void *canvas, const char *api, rt_gameui_draw_ops_t *ops) {
+    if (!canvas || !ops)
+        return 0;
+    if (!rt_gameui_resolve_draw_ops(canvas, ops)) {
+        rt_trap(api);
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Length of @p s up to the first NUL or @p max_len bytes.
 size_t ui_visible_len(const char *s, size_t max_len) {
     size_t len = 0;
@@ -297,7 +311,7 @@ void ui_replace_ref(void **slot, void *value) {
 
 /// @brief Draw a rounded-rect with alpha: opaque fast-path delegates to
 ///        rt_canvas_round_box; otherwise alpha-composites the rounded fill.
-static void ui_round_box_alpha(void *canvas,
+static void ui_round_box_alpha(const rt_gameui_draw_ops_t *ops,
                                int64_t x,
                                int64_t y,
                                int64_t w,
@@ -305,10 +319,10 @@ static void ui_round_box_alpha(void *canvas,
                                int64_t radius,
                                int64_t color,
                                int64_t alpha) {
-    if (!canvas || w <= 0 || h <= 0 || alpha <= 0)
+    if (!ops || w <= 0 || h <= 0 || alpha <= 0)
         return;
     if (alpha >= 255) {
-        rt_canvas_round_box(canvas, x, y, w, h, radius, color);
+        ops->round_box(ops->canvas, x, y, w, h, radius, color);
         return;
     }
 
@@ -318,7 +332,7 @@ static void ui_round_box_alpha(void *canvas,
     if (radius > max_radius)
         radius = max_radius;
     if (radius <= 0) {
-        rt_canvas_box_alpha(canvas, x, y, w, h, color, alpha);
+        ops->box_alpha(ops->canvas, x, y, w, h, color, alpha);
         return;
     }
 
@@ -343,7 +357,7 @@ static void ui_round_box_alpha(void *canvas,
         }
         int64_t row_w = w - inset * 2;
         if (row_w > 0)
-            rt_canvas_box_alpha(canvas, x + inset, y + py, row_w, 1, color, alpha);
+            ops->box_alpha(ops->canvas, x + inset, y + py, row_w, 1, color, alpha);
     }
 }
 
@@ -471,10 +485,11 @@ int64_t rt_uilabel_get_y(void *ptr) {
 ///          the assigned BitmapFont when set, otherwise falls back to the
 ///          built-in 8x8 pixel font.
 void rt_uilabel_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
     rt_uilabel_impl *label = checked_label(ptr, "UILabel.Draw: expected Viper.Game.UI.HudLabel");
-    if (!label || !ui_validate_canvas(canvas, "UILabel.Draw: expected Canvas"))
+    if (!label || !ui_resolve_draw_ops(canvas, "UILabel.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!label->visible || label->text[0] == '\0')
         return;
@@ -483,15 +498,15 @@ void rt_uilabel_draw(void *ptr, void *canvas) {
 
     if (label->font) {
         if (label->scale > 1)
-            rt_canvas_text_font_scaled(
+            ops.text_font_scaled(
                 canvas, label->x, label->y, rtext, label->font, label->scale, label->color);
         else
-            rt_canvas_text_font(canvas, label->x, label->y, rtext, label->font, label->color);
+            ops.text_font(canvas, label->x, label->y, rtext, label->font, label->color);
     } else {
         if (label->scale > 1)
-            rt_canvas_text_scaled(canvas, label->x, label->y, rtext, label->scale, label->color);
+            ops.text_scaled(canvas, label->x, label->y, rtext, label->scale, label->color);
         else
-            rt_canvas_text(canvas, label->x, label->y, rtext, label->color);
+            ops.text(canvas, label->x, label->y, rtext, label->color);
     }
 }
 
@@ -647,16 +662,17 @@ static int64_t ui_scaled_fill(int64_t value, int64_t extent, int64_t max_value) 
 
 /// @brief Draw the uibar.
 void rt_uibar_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
     rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Draw: expected Viper.Game.UI.Bar");
-    if (!bar || !ui_validate_canvas(canvas, "UIBar.Draw: expected Canvas"))
+    if (!bar || !ui_resolve_draw_ops(canvas, "UIBar.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!bar->visible)
         return;
 
     // Background
-    rt_canvas_box(canvas, bar->x, bar->y, bar->w, bar->h, bar->bg_color);
+    ops.box(canvas, bar->x, bar->y, bar->w, bar->h, bar->bg_color);
 
     // Filled portion
     if (bar->value > 0 && bar->max_value > 0) {
@@ -664,26 +680,26 @@ void rt_uibar_draw(void *ptr, void *canvas) {
         switch (bar->direction) {
             case BAR_DIR_RIGHT_TO_LEFT:
                 fill = ui_scaled_fill(bar->value, bar->w, bar->max_value);
-                rt_canvas_box(canvas, bar->x + bar->w - fill, bar->y, fill, bar->h, bar->fg_color);
+                ops.box(canvas, bar->x + bar->w - fill, bar->y, fill, bar->h, bar->fg_color);
                 break;
             case BAR_DIR_TOP_TO_BOTTOM:
                 fill = ui_scaled_fill(bar->value, bar->h, bar->max_value);
-                rt_canvas_box(canvas, bar->x, bar->y, bar->w, fill, bar->fg_color);
+                ops.box(canvas, bar->x, bar->y, bar->w, fill, bar->fg_color);
                 break;
             case BAR_DIR_BOTTOM_TO_TOP:
                 fill = ui_scaled_fill(bar->value, bar->h, bar->max_value);
-                rt_canvas_box(canvas, bar->x, bar->y + bar->h - fill, bar->w, fill, bar->fg_color);
+                ops.box(canvas, bar->x, bar->y + bar->h - fill, bar->w, fill, bar->fg_color);
                 break;
             default: // LEFT_TO_RIGHT
                 fill = ui_scaled_fill(bar->value, bar->w, bar->max_value);
-                rt_canvas_box(canvas, bar->x, bar->y, fill, bar->h, bar->fg_color);
+                ops.box(canvas, bar->x, bar->y, fill, bar->h, bar->fg_color);
                 break;
         }
     }
 
     // Border
     if (bar->border_color != 0)
-        rt_canvas_frame(canvas, bar->x, bar->y, bar->w, bar->h, bar->border_color);
+        ops.frame(canvas, bar->x, bar->y, bar->w, bar->h, bar->border_color);
 }
 
 //=============================================================================
@@ -795,10 +811,11 @@ void rt_uipanel_set_visible(void *ptr, int8_t visible) {
 /// @details Draws a rounded or sharp rectangle depending on corner_radius,
 ///          then overlays the border if a border color is set.
 void rt_uipanel_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
     rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.Draw: expected Viper.Game.UI.Panel");
-    if (!panel || !ui_validate_canvas(canvas, "UIPanel.Draw: expected Canvas"))
+    if (!panel || !ui_resolve_draw_ops(canvas, "UIPanel.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!panel->visible)
         return;
@@ -806,7 +823,7 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
     // Background with alpha
     if (panel->alpha >= 255) {
         if (panel->corner_radius > 0)
-            rt_canvas_round_box(canvas,
+            ops.round_box(canvas,
                                 panel->x,
                                 panel->y,
                                 panel->w,
@@ -814,10 +831,10 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
                                 panel->corner_radius,
                                 panel->bg_color);
         else
-            rt_canvas_box(canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color);
+            ops.box(canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color);
     } else if (panel->alpha > 0) {
         if (panel->corner_radius > 0)
-            ui_round_box_alpha(canvas,
+            ui_round_box_alpha(&ops,
                                panel->x,
                                panel->y,
                                panel->w,
@@ -826,7 +843,7 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
                                panel->bg_color,
                                panel->alpha);
         else
-            rt_canvas_box_alpha(
+            ops.box_alpha(
                 canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color, panel->alpha);
     }
 
@@ -848,10 +865,10 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
             if (radius > max_radius)
                 radius = max_radius;
             if (radius > 0)
-                rt_canvas_round_frame(
+                ops.round_frame(
                     canvas, panel->x + t, panel->y + t, iw, ih, radius, panel->border_color);
             else
-                rt_canvas_frame(canvas, panel->x + t, panel->y + t, iw, ih, panel->border_color);
+                ops.frame(canvas, panel->x + t, panel->y + t, iw, ih, panel->border_color);
         }
     }
 }
@@ -979,11 +996,12 @@ static void *uinineslice_draw_source(rt_uinineslice_impl *ns) {
 ///          (left/top/right/bottom) and tiles the center/edge patches to fill
 ///          the destination rectangle while keeping corners at their natural size.
 void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t w, int64_t h) {
+    rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
     rt_uinineslice_impl *ns =
         checked_nineslice(ptr, "UINineSlice.Draw: expected Viper.Game.UI.NineSlice");
-    if (!ns || !ui_validate_canvas(canvas, "UINineSlice.Draw: expected Canvas"))
+    if (!ns || !ui_resolve_draw_ops(canvas, "UINineSlice.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!ns->pixels || w <= 0 || h <= 0)
         return;
@@ -1014,13 +1032,13 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
 
     // Draw 4 corners (unscaled — blit directly)
     if (T > 0 && L > 0) // top-left
-        rt_canvas_blit_region(canvas, x, y, source_pixels, 0, 0, L, T);
+        ops.blit_region(canvas, x, y, source_pixels, 0, 0, L, T);
     if (T > 0 && R > 0) // top-right
-        rt_canvas_blit_region(canvas, x + w - R, y, source_pixels, pw - R, 0, R, T);
+        ops.blit_region(canvas, x + w - R, y, source_pixels, pw - R, 0, R, T);
     if (B > 0 && L > 0) // bottom-left
-        rt_canvas_blit_region(canvas, x, y + h - B, source_pixels, 0, ph - B, L, B);
+        ops.blit_region(canvas, x, y + h - B, source_pixels, 0, ph - B, L, B);
     if (B > 0 && R > 0) // bottom-right
-        rt_canvas_blit_region(canvas, x + w - R, y + h - B, source_pixels, pw - R, ph - B, R, B);
+        ops.blit_region(canvas, x + w - R, y + h - B, source_pixels, pw - R, ph - B, R, B);
 
     // Draw 4 edges (stretched by tiling the 1-pixel-wide/tall source strip)
     // Top edge
@@ -1029,7 +1047,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bw = src_cw;
             if (dx + bw > dst_cw)
                 bw = dst_cw - dx;
-            rt_canvas_blit_region(canvas, x + L + dx, y, source_pixels, src_cx, 0, bw, T);
+            ops.blit_region(canvas, x + L + dx, y, source_pixels, src_cx, 0, bw, T);
         }
     }
     // Bottom edge
@@ -1038,7 +1056,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bw = src_cw;
             if (dx + bw > dst_cw)
                 bw = dst_cw - dx;
-            rt_canvas_blit_region(
+            ops.blit_region(
                 canvas, x + L + dx, y + h - B, source_pixels, src_cx, ph - B, bw, B);
         }
     }
@@ -1048,7 +1066,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bh = src_ch;
             if (dy + bh > dst_ch)
                 bh = dst_ch - dy;
-            rt_canvas_blit_region(canvas, x, y + T + dy, source_pixels, 0, src_cy, L, bh);
+            ops.blit_region(canvas, x, y + T + dy, source_pixels, 0, src_cy, L, bh);
         }
     }
     // Right edge
@@ -1057,7 +1075,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bh = src_ch;
             if (dy + bh > dst_ch)
                 bh = dst_ch - dy;
-            rt_canvas_blit_region(
+            ops.blit_region(
                 canvas, x + w - R, y + T + dy, source_pixels, pw - R, src_cy, R, bh);
         }
     }
@@ -1072,7 +1090,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
                 int64_t bw = src_cw;
                 if (dx + bw > dst_cw)
                     bw = dst_cw - dx;
-                rt_canvas_blit_region(
+                ops.blit_region(
                     canvas, x + L + dx, y + T + dy, source_pixels, src_cx, src_cy, bw, bh);
             }
         }
@@ -1263,11 +1281,12 @@ int64_t rt_uimenulist_get_count(void *ptr) {
 
 /// @brief Draw the uimenulist.
 void rt_uimenulist_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
     rt_uimenulist_impl *menu =
         checked_menulist(ptr, "UIMenuList.Draw: expected Viper.Game.UI.MenuList");
-    if (!menu || !ui_validate_canvas(canvas, "UIMenuList.Draw: expected Canvas"))
+    if (!menu || !ui_resolve_draw_ops(canvas, "UIMenuList.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!menu->visible || menu->count == 0)
         return;
@@ -1286,16 +1305,16 @@ void rt_uimenulist_draw(void *ptr, void *canvas) {
                 hw = rt_bitmapfont_text_width(menu->font, rtext) + 16;
             else
                 hw = rt_canvas_text_width(rtext) + 16;
-            rt_canvas_box(canvas, menu->x - 4, iy, hw, menu->item_height, menu->highlight_bg);
+            ops.box(canvas, menu->x - 4, iy, hw, menu->item_height, menu->highlight_bg);
         }
 
         int64_t color = is_selected ? menu->selected_color : menu->text_color;
         rt_string rtext = rt_const_cstr(menu->items[i]);
 
         if (menu->font)
-            rt_canvas_text_font(canvas, menu->x, iy + 2, rtext, menu->font, color);
+            ops.text_font(canvas, menu->x, iy + 2, rtext, menu->font, color);
         else
-            rt_canvas_text(canvas, menu->x, iy + 2, rtext, color);
+            ops.text(canvas, menu->x, iy + 2, rtext, color);
     }
 }
 
@@ -1504,11 +1523,12 @@ int64_t rt_gamebutton_get_text_scale(void *ptr) {
 /// @brief Render the button to `canvas`. Picks colors based on `is_selected`, draws box +
 /// optional border + centered label. No-op if button is hidden.
 void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
+    rt_gameui_draw_ops_t ops;
     if (!ptr || !canvas)
         return;
     rt_gamebutton_impl *btn =
         checked_gamebutton(ptr, "GameButton.Draw: expected Viper.Game.UI.GameButton");
-    if (!btn || !ui_validate_canvas(canvas, "GameButton.Draw: expected Canvas"))
+    if (!btn || !ui_resolve_draw_ops(canvas, "GameButton.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!btn->visible)
         return;
@@ -1517,7 +1537,7 @@ void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
     int64_t tc = is_selected ? btn->text_color_selected : btn->text_color;
 
     // Background
-    rt_canvas_box(canvas, btn->x, btn->y, btn->width, btn->height, bg);
+    ops.box(canvas, btn->x, btn->y, btn->width, btn->height, bg);
 
     // Border
     if (btn->border_width > 0 && btn->border_color != 0) {
@@ -1530,7 +1550,7 @@ void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
             int64_t bh = btn->height - t * 2;
             if (bw <= 0 || bh <= 0)
                 break;
-            rt_canvas_frame(canvas, btn->x + t, btn->y + t, bw, bh, btn->border_color);
+            ops.frame(canvas, btn->x + t, btn->y + t, bw, bh, btn->border_color);
         }
     }
 
@@ -1552,9 +1572,9 @@ void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
         int64_t text_x = btn->x + (btn->width - text_w) / 2;
         int64_t text_y = btn->y + (btn->height - text_h) / 2;
         if (scale > 1)
-            rt_canvas_text_scaled(canvas, text_x, text_y, rtext, scale, tc);
+            ops.text_scaled(canvas, text_x, text_y, rtext, scale, tc);
         else
-            rt_canvas_text(canvas, text_x, text_y, rtext, tc);
+            ops.text(canvas, text_x, text_y, rtext, tc);
     }
 }
 
@@ -1662,26 +1682,26 @@ int64_t ui_text_prefix_width(const char *text, int64_t bytes, void *font, int64_
 
 /// @brief Draw a text run at (x, y) using an optional bitmap font and scale,
 ///        falling back to the canvas default font when none is set.
-void ui_draw_text_basic(void *canvas,
+void ui_draw_text_basic(const rt_gameui_draw_ops_t *ops,
                         int64_t x,
                         int64_t y,
                         const char *text,
                         void *font,
                         int64_t scale,
                         int64_t color) {
-    if (!canvas || !text || text[0] == '\0')
+    if (!ops || !text || text[0] == '\0')
         return;
     rt_string s = rt_const_cstr(text);
     scale = ui_clamp_scale(scale);
     if (font) {
         if (scale > 1)
-            rt_canvas_text_font_scaled(canvas, x, y, s, font, scale, color);
+            ops->text_font_scaled(ops->canvas, x, y, s, font, scale, color);
         else
-            rt_canvas_text_font(canvas, x, y, s, font, color);
+            ops->text_font(ops->canvas, x, y, s, font, color);
     } else if (scale > 1) {
-        rt_canvas_text_scaled(canvas, x, y, s, scale, color);
+        ops->text_scaled(ops->canvas, x, y, s, scale, color);
     } else {
-        rt_canvas_text(canvas, x, y, s, color);
+        ops->text(ops->canvas, x, y, s, color);
     }
 }
 

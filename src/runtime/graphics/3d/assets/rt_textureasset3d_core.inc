@@ -181,8 +181,14 @@ static uint64_t textureasset3d_read_u64le(const uint8_t *p) {
 static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_format) {
     if (vk_format == VK_FORMAT_R8G8B8A8_UNORM || vk_format == VK_FORMAT_R8G8B8A8_SRGB)
         return (textureasset3d_format_info){"rgba8", 0, 1, 1, 4};
+    if (vk_format >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && vk_format <= VK_FORMAT_BC1_RGBA_SRGB_BLOCK)
+        return (textureasset3d_format_info){"bc1", 1, 4, 4, 8};
     if (vk_format == VK_FORMAT_BC3_UNORM_BLOCK || vk_format == VK_FORMAT_BC3_SRGB_BLOCK)
         return (textureasset3d_format_info){"bc3", 1, 4, 4, 16};
+    if (vk_format == VK_FORMAT_BC4_UNORM_BLOCK)
+        return (textureasset3d_format_info){"bc4", 1, 4, 4, 8};
+    if (vk_format == VK_FORMAT_BC5_UNORM_BLOCK)
+        return (textureasset3d_format_info){"bc5", 1, 4, 4, 16};
     if (vk_format == VK_FORMAT_BC7_UNORM_BLOCK || vk_format == VK_FORMAT_BC7_SRGB_BLOCK)
         return (textureasset3d_format_info){"bc7", 1, 4, 4, 16};
     if (vk_format == VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK ||

@@ -40,6 +40,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -69,6 +70,7 @@ typedef enum {
     POSTFX_SSAO,
     POSTFX_DOF,
     POSTFX_MOTION_BLUR,
+    POSTFX_TAA, /* appended: value mirrors VGFX3D_POSTFX_EFFECT_TAA */
 } postfx_type_t;
 
 typedef struct {
@@ -119,6 +121,10 @@ typedef struct {
             float mb_intensity;
             int32_t mb_samples;
         } motion_blur;
+
+        struct {
+            float blend;
+        } taa;
     } p;
 } postfx_entry_t;
 
@@ -128,7 +134,22 @@ typedef struct {
     int32_t effect_count;
     int32_t effect_capacity;
     int8_t enabled;
+    /* Plan 09: last recoverable configuration error ("" = none). Set by
+     * capability validation at Canvas3D.SetPostFX bind time so callers can
+     * query why a chain was rejected instead of trapping at apply time. */
+    char last_error[160];
 } rt_postfx3d;
+
+/// @brief Record a recoverable configuration error on the chain (NULL msg clears).
+static void postfx3d_set_last_error(rt_postfx3d *fx, const char *msg) {
+    if (!fx)
+        return;
+    if (!msg) {
+        fx->last_error[0] = '\0';
+        return;
+    }
+    snprintf(fx->last_error, sizeof(fx->last_error), "%s", msg);
+}
 
 typedef struct {
     float *primary;
@@ -448,6 +469,7 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
         case POSTFX_TONEMAP:
             snapshot.tonemap_mode = (int8_t)e->p.tonemap.mode;
             snapshot.tonemap_exposure = e->p.tonemap.exposure;
+            snapshot.tonemap_explicit = 1;
             break;
         case POSTFX_FXAA:
             snapshot.fxaa_enabled = 1;
@@ -480,6 +502,10 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
             snapshot.motion_blur_intensity = e->p.motion_blur.mb_intensity;
             snapshot.motion_blur_samples = e->p.motion_blur.mb_samples;
             break;
+        case POSTFX_TAA:
+            snapshot.taa_enabled = 1;
+            snapshot.taa_blend = e->p.taa.blend;
+            break;
         default:
             return 0;
     }
@@ -507,7 +533,8 @@ int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
         const postfx_entry_t *e = &fx->effects[i];
         if (!e->enabled)
             continue;
-        if (e->type == POSTFX_SSAO || e->type == POSTFX_DOF || e->type == POSTFX_MOTION_BLUR)
+        if (e->type == POSTFX_SSAO || e->type == POSTFX_DOF || e->type == POSTFX_MOTION_BLUR ||
+            e->type == POSTFX_TAA)
             return 1;
     }
     return 0;
@@ -517,12 +544,63 @@ int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
  * Effect implementations (per-pixel on float buffer)
  *=========================================================================*/
 
-/// @brief Apply bloom — the classic bright-extract / separable-Gaussian-blur /
-/// composite-back sequence. Downsamples to half-res for the extract + blur phase
-/// (four-times fewer fragments on the hot loop) and upsamples with nearest-neighbour
-/// during the composite. Uses a 5-tap symmetric Gaussian kernel (0.0625, 0.25, 0.375,
-/// 0.25, 0.0625) in each axis, re-applied `blur_passes` times; more passes = wider halo.
-/// Returns early on half-res degenerate dimensions or calloc failure.
+#define POSTFX3D_BLOOM_MAX_LEVELS 6
+#define POSTFX3D_BLOOM_MIN_DIM 8
+
+/// @brief Sample one RGB float level bilinearly at a continuous pixel coordinate.
+/// @details Coordinates are in the destination level's own pixel space; edges clamp.
+///          Shared by the bloom chain's progressive upsample and the final composite.
+static void postfx_bloom_sample_bilinear(
+    const float *level, int32_t lw, int32_t lh, float fx, float fy, float out[3]) {
+    int32_t x0 = (int32_t)floorf(fx);
+    int32_t y0 = (int32_t)floorf(fy);
+    float tx = fx - (float)x0;
+    float ty = fy - (float)y0;
+    int32_t x1;
+    int32_t y1;
+    if (x0 < 0) {
+        x0 = 0;
+        tx = 0.0f;
+    }
+    if (y0 < 0) {
+        y0 = 0;
+        ty = 0.0f;
+    }
+    x1 = x0 + 1;
+    y1 = y0 + 1;
+    if (x0 >= lw)
+        x0 = lw - 1;
+    if (y0 >= lh)
+        y0 = lh - 1;
+    if (x1 >= lw)
+        x1 = lw - 1;
+    if (y1 >= lh)
+        y1 = lh - 1;
+    {
+        const float *p00 = &level[(y0 * lw + x0) * 3];
+        const float *p10 = &level[(y0 * lw + x1) * 3];
+        const float *p01 = &level[(y1 * lw + x0) * 3];
+        const float *p11 = &level[(y1 * lw + x1) * 3];
+        for (int32_t c = 0; c < 3; c++) {
+            float top = p00[c] + (p10[c] - p00[c]) * tx;
+            float bottom = p01[c] + (p11[c] - p01[c]) * tx;
+            out[c] = top + (bottom - top) * ty;
+        }
+    }
+}
+
+/// @brief Apply bloom via a progressive downsample/upsample mip chain (Plan 05).
+/// @details Level 0 is a half-resolution bright extract: each destination texel averages a
+///          2×2 source box with Karis luma weights (1 / (1 + luma)) to suppress single-pixel
+///          fireflies, then applies the soft-knee threshold `(lum - threshold) / (lum + ε)`.
+///          Deeper levels are plain 2×2 box downsamples of the previous level. The upsample
+///          walk accumulates each deeper level into the one above it with bilinear filtering,
+///          so the final level 0 holds the sum of every blur octave — a wide, stable halo
+///          that a single-level Gaussian cannot produce. `blur_passes` selects the chain
+///          depth (clamped to POSTFX3D_BLOOM_MAX_LEVELS and to levels whose min dimension
+///          stays ≥ POSTFX3D_BLOOM_MIN_DIM); the composite divides by the accumulated level
+///          count so perceived brightness stays roughly independent of depth. All levels
+///          pack into one scratch allocation (offsets never alias between adjacent levels).
 static void apply_bloom(float *buf,
                         int32_t w,
                         int32_t h,
@@ -530,140 +608,167 @@ static void apply_bloom(float *buf,
                         float intensity,
                         int32_t blur_passes,
                         postfx_scratch_t *scratch) {
-    int32_t hw = w / 2, hh = h / 2;
-    size_t scratch_bytes;
-    if (hw < 1 || hh < 1)
-        return;
-    if (!postfx_rgb_float_layout(hw, hh, NULL, NULL, &scratch_bytes))
-        return;
+    int32_t lw[POSTFX3D_BLOOM_MAX_LEVELS];
+    int32_t lh[POSTFX3D_BLOOM_MAX_LEVELS];
+    size_t offset[POSTFX3D_BLOOM_MAX_LEVELS];
+    int32_t levels = 0;
+    int32_t depth = blur_passes < 1 ? 1 : blur_passes;
+    size_t total_floats = 0;
+    float *chain;
 
-    /* Extract bright pixels to half-res buffer */
-    float *bloom =
-        scratch
-            ? postfx_scratch_reserve(&scratch->primary, &scratch->primary_bytes, scratch_bytes, 1)
-            : NULL;
-    if (!bloom)
+    if (depth > POSTFX3D_BLOOM_MAX_LEVELS)
+        depth = POSTFX3D_BLOOM_MAX_LEVELS;
+    if (!buf || w / 2 < 1 || h / 2 < 1 || !scratch)
         return;
 
-    for (int32_t y = 0; y < hh; y++)
-        for (int32_t x = 0; x < hw; x++) {
-            int32_t sx = x * 2, sy = y * 2;
-            int32_t si = (sy * w + sx) * 3;
-            float r = buf[si], g = buf[si + 1], b = buf[si + 2];
-            float lum = luminance(r, g, b);
-            if (lum > threshold) {
-                float scale = (lum - threshold) / (lum + 1e-6f);
-                int32_t di = (y * hw + x) * 3;
-                bloom[di] = r * scale;
-                bloom[di + 1] = g * scale;
-                bloom[di + 2] = b * scale;
-            }
-        }
-
-    /* Separable Gaussian blur (simplified 5-tap kernel) */
-    float *tmp = scratch ? postfx_scratch_reserve(
-                               &scratch->secondary, &scratch->secondary_bytes, scratch_bytes, 1)
-                         : NULL;
-    if (!tmp)
+    /* Plan the chain: level 0 = half res, each next level halves again. */
+    for (int32_t i = 0; i < depth; i++) {
+        int32_t cw = (i == 0) ? w / 2 : lw[i - 1] / 2;
+        int32_t ch = (i == 0) ? h / 2 : lh[i - 1] / 2;
+        size_t level_floats;
+        if (i > 0 && (cw < POSTFX3D_BLOOM_MIN_DIM || ch < POSTFX3D_BLOOM_MIN_DIM))
+            break;
+        if (cw < 1 || ch < 1)
+            break;
+        if (!postfx_rgb_float_layout(cw, ch, NULL, &level_floats, NULL))
+            return;
+        if (total_floats > SIZE_MAX - level_floats)
+            return;
+        lw[i] = cw;
+        lh[i] = ch;
+        offset[i] = total_floats;
+        total_floats += level_floats;
+        levels = i + 1;
+    }
+    if (levels <= 0 || total_floats > SIZE_MAX / sizeof(float))
         return;
 
-    static const float kernel[5] = {0.0625f, 0.25f, 0.375f, 0.25f, 0.0625f};
+    chain = postfx_scratch_reserve(
+        &scratch->primary, &scratch->primary_bytes, total_floats * sizeof(float), 1);
+    if (!chain)
+        return;
 
-    for (int32_t pass = 0; pass < blur_passes; pass++) {
-        /* Horizontal */
-        for (int32_t y = 0; y < hh; y++)
-            for (int32_t x = 0; x < hw; x++) {
-                float r = 0, g = 0, b = 0;
-                for (int k = -2; k <= 2; k++) {
-                    int32_t sx = x + k;
-                    if (sx < 0)
-                        sx = 0;
-                    if (sx >= hw)
-                        sx = hw - 1;
-                    int32_t si = (y * hw + sx) * 3;
-                    float kw = kernel[k + 2];
-                    r += bloom[si] * kw;
-                    g += bloom[si + 1] * kw;
-                    b += bloom[si + 2] * kw;
+    /* Level 0: Karis-weighted 2x2 box + soft-knee bright extract from the full-res buffer. */
+    {
+        float *dst = chain + offset[0];
+        for (int32_t y = 0; y < lh[0]; y++)
+            for (int32_t x = 0; x < lw[0]; x++) {
+                float acc[3] = {0.0f, 0.0f, 0.0f};
+                float wsum = 0.0f;
+                for (int32_t dy = 0; dy < 2; dy++)
+                    for (int32_t dx = 0; dx < 2; dx++) {
+                        int32_t sx = x * 2 + dx;
+                        int32_t sy = y * 2 + dy;
+                        const float *p;
+                        float kw;
+                        if (sx >= w)
+                            sx = w - 1;
+                        if (sy >= h)
+                            sy = h - 1;
+                        p = &buf[(sy * w + sx) * 3];
+                        kw = 1.0f / (1.0f + luminance(p[0], p[1], p[2]));
+                        acc[0] += p[0] * kw;
+                        acc[1] += p[1] * kw;
+                        acc[2] += p[2] * kw;
+                        wsum += kw;
+                    }
+                if (wsum > 0.0f) {
+                    acc[0] /= wsum;
+                    acc[1] /= wsum;
+                    acc[2] /= wsum;
                 }
-                int32_t di = (y * hw + x) * 3;
-                tmp[di] = r;
-                tmp[di + 1] = g;
-                tmp[di + 2] = b;
-            }
-        /* Vertical */
-        for (int32_t y = 0; y < hh; y++)
-            for (int32_t x = 0; x < hw; x++) {
-                float r = 0, g = 0, b = 0;
-                for (int k = -2; k <= 2; k++) {
-                    int32_t sy = y + k;
-                    if (sy < 0)
-                        sy = 0;
-                    if (sy >= hh)
-                        sy = hh - 1;
-                    int32_t si = (sy * hw + x) * 3;
-                    float kw = kernel[k + 2];
-                    r += tmp[si] * kw;
-                    g += tmp[si + 1] * kw;
-                    b += tmp[si + 2] * kw;
+                {
+                    float lum = luminance(acc[0], acc[1], acc[2]);
+                    float *d = &dst[(y * lw[0] + x) * 3];
+                    if (lum > threshold) {
+                        float scale = (lum - threshold) / (lum + 1e-6f);
+                        d[0] = acc[0] * scale;
+                        d[1] = acc[1] * scale;
+                        d[2] = acc[2] * scale;
+                    }
                 }
-                int32_t di = (y * hw + x) * 3;
-                bloom[di] = r;
-                bloom[di + 1] = g;
-                bloom[di + 2] = b;
             }
     }
-    /* Composite: add bloom back to scene (upsampled bilinear) */
-    for (int32_t y = 0; y < h; y++)
-        for (int32_t x = 0; x < w; x++) {
-            float fx = ((float)x + 0.5f) * 0.5f - 0.5f;
-            float fy = ((float)y + 0.5f) * 0.5f - 0.5f;
-            int32_t x0 = (int32_t)floorf(fx);
-            int32_t y0 = (int32_t)floorf(fy);
-            float tx = fx - (float)x0;
-            float ty = fy - (float)y0;
-            if (x0 < 0) {
-                x0 = 0;
-                tx = 0.0f;
+
+    /* Progressive downsample: plain 2x2 box from the previous level. */
+    for (int32_t i = 1; i < levels; i++) {
+        const float *src = chain + offset[i - 1];
+        float *dst = chain + offset[i];
+        for (int32_t y = 0; y < lh[i]; y++)
+            for (int32_t x = 0; x < lw[i]; x++) {
+                float acc[3] = {0.0f, 0.0f, 0.0f};
+                for (int32_t dy = 0; dy < 2; dy++)
+                    for (int32_t dx = 0; dx < 2; dx++) {
+                        int32_t sx = x * 2 + dx;
+                        int32_t sy = y * 2 + dy;
+                        const float *p;
+                        if (sx >= lw[i - 1])
+                            sx = lw[i - 1] - 1;
+                        if (sy >= lh[i - 1])
+                            sy = lh[i - 1] - 1;
+                        p = &src[(sy * lw[i - 1] + sx) * 3];
+                        acc[0] += p[0];
+                        acc[1] += p[1];
+                        acc[2] += p[2];
+                    }
+                {
+                    float *d = &dst[(y * lw[i] + x) * 3];
+                    d[0] = acc[0] * 0.25f;
+                    d[1] = acc[1] * 0.25f;
+                    d[2] = acc[2] * 0.25f;
+                }
             }
-            if (y0 < 0) {
-                y0 = 0;
-                ty = 0.0f;
+    }
+
+    /* Progressive upsample + accumulate: each deeper octave adds into the level above. */
+    for (int32_t i = levels - 2; i >= 0; i--) {
+        const float *src = chain + offset[i + 1];
+        float *dst = chain + offset[i];
+        for (int32_t y = 0; y < lh[i]; y++)
+            for (int32_t x = 0; x < lw[i]; x++) {
+                float fx = ((float)x + 0.5f) * 0.5f - 0.5f;
+                float fy = ((float)y + 0.5f) * 0.5f - 0.5f;
+                float s[3];
+                float *d = &dst[(y * lw[i] + x) * 3];
+                postfx_bloom_sample_bilinear(src, lw[i + 1], lh[i + 1], fx, fy, s);
+                d[0] += s[0];
+                d[1] += s[1];
+                d[2] += s[2];
             }
-            int32_t x1 = x0 + 1;
-            int32_t y1 = y0 + 1;
-            if (x1 >= hw)
-                x1 = hw - 1;
-            if (y1 >= hh)
-                y1 = hh - 1;
-            if (x0 >= hw)
-                x0 = hw - 1;
-            if (y0 >= hh)
-                y0 = hh - 1;
-            int32_t bi00 = (y0 * hw + x0) * 3;
-            int32_t bi10 = (y0 * hw + x1) * 3;
-            int32_t bi01 = (y1 * hw + x0) * 3;
-            int32_t bi11 = (y1 * hw + x1) * 3;
-            int32_t si = (y * w + x) * 3;
-            for (int32_t c = 0; c < 3; c++) {
-                float top = bloom[bi00 + c] + (bloom[bi10 + c] - bloom[bi00 + c]) * tx;
-                float bottom = bloom[bi01 + c] + (bloom[bi11 + c] - bloom[bi01 + c]) * tx;
-                buf[si + c] += (top + (bottom - top) * ty) * intensity;
+    }
+
+    /* Composite: level 0 now carries the accumulated chain; normalize by level count. */
+    {
+        const float *level0 = chain + offset[0];
+        float scale = intensity / (float)levels;
+        for (int32_t y = 0; y < h; y++)
+            for (int32_t x = 0; x < w; x++) {
+                float fx = ((float)x + 0.5f) * 0.5f - 0.5f;
+                float fy = ((float)y + 0.5f) * 0.5f - 0.5f;
+                float s[3];
+                float *d = &buf[(y * w + x) * 3];
+                postfx_bloom_sample_bilinear(level0, lw[0], lh[0], fx, fy, s);
+                d[0] += s[0] * scale;
+                d[1] += s[1] * scale;
+                d[2] += s[2] * scale;
             }
-        }
+    }
 }
 
 /// @brief Apply HDR → LDR tone mapping in linear RGB. `mode = 1` selects simple
 /// Reinhard (`c / (c + 1)`), `mode = 2` selects the Narkowicz ACES filmic approximation
-/// (five-constant rational that matches the Academy curve). Any other mode no-ops so the
-/// uninitialised case passes through cleanly. Multiplies by `exposure` before mapping so
-/// scenes keyed for EV 0 stay in the mapper's responsive range. Finishes with a 2.2-gamma
-/// correction so the 8-bit framebuffer gets perceptual output (the earlier float buffer
-/// is linear).
-static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float exposure) {
+/// (five-constant rational that matches the Academy curve). Mode 0 is passthrough on LDR
+/// buffers but, when @p hdr_gamma is non-zero (linear-HDR source), applies exposure +
+/// clamp + gamma-out so an explicit "tonemap off" still produces perceptual sRGB output
+/// matching modes 1/2's output transform (Plan 05 gamma fix). Multiplies by `exposure`
+/// before mapping so scenes keyed for EV 0 stay in the mapper's responsive range.
+/// Finishes with a 2.2-gamma correction so the 8-bit framebuffer gets perceptual output
+/// (the earlier float buffer is linear).
+static void apply_tonemap(
+    float *buf, int32_t w, int32_t h, int32_t mode, float exposure, int hdr_gamma) {
     size_t count;
     float gamma_lut[POSTFX3D_GAMMA_LUT_SIZE + 1u];
-    if (mode != 1 && mode != 2)
+    if (mode != 1 && mode != 2 && !(mode == 0 && hdr_gamma))
         return;
     if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
         return;
@@ -672,7 +777,9 @@ static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float 
     for (size_t i = 0; i < count; i++) {
         float *p = &buf[i * 3u];
         float r = p[0] * exposure, g = p[1] * exposure, b = p[2] * exposure;
-        if (mode == 1) {
+        if (mode == 0) {
+            /* Linear passthrough: exposure + clamp + gamma-out only. */
+        } else if (mode == 1) {
             /* Reinhard */
             r = r / (r + 1.0f);
             g = g / (g + 1.0f);
@@ -841,19 +948,21 @@ static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float
  * Apply entire effect chain to a framebuffer
  *=========================================================================*/
 
-/// @brief Check whether the chain contains an active non-passthrough tonemap pass.
-/// @details Tonemap mode 0 is the passthrough identity (no HDR→LDR remapping), so even
-///          an enabled tonemap entry with mode=0 doesn't count. Used to gate whether
-///          the float-buffer pipeline needs to run before the final 8-bit conversion:
-///          bloom + tonemap + color-grade in HDR produces different output than the
-///          same chain applied post-quantization.
-static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
+/// @brief Check whether the chain contains an active tonemap pass that produced
+///        display-referred (gamma-encoded) output.
+/// @details Tonemap modes 1/2 always count. Mode 0 counts only when @p hdr_active is
+///          non-zero: on a linear-HDR source an explicit mode-0 entry now applies the
+///          exposure + gamma-out transform (Plan 05 gamma fix), so the final 8-bit
+///          conversion must treat the buffer as already display-encoded. On LDR sources
+///          mode 0 stays a passthrough identity and doesn't count.
+static int postfx_chain_has_tonemap(const rt_postfx3d *fx, int hdr_active) {
     int32_t effect_count = postfx3d_safe_effect_count(fx);
     if (!fx || !fx->enabled || effect_count <= 0)
         return 0;
     for (int32_t i = 0; i < effect_count; i++) {
         const postfx_entry_t *e = &fx->effects[i];
-        if (e->enabled && e->type == POSTFX_TONEMAP && e->p.tonemap.mode != 0)
+        if (e->enabled && e->type == POSTFX_TONEMAP &&
+            (e->p.tonemap.mode != 0 || hdr_active))
             return 1;
     }
     return 0;
@@ -866,8 +975,10 @@ static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
 ///          switch intentionally skips them. Bloom / tonemap / color-grade / vignette
 ///          all compose in linear float space before the final LDR conversion, which
 ///          is the whole point of running this before `postfx_apply` touches the
-///          integer framebuffer.
-static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h) {
+///          integer framebuffer. @p hdr_active selects the linear-HDR source behavior
+///          for explicit mode-0 tonemap entries (gamma-out; see `apply_tonemap`).
+static void postfx_apply_float_effects(
+    rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h, int hdr_active) {
     int32_t effect_count = postfx3d_safe_effect_count(fx);
     postfx_scratch_t scratch;
     if (!fx || !fx->enabled || effect_count == 0 || !fbuf)
@@ -890,7 +1001,7 @@ static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, 
                             &scratch);
                 break;
             case POSTFX_TONEMAP:
-                apply_tonemap(fbuf, w, h, e->p.tonemap.mode, e->p.tonemap.exposure);
+                apply_tonemap(fbuf, w, h, e->p.tonemap.mode, e->p.tonemap.exposure, hdr_active);
                 break;
             case POSTFX_FXAA:
                 apply_fxaa(fbuf, w, h, e->p.fxaa.edge_threshold, e->p.fxaa.min_threshold, &scratch);
@@ -909,6 +1020,7 @@ static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, 
             case POSTFX_SSAO:
             case POSTFX_DOF:
             case POSTFX_MOTION_BLUR:
+            case POSTFX_TAA:
                 break;
         }
     }
@@ -945,7 +1057,7 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
             fbuf[di + 2] = (float)src[2] / 255.0f;
         }
 
-    postfx_apply_float_effects(fx, fbuf, w, h);
+    postfx_apply_float_effects(fx, fbuf, w, h, /*hdr_active=*/0);
 
     /* Write back to framebuffer */
     for (int32_t y = 0; y < h; y++)
@@ -986,8 +1098,8 @@ static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *targ
         fbuf[i * 3u + 2u] = sanitize_hdr_channel(target->hdr_color_buf[i * 4u + 2u]);
     }
 
-    postfx_apply_float_effects(fx, fbuf, target->width, target->height);
-    tonemapped = postfx_chain_has_tonemap(fx);
+    postfx_apply_float_effects(fx, fbuf, target->width, target->height, /*hdr_active=*/1);
+    tonemapped = postfx_chain_has_tonemap(fx, /*hdr_active=*/1);
     for (int32_t y = 0; y < target->height; y++) {
         uint8_t *dst = target->color_buf + (size_t)y * (size_t)target->stride;
         for (int32_t x = 0; x < target->width; x++) {
@@ -1043,6 +1155,7 @@ void *rt_postfx3d_new(void) {
     fx->effect_count = 0;
     fx->effect_capacity = 0;
     fx->enabled = 1;
+    fx->last_error[0] = '\0';
     rt_obj_set_finalizer(fx, rt_postfx3d_finalize);
     return fx;
 }
@@ -1167,14 +1280,30 @@ int64_t rt_postfx3d_get_effect_count(void *obj) {
  * Canvas3D integration
  *=========================================================================*/
 
+static int postfx3d_canvas_supports_gpu_scene_effects(const rt_canvas3d *c);
+
 /// @brief Attach a PostFX3D chain to a Canvas3D. Pass NULL to detach. The canvas retains a
 /// reference; the previous chain is released. Apply runs automatically on `_flip`.
+/// @details Plan 09: chains carrying GPU-scene-buffer effects (SSAO/DOF/motion blur/TAA)
+///   are validated against the canvas at bind time. On an unsupported canvas the bind is
+///   refused and the reason is recorded on the chain (`PostFX3D.LastError`) instead of
+///   trapping at first apply — supporting the capability-gated-fallback pattern games use.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     if (!c)
         return;
     if (postfx && !postfx3d_checked(postfx))
         return;
+    if (postfx && vgfx3d_postfx_requires_gpu_scene_buffers(postfx) &&
+        !postfx3d_canvas_supports_gpu_scene_effects(c)) {
+        postfx3d_set_last_error(
+            (rt_postfx3d *)postfx,
+            "SSAO, DOF, motion blur, and TAA require GPU window postfx; this canvas "
+            "supports Bloom, Tonemap, FXAA, ColorGrade, and Vignette — chain not attached");
+        return;
+    }
+    if (postfx)
+        postfx3d_set_last_error((rt_postfx3d *)postfx, NULL);
     if (c->postfx == postfx)
         return;
     if (postfx)
@@ -1182,6 +1311,13 @@ void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
     if (c->postfx && rt_obj_release_check0(c->postfx))
         rt_obj_free(c->postfx);
     c->postfx = postfx;
+}
+
+/// @brief Last recoverable PostFX configuration error ("" when none) — see SetPostFX.
+rt_string rt_postfx3d_get_last_error(void *obj) {
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    const char *msg = fx ? fx->last_error : "";
+    return rt_string_from_bytes(msg, strlen(msg));
 }
 
 enum {
@@ -1247,9 +1383,14 @@ static void postfx3d_configure_quality_profile(rt_postfx3d *fx,
             break;
         case RT_GRAPHICS3D_QUALITY_CINEMATIC:
         default:
-            rt_postfx3d_add_bloom(fx, 0.78, 0.22, 2);
+            rt_postfx3d_add_bloom(fx, 0.78, 0.22, 4);
             rt_postfx3d_add_tonemap(fx, 2, 1.10);
-            rt_postfx3d_add_fxaa(fx);
+            /* TAA supersedes FXAA at cinematic when the backend can run temporal
+             * resolve (GPU window postfx); FXAA remains the spatial fallback. */
+            if (gpu_scene_effects)
+                rt_postfx3d_add_taa(fx, 0.9);
+            else
+                rt_postfx3d_add_fxaa(fx);
             rt_postfx3d_add_color_grade(fx, 0.015, 1.08, 1.06);
             rt_postfx3d_add_vignette(fx, 0.96, 0.28);
             if (gpu_scene_effects) {
@@ -1327,7 +1468,7 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
     if (!fx || !fx->enabled || postfx3d_safe_effect_count(fx) == 0)
         return;
     if (vgfx3d_postfx_requires_gpu_scene_buffers(fx)) {
-        rt_trap("PostFX3D: SSAO, DOF, and motion blur require GPU window postfx; "
+        rt_trap("PostFX3D: SSAO, DOF, motion blur, and TAA require GPU window postfx; "
                 "RenderTarget3D and software CPU postfx support Bloom, Tonemap, FXAA, "
                 "ColorGrade, and Vignette");
         return;
@@ -1415,6 +1556,24 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
     e->enabled = 1;
     e->p.motion_blur.mb_intensity = sanitize_range_f32(intensity, 0.0f, 0.0f, 1.0f);
     e->p.motion_blur.mb_samples = clamp_i64_to_i32(samples, 1, 64);
+}
+
+/// @brief Append a TAA (temporal antialiasing) resolve pass. `blend` is the history weight:
+/// each frame blends `blend` of the reprojected, neighborhood-clamped history with
+/// `1 - blend` of the current frame. Typical 0.85–0.95; clamped to [0.5, 0.98]. Requires a
+/// GPU window backend (motion + depth buffers); the CPU/software path rejects it like
+/// SSAO/DOF/motion blur.
+void rt_postfx3d_add_taa(void *obj, double blend) {
+    postfx_entry_t *e;
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
+        return;
+    e = postfx_append_entry(fx);
+    if (!e)
+        return;
+    e->type = POSTFX_TAA;
+    e->enabled = 1;
+    e->p.taa.blend = sanitize_range_f32(blend, 0.9f, 0.5f, 0.98f);
 }
 
 /*==========================================================================
@@ -1607,6 +1766,10 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
                 out->motion_blur_enabled = 1;
                 out->motion_blur_intensity = effect.snapshot.motion_blur_intensity;
                 out->motion_blur_samples = effect.snapshot.motion_blur_samples;
+                break;
+            case POSTFX_TAA:
+                out->taa_enabled = 1;
+                out->taa_blend = effect.snapshot.taa_blend;
                 break;
             default:
                 break;

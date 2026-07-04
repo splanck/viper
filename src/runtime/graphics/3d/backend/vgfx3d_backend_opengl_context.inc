@@ -13,6 +13,9 @@ typedef struct gl_shader_set_t {
     GLuint postfx_fs;
     GLuint skybox_vs;
     GLuint skybox_fs;
+    GLuint bloom_down_fs;
+    GLuint bloom_up_fs;
+    GLuint taa_fs;
 } gl_shader_set_t;
 
 /// @brief Pick an FBConfig compatible with the target X window's visual/depth.
@@ -154,8 +157,12 @@ static int gl_compile_context_shaders(gl_shader_set_t *shaders) {
         (GLsizei)(sizeof(glsl_postfx_fragment_src) / sizeof(glsl_postfx_fragment_src[0])));
     shaders->skybox_vs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src);
     shaders->skybox_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src);
+    shaders->bloom_down_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_down_fragment_src);
+    shaders->bloom_up_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_up_fragment_src);
+    shaders->taa_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_taa_fragment_src);
     return shaders->vs && shaders->fs && shaders->shadow_vs && shaders->shadow_fs &&
-           shaders->postfx_vs && shaders->postfx_fs && shaders->skybox_vs && shaders->skybox_fs;
+           shaders->postfx_vs && shaders->postfx_fs && shaders->skybox_vs && shaders->skybox_fs &&
+           shaders->bloom_down_fs && shaders->bloom_up_fs && shaders->taa_fs;
 }
 
 /// @brief Delete all shaders in a temporary context shader bundle.
@@ -176,6 +183,12 @@ static void gl_delete_context_shaders(gl_shader_set_t *shaders) {
         gl.DeleteShader(shaders->skybox_vs);
     if (shaders->skybox_fs)
         gl.DeleteShader(shaders->skybox_fs);
+    if (shaders->bloom_down_fs)
+        gl.DeleteShader(shaders->bloom_down_fs);
+    if (shaders->bloom_up_fs)
+        gl.DeleteShader(shaders->bloom_up_fs);
+    if (shaders->taa_fs)
+        gl.DeleteShader(shaders->taa_fs);
     memset(shaders, 0, sizeof(*shaders));
 }
 
@@ -185,7 +198,12 @@ static int gl_link_context_programs(gl_context_t *ctx, const gl_shader_set_t *sh
     ctx->shadow_program = link_program(shaders->shadow_vs, shaders->shadow_fs);
     ctx->postfx_program = link_program(shaders->postfx_vs, shaders->postfx_fs);
     ctx->skybox_program = link_program(shaders->skybox_vs, shaders->skybox_fs);
-    return ctx->program && ctx->shadow_program && ctx->postfx_program && ctx->skybox_program;
+    /* Plan 05 pass programs share the fullscreen post-FX vertex shader. */
+    ctx->bloom_down_program = link_program(shaders->postfx_vs, shaders->bloom_down_fs);
+    ctx->bloom_up_program = link_program(shaders->postfx_vs, shaders->bloom_up_fs);
+    ctx->taa_program = link_program(shaders->postfx_vs, shaders->taa_fs);
+    return ctx->program && ctx->shadow_program && ctx->postfx_program && ctx->skybox_program &&
+           ctx->bloom_down_program && ctx->bloom_up_program && ctx->taa_program;
 }
 
 /// @brief Delete shader programs created during context setup.
@@ -198,10 +216,19 @@ static void gl_delete_context_programs(gl_context_t *ctx) {
         gl.DeleteProgram(ctx->postfx_program);
     if (ctx->skybox_program)
         gl.DeleteProgram(ctx->skybox_program);
+    if (ctx->bloom_down_program)
+        gl.DeleteProgram(ctx->bloom_down_program);
+    if (ctx->bloom_up_program)
+        gl.DeleteProgram(ctx->bloom_up_program);
+    if (ctx->taa_program)
+        gl.DeleteProgram(ctx->taa_program);
     ctx->program = 0;
     ctx->shadow_program = 0;
     ctx->postfx_program = 0;
     ctx->skybox_program = 0;
+    ctx->bloom_down_program = 0;
+    ctx->bloom_up_program = 0;
+    ctx->taa_program = 0;
 }
 
 /// @brief Bind default sampler-unit uniforms across main, shadow, skybox and post-FX programs.
@@ -234,6 +261,17 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->postfx_uSceneTex, 0);
     gl.Uniform1i(ctx->postfx_uSceneDepthTex, 1);
     gl.Uniform1i(ctx->postfx_uSceneMotionTex, 2);
+    gl.Uniform1i(ctx->postfx_uBloomTex, 3);
+
+    gl.UseProgram(ctx->bloom_down_program);
+    gl.Uniform1i(ctx->bloom_down_uSrcTex, 0);
+    gl.UseProgram(ctx->bloom_up_program);
+    gl.Uniform1i(ctx->bloom_up_uSrcTex, 0);
+    gl.UseProgram(ctx->taa_program);
+    gl.Uniform1i(ctx->taa_uCurrTex, 0);
+    gl.Uniform1i(ctx->taa_uHistTex, 1);
+    gl.Uniform1i(ctx->taa_uMotionTex, 2);
+    gl.Uniform1i(ctx->taa_uDepthTex, 3);
 }
 
 /// @brief Bind uniform-block indices for current/previous bone palettes.
@@ -647,6 +685,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     query_shadow_uniforms(ctx);
     query_skybox_uniforms(ctx);
     query_postfx_uniforms(ctx);
+    query_bloom_taa_uniforms(ctx);
 
     gl_bind_default_sampler_uniforms(ctx);
     gl_bind_context_uniform_blocks(ctx);
@@ -689,6 +728,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     destroy_scene_targets(ctx);
     destroy_postfx_readback_target(ctx);
     destroy_postfx_scratch_target(ctx);
+    destroy_bloom_targets(ctx);
+    destroy_taa_targets(ctx);
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
     vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
@@ -747,6 +788,12 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteProgram(ctx->postfx_program);
     if (ctx->skybox_program)
         gl.DeleteProgram(ctx->skybox_program);
+    if (ctx->bloom_down_program)
+        gl.DeleteProgram(ctx->bloom_down_program);
+    if (ctx->bloom_up_program)
+        gl.DeleteProgram(ctx->bloom_up_program);
+    if (ctx->taa_program)
+        gl.DeleteProgram(ctx->taa_program);
     free(ctx->readback_scratch_rgba);
     ctx->readback_scratch_rgba = NULL;
     ctx->readback_scratch_bytes = 0;

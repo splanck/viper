@@ -80,6 +80,12 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur);
 /// @brief Append a motion-blur pass (intensity 0..1, sample count for blur quality).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples);
+/// @brief Append a TAA (temporal antialiasing) resolve pass. `blend` is the history weight
+/// (0.5..0.98; higher = more temporal smoothing). GPU window backends only.
+void rt_postfx3d_add_taa(void *obj, double blend);
+/// @brief Last recoverable PostFX configuration error ("" when none) — set when
+/// `Canvas3D.SetPostFX` refuses a chain whose effects the canvas cannot run.
+rt_string rt_postfx3d_get_last_error(void *obj);
 
 /* Backend-facing PostFX snapshot (MTL-11): compact effect params for GPU backends.
  * Exported from rt_postfx3d.c — backends should NOT inspect the private rt_postfx3d struct. */
@@ -106,6 +112,13 @@ typedef struct {
     int8_t motion_blur_enabled;
     float motion_blur_intensity;
     int32_t motion_blur_samples;
+    /* Appended fields (ABI-stable extension: existing backends memcpy the whole struct). */
+    int8_t taa_enabled;
+    float taa_blend;
+    /* 1 when this snapshot came from an explicit tonemap chain entry (any mode). Lets
+     * backends apply the mode-0 gamma-out transform on linear-HDR scene targets without
+     * gamma-lifting passes whose snapshot merely defaults to tonemap_mode == 0. */
+    int8_t tonemap_explicit;
 } vgfx3d_postfx_snapshot_t;
 
 /// @brief Discriminator identifying which post-processing effect a chain entry describes.
@@ -118,6 +131,7 @@ typedef enum {
     VGFX3D_POSTFX_EFFECT_SSAO,
     VGFX3D_POSTFX_EFFECT_DOF,
     VGFX3D_POSTFX_EFFECT_MOTION_BLUR,
+    VGFX3D_POSTFX_EFFECT_TAA, /* appended: backend switches key on the raw type value */
 } vgfx3d_postfx_effect_kind_t;
 
 /// @brief One ordered chain entry: an effect kind plus its parameter snapshot.

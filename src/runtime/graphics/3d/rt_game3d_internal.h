@@ -143,6 +143,7 @@ typedef struct rt_game3d_entity {
     void *material;
     void *body;
     void *anim;
+    void *behavior; /* retained Behavior3D ticked each simulation step, or NULL */
     int64_t layer;
     int64_t collision_mask_bits;
     rt_string name;

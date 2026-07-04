@@ -51,6 +51,7 @@
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
+#include "rt_skeleton3d.h"
 #include "rt_scene3d_internal.h"
 #include "rt_seq.h"
 #include "rt_sound3d.h"
@@ -124,6 +125,7 @@ static void game3d_entity_finalize(void *obj) {
     game3d_release_typed_ref(&entity->material, RT_G3D_MATERIAL3D_CLASS_ID);
     game3d_release_typed_ref(&entity->body, RT_G3D_BODY3D_CLASS_ID);
     game3d_release_typed_ref(&entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID);
+    game3d_release_typed_ref(&entity->behavior, RT_G3D_GAME3D_BEHAVIOR3D_CLASS_ID);
     game3d_release_ref((void **)&entity->name);
 }
 
@@ -870,4 +872,93 @@ int8_t rt_game3d_entity_is_destroyed(void *obj) {
     rt_game3d_entity *entity =
         game3d_entity_checked_allow_destroyed(obj, "Game3D.Entity3D.isDestroyed: invalid entity");
     return entity && entity->destroyed ? 1 : 0;
+}
+
+/// @brief Attach a child entity to a named bone of this entity's animated
+///   skeleton with a positional offset in bone space.
+/// @details Parents @p child_obj under this entity (scene-node parenting
+///   included), then installs a bone socket on the child's node so every
+///   simulation step drives the child's world transform from the bone's
+///   composited pose. Requires this entity to have an attached Animator3D
+///   whose controller has a skeleton containing @p bone_name; traps otherwise.
+void *rt_game3d_entity_attach_to_bone_offset(void *obj,
+                                             void *child_obj,
+                                             rt_string bone_name,
+                                             double offset_x,
+                                             double offset_y,
+                                             double offset_z) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.attachToBone: invalid entity");
+    rt_game3d_entity *child =
+        game3d_entity_checked(child_obj, "Game3D.Entity3D.attachToBone: child must be Entity3D");
+    void *animator;
+    void *controller;
+    void *skeleton;
+    void *child_node;
+    int64_t bone_index;
+
+    if (!entity || !child)
+        return obj;
+    animator = game3d_entity_anim_ref(entity);
+    controller = animator ? rt_game3d_animator_get_controller(animator) : NULL;
+    skeleton = controller ? rt_anim_controller3d_get_skeleton(controller) : NULL;
+    if (!skeleton) {
+        rt_trap("Game3D.Entity3D.attachToBone: entity needs an animator with a skeleton");
+        return obj;
+    }
+    bone_index = rt_skeleton3d_find_bone(skeleton, bone_name);
+    if (bone_index < 0) {
+        rt_trap("Game3D.Entity3D.attachToBone: bone name not found in skeleton");
+        return obj;
+    }
+    rt_game3d_entity_add_child(obj, child_obj);
+    if (child->parent != entity)
+        return obj; /* add_child rejected the parenting (already trapped/reported) */
+    child_node = game3d_entity_node_ref(child);
+    if (!child_node) {
+        rt_trap("Game3D.Entity3D.attachToBone: child entity has no scene node");
+        return obj;
+    }
+    rt_scene_node3d_attach_to_bone(
+        child_node, controller, bone_index, offset_x, offset_y, offset_z);
+    return obj;
+}
+
+/// @brief Attach a child entity to a named bone with no offset.
+void *rt_game3d_entity_attach_to_bone(void *obj, void *child_obj, rt_string bone_name) {
+    return rt_game3d_entity_attach_to_bone_offset(obj, child_obj, bone_name, 0.0, 0.0, 0.0);
+}
+
+/// @brief Remove this entity's bone-socket binding (installed by a parent's
+///   AttachToBone); the entity keeps its last transform and stays parented.
+void *rt_game3d_entity_detach_from_bone(void *obj) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.detachFromBone: invalid entity");
+    void *node = entity ? game3d_entity_node_ref(entity) : NULL;
+    if (node)
+        rt_scene_node3d_detach_bone_socket(node);
+    return obj;
+}
+
+/// @brief Fluent: attach a Behavior3D that the world ticks each simulation
+///   step, or pass null to detach the current behavior.
+void *rt_game3d_entity_attach_behavior(void *obj, void *behavior) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.attachBehavior: invalid entity");
+    if (!entity)
+        return obj;
+    if (behavior && !rt_g3d_has_class(behavior, RT_G3D_GAME3D_BEHAVIOR3D_CLASS_ID)) {
+        rt_trap("Game3D.Entity3D.attachBehavior: expected Behavior3D or null");
+        return obj;
+    }
+    game3d_assign_typed_ref(&entity->behavior, behavior, RT_G3D_GAME3D_BEHAVIOR3D_CLASS_ID);
+    return obj;
+}
+
+/// @brief The entity's attached Behavior3D (NULL if none).
+void *rt_game3d_entity_get_behavior(void *obj) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.getBehavior: invalid entity");
+    return entity ? rt_g3d_checked_or_null(entity->behavior, RT_G3D_GAME3D_BEHAVIOR3D_CLASS_ID)
+                  : NULL;
 }

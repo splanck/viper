@@ -110,6 +110,7 @@ typedef struct {
     int32_t upload_next_row;
     int8_t upload_in_progress;
     uint64_t last_used_frame;
+    uint64_t applied_ibl_identity; /* prefiltered-mips overlay applied for this IBL payload */
 } d3d_cubemap_cache_entry_t;
 
 typedef struct {
@@ -146,6 +147,10 @@ typedef struct {
     int32_t light_count;
     int32_t shadow_count;
     float camera_forward[3];
+    float ibl_intensity; /* packs into cameraForward's cbuffer register */
+    float sh[9][4];      /* SH-9 RGB irradiance, one coefficient per float4 */
+    /* Plan 06 shadow knobs: x = slope-bias factor, y = strength, z = tap count. */
+    float shadow_filter[4];
 } d3d_per_scene_t;
 
 typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
@@ -201,9 +206,31 @@ typedef struct {
     int32_t motion_blur_enabled;
     float motion_blur_intensity;
     int32_t motion_blur_samples;
+    /* Plan 05 additions (tail rounds the cbuffer to a 16-byte multiple). */
+    int32_t scene_is_hdr;
+    int32_t tonemap_explicit;
+    int32_t bloom_tex_enabled;
     float _pad0;
     float _pad1;
 } d3d_postfx_cb_t;
+
+/* Plan 05: bloom pass constants (must match HLSL BloomCB). */
+typedef struct {
+    float src_inv_size[2];
+    float threshold;
+    int32_t first_pass;
+} d3d_bloom_cb_t;
+
+/* Plan 05: TAA resolve constants (must match HLSL TAACB). */
+typedef struct {
+    float inv_vp[16];
+    float prev_vp[16];
+    float inv_resolution[2];
+    float jitter_delta[2];
+    float blend;
+    int32_t history_valid;
+    float _pad0[2];
+} d3d_taa_cb_t;
 
 typedef vgfx3d_d3d11_instance_data_t d3d_instance_data_t;
 
@@ -285,6 +312,10 @@ typedef struct {
     ID3D11VertexShader *vs_postfx;
     ID3D11PixelShader *ps_postfx;
     ID3D11PixelShader *ps_overlay_composite;
+    /* Plan 05: bloom mip-chain + TAA resolve pixel shaders. */
+    ID3D11PixelShader *ps_bloom_down;
+    ID3D11PixelShader *ps_bloom_up;
+    ID3D11PixelShader *ps_taa;
 
     ID3D11InputLayout *input_layout;
     ID3D11InputLayout *input_layout_instanced;
@@ -298,6 +329,8 @@ typedef struct {
     ID3D11Buffer *cb_prev_bones;
     ID3D11Buffer *cb_skybox;
     ID3D11Buffer *cb_postfx;
+    ID3D11Buffer *cb_bloom;
+    ID3D11Buffer *cb_taa;
 
     ID3D11Buffer *dynamic_vb;
     ID3D11Buffer *dynamic_ib;
@@ -337,6 +370,28 @@ typedef struct {
     ID3D11Texture2D *postfx_scratch_tex;
     ID3D11RenderTargetView *postfx_scratch_rtv;
     ID3D11ShaderResourceView *postfx_scratch_srv;
+    /* Plan 05: half-res RGBA16F bloom mip chain (rebuilt on scene-size change). */
+    ID3D11Texture2D *bloom_mip_tex[6];
+    ID3D11RenderTargetView *bloom_mip_rtv[6];
+    ID3D11ShaderResourceView *bloom_mip_srv[6];
+    int32_t bloom_mip_w[6];
+    int32_t bloom_mip_h[6];
+    int32_t bloom_mip_count;
+    int32_t bloom_base_width;
+    int32_t bloom_base_height;
+    /* Transient: mip-0 SRV bound at t4 while a chain pass composites bloom. */
+    ID3D11ShaderResourceView *postfx_current_bloom_srv;
+    /* Plan 05: TAA ping-pong history (RGBA16F, persisted across frames) + jitter state. */
+    ID3D11Texture2D *taa_history_tex[2];
+    ID3D11RenderTargetView *taa_history_rtv[2];
+    ID3D11ShaderResourceView *taa_history_srv[2];
+    int32_t taa_history_width;
+    int32_t taa_history_height;
+    int32_t taa_history_parity;
+    int8_t taa_history_valid;
+    float taa_jitter_clip[2];
+    float taa_prev_jitter_clip[2];
+    uint32_t taa_frame_index;
     ID3D11Texture2D *presented_color_tex;
     int32_t scene_width;
     int32_t scene_height;
@@ -369,6 +424,10 @@ typedef struct {
     int32_t shadow_count;
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
     float shadow_bias;
+    /* Plan 06: per-frame shadow filtering params from camera params. */
+    float shadow_strength;
+    float shadow_slope_bias;
+    int32_t shadow_quality;
 
     d3d_tex_cache_entry_t *tex_cache;
     int32_t tex_cache_count;
@@ -412,6 +471,13 @@ typedef struct {
     float fog_near;
     float fog_far;
     float fog_color[3];
+    int8_t ibl_enabled;
+    float ibl_intensity;
+    float ibl_sh[27];
+    /* Light-snapshot revision last written to cbPerScene/cbPerLights. DISCARD
+     * mapping renames the buffers per write, so skipping unchanged revisions
+     * is safe for earlier in-flight draws. */
+    uint32_t uploaded_lights_revision;
     int8_t gpu_postfx_enabled;
     int8_t gpu_postfx_chain_valid;
     int8_t current_pass_is_overlay;
@@ -490,6 +556,17 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
 static void d3d11_destroy_scene_targets(d3d11_context_t *ctx);
 static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
 static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, int32_t height);
+static void d3d11_destroy_bloom_targets(d3d11_context_t *ctx);
+static void d3d11_destroy_taa_targets(d3d11_context_t *ctx);
+static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
+static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
+static ID3D11ShaderResourceView *
+d3d11_encode_bloom_chain(d3d11_context_t *ctx, int32_t width, int32_t height, float threshold);
+static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
+                                                       ID3D11ShaderResourceView *source_srv,
+                                                       int32_t width,
+                                                       int32_t height,
+                                                       const vgfx3d_postfx_snapshot_t *snapshot);
 static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, int32_t height);
 static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
                                                   int32_t width,
@@ -984,14 +1061,15 @@ static void d3d11_unbind_output_targets(d3d11_context_t *ctx) {
 }
 
 /// @brief Clear the pixel-shader SRV slots used by post-FX and overlay passes.
-/// @details Slots 0..3 are scene color, depth, motion, and overlay. Clearing them
-///   prevents read/write hazards before those same textures are rebound as RTVs.
+/// @details Slots 0..3 are scene color, depth, motion, and overlay; slot 4 carries the
+///   Plan 05 bloom mip-chain result. Clearing them prevents read/write hazards before
+///   those same textures are rebound as RTVs.
 static void d3d11_unbind_postfx_resources(d3d11_context_t *ctx) {
-    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
+    ID3D11ShaderResourceView *null_srvs[5] = {NULL, NULL, NULL, NULL, NULL};
 
     if (!ctx || !ctx->ctx)
         return;
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 5, null_srvs);
 }
 
 /// @brief Clear the pixel-shader SRV slots used by shadow-map sampling.

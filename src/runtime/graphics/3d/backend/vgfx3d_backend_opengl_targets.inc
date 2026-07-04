@@ -57,60 +57,83 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     GLint depth_format;
     GLenum color_type;
     GLenum depth_type;
+    int want_hdr;
 
     if (!ctx || w <= 0 || h <= 0)
         return -1;
     if (ctx->scene_fbo && ctx->scene_width == w && ctx->scene_height == h)
         return 0;
 
-    destroy_scene_targets(ctx);
-    color_format = GL_RGBA;
-    color_type = GL_UNSIGNED_BYTE;
-    depth_format = ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
-    depth_type = ctx->supports_depth_float_target ? GL_FLOAT : GL_UNSIGNED_INT;
+    /* Plan 05: the window scene target follows the shared HDR policy (RGBA16F) so bloom
+     * and tonemapping operate on unclamped linear color; ancient drivers without float
+     * color targets fall back to the legacy RGBA8 path (scene_hdr_active records which). */
+    want_hdr = (vgfx3d_opengl_choose_color_format(VGFX3D_OPENGL_TARGET_SCENE) ==
+                    VGFX3D_OPENGL_COLOR_FORMAT_HDR16F &&
+                ctx->supports_hdr_color_target)
+                   ? 1
+                   : 0;
 
-    gl.GenFramebuffers(1, &ctx->scene_fbo);
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+    for (;;) {
+        destroy_scene_targets(ctx);
+        color_format = want_hdr ? GL_RGBA16F : GL_RGBA;
+        color_type = want_hdr ? GL_FLOAT : GL_UNSIGNED_BYTE;
+        depth_format =
+            ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
+        depth_type = ctx->supports_depth_float_target ? GL_FLOAT : GL_UNSIGNED_INT;
 
-    gl.GenTextures(1, &ctx->scene_color_tex);
-    gl.BindTexture(GL_TEXTURE_2D, ctx->scene_color_tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    gl.FramebufferTexture2D(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->scene_color_tex, 0);
-    gl.GenTextures(1, &ctx->scene_motion_tex);
-    gl.BindTexture(GL_TEXTURE_2D, ctx->scene_motion_tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    gl.FramebufferTexture2D(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, ctx->scene_motion_tex, 0);
-    {
-        const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-        gl.DrawBuffers(2, attachments);
-    }
-    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+        gl.GenFramebuffers(1, &ctx->scene_fbo);
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
 
-    gl.GenTextures(1, &ctx->scene_depth_tex);
-    gl.BindTexture(GL_TEXTURE_2D, ctx->scene_depth_tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, depth_format, w, h, 0, GL_DEPTH_COMPONENT, depth_type, NULL);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl.FramebufferTexture2D(
-        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->scene_depth_tex, 0);
+        gl.GenTextures(1, &ctx->scene_color_tex);
+        gl.BindTexture(GL_TEXTURE_2D, ctx->scene_color_tex);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl.FramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->scene_color_tex, 0);
+        gl.GenTextures(1, &ctx->scene_motion_tex);
+        gl.BindTexture(GL_TEXTURE_2D, ctx->scene_motion_tex);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl.FramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, ctx->scene_motion_tex, 0);
+        {
+            const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+            gl.DrawBuffers(2, attachments);
+        }
+        gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
 
-    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
+        gl.GenTextures(1, &ctx->scene_depth_tex);
+        gl.BindTexture(GL_TEXTURE_2D, ctx->scene_depth_tex);
+        gl.TexImage2D(
+            GL_TEXTURE_2D, 0, depth_format, w, h, 0, GL_DEPTH_COMPONENT, depth_type, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl.FramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->scene_depth_tex, 0);
+
+        if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE &&
+            gl_upload_ok()) {
+            break;
+        }
+        if (want_hdr) {
+            want_hdr = 0; /* retry once with the legacy LDR layout */
+            continue;
+        }
         destroy_scene_targets(ctx);
         return -1;
     }
 
+    ctx->scene_hdr_active = (int8_t)want_hdr;
+    /* Scene target recreation orphans any TAA history sized for the old target. */
+    ctx->taa_history_valid = 0;
     ctx->scene_width = w;
     ctx->scene_height = h;
     return 0;
@@ -130,8 +153,10 @@ static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h
 
     destroy_postfx_readback_target(ctx);
 
-    color_format = GL_RGBA;
-    color_type = GL_UNSIGNED_BYTE;
+    /* Plan 05: ping-pong intermediates follow the scene target's precision so HDR range
+     * survives multi-pass chains; glReadPixels(GL_UNSIGNED_BYTE) still converts on read. */
+    color_format = ctx->scene_hdr_active ? GL_RGBA16F : GL_RGBA;
+    color_type = ctx->scene_hdr_active ? GL_FLOAT : GL_UNSIGNED_BYTE;
 
     gl.GenFramebuffers(1, &ctx->postfx_readback_fbo);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->postfx_readback_fbo);
@@ -216,6 +241,284 @@ static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h)
     ctx->postfx_scratch_width = w;
     ctx->postfx_scratch_height = h;
     return 0;
+}
+
+/// @brief Release the Plan 05 bloom mip-chain textures and FBOs.
+static void destroy_bloom_targets(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    for (int32_t i = 0; i < 6; i++) {
+        if (ctx->bloom_mip_tex[i])
+            gl.DeleteTextures(1, &ctx->bloom_mip_tex[i]);
+        if (ctx->bloom_mip_fbo[i])
+            gl.DeleteFramebuffers(1, &ctx->bloom_mip_fbo[i]);
+        ctx->bloom_mip_tex[i] = 0;
+        ctx->bloom_mip_fbo[i] = 0;
+        ctx->bloom_mip_w[i] = 0;
+        ctx->bloom_mip_h[i] = 0;
+    }
+    ctx->bloom_mip_count = 0;
+    ctx->bloom_base_width = 0;
+    ctx->bloom_base_height = 0;
+}
+
+/// @brief Build the Plan 05 half-res RGBA16F bloom mip chain for a scene of (w, h).
+/// @details Levels halve until the next level would drop below 8px on either axis
+///          (at most 6 levels). Rebuilt only when the scene size changes.
+/// @return Zero on success, -1 when allocation or completeness fails.
+static int ensure_bloom_targets(gl_context_t *ctx, int32_t w, int32_t h) {
+    int32_t mw;
+    int32_t mh;
+
+    if (!ctx || w <= 0 || h <= 0 || !ctx->bloom_down_program || !ctx->bloom_up_program)
+        return -1;
+    if (ctx->bloom_mip_count > 0 && ctx->bloom_base_width == w && ctx->bloom_base_height == h)
+        return 0;
+
+    destroy_bloom_targets(ctx);
+    mw = w / 2;
+    mh = h / 2;
+    for (int32_t i = 0; i < 6 && mw >= 1 && mh >= 1; i++) {
+        gl.GenFramebuffers(1, &ctx->bloom_mip_fbo[i]);
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->bloom_mip_fbo[i]);
+        gl.GenTextures(1, &ctx->bloom_mip_tex[i]);
+        gl.BindTexture(GL_TEXTURE_2D, ctx->bloom_mip_tex[i]);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, mw, mh, 0, GL_RGBA, GL_FLOAT, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl.FramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->bloom_mip_tex[i], 0);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+        if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE ||
+            !gl_upload_ok()) {
+            destroy_bloom_targets(ctx);
+            return -1;
+        }
+        ctx->bloom_mip_w[i] = mw;
+        ctx->bloom_mip_h[i] = mh;
+        ctx->bloom_mip_count = i + 1;
+        if (mw / 2 < 8 || mh / 2 < 8)
+            break;
+        mw /= 2;
+        mh /= 2;
+    }
+    if (ctx->bloom_mip_count <= 0)
+        return -1;
+    ctx->bloom_base_width = w;
+    ctx->bloom_base_height = h;
+    return 0;
+}
+
+/// @brief Release the Plan 05 TAA ping-pong history textures and FBOs.
+static void destroy_taa_targets(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    for (int32_t i = 0; i < 2; i++) {
+        if (ctx->taa_history_tex[i])
+            gl.DeleteTextures(1, &ctx->taa_history_tex[i]);
+        if (ctx->taa_history_fbo[i])
+            gl.DeleteFramebuffers(1, &ctx->taa_history_fbo[i]);
+        ctx->taa_history_tex[i] = 0;
+        ctx->taa_history_fbo[i] = 0;
+    }
+    ctx->taa_history_width = 0;
+    ctx->taa_history_height = 0;
+    ctx->taa_history_parity = 0;
+    ctx->taa_history_valid = 0;
+}
+
+/// @brief Build the Plan 05 TAA ping-pong history pair (RGBA16F, scene-sized).
+/// @return Zero on success, -1 when allocation or completeness fails.
+static int ensure_taa_targets(gl_context_t *ctx, int32_t w, int32_t h) {
+    if (!ctx || w <= 0 || h <= 0 || !ctx->taa_program)
+        return -1;
+    if (ctx->taa_history_fbo[0] && ctx->taa_history_width == w && ctx->taa_history_height == h)
+        return 0;
+
+    destroy_taa_targets(ctx);
+    for (int32_t i = 0; i < 2; i++) {
+        gl.GenFramebuffers(1, &ctx->taa_history_fbo[i]);
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->taa_history_fbo[i]);
+        gl.GenTextures(1, &ctx->taa_history_tex[i]);
+        gl.BindTexture(GL_TEXTURE_2D, ctx->taa_history_tex[i]);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl.FramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->taa_history_tex[i], 0);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+        if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE ||
+            !gl_upload_ok()) {
+            destroy_taa_targets(ctx);
+            return -1;
+        }
+    }
+    ctx->taa_history_width = w;
+    ctx->taa_history_height = h;
+    ctx->taa_history_parity = 0;
+    ctx->taa_history_valid = 0;
+    return 0;
+}
+
+/// @brief Draw one fullscreen bloom pass (down- or upsample) into a mip FBO.
+static void gl_bloom_pass_draw(gl_context_t *ctx,
+                               GLuint program,
+                               GLuint src_tex,
+                               int32_t src_w,
+                               int32_t src_h,
+                               GLuint dst_fbo,
+                               int32_t dst_w,
+                               int32_t dst_h,
+                               GLint uSrcInvSize,
+                               GLint uSrcTexLoc) {
+    gl.BindFramebuffer(GL_FRAMEBUFFER, dst_fbo);
+    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    gl.Viewport(0, 0, dst_w, dst_h);
+    gl.UseProgram(program);
+    bind_texture_unit(uSrcTexLoc, 0, GL_TEXTURE_2D, src_tex);
+    gl.Uniform2f(uSrcInvSize,
+                 src_w > 0 ? 1.0f / (float)src_w : 0.0f,
+                 src_h > 0 ? 1.0f / (float)src_h : 0.0f);
+    gl.DrawArrays(GL_TRIANGLES, 0, 3);
+}
+
+/// @brief Encode the Plan 05 bloom mip chain from the scene color texture.
+/// @details Pass 0 thresholds + Karis-downsamples the scene into the half-res mip; each
+///          further mip is a plain 13-tap downsample. The upsample walk tent-filters each
+///          deeper mip and accumulates it into the one above via GL_ONE/GL_ONE blending,
+///          leaving mip 0 with the summed octaves.
+/// @return Mip 0's texture name, or 0 when resources are unavailable.
+static GLuint
+gl_encode_bloom_chain(gl_context_t *ctx, int32_t width, int32_t height, float threshold) {
+    gl_framebuffer_state_t saved;
+
+    if (!ctx || !ctx->scene_color_tex || ensure_bloom_targets(ctx, width, height) != 0)
+        return 0;
+
+    gl_capture_framebuffer_state(&saved);
+    gl.Disable(GL_SCISSOR_TEST);
+    gl.Disable(GL_DEPTH_TEST);
+    gl.Disable(GL_CULL_FACE);
+    gl.Disable(GL_BLEND);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    gl.DepthMask(GL_FALSE);
+    gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    gl.BindVertexArray(ctx->fullscreen_vao);
+
+    for (int32_t i = 0; i < ctx->bloom_mip_count; i++) {
+        GLuint src_tex = (i == 0) ? ctx->scene_color_tex : ctx->bloom_mip_tex[i - 1];
+        int32_t src_w = (i == 0) ? width : ctx->bloom_mip_w[i - 1];
+        int32_t src_h = (i == 0) ? height : ctx->bloom_mip_h[i - 1];
+        gl.UseProgram(ctx->bloom_down_program);
+        gl.Uniform1f(ctx->bloom_down_uThreshold, threshold);
+        gl.Uniform1i(ctx->bloom_down_uFirstPass, i == 0 ? 1 : 0);
+        gl_bloom_pass_draw(ctx,
+                           ctx->bloom_down_program,
+                           src_tex,
+                           src_w,
+                           src_h,
+                           ctx->bloom_mip_fbo[i],
+                           ctx->bloom_mip_w[i],
+                           ctx->bloom_mip_h[i],
+                           ctx->bloom_down_uSrcInvSize,
+                           ctx->bloom_down_uSrcTex);
+    }
+
+    gl.Enable(GL_BLEND);
+    gl.BlendFunc(GL_ONE, GL_ONE);
+    for (int32_t i = ctx->bloom_mip_count - 1; i >= 1; i--) {
+        gl_bloom_pass_draw(ctx,
+                           ctx->bloom_up_program,
+                           ctx->bloom_mip_tex[i],
+                           ctx->bloom_mip_w[i],
+                           ctx->bloom_mip_h[i],
+                           ctx->bloom_mip_fbo[i - 1],
+                           ctx->bloom_mip_w[i - 1],
+                           ctx->bloom_mip_h[i - 1],
+                           ctx->bloom_up_uSrcInvSize,
+                           ctx->bloom_up_uSrcTex);
+    }
+    gl.Disable(GL_BLEND);
+
+    if (!gl_drain_errors("bloom chain")) {
+        gl_restore_framebuffer_state(&saved);
+        gl_restore_main_draw_state(ctx);
+        return 0;
+    }
+    gl_restore_framebuffer_state(&saved);
+    gl_restore_main_draw_state(ctx);
+    return ctx->bloom_mip_tex[0];
+}
+
+/// @brief Encode the Plan 05 TAA resolve into the free history slot and flip parity.
+/// @details Reprojects + neighborhood-clamps the persistent history against
+///          @p source_tex; the written slot becomes both the pass output and the next
+///          frame's history.
+/// @return The resolved texture name, or 0 when resources are unavailable.
+static GLuint gl_encode_taa_pass(gl_context_t *ctx,
+                                 GLuint source_tex,
+                                 int32_t width,
+                                 int32_t height,
+                                 const vgfx3d_postfx_snapshot_t *snapshot) {
+    gl_framebuffer_state_t saved;
+    int32_t write_slot;
+    int32_t read_slot;
+    float jitter_delta[2];
+
+    if (!ctx || !source_tex || !ctx->scene_depth_tex || !ctx->scene_motion_tex ||
+        ensure_taa_targets(ctx, width, height) != 0)
+        return 0;
+
+    write_slot = ctx->taa_history_parity ? 1 : 0;
+    read_slot = 1 - write_slot;
+    jitter_delta[0] = (ctx->taa_jitter_clip[0] - ctx->taa_prev_jitter_clip[0]) * 0.5f;
+    jitter_delta[1] = (ctx->taa_jitter_clip[1] - ctx->taa_prev_jitter_clip[1]) * 0.5f;
+
+    gl_capture_framebuffer_state(&saved);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->taa_history_fbo[write_slot]);
+    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    gl.Viewport(0, 0, width, height);
+    gl.Disable(GL_SCISSOR_TEST);
+    gl.Disable(GL_DEPTH_TEST);
+    gl.Disable(GL_CULL_FACE);
+    gl.Disable(GL_BLEND);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    gl.DepthMask(GL_FALSE);
+    gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    gl.UseProgram(ctx->taa_program);
+    gl.BindVertexArray(ctx->fullscreen_vao);
+    bind_texture_unit(ctx->taa_uCurrTex, 0, GL_TEXTURE_2D, source_tex);
+    bind_texture_unit(ctx->taa_uHistTex, 1, GL_TEXTURE_2D, ctx->taa_history_tex[read_slot]);
+    bind_texture_unit(ctx->taa_uMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
+    bind_texture_unit(ctx->taa_uDepthTex, 3, GL_TEXTURE_2D, ctx->scene_depth_tex);
+    gl.Uniform2f(ctx->taa_uInvResolution,
+                 width > 0 ? 1.0f / (float)width : 0.0f,
+                 height > 0 ? 1.0f / (float)height : 0.0f);
+    gl.Uniform2f(ctx->taa_uJitterDelta, jitter_delta[0], jitter_delta[1]);
+    gl.Uniform1f(ctx->taa_uBlend,
+                 (snapshot && snapshot->taa_enabled && isfinite(snapshot->taa_blend))
+                     ? snapshot->taa_blend
+                     : 0.9f);
+    gl.Uniform1i(ctx->taa_uHistoryValid,
+                 (ctx->taa_history_valid && ctx->scene_history_valid) ? 1 : 0);
+    gl.UniformMatrix4fv(ctx->taa_uInvViewProjection, 1, GL_TRUE, ctx->scene_inv_vp);
+    gl.UniformMatrix4fv(ctx->taa_uPrevViewProjection, 1, GL_TRUE, ctx->scene_prev_vp);
+    gl.DrawArrays(GL_TRIANGLES, 0, 3);
+
+    if (!gl_drain_errors("taa resolve")) {
+        gl_restore_framebuffer_state(&saved);
+        gl_restore_main_draw_state(ctx);
+        return 0;
+    }
+    gl_restore_framebuffer_state(&saved);
+    gl_restore_main_draw_state(ctx);
+    ctx->taa_history_parity = 1 - ctx->taa_history_parity;
+    ctx->taa_history_valid = 1;
+    return ctx->taa_history_tex[write_slot];
 }
 
 /// @brief Release RTT FBO + color texture + depth renderbuffer.
@@ -578,8 +881,12 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
                  ctx->scene_cam_pos[2]);
     gl.UniformMatrix4fv(ctx->postfx_uInvViewProjection, 1, GL_TRUE, ctx->scene_inv_vp);
     gl.UniformMatrix4fv(ctx->postfx_uPrevViewProjection, 1, GL_TRUE, ctx->scene_prev_vp);
+    gl.Uniform1i(ctx->postfx_uSceneHdr, ctx->scene_hdr_active ? 1 : 0);
+    gl.Uniform1i(ctx->postfx_uBloomTexEnabled,
+                 (snapshot && snapshot->bloom_enabled && ctx->postfx_current_bloom_tex) ? 1 : 0);
 
     if (!snapshot) {
+        gl.Uniform1i(ctx->postfx_uTonemapExplicit, 0);
         gl.Uniform1i(ctx->postfx_uBloomEnabled, 0);
         gl.Uniform1f(ctx->postfx_uBloomThreshold, 1.0f);
         gl.Uniform1f(ctx->postfx_uBloomIntensity, 0.0f);
@@ -608,12 +915,13 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
         return;
     }
 
+    gl.Uniform1i(ctx->postfx_uTonemapExplicit, snapshot->tonemap_explicit ? 1 : 0);
     bloom_passes = snapshot->bloom_passes < 0 ? 0 : snapshot->bloom_passes;
     if (bloom_passes > 32)
         bloom_passes = 32;
-    ssao_samples = snapshot->ssao_samples < 1 ? 1 : snapshot->ssao_samples;
-    if (ssao_samples > 8)
-        ssao_samples = 8;
+    ssao_samples = snapshot->ssao_samples < 4 ? 4 : snapshot->ssao_samples;
+    if (ssao_samples > 16)
+        ssao_samples = 16; /* Plan 05 spiral kernel supports up to 16 taps */
     motion_samples = snapshot->motion_blur_samples < 2 ? 2 : snapshot->motion_blur_samples;
     if (motion_samples > 8)
         motion_samples = 8;
@@ -695,9 +1003,15 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
     gl.Uniform1i(ctx->postfx_uSceneTex, 0);
     gl.Uniform1i(ctx->postfx_uSceneDepthTex, 1);
     gl.Uniform1i(ctx->postfx_uSceneMotionTex, 2);
+    gl.Uniform1i(ctx->postfx_uBloomTex, 3);
     bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, source_color_tex);
     bind_texture_unit(ctx->postfx_uSceneDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
     bind_texture_unit(ctx->postfx_uSceneMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
+    bind_texture_unit(ctx->postfx_uBloomTex,
+                      3,
+                      GL_TEXTURE_2D,
+                      ctx->postfx_current_bloom_tex ? ctx->postfx_current_bloom_tex
+                                                    : ctx->default_white_tex);
     gl_apply_postfx_uniforms(ctx, snapshot);
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
     ok = gl_drain_errors("postfx draw");
@@ -805,11 +1119,33 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
     if (ensure_postfx_scratch_target(ctx, width, height) != 0)
         return 0;
 
+    /* Plan 05: prefilter the bloom mip chain once from the scene color when any chain
+     * entry uses bloom; passes composite mip 0 via uBloomTex while it is non-zero. */
+    ctx->postfx_current_bloom_tex = 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].snapshot.bloom_enabled) {
+            ctx->postfx_current_bloom_tex = gl_encode_bloom_chain(
+                ctx, width, height, chain->effects[i].snapshot.bloom_threshold);
+            break;
+        }
+    }
+
     for (int32_t i = 0; i < chain->effect_count; i++) {
         const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
         GLuint dst_framebuffer;
         GLenum dst_draw_buffer;
         GLuint dst_texture;
+
+        /* Plan 05: a TAA entry resolves into its own history target, which then feeds
+         * the remaining chain as the pass source. The final-entry case still needs a
+         * regular pass below so the result lands in the caller's framebuffer. */
+        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA &&
+            chain->effects[i].snapshot.taa_enabled) {
+            GLuint resolved =
+                gl_encode_taa_pass(ctx, source_tex, width, height, &chain->effects[i].snapshot);
+            if (resolved)
+                source_tex = resolved;
+        }
 
         if (is_last && !force_offscreen_final) {
             dst_framebuffer = final_framebuffer;
@@ -829,14 +1165,23 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
             dst_texture = ctx->postfx_readback_tex;
         }
 
-        if (!gl_draw_texture_to_target(ctx,
-                                       source_tex,
-                                       dst_framebuffer,
-                                       dst_draw_buffer,
-                                       width,
-                                       height,
-                                       &chain->effects[i].snapshot)) {
-            return 0;
+        {
+            /* A TAA entry's temporal work already ran; its ping-pong pass is a plain
+             * copy (NULL snapshot) so the shared shader's effects stay disabled. */
+            const vgfx3d_postfx_snapshot_t *pass_snapshot =
+                (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA)
+                    ? NULL
+                    : &chain->effects[i].snapshot;
+            if (!gl_draw_texture_to_target(ctx,
+                                           source_tex,
+                                           dst_framebuffer,
+                                           dst_draw_buffer,
+                                           width,
+                                           height,
+                                           pass_snapshot)) {
+                ctx->postfx_current_bloom_tex = 0;
+                return 0;
+            }
         }
 
         last_framebuffer = dst_framebuffer;
@@ -844,6 +1189,7 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
         if ((!is_last || force_offscreen_final) && dst_texture)
             source_tex = dst_texture;
     }
+    ctx->postfx_current_bloom_tex = 0;
 
     if (force_offscreen_final && last_framebuffer != ctx->postfx_readback_fbo) {
         if (!gl_draw_texture_to_target(ctx,
@@ -853,6 +1199,7 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                                        width,
                                        height,
                                        NULL)) {
+            ctx->postfx_current_bloom_tex = 0;
             return 0;
         }
         last_framebuffer = ctx->postfx_readback_fbo;

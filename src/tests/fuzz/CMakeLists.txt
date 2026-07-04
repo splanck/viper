@@ -78,3 +78,7 @@ viper_add_3d_loader_fuzzer(fuzz_fbx_loader fuzz_fbx_loader.cpp)
 viper_add_3d_loader_fuzzer(fuzz_vscn_loader fuzz_vscn_loader.cpp)
 viper_add_3d_loader_fuzzer(fuzz_obj_stl fuzz_obj_stl.cpp)
 viper_add_3d_loader_fuzzer(fuzz_stream_manifest fuzz_stream_manifest.cpp)
+
+viper_add_3d_loader_fuzzer(fuzz_ktx2_loader fuzz_ktx2_loader.cpp)
+viper_add_fuzzer(fuzz_zstd fuzz_zstd.cpp LIBS viper_runtime INCLUDES ${CMAKE_SOURCE_DIR}/src/runtime/io)
+viper_add_fuzzer(fuzz_image_decoders fuzz_image_decoders.cpp LIBS viper_runtime)

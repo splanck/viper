@@ -311,6 +311,44 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw a screen-space filled rectangle with explicit opacity.
+/// @details Like `DrawRect2D` but blends with the scene: `alpha` 0..1 (values
+///   are clamped). The workhorse for HUD panels and full-screen fade overlays.
+void rt_canvas3d_draw_rect2d_alpha(
+    void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, double alpha) {
+    int8_t started_temp_frame = 0;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (w <= 0 || h <= 0)
+        return;
+    if (!isfinite(alpha))
+        alpha = 1.0;
+    if (alpha < 0.0)
+        alpha = 0.0;
+    if (alpha > 1.0)
+        alpha = 1.0;
+    if (alpha <= 0.0001)
+        return;
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    (void)canvas3d_queue_screen_rect(c,
+                                     (float)x,
+                                     (float)y,
+                                     (float)w,
+                                     (float)h,
+                                     (float)((color >> 16) & 0xFF) / 255.0f,
+                                     (float)((color >> 8) & 0xFF) / 255.0f,
+                                     (float)(color & 0xFF) / 255.0f,
+                                     (float)alpha);
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
 /// @brief Blit a `Pixels` image into the 2D overlay at (x,y) scaled to (w,h).
 /// @details Screen-space, unlit, ignores the 3D camera — composites over the scene like
 ///   `DrawRect2D`/`DrawText2D`. Pair with `RenderTarget3D.AsPixels` to display a rendered
@@ -331,6 +369,314 @@ void rt_canvas3d_draw_image2d(void *obj, int64_t x, int64_t y, int64_t w, int64_
     (void)canvas3d_queue_screen_image(c, (float)x, (float)y, (float)w, (float)h, pixels);
     if (started_temp_frame)
         rt_canvas3d_end(c);
+}
+
+/// @brief Draw a screen-space line segment (thickness 1) with explicit opacity (Plan 08).
+void rt_canvas3d_draw_line2d(
+    void *obj, int64_t x0, int64_t y0, int64_t x1, int64_t y1, int64_t color, double alpha) {
+    int8_t started_temp_frame = 0;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!isfinite(alpha))
+        alpha = 1.0;
+    if (alpha < 0.0)
+        alpha = 0.0;
+    if (alpha > 1.0)
+        alpha = 1.0;
+    if (alpha <= 0.0001)
+        return;
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    (void)canvas3d_queue_screen_line(c,
+                                     (float)x0,
+                                     (float)y0,
+                                     (float)x1,
+                                     (float)y1,
+                                     1.0f,
+                                     (float)((color >> 16) & 0xFF) / 255.0f,
+                                     (float)((color >> 8) & 0xFF) / 255.0f,
+                                     (float)(color & 0xFF) / 255.0f,
+                                     (float)alpha);
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
+/// @brief Draw a screen-space 1px rectangle outline with explicit opacity (Plan 08).
+void rt_canvas3d_draw_frame2d(
+    void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, double alpha) {
+    int8_t started_temp_frame = 0;
+    float r;
+    float g;
+    float b;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (w <= 0 || h <= 0)
+        return;
+    if (!isfinite(alpha))
+        alpha = 1.0;
+    if (alpha < 0.0)
+        alpha = 0.0;
+    if (alpha > 1.0)
+        alpha = 1.0;
+    if (alpha <= 0.0001)
+        return;
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    r = (float)((color >> 16) & 0xFF) / 255.0f;
+    g = (float)((color >> 8) & 0xFF) / 255.0f;
+    b = (float)(color & 0xFF) / 255.0f;
+    (void)canvas3d_queue_screen_rect(c, (float)x, (float)y, (float)w, 1.0f, r, g, b, (float)alpha);
+    (void)canvas3d_queue_screen_rect(
+        c, (float)x, (float)(y + h - 1), (float)w, 1.0f, r, g, b, (float)alpha);
+    if (h > 2) {
+        (void)canvas3d_queue_screen_rect(
+            c, (float)x, (float)(y + 1), 1.0f, (float)(h - 2), r, g, b, (float)alpha);
+        (void)canvas3d_queue_screen_rect(
+            c, (float)(x + w - 1), (float)(y + 1), 1.0f, (float)(h - 2), r, g, b, (float)alpha);
+    }
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
+/// @brief Draw a screen-space filled rounded rectangle with explicit opacity (Plan 08).
+void rt_canvas3d_draw_round_rect2d(void *obj,
+                                   int64_t x,
+                                   int64_t y,
+                                   int64_t w,
+                                   int64_t h,
+                                   int64_t radius,
+                                   int64_t color,
+                                   double alpha) {
+    int8_t started_temp_frame = 0;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (w <= 0 || h <= 0)
+        return;
+    if (!isfinite(alpha))
+        alpha = 1.0;
+    if (alpha < 0.0)
+        alpha = 0.0;
+    if (alpha > 1.0)
+        alpha = 1.0;
+    if (alpha <= 0.0001)
+        return;
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    (void)canvas3d_queue_screen_round_rect(c,
+                                           (float)x,
+                                           (float)y,
+                                           (float)w,
+                                           (float)h,
+                                           (float)(radius < 0 ? 0 : radius),
+                                           (float)((color >> 16) & 0xFF) / 255.0f,
+                                           (float)((color >> 8) & 0xFF) / 255.0f,
+                                           (float)(color & 0xFF) / 255.0f,
+                                           (float)alpha);
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
+/// @brief Draw a screen-space rounded rectangle outline with explicit opacity (Plan 08).
+/// @details Walks the same perimeter as the filled rounded rect (four quarter-arcs,
+///          6 segments each, joined by straight edges) with 1px line segments.
+void rt_canvas3d_draw_round_frame2d(void *obj,
+                                    int64_t x,
+                                    int64_t y,
+                                    int64_t w,
+                                    int64_t h,
+                                    int64_t radius,
+                                    int64_t color,
+                                    double alpha) {
+    enum { RRF_SEG = 6 };
+    int8_t started_temp_frame = 0;
+    float rad;
+    float half_min;
+    float px[4 * (RRF_SEG + 1)];
+    float py[4 * (RRF_SEG + 1)];
+    int32_t count = 0;
+    float r;
+    float g;
+    float b;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (w <= 0 || h <= 0)
+        return;
+    if (!isfinite(alpha))
+        alpha = 1.0;
+    if (alpha < 0.0)
+        alpha = 0.0;
+    if (alpha > 1.0)
+        alpha = 1.0;
+    if (alpha <= 0.0001)
+        return;
+    half_min = (float)(w < h ? w : h) * 0.5f;
+    rad = (float)(radius < 0 ? 0 : radius);
+    if (rad > half_min)
+        rad = half_min;
+    if (rad < 0.5f) {
+        rt_canvas3d_draw_frame2d(obj, x, y, w, h, color, alpha);
+        return;
+    }
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+
+    {
+        const float ccx[4] = {(float)x + rad,
+                              (float)(x + w) - rad,
+                              (float)(x + w) - rad,
+                              (float)x + rad};
+        const float ccy[4] = {(float)y + rad,
+                              (float)y + rad,
+                              (float)(y + h) - rad,
+                              (float)(y + h) - rad};
+        const float start_ang[4] = {3.14159265f, 4.71238898f, 0.0f, 1.57079633f};
+        for (int corner = 0; corner < 4; corner++) {
+            for (int s = 0; s <= RRF_SEG; s++) {
+                float ang = start_ang[corner] + 1.57079633f * (float)s / (float)RRF_SEG;
+                px[count] = ccx[corner] + cosf(ang) * rad;
+                py[count] = ccy[corner] + sinf(ang) * rad;
+                count++;
+            }
+        }
+    }
+    r = (float)((color >> 16) & 0xFF) / 255.0f;
+    g = (float)((color >> 8) & 0xFF) / 255.0f;
+    b = (float)(color & 0xFF) / 255.0f;
+    for (int32_t i = 0; i < count; i++) {
+        int32_t j = (i + 1) % count;
+        (void)canvas3d_queue_screen_line(
+            c, px[i], py[i], px[j], py[j], 1.0f, r, g, b, (float)alpha);
+    }
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
+/// @brief Draw screen-space text scaled by a size multiplier (Plan 08).
+void rt_canvas3d_draw_text2d_scaled(
+    void *obj, int64_t x, int64_t y, rt_string text, int64_t color, double scale) {
+    int8_t started_temp_frame = 0;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !text)
+        return;
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    rt_canvas3d_draw_text_3d_scaled(c, x, y, text, color, scale);
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
+/// @brief Blit a sub-region of a Pixels image into the overlay (Plan 08).
+void rt_canvas3d_draw_image2d_region(void *obj,
+                                     int64_t x,
+                                     int64_t y,
+                                     int64_t w,
+                                     int64_t h,
+                                     void *pixels,
+                                     int64_t sx,
+                                     int64_t sy,
+                                     int64_t sw,
+                                     int64_t sh) {
+    int8_t started_temp_frame = 0;
+    int64_t pw;
+    int64_t ph;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !pixels)
+        return;
+    if (w <= 0 || h <= 0 || sw <= 0 || sh <= 0)
+        return;
+    pw = rt_pixels_width(pixels);
+    ph = rt_pixels_height(pixels);
+    if (pw <= 0 || ph <= 0)
+        return;
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    (void)canvas3d_queue_screen_image_uv(c,
+                                         (float)x,
+                                         (float)y,
+                                         (float)w,
+                                         (float)h,
+                                         pixels,
+                                         (float)sx / (float)pw,
+                                         (float)sy / (float)ph,
+                                         (float)(sx + sw) / (float)pw,
+                                         (float)(sy + sh) / (float)ph);
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
+/// @brief Restrict subsequent overlay 2D drawing to a screen rect (Plan 08).
+/// @details Enqueue-time CPU clipping: rects, lines, images, and text queued while the
+///          clip is active are trimmed canvas-side, so all four backends behave
+///          identically. Degenerate rects clear the clip.
+void rt_canvas3d_set_clip_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (w <= 0 || h <= 0) {
+        c->overlay_clip_active = 0;
+        return;
+    }
+    c->overlay_clip_active = 1;
+    c->overlay_clip_x = (float)x;
+    c->overlay_clip_y = (float)y;
+    c->overlay_clip_w = (float)w;
+    c->overlay_clip_h = (float)h;
+}
+
+/// @brief Remove the overlay 2D clip rect (Plan 08).
+void rt_canvas3d_clear_clip_rect2d(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->overlay_clip_active = 0;
+}
+
+/// @brief Width in pixels of DrawText2DScaled output for @p text at @p scale (Plan 08).
+/// @details The built-in font advances 6 dots per character at 2px per dot.
+int64_t rt_canvas3d_measure_text2d(void *obj, rt_string text, double scale) {
+    const char *str;
+    size_t len = 0;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !text)
+        return 0;
+    str = rt_string_cstr(text);
+    if (!str)
+        return 0;
+    len = strlen(str);
+    if (!isfinite(scale) || scale <= 0.0)
+        scale = 1.0;
+    if (scale > 64.0)
+        scale = 64.0;
+    return (int64_t)((double)len * 6.0 * 2.0 * scale);
 }
 
 /// @brief Draw a centered crosshair (FPS reticle) at screen center with `size` arms in `color`.
@@ -480,6 +826,11 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX;
     if (backend->present_postfx)
         caps |= RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
+    /* Plan 05: GPU postfx backends render the scene into a linear-HDR (RGBA16F)
+     * offscreen target and implement the temporal-AA resolve pass. (OpenGL falls back
+     * to RGBA8 only on drivers without float color targets.) */
+    if (backend->present_postfx)
+        caps |= RT_CANVAS3D_BACKEND_CAP_HDR_SCENE | RT_CANVAS3D_BACKEND_CAP_TAA;
     if (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY;
     if (backend->present_postfx && backend->apply_postfx && backend->present)
@@ -589,6 +940,11 @@ static int64_t canvas3d_capability_from_name(const char *name) {
     if (strcmp(name, "terrain-splat") == 0 || strcmp(name, "terrain_splat") == 0 ||
         strcmp(name, "terrain-splatting") == 0 || strcmp(name, "terrain_splatting") == 0)
         return RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT;
+    if (strcmp(name, "hdr-scene") == 0 || strcmp(name, "hdr_scene") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_HDR_SCENE;
+    if (strcmp(name, "taa") == 0 || strcmp(name, "temporal-aa") == 0 ||
+        strcmp(name, "temporal_aa") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_TAA;
     return 0;
 }
 
@@ -597,6 +953,14 @@ static int64_t canvas3d_capability_from_name(const char *name) {
 static int canvas3d_texture_capability_from_name(const char *name) {
     if (!name)
         return -1;
+    if (strcmp(name, "texture:bc1") == 0)
+        return rt_textureasset3d_cpu_supports_format("bc1") ? 1 : 0;
+    if (strcmp(name, "texture:bc3") == 0)
+        return rt_textureasset3d_cpu_supports_format("bc3") ? 1 : 0;
+    if (strcmp(name, "texture:bc4") == 0)
+        return rt_textureasset3d_cpu_supports_format("bc4") ? 1 : 0;
+    if (strcmp(name, "texture:bc5") == 0)
+        return rt_textureasset3d_cpu_supports_format("bc5") ? 1 : 0;
     if (strcmp(name, "texture:bc7") == 0)
         return rt_textureasset3d_cpu_supports_format("bc7") ? 1 : 0;
     if (strcmp(name, "texture:etc2") == 0)

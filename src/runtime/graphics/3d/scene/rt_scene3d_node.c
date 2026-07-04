@@ -169,6 +169,7 @@ static void rt_scene_node3d_finalize(void *obj) {
             node_animator->root = NULL;
     }
     scene_node_release_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+    scene_node_release_class_slot(&node->socket_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
     scene_node_release_pixels_slot(&node->impostor_pixels);
     scene_node_release_class_slot(&node->impostor_mesh, RT_G3D_MESH3D_CLASS_ID);
     scene_node_release_class_slot(&node->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID);
@@ -225,6 +226,11 @@ void *rt_scene_node3d_new(void) {
     node->import_index = -1;
     node->visible = 1;
     node->name = NULL;
+    node->socket_animator = NULL;
+    node->socket_bone = -1;
+    node->socket_offset_pos[0] = node->socket_offset_pos[1] = node->socket_offset_pos[2] = 0.0;
+    node->socket_offset_quat[0] = node->socket_offset_quat[1] = node->socket_offset_quat[2] = 0.0;
+    node->socket_offset_quat[3] = 1.0;
 
     memset(node->aabb_min, 0, sizeof(float) * 3);
     memset(node->aabb_max, 0, sizeof(float) * 3);
@@ -776,6 +782,51 @@ void rt_scene_node3d_clear_body_binding(void *obj) {
     if (!node)
         return;
     scene_node_release_class_slot(&node->bound_body, RT_G3D_BODY3D_CLASS_ID);
+}
+
+/// @brief Attach this node to a skeletal bone: each SyncBindings pass drives the
+///   node's world transform from parentWorld x bonePose x offset.
+/// @details The bone pose is model-space, so the node should be parented under
+///   the node that renders the skinned model. Socket sync supersedes any body
+///   binding on the same node. Pass a negative bone index or NULL animator to
+///   trap; use `rt_scene_node3d_detach_bone_socket` to remove the binding.
+void rt_scene_node3d_attach_to_bone(void *obj,
+                                    void *animator,
+                                    int64_t bone_index,
+                                    double offset_x,
+                                    double offset_y,
+                                    double offset_z) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
+        return;
+    if (!animator || !rt_g3d_has_class(animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)) {
+        rt_trap("SceneNode3D.AttachToBone: animator must be an AnimController3D");
+        return;
+    }
+    if (bone_index < 0 || bone_index > INT32_MAX) {
+        rt_trap("SceneNode3D.AttachToBone: bone index out of range");
+        return;
+    }
+    if (!isfinite(offset_x) || !isfinite(offset_y) || !isfinite(offset_z)) {
+        rt_trap("SceneNode3D.AttachToBone: offset must contain finite values");
+        return;
+    }
+    scene_node_assign_class_ref(&node->socket_animator, animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+    node->socket_bone = (int32_t)bone_index;
+    node->socket_offset_pos[0] = offset_x;
+    node->socket_offset_pos[1] = offset_y;
+    node->socket_offset_pos[2] = offset_z;
+    node->socket_offset_quat[0] = node->socket_offset_quat[1] = node->socket_offset_quat[2] = 0.0;
+    node->socket_offset_quat[3] = 1.0;
+}
+
+/// @brief Remove any bone-socket binding; the node keeps its last transform.
+void rt_scene_node3d_detach_bone_socket(void *obj) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
+        return;
+    scene_node_release_class_slot(&node->socket_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+    node->socket_bone = -1;
 }
 
 /// @brief Currently bound rigid body handle (NULL if none).

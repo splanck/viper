@@ -55,9 +55,24 @@ The larger feature areas are intentionally split into small teaching modules:
   timestamp polling.
 - `services/search_matcher.zia` owns pure literal/regex line matching.
 - `services/search_paths.zia` owns search include/exclude/ignore path rules.
+- `services/workspace_file_index.zia` owns shared FileIndex-backed workspace
+  membership and enumeration policy.
+- `commands/command_context.zia` names the long-lived dependencies used by the
+  command dispatcher.
+- `commands/search_prompt.zia` owns the modal prompt flow for text search so
+  search execution only consumes normalized requests.
+- `commands/quick_open_commands.zia` owns Quick Open palette rows, id encoding,
+  and deterministic file scoring.
+- `commands/source_transform_commands.zia` owns UI command orchestration for
+  format/refactor source transforms.
+- `commands/diagnostic_edit_commands.zia` owns warning suppression, diagnostic
+  fix-it, and missing-bind source edit flows.
 - `ui/tool_panel_model.zia` names bottom-panel ids and tab indexes.
+- `ui/output_cache.zia` owns pure build-output cache and wrapping policy.
 - `editor/completion_items.zia` defines typed completion candidates while
   `editor/completion.zia` owns popup behavior.
+- `editor/completion_workspace_source.zia` owns workspace source loading and
+  detail formatting for completion's workspace symbol cache.
 - `zia/function_scan.zia`, `trivia_scan.zia`, `call_scan.zia`,
   `delimiter_scan.zia`, and `occurrence_scan.zia` hold focused source scanners;
   `zia/source_scan.zia` remains a compatibility facade for older callers.

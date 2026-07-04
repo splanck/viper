@@ -85,6 +85,10 @@ void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled);
 ///   stability for shallow slopes and coplanar caster triangles, while excessive values can visibly
 ///   detach shadows from geometry.
 void rt_canvas3d_set_shadow_slope_bias(void *obj, double bias);
+/// @brief Set how dark fully-occluded texels get (0 = disabled, 1 = fully black; default 0.85).
+void rt_canvas3d_set_shadow_strength(void *obj, double strength);
+/// @brief Select the shadow PCF tier (0 = 4 taps, 1 = 8, 2 = 16 rotated-Poisson taps).
+void rt_canvas3d_set_shadow_quality(void *obj, int64_t quality);
 /// @brief Get the canvas width in pixels.
 int64_t rt_canvas3d_get_width(void *obj);
 /// @brief Get the canvas height in pixels.
@@ -150,6 +154,15 @@ void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled);
 int64_t rt_canvas3d_get_max_active_lights(void *obj);
 /// @brief Set the ambient light color applied to all lit materials.
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b);
+/// @brief Enable/disable image-based lighting from the canvas skybox (PBR draws
+///   without an explicit material env map use SH irradiance + prefiltered specular).
+void rt_canvas3d_set_ibl_enabled(void *obj, int8_t enabled);
+/// @brief True when image-based lighting is enabled for this canvas.
+int8_t rt_canvas3d_get_ibl_enabled(void *obj);
+/// @brief Scale the environment lighting contribution (default 1.0, clamped to [0, 8]).
+void rt_canvas3d_set_ibl_intensity(void *obj, double intensity);
+/// @brief Current environment lighting intensity scale.
+double rt_canvas3d_get_ibl_intensity(void *obj);
 /// @brief Draw a debug 3D line between two Vec3 points.
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color);
 /// @brief Raw-array form of rt_canvas3d_draw_line3d: @p from and @p to are
@@ -188,6 +201,12 @@ int8_t rt_canvas3d_get_backend_fallback(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS 0x800000LL
 #define RT_CANVAS3D_BACKEND_CAP_SKINNING 0x1000000LL
 #define RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT 0x2000000LL
+#define RT_CANVAS3D_BACKEND_CAP_BC1 0x4000000LL
+#define RT_CANVAS3D_BACKEND_CAP_BC3 0x8000000LL
+#define RT_CANVAS3D_BACKEND_CAP_BC4 0x10000000LL
+#define RT_CANVAS3D_BACKEND_CAP_BC5 0x20000000LL
+#define RT_CANVAS3D_BACKEND_CAP_HDR_SCENE 0x40000000LL
+#define RT_CANVAS3D_BACKEND_CAP_TAA 0x80000000LL
 
 /// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
 int64_t rt_canvas3d_get_backend_capabilities(void *obj);
@@ -573,6 +592,9 @@ int rt_canvas3d_remove_temp_buffer(void *canvas, void *buffer);
 /// @brief Draw a screen-space filled rectangle as a HUD element.
 void rt_canvas3d_draw_rect2d(
     void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color);
+/// @brief Draw a screen-space filled rectangle blended with the given opacity (0..1).
+void rt_canvas3d_draw_rect2d_alpha(
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, double alpha);
 /// @brief Draw a centered crosshair gizmo (4 lines around the canvas center).
 void rt_canvas3d_draw_crosshair(void *canvas, int64_t color, int64_t size);
 /// @brief Draw screen-space text on top of the rendered scene.
@@ -580,6 +602,53 @@ void rt_canvas3d_draw_text2d(void *canvas, int64_t x, int64_t y, rt_string text,
 /// @brief Blit a Pixels image into the 2D overlay at (x,y) scaled to (w,h). NULL-safe.
 void rt_canvas3d_draw_image2d(
     void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, void *pixels);
+/// @brief Draw a screen-space line segment with thickness 1 and opacity (0..1).
+void rt_canvas3d_draw_line2d(
+    void *canvas, int64_t x0, int64_t y0, int64_t x1, int64_t y1, int64_t color, double alpha);
+/// @brief Draw a screen-space 1px rectangle outline with opacity (0..1).
+void rt_canvas3d_draw_frame2d(
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, double alpha);
+/// @brief Draw a screen-space filled rounded rectangle with opacity (0..1).
+void rt_canvas3d_draw_round_rect2d(void *canvas,
+                                   int64_t x,
+                                   int64_t y,
+                                   int64_t w,
+                                   int64_t h,
+                                   int64_t radius,
+                                   int64_t color,
+                                   double alpha);
+/// @brief Draw a screen-space rounded rectangle outline with opacity (0..1).
+void rt_canvas3d_draw_round_frame2d(void *canvas,
+                                    int64_t x,
+                                    int64_t y,
+                                    int64_t w,
+                                    int64_t h,
+                                    int64_t radius,
+                                    int64_t color,
+                                    double alpha);
+/// @brief Draw screen-space text scaled by a size multiplier (1.0 = DrawText2D size).
+void rt_canvas3d_draw_text2d_scaled(
+    void *canvas, int64_t x, int64_t y, rt_string text, int64_t color, double scale);
+/// @brief Blit a sub-region (sx,sy,sw,sh) of a Pixels image into the overlay rect (x,y,w,h).
+void rt_canvas3d_draw_image2d_region(void *canvas,
+                                     int64_t x,
+                                     int64_t y,
+                                     int64_t w,
+                                     int64_t h,
+                                     void *pixels,
+                                     int64_t sx,
+                                     int64_t sy,
+                                     int64_t sw,
+                                     int64_t sh);
+/// @brief Restrict subsequent overlay 2D drawing to a screen rect (enqueue-time clipping).
+void rt_canvas3d_set_clip_rect2d(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h);
+/// @brief Remove the overlay 2D clip rect.
+void rt_canvas3d_clear_clip_rect2d(void *canvas);
+/// @brief Width in pixels of DrawText2DScaled output for @p text at @p scale.
+int64_t rt_canvas3d_measure_text2d(void *canvas, rt_string text, double scale);
+/// @brief Internal-facing: scaled variant backing DrawText2D/DrawText2DScaled.
+void rt_canvas3d_draw_text_3d_scaled(
+    void *canvas, int64_t x, int64_t y, rt_string text, int64_t color, double scale);
 
 /* Debug gizmos */
 /// @brief Draw an axis-aligned bounding box outline between min and max corners.

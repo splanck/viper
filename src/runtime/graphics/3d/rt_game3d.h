@@ -642,6 +642,55 @@ void *rt_game3d_entity_set_collision_mask(void *entity, void *mask);
 void *rt_game3d_entity_attach_body(void *entity, void *body_or_def);
 /// @brief Fluent: attach an animator, skeletal controller, or node animator and return entity.
 void *rt_game3d_entity_attach_animator(void *entity, void *animator_or_controller);
+/// @brief Fluent: parent @p child under this entity and drive it from the named
+///   bone of this entity's animated skeleton (world = bone pose each step).
+void *rt_game3d_entity_attach_to_bone(void *entity, void *child, rt_string bone_name);
+/// @brief Fluent: bone attachment with a positional offset in bone space.
+void *rt_game3d_entity_attach_to_bone_offset(void *entity,
+                                             void *child,
+                                             rt_string bone_name,
+                                             double offset_x,
+                                             double offset_y,
+                                             double offset_z);
+/// @brief Fluent: remove this entity's bone-socket binding (stays parented).
+void *rt_game3d_entity_detach_from_bone(void *entity);
+/// @brief Fluent: attach a Behavior3D ticked by the world each simulation step
+///   (null detaches).
+void *rt_game3d_entity_attach_behavior(void *entity, void *behavior);
+/// @brief The entity's attached Behavior3D (NULL if none).
+void *rt_game3d_entity_get_behavior(void *entity);
+
+//=========================================================================
+// Behavior3D — composable per-entity preset behaviors (Viper.Game3D.Behavior3D)
+//=========================================================================
+
+/// @brief Create an empty behavior; compose presets with the fluent Add* calls.
+void *rt_game3d_behavior_new(void);
+/// @brief Fluent: continuous rotation about an axis at degrees/second.
+void *rt_game3d_behavior_add_spin(
+    void *behavior, double axis_x, double axis_y, double axis_z, double deg_per_sec);
+/// @brief Fluent: circular XZ orbit around a world-space center.
+void *rt_game3d_behavior_add_orbit(void *behavior,
+                                   double center_x,
+                                   double center_y,
+                                   double center_z,
+                                   double radius,
+                                   double deg_per_sec);
+/// @brief Fluent: vertical sine bobbing around the height at first tick.
+void *rt_game3d_behavior_add_sine_float(void *behavior, double amplitude, double speed);
+/// @brief Fluent: yaw so the entity's forward (-Z) axis points at the target.
+void *rt_game3d_behavior_add_face_target(void *behavior, void *target_entity);
+/// @brief Fluent: move toward the target entity, stopping inside range
+///   (direct XZ steer, or via a bound NavAgent3D).
+void *rt_game3d_behavior_add_chase(void *behavior, void *target_entity, double speed, double range);
+/// @brief Fluent: follow a Path3D at constant speed (looping or one-shot).
+void *rt_game3d_behavior_add_follow_path(void *behavior, void *path, double speed, int8_t loop);
+/// @brief Fluent: despawn the entity after the given seconds of simulation time.
+void *rt_game3d_behavior_add_lifetime(void *behavior, double seconds);
+/// @brief Fluent: route chase movement through a NavAgent3D (null clears).
+void *rt_game3d_behavior_set_nav_agent(void *behavior, void *agent);
+/// @brief Advance one behavior for one entity by dt seconds (world tick entry).
+void rt_game3d_behavior_update(void *behavior, void *entity, double dt);
 /// @brief Apply an instantaneous linear impulse to the entity's body.
 void rt_game3d_entity_apply_impulse(void *entity, double x, double y, double z);
 /// @brief Set the entity body's linear velocity directly.
@@ -668,6 +717,11 @@ void *rt_game3d_animator_new(void *controller);
 void *rt_game3d_animator_get_controller(void *animator);
 /// @brief Get the node animator backing this animator, or NULL for skeletal-only wrappers.
 void *rt_game3d_animator_get_node_animator(void *animator);
+/// @brief Get the model-space matrix for a bone from the final composited pose
+///   (freshly allocated Mat4, NULL when unavailable).
+void *rt_game3d_animator_get_bone_matrix(void *animator, int64_t bone_index);
+/// @brief Resolve a bone index by name via the controller's skeleton (-1 if unknown).
+int64_t rt_game3d_animator_find_bone(void *animator, rt_string name);
 /// @brief Play the named clip immediately; returns false if the clip is unknown.
 int8_t rt_game3d_animator_play(void *animator, rt_string name);
 /// @brief Cross-fade to the named clip over `seconds`; returns false if unknown.
@@ -1206,6 +1260,14 @@ void rt_game3d_world_look_at(void *world, void *target);
 void rt_game3d_world_on_resize(void *world, int64_t width, int64_t height);
 /// @brief Set the global ambient light color.
 void rt_game3d_world_set_ambient(void *world, double r, double g, double b);
+/// @brief Enable/disable image-based lighting from the world's skybox environment.
+void rt_game3d_world_set_ibl_enabled(void *world, int8_t enabled);
+/// @brief True when image-based lighting is enabled for the world's canvas.
+int8_t rt_game3d_world_get_ibl_enabled(void *world);
+/// @brief Scale the environment lighting contribution (default 1.0).
+void rt_game3d_world_set_ibl_intensity(void *world, double intensity);
+/// @brief Current environment lighting intensity for the world's canvas.
+double rt_game3d_world_get_ibl_intensity(void *world);
 /// @brief Bind a light into the given light slot.
 void rt_game3d_world_add_light(void *world, int64_t slot, void *light);
 /// @brief Clear all bound light slots.

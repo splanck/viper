@@ -57,6 +57,23 @@
     float _fogColor[3];
     float _fogNear, _fogFar;
     BOOL _fogEnabled;
+    /* Image-based lighting (stored per-frame from begin_frame) */
+    BOOL _iblEnabled;
+    float _iblIntensity;
+    float _iblSh[27];
+    /* Light-snapshot revision last encoded into the active render encoder.
+     * Encoder argument state persists across draws, so scene/light constant
+     * uploads are skipped while consecutive draws share a revision. */
+    uint32_t _encoderLightsRevision;
+    /* Plan 05 TAA: sub-pixel projection jitter (clip-space units) applied in
+     * begin_frame when the latched post-FX chain contains a TAA pass. The
+     * resolve pass subtracts the current-minus-previous jitter delta from the
+     * sampled velocity, so motion vectors rendered under jitter reproject
+     * cleanly. */
+    float _taaJitterClip[2];
+    float _taaPrevJitterClip[2];
+    uint32_t _taaFrameIndex;
+    BOOL _taaJitterActive;
     /* MTL-12: Shadow light view-projection matrices (stored from shadow_begin) */
     float _shadowLightVP[VGFX3D_MAX_SHADOW_LIGHTS][16];
     id<MTLTexture> _shadowDepthTexture[VGFX3D_MAX_SHADOW_LIGHTS];
@@ -64,6 +81,10 @@
     int32_t _shadowCount;
     int8_t _shadowComplete[VGFX3D_MAX_SHADOW_LIGHTS];
     float _shadowBias;
+    /* Plan 06: per-frame shadow filtering params from camera params. */
+    float _shadowStrength;
+    float _shadowSlopeBias;
+    int32_t _shadowQuality;
 }
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
@@ -136,6 +157,16 @@
 @property(nonatomic, strong) id<MTLTexture> postfxScratchTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> postfxPipeline;
 @property(nonatomic, strong) id<MTLLibrary> postfxLibrary;
+/* Plan 05: mip-chain bloom targets (half-res RGBA16F chain) + pass pipelines. */
+@property(nonatomic, strong) NSMutableArray<id<MTLTexture>> *bloomMipTextures;
+@property(nonatomic, strong) id<MTLRenderPipelineState> bloomDownPipeline;
+@property(nonatomic, strong) id<MTLRenderPipelineState> bloomUpPipeline;
+/* Plan 05: TAA resolve pipeline + ping-pong history (RGBA16F, persisted across frames). */
+@property(nonatomic, strong) id<MTLRenderPipelineState> taaResolvePipeline;
+@property(nonatomic, strong) id<MTLTexture> taaHistoryA;
+@property(nonatomic, strong) id<MTLTexture> taaHistoryB;
+@property(nonatomic) int32_t taaHistoryParity;
+@property(nonatomic) int8_t taaHistoryValid;
 @property(nonatomic, strong) id<MTLTexture> overlayColorTexture;
 @property(nonatomic, strong) id<MTLTexture> overlayMotionTexture;
 @property(nonatomic, strong) id<MTLTexture> overlayDepthTexture;
@@ -191,6 +222,7 @@
 @property(nonatomic) int32_t uploadNextRow;
 @property(nonatomic) int8_t uploadInProgress;
 @property(nonatomic) uint64_t lastUsedFrame;
+@property(nonatomic) uint64_t appliedIblIdentity;
 @end
 
 @implementation VGFXMetalCubemapCacheEntry
@@ -314,6 +346,8 @@ static NSString *
                            "    float4x4 prevViewProjection;\n"
                            "    float4x4 shadowVP[" VGFX3D_STR(
                                VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
+                                                         "    float4 iblParams;\n"
+                                                         "    float4 shIrradiance[9];\n"
                                                          "};\n"
                                                          "\n"
                                                          "struct "
@@ -730,6 +764,41 @@ static NSString *
                                                                                                                                      "    return envTex.sample(envSampler, safe_normalize3(dir, float3(0.0, 0.0, 1.0)), level(lod)).rgb;\n"
                                                                                                                                      "}\n"
                                                                                                                                      "\n"
+                                                                                                                                     "float3 env_sample_lod_base(texturecube<float> envTex,\n"
+                                                                                                                                     "                           sampler envSampler,\n"
+                                                                                                                                     "                           float3 dir,\n"
+                                                                                                                                     "                           float roughness,\n"
+                                                                                                                                     "                           float maxLod,\n"
+                                                                                                                                     "                           float lodBase) {\n"
+                                                                                                                                     "    float lod = lodBase + clamp(roughness, 0.0, 1.0) * max(maxLod, 0.0);\n"
+                                                                                                                                     "    return envTex.sample(envSampler, safe_normalize3(dir, float3(0.0, 0.0, 1.0)), level(lod)).rgb;\n"
+                                                                                                                                     "}\n"
+                                                                                                                                     "\n"
+                                                                                                                                     "float3 fresnel_schlick_roughness(float cosTheta, float3 F0, float roughness) {\n"
+                                                                                                                                     "    return F0 + (max(float3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
+                                                                                                                                     "}\n"
+                                                                                                                                     "\n"
+                                                                                                                                     "float2 env_brdf_approx(float roughness, float NdotV) {\n"
+                                                                                                                                     "    float4 c0 = float4(-1.0, -0.0275, -0.572, 0.022);\n"
+                                                                                                                                     "    float4 c1 = float4(1.0, 0.0425, 1.04, -0.04);\n"
+                                                                                                                                     "    float4 r = roughness * c0 + c1;\n"
+                                                                                                                                     "    float a004 = min(r.x * r.x, exp2(-9.28 * NdotV)) * r.x + r.y;\n"
+                                                                                                                                     "    return float2(-1.04, 1.04) * a004 + r.zw;\n"
+                                                                                                                                     "}\n"
+                                                                                                                                     "\n"
+                                                                                                                                     "float3 eval_sh9(constant PerScene &scene, float3 n) {\n"
+                                                                                                                                     "    float3 irr = scene.shIrradiance[0].rgb * 0.282095\n"
+                                                                                                                                     "        + scene.shIrradiance[1].rgb * (0.488603 * n.y)\n"
+                                                                                                                                     "        + scene.shIrradiance[2].rgb * (0.488603 * n.z)\n"
+                                                                                                                                     "        + scene.shIrradiance[3].rgb * (0.488603 * n.x)\n"
+                                                                                                                                     "        + scene.shIrradiance[4].rgb * (1.092548 * n.x * n.y)\n"
+                                                                                                                                     "        + scene.shIrradiance[5].rgb * (1.092548 * n.y * n.z)\n"
+                                                                                                                                     "        + scene.shIrradiance[6].rgb * (0.315392 * (3.0 * n.z * n.z - 1.0))\n"
+                                                                                                                                     "        + scene.shIrradiance[7].rgb * (1.092548 * n.x * n.z)\n"
+                                                                                                                                     "        + scene.shIrradiance[8].rgb * (0.546274 * (n.x * n.x - n.y * n.y));\n"
+                                                                                                                                     "    return max(irr, float3(0.0));\n"
+                                                                                                                                     "}\n"
+                                                                                                                                     "\n"
                                                                                                                                      "int texture_uv_set_at(constant PerMaterial &material, int slot) {\n"
                                                                                                                                      "    return slot < 4 ? material.textureUvSets0[slot] : material.textureUvSets1[slot - 4];\n"
                                                                                                                                      "}\n"
@@ -766,23 +835,45 @@ static NSString *
                                                                                                                                                                    "float sample_shadow_at(int shadowIndex,\n"
                                                                                                                                                                    "                       float2 uv,\n"
                                                                                                                                                                    "                       float depth,\n"
-                                                                                                                                                                   "                       constant PerScene &scene,\n"
+                                                                                                                                                                   "                       float bias,\n"
                                                                                                                                                                    "                       depth2d<float> shadowMap0,\n"
                                                                                                                                                                    "                       depth2d<float> shadowMap1,\n"
                                                                                                                                                                    "                       depth2d<float> shadowMap2,\n"
                                                                                                                                                                    "                       depth2d<float> shadowMap3,\n"
                                                                                                                                                                    "                       sampler shadowSampler) {\n"
                                                                                                                                                                    "    if (shadowIndex == 0)\n"
-                                                                                                                                                                   "        return shadowMap0.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                   "        return shadowMap0.sample_compare(shadowSampler, uv, depth - bias);\n"
                                                                                                                                                                    "    if (shadowIndex == 1)\n"
-                                                                                                                                                                   "        return shadowMap1.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                   "        return shadowMap1.sample_compare(shadowSampler, uv, depth - bias);\n"
                                                                                                                                                                    "    if (shadowIndex == 2)\n"
-                                                                                                                                                                   "        return shadowMap2.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
-                                                                                                                                                                   "    return shadowMap3.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                   "        return shadowMap2.sample_compare(shadowSampler, uv, depth - bias);\n"
+                                                                                                                                                                   "    return shadowMap3.sample_compare(shadowSampler, uv, depth - bias);\n"
                                                                                                                                                                    "}\n"
                                                                                                                                                                    "\n"
+                                                                                                                                                                   /* Plan 06: 16-point Poisson disk, deterministic dart-throwing (64-bit
+                                                                                                                                                                    * LCG, seed 80, min separation 0.4369) — matches the GLSL/HLSL twins.
+                                                                                                                                                                    * Tap subsets stride the table so 4/8-tap tiers stay distributed. */
+                                                                                                                                                                   "constant float2 kShadowPoisson[16] = {\n"
+                                                                                                                                                                   "    float2(0.482408, 0.345286), float2(0.079872, 0.641222),\n"
+                                                                                                                                                                   "    float2(-0.211339, -0.305133), float2(0.485624, -0.638176),\n"
+                                                                                                                                                                   "    float2(-0.197270, 0.252333), float2(-0.823845, 0.551135),\n"
+                                                                                                                                                                   "    float2(-0.333578, 0.886038), float2(0.835697, 0.028104),\n"
+                                                                                                                                                                   "    float2(-0.921729, -0.289255), float2(-0.184344, -0.769094),\n"
+                                                                                                                                                                   "    float2(0.449912, -0.195238), float2(0.534685, 0.795828),\n"
+                                                                                                                                                                   "    float2(-0.661694, -0.644587), float2(-0.599728, 0.062200),\n"
+                                                                                                                                                                   "    float2(0.899330, -0.413558), float2(0.200012, -0.976846)};\n"
+                                                                                                                                                                   "\n"
+                                                                                                                                                                   /* Plan 06 sampling model: normal-offset the receiver ~1.5 shadow texels
+                                                                                                                                                                    * (world units, ortho slots; derived from the shadow VP row lengths so
+                                                                                                                                                                    * far cascades offset proportionally), add a slope-proportional
+                                                                                                                                                                    * per-texel compare bias, and filter with a rotated-Poisson PCF whose
+                                                                                                                                                                    * taps use the hardware comparison sampler. iblParams carries the knobs
+                                                                                                                                                                    * (y = slope-bias factor, z = strength, w = tap count). */
                                                                                                                                                                    "float sample_shadow(constant Light &light,\n"
                                                                                                                                                                    "                    float3 worldPos,\n"
+                                                                                                                                                                   "                    float3 N,\n"
+                                                                                                                                                                   "                    float3 L,\n"
+                                                                                                                                                                   "                    float2 fragXY,\n"
                                                                                                                                                                    "                    constant PerScene &scene,\n"
                                                                                                                                                                    "                    depth2d<float> shadowMap0,\n"
                                                                                                                                                                    "                    depth2d<float> shadowMap1,\n"
@@ -792,7 +883,25 @@ static NSString *
                                                                                                                                                                    "    int shadowIndex = resolve_shadow_cascade(light, worldPos, scene);\n"
                                                                                                                                                                    "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
                                                                                                                                                                    "        return 1.0;\n"
-                                                                                                                                                                   "    float4 lc = scene.shadowVP[shadowIndex] * float4(worldPos, 1.0);\n"
+                                                                                                                                                                   "    float2 mapSize;\n"
+                                                                                                                                                                   "    if (shadowIndex == 0) mapSize = float2(shadowMap0.get_width(), shadowMap0.get_height());\n"
+                                                                                                                                                                   "    else if (shadowIndex == 1) mapSize = float2(shadowMap1.get_width(), shadowMap1.get_height());\n"
+                                                                                                                                                                   "    else if (shadowIndex == 2) mapSize = float2(shadowMap2.get_width(), shadowMap2.get_height());\n"
+                                                                                                                                                                   "    else mapSize = float2(shadowMap3.get_width(), shadowMap3.get_height());\n"
+                                                                                                                                                                   "    float2 texel = 1.0 / max(mapSize, float2(1.0));\n"
+                                                                                                                                                                   "    float texelWorld = 0.0;\n"
+                                                                                                                                                                   "    float depthScale = 0.0;\n"
+                                                                                                                                                                   "    if (light.shadowProjectionType == 0) {\n"
+                                                                                                                                                                   "        float4x4 svp = scene.shadowVP[shadowIndex];\n"
+                                                                                                                                                                   "        float3 row0 = float3(svp[0][0], svp[1][0], svp[2][0]);\n"
+                                                                                                                                                                   "        float3 row2 = float3(svp[0][2], svp[1][2], svp[2][2]);\n"
+                                                                                                                                                                   "        float l0 = length(row0);\n"
+                                                                                                                                                                   "        float l2 = length(row2);\n"
+                                                                                                                                                                   "        texelWorld = (l0 > 1e-9) ? 2.0 * texel.x / l0 : 0.0;\n"
+                                                                                                                                                                   "        depthScale = 0.5 * l2;\n"
+                                                                                                                                                                   "    }\n"
+                                                                                                                                                                   "    float3 samplePos = worldPos + N * (texelWorld * 1.5);\n"
+                                                                                                                                                                   "    float4 lc = scene.shadowVP[shadowIndex] * float4(samplePos, 1.0);\n"
                                                                                                                                                                    "    if (light.shadowProjectionType == 1 && lc.w <= 0.0001)\n"
                                                                                                                                                                    "        return 1.0;\n"
                                                                                                                                                                    "    float3 suv = light.shadowProjectionType == 1 ? lc.xyz / lc.w : lc.xyz;\n"
@@ -800,7 +909,21 @@ static NSString *
                                                                                                                                                                    "    suv.y = 1.0 - suv.y;\n"
                                                                                                                                                                    "    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || suv.z < 0.0 || suv.z > 1.0)\n"
                                                                                                                                                                    "        return 1.0;\n"
-                                                                                                                                                                   "    return sample_shadow_at(shadowIndex, suv.xy, suv.z, scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler);\n"
+                                                                                                                                                                   "    float ndl = clamp(dot(N, L), 0.05, 1.0);\n"
+                                                                                                                                                                   "    float slope = sqrt(max(1.0 - ndl * ndl, 0.0)) / ndl;\n"
+                                                                                                                                                                   "    float bias = scene.fogParams.z + scene.iblParams.y * min(slope, 8.0) * texelWorld * depthScale;\n"
+                                                                                                                                                                   "    float ign = fract(52.9829189 * fract(0.06711056 * fragXY.x + 0.00583715 * fragXY.y));\n"
+                                                                                                                                                                   "    float ca = cos(6.2831853 * ign);\n"
+                                                                                                                                                                   "    float sa = sin(6.2831853 * ign);\n"
+                                                                                                                                                                   "    int taps = clamp((int)scene.iblParams.w, 4, 16);\n"
+                                                                                                                                                                   "    int stride = 16 / taps;\n"
+                                                                                                                                                                   "    float lit = 0.0;\n"
+                                                                                                                                                                   "    for (int i = 0; i < taps; i++) {\n"
+                                                                                                                                                                   "        float2 p = kShadowPoisson[i * stride];\n"
+                                                                                                                                                                   "        float2 o = float2(p.x * ca - p.y * sa, p.x * sa + p.y * ca) * texel * 1.5;\n"
+                                                                                                                                                                   "        lit += sample_shadow_at(shadowIndex, suv.xy + o, suv.z, bias, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler);\n"
+                                                                                                                                                                   "    }\n"
+                                                                                                                                                                   "    return lit / float(taps);\n"
                                                                                                                                                                    "}\n"
                                                                                                                                                                    "\n"
                                                                                                                                                                    "fragment MainOut fragment_main(\n"
@@ -928,7 +1051,21 @@ static NSString *
                                                                                                                                                                    "            float4 aoSample = aoTex.sample(aoSampler, material_uv(in, material, 5));\n"
                                                                                                                                                                    "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
                                                                                                                                                                    "        }\n"
-                                                                                                                                                                   "        result = scene.ambientColor.rgb * baseColor * ao;\n"
+                                                                                                                                                                   "        if (material.flags1.w != 0) {\n"
+                                                                                                                                                                   "            float NdotVa = max(dot(N, V), 0.001);\n"
+                                                                                                                                                                   "            float3 F0a = mix(float3(0.04), baseColor, metallic);\n"
+                                                                                                                                                                   "            float3 Fa = fresnel_schlick_roughness(NdotVa, F0a, roughness);\n"
+                                                                                                                                                                   "            float3 kDa = (1.0 - Fa) * (1.0 - metallic);\n"
+                                                                                                                                                                   "            float3 irradiance = eval_sh9(scene, N);\n"
+                                                                                                                                                                   "            float3 Ra = reflect(-V, N);\n"
+                                                                                                                                                                   "            float3 prefiltered = env_sample_lod_base(envTex, envSampler, Ra, "
+                                                                                                                                                                   "roughness, material.scalars.z, material.scalars.w);\n"
+                                                                                                                                                                   "            float2 envAB = env_brdf_approx(roughness, NdotVa);\n"
+                                                                                                                                                                   "            result = (kDa * irradiance * baseColor + prefiltered * (F0a * envAB.x + "
+                                                                                                                                                                   "envAB.y)) * ao * scene.iblParams.x;\n"
+                                                                                                                                                                   "        } else {\n"
+                                                                                                                                                                   "            result = scene.ambientColor.rgb * baseColor * ao;\n"
+                                                                                                                                                                   "        }\n"
                                                                                                                                                                    "        for (int i = 0; i < scene.counts.x; i++) {\n"
                                                                                                                                                                    "            float3 L; float atten = 1.0;\n"
                                                                                                                                                                    "            if (lights[i].type == 0) {\n"
@@ -955,7 +1092,8 @@ static NSString *
                                                                                                                                                                    "            }\n"
                                                                                                                                                                    "            float NdotL = max(dot(N, L), 0.0);\n"
                                                                                                                                                                    "            if ((lights[i].type == 0 || lights[i].type == 3) && atten > 0.0)\n"
-                                                                                                                                                                   "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
+                                                                                                                                                                   "                atten *= mix(1.0 - scene.iblParams.z, 1.0, sample_shadow(lights[i], "
+                                                                                                                                                                   "in.worldPos, N, L, in.position.xy, "
                                                                                                                                                                    "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
                                                                                                                                                                    "            if (NdotL <= 0.0)\n"
                                                                                                                                                                    "                continue;\n"
@@ -1006,7 +1144,8 @@ static NSString *
                                                                                                                                                                    "            }\n"
                                                                                                                                                                    "            float NdotL = max(dot(N, L), 0.0);\n"
                                                                                                                                                                    "            if ((lights[i].type == 0 || lights[i].type == 3) && atten > 0.0)\n"
-                                                                                                                                                                   "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
+                                                                                                                                                                   "                atten *= mix(1.0 - scene.iblParams.z, 1.0, sample_shadow(lights[i], "
+                                                                                                                                                                   "in.worldPos, N, L, in.position.xy, "
                                                                                                                                                                    "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
                                                                                                                                                                    "            result += lights[i].color.rgb * lights[i].intensity * NdotL * "
                                                                                                                                                                    "baseColor * atten;\n"
@@ -1019,7 +1158,7 @@ static NSString *
                                                                                                                                                                    "        }\n"
                                                                                                                                                                    "    }\n"
                                                                                                                                                                    "    result += emissive;\n"
-                                                                                                                                                                   "    if (material.flags1.y != 0) {\n"
+                                                                                                                                                                   "    if (material.flags1.y != 0 && material.flags1.w == 0) {\n"
                                                                                                                                                                    "        float3 R = reflect(-V, N);\n"
                                                                                                                                                                    "        float3 envColor = env_sample(envTex, envSampler, R, envRoughness, "
                                                                                                                                                                    "material.scalars.z);\n"
@@ -1073,6 +1212,10 @@ typedef struct {
     float camera_forward[4];
     float prev_vp[16];
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
+    /* x = IBL intensity; Plan 06 shadow knobs ride the spare lanes:
+     * y = slope-bias factor, z = shadow strength, w = Poisson tap count. */
+    float ibl_params[4];
+    float sh[9][4]; /* SH-9 RGB irradiance, one coefficient per float4 */
 } mtl_per_scene_t;
 
 typedef struct {
@@ -1204,6 +1347,31 @@ static float metal_cubemap_max_lod(const rt_cubemap3d *cubemap) {
         return 0.0f;
     mip_count = vgfx3d_metal_compute_mip_count(face_size, face_size);
     return mip_count > 1 ? (float)(mip_count - 1) : 0.0f;
+}
+
+/// @brief Resolve whether a draw uses IBL environment lighting, producing the
+///   prefiltered chain's lod-base and effective max-lod for the env sampler.
+/// @details Non-IBL draws keep the full-pyramid max lod (legacy reflectivity
+///   mix); IBL draws address only the GGX-prefiltered tail of the mip chain.
+static int metal_cmd_ibl_draw(VGFXMetalContext *ctx,
+                              const vgfx3d_draw_cmd_t *cmd,
+                              float *out_lod_base,
+                              float *out_max_lod) {
+    const rt_cubemap3d *env_cm = (const rt_cubemap3d *)cmd->env_map;
+
+    *out_lod_base = 0.0f;
+    *out_max_lod = env_cm ? metal_cubemap_max_lod(env_cm) : 0.0f;
+    if (!ctx || !ctx->_iblEnabled || !cmd->ibl_env || !env_cm || !env_cm->ibl_ready)
+        return 0;
+    {
+        int64_t size = env_cm->face_size;
+        while (size > env_cm->ibl_base_size && size > 1) {
+            size >>= 1;
+            *out_lod_base += 1.0f;
+        }
+    }
+    *out_max_lod = (float)(env_cm->ibl_mip_count - 1);
+    return 1;
 }
 
 /// @brief Map a runtime color-format enum to its Metal pixel format (HDR16F → RGBA16Float, else
@@ -1584,6 +1752,7 @@ static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
     if (!rp)
         return;
     ctx.encoder = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+    ctx->_encoderLightsRevision = 0; /* fresh encoder: no constants encoded yet */
     if (!ctx.encoder)
         return;
 
@@ -1662,6 +1831,57 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
             ctx.postfxColorTexture = nil;
             ctx.postfxScratchTexture = nil;
         }
+        /* Plan 05: half-res RGBA16F bloom mip chain (min dim 8, up to 6 levels). */
+        ctx.bloomMipTextures = nil;
+        if (ctx.bloomDownPipeline && ctx.bloomUpPipeline) {
+            MTLPixelFormat hdrFmt = metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_HDR16F);
+            int32_t mw = w / 2;
+            int32_t mh = h / 2;
+            NSMutableArray<id<MTLTexture>> *mips = [NSMutableArray arrayWithCapacity:6];
+            for (int32_t i = 0; i < 6 && mw >= 1 && mh >= 1; i++) {
+                id<MTLTexture> mip = metal_new_color_texture(
+                    ctx,
+                    mw,
+                    mh,
+                    hdrFmt,
+                    MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
+                    MTLStorageModePrivate,
+                    NO);
+                if (!mip)
+                    break;
+                [mips addObject:mip];
+                if (mw / 2 < 8 || mh / 2 < 8)
+                    break;
+                mw /= 2;
+                mh /= 2;
+            }
+            if (mips.count > 0)
+                ctx.bloomMipTextures = mips;
+        }
+        /* Plan 05: TAA ping-pong history (RGBA16F, persisted across frames). */
+        ctx.taaHistoryA = nil;
+        ctx.taaHistoryB = nil;
+        ctx.taaHistoryValid = 0;
+        ctx.taaHistoryParity = 0;
+        if (ctx.taaResolvePipeline) {
+            MTLPixelFormat hdrFmt = metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_HDR16F);
+            ctx.taaHistoryA = metal_new_color_texture(
+                ctx,
+                w,
+                h,
+                hdrFmt,
+                MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
+                MTLStorageModePrivate,
+                NO);
+            ctx.taaHistoryB = metal_new_color_texture(
+                ctx,
+                w,
+                h,
+                hdrFmt,
+                MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
+                MTLStorageModePrivate,
+                NO);
+        }
     } else {
         ctx.offscreenColor = nil;
         ctx.offscreenMotion = metal_new_color_texture(ctx,
@@ -1676,6 +1896,10 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
         ctx.overlayDepthTexture = nil;
         ctx.postfxColorTexture = nil;
         ctx.postfxScratchTexture = nil;
+        ctx.bloomMipTextures = nil;
+        ctx.taaHistoryA = nil;
+        ctx.taaHistoryB = nil;
+        ctx.taaHistoryValid = 0;
     }
 
     ctx.displayTexture = nil;
@@ -2826,6 +3050,10 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "    float motionBlurIntensity;\n"
                         "    int motionBlurSamples;\n"
                         "    int overlayEnabled;\n"
+                        "    int sceneIsHdr;\n"
+                        "    int tonemapExplicit;\n"
+                        "    int bloomTexEnabled;\n"
+                        "    int taaPad;\n"
                         "};\n"
                         "vertex FullscreenVert fullscreen_vs(uint vid [[vertex_id]]) {\n"
                         "    float2 positions[4] = {float2(-1,-1), float2(1,-1), float2(-1,1), "
@@ -2853,19 +3081,45 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "}\n"
                         "float computeSsao(constant PostFXParams &p, depth2d<float> depthTex, "
                         "sampler s, float2 uv, float centerDepth) {\n"
-                        "    float radius = max(p.ssaoRadius, 0.0001) * max(p.invResolution.x, "
-                        "p.invResolution.y) * 120.0;\n"
-                        "    float2 offsets[8] = {float2(1.0, 0.0), float2(-1.0, 0.0), float2(0.0, "
-                        "1.0), float2(0.0, -1.0),\n"
-                        "                         float2(0.707, 0.707), float2(-0.707, 0.707), "
-                        "float2(0.707, -0.707), float2(-0.707, -0.707)};\n"
-                        "    int count = clamp(p.ssaoSamples, 1, 8);\n"
+                        /* Plan 05: normal-aware hemispheric AO with range check. Position is
+                         * reconstructed from depth; the normal comes from screen-space
+                         * derivatives of that position (no G-buffer). A golden-angle spiral
+                         * rotated per-pixel by interleaved-gradient noise replaces the fixed
+                         * 8-tap ring, and the smoothstep range check kills the classic
+                         * depth-only halo around silhouettes. */
+                        "    if (centerDepth >= 0.9999) return 1.0;\n"
+                        "    float3 P = reconstructWorld(p, uv, centerDepth);\n"
+                        "    float3 N = cross(dfdx(P), dfdy(P));\n"
+                        "    float nlen = length(N);\n"
+                        "    if (nlen < 1e-9) return 1.0;\n"
+                        "    N /= nlen;\n"
+                        "    float3 V = p.cameraPosition.xyz - P;\n"
+                        "    float dist = length(V);\n"
+                        "    if (dist < 1e-4) return 1.0;\n"
+                        "    if (dot(N, V / dist) < 0.0) N = -N;\n"
+                        "    float radius = max(p.ssaoRadius, 0.01);\n"
+                        "    float screenRadius = clamp(radius / dist * 0.5, 0.002, 0.05);\n"
+                        "    int count = clamp(p.ssaoSamples, 4, 16);\n"
+                        "    float2 px = uv / max(p.invResolution, float2(1e-6));\n"
+                        "    float ign = fract(52.9829189 * fract(0.06711056 * px.x + "
+                        "0.00583715 * px.y));\n"
                         "    float occ = 0.0;\n"
+                        "    float wsum = 0.0;\n"
                         "    for (int i = 0; i < count; i++) {\n"
-                        "        float sd = sampleDepth(depthTex, s, uv + offsets[i] * radius);\n"
-                        "        occ += max(sd - centerDepth, 0.0);\n"
+                        "        float ang = (float(i) + ign) * 2.39996323;\n"
+                        "        float rad = screenRadius * sqrt((float(i) + 0.5) / "
+                        "float(count));\n"
+                        "        float2 suv = uv + float2(cos(ang), sin(ang)) * rad;\n"
+                        "        float sd = sampleDepth(depthTex, s, suv);\n"
+                        "        float3 Ps = reconstructWorld(p, suv, sd);\n"
+                        "        float3 d = Ps - P;\n"
+                        "        float dl = length(d);\n"
+                        "        if (dl < 1e-6) continue;\n"
+                        "        float rangeCheck = 1.0 - smoothstep(0.0, 1.0, dl / radius);\n"
+                        "        occ += max(dot(N, d / dl) - 0.025, 0.0) * rangeCheck;\n"
+                        "        wsum += 1.0;\n"
                         "    }\n"
-                        "    return 1.0 - clamp((occ / float(count)) * p.ssaoIntensity * 32.0, "
+                        "    return 1.0 - clamp(occ / max(wsum, 1.0) * p.ssaoIntensity * 2.0, "
                         "0.0, 1.0);\n"
                         "}\n"
                         "float2 cameraVelocity(constant PostFXParams &p, float2 uv, float3 "
@@ -2956,6 +3210,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "    depth2d<float> depthTex [[texture(1)]],\n"
                               "    texture2d<float> motionTex [[texture(2)]],\n"
                               "    texture2d<float> overlayTex [[texture(3)]],\n"
+                              "    texture2d<float> bloomTex [[texture(4)]],\n"
                               "    sampler s [[sampler(0)]],\n"
                               "    constant PostFXParams &p [[buffer(0)]]) {\n"
                               "    float3 color = sampleScene(sceneTex, s, in.uv);\n"
@@ -2970,6 +3225,12 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "    if (p.fxaaEnabled != 0) color = applyFxaa(p, sceneTex, s, "
                               "in.uv, color);\n"
                               "    if (p.bloomEnabled) {\n"
+                              "        if (p.bloomTexEnabled != 0) {\n"
+                              /* Plan 05: composite the prefiltered mip-chain result; the
+                               * chain already applied threshold + progressive blur. */
+                              "            color += bloomTex.sample(s, in.uv).rgb * "
+                              "p.bloomStrength;\n"
+                              "        } else {\n"
                               "        float2 bloomStep = p.invResolution * "
                               "float(min(max(p.bloomPasses, 0), 32));\n"
                               "        float3 threshold = float3(p.bloomThreshold);\n"
@@ -2983,6 +3244,15 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "        bloom += max(sampleScene(sceneTex, s, in.uv - "
                               "float2(0.0, bloomStep.y)) - threshold, float3(0.0));\n"
                               "        color += bloom * (p.bloomStrength / 5.0);\n"
+                              "        }\n"
+                              "    }\n"
+                              "    if (p.tonemapMode == 0 && p.tonemapExplicit != 0 && "
+                              "p.sceneIsHdr != 0) {\n"
+                              /* Plan 05 gamma fix: explicit "tonemap off" on a linear-HDR
+                               * scene still applies exposure + gamma-out so its output
+                               * transform matches modes 1/2. */
+                              "        color = pow(clamp(color * p.tonemapExposure, 0.0, 1.0), "
+                              "float3(1.0 / 2.2));\n"
                               "    }\n"
                               "    if (p.tonemapMode == 1) {\n"
                               "        color *= p.tonemapExposure;\n"
@@ -3015,7 +3285,137 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "1.0));\n"
                               "    }\n"
                               "    return float4(color, 1.0);\n"
-                              "}\n"]
+                              "}\n"],
+                /* Plan 05: mip-chain bloom passes (13-tap Karis downsample + 3x3 tent
+                 * upsample, additive) and the TAA resolve pass. */
+                [NSString
+                    stringWithUTF8String:
+                        "struct BloomParams {\n"
+                        "    float2 srcInvSize;\n"
+                        "    float threshold;\n"
+                        "    int firstPass;\n"
+                        "};\n"
+                        "float bloom_luma(float3 c) { return dot(c, float3(0.2126, 0.7152, "
+                        "0.0722)); }\n"
+                        "float3 bloom_karis(float3 c) { return c / (1.0 + bloom_luma(c)); }\n"
+                        "fragment float4 bloom_down_fs(FullscreenVert in [[stage_in]],\n"
+                        "    texture2d<float> src [[texture(0)]], sampler s [[sampler(0)]],\n"
+                        "    constant BloomParams &p [[buffer(0)]]) {\n"
+                        "    float2 uv = in.uv;\n"
+                        "    float2 ts = p.srcInvSize;\n"
+                        "    float3 a = src.sample(s, uv + ts * float2(-2.0, -2.0)).rgb;\n"
+                        "    float3 b = src.sample(s, uv + ts * float2(0.0, -2.0)).rgb;\n"
+                        "    float3 c = src.sample(s, uv + ts * float2(2.0, -2.0)).rgb;\n"
+                        "    float3 d = src.sample(s, uv + ts * float2(-2.0, 0.0)).rgb;\n"
+                        "    float3 e = src.sample(s, uv).rgb;\n"
+                        "    float3 f = src.sample(s, uv + ts * float2(2.0, 0.0)).rgb;\n"
+                        "    float3 g = src.sample(s, uv + ts * float2(-2.0, 2.0)).rgb;\n"
+                        "    float3 h = src.sample(s, uv + ts * float2(0.0, 2.0)).rgb;\n"
+                        "    float3 i2 = src.sample(s, uv + ts * float2(2.0, 2.0)).rgb;\n"
+                        "    float3 j = src.sample(s, uv + ts * float2(-1.0, -1.0)).rgb;\n"
+                        "    float3 k = src.sample(s, uv + ts * float2(1.0, -1.0)).rgb;\n"
+                        "    float3 l = src.sample(s, uv + ts * float2(-1.0, 1.0)).rgb;\n"
+                        "    float3 m = src.sample(s, uv + ts * float2(1.0, 1.0)).rgb;\n"
+                        "    float3 col;\n"
+                        "    if (p.firstPass != 0) {\n"
+                        /* Karis average per overlapping box on the first (scene) downsample
+                         * suppresses single-pixel fireflies before thresholding. */
+                        "        col = bloom_karis((j + k + l + m) * 0.25) * 0.5;\n"
+                        "        col += bloom_karis((a + b + d + e) * 0.25) * 0.125;\n"
+                        "        col += bloom_karis((b + c + e + f) * 0.25) * 0.125;\n"
+                        "        col += bloom_karis((d + e + g + h) * 0.25) * 0.125;\n"
+                        "        col += bloom_karis((e + f + h + i2) * 0.25) * 0.125;\n"
+                        "        float lum = bloom_luma(col);\n"
+                        "        float scale = (lum > p.threshold) ? (lum - p.threshold) / "
+                        "(lum + 1e-6) : 0.0;\n"
+                        "        col *= scale;\n"
+                        "    } else {\n"
+                        "        col = (j + k + l + m) * (0.5 * 0.25);\n"
+                        "        col += (a + b + d + e) * (0.125 * 0.25);\n"
+                        "        col += (b + c + e + f) * (0.125 * 0.25);\n"
+                        "        col += (d + e + g + h) * (0.125 * 0.25);\n"
+                        "        col += (e + f + h + i2) * (0.125 * 0.25);\n"
+                        "    }\n"
+                        "    return float4(col, 1.0);\n"
+                        "}\n"
+                        "fragment float4 bloom_up_fs(FullscreenVert in [[stage_in]],\n"
+                        "    texture2d<float> src [[texture(0)]], sampler s [[sampler(0)]],\n"
+                        "    constant BloomParams &p [[buffer(0)]]) {\n"
+                        "    float2 uv = in.uv;\n"
+                        "    float2 ts = p.srcInvSize;\n"
+                        "    float3 col = src.sample(s, uv + ts * float2(-1.0, -1.0)).rgb;\n"
+                        "    col += src.sample(s, uv + ts * float2(0.0, -1.0)).rgb * 2.0;\n"
+                        "    col += src.sample(s, uv + ts * float2(1.0, -1.0)).rgb;\n"
+                        "    col += src.sample(s, uv + ts * float2(-1.0, 0.0)).rgb * 2.0;\n"
+                        "    col += src.sample(s, uv).rgb * 4.0;\n"
+                        "    col += src.sample(s, uv + ts * float2(1.0, 0.0)).rgb * 2.0;\n"
+                        "    col += src.sample(s, uv + ts * float2(-1.0, 1.0)).rgb;\n"
+                        "    col += src.sample(s, uv + ts * float2(0.0, 1.0)).rgb * 2.0;\n"
+                        "    col += src.sample(s, uv + ts * float2(1.0, 1.0)).rgb;\n"
+                        "    return float4(col * (1.0 / 16.0), 1.0);\n"
+                        "}\n"],
+                [NSString
+                    stringWithUTF8String:
+                        "struct TAAParams {\n"
+                        "    float4x4 invViewProjection;\n"
+                        "    float4x4 prevViewProjection;\n"
+                        "    float2 invResolution;\n"
+                        "    float2 jitterDelta;\n"
+                        "    float blend;\n"
+                        "    int historyValid;\n"
+                        "    float2 pad0;\n"
+                        "};\n"
+                        "fragment float4 taa_resolve_fs(FullscreenVert in [[stage_in]],\n"
+                        "    texture2d<float> currTex [[texture(0)]],\n"
+                        "    texture2d<float> histTex [[texture(1)]],\n"
+                        "    texture2d<float> motionTex [[texture(2)]],\n"
+                        "    depth2d<float> depthTex [[texture(3)]],\n"
+                        "    sampler s [[sampler(0)]],\n"
+                        "    constant TAAParams &p [[buffer(0)]]) {\n"
+                        "    float3 curr = currTex.sample(s, in.uv).rgb;\n"
+                        "    if (p.historyValid == 0)\n"
+                        "        return float4(curr, 1.0);\n"
+                        "    float3 motionSample = motionTex.sample(s, in.uv).rgb;\n"
+                        "    float2 velocity = motionSample.xy * 2.0 - 1.0;\n"
+                        "    if (motionSample.z < 0.5) {\n"
+                        /* Static geometry: analytic camera reprojection through the
+                         * current inverse VP and the previous VP. */
+                        "        float depth = depthTex.sample(s, in.uv);\n"
+                        "        float4 clip = float4(in.uv * 2.0 - 1.0, depth * 2.0 - 1.0, "
+                        "1.0);\n"
+                        "        float4 world = p.invViewProjection * clip;\n"
+                        "        world /= max(abs(world.w), 0.0001) * (world.w < 0.0 ? -1.0 : "
+                        "1.0);\n"
+                        "        float4 prevClip = p.prevViewProjection * float4(world.xyz, "
+                        "1.0);\n"
+                        "        float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * "
+                        "max(fabs(prevClip.w), 0.0001);\n"
+                        "        float2 prevUv = prevClip.xy / prevW * 0.5 + 0.5;\n"
+                        "        velocity = in.uv - prevUv;\n"
+                        "    }\n"
+                        /* Motion vectors were rendered under projection jitter; remove the
+                         * current-minus-previous jitter delta before reprojecting. */
+                        "    velocity -= p.jitterDelta;\n"
+                        "    float2 histUv = in.uv - velocity;\n"
+                        "    if (histUv.x < 0.0 || histUv.x > 1.0 || histUv.y < 0.0 || "
+                        "histUv.y > 1.0)\n"
+                        "        return float4(curr, 1.0);\n"
+                        "    float3 hist = histTex.sample(s, histUv).rgb;\n"
+                        "    float3 cmin = curr;\n"
+                        "    float3 cmax = curr;\n"
+                        "    for (int dy = -1; dy <= 1; dy++)\n"
+                        "        for (int dx = -1; dx <= 1; dx++) {\n"
+                        "            if (dx == 0 && dy == 0) continue;\n"
+                        "            float3 n = currTex.sample(s, in.uv + float2(dx, dy) * "
+                        "p.invResolution).rgb;\n"
+                        "            cmin = min(cmin, n);\n"
+                        "            cmax = max(cmax, n);\n"
+                        "        }\n"
+                        "    hist = clamp(hist, cmin, cmax);\n"
+                        "    float w = clamp(p.blend, 0.0, 0.98);\n"
+                        "    w *= 1.0 - clamp(length(velocity) * 8.0, 0.0, 0.85);\n"
+                        "    return float4(mix(curr, hist, w), 1.0);\n"
+                        "}\n"]
             ];
             NSString *postfxSrc = [postfxChunks componentsJoinedByString:@ ""];
 
@@ -3031,6 +3431,51 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                     ppd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
                     ctx.postfxPipeline = [device newRenderPipelineStateWithDescriptor:ppd
                                                                                 error:&pfxErr];
+                }
+                /* Plan 05: bloom mip-chain pipelines (RGBA16F targets; the upsample pass
+                 * accumulates via additive blending) and the TAA resolve pipeline. */
+                if (pfxVS) {
+                    id<MTLFunction> downFS =
+                        [ctx.postfxLibrary newFunctionWithName:@ "bloom_down_fs"];
+                    id<MTLFunction> upFS = [ctx.postfxLibrary newFunctionWithName:@ "bloom_up_fs"];
+                    id<MTLFunction> taaFS =
+                        [ctx.postfxLibrary newFunctionWithName:@ "taa_resolve_fs"];
+                    MTLPixelFormat hdrFmt =
+                        metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_HDR16F);
+                    if (downFS) {
+                        MTLRenderPipelineDescriptor *bd =
+                            [[MTLRenderPipelineDescriptor alloc] init];
+                        bd.vertexFunction = pfxVS;
+                        bd.fragmentFunction = downFS;
+                        bd.colorAttachments[0].pixelFormat = hdrFmt;
+                        ctx.bloomDownPipeline = [device newRenderPipelineStateWithDescriptor:bd
+                                                                                       error:&pfxErr];
+                    }
+                    if (upFS) {
+                        MTLRenderPipelineDescriptor *bu =
+                            [[MTLRenderPipelineDescriptor alloc] init];
+                        bu.vertexFunction = pfxVS;
+                        bu.fragmentFunction = upFS;
+                        bu.colorAttachments[0].pixelFormat = hdrFmt;
+                        bu.colorAttachments[0].blendingEnabled = YES;
+                        bu.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+                        bu.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+                        bu.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorOne;
+                        bu.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
+                        bu.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+                        bu.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorZero;
+                        ctx.bloomUpPipeline = [device newRenderPipelineStateWithDescriptor:bu
+                                                                                     error:&pfxErr];
+                    }
+                    if (taaFS) {
+                        MTLRenderPipelineDescriptor *td =
+                            [[MTLRenderPipelineDescriptor alloc] init];
+                        td.vertexFunction = pfxVS;
+                        td.fragmentFunction = taaFS;
+                        td.colorAttachments[0].pixelFormat = hdrFmt;
+                        ctx.taaResolvePipeline = [device newRenderPipelineStateWithDescriptor:td
+                                                                                        error:&pfxErr];
+                    }
                 }
             }
             /* Non-fatal: postfx disabled if pipeline compilation fails */
@@ -3127,6 +3572,29 @@ static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
 
 /// @brief Begin a 3D frame: advance the frame serial, set up camera uniforms, and open the scene
 /// pass.
+/// @brief Radical-inverse Halton sequence sample for TAA sub-pixel jitter.
+static float metal_halton(uint32_t index, uint32_t base) {
+    float f = 1.0f;
+    float r = 0.0f;
+    while (index > 0) {
+        f /= (float)base;
+        r += f * (float)(index % base);
+        index /= base;
+    }
+    return r;
+}
+
+/// @brief True when the exported postfx chain contains an effect of @p type_value.
+static int metal_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
+    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].type == type_value)
+            return 1;
+    }
+    return 0;
+}
+
 static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -3141,6 +3609,36 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx.frameSerial++;
         float vp[16];
         mat4f_mul(cam->projection, cam->view, vp);
+        /* Plan 05 TAA: apply Halton(2,3) sub-pixel jitter to the scene pass VP when the
+         * latched chain contains a TAA resolve. Jitter is injected before inv/prev VP
+         * derivation so every consumer this frame sees one consistent (jittered) VP; the
+         * resolve pass removes the current-minus-previous jitter delta from velocities.
+         * Overlay passes (load_existing_color) keep the previous state so UI stays fixed
+         * and the per-frame jitter sequence advances exactly once per frame. */
+        if (!ctx.rttActive && !cam->load_existing_color) {
+            ctx->_taaPrevJitterClip[0] = ctx->_taaJitterClip[0];
+            ctx->_taaPrevJitterClip[1] = ctx->_taaJitterClip[1];
+            ctx->_taaJitterClip[0] = 0.0f;
+            ctx->_taaJitterClip[1] = 0.0f;
+            ctx->_taaJitterActive = NO;
+            if (ctx.gpuPostfxEnabled && ctx.gpuPostfxChainValid && ctx.taaResolvePipeline &&
+                ctx.width > 0 && ctx.height > 0) {
+                vgfx3d_postfx_chain_t chain = ctx.gpuPostfxChain;
+                if (metal_chain_has_effect(&chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA)) {
+                    uint32_t idx = (ctx->_taaFrameIndex++ & 7u) + 1u;
+                    float jx = (metal_halton(idx, 2) - 0.5f) * 2.0f / (float)ctx.width;
+                    float jy = (metal_halton(idx, 3) - 0.5f) * 2.0f / (float)ctx.height;
+                    ctx->_taaJitterClip[0] = jx;
+                    ctx->_taaJitterClip[1] = jy;
+                    ctx->_taaJitterActive = YES;
+                    /* Row-major clip-space translate: x-row += jx * w-row, y-row += jy * w-row. */
+                    for (int jc = 0; jc < 4; jc++) {
+                        vp[0 * 4 + jc] += jx * vp[3 * 4 + jc];
+                        vp[1 * 4 + jc] += jy * vp[3 * 4 + jc];
+                    }
+                }
+            }
+        }
         if (vgfx3d_invert_matrix4(vp, inv_vp) != 0)
             mat4f_identity(inv_vp);
 
@@ -3179,6 +3677,12 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->_fogColor[0] = cam->fog_color[0];
         ctx->_fogColor[1] = cam->fog_color[1];
         ctx->_fogColor[2] = cam->fog_color[2];
+        ctx->_iblEnabled = cam->ibl_enabled ? YES : NO;
+        ctx->_iblIntensity = cam->ibl_intensity;
+        memcpy(ctx->_iblSh, cam->ibl_sh, sizeof(ctx->_iblSh));
+        ctx->_shadowStrength = cam->shadow_strength;
+        ctx->_shadowSlopeBias = cam->shadow_slope_bias;
+        ctx->_shadowQuality = cam->shadow_quality;
 
         /* Reuse the command buffer if one is already open (multi-pass frame).
          * RTT end_frame commits and nils the cmdBuf, so on-screen passes
@@ -3240,10 +3744,18 @@ static int64_t metal_get_native_texture_caps(void *ctx_ptr) {
     caps |= RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
 #if defined(__aarch64__)
     caps |= RT_CANVAS3D_BACKEND_CAP_ASTC | RT_CANVAS3D_BACKEND_CAP_ETC2;
+    /* Apple silicon exposes desktop BCn formats when the device reports BC support. */
+    if ([ctx.device respondsToSelector:@selector(supportsBCTextureCompression)] &&
+        ctx.device.supportsBCTextureCompression)
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_BC1 |
+                RT_CANVAS3D_BACKEND_CAP_BC3 | RT_CANVAS3D_BACKEND_CAP_BC4 |
+                RT_CANVAS3D_BACKEND_CAP_BC5;
 #else
     if ([ctx.device respondsToSelector:@selector(supportsBCTextureCompression)] &&
         ctx.device.supportsBCTextureCompression)
-        caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_BC1 |
+                RT_CANVAS3D_BACKEND_CAP_BC3 | RT_CANVAS3D_BACKEND_CAP_BC4 |
+                RT_CANVAS3D_BACKEND_CAP_BC5;
 #endif
     return caps;
 }
@@ -3255,6 +3767,14 @@ static MTLPixelFormat metal_native_texture_pixel_format(const vgfx3d_native_text
         return MTLPixelFormatInvalid;
     if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
         return MTLPixelFormatBC7_RGBAUnorm;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1)
+        return MTLPixelFormatBC1_RGBA;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3)
+        return MTLPixelFormatBC3_RGBA;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4)
+        return MTLPixelFormatBC4_RUnorm;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5)
+        return MTLPixelFormatBC5_RGUnorm;
     if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2)
         return MTLPixelFormatEAC_RGBA8;
     if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC) {
@@ -3661,6 +4181,83 @@ static id<MTLTexture> metal_get_material_texture(VGFXMetalContext *ctx,
     return pixels_ptr ? metal_get_cached_texture(ctx, pixels_ptr) : nil;
 }
 
+/// @brief Upload one full face image (BGRA-swizzled) to a specific cubemap mip level.
+static int metal_upload_rgba_to_bgra_cubemap_level(
+    id<MTLTexture> tex, const uint8_t *rgba, int32_t w, int32_t h, int32_t face, int32_t level) {
+    uint8_t *bgra;
+    size_t pixel_count;
+
+    if (!tex || !rgba || w <= 0 || h <= 0 || face < 0 || face >= 6 || level < 0)
+        return 0;
+    pixel_count = (size_t)w * (size_t)h;
+    if (pixel_count > SIZE_MAX / 4u)
+        return 0;
+    bgra = (uint8_t *)malloc(pixel_count * 4u);
+    if (!bgra)
+        return 0;
+    for (size_t i = 0; i < pixel_count; i++) {
+        bgra[i * 4 + 0] = rgba[i * 4 + 2];
+        bgra[i * 4 + 1] = rgba[i * 4 + 1];
+        bgra[i * 4 + 2] = rgba[i * 4 + 0];
+        bgra[i * 4 + 3] = rgba[i * 4 + 3];
+    }
+    [tex replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
+           mipmapLevel:(NSUInteger)level
+                 slice:(NSUInteger)face
+             withBytes:bgra
+           bytesPerRow:(NSUInteger)(w * 4)
+         bytesPerImage:(NSUInteger)(pixel_count * 4u)];
+    free(bgra);
+    return 1;
+}
+
+/// @brief Overlay the cubemap's GGX-prefiltered IBL chain onto the texture's tail mips.
+/// @details Mirrors the OpenGL backend: box mips above level_base keep the skybox
+///   sharp; levels level_base.. are replaced with the prefiltered chain so
+///   roughness-mapped environment lookups integrate correctly. Idempotent per
+///   ibl_identity; re-applied after base-face re-uploads.
+static void metal_apply_ibl_mips(VGFXMetalContext *ctx,
+                                 VGFXMetalCubemapCacheEntry *entry,
+                                 const rt_cubemap3d *cubemap) {
+    int32_t level_base = 0;
+    int32_t size;
+
+    if (!ctx || !entry || !entry.texture || entry.uploadInProgress || !cubemap ||
+        !cubemap->ibl_ready || cubemap->ibl_mip_count <= 0)
+        return;
+    if (entry.appliedIblIdentity == cubemap->ibl_identity)
+        return;
+    size = entry.faceSize;
+    while (size > cubemap->ibl_base_size && size > 1) {
+        size >>= 1;
+        level_base++;
+    }
+    if (size != cubemap->ibl_base_size)
+        return;
+    if ((NSUInteger)(level_base + cubemap->ibl_mip_count) > entry.texture.mipmapLevelCount)
+        return;
+    for (int32_t m = 0; m < cubemap->ibl_mip_count; m++) {
+        for (int f = 0; f < 6; f++) {
+            int32_t w = 0;
+            int32_t h = 0;
+            uint8_t *rgba = NULL;
+
+            if (vgfx3d_unpack_pixels_rgba(cubemap->ibl_mips[m][f], &w, &h, &rgba) != 0 || !rgba) {
+                free(rgba);
+                return;
+            }
+            if (!metal_upload_rgba_to_bgra_cubemap_level(
+                    entry.texture, rgba, w, h, f, level_base + m)) {
+                free(rgba);
+                return;
+            }
+            metal_record_texture_upload_bytes(ctx, (uint64_t)(uint32_t)w * (uint32_t)h * 4u);
+            free(rgba);
+        }
+    }
+    entry.appliedIblIdentity = cubemap->ibl_identity;
+}
+
 /// @brief Upload more of an in-progress cubemap (face by face, row band by row band) within budget.
 /// @return 1 if all six faces finished this call, 0 if more remains.
 static int metal_continue_cubemap_upload(VGFXMetalContext *ctx,
@@ -3720,6 +4317,7 @@ static int metal_continue_cubemap_upload(VGFXMetalContext *ctx,
     entry.pendingGeneration = 0;
     entry.uploadInProgress = 0;
     metal_generate_mipmaps(ctx, entry.texture);
+    metal_apply_ibl_mips(ctx, entry, cubemap);
     return 1;
 }
 
@@ -3753,6 +4351,7 @@ static int metal_start_cubemap_upload(VGFXMetalContext *ctx,
     entry.uploadFace = 0;
     entry.uploadNextRow = 0;
     entry.uploadInProgress = 1;
+    entry.appliedIblIdentity = 0; /* base faces changed: re-overlay after upload */
     entry.lastUsedFrame = ctx.frameSerial;
     metal_continue_cubemap_upload(ctx, entry, cubemap);
     return 1;
@@ -3773,6 +4372,7 @@ static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_c
     generation = vgfx3d_get_cubemap_generation(cubemap);
     if (cached && cached.texture && cached.generation == generation) {
         cached.lastUsedFrame = ctx.frameSerial;
+        metal_apply_ibl_mips(ctx, cached, cubemap);
         return cached.texture;
     }
     if (cached && cached.pendingGeneration == generation && cached.uploadInProgress) {
@@ -4073,8 +4673,18 @@ static void metal_submit_draw(void *ctx_ptr,
         obj.flags1[3] = morph_status.has_normal_deltas;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
+        /* Image-based lighting resolution for this draw (also used at env bind). */
+        float ibl_env_lod_base = 0.0f;
+        float ibl_env_max_lod = 0.0f;
+        int ibl_draw = metal_cmd_ibl_draw(ctx, cmd, &ibl_env_lod_base, &ibl_env_max_lod);
+        /* Scene + light constants persist in the encoder; re-encode only when
+         * the queued light-snapshot revision changes (0 = always encode). */
+        int lights_dirty = (cmd->lights_revision == 0 ||
+                            cmd->lights_revision != ctx->_encoderLightsRevision);
+
         /* Per-scene (includes MTL-07 fog) */
         mtl_per_scene_t scene;
+        if (lights_dirty) {
         memset(&scene, 0, sizeof(scene));
         memcpy(scene.cp, ctx->_camPos, sizeof(float) * 3);
         scene.cp[3] = ctx->_camIsOrtho ? 1.0f : 0.0f;
@@ -4094,11 +4704,22 @@ static void metal_submit_draw(void *ctx_ptr,
         /* MTL-12: Shadow mapping */
         scene.counts[1] = ctx->_shadowCount;
         memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
+        scene.ibl_params[0] = ctx->_iblIntensity;
+        scene.ibl_params[1] = ctx->_shadowSlopeBias;
+        scene.ibl_params[2] = ctx->_shadowStrength;
+        scene.ibl_params[3] =
+            (float)(ctx->_shadowQuality <= 0 ? 4 : (ctx->_shadowQuality == 1 ? 8 : 16));
+        for (int sh_k = 0; sh_k < 9; sh_k++) {
+            scene.sh[sh_k][0] = ctx->_iblSh[sh_k * 3 + 0];
+            scene.sh[sh_k][1] = ctx->_iblSh[sh_k * 3 + 1];
+            scene.sh[sh_k][2] = ctx->_iblSh[sh_k * 3 + 2];
+        }
         transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
         for (int32_t slot = 0; slot < ctx->_shadowCount && slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
             transpose4x4(ctx->_shadowLightVP[slot], scene.shadow_vp[slot]);
         [ctx.encoder setVertexBytes:&scene length:sizeof(scene) atIndex:2];
         [ctx.encoder setFragmentBytes:&scene length:sizeof(scene) atIndex:0];
+        }
 
         /* Per-material (includes MTL-04/05/06 map flags) */
         mtl_per_material_t mat;
@@ -4120,8 +4741,8 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.ec[3] = 0;
         mat.scalars[0] = cmd->alpha;
         mat.scalars[1] = cmd->reflectivity;
-        mat.scalars[2] =
-            cmd->env_map ? metal_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
+        mat.scalars[2] = ibl_env_max_lod;
+        mat.scalars[3] = ibl_env_lod_base;
         mat.pbrScalars0[0] = cmd->metallic;
         mat.pbrScalars0[1] = cmd->roughness;
         mat.pbrScalars0[2] = cmd->ao;
@@ -4133,8 +4754,9 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.flags0[2] = (cmd->normal_map || cmd->normal_map_asset) ? 1 : 0;
         mat.flags0[3] = (cmd->specular_map || cmd->specular_map_asset) ? 1 : 0;
         mat.flags1[0] = (cmd->emissive_map || cmd->emissive_map_asset) ? 1 : 0;
-        mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
+        mat.flags1[1] = (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) ? 1 : 0;
         mat.flags1[2] = has_complete_splat;
+        mat.flags1[3] = ibl_draw;
         mat.pbrFlags[0] = cmd->workflow;
         mat.pbrFlags[1] = cmd->alpha_mode;
         mat.pbrFlags[2] =
@@ -4275,7 +4897,7 @@ static void metal_submit_draw(void *ctx_ptr,
                 }
             }
         }
-        if (cmd->env_map && cmd->reflectivity > 0.0001f) {
+        if (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) {
             id<MTLTexture> envTex =
                 metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
             if (envTex)
@@ -4283,7 +4905,7 @@ static void metal_submit_draw(void *ctx_ptr,
         }
 
         /* Lights — always set buffer 2, even if empty (prevents validation warnings) */
-        {
+        if (lights_dirty) {
             mtl_light_t ml[VGFX3D_MAX_LIGHTS];
             memset(ml, 0, sizeof(ml));
             for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
@@ -4317,6 +4939,7 @@ static void metal_submit_draw(void *ctx_ptr,
                     ? (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count)
                     : 1;
             [ctx.encoder setFragmentBytes:ml length:sizeof(mtl_light_t) * buf_count atIndex:2];
+            ctx->_encoderLightsRevision = cmd->lights_revision;
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
@@ -4562,6 +5185,7 @@ static void metal_shadow_begin(
         rp.depthAttachment.clearDepth = 1.0;
 
         ctx.encoder = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+    ctx->_encoderLightsRevision = 0; /* fresh encoder: no constants encoded yet */
         if (!ctx.encoder) {
             ctx->_shadowPassSlot = -1;
             return;
@@ -4807,7 +5431,17 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         obj.flags1[3] = morph_status.has_normal_deltas;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
+        /* Image-based lighting resolution for this draw (also used at env bind). */
+        float ibl_env_lod_base = 0.0f;
+        float ibl_env_max_lod = 0.0f;
+        int ibl_draw = metal_cmd_ibl_draw(ctx, cmd, &ibl_env_lod_base, &ibl_env_max_lod);
+        /* Scene + light constants persist in the encoder; re-encode only when
+         * the queued light-snapshot revision changes (0 = always encode). */
+        int lights_dirty = (cmd->lights_revision == 0 ||
+                            cmd->lights_revision != ctx->_encoderLightsRevision);
+
         mtl_per_scene_t scene;
+        if (lights_dirty) {
         memset(&scene, 0, sizeof(scene));
         memcpy(scene.cp, ctx->_camPos, sizeof(float) * 3);
         scene.cp[3] = ctx->_camIsOrtho ? 1.0f : 0.0f;
@@ -4826,11 +5460,22 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                               : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count);
         scene.counts[1] = ctx->_shadowCount;
         memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
+        scene.ibl_params[0] = ctx->_iblIntensity;
+        scene.ibl_params[1] = ctx->_shadowSlopeBias;
+        scene.ibl_params[2] = ctx->_shadowStrength;
+        scene.ibl_params[3] =
+            (float)(ctx->_shadowQuality <= 0 ? 4 : (ctx->_shadowQuality == 1 ? 8 : 16));
+        for (int sh_k = 0; sh_k < 9; sh_k++) {
+            scene.sh[sh_k][0] = ctx->_iblSh[sh_k * 3 + 0];
+            scene.sh[sh_k][1] = ctx->_iblSh[sh_k * 3 + 1];
+            scene.sh[sh_k][2] = ctx->_iblSh[sh_k * 3 + 2];
+        }
         transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
         for (int32_t slot = 0; slot < ctx->_shadowCount && slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
             transpose4x4(ctx->_shadowLightVP[slot], scene.shadow_vp[slot]);
         [ctx.encoder setVertexBytes:&scene length:sizeof(scene) atIndex:2];
         [ctx.encoder setFragmentBytes:&scene length:sizeof(scene) atIndex:0];
+        }
 
         mtl_per_material_t mat;
         int has_complete_splat = vgfx3d_metal_has_complete_splat(cmd->has_splat,
@@ -4850,8 +5495,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat.ec[2] = cmd->emissive_color[2];
         mat.scalars[0] = cmd->alpha;
         mat.scalars[1] = cmd->reflectivity;
-        mat.scalars[2] =
-            cmd->env_map ? metal_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
+        mat.scalars[2] = ibl_env_max_lod;
+        mat.scalars[3] = ibl_env_lod_base;
         mat.pbrScalars0[0] = cmd->metallic;
         mat.pbrScalars0[1] = cmd->roughness;
         mat.pbrScalars0[2] = cmd->ao;
@@ -4863,8 +5508,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat.flags0[2] = (cmd->normal_map || cmd->normal_map_asset) ? 1 : 0;
         mat.flags0[3] = (cmd->specular_map || cmd->specular_map_asset) ? 1 : 0;
         mat.flags1[0] = (cmd->emissive_map || cmd->emissive_map_asset) ? 1 : 0;
-        mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
+        mat.flags1[1] = (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) ? 1 : 0;
         mat.flags1[2] = has_complete_splat;
+        mat.flags1[3] = ibl_draw;
         mat.pbrFlags[0] = cmd->workflow;
         mat.pbrFlags[1] = cmd->alpha_mode;
         mat.pbrFlags[2] =
@@ -5002,7 +5648,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 }
             }
         }
-        if (cmd->env_map && cmd->reflectivity > 0.0001f) {
+        if (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) {
             id<MTLTexture> envTex =
                 metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
             if (envTex)
@@ -5010,7 +5656,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         }
 
         /* Lights */
-        {
+        if (lights_dirty) {
             mtl_light_t ml[VGFX3D_MAX_LIGHTS];
             memset(ml, 0, sizeof(ml));
             for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
@@ -5043,6 +5689,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                              ? (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count)
                              : 1;
             [ctx.encoder setFragmentBytes:ml length:sizeof(mtl_light_t) * bc atIndex:2];
+            ctx->_encoderLightsRevision = cmd->lights_revision;
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
@@ -5084,7 +5731,30 @@ typedef struct {
     float motionBlurIntensity;
     int32_t motionBlurSamples;
     int32_t overlayEnabled;
+    /* Plan 05 additions (16-byte tail keeps the MSL constant-buffer size in sync). */
+    int32_t sceneIsHdr;
+    int32_t tonemapExplicit;
+    int32_t bloomTexEnabled;
+    int32_t taaPad;
 } mtl_postfx_params_t;
+
+/* C-side bloom pass params (must match MSL BloomParams). */
+typedef struct {
+    float srcInvSize[2];
+    float threshold;
+    int32_t firstPass;
+} mtl_bloom_params_t;
+
+/* C-side TAA resolve params (must match MSL TAAParams). */
+typedef struct {
+    float invViewProjection[16];
+    float prevViewProjection[16];
+    float invResolution[2];
+    float jitterDelta[2];
+    float blend;
+    int32_t historyValid;
+    float pad0[2];
+} mtl_taa_params_t;
 
 /// @brief Copy the current drawable's contents into the persistent display texture.
 /// @details Lets later passes (and the software-present fallback) read the last presented image.
@@ -5135,6 +5805,7 @@ static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *c
 static void metal_fill_postfx_params(VGFXMetalContext *ctx,
                                      const vgfx3d_postfx_snapshot_t *postfx,
                                      int overlay_enabled,
+                                     int bloom_tex_enabled,
                                      mtl_postfx_params_t *params) {
     if (!ctx || !params)
         return;
@@ -5146,8 +5817,12 @@ static void metal_fill_postfx_params(VGFXMetalContext *ctx,
     params->invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
     params->invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
     params->overlayEnabled = overlay_enabled ? 1 : 0;
+    /* The Metal offscreen scene target is always RGBA16F (linear HDR). */
+    params->sceneIsHdr = 1;
+    params->bloomTexEnabled = bloom_tex_enabled ? 1 : 0;
     if (!postfx)
         return;
+    params->tonemapExplicit = postfx->tonemap_explicit ? 1 : 0;
     params->bloomEnabled = postfx->bloom_enabled ? 1 : 0;
     params->bloomThreshold = postfx->bloom_threshold;
     params->bloomStrength = postfx->bloom_intensity;
@@ -5182,10 +5857,12 @@ static id<MTLTexture> metal_encode_postfx_pass(VGFXMetalContext *ctx,
                                                id<MTLTexture> source_texture,
                                                id<MTLTexture> target_texture,
                                                const vgfx3d_postfx_snapshot_t *postfx,
-                                               int overlay_enabled) {
+                                               int overlay_enabled,
+                                               id<MTLTexture> bloom_texture) {
     MTLRenderPassDescriptor *rp;
     id<MTLRenderCommandEncoder> pfxEncoder;
     mtl_postfx_params_t params;
+    int bloom_tex_enabled;
 
     if (!ctx || !ctx.cmdBuf || !ctx.postfxPipeline || !source_texture || !target_texture ||
         !ctx.offscreenMotion || !ctx.depthTexture)
@@ -5200,21 +5877,143 @@ static id<MTLTexture> metal_encode_postfx_pass(VGFXMetalContext *ctx,
     if (!pfxEncoder)
         return nil;
 
+    bloom_tex_enabled = (postfx && postfx->bloom_enabled && bloom_texture) ? 1 : 0;
+
     [pfxEncoder setRenderPipelineState:ctx.postfxPipeline];
     [pfxEncoder setFragmentTexture:source_texture atIndex:0];
     [pfxEncoder setFragmentTexture:ctx.depthTexture atIndex:1];
     [pfxEncoder setFragmentTexture:ctx.offscreenMotion atIndex:2];
     if (overlay_enabled && ctx.overlayColorTexture)
         [pfxEncoder setFragmentTexture:ctx.overlayColorTexture atIndex:3];
+    [pfxEncoder setFragmentTexture:(bloom_tex_enabled ? bloom_texture : ctx.defaultTexture)
+                           atIndex:4];
     [pfxEncoder setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
                                 atIndex:0];
 
-    metal_fill_postfx_params(ctx, postfx, overlay_enabled, &params);
+    metal_fill_postfx_params(ctx, postfx, overlay_enabled, bloom_tex_enabled, &params);
     [pfxEncoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
 
     [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [pfxEncoder endEncoding];
     return target_texture;
+}
+
+/// @brief Encode the Plan 05 bloom mip chain from the HDR scene color.
+/// @details Pass 0 thresholds + Karis-downsamples the scene into the half-res mip; each
+///          further mip is a plain 13-tap downsample. The upsample walk tent-filters each
+///          deeper mip and additively accumulates it into the one above, leaving mip 0
+///          holding the summed octaves. Returns mip 0 (nil when resources are missing).
+static id<MTLTexture> metal_encode_bloom_chain(VGFXMetalContext *ctx, float threshold) {
+    NSUInteger levels;
+
+    if (!ctx || !ctx.cmdBuf || !ctx.bloomDownPipeline || !ctx.bloomUpPipeline ||
+        !ctx.offscreenColor || !ctx.bloomMipTextures || ctx.bloomMipTextures.count == 0)
+        return nil;
+    levels = ctx.bloomMipTextures.count;
+
+    for (NSUInteger i = 0; i < levels; i++) {
+        id<MTLTexture> src = (i == 0) ? ctx.offscreenColor : ctx.bloomMipTextures[i - 1];
+        id<MTLTexture> dst = ctx.bloomMipTextures[i];
+        MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+        id<MTLRenderCommandEncoder> enc;
+        mtl_bloom_params_t bp;
+        rp.colorAttachments[0].texture = dst;
+        rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+        rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+        enc = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+        if (!enc)
+            return nil;
+        [enc setRenderPipelineState:ctx.bloomDownPipeline];
+        [enc setFragmentTexture:src atIndex:0];
+        [enc setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
+                             atIndex:0];
+        bp.srcInvSize[0] = src.width > 0 ? 1.0f / (float)src.width : 0.0f;
+        bp.srcInvSize[1] = src.height > 0 ? 1.0f / (float)src.height : 0.0f;
+        bp.threshold = threshold;
+        bp.firstPass = (i == 0) ? 1 : 0;
+        [enc setFragmentBytes:&bp length:sizeof(bp) atIndex:0];
+        [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+        [enc endEncoding];
+    }
+
+    for (NSUInteger i = levels; i-- > 1;) {
+        id<MTLTexture> src = ctx.bloomMipTextures[i];
+        id<MTLTexture> dst = ctx.bloomMipTextures[i - 1];
+        MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+        id<MTLRenderCommandEncoder> enc;
+        mtl_bloom_params_t bp;
+        rp.colorAttachments[0].texture = dst;
+        rp.colorAttachments[0].loadAction = MTLLoadActionLoad; /* additive accumulate */
+        rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+        enc = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+        if (!enc)
+            return nil;
+        [enc setRenderPipelineState:ctx.bloomUpPipeline];
+        [enc setFragmentTexture:src atIndex:0];
+        [enc setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
+                             atIndex:0];
+        bp.srcInvSize[0] = src.width > 0 ? 1.0f / (float)src.width : 0.0f;
+        bp.srcInvSize[1] = src.height > 0 ? 1.0f / (float)src.height : 0.0f;
+        bp.threshold = 0.0f;
+        bp.firstPass = 0;
+        [enc setFragmentBytes:&bp length:sizeof(bp) atIndex:0];
+        [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+        [enc endEncoding];
+    }
+    return ctx.bloomMipTextures[0];
+}
+
+/// @brief Encode the Plan 05 TAA resolve: reproject + neighborhood-clamp the ping-pong
+///        history against @p source_texture, writing the resolved frame into the other
+///        history slot (which becomes the new history). Returns the resolved texture.
+static id<MTLTexture> metal_encode_taa_pass(VGFXMetalContext *ctx,
+                                            id<MTLTexture> source_texture,
+                                            const vgfx3d_postfx_snapshot_t *postfx) {
+    MTLRenderPassDescriptor *rp;
+    id<MTLRenderCommandEncoder> enc;
+    id<MTLTexture> history;
+    id<MTLTexture> target;
+    mtl_taa_params_t tp;
+
+    if (!ctx || !ctx.cmdBuf || !ctx.taaResolvePipeline || !source_texture || !ctx.taaHistoryA ||
+        !ctx.taaHistoryB || !ctx.offscreenMotion || !ctx.depthTexture)
+        return nil;
+
+    history = ctx.taaHistoryParity ? ctx.taaHistoryA : ctx.taaHistoryB;
+    target = ctx.taaHistoryParity ? ctx.taaHistoryB : ctx.taaHistoryA;
+
+    rp = [MTLRenderPassDescriptor renderPassDescriptor];
+    rp.colorAttachments[0].texture = target;
+    rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+    enc = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+    if (!enc)
+        return nil;
+
+    memset(&tp, 0, sizeof(tp));
+    transpose4x4(ctx.frameHistory.scene_inv_vp, tp.invViewProjection);
+    transpose4x4(ctx.frameHistory.scene_prev_vp, tp.prevViewProjection);
+    tp.invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
+    tp.invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
+    tp.jitterDelta[0] = (ctx->_taaJitterClip[0] - ctx->_taaPrevJitterClip[0]) * 0.5f;
+    tp.jitterDelta[1] = (ctx->_taaJitterClip[1] - ctx->_taaPrevJitterClip[1]) * 0.5f;
+    tp.blend = (postfx && postfx->taa_enabled) ? postfx->taa_blend : 0.9f;
+    tp.historyValid = (ctx.taaHistoryValid && ctx.frameHistory.scene_history_valid) ? 1 : 0;
+
+    [enc setRenderPipelineState:ctx.taaResolvePipeline];
+    [enc setFragmentTexture:source_texture atIndex:0];
+    [enc setFragmentTexture:history atIndex:1];
+    [enc setFragmentTexture:ctx.offscreenMotion atIndex:2];
+    [enc setFragmentTexture:ctx.depthTexture atIndex:3];
+    [enc setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
+                         atIndex:0];
+    [enc setFragmentBytes:&tp length:sizeof(tp) atIndex:0];
+    [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+    [enc endEncoding];
+
+    ctx.taaHistoryParity = ctx.taaHistoryParity ? 0 : 1;
+    ctx.taaHistoryValid = 1;
+    return target;
 }
 
 /// @brief Run the post-FX chain on the scene color texture if post-processing is enabled.
@@ -5240,9 +6039,39 @@ static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
     source_texture = ctx.offscreenColor;
     target_texture = ctx.postfxColorTexture;
     if (postfx && postfx->enabled && postfx->effect_count > 0 && postfx->effects) {
+        /* Plan 05: prefilter the bloom mip chain once from the HDR scene color when any
+         * chain entry uses bloom; the per-effect pass then composites mip 0. */
+        id<MTLTexture> bloom_texture = nil;
         for (int32_t i = 0; i < postfx->effect_count; i++) {
-            id<MTLTexture> output_texture = metal_encode_postfx_pass(
-                ctx, source_texture, target_texture, &postfx->effects[i].snapshot, 0);
+            if (postfx->effects[i].snapshot.bloom_enabled) {
+                bloom_texture =
+                    metal_encode_bloom_chain(ctx, postfx->effects[i].snapshot.bloom_threshold);
+                break;
+            }
+        }
+        for (int32_t i = 0; i < postfx->effect_count; i++) {
+            id<MTLTexture> output_texture;
+            if (postfx->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA &&
+                postfx->effects[i].snapshot.taa_enabled) {
+                /* TAA resolves into its RGBA16F history slot, then a passthrough pass
+                 * feeds the resolved frame back into the LDR ping-pong chain. */
+                id<MTLTexture> resolved =
+                    metal_encode_taa_pass(ctx, source_texture, &postfx->effects[i].snapshot);
+                if (resolved) {
+                    output_texture =
+                        metal_encode_postfx_pass(ctx, resolved, target_texture, NULL, 0, nil);
+                } else {
+                    output_texture = metal_encode_postfx_pass(
+                        ctx, source_texture, target_texture, NULL, 0, nil);
+                }
+            } else {
+                output_texture = metal_encode_postfx_pass(ctx,
+                                                          source_texture,
+                                                          target_texture,
+                                                          &postfx->effects[i].snapshot,
+                                                          0,
+                                                          bloom_texture);
+            }
             if (!output_texture)
                 return nil;
             source_texture = output_texture;
@@ -5251,7 +6080,7 @@ static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
         }
     } else {
         id<MTLTexture> output_texture =
-            metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 0);
+            metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 0, nil);
         if (!output_texture)
             return nil;
         source_texture = output_texture;
@@ -5260,7 +6089,7 @@ static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
 
     if (ctx.frameHistory.overlay_used_this_frame && ctx.overlayColorTexture) {
         id<MTLTexture> output_texture =
-            metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 1);
+            metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 1, nil);
         if (!output_texture)
             return nil;
         source_texture = output_texture;
@@ -5413,12 +6242,18 @@ static void metal_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_cha
             return;
         if (!postfx) {
             metal_reset_gpu_postfx_chain(ctx);
+            ctx.taaHistoryValid = 0;
             return;
         }
         if (!metal_copy_gpu_postfx_chain(ctx, postfx)) {
             metal_reset_gpu_postfx_chain(ctx);
+            ctx.taaHistoryValid = 0;
             return;
         }
+        /* Plan 05: dropping TAA from the chain invalidates temporal history so a later
+         * re-enable starts from a fresh accumulation instead of stale frames. */
+        if (!metal_chain_has_effect(postfx, (int32_t)VGFX3D_POSTFX_EFFECT_TAA))
+            ctx.taaHistoryValid = 0;
     }
 }
 

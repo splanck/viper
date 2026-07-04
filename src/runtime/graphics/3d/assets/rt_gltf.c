@@ -34,6 +34,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_platform.h"
 #include "rt_quat.h"
 #include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
@@ -522,7 +523,9 @@ static int gltf_required_extension_supported(const char *name) {
     return strcmp(name, "KHR_texture_transform") == 0 ||
            strcmp(name, "KHR_materials_emissive_strength") == 0 ||
            strcmp(name, "KHR_materials_unlit") == 0 ||
-           strcmp(name, "KHR_materials_specular") == 0 || strcmp(name, "KHR_lights_punctual") == 0;
+           strcmp(name, "KHR_materials_specular") == 0 ||
+           strcmp(name, "KHR_materials_pbrSpecularGlossiness") == 0 ||
+           strcmp(name, "KHR_lights_punctual") == 0;
 }
 
 /// @brief Membership test for extensions this loader handles in optional `extensionsUsed` form.
@@ -1506,6 +1509,29 @@ static void *rt_gltf_load_impl(rt_string path,
         return NULL;
     }
     return asset;
+}
+
+/* Plan 09: thread-scoped import options — reaches the mesh decode gates without
+ * threading a parameter through every loader layer. Zero value = defaults. */
+static RT_THREAD_LOCAL rt_gltf_load_options g_gltf_thread_load_options;
+
+/// @brief Default-initialized import options (all zero). See header.
+rt_gltf_load_options rt_gltf_load_options_default(void) {
+    rt_gltf_load_options opts;
+    memset(&opts, 0, sizeof(opts));
+    return opts;
+}
+
+/// @brief Borrow the calling thread's active import options. See header.
+const rt_gltf_load_options *rt_gltf_active_load_options(void) {
+    return &g_gltf_thread_load_options;
+}
+
+/// @brief Install thread-scoped import options, returning the previous value. See header.
+rt_gltf_load_options rt_gltf_set_thread_load_options(const rt_gltf_load_options *opts) {
+    rt_gltf_load_options previous = g_gltf_thread_load_options;
+    g_gltf_thread_load_options = opts ? *opts : rt_gltf_load_options_default();
+    return previous;
 }
 
 /// @brief Load a glTF/GLB from the filesystem (no asset-manager resolution). See header.

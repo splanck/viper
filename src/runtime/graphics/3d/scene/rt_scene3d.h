@@ -149,6 +149,16 @@ void *rt_scene_node3d_get_aabb_max(void *node);
 void rt_scene_node3d_bind_body(void *node, void *body);
 /// @brief Remove the body binding (transform updates stop affecting the body).
 void rt_scene_node3d_clear_body_binding(void *node);
+/// @brief Attach this node to a skeletal bone: SyncBindings drives its world
+///   transform from parentWorld x bonePose x positional offset each pass.
+void rt_scene_node3d_attach_to_bone(void *node,
+                                    void *animator,
+                                    int64_t bone_index,
+                                    double offset_x,
+                                    double offset_y,
+                                    double offset_z);
+/// @brief Remove any bone-socket binding; the node keeps its last transform.
+void rt_scene_node3d_detach_bone_socket(void *node);
 /// @brief Get the bound Body3D (NULL if none).
 void *rt_scene_node3d_get_body(void *node);
 /// @brief Choose how node↔body sync flows (one of RT_SCENE_NODE3D_SYNC_*).

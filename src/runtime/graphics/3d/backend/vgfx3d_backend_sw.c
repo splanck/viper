@@ -83,11 +83,19 @@ typedef struct {
     int8_t fog_enabled;
     float fog_near, fog_far;
     float fog_color[3];
+    /* Image-based lighting (copied from Canvas3D each begin_frame) */
+    int8_t ibl_enabled;
+    float ibl_intensity;
+    float ibl_sh[27];
     /* Shadow mapping state */
     float *shadow_depth[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t shadow_w[VGFX3D_MAX_SHADOW_LIGHTS], shadow_h[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
     float shadow_bias;
+    /* Plan 06: per-frame shadow filtering params from camera params. */
+    float shadow_strength;
+    float shadow_slope_bias;
+    int32_t shadow_quality;
     int8_t shadow_pass_slot;
     int8_t shadow_count;
     int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
@@ -197,17 +205,46 @@ static void sw_recompute_shadow_count(sw_context_t *ctx) {
     ctx->shadow_count = count;
 }
 
+/* Plan 06: 16-point Poisson disk (unit-disk offsets), deterministic dart-throwing
+ * (64-bit LCG, seed 80, min separation 0.4369) — the same table as the GPU shader
+ * twins. Tap subsets stride the table so smaller tiers stay well-distributed. */
+static const float sw_shadow_poisson[16][2] = {
+    {0.482408f, 0.345286f},
+    {0.079872f, 0.641222f},
+    {-0.211339f, -0.305133f},
+    {0.485624f, -0.638176f},
+    {-0.197270f, 0.252333f},
+    {-0.823845f, 0.551135f},
+    {-0.333578f, 0.886038f},
+    {0.835697f, 0.028104f},
+    {-0.921729f, -0.289255f},
+    {-0.184344f, -0.769094f},
+    {0.449912f, -0.195238f},
+    {0.534685f, 0.795828f},
+    {-0.661694f, -0.644587f},
+    {-0.599728f, 0.062200f},
+    {0.899330f, -0.413558f},
+    {0.200012f, -0.976846f},
+};
+
 /// @brief Sample the shadow map for @p slot at a world-space position and return a visibility
 /// factor.
-/// @details Transforms the world position into shadow NDC via the stored shadow VP matrix, then
-///          samples the shadow depth map with a 3×3 percentage-closer filter (PCF) to soften
-///          shadow edges. A slope-scaled depth bias (derived from the depth map gradient) is
-///          added to sd before comparison to reduce shadow acne on slanted surfaces.
-/// @return Visibility in [0, 1]: 1.0 = fully lit, ~0.15 = fully shadowed (with PCF blending).
-///         Returns 1.0 (fully lit) when the slot is invalid, outside the shadow frustum, or the
-///         context is null.
-static float sw_sample_shadow_visibility(
-    const sw_context_t *ctx, int32_t slot, float wx, float wy, float wz) {
+/// @details Plan 06 sampling model: the receiver is normal-offset ~1.5 shadow texels (world
+///          units, derived from the shadow VP row lengths), the compare bias adds the map-gradient
+///          slope term scaled by the canvas slope-bias knob, and filtering uses a rotated-Poisson
+///          PCF (4 taps at PERFORMANCE, 8 at BALANCED/CINEMATIC — CPU-cost bounded) rotated by
+///          interleaved-gradient noise over the shadow-map texel coordinate. Fully-occluded taps
+///          contribute `1 - shadow_strength` so `ShadowStrength = 1` yields black shadows.
+/// @return Visibility in [1 - strength, 1]: 1.0 = fully lit. Returns 1.0 (fully lit) when the
+///         slot is invalid, outside the shadow frustum, or the context is null.
+static float sw_sample_shadow_visibility(const sw_context_t *ctx,
+                                         int32_t slot,
+                                         float wx,
+                                         float wy,
+                                         float wz,
+                                         float nx,
+                                         float ny,
+                                         float nz) {
     const float *svp;
     float lx;
     float ly;
@@ -225,15 +262,34 @@ static float sw_sample_shadow_visibility(
     float dz_du = 0.0f;
     float dz_dv = 0.0f;
     float slope;
+    float occluded_vis;
+    float texel_world = 0.0f;
+    float row0_len;
     float visibility_sum = 0.0f;
     int sample_count = 0;
+    int taps;
+    float ign;
+    float ca;
+    float sa;
 
     if (!ctx || slot < 0 || slot >= ctx->shadow_count || slot >= VGFX3D_MAX_SHADOW_LIGHTS ||
         !ctx->shadow_complete[slot] || !ctx->shadow_depth[slot] || ctx->shadow_w[slot] <= 0 ||
         ctx->shadow_h[slot] <= 0)
         return 1.0f;
 
+    shadow_w = ctx->shadow_w[slot];
+    shadow_h = ctx->shadow_h[slot];
     svp = ctx->shadow_vp[slot];
+
+    /* Normal-offset the receiver by ~1.5 shadow texels in world units (row 0 of the
+     * row-major VP maps world X-extent onto clip x in [-1, 1]). */
+    row0_len = sqrtf(svp[0] * svp[0] + svp[1] * svp[1] + svp[2] * svp[2]);
+    if (isfinite(row0_len) && row0_len > 1e-9f)
+        texel_world = 2.0f / (row0_len * (float)shadow_w);
+    wx += nx * texel_world * 1.5f;
+    wy += ny * texel_world * 1.5f;
+    wz += nz * texel_world * 1.5f;
+
     lx = wx * svp[0] + wy * svp[1] + wz * svp[2] + svp[3];
     ly = wx * svp[4] + wy * svp[5] + wz * svp[6] + svp[7];
     lz = wx * svp[8] + wy * svp[9] + wz * svp[10] + svp[11];
@@ -248,8 +304,6 @@ static float sw_sample_shadow_visibility(
         sv >= 1.0f || sd < 0.0f || sd > 1.0f)
         return 1.0f;
 
-    shadow_w = ctx->shadow_w[slot];
-    shadow_h = ctx->shadow_h[slot];
     sxi = (int)(su * (float)shadow_w);
     syi = (int)(sv * (float)shadow_h);
     if (sxi < 0 || sxi >= shadow_w || syi < 0 || syi >= shadow_h)
@@ -270,26 +324,46 @@ static float sw_sample_shadow_visibility(
             dz_dv = neighbor - sz_map;
     }
     slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
-    slope_bias += ctx->shadow_bias * slope * 4.0f;
+    slope_bias += ctx->shadow_bias * slope * 4.0f * ctx->shadow_slope_bias;
 
-    for (int oy = -1; oy <= 1; oy++) {
-        int py = syi + oy;
-        if (py < 0 || py >= shadow_h)
-            continue;
-        for (int ox = -1; ox <= 1; ox++) {
-            int px = sxi + ox;
-            float sample_depth;
-            if (px < 0 || px >= shadow_w)
-                continue;
-            sample_depth = ctx->shadow_depth[slot][py * shadow_w + px];
-            if (!isfinite(sample_depth) || sample_depth > FLT_MAX * 0.5f) {
-                visibility_sum += 1.0f;
-                sample_count++;
-                continue;
-            }
-            visibility_sum += (sd > sample_depth + slope_bias) ? 0.15f : 1.0f;
+    occluded_vis = 1.0f - (isfinite(ctx->shadow_strength)
+                               ? (ctx->shadow_strength < 0.0f
+                                      ? 0.0f
+                                      : (ctx->shadow_strength > 1.0f ? 1.0f
+                                                                     : ctx->shadow_strength))
+                               : 0.85f);
+    taps = ctx->shadow_quality <= 0 ? 4 : 8; /* CPU cost bound: BALANCED cap */
+    /* Interleaved-gradient noise over the map texel coordinate (fract emulation). */
+    {
+        double t = 0.06711056 * (double)sxi + 0.00583715 * (double)syi;
+        t -= (double)(int64_t)t;
+        t *= 52.9829189;
+        t -= (double)(int64_t)t;
+        ign = (float)t;
+    }
+    ca = cosf(6.2831853f * ign);
+    sa = sinf(6.2831853f * ign);
+
+    for (int i = 0; i < taps; i++) {
+        const float *p = sw_shadow_poisson[i * (16 / taps)];
+        float ox = (p[0] * ca - p[1] * sa) * 1.5f;
+        float oy = (p[0] * sa + p[1] * ca) * 1.5f;
+        int px = sxi + (int)(ox >= 0.0f ? ox + 0.5f : ox - 0.5f);
+        int py = syi + (int)(oy >= 0.0f ? oy + 0.5f : oy - 0.5f);
+        float sample_depth;
+        if (px < 0 || px >= shadow_w || py < 0 || py >= shadow_h) {
+            visibility_sum += 1.0f;
             sample_count++;
+            continue;
         }
+        sample_depth = ctx->shadow_depth[slot][py * shadow_w + px];
+        if (!isfinite(sample_depth) || sample_depth > FLT_MAX * 0.5f) {
+            visibility_sum += 1.0f;
+            sample_count++;
+            continue;
+        }
+        visibility_sum += (sd > sample_depth + slope_bias) ? occluded_vis : 1.0f;
+        sample_count++;
     }
 
     return sample_count > 0 ? visibility_sum / (float)sample_count : 1.0f;

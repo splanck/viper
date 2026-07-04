@@ -2053,6 +2053,18 @@ if (EXISTS "${GAME3D_STARTER_PROBE}")
             TIMEOUT 30)
 endif ()
 
+set(G3D_OVERHAUL_SHOWCASE_DIR "${CMAKE_SOURCE_DIR}/examples/3d/overhaul_showcase")
+if (EXISTS "${G3D_OVERHAUL_SHOWCASE_DIR}/probe.zia")
+    add_test(NAME g3d_overhaul_showcase_probe
+            COMMAND $<TARGET_FILE:viper> run "probe.zia"
+            WORKING_DIRECTORY "${G3D_OVERHAUL_SHOWCASE_DIR}")
+    set_tests_properties(g3d_overhaul_showcase_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 60)
+endif ()
+
 set(GAME3D_OPENWORLD_SLICE_DIR "${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice")
 set(GAME3D_OPENWORLD_SLICE_PROBE "${GAME3D_OPENWORLD_SLICE_DIR}/test.zia")
 if (APPLE)

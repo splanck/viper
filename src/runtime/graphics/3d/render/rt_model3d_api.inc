@@ -47,6 +47,29 @@ void *rt_model3d_load_result(rt_string path) {
     return model3d_load_value_to_result(rt_model3d_load(path), "SceneAsset.Load failed");
 }
 
+/// @brief Load a model with explicit import options (Plan 09).
+/// @details `force_tangents` generates tangents for every UV0-mapped glTF primitive even
+///   when its material has no normal map at load time — for assets whose materials gain
+///   normal maps after import. FBX ignores the option. Options scope thread-locally
+///   around the load, so the default entry points are unchanged.
+void *rt_model3d_load_with_options(rt_string path, int8_t force_tangents) {
+    rt_gltf_load_options opts = rt_gltf_load_options_default();
+    rt_gltf_load_options saved;
+    void *model;
+
+    opts.force_tangents = force_tangents ? 1 : 0;
+    saved = rt_gltf_set_thread_load_options(&opts);
+    model = rt_model3d_load(path);
+    (void)rt_gltf_set_thread_load_options(&saved);
+    return model;
+}
+
+/// @brief Options-aware Result variant of `SceneAsset.Load` (Plan 09).
+void *rt_model3d_load_result_with_options(rt_string path, int8_t force_tangents) {
+    return model3d_load_value_to_result(rt_model3d_load_with_options(path, force_tangents),
+                                        "SceneAsset.LoadWithOptions failed");
+}
+
 /// @brief Load a model through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_model3d_load_asset(rt_string path) {
     rt_asset_error_begin_load();

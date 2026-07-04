@@ -379,6 +379,14 @@ static GLenum gl_native_texture_internal_format(const vgfx3d_native_texture_mip_
         return 0;
     if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
         return GL_COMPRESSED_RGBA_BPTC_UNORM;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1)
+        return GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3)
+        return GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4)
+        return GL_COMPRESSED_RED_RGTC1;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5)
+        return GL_COMPRESSED_RG_RGTC2;
     if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2)
         return GL_COMPRESSED_RGBA8_ETC2_EAC;
     if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC) {
@@ -956,6 +964,65 @@ static float gl_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     return lod;
 }
 
+/// @brief Overlay the cubemap's GGX-prefiltered IBL chain onto the texture's tail mips.
+/// @details The prefiltered chain starts at `ibl_base_size` (<= face_size), which by
+///   construction sits exactly on the mip pyramid: level_base = log2(face_size /
+///   ibl_base_size). Box-filtered mips above level_base keep skybox sampling sharp;
+///   levels level_base.. are replaced with GGX-prefiltered data so roughness-mapped
+///   environment lookups integrate correctly. Idempotent per ibl_identity.
+static void gl_apply_ibl_mips(gl_context_t *ctx,
+                              gl_cubemap_cache_entry_t *entry,
+                              const rt_cubemap3d *cubemap) {
+    int32_t level_base = 0;
+    int32_t size;
+
+    if (!ctx || !entry || !entry->tex || entry->upload_in_progress || !cubemap ||
+        !cubemap->ibl_ready || cubemap->ibl_mip_count <= 0)
+        return;
+    if (entry->applied_ibl_identity == cubemap->ibl_identity)
+        return;
+    size = entry->face_size;
+    while (size > cubemap->ibl_base_size && size > 1) {
+        size >>= 1;
+        level_base++;
+    }
+    if (size != cubemap->ibl_base_size)
+        return; /* unexpected geometry: leave box mips in place */
+
+    gl.BindTexture(GL_TEXTURE_CUBE_MAP, entry->tex);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (int32_t m = 0; m < cubemap->ibl_mip_count; m++) {
+        for (int f = 0; f < 6; f++) {
+            int32_t w = 0;
+            int32_t h = 0;
+            uint8_t *rgba = NULL;
+
+            if (vgfx3d_unpack_pixels_rgba(cubemap->ibl_mips[m][f], &w, &h, &rgba) != 0 || !rgba) {
+                free(rgba);
+                gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                return;
+            }
+            gl.TexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)f,
+                             level_base + m,
+                             0,
+                             0,
+                             w,
+                             h,
+                             GL_RGBA,
+                             GL_UNSIGNED_BYTE,
+                             rgba);
+            gl_record_texture_upload_bytes(ctx, (uint64_t)(uint32_t)w * (uint32_t)h * 4u);
+            free(rgba);
+            if (!gl_upload_ok()) {
+                gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                return;
+            }
+        }
+    }
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    entry->applied_ibl_identity = cubemap->ibl_identity;
+}
+
 /// @brief Upload more of an in-progress cubemap (face by face, row band by row band) within budget.
 /// @return 1 if all six faces finished this call, 0 if more remains.
 static int gl_continue_cubemap_upload(gl_context_t *ctx,
@@ -1036,6 +1103,7 @@ static int gl_continue_cubemap_upload(gl_context_t *ctx,
     entry->generation = entry->pending_generation;
     entry->pending_generation = 0;
     entry->upload_in_progress = 0;
+    gl_apply_ibl_mips(ctx, entry, cubemap);
     return 1;
 }
 
@@ -1061,6 +1129,7 @@ static int gl_start_cubemap_upload(gl_context_t *ctx,
     entry->upload_face = 0;
     entry->upload_next_row = 0;
     entry->upload_in_progress = 1;
+    entry->applied_ibl_identity = 0; /* base faces changed: re-overlay after upload */
     entry->last_used_frame = ctx->frame_serial;
 
     gl.BindTexture(GL_TEXTURE_CUBE_MAP, entry->tex);
@@ -1097,6 +1166,7 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
         gl_cubemap_cache_entry_t *entry = &ctx->cubemap_cache[i];
         if (entry->cubemap == cubemap && entry->generation == generation && entry->tex) {
             entry->last_used_frame = ctx->frame_serial;
+            gl_apply_ibl_mips(ctx, entry, cubemap);
             return entry->tex;
         }
         if (entry->cubemap == cubemap && entry->pending_generation == generation &&

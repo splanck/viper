@@ -491,14 +491,15 @@ void rt_uitextinput_update(void *ptr, int64_t delta_ms) {
 }
 
 void rt_uitextinput_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     rt_uitextinput_impl *ti =
         checked_textinput(ptr, "UITextInput.Draw: expected Viper.Game.UI.HudTextInput");
-    if (!ti || !canvas || !ui_validate_canvas(canvas, "UITextInput.Draw: expected Canvas"))
+    if (!ti || !canvas || !ui_resolve_draw_ops(canvas, "UITextInput.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!ti->visible)
         return;
-    rt_canvas_box(canvas, ti->x, ti->y, ti->w, ti->h, ti->bg_color);
-    rt_canvas_frame(canvas,
+    ops.box(canvas, ti->x, ti->y, ti->w, ti->h, ti->bg_color);
+    ops.frame(canvas,
                     ti->x,
                     ti->y,
                     ti->w,
@@ -528,9 +529,9 @@ void rt_uitextinput_draw(void *ptr, void *canvas) {
     if (textinput_selection_range(ti, &start, &end)) {
         int64_t x0 = ti->x + 4 + ui_text_prefix_width(ti->text, start, ti->font, 1);
         int64_t sel_w = ui_text_prefix_width(ti->text + start, end - start, ti->font, 1);
-        rt_canvas_box_alpha(canvas, x0, ti->y + 2, sel_w, ti->h - 4, ti->selection_color, 160);
+        ops.box_alpha(canvas, x0, ti->y + 2, sel_w, ti->h - 4, ti->selection_color, 160);
     }
-    ui_draw_text_basic(canvas,
+    ui_draw_text_basic(&ops,
                        ti->x + 4,
                        ti->y + (ti->h - 8) / 2,
                        draw_text,
@@ -540,7 +541,7 @@ void rt_uitextinput_draw(void *ptr, void *canvas) {
     if (ti->focused && ti->enabled && ti->cursor_blink_ms > 0 &&
         ((ti->cursor_blink_elapsed / ti->cursor_blink_ms) % 2) == 0) {
         int64_t cx = ti->x + 4 + ui_text_prefix_width(ti->text, ti->cursor_byte, ti->font, 1);
-        rt_canvas_line(canvas, cx, ti->y + 3, cx, ti->y + ti->h - 4, ti->cursor_color);
+        ops.line(canvas, cx, ti->y + 3, cx, ti->y + ti->h - 4, ti->cursor_color);
     }
     free(password);
 }

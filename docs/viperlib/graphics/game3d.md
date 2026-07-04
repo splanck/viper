@@ -265,6 +265,14 @@ setup. Water is a transparent plane prefab; `withWater()` uses the most recent
 terrain size when terrain has been configured, otherwise it falls back to the
 default water size.
 
+When a skybox cubemap is installed (`World3D.SetSkybox`), image-based lighting
+can replace the flat ambient term on PBR materials: set `World3D.IblEnabled`
+to `true` (optionally scaling with `World3D.IblIntensity`, default `1.0`).
+Diffuse ambient then follows the environment's directional irradiance and
+specular reflections sample a prefiltered roughness chain — the standard
+split-sum PBR environment model. The payload is computed once when IBL is
+enabled or the skybox changes; frames pay nothing extra.
+
 ---
 
 ## Debug3D
@@ -852,6 +860,64 @@ blendspace should supply the base pose while the controller still owns overlay
 layers and event polling. `setIKSolver(solver)` forwards to
 `AnimController3D.SetIKSolver` for foot/hand targets, look-at bones, and short
 FABRIK chains driven from gameplay.
+
+`Animator3D.FindBone(name)` resolves a bone index by name (-1 when unknown) and
+`Animator3D.GetBoneMatrix(index)` returns the model-space composited bone
+matrix — useful for custom effects anchored to skeletal joints.
+
+### Bone Sockets
+
+`Entity3D.AttachToBone(child, boneName)` (and the `AttachToBoneOffset`
+variant with a bone-space positional offset) parents `child` under the entity
+and drives the child's world transform from the named bone's composited pose
+every simulation step — the standard way to put a weapon in a hand or a hat on
+a head. The entity must have an attached `Animator3D` whose controller has a
+skeleton containing the bone; unknown names trap with a clear message.
+`Entity3D.DetachFromBone()` stops the tracking (the child keeps its last pose
+and stays parented). The lower-level form is
+`Graphics3D.SceneNode.AttachToBone(animator, boneIndex, ox, oy, oz)`.
+
+---
+
+## Behavior3D
+
+`Behavior3D` gives entities composable, engine-ticked motion without per-frame
+script code — the 3D counterpart of `Viper.Game.Behavior`. Build one fluently,
+attach it, and the world updates it every simulation step (before physics and
+binding sync):
+
+```zia
+var pickup = Prefab.Sphere(0.3, 20, Materials.Emissive(1.0, 0.8, 0.2, 2.0));
+pickup.AttachBehavior(
+    Behavior3D.New().AddSpin(0.0, 1.0, 0.0, 90.0).AddSineFloat(0.25, 2.0));
+world.Spawn(pickup);
+```
+
+Presets (all fluent, freely composable): `AddSpin(axis, degPerSec)`,
+`AddOrbit(center, radius, degPerSec)` (XZ circle), `AddSineFloat(amplitude,
+speed)`, `AddFaceTarget(entity)` (yaw toward a target), `AddChase(entity,
+speed, range)` (direct XZ steering, or navmesh-routed when a `NavAgent3D` is
+bound via `SetNavAgent`), `AddFollowPath(path, speed, loop)` (constant-speed
+`Path3D` traversal), and `AddLifetime(seconds)` (despawns the entity).
+Presets apply in a fixed order each tick (lifetime, path, chase, orbit, sine,
+spin, face) so composed behaviors stay deterministic.
+
+---
+
+## GameBase3D Scene Framework
+
+`examples/games/lib/gamebase3d.zia` + `iscene3d.zia` provide the application
+tier every 3D game otherwise re-implements: a driven frame loop with delta-time
+clamping, an `IScene3D` lifecycle (`onEnter`/`onExit`/`update`/`drawOverlay`),
+deferred scene switches applied at frame boundaries, and fade transitions
+rendered with `Canvas3D.DrawRect2DAlpha`. Subclass `GameBase3D`, build scenes
+in `onInit()`, and call `setScene`/`transitionTo` — see
+`examples/3d/game3d_scenes/` for a complete two-scene reference.
+
+For input, load the `"fps3d"` action preset
+(`Viper.Input.Action.LoadPreset("fps3d")`) to get named, rebindable
+`move_x`/`move_y`/`jump`/`sprint`/`crouch`/`interact`/`fire`/`aim`/`pause`
+actions across keyboard, mouse, and gamepad instead of hard-coded key polling.
 
 ---
 

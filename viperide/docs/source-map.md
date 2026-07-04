@@ -205,20 +205,59 @@ in `core/document_manager.zia`.
 
 Editor and semantic editing commands: navigation, references, call hierarchy,
 rename, diagnostics navigation, code actions, multi-cursor, comments, duplicate
-line, move line, refactors, trim whitespace, and formatting.
+line, and move line.
 
-This file is large because it bridges many editor features. When adding a new
-pure text transform, put the transform in `zia/` or `services/` and keep only
-the command orchestration here.
+Transform-heavy edit flows delegate to `source_transform_commands.zia` so the
+basic editor command surface does not keep growing.
+
+### `commands/source_transform_commands.zia`
+
+User-facing orchestration for source transforms: organize binds, inline local,
+extract local, extract function, trim trailing whitespace, format document, and
+format selection. It collects document/editor context, calls pure transforms in
+`zia/`, replaces the buffer, marks documents modified, and reports status.
+
+### `commands/diagnostic_edit_commands.zia`
+
+Diagnostic-driven source edits: suppress warning, apply diagnostic fix-it, and
+create missing runtime/project binds. It owns diagnostic record interpretation
+and bind-target resolution while `edit_commands.zia` keeps compatibility
+wrappers for probes.
+
+### `commands/editor_document_edit.zia`
+
+Low-level editor replacement primitive shared by command modules that replace a
+whole buffer. Use this instead of rebuilding the same full-document selection
+range in multiple commands.
 
 ### `commands/search_commands.zia`
 
-Project search, folder search, Quick Open, workspace symbols, and related
-result navigation. This module coordinates project file caches, search options,
-result rows, and location ids.
+Project search, folder search, workspace symbols, and related result
+navigation. This module coordinates project file caches, search options, result
+rows, and location ids.
 
 Search result display strings should never be the only source of navigation
 truth. Use `services/locations.zia` for stable location ids.
+
+`commands/search_prompt.zia` owns the modal prompt sequence and returns a
+normalized `SearchRequest`. Keep prompt collection there so direct, cached, and
+legacy search paths use one option flow.
+
+`commands/quick_open_commands.zia` owns Quick Open palette rows, command id
+encoding, deterministic file scoring, and opening the selected file. Keep Quick
+Open behavior there so text search remains focused on matching and navigation.
+
+### `commands/quick_open_commands.zia`
+
+Quick Open workflow for project files. It warms the project file cache, scores
+relative paths against the query, populates command-palette rows, translates
+palette ids back into paths, and opens selected files through the normal file
+command path.
+
+This module intentionally shares project file enumeration with search through
+`core/project_manager.zia`, but it should not grow text-search options or result
+formatting. Search and Quick Open are separate user workflows even though they
+both consume workspace paths.
 
 ### `commands/build_commands.zia`
 
@@ -354,8 +393,10 @@ commit characters, snippet cursor placement, and workspace-symbol completion
 cache updates.
 
 The file is large. Pure filtering helpers have already been split into
-`completion_filter.zia`; new reusable completion-display logic should move
-there or into another helper instead of growing the controller.
+`completion_filter.zia`, typed rows into `completion_items.zia`, and workspace
+source/detail policy into `completion_workspace_source.zia`. New reusable
+completion-display logic should move into helpers instead of growing the
+controller.
 
 ### `editor/completion_items.zia`
 
@@ -368,6 +409,12 @@ range, cursor offset, or commit characters.
 Pure completion filtering and display helpers. This module is small and easy to
 probe. Prefer adding deterministic string/ranking helpers here rather than
 inside `completion.zia`.
+
+### `editor/completion_workspace_source.zia`
+
+Leaf helpers for completion's workspace-symbol cache: project-open checks,
+cache-reset decisions, open-document-first source loading, file-size caps, and
+workspace detail text.
 
 ### `editor/diagnostics.zia`
 
@@ -466,6 +513,12 @@ and the compact editor-search regex subset used by Search in Project.
 Search path normalization and include/exclude/ignore matching. Use it when a
 feature needs to decide whether a project path belongs in search results.
 
+### `services/workspace_file_index.zia`
+
+Shared `Viper.Workspace.FileIndex` boundary. Use it for workspace containment,
+default excludes, ignore checks, and file enumeration instead of duplicating
+recursive directory or map-unpacking rules in command/core modules.
+
 ### `services/workspace_edits.zia`
 
 Preview, validation, conflict detection, application, and diagnostics formatting
@@ -554,6 +607,12 @@ language display names.
 
 Named ids and tab indexes for the bottom tool-panel strip. Use this instead of
 magic integers when adding bottom-panel behavior.
+
+### `ui/output_cache.zia`
+
+Pure output-cache policy for AppShell's build output: retained character
+budget, truncation marker, raw-pane versus row-list decision, and wrap width
+heuristic.
 
 ## `zia/`
 
@@ -649,9 +708,13 @@ Use this practical decision table:
 | Editor widget synchronization | `editor/editor_engine.zia` |
 | Zia semantic query scheduling | appropriate `editor/*` controller |
 | Pure source scanning | focused `zia/*_scan.zia` module; keep `zia/source_scan.zia` as facade |
-| Search matching/path rules | `services/search_matcher.zia`, `services/search_paths.zia` |
+| Search matching/path/file discovery rules | `services/search_matcher.zia`, `services/search_paths.zia`, `services/workspace_file_index.zia` |
+| Quick Open palette/scoring | `commands/quick_open_commands.zia` |
 | Completion row data | `editor/completion_items.zia` |
+| Completion workspace source loading | `editor/completion_workspace_source.zia` |
 | Pure source rewrite | `zia/refactors.zia` or `zia/bind_utils.zia` |
+| Source-transform command flow | `commands/source_transform_commands.zia` |
+| Diagnostic quick-fix command flow | `commands/diagnostic_edit_commands.zia` |
 | Text formatting | `zia/formatters.zia` |
 | Build/run process mechanics | `build/build_system.zia` |
 | Build/run user command flow | `commands/build_commands.zia` |
@@ -662,6 +725,7 @@ Use this practical decision table:
 | Git command execution | `scm/scm_git.zia` |
 | Source Control view state | `scm/scm_view.zia` |
 | Persistent shell widgets | `ui/app_shell.zia` |
+| Build-output cache/wrap policy | `ui/output_cache.zia` |
 | Shared display row formatting | `ui/tool_panel_text.zia` |
 | Bottom panel ids/tab indexes | `ui/tool_panel_model.zia` |
 | Structured clickable locations | `services/locations.zia` |

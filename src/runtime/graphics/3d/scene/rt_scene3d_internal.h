@@ -181,6 +181,15 @@ typedef struct rt_scene_node3d {
     int32_t sync_mode;
     int32_t import_index;
 
+    /* Bone socket: while socket_animator is set, SyncBindings drives this
+     * node's world transform from parentWorld x bonePose x offset. The node
+     * must be parented under the node that renders the skinned model (the
+     * bone pose is model-space). Socket sync supersedes body sync. */
+    void *socket_animator; /* retained AnimController3D or NULL */
+    int32_t socket_bone;
+    double socket_offset_pos[3];
+    double socket_offset_quat[4];
+
     int8_t visible;
     rt_string name;
 

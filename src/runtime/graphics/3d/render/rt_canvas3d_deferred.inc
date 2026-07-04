@@ -1017,6 +1017,26 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
                                     0.0f);
 }
 
+/// @brief Bind the canvas IBL environment to a PBR draw that has no explicit
+///   material env map.
+/// @details Materials with their own env map keep the legacy reflectivity-mix
+///   semantics untouched; unlit and Blinn-Phong draws never participate. The
+///   flag tells backends to light the ambient term from SH irradiance plus the
+///   skybox's prefiltered specular chain instead of the flat ambient color.
+static void canvas3d_apply_ibl_env(const rt_canvas3d *c, vgfx3d_draw_cmd_t *cmd) {
+    if (!c || !cmd)
+        return;
+    cmd->ibl_env = 0;
+    if (!c->ibl_enabled || cmd->unlit || cmd->workflow != RT_MATERIAL3D_WORKFLOW_PBR)
+        return;
+    if (cmd->env_map) /* explicit material env map keeps legacy semantics */
+        return;
+    if (!c->skybox || !c->skybox->ibl_ready)
+        return;
+    cmd->env_map = c->skybox;
+    cmd->ibl_env = 1;
+}
+
 /// @brief Grow the motion-history table to hold `needed` entries.
 ///
 /// Motion history is keyed by mesh-identity pointer and stores the
@@ -1547,6 +1567,10 @@ static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_para
     params->forward[2] = -1.0f;
     params->is_ortho = 1;
     params->fog_enabled = 0;
+    /* Overlay passes may replay 3D draws; keep shadow filtering consistent. */
+    params->shadow_strength = c ? c->shadow_strength : 0.85f;
+    params->shadow_slope_bias = c ? c->shadow_slope_bias : 1.0f;
+    params->shadow_quality = c ? c->shadow_quality : 1;
 }
 
 /// @brief Internal: begin a 2D overlay pass on top of the 3D scene.
@@ -1731,6 +1755,8 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     dd->ambient[2] = c->ambient[2];
     dd->light_count =
         include_lights ? build_light_params(c, dd->lights, canvas3d_active_light_limit(c)) : 0;
+    dd->cmd.lights_revision =
+        include_lights ? canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count) : 0;
     dd->sort_key = canvas3d_sanitize_sort_key(sort_key, dd->requires_blend);
     dd->stable_sort_id = (uintptr_t)cmd->geometry_key ^ (uintptr_t)cmd->texture ^
                          ((uintptr_t)cmd->texture_asset << 1) ^ ((uintptr_t)instance_matrices << 2);

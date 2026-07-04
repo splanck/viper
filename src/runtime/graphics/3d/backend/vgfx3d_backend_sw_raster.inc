@@ -701,9 +701,56 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
     if (ndv < 0.001f)
         ndv = 0.001f;
 
-    float lit_r = (ambient ? ambient[0] : 0.0f) * base_r * ao;
-    float lit_g = (ambient ? ambient[1] : 0.0f) * base_g * ao;
-    float lit_b = (ambient ? ambient[2] : 0.0f) * base_b * ao;
+    float lit_r;
+    float lit_g;
+    float lit_b;
+    if (cmd->ibl_env && cmd->env_map && fog_ctx && fog_ctx->ibl_enabled) {
+        /* Image-based ambient: SH diffuse + prefiltered specular (split-sum).
+         * Replaces the flat ambient term; direct lights below are unchanged. */
+        float irr[3];
+        float f0_r = 0.04f + (base_r - 0.04f) * metallic;
+        float f0_g = 0.04f + (base_g - 0.04f) * metallic;
+        float f0_b = 0.04f + (base_b - 0.04f) * metallic;
+        float gloss = 1.0f - roughness;
+        float w = pow5f_fast(1.0f - ndv);
+        /* Roughness-aware Schlick: rough surfaces lose grazing Fresnel gain. */
+        float fa_r = f0_r + ((gloss > f0_r ? gloss : f0_r) - f0_r) * w;
+        float fa_g = f0_g + ((gloss > f0_g ? gloss : f0_g) - f0_g) * w;
+        float fa_b = f0_b + ((gloss > f0_b ? gloss : f0_b) - f0_b) * w;
+        float kd_r = (1.0f - fa_r) * (1.0f - metallic);
+        float kd_g = (1.0f - fa_g) * (1.0f - metallic);
+        float kd_b = (1.0f - fa_b) * (1.0f - metallic);
+        /* Reflection vector R = 2(N.V)N - V. */
+        float rvx = 2.0f * ndv * pnx - vdx;
+        float rvy = 2.0f * ndv * pny - vdy;
+        float rvz = 2.0f * ndv * pnz - vdz;
+        float pre_r;
+        float pre_g;
+        float pre_b;
+        rt_cubemap_sample_ibl(
+            (const rt_cubemap3d *)cmd->env_map, rvx, rvy, rvz, roughness, &pre_r, &pre_g, &pre_b);
+        /* Karis analytic split-sum environment BRDF. */
+        float br_x = roughness * -1.0f + 1.0f;
+        float br_y = roughness * -0.0275f + 0.0425f;
+        float br_z = roughness * -0.572f + 1.04f;
+        float br_w = roughness * 0.022f - 0.04f;
+        float a004 = br_x * br_x;
+        float e9 = exp2f(-9.28f * ndv);
+        if (e9 < a004)
+            a004 = e9;
+        a004 = a004 * br_x + br_y;
+        float ab_x = -1.04f * a004 + br_z;
+        float ab_y = 1.04f * a004 + br_w;
+        float intensity = fog_ctx->ibl_intensity;
+        rt_sh9_eval_irradiance(fog_ctx->ibl_sh, pnx, pny, pnz, irr);
+        lit_r = (kd_r * irr[0] * base_r + pre_r * (f0_r * ab_x + ab_y)) * ao * intensity;
+        lit_g = (kd_g * irr[1] * base_g + pre_g * (f0_g * ab_x + ab_y)) * ao * intensity;
+        lit_b = (kd_b * irr[2] * base_b + pre_b * (f0_b * ab_x + ab_y)) * ao * intensity;
+    } else {
+        lit_r = (ambient ? ambient[0] : 0.0f) * base_r * ao;
+        lit_g = (ambient ? ambient[1] : 0.0f) * base_g * ao;
+        lit_b = (ambient ? ambient[2] : 0.0f) * base_b * ao;
+    }
 
     for (int32_t li = 0; li < light_count; li++) {
         const vgfx3d_light_params_t *lt = &lights[li];
@@ -720,7 +767,7 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
 
         if ((lt->type == 0 || lt->type == 3) && lt->shadow_index >= 0 && la > 0.0f) {
             int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
-            la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz);
+            la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz, pnx, pny, pnz);
         }
 
         float ndl = dot3f(pnx, pny, pnz, llx, lly, llz);
@@ -868,7 +915,7 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
 
         if ((lt->type == 0 || lt->type == 3) && lt->shadow_index >= 0 && la > 0.0f) {
             int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
-            la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz);
+            la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz, pnx, pny, pnz);
         }
 
         float ndl = pnx * llx + pny * lly + pnz * llz;

@@ -19,6 +19,29 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
     ctx->clearB = b;
 }
 
+/// @brief Radical-inverse Halton sequence sample for TAA sub-pixel jitter (Plan 05).
+static float gl_halton(uint32_t index, uint32_t base) {
+    float f = 1.0f;
+    float r = 0.0f;
+    while (index > 0) {
+        f /= (float)base;
+        r += f * (float)(index % base);
+        index /= base;
+    }
+    return r;
+}
+
+/// @brief True when the exported postfx chain contains an effect of @p type_value.
+static int gl_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
+    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].type == type_value)
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Backend `begin_frame` — set up matrices, target, frame-history, and clear.
 ///
 /// Per-frame setup steps:
@@ -77,6 +100,32 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     memcpy(ctx->view, cam->view, sizeof(ctx->view));
     memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
     mat4f_mul_gl(cam->projection, cam->view, ctx->vp);
+    /* Plan 05 TAA: apply Halton(2,3) sub-pixel jitter to the scene-pass VP when the
+     * latched chain contains a TAA resolve. Injected before inv/prev VP derivation so
+     * every consumer this frame sees one consistent (jittered) VP; the resolve pass
+     * removes the current-minus-previous jitter delta from velocities. Overlay passes
+     * keep the previous state so UI stays fixed and the sequence advances once per
+     * frame. */
+    if (!ctx->rtt_active && !ctx->current_pass_is_overlay) {
+        ctx->taa_prev_jitter_clip[0] = ctx->taa_jitter_clip[0];
+        ctx->taa_prev_jitter_clip[1] = ctx->taa_jitter_clip[1];
+        ctx->taa_jitter_clip[0] = 0.0f;
+        ctx->taa_jitter_clip[1] = 0.0f;
+        if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid && ctx->taa_program &&
+            ctx->width > 0 && ctx->height > 0 &&
+            gl_chain_has_effect(&ctx->gpu_postfx_chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA)) {
+            uint32_t idx = (ctx->taa_frame_index++ & 7u) + 1u;
+            float jx = (gl_halton(idx, 2) - 0.5f) * 2.0f / (float)ctx->width;
+            float jy = (gl_halton(idx, 3) - 0.5f) * 2.0f / (float)ctx->height;
+            ctx->taa_jitter_clip[0] = jx;
+            ctx->taa_jitter_clip[1] = jy;
+            /* Row-major clip-space translate: x-row += jx * w-row, y-row += jy * w-row. */
+            for (int jc = 0; jc < 4; jc++) {
+                ctx->vp[0 * 4 + jc] += jx * ctx->vp[3 * 4 + jc];
+                ctx->vp[1 * 4 + jc] += jy * ctx->vp[3 * 4 + jc];
+            }
+        }
+    }
     if (mat4f_inverse_gl(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, kIdentity4x4, sizeof(ctx->inv_vp));
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
@@ -88,6 +137,12 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
+    ctx->ibl_enabled = cam->ibl_enabled;
+    ctx->ibl_intensity = cam->ibl_intensity;
+    memcpy(ctx->ibl_sh, cam->ibl_sh, sizeof(ctx->ibl_sh));
+    ctx->shadow_strength = cam->shadow_strength;
+    ctx->shadow_slope_bias = cam->shadow_slope_bias;
+    ctx->shadow_quality = cam->shadow_quality;
     memcpy(history.scene_vp, ctx->scene_vp, sizeof(history.scene_vp));
     memcpy(history.scene_prev_vp, ctx->scene_prev_vp, sizeof(history.scene_prev_vp));
     memcpy(history.scene_inv_vp, ctx->scene_inv_vp, sizeof(history.scene_inv_vp));
@@ -336,6 +391,8 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
         destroy_scene_targets(ctx);
         destroy_postfx_readback_target(ctx);
         destroy_postfx_scratch_target(ctx);
+        destroy_bloom_targets(ctx);
+        destroy_taa_targets(ctx);
     }
 }
 
@@ -647,14 +704,20 @@ static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_
     if (!postfx) {
         vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
         ctx->gpu_postfx_chain_valid = 0;
+        ctx->taa_history_valid = 0;
         return;
     }
     if (!vgfx3d_postfx_chain_copy(&ctx->gpu_postfx_chain, postfx)) {
         vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
         ctx->gpu_postfx_chain_valid = 0;
+        ctx->taa_history_valid = 0;
         return;
     }
     ctx->gpu_postfx_chain_valid = 1;
+    /* Plan 05: dropping TAA from the chain invalidates temporal history so a later
+     * re-enable starts from a fresh accumulation instead of stale frames. */
+    if (!gl_chain_has_effect(postfx, (int32_t)VGFX3D_POSTFX_EFFECT_TAA))
+        ctx->taa_history_valid = 0;
 }
 
 /// @brief Backend `set_render_target` op — bind / unbind RTT.

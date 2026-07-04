@@ -1519,6 +1519,116 @@ static void test_textureasset3d_bc3_software_decode() {
     EXPECT_TRUE(out[7] == 0, "BC3 decode texel1 A = 0 (alpha index 1)");
 }
 
+static void test_textureasset3d_bc1_bc4_bc5_software_decode() {
+    TEST("TextureAsset3D BC1/BC4/BC5 software decode fixtures");
+
+    /* BC1 opaque mode: colour0 = red (0xF800) > colour1 = blue (0x001F); texel0
+     * uses index 0 (red), texel1 index 1 (blue). */
+    {
+        uint8_t block[8];
+        uint8_t out[64];
+        std::memset(block, 0, sizeof(block));
+        block[0] = 0x00; /* colour0 low */
+        block[1] = 0xF8; /* colour0 high (red) */
+        block[2] = 0x1F; /* colour1 low (blue) */
+        block[3] = 0x00; /* colour1 high */
+        block[4] = 0x04; /* indices: texel0 -> 0, texel1 -> 1 */
+        std::memset(out, 0x55, sizeof(out));
+        rt_textureasset3d_decode_bc1_block(block, out);
+        EXPECT_TRUE(out[0] == 255 && out[1] == 0 && out[2] == 0 && out[3] == 255,
+                    "BC1 opaque texel0 decodes to opaque red");
+        EXPECT_TRUE(out[4] == 0 && out[5] == 0 && out[6] == 255 && out[7] == 255,
+                    "BC1 opaque texel1 decodes to opaque blue");
+    }
+
+    /* BC1 punch-through mode: colour0 <= colour1 selects the 3-colour mode where
+     * index 3 is transparent black. */
+    {
+        uint8_t block[8];
+        uint8_t out[64];
+        std::memset(block, 0, sizeof(block));
+        block[0] = 0x1F; /* colour0 = blue (0x001F) */
+        block[1] = 0x00;
+        block[2] = 0x00; /* colour1 = red (0xF800) */
+        block[3] = 0xF8;
+        block[4] = 0x03; /* texel0 -> index 3 (transparent) */
+        std::memset(out, 0x55, sizeof(out));
+        rt_textureasset3d_decode_bc1_block(block, out);
+        EXPECT_TRUE(out[3] == 0, "BC1 punch-through texel0 alpha = 0");
+        EXPECT_TRUE(out[0] == 0 && out[1] == 0 && out[2] == 0,
+                    "BC1 punch-through texel0 colour = black");
+        EXPECT_TRUE(out[7] == 255, "BC1 punch-through texel1 (index 0) stays opaque");
+    }
+
+    /* BC4: endpoints 200 > 40 select the 8-point ramp; texel0 index 0 -> 200,
+     * texel1 index 1 -> 40; the channel replicates into R/G/B. */
+    {
+        uint8_t block[8];
+        uint8_t out[64];
+        std::memset(block, 0, sizeof(block));
+        block[0] = 200;
+        block[1] = 40;
+        block[2] = 0x08; /* 3-bit indices: texel0 -> 0, texel1 -> 1 */
+        std::memset(out, 0x55, sizeof(out));
+        rt_textureasset3d_decode_bc4_block(block, out);
+        EXPECT_TRUE(out[0] == 200 && out[1] == 200 && out[2] == 200 && out[3] == 255,
+                    "BC4 texel0 replicates endpoint 0 into RGB");
+        EXPECT_TRUE(out[4] == 40 && out[7] == 255, "BC4 texel1 selects endpoint 1");
+    }
+
+    /* BC5: R block endpoints (200, 40) and G block endpoints (40, 200); texel0
+     * uses index 0 in both -> (200, 40, 255, 255). */
+    {
+        uint8_t block[16];
+        uint8_t out[64];
+        std::memset(block, 0, sizeof(block));
+        block[0] = 200; /* R endpoints */
+        block[1] = 40;
+        block[8] = 40; /* G endpoints */
+        block[9] = 200;
+        std::memset(out, 0x55, sizeof(out));
+        rt_textureasset3d_decode_bc5_block(block, out);
+        EXPECT_TRUE(out[0] == 200, "BC5 texel0 R channel from first half-block");
+        EXPECT_TRUE(out[1] == 40, "BC5 texel0 G channel from second half-block");
+        EXPECT_TRUE(out[2] == 255 && out[3] == 255, "BC5 texel0 B/A fixed opaque");
+    }
+
+    /* End-to-end: a BC1 KTX2 (VkFormat 133) loads with the bc1 format name and a
+     * decoded RGBA fallback whose first texel matches the block decode. */
+    {
+        const char *path = "/tmp/viper_textureasset3d_bc1_test.ktx2";
+        uint8_t block[8];
+        std::memset(block, 0, sizeof(block));
+        block[0] = 0x00;
+        block[1] = 0xF8; /* solid red, all indices 0 */
+        block[2] = 0x1F;
+        block[3] = 0x00;
+        EXPECT_TRUE(write_test_ktx2(path, 133u, 4u, 4u, block, sizeof(block)),
+                    "BC1 KTX2 fixture written");
+        rt_string path_s = rt_string_from_bytes(path, std::strlen(path));
+        void *asset = rt_textureasset3d_load_ktx2(path_s);
+        rt_string_unref(path_s);
+        EXPECT_TRUE(asset != nullptr, "BC1 KTX2 loads");
+        if (asset) {
+            rt_string format_name = rt_textureasset3d_get_format(asset);
+            const char *format_cstr = format_name ? rt_string_cstr(format_name) : NULL;
+            EXPECT_TRUE(format_cstr && std::strcmp(format_cstr, "bc1") == 0,
+                        "BC1 KTX2 reports format name bc1");
+            void *pixels = rt_textureasset3d_get_pixels(asset);
+            EXPECT_TRUE(pixels != nullptr, "BC1 fallback pixels decoded");
+            if (pixels) {
+                int64_t texel = rt_pixels_get(pixels, 0, 0);
+                EXPECT_TRUE((uint64_t)texel == 0xFF0000FFull,
+                            "BC1 fallback texel0 is opaque red");
+            }
+            if (rt_obj_release_check0(asset))
+                rt_obj_free(asset);
+        }
+        std::remove(path);
+    }
+    PASS();
+}
+
 /* LSB-first bit writer mirroring BC7's bitstream layout, for constructing known blocks. */
 struct Bc7BitWriter {
     uint8_t *buf;
@@ -2002,6 +2112,75 @@ static void test_textureasset3d_mip_residency() {
     PASS();
 }
 
+/// Load must fail recoverably: NULL result with the expected diagnostic
+/// available through the last-load-error query (no trap).
+static bool ktx2_load_fails_with(rt_string path_s, const char *expected_substring) {
+    void *asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string err;
+    const char *err_cstr;
+
+    if (asset) {
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+        return false;
+    }
+    err = rt_assets3d_get_last_load_error();
+    err_cstr = err ? rt_string_cstr(err) : NULL;
+    return err_cstr && std::strstr(err_cstr, expected_substring) != NULL;
+}
+
+/// Supercompressed KTX2 fixtures (Zstandard scheme 2 and ZLIB scheme 3,
+/// produced by reference encoders) must load with correctly inflated levels.
+static void test_textureasset3d_supercompressed_ktx2_loads() {
+    TEST("TextureAsset3D loads Zstd/ZLIB supercompressed KTX2");
+    const char *fixtures[] = {"red_rgba8_zstd.ktx2", "red_rgba8_zlib.ktx2"};
+    for (int i = 0; i < 2; i++) {
+#ifdef VIPER_SOURCE_DIR
+        std::string path =
+            std::string(VIPER_SOURCE_DIR) + "/src/tests/unit/data/ktx2/" + fixtures[i];
+#else
+        std::string path = std::string("src/tests/unit/data/ktx2/") + fixtures[i];
+#endif
+        rt_string path_s = rt_string_from_bytes(path.c_str(), path.size());
+        void *asset = rt_textureasset3d_load_ktx2(path_s);
+        rt_string_unref(path_s);
+        EXPECT_TRUE(asset != nullptr, "supercompressed KTX2 loads");
+        if (!asset)
+            return;
+        EXPECT_EQ(rt_textureasset3d_get_width(asset), 4);
+        EXPECT_EQ(rt_textureasset3d_get_mip_count(asset), 2);
+        void *pixels = rt_textureasset3d_get_pixels(asset);
+        EXPECT_TRUE(pixels != nullptr, "mip0 pixels decoded from inflated payload");
+        if (pixels) {
+            EXPECT_TRUE((uint64_t)rt_pixels_get(pixels, 0, 0) == 0xFF0000FFull,
+                        "mip0 texel is opaque red after decompression");
+        }
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    /* Compressed-format payloads inflate before block decode + native retention. */
+    {
+#ifdef VIPER_SOURCE_DIR
+        std::string path =
+            std::string(VIPER_SOURCE_DIR) + "/src/tests/unit/data/ktx2/red_bc1_zstd.ktx2";
+#else
+        std::string path = "src/tests/unit/data/ktx2/red_bc1_zstd.ktx2";
+#endif
+        rt_string path_s = rt_string_from_bytes(path.c_str(), path.size());
+        void *asset = rt_textureasset3d_load_ktx2(path_s);
+        rt_string_unref(path_s);
+        EXPECT_TRUE(asset != nullptr, "zstd BC1 KTX2 loads");
+        if (asset) {
+            void *pixels = rt_textureasset3d_get_pixels(asset);
+            EXPECT_TRUE(pixels && (uint64_t)rt_pixels_get(pixels, 0, 0) == 0xFF0000FFull,
+                        "zstd BC1 block decodes to opaque red");
+            if (rt_obj_release_check0(asset))
+                rt_obj_free(asset);
+        }
+    }
+    PASS();
+}
+
 static void test_textureasset3d_rejects_unsupported_ktx2_headers() {
     TEST("TextureAsset3D.LoadKTX2 rejects unsupported KTX2 headers");
     const char *super_path = "/tmp/viper_textureasset3d_supercompressed_test.ktx2";
@@ -2015,25 +2194,22 @@ static void test_textureasset3d_rejects_unsupported_ktx2_headers() {
         write_test_ktx2_custom_header(super_path, 37u, 1u, 1u, 1u, 1u, payload, sizeof(payload)),
         "supercompressed KTX2 fixture written");
     path_s = rt_string_from_bytes(super_path, std::strlen(super_path));
-    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
-                                     "unsupported KTX2 supercompression"),
-                "supercompressed KTX2 traps");
+    EXPECT_TRUE(ktx2_load_fails_with(path_s, "unsupported KTX2 supercompression"),
+                "supercompressed KTX2 fails recoverably with a diagnostic");
     rt_string_unref(path_s);
 
     EXPECT_TRUE(write_test_ktx2_custom_header(implicit_path, 37u, 1u, 1u, 0u, 0u, nullptr, 0u),
                 "implicit-mip KTX2 fixture written");
     path_s = rt_string_from_bytes(implicit_path, std::strlen(implicit_path));
-    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
-                                     "implicit mip generation is unsupported"),
-                "implicit-mip KTX2 traps");
+    EXPECT_TRUE(ktx2_load_fails_with(path_s, "implicit mip generation is unsupported"),
+                "implicit-mip KTX2 fails recoverably with a diagnostic");
     rt_string_unref(path_s);
 
     EXPECT_TRUE(write_test_ktx2(short_mip_path, 145u, 4u, 4u, short_payload, sizeof(short_payload)),
                 "short native-mip KTX2 fixture written");
     path_s = rt_string_from_bytes(short_mip_path, std::strlen(short_mip_path));
-    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
-                                     "invalid mip payload length"),
-                "short native mip payload traps");
+    EXPECT_TRUE(ktx2_load_fails_with(path_s, "invalid mip payload length"),
+                "short native mip payload fails recoverably with a diagnostic");
     rt_string_unref(path_s);
 
     std::remove(super_path);
@@ -2148,8 +2324,7 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
             write_test_ktx2_mips(empty_path, 157u, 4u, 4u, empty_levels, empty_level_bytes, 1u),
             "zero-length native KTX2 fixture written");
         empty_path_s = rt_string_from_bytes(empty_path, std::strlen(empty_path));
-        EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(empty_path_s); },
-                                         "invalid mip payload length"),
+        EXPECT_TRUE(ktx2_load_fails_with(empty_path_s, "invalid mip payload length"),
                     "zero-length native payloads are rejected");
         rt_string_unref(empty_path_s);
         std::remove(empty_path);
@@ -3797,6 +3972,64 @@ static void enable_latched_motion_blur(rt_canvas3d *canvas) {
     canvas->frame_postfx_chain.effects[0].snapshot.motion_blur_enabled = 1;
 }
 
+extern "C" rt_string rt_postfx3d_get_last_error(void *obj);
+
+static void bindcheck_present_postfx(void *ctx, const vgfx3d_postfx_chain_t *chain) {
+    (void)ctx;
+    (void)chain;
+}
+
+static void test_canvas_postfx_bind_time_capability_validation() {
+    TEST("Canvas3D.SetPostFX validates GPU-scene effects at bind time (Plan 09)");
+    vgfx3d_backend_t cpu_backend = {};
+    vgfx3d_backend_t gpu_backend = {};
+    rt_canvas3d canvas;
+    void *fx = rt_postfx3d_new();
+    assert(fx != NULL);
+
+    cpu_backend.name = "software";
+    gpu_backend.name = "metal";
+    gpu_backend.present_postfx = bindcheck_present_postfx;
+
+    rt_postfx3d_add_ssao(fx, 0.5, 0.65, 8);
+
+    /* CPU-path canvas: bind refused, reason recorded, no trap. */
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &cpu_backend;
+    rt_canvas3d_set_post_fx(&canvas, fx);
+    if (canvas.postfx != NULL) {
+        FAIL("unsupported chain was attached to a CPU-path canvas");
+        return;
+    }
+    {
+        rt_string err = rt_postfx3d_get_last_error(fx);
+        const char *msg = rt_string_cstr(err);
+        if (!msg || !strstr(msg, "GPU window postfx")) {
+            FAIL("LastError did not record the bind refusal reason");
+            return;
+        }
+    }
+
+    /* GPU window canvas: binds and clears the error. */
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &gpu_backend;
+    rt_canvas3d_set_post_fx(&canvas, fx);
+    if (canvas.postfx != fx) {
+        FAIL("supported chain failed to attach to a GPU canvas");
+        return;
+    }
+    {
+        rt_string err = rt_postfx3d_get_last_error(fx);
+        const char *msg = rt_string_cstr(err);
+        if (msg && msg[0] != '\0') {
+            FAIL("LastError was not cleared on a successful bind");
+            return;
+        }
+    }
+    rt_canvas3d_set_post_fx(&canvas, NULL);
+    PASS();
+}
+
 static void test_canvas_postfx_retains_owned_reference() {
     TEST("Canvas3D.SetPostFX retains owned reference");
     rt_canvas3d canvas;
@@ -4168,6 +4401,81 @@ static void test_canvas_texture_backend_support_queries() {
                 "software backend reports KTX2 CPU decode support");
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("bc7")) == 0,
                 "software backend does not report native BC7 upload support");
+    PASS();
+}
+
+static uint32_t g_revision_log[16];
+static int g_revision_log_count = 0;
+
+static void revision_tracking_submit_draw(void *,
+                                          vgfx_window_t,
+                                          const vgfx3d_draw_cmd_t *cmd,
+                                          const vgfx3d_light_params_t *,
+                                          int32_t,
+                                          const float *,
+                                          int8_t,
+                                          int8_t) {
+    if (cmd && g_revision_log_count < 16)
+        g_revision_log[g_revision_log_count++] = cmd->lights_revision;
+}
+
+/// Light-snapshot revision stamps: draws queued under an unchanged light set
+/// share one nonzero stamp (backends skip constant re-upload); mutating a
+/// light between draws advances the stamp.
+static void test_canvas_light_revision_stamps() {
+    TEST("Canvas3D stamps light-snapshot revisions on queued draws");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new();
+    void *dir = rt_vec3_new(0.0, -1.0, 0.0);
+    void *light = rt_light3d_new_directional(dir, 1.0, 1.0, 1.0);
+    void *xf =
+        rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = revision_tracking_submit_draw;
+    backend.end_frame = tracked_end_frame;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    rt_camera3d_look_at(camera, eye, target, up);
+    rt_canvas3d_set_light(&canvas, 0, light);
+
+    g_revision_log_count = 0;
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    /* Mutate a light property mid-frame: subsequent draws must re-stamp. */
+    rt_light3d_set_intensity(light, 0.25);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_revision_log_count, 4);
+    EXPECT_TRUE(g_revision_log[0] != 0, "first draw carries a nonzero stamp");
+    EXPECT_TRUE(g_revision_log[0] == g_revision_log[1],
+                "identical light sets share one revision stamp");
+    EXPECT_TRUE(g_revision_log[2] != g_revision_log[1],
+                "mutating a light between draws advances the stamp");
+    EXPECT_TRUE(g_revision_log[2] == g_revision_log[3],
+                "the new snapshot is shared by subsequent draws");
+
+    /* A second identical frame re-uses the same stamp (no spurious churn). */
+    g_revision_log_count = 0;
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_revision_log_count, 1);
+    EXPECT_TRUE(g_revision_log[0] != 0, "second frame stamp is nonzero");
     PASS();
 }
 
@@ -5073,6 +5381,107 @@ static void test_canvas_overlay_draws_replay_after_3d_frame() {
     PASS();
 }
 
+static void test_canvas_overlay_clip_and_new_primitives() {
+    TEST("Canvas3D overlay clip trims queued 2D primitives (Plan 08)");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+
+    g_canvas_submit_draw_calls = 0;
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_set_clip_rect2d(&canvas, 10, 10, 20, 20);
+
+    /* Fully outside the clip: accepted but queues nothing. */
+    EXPECT_TRUE(
+        canvas3d_queue_screen_rect(&canvas, 0.0f, 0.0f, 5.0f, 5.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
+        "Fully-clipped rect reports success");
+    EXPECT_TRUE(canvas3d_queue_screen_line(
+                    &canvas, 0.0f, 0.0f, 5.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
+                "Fully-clipped line reports success");
+    /* Text entirely above the clip rect: every dot clipped, no draw queued. */
+    rt_canvas3d_draw_text2d_scaled(&canvas, 0, -20, rt_const_cstr("HI"), 0xFFFFFF, 1.0);
+
+    /* Partially inside: each queues exactly one draw. */
+    EXPECT_TRUE(
+        canvas3d_queue_screen_rect(&canvas, 5.0f, 12.0f, 10.0f, 4.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
+        "Partially-clipped rect queues");
+    EXPECT_TRUE(canvas3d_queue_screen_line(
+                    &canvas, 0.0f, 15.0f, 40.0f, 15.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
+                "Crossing line queues");
+    EXPECT_TRUE(canvas3d_queue_screen_round_rect(
+                    &canvas, 12.0f, 12.0f, 16.0f, 16.0f, 4.0f, 0.0f, 1.0f, 0.0f, 1.0f) != 0,
+                "Overlapping rounded rect queues");
+
+    rt_canvas3d_clear_clip_rect2d(&canvas);
+    EXPECT_TRUE(
+        canvas3d_queue_screen_rect(&canvas, 0.0f, 0.0f, 5.0f, 5.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
+        "Rect queues after ClearClipRect2D");
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 4);
+
+    EXPECT_EQ(rt_canvas3d_measure_text2d(&canvas, rt_const_cstr("AB"), 1.0), 24);
+    EXPECT_EQ(rt_canvas3d_measure_text2d(&canvas, rt_const_cstr("AB"), 2.0), 48);
+    PASS();
+}
+
+extern "C" {
+void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color);
+void rt_uilabel_draw(void *label, void *canvas);
+void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t bg_color, int64_t alpha);
+void rt_uipanel_draw(void *panel, void *canvas);
+void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t fg_color, int64_t bg_color);
+void rt_uibar_draw(void *bar, void *canvas);
+}
+
+static void test_gameui_widgets_draw_on_canvas3d() {
+    TEST("Game.UI widgets render on Canvas3D via the draw-ops adapter (ADR 0017)");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+
+    /* The binding registers at Canvas3D creation; tests use stack canvases, so
+     * register explicitly (idempotent). */
+    canvas3d_register_gameui_ops();
+
+    void *label = rt_uilabel_new(4, 4, rt_const_cstr("HP"), 0xFFFFFF);
+    void *panel = rt_uipanel_new(0, 0, 64, 32, 0x203040, 200);
+    void *bar = rt_uibar_new(4, 20, 56, 8, 0x40FF40, 0x202020);
+    assert(label && panel && bar);
+
+    g_canvas_submit_draw_calls = 0;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_uipanel_draw(panel, &canvas);
+    rt_uibar_draw(bar, &canvas);
+    rt_uilabel_draw(label, &canvas);
+    rt_canvas3d_end(&canvas);
+
+    if (g_canvas_submit_draw_calls < 3) {
+        FAIL("widgets did not queue overlay draws on Canvas3D");
+        return;
+    }
+    PASS();
+}
+
 static void test_canvas_postfx_uses_render_target_pixels() {
     TEST("Canvas3D postfx applies to render targets via sync/readback");
     rt_canvas3d canvas;
@@ -5136,6 +5545,64 @@ static void test_canvas_postfx_uses_hdr_render_target_mirror() {
 
     if (rt->target->color_buf[0] < 200 || rt->target->hdr_color_buf[0] <= 0.8f) {
         FAIL("HDR postfx did not consume the linear HDR mirror");
+        return;
+    }
+    PASS();
+}
+
+static void test_canvas_postfx_hdr_mode0_tonemap_applies_gamma() {
+    TEST("Canvas3D explicit mode-0 tonemap applies gamma-out on linear-HDR targets");
+    rt_canvas3d canvas;
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new_hdr(1, 1);
+    void *fx = rt_postfx3d_new();
+    assert(rt != NULL && rt->target != NULL && fx != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.render_target = rt->target;
+    canvas.postfx = fx;
+    rt_postfx3d_add_tonemap(fx, 0, 1.0); /* explicit "off": Plan 05 gamma-out on HDR */
+    rt_postfx3d_set_enabled(fx, 1);
+
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(rt->target) != 0,
+                "HDR mode-0 gamma test allocates LDR mirror");
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_hdr_color(rt->target) != 0,
+                "HDR mode-0 gamma test allocates linear HDR mirror");
+    rt->target->color_buf[0] = 0;
+    rt->target->color_buf[1] = 0;
+    rt->target->color_buf[2] = 0;
+    rt->target->color_buf[3] = 255;
+    rt->target->hdr_color_buf[0] = 0.25f;
+    rt->target->hdr_color_buf[1] = 0.25f;
+    rt->target->hdr_color_buf[2] = 0.25f;
+    rt->target->hdr_color_buf[3] = 1.0f;
+    rt->target->hdr_color_valid = 1;
+
+    rt_postfx3d_apply_to_canvas(&canvas);
+
+    /* pow(0.25, 1/2.2) ~= 0.533 -> ~136; the legacy linear passthrough would give ~64. */
+    if (rt->target->color_buf[0] < 120 || rt->target->color_buf[0] > 150) {
+        FAIL("HDR mode-0 tonemap output is not gamma-encoded");
+        return;
+    }
+    PASS();
+}
+
+static void test_canvas_postfx_rejects_taa_on_cpu_rtt_path() {
+    TEST("Canvas3D postfx rejects TAA on CPU/render-target path");
+    rt_canvas3d canvas;
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
+    void *fx = rt_postfx3d_new();
+    assert(rt != NULL && rt->target != NULL && fx != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.render_target = rt->target;
+    canvas.postfx = fx;
+    rt_postfx3d_add_taa(fx, 0.9);
+    rt_postfx3d_set_enabled(fx, 1);
+
+    if (!expect_trap_contains([&]() { rt_postfx3d_apply_to_canvas(&canvas); },
+                              "require GPU window postfx")) {
+        FAIL("TAA on the render-target postfx path did not trap");
         return;
     }
     PASS();
@@ -7394,10 +7861,12 @@ int main() {
     test_material_texture_setters_repair_stale_slots_before_rejecting_invalid_handles();
     test_textureasset3d_ktx2_material_bridge();
     test_textureasset3d_bc3_software_decode();
+    test_textureasset3d_bc1_bc4_bc5_software_decode();
     test_textureasset3d_bc7_software_decode();
     test_textureasset3d_etc2_astc_software_decode();
     test_textureasset3d_decode_failure_checker_fallback();
     test_textureasset3d_mip_residency();
+    test_textureasset3d_supercompressed_ktx2_loads();
     test_textureasset3d_rejects_unsupported_ktx2_headers();
     test_textureasset3d_native_resident_mips_feed_backend_utils();
     test_material_inspection_getters();
@@ -7485,8 +7954,13 @@ int main() {
     test_canvas_begin_applies_camera_shake_without_follow();
     test_canvas_overlay_draws_replay_after_3d_frame();
     test_canvas_postfx_uses_render_target_pixels();
+    test_canvas_overlay_clip_and_new_primitives();
+    test_gameui_widgets_draw_on_canvas3d();
     test_canvas_postfx_uses_hdr_render_target_mirror();
+    test_canvas_postfx_hdr_mode0_tonemap_applies_gamma();
+    test_canvas_postfx_rejects_taa_on_cpu_rtt_path();
     test_canvas_postfx_rejects_advanced_cpu_rtt_effects();
+    test_canvas_postfx_bind_time_capability_validation();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
     test_canvas_render_target_rejects_mid_frame_changes();
@@ -7500,6 +7974,7 @@ int main() {
     test_canvas_software_clustered_lighting_submits_many_lights();
     test_canvas_shadow_cascades_capability_gate();
     test_canvas_texture_backend_support_queries();
+    test_canvas_light_revision_stamps();
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
     test_canvas_texture_upload_bytes_telemetry();
     test_canvas_frame_gpu_time_telemetry();

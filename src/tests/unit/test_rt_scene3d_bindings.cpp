@@ -514,6 +514,74 @@ static void test_clear_animator_binding_clears_node_animator() {
                 "ClearAnimatorBinding releases the node animator slot");
 }
 
+/// Read a node's world position through the public Vec3 accessor.
+static void socket_world_pos(void *node, double *x, double *y, double *z) {
+    void *v = rt_scene_node3d_get_world_position(node);
+    *x = v ? rt_vec3_x(v) : 0.0;
+    *y = v ? rt_vec3_y(v) : 0.0;
+    *z = v ? rt_vec3_z(v) : 0.0;
+}
+
+/// A node attached to an animated bone must track the bone's composited pose
+/// (parentWorld x bonePose x offset) through SyncBindings, and stop tracking
+/// after DetachBoneSocket.
+static void test_bone_socket_follows_animated_bone() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("hand"), 0, rt_mat4_identity());
+    /* Bone 1 animates from (1,0,0) at t=0 to (1,2,0) at t=1. */
+    void *anim = make_anim("wave", 1, 1.0, 0.0, 0.0, 1.0, 2.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("wave"), anim);
+    rt_anim_controller3d_play(controller, rt_const_cstr("wave"));
+    rt_anim_controller3d_update(controller, 0.0);
+
+    void *scene = rt_scene3d_new();
+    void *character = rt_scene_node3d_new();
+    void *socket = rt_scene_node3d_new();
+    double x;
+    double y;
+    double z;
+
+    rt_scene3d_add(scene, character);
+    rt_scene_node3d_set_position(character, 5.0, 0.0, 0.0);
+    rt_scene_node3d_try_add_child(character, socket);
+
+    /* Fail-before: without a socket the child stays at the parent origin. */
+    rt_scene3d_sync_bindings(scene, 0.0);
+    socket_world_pos(socket, &x, &y, &z);
+    EXPECT_NEAR(x, 5.0, 1e-6, "unsocketed child inherits parent world position");
+    EXPECT_NEAR(y, 0.0, 1e-6, "unsocketed child stays at parent origin (y)");
+
+    /* Attach with a +0.5y offset in bone space: world = (5+1, 0+0.5, 0). */
+    rt_scene_node3d_attach_to_bone(socket, controller, 1, 0.0, 0.5, 0.0);
+    rt_scene3d_sync_bindings(scene, 0.0);
+    socket_world_pos(socket, &x, &y, &z);
+    EXPECT_NEAR(x, 6.0, 1e-5, "socket follows bone translation (x)");
+    EXPECT_NEAR(y, 0.5, 1e-5, "socket applies bone-space offset (y)");
+    EXPECT_NEAR(z, 0.0, 1e-5, "socket stays on the bone plane (z)");
+
+    /* Advance the animation: bone rises to (1,1,0) at t=0.5. */
+    rt_anim_controller3d_update(controller, 0.5);
+    rt_scene3d_sync_bindings(scene, 0.0);
+    socket_world_pos(socket, &x, &y, &z);
+    EXPECT_NEAR(x, 6.0, 1e-5, "socket keeps tracking bone (x)");
+    EXPECT_NEAR(y, 1.5, 1e-5, "socket tracks animated bone height (y)");
+
+    /* Moving the character moves the socketed child with it. */
+    rt_scene_node3d_set_position(character, 7.0, 0.0, 0.0);
+    rt_scene3d_sync_bindings(scene, 0.0);
+    socket_world_pos(socket, &x, &y, &z);
+    EXPECT_NEAR(x, 8.0, 1e-5, "socket composes with the parent's world transform");
+
+    /* Detach: the node keeps its last pose and stops following. */
+    rt_scene_node3d_detach_bone_socket(socket);
+    rt_anim_controller3d_update(controller, 0.4); /* bone now near (1,1.8,0) */
+    rt_scene3d_sync_bindings(scene, 0.0);
+    socket_world_pos(socket, &x, &y, &z);
+    EXPECT_NEAR(y, 1.5, 1e-5, "detached socket no longer tracks the bone");
+}
+
 int main() {
     test_node_from_body_resolves_child_local_space();
     test_body_from_node_uses_world_space();
@@ -526,6 +594,7 @@ int main() {
     test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backends();
     test_node_animator_rebind_clears_previous_node_owner();
     test_clear_animator_binding_clears_node_animator();
+    test_bone_socket_follows_animated_bone();
 
     std::printf("SceneGraph binding tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

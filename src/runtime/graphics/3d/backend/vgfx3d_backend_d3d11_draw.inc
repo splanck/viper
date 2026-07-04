@@ -358,6 +358,41 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
                       : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count))
                : 0;
     scene_data->shadow_count = vgfx3d_d3d11_clamp_shadow_count(ctx->shadow_count);
+    scene_data->ibl_intensity = ctx->ibl_intensity;
+    for (int32_t sh_k = 0; sh_k < 9; sh_k++) {
+        scene_data->sh[sh_k][0] = ctx->ibl_sh[sh_k * 3 + 0];
+        scene_data->sh[sh_k][1] = ctx->ibl_sh[sh_k * 3 + 1];
+        scene_data->sh[sh_k][2] = ctx->ibl_sh[sh_k * 3 + 2];
+        scene_data->sh[sh_k][3] = 0.0f;
+    }
+    scene_data->shadow_filter[0] = vgfx3d_d3d11_finite_or(ctx->shadow_slope_bias, 1.0f);
+    scene_data->shadow_filter[1] =
+        vgfx3d_d3d11_clamp_float_param(ctx->shadow_strength, 0.0f, 1.0f, 0.85f);
+    scene_data->shadow_filter[2] =
+        (float)(ctx->shadow_quality <= 0 ? 4 : (ctx->shadow_quality == 1 ? 8 : 16));
+}
+
+/// @brief Resolve whether a draw uses IBL environment lighting, producing the
+///   prefiltered chain's lod-base and effective max-lod for the env sampler.
+static int d3d11_cmd_ibl_draw(d3d11_context_t *ctx,
+                              const vgfx3d_draw_cmd_t *cmd,
+                              float *out_lod_base,
+                              float *out_max_lod) {
+    const rt_cubemap3d *env_cm = (const rt_cubemap3d *)cmd->env_map;
+
+    *out_lod_base = 0.0f;
+    *out_max_lod = env_cm ? d3d11_cubemap_max_lod(env_cm) : 0.0f;
+    if (!ctx || !ctx->ibl_enabled || !cmd->ibl_env || !env_cm || !env_cm->ibl_ready)
+        return 0;
+    {
+        int64_t size = env_cm->face_size;
+        while (size > env_cm->ibl_base_size && size > 1) {
+            size >>= 1;
+            *out_lod_base += 1.0f;
+        }
+    }
+    *out_max_lod = (float)(env_cm->ibl_mip_count - 1);
+    return 1;
 }
 
 /// @brief Pack material colors, scalars, and texture-availability flags into the cbuffer.
@@ -375,6 +410,9 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
                                         int has_splat,
                                         int has_metallic_roughness_map,
                                         int has_ao_map,
+                                        int ibl_draw,
+                                        float ibl_env_lod_base,
+                                        float ibl_env_max_lod,
                                         d3d_per_material_t *material_data) {
     static const float uv_fallback[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
 
@@ -400,8 +438,8 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
         vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[2], 0.0f, 1.0f, 0.0f);
     material_data->scalars[0] = vgfx3d_d3d11_clamp_float_param(cmd->alpha, 0.0f, 1.0f, 1.0f);
     material_data->scalars[1] = vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f);
-    material_data->scalars[2] =
-        cmd->env_map ? d3d11_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
+    material_data->scalars[2] = ibl_env_max_lod;
+    material_data->scalars[3] = ibl_env_lod_base;
     material_data->pbr_scalars0[0] =
         vgfx3d_d3d11_clamp_float_param(cmd->metallic, 0.0f, 1.0f, 0.0f);
     material_data->pbr_scalars0[1] =
@@ -420,6 +458,7 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->flags1[0] = has_emissive_map;
     material_data->flags1[1] = has_env_map;
     material_data->flags1[2] = has_splat;
+    material_data->flags1[3] = ibl_draw;
     material_data->pbr_flags[0] = vgfx3d_d3d11_sanitize_material_workflow(cmd->workflow);
     material_data->pbr_flags[1] = vgfx3d_d3d11_sanitize_alpha_mode(cmd->alpha_mode);
     material_data->pbr_flags[2] = has_metallic_roughness_map;
@@ -815,8 +854,13 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     postfx_data->cg_contrast = 1.0f;
     postfx_data->cg_saturation = 1.0f;
     postfx_data->vignette_radius = 1.0f;
+    /* The D3D11 scene target is always R16G16B16A16_FLOAT (linear HDR). */
+    postfx_data->scene_is_hdr = 1;
+    postfx_data->bloom_tex_enabled =
+        (snapshot && snapshot->bloom_enabled && ctx->postfx_current_bloom_srv) ? 1 : 0;
     if (!snapshot)
         return;
+    postfx_data->tonemap_explicit = snapshot->tonemap_explicit ? 1 : 0;
     postfx_data->bloom_enabled = snapshot->bloom_enabled ? 1 : 0;
     postfx_data->bloom_threshold =
         vgfx3d_d3d11_clamp_float_param(snapshot->bloom_threshold, 0.0f, 1000000.0f, 1.0f);
@@ -846,7 +890,7 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
         vgfx3d_d3d11_clamp_float_param(snapshot->ssao_radius, 0.0f, 1000000.0f, 0.0f);
     postfx_data->ssao_intensity =
         vgfx3d_d3d11_clamp_float_param(snapshot->ssao_intensity, 0.0f, 1000000.0f, 0.0f);
-    postfx_data->ssao_samples = vgfx3d_d3d11_clamp_int_param(snapshot->ssao_samples, 2, 12);
+    postfx_data->ssao_samples = vgfx3d_d3d11_clamp_int_param(snapshot->ssao_samples, 4, 16);
     postfx_data->dof_enabled = snapshot->dof_enabled ? 1 : 0;
     postfx_data->dof_focus_distance =
         vgfx3d_d3d11_clamp_float_param(snapshot->dof_focus_distance, 0.0f, 1000000.0f, 0.0f);
@@ -925,7 +969,9 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                    ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[3], &resources->textures[8])
                    : NULL;
     srvs[13] = (cmd->env_map &&
-                vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f) > 0.0001f)
+                (vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f) > 0.0001f ||
+                 (cmd->ibl_env && ctx->ibl_enabled &&
+                  ((const rt_cubemap3d *)cmd->env_map)->ibl_ready)))
                    ? d3d11_get_or_create_cubemap_srv(
                          ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
                    : NULL;
@@ -1020,8 +1066,6 @@ static void d3d11_submit_draw(void *ctx_ptr,
         return;
 
     d3d11_prepare_object_data(cmd, &object_data);
-    d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
-    d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);
 
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
@@ -1029,28 +1073,45 @@ static void d3d11_submit_draw(void *ctx_ptr,
         d3d11_log_hresult("Map(cbPerObject)", hr);
         return;
     }
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
-    if (FAILED(hr)) {
-        d3d11_log_hresult("Map(cbPerScene)", hr);
-        return;
-    }
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
-    if (FAILED(hr)) {
-        d3d11_log_hresult("Map(cbPerLights)", hr);
-        return;
+    /* Scene + light constants only change with the queued light-snapshot
+     * revision; DISCARD-mapped buffers keep earlier draws consistent. */
+    if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_lights_revision) {
+        d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
+        d3d11_prepare_light_data(
+            lights, scene_data.light_count, scene_data.shadow_count, light_data);
+        hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbPerScene)", hr);
+            return;
+        }
+        hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbPerLights)", hr);
+            return;
+        }
+        ctx->uploaded_lights_revision = cmd->lights_revision;
     }
 
     has_splat = d3d11_bind_draw_resources(ctx, cmd, &draw_resources);
-    d3d11_prepare_material_data(cmd,
-                                draw_resources.has_texture,
-                                draw_resources.has_normal_map,
-                                draw_resources.has_specular_map,
-                                draw_resources.has_emissive_map,
-                                draw_resources.has_env_map,
-                                has_splat,
-                                draw_resources.has_metallic_roughness_map,
-                                draw_resources.has_ao_map,
-                                &material_data);
+    {
+        float ibl_env_lod_base = 0.0f;
+        float ibl_env_max_lod = 0.0f;
+        int ibl_draw = d3d11_cmd_ibl_draw(ctx, cmd, &ibl_env_lod_base, &ibl_env_max_lod);
+
+        d3d11_prepare_material_data(cmd,
+                                    draw_resources.has_texture,
+                                    draw_resources.has_normal_map,
+                                    draw_resources.has_specular_map,
+                                    draw_resources.has_emissive_map,
+                                    draw_resources.has_env_map,
+                                    has_splat,
+                                    draw_resources.has_metallic_roughness_map,
+                                    draw_resources.has_ao_map,
+                                    ibl_draw,
+                                    ibl_env_lod_base,
+                                    ibl_env_max_lod,
+                                    &material_data);
+    }
     hr = d3d11_update_constant_buffer(
         ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
     if (FAILED(hr)) {
@@ -1133,8 +1194,6 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     object_data.has_prev_model_matrix = 0;
     object_data.has_prev_instance_matrices = vgfx3d_d3d11_should_use_previous_instance_matrices(
         cmd->prev_instance_matrices, cmd->has_prev_instance_matrices);
-    d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
-    d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);
 
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
@@ -1142,28 +1201,45 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         d3d11_log_hresult("Map(cbPerObject)", hr);
         return;
     }
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
-    if (FAILED(hr)) {
-        d3d11_log_hresult("Map(cbPerScene)", hr);
-        return;
-    }
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
-    if (FAILED(hr)) {
-        d3d11_log_hresult("Map(cbPerLights)", hr);
-        return;
+    /* Scene + light constants only change with the queued light-snapshot
+     * revision; DISCARD-mapped buffers keep earlier draws consistent. */
+    if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_lights_revision) {
+        d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
+        d3d11_prepare_light_data(
+            lights, scene_data.light_count, scene_data.shadow_count, light_data);
+        hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbPerScene)", hr);
+            return;
+        }
+        hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbPerLights)", hr);
+            return;
+        }
+        ctx->uploaded_lights_revision = cmd->lights_revision;
     }
 
     has_splat = d3d11_bind_draw_resources(ctx, cmd, &draw_resources);
-    d3d11_prepare_material_data(cmd,
-                                draw_resources.has_texture,
-                                draw_resources.has_normal_map,
-                                draw_resources.has_specular_map,
-                                draw_resources.has_emissive_map,
-                                draw_resources.has_env_map,
-                                has_splat,
-                                draw_resources.has_metallic_roughness_map,
-                                draw_resources.has_ao_map,
-                                &material_data);
+    {
+        float ibl_env_lod_base = 0.0f;
+        float ibl_env_max_lod = 0.0f;
+        int ibl_draw = d3d11_cmd_ibl_draw(ctx, cmd, &ibl_env_lod_base, &ibl_env_max_lod);
+
+        d3d11_prepare_material_data(cmd,
+                                    draw_resources.has_texture,
+                                    draw_resources.has_normal_map,
+                                    draw_resources.has_specular_map,
+                                    draw_resources.has_emissive_map,
+                                    draw_resources.has_env_map,
+                                    has_splat,
+                                    draw_resources.has_metallic_roughness_map,
+                                    draw_resources.has_ao_map,
+                                    ibl_draw,
+                                    ibl_env_lod_base,
+                                    ibl_env_max_lod,
+                                    &material_data);
+    }
     hr = d3d11_update_constant_buffer(
         ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
     if (FAILED(hr)) {

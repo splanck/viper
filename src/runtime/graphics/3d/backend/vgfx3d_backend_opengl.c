@@ -144,6 +144,10 @@ typedef unsigned int GLbitfield;
 #define GL_MAX_TEXTURE_BUFFER_SIZE 0x8C2B
 #define GL_COMPRESSED_RGBA_BPTC_UNORM 0x8E8C
 #define GL_COMPRESSED_RGBA8_ETC2_EAC 0x9278
+#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#define GL_COMPRESSED_RED_RGTC1 0x8DBB
+#define GL_COMPRESSED_RG_RGTC2 0x8DBD
 #define GL_COMPRESSED_RGBA_ASTC_4x4_KHR 0x93B0
 #define GL_COMPRESSED_RGBA_ASTC_5x4_KHR 0x93B1
 #define GL_COMPRESSED_RGBA_ASTC_5x5_KHR 0x93B2
@@ -570,6 +574,7 @@ typedef struct {
     int32_t upload_next_row;
     int8_t upload_in_progress;
     uint64_t last_used_frame;
+    uint64_t applied_ibl_identity; /* prefiltered-mips overlay applied for this IBL payload */
 } gl_cubemap_cache_entry_t;
 
 typedef struct {
@@ -609,6 +614,9 @@ typedef struct {
     GLuint shadow_program;
     GLuint postfx_program;
     GLuint skybox_program;
+    GLuint bloom_down_program;
+    GLuint bloom_up_program;
+    GLuint taa_program;
     GLuint vao;
     GLuint fullscreen_vao;
     GLuint fullscreen_vbo;
@@ -656,6 +664,28 @@ typedef struct {
     uint8_t *readback_scratch_rgba;
     size_t readback_scratch_bytes;
 
+    /* Plan 05: half-res RGBA16F bloom mip chain (built lazily per scene size). */
+    GLuint bloom_mip_tex[6];
+    GLuint bloom_mip_fbo[6];
+    int32_t bloom_mip_w[6];
+    int32_t bloom_mip_h[6];
+    int32_t bloom_mip_count;
+    int32_t bloom_base_width;
+    int32_t bloom_base_height;
+    /* Transient: mip-0 result bound as uBloomTex while a chain pass composites bloom. */
+    GLuint postfx_current_bloom_tex;
+    /* Plan 05: TAA ping-pong history (RGBA16F, persisted across frames) + jitter state. */
+    GLuint taa_history_tex[2];
+    GLuint taa_history_fbo[2];
+    int32_t taa_history_width;
+    int32_t taa_history_height;
+    int32_t taa_history_parity;
+    int8_t taa_history_valid;
+    int8_t scene_hdr_active;
+    float taa_jitter_clip[2];
+    float taa_prev_jitter_clip[2];
+    uint32_t taa_frame_index;
+
     GLuint rtt_fbo;
     GLuint rtt_color_tex;
     GLuint rtt_depth_rbo;
@@ -674,6 +704,10 @@ typedef struct {
     int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_bias;
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
+    /* Plan 06: per-frame shadow filtering params from camera params. */
+    float shadow_strength;
+    float shadow_slope_bias;
+    int32_t shadow_quality;
     GLuint material_samplers[3][3][2][VGFX3D_OPENGL_ANISOTROPY_LEVEL_COUNT];
     int8_t anisotropy_supported;
     GLfloat max_texture_anisotropy;
@@ -723,6 +757,10 @@ typedef struct {
     float fog_near;
     float fog_far;
     float fog_color[3];
+    int8_t ibl_enabled;
+    float ibl_intensity;
+    float ibl_sh[27];
+    uint32_t uploaded_lights_revision; /* last light snapshot sent to the main program */
     float clearR, clearG, clearB;
     int8_t current_pass_is_overlay;
     int8_t gpu_postfx_enabled;
@@ -748,9 +786,11 @@ typedef struct {
         uHasAOMap, uCameraIsOrtho;
     GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
+    GLint uIblEnabled, uIblIntensity, uEnvLodBase, uShIrradiance;
     GLint uTextureUvSets0, uTextureUvSets1;
     GLint uTextureUvTransform0, uTextureUvTransform1;
     GLint uShadowCount, uShadowBias;
+    GLint uShadowSlopeBias, uShadowStrength, uShadowSampleCount;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
@@ -790,6 +830,13 @@ typedef struct {
     GLint postfx_uDofEnabled, postfx_uDofFocusDistance, postfx_uDofAperture, postfx_uDofMaxBlur;
     GLint postfx_uMotionBlurEnabled, postfx_uMotionBlurIntensity, postfx_uMotionBlurSamples;
     GLint postfx_uCameraPos, postfx_uInvViewProjection, postfx_uPrevViewProjection;
+    GLint postfx_uSceneHdr, postfx_uTonemapExplicit, postfx_uBloomTex, postfx_uBloomTexEnabled;
+
+    GLint bloom_down_uSrcTex, bloom_down_uSrcInvSize, bloom_down_uThreshold, bloom_down_uFirstPass;
+    GLint bloom_up_uSrcTex, bloom_up_uSrcInvSize;
+    GLint taa_uCurrTex, taa_uHistTex, taa_uMotionTex, taa_uDepthTex;
+    GLint taa_uInvResolution, taa_uJitterDelta, taa_uBlend, taa_uHistoryValid;
+    GLint taa_uInvViewProjection, taa_uPrevViewProjection;
 } gl_context_t;
 
 static void query_main_uniforms(gl_context_t *ctx);
@@ -885,6 +932,18 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
                                           int32_t width,
                                           int32_t height,
                                           const vgfx3d_postfx_chain_t *chain);
+static void query_bloom_taa_uniforms(gl_context_t *ctx);
+static void destroy_bloom_targets(gl_context_t *ctx);
+static void destroy_taa_targets(gl_context_t *ctx);
+static int ensure_bloom_targets(gl_context_t *ctx, int32_t w, int32_t h);
+static int ensure_taa_targets(gl_context_t *ctx, int32_t w, int32_t h);
+static GLuint
+gl_encode_bloom_chain(gl_context_t *ctx, int32_t width, int32_t height, float threshold);
+static GLuint gl_encode_taa_pass(gl_context_t *ctx,
+                                 GLuint source_tex,
+                                 int32_t width,
+                                 int32_t height,
+                                 const vgfx3d_postfx_snapshot_t *snapshot);
 
 /// @brief Snapshot of framebuffer, viewport, and read/draw buffer state.
 ///

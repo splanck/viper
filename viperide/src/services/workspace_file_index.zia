@@ -1,0 +1,188 @@
+module workspace_file_index;
+
+bind FileIndex = Viper.Workspace.FileIndex;
+bind Map = Viper.Collections.Map;
+bind Obj = Viper.Core.Object;
+bind Path = Viper.IO.Path;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: workspace_file_index
+// PURPOSE: Shared workspace-file discovery and path-containment policy.
+//
+// WHERE-THIS-FITS: ProjectManager owns the visible tree and project metadata.
+//          Search, Quick Open, workspace symbols, and project rename support all
+//          need the same "which files belong to this workspace?" answer. This
+//          leaf service keeps that answer independent of GUI widgets and command
+//          handlers.
+//
+// KEY-DESIGN-CHOICES:
+//   * RUNTIME FILEINDEX IS THE AUTHORITY. Viper.Workspace.FileIndex already
+//     knows hard excludes, .gitignore, and project ignore patterns. ViperIDE
+//     should not grow separate recursive enumeration rules in each feature.
+//   * PATHS ARE ABSOLUTE AT THE BOUNDARY. Callers pass absolute root/candidate
+//     paths, then render relative labels themselves. That keeps this service
+//     focused on membership rather than UI presentation.
+//   * NO GUI DEPENDENCIES. This module is safe to use from core, commands,
+//     editor controllers, and probes without dragging AppShell into leaf code.
+// ============================================================================
+
+/// @brief Test whether a path equals or lives under a workspace root.
+/// @param fullPath Absolute path to test.
+/// @param rootPath Absolute workspace root path.
+/// @return True when @p fullPath is exactly @p rootPath or has it as a parent.
+/// @details The comparison is lexical and separator-aware. It does not hit the
+///          filesystem, so callers may use it while checking paths that have
+///          just been renamed or paths discovered from a cache.
+expose func IsWithinRoot(fullPath: String,
+                         rootPath: String) -> Boolean {
+    if fullPath == "" or rootPath == "" { return false; }
+    if fullPath == rootPath { return true; }
+    var prefix = rootPath;
+    if Str.EndsWith(prefix, Path.Sep()) == false {
+        prefix = prefix + Path.Sep();
+    }
+    return Str.StartsWith(fullPath, prefix);
+}
+
+/// @brief Compute a workspace-relative path using platform separators.
+/// @param rootPath Absolute workspace root.
+/// @param fullPath Absolute candidate path.
+/// @return Relative path when @p fullPath is inside @p rootPath; otherwise the
+///         original path.
+/// @details Presentation layers usually normalize separators after this step.
+///          Keeping platform separators here matches the runtime FileIndex
+///          relative path convention.
+expose func RelativePath(rootPath: String,
+                         fullPath: String) -> String {
+    if rootPath == "" or fullPath == "" { return fullPath; }
+    var prefix = rootPath;
+    if Str.EndsWith(prefix, Path.Sep()) == false {
+        prefix = prefix + Path.Sep();
+    }
+    if Str.StartsWith(fullPath, prefix) {
+        return Str.Mid(fullPath, Str.get_Length(prefix) + 1);
+    }
+    return fullPath;
+}
+
+/// @brief Return true for default-hidden directory names.
+/// @param name Directory basename, not a full path.
+/// @return True when ViperIDE should skip the directory without consulting
+///         project ignore rules.
+/// @details This fallback is used only when no owning project root is available.
+///          Normal workspace enumeration should use FileIndex.ShouldIgnore.
+expose func IsDefaultExcludedDirectoryName(name: String) -> Boolean {
+    if Str.Left(name, 1) == "." { return true; }
+    if name == "build" or name == "node_modules" or name == "__pycache__" {
+        return true;
+    }
+    return false;
+}
+
+/// @brief Return true for default-hidden file names.
+/// @param name File basename, not a full path.
+/// @return True when ViperIDE should skip the file without project context.
+/// @details This intentionally remains conservative. Project-specific patterns
+///          are handled by FileIndex.ShouldIgnore when a root is known.
+expose func IsDefaultExcludedFileName(name: String) -> Boolean {
+    return Str.Left(name, 1) == ".";
+}
+
+/// @brief Ask the runtime workspace index whether a path should be ignored.
+/// @param rootPath Absolute workspace root.
+/// @param fullPath Absolute file or directory path being considered.
+/// @param isDir True when @p fullPath is a directory.
+/// @param ignorePatterns Project-specific ignore pattern list.
+/// @return True when the runtime workspace policy says to skip the path.
+/// @details Directory relative paths receive a trailing slash because ignore
+///          matchers often distinguish directory patterns from file patterns.
+expose func ShouldIgnorePath(rootPath: String,
+                             fullPath: String,
+                             isDir: Boolean,
+                             ignorePatterns: String) -> Boolean {
+    if rootPath == "" or fullPath == "" {
+        if isDir { return IsDefaultExcludedDirectoryName(Path.Name(fullPath)); }
+        return IsDefaultExcludedFileName(Path.Name(fullPath));
+    }
+
+    var rel = RelativePath(rootPath, fullPath);
+    if isDir and Str.EndsWith(rel, "/") == false {
+        rel = rel + "/";
+    }
+    return FileIndex.ShouldIgnore(rootPath, rel, ignorePatterns);
+}
+
+/// @brief Enumerate files under one workspace root through FileIndex.
+/// @param rootPath Absolute workspace root.
+/// @param fileKinds Comma-separated extension allow-list, or empty for all files.
+/// @param ignorePatterns Project-specific ignore pattern list.
+/// @return List of absolute file paths.
+/// @details The returned List contains only file entries. Directory entries from
+///          the runtime index are filtered here so callers share one simple shape.
+expose func EnumerateFiles(rootPath: String,
+                           fileKinds: String,
+                           ignorePatterns: String) -> List {
+    var result = new List();
+    if rootPath == "" { return result; }
+    var entries = FileIndex.Enumerate(rootPath, fileKinds, ignorePatterns, false);
+    if entries == null { return result; }
+
+    var i = 0;
+    while i < Seq.get_Count(entries) {
+        var entry = Seq.Get(entries, i);
+        if Map.GetBool(entry, "isDirectory") == false {
+            var filePath = Map.GetStr(entry, "path");
+            if filePath != "" and ListContains(result, filePath) == false {
+                result.Push(filePath);
+            }
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+/// @brief Append enumerated workspace files into an existing list.
+/// @param target Mutable list receiving absolute file paths.
+/// @param rootPath Absolute workspace root.
+/// @param fileKinds Comma-separated extension allow-list, or empty for all files.
+/// @param ignorePatterns Project-specific ignore pattern list.
+/// @return Number of newly-added file paths.
+/// @details This helper preserves caller-owned lists, which is useful when
+///          merging FileIndex output with open unsaved documents.
+expose func AddEnumeratedFiles(target: List,
+                               rootPath: String,
+                               fileKinds: String,
+                               ignorePatterns: String) -> Integer {
+    var added = 0;
+    var files = EnumerateFiles(rootPath, fileKinds, ignorePatterns);
+    var i = 0;
+    while i < files.count() {
+        var filePath = Obj.ToString(files.get(i));
+        if filePath != "" and ListContains(target, filePath) == false {
+            target.Push(filePath);
+            added = added + 1;
+        }
+        i = i + 1;
+    }
+    return added;
+}
+
+/// @brief Return true when a List already contains a string value.
+/// @param items List with string-like entries.
+/// @param value Value to find.
+/// @return True when any entry's string representation equals @p value.
+/// @details The runtime List can hold boxed values; normalizing through
+///          Obj.ToString keeps comparisons stable for all current callers.
+expose func ListContains(items: List,
+                         value: String) -> Boolean {
+    var i = 0;
+    while i < items.count() {
+        if Obj.ToString(items.get(i)) == value {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}

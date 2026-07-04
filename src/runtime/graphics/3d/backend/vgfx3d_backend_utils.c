@@ -91,15 +91,23 @@ uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
 }
 
 /// @brief Whether a texture asset's native compressed format can be uploaded under @p native_caps.
-/// @details Maps the asset's native format id (BC7/ASTC/ETC2) to the matching backend capability
-/// bit;
-///          returns 0 for uncompressed assets or formats the backend cannot upload natively.
+/// @details Maps the asset's native format id (BC1/BC3/BC4/BC5/BC7/ASTC/ETC2) to the matching
+///          backend capability bit; returns 0 for uncompressed assets or formats the backend
+///          cannot upload natively.
 int vgfx3d_textureasset_native_supported(void *asset, int64_t native_caps) {
     int32_t format_id;
 
     if (!asset || rt_textureasset3d_get_native_cache_key(asset) == 0)
         return 0;
     format_id = rt_textureasset3d_get_native_format_id(asset);
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1)
+        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC1) != 0;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3)
+        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC3) != 0;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4)
+        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC4) != 0;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5)
+        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC5) != 0;
     if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
         return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC7) != 0;
     if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC)

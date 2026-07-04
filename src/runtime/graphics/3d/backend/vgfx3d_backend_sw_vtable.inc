@@ -139,6 +139,12 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
+    ctx->ibl_enabled = cam->ibl_enabled;
+    ctx->ibl_intensity = cam->ibl_intensity;
+    memcpy(ctx->ibl_sh, cam->ibl_sh, sizeof(ctx->ibl_sh));
+    ctx->shadow_strength = cam->shadow_strength;
+    ctx->shadow_slope_bias = cam->shadow_slope_bias;
+    ctx->shadow_quality = cam->shadow_quality;
     ctx->debug_draw_count = 0;
     ctx->debug_tri_count = 0;
     if (!cam->load_existing_depth) {

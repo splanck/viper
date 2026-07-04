@@ -45,6 +45,7 @@ bind "build/breakpoints";
 bind "build/debug_session";
 bind "build/diagnostic";
 bind "commands/command_registry";
+bind "commands/command_context";
 bind "commands/main_command_dispatcher";
 bind "commands/file_commands";
 bind "commands/edit_commands";
@@ -56,18 +57,10 @@ bind "commands/search_commands";
 bind Viper.GUI;
 bind Env = Viper.System.Environment;
 bind IO = Viper.IO;
-bind Path = Viper.IO.Path;
-bind Dir = Viper.IO.Dir;
 bind Terminal = Viper.Terminal;
 bind Input = Viper.Input;
-bind Exec = Viper.System.Exec;
-bind Machine = Viper.System.Machine;
 bind Str = Viper.String;
-bind Seq = Viper.Collections.Seq;
-bind Map = Viper.Collections.Map;
 bind Threads = Viper.Threads;
-bind WorkspaceWatcher = Viper.Workspace.WorkspaceWatcher;
-bind FileIndex = Viper.Workspace.FileIndex;
 
 final MOUSE_BUTTON_RIGHT = 1;
 
@@ -295,6 +288,33 @@ func main() {
     // File watcher state lives in FileWatchController so the frame loop only
     // resets/bumps it when commands resolve external-change notifications.
     var workspaceWatcherState = new workspace_watcher.WorkspaceWatcherState();
+
+    // Command routing dependencies are stable after startup.
+    var commandContext = new command_context.CommandContext();
+    commandContext.shell = shell;
+    commandContext.docMgr = docMgr;
+    commandContext.projMgr = projMgr;
+    commandContext.engine = engine;
+    commandContext.tabs = tabs;
+    commandContext.buildSys = buildSys;
+    commandContext.dbgSession = dbgSession;
+    commandContext.terminalCtrl = terminalCtrl;
+    commandContext.fileWatchCtrl = fileWatchCtrl;
+    commandContext.workspaceWatcherState = workspaceWatcherState;
+    commandContext.indexer = indexer;
+    commandContext.breakpointStore = breakpointStore;
+    commandContext.sessionMgr = sessionMgr;
+    commandContext.locStore = locStore;
+    commandContext.commandRegistry = commandRegistry;
+    commandContext.paletteCtrl = paletteCtrl;
+    commandContext.explorerOverlay = explorerOverlay;
+    commandContext.debugOverlay = debugOverlay;
+    commandContext.overlays = overlays;
+    commandContext.liveDiag = liveDiag;
+    commandContext.symbolOutline = symbolOutline;
+    commandContext.sigCtrl = sigCtrl;
+    commandContext.searcher = searcher;
+    commandContext.appSettings = appSettings;
 
     // Cursor tracking for dot-trigger and status bar caching
     var prevCursorLine = 1;
@@ -561,12 +581,9 @@ func main() {
         // Dispatch commands via trigger helper
         // ====================================================================
 
-        if main_command_dispatcher.DispatchCommands(
-            shell, docMgr, projMgr, engine, tabs, buildSys, dbgSession, terminalCtrl,
-            fileWatchCtrl, workspaceWatcherState, indexer, breakpointStore, sessionMgr,
-            locStore, commandRegistry, paletteCtrl, explorerOverlay, debugOverlay,
-            overlays, liveDiag, symbolOutline, sigCtrl, searcher, appSettings,
-            cpSelected, suppressTreeOpen) {
+        if main_command_dispatcher.DispatchCommandContext(commandContext,
+                                                          cpSelected,
+                                                          suppressTreeOpen) {
             return;
         }
 
